@@ -14,6 +14,11 @@
   padding: 0 12px;
   min-height: var(--control-height-sm, 32px);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  /* The MODE label and pill buttons are pure controls — text selection
+     here is never useful and produces a stray highlight when users
+     drag-click across segments. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .label {
