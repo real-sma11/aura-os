@@ -17,6 +17,23 @@ function truncate(text: string, max: number): string {
   return `${first.slice(0, max - 1)}…`;
 }
 
+/**
+ * Pick the best label for a session row from server-provided fields,
+ * falling back through summaries. Returns `null` when the session has
+ * no usable title yet — the caller hides the row in that case rather
+ * than rendering a "New chat" placeholder.
+ */
+function deriveSessionLabel(
+  session: AnnotatedSession,
+  fetchedSummary: string | undefined,
+): string | null {
+  const summary = session.summary_of_previous_context || fetchedSummary || "";
+  if (summary.trim().length > 0) {
+    return truncate(summary, 80);
+  }
+  return null;
+}
+
 type ProjectBinding = {
   project_agent_id: string;
   project_id: string;
@@ -136,24 +153,29 @@ function useSessionSummaries(sessions: AnnotatedSession[]) {
   );
 }
 
-type DateBucket = {
+type SessionRow = {
+  session: AnnotatedSession;
   label: string;
-  sessions: AnnotatedSession[];
 };
 
-function bucketizeByDate(sessions: AnnotatedSession[]): DateBucket[] {
+type DateBucket = {
+  label: string;
+  rows: SessionRow[];
+};
+
+function bucketizeByDate(rows: SessionRow[]): DateBucket[] {
   const now = new Date();
   const order: string[] = [];
-  const map = new Map<string, AnnotatedSession[]>();
-  for (const session of sessions) {
-    const bucket = getDateBucket(session.started_at, now);
+  const map = new Map<string, SessionRow[]>();
+  for (const row of rows) {
+    const bucket = getDateBucket(row.session.started_at, now);
     if (!map.has(bucket)) {
       map.set(bucket, []);
       order.push(bucket);
     }
-    map.get(bucket)!.push(session);
+    map.get(bucket)!.push(row);
   }
-  return order.map((label) => ({ label, sessions: map.get(label)! }));
+  return order.map((label) => ({ label, rows: map.get(label)! }));
 }
 
 export function ChatsTab({
@@ -175,7 +197,23 @@ export function ChatsTab({
     [sessions],
   );
 
-  const buckets = useMemo(() => bucketizeByDate(sessions), [sessions]);
+  // Only render sessions that have an actual title (either a persisted
+  // `summary_of_previous_context` or a freshly-fetched Haiku summary).
+  // Untitled sessions stay invisible — `useSessionSummaries` is still
+  // attempting to summarize them, so the row appears as soon as the
+  // backend returns a non-empty summary. Truly empty sessions never
+  // get a title and therefore never show up, which is the desired
+  // ChatGPT-style behavior.
+  const titledRows = useMemo<SessionRow[]>(() => {
+    const out: SessionRow[] = [];
+    for (const session of sessions) {
+      const label = deriveSessionLabel(session, summaries[session.session_id]);
+      if (label) out.push({ session, label });
+    }
+    return out;
+  }, [sessions, summaries]);
+
+  const buckets = useMemo(() => bucketizeByDate(titledRows), [titledRows]);
 
   const handleSessionClick = useCallback(
     (session: AnnotatedSession) => {
@@ -223,7 +261,7 @@ export function ChatsTab({
     return <div className={styles.tabEmptyState}>Loading sessions...</div>;
   }
 
-  if (sessions.length === 0) {
+  if (titledRows.length === 0) {
     return <EmptyState>No sessions yet</EmptyState>;
   }
 
@@ -233,23 +271,18 @@ export function ChatsTab({
         {buckets.map((bucket) => (
           <section key={bucket.label} className={styles.chatsBucket}>
             <div className={styles.chatsBucketHeader}>{bucket.label}</div>
-            {bucket.sessions.map((session) => {
-              const summary = summaries[session.session_id];
-              const hasSummary = Boolean(summary);
-              const label = hasSummary ? truncate(summary, 80) : "New chat";
-              return (
-                <button
-                  key={session.session_id}
-                  type="button"
-                  id={session.session_id}
-                  className={`${styles.chatsRow} ${hasSummary ? "" : styles.chatsRowPlaceholder}`}
-                  data-session-id={session.session_id}
-                  onClick={() => handleSessionClick(session)}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {bucket.rows.map(({ session, label }) => (
+              <button
+                key={session.session_id}
+                type="button"
+                id={session.session_id}
+                className={styles.chatsRow}
+                data-session-id={session.session_id}
+                onClick={() => handleSessionClick(session)}
+              >
+                {label}
+              </button>
+            ))}
           </section>
         ))}
       </div>
