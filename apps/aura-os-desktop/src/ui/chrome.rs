@@ -88,10 +88,25 @@ pub(crate) fn disable_window_background_erase(_window: &tao::window::Window) {
 /// [`expand_top_resize_border`]. The OS default for an undecorated
 /// resizable window is `SM_CYFRAME` ≈ 4 logical px, which is
 /// painfully small — especially against our floating titlebar pill
-/// that begins 5 px below the window edge. 10 px is enough to be
-/// reliably grabbable with a normal mouse / trackpad without
-/// noticeably eating into the titlebar drag region.
-pub(crate) const TOP_RESIZE_BORDER_LOGICAL_PX: u32 = 10;
+/// that begins 5 px below the window edge.
+///
+/// 14 px is the chosen sweet spot:
+/// - 5 px of pure window inset above the pill is always claimed (safe;
+///   no interactive content lives there).
+/// - The remaining ~9 px overlap the top of the pill. The titlebar's
+///   `size="sm"` buttons (theme toggle, host settings, window controls,
+///   `OrgSelector` trigger) are ~28 px tall and vertically centered in
+///   the 32 px (`--control-height-sm`) pill, so their clickable top
+///   starts at roughly y=7. The 14 px band therefore eats ~7 rows off
+///   the top of those buttons, leaving ~21 px of effective vertical
+///   hit area — still comfortable for mouse / trackpad use, while
+///   making the top edge meaningfully easier to grab for resize.
+/// - Centerline clicks on pill buttons are unaffected.
+///
+/// The previous value (10 px) was reported as too thin to grab
+/// reliably, especially on high-DPI displays where 10 logical px is
+/// still only a small target relative to typical cursor speeds.
+pub(crate) const TOP_RESIZE_BORDER_LOGICAL_PX: u32 = 14;
 
 /// Computes the resize hit code for a cursor at `(x, y)` inside a
 /// client rect of width `client_width`, given an expanded top hit
