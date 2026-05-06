@@ -184,15 +184,19 @@ export function useFileAttachments(
       );
       onAttachmentsChange([...attachments, ...valid]);
 
-      // Kick off S3 uploads in background (fire-and-forget)
+      // Kick off S3 uploads after the state update renders so the ref
+      // has the new items before onUpdate reads it.
       if (onUpdateAttachment) {
-        for (const item of valid) {
-          const controller = new AbortController();
-          uploadAbortRefs.current.set(item.id, controller);
-          void uploadAttachmentToS3(item, onUpdateAttachment, controller.signal).finally(() => {
-            uploadAbortRefs.current.delete(item.id);
-          });
-        }
+        const itemsToUpload = [...valid];
+        setTimeout(() => {
+          for (const item of itemsToUpload) {
+            const controller = new AbortController();
+            uploadAbortRefs.current.set(item.id, controller);
+            void uploadAttachmentToS3(item, onUpdateAttachment, controller.signal).finally(() => {
+              uploadAbortRefs.current.delete(item.id);
+            });
+          }
+        }, 0);
       }
     }
     textareaRef?.current?.focus();
