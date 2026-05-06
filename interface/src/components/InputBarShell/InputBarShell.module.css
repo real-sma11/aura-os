@@ -109,7 +109,7 @@
 }
 
 .inputContainerPulse {
-  animation: pulseGlow 2s ease-in-out infinite;
+  animation: pulseGlow 6s ease-in-out infinite;
 }
 
 @keyframes pulseGlow {

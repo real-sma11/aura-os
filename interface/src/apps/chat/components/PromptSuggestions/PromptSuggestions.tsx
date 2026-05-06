@@ -1,10 +1,16 @@
+import { BookOpen, Bot, HelpCircle, Lightbulb, type LucideIcon } from "lucide-react";
 import styles from "./PromptSuggestions.module.css";
 
-const SUGGESTIONS = [
-  "What can you help me with?",
-  "Write me a short story",
-  "Explain how AI agents work",
-  "Help me brainstorm ideas for a project",
+interface Suggestion {
+  label: string;
+  Icon: LucideIcon;
+}
+
+const SUGGESTIONS: Suggestion[] = [
+  { label: "What can you help me with?", Icon: HelpCircle },
+  { label: "Write me a short story", Icon: BookOpen },
+  { label: "Explain how AI agents work", Icon: Bot },
+  { label: "Help me brainstorm ideas", Icon: Lightbulb },
 ];
 
 interface Props {
@@ -14,15 +20,16 @@ interface Props {
 export function PromptSuggestions({ onSelect }: Props) {
   return (
     <div className={styles.container}>
-      <div className={styles.grid}>
-        {SUGGESTIONS.map((prompt) => (
+      <div className={styles.row}>
+        {SUGGESTIONS.map(({ label, Icon }) => (
           <button
-            key={prompt}
+            key={label}
             type="button"
             className={styles.chip}
-            onClick={() => onSelect(prompt)}
+            onClick={() => onSelect(label)}
           >
-            {prompt}
+            <Icon size={14} className={styles.chipIcon} aria-hidden />
+            <span className={styles.chipLabel}>{label}</span>
           </button>
         ))}
       </div>
