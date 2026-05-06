@@ -310,6 +310,40 @@
   object-fit: contain;
 }
 
+/* Inline 3D viewer hosted by `Model3DBlock`. The viewer fills the
+   container (its canvas listens to a ResizeObserver), so we just need
+   a reasonable fixed height and a clipping border that lines up with
+   the rest of the block media chrome. The block body unmounts when
+   collapsed, which disposes the Three.js scene — old 3D embeds in a
+   long transcript don't keep renderers alive. */
+.model3dViewer {
+  position: relative;
+  width: 100%;
+  max-width: min(100%, 520px);
+  height: 280px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.model3dViewerFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--color-text-muted, #888);
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .model3dViewer {
+    height: 220px;
+  }
+}
+
 /* ── Generic (JSON) body ── */
 
 .genericSection + .genericSection {

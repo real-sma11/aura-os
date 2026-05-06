@@ -25,70 +25,65 @@
   overflow-y: hidden;
 }
 
-/* 3D-mode source thumbnail rendered above the input when the user has
-   pinned an image to convert. Mirrors `attachmentPreviews` framing so
-   it sits flush in the same slot. The X button clears the per-stream
-   pin and drops the input bar back to the image-step state. */
-.sourceImagePreview {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px 0;
-}
-
-.sourceImageThumb {
-  position: relative;
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
+/* 3D-mode source thumbnail rendered inline at the START of the input
+   row (in the `inputRowStart` slot) so the input height stays at one
+   line and the pinned `ChatStreamingIndicator` ("Generating 3D
+   model...") remains visible above the bar. The wrapper extends the
+   shell's `.attachButton` (which already absolutely-positions itself
+   at `left: 2px; bottom: 4px;` and is 24x24); these rules add the
+   thumb image fill and the small remove button. */
+.sourceImageInline {
   overflow: hidden;
+  border-radius: 6px;
   background: var(--color-overlay-light);
+  cursor: default;
+  padding: 0;
 }
 
-.sourceImageThumb img {
+.sourceImageInlineImg {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.sourceImageLabel {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: 11px;
-  line-height: 1.2;
-  color: var(--color-text-secondary);
-}
-
-.sourceImageLabelTitle {
-  color: var(--color-text-primary);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-.sourceImageRemove {
+.sourceImageInlineRemove {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 16px;
-  height: 16px;
+  top: -3px;
+  right: -3px;
+  width: 14px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   border: none;
-  background: var(--color-image-scrim);
+  background: var(--color-image-scrim-strong, var(--color-image-scrim));
   color: var(--color-text-primary);
   cursor: pointer;
   padding: 0;
-  font-size: 12px;
   line-height: 1;
   transition: background 0.15s ease;
+  z-index: 2;
 }
 
-.sourceImageRemove:hover {
+.sourceImageInlineRemove:hover {
   background: var(--color-image-scrim-strong);
+}
+
+@media (max-width: 640px) {
+  /* Match the shell's mobile attachButton sizing (44x44) so the inline
+     thumb keeps tap-target parity with the attach button it replaces. */
+  .sourceImageInline {
+    border-radius: 999px;
+  }
+
+  .sourceImageInlineRemove {
+    top: 0;
+    right: 0;
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* Phase 3 server-side `progress: queued` SSE event surfaces here as

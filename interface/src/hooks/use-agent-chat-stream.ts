@@ -83,11 +83,20 @@ export function useAgentChatStream({ agentId, onTaskSaved, onSpecSaved }: UseAge
       if (!agentId || inFlightRef.current || getIsStreaming(core.key)) return;
       const trimmed = content.trim();
       const hasAttachments = attachments && attachments.length > 0;
-      if (!trimmed && !action && !hasAttachments) return;
+      // 3D model step (`generationMode === "3d"` with a pinned source image)
+      // dispatches without text or attachments — the source image is the
+      // payload — so let it through the empty-content guard.
+      const is3DModelStep =
+        _generationMode === "3d" && typeof _sourceImageUrl === "string" && _sourceImageUrl.length > 0;
+      if (!trimmed && !action && !hasAttachments && !is3DModelStep) return;
 
       inFlightRef.current = true;
 
-      const userMsg = buildUserChatMessage(trimmed, attachments);
+      const userMsg = buildUserChatMessage(
+        trimmed,
+        attachments,
+        is3DModelStep ? "Generate 3D model" : undefined,
+      );
 
       core.setEvents((prev) => [...prev, userMsg]);
       core.setIsStreaming(true);

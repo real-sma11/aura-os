@@ -1,7 +1,17 @@
 import { Box } from "lucide-react";
+import { lazy, Suspense } from "react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { Block } from "../Block";
 import styles from "./renderers.module.css";
+
+// Lazy-load the Three.js scene + GLTF loader so the chat bundle does
+// not pull them in until a `generate_3d_model` block actually mounts.
+// Keeps the cold transcript paint cheap for non-3D conversations.
+const WebGLViewer = lazy(() =>
+  import("../../../apps/aura3d/WebGLViewer/WebGLViewer").then((m) => ({
+    default: m.WebGLViewer,
+  })),
+);
 
 function parseResult(result: string | null | undefined): Record<string, unknown> | null {
   if (!result) return null;
@@ -36,9 +46,29 @@ export function Model3DBlock({ entry, defaultExpanded }: Model3DBlockProps) {
     >
       <div className={styles.mediaWrap}>
         {glbUrl ? (
-          <a href={glbUrl} target="_blank" rel="noopener noreferrer" className={styles.mediaLink}>
-            Download GLB
-          </a>
+          <>
+            <div
+              className={styles.model3dViewer}
+              data-agent-surface="chat-3d-model-viewer"
+              data-agent-proof="generated-3d-model-visible"
+            >
+              <Suspense
+                fallback={
+                  <div className={styles.model3dViewerFallback}>Loading viewer…</div>
+                }
+              >
+                <WebGLViewer glbUrl={glbUrl} showGrid showTexture />
+              </Suspense>
+            </div>
+            <a
+              href={glbUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.mediaLink}
+            >
+              Download GLB
+            </a>
+          </>
         ) : entry.pending ? (
           <div className={styles.listEmpty}>Generating…</div>
         ) : (

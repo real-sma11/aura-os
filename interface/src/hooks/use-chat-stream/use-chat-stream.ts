@@ -61,14 +61,29 @@ export function useChatStream({ projectId, agentInstanceId }: UseChatStreamOptio
     ) => {
       if (!projectId || !agentInstanceId || inFlightRef.current || getIsStreaming(core.key)) return;
       const trimmed = content.trim();
-      if (!trimmed && !action && !(attachments && attachments.length > 0)) return;
+      // 3D model step (`generationMode === "3d"` with a pinned source image)
+      // dispatches without text or attachments — the source image is the
+      // payload — so let it through the empty-content guard.
+      const is3DModelStep =
+        _generationMode === "3d" && typeof _sourceImageUrl === "string" && _sourceImageUrl.length > 0;
+      if (
+        !trimmed &&
+        !action &&
+        !(attachments && attachments.length > 0) &&
+        !is3DModelStep
+      )
+        return;
 
       inFlightRef.current = true;
 
       const userMsg = buildUserChatMessage(
         trimmed,
         attachments,
-        action === "generate_specs" ? "Generate specs for this project" : undefined,
+        action === "generate_specs"
+          ? "Generate specs for this project"
+          : is3DModelStep
+            ? "Generate 3D model"
+            : undefined,
       );
       core.setEvents((prev) => [...prev, userMsg]);
       core.setIsStreaming(true);

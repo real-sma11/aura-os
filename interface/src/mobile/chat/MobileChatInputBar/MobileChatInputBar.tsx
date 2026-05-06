@@ -551,35 +551,34 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
             className={styles.modeSelector}
           />
           <AttachmentPreviews attachments={attachments} onRemove={handleRemove} />
-          {has3DSource && pinnedSourceImage ? (
-            <div
-              className={styles.sourceImagePreview}
-              data-agent-surface="mobile-chat-input-3d-source-thumb"
-              data-agent-proof="3d-source-image-ready"
-            >
-              <div className={styles.sourceImageThumb}>
-                <img
-                  src={pinnedSourceImage.imageUrl}
-                  alt={pinnedSourceImage.prompt || "Source for 3D generation"}
-                />
-                <button
-                  type="button"
-                  className={styles.sourceImageRemove}
-                  onClick={handleClearPinnedSource}
-                  aria-label="Remove source image"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <span className={styles.sourceImageLabel}>
-                <span className={styles.sourceImageLabelTitle}>Source for 3D</span>
-                <span>Pinned image</span>
-              </span>
-            </div>
-          ) : null}
           <CommandChips commands={selectedCommands} onRemove={handleCommandRemove} />
           <div className={styles.inputRow}>
-            {isThreeDMode ? null : (
+            {isThreeDMode ? (
+              has3DSource && pinnedSourceImage ? (
+                <div
+                  className={`${styles.attachButton} ${styles.sourceImageInline}`}
+                  data-agent-surface="mobile-chat-input-3d-source-thumb"
+                  data-agent-proof="3d-source-image-ready"
+                  title={pinnedSourceImage.prompt || "Source for 3D generation"}
+                >
+                  <img
+                    className={styles.sourceImageInlineImg}
+                    src={pinnedSourceImage.imageUrl}
+                    alt={pinnedSourceImage.prompt || "Source for 3D generation"}
+                  />
+                  <button
+                    type="button"
+                    className={styles.sourceImageInlineRemove}
+                    onClick={handleClearPinnedSource}
+                    aria-label="Remove source image"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <span aria-hidden="true" />
+              )
+            ) : (
               <button
                 type="button"
                 className={styles.attachButton}

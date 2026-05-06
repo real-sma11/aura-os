@@ -641,32 +641,6 @@ export const DesktopChatInputBar = memo(
           attachments={attachments}
           onRemove={handleRemove}
         />
-        {has3DSource && pinnedSourceImage ? (
-          <div
-            className={styles.sourceImagePreview}
-            data-agent-surface="chat-input-3d-source-thumb"
-            data-agent-proof="3d-source-image-ready"
-          >
-            <div className={styles.sourceImageThumb}>
-              <img
-                src={pinnedSourceImage.imageUrl}
-                alt={pinnedSourceImage.prompt || "Source for 3D generation"}
-              />
-              <button
-                type="button"
-                className={styles.sourceImageRemove}
-                onClick={handleClearPinnedSource}
-                aria-label="Remove source image"
-              >
-                <X size={10} />
-              </button>
-            </div>
-            <span className={styles.sourceImageLabel}>
-              <span className={styles.sourceImageLabelTitle}>Source for 3D</span>
-              <span>Pinned image</span>
-            </span>
-          </div>
-        ) : null}
         {isQueued ? (
           <div
             className={styles.queuedHint}
@@ -696,13 +670,37 @@ export const DesktopChatInputBar = memo(
       </>
     );
 
-    // Hide the attach affordance in 3D mode — manual attachments are
-    // intentionally not a valid path here (see `handlePaste` /
-    // `handleDrop` early-returns above). The user-facing affordance
-    // for picking a source is the auto-derived "Source for 3D" thumb
-    // rendered in `containerTop`.
+    // In 3D mode the attach affordance is replaced by the auto-derived
+    // "Source for 3D" thumb (rendered inline at the start of the input
+    // row when an image is pinned). Keeping it inline — instead of
+    // stacking it above the textarea — preserves the input row's
+    // height so the pinned `ChatStreamingIndicator` ("Generating 3D
+    // model...") remains visible.
     const inputRowStart =
-      generationMode === "3d" ? null : (
+      generationMode === "3d" ? (
+        has3DSource && pinnedSourceImage ? (
+          <div
+            className={`${inputBarShellStyles.attachButton} ${styles.sourceImageInline}`}
+            data-agent-surface="chat-input-3d-source-thumb"
+            data-agent-proof="3d-source-image-ready"
+            title={pinnedSourceImage.prompt || "Source for 3D generation"}
+          >
+            <img
+              className={styles.sourceImageInlineImg}
+              src={pinnedSourceImage.imageUrl}
+              alt={pinnedSourceImage.prompt || "Source for 3D generation"}
+            />
+            <button
+              type="button"
+              className={styles.sourceImageInlineRemove}
+              onClick={handleClearPinnedSource}
+              aria-label="Remove source image"
+            >
+              <X size={9} />
+            </button>
+          </div>
+        ) : null
+      ) : (
         <button
           type="button"
           className={inputBarShellStyles.attachButton}

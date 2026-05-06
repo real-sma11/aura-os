@@ -256,6 +256,41 @@ describe("useAgentChatStream", () => {
     expect(pinned).toBeNull();
   });
 
+  it("3D model step: image-only send (no text) still dispatches through generate3dStream", async () => {
+    // Regression: the input bar enables Send when only a source image
+    // is pinned (no text), but `sendMessage` used to share the
+    // empty-content guard with chat mode and would silently no-op the
+    // call. The 3D model step bypasses the guard whenever
+    // `_generationMode === "3d"` and `_sourceImageUrl` is set.
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "",
+        null,
+        "tripo-v2",
+        undefined,
+        ["generate_3d"],
+        "p-1",
+        "3d",
+        "https://cdn.example.com/owl.png",
+      );
+    });
+
+    expect(generate3dStream).toHaveBeenCalledWith(
+      { kind: "url", imageUrl: "https://cdn.example.com/owl.png" },
+      null,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      "p-1",
+    );
+    const entry = useStreamStore.getState().entries[result.current.streamKey];
+    const userMsg = entry.events.find((evt) => evt.role === "user");
+    expect(userMsg?.content).toBe("Generate 3D model");
+  });
+
   it("does nothing when agentId is undefined", async () => {
     const { result } = renderHook(() =>
       useAgentChatStream({ agentId: undefined }),
