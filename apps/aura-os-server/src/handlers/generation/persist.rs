@@ -121,6 +121,7 @@ fn data_urls_to_attachments(images: Option<&[String]>) -> Option<Vec<ChatAttachm
                 media_type: media_type.to_string(),
                 data: data.to_string(),
                 name: None,
+                source_url: None,
             })
         })
         .collect();

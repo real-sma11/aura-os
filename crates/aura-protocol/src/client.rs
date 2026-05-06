@@ -218,6 +218,10 @@ pub struct MessageAttachment {
     /// Optional filename.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// URL to fetch content from (e.g. S3). When set, `data` may be empty
+    /// and the consumer should fetch the content from this URL instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
 }
 
 /// Payload for `approval_response`.

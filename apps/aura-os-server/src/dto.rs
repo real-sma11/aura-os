@@ -268,6 +268,8 @@ pub(crate) struct ChatAttachmentDto {
     pub data: String,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub source_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

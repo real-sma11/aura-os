@@ -122,6 +122,7 @@ pub(super) fn dto_attachments_to_protocol(
                         media_type: a.media_type.clone(),
                         data: a.data.clone(),
                         name: a.name.clone(),
+                        source_url: a.source_url.clone(),
                     })
                     .collect(),
             )
