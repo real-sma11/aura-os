@@ -1,12 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal, Button, Input, Spinner, Text } from "@cypher-asi/zui";
-import { api, type OrbitCollaborator } from "../../api/client";
+import { api, type OrbitCollaborator, type OrbitRepo } from "../../api/client";
 import type { Project } from "../../shared/types";
 import {
   joinWorkspacePath,
   useWorkspaceRoot,
 } from "../../hooks/use-workspace-defaults";
 import { FolderPickerField } from "../FolderPickerField";
+import { OrbitRepoSection } from "../OrbitRepoSection";
+import { useOrbitRepos } from "../../hooks/use-orbit-repos";
+import type { OrbitRepoMode } from "../../hooks/use-new-project-form";
+import { useOrgStore } from "../../stores/org-store";
+import { useAuth } from "../../stores/auth-store";
+import { useProjectsList } from "../../apps/projects/useProjectsList";
 import styles from "./ProjectSettingsModal.module.css";
 
 interface ProjectSettingsModalProps {
@@ -23,6 +29,14 @@ function resolveOrbitUrl(project: Project): string {
   return base ? `${base}/${owner}/${repo}.git` : `${owner}/${repo}`;
 }
 
+function slugFromName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
 export function ProjectSettingsModal({ target, onClose, onSaved }: ProjectSettingsModalProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [gitRepoUrl, setGitRepoUrl] = useState("");
@@ -34,20 +48,44 @@ export function ProjectSettingsModal({ target, onClose, onSaved }: ProjectSettin
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [orbitRepoMode, setOrbitRepoMode] = useState<OrbitRepoMode>("default");
+  const [orbitRepoName, setOrbitRepoName] = useState("");
+  const [selectedOrbitRepo, setSelectedOrbitRepo] = useState<OrbitRepo | null>(null);
   const workspaceRoot = useWorkspaceRoot();
+  const activeOrg = useOrgStore((s) => s.activeOrg);
+  const { user, isAuthenticated } = useAuth();
+  const { projects } = useProjectsList();
   const defaultWorkspacePath = project
     ? joinWorkspacePath(workspaceRoot, project.project_id)
     : "";
   const orbitUrl = project ? resolveOrbitUrl(project) : "";
+  const hasLinkedOrbit = !!orbitUrl;
+  const orbitOwner = activeOrg?.org_id ?? user?.user_id ?? null;
+  const proposedRepoSlug = useMemo(
+    () => slugFromName(project?.name ?? "") || "my-project",
+    [project?.name],
+  );
+  const displayRepoName = orbitRepoName.trim() || proposedRepoSlug;
+  const { orbitRepos, orbitReposLoading } = useOrbitRepos(
+    !!target && !hasLinkedOrbit,
+    orbitRepoMode,
+    isAuthenticated,
+  );
 
   useEffect(() => {
     if (!target) {
       setProject(null);
       setCollaborators(null);
+      setOrbitRepoMode("default");
+      setOrbitRepoName("");
+      setSelectedOrbitRepo(null);
       return;
     }
     setLoading(true);
     setError("");
+    setOrbitRepoMode("default");
+    setOrbitRepoName("");
+    setSelectedOrbitRepo(null);
     api
       .getProject(target.project_id)
       .then((p) => {
@@ -83,9 +121,67 @@ export function ProjectSettingsModal({ target, onClose, onSaved }: ProjectSettin
       const trimmedLocalPath = localWorkspacePath.trim();
       const localPathChanged =
         trimmedLocalPath !== (initialLocalWorkspacePath ?? "").trim();
+
+      let orbitFields: {
+        orbit_owner?: string;
+        orbit_repo?: string;
+        git_repo_url?: string;
+      } = {};
+      if (!hasLinkedOrbit && isAuthenticated && orbitOwner) {
+        if (orbitRepoMode === "existing") {
+          if (!selectedOrbitRepo) {
+            setError("Select an existing Orbit repo to link.");
+            setSaving(false);
+            return;
+          }
+          const dup = projects.find(
+            (p) =>
+              p.project_id !== project.project_id &&
+              p.orbit_owner === selectedOrbitRepo.owner &&
+              p.orbit_repo === selectedOrbitRepo.name,
+          );
+          if (dup) {
+            setError(`Orbit repo already used by project "${dup.name}".`);
+            setSaving(false);
+            return;
+          }
+          orbitFields = {
+            orbit_owner: selectedOrbitRepo.owner,
+            orbit_repo: selectedOrbitRepo.name,
+            git_repo_url:
+              selectedOrbitRepo.clone_url ??
+              `${selectedOrbitRepo.owner}/${selectedOrbitRepo.name}`,
+          };
+        } else {
+          const repoSlug =
+            orbitRepoMode === "custom"
+              ? orbitRepoName.trim() || proposedRepoSlug
+              : proposedRepoSlug;
+          const dup = projects.find(
+            (p) =>
+              p.project_id !== project.project_id &&
+              p.orbit_owner === orbitOwner &&
+              p.orbit_repo === repoSlug,
+          );
+          if (dup) {
+            setError(`Orbit repo already used by project "${dup.name}".`);
+            setSaving(false);
+            return;
+          }
+          orbitFields = {
+            orbit_owner: orbitOwner,
+            orbit_repo: repoSlug,
+          };
+        }
+      }
+
+      const trimmedGitRepoUrl =
+        orbitFields.git_repo_url ?? gitRepoUrl.trim() ?? "";
       const updated = await api.updateProject(project.project_id, {
-        git_repo_url: gitRepoUrl.trim() || undefined,
+        git_repo_url: trimmedGitRepoUrl || undefined,
         git_branch: gitBranch.trim() || undefined,
+        ...(orbitFields.orbit_owner ? { orbit_owner: orbitFields.orbit_owner } : {}),
+        ...(orbitFields.orbit_repo ? { orbit_repo: orbitFields.orbit_repo } : {}),
         ...(localPathChanged
           ? { local_workspace_path: trimmedLocalPath ? trimmedLocalPath : null }
           : {}),
@@ -97,7 +193,23 @@ export function ProjectSettingsModal({ target, onClose, onSaved }: ProjectSettin
     } finally {
       setSaving(false);
     }
-  }, [project, gitRepoUrl, gitBranch, localWorkspacePath, initialLocalWorkspacePath, onSaved, onClose]);
+  }, [
+    project,
+    gitRepoUrl,
+    gitBranch,
+    localWorkspacePath,
+    initialLocalWorkspacePath,
+    onSaved,
+    onClose,
+    hasLinkedOrbit,
+    isAuthenticated,
+    orbitOwner,
+    orbitRepoMode,
+    orbitRepoName,
+    proposedRepoSlug,
+    selectedOrbitRepo,
+    projects,
+  ]);
 
   return (
     <Modal
@@ -138,10 +250,23 @@ export function ProjectSettingsModal({ target, onClose, onSaved }: ProjectSettin
           <Text variant="muted" size="sm" className={styles.sectionLabelTop}>
             Orbit
           </Text>
-          {orbitUrl ? (
+          {hasLinkedOrbit ? (
             <Input value={orbitUrl} readOnly disabled />
           ) : (
-            <Text variant="muted" size="sm">No Orbit repo linked</Text>
+            <OrbitRepoSection
+              isAuthenticated={isAuthenticated}
+              orbitOwner={orbitOwner}
+              orbitRepoMode={orbitRepoMode}
+              setOrbitRepoMode={setOrbitRepoMode}
+              orbitRepoName={orbitRepoName}
+              setOrbitRepoName={setOrbitRepoName}
+              proposedRepoSlug={proposedRepoSlug}
+              displayRepoName={displayRepoName}
+              orbitRepos={orbitRepos}
+              orbitReposLoading={orbitReposLoading}
+              selectedOrbitRepo={selectedOrbitRepo}
+              setSelectedOrbitRepo={setSelectedOrbitRepo}
+            />
           )}
           <Text variant="muted" size="sm" className={styles.sectionLabelTop}>
             Local workspace

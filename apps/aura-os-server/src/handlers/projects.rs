@@ -358,6 +358,24 @@ pub(crate) async fn update_project(
         })?;
 
     if let Some(client) = &state.network_client {
+        // Detect a "first-time Orbit attach" before we mutate the project so
+        // we know whether to create the Orbit repo after the network update.
+        // Only attach when the project did not already have one (avoids
+        // re-creating a repo that already exists for this project) and the
+        // caller did not bring their own `git_repo_url` (which signals a
+        // link-to-existing flow rather than a create-new flow).
+        let attaching_new_orbit_repo = matches!(
+            (&req.orbit_owner, &req.orbit_repo),
+            (Some(o), Some(r)) if !o.is_empty() && !r.is_empty()
+        ) && project.orbit_owner.as_deref().unwrap_or("").is_empty()
+            && project.orbit_repo.as_deref().unwrap_or("").is_empty()
+            && req
+                .git_repo_url
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty();
+
         let net_req = aura_os_network::UpdateProjectRequest {
             name: req.name.clone(),
             description: req.description.clone(),
@@ -377,6 +395,33 @@ pub(crate) async fn update_project(
             &project_from_network(&net_project, Some(&project))?,
         );
         ensure_local_shadow(&state, &merged);
+
+        if attaching_new_orbit_repo {
+            if let (Some(owner), Some(repo)) = (&merged.orbit_owner, &merged.orbit_repo) {
+                if !owner.is_empty() && !repo.is_empty() {
+                    let orbit = state.orbit_client.as_deref().ok_or_else(|| {
+                        ApiError::service_unavailable(
+                            "Orbit client not configured (ORBIT_BASE_URL not set); \
+                             cannot create required Orbit repo",
+                        )
+                    })?;
+                    if let Err(e) = orbit
+                        .ensure_repo(repo, owner, &merged.project_id.to_string(), &jwt)
+                        .await
+                    {
+                        tracing::error!(
+                            %owner, %repo,
+                            error = %e,
+                            "Orbit repo creation failed during update_project"
+                        );
+                        return Err(ApiError::internal(format!(
+                            "Orbit repo creation failed: {e}"
+                        )));
+                    }
+                }
+            }
+        }
+
         return Ok(Json(merged));
     }
 
