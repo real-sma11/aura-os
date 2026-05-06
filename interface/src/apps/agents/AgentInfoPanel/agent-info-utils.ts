@@ -1,14 +1,11 @@
-import type { Session } from "../../../shared/types";
 import {
   getAdapterLabel,
   getConnectionAuthLabel,
 } from "../../../lib/integrationCatalog";
 
-export type AnnotatedSession = Session & {
-  _projectName: string;
-  _projectId: string;
-  _agentInstanceId: string;
-};
+// `AnnotatedSession` now lives in the shared sessions list module
+// (`components/SessionsList/session-row-utils.ts`) so both the agents
+// `ChatsTab` and the projects `SessionsList` sidekick share one shape.
 
 export function formatAdapterLabel(adapterType?: string | null): string {
   return getAdapterLabel(adapterType ?? "aura_harness");

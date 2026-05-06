@@ -1,39 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { EmptyState } from "../../../components/EmptyState";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../../../api/client";
-import { useActiveAppId } from "../../../hooks/use-active-app";
-import { useSessionsListStore } from "../../../stores/sessions-list-store";
-import { type AnnotatedSession, getDateBucket } from "./agent-info-utils";
 import {
-  SidekickItemContextMenu,
-  useSidekickItemContextMenu,
-} from "../../../components/SidekickItemContextMenu";
+  type AnnotatedSession,
+  SessionsList,
+  useSessionNavigate,
+} from "../../../components/SessionsList";
+import { useSessionsListStore } from "../../../stores/sessions-list-store";
 import type { Agent } from "../../../shared/types";
-import styles from "./AgentInfoPanel.module.css";
-
-function truncate(text: string, max: number): string {
-  const first = text.split("\n")[0].trim();
-  if (first.length <= max) return first;
-  return `${first.slice(0, max - 1)}…`;
-}
-
-/**
- * Pick the best label for a session row from server-provided fields,
- * falling back through summaries. Returns `null` when the session has
- * no usable title yet — the caller hides the row in that case rather
- * than rendering a "New chat" placeholder.
- */
-function deriveSessionLabel(
-  session: AnnotatedSession,
-  fetchedSummary: string | undefined,
-): string | null {
-  const summary = session.summary_of_previous_context || fetchedSummary || "";
-  if (summary.trim().length > 0) {
-    return truncate(summary, 80);
-  }
-  return null;
-}
 
 type ProjectBinding = {
   project_agent_id: string;
@@ -56,17 +30,11 @@ function useAgentSessions(
   useEffect(() => {
     let cancelled = false;
 
-    // Always run through Promise.all so empty-bindings still goes through the
-    // same async path (avoids a synchronous setState branch in the effect).
-    // `loading` starts true via useState and is flipped to false by the
-    // resolved callback below; we don't reset it on subsequent re-fetches,
-    // matching `useSessionListData`'s "loading is only the initial signal"
-    // pattern, so we never trigger a synchronous setState in this effect.
     Promise.all(
       projectBindings.map((b) =>
         api.listSessions(b.project_id, b.project_agent_id)
           .then((list) =>
-            list.map((s) => ({
+            list.map<AnnotatedSession>((s) => ({
               ...s,
               _projectName: b.project_name,
               _projectId: b.project_id,
@@ -103,82 +71,6 @@ function useAgentSessions(
   return { sessions, loading, removeSession, restoreSession };
 }
 
-function useSessionSummaries(sessions: AnnotatedSession[]) {
-  // Persisted summaries are derived directly from the session list so we
-  // don't need a synchronous setState inside an effect to mirror them.
-  const persistedSummaries = useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const s of sessions) {
-      if (s.summary_of_previous_context) {
-        out[s.session_id] = s.summary_of_previous_context;
-      }
-    }
-    return out;
-  }, [sessions]);
-
-  const [fetchedSummaries, setFetchedSummaries] = useState<Record<string, string>>({});
-  const summarizingRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    for (const session of sessions) {
-      if (session.summary_of_previous_context) continue;
-      if (summarizingRef.current.has(session.session_id)) continue;
-
-      // Always attempt one Haiku summarize per session-without-summary per
-      // mount. The previous gate required `total_input_tokens > 0 &&
-      // total_output_tokens > 0`, but those counters can lag behind the
-      // actual events table (e.g. fresh sessions where the persist task
-      // hasn't rolled cumulative tokens yet), leaving real conversations
-      // labelled "New chat" forever. The dedupe ref keeps us from spamming
-      // the LLM, and the backend cheaply returns "" for empty transcripts
-      // (`generate_session_summary` in `apps/aura-os-server/src/handlers/agents/sessions.rs`),
-      // which we ignore so truly empty sessions stay placeholdered.
-      summarizingRef.current.add(session.session_id);
-      api
-        .summarizeSession(session._projectId, session._agentInstanceId, session.session_id)
-        .then((updated) => {
-          if (updated.summary_of_previous_context) {
-            setFetchedSummaries((prev) => ({
-              ...prev,
-              [session.session_id]: updated.summary_of_previous_context,
-            }));
-          }
-        })
-        .catch(() => {});
-    }
-  }, [sessions]);
-
-  return useMemo(
-    () => ({ ...fetchedSummaries, ...persistedSummaries }),
-    [fetchedSummaries, persistedSummaries],
-  );
-}
-
-type SessionRow = {
-  session: AnnotatedSession;
-  label: string;
-};
-
-type DateBucket = {
-  label: string;
-  rows: SessionRow[];
-};
-
-function bucketizeByDate(rows: SessionRow[]): DateBucket[] {
-  const now = new Date();
-  const order: string[] = [];
-  const map = new Map<string, SessionRow[]>();
-  for (const row of rows) {
-    const bucket = getDateBucket(row.session.started_at, now);
-    if (!map.has(bucket)) {
-      map.set(bucket, []);
-      order.push(bucket);
-    }
-    map.get(bucket)!.push(row);
-  }
-  return order.map((label) => ({ label, rows: map.get(label)! }));
-}
-
 export function ChatsTab({
   agent,
   projectBindings,
@@ -186,80 +78,16 @@ export function ChatsTab({
   agent: Agent;
   projectBindings: ProjectBinding[];
 }) {
-  const navigate = useNavigate();
-  // We branch the click target on the active app so the user stays
-  // inside whichever shell they were already in. The projects URL
-  // would otherwise switch the shell to the projects app via
-  // `resolveActiveApp` (basePath `/projects`).
-  const activeAppId = useActiveAppId();
   const { sessions, loading, removeSession, restoreSession } = useAgentSessions(
     agent.agent_id,
     projectBindings,
   );
-  const summaries = useSessionSummaries(sessions);
+  const handleSessionClick = useSessionNavigate({ agentId: agent.agent_id });
+  const [searchParams] = useSearchParams();
+  const selectedSessionId = searchParams.get("session");
 
-  const sessionById = useMemo(
-    () => new Map(sessions.map((s) => [s.session_id, s])),
-    [sessions],
-  );
-
-  // Only render sessions that have an actual title (either a persisted
-  // `summary_of_previous_context` or a freshly-fetched Haiku summary).
-  // Untitled sessions stay invisible — `useSessionSummaries` is still
-  // attempting to summarize them, so the row appears as soon as the
-  // backend returns a non-empty summary. Truly empty sessions never
-  // get a title and therefore never show up, which is the desired
-  // ChatGPT-style behavior.
-  const titledRows = useMemo<SessionRow[]>(() => {
-    const out: SessionRow[] = [];
-    for (const session of sessions) {
-      const label = deriveSessionLabel(session, summaries[session.session_id]);
-      if (label) out.push({ session, label });
-    }
-    return out;
-  }, [sessions, summaries]);
-
-  const buckets = useMemo(() => bucketizeByDate(titledRows), [titledRows]);
-
-  const handleSessionClick = useCallback(
-    (session: AnnotatedSession) => {
-      // `AgentChatView` switches into a read-only historical session
-      // panel (with a "Back to live" banner) when the right URL state
-      // is present. The agents-app branch keeps the URL under
-      // `/agents/...` so the agents shell — and this very ChatsTab
-      // sidekick — stays mounted across the click; everything else
-      // falls back to the canonical projects URL.
-      if (activeAppId === "agents") {
-        const params = new URLSearchParams({
-          project: session._projectId,
-          instance: session._agentInstanceId,
-          session: session.session_id,
-        });
-        navigate(`/agents/${agent.agent_id}?${params.toString()}`);
-        return;
-      }
-      navigate(
-        `/projects/${session._projectId}/agents/${session._agentInstanceId}?session=${session.session_id}`,
-      );
-    },
-    [activeAppId, agent.agent_id, navigate],
-  );
-
-  const resolveMenuTarget = useCallback(
-    (nodeId: string): AnnotatedSession | null =>
-      sessionById.get(nodeId) ?? null,
-    [sessionById],
-  );
-  const { menu, menuRef, handleContextMenu, closeMenu } =
-    useSidekickItemContextMenu<AnnotatedSession>({
-      resolveItem: resolveMenuTarget,
-    });
-
-  const handleMenuAction = useCallback(
-    (actionId: string) => {
-      const target = menu?.item;
-      closeMenu();
-      if (!target || actionId !== "delete") return;
+  const handleDelete = useCallback(
+    (target: AnnotatedSession) => {
       removeSession(target.session_id);
       api
         .deleteSession(
@@ -272,47 +100,16 @@ export function ChatsTab({
           restoreSession(target);
         });
     },
-    [menu, closeMenu, removeSession, restoreSession],
+    [removeSession, restoreSession],
   );
 
-  if (loading) {
-    return <div className={styles.tabEmptyState}>Loading sessions...</div>;
-  }
-
-  if (titledRows.length === 0) {
-    return <EmptyState>No sessions yet</EmptyState>;
-  }
-
   return (
-    <>
-      <div className={styles.chatsList} onContextMenu={handleContextMenu}>
-        {buckets.map((bucket) => (
-          <section key={bucket.label} className={styles.chatsBucket}>
-            <div className={styles.chatsBucketHeader}>{bucket.label}</div>
-            {bucket.rows.map(({ session, label }) => (
-              <button
-                key={session.session_id}
-                type="button"
-                id={session.session_id}
-                className={styles.chatsRow}
-                data-session-id={session.session_id}
-                onClick={() => handleSessionClick(session)}
-              >
-                {label}
-              </button>
-            ))}
-          </section>
-        ))}
-      </div>
-      {menu && (
-        <SidekickItemContextMenu
-          x={menu.x}
-          y={menu.y}
-          menuRef={menuRef}
-          onAction={handleMenuAction}
-          actions={["delete"]}
-        />
-      )}
-    </>
+    <SessionsList
+      sessions={sessions}
+      loading={loading}
+      selectedSessionId={selectedSessionId}
+      onSessionClick={handleSessionClick}
+      onDeleteSession={handleDelete}
+    />
   );
 }

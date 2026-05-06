@@ -18,6 +18,7 @@ import {
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
 import {
+  agentSurfaceKey,
   projectSurfaceKey,
   useLiveSessionId,
   useLiveSessionStore,
@@ -31,6 +32,10 @@ import { mergeAgentIntoProjectAgents, projectQueryKeys } from "../../../../queri
 import { useChatHandoffStore } from "../../../../stores/chat-handoff-store";
 import { useContextUsage, useContextUsageStore } from "../../../../stores/context-usage-store";
 import { useHydrateContextUtilization } from "../../../../hooks/use-hydrate-context-utilization";
+import {
+  useDefaultProjectSessionRedirect,
+  useDefaultStandaloneSessionRedirect,
+} from "../../../../components/SessionsList/use-default-session-redirect";
 import type { AgentInstance, Project } from "../../../../shared/types";
 import {
   isCreateAgentChatHandoff,
@@ -140,6 +145,7 @@ function ProjectAgentChatPanel({
 }) {
   const isSessionView = !!sessionId;
   const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
   const { isMobileLayout } = useAuraCapabilities();
   const currentProject = useProjectsListStore(useShallow(selectCurrentProject(projectId)));
   const projectAgents = useProjectsListStore((state) => state.agentsByProject[projectId] ?? EMPTY_AGENT_INSTANCES);
@@ -164,6 +170,17 @@ function ProjectAgentChatPanel({
   // keeping send enabled. Distinct from the read-only `?session=`
   // archived view.
   const liveSessionId = useLiveSessionId(surfaceKey);
+
+  // Default-select the most recent session by `started_at` when the
+  // URL has no `?session=` and no live-session pin (see
+  // `useDefaultProjectSessionRedirect`).
+  useDefaultProjectSessionRedirect({
+    projectId,
+    agentInstanceId,
+    sessionId,
+    liveSessionId,
+    setSearchParams,
+  });
 
   const historyKey = useMemo(() => {
     if (sessionId) {
@@ -468,6 +485,24 @@ export function AgentChatView() {
   const queryInstanceId = searchParams.get("instance");
   const isCreateHandoff = isCreateAgentChatHandoff(location.state);
   const completeCreateAgentHandoff = useChatHandoffStore((state) => state.completeCreateAgentHandoff);
+
+  // Standalone-agent default-session redirect mirrors the project-
+  // panel effect: when the user lands on `/agents/:agentId` with no
+  // `?session=` (and no live-session pin), redirect to the most
+  // recent session across the agent's project bindings (see
+  // `useDefaultStandaloneSessionRedirect`).
+  const standaloneSurfaceKey = useMemo(
+    () => (agentId ? agentSurfaceKey(agentId) : undefined),
+    [agentId],
+  );
+  const standaloneLiveSessionId = useLiveSessionId(standaloneSurfaceKey);
+  useDefaultStandaloneSessionRedirect({
+    agentId,
+    sessionId,
+    liveSessionId: standaloneLiveSessionId,
+    setSearchParams,
+    disabled: Boolean(projectId),
+  });
 
   const handleProjectHandoffReady = useCallback(() => {
     if (!projectId || !agentInstanceId) {

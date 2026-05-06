@@ -1,0 +1,71 @@
+/* Sessions tab: ChatGPT-style sectioned list shared between the
+   agents app's "Chats" sidekick and the projects app's "Sessions"
+   sidekick. Lifted from `AgentInfoPanel.module.css` so both shells
+   render the same UI. */
+
+.chatsList {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+}
+
+.chatsBucket {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-3);
+}
+
+.chatsBucketHeader {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.chatsRow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatsRow:hover {
+  background: var(--color-overlay-subtle);
+}
+
+/* Active session row: subtle accent so the user always knows which
+   session the main chat is rendering. The CSS variable falls back to
+   a light theme tint when the variable isn't defined. */
+.chatsRowSelected,
+.chatsRow[aria-current="page"] {
+  background: var(--color-bg-selected, color-mix(in srgb, var(--color-accent, #6366f1) 14%, transparent));
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.chatsRowSelected:hover,
+.chatsRow[aria-current="page"]:hover {
+  background: var(--color-bg-selected, color-mix(in srgb, var(--color-accent, #6366f1) 18%, transparent));
+}
+
+.tabEmptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm, 13px);
+}
