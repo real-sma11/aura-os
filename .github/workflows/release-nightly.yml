@@ -271,8 +271,14 @@ jobs:
           UPDATER_PUBLIC_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PUBLIC_KEY }}
           AURA_CARGO_TIMINGS: ${{ (matrix.target == 'windows' || (matrix.target == 'macos' && matrix.arch == 'x86_64')) && '1' || '' }}
         shell: bash
+        # `--no-default-features --features stable-channel` is required: the
+        # default features on aura-os-desktop are `dev-channel`, so plain
+        # `cargo build` would produce a Dev binary (window title "AURA Dev",
+        # `aura-dev` data dir, dev ports, in-app updater disabled). The
+        # packaged installer ships the binary built here verbatim via the
+        # `binaries-dir` injection in the package job.
         run: |
-          args=(build --release --package aura-os-desktop)
+          args=(build --release --no-default-features --features stable-channel --package aura-os-desktop)
           if [ -n "$AURA_CARGO_TIMINGS" ]; then
             args+=(--timings)
           fi
@@ -600,9 +606,12 @@ jobs:
           package_once() {
             # cargo-packager 0.11.8 does not accept cargo build flags
             # (--no-default-features / --features) directly. The stable-channel
-            # feature is wired in via `before-packaging-command` in
-            # apps/aura-os-desktop/Cargo.toml, which cargo-packager runs to
-            # build the binary before packaging it.
+            # binary is produced by the `build-app` job (which passes those
+            # flags to cargo build), uploaded as `desktop-build-inputs.tar`,
+            # and consumed here via the `binaries-dir = "../../prebuilt-binaries"`
+            # entry that the previous step injects into Cargo.toml. The
+            # `before-packaging-command` line is stripped above so cargo-packager
+            # does not redundantly rebuild on top of the prebuilt binary.
             cargo packager --release --packages aura-os-desktop 2>&1 | tee packager.log
           }
 

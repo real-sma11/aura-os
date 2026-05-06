@@ -341,10 +341,16 @@ jobs:
 
           package_once() {
             # cargo-packager 0.11.8 does not accept cargo build flags
-            # (--no-default-features / --features) directly. The stable-channel
-            # feature is wired in via `before-packaging-command` in
-            # apps/aura-os-desktop/Cargo.toml, which cargo-packager runs to
-            # build the binary before packaging it.
+            # (--no-default-features / --features) directly. The
+            # `before-packaging-command` line was stripped above to avoid a
+            # duplicate prebuild on top of the binary that
+            # `scripts/ci/verify-desktop.mjs` already produced earlier in this
+            # job (with `--features stable-channel`). Note: cargo-packager 0.11
+            # may still run its own `cargo build` here, which would use the
+            # default `dev-channel` features. These validate artifacts are not
+            # published to users, but if you ever rely on them as a release
+            # candidate, mirror the `binaries-dir` injection from
+            # release-stable.yml / release-nightly.yml.
             cargo packager --release --packages aura-os-desktop 2>&1 | tee packager.log
           }
 
