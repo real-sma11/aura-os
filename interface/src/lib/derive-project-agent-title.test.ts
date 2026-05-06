@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { deriveProjectAgentTitle } from "./derive-project-agent-title";
+import {
+  agentDisplayName,
+  deriveProjectAgentTitle,
+  FALLBACK_AGENT_NAME,
+} from "./derive-project-agent-title";
+
+describe("agentDisplayName", () => {
+  it("returns the trimmed name when one is present", () => {
+    expect(agentDisplayName("Rose")).toBe("Rose");
+    expect(agentDisplayName("  Rose  ")).toBe("Rose");
+  });
+
+  it("falls back to 'New Agent' when the name is missing", () => {
+    expect(agentDisplayName(undefined)).toBe(FALLBACK_AGENT_NAME);
+    expect(agentDisplayName(null)).toBe(FALLBACK_AGENT_NAME);
+  });
+
+  it("falls back to 'New Agent' when the name is blank", () => {
+    expect(agentDisplayName("")).toBe(FALLBACK_AGENT_NAME);
+    expect(agentDisplayName("   ")).toBe(FALLBACK_AGENT_NAME);
+    expect(agentDisplayName("\t\n")).toBe(FALLBACK_AGENT_NAME);
+  });
+});
 
 describe("deriveProjectAgentTitle", () => {
   it("returns the default title for blank prompts", () => {

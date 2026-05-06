@@ -7,6 +7,7 @@ import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { Avatar } from "../../../components/Avatar";
 import { LoopProgress } from "../../../components/LoopProgress";
 import { useAvatarState } from "../../../hooks/use-avatar-state";
+import { agentDisplayName } from "../../../lib/derive-project-agent-title";
 import { useAgentStore } from "../stores";
 import styles from "./AgentConversationRow.module.css";
 
@@ -38,6 +39,7 @@ export function AgentConversationRow({
   onContextMenu,
   onMouseEnter,
 }: AgentConversationRowProps) {
+  const displayName = agentDisplayName(agent.name);
   const agentRole = stripMarkdown(agent.role ?? "");
   const agentDescription = stripMarkdown(agent.personality ?? "");
   const messagePreview = lastMessage
@@ -61,13 +63,13 @@ export function AgentConversationRow({
       onMouseEnter={onMouseEnter}
       data-agent-role="agent-row"
       data-agent-agent-id={agent.agent_id}
-      data-agent-agent-name={agent.name}
+      data-agent-agent-name={displayName}
       data-agent-agent-role={agent.role}
       data-agent-selected={isSelected ? "true" : "false"}
     >
       <Avatar
         avatarUrl={agent.icon ?? undefined}
-        name={agent.name}
+        name={displayName}
         type="agent"
         size={36}
         status={status}
@@ -78,7 +80,7 @@ export function AgentConversationRow({
       <span className={styles.body}>
         <span className={styles.top}>
           <span className={styles.name}>
-            {agent.name}
+            {displayName}
             {isCeo && <span className={styles.ceoBadge}>CEO</span>}
             {!isCeo && agentRole && (
               <span className={styles.roleBadge}>{agentRole}</span>

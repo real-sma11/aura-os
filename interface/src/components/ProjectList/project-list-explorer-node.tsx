@@ -6,6 +6,7 @@ import { ProjectsPlusButton } from "../ProjectsPlusButton";
 import type { useProjectListData } from "./useProjectListData";
 import { resolveStatus } from "./project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../lib/zui-compat";
+import { agentDisplayName } from "../../lib/derive-project-agent-title";
 
 export type ProjectAgentNode =
   NonNullable<ReturnType<typeof useProjectListData>["agentsByProject"][string]>[number];
@@ -128,14 +129,15 @@ export function buildAgentNode(
   ) : null;
   const canArchive = agent.status !== "archived";
   const isArchiving = context.archivingAgentInstanceIds.includes(agent.agent_instance_id);
+  const displayName = agentDisplayName(agent.name);
 
   return {
     id: agent.agent_instance_id,
-    label: agent.name,
+    label: displayName,
     icon: (
       <Avatar
         avatarUrl={agent.icon ?? undefined}
-        name={agent.name}
+        name={displayName}
         type="agent"
         size={18}
         status={resolvedStatus}
@@ -164,7 +166,7 @@ export function buildAgentNode(
                   );
                 }
               }}
-              aria-label={`Archive ${agent.name}`}
+              aria-label={`Archive ${displayName}`}
               aria-disabled={isArchiving}
               title="Archive agent"
             >

@@ -6,6 +6,7 @@ import type { ProjectExplorerNodeStyles } from "../../../../components/ProjectLi
 import type { useProjectListData } from "../../../../components/ProjectList/useProjectListData";
 import { resolveStatus } from "../../../../components/ProjectList/project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../../../lib/zui-compat";
+import { agentDisplayName } from "../../../../lib/derive-project-agent-title";
 
 function buildTaskProjectSuffix(
   projectId: string,
@@ -47,14 +48,15 @@ function buildTaskAgentNode(
     machineTypesMap[agent.agent_id];
   const isLocal = !machineType || machineType === "local";
   const resolvedStatus = resolveStatus(rawStatus) ?? (isLocal ? "idle" : undefined);
+  const displayName = agentDisplayName(agent.name);
 
   return {
     id: agent.agent_instance_id,
-    label: agent.name,
+    label: displayName,
     icon: (
       <Avatar
         avatarUrl={agent.icon ?? undefined}
-        name={agent.name}
+        name={displayName}
         type="agent"
         size={18}
         status={resolvedStatus}

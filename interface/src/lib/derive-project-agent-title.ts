@@ -1,6 +1,13 @@
-const DEFAULT_PROJECT_AGENT_TITLE = "New Agent";
+export const FALLBACK_AGENT_NAME = "New Agent";
+
+const DEFAULT_PROJECT_AGENT_TITLE = FALLBACK_AGENT_NAME;
 const MAX_WORDS = 5;
 const MAX_LENGTH = 48;
+
+export function agentDisplayName(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  return trimmed.length > 0 ? trimmed : FALLBACK_AGENT_NAME;
+}
 
 const ACTION_WORDS = new Set([
   "add",

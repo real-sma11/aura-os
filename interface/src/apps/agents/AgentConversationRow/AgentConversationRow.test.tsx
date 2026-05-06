@@ -146,6 +146,22 @@ describe("AgentConversationRow", () => {
     expect(screen.getByText("All systems go! I'm ready")).toBeInTheDocument();
   });
 
+  it("falls back to 'New Agent' when the agent name is blank", () => {
+    render(
+      <AgentConversationRow
+        agent={{ ...baseAgent, name: "" }}
+        lastMessage={lastMessage}
+        isSelected={false}
+        onClick={() => {}}
+        onContextMenu={() => {}}
+        onMouseEnter={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("New Agent")).toBeInTheDocument();
+    expect(screen.queryByText("Rose")).not.toBeInTheDocument();
+  });
+
   it("prefers personality over last message in metadata-only mode", () => {
     render(
       <AgentConversationRow

@@ -30,6 +30,7 @@ import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
 import { useCascadeDeleteAgent } from "../hooks/use-cascade-delete-agent";
 import { DeleteAgentConfirmModal } from "../hooks/DeleteAgentConfirmModal";
 import { useDeferredModalOpen } from "../../../shared/hooks/use-deferred-modal-open";
+import { agentDisplayName } from "../../../lib/derive-project-agent-title";
 
 import type { Agent } from "../../../shared/types";
 import { isSuperAgent as isSuperAgentByPerms } from "../../../shared/types/permissions";
@@ -518,7 +519,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
         deleting={cascade.deleting}
         deleteError={cascade.error}
         bindings={cascade.bindings}
-        agentName={deleteTarget?.name ?? ""}
+        agentName={agentDisplayName(deleteTarget?.name)}
       />
 
       <AgentEditorModal
