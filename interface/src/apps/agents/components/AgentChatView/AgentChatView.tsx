@@ -137,6 +137,29 @@ function ProjectAgentChatPanel({
   );
   const contextUsage = useContextUsage(streamKey);
 
+  // Clear the stream slot whenever the user navigates between
+  // sessions. Without this, switching from a session with N events
+  // to a session with M events (where M <= N) leaves the old
+  // session's events visible in the panel — `useChatHistorySync`'s
+  // hydrate-to-stream effect skips the reset because of the
+  // `streamCount >= historyMessages.length` guard (which exists to
+  // avoid blinking the just-finished stream while history catches up
+  // mid-turn).
+  //
+  // The null → defined transition is excluded: that's the
+  // mid-turn `SessionReady` flow where the user clicked "+", sent a
+  // message, and the server assigned a new id. The stream already
+  // holds the live events for that turn, and clearing here would
+  // wipe them.
+  const prevSessionIdRef = useRef<string | null>(sessionId);
+  useEffect(() => {
+    const previous = prevSessionIdRef.current;
+    prevSessionIdRef.current = sessionId;
+    if (previous === sessionId) return;
+    if (previous === null && sessionId !== null) return;
+    resetEvents([], { allowWhileStreaming: true });
+  }, [sessionId, resetEvents]);
+
   // Default-select the most recent session by `started_at` when the
   // URL has no `?session=` (see `useDefaultProjectSessionRedirect`).
   // Now that session views are editable, the redirect is just "open

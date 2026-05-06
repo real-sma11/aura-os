@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { api, STANDALONE_AGENT_HISTORY_LIMIT } from "../api/client";
@@ -118,6 +118,19 @@ export function useStandaloneAgentChat(
     useStandaloneAgentMeta(agentId);
 
   const contextUsage = useContextUsage(streamKey);
+
+  // Clear the stream slot whenever the user navigates between
+  // sessions. Mirrors the same effect in `ProjectAgentChatPanel`;
+  // see that comment for why the `null → defined` transition is
+  // excluded.
+  const prevPinnedSessionIdRef = useRef<string | null>(pinnedSessionId);
+  useEffect(() => {
+    const previous = prevPinnedSessionIdRef.current;
+    prevPinnedSessionIdRef.current = pinnedSessionId;
+    if (previous === pinnedSessionId) return;
+    if (previous === null && pinnedSessionId !== null) return;
+    resetEvents([], { allowWhileStreaming: true });
+  }, [pinnedSessionId, resetEvents]);
 
   const historyKey = useMemo(() => {
     if (!agentId) return undefined;
