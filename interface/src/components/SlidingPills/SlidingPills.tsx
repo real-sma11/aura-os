@@ -175,6 +175,14 @@ export function SlidingPills<T extends string>({
             tabIndex={isSelected ? 0 : -1}
             data-sliding-pills-item={item.id}
             className={segmentClass}
+            onMouseDown={(e) => {
+              // Keep focus on whatever element the user was editing
+              // (e.g. the textarea below the mode bar). Buttons grab
+              // focus on mousedown by default, which would defocus the
+              // input. We still receive the subsequent click, so
+              // selection and onChange behave normally.
+              e.preventDefault();
+            }}
             onClick={() => {
               if (!isSelected && !item.disabled) onChange(item.id);
             }}

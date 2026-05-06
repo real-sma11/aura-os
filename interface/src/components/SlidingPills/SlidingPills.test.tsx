@@ -227,6 +227,37 @@ describe("SlidingPills", () => {
     expect(onChange).toHaveBeenLastCalledWith("cherry");
   });
 
+  it("keeps focus on a sibling input when a pill is clicked", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    function Harness() {
+      const [value, setValue] = useState<FruitId>("apple");
+      return (
+        <div>
+          <input aria-label="message" defaultValue="" />
+          <SlidingPills
+            items={FRUITS}
+            value={value}
+            onChange={(next) => {
+              onChange(next);
+              setValue(next);
+            }}
+            ariaLabel="Pick a fruit"
+          />
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    const input = screen.getByRole("textbox", { name: "message" });
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    await user.click(screen.getByRole("radio", { name: "Banana" }));
+    expect(onChange).toHaveBeenCalledWith("banana");
+    expect(document.activeElement).toBe(input);
+  });
+
   it("skips disabled segments during keyboard navigation and click", async () => {
     const items: readonly SlidingPillItem<FruitId>[] = [
       { id: "apple", label: "Apple" },
