@@ -148,6 +148,9 @@ impl LoopState {
             WinCmd::Drag => {
                 let _ = self.main_window.drag_window();
             }
+            WinCmd::Resize(direction) => {
+                let _ = self.main_window.drag_resize_window(direction);
+            }
             WinCmd::ToggleFullscreen => toggle_fullscreen(&self.main_window),
         }
     }
@@ -300,6 +303,9 @@ fn apply_secondary_window_command(win: &tao::window::Window, cmd: WinCmd) {
         WinCmd::Maximize => win.set_maximized(!win.is_maximized()),
         WinCmd::Drag => {
             let _ = win.drag_window();
+        }
+        WinCmd::Resize(direction) => {
+            let _ = win.drag_resize_window(direction);
         }
         WinCmd::ToggleFullscreen => toggle_fullscreen(win),
         WinCmd::Close => {}

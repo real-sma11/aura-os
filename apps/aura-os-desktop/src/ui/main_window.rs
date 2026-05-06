@@ -3,7 +3,7 @@
 //! translates webview messages into `UserEvent`s.
 
 use tao::event_loop::{EventLoopProxy, EventLoopWindowTarget};
-use tao::window::{Icon, Window, WindowBuilder, WindowId};
+use tao::window::{Icon, ResizeDirection, Window, WindowBuilder, WindowId};
 use tracing::{debug, info, warn};
 use wry::{WebContext, WebView, WebViewBuilder};
 
@@ -41,6 +41,13 @@ pub(crate) fn ipc_handler(
             "close" => Some(WinCmd::Close),
             "drag" => Some(WinCmd::Drag),
             "toggle_fullscreen" => Some(WinCmd::ToggleFullscreen),
+            // Edge-only resize today; the JS bridge in
+            // `interface/src/lib/native-titlebar-resize.ts` only emits
+            // `resize-n` for the top edge. Corners and other edges are
+            // intentionally not handled yet; if a future iteration adds
+            // them, extend the match here (e.g. `"resize-ne" =>
+            // ResizeDirection::NorthEast`).
+            "resize-n" => Some(WinCmd::Resize(ResizeDirection::North)),
             other => {
                 warn!(message = other, "unknown IPC message");
                 None

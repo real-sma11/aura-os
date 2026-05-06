@@ -85,27 +85,40 @@ pub(crate) fn disable_window_background_erase(_window: &tao::window::Window) {
 }
 
 /// Logical-pixel thickness of the top resize hit zone installed by
-/// [`expand_top_resize_border`]. The OS default for an undecorated
-/// resizable window is `SM_CYFRAME` ≈ 4 logical px, which is
-/// painfully small — especially against our floating titlebar pill
-/// that begins 5 px below the window edge.
+/// [`expand_top_resize_border`].
 ///
-/// 14 px is the chosen sweet spot:
-/// - 5 px of pure window inset above the pill is always claimed (safe;
-///   no interactive content lives there).
-/// - The remaining ~9 px overlap the top of the pill. The titlebar's
-///   `size="sm"` buttons (theme toggle, host settings, window controls,
-///   `OrgSelector` trigger) are ~28 px tall and vertically centered in
-///   the 32 px (`--control-height-sm`) pill, so their clickable top
-///   starts at roughly y=7. The 14 px band therefore eats ~7 rows off
-///   the top of those buttons, leaving ~21 px of effective vertical
-///   hit area — still comfortable for mouse / trackpad use, while
-///   making the top edge meaningfully easier to grab for resize.
-/// - Centerline clicks on pill buttons are unaffected.
+/// IMPORTANT — this subclass has a much narrower effective reach than
+/// the constant suggests. The wry WebView2 container HWND is created
+/// as a `WS_CHILD | WS_CLIPCHILDREN` child that fills the entire
+/// parent client area, with the default windowproc returning
+/// `HTCLIENT` for `WM_NCHITTEST`. Windows therefore routes
+/// `WM_NCHITTEST` to the WebView2 child for any cursor position
+/// inside the visible window — never to the parent HWND where this
+/// subclass lives.
 ///
-/// The previous value (10 px) was reported as too thin to grab
-/// reliably, especially on high-DPI displays where 10 logical px is
-/// still only a small target relative to typical cursor speeds.
+/// In practice the only place this subclass actually fires is the
+/// 1-logical-pixel non-client strip tao reserves at the very top of
+/// the parent on Windows 11 (see `calculate_insets_for_dpi` in tao —
+/// `top_inset = 1` on build >= 22000, and `0` on Windows 10). Within
+/// that single-row strip the subclass remaps `WM_NCHITTEST` to
+/// `HTTOP` / `HTTOPLEFT` / `HTTOPRIGHT`, which is a tiny but free
+/// resize edge for the corners of the window where the cursor can sit
+/// outside the WebView2 child.
+///
+/// The user-perceptible top resize band — covering the floating
+/// titlebar pill area where the cursor is over the WebView2 child —
+/// is implemented in JS in
+/// [interface/src/lib/native-titlebar-resize.ts]. That bridge listens
+/// for pointer events at the document level (which the WebView2 child
+/// does receive), changes the cursor to `n-resize`, and IPCs
+/// `resize-n` to the Rust side, which calls
+/// `tao::Window::drag_resize_window(ResizeDirection::North)` to hand
+/// off to the OS resize loop.
+///
+/// 14 logical px is the value the JS bridge also uses; keeping the
+/// two in sync means that on the Win11 1-px non-client strip the
+/// subclass's HTTOP_LEFT / HTTOPRIGHT corners agree with the JS
+/// band's geometry along the top edge.
 pub(crate) const TOP_RESIZE_BORDER_LOGICAL_PX: u32 = 14;
 
 /// Computes the resize hit code for a cursor at `(x, y)` inside a

@@ -3,7 +3,7 @@
 //! loop. Kept in a leaf module so every other module can import them
 //! without circular dependencies.
 
-use tao::window::WindowId;
+use tao::window::{ResizeDirection, WindowId};
 
 use crate::updater::UpdateState;
 
@@ -13,6 +13,13 @@ pub(crate) enum WinCmd {
     Maximize,
     Close,
     Drag,
+    /// Begin a native edge / corner resize on the receiving window.
+    /// Driven by the frontend `native-titlebar-resize` JS bridge, which
+    /// detects the cursor in a top resize band inside the WebView2 child
+    /// (where the OS-level `WM_NCHITTEST` subclass cannot reach) and
+    /// IPCs `resize-n` / `resize-ne` / etc. so we can hand off to the
+    /// native resize loop via `tao::Window::drag_resize_window`.
+    Resize(ResizeDirection),
     /// Toggle borderless fullscreen on the receiving window. Driven by the
     /// View > Toggle Full Screen menu item (and the F11 shortcut) in the
     /// frontend titlebar menu bar.

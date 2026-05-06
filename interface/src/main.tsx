@@ -23,6 +23,7 @@ import {
 import { initWebVitalsLite } from "./lib/perf/web-vitals-lite";
 import { installPreloadRecovery } from "./lib/preload-recovery";
 import { installNativeTitlebarDrag } from "./lib/native-titlebar-drag";
+import { installNativeTitlebarResize } from "./lib/native-titlebar-resize";
 import { syncQueryHostOriginToStorage } from "./shared/lib/host-config";
 import { signalDesktopReady, signalDesktopSplashReady } from "./lib/desktop-ready";
 import { awaitInitialShellAppReady } from "./lib/boot-shell";
@@ -47,6 +48,15 @@ markBootPhase("frontend module loaded");
 // WKWebView (macOS) and WebKitGTK (Linux). Install a JS fallback that
 // routes titlebar pointerdown into the existing native-drag IPC.
 installNativeTitlebarDrag();
+// The web layer can see pointer events even when the native WebView2 /
+// WKWebView / WebKitGTK child swallows them before they reach tao's
+// edge resize detection, so we install a document-level top-band
+// resize handler that IPCs `resize-n` for the Rust side to forward to
+// `tao::Window::drag_resize_window(North)`. See
+// `lib/native-titlebar-resize.ts` and the doc comment over
+// `TOP_RESIZE_BORDER_LOGICAL_PX` in
+// `apps/aura-os-desktop/src/ui/chrome.rs` for the full architecture.
+installNativeTitlebarResize();
 
 markAppEntry();
 
