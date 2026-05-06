@@ -25,11 +25,13 @@ interface SessionsListProps {
 
 /**
  * Date-bucketed session list shared between the agents app's "Chats"
- * sidekick and the projects app's "Sessions" sidekick. Untitled
- * sessions stay invisible — `useSessionSummaries` is still attempting
- * to summarize them, so the row appears as soon as the backend returns
- * a non-empty summary. Truly empty sessions never get a title and
- * therefore never show up, matching the ChatGPT-style behavior.
+ * sidekick and the projects app's "Sessions" sidekick. Every session
+ * the API returns is rendered immediately — sessions that don't have
+ * a Haiku summary yet show as `NEW_CHAT_PLACEHOLDER` ("New chat") and
+ * upgrade in place once `useSessionSummaries` finishes the
+ * Haiku round-trip. The chat-input "+" button is lazy, so any row
+ * from `listProjectSessions` already has at least one user message —
+ * there are no "truly empty" sessions to filter out.
  */
 export function SessionsList({
   sessions,
@@ -51,7 +53,6 @@ export function SessionsList({
     const needle = searchQuery?.trim().toLowerCase() ?? "";
     for (const session of sessions) {
       const label = deriveSessionLabel(session, summaries[session.session_id]);
-      if (!label) continue;
       if (needle && !label.toLowerCase().includes(needle)) continue;
       out.push({ session, label });
     }

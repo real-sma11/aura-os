@@ -18,27 +18,89 @@ export type AnnotatedSession = Session & {
   _agentInstanceId: string;
 };
 
+/**
+ * Strip the markdown decoration the Haiku summarizer occasionally
+ * leaves on the first line of a session summary — `# Session Summary`,
+ * `**Title**`, `- item`, `> quote`, `1. step`, etc. Run per-line so
+ * the first line that still has visible content after stripping wins,
+ * matching the way users actually scan the sidekick.
+ *
+ * Existing persisted summaries already carry these prefixes (see the
+ * Haiku prompt in `apps/aura-os-server/src/handlers/agents/sessions.rs`),
+ * so this clean-up has to happen at render time even after the
+ * backend prompt is tightened.
+ */
+function stripLeadingMarkdown(line: string): string {
+  let out = line.trim();
+  // Heading markers (`#`, `##`, …) and ATX trailing hashes.
+  // The trailing `(\s+|$)` lets a bare `#` line collapse to empty
+  // so the per-line walk in `truncate` skips to the next visible
+  // line instead of returning `#`.
+  out = out.replace(/^#{1,6}(\s+|$)/, "").replace(/\s+#+\s*$/, "");
+  // Blockquote, unordered list, ordered list markers.
+  out = out.replace(/^>+\s+/, "").replace(/^[-*+]\s+/, "").replace(/^\d+\.\s+/, "");
+  // Strip wrapping bold / italic / code (`**Title**`, `__Title__`,
+  // `*Title*`, `_Title_`, `\`Title\``). Only when the whole line is
+  // wrapped — partial markup inside the title is left alone.
+  out = out.replace(/^\*\*(.+?)\*\*$/, "$1")
+    .replace(/^__(.+?)__$/, "$1")
+    .replace(/^\*(.+?)\*$/, "$1")
+    .replace(/^_(.+?)_$/, "$1")
+    .replace(/^`(.+?)`$/, "$1");
+  return out.trim();
+}
+
 export function truncate(text: string, max: number): string {
-  const first = text.split("\n")[0].trim();
-  if (first.length <= max) return first;
-  return `${first.slice(0, max - 1)}…`;
+  // Walk lines until we find one with visible content after the
+  // markdown strip. Falls back to the raw first line so we never
+  // return an empty label for a non-empty summary.
+  const lines = text.split("\n");
+  let chosen = "";
+  for (const line of lines) {
+    const cleaned = stripLeadingMarkdown(line);
+    if (cleaned.length > 0) {
+      chosen = cleaned;
+      break;
+    }
+  }
+  if (!chosen) {
+    chosen = lines[0]?.trim() ?? "";
+  }
+  if (chosen.length <= max) return chosen;
+  return `${chosen.slice(0, max - 1)}…`;
 }
 
 /**
+ * Placeholder label rendered while the Haiku summarizer is still
+ * generating a real summary for a brand-new session. `useSessionSummaries`
+ * fires `summarizeSession` per session-without-summary on mount and
+ * upgrades the label in place once the response lands. Exported so
+ * tests and downstream consumers can match against the same constant.
+ */
+export const NEW_CHAT_PLACEHOLDER = "New chat";
+
+/**
  * Pick the best label for a session row from server-provided fields,
- * falling back through summaries. Returns `null` when the session has
- * no usable title yet — the caller hides the row in that case rather
- * than rendering a "New chat" placeholder.
+ * falling back through summaries. Always returns a non-empty string —
+ * sessions without a summary yet render with `NEW_CHAT_PLACEHOLDER`,
+ * which `useSessionSummaries` upgrades to the Haiku-generated summary
+ * as soon as the round-trip completes.
+ *
+ * The previous behavior hid rows with empty summaries entirely; that
+ * stopped making sense after the chat-input "+" became lazy (a row
+ * is only ever in `listProjectSessions` after the user sent at least
+ * one message), so brand-new sessions kept the sidekick on
+ * "No sessions yet" for the entire 1-3s Haiku round-trip.
  */
 export function deriveSessionLabel(
   session: AnnotatedSession,
   fetchedSummary: string | undefined,
-): string | null {
+): string {
   const summary = session.summary_of_previous_context || fetchedSummary || "";
   if (summary.trim().length > 0) {
     return truncate(summary, 80);
   }
-  return null;
+  return NEW_CHAT_PLACEHOLDER;
 }
 
 export type SessionRow = {

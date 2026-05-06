@@ -226,7 +226,12 @@ pub(crate) async fn generate_session_summary(
     let req_body = json!({
         "model": HAIKU_MODEL,
         "max_tokens": SUMMARY_MAX_TOKENS,
-        "system": "Generate a 2-3 line summary of this agent coding session. Focus on what tasks were worked on and what was accomplished. Be concise and direct, no preamble.",
+        // Plain text, no markdown — the sidekick renders this as a
+        // single-line label and any leading `#`/`**`/`-` decoration
+        // leaks through as literal characters in the chats list (the
+        // render-time strip in `session-row-utils.ts` is a backstop
+        // for older summaries that already carry these prefixes).
+        "system": "Generate a 2-3 line summary of this agent coding session. Focus on what tasks were worked on and what was accomplished. Be concise and direct, no preamble. Plain text only — do not use markdown headings, bold, lists, or any other formatting.",
         "messages": [{"role": "user", "content": transcript}],
     });
 
