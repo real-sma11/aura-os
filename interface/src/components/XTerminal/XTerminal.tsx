@@ -5,11 +5,15 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import "@xterm/xterm/css/xterm.css";
-import { useTheme } from "@cypher-asi/zui";
 import type { UseTerminalReturn } from "../../hooks/use-terminal";
 import { OverlayScrollbar } from "../OverlayScrollbar";
-import { getXtermTheme } from "./getXtermTheme";
+import { getXtermTheme, type ResolvedTheme } from "./getXtermTheme";
 import styles from "./XTerminal.module.css";
+
+function readResolvedTheme(): ResolvedTheme {
+  if (typeof document === "undefined") return "dark";
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
 
 interface XTerminalProps {
   terminal: UseTerminalReturn;
@@ -29,14 +33,13 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [viewportReady, setViewportReady] = useState(false);
-  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const xterm = new Terminal({
-      theme: getXtermTheme(resolvedTheme),
+      theme: getXtermTheme(readResolvedTheme()),
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Menlo, monospace",
       fontSize: 11,
       lineHeight: 1.3,
@@ -122,12 +125,24 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
 
   // Live theme swap: xterm.js v6 supports re-assigning `terminal.options.theme`
   // and re-renders without remounting, so existing scrollback survives a
-  // dark↔light flip.
+  // dark<->light flip. We observe `<html data-theme>` directly rather than
+  // keying off ZUI's `useTheme().resolvedTheme` because React effects fire
+  // bottom-up: this component's effect would otherwise run BEFORE the parent
+  // ThemeProvider effect that flips the attribute, causing
+  // getComputedStyle(...) inside getXtermTheme to read the previous palette
+  // and the terminal background to lag the rest of the chrome by one toggle.
   useEffect(() => {
     const xterm = xtermRef.current;
     if (!xterm) return;
-    xterm.options.theme = getXtermTheme(resolvedTheme);
-  }, [resolvedTheme]);
+    const root = document.documentElement;
+    const apply = () => {
+      xterm.options.theme = getXtermTheme(readResolvedTheme());
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (visible && fitRef.current) {
