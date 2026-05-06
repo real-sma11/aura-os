@@ -369,7 +369,7 @@ describe("BottomTaskbar", () => {
       fireEvent.contextMenu(getBar(container));
 
       expect(screen.getByTestId("zui-menu")).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: /Set Background/ })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Background" })).toBeInTheDocument();
       expect(screen.getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
     });
 
@@ -392,12 +392,12 @@ describe("BottomTaskbar", () => {
       expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
     });
 
-    it("opens the background modal when selecting Set Background", async () => {
+    it("opens the background modal when selecting Background", async () => {
       const user = userEvent.setup();
       const { container } = render(<BottomTaskbar />);
 
       fireEvent.contextMenu(getBar(container));
-      await user.click(screen.getByRole("menuitem", { name: /Set Background/ }));
+      await user.click(screen.getByRole("menuitem", { name: "Background" }));
 
       expect(screen.getByTestId("background-modal")).toBeInTheDocument();
     });

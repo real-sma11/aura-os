@@ -19,7 +19,7 @@ import styles from "./DesktopContextMenu.module.css";
 type ContextMenuItemId = "set-background" | "settings";
 
 const CONTEXT_MENU_ITEMS: MenuItem[] = [
-  { id: "set-background", label: "Set Background\u2026", icon: <Image size={14} /> },
+  { id: "set-background", label: "Background", icon: <Image size={14} /> },
   { id: "settings", label: "Settings", icon: <SettingsIcon size={14} /> },
 ];
 
