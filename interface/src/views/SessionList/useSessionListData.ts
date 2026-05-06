@@ -1,7 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { api } from "../../api/client";
+import { useCallback, useEffect, useMemo } from "react";
 import { useProjectActions } from "../../stores/project-action-store";
-import { useSessionsListStore } from "../../stores/sessions-list-store";
+import {
+  projectSessionsSurfaceKey,
+  useSessionsForSurface,
+  useSessionsListActions,
+  useSessionsListStore,
+} from "../../stores/sessions-list-store";
 import type { AnnotatedSession } from "../../components/SessionsList";
 
 interface SessionListData {
@@ -13,65 +17,54 @@ interface SessionListData {
 }
 
 /**
- * Project-app data source for the shared `SessionsList`. Polls
- * `api.listProjectSessions` (which spans every agent instance in the
- * project) and decorates each row with the underscored
- * `_projectId`/`_agentInstanceId` fields the shared click navigator
- * expects. Re-fetches on `useSessionsListStore.version` so newly
- * created sessions appear as soon as they're persisted server-side.
+ * Project-app data source for the shared `SessionsList`. Subscribes to
+ * the shared `useSessionsListStore` (which the agents `ChatsTab` and
+ * the default-session redirects also consume) and triggers a refetch
+ * on every `version` bump — the same write-side signal the chat
+ * stream sends when a new session is persisted server-side. No more
+ * 5-second polling: writes drive reads.
  */
 export function useSessionListData(): SessionListData {
   const ctx = useProjectActions();
   const projectId = ctx?.project.project_id;
   const projectName = ctx?.project.name ?? "";
-  const [sessions, setSessions] = useState<AnnotatedSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const surfaceKey = projectId ? projectSessionsSurfaceKey(projectId) : undefined;
+  const sessions = useSessionsForSurface(surfaceKey);
   const sessionsVersion = useSessionsListStore((s) => s.version);
-
-  const fetchSessions = useCallback(() => {
-    if (!projectId) return;
-    api.listProjectSessions(projectId)
-      .then((list) => {
-        const annotated = list
-          .map<AnnotatedSession>((s) => ({
-            ...s,
-            _projectName: projectName,
-            _projectId: s.project_id,
-            _agentInstanceId: s.agent_instance_id,
-          }))
-          .sort(
-            (a, b) =>
-              new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-          );
-        setSessions(annotated);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [projectId, projectName]);
+  const loading = useSessionsListStore((s) =>
+    surfaceKey ? (s.loadingBySurface[surfaceKey] ?? false) : false,
+  );
+  const {
+    loadProjectSessions,
+    removeSession: storeRemoveSession,
+    restoreSession: storeRestoreSession,
+  } = useSessionsListActions();
 
   useEffect(() => {
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 5000);
-    return () => clearInterval(interval);
-  }, [fetchSessions, sessionsVersion]);
+    if (!projectId) return;
+    void loadProjectSessions(projectId, projectName);
+  }, [projectId, projectName, sessionsVersion, loadProjectSessions]);
 
   const sessionById = useMemo(
     () => new Map(sessions.map((s) => [s.session_id, s])),
     [sessions],
   );
 
-  const removeSession = useCallback((sessionId: string) => {
-    setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
-  }, []);
+  const removeSession = useCallback(
+    (sessionId: string) => {
+      if (!surfaceKey) return;
+      storeRemoveSession(surfaceKey, sessionId);
+    },
+    [surfaceKey, storeRemoveSession],
+  );
 
-  const restoreSession = useCallback((session: AnnotatedSession) => {
-    setSessions((prev) => {
-      if (prev.some((s) => s.session_id === session.session_id)) return prev;
-      return [...prev, session].sort(
-        (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-      );
-    });
-  }, []);
+  const restoreSession = useCallback(
+    (session: AnnotatedSession) => {
+      if (!surfaceKey) return;
+      storeRestoreSession(surfaceKey, session);
+    },
+    [surfaceKey, storeRestoreSession],
+  );
 
   return {
     sessions,

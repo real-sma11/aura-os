@@ -264,7 +264,7 @@ export function AgentInfoPanel({ variant = "default", agent: agentOverride }: Ag
           />
         )}
 
-        {effectiveTab === "chats" && <ChatsTab agent={a} projectBindings={cascade.bindings} />}
+        {effectiveTab === "chats" && <ChatsTab />}
         {effectiveTab === "skills" && <SkillsTab agent={a} />}
         {effectiveTab === "permissions" && (
           <PermissionsTab agent={a} isOwnAgent={isOwnAgent} />

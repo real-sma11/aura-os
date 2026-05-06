@@ -1,22 +1,281 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+import { api } from "../api/client";
+import type { AnnotatedSession } from "../components/SessionsList";
+import { useProjectsListStore } from "./projects-list-store";
 
 /**
- * Lightweight version-counter store used to invalidate the agent
- * Chats sidekick (`ChatsTab`) when a new session is created elsewhere
- * (e.g. the chat input "+" button or the implicit rotation that
- * happens when `new_session: true` is sent on the next stream).
+ * Centralized session-list state shared by every surface that lists
+ * sessions: the agents `ChatsTab` sidekick, the projects `SessionList`
+ * sidekick, and both default-session redirect hooks. Keeping one store
+ * means we only fetch each list once per surface, and the redirects
+ * read the same array the sidekick is rendering instead of duplicating
+ * the API call.
  *
- * `ChatsTab.useAgentSessions` includes `version` in its effect deps,
- * so any `bumpVersion()` call triggers a re-fetch of `api.listSessions`
- * for the active agent's project bindings without needing a manual
- * pub/sub or React Query.
+ * Surface keys are namespaced so the agents-app and projects-app
+ * surfaces never collide:
+ * - `agent:{agentId}`     — every session across the agent's bindings
+ * - `project:{projectId}` — every session across an entire project
+ *
+ * `version` is preserved as a write-side bump that consumers fold into
+ * their effect dependencies; calling `bumpVersion()` after a stream
+ * emits `SessionReady` (or after the chat-input "+" / RotateCcw soft
+ * reset) re-runs the load so newly-persisted sessions surface without
+ * a manual refresh.
  */
-interface SessionsListStore {
-  version: number;
-  bumpVersion: () => void;
+
+const EMPTY_SESSIONS: AnnotatedSession[] = [];
+
+export function agentSessionsSurfaceKey(agentId: string): string {
+  return `agent:${agentId}`;
 }
 
-export const useSessionsListStore = create<SessionsListStore>((set) => ({
+export function projectSessionsSurfaceKey(projectId: string): string {
+  return `project:${projectId}`;
+}
+
+interface SessionsListStore {
+  /** Newest-first AnnotatedSession arrays keyed by surface. */
+  sessionsBySurface: Record<string, AnnotatedSession[]>;
+  /** Active in-flight load per surface (for empty-state UX). */
+  loadingBySurface: Record<string, boolean>;
+  /** Bumped on every relevant write so polling consumers can re-run. */
+  version: number;
+  bumpVersion: () => void;
+  /** Fan-out fetch across every project the agent is bound to. */
+  loadAgentSessions: (agentId: string) => Promise<void>;
+  /** Single project-wide fetch annotating rows with project metadata. */
+  loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
+  /** Optimistic delete; pair with `restoreSession` to undo on error. */
+  removeSession: (surfaceKey: string, sessionId: string) => void;
+  restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+}
+
+function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
+  return [...sessions].sort(
+    (a, b) =>
+      new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+  );
+}
+
+// Per-surface request-id counters keep racing responses from clobbering
+// each other when, e.g., a stream-driven `bumpVersion` lands while a
+// previous load is still in flight.
+const surfaceRequestIds: Record<string, number> = {};
+
+export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
+  sessionsBySurface: {},
+  loadingBySurface: {},
   version: 0,
+
   bumpVersion: () => set((s) => ({ version: s.version + 1 })),
+
+  loadAgentSessions: async (agentId) => {
+    const surfaceKey = agentSessionsSurfaceKey(agentId);
+    const requestId = (surfaceRequestIds[surfaceKey] ?? 0) + 1;
+    surfaceRequestIds[surfaceKey] = requestId;
+
+    set((state) => ({
+      loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: true },
+    }));
+
+    // Bindings are derived from a snapshot of `useProjectsListStore`
+    // rather than via a live selector — that's deliberate. A subscribed
+    // selector that materializes `{ projectId, agentInstanceId }` pairs
+    // hands `useShallow` fresh object references on every call, which
+    // re-triggers the consumer in an infinite loop and is exactly the
+    // bug this store replaces.
+    const projectsState = useProjectsListStore.getState();
+    const bindings: {
+      projectId: string;
+      agentInstanceId: string;
+      projectName: string;
+    }[] = [];
+    for (const project of projectsState.projects) {
+      const instances = projectsState.agentsByProject[project.project_id];
+      if (!instances) continue;
+      for (const instance of instances) {
+        if (instance.agent_id === agentId) {
+          bindings.push({
+            projectId: project.project_id,
+            agentInstanceId: instance.agent_instance_id,
+            projectName: project.name,
+          });
+        }
+      }
+    }
+
+    try {
+      const results = await Promise.all(
+        bindings.map((b) =>
+          api
+            .listSessions(b.projectId, b.agentInstanceId)
+            .then((list) =>
+              list.map<AnnotatedSession>((s) => ({
+                ...s,
+                _projectName: b.projectName,
+                _projectId: b.projectId,
+                _agentInstanceId: b.agentInstanceId,
+              })),
+            )
+            .catch(() => [] as AnnotatedSession[]),
+        ),
+      );
+      if (surfaceRequestIds[surfaceKey] !== requestId) return;
+      const merged = sortSessionsDesc(results.flat());
+      set((state) => ({
+        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: merged },
+      }));
+    } catch (err) {
+      console.error("Failed to load agent sessions", err);
+    } finally {
+      if (surfaceRequestIds[surfaceKey] === requestId) {
+        set((state) => ({
+          loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: false },
+        }));
+      }
+    }
+  },
+
+  loadProjectSessions: async (projectId, projectName) => {
+    const surfaceKey = projectSessionsSurfaceKey(projectId);
+    const requestId = (surfaceRequestIds[surfaceKey] ?? 0) + 1;
+    surfaceRequestIds[surfaceKey] = requestId;
+
+    set((state) => ({
+      loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: true },
+    }));
+
+    try {
+      const list = await api.listProjectSessions(projectId);
+      if (surfaceRequestIds[surfaceKey] !== requestId) return;
+      const annotated = sortSessionsDesc(
+        list.map<AnnotatedSession>((s) => ({
+          ...s,
+          _projectName: projectName,
+          _projectId: s.project_id,
+          _agentInstanceId: s.agent_instance_id,
+        })),
+      );
+      set((state) => ({
+        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: annotated },
+      }));
+    } catch (err) {
+      console.error("Failed to load project sessions", err);
+    } finally {
+      if (surfaceRequestIds[surfaceKey] === requestId) {
+        set((state) => ({
+          loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: false },
+        }));
+      }
+    }
+  },
+
+  removeSession: (surfaceKey, sessionId) => {
+    const current = get().sessionsBySurface[surfaceKey];
+    if (!current) return;
+    const next = current.filter((s) => s.session_id !== sessionId);
+    if (next.length === current.length) return;
+    set((state) => ({
+      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+    }));
+  },
+
+  restoreSession: (surfaceKey, session) => {
+    const current = get().sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+    if (current.some((s) => s.session_id === session.session_id)) return;
+    const next = sortSessionsDesc([...current, session]);
+    set((state) => ({
+      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+    }));
+  },
 }));
+
+// ---------------------------------------------------------------------------
+// Selectors / hooks
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the same array reference across re-renders when the
+ * underlying store entry hasn't changed. The empty fallback is a
+ * module-level singleton so consumers that call this for not-yet-loaded
+ * surfaces don't churn `useShallow` consumers.
+ */
+export function useSessionsForSurface(
+  surfaceKey: string | undefined,
+): AnnotatedSession[] {
+  return useSessionsListStore((state) => {
+    if (!surfaceKey) return EMPTY_SESSIONS;
+    return state.sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+  });
+}
+
+export function useSessionsLoading(surfaceKey: string | undefined): boolean {
+  return useSessionsListStore((state) => {
+    if (!surfaceKey) return false;
+    return state.loadingBySurface[surfaceKey] ?? false;
+  });
+}
+
+/**
+ * Most-recent session by `started_at` for the surface. Sessions are
+ * stored already-sorted desc, so this is just `[0]` — a stable
+ * reference that doesn't allocate.
+ */
+export function useMostRecentSession(
+  surfaceKey: string | undefined,
+): AnnotatedSession | null {
+  return useSessionsListStore((state) => {
+    if (!surfaceKey) return null;
+    const list = state.sessionsBySurface[surfaceKey];
+    return list && list.length > 0 ? list[0] : null;
+  });
+}
+
+/**
+ * Stable string fingerprint of an agent's `(projectId, instanceId)`
+ * bindings. Returns "" when the agent has none yet. Use this as a hook
+ * dependency to drive a `loadAgentSessions` call when bindings appear
+ * (e.g. once the background `agentsByProject` prefetch lands) without
+ * the infinite-render-loop trap that an object-array selector hits.
+ */
+export function useAgentBindingsKey(agentId: string | undefined): string {
+  return useProjectsListStore((s) => {
+    if (!agentId) return "";
+    const parts: string[] = [];
+    for (const project of s.projects) {
+      const instances = s.agentsByProject[project.project_id];
+      if (!instances) continue;
+      for (const instance of instances) {
+        if (instance.agent_id === agentId) {
+          parts.push(`${project.project_id}:${instance.agent_instance_id}`);
+        }
+      }
+    }
+    parts.sort();
+    return parts.join(",");
+  });
+}
+
+interface SessionsListActions {
+  loadAgentSessions: (agentId: string) => Promise<void>;
+  loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
+  removeSession: (surfaceKey: string, sessionId: string) => void;
+  restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+}
+
+/**
+ * Convenience accessor for the imperative actions; using
+ * `useSessionsListStore.getState()` inline works too but this keeps the
+ * action-vs-state split visible in the call sites.
+ */
+export function useSessionsListActions(): SessionsListActions {
+  return useSessionsListStore(
+    useShallow((s) => ({
+      loadAgentSessions: s.loadAgentSessions,
+      loadProjectSessions: s.loadProjectSessions,
+      removeSession: s.removeSession,
+      restoreSession: s.restoreSession,
+    })),
+  );
+}

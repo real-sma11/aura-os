@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { Session } from "../../shared/types";
 import type { AnnotatedSession } from "../../components/SessionsList";
 import { useSessionListData } from "./useSessionListData";
+import { useSessionsListStore } from "../../stores/sessions-list-store";
 
 const listProjectSessions = vi.fn();
 
@@ -46,6 +47,11 @@ function makeAnnotated(id: string, startedAt: string): AnnotatedSession {
 describe("useSessionListData", () => {
   beforeEach(() => {
     listProjectSessions.mockReset();
+    useSessionsListStore.setState({
+      sessionsBySurface: {},
+      loadingBySurface: {},
+      version: 0,
+    });
   });
 
   it("annotates fetched sessions with project + agent fields", async () => {
@@ -81,7 +87,7 @@ describe("useSessionListData", () => {
     ]);
   });
 
-  it("removeSession drops the session from state", async () => {
+  it("removeSession drops the session from store state", async () => {
     const a = makeSession("s1", "2026-04-16T00:00:00Z");
     const b = makeSession("s2", "2026-04-16T01:00:00Z");
     listProjectSessions.mockResolvedValue([a, b]);
@@ -133,5 +139,28 @@ describe("useSessionListData", () => {
     });
 
     expect(result.current.sessions).toHaveLength(1);
+  });
+
+  it("re-fetches when sessions-list store version bumps", async () => {
+    const a = makeSession("s1", "2026-04-16T00:00:00Z");
+    listProjectSessions.mockResolvedValue([a]);
+
+    const { result } = renderHook(() => useSessionListData());
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(1);
+    });
+    expect(listProjectSessions).toHaveBeenCalledTimes(1);
+
+    const b = makeSession("s2", "2026-04-16T02:00:00Z");
+    listProjectSessions.mockResolvedValue([a, b]);
+
+    act(() => {
+      useSessionsListStore.getState().bumpVersion();
+    });
+
+    await waitFor(() => {
+      expect(result.current.sessions).toHaveLength(2);
+    });
+    expect(listProjectSessions).toHaveBeenCalledTimes(2);
   });
 });

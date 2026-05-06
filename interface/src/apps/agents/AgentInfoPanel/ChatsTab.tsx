@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../../api/client";
 import {
@@ -6,89 +6,54 @@ import {
   SessionsList,
   useSessionNavigate,
 } from "../../../components/SessionsList";
-import { useSessionsListStore } from "../../../stores/sessions-list-store";
-import type { Agent } from "../../../shared/types";
+import {
+  agentSessionsSurfaceKey,
+  useAgentBindingsKey,
+  useSessionsForSurface,
+  useSessionsListActions,
+  useSessionsListStore,
+} from "../../../stores/sessions-list-store";
+import { useSelectedAgent } from "../stores";
+import { EmptyState } from "../../../components/EmptyState";
 
-type ProjectBinding = {
-  project_agent_id: string;
-  project_id: string;
-  project_name: string;
-};
-
-function useAgentSessions(
-  agentId: string,
-  projectBindings: ProjectBinding[],
-) {
-  const [sessions, setSessions] = useState<AnnotatedSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  // Bumped by `handleNewChat` and the chat stream when a new session
-  // is persisted server-side (`SessionReady`). Re-running the effect
-  // is how we pick up sessions created from the chat input "+" or
-  // RotateCcw without needing a manual refresh.
+/**
+ * Agents-app sidekick "Chats" tab. Pulls the active agent from
+ * `useSelectedAgent()` and reads its session list from the shared
+ * `useSessionsListStore`. The tab no longer takes any props — both
+ * the agent and its bindings come from stores so the same panel works
+ * whether it is mounted from the agents shell or the marketplace
+ * preview.
+ */
+export function ChatsTab() {
+  const { selectedAgent } = useSelectedAgent();
+  const agentId = selectedAgent?.agent_id;
+  const surfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
+  const sessions = useSessionsForSurface(surfaceKey);
+  const bindingsKey = useAgentBindingsKey(agentId);
   const sessionsVersion = useSessionsListStore((s) => s.version);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    Promise.all(
-      projectBindings.map((b) =>
-        api.listSessions(b.project_id, b.project_agent_id)
-          .then((list) =>
-            list.map<AnnotatedSession>((s) => ({
-              ...s,
-              _projectName: b.project_name,
-              _projectId: b.project_id,
-              _agentInstanceId: b.project_agent_id,
-            })),
-          )
-          .catch(() => [] as AnnotatedSession[]),
-      ),
-    ).then((results) => {
-      if (cancelled) return;
-      const all = results
-        .flat()
-        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
-      setSessions(all);
-      setLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [agentId, projectBindings, sessionsVersion]);
-
-  const removeSession = useCallback((sessionId: string) => {
-    setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
-  }, []);
-
-  const restoreSession = useCallback((session: AnnotatedSession) => {
-    setSessions((prev) => {
-      if (prev.some((s) => s.session_id === session.session_id)) return prev;
-      return [...prev, session].sort(
-        (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-      );
-    });
-  }, []);
-
-  return { sessions, loading, removeSession, restoreSession };
-}
-
-export function ChatsTab({
-  agent,
-  projectBindings,
-}: {
-  agent: Agent;
-  projectBindings: ProjectBinding[];
-}) {
-  const { sessions, loading, removeSession, restoreSession } = useAgentSessions(
-    agent.agent_id,
-    projectBindings,
+  const isLoading = useSessionsListStore((s) =>
+    surfaceKey ? (s.loadingBySurface[surfaceKey] ?? false) : false,
   );
-  const handleSessionClick = useSessionNavigate({ agentId: agent.agent_id });
+  const { loadAgentSessions, removeSession, restoreSession } =
+    useSessionsListActions();
+  const handleSessionClick = useSessionNavigate({ agentId: agentId ?? null });
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
 
+  // Re-fan-out when the agent's bindings change shape (background
+  // `agentsByProject` prefetch lands) or a write bumps the version
+  // (chat-input "+" / RotateCcw / `SessionReady`). The store itself
+  // handles the request-id race protection.
+  useEffect(() => {
+    if (!agentId) return;
+    if (!bindingsKey) return;
+    void loadAgentSessions(agentId);
+  }, [agentId, bindingsKey, sessionsVersion, loadAgentSessions]);
+
   const handleDelete = useCallback(
     (target: AnnotatedSession) => {
-      removeSession(target.session_id);
+      if (!surfaceKey) return;
+      removeSession(surfaceKey, target.session_id);
       api
         .deleteSession(
           target._projectId,
@@ -97,16 +62,20 @@ export function ChatsTab({
         )
         .catch((err) => {
           console.error("Failed to delete session", err);
-          restoreSession(target);
+          restoreSession(surfaceKey, target);
         });
     },
-    [removeSession, restoreSession],
+    [surfaceKey, removeSession, restoreSession],
   );
+
+  if (!selectedAgent) {
+    return <EmptyState>Select an agent to see details</EmptyState>;
+  }
 
   return (
     <SessionsList
       sessions={sessions}
-      loading={loading}
+      loading={isLoading}
       selectedSessionId={selectedSessionId}
       onSessionClick={handleSessionClick}
       onDeleteSession={handleDelete}

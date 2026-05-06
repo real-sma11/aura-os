@@ -1,40 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
-import { useShallow } from "zustand/react/shallow";
-import { api } from "../../api/client";
-import { useProjectsListStore } from "../../stores/projects-list-store";
-import type { AgentInstance, Project } from "../../shared/types";
-
-type AgentBinding = { projectId: string; agentInstanceId: string };
-const EMPTY_AGENT_BINDINGS: AgentBinding[] = [];
-
-/**
- * Pick the (projectId, agentInstanceId) pairs an agent participates
- * in. Used by the standalone-agent default-session redirect to find
- * the most recent session across every project the agent is bound to.
- */
-function selectAgentBindings(agentId: string | undefined) {
-  return (state: {
-    projects: Project[];
-    agentsByProject: Record<string, AgentInstance[]>;
-  }): AgentBinding[] => {
-    if (!agentId) return EMPTY_AGENT_BINDINGS;
-    const out: AgentBinding[] = [];
-    for (const project of state.projects) {
-      const instances = state.agentsByProject[project.project_id];
-      if (!instances) continue;
-      for (const instance of instances) {
-        if (instance.agent_id === agentId) {
-          out.push({
-            projectId: project.project_id,
-            agentInstanceId: instance.agent_instance_id,
-          });
-        }
-      }
-    }
-    return out.length > 0 ? out : EMPTY_AGENT_BINDINGS;
-  };
-}
+import {
+  agentSessionsSurfaceKey,
+  projectSessionsSurfaceKey,
+  useAgentBindingsKey,
+  useMostRecentSession,
+  useSessionsForSurface,
+  useSessionsListActions,
+  useSessionsListStore,
+} from "../../stores/sessions-list-store";
 
 interface ProjectRedirectOptions {
   projectId: string;
@@ -47,10 +21,13 @@ interface ProjectRedirectOptions {
 /**
  * Project-panel default-session redirect: when the user lands on a
  * project-agent chat URL with no `?session=` and no live-session pin,
- * pick the most recent session by `started_at` and replace the URL.
- * Mirrors the sidekick session list so clicking nothing still
- * surfaces the most recent conversation. Guarded by a ref so a single
- * (project, agentInstance) pair only auto-navigates once per mount.
+ * pick the most recent session for the active agent instance and
+ * replace the URL with `?session=<id>`.
+ *
+ * The hook reads from the shared `useSessionsListStore` instead of
+ * issuing its own `api.listSessions` request, so the redirect always
+ * agrees with the sidekick that's rendering the same list. The store
+ * holds project-wide sessions; we filter to the active instance here.
  */
 export function useDefaultProjectSessionRedirect({
   projectId,
@@ -59,7 +36,28 @@ export function useDefaultProjectSessionRedirect({
   liveSessionId,
   setSearchParams,
 }: ProjectRedirectOptions): void {
+  const surfaceKey = projectSessionsSurfaceKey(projectId);
+  const sessions = useSessionsForSurface(surfaceKey);
+  const sessionsVersion = useSessionsListStore((s) => s.version);
   const didDefaultRef = useRef<string | null>(null);
+
+  // Sessions are stored sorted desc by `started_at`, so the first
+  // match is also the most recent for this agent instance.
+  const mostRecentForInstance = useMemo(() => {
+    return (
+      sessions.find((s) => s._agentInstanceId === agentInstanceId) ?? null
+    );
+  }, [sessions, agentInstanceId]);
+
+  // Trigger a load if the store doesn't yet have this project. The
+  // store dedupes via per-surface request ids; recalling on every
+  // render-tick when nothing has changed is cheap because the deps
+  // gate the effect.
+  useEffect(() => {
+    if (sessionId || liveSessionId) return;
+    void useSessionsListStore.getState().loadProjectSessions(projectId, "");
+  }, [projectId, sessionId, liveSessionId, sessionsVersion]);
+
   useEffect(() => {
     const key = `${projectId}:${agentInstanceId}`;
     if (sessionId || liveSessionId) {
@@ -67,32 +65,24 @@ export function useDefaultProjectSessionRedirect({
       return;
     }
     if (didDefaultRef.current === key) return;
+    if (!mostRecentForInstance) return;
     didDefaultRef.current = key;
-    let cancelled = false;
-    api
-      .listSessions(projectId, agentInstanceId)
-      .then((list) => {
-        if (cancelled) return;
-        const sorted = [...list].sort(
-          (a, b) =>
-            new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-        );
-        const newest = sorted[0];
-        if (!newest) return;
-        setSearchParams(
-          (prev) => {
-            const next = new URLSearchParams(prev);
-            next.set("session", newest.session_id);
-            return next;
-          },
-          { replace: true },
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, agentInstanceId, sessionId, liveSessionId, setSearchParams]);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("session", mostRecentForInstance.session_id);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    projectId,
+    agentInstanceId,
+    sessionId,
+    liveSessionId,
+    mostRecentForInstance,
+    setSearchParams,
+  ]);
 }
 
 interface StandaloneRedirectOptions {
@@ -107,9 +97,14 @@ interface StandaloneRedirectOptions {
 /**
  * Standalone-agent default-session redirect: when the user lands on
  * `/agents/:agentId` with no `?session=` (and no live-session pin),
- * pick the most recent session across the agent's project bindings
- * and redirect to the agents-shell historical URL so the same chat
- * panel renders the right transcript.
+ * redirect to the most recent session across the agent's project
+ * bindings.
+ *
+ * Subscribes to a stable string fingerprint of the agent's bindings
+ * (see `useAgentBindingsKey`) so the redirect re-runs once the
+ * background `agentsByProject` prefetch lands — without the
+ * fresh-object-array selector pattern that previously triggered an
+ * infinite render loop.
  */
 export function useDefaultStandaloneSessionRedirect({
   agentId,
@@ -118,9 +113,31 @@ export function useDefaultStandaloneSessionRedirect({
   setSearchParams,
   disabled,
 }: StandaloneRedirectOptions): void {
-  const bindingsSelector = useMemo(() => selectAgentBindings(agentId), [agentId]);
-  const agentBindings = useProjectsListStore(useShallow(bindingsSelector));
+  const surfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
+  const mostRecent = useMostRecentSession(surfaceKey);
+  const bindingsKey = useAgentBindingsKey(agentId);
+  const sessionsVersion = useSessionsListStore((s) => s.version);
+  const { loadAgentSessions } = useSessionsListActions();
   const didDefaultRef = useRef<string | null>(null);
+
+  // Trigger a load whenever the agent's bindings change shape (e.g. the
+  // background prefetch fills in `agentsByProject`) or a write bumps
+  // the version. The store's per-surface request-id pattern serializes
+  // out-of-order responses.
+  useEffect(() => {
+    if (disabled || !agentId) return;
+    if (sessionId || liveSessionId) return;
+    if (!bindingsKey) return;
+    void loadAgentSessions(agentId);
+  }, [
+    disabled,
+    agentId,
+    sessionId,
+    liveSessionId,
+    bindingsKey,
+    sessionsVersion,
+    loadAgentSessions,
+  ]);
 
   useEffect(() => {
     if (disabled || !agentId) return;
@@ -129,63 +146,25 @@ export function useDefaultStandaloneSessionRedirect({
       didDefaultRef.current = key;
       return;
     }
-    if (agentBindings.length === 0) return;
     if (didDefaultRef.current === key) return;
+    if (!mostRecent) return;
     didDefaultRef.current = key;
-    let cancelled = false;
-    Promise.all(
-      agentBindings.map((b) =>
-        api
-          .listSessions(b.projectId, b.agentInstanceId)
-          .then((list) =>
-            list.map((s) => ({
-              session_id: s.session_id,
-              started_at: s.started_at,
-              project_id: b.projectId,
-              agent_instance_id: b.agentInstanceId,
-            })),
-          )
-          .catch(
-            () =>
-              [] as {
-                session_id: string;
-                started_at: string;
-                project_id: string;
-                agent_instance_id: string;
-              }[],
-          ),
-      ),
-    )
-      .then((results) => {
-        if (cancelled) return;
-        const flat = results.flat();
-        if (flat.length === 0) return;
-        flat.sort(
-          (a, b) =>
-            new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-        );
-        const newest = flat[0];
-        setSearchParams(
-          (prev) => {
-            const next = new URLSearchParams(prev);
-            next.set("project", newest.project_id);
-            next.set("instance", newest.agent_instance_id);
-            next.set("session", newest.session_id);
-            return next;
-          },
-          { replace: true },
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("project", mostRecent._projectId);
+        next.set("instance", mostRecent._agentInstanceId);
+        next.set("session", mostRecent.session_id);
+        return next;
+      },
+      { replace: true },
+    );
   }, [
     disabled,
     agentId,
     sessionId,
     liveSessionId,
-    agentBindings,
+    mostRecent,
     setSearchParams,
   ]);
 }
