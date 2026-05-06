@@ -62,6 +62,14 @@ export interface AttachmentItem {
   name: string;
   attachmentType: "image" | "text";
   preview?: string;
+  /** S3 URL after upload. When set, sent as source_url instead of base64. */
+  fileUrl?: string;
+  /** True while S3 upload is in flight. */
+  uploading?: boolean;
+  /** Upload progress 0-100. */
+  uploadProgress?: number;
+  /** Error message if S3 upload failed. Falls back to base64. */
+  uploadError?: string;
 }
 
 export interface ChatInputBarProps {
@@ -261,10 +269,21 @@ export const DesktopChatInputBar = memo(
       [],
     );
 
+    const handleUpdateAttachment = useCallback(
+      (id: string, updates: Partial<AttachmentItem>) => {
+        if (!onAttachmentsChange || !attachments) return;
+        onAttachmentsChange(
+          attachments.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+        );
+      },
+      [attachments, onAttachmentsChange],
+    );
+
     const { canAddMore, addFiles, handleRemove } = useFileAttachments(
       attachments,
       onAttachmentsChange,
       onRemoveAttachment,
+      handleUpdateAttachment,
       textareaRefShim as React.RefObject<HTMLTextAreaElement | null>,
     );
 

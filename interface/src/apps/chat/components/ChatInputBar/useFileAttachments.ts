@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AttachmentItem } from "./ChatInputBar";
+import { uploadFile } from "../../../../api/upload";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_FILE_SIZE_MB = 5;
@@ -119,15 +120,55 @@ export function processFile(file: File): Promise<AttachmentItem | null> {
   return Promise.resolve(null);
 }
 
+/** Convert base64 string to Blob for S3 upload. */
+function base64ToBlob(base64: string, mediaType: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mediaType });
+}
+
+/** Fire-and-forget S3 upload for a single attachment. */
+async function uploadAttachmentToS3(
+  item: AttachmentItem,
+  onUpdate: (id: string, updates: Partial<AttachmentItem>) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  onUpdate(item.id, { uploading: true, uploadProgress: 0 });
+  try {
+    const blob = base64ToBlob(item.data, item.mediaType);
+    const fileUrl = await uploadFile(
+      blob,
+      item.name,
+      item.mediaType,
+      (percent) => onUpdate(item.id, { uploadProgress: percent }),
+      signal,
+    );
+    onUpdate(item.id, { fileUrl, uploading: false, uploadProgress: 100 });
+  } catch (err) {
+    if (signal.aborted) return;
+    const message = err instanceof Error ? err.message : "Upload failed";
+    console.warn("[upload] S3 upload failed, will fall back to base64:", message);
+    onUpdate(item.id, { uploading: false, uploadError: message });
+  }
+}
+
 export function useFileAttachments(
   attachments: AttachmentItem[],
   onAttachmentsChange?: (items: AttachmentItem[]) => void,
   onRemoveAttachment?: (id: string) => void,
+  onUpdateAttachment?: (id: string, updates: Partial<AttachmentItem>) => void,
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>,
 ) {
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
   useEffect(() => () => { attachmentsRef.current.forEach((a) => a.preview && URL.revokeObjectURL(a.preview)); }, []);
+
+  // Abort controllers for in-flight uploads, keyed by attachment id.
+  const uploadAbortRefs = useRef<Map<string, AbortController>>(new Map());
+  useEffect(() => () => {
+    for (const controller of uploadAbortRefs.current.values()) controller.abort();
+  }, []);
 
   const totalSizeMB = attachments.reduce((sum, a) => sum + a.file.size, 0) / (1024 * 1024);
   const canAddMore = attachments.length < MAX_ATTACHMENTS && totalSizeMB < MAX_TOTAL_SIZE_MB;
@@ -142,11 +183,28 @@ export function useFileAttachments(
         track("file_attached", { file_count: valid.length }),
       );
       onAttachmentsChange([...attachments, ...valid]);
+
+      // Kick off S3 uploads in background (fire-and-forget)
+      if (onUpdateAttachment) {
+        for (const item of valid) {
+          const controller = new AbortController();
+          uploadAbortRefs.current.set(item.id, controller);
+          void uploadAttachmentToS3(item, onUpdateAttachment, controller.signal).finally(() => {
+            uploadAbortRefs.current.delete(item.id);
+          });
+        }
+      }
     }
     textareaRef?.current?.focus();
-  }, [attachments, canAddMore, onAttachmentsChange, textareaRef]);
+  }, [attachments, canAddMore, onAttachmentsChange, onUpdateAttachment, textareaRef]);
 
   const handleRemove = useCallback((id: string) => {
+    // Abort any in-flight upload for this attachment
+    const controller = uploadAbortRefs.current.get(id);
+    if (controller) {
+      controller.abort();
+      uploadAbortRefs.current.delete(id);
+    }
     const a = attachments.find((x) => x.id === id);
     if (a?.preview) URL.revokeObjectURL(a.preview);
     onRemoveAttachment?.(id);

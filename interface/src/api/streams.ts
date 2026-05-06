@@ -241,7 +241,7 @@ export function generateImageStream(
   if (attachments && attachments.length > 0) {
     body.images = attachments
       .filter((a) => a.type === "image")
-      .map((a) => `data:${a.media_type};base64,${a.data}`);
+      .map((a) => a.source_url ?? `data:${a.media_type};base64,${a.data}`);
   }
   return streamSSE<string>(
     `${BASE_URL}/api/generate/image/stream`,

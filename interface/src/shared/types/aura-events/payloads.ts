@@ -59,6 +59,8 @@ export interface ChatAttachment {
   media_type: string;
   data: string;
   name?: string;
+  /** S3 URL to fetch content from. When set, data may be empty. */
+  source_url?: string;
 }
 
 /* ── Sender (mirrors `session_events.sender`) ─────────────────────── */
