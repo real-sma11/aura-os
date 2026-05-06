@@ -16,7 +16,11 @@ import {
   projectChatHistoryKey,
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
-import { useSessionsListStore } from "../../../../stores/sessions-list-store";
+import {
+  agentSessionsSurfaceKey,
+  useAgentBindingsKey,
+  useSessionsListStore,
+} from "../../../../stores/sessions-list-store";
 import { LAST_AGENT_ID_KEY } from "../../stores";
 import { useProjectsListStore } from "../../../../stores/projects-list-store";
 import { queryClient } from "../../../../shared/lib/query-client";
@@ -464,6 +468,35 @@ function ProjectAgentChatPanel({
   );
 }
 
+/**
+ * True while `useDefaultStandaloneSessionRedirect` is about to (or
+ * just did) push `?project=&instance=&session=` into the URL for this
+ * agent. The redirect always fires from a `useEffect`, so there's at
+ * least one render with the bare `/agents/:agentId` URL between the
+ * click and the URL update — without this signal `AgentChatView`
+ * would mount `StandaloneAgentChatPanel` in that gap, fetch the
+ * per-agent timeline, then immediately unmount it when the redirect
+ * lands and `ProjectAgentChatPanel` takes over. The double-mount is
+ * the source of the agent-switch flicker.
+ *
+ * Returns `true` when the agent has bindings AND either the sessions
+ * surface hasn't been loaded yet (redirect *may* fire) or the surface
+ * already holds at least one session (redirect *will* fire). Returns
+ * `false` for agents with no bindings, or once the surface is loaded
+ * empty — both legitimately keep the standalone panel as the final
+ * destination.
+ */
+function useShouldDeferStandaloneRedirect(agentId: string | undefined): boolean {
+  const bindingsKey = useAgentBindingsKey(agentId);
+  return useSessionsListStore((state) => {
+    if (!agentId) return false;
+    if (!bindingsKey) return false;
+    const sessions = state.sessionsBySurface[agentSessionsSurfaceKey(agentId)];
+    if (sessions === undefined) return true;
+    return sessions.length > 0;
+  });
+}
+
 export function AgentChatView() {
   const { projectId, agentInstanceId, agentId } = useParams<{
     projectId: string;
@@ -496,6 +529,8 @@ export function AgentChatView() {
     setSearchParams,
     disabled: Boolean(projectId),
   });
+
+  const shouldDeferStandalone = useShouldDeferStandaloneRedirect(agentId);
 
   const handleProjectHandoffReady = useCallback(() => {
     if (!projectId || !agentInstanceId) {
@@ -538,6 +573,17 @@ export function AgentChatView() {
         initialCreateHandoff={false}
       />
     );
+  }
+
+  // Defer mounting the standalone panel while the default-session
+  // redirect is in flight — the URL will gain `?project=&instance=&session=`
+  // within a tick or two and `ProjectAgentChatPanel` will take over. Without
+  // this gate we'd mount `StandaloneAgentChatPanel`, fire its per-agent
+  // history fetch, then immediately unmount and remount with a different
+  // `streamKey` once the redirect lands, producing the agent-switch flicker
+  // (two cold-load reveals back to back).
+  if (agentId && shouldDeferStandalone) {
+    return <div className={styles.lanePlaceholder} aria-hidden="true" />;
   }
 
   if (agentId) {

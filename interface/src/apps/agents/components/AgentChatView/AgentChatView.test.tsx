@@ -2,8 +2,16 @@ import { render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { AgentChatView } from "./AgentChatView";
 
+type FakeProject = { project_id: string; name: string };
+type FakeAgentInstance = { agent_instance_id: string; agent_id: string };
+
 const mocks = vi.hoisted(() => ({
-  params: { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined },
+  params: { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined } as {
+    agentId?: string;
+    projectId?: string;
+    agentInstanceId?: string;
+  },
+  searchParams: new URLSearchParams(),
   isMobileLayout: false,
   latestChatPanelProps: undefined as Record<string, unknown> | undefined,
   latestHistorySyncOptions: undefined as Record<string, unknown> | undefined,
@@ -12,13 +20,23 @@ const mocks = vi.hoisted(() => ({
   stopStreaming: vi.fn(),
   resetEvents: vi.fn(),
   markNextSendAsNewSession: vi.fn(),
+  // Stores controlled per-test so we can exercise the defer-render gate
+  // for "redirect is about to fire" without spinning up the real stores.
+  projectsState: {
+    projects: [] as FakeProject[],
+    agentsByProject: {} as Record<string, FakeAgentInstance[]>,
+  },
+  sessionsState: {
+    sessionsBySurface: {} as Record<string, unknown[]>,
+  },
+  defaultStandaloneRedirect: vi.fn(),
 }));
 
 vi.mock("react-router-dom", () => ({
   useParams: () => mocks.params,
   useLocation: () => ({ state: null }),
   useNavigate: () => vi.fn(),
-  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+  useSearchParams: () => [mocks.searchParams, vi.fn()],
 }));
 
 vi.mock("../../../../api/client", () => ({
@@ -114,12 +132,41 @@ vi.mock("../../../../stores/context-usage-store", () => ({
 }));
 
 vi.mock("../../../../stores/projects-list-store", () => ({
-  useProjectsListStore: (selector: (state: { projects: unknown[]; agentsByProject: Record<string, unknown[]>; setAgentsByProject: () => void }) => unknown) =>
+  useProjectsListStore: (selector: (state: { projects: FakeProject[]; agentsByProject: Record<string, FakeAgentInstance[]>; setAgentsByProject: () => void }) => unknown) =>
     selector({
-      projects: [],
-      agentsByProject: {},
+      projects: mocks.projectsState.projects,
+      agentsByProject: mocks.projectsState.agentsByProject,
       setAgentsByProject: vi.fn(),
     }),
+}));
+
+vi.mock("../../../../stores/sessions-list-store", () => ({
+  agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+  useAgentBindingsKey: (agentId: string | undefined) => {
+    if (!agentId) return "";
+    const parts: string[] = [];
+    for (const project of mocks.projectsState.projects) {
+      const instances = mocks.projectsState.agentsByProject[project.project_id];
+      if (!instances) continue;
+      for (const instance of instances) {
+        if (instance.agent_id === agentId) {
+          parts.push(`${project.project_id}:${instance.agent_instance_id}`);
+        }
+      }
+    }
+    parts.sort();
+    return parts.join(",");
+  },
+  useSessionsListStore: (selector: (state: { sessionsBySurface: Record<string, unknown[]>; bumpVersion: () => void }) => unknown) =>
+    selector({
+      sessionsBySurface: mocks.sessionsState.sessionsBySurface,
+      bumpVersion: vi.fn(),
+    }),
+}));
+
+vi.mock("../../../../components/SessionsList/use-default-session-redirect", () => ({
+  useDefaultStandaloneSessionRedirect: (...args: unknown[]) => mocks.defaultStandaloneRedirect(...args),
+  useDefaultProjectSessionRedirect: vi.fn(),
 }));
 
 vi.mock("../../stores", () => ({
@@ -187,9 +234,13 @@ vi.mock("./AgentChatView.module.css", () => ({
 describe("AgentChatView", () => {
   beforeEach(() => {
     mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
+    mocks.searchParams = new URLSearchParams();
     mocks.isMobileLayout = false;
     mocks.latestChatPanelProps = undefined;
     mocks.latestHistorySyncOptions = undefined;
+    mocks.projectsState = { projects: [], agentsByProject: {} };
+    mocks.sessionsState = { sessionsBySurface: {} };
+    mocks.defaultStandaloneRedirect.mockReset();
   });
 
   it("uses ChatPanel's desktop input autofocus for standalone agents", () => {
@@ -216,5 +267,104 @@ describe("AgentChatView", () => {
         watchAgentId: "agent-1",
       }),
     );
+  });
+
+  it("renders the lane placeholder while a default-session redirect is pending (cached sessions)", () => {
+    // Agent has bindings AND its sessions surface already holds a row, so the
+    // redirect hook is going to write `?session=` into the URL on the very
+    // next tick. Mounting `StandaloneAgentChatPanel` here would fire its
+    // per-agent history fetch and produce a flicker when the URL settles
+    // and `ProjectAgentChatPanel` swaps in.
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1" }],
+      },
+    };
+
+    render(<AgentChatView />);
+
+    expect(screen.queryByTestId("chat-panel")).toBeNull();
+    expect(mocks.latestChatPanelProps).toBeUndefined();
+  });
+
+  it("renders the lane placeholder while a default-session redirect is pending (sessions not yet loaded)", () => {
+    // Bindings exist but the sessions surface hasn't been loaded yet — the
+    // redirect *may* fire once `loadAgentSessions` resolves. Defer until we
+    // know one way or the other.
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = { sessionsBySurface: {} };
+
+    render(<AgentChatView />);
+
+    expect(screen.queryByTestId("chat-panel")).toBeNull();
+    expect(mocks.latestChatPanelProps).toBeUndefined();
+  });
+
+  it("renders the standalone panel when the agent has no bindings (no redirect possible)", () => {
+    mocks.projectsState = { projects: [], agentsByProject: {} };
+    mocks.sessionsState = { sessionsBySurface: {} };
+
+    render(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  it("renders the standalone panel when the agent has bindings but the sessions surface loaded empty", () => {
+    // No sessions ever existed for this agent — the redirect hook will not
+    // fire, so we should mount the standalone panel immediately and let the
+    // user start a fresh chat.
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [],
+      },
+    };
+
+    render(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  it("renders the project panel directly when the URL already carries session params (no defer)", () => {
+    // When the user clicks a session row in the sidekick, the URL carries
+    // `?project=&instance=&session=` from the start so the agents-shell
+    // session branch should render `ProjectAgentChatPanel` immediately,
+    // even when the standalone surface is in the "redirect imminent" state.
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1" }],
+      },
+    };
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s1",
+    });
+
+    render(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 });

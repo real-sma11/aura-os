@@ -9,6 +9,17 @@
   font-weight: 700;
 }
 
+/* Filled while the default-session redirect is in flight. Matches the
+   surrounding chat surface so the brief "no panel mounted yet" gap
+   reads as a continuous loading state instead of a flash. The
+   eventual `ChatPanel`'s own `initialRevealOverlay` then takes over
+   on the same background. */
+.lanePlaceholder {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
 .agentSwitcherBody {
   display: flex;
   flex-direction: column;
