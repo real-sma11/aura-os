@@ -1,25 +1,21 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../components/OverlayScrollbar", () => ({
-  OverlayScrollbar: () => null,
-}));
-vi.mock("../../../components/Avatar", () => ({
-  Avatar: ({ name }: { name: string }) => (
-    <span data-testid="avatar" aria-hidden="true">
-      {name.charAt(0)}
-    </span>
-  ),
-}));
 vi.mock("../../../components/EmptyState", () => ({
   EmptyState: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="empty-state">{children}</div>
   ),
 }));
+vi.mock("../FeedbackDetailsPanel", () => ({
+  FeedbackDetailsPanel: () => <div data-testid="details-panel">DETAILS</div>,
+}));
+vi.mock("../FeedbackCommentsPanel", () => ({
+  FeedbackCommentsPanel: () => <div data-testid="comments-panel">COMMENTS</div>,
+}));
 
 import { FeedbackSidekickPanel } from "./FeedbackSidekickPanel";
 import { useFeedbackStore } from "../../../stores/feedback-store";
-import type { FeedbackItem, FeedbackComment } from "../types";
+import type { FeedbackItem } from "../types";
 
 const item: FeedbackItem = {
   id: "fb-1",
@@ -37,71 +33,33 @@ const item: FeedbackItem = {
   createdAt: new Date().toISOString(),
 };
 
-const comment: FeedbackComment = {
-  id: "c-1",
-  itemId: "fb-1",
-  author: { name: "Grace", type: "user" },
-  text: "Nice idea",
-  createdAt: new Date().toISOString(),
-};
-
 describe("FeedbackSidekickPanel", () => {
   beforeEach(() => {
     useFeedbackStore.setState({
       items: [item],
-      comments: [],
-      selectedId: null,
+      selectedId: "fb-1",
+      sidekickTab: "details",
     });
   });
 
-  it("prompts the user to pick a feedback item when none is selected", () => {
+  it("renders the empty state when nothing is selected, regardless of tab", () => {
+    useFeedbackStore.setState({ selectedId: null, sidekickTab: "comments" });
     render(<FeedbackSidekickPanel />);
-    expect(
-      screen.getByText("Select a feedback item to view comments"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("details-panel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("comments-panel")).not.toBeInTheDocument();
   });
 
-  it("shows 'No comments yet' when the selected item has none", () => {
-    useFeedbackStore.setState({ selectedId: "fb-1" });
+  it("routes to the details panel by default", () => {
     render(<FeedbackSidekickPanel />);
-    expect(screen.getByText("No comments yet")).toBeInTheDocument();
+    expect(screen.getByTestId("details-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("comments-panel")).not.toBeInTheDocument();
   });
 
-  it("renders existing comments for the selected item", () => {
-    useFeedbackStore.setState({ selectedId: "fb-1", comments: [comment] });
+  it("routes to the comments panel when the comments tab is active", () => {
+    useFeedbackStore.setState({ sidekickTab: "comments" });
     render(<FeedbackSidekickPanel />);
-    expect(screen.getByText("Grace")).toBeInTheDocument();
-    expect(screen.getByText("Nice idea")).toBeInTheDocument();
-  });
-
-  it("calls addComment through the store on Enter and clears the draft", () => {
-    const addComment = vi.fn();
-    useFeedbackStore.setState({ selectedId: "fb-1", addComment });
-
-    render(<FeedbackSidekickPanel />);
-    const textarea = screen.getByLabelText("Add a comment") as HTMLTextAreaElement;
-
-    fireEvent.change(textarea, { target: { value: "LGTM" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-
-    expect(addComment).toHaveBeenCalledWith("fb-1", "LGTM");
-    expect(textarea.value).toBe("");
-  });
-
-  it("keeps the send button disabled until there is non-whitespace text", () => {
-    useFeedbackStore.setState({ selectedId: "fb-1" });
-    render(<FeedbackSidekickPanel />);
-    const send = screen.getByLabelText("Send comment") as HTMLButtonElement;
-    expect(send).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Add a comment"), {
-      target: { value: "   " },
-    });
-    expect(send).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Add a comment"), {
-      target: { value: "done" },
-    });
-    expect(send).not.toBeDisabled();
+    expect(screen.getByTestId("comments-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("details-panel")).not.toBeInTheDocument();
   });
 });

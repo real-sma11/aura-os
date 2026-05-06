@@ -117,3 +117,8 @@ export function statusLabel(status: FeedbackStatus): string {
   const match = FEEDBACK_STATUS_OPTIONS.find((o) => o.value === status);
   return match?.label ?? status;
 }
+
+export function productLabel(product: FeedbackProduct): string {
+  const match = FEEDBACK_PRODUCT_OPTIONS.find((o) => o.value === product);
+  return match?.label ?? product;
+}

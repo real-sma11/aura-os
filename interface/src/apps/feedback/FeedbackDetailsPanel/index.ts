@@ -1,0 +1,1 @@
+export { FeedbackDetailsPanel } from "./FeedbackDetailsPanel";

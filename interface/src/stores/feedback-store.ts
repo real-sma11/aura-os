@@ -25,6 +25,12 @@ import {
   shouldEnableAuraScreenshotBridge,
 } from "../lib/screenshot-bridge";
 
+/** Right-hand sidekick tab when a feedback item is selected. The Details
+ *  tab is the default landing surface (it surfaces title, full description,
+ *  author, category, status, product, vote totals); Comments retains the
+ *  thread + composer that previously owned the entire sidekick. */
+export type FeedbackSidekickTab = "details" | "comments";
+
 interface FeedbackState {
   items: readonly FeedbackItem[];
   comments: readonly FeedbackComment[];
@@ -35,6 +41,9 @@ interface FeedbackState {
    *  with a product and the list only ever shows items for the active one. */
   productFilter: FeedbackProduct;
   selectedId: string | null;
+  /** Active sidekick tab. Persists across selections so a user who chose
+   *  Comments on one item lands on Comments for the next item too. */
+  sidekickTab: FeedbackSidekickTab;
   isLoading: boolean;
   /** True after the first successful bootstrap load so re-mounting the
    *  feedback app (e.g. navigating away and back) doesn't flash the loading
@@ -57,6 +66,7 @@ interface FeedbackActions {
   setStatusFilter: (status: FeedbackStatus | null) => void;
   setProductFilter: (product: FeedbackProduct) => void;
   selectItem: (id: string | null) => void;
+  setSidekickTab: (tab: FeedbackSidekickTab) => void;
   loadItems: () => Promise<void>;
   loadComments: (itemId: string) => Promise<void>;
   createFeedback: (draft: FeedbackDraft) => Promise<FeedbackItem | null>;
@@ -175,6 +185,7 @@ export const useFeedbackStore = create<FeedbackStore>()((set, get) => ({
   statusFilter: null,
   productFilter: DEFAULT_FEEDBACK_PRODUCT,
   selectedId: null,
+  sidekickTab: "details",
   isLoading: false,
   hasLoaded: false,
   loadError: null,
@@ -197,6 +208,8 @@ export const useFeedbackStore = create<FeedbackStore>()((set, get) => ({
       void get().loadComments(id);
     }
   },
+
+  setSidekickTab: (sidekickTab) => set({ sidekickTab }),
 
   openComposer: () => set({ isComposerOpen: true }),
 
@@ -477,6 +490,8 @@ export function useFeedback() {
       setProductFilter: s.setProductFilter,
       selectedId: s.selectedId,
       selectItem: s.selectItem,
+      sidekickTab: s.sidekickTab,
+      setSidekickTab: s.setSidekickTab,
       isLoading: s.isLoading,
       hasLoaded: s.hasLoaded,
       loadError: s.loadError,

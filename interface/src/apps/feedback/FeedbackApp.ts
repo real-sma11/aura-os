@@ -2,7 +2,7 @@ import { Cross } from "lucide-react";
 import { FeedbackList } from "./FeedbackList";
 import { FeedbackMainPanel } from "./FeedbackMainPanel";
 import { FeedbackSidekickPanel } from "./FeedbackSidekickPanel";
-import { FeedbackSidekickHeader } from "./FeedbackSidekickHeader";
+import { FeedbackSidekickTaskbar } from "./FeedbackSidekickTaskbar";
 import type { AuraAppModule } from "../types";
 
 export const FeedbackApp: AuraAppModule = {
@@ -14,5 +14,5 @@ export const FeedbackApp: AuraAppModule = {
   MainPanel: FeedbackMainPanel,
   ResponsiveControls: FeedbackList,
   SidekickPanel: FeedbackSidekickPanel,
-  SidekickTaskbar: FeedbackSidekickHeader,
+  SidekickTaskbar: FeedbackSidekickTaskbar,
 };
