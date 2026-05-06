@@ -23,7 +23,7 @@ export function buildDisplayEvents(msgs: SessionEvent[]): DisplaySessionEvent[] 
         .map((b) =>
           b.type === "text"
             ? { type: "text" as const, text: b.text }
-            : { type: "image" as const, media_type: b.media_type, data: b.data },
+            : { type: "image" as const, media_type: b.media_type, data: b.data, source_url: b.source_url },
         );
       const thinking = m.thinking || undefined;
       return {
