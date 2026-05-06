@@ -106,14 +106,17 @@
 
   /* ----------------------------------------------------------------------
      Terminal (xterm.js) palette — consumed by getXtermTheme() at runtime.
-     Dark values mirror the VS Code default dark+ palette so the embedded
-     terminal feels native; light values use the VS Code default light
-     palette for a readable inverted experience.
+     Dark values mirror the VS Code default dark+ palette for the foreground
+     and ANSI colors; the background and cursor-accent are aliased to
+     --color-bg so the embedded terminal renders flush with the surrounding
+     pane chrome (TerminalPanel paints var(--color-bg) on its container, so
+     a hardcoded #1e1e1e terminal slab leaves a visible lighter rectangle
+     against the #09090b app bg in dark mode).
      ---------------------------------------------------------------------- */
-  --color-terminal-bg: #1e1e1e;
+  --color-terminal-bg: var(--color-bg);
   --color-terminal-fg: #cccccc;
   --color-terminal-cursor: #aeafad;
-  --color-terminal-cursor-accent: #1e1e1e;
+  --color-terminal-cursor-accent: var(--color-bg);
   --color-terminal-selection-bg: #264f78;
   --color-terminal-selection-inactive-bg: rgba(38, 79, 120, 0.7);
 
@@ -234,11 +237,14 @@
   --color-node-for-each: #0d9488;
   --color-node-group: #0284c7;
 
-  /* Terminal (xterm.js) — VS Code default light theme palette. */
-  --color-terminal-bg: #ffffff;
+  /* Terminal (xterm.js) — VS Code default light theme palette. Background
+     and cursor-accent are aliased to --color-bg so the terminal stays
+     flush with the surrounding pane chrome (see the matching dark block
+     above for rationale). */
+  --color-terminal-bg: var(--color-bg);
   --color-terminal-fg: #1f2937;
   --color-terminal-cursor: #374151;
-  --color-terminal-cursor-accent: #ffffff;
+  --color-terminal-cursor-accent: var(--color-bg);
   --color-terminal-selection-bg: #bfdbfe;
   --color-terminal-selection-inactive-bg: rgba(191, 219, 254, 0.7);
 
