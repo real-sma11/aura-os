@@ -23,6 +23,13 @@ vi.mock("../../../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({ isMobileLayout: mockIsMobileLayout }),
 }));
 
+// AgentEnvironment now always mounts (it renders an inert placeholder while
+// machineType is undefined to keep the bottom-bar slot stable). Stub out the
+// async hook it depends on so tests don't trigger unwrapped-act warnings.
+vi.mock("../../../../hooks/use-environment-info", () => ({
+  useEnvironmentInfo: () => ({ data: null, loading: false }),
+}));
+
 let mockSelectedModel: string | null = null;
 let mockSelectedMode: "code" | "plan" | "image" | "3d" = "code";
 let mockPinnedSourceImage: {
@@ -466,6 +473,18 @@ describe("ChatInputBar", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove Find Files" }));
     expect(onCommandsChange).toHaveBeenCalledWith([]);
+  });
+
+  it("keeps the environment slot and divider mounted while machineType is loading", () => {
+    // Simulates the brief window after switching agents, when
+    // useAgentChatMeta returns machineType=undefined while the new
+    // projectAgentInstance query is in flight. The slot must remain in the
+    // DOM so the orbit indicator and "/ for commands" don't shift.
+    const { container } = render(<ChatInputBar {...makeProps({ machineType: undefined })} />);
+
+    expect(container.querySelector(".environmentWrap")).not.toBeNull();
+    expect(container.querySelector(".infoDivider")).not.toBeNull();
+    expect(container.querySelector('[data-loading="true"]')).not.toBeNull();
   });
 
   it("opens the mobile model sheet and calls setSelectedModel", async () => {

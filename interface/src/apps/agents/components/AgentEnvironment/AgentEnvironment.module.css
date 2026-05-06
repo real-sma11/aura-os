@@ -15,11 +15,21 @@
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
+  /* Reserve enough width for the widest content ("• Remote") so the slot
+     stays stable when the indicator switches between Local and Remote, or
+     when the agent meta is still loading. */
+  min-width: 52px;
   transition: color 0.15s ease;
 }
 
 .indicator:hover {
   color: var(--color-text-primary);
+}
+
+.indicator[data-loading="true"] {
+  visibility: hidden;
+  pointer-events: none;
+  cursor: default;
 }
 
 .dot {

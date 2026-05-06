@@ -20,7 +20,7 @@ import {
 } from "./helpers"
 
 interface AgentEnvironmentProps {
-  machineType: "local" | "remote"
+  machineType: "local" | "remote" | undefined
   agentId?: string
 }
 
@@ -32,6 +32,7 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
   const wrapperRef = useRef<HTMLDivElement>(null)
   const statusCardRef = useRef<HTMLDivElement>(null)
   const { data } = useEnvironmentInfo()
+  const isLoading = machineType === undefined
   const isLocal = machineType === "local"
   const isRemote = machineType === "remote" && !!agentId
   const avatarState = useAvatarState(agentId)
@@ -78,8 +79,9 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
   }, [open, updateStatusCardPosition])
 
   const handleMouseEnter = useCallback(() => {
+    if (isLoading) return
     if (!pinned) setOpen(true)
-  }, [pinned])
+  }, [isLoading, pinned])
 
   const handleMouseLeave = useCallback((event: ReactMouseEvent) => {
     const nextTarget = event.relatedTarget
@@ -94,6 +96,7 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
   }, [pinned])
 
   const handleClick = useCallback(() => {
+    if (isLoading) return
     if (pinned) {
       setPinned(false)
       setOpen(false)
@@ -102,7 +105,7 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
       setOpen(true)
     }
     clearActionError()
-  }, [pinned, clearActionError])
+  }, [isLoading, pinned, clearActionError])
 
   useEffect(() => {
     if (!open) return
@@ -146,6 +149,24 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
         document.body,
       )
     : null
+
+  if (isLoading) {
+    // Render an inert placeholder that occupies the same width as the loaded
+    // indicator so siblings on the bottom bar don't shift while the agent
+    // metadata query is in flight.
+    return (
+      <div ref={wrapperRef} className={styles.wrapper}>
+        <span
+          className={styles.indicator}
+          data-loading="true"
+          aria-hidden="true"
+        >
+          <span className={styles.dot} data-status="idle" />
+          Remote
+        </span>
+      </div>
+    )
+  }
 
   return (
     <>

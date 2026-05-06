@@ -724,19 +724,15 @@ export const DesktopChatInputBar = memo(
 
     const infoBarStart = (
       <>
-        {machineType ? (
-          <>
-            <span className={styles.environmentWrap}>
-              <AgentEnvironment
-                machineType={machineType}
-                agentId={templateAgentId ?? agentId}
-              />
-            </span>
-            <span className={styles.infoDivider} aria-hidden="true">
-              ·
-            </span>
-          </>
-        ) : null}
+        <span className={styles.environmentWrap}>
+          <AgentEnvironment
+            machineType={machineType}
+            agentId={templateAgentId ?? agentId}
+          />
+        </span>
+        <span className={styles.infoDivider} aria-hidden="true">
+          ·
+        </span>
         <span className={styles.orbitWrap}>
           <OrbitStatusIndicator project={selectedProject} />
         </span>

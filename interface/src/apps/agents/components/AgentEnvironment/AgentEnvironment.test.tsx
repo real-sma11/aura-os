@@ -186,4 +186,27 @@ describe("AgentEnvironment", () => {
       )
     })
   })
+
+  it("renders an inert placeholder when machineType is undefined so the slot keeps width", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<AgentEnvironment machineType={undefined} agentId="a1" />)
+
+    // Placeholder is hidden from accessibility and from clicks: the text exists
+    // in the DOM (so the slot keeps width) but no role="button" is rendered.
+    expect(screen.queryByRole("button", { name: "Remote" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Local" })).not.toBeInTheDocument()
+
+    const placeholder = container.querySelector('[data-loading="true"]')
+    expect(placeholder).not.toBeNull()
+    expect(placeholder).toHaveTextContent("Remote")
+    expect(placeholder).toHaveAttribute("aria-hidden", "true")
+
+    // No swarm fetch should fire while we don't yet know the agent's machine type.
+    expect(swarmApiMocks.getRemoteAgentState).not.toHaveBeenCalled()
+
+    // Hovering and clicking the placeholder must not open the popover.
+    await user.hover(placeholder as Element)
+    await user.click(placeholder as Element)
+    expect(screen.queryByText("Status")).not.toBeInTheDocument()
+  })
 })

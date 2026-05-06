@@ -639,9 +639,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           </div>
           <div className={styles.metaRow}>
             <span className={styles.environmentWrap}>
-              {machineType ? (
-                <AgentEnvironment machineType={machineType} agentId={templateAgentId ?? agentId} />
-              ) : null}
+              <AgentEnvironment machineType={machineType} agentId={templateAgentId ?? agentId} />
             </span>
             <span className={styles.metaSpacer} />
             {contextUsage != null && contextUsage.utilization > 0 ? (
