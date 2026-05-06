@@ -5,6 +5,12 @@ import type {
   DisplayImageBlock,
   DisplaySessionEvent,
 } from "../../../../shared/types/stream";
+
+/** Resolve an image block to a renderable src URL. Prefers source_url (S3) over inline base64. */
+function imageBlockSrc(block: DisplayImageBlock): string {
+  if (block.source_url) return block.source_url;
+  return `data:${block.media_type};base64,${block.data}`;
+}
 import { langFromPath } from "../../../../ide/lang";
 import { useHighlightedHtml } from "../../../../shared/hooks/use-highlighted-html";
 import { useUIModalStore } from "../../../../stores/ui-modal-store";
@@ -101,7 +107,7 @@ export const MessageBubble = memo(function MessageBubble({
   const galleryImages = useMemo<GalleryItem[]>(() => {
     return imageBlocks.map(({ block, index }) => ({
       id: `${message.id}-img-${index}`,
-      src: `data:${block.media_type};base64,${block.data}`,
+      src: imageBlockSrc(block),
       alt: "Attached image",
     }));
   }, [imageBlocks, message.id]);
@@ -276,7 +282,7 @@ export const MessageBubble = memo(function MessageBubble({
               aria-label="Open image in gallery"
             >
               <img
-                src={`data:${block.media_type};base64,${block.data}`}
+                src={imageBlockSrc(block)}
                 alt=""
                 className={styles.messageImage}
                 loading="lazy"

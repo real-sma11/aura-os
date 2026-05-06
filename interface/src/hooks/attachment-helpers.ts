@@ -28,7 +28,7 @@ export function buildContentBlocks(
             type: "text" as const,
             text: `[File: ${a.name ?? "document"}]\n\n${decodeBase64Text(a.data)}`,
           }
-        : { type: "image" as const, media_type: a.media_type, data: a.data },
+        : { type: "image" as const, media_type: a.media_type, data: a.data, source_url: a.source_url },
     ),
   ];
 }

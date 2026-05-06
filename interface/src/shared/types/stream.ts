@@ -13,6 +13,8 @@ export interface DisplayImageBlock {
   type: "image";
   media_type: string;
   data: string;
+  /** S3 URL. When set, use this instead of data:base64. */
+  source_url?: string;
 }
 
 export type DisplayContentBlockUnion = DisplayContentBlock | DisplayImageBlock;
