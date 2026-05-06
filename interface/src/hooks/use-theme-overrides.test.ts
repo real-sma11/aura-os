@@ -116,6 +116,61 @@ describe("useThemeOverrides", () => {
     });
   });
 
+  it("setToken with explicit targetTheme writes to the OTHER mode and does NOT touch the active inline style", () => {
+    useThemeMock.mockReturnValue({ resolvedTheme: "dark" });
+    const { result } = renderHook(() => useThemeOverrides());
+
+    act(() => {
+      result.current.setToken("--color-modal-bg", "#ffffff", "light");
+    });
+
+    // Active dark theme inline style untouched...
+    expect(
+      document.documentElement.style.getPropertyValue("--color-modal-bg"),
+    ).toBe("");
+    // ...but the light side of the working set received the value.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    expect(stored).toEqual({
+      dark: {},
+      light: { "--color-modal-bg": "#ffffff" },
+    });
+    expect(result.current.lightOverrides["--color-modal-bg"]).toBe("#ffffff");
+    expect(result.current.darkOverrides["--color-modal-bg"]).toBeUndefined();
+  });
+
+  it("setToken with targetTheme bypasses active read-only presets for the OTHER mode", () => {
+    // A dark read-only preset is active for dark, but a write to "light"
+    // should still land in the light working set (presets are scoped per
+    // base, so cross-mode writes can't target them anyway).
+    const { result } = renderHook(() => useThemeOverrides());
+    act(() => {
+      result.current.selectPreset(BUILT_IN_DARK_ID);
+    });
+
+    act(() => {
+      result.current.setToken("--color-modal-bg", "#abcdef", "light");
+    });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    expect(stored.light).toEqual({ "--color-modal-bg": "#abcdef" });
+    expect(result.current.lightOverrides["--color-modal-bg"]).toBe("#abcdef");
+  });
+
+  it("setToken with explicit targetTheme matching resolvedTheme behaves like the no-target form", () => {
+    useThemeMock.mockReturnValue({ resolvedTheme: "dark" });
+    const { result } = renderHook(() => useThemeOverrides());
+
+    act(() => {
+      result.current.setToken("--color-modal-bg", "#101010", "dark");
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--color-modal-bg"),
+    ).toBe("#101010");
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    expect(stored.dark).toEqual({ "--color-modal-bg": "#101010" });
+  });
+
   it("re-applies the matching side when resolvedTheme changes", () => {
     localStorage.setItem(
       STORAGE_KEY,

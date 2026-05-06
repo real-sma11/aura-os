@@ -68,6 +68,62 @@ describe("CustomTokensPanel", () => {
     }
   });
 
+  it("renders paired Dark + Light inputs for the modal background token", () => {
+    renderWithTheme(<CustomTokensPanel />);
+    expect(
+      screen.getByRole("textbox", { name: "Modal background (Dark) CSS value" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", {
+        name: "Modal background (Light) CSS value",
+      }),
+    ).toBeInTheDocument();
+    // The default loop should NOT also render a single un-suffixed
+    // "Modal background CSS value" input.
+    expect(
+      screen.queryByRole("textbox", { name: "Modal background CSS value" }),
+    ).toBeNull();
+  });
+
+  it("editing the Light modal-background input writes to the LIGHT working set even on dark theme", async () => {
+    const user = userEvent.setup();
+    renderWithTheme(<CustomTokensPanel />);
+
+    const lightInput = screen.getByRole("textbox", {
+      name: "Modal background (Light) CSS value",
+    });
+    await user.clear(lightInput);
+    await user.type(lightInput, "#abcdef");
+
+    // Active resolvedTheme is dark, so the inline style for the active
+    // theme must NOT have been touched...
+    expect(
+      document.documentElement.style.getPropertyValue("--color-modal-bg"),
+    ).toBe("");
+    // ...but storage should reflect the new light value.
+    const stored = JSON.parse(localStorage.getItem(OVERRIDES_KEY) ?? "{}");
+    expect(stored.light).toEqual({ "--color-modal-bg": "#abcdef" });
+    expect(stored.dark ?? {}).toEqual({});
+  });
+
+  it("editing the Dark modal-background input writes to the DARK working set and applies inline", async () => {
+    const user = userEvent.setup();
+    renderWithTheme(<CustomTokensPanel />);
+
+    const darkInput = screen.getByRole("textbox", {
+      name: "Modal background (Dark) CSS value",
+    });
+    await user.clear(darkInput);
+    await user.type(darkInput, "#000000");
+
+    expect(
+      document.documentElement.style.getPropertyValue("--color-modal-bg"),
+    ).toBe("#000000");
+    const stored = JSON.parse(localStorage.getItem(OVERRIDES_KEY) ?? "{}");
+    expect(stored.dark).toEqual({ "--color-modal-bg": "#000000" });
+    expect(stored.light ?? {}).toEqual({});
+  });
+
   it("typing a valid CSS value applies it as an inline style and persists it", async () => {
     const user = userEvent.setup();
     renderWithTheme(<CustomTokensPanel />);

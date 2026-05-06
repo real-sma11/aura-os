@@ -81,6 +81,22 @@
   border-color: var(--color-error, var(--status-failed));
 }
 
+.pairedGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-1);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+}
+
+.pairedHeading {
+  display: block;
+  font-weight: var(--font-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

@@ -16,6 +16,7 @@ export const EDITABLE_TOKENS = [
   "--color-sidekick-bg",
   "--color-titlebar-bg",
   "--color-accent",
+  "--color-modal-bg",
 ] as const;
 
 export type EditableToken = (typeof EDITABLE_TOKENS)[number];

@@ -59,6 +59,12 @@
   --color-backdrop-light: rgba(0, 0, 0, 0.3);
   --color-backdrop-medium: rgba(0, 0, 0, 0.4);
 
+  /* Modal surface — dedicated token so modal background can be tuned per
+     theme without dragging along generic --color-elevated (which is used
+     by dropdowns, cards, panels, etc.). Defaults to jet black in dark
+     mode for a high-contrast, framed look against any underlying chrome. */
+  --color-modal-bg: #000000;
+
   /* Input chrome — dedicated tokens so form inputs (Input, Search, login
      provider buttons, FolderPickerField) can be tuned per theme without
      dragging along generic surface tokens. Dark values keep the original
@@ -127,6 +133,12 @@
   --color-backdrop: rgba(0, 0, 0, 0.75);
   --color-backdrop-light: rgba(0, 0, 0, 0.15);
   --color-backdrop-medium: rgba(0, 0, 0, 0.25);
+
+  /* Modal surface — defaults to the same elevated surface light mode has
+     always used so existing white-modal-on-light look is preserved. The
+     token is editable per-theme; only dark mode flips to jet black by
+     default. */
+  --color-modal-bg: var(--color-elevated);
 
   /* Input chrome — light mode uses a clearly visible gray border with a
      white fill. The previous overlay-based approach (rgba(0,0,0,0.03)

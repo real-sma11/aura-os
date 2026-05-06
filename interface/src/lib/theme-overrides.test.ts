@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyOverridesToDocument,
+  EDITABLE_TOKENS,
   isValidColorValue,
   loadOverrides,
   saveOverrides,
@@ -60,6 +61,21 @@ describe("theme-overrides", () => {
     it("treats a top-level non-object payload as empty", () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(["not", "a", "store"]));
       expect(loadOverrides()).toEqual({ dark: {}, light: {} });
+    });
+
+    it("round-trips --color-modal-bg per mode", () => {
+      const store: StoredOverrides = {
+        dark: { "--color-modal-bg": "#000000" },
+        light: { "--color-modal-bg": "#ffffff" },
+      };
+      saveOverrides(store);
+      expect(loadOverrides()).toEqual(store);
+    });
+  });
+
+  describe("EDITABLE_TOKENS", () => {
+    it("includes --color-modal-bg so the dual-mode editor can target it", () => {
+      expect(EDITABLE_TOKENS).toContain("--color-modal-bg");
     });
   });
 

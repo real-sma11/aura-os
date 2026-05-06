@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { Button, Text } from "@cypher-asi/zui";
+import { Button, Text, type ResolvedTheme } from "@cypher-asi/zui";
 import { useThemeOverrides } from "../../../../hooks/use-theme-overrides";
 import {
   EDITABLE_TOKENS,
@@ -16,7 +16,18 @@ const TOKEN_LABELS: Record<EditableToken, string> = {
   "--color-sidekick-bg": "Sidekick background",
   "--color-titlebar-bg": "Titlebar background",
   "--color-accent": "Accent",
+  "--color-modal-bg": "Modal background",
 };
+
+/**
+ * Tokens that render as a paired (dark, light) editor instead of a single
+ * row scoped to the active theme. Modal background is per-mode by request:
+ * users wanted to dial in jet-black for dark while keeping a light value
+ * visible without flipping themes.
+ */
+const PAIRED_TOKENS: ReadonlySet<EditableToken> = new Set<EditableToken>([
+  "--color-modal-bg",
+]);
 
 /**
  * `<input type="color">` only supports `#rrggbb`, so derive a safe
@@ -90,6 +101,16 @@ function useTokenRowState(
 type TokenRowProps = {
   token: EditableToken;
   label: string;
+  /**
+   * Aria/label suffix applied to all inputs and the reset button (e.g.
+   * "Border", "Modal background (Dark)"). Defaults to {@link label}.
+   */
+  controlLabel?: string;
+  /**
+   * DOM id suffix used to disambiguate the text input when multiple rows
+   * share the same token (e.g. the dark/light pair for modal background).
+   */
+  rowKey?: string;
   currentValue: string | undefined;
   onChange: (value: string | null) => void;
   disabled?: boolean;
@@ -98,12 +119,17 @@ type TokenRowProps = {
 function TokenRow({
   token,
   label,
+  controlLabel,
+  rowKey,
   currentValue,
   onChange,
   disabled = false,
 }: TokenRowProps) {
   const { draft, isInvalid, handleTextChange, handleColorChange, handleReset } =
     useTokenRowState(currentValue, onChange);
+  const ariaLabel = controlLabel ?? label;
+  const inputId = `token-text-${token}${rowKey ? `-${rowKey}` : ""}`;
+  const swatchTestId = `token-swatch-${token}${rowKey ? `-${rowKey}` : ""}`;
   const hasOverride = typeof currentValue === "string";
   const swatchStyle = useMemo(
     () => ({ background: hasOverride ? currentValue : `var(${token})` }),
@@ -113,7 +139,7 @@ function TokenRow({
 
   return (
     <div className={styles.row}>
-      <label className={styles.label} htmlFor={`token-text-${token}`}>
+      <label className={styles.label} htmlFor={inputId}>
         {label}
       </label>
       <div className={styles.controls}>
@@ -121,23 +147,23 @@ function TokenRow({
           aria-hidden="true"
           className={styles.swatch}
           style={swatchStyle}
-          data-testid={`token-swatch-${token}`}
+          data-testid={swatchTestId}
         />
         <input
           type="color"
-          aria-label={`${label} color picker`}
+          aria-label={`${ariaLabel} color picker`}
           value={toColorInputValue(currentValue)}
           onChange={handleColorChange}
           className={styles.colorInput}
           disabled={disabled}
         />
         <input
-          id={`token-text-${token}`}
+          id={inputId}
           type="text"
           spellCheck={false}
           autoComplete="off"
           placeholder={`var(${token})`}
-          aria-label={`${label} CSS value`}
+          aria-label={`${ariaLabel} CSS value`}
           aria-invalid={isInvalid || undefined}
           value={draft}
           onChange={handleTextChange}
@@ -148,7 +174,7 @@ function TokenRow({
           size="sm"
           variant="ghost"
           onClick={handleReset}
-          aria-label={`Reset ${label}`}
+          aria-label={`Reset ${ariaLabel}`}
           disabled={disabled}
         >
           Reset
@@ -158,9 +184,66 @@ function TokenRow({
   );
 }
 
+type PairedTokenRowProps = {
+  token: EditableToken;
+  label: string;
+  darkValue: string | undefined;
+  lightValue: string | undefined;
+  onChange: (value: string | null, mode: ResolvedTheme) => void;
+  disabled?: boolean;
+};
+
+/**
+ * Two-row editor (dark + light) for tokens whose value is meaningfully
+ * different per resolved theme and that the user wants to dial in without
+ * having to flip themes. Each row writes through {@link onChange} with an
+ * explicit `mode` so the hook can route to the correct working-set entry.
+ */
+function PairedTokenRow({
+  token,
+  label,
+  darkValue,
+  lightValue,
+  onChange,
+  disabled = false,
+}: PairedTokenRowProps) {
+  return (
+    <div className={styles.pairedGroup} data-testid={`token-pair-${token}`}>
+      <Text variant="muted" size="xs" className={styles.pairedHeading}>
+        {label}
+      </Text>
+      <TokenRow
+        token={token}
+        label="Dark"
+        controlLabel={`${label} (Dark)`}
+        rowKey="dark"
+        currentValue={darkValue}
+        onChange={(value) => onChange(value, "dark")}
+        disabled={disabled}
+      />
+      <TokenRow
+        token={token}
+        label="Light"
+        controlLabel={`${label} (Light)`}
+        rowKey="light"
+        currentValue={lightValue}
+        onChange={(value) => onChange(value, "light")}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
 export function CustomTokensPanel() {
-  const { overrides, setToken, resetAll, presets, activePresetId } =
-    useThemeOverrides();
+  const {
+    overrides,
+    darkOverrides,
+    lightOverrides,
+    setToken,
+    resetAll,
+    presets,
+    activePresetId,
+  } = useThemeOverrides();
   const activePreset = activePresetId
     ? (presets.find((p) => p.id === activePresetId) ?? null)
     : null;
@@ -198,16 +281,31 @@ export function CustomTokensPanel() {
       )}
 
       <div className={styles.rows}>
-        {EDITABLE_TOKENS.map((token) => (
-          <TokenRow
-            key={token}
-            token={token}
-            label={TOKEN_LABELS[token]}
-            currentValue={overrides[token]}
-            onChange={(value) => setToken(token, value)}
-            disabled={readOnly}
-          />
-        ))}
+        {EDITABLE_TOKENS.filter((token) => !PAIRED_TOKENS.has(token)).map(
+          (token) => (
+            <TokenRow
+              key={token}
+              token={token}
+              label={TOKEN_LABELS[token]}
+              currentValue={overrides[token]}
+              onChange={(value) => setToken(token, value)}
+              disabled={readOnly}
+            />
+          ),
+        )}
+        {EDITABLE_TOKENS.filter((token) => PAIRED_TOKENS.has(token)).map(
+          (token) => (
+            <PairedTokenRow
+              key={token}
+              token={token}
+              label={TOKEN_LABELS[token]}
+              darkValue={darkOverrides[token]}
+              lightValue={lightOverrides[token]}
+              onChange={(value, mode) => setToken(token, value, mode)}
+              disabled={readOnly}
+            />
+          ),
+        )}
       </div>
 
       <div className={styles.footer}>

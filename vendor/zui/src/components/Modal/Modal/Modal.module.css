@@ -13,7 +13,7 @@
 }
 
 .modal {
-  background-color: var(--color-elevated);
+  background-color: var(--color-modal-bg, var(--color-elevated));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);

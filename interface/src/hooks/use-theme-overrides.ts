@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTheme } from "@cypher-asi/zui";
+import { useTheme, type ResolvedTheme } from "@cypher-asi/zui";
 import {
   applyOverridesToDocument,
   loadOverrides,
@@ -27,7 +27,28 @@ export type UseThemeOverridesResult = {
    * is currently active (no-op for read-only built-in presets).
    */
   overrides: ThemeOverrides;
-  setToken: (token: EditableToken, value: string | null) => void;
+  /**
+   * Working-set overrides for the dark theme (independent of which theme
+   * is currently resolved). Useful for UIs that need to show both modes'
+   * values simultaneously (e.g. the modal-background dual editor).
+   */
+  darkOverrides: ThemeOverrides;
+  /** Working-set overrides for the light theme — see {@link darkOverrides}. */
+  lightOverrides: ThemeOverrides;
+  /**
+   * Set or clear an editable token. When `targetTheme` is omitted (or
+   * matches the active resolved theme), the call respects the active
+   * preset (writing to it if editable, no-op for read-only built-ins).
+   * When `targetTheme` is the OTHER mode, the write always targets that
+   * mode's working-set entry, bypassing presets — the dual-mode editor
+   * relies on this to dial in per-mode defaults regardless of which
+   * preset (if any) is active for the visible theme.
+   */
+  setToken: (
+    token: EditableToken,
+    value: string | null,
+    targetTheme?: ResolvedTheme,
+  ) => void;
   resetAll: () => void;
 
   /** All presets that target the current resolved theme. */
@@ -94,7 +115,34 @@ export function useThemeOverrides(): UseThemeOverridesResult {
   }, [resolvedTheme, appliedOverrides]);
 
   const setToken = useCallback(
-    (token: EditableToken, value: string | null) => {
+    (
+      token: EditableToken,
+      value: string | null,
+      targetTheme?: ResolvedTheme,
+    ) => {
+      const effectiveTarget = targetTheme ?? resolvedTheme;
+      const targetsActiveTheme = effectiveTarget === resolvedTheme;
+
+      // Cross-theme writes (e.g. editing the light mode value while dark is
+      // resolved) always target the working-set map for that theme. Presets
+      // are scoped to a single base, so a dark preset never owns light-mode
+      // overrides — writing to the working set keeps editing predictable.
+      if (!targetsActiveTheme) {
+        setStore((prev) => {
+          const current = prev[effectiveTarget];
+          const nextSide: ThemeOverrides = { ...current };
+          if (value === null) delete nextSide[token];
+          else nextSide[token] = value;
+          const next: StoredOverrides = {
+            ...prev,
+            [effectiveTarget]: nextSide,
+          };
+          saveOverrides(next);
+          return next;
+        });
+        return;
+      }
+
       if (activePreset?.readOnly) return;
 
       if (activePreset) {
@@ -255,6 +303,8 @@ export function useThemeOverrides(): UseThemeOverridesResult {
 
   return {
     overrides: appliedOverrides,
+    darkOverrides: store.dark,
+    lightOverrides: store.light,
     setToken,
     resetAll,
     presets: presetsForTheme,
