@@ -14,7 +14,7 @@
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  row-gap: var(--space-2);
+  gap: var(--space-2);
   pointer-events: auto;
   width: 100%;
   max-width: 680px;
@@ -34,26 +34,10 @@
   font-size: var(--text-xs);
   text-align: center;
   cursor: pointer;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   transition:
     border-color 0.15s,
     color 0.15s;
-}
-
-.chip:nth-child(2n) {
-  border-left: none;
-}
-
-.chip:nth-child(1),
-.chip:nth-child(3) {
-  border-top-left-radius: var(--radius-md);
-  border-bottom-left-radius: var(--radius-md);
-}
-
-.chip:nth-child(2),
-.chip:nth-child(4) {
-  border-top-right-radius: var(--radius-md);
-  border-bottom-right-radius: var(--radius-md);
 }
 
 .chip:hover {
