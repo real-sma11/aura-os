@@ -105,6 +105,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       isCentered = false,
       contextUsage,
       onNewSession,
+      onNewChat,
     },
     ref,
   ) {
@@ -545,11 +546,31 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               event.target.value = "";
             }}
           />
-          <ModeSelector
-            selectedMode={selectedMode}
-            onChange={onModeChange}
-            className={styles.modeSelector}
-          />
+          {onNewChat ? (
+            <div className={styles.modeBarRow}>
+              <ModeSelector
+                selectedMode={selectedMode}
+                onChange={onModeChange}
+                className={`${styles.modeSelector} ${styles.modeSelectorFlex}`}
+              />
+              <button
+                type="button"
+                className={styles.modeNewChatButton}
+                onClick={onNewChat}
+                title="Start a new chat"
+                aria-label="Start new chat"
+                data-agent-action="start-new-chat"
+              >
+                <Plus size={16} strokeWidth={2} />
+              </button>
+            </div>
+          ) : (
+            <ModeSelector
+              selectedMode={selectedMode}
+              onChange={onModeChange}
+              className={styles.modeSelector}
+            />
+          )}
           <AttachmentPreviews attachments={attachments} onRemove={handleRemove} />
           <CommandChips commands={selectedCommands} onRemove={handleCommandRemove} />
           <div className={styles.inputRow}>

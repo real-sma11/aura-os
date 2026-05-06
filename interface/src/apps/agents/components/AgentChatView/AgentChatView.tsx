@@ -13,7 +13,16 @@ import { setLastAgent, setLastProject } from "../../../../utils/storage";
 import { ChatPanel, type ChatPanelProps } from "../../../chat/components/ChatPanel";
 import { MobileChatPanel } from "../../../../mobile/chat/MobileChatPanel";
 import { MobileProjectAgentSwitcherSheet } from "../../../../mobile/chat/MobileProjectAgentSwitcherSheet";
-import { projectChatHistoryKey } from "../../../../stores/chat-history-store";
+import {
+  projectChatHistoryKey,
+  useChatHistoryStore,
+} from "../../../../stores/chat-history-store";
+import {
+  projectSurfaceKey,
+  useLiveSessionId,
+  useLiveSessionStore,
+} from "../../../../stores/live-session-store";
+import { useSessionsListStore } from "../../../../stores/sessions-list-store";
 import { LAST_AGENT_ID_KEY } from "../../stores";
 import { useProjectsListStore } from "../../../../stores/projects-list-store";
 import { queryClient } from "../../../../shared/lib/query-client";
@@ -144,20 +153,37 @@ function ProjectAgentChatPanel({
     { projectId, agentInstanceId },
   );
   const contextUsage = useContextUsage(streamKey);
+  const surfaceKey = useMemo(
+    () => projectSurfaceKey(projectId, agentInstanceId),
+    [projectId, agentInstanceId],
+  );
+  // When set (after the user clicks "+" or RotateCcw and a fresh
+  // `SessionReady` arrives — see `use-chat-stream.ts`), the panel
+  // scopes the visible transcript to that single session via the
+  // `live-session:` historyKey + `listSessionEvents` fetch, while
+  // keeping send enabled. Distinct from the read-only `?session=`
+  // archived view.
+  const liveSessionId = useLiveSessionId(surfaceKey);
 
   const historyKey = useMemo(() => {
     if (sessionId) {
       return `session:${projectId}:${agentInstanceId}:${sessionId}`;
     }
+    if (liveSessionId) {
+      return `live-session:${projectId}:${agentInstanceId}:${liveSessionId}`;
+    }
     return projectChatHistoryKey(projectId, agentInstanceId);
-  }, [agentInstanceId, projectId, sessionId]);
+  }, [agentInstanceId, projectId, sessionId, liveSessionId]);
 
   const fetchFn = useMemo(() => {
     if (sessionId) {
       return () => api.listSessionEvents(projectId, agentInstanceId, sessionId);
     }
+    if (liveSessionId) {
+      return () => api.listSessionEvents(projectId, agentInstanceId, liveSessionId);
+    }
     return () => api.getEvents(projectId, agentInstanceId);
-  }, [agentInstanceId, projectId, sessionId]);
+  }, [agentInstanceId, projectId, sessionId, liveSessionId]);
 
   const onProjectSwitch = useCallback(() => {
     setLastProject(projectId);
@@ -175,7 +201,41 @@ function ProjectAgentChatPanel({
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     store.markResetPending(streamKey);
-  }, [projectId, agentInstanceId, markNextSendAsNewSession, streamKey]);
+    // Even the soft RotateCcw reset should scope the panel to the
+    // new session once it materializes — without this the visible
+    // transcript would keep showing the aggregated multi-session
+    // history (`load_project_session_history`) on remount.
+    useLiveSessionStore.getState().markPending(surfaceKey);
+  }, [projectId, agentInstanceId, markNextSendAsNewSession, streamKey, surfaceKey]);
+
+  const handleNewChat = useCallback(() => {
+    void import("../../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
+    api.resetInstanceSession(projectId, agentInstanceId).catch(() => {});
+    markNextSendAsNewSession();
+    // Blank the visible transcript immediately. The chat-history-store
+    // entry is dropped (and the IDB cache for the *old* historyKey is
+    // wiped); the local stream buffer is replaced with []. The next
+    // SessionReady will pin a fresh session id, at which point
+    // `historyKey` flips to `live-session:...` and the panel begins
+    // streaming into a clean session-scoped slot.
+    useChatHistoryStore.getState().clearHistory(historyKey);
+    resetEvents([], { allowWhileStreaming: true });
+    const ctxStore = useContextUsageStore.getState();
+    ctxStore.clearContextUtilization(streamKey);
+    ctxStore.markResetPending(streamKey);
+    useLiveSessionStore.getState().markPending(surfaceKey);
+    // Optimistic refresh; the real new session row arrives after the
+    // user's first send (the chat stream bumps again on `SessionReady`).
+    useSessionsListStore.getState().bumpVersion();
+  }, [
+    projectId,
+    agentInstanceId,
+    markNextSendAsNewSession,
+    streamKey,
+    surfaceKey,
+    historyKey,
+    resetEvents,
+  ]);
 
   const contextUsageFetcher = useMemo(() => {
     if (isSessionView) return undefined;
@@ -347,6 +407,7 @@ function ProjectAgentChatPanel({
     selectedProjectId: projectId,
     contextUsage: isSessionView ? undefined : contextUsage,
     onNewSession: isSessionView ? undefined : handleNewSession,
+    onNewChat: isSessionView ? undefined : handleNewChat,
   };
 
   return (

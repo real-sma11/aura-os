@@ -131,6 +131,17 @@ export interface ChatInputBarProps {
   compact?: boolean;
   contextUsage?: ContextUsageEntry;
   onNewSession?: () => void;
+  /**
+   * Optional handler for the "+" new-chat button rendered at the
+   * right end of the mode row (directly above the send button).
+   * When provided, the button appears; when omitted, the mode row
+   * renders `<ModeSelector>` exactly as before. Distinct from
+   * `onNewSession` (the RotateCcw soft reset) — `onNewChat` is a
+   * stronger ChatGPT-style "blank slate" action that also clears
+   * the visible transcript and pins the live session id (see
+   * `interface/src/stores/live-session-store.ts`).
+   */
+  onNewChat?: () => void;
 }
 
 function AttachmentPreviews({
@@ -195,6 +206,7 @@ export const DesktopChatInputBar = memo(
       compact = false,
       contextUsage,
       onNewSession,
+      onNewChat,
     },
     ref,
   ) {
@@ -840,7 +852,26 @@ export const DesktopChatInputBar = memo(
       </>
     );
 
-    const modeBar = (
+    const modeBar = onNewChat ? (
+      <div className={styles.modeBarRow}>
+        <ModeSelector
+          selectedMode={selectedMode}
+          onChange={onModeChange}
+          hideLabel={compact}
+          className={styles.modeSelectorFlex}
+        />
+        <button
+          type="button"
+          className={styles.modeNewChatButton}
+          onClick={onNewChat}
+          title="Start a new chat"
+          aria-label="Start new chat"
+          data-agent-action="start-new-chat"
+        >
+          <Plus size={14} strokeWidth={2} />
+        </button>
+      </div>
+    ) : (
       <ModeSelector
         selectedMode={selectedMode}
         onChange={onModeChange}

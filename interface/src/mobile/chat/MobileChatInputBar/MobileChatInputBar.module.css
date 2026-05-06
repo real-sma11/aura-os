@@ -39,6 +39,42 @@
   padding: 8px 12px 8px;
 }
 
+/* Wrapper used when an `onNewChat` handler is supplied so a small
+   "+" sits at the right end of the mode-selector row, mirroring the
+   desktop affordance. */
+.modeBarRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.modeSelectorFlex {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.modeNewChatButton {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  margin-right: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.1s ease,
+    background 0.1s ease;
+}
+
+.modeNewChatButton:hover {
+  color: var(--color-text-primary);
+  background: var(--color-overlay-medium);
+}
+
 .composer {
   position: relative;
   display: flex;

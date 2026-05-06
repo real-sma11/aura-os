@@ -86,6 +86,14 @@ export interface ChatPanelProps {
   contextUsage?: ContextUsageEntry;
   onNewSession?: () => void;
   /**
+   * Optional ChatGPT-style "+" new-chat handler. When set, the input
+   * bar shows a small Plus button at the right end of the mode row
+   * that wipes the visible transcript and arms the next send to
+   * create a fresh session. Distinct from `onNewSession` (the
+   * RotateCcw context-reset affordance).
+   */
+  onNewChat?: () => void;
+  /**
    * Render the input bar in compact mode (e.g. inside floating desktop
    * agent windows). Suppresses the "/ for commands" hint to save room.
    */
@@ -121,6 +129,7 @@ export function ChatPanel({
   onInitialHandoffReady,
   contextUsage,
   onNewSession,
+  onNewChat,
   compact = false,
 }: ChatPanelProps) {
   const {
@@ -516,6 +525,7 @@ export function ChatPanel({
           compact={compact}
           contextUsage={contextUsage}
           onNewSession={onNewSession}
+          onNewChat={onNewChat}
         />
       </div>
     </div>

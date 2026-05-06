@@ -39,6 +39,11 @@ import {
   useContextUsageStore,
   approxTokensFromText,
 } from "../../stores/context-usage-store";
+import {
+  projectSurfaceKey,
+  useLiveSessionStore,
+} from "../../stores/live-session-store";
+import { useSessionsListStore } from "../../stores/sessions-list-store";
 
 export interface DispatchDeps {
   projectId: string;
@@ -53,6 +58,10 @@ export interface DispatchDeps {
   projectCtxRef: React.MutableRefObject<ReturnType<typeof useProjectActions>>;
   pendingSpecIdsRef: React.MutableRefObject<string[]>;
   pendingTaskIdsRef: React.MutableRefObject<string[]>;
+}
+
+interface SessionReadyPayload {
+  session_id?: string;
 }
 
 /** Mirrors the play button (POST /loop/*). Server is authoritative; avoid extra start calls when status already shows a loop.
@@ -274,8 +283,31 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         break;
       case EventType.AssistantMessageStart:
         break;
-      case EventType.SessionReady:
+      case EventType.SessionReady: {
+        // Capture the live session id whenever a SessionReady arrives.
+        // If `useLiveSessionStore.markPending(surfaceKey)` was set
+        // (handleNewChat / handleNewSession in AgentChatView), this
+        // pins the new session id so the chat panel scopes its
+        // visible transcript to that session via the
+        // `live-session:` historyKey. Always-on (not gated by
+        // `pending`) so a pin set after a redirect through the
+        // route also takes effect on the next stream's SessionReady.
+        const payload = event.content as SessionReadyPayload;
+        const newSessionId = payload?.session_id;
+        if (agentInstanceId && newSessionId) {
+          const surfaceKey = projectSurfaceKey(projectId, agentInstanceId);
+          const liveStore = useLiveSessionStore.getState();
+          const wasPending = !!liveStore.pending[surfaceKey];
+          const previouslyPinned = liveStore.pinned[surfaceKey];
+          if (wasPending || previouslyPinned !== newSessionId) {
+            liveStore.pin(surfaceKey, newSessionId);
+            // A new session row is now visible to `api.listSessions`,
+            // so refresh the agent Chats sidekick.
+            useSessionsListStore.getState().bumpVersion();
+          }
+        }
         break;
+      }
       case EventType.TokenUsage:
         break;
       case EventType.GenerationStart:

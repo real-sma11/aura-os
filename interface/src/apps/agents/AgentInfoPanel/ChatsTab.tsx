@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../../../components/EmptyState";
 import { api } from "../../../api/client";
+import { useSessionsListStore } from "../../../stores/sessions-list-store";
 import { type AnnotatedSession, getDateBucket } from "./agent-info-utils";
 import {
   SidekickItemContextMenu,
@@ -27,6 +29,11 @@ function useAgentSessions(
 ) {
   const [sessions, setSessions] = useState<AnnotatedSession[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bumped by `handleNewChat` and the chat stream when a new session
+  // is persisted server-side (`SessionReady`). Re-running the effect
+  // is how we pick up sessions created from the chat input "+" or
+  // RotateCcw without needing a manual refresh.
+  const sessionsVersion = useSessionsListStore((s) => s.version);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +67,7 @@ function useAgentSessions(
     });
 
     return () => { cancelled = true; };
-  }, [agentId, projectBindings]);
+  }, [agentId, projectBindings, sessionsVersion]);
 
   const removeSession = useCallback((sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
@@ -97,16 +104,17 @@ function useSessionSummaries(sessions: AnnotatedSession[]) {
   useEffect(() => {
     for (const session of sessions) {
       if (session.summary_of_previous_context) continue;
-
-      // Trigger Haiku summary as soon as the session has had at least one
-      // user+assistant exchange (matches ChatGPT's "title once first turn
-      // completes" UX). The token-count proxy keeps us from spamming the LLM
-      // for empty sessions; the backend also no-ops on empty transcripts.
-      const hasFirstTurn =
-        session.total_input_tokens > 0 && session.total_output_tokens > 0;
-      if (!hasFirstTurn) continue;
       if (summarizingRef.current.has(session.session_id)) continue;
 
+      // Always attempt one Haiku summarize per session-without-summary per
+      // mount. The previous gate required `total_input_tokens > 0 &&
+      // total_output_tokens > 0`, but those counters can lag behind the
+      // actual events table (e.g. fresh sessions where the persist task
+      // hasn't rolled cumulative tokens yet), leaving real conversations
+      // labelled "New chat" forever. The dedupe ref keeps us from spamming
+      // the LLM, and the backend cheaply returns "" for empty transcripts
+      // (`generate_session_summary` in `apps/aura-os-server/src/handlers/agents/sessions.rs`),
+      // which we ignore so truly empty sessions stay placeholdered.
       summarizingRef.current.add(session.session_id);
       api
         .summarizeSession(session._projectId, session._agentInstanceId, session.session_id)
@@ -155,6 +163,7 @@ export function ChatsTab({
   agent: Agent;
   projectBindings: ProjectBinding[];
 }) {
+  const navigate = useNavigate();
   const { sessions, loading, removeSession, restoreSession } = useAgentSessions(
     agent.agent_id,
     projectBindings,
@@ -167,6 +176,18 @@ export function ChatsTab({
   );
 
   const buckets = useMemo(() => bucketizeByDate(sessions), [sessions]);
+
+  const handleSessionClick = useCallback(
+    (session: AnnotatedSession) => {
+      // `AgentChatView` reads `?session=` and switches the panel into
+      // its read-only historical mode (with an exit-back-to-live banner)
+      // — see `interface/src/apps/agents/components/AgentChatView/AgentChatView.tsx`.
+      navigate(
+        `/projects/${session._projectId}/agents/${session._agentInstanceId}?session=${session.session_id}`,
+      );
+    },
+    [navigate],
+  );
 
   const resolveMenuTarget = useCallback(
     (nodeId: string): AnnotatedSession | null =>
@@ -223,6 +244,7 @@ export function ChatsTab({
                   id={session.session_id}
                   className={`${styles.chatsRow} ${hasSummary ? "" : styles.chatsRowPlaceholder}`}
                   data-session-id={session.session_id}
+                  onClick={() => handleSessionClick(session)}
                 >
                   {label}
                 </button>

@@ -380,6 +380,44 @@
   background: var(--color-overlay-medium);
 }
 
+/* Mode-row "+" new-chat button. Wraps `<ModeSelector>` and a small
+   icon button so the "+" sits at the right end of the mode row,
+   visually directly above the send button. */
+.modeBarRow {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.modeSelectorFlex {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.modeNewChatButton {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  /* Match ModeSelector.root border-bottom so the row reads as a single
+     strip even though the two children own their own borders. */
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.1s ease,
+    background 0.1s ease;
+}
+
+.modeNewChatButton:hover {
+  color: var(--color-text-primary);
+  background: var(--color-overlay-medium);
+}
+
 .commandsTrigger {
   display: inline;
   padding: 0;

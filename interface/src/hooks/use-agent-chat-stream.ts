@@ -26,6 +26,11 @@ import {
 } from "./use-stream-core";
 import type { DisplaySessionEvent } from "../shared/types/stream";
 import { useContextUsageStore } from "../stores/context-usage-store";
+import {
+  agentSurfaceKey,
+  useLiveSessionStore,
+} from "../stores/live-session-store";
+import { useSessionsListStore } from "../stores/sessions-list-store";
 
 interface UseAgentChatStreamOptions {
   agentId: string | undefined;
@@ -165,9 +170,28 @@ export function useAgentChatStream({ agentId, onTaskSaved, onSpecSaved }: UseAge
               break;
             }
             case EventType.AssistantMessageStart:
-            case EventType.SessionReady:
             case EventType.TokenUsage:
               break;
+            case EventType.SessionReady: {
+              // See `build-stream-handler.ts` for the project-side
+              // counterpart and rationale. Pin the live session id
+              // so the standalone agent panel can scope its
+              // transcript to that session via the
+              // `live-session:agent:` historyKey.
+              const payload = event.content as { session_id?: string };
+              const newSessionId = payload?.session_id;
+              if (agentId && newSessionId) {
+                const surfaceKey = agentSurfaceKey(agentId);
+                const liveStore = useLiveSessionStore.getState();
+                const wasPending = !!liveStore.pending[surfaceKey];
+                const previouslyPinned = liveStore.pinned[surfaceKey];
+                if (wasPending || previouslyPinned !== newSessionId) {
+                  liveStore.pin(surfaceKey, newSessionId);
+                  useSessionsListStore.getState().bumpVersion();
+                }
+              }
+              break;
+            }
             case EventType.GenerationStart:
               core.setProgressText(event.content.mode === "image" ? "Generating image..." : "Generating 3D model...");
               break;
