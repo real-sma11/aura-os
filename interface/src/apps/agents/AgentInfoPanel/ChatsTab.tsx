@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../../../components/EmptyState";
 import { api } from "../../../api/client";
+import { useActiveAppId } from "../../../hooks/use-active-app";
 import { useSessionsListStore } from "../../../stores/sessions-list-store";
 import { type AnnotatedSession, getDateBucket } from "./agent-info-utils";
 import {
@@ -186,6 +187,11 @@ export function ChatsTab({
   projectBindings: ProjectBinding[];
 }) {
   const navigate = useNavigate();
+  // We branch the click target on the active app so the user stays
+  // inside whichever shell they were already in. The projects URL
+  // would otherwise switch the shell to the projects app via
+  // `resolveActiveApp` (basePath `/projects`).
+  const activeAppId = useActiveAppId();
   const { sessions, loading, removeSession, restoreSession } = useAgentSessions(
     agent.agent_id,
     projectBindings,
@@ -217,14 +223,26 @@ export function ChatsTab({
 
   const handleSessionClick = useCallback(
     (session: AnnotatedSession) => {
-      // `AgentChatView` reads `?session=` and switches the panel into
-      // its read-only historical mode (with an exit-back-to-live banner)
-      // — see `interface/src/apps/agents/components/AgentChatView/AgentChatView.tsx`.
+      // `AgentChatView` switches into a read-only historical session
+      // panel (with a "Back to live" banner) when the right URL state
+      // is present. The agents-app branch keeps the URL under
+      // `/agents/...` so the agents shell — and this very ChatsTab
+      // sidekick — stays mounted across the click; everything else
+      // falls back to the canonical projects URL.
+      if (activeAppId === "agents") {
+        const params = new URLSearchParams({
+          project: session._projectId,
+          instance: session._agentInstanceId,
+          session: session.session_id,
+        });
+        navigate(`/agents/${agent.agent_id}?${params.toString()}`);
+        return;
+      }
       navigate(
         `/projects/${session._projectId}/agents/${session._agentInstanceId}?session=${session.session_id}`,
       );
     },
-    [navigate],
+    [activeAppId, agent.agent_id, navigate],
   );
 
   const resolveMenuTarget = useCallback(

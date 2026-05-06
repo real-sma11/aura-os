@@ -457,6 +457,15 @@ export function AgentChatView() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get("session");
+  // Agents-app historical-session branch: when ChatsTab is opened
+  // from inside the agents shell it routes to
+  // `/agents/:agentId?project=...&instance=...&session=...` so the
+  // user stays on `/agents/...` (and the agents sidekick stays
+  // mounted). Fetching session events still requires
+  // `(projectId, agentInstanceId, sessionId)` since
+  // `api.listSessionEvents` is the only per-session fetch we have.
+  const queryProjectId = searchParams.get("project");
+  const queryInstanceId = searchParams.get("instance");
   const isCreateHandoff = isCreateAgentChatHandoff(location.state);
   const completeCreateAgentHandoff = useChatHandoffStore((state) => state.completeCreateAgentHandoff);
 
@@ -478,9 +487,17 @@ export function AgentChatView() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("session");
+      // For the agents-app branch, also drop the encoded
+      // project/instance pointers so "Back to live" lands on the
+      // canonical `/agents/:agentId` standalone chat instead of an
+      // intermediate URL with stale pointers.
+      if (!projectId) {
+        next.delete("project");
+        next.delete("instance");
+      }
       return next;
     });
-  }, [setSearchParams]);
+  }, [setSearchParams, projectId]);
 
   if (projectId && agentInstanceId) {
     return (
@@ -491,6 +508,23 @@ export function AgentChatView() {
         onExitSessionView={exitSessionView}
         initialCreateHandoff={isCreateHandoff}
         onInitialHandoffReady={isCreateHandoff ? handleProjectHandoffReady : undefined}
+      />
+    );
+  }
+
+  if (agentId && queryProjectId && queryInstanceId && sessionId) {
+    // Reuse the project panel so it does the full session-history
+    // wiring (`historyKey: session:...`, `listSessionEvents`,
+    // read-only send, banner, invalidate-before-fetch). The URL
+    // stays `/agents/:agentId?...` so the agents shell remains
+    // active and the ChatsTab sidekick doesn't unmount.
+    return (
+      <ProjectAgentChatPanel
+        projectId={queryProjectId}
+        agentInstanceId={queryInstanceId}
+        sessionId={sessionId}
+        onExitSessionView={exitSessionView}
+        initialCreateHandoff={false}
       />
     );
   }
