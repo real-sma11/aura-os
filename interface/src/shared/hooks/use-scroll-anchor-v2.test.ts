@@ -227,7 +227,7 @@ describe("useScrollAnchorV2", () => {
     expect(result.current.isAutoFollowing).toBe(true);
   });
 
-  it("clears userUnpinnedAt when the user scrolls back inside the enter-follow band", () => {
+  it("clears userUnpinnedAt only when the user scrolls back to the very bottom", () => {
     const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
     const ref = { current: container };
 
@@ -241,12 +241,70 @@ describe("useScrollAnchorV2", () => {
     expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
     expect(result.current.isAutoFollowing).toBe(false);
 
-    // User scrolls back to the bottom; handleScroll re-enters follow mode.
     act(() => {
       (container as unknown as { scrollTop: number }).scrollTop = 1000;
       result.current.handleScroll();
     });
 
+    expect(result.current.isAutoFollowing).toBe(true);
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+  });
+
+  it("keeps the user unpinned when the resulting scroll lands inside the old enter-follow band", () => {
+    // Regression: a wheel-up that only moves the viewport ~50px (well
+    // inside the 180px ENTER_FOLLOW_THRESHOLD_PX) used to immediately
+    // re-pin the user via handleScroll, which then re-fired the
+    // ChatMessageList tail-pin layout effect and snapped the viewport
+    // back to the bottom — making the chat "fight" the user.
+    // scrollHeight=2000, clientHeight=400, scrollTop=1600 → at bottom.
+    const container = makeContainer({ scrollTop: 1600, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1", scrollToBottomOnReset: false }),
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+
+    // Browser updates scrollTop and dispatches a scroll event. The new
+    // distFromBottom is 50, which is inside the legacy enter-band (180).
+    act(() => {
+      (container as unknown as { scrollTop: number }).scrollTop = 1550;
+      result.current.handleScroll();
+    });
+
+    expect(result.current.isAutoFollowing).toBe(false);
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+  });
+
+  it("stays unpinned through repeated scroll ticks until reaching the very bottom", () => {
+    const container = makeContainer({ scrollTop: 1600, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1", scrollToBottomOnReset: false }),
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+
+    for (const scrollTop of [1570, 1550, 1590, 1598]) {
+      act(() => {
+        (container as unknown as { scrollTop: number }).scrollTop = scrollTop;
+        result.current.handleScroll();
+      });
+      expect(result.current.isAutoFollowing).toBe(false);
+      expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+    }
+
+    // Finally land at the true bottom — follow re-engages.
+    act(() => {
+      (container as unknown as { scrollTop: number }).scrollTop = 1600;
+      result.current.handleScroll();
+    });
     expect(result.current.isAutoFollowing).toBe(true);
     expect(result.current.getUserUnpinnedAt()).toBe(0);
   });

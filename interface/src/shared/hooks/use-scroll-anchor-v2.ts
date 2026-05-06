@@ -93,6 +93,23 @@ export function useScrollAnchorV2(
     if (!el) return;
 
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    // Once the user has shown explicit upward intent, stay unpinned until
+    // they truly return to the very bottom. The ENTER_FOLLOW_THRESHOLD_PX
+    // band exists for users who haven't shown intent — applying it here
+    // would let a sub-180px wheel-up be undone on the very next scroll
+    // event, fighting the user every time they try to read older content.
+    if (userUnpinnedAtRef.current > 0) {
+      if (distFromBottom <= 1) {
+        userUnpinnedAtRef.current = 0;
+        if (!pinnedRef.current) {
+          pinnedRef.current = true;
+          syncFollowState();
+        }
+      }
+      return;
+    }
+
     const threshold = pinnedRef.current
       ? EXIT_FOLLOW_THRESHOLD_PX
       : ENTER_FOLLOW_THRESHOLD_PX;
@@ -101,12 +118,6 @@ export function useScrollAnchorV2(
     if (pinnedRef.current !== nextPinned) {
       pinnedRef.current = nextPinned;
       syncFollowState();
-    }
-    // Re-arm auto-follow once the user is comfortably back inside the
-    // enter-follow band; the explicit-intent flag would otherwise keep
-    // suppressing repins forever.
-    if (nextPinned) {
-      userUnpinnedAtRef.current = 0;
     }
   }, [ref, syncFollowState]);
 
