@@ -159,7 +159,32 @@ fn probe_vite_dev_server(base_url: &str) -> bool {
     response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200")
 }
 
+#[cfg(target_os = "windows")]
+fn embed_windows_resources() {
+    // Embed the AURA icon and version info into the Windows PE so surfaces
+    // that read from disk (Start Menu, Explorer, pinned taskbar tile) show
+    // the orb. The runtime `with_window_icon` HICON only covers the live
+    // taskbar entry while the process is running.
+    let mut res = winresource::WindowsResource::new();
+    res.set_icon("assets/installer/installer-icon.ico");
+    res.set("ProductName", "AURA");
+    res.set("FileDescription", "AURA");
+    res.set("CompanyName", "AURA");
+    res.set("LegalCopyright", "Copyright (c) AURA");
+    if let Err(e) = res.compile() {
+        // Don't hard-fail the build: cross-toolchain quirks (missing
+        // `llvm-rc`/`windres`) shouldn't block local development. The
+        // release pipeline runs on a Windows runner with the SDK present,
+        // where this always succeeds.
+        println!("cargo:warning=winresource compile failed: {e}");
+    }
+    println!("cargo:rerun-if-changed=assets/installer/installer-icon.ico");
+}
+
 fn main() {
+    #[cfg(target_os = "windows")]
+    embed_windows_resources();
+
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let interface_dir = Path::new(&manifest_dir).join("../../interface");
     let dist_dir = interface_dir.join("dist");

@@ -32,6 +32,14 @@ cargo-packager-updater = "0.2"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Threading", "Win32_Security"] }
 
+# Embeds an `RT_GROUP_ICON` (and matching version info) into the produced
+# `aura-os-desktop.exe` so the Start Menu, File Explorer, "pin to taskbar"
+# tile, and Alt+Tab fallback all show the AURA orb. Without this, those
+# surfaces fall back to the generic Windows executable glyph because they
+# read the icon from disk, not from the runtime `with_window_icon` HICON.
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 muda = "0.15"
