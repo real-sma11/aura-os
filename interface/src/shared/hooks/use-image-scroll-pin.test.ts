@@ -129,6 +129,38 @@ describe("useImageScrollPin", () => {
     expect(container.scrollTop).toBe(100);
   });
 
+  it("does NOT re-pin during the reveal window once the user has shown explicit scroll-up intent", () => {
+    const container = makeContainer({ scrollTop: 100, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    renderHook(() =>
+      useImageScrollPin(ref, {
+        isAutoFollowing: false,
+        initialRevealUntil: Date.now() + 1000,
+        getUserUnpinnedAt: () => 12345,
+      }),
+    );
+
+    act(() => triggerResize());
+    act(() => fireImageLoad(container));
+    expect(container.scrollTop).toBe(100);
+  });
+
+  it("does NOT re-pin while auto-following if the user has shown explicit scroll-up intent", () => {
+    const container = makeContainer({ scrollTop: 100, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    renderHook(() =>
+      useImageScrollPin(ref, {
+        isAutoFollowing: true,
+        getUserUnpinnedAt: () => 999,
+      }),
+    );
+
+    act(() => triggerResize());
+    expect(container.scrollTop).toBe(100);
+  });
+
   it("does nothing when already pinned to the bottom", () => {
     const container = makeContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
     const ref = { current: container };

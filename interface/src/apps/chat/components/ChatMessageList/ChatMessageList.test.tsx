@@ -188,6 +188,28 @@ describe("ChatMessageList", () => {
     expect(scrollRef.current.scrollTop).toBe(100);
   });
 
+  it("does not pin to bottom when getUserUnpinnedAt returns a non-zero timestamp, even while still 'auto-following'", () => {
+    // Simulates the same-tick race: a streaming token causes a re-render
+    // while the user has already fired a wheel event, but the React state
+    // for `isAutoFollowing` hasn't flushed yet. The defense-in-depth check
+    // on `getUserUnpinnedAt` must short-circuit the tail-pin write.
+    const scrollRef = makeScrollRef({ scrollHeight: 800, scrollTop: 100 });
+
+    render(
+      <ChatMessageList
+        messages={[
+          makeMessage("message-1", "Hi"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+        isAutoFollowing
+        getUserUnpinnedAt={() => 12345}
+      />,
+    );
+
+    expect(scrollRef.current.scrollTop).toBe(100);
+  });
+
   it("shows a Load older trigger when older history is available", () => {
     const scrollRef = makeScrollRef();
     const onLoadOlder = vi.fn();

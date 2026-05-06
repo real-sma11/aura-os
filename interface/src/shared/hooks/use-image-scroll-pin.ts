@@ -7,6 +7,12 @@ interface UseImageScrollPinOptions {
    * cold-load reveal so late-decoding images keep the viewport
    * anchored while the initial reveal animation runs. */
   initialRevealUntil?: number;
+  /** Returns a non-zero `performance.now()` timestamp once the user has
+   * shown explicit upward scroll intent. When non-zero, repinning is
+   * suppressed entirely so the cold-load reveal / post-stream image-pin
+   * window cannot fight a user who has clearly chosen to read older
+   * content. See `useScrollAnchorV2`. */
+  getUserUnpinnedAt?: () => number;
 }
 
 /**
@@ -29,7 +35,11 @@ interface UseImageScrollPinOptions {
  */
 export function useImageScrollPin(
   scrollRef: React.RefObject<HTMLElement | null>,
-  { isAutoFollowing, initialRevealUntil }: UseImageScrollPinOptions,
+  {
+    isAutoFollowing,
+    initialRevealUntil,
+    getUserUnpinnedAt,
+  }: UseImageScrollPinOptions,
 ): void {
   useEffect(() => {
     const el = scrollRef.current;
@@ -40,6 +50,9 @@ export function useImageScrollPin(
     if (!inner) return;
 
     const repinIfNeeded = (): void => {
+      // Once the user has shown explicit intent to scroll up, neither
+      // auto-follow nor the reveal/post-stream window may yank them back.
+      if (getUserUnpinnedAt && getUserUnpinnedAt() > 0) return;
       const withinReveal =
         initialRevealUntil !== undefined && Date.now() < initialRevealUntil;
       if (!isAutoFollowing && !withinReveal) return;
@@ -74,5 +87,5 @@ export function useImageScrollPin(
       observer.disconnect();
       el.removeEventListener("load", onLoad, true);
     };
-  }, [scrollRef, isAutoFollowing, initialRevealUntil]);
+  }, [scrollRef, isAutoFollowing, initialRevealUntil, getUserUnpinnedAt]);
 }

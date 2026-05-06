@@ -87,10 +87,11 @@ export function useChatPanelState({
     attachmentsRef.current = attachments;
   }, [attachments]);
 
-  const { handleScroll, scrollToBottom, isAutoFollowing } = useScrollAnchorV2(
-    messageAreaRef,
-    { resetKey: scrollResetKey, scrollToBottomOnReset },
-  );
+  const { handleScroll, scrollToBottom, isAutoFollowing, getUserUnpinnedAt } =
+    useScrollAnchorV2(messageAreaRef, {
+      resetKey: scrollResetKey,
+      scrollToBottomOnReset,
+    });
 
   const { loadOlder, isLoadingOlder, hasOlderMessages } = useLoadOlderMessages({
     threadKey: streamKey,
@@ -314,6 +315,7 @@ export function useChatPanelState({
     isMobileLayout,
     handleScroll,
     isAutoFollowing,
+    getUserUnpinnedAt,
     isStreaming,
     queue,
     messages,

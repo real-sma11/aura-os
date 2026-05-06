@@ -123,6 +123,155 @@ describe("useScrollAnchorV2", () => {
     expect(result.current.isAutoFollowing).toBe(true);
   });
 
+  it("flips out of auto-follow synchronously on a wheel-up event", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    expect(result.current.isAutoFollowing).toBe(true);
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+
+    expect(result.current.isAutoFollowing).toBe(false);
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+  });
+
+  it("flips out of auto-follow on a downward swipe (touch scrolling content up)", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    act(() => {
+      const start = new Event("touchstart") as TouchEvent;
+      Object.defineProperty(start, "touches", {
+        value: [{ clientY: 100 }],
+        configurable: true,
+      });
+      container.dispatchEvent(start);
+      const move = new Event("touchmove") as TouchEvent;
+      Object.defineProperty(move, "touches", {
+        value: [{ clientY: 200 }],
+        configurable: true,
+      });
+      container.dispatchEvent(move);
+    });
+
+    expect(result.current.isAutoFollowing).toBe(false);
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+  });
+
+  it("flips out of auto-follow on ArrowUp / PageUp / Home keys", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    for (const key of ["ArrowUp", "PageUp", "Home"]) {
+      act(() => {
+        result.current.scrollToBottom();
+      });
+      expect(result.current.isAutoFollowing).toBe(true);
+      act(() => {
+        container.dispatchEvent(new KeyboardEvent("keydown", { key }));
+      });
+      expect(result.current.isAutoFollowing).toBe(false);
+      expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+    }
+  });
+
+  it("does NOT flip on wheel-down (user scrolling toward the bottom)", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: 50 }));
+    });
+
+    expect(result.current.isAutoFollowing).toBe(true);
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+  });
+
+  it("clears userUnpinnedAt when scrollToBottom is called", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.scrollToBottom();
+    });
+
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+    expect(result.current.isAutoFollowing).toBe(true);
+  });
+
+  it("clears userUnpinnedAt when the user scrolls back inside the enter-follow band", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1" }),
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+    expect(result.current.isAutoFollowing).toBe(false);
+
+    // User scrolls back to the bottom; handleScroll re-enters follow mode.
+    act(() => {
+      (container as unknown as { scrollTop: number }).scrollTop = 1000;
+      result.current.handleScroll();
+    });
+
+    expect(result.current.isAutoFollowing).toBe(true);
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+  });
+
+  it("clears userUnpinnedAt on resetKey change", () => {
+    const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result, rerender } = renderHook(
+      ({ resetKey }) =>
+        useScrollAnchorV2(ref, { resetKey, scrollToBottomOnReset: false }),
+      { initialProps: { resetKey: "thread-1" } },
+    );
+
+    act(() => {
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: -10 }));
+    });
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+
+    rerender({ resetKey: "thread-2" });
+
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+    expect(result.current.isAutoFollowing).toBe(true);
+  });
+
   it("ignores scroll events triggered by its own scrollToBottom writes", () => {
     const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
     const ref = { current: container };

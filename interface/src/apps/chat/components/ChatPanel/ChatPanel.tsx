@@ -135,6 +135,7 @@ export function ChatPanel({
     isMobileLayout,
     handleScroll,
     isAutoFollowing,
+    getUserUnpinnedAt,
     isStreaming,
     queue,
     messages,
@@ -446,6 +447,7 @@ export function ChatPanel({
                 hasOlderMessages={hasOlderMessages}
                 onInitialAnchorReady={handleInitialAnchorReady}
                 isAutoFollowing={isAutoFollowing}
+                getUserUnpinnedAt={getUserUnpinnedAt}
                 density={isMobileLayout ? "mobile" : "desktop"}
                 imagePinUntil={imagePinUntil}
               />

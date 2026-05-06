@@ -22,6 +22,12 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   onInitialAnchorReady?: () => void;
   isAutoFollowing?: boolean;
+  /** Returns a non-zero `performance.now()` timestamp once the user has
+   * shown explicit upward scroll intent (wheel/touch/keyboard). When
+   * non-zero, the tail-pin layout effect and `useImageScrollPin` both
+   * suppress writes to `scrollTop` so the user's reading position is
+   * preserved during streams and the post-stream image-pin window. */
+  getUserUnpinnedAt?: () => number;
   density?: "desktop" | "mobile";
   /** Optional UNIX-ms deadline; while now < deadline, image-load
    * events re-pin the scroll container even if the user isn't strictly
@@ -68,12 +74,14 @@ export function ChatMessageList({
   hasOlderMessages,
   onInitialAnchorReady,
   isAutoFollowing = true,
+  getUserUnpinnedAt,
   density = "desktop",
   imagePinUntil,
 }: ChatMessageListProps) {
   useImageScrollPin(scrollRef, {
     isAutoFollowing,
     initialRevealUntil: imagePinUntil,
+    getUserUnpinnedAt,
   });
   const {
     isStreaming,
@@ -156,14 +164,19 @@ export function ChatMessageList({
   // *at* the anchor itself, so we explicitly push scrollTop to scrollHeight
   // whenever the streaming bubble gains tokens, a new message arrives, or
   // a tool-row reveals content — but only while the user is actually pinned.
+  // The `getUserUnpinnedAt` check is defense in depth against same-tick
+  // races where the user's wheel/touch event fires after this layout effect
+  // has already been scheduled but before `isAutoFollowing` re-renders.
   useLayoutEffect(() => {
     if (!hasMessages || !isAutoFollowing) return;
+    if (getUserUnpinnedAt && getUserUnpinnedAt() > 0) return;
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [
     hasMessages,
     isAutoFollowing,
+    getUserUnpinnedAt,
     scrollRef,
     messages.length,
     streamingText,
