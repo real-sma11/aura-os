@@ -80,6 +80,10 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
         .merge(marketplace_routes())
         .merge(debug_routes())
         .merge(loops_routes())
+        .route(
+            "/api/upload/presign",
+            axum::routing::post(crate::handlers::upload::presign_upload),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::auth_guard::require_verified_session,
