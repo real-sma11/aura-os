@@ -4,6 +4,12 @@ import { AgentChatView } from "./AgentChatView";
 
 type FakeProject = { project_id: string; name: string };
 type FakeAgentInstance = { agent_instance_id: string; agent_id: string };
+type FakeAnnotatedSession = {
+  session_id: string;
+  _projectId: string;
+  _agentInstanceId: string;
+};
+type FakeHistoryEntry = { status: "loading" | "ready" | "error" };
 
 const mocks = vi.hoisted(() => ({
   params: { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined } as {
@@ -27,8 +33,10 @@ const mocks = vi.hoisted(() => ({
     agentsByProject: {} as Record<string, FakeAgentInstance[]>,
   },
   sessionsState: {
-    sessionsBySurface: {} as Record<string, unknown[]>,
+    sessionsBySurface: {} as Record<string, FakeAnnotatedSession[]>,
   },
+  historyEntries: {} as Record<string, FakeHistoryEntry>,
+  fetchHistory: vi.fn(),
   defaultStandaloneRedirect: vi.fn(),
 }));
 
@@ -157,11 +165,37 @@ vi.mock("../../../../stores/sessions-list-store", () => ({
     parts.sort();
     return parts.join(",");
   },
-  useSessionsListStore: (selector: (state: { sessionsBySurface: Record<string, unknown[]>; bumpVersion: () => void }) => unknown) =>
+  useMostRecentSession: (surfaceKey: string | undefined) => {
+    if (!surfaceKey) return null;
+    const list = mocks.sessionsState.sessionsBySurface[surfaceKey];
+    return list && list.length > 0 ? list[0] : null;
+  },
+  useSessionsListStore: (selector: (state: { sessionsBySurface: Record<string, FakeAnnotatedSession[]>; bumpVersion: () => void }) => unknown) =>
     selector({
       sessionsBySurface: mocks.sessionsState.sessionsBySurface,
       bumpVersion: vi.fn(),
     }),
+}));
+
+vi.mock("../../../../stores/chat-history-store", () => ({
+  agentHistoryKey: (agentId: string) => `agent:${agentId}`,
+  projectChatHistoryKey: (projectId: string, agentInstanceId: string) =>
+    `${projectId}:${agentInstanceId}`,
+  useChatHistory: () => ({ events: [], status: "ready", error: null }),
+  useChatHistoryStore: Object.assign(
+    (selector: (state: { entries: Record<string, FakeHistoryEntry> }) => unknown) =>
+      selector({ entries: mocks.historyEntries }),
+    {
+      getState: () => ({
+        entries: mocks.historyEntries,
+        fetchHistory: mocks.fetchHistory,
+        clearHistory: vi.fn(),
+        invalidateHistory: vi.fn(),
+        prefetchHistory: vi.fn(),
+        hydrateFromCache: vi.fn(),
+      }),
+    },
+  ),
 }));
 
 vi.mock("../../../../components/SessionsList/use-default-session-redirect", () => ({
@@ -240,6 +274,8 @@ describe("AgentChatView", () => {
     mocks.latestHistorySyncOptions = undefined;
     mocks.projectsState = { projects: [], agentsByProject: {} };
     mocks.sessionsState = { sessionsBySurface: {} };
+    mocks.historyEntries = {};
+    mocks.fetchHistory.mockReset();
     mocks.defaultStandaloneRedirect.mockReset();
   });
 
@@ -283,7 +319,7 @@ describe("AgentChatView", () => {
     };
     mocks.sessionsState = {
       sessionsBySurface: {
-        "agent:agent-1": [{ session_id: "s1" }],
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
       },
     };
 
@@ -291,6 +327,32 @@ describe("AgentChatView", () => {
 
     expect(screen.queryByTestId("chat-panel")).toBeNull();
     expect(mocks.latestChatPanelProps).toBeUndefined();
+  });
+
+  it("eagerly prefetches session events for the imminent redirect target", () => {
+    // While the redirect is still pending, the resolver should warm
+    // `chat-history-store` so that when `ProjectAgentChatPanel`
+    // eventually mounts, its per-session history fetch is already in
+    // (or past) flight and the cold-load overlay never trips.
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
+      },
+    };
+
+    render(<AgentChatView />);
+
+    expect(mocks.fetchHistory).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchHistory).toHaveBeenCalledWith(
+      "session:p1:i1:s1",
+      expect.any(Function),
+    );
   });
 
   it("renders the lane placeholder while a default-session redirect is pending (sessions not yet loaded)", () => {
@@ -341,27 +403,39 @@ describe("AgentChatView", () => {
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 
-  it("renders the project panel directly when the URL already carries session params (no defer)", () => {
-    // When the user clicks a session row in the sidekick, the URL carries
-    // `?project=&instance=&session=` from the start so the agents-shell
-    // session branch should render `ProjectAgentChatPanel` immediately,
-    // even when the standalone surface is in the "redirect imminent" state.
-    mocks.projectsState = {
-      projects: [{ project_id: "p1", name: "P1" }],
-      agentsByProject: {
-        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
-      },
-    };
-    mocks.sessionsState = {
-      sessionsBySurface: {
-        "agent:agent-1": [{ session_id: "s1" }],
-      },
-    };
+  it("keeps the placeholder up while session events are still loading after the URL has session params", () => {
+    // URL carries the redirected session params, but `chat-history-store`
+    // hasn't reported `ready` for them yet — mounting `ProjectAgentChatPanel`
+    // here would paint the chat shell (header + input bar) first and then
+    // fade the messages in. Hold the placeholder so the final reveal lands
+    // fully formed in one go.
     mocks.searchParams = new URLSearchParams({
       project: "p1",
       instance: "i1",
       session: "s1",
     });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "loading" },
+    };
+
+    render(<AgentChatView />);
+
+    expect(screen.queryByTestId("chat-panel")).toBeNull();
+    expect(mocks.latestChatPanelProps).toBeUndefined();
+  });
+
+  it("renders the project panel as soon as session events are cached", () => {
+    // Once the per-session history is `ready` in the cache, the chat
+    // panel mounts hot — `historyResolved` is true on its first render
+    // so the cold-load overlay stays unmounted.
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s1",
+    });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
 
     render(<AgentChatView />);
 

@@ -19,6 +19,7 @@ import {
 import {
   agentSessionsSurfaceKey,
   useAgentBindingsKey,
+  useMostRecentSession,
   useSessionsListStore,
 } from "../../../../stores/sessions-list-store";
 import { LAST_AGENT_ID_KEY } from "../../stores";
@@ -468,33 +469,158 @@ function ProjectAgentChatPanel({
   );
 }
 
+type AgentsShellTarget =
+  | { kind: "placeholder" }
+  | {
+      kind: "project";
+      projectId: string;
+      agentInstanceId: string;
+      sessionId: string;
+    }
+  | { kind: "standalone" };
+
+function sessionHistoryKey(
+  projectId: string,
+  agentInstanceId: string,
+  sessionId: string,
+): string {
+  return `session:${projectId}:${agentInstanceId}:${sessionId}`;
+}
+
 /**
- * True while `useDefaultStandaloneSessionRedirect` is about to (or
- * just did) push `?project=&instance=&session=` into the URL for this
- * agent. The redirect always fires from a `useEffect`, so there's at
- * least one render with the bare `/agents/:agentId` URL between the
- * click and the URL update — without this signal `AgentChatView`
- * would mount `StandaloneAgentChatPanel` in that gap, fetch the
- * per-agent timeline, then immediately unmount it when the redirect
- * lands and `ProjectAgentChatPanel` takes over. The double-mount is
- * the source of the agent-switch flicker.
+ * Resolves what the agents-shell `/agents/:agentId` URL should render
+ * once the user clicks an agent in the sidebar. Two flicker sources
+ * collapse into one decision tree here:
  *
- * Returns `true` when the agent has bindings AND either the sessions
- * surface hasn't been loaded yet (redirect *may* fire) or the surface
- * already holds at least one session (redirect *will* fire). Returns
- * `false` for agents with no bindings, or once the surface is loaded
- * empty — both legitimately keep the standalone panel as the final
- * destination.
+ * 1. The URL transit window. `useDefaultStandaloneSessionRedirect`
+ *    pushes `?project=&instance=&session=` from a `useEffect`, so
+ *    there's always at least one render with the bare URL after a
+ *    click. Without intervention `AgentChatView` would mount
+ *    `StandaloneAgentChatPanel` in that gap and fire its per-agent
+ *    timeline fetch, then unmount it as soon as the redirect lands.
+ *    We return `placeholder` while the redirect is imminent so the
+ *    standalone panel never mounts in the transient state.
+ *
+ * 2. The session-events cold load. Even with the standalone-mount
+ *    suppressed, `ProjectAgentChatPanel` would still mount the chat
+ *    structure (header, input bar) before the per-session events
+ *    finish fetching, painting an empty chat shell that fades in to
+ *    full content. To get a "load in at once" feel, we eagerly call
+ *    `chat-history-store.fetchHistory` for the resolved session as
+ *    soon as we know it (URL or `mostRecent`), and keep the
+ *    placeholder visible until that entry reports `ready`. By the
+ *    time `ProjectAgentChatPanel` mounts, the per-session history is
+ *    already in the cache so the cold-load overlay never trips.
+ *
+ * `standalone` is reserved for the genuine "agent has no sessions
+ * yet" case (no bindings, or sessions loaded empty). The standalone
+ * panel still owns that flow: there's no per-session events to wait
+ * on, so dropping straight into the fresh-canvas chat is correct.
  */
-function useShouldDeferStandaloneRedirect(agentId: string | undefined): boolean {
+function useAgentsShellTarget(opts: {
+  agentId: string | undefined;
+  hasProjectPathParams: boolean;
+  queryProjectId: string | null;
+  queryInstanceId: string | null;
+  sessionId: string | null;
+}): AgentsShellTarget {
+  const {
+    agentId,
+    hasProjectPathParams,
+    queryProjectId,
+    queryInstanceId,
+    sessionId,
+  } = opts;
+
+  const standaloneSurfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
+  const mostRecent = useMostRecentSession(standaloneSurfaceKey);
   const bindingsKey = useAgentBindingsKey(agentId);
-  return useSessionsListStore((state) => {
-    if (!agentId) return false;
-    if (!bindingsKey) return false;
-    const sessions = state.sessionsBySurface[agentSessionsSurfaceKey(agentId)];
-    if (sessions === undefined) return true;
-    return sessions.length > 0;
+
+  const sessionsKnown = useSessionsListStore((state) => {
+    if (!standaloneSurfaceKey) return false;
+    return state.sessionsBySurface[standaloneSurfaceKey] !== undefined;
   });
+
+  const urlTarget = (queryProjectId && queryInstanceId && sessionId)
+    ? {
+        projectId: queryProjectId,
+        agentInstanceId: queryInstanceId,
+        sessionId,
+      }
+    : null;
+
+  const fallbackTarget = (!urlTarget && agentId && !hasProjectPathParams && mostRecent)
+    ? {
+        projectId: mostRecent._projectId,
+        agentInstanceId: mostRecent._agentInstanceId,
+        sessionId: mostRecent.session_id,
+      }
+    : null;
+
+  const resolvedTarget = urlTarget ?? fallbackTarget;
+  const resolvedHistoryKey = resolvedTarget
+    ? sessionHistoryKey(
+        resolvedTarget.projectId,
+        resolvedTarget.agentInstanceId,
+        resolvedTarget.sessionId,
+      )
+    : null;
+
+  // Eagerly warm `chat-history-store` for the resolved session so
+  // `ProjectAgentChatPanel` mounts with `historyResolved=true` from
+  // the first render. Keyed off the historyKey so re-resolving to
+  // the same session doesn't re-fire the fetch (the store TTL would
+  // short-circuit it anyway, but skipping the no-op call is cheaper).
+  const targetProjectId = resolvedTarget?.projectId;
+  const targetAgentInstanceId = resolvedTarget?.agentInstanceId;
+  const targetSessionId = resolvedTarget?.sessionId;
+  useEffect(() => {
+    if (!resolvedHistoryKey) return;
+    if (!targetProjectId || !targetAgentInstanceId || !targetSessionId) return;
+    void useChatHistoryStore.getState().fetchHistory(
+      resolvedHistoryKey,
+      () => api.listSessionEvents(targetProjectId, targetAgentInstanceId, targetSessionId),
+    );
+  }, [resolvedHistoryKey, targetProjectId, targetAgentInstanceId, targetSessionId]);
+
+  const eventsReady = useChatHistoryStore((state) => {
+    if (!resolvedHistoryKey) return false;
+    const entry = state.entries[resolvedHistoryKey];
+    return entry?.status === "ready" || entry?.status === "error";
+  });
+
+  // 1. URL already carries a session pointer (session-row click, or
+  //    the redirect just landed). Mount the project panel as soon as
+  //    its events are cached; otherwise keep the placeholder up so
+  //    the chat reveals fully formed.
+  if (urlTarget) {
+    return eventsReady
+      ? { kind: "project", ...urlTarget }
+      : { kind: "placeholder" };
+  }
+
+  // 2. No URL session yet but `mostRecent` is known — the redirect
+  //    hook is about to push the URL. Hold the placeholder until both
+  //    the URL settles AND the events for the imminent session are
+  //    in cache.
+  if (fallbackTarget) {
+    return { kind: "placeholder" };
+  }
+
+  // 3. No bindings (and never will until the agent is added to a
+  //    project) → fresh-canvas standalone view.
+  if (!agentId) return { kind: "standalone" };
+  if (!bindingsKey) return { kind: "standalone" };
+
+  // 4. Bindings exist but the sessions surface hasn't reported back
+  //    yet — `loadAgentSessions` is in flight. A redirect *may*
+  //    follow once the response lands, so defer to avoid a flash of
+  //    the standalone panel.
+  if (!sessionsKnown) return { kind: "placeholder" };
+
+  // 5. Sessions loaded empty → no redirect possible, mount the
+  //    standalone panel for the fresh-canvas first chat.
+  return { kind: "standalone" };
 }
 
 export function AgentChatView() {
@@ -530,7 +656,13 @@ export function AgentChatView() {
     disabled: Boolean(projectId),
   });
 
-  const shouldDeferStandalone = useShouldDeferStandaloneRedirect(agentId);
+  const agentsShellTarget = useAgentsShellTarget({
+    agentId,
+    hasProjectPathParams: Boolean(projectId && agentInstanceId),
+    queryProjectId,
+    queryInstanceId,
+    sessionId,
+  });
 
   const handleProjectHandoffReady = useCallback(() => {
     if (!projectId || !agentInstanceId) {
@@ -558,32 +690,31 @@ export function AgentChatView() {
     );
   }
 
-  if (agentId && queryProjectId && queryInstanceId && sessionId) {
-    // Agents-app session branch: when ChatsTab routes a session
-    // click while the user is inside the agents shell, the URL
-    // becomes `/agents/:agentId?project=&instance=&session=` so the
-    // shell + sidekick stay mounted. We forward the encoded pointers
-    // into `ProjectAgentChatPanel` for the full session-scoped
-    // history fetch and editable send wiring.
+  // Agents-shell flow: render based on the resolved target. The
+  // resolver suppresses the transient `StandaloneAgentChatPanel`
+  // mount during the default-session URL redirect AND gates the
+  // `ProjectAgentChatPanel` mount on the per-session events being
+  // cached, so the chat lane reveals fully formed instead of
+  // flashing through a cold-load shell. See `useAgentsShellTarget`
+  // for the full decision tree.
+  if (agentId && agentsShellTarget.kind === "placeholder") {
+    return <div className={styles.lanePlaceholder} aria-hidden="true" />;
+  }
+
+  if (agentId && agentsShellTarget.kind === "project") {
+    // Agents-shell session branch: URL carries `?project=&instance=&session=`
+    // (either from a session-row click or from the default-session redirect).
+    // Forwarded pointers feed `ProjectAgentChatPanel` so the per-session
+    // history fetch and editable send wiring kick in without leaving the
+    // agents app shell.
     return (
       <ProjectAgentChatPanel
-        projectId={queryProjectId}
-        agentInstanceId={queryInstanceId}
-        sessionId={sessionId}
+        projectId={agentsShellTarget.projectId}
+        agentInstanceId={agentsShellTarget.agentInstanceId}
+        sessionId={agentsShellTarget.sessionId}
         initialCreateHandoff={false}
       />
     );
-  }
-
-  // Defer mounting the standalone panel while the default-session
-  // redirect is in flight — the URL will gain `?project=&instance=&session=`
-  // within a tick or two and `ProjectAgentChatPanel` will take over. Without
-  // this gate we'd mount `StandaloneAgentChatPanel`, fire its per-agent
-  // history fetch, then immediately unmount and remount with a different
-  // `streamKey` once the redirect lands, producing the agent-switch flicker
-  // (two cold-load reveals back to back).
-  if (agentId && shouldDeferStandalone) {
-    return <div className={styles.lanePlaceholder} aria-hidden="true" />;
   }
 
   if (agentId) {
