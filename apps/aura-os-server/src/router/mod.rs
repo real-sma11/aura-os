@@ -57,6 +57,13 @@ use specs::spec_routes;
 use tasks::task_routes;
 use users_orgs_billing::{billing_routes, org_routes, user_routes};
 
+fn upload_routes() -> Router<AppState> {
+    Router::new().route(
+        "/api/upload/presign",
+        axum::routing::post(crate::handlers::upload::presign_upload),
+    )
+}
+
 pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathBuf>) -> Router {
     let cors = build_local_api_cors_layer();
 
@@ -80,10 +87,7 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
         .merge(marketplace_routes())
         .merge(debug_routes())
         .merge(loops_routes())
-        .route(
-            "/api/upload/presign",
-            axum::routing::post(crate::handlers::upload::presign_upload),
-        )
+        .merge(upload_routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::auth_guard::require_verified_session,
