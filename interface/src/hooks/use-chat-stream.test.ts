@@ -465,6 +465,11 @@ describe("useChatStream", () => {
       expect.any(AbortSignal),
       undefined,
       true,
+      // `sessionId` is forwarded as-is on every send; `null` here
+      // means "no pin requested". The send only forwards a pinned
+      // id when the panel passes one in the hook options, which
+      // this test doesn't set.
+      null,
     );
     expect(api.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -478,6 +483,7 @@ describe("useChatStream", () => {
       expect.any(AbortSignal),
       undefined,
       false,
+      null,
     );
   });
 });

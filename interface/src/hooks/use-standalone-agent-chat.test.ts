@@ -11,6 +11,7 @@ vi.mock("./use-agent-chat-stream", () => ({
     sendMessage: mockSendMessage,
     stopStreaming: mockStopStreaming,
     resetEvents: mockResetEvents,
+    markNextSendAsNewSession: vi.fn(),
   })),
 }));
 
@@ -78,6 +79,10 @@ vi.mock("../stores/context-usage-store", () => ({
 
 vi.mock("./use-hydrate-context-utilization", () => ({
   useHydrateContextUtilization: vi.fn(),
+}));
+
+vi.mock("react-router-dom", () => ({
+  useSearchParams: vi.fn(() => [new URLSearchParams(), vi.fn()]),
 }));
 
 import { useStandaloneAgentChat } from "./use-standalone-agent-chat";

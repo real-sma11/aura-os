@@ -145,9 +145,9 @@ export interface ChatInputBarProps {
    * When provided, the button appears; when omitted, the mode row
    * renders `<ModeSelector>` exactly as before. Distinct from
    * `onNewSession` (the RotateCcw soft reset) — `onNewChat` is a
-   * stronger ChatGPT-style "blank slate" action that also clears
-   * the visible transcript and pins the live session id (see
-   * `interface/src/stores/live-session-store.ts`).
+   * stronger ChatGPT-style "blank slate" action that drops
+   * `?session=` from the URL and clears the visible transcript so
+   * the next send creates a fresh session id server-side.
    */
   onNewChat?: () => void;
 }

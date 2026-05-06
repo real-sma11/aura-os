@@ -363,3 +363,57 @@ pub async fn load_current_session_events_for_instance(
         latest.project_id.as_deref().unwrap_or_default(),
     ))
 }
+
+/// Load events from a *specific* storage session id for an agent
+/// instance, bypassing the "most recent" sort. Used when the chat
+/// handler is asked to continue a historical session
+/// (`SendChatRequest.session_id`): the LLM context must come from
+/// the pinned session's events, not from whichever session is
+/// alphanumerically newest.
+pub async fn load_pinned_session_events_for_instance(
+    state: &AppState,
+    agent_instance_id: &AgentInstanceId,
+    jwt: &str,
+    session_id: &str,
+    project_id: &str,
+) -> Result<Vec<SessionEvent>, aura_os_storage::StorageError> {
+    let Some(ref storage) = state.storage_client else {
+        return Ok(Vec::new());
+    };
+    info!(
+        %agent_instance_id,
+        %session_id,
+        "pinned instance session: loading events for caller-supplied session id"
+    );
+    let storage_events = storage.list_events(session_id, jwt, None, None).await?;
+    Ok(events_to_session_history(
+        &storage_events,
+        &agent_instance_id.to_string(),
+        project_id,
+    ))
+}
+
+/// Standalone-agent analogue of `load_pinned_session_events_for_instance`.
+/// The caller is responsible for proving (via `try_pin_session`) that
+/// the session id belongs to one of the agent's project bindings
+/// before reaching this function — we trust the caller and load
+/// events directly.
+pub async fn load_pinned_session_events_for_agent(
+    storage: &StorageClient,
+    jwt: &str,
+    session_id: &str,
+    project_agent_id: &str,
+    project_id: &str,
+) -> Result<Vec<SessionEvent>, aura_os_storage::StorageError> {
+    info!(
+        %session_id,
+        %project_agent_id,
+        "pinned agent session: loading events for caller-supplied session id"
+    );
+    let storage_events = storage.list_events(session_id, jwt, None, None).await?;
+    Ok(events_to_session_history(
+        &storage_events,
+        project_agent_id,
+        project_id,
+    ))
+}

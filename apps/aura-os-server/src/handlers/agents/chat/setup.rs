@@ -13,7 +13,7 @@ use crate::error::ApiResult;
 use crate::state::{AppState, AuthJwt};
 
 use super::discovery::{find_matching_project_agents, invalidate_agent_discovery_cache};
-use super::persist::{resolve_chat_session, ChatPersistCtx};
+use super::persist::{resolve_chat_session_with_pin, ChatPersistCtx};
 
 pub(crate) async fn setup_project_chat_persistence(
     state: &AppState,
@@ -21,12 +21,21 @@ pub(crate) async fn setup_project_chat_persistence(
     agent_instance_id: &AgentInstanceId,
     jwt: &str,
     force_new: bool,
+    pinned_session_id: Option<&str>,
 ) -> Option<ChatPersistCtx> {
     let storage = state.storage_client.as_ref()?.clone();
     let jwt = jwt.to_string();
     let pai = agent_instance_id.to_string();
     let pid = project_id.to_string();
-    let session_id = resolve_chat_session(&storage, &jwt, &pai, &pid, force_new).await?;
+    let session_id = resolve_chat_session_with_pin(
+        &storage,
+        &jwt,
+        &pai,
+        &pid,
+        force_new,
+        pinned_session_id,
+    )
+    .await?;
     Some(ChatPersistCtx {
         storage,
         jwt,
@@ -46,6 +55,7 @@ pub(crate) async fn setup_agent_chat_persistence(
     _agent_name: &str,
     jwt: &str,
     force_new: bool,
+    pinned_session_id: Option<&str>,
 ) -> Option<ChatPersistCtx> {
     let storage = match state.storage_client.as_ref() {
         Some(s) => s.clone(),
@@ -61,7 +71,15 @@ pub(crate) async fn setup_agent_chat_persistence(
         matching = lazy_repair_home_project_binding(state, &storage, agent_id, jwt).await;
     }
 
-    setup_agent_chat_persistence_with_matched(&storage, agent_id, jwt, force_new, &matching).await
+    setup_agent_chat_persistence_with_matched(
+        &storage,
+        agent_id,
+        jwt,
+        force_new,
+        &matching,
+        pinned_session_id,
+    )
+    .await
 }
 
 /// Lazy repair: if the agent has no project binding yet (e.g. it was
@@ -119,6 +137,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     jwt: &str,
     force_new: bool,
     matching: &[aura_os_storage::StorageProjectAgent],
+    pinned_session_id: Option<&str>,
 ) -> Option<ChatPersistCtx> {
     let (pai, pid) = if let Some(pa) = matching.first() {
         let pid = pa.project_id.clone().unwrap_or_default();
@@ -141,7 +160,16 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
         return None;
     };
 
-    let session_id = match resolve_chat_session(storage, jwt, &pai, &pid, force_new).await {
+    let session_id = match resolve_chat_session_with_pin(
+        storage,
+        jwt,
+        &pai,
+        &pid,
+        force_new,
+        pinned_session_id,
+    )
+    .await
+    {
         Some(sid) => sid,
         None => {
             warn!(
@@ -171,6 +199,19 @@ pub(super) async fn has_live_session(state: &AppState, key: &str) -> bool {
     false
 }
 
+/// Return the storage `session_id` the live harness session (if any)
+/// is currently writing into. The chat handlers compare this against
+/// the caller-supplied `SendChatRequest.session_id` to decide whether
+/// to evict the in-memory session before opening a new one. Without
+/// the eviction the harness would keep replying with conversation
+/// state from the previously-active session.
+pub(super) async fn live_session_storage_id(state: &AppState, key: &str) -> Option<String> {
+    let reg = state.chat_sessions.lock().await;
+    reg.get(key)
+        .filter(|s| s.is_alive())
+        .map(|s| s.session_id.clone())
+}
+
 pub(super) async fn remove_live_session(state: &AppState, key: &str) {
     let mut reg = state.chat_sessions.lock().await;
     reg.remove(key);
@@ -183,7 +224,7 @@ pub(crate) async fn reset_agent_session(
 ) -> ApiResult<StatusCode> {
     let session_key = aura_os_core::harness_agent_id(&agent_id, None);
     remove_live_session(&state, &session_key).await;
-    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true).await;
+    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None).await;
     info!(%agent_id, "Agent chat session reset");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -223,8 +264,15 @@ pub(crate) async fn reset_instance_session(
     if let Some(key) = live_session_key {
         remove_live_session(&state, &key).await;
     }
-    let _ =
-        setup_project_chat_persistence(&state, &project_id, &agent_instance_id, &jwt, true).await;
+    let _ = setup_project_chat_persistence(
+        &state,
+        &project_id,
+        &agent_instance_id,
+        &jwt,
+        true,
+        None,
+    )
+    .await;
     info!(%agent_instance_id, "Instance chat session reset");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -257,8 +305,10 @@ mod tests {
         let storage = Arc::new(StorageClient::with_base_url(&url));
         let agent_id = AgentId::new();
 
-        let ctx =
-            setup_agent_chat_persistence_with_matched(&storage, &agent_id, "jwt", false, &[]).await;
+        let ctx = setup_agent_chat_persistence_with_matched(
+            &storage, &agent_id, "jwt", false, &[], None,
+        )
+        .await;
 
         assert!(
             ctx.is_none(),
@@ -303,6 +353,7 @@ mod tests {
             "jwt",
             false,
             std::slice::from_ref(&project_agent),
+            None,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");

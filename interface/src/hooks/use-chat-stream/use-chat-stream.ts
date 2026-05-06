@@ -20,9 +20,33 @@ import { buildStreamHandler } from "./build-stream-handler";
 interface UseChatStreamOptions {
   projectId: string | undefined;
   agentInstanceId: string | undefined;
+  /**
+   * Pin this stream's send + SessionReady handling to a specific
+   * historical session id. When set, every `sendMessage` is forwarded
+   * to the server with `session_id=<id>` so the harness writes into
+   * that exact session and rebuilds LLM context from its events. The
+   * `+` button drops this back to `undefined` (URL `?session=` is
+   * cleared upstream); the next send creates a fresh session and
+   * `onSessionReady` fires with the new id.
+   */
+  sessionId?: string | null;
+  /**
+   * Called once per `SessionReady` whenever the server-assigned
+   * session id changes. Replaces the old `useLiveSessionStore` pin
+   * mechanism: the chat panel uses this to write `?session=<new-id>`
+   * into the URL (via `setSearchParams({ replace: true })`), making
+   * the URL the single source of truth for which session is being
+   * extended.
+   */
+  onSessionReady?: (sessionId: string) => void;
 }
 
-export function useChatStream({ projectId, agentInstanceId }: UseChatStreamOptions) {
+export function useChatStream({
+  projectId,
+  agentInstanceId,
+  sessionId,
+  onSessionReady,
+}: UseChatStreamOptions) {
   const sidekickRef = useRef(useSidekickStore.getState());
   const projectCtx = useProjectActions();
   const projectCtxRef = useRef(projectCtx);
@@ -35,6 +59,14 @@ export function useChatStream({ projectId, agentInstanceId }: UseChatStreamOptio
   const pendingSpecIdsRef = useRef<string[]>([]);
   const pendingTaskIdsRef = useRef<string[]>([]);
   const nextSendStartsNewSessionRef = useRef(false);
+  // `sessionId` and `onSessionReady` change whenever the URL
+  // `?session=` flips. Reading them via refs in `sendMessage` keeps
+  // the callback identity stable so the chat input bar's
+  // `useCallback`s don't re-run on every URL update.
+  const sessionIdRef = useRef(sessionId ?? null);
+  useEffect(() => { sessionIdRef.current = sessionId ?? null; }, [sessionId]);
+  const onSessionReadyRef = useRef(onSessionReady);
+  useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
   // See `use-agent-chat-stream.ts`: synchronous latch covering the gap
   // between `sendMessage` invocation and the moment `setIsStreaming(true)`
   // propagates through Zustand. Without it two clicks (or a click + queue
@@ -104,6 +136,7 @@ export function useChatStream({ projectId, agentInstanceId }: UseChatStreamOptio
         projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey: core.key,
         setProgressText: core.setProgressText, sidekickRef, projectCtxRef,
         pendingSpecIdsRef, pendingTaskIdsRef,
+        onSessionReady: (id) => onSessionReadyRef.current?.(id),
       });
 
       try {
@@ -203,6 +236,7 @@ export function useChatStream({ projectId, agentInstanceId }: UseChatStreamOptio
           controller.signal,
           commands,
           shouldStartNewSession,
+          shouldStartNewSession ? null : sessionIdRef.current,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

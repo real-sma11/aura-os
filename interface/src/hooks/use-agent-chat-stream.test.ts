@@ -467,6 +467,10 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       true,
+      // `sessionId` arg: `null` when no pin is requested (the hook
+      // option `sessionId` defaults to undefined). Forwarded as the
+      // 11th positional arg to `api.agents.sendEventStream`.
+      null,
     );
     expect(api.agents.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -480,6 +484,7 @@ describe("useAgentChatStream", () => {
       undefined,
       undefined,
       false,
+      null,
     );
   });
 });

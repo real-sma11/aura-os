@@ -57,9 +57,15 @@ pub(super) async fn resolve_persist_ctx(
         let parsed_project = project_id.parse::<ProjectId>().ok();
         let parsed_instance = agent_instance_id.parse::<AgentInstanceId>().ok();
         if let (Some(parsed_project), Some(parsed_instance)) = (parsed_project, parsed_instance) {
-            if let Some(ctx) =
-                setup_project_chat_persistence(state, &parsed_project, &parsed_instance, jwt, false)
-                    .await
+            if let Some(ctx) = setup_project_chat_persistence(
+                state,
+                &parsed_project,
+                &parsed_instance,
+                jwt,
+                false,
+                None,
+            )
+            .await
             {
                 return Some(ctx);
             }
@@ -79,7 +85,7 @@ pub(super) async fn resolve_persist_ctx(
     if let Some(agent_id) = agent_id {
         if let Ok(parsed_agent) = agent_id.parse::<AgentId>() {
             if let Some(ctx) =
-                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false).await
+                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None).await
             {
                 return Some(ctx);
             }

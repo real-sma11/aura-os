@@ -283,6 +283,13 @@ pub(crate) struct SendChatRequest {
     pub attachments: Option<Vec<ChatAttachmentDto>>,
     #[serde(default)]
     pub new_session: Option<bool>,
+    /// When set, route this turn into the specified storage session id.
+    /// The handler validates the session belongs to the target agent
+    /// before routing — a stale URL never silently writes into the
+    /// wrong session. When `new_session` is also true, `new_session`
+    /// wins and a fresh session is created.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

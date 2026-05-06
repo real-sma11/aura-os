@@ -39,10 +39,6 @@ import {
   useContextUsageStore,
   approxTokensFromText,
 } from "../../stores/context-usage-store";
-import {
-  projectSurfaceKey,
-  useLiveSessionStore,
-} from "../../stores/live-session-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
 
 export interface DispatchDeps {
@@ -58,6 +54,14 @@ export interface DispatchDeps {
   projectCtxRef: React.MutableRefObject<ReturnType<typeof useProjectActions>>;
   pendingSpecIdsRef: React.MutableRefObject<string[]>;
   pendingTaskIdsRef: React.MutableRefObject<string[]>;
+  /**
+   * Invoked once per `SessionReady` SSE event with the server-assigned
+   * session id. The chat panel writes `?session=<id>` into the URL so
+   * the panel scopes its visible transcript to this session and the
+   * next send forwards `session_id` to keep the harness pinned.
+   * Replaces the legacy `useLiveSessionStore.pin(...)` machinery.
+   */
+  onSessionReady?: (sessionId: string) => void;
 }
 
 interface SessionReadyPayload {
@@ -118,8 +122,14 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
   const {
     projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
-    pendingSpecIdsRef, pendingTaskIdsRef,
+    pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
   } = deps;
+  // Track the last session id we forwarded to `onSessionReady` so a
+  // chatty stream that re-emits `SessionReady` (e.g. mid-stream
+  // recovery) doesn't repeatedly bounce the URL through the same
+  // value and trigger a feedback loop with the panel-level effect
+  // that pins `useChatStream({ sessionId })`.
+  let lastNotifiedSessionId: string | null = null;
 
   const onEvent = (event: AuraEvent) => {
     switch (event.type) {
@@ -284,27 +294,20 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       case EventType.AssistantMessageStart:
         break;
       case EventType.SessionReady: {
-        // Capture the live session id whenever a SessionReady arrives.
-        // If `useLiveSessionStore.markPending(surfaceKey)` was set
-        // (handleNewChat / handleNewSession in AgentChatView), this
-        // pins the new session id so the chat panel scopes its
-        // visible transcript to that session via the
-        // `live-session:` historyKey. Always-on (not gated by
-        // `pending`) so a pin set after a redirect through the
-        // route also takes effect on the next stream's SessionReady.
+        // Capture the server-assigned session id whenever a
+        // `SessionReady` arrives. The chat panel passes
+        // `onSessionReady` so it can write `?session=<id>` into the
+        // URL — making the URL the single source of truth for which
+        // session this view extends. We also bump
+        // `useSessionsListStore.version` so the sidekick "Chats" tab
+        // refreshes the row order (a brand-new session jumps to the
+        // top).
         const payload = event.content as SessionReadyPayload;
         const newSessionId = payload?.session_id;
-        if (agentInstanceId && newSessionId) {
-          const surfaceKey = projectSurfaceKey(projectId, agentInstanceId);
-          const liveStore = useLiveSessionStore.getState();
-          const wasPending = !!liveStore.pending[surfaceKey];
-          const previouslyPinned = liveStore.pinned[surfaceKey];
-          if (wasPending || previouslyPinned !== newSessionId) {
-            liveStore.pin(surfaceKey, newSessionId);
-            // A new session row is now visible to `api.listSessions`,
-            // so refresh the agent Chats sidekick.
-            useSessionsListStore.getState().bumpVersion();
-          }
+        if (newSessionId && newSessionId !== lastNotifiedSessionId) {
+          lastNotifiedSessionId = newSessionId;
+          onSessionReady?.(newSessionId);
+          useSessionsListStore.getState().bumpVersion();
         }
         break;
       }

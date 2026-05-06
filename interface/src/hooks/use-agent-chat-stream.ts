@@ -26,16 +26,24 @@ import {
 } from "./use-stream-core";
 import type { DisplaySessionEvent } from "../shared/types/stream";
 import { useContextUsageStore } from "../stores/context-usage-store";
-import {
-  agentSurfaceKey,
-  useLiveSessionStore,
-} from "../stores/live-session-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 
 interface UseAgentChatStreamOptions {
   agentId: string | undefined;
   onTaskSaved?: (task: Task) => void;
   onSpecSaved?: (spec: Spec) => void;
+  /**
+   * Pin sends to a specific historical session id. See the matching
+   * field on `useChatStream`'s options.
+   */
+  sessionId?: string | null;
+  /**
+   * Called once per `SessionReady` whenever the server-assigned session
+   * id changes. The chat panel uses this to mirror the new id into
+   * `?session=<id>` (replace navigation), making the URL the single
+   * source of truth for which session is being extended.
+   */
+  onSessionReady?: (sessionId: string) => void;
 }
 
 interface UseAgentChatStreamResult {
@@ -55,10 +63,24 @@ interface UseAgentChatStreamResult {
   markNextSendAsNewSession: () => void;
 }
 
-export function useAgentChatStream({ agentId, onTaskSaved, onSpecSaved }: UseAgentChatStreamOptions): UseAgentChatStreamResult {
+export function useAgentChatStream({
+  agentId,
+  onTaskSaved,
+  onSpecSaved,
+  sessionId,
+  onSessionReady,
+}: UseAgentChatStreamOptions): UseAgentChatStreamResult {
   const core = useStreamCore([agentId]);
   const { refs, setters, abortRef } = core;
   const nextSendStartsNewSessionRef = useRef(false);
+  const sessionIdRef = useRef(sessionId ?? null);
+  useEffect(() => { sessionIdRef.current = sessionId ?? null; }, [sessionId]);
+  const onSessionReadyRef = useRef(onSessionReady);
+  useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
+  // Track the last id we pushed to `onSessionReady` so a re-emission
+  // from the server doesn't ping the URL repeatedly. Mirror of the
+  // same guard in `build-stream-handler.ts`.
+  const lastNotifiedSessionIdRef = useRef<string | null>(null);
   // Synchronous latch covering the gap between a `sendMessage` invocation
   // and the moment `setIsStreaming(true)` propagates through Zustand. The
   // existing `getIsStreaming(core.key)` check reads through Zustand and is
@@ -174,21 +196,17 @@ export function useAgentChatStream({ agentId, onTaskSaved, onSpecSaved }: UseAge
               break;
             case EventType.SessionReady: {
               // See `build-stream-handler.ts` for the project-side
-              // counterpart and rationale. Pin the live session id
-              // so the standalone agent panel can scope its
-              // transcript to that session via the
-              // `live-session:agent:` historyKey.
+              // counterpart. The chat panel passes `onSessionReady`
+              // so the URL can switch to `?session=<id>` once the
+              // server assigns one — making the URL the single
+              // source of truth for the session the user is
+              // extending.
               const payload = event.content as { session_id?: string };
               const newSessionId = payload?.session_id;
-              if (agentId && newSessionId) {
-                const surfaceKey = agentSurfaceKey(agentId);
-                const liveStore = useLiveSessionStore.getState();
-                const wasPending = !!liveStore.pending[surfaceKey];
-                const previouslyPinned = liveStore.pinned[surfaceKey];
-                if (wasPending || previouslyPinned !== newSessionId) {
-                  liveStore.pin(surfaceKey, newSessionId);
-                  useSessionsListStore.getState().bumpVersion();
-                }
+              if (newSessionId && newSessionId !== lastNotifiedSessionIdRef.current) {
+                lastNotifiedSessionIdRef.current = newSessionId;
+                onSessionReadyRef.current?.(newSessionId);
+                useSessionsListStore.getState().bumpVersion();
               }
               break;
             }
@@ -313,6 +331,7 @@ export function useAgentChatStream({ agentId, onTaskSaved, onSpecSaved }: UseAge
           commands,
           projectId,
           shouldStartNewSession,
+          shouldStartNewSession ? null : sessionIdRef.current,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

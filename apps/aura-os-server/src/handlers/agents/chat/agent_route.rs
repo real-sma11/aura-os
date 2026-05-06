@@ -23,12 +23,14 @@ use super::compaction::{
 use super::constants::{CONVERSATION_HISTORY_WARN_BYTES, DEFAULT_AGENT_HISTORY_WINDOW_LIMIT};
 use super::discovery::find_matching_project_agents;
 use super::instance_route::build_project_system_prompt;
-use super::loaders::load_current_session_events_for_agent_with_matched;
-use super::persist::ChatPersistCtx;
+use super::loaders::{
+    load_current_session_events_for_agent_with_matched, load_pinned_session_events_for_agent,
+};
+use super::persist::{try_pin_session, ChatPersistCtx, PinnedSessionOutcome};
 use super::request::slice_recent_agent_events;
 use super::setup::{
-    has_live_session, lazy_repair_home_project_binding, remove_live_session,
-    setup_agent_chat_persistence_with_matched,
+    has_live_session, lazy_repair_home_project_binding, live_session_storage_id,
+    remove_live_session, setup_agent_chat_persistence_with_matched,
 };
 use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
@@ -67,13 +69,40 @@ pub(crate) async fn send_agent_event_stream(
     let force_new = body.new_session.unwrap_or(false);
     let partition_agent_id = aura_os_core::harness_agent_id(&agent_id, None);
     let session_key = partition_agent_id.clone();
-    if force_new {
+
+    // Validate the caller-supplied pin (`SendChatRequest.session_id`)
+    // against the agent's project bindings before we wire anything
+    // up. Mismatches surface as a structured 400 — see the instance
+    // route for the parallel rationale. `force_new` always wins.
+    let pinned_session_id = if force_new {
+        None
+    } else {
+        resolve_pinned_session_for_agent(&state, &agent_id, &jwt, body.session_id.as_deref())
+            .await?
+    };
+
+    // Evict the resident harness session whenever the requested
+    // session id differs from the one the live harness is bound to.
+    // See the matching logic in `instance_route::send_event_stream`.
+    let live_storage_id = live_session_storage_id(&state, &session_key).await;
+    let pin_changed = match (pinned_session_id.as_deref(), live_storage_id.as_deref()) {
+        (Some(pinned), Some(live)) => pinned != live,
+        _ => false,
+    };
+    if force_new || pin_changed {
         remove_live_session(&state, &session_key).await;
     }
     let live_session = has_live_session(&state, &session_key).await;
 
-    let (persist_ctx, conversation_messages) =
-        load_persistence_and_history(&state, &agent_id, &jwt, force_new, live_session).await;
+    let (persist_ctx, conversation_messages) = load_persistence_and_history(
+        &state,
+        &agent_id,
+        &jwt,
+        force_new,
+        live_session,
+        pinned_session_id.as_deref(),
+    )
+    .await;
 
     log_persistence_status(&agent_id, persist_ctx.is_some());
     log_history_size(&agent_id, conversation_messages.as_deref());
@@ -205,12 +234,45 @@ async fn resolve_agent_for_chat(
     }
 }
 
+/// Validate the caller-supplied `pinned_session_id` against the
+/// agent's project bindings. Standalone agents may be bound to
+/// multiple projects (each with its own session list), so the pin
+/// is accepted when it matches *any* binding and rejected otherwise.
+async fn resolve_pinned_session_for_agent(
+    state: &AppState,
+    agent_id: &AgentId,
+    jwt: &str,
+    requested_session_id: Option<&str>,
+) -> ApiResult<Option<String>> {
+    let Some(requested) = requested_session_id else {
+        return Ok(None);
+    };
+    let Some(ref storage) = state.storage_client else {
+        // Without storage we can't validate; pretend no pin was
+        // requested. `setup_agent_chat_persistence` would no-op
+        // anyway on the persist side.
+        return Ok(None);
+    };
+    let matching =
+        find_matching_project_agents(state, storage, jwt, &agent_id.to_string()).await;
+    for binding in &matching {
+        match try_pin_session(storage.as_ref(), jwt, &binding.id, Some(requested)).await {
+            PinnedSessionOutcome::Matched(id) => return Ok(Some(id)),
+            PinnedSessionOutcome::NotRequested | PinnedSessionOutcome::Mismatch { .. } => continue,
+        }
+    }
+    Err(ApiError::bad_request(format!(
+        "session_id `{requested}` does not belong to agent `{agent_id}`"
+    )))
+}
+
 async fn load_persistence_and_history(
     state: &AppState,
     agent_id: &AgentId,
     jwt: &str,
     force_new: bool,
     live_session: bool,
+    pinned_session_id: Option<&str>,
 ) -> (Option<ChatPersistCtx>, Option<Vec<ConversationMessage>>) {
     // `setup_agent_chat_persistence` and the history loader both need
     // the set of project agents bound to this agent id. Previously
@@ -239,10 +301,23 @@ async fn load_persistence_and_history(
         matching = lazy_repair_home_project_binding(state, storage, agent_id, jwt).await;
     }
 
-    let persist_fut =
-        setup_agent_chat_persistence_with_matched(storage, agent_id, jwt, force_new, &matching);
-    let history_fut =
-        build_history_future(storage, agent_id, jwt, &matching, force_new, live_session);
+    let persist_fut = setup_agent_chat_persistence_with_matched(
+        storage,
+        agent_id,
+        jwt,
+        force_new,
+        &matching,
+        pinned_session_id,
+    );
+    let history_fut = build_history_future(
+        storage,
+        agent_id,
+        jwt,
+        &matching,
+        force_new,
+        live_session,
+        pinned_session_id,
+    );
 
     let (persist_ctx, conversation_messages) = tokio::join!(persist_fut, history_fut);
     (persist_ctx, conversation_messages)
@@ -255,6 +330,7 @@ async fn build_history_future(
     matching: &[aura_os_storage::StorageProjectAgent],
     force_new: bool,
     live_session: bool,
+    pinned_session_id: Option<&str>,
 ) -> Option<Vec<ConversationMessage>> {
     // LLM context rebuild on cold start: load only the current storage
     // session, not the full multi-session aggregate. See
@@ -262,13 +338,50 @@ async fn build_history_future(
     if force_new || live_session {
         return None;
     }
-    let stored =
-        load_current_session_events_for_agent_with_matched(storage, agent_id, jwt, matching).await;
+    let stored = match pinned_session_id {
+        Some(session_id) => load_pinned_history_for_agent(storage, jwt, session_id, matching)
+            .await
+            .unwrap_or_default(),
+        None => {
+            load_current_session_events_for_agent_with_matched(storage, agent_id, jwt, matching)
+                .await
+        }
+    };
     if stored.is_empty() {
         return None;
     }
     let bounded = slice_recent_agent_events(stored, Some(DEFAULT_AGENT_HISTORY_WINDOW_LIMIT), 0);
     Some(session_events_to_conversation_history(&bounded))
+}
+
+/// Locate the project binding the pinned `session_id` belongs to and
+/// load its events. The binding lookup is what
+/// `resolve_pinned_session_for_agent` already verified above; redoing
+/// it here keeps the data path simple at the cost of one extra
+/// `list_sessions` round trip per turn — the alternative would be
+/// threading the matched binding through `load_persistence_and_history`
+/// just for this branch.
+async fn load_pinned_history_for_agent(
+    storage: &aura_os_storage::StorageClient,
+    jwt: &str,
+    session_id: &str,
+    matching: &[aura_os_storage::StorageProjectAgent],
+) -> Result<Vec<SessionEvent>, aura_os_storage::StorageError> {
+    for binding in matching {
+        let sessions = storage.list_sessions(&binding.id, jwt).await?;
+        if sessions.iter().any(|s| s.id == session_id) {
+            let project_id = binding.project_id.as_deref().unwrap_or_default();
+            return load_pinned_session_events_for_agent(
+                storage,
+                jwt,
+                session_id,
+                &binding.id,
+                project_id,
+            )
+            .await;
+        }
+    }
+    Ok(Vec::new())
 }
 
 fn log_persistence_status(agent_id: &AgentId, persist_ready: bool) {

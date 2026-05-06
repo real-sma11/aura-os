@@ -14,15 +14,15 @@ interface ProjectRedirectOptions {
   projectId: string;
   agentInstanceId: string;
   sessionId: string | null;
-  liveSessionId: string | null;
   setSearchParams: SetURLSearchParams;
 }
 
 /**
  * Project-panel default-session redirect: when the user lands on a
- * project-agent chat URL with no `?session=` and no live-session pin,
- * pick the most recent session for the active agent instance and
- * replace the URL with `?session=<id>`.
+ * project-agent chat URL with no `?session=`, pick the most recent
+ * session for the active agent instance and replace the URL with
+ * `?session=<id>`. Now that session views are editable, this is just
+ * "open your last chat".
  *
  * The hook reads from the shared `useSessionsListStore` instead of
  * issuing its own `api.listSessions` request, so the redirect always
@@ -33,7 +33,6 @@ export function useDefaultProjectSessionRedirect({
   projectId,
   agentInstanceId,
   sessionId,
-  liveSessionId,
   setSearchParams,
 }: ProjectRedirectOptions): void {
   const surfaceKey = projectSessionsSurfaceKey(projectId);
@@ -54,13 +53,13 @@ export function useDefaultProjectSessionRedirect({
   // render-tick when nothing has changed is cheap because the deps
   // gate the effect.
   useEffect(() => {
-    if (sessionId || liveSessionId) return;
+    if (sessionId) return;
     void useSessionsListStore.getState().loadProjectSessions(projectId, "");
-  }, [projectId, sessionId, liveSessionId, sessionsVersion]);
+  }, [projectId, sessionId, sessionsVersion]);
 
   useEffect(() => {
     const key = `${projectId}:${agentInstanceId}`;
-    if (sessionId || liveSessionId) {
+    if (sessionId) {
       didDefaultRef.current = key;
       return;
     }
@@ -79,7 +78,6 @@ export function useDefaultProjectSessionRedirect({
     projectId,
     agentInstanceId,
     sessionId,
-    liveSessionId,
     mostRecentForInstance,
     setSearchParams,
   ]);
@@ -88,7 +86,6 @@ export function useDefaultProjectSessionRedirect({
 interface StandaloneRedirectOptions {
   agentId: string | undefined;
   sessionId: string | null;
-  liveSessionId: string | null;
   setSearchParams: SetURLSearchParams;
   /** When `true`, skip the redirect — used when the panel is rendering a project route. */
   disabled?: boolean;
@@ -96,9 +93,8 @@ interface StandaloneRedirectOptions {
 
 /**
  * Standalone-agent default-session redirect: when the user lands on
- * `/agents/:agentId` with no `?session=` (and no live-session pin),
- * redirect to the most recent session across the agent's project
- * bindings.
+ * `/agents/:agentId` with no `?session=`, redirect to the most recent
+ * session across the agent's project bindings.
  *
  * Subscribes to a stable string fingerprint of the agent's bindings
  * (see `useAgentBindingsKey`) so the redirect re-runs once the
@@ -109,7 +105,6 @@ interface StandaloneRedirectOptions {
 export function useDefaultStandaloneSessionRedirect({
   agentId,
   sessionId,
-  liveSessionId,
   setSearchParams,
   disabled,
 }: StandaloneRedirectOptions): void {
@@ -126,14 +121,13 @@ export function useDefaultStandaloneSessionRedirect({
   // out-of-order responses.
   useEffect(() => {
     if (disabled || !agentId) return;
-    if (sessionId || liveSessionId) return;
+    if (sessionId) return;
     if (!bindingsKey) return;
     void loadAgentSessions(agentId);
   }, [
     disabled,
     agentId,
     sessionId,
-    liveSessionId,
     bindingsKey,
     sessionsVersion,
     loadAgentSessions,
@@ -142,7 +136,7 @@ export function useDefaultStandaloneSessionRedirect({
   useEffect(() => {
     if (disabled || !agentId) return;
     const key = `agent:${agentId}`;
-    if (sessionId || liveSessionId) {
+    if (sessionId) {
       didDefaultRef.current = key;
       return;
     }
@@ -163,7 +157,6 @@ export function useDefaultStandaloneSessionRedirect({
     disabled,
     agentId,
     sessionId,
-    liveSessionId,
     mostRecent,
     setSearchParams,
   ]);

@@ -22,8 +22,13 @@ use super::compaction::{
     append_project_state_to_system_prompt, load_project_state_snapshot,
     session_events_to_conversation_history,
 };
-use super::loaders::load_current_session_events_for_instance;
-use super::setup::{has_live_session, remove_live_session, setup_project_chat_persistence};
+use super::loaders::{
+    load_current_session_events_for_instance, load_pinned_session_events_for_instance,
+};
+use super::persist::{try_pin_session, PinnedSessionOutcome};
+use super::setup::{
+    has_live_session, live_session_storage_id, remove_live_session, setup_project_chat_persistence,
+};
 use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
 use super::types::SseResponse;
@@ -56,12 +61,58 @@ pub(crate) async fn send_event_stream(
         aura_os_core::harness_agent_id(&instance.agent_id, Some(&agent_instance_id));
     let session_key = partition_agent_id.clone();
     let force_new = body.new_session.unwrap_or(false);
-    let persist_ctx =
-        setup_project_chat_persistence(&state, &project_id, &agent_instance_id, &jwt, force_new)
-            .await;
-    if force_new {
+
+    // Validate the caller-supplied pin (`SendChatRequest.session_id`)
+    // against storage *before* opening the harness session. Surfacing
+    // a structured 400 here is far less surprising than letting the
+    // upstream resolve to a different session and write the user's
+    // message into the wrong thread. `force_new` always wins.
+    let pinned_session_id = match (force_new, body.session_id.as_deref(), &state.storage_client) {
+        (true, _, _) | (_, None, _) | (_, _, None) => None,
+        (false, Some(_), Some(storage)) => {
+            match try_pin_session(
+                storage.as_ref(),
+                &jwt,
+                &agent_instance_id.to_string(),
+                body.session_id.as_deref(),
+            )
+            .await
+            {
+                PinnedSessionOutcome::NotRequested => None,
+                PinnedSessionOutcome::Matched(id) => Some(id),
+                PinnedSessionOutcome::Mismatch { session_id } => {
+                    return Err(ApiError::bad_request(format!(
+                        "session_id `{session_id}` does not belong to agent instance `{agent_instance_id}`"
+                    )));
+                }
+            }
+        }
+    };
+
+    // Evict the in-memory harness session whenever the requested
+    // session id differs from the one the harness is currently
+    // writing into. Without this, switching from session A to session
+    // B (via the URL `?session=` pin) would keep the old conversation
+    // history hot in memory and the model would respond as if the
+    // user were still in session A.
+    let live_storage_id = live_session_storage_id(&state, &session_key).await;
+    let pin_changed = match (pinned_session_id.as_deref(), live_storage_id.as_deref()) {
+        (Some(pinned), Some(live)) => pinned != live,
+        _ => false,
+    };
+    if force_new || pin_changed {
         remove_live_session(&state, &session_key).await;
     }
+
+    let persist_ctx = setup_project_chat_persistence(
+        &state,
+        &project_id,
+        &agent_instance_id,
+        &jwt,
+        force_new,
+        pinned_session_id.as_deref(),
+    )
+    .await;
 
     let (conversation_messages, project_state_snapshot) = load_history_and_project_state(
         &state,
@@ -70,6 +121,7 @@ pub(crate) async fn send_event_stream(
         &agent_instance_id,
         &jwt,
         force_new,
+        pinned_session_id.as_deref(),
     )
     .await?;
 
@@ -161,6 +213,7 @@ async fn load_history_and_project_state(
     agent_instance_id: &AgentInstanceId,
     jwt: &str,
     force_new: bool,
+    pinned_session_id: Option<&str>,
 ) -> ApiResult<(
     Option<Vec<aura_os_harness::ConversationMessage>>,
     Option<String>,
@@ -168,15 +221,32 @@ async fn load_history_and_project_state(
     if force_new {
         return Ok((None, None));
     }
+    // When pinning we always rebuild conversation history from the
+    // pinned session's events — even if a live harness session is
+    // resident. The instance route invokes `remove_live_session`
+    // upstream when the pin disagrees with the live session id, so by
+    // the time we're here a live-session match means the pin and the
+    // resident harness agree and skipping the rebuild is safe.
     if has_live_session(state, session_key).await {
         return Ok((None, None));
     }
     // LLM context rebuild on cold start: load only the current storage
     // session, not the full multi-session aggregate. See
     // `load_current_session_events_for_instance` doc-comment for rationale.
-    let stored = load_current_session_events_for_instance(state, agent_instance_id, jwt)
+    let stored = match pinned_session_id {
+        Some(session_id) => load_pinned_session_events_for_instance(
+            state,
+            agent_instance_id,
+            jwt,
+            session_id,
+            &project_id.to_string(),
+        )
         .await
-        .map_err(map_storage_error)?;
+        .map_err(map_storage_error)?,
+        None => load_current_session_events_for_instance(state, agent_instance_id, jwt)
+            .await
+            .map_err(map_storage_error)?,
+    };
     let conversation_messages = if stored.is_empty() {
         None
     } else {

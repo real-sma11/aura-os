@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { api, STANDALONE_AGENT_HISTORY_LIMIT } from "../api/client";
 import { useAgentChatStream } from "./use-agent-chat-stream";
@@ -6,11 +7,6 @@ import { useChatHistorySync } from "./use-chat-history-sync";
 import { useDelayedLoading } from "../shared/hooks/use-delayed-loading";
 import { useStandaloneAgentMeta } from "./use-agent-chat-meta";
 import { agentHistoryKey, useChatHistoryStore } from "../stores/chat-history-store";
-import {
-  agentSurfaceKey,
-  useLiveSessionId,
-  useLiveSessionStore,
-} from "../stores/live-session-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useAgentStore } from "../apps/agents/stores";
 import { useProjectsListStore } from "../stores/projects-list-store";
@@ -57,10 +53,16 @@ function persistAgentProject(agentId: string, projectId: string) {
  *
  * Returns `ChatPanelProps`. `agentId` may be undefined to support the
  * floating-window mount race where the window is rendered before the agent
- * list has resolved.
+ * list has resolved. `pinnedSessionId` (sourced from `?session=`) scopes the
+ * panel to a specific historical session — sends and history fetches both
+ * thread it through to the server.
  */
-export function useStandaloneAgentChat(agentId: string | undefined): ChatPanelProps {
+export function useStandaloneAgentChat(
+  agentId: string | undefined,
+  pinnedSessionId: string | null = null,
+): ChatPanelProps {
   const agentProjects = useProjectsListStore(useShallow(selectProjectsForAgent(agentId)));
+  const [, setSearchParams] = useSearchParams();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(() => {
     if (!agentId) return undefined;
@@ -87,47 +89,58 @@ export function useStandaloneAgentChat(agentId: string | undefined): ChatPanelPr
     [agentId],
   );
 
+  // Mirror the server-assigned session id back into the URL so the
+  // panel reuses the same routing contract on every send. See the
+  // matching effect in `ProjectAgentChatPanel`.
+  const handleSessionReady = useCallback(
+    (newSessionId: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (next.get("session") === newSessionId) return prev;
+          next.set("session", newSessionId);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const { streamKey, sendMessage, stopStreaming, resetEvents, markNextSendAsNewSession } =
-    useAgentChatStream({ agentId });
+    useAgentChatStream({
+      agentId,
+      sessionId: pinnedSessionId,
+      onSessionReady: handleSessionReady,
+    });
 
   const { agentName, machineType, templateAgentId, adapterType, defaultModel } =
     useStandaloneAgentMeta(agentId);
 
   const contextUsage = useContextUsage(streamKey);
 
-  const surfaceKey = useMemo(
-    () => (agentId ? agentSurfaceKey(agentId) : undefined),
-    [agentId],
-  );
-  const liveSessionId = useLiveSessionId(surfaceKey);
-
   const historyKey = useMemo(() => {
     if (!agentId) return undefined;
-    if (liveSessionId) {
-      return `live-session:agent:${agentId}:${liveSessionId}`;
+    if (pinnedSessionId) {
+      return `agent:${agentId}:session:${pinnedSessionId}`;
     }
     return agentHistoryKey(agentId);
-  }, [agentId, liveSessionId]);
+  }, [agentId, pinnedSessionId]);
 
   const fetchFn = useMemo(() => {
     if (!agentId) return undefined;
-    if (liveSessionId) {
-      // Standalone-agent chats don't expose a per-session events
-      // endpoint today (`api.agents.listEvents` is the only one), so
-      // we still hit the per-agent timeline. The new historyKey gives
-      // us a clean cache slot; the next stream fills it from scratch.
-      // If a per-session standalone events endpoint is added later,
-      // swap it in here.
-      return () =>
-        api.agents.listEvents(agentId, {
-          limit: STANDALONE_AGENT_HISTORY_LIMIT,
-        });
-    }
+    // Standalone-agent chats don't expose a per-session events
+    // endpoint yet — the agents-app session branch routes through
+    // `ProjectAgentChatPanel` which uses `api.listSessionEvents`. For
+    // the bare `/agents/:agentId` view we hit the per-agent timeline;
+    // when a `pinnedSessionId` is set, the historyKey above gives us
+    // a clean cache slot but the events still come from the same
+    // endpoint until a per-session standalone API ships.
     return () =>
       api.agents.listEvents(agentId, {
         limit: STANDALONE_AGENT_HISTORY_LIMIT,
       });
-  }, [agentId, liveSessionId]);
+  }, [agentId]);
 
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
   const onSwitch = useCallback(() => {
@@ -142,23 +155,26 @@ export function useStandaloneAgentChat(agentId: string | undefined): ChatPanelPr
   const handleNewSession = useCallback(() => {
     if (!agentId) return;
     void import("../lib/analytics").then(({ track }) => track("chat_session_reset"));
-    api.agents.resetSession(agentId).catch(() => {});
     markNextSendAsNewSession();
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     // Mark a reset sentinel so the hydration hook doesn't resurrect the old
     // session's value if the view remounts before the next send (e.g. nav
-    // away and back) or if the reset API call is slow to propagate.
+    // away and back).
     store.markResetPending(streamKey);
-    if (surfaceKey) {
-      useLiveSessionStore.getState().markPending(surfaceKey);
-    }
-  }, [agentId, markNextSendAsNewSession, streamKey, surfaceKey]);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("session");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [agentId, markNextSendAsNewSession, streamKey, setSearchParams]);
 
   const handleNewChat = useCallback(() => {
     if (!agentId) return;
     void import("../lib/analytics").then(({ track }) => track("chat_new_chat"));
-    api.agents.resetSession(agentId).catch(() => {});
     markNextSendAsNewSession();
     if (historyKey) {
       useChatHistoryStore.getState().clearHistory(historyKey);
@@ -167,11 +183,16 @@ export function useStandaloneAgentChat(agentId: string | undefined): ChatPanelPr
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
     ctxStore.markResetPending(streamKey);
-    if (surfaceKey) {
-      useLiveSessionStore.getState().markPending(surfaceKey);
-    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("session");
+        return next;
+      },
+      { replace: true },
+    );
     useSessionsListStore.getState().bumpVersion();
-  }, [agentId, markNextSendAsNewSession, streamKey, surfaceKey, historyKey, resetEvents]);
+  }, [agentId, markNextSendAsNewSession, streamKey, historyKey, resetEvents, setSearchParams]);
 
   const contextUsageFetcher = useMemo(() => {
     if (!agentId) return undefined;

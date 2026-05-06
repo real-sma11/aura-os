@@ -181,6 +181,7 @@ export function sendAgentEventStream(
   commands?: string[],
   projectId?: string,
   newSession?: boolean,
+  sessionId?: string | null,
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) body.model = model;
@@ -192,6 +193,11 @@ export function sendAgentEventStream(
   }
   if (projectId) body.project_id = projectId;
   if (newSession) body.new_session = true;
+  // `sessionId` pins this turn into a specific historical session.
+  // The server validates that the pin belongs to the agent before
+  // routing — see `try_pin_session` in `agent_route.rs`. Skipped when
+  // `newSession` is set (force-new wins server-side too).
+  if (sessionId && !newSession) body.session_id = sessionId;
   return streamSSE<string>(
     `${BASE_URL}/api/agents/${agentId}/events/stream`,
     {
@@ -313,6 +319,7 @@ export function sendEventStream(
   signal?: AbortSignal,
   commands?: string[],
   newSession?: boolean,
+  sessionId?: string | null,
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) body.model = model;
@@ -323,6 +330,10 @@ export function sendEventStream(
     body.commands = commands;
   }
   if (newSession) body.new_session = true;
+  // `sessionId` pins this turn into a specific historical session for
+  // the project chat. Forwarded to the server as `session_id` so
+  // `try_pin_session` in `instance_route.rs` can validate ownership.
+  if (sessionId && !newSession) body.session_id = sessionId;
   return streamSSE<string>(
     `${BASE_URL}/api/projects/${projectId}/agents/${agentInstanceId}/events/stream`,
     {

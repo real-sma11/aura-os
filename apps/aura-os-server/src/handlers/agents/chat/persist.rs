@@ -30,14 +30,78 @@ pub(crate) struct ChatPersistCtx {
     pub(crate) agent_id: Option<String>,
 }
 
-pub(super) async fn resolve_chat_session(
+/// Outcome of attempting to validate a caller-supplied
+/// `pinned_session_id` against the agent's session list. The mismatch
+/// arm carries enough detail for the handler to return a structured
+/// 400 instead of a generic 500.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PinnedSessionOutcome {
+    /// No pin requested — fall through to the legacy resolution path.
+    NotRequested,
+    /// Pin matched a session that belongs to this agent — use as-is.
+    Matched(String),
+    /// Pin pointed at a session that does not belong to this agent.
+    Mismatch { session_id: String },
+}
+
+/// Validate that `pinned_session_id` belongs to the project agent
+/// before we wire it into persistence. Returning a structured result
+/// (vs. silently falling back to the latest session) lets callers
+/// surface a 400 to the UI and avoids scribbling messages from one
+/// session into another.
+pub(crate) async fn try_pin_session(
+    storage: &StorageClient,
+    jwt: &str,
+    project_agent_id: &str,
+    pinned_session_id: Option<&str>,
+) -> PinnedSessionOutcome {
+    let Some(pinned) = pinned_session_id else {
+        return PinnedSessionOutcome::NotRequested;
+    };
+    let pinned = pinned.to_string();
+    match storage.list_sessions(project_agent_id, jwt).await {
+        Ok(sessions) => {
+            if sessions.iter().any(|s| s.id == pinned) {
+                PinnedSessionOutcome::Matched(pinned)
+            } else {
+                PinnedSessionOutcome::Mismatch {
+                    session_id: pinned,
+                }
+            }
+        }
+        Err(e) => {
+            warn!(
+                %project_agent_id,
+                error = %e,
+                "Failed to list sessions while validating pinned session_id; treating as mismatch"
+            );
+            PinnedSessionOutcome::Mismatch {
+                session_id: pinned,
+            }
+        }
+    }
+}
+
+pub(crate) async fn resolve_chat_session_with_pin(
     storage: &StorageClient,
     jwt: &str,
     project_agent_id: &str,
     project_id: &str,
     force_new: bool,
+    pinned_session_id: Option<&str>,
 ) -> Option<String> {
+    // `force_new` wins over `pinned_session_id`: callers that
+    // explicitly want a brand-new session (the chat-input "+" button)
+    // shouldn't accidentally land in an old session because their
+    // URL still has `?session=...`.
     if !force_new {
+        if let Some(pinned) = pinned_session_id {
+            // Trust the pin if it survived `try_pin_session` upstream;
+            // re-validating here would double the round-trip on
+            // every turn. Callers (the chat handlers) validate up
+            // front and 400 on mismatch before reaching here.
+            return Some(pinned.to_string());
+        }
         if let Some(existing) = existing_session_for_agent(storage, jwt, project_agent_id).await {
             return Some(existing);
         }
@@ -236,4 +300,117 @@ fn log_user_message_persist_failure(ctx: &ChatPersistCtx, err: &aura_os_storage:
         project_id = %ctx.project_id,
         "Failed to persist user message event"
     );
+}
+
+#[cfg(test)]
+mod pin_tests {
+    //! Pin down the contract for `try_pin_session` and
+    //! `resolve_chat_session_with_pin`. Both functions guard the chat
+    //! handler against routing a turn into the wrong session when the
+    //! UI's `?session=` query param disagrees with storage. These
+    //! tests use the in-memory mock storage so we don't need to pay
+    //! the cost of a real backend.
+
+    use aura_os_storage::testutil::start_mock_storage;
+    use aura_os_storage::{CreateSessionRequest, StorageClient};
+
+    use super::{
+        resolve_chat_session_with_pin, try_pin_session, PinnedSessionOutcome,
+    };
+
+    /// Helper: spin up the mock storage and create one session for
+    /// `agent_id` so the tests have a real session id to pin.
+    async fn fixture(agent_id: &str) -> (StorageClient, String) {
+        let (url, _db) = start_mock_storage().await;
+        let storage = StorageClient::with_base_url(&url);
+        let session = storage
+            .create_session(
+                agent_id,
+                "jwt",
+                &CreateSessionRequest {
+                    project_id: "project-x".to_string(),
+                    org_id: None,
+                    model: None,
+                    status: Some("active".to_string()),
+                    context_usage_estimate: None,
+                    summary_of_previous_context: None,
+                },
+            )
+            .await
+            .expect("mock storage create_session");
+        // Leak the temp DB so it lives for the whole test — the
+        // returned client only needs the URL to keep talking to it.
+        // The mock handle going out of scope here is fine because the
+        // server task holds the DB alive for the test process.
+        std::mem::forget(_db);
+        (storage, session.id)
+    }
+
+    #[tokio::test]
+    async fn try_pin_session_returns_not_requested_when_input_is_none() {
+        let (storage, _sid) = fixture("agent-a").await;
+        let outcome = try_pin_session(&storage, "jwt", "agent-a", None).await;
+        assert_eq!(outcome, PinnedSessionOutcome::NotRequested);
+    }
+
+    #[tokio::test]
+    async fn try_pin_session_matches_when_session_belongs_to_agent() {
+        let (storage, sid) = fixture("agent-b").await;
+        let outcome = try_pin_session(&storage, "jwt", "agent-b", Some(&sid)).await;
+        assert_eq!(outcome, PinnedSessionOutcome::Matched(sid));
+    }
+
+    #[tokio::test]
+    async fn try_pin_session_mismatches_when_session_id_is_unknown() {
+        let (storage, _sid) = fixture("agent-c").await;
+        let outcome =
+            try_pin_session(&storage, "jwt", "agent-c", Some("session-from-another-agent")).await;
+        assert_eq!(
+            outcome,
+            PinnedSessionOutcome::Mismatch {
+                session_id: "session-from-another-agent".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_with_pin_uses_pinned_id_without_round_trip() {
+        // When `pinned_session_id` is `Some`, the resolver trusts the
+        // upstream `try_pin_session` validation and returns the pin
+        // verbatim — even if the agent has other sessions.
+        let (storage, _sid) = fixture("agent-d").await;
+        let result = resolve_chat_session_with_pin(
+            &storage,
+            "jwt",
+            "agent-d",
+            "project-x",
+            false,
+            Some("pin-from-url"),
+        )
+        .await;
+        assert_eq!(result.as_deref(), Some("pin-from-url"));
+    }
+
+    #[tokio::test]
+    async fn resolve_force_new_overrides_pin() {
+        // `force_new=true` (the chat input "+" button) wins over the
+        // URL pin: the resolver creates a fresh session even when a
+        // pin is supplied. Otherwise the user would land in the old
+        // session because their URL still has `?session=`.
+        let (storage, sid) = fixture("agent-e").await;
+        let result = resolve_chat_session_with_pin(
+            &storage,
+            "jwt",
+            "agent-e",
+            "project-x",
+            true,
+            Some(&sid),
+        )
+        .await;
+        let new_sid = result.expect("resolver should create a new session");
+        assert_ne!(
+            new_sid, sid,
+            "force_new must beat the pin and yield a different session id"
+        );
+    }
 }
