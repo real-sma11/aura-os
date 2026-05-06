@@ -30,14 +30,6 @@ const AUTO_EXPAND_TOOLS = new Set([
   "write_file",
   "edit_file",
   "run_command",
-  // Generated 3D models render an interactive `WebGLViewer` inside
-  // their Block body. The viewer is the artifact, so the block has to
-  // be expanded by default — otherwise the user just sees the
-  // collapsed header "Generated 3D model" with no widget. Image
-  // generation handles this differently (`ImageBlock` bypasses the
-  // Block wrapper on success), but 3D keeps the wrapper for the
-  // download link / poly-count badge.
-  "generate_3d_model",
 ]);
 
 export function isAutoExpandedTool(name: string): boolean {

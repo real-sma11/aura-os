@@ -1,4 +1,4 @@
-import { Box } from "lucide-react";
+import { Box, Download } from "lucide-react";
 import { lazy, Suspense } from "react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { Block } from "../Block";
@@ -36,6 +36,52 @@ export function Model3DBlock({ entry, defaultExpanded }: Model3DBlockProps) {
 
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
 
+  // Success branch: bypass the collapsible `Block` wrapper entirely so
+  // the WebGLViewer renders unconditionally — matches `ImageBlock`'s
+  // success-state pattern. Without this, the embedded viewer was hidden
+  // whenever the bubble re-mounted in a non-just-finalized state (any
+  // navigation away and back), forcing users to "close and reopen the
+  // app" before the scene appeared.
+  if (glbUrl && status === "done") {
+    return (
+      <div
+        className={styles.generatedModel3DResult}
+        data-agent-surface="chat-3d-model-viewer"
+        data-agent-proof="generated-3d-model-visible"
+      >
+        <div className={styles.generatedModel3DViewer}>
+          <Suspense
+            fallback={
+              <div className={styles.model3dViewerFallback}>Loading viewer…</div>
+            }
+          >
+            <WebGLViewer glbUrl={glbUrl} showGrid showTexture />
+          </Suspense>
+        </div>
+        <div className={styles.generatedModel3DMeta}>
+          {polyCount != null ? (
+            <span className={styles.generatedModel3DPolyCount}>
+              {polyCount.toLocaleString()} polys
+            </span>
+          ) : null}
+          <a
+            href={glbUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.generatedModel3DDownload}
+            aria-label="Download GLB"
+          >
+            <Download size={11} aria-hidden="true" />
+            <span>Download GLB</span>
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Pending / error / no-glb fall back to the standard Block chrome so
+  // the user gets the cooking spinner / status header until the success
+  // path takes over.
   return (
     <Block
       icon={<Box size={12} />}
@@ -45,31 +91,7 @@ export function Model3DBlock({ entry, defaultExpanded }: Model3DBlockProps) {
       defaultExpanded={defaultExpanded ?? true}
     >
       <div className={styles.mediaWrap}>
-        {glbUrl ? (
-          <>
-            <div
-              className={styles.model3dViewer}
-              data-agent-surface="chat-3d-model-viewer"
-              data-agent-proof="generated-3d-model-visible"
-            >
-              <Suspense
-                fallback={
-                  <div className={styles.model3dViewerFallback}>Loading viewer…</div>
-                }
-              >
-                <WebGLViewer glbUrl={glbUrl} showGrid showTexture />
-              </Suspense>
-            </div>
-            <a
-              href={glbUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.mediaLink}
-            >
-              Download GLB
-            </a>
-          </>
-        ) : entry.pending ? (
+        {entry.pending ? (
           <div className={styles.listEmpty}>Generating…</div>
         ) : (
           <div className={styles.listEmpty}>No model returned.</div>

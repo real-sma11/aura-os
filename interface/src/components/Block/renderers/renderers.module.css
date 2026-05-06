@@ -310,21 +310,62 @@
   object-fit: contain;
 }
 
-/* Inline 3D viewer hosted by `Model3DBlock`. The viewer fills the
-   container (its canvas listens to a ResizeObserver), so we just need
-   a reasonable fixed height and a clipping border that lines up with
-   the rest of the block media chrome. The block body unmounts when
-   collapsed, which disposes the Three.js scene — old 3D embeds in a
-   long transcript don't keep renderers alive. */
-.model3dViewer {
+/* Standalone 3D viewer surfaced by `Model3DBlock` on success. Mirrors
+   the `.generatedImageResult` framing (the matching no-Block-wrapper
+   pattern used by `ImageBlock`) so chat assistant turns line up
+   regardless of whether the artifact is an image or a 3D scene. The
+   widget always renders when `glbUrl` is present, so the scene shows
+   up immediately after generation in the chat the user is currently
+   viewing — no Block collapse state to gate visibility. */
+.generatedModel3DResult {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-width: min(100%, 520px);
+}
+
+.generatedModel3DViewer {
   position: relative;
   width: 100%;
-  max-width: min(100%, 520px);
   height: 280px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
   overflow: hidden;
   background: var(--color-bg);
+}
+
+.generatedModel3DMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--color-text-muted, #888);
+}
+
+.generatedModel3DPolyCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.generatedModel3DDownload {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.generatedModel3DDownload:hover {
+  color: var(--color-text-primary);
+}
+
+.generatedModel3DDownload:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .model3dViewerFallback {
@@ -339,7 +380,7 @@
 }
 
 @media (max-width: 640px) {
-  .model3dViewer {
+  .generatedModel3DViewer {
     height: 220px;
   }
 }
