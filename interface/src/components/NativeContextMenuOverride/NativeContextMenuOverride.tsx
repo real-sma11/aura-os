@@ -13,7 +13,11 @@
  *   3. Replaces the native input/textarea/contenteditable menu with a
  *      compact in-app Cut / Copy / Paste / Select All menu so right-click
  *      editing still works in text fields.
- *   4. Shows a Copy-only menu when the right-click lands inside a
+ *   4. Shows a "Copy Image" menu when the right-click lands directly on
+ *      an `<img>` (chat thumbnails, ImageBlock, Gallery, attachments) so
+ *      users can copy the bitmap with the same UX they'd get in a real
+ *      browser.
+ *   5. Shows a Copy-only menu when the right-click lands inside a
  *      non-collapsed selection on otherwise non-editable content (chat
  *      messages, LLM output, anywhere selectable text exists).
  *
@@ -33,7 +37,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Copy, Scissors, ClipboardPaste, TextCursor } from "lucide-react";
+import { Copy, Scissors, ClipboardPaste, TextCursor, Image as ImageIcon } from "lucide-react";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
 import {
@@ -47,6 +51,7 @@ import {
   selectAllInTarget,
   type EditableTarget,
 } from "./editable-target";
+import { copyImageToClipboard, getImageTarget } from "./image-target";
 import styles from "./NativeContextMenuOverride.module.css";
 
 const ESTIMATED_MENU_WIDTH = 220;
@@ -70,9 +75,14 @@ type ActiveMenu =
       kind: "selection";
       position: MenuPosition;
       text: string;
+    }
+  | {
+      kind: "image";
+      position: MenuPosition;
+      el: HTMLImageElement;
     };
 
-type MenuActionId = "cut" | "copy" | "paste" | "select-all";
+type MenuActionId = "cut" | "copy" | "paste" | "select-all" | "copy-image";
 
 function computeOverlayStyle(position: MenuPosition): CSSProperties {
   if (typeof window === "undefined") {
@@ -110,6 +120,16 @@ function buildMenuItems(active: ActiveMenu): MenuItem[] {
         id: "copy" satisfies MenuActionId,
         label: "Copy",
         icon: <Copy size={14} />,
+      },
+    ];
+  }
+
+  if (active.kind === "image") {
+    return [
+      {
+        id: "copy-image" satisfies MenuActionId,
+        label: "Copy Image",
+        icon: <ImageIcon size={14} />,
       },
     ];
   }
@@ -179,6 +199,15 @@ export function NativeContextMenuOverride(): ReactNode {
         return;
       }
 
+      // Right-click directly on an `<img>` — offer "Copy Image". Checked
+      // before the text-selection branch so a stray selection that
+      // happens to overlap the image doesn't hide the image action.
+      const image = getImageTarget(event.target);
+      if (image) {
+        setActive({ kind: "image", position, el: image });
+        return;
+      }
+
       // Non-editable target — only open a menu if there's a non-collapsed
       // selection that actually covers the click point. This is what
       // makes right-clicking selected text in a chat message show a Copy
@@ -237,6 +266,13 @@ export function NativeContextMenuOverride(): ReactNode {
       if (active.kind === "selection") {
         if (action === "copy") {
           void copyPlainText(active.text);
+        }
+        return;
+      }
+
+      if (active.kind === "image") {
+        if (action === "copy-image") {
+          void copyImageToClipboard(active.el);
         }
         return;
       }

@@ -247,6 +247,110 @@ describe("NativeContextMenuOverride", () => {
     expect(screen.queryByTestId("native-context-menu-override")).toBeNull();
   });
 
+  it("opens a Copy Image menu when right-clicking an <img>", async () => {
+    render(
+      <>
+        <NativeContextMenuOverride />
+        <img data-testid="img" src="data:image/png;base64,AAAA" alt="" />
+      </>,
+    );
+
+    const img = screen.getByTestId("img");
+    fireEvent.contextMenu(img, { clientX: 30, clientY: 30 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("native-context-menu-override")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Copy Image")).toBeInTheDocument();
+    expect(screen.queryByText("Copy")).toBeNull();
+    expect(screen.queryByText("Cut")).toBeNull();
+    expect(screen.queryByText("Paste")).toBeNull();
+    expect(screen.queryByText("Select All")).toBeNull();
+  });
+
+  it("does not open the image menu when an app-level handler called preventDefault", () => {
+    function AppHandler() {
+      return (
+        <div
+          data-testid="app-area"
+          onContextMenu={(event) => {
+            event.preventDefault();
+          }}
+        >
+          <img data-testid="claimed-img" src="data:image/png;base64,AAAA" alt="" />
+        </div>
+      );
+    }
+
+    render(
+      <>
+        <NativeContextMenuOverride />
+        <AppHandler />
+      </>,
+    );
+
+    const img = screen.getByTestId("claimed-img");
+    fireEvent.contextMenu(img);
+
+    expect(screen.queryByTestId("native-context-menu-override")).toBeNull();
+  });
+
+  it("invokes navigator.clipboard.write when Copy Image is clicked", async () => {
+    const writeFn = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { write: writeFn, readText: vi.fn().mockResolvedValue("") },
+      writable: true,
+      configurable: true,
+    });
+    class FakeClipboardItem {
+      public readonly types: string[];
+      public readonly data: Record<string, Blob>;
+      constructor(data: Record<string, Blob>) {
+        this.data = data;
+        this.types = Object.keys(data);
+      }
+    }
+    (globalThis as unknown as { ClipboardItem: typeof ClipboardItem }).ClipboardItem =
+      FakeClipboardItem as unknown as typeof ClipboardItem;
+    const pngBlob = new Blob(["fake-png"], { type: "image/png" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () => Promise.resolve(pngBlob),
+      }),
+    );
+
+    render(
+      <>
+        <NativeContextMenuOverride />
+        <img data-testid="img" src="data:image/png;base64,AAAA" alt="" />
+      </>,
+    );
+
+    const img = screen.getByTestId("img") as HTMLImageElement;
+    Object.defineProperty(img, "naturalWidth", { configurable: true, value: 16 });
+    Object.defineProperty(img, "naturalHeight", { configurable: true, value: 16 });
+    fireEvent.contextMenu(img, { clientX: 10, clientY: 10 });
+
+    await waitFor(() => {
+      expect(screen.getByText("Copy Image")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Copy Image"));
+
+    await waitFor(() => {
+      expect(writeFn).toHaveBeenCalledTimes(1);
+    });
+    const [items] = writeFn.mock.calls[0] as [Array<{ types: string[] }>];
+    expect(items[0].types).toEqual(["image/png"]);
+    await waitFor(() => {
+      expect(screen.queryByTestId("native-context-menu-override")).toBeNull();
+    });
+
+    delete (globalThis as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+    vi.unstubAllGlobals();
+  });
+
   it("removes the document listener on unmount", () => {
     function Harness() {
       const [mounted, setMounted] = useState(true);
