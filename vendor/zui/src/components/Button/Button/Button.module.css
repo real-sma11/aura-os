@@ -69,13 +69,13 @@
   cursor: not-allowed;
 }
 
-/* Unselected buttons have slightly muted text */
+/* Unselected buttons render at full opacity at rest and dim on hover */
 .button:not(.selected):not(.noDim) {
-  opacity: 0.6;
+  opacity: 1;
 }
 
 .button:not(.selected):not(.noDim):hover:not(:disabled) {
-  opacity: 1;
+  opacity: 0.6;
 }
 
 .primary {

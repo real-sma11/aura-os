@@ -53,8 +53,9 @@ export type ButtonProps = (ButtonAsButton | ButtonAsSpan) & {
    */
   selectedBgColor?: string;
   /**
-   * When false, the button renders at full opacity even when not selected.
-   * By default unselected buttons are slightly dimmed.
+   * When false, the button stays at full opacity in every state.
+   * By default unselected buttons render at full opacity at rest and
+   * dim slightly on hover.
    * @default true
    */
   dimUnselected?: boolean;

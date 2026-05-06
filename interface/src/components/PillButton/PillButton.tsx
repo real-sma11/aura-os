@@ -28,12 +28,13 @@ export type PillButtonProps = Omit<
  * - Text color is hard-pinned to a dark value so the pill stays legible
  *   regardless of accent (some accents like purple/blue/rose otherwise
  *   resolve `--color-accent-contrast` to white).
- * - `dimUnselected={false}` opts out of zui's default 60% opacity for
- *   non-selected buttons; without it the pill renders as a desaturated
- *   accent at rest. With the dim removed the pill sits at the full
- *   `--color-accent` and hover darkens to `--color-accent-hover` via zui's
- *   built-in `.filled:hover` rule (every theme defines its hover token as a
- *   darker shade of the base accent).
+ * - `dimUnselected={false}` opts out of zui's hover-dim treatment for
+ *   non-selected buttons; without it the pill would fade to 60% opacity on
+ *   hover, which fights the accent-darkening hover state below. With the
+ *   dim removed the pill sits at the full `--color-accent` at rest and
+ *   hover darkens to `--color-accent-hover` via zui's built-in
+ *   `.filled:hover` rule (every theme defines its hover token as a darker
+ *   shade of the base accent).
  */
 export const PillButton = forwardRef<HTMLButtonElement, PillButtonProps>(
   ({ className, ...rest }, ref) => {
