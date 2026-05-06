@@ -254,6 +254,17 @@ describe("useAgentChatStream", () => {
       .getState()
       .getPinnedSourceImage(result.current.streamKey);
     expect(pinned).toBeNull();
+
+    const entry = useStreamStore.getState().entries[result.current.streamKey];
+    const assistantEvent = entry.events.find((evt) => evt.role === "assistant");
+    const modelTool = assistantEvent?.toolCalls?.find(
+      (tool) => tool.name === "generate_3d_model",
+    );
+    expect(modelTool).toMatchObject({ pending: false, isError: false });
+    expect(JSON.parse(modelTool?.result ?? "{}")).toMatchObject({
+      glbUrl: "https://cdn.example.com/eagle.glb",
+    });
+    expect(entry.activeToolCalls).toHaveLength(0);
   });
 
   it("3D model step: image-only send (no text) still dispatches through generate3dStream", async () => {
