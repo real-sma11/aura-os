@@ -382,12 +382,16 @@
 
 /* Mode-row "+" new-chat button. Wraps `<ModeSelector>` and a small
    icon button so the "+" sits at the right end of the mode row,
-   visually directly above the send button. */
+   visually directly above the send button. The trailing padding +
+   button width are tuned to match the send button's right offset
+   (14px) and width (24px) in `InputBarShell.module.css`, so the two
+   icons share a single vertical axis. */
 .modeBarRow {
   display: flex;
   align-items: stretch;
   width: 100%;
   min-width: 0;
+  padding-right: 14px;
 }
 
 .modeSelectorFlex {
@@ -400,7 +404,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: 24px;
   /* Match ModeSelector.root border-bottom so the row reads as a single
      strip even though the two children own their own borders. */
   border: none;
