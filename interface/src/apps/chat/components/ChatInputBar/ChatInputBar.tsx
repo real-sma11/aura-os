@@ -163,7 +163,7 @@ function AttachmentPreviews({
   return (
     <div className={styles.attachmentPreviews}>
       {attachments.map((a) => (
-        <div key={a.id} className={styles.attachmentThumb}>
+        <div key={a.id} className={styles.attachmentThumb} style={a.uploading ? { opacity: 0.5 } : undefined}>
           {a.preview ? (
             <img src={a.preview} alt="" className={styles.attachmentThumbImg} />
           ) : (
@@ -918,6 +918,8 @@ export const DesktopChatInputBar = memo(
         : "Describe an image to generate\u2026"
       : "What do you want to create?";
 
+    const isUploading = attachments.some((a) => a.uploading);
+
     return (
       <InputBarShell
         ref={shellRef}
@@ -926,6 +928,7 @@ export const DesktopChatInputBar = memo(
         onSubmit={handleSubmit}
         onStop={onStop}
         isStreaming={isStreaming}
+        disabled={isUploading}
         isSendEnabled={isSendEnabled}
         isVisible={isVisible}
         isCentered={isCentered}
