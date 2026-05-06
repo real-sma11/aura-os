@@ -193,13 +193,23 @@ fn build_feedback_metadata(
     status: &str,
     product: &str,
     body: &str,
+    app_version: Option<&str>,
 ) -> serde_json::Value {
-    serde_json::json!({
+    let mut value = serde_json::json!({
         "feedbackCategory": category,
         "feedbackStatus": status,
         "feedbackProduct": product,
         "body": body,
-    })
+    });
+    if let Some(version) = app_version {
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(
+                "appVersion".to_string(),
+                serde_json::Value::String(version.to_string()),
+            );
+        }
+    }
+    value
 }
 
 pub(crate) async fn create_feedback(
@@ -229,8 +239,18 @@ pub(crate) async fn create_feedback(
             head
         });
 
-    let metadata =
-        build_feedback_metadata(&req.category, &req.status, &req.product, req.body.trim());
+    let app_version = req
+        .app_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let metadata = build_feedback_metadata(
+        &req.category,
+        &req.status,
+        &req.product,
+        req.body.trim(),
+        app_version,
+    );
 
     let post = client
         .create_post(&aura_os_network::client::CreatePostParams {

@@ -26,6 +26,7 @@ export interface FeedbackItemDto {
   viewerVote: ViewerVote;
   authorName?: string | null;
   authorAvatar?: string | null;
+  appVersion?: string | null;
 }
 
 export interface FeedbackVoteResultDto {
@@ -51,6 +52,7 @@ export interface CreateFeedbackInput {
   category: FeedbackCategory;
   status: FeedbackStatus;
   product: FeedbackProduct;
+  appVersion?: string;
 }
 
 export interface FeedbackListParams {

@@ -82,6 +82,11 @@
   color: var(--color-danger, #e27c7c);
 }
 
+.versionHint {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 640px) {
   .formColumn {
     flex: 1 1 auto;

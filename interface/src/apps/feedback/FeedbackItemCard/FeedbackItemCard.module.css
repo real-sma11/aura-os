@@ -133,6 +133,13 @@
   white-space: nowrap;
 }
 
+.versionTag {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
 .statusTag {
   font-size: var(--font-size-xs, 11px);
   font-weight: 500;

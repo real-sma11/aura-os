@@ -14,6 +14,7 @@ const baseItem: FeedbackItem = {
   body: "Cmd+1/2/3 between panels",
   category: "feature_request",
   status: "in_review",
+  product: "aura",
   upvotes: 10,
   downvotes: 2,
   voteScore: 8,
@@ -108,5 +109,31 @@ describe("FeedbackItemCard", () => {
     );
 
     expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the app version chip when item.appVersion is set", () => {
+    render(
+      <FeedbackItemCard
+        item={{ ...baseItem, appVersion: "2.5.0" }}
+        isSelected={false}
+        onSelect={() => {}}
+        onVote={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("v2.5.0")).toBeInTheDocument();
+  });
+
+  it("hides the version chip when item.appVersion is missing", () => {
+    render(
+      <FeedbackItemCard
+        item={baseItem}
+        isSelected={false}
+        onSelect={() => {}}
+        onVote={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
   });
 });

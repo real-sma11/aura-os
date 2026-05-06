@@ -15,6 +15,16 @@ vi.mock("../../../api/client", () => ({
   api: { feedback: feedbackApiMock },
 }));
 
+vi.mock("../../../lib/build-info", () => ({
+  getBuildInfo: () => ({
+    version: "1.2.3-test",
+    commit: "abc1234",
+    buildTime: "dev",
+    channel: "dev",
+    isDev: true,
+  }),
+}));
+
 import { NewFeedbackModal } from "./NewFeedbackModal";
 import { useFeedbackStore } from "../../../stores/feedback-store";
 import type { FeedbackItemDto } from "../../../api/feedback";
@@ -140,6 +150,45 @@ describe("NewFeedbackModal", () => {
     });
     expect(feedbackApiMock.create).toHaveBeenCalled();
     expect(useFeedbackStore.getState().items[0]?.id).toBe("fb-1");
+  });
+
+  it("renders the active app version and forwards it on submit", async () => {
+    const onClose = vi.fn();
+    const dto: FeedbackItemDto = {
+      id: "fb-version",
+      profileId: "p1",
+      eventType: "feedback",
+      postType: "post",
+      title: "v",
+      summary: "v body",
+      category: "feature_request",
+      status: "not_started",
+      product: "aura",
+      createdAt: new Date().toISOString(),
+      commentCount: 0,
+      upvotes: 0,
+      downvotes: 0,
+      voteScore: 0,
+      viewerVote: "none",
+      appVersion: "1.2.3-test",
+    };
+    feedbackApiMock.create.mockResolvedValueOnce(dto);
+
+    render(<NewFeedbackModal isOpen onClose={onClose} />);
+
+    expect(screen.getByText(/Tagged with version 1\.2\.3-test/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Feedback body"), {
+      target: { value: "ship version metadata" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /post/i }));
+
+    await vi.waitFor(() => {
+      expect(feedbackApiMock.create).toHaveBeenCalled();
+    });
+    expect(feedbackApiMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({ appVersion: "1.2.3-test" }),
+    );
   });
 
   it("Cancel closes without calling the API", () => {

@@ -139,6 +139,72 @@ async fn create_feedback_round_trip_shows_up_in_list() {
 }
 
 #[tokio::test]
+async fn create_feedback_persists_app_version_and_surfaces_on_list() {
+    let (app, _db) = build_test_app_with_feedback_network(vec![]).await;
+    let req = json_request(
+        "POST",
+        "/api/feedback",
+        Some(json!({
+            "body": "version-tagged report",
+            "category": "bug",
+            "status": "not_started",
+            "product": "aura",
+            "appVersion": "1.4.2",
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response_status(&resp), StatusCode::CREATED);
+    let body = response_json(resp).await;
+    assert_eq!(body["appVersion"], "1.4.2");
+    assert_eq!(body["metadata"]["appVersion"], "1.4.2");
+
+    let list = json_request("GET", "/api/feedback", None);
+    let resp = app.clone().oneshot(list).await.unwrap();
+    let items = response_json(resp).await;
+    let arr = items.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["appVersion"], "1.4.2");
+}
+
+#[tokio::test]
+async fn create_feedback_omits_app_version_when_absent_or_blank() {
+    let (app, _db) = build_test_app_with_feedback_network(vec![]).await;
+
+    let req = json_request(
+        "POST",
+        "/api/feedback",
+        Some(json!({
+            "body": "no version supplied",
+            "category": "bug",
+            "status": "not_started",
+            "product": "aura",
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response_status(&resp), StatusCode::CREATED);
+    let body = response_json(resp).await;
+    // `serde(skip_serializing_if = "Option::is_none")` keeps the wire payload
+    // tidy for legacy clients — assert the field is omitted entirely.
+    assert!(body.get("appVersion").is_none());
+
+    let req = json_request(
+        "POST",
+        "/api/feedback",
+        Some(json!({
+            "body": "blank version supplied",
+            "category": "bug",
+            "status": "not_started",
+            "product": "aura",
+            "appVersion": "   ",
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response_status(&resp), StatusCode::CREATED);
+    let body = response_json(resp).await;
+    assert!(body.get("appVersion").is_none());
+}
+
+#[tokio::test]
 async fn get_feedback_returns_404_for_non_feedback_post() {
     let seed = vec![seed_feed_event(
         "00000000-0000-0000-0000-00000000aaaa",

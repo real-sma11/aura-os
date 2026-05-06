@@ -13,12 +13,17 @@ pub(crate) struct FeedbackListQuery {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CreateFeedbackRequest {
     pub title: Option<String>,
     pub body: String,
     pub category: String,
     pub status: String,
     pub product: String,
+    /// Client app version that produced this feedback. Stored verbatim in
+    /// metadata so we can correlate reports with build numbers without
+    /// stamping a server-side guess.
+    pub app_version: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +69,10 @@ pub(crate) struct FeedbackItemResponse {
     pub author_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author_avatar: Option<String>,
+    /// Client app version captured at submission time. Omitted for legacy
+    /// items created before version tagging.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_version: Option<String>,
 }
 
 impl FeedbackItemResponse {
@@ -86,6 +95,9 @@ impl FeedbackItemResponse {
             .or_else(|| metadata_string(&metadata, "feedback_product"))
             .unwrap_or(DEFAULT_PRODUCT)
             .to_string();
+        let app_version = metadata_string(&metadata, "appVersion")
+            .or_else(|| metadata_string(&metadata, "app_version"))
+            .map(str::to_owned);
         let profile = profiles.get(&e.profile_id);
         Self {
             author_name: profile
@@ -108,6 +120,7 @@ impl FeedbackItemResponse {
             downvotes: e.downvotes,
             vote_score: e.vote_score,
             viewer_vote: e.viewer_vote,
+            app_version,
         }
     }
 }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Button, Input, Modal, Text } from "@cypher-asi/zui";
 import { Select } from "../../../components/Select";
 import { useAuraCapabilities } from "../../../hooks/use-aura-capabilities";
 import { useModalInitialFocus } from "../../../hooks/use-modal-initial-focus";
+import { getBuildInfo } from "../../../lib/build-info";
 import { useFeedbackStore } from "../../../stores/feedback-store";
 import {
   DEFAULT_FEEDBACK_PRODUCT,
@@ -43,6 +44,13 @@ export function NewFeedbackModal({ isOpen, onClose }: NewFeedbackModalProps) {
   const composerError = useFeedbackStore((s) => s.composerError);
   const resetComposerError = useFeedbackStore((s) => s.resetComposerError);
 
+  // Stamp the active build version onto every new submission so support can
+  // correlate feedback with the exact build the user is running. Memoised so
+  // the value is stable across re-renders (build info doesn't change at
+  // runtime, but recomputing each render is wasteful and would defeat the
+  // identity-stable callback pattern below).
+  const appVersion = useMemo(() => getBuildInfo().version, []);
+
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>(DEFAULT_CATEGORY);
@@ -74,6 +82,7 @@ export function NewFeedbackModal({ isOpen, onClose }: NewFeedbackModalProps) {
       category,
       status,
       product,
+      appVersion,
     });
     if (created) {
       const { track } = await import("../../../lib/analytics");
@@ -186,6 +195,14 @@ export function NewFeedbackModal({ isOpen, onClose }: NewFeedbackModalProps) {
             />
           </div>
         </div>
+        <Text
+          size="xs"
+          className={styles.versionHint}
+          data-agent-proof="feedback-composer-version-visible"
+          data-app-version={appVersion}
+        >
+          Tagged with version {appVersion}
+        </Text>
         {composerError ? (
           <Text size="sm" className={styles.errorText} role="alert">
             {composerError}

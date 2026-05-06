@@ -189,16 +189,55 @@ describe("useFeedbackStore", () => {
     });
 
     expect(created).not.toBeNull();
-    expect(feedbackApiMock.create).toHaveBeenCalledWith({
-      title: "Test",
-      body: "Body text",
-      category: "feedback",
-      status: "not_started",
-      product: "aura",
-    });
+    expect(feedbackApiMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Test",
+        body: "Body text",
+        category: "feedback",
+        status: "not_started",
+        product: "aura",
+      }),
+    );
     const state = useFeedbackStore.getState();
     expect(state.items[0]!.id).toBe("fb-new");
     expect(state.selectedId).toBe("fb-new");
+  });
+
+  it("createFeedback forwards the draft's appVersion and dtoToItem mirrors it", async () => {
+    const dto: FeedbackItemDto = {
+      id: "fb-versioned",
+      profileId: "p1",
+      eventType: "feedback",
+      postType: "post",
+      title: "versioned",
+      summary: "report from a specific build",
+      category: "bug",
+      status: "not_started",
+      product: "aura",
+      createdAt: new Date().toISOString(),
+      commentCount: 0,
+      upvotes: 0,
+      downvotes: 0,
+      voteScore: 0,
+      viewerVote: "none",
+      appVersion: "9.9.9",
+    };
+    feedbackApiMock.create.mockResolvedValueOnce(dto);
+
+    const created = await useFeedbackStore.getState().createFeedback({
+      title: "versioned",
+      body: "report from a specific build",
+      category: "bug",
+      status: "not_started",
+      product: "aura",
+      appVersion: "  9.9.9  ",
+    });
+
+    expect(created?.appVersion).toBe("9.9.9");
+    expect(feedbackApiMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({ appVersion: "9.9.9" }),
+    );
+    expect(useFeedbackStore.getState().items[0]?.appVersion).toBe("9.9.9");
   });
 
   it("createFeedback surfaces a composer error when the API fails", async () => {

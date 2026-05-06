@@ -89,6 +89,19 @@ export function FeedbackItemCard({
           <span className={styles.timestamp}>{timeAgo(item.createdAt)}</span>
           <span className={styles.separator}>&middot;</span>
           <span className={styles.category}>{categoryLabel(item.category)}</span>
+          {item.appVersion ? (
+            <>
+              <span className={styles.separator}>&middot;</span>
+              <span
+                className={styles.versionTag}
+                data-agent-proof="feedback-version-visible"
+                data-app-version={item.appVersion}
+                title={`Submitted from Aura OS v${item.appVersion}`}
+              >
+                v{item.appVersion}
+              </span>
+            </>
+          ) : null}
           <span className={styles.headerSpacer} />
           <span
             className={styles.statusTag}

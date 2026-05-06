@@ -51,6 +51,9 @@ export interface FeedbackItem {
   viewerVote: ViewerVote;
   commentCount: number;
   createdAt: string;
+  /** Aura OS build version captured at submission time. Optional because
+   *  legacy items posted before version tagging shipped don't carry one. */
+  appVersion?: string;
 }
 
 export interface FeedbackComment {
@@ -67,6 +70,9 @@ export interface FeedbackDraft {
   category: FeedbackCategory;
   status: FeedbackStatus;
   product: FeedbackProduct;
+  /** Optional client app version. The composer fills this from the active
+   *  build so support can correlate reports with the build the user is on. */
+  appVersion?: string;
 }
 
 export const FEEDBACK_CATEGORY_OPTIONS: ReadonlyArray<{

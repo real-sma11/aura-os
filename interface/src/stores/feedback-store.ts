@@ -117,6 +117,7 @@ function dtoToItem(dto: FeedbackItemDto): FeedbackItem {
     viewerVote: dto.viewerVote,
     commentCount: dto.commentCount,
     createdAt: dto.createdAt ?? new Date().toISOString(),
+    appVersion: dto.appVersion ?? undefined,
   };
 }
 
@@ -271,6 +272,7 @@ export const useFeedbackStore = create<FeedbackStore>()((set, get) => ({
         category: draft.category,
         status: draft.status,
         product: draft.product,
+        appVersion: draft.appVersion?.trim() || undefined,
       });
       const item = dtoToItem(dto);
       set((state) => ({
