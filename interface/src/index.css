@@ -14,11 +14,38 @@
   border-radius: var(--radius-sm);
 }
 
-/* The titlebar drag region and the React root are not keyboard-interactive
-   by themselves; if focus ever lands on them (e.g. programmatic focus on
-   #root after a route change) we don't want a ring around the whole window. */
+/* Container elements that receive focus only for keyboard / screen-reader
+   scope management (not as a tab stop) must never paint a focus ring.
+   Real interactive controls (button, input, a, select, menu items, etc.)
+   keep their :focus-visible outline above and stay accessible.
+
+   - #root, .titlebar-drag: app shell roots that are not keyboard-interactive
+     by themselves; if focus lands on them (e.g. programmatic focus on #root
+     after a route change) we don't want a ring around the whole window.
+   - [tabindex="-1"]: programmatically-focusable wrappers (e.g. the zui
+     Modal container, MobileShell drawer, Menu root) that are NOT in the
+     tab order. They're focused by .focus() calls solely to scope keyboard
+     handling and screen-reader announcements; a visible ring around them
+     is noise, never a navigation aid.
+   - [role="dialog"], [aria-modal="true"]: dialog / sheet / overlay
+     containers regardless of tabindex.
+
+   Both :focus and :focus-visible are listed because Chromium occasionally
+   synthesizes :focus without :focus-visible during keyboard-modality
+   transitions (e.g. Shift+Tab into a programmatically-focused wrapper),
+   and we want the same outcome either way. Attribute / id / class
+   specificity beats the bare `:focus-visible` rule above without
+   needing !important. */
+#root:focus,
 #root:focus-visible,
-.titlebar-drag:focus-visible {
+.titlebar-drag:focus,
+.titlebar-drag:focus-visible,
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible,
+[role="dialog"]:focus,
+[role="dialog"]:focus-visible,
+[aria-modal="true"]:focus,
+[aria-modal="true"]:focus-visible {
   outline: none;
 }
 
