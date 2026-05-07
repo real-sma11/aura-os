@@ -209,9 +209,27 @@ function ProjectAgentChatPanel({
     resetEvents([], { allowWhileStreaming: true });
   }, [resetEvents]);
 
+  // `markNextSendAsNewSession` is returned as a fresh inline lambda from
+  // `useChatStream` on every render — keep a ref so the new-session /
+  // new-chat callbacks don't get a fresh identity on every parent
+  // re-render and can stay memoized across session switches.
+  const markNextSendAsNewSessionRef = useRef(markNextSendAsNewSession);
+  useEffect(() => {
+    markNextSendAsNewSessionRef.current = markNextSendAsNewSession;
+  }, [markNextSendAsNewSession]);
+
+  // `historyKey` flips between `project:...` and `session:...:<id>` whenever
+  // the URL `?session=` changes. Reading it via a ref keeps `handleNewChat`'s
+  // identity stable across session navigation so the chat input bar's
+  // `onNewChat` prop doesn't churn.
+  const historyKeyRef = useRef(historyKey);
+  useEffect(() => {
+    historyKeyRef.current = historyKey;
+  }, [historyKey]);
+
   const handleNewSession = useCallback(() => {
     void import("../../../../lib/analytics").then(({ track }) => track("chat_session_reset"));
-    markNextSendAsNewSession();
+    markNextSendAsNewSessionRef.current();
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     store.markResetPending(streamKey);
@@ -227,18 +245,18 @@ function ProjectAgentChatPanel({
       },
       { replace: true },
     );
-  }, [markNextSendAsNewSession, streamKey, setSearchParams]);
+  }, [streamKey, setSearchParams]);
 
   const handleNewChat = useCallback(() => {
     void import("../../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
-    markNextSendAsNewSession();
+    markNextSendAsNewSessionRef.current();
     // Blank the visible transcript immediately. The chat-history-store
     // entry is dropped (and the IDB cache for the *old* historyKey is
     // wiped); the local stream buffer is replaced with []. The next
     // SessionReady writes the fresh session id back into `?session=`
     // via `handleSessionReady` so the panel keeps streaming into a
     // clean session-scoped slot.
-    useChatHistoryStore.getState().clearHistory(historyKey);
+    useChatHistoryStore.getState().clearHistory(historyKeyRef.current);
     resetEvents([], { allowWhileStreaming: true });
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
@@ -254,13 +272,7 @@ function ProjectAgentChatPanel({
     // Optimistic refresh; the real new session row arrives after the
     // user's first send (the chat stream bumps again on `SessionReady`).
     useSessionsListStore.getState().bumpVersion();
-  }, [
-    markNextSendAsNewSession,
-    streamKey,
-    historyKey,
-    resetEvents,
-    setSearchParams,
-  ]);
+  }, [streamKey, resetEvents, setSearchParams]);
 
   const contextUsageFetcher = useMemo(() => {
     return (signal: AbortSignal) =>
@@ -296,14 +308,39 @@ function ProjectAgentChatPanel({
   }, [agentInstanceId, sessionId]);
 
   const wrappedSendBase = useMemo(() => wrapSend(sendMessage), [wrapSend, sendMessage]);
+  // Mirror every value `maybeRenameFromFirstPrompt` reads via a ref so the
+  // callback's identity stays stable. The original `useCallback` deps
+  // included `sessionId`, `hasHistory`, and `agentName`, all of which flip
+  // whenever the user navigates between sessions or right after a rename
+  // succeeds — that propagated into `wrappedSend` and clobbered the
+  // input bar's `React.memo` shallow compare.
+  const renameContextRef = useRef({
+    agentInstanceId,
+    agentName,
+    hasHistory,
+    sessionId,
+    projectId,
+    setAgentsByProject,
+  });
+  useEffect(() => {
+    renameContextRef.current = {
+      agentInstanceId,
+      agentName,
+      hasHistory,
+      sessionId,
+      projectId,
+      setAgentsByProject,
+    };
+  }, [agentInstanceId, agentName, hasHistory, sessionId, projectId, setAgentsByProject]);
   const maybeRenameFromFirstPrompt = useCallback((content: string) => {
+    const ctx = renameContextRef.current;
     // Auto-rename the agent from its first prompt only when the user
     // is on a fresh canvas (no `?session=`) and no history has loaded
     // yet. Continuing an existing session keeps the original name.
-    if (renameTriggeredRef.current || sessionId || agentName !== "New Agent") {
+    if (renameTriggeredRef.current || ctx.sessionId || ctx.agentName !== "New Agent") {
       return;
     }
-    if (hasHistory) {
+    if (ctx.hasHistory) {
       return;
     }
 
@@ -313,29 +350,22 @@ function ProjectAgentChatPanel({
     }
 
     renameTriggeredRef.current = true;
-    void api.updateAgentInstance(projectId, agentInstanceId, { name: nextName })
+    void api.updateAgentInstance(ctx.projectId, ctx.agentInstanceId, { name: nextName })
       .then((updated) => {
         queryClient.setQueryData(
-          projectQueryKeys.agentInstance(projectId, agentInstanceId),
+          projectQueryKeys.agentInstance(ctx.projectId, ctx.agentInstanceId),
           updated,
         );
-        setAgentsByProject((prev) => ({
+        ctx.setAgentsByProject((prev) => ({
           ...prev,
-          [projectId]: mergeAgentIntoProjectAgents(prev[projectId], updated),
+          [ctx.projectId]: mergeAgentIntoProjectAgents(prev[ctx.projectId], updated),
         }));
       })
       .catch((error) => {
         renameTriggeredRef.current = false;
         console.error("Failed to rename project agent from first prompt", error);
       });
-  }, [
-    agentInstanceId,
-    agentName,
-    hasHistory,
-    sessionId,
-    projectId,
-    setAgentsByProject,
-  ]);
+  }, []);
   const wrappedSend = useCallback((...args: Parameters<typeof wrappedSendBase>) => {
     maybeRenameFromFirstPrompt(args[0] ?? "");
     return wrappedSendBase(...args);
@@ -349,15 +379,23 @@ function ProjectAgentChatPanel({
   // `/v1/agents/{id}/automaton/start` in the server.
   const busy = useAgentBusy({ projectId, agentInstanceId, streamKey });
   const loopOnlyBusy = busy.isBusy && busy.reason === "loop";
+  // `loopOnlyBusy` flips per turn — keep the read behind a ref so
+  // `handleCombinedStop`'s identity stays stable per agent. Without this
+  // the chat input bar's `onStop` prop changed on every stream toggle and
+  // its `React.memo` couldn't skip on session navigation.
+  const loopOnlyBusyRef = useRef(loopOnlyBusy);
+  useEffect(() => {
+    loopOnlyBusyRef.current = loopOnlyBusy;
+  }, [loopOnlyBusy]);
   const handleCombinedStop = useCallback(() => {
-    if (loopOnlyBusy) {
+    if (loopOnlyBusyRef.current) {
       void api.stopLoop(projectId, agentInstanceId).catch((err) => {
         console.error("Failed to stop automation loop from chat", err);
       });
       return;
     }
     stopStreaming();
-  }, [loopOnlyBusy, projectId, agentInstanceId, stopStreaming]);
+  }, [projectId, agentInstanceId, stopStreaming]);
 
   const deferredLoading = useDelayedLoading(isLoading);
   const panelKey = sessionId ? `${agentInstanceId}:${sessionId}` : agentInstanceId;

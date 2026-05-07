@@ -21,6 +21,14 @@ import {
   type LegacyOnSend,
 } from "./resolve-send";
 
+// Stable module-level empty defaults. Reusing the same array references on
+// every reset (rather than allocating a fresh `[]`) lets `React.memo` on the
+// chat input bar skip re-renders when only the active session changes — the
+// session reset effect would otherwise hand the bar a brand-new `attachments`
+// / `selectedCommands` array each time and defeat the shallow prop compare.
+const EMPTY_ATTACHMENTS: AttachmentItem[] = [];
+const EMPTY_COMMANDS: SlashCommand[] = [];
+
 export interface UseChatPanelStateOptions {
   streamKey: string;
   onSend: (
@@ -54,8 +62,8 @@ export function useChatPanelState({
   agentId,
 }: UseChatPanelStateOptions) {
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [commands, setCommands] = useState<SlashCommand[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(EMPTY_ATTACHMENTS);
+  const [commands, setCommands] = useState<SlashCommand[]>(EMPTY_COMMANDS);
   const availableModels = availableModelsForAdapter(adapterType);
   const chatUI = useChatUI(streamKey);
   const selectedModel = chatUI.selectedModel;
@@ -78,9 +86,14 @@ export function useChatPanelState({
       resetKeyMountRef.current = false;
       return;
     }
-    setInput("");
-    setAttachments([]);
-    setCommands([]);
+    // Bail out of the reset writes when the state is already empty so React
+    // skips the re-render entirely. Combined with the module-level
+    // `EMPTY_*` constants below, this lets the input bar's `React.memo`
+    // shallow-compare see identical `attachments` / `selectedCommands`
+    // refs across same-agent session switches.
+    setInput((prev) => (prev === "" ? prev : ""));
+    setAttachments((prev) => (prev.length === 0 ? prev : EMPTY_ATTACHMENTS));
+    setCommands((prev) => (prev.length === 0 ? prev : EMPTY_COMMANDS));
   }, [scrollResetKey]);
 
   useEffect(() => {
@@ -151,105 +164,13 @@ export function useChatPanelState({
     [],
   );
 
-  const handleSend = useCallback(
-    (
-      content: string,
-      action?: string,
-      atts?: AttachmentItem[],
-      // genMode is accepted for backwards compatibility with callers
-      // that still thread it explicitly (e.g. the unit tests). When
-      // present, it overrides the store-derived mode for this single
-      // send only — the store remains the persistent source of truth.
-      genMode?: GenerationMode,
-    ) => {
-      setInput("");
-      const apiAttachments = buildApiAttachments(atts) ?? [];
-      const userCommandIds = commands.map((c) => c.id);
-
-      // Translate the active mode (with optional per-call override)
-      // into a fully-typed `ResolvedSend` variant.
-      const overrideMode =
-        genMode === "image"
-          ? ("image" as const)
-          : genMode === "3d"
-            ? ("3d" as const)
-            : undefined;
-      const effectiveAgentMode = overrideMode ?? selectedMode;
-
-      // Read the pinned source image straight from the chat-ui store
-      // so the request reflects exactly what the input bar's thumb
-      // shows, and ignores any image that may have landed in the
-      // chat history after the user removed the pin.
-      const pinnedSourceImageUrl = chatUI.pinnedSourceImage?.imageUrl ?? null;
-
-      const resolved = resolveSend({
-        mode: effectiveAgentMode,
-        content,
-        selectedModel,
-        attachments: apiAttachments,
-        userCommandIds,
-        pinnedSourceImageUrl,
-      });
-
-      setAttachments([]);
-      // Drop non-generation chips (the panel's transient chip row);
-      // generation modes own that signal via the selector now.
-      setCommands((prev) => prev.filter((c) => isGenerationCommand(c.id)));
-
-      // An explicit `action` from the caller (e.g. inline "Generate
-      // specs" buttons) wins over the mode-supplied one. The override
-      // is applied at the wire boundary, not by mutating a variant,
-      // so the discriminated union stays honest.
-      const overrideAction: string | null = action ?? null;
-
-      if (isStreaming) {
-        const record = toQueuedRecord(resolved);
-        useMessageQueueStore.getState().enqueue(streamKey, {
-          content: record.content,
-          action: overrideAction ?? record.action,
-          model: record.model,
-          attachments: record.attachments,
-          commands: record.commands,
-          generationMode: record.generationMode,
-          sourceImageUrl: record.sourceImageUrl,
-        });
-        scrollToBottom();
-      } else {
-        scrollToBottom();
-        if (overrideAction !== null) {
-          // Caller supplied an explicit action; bypass the mode's
-          // action and pass everything else through unchanged.
-          const record = toQueuedRecord(resolved);
-          (onSend as LegacyOnSend)(
-            record.content,
-            overrideAction,
-            record.model,
-            record.attachments,
-            record.commands,
-            selectedProjectId,
-            record.generationMode,
-            record.sourceImageUrl,
-          );
-        } else {
-          dispatchResolvedSend(resolved, onSend as LegacyOnSend, selectedProjectId);
-        }
-      }
-    },
-    [
-      buildApiAttachments,
-      chatUI.pinnedSourceImage,
-      commands,
-      isStreaming,
-      onSend,
-      scrollToBottom,
-      selectedMode,
-      selectedModel,
-      selectedProjectId,
-      streamKey,
-    ],
-  );
-
-  const prevStreamingRef = useRef(false);
+  // Ref-mirror every value `handleSend` reads that's *not* `streamKey`.
+  // Without this, `handleSend`'s identity churned on every selectedModel /
+  // selectedMode / pinnedSourceImage / isStreaming / commands change and
+  // cascaded into `<DesktopChatInputBar onSend={handleSend} />`, defeating
+  // its `React.memo` whenever the user clicked between sessions of the
+  // same agent. Identity is now stable per `streamKey`, which itself only
+  // changes when the user switches agent (see `useStreamCore`).
   const onSendRef = useRef(onSend);
   useEffect(() => {
     onSendRef.current = onSend;
@@ -265,6 +186,133 @@ export function useChatPanelState({
     selectedProjectIdRef.current = selectedProjectId;
   }, [selectedProjectId]);
 
+  const selectedModeRef = useRef(selectedMode);
+  useEffect(() => {
+    selectedModeRef.current = selectedMode;
+  }, [selectedMode]);
+
+  const pinnedSourceImageRef = useRef(chatUI.pinnedSourceImage);
+  useEffect(() => {
+    pinnedSourceImageRef.current = chatUI.pinnedSourceImage;
+  }, [chatUI.pinnedSourceImage]);
+
+  const commandsRef = useRef(commands);
+  useEffect(() => {
+    commandsRef.current = commands;
+  }, [commands]);
+
+  const isStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  const scrollToBottomRef = useRef(scrollToBottom);
+  useEffect(() => {
+    scrollToBottomRef.current = scrollToBottom;
+  }, [scrollToBottom]);
+
+  const handleSend = useCallback(
+    (
+      content: string,
+      action?: string,
+      atts?: AttachmentItem[],
+      // genMode is accepted for backwards compatibility with callers
+      // that still thread it explicitly (e.g. the unit tests). When
+      // present, it overrides the store-derived mode for this single
+      // send only — the store remains the persistent source of truth.
+      genMode?: GenerationMode,
+    ) => {
+      setInput("");
+      const apiAttachments = buildApiAttachments(atts) ?? [];
+      const userCommandIds = commandsRef.current.map((c) => c.id);
+
+      // Translate the active mode (with optional per-call override)
+      // into a fully-typed `ResolvedSend` variant.
+      const overrideMode =
+        genMode === "image"
+          ? ("image" as const)
+          : genMode === "3d"
+            ? ("3d" as const)
+            : undefined;
+      const effectiveAgentMode = overrideMode ?? selectedModeRef.current;
+
+      // Read the pinned source image straight from the chat-ui store
+      // so the request reflects exactly what the input bar's thumb
+      // shows, and ignores any image that may have landed in the
+      // chat history after the user removed the pin.
+      const pinnedSourceImageUrl =
+        pinnedSourceImageRef.current?.imageUrl ?? null;
+
+      const resolved = resolveSend({
+        mode: effectiveAgentMode,
+        content,
+        selectedModel: selectedModelRef.current,
+        attachments: apiAttachments,
+        userCommandIds,
+        pinnedSourceImageUrl,
+      });
+
+      // Reset to module-level empties when not already empty, so React
+      // sees a stable reference and the input bar's memo can short-circuit.
+      setAttachments((prev) =>
+        prev.length === 0 ? prev : EMPTY_ATTACHMENTS,
+      );
+      // Drop non-generation chips (the panel's transient chip row);
+      // generation modes own that signal via the selector now.
+      setCommands((prev) => {
+        const next = prev.filter((c) => isGenerationCommand(c.id));
+        if (next.length === prev.length) return prev;
+        return next.length === 0 ? EMPTY_COMMANDS : next;
+      });
+
+      // An explicit `action` from the caller (e.g. inline "Generate
+      // specs" buttons) wins over the mode-supplied one. The override
+      // is applied at the wire boundary, not by mutating a variant,
+      // so the discriminated union stays honest.
+      const overrideAction: string | null = action ?? null;
+
+      if (isStreamingRef.current) {
+        const record = toQueuedRecord(resolved);
+        useMessageQueueStore.getState().enqueue(streamKey, {
+          content: record.content,
+          action: overrideAction ?? record.action,
+          model: record.model,
+          attachments: record.attachments,
+          commands: record.commands,
+          generationMode: record.generationMode,
+          sourceImageUrl: record.sourceImageUrl,
+        });
+        scrollToBottomRef.current();
+      } else {
+        scrollToBottomRef.current();
+        if (overrideAction !== null) {
+          // Caller supplied an explicit action; bypass the mode's
+          // action and pass everything else through unchanged.
+          const record = toQueuedRecord(resolved);
+          (onSendRef.current as LegacyOnSend)(
+            record.content,
+            overrideAction,
+            record.model,
+            record.attachments,
+            record.commands,
+            selectedProjectIdRef.current,
+            record.generationMode,
+            record.sourceImageUrl,
+          );
+        } else {
+          dispatchResolvedSend(
+            resolved,
+            onSendRef.current as LegacyOnSend,
+            selectedProjectIdRef.current,
+          );
+        }
+      }
+    },
+    [buildApiAttachments, streamKey],
+  );
+
+  const prevStreamingRef = useRef(false);
+
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
       const next = useMessageQueueStore.getState().dequeue(streamKey);
@@ -279,11 +327,11 @@ export function useChatPanelState({
           next.generationMode,
           next.sourceImageUrl,
         );
-        scrollToBottom();
+        scrollToBottomRef.current();
       }
     }
     prevStreamingRef.current = isStreaming;
-  }, [adapterType, isStreaming, streamKey, scrollToBottom]);
+  }, [adapterType, isStreaming, streamKey]);
 
   const handleQueueEdit = useCallback(
     (item: QueuedMessage) => {

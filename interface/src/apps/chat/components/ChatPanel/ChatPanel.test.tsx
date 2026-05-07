@@ -56,12 +56,27 @@ vi.mock("../ChatMessageList", () => ({
   },
 }));
 
+// Render-count probe — exposed so individual tests can assert how often
+// the (memoized) input bar re-renders. We store the counter on an object
+// (rather than a `let` binding) so the mock body can mutate `count` in
+// place without tripping `react-hooks/globals`, which forbids reassigning
+// outer variables during render.
+const inputBarRenderProbe = { count: 0 };
+function resetInputBarRenderCount() {
+  inputBarRenderProbe.count = 0;
+}
+
 vi.mock("../ChatInputBar", async () => {
   const React = await import("react");
-  const MockChatInputBar = React.forwardRef(function MockChatInputBar(
+  const InnerInputBar = React.forwardRef(function InnerInputBar(
     { isVisible, isCentered }: { isVisible?: boolean; isCentered?: boolean },
     ref: React.ForwardedRef<{ focus: () => void }>,
   ) {
+    // Test-only render probe: deliberately mutate during render to count
+    // how often the memoized component is invoked, which is the property
+    // under test.
+    // eslint-disable-next-line react-hooks/immutability
+    inputBarRenderProbe.count += 1;
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     React.useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus(),
@@ -76,6 +91,10 @@ vi.mock("../ChatInputBar", async () => {
       />
     );
   });
+  // `React.memo` mirrors the production `DesktopChatInputBar` wrapper so
+  // the assertion below exercises the same shallow-prop-compare path that
+  // gates render skipping in real usage.
+  const MockChatInputBar = React.memo(InnerInputBar);
 
   return {
     ChatInputBar: MockChatInputBar,
@@ -115,6 +134,7 @@ describe("ChatPanel", () => {
     vi.useFakeTimers();
     mockUseAuraCapabilities.mockReset();
     autoSignalInitialAnchorReady = false;
+    resetInputBarRenderCount();
     useMessageStore.setState({ messages: {}, orderedIds: {} });
     useChatViewStore.setState({ threads: {} });
     requestAnimationFrameSpy = vi
@@ -563,5 +583,61 @@ describe("ChatPanel", () => {
     });
 
     expect(getInputBar()).toHaveAttribute("data-centered", "false");
+  });
+
+  it("does not re-render the input bar when only scrollResetKey changes (same-agent session switch)", () => {
+    // Regression: clicking a different session in the agents-shell "Chats"
+    // sidekick used to re-render the entire chat input bar even though the
+    // bar is wrapped in `React.memo` and `streamKey` (= `projectId:agentInstanceId`)
+    // is *unchanged* across same-agent session switches. The cause was prop
+    // identity churn (fresh `[]` arrays from the panel-state reset effect,
+    // and `handleSend`/`onNewChat` callbacks re-created on each render).
+    // After stabilizing those refs at module level / behind ref-mirrors,
+    // the bar's memo should short-circuit and skip the render entirely.
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
+
+    const sharedSend = vi.fn();
+    const sharedStop = vi.fn();
+    const sharedOnNewChat = vi.fn();
+    const sharedOnNewSession = vi.fn();
+
+    const { rerender } = render(
+      <ChatPanel
+        streamKey="stream-1"
+        onSend={sharedSend}
+        onStop={sharedStop}
+        agentName="Coca"
+        machineType="remote"
+        historyResolved
+        scrollResetKey="session-a"
+        onNewChat={sharedOnNewChat}
+        onNewSession={sharedOnNewSession}
+      />,
+    );
+
+    const initialRenders = inputBarRenderProbe.count;
+    expect(initialRenders).toBeGreaterThan(0);
+
+    rerender(
+      <ChatPanel
+        streamKey="stream-1"
+        onSend={sharedSend}
+        onStop={sharedStop}
+        agentName="Coca"
+        machineType="remote"
+        historyResolved
+        scrollResetKey="session-b"
+        onNewChat={sharedOnNewChat}
+        onNewSession={sharedOnNewSession}
+      />,
+    );
+
+    // The input bar must not be re-rendered as a result of the
+    // session switch alone. `React.memo` short-circuits on identical
+    // shallow props, and after the stabilization fix every prop that
+    // changes per-session (the empty `attachments` / `selectedCommands`
+    // resets, `handleSend`'s identity, etc.) is held stable per
+    // streamKey.
+    expect(inputBarRenderProbe.count).toBe(initialRenders);
   });
 });
