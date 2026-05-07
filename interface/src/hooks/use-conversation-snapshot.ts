@@ -280,12 +280,12 @@ function combineStoredAndStreamMessages(
 }
 
 /**
- * Defensive splice: when the just-merged `messages` array ends with an
- * optimistic local user prompt — the canonical "user just clicked Send"
- * frame — and the previous-frame cache for the same `transcriptKey`
+ * Defensive splice: when the just-merged `messages` array contains a
+ * newly optimistic local user prompt — the canonical "user just clicked
+ * Send" frame — and the previous-frame cache for the same `transcriptKey`
  * carries a persisted prior assistant that's gone missing from the new
  * merge, splice the cached persisted entries back into the result before
- * the trailing optimistic prompt.
+ * the newer optimistic rows.
  *
  * This is a backstop against transient flaps in the merge inputs that I
  * could not pin down to a single race in static analysis: a WS-driven
@@ -299,10 +299,11 @@ function combineStoredAndStreamMessages(
  * of sending the next one) and enforce it here.
  *
  * Scope is intentionally narrow:
- *   1. Trigger only when `merged`'s last entry is an optimistic local
- *      user message (id starts with `temp-` or `stream-`). Any other
- *      tail means we're outside the "Send was just clicked" window and
- *      the merge result should be trusted as-is.
+ *   1. Trigger only when `merged` contains an optimistic local user
+ *      message (id starts with `temp-` or `stream-`) that was not in the
+ *      cached snapshot. A same-frame assistant placeholder may already
+ *      have landed after that prompt, so tail-only checks miss the active
+ *      send window.
  *   2. Only reinstate persisted (non-optimistic) entries; we never
  *      resurrect cached optimistic ids since those are local-only and
  *      naturally churn.
@@ -310,9 +311,9 @@ function combineStoredAndStreamMessages(
  *      chronological ordering even when several persisted entries went
  *      missing from `merged` simultaneously.
  *
- * Because the trigger is keyed on the trailing optimistic user prompt,
- * idle (between-turn) refreshes — including legitimate server-side
- * deletions that drop a prior assistant from history — pass through the
+ * Because the trigger is keyed on a newly optimistic user prompt, idle
+ * (between-turn) refreshes — including legitimate server-side deletions
+ * that drop a prior assistant from history — pass through the
  * reinstatement no-op branch and trust the merge.
  */
 function reinstateMissingPersistedOnSend(
@@ -321,13 +322,18 @@ function reinstateMissingPersistedOnSend(
 ): DisplaySessionEvent[] {
   if (merged.length === 0 || cached.length === 0) return merged;
 
-  const last = merged[merged.length - 1];
-  if (last.role !== "user" || !isOptimisticLocalMessage(last)) {
-    return merged;
-  }
-
   const mergedIds = new Set<string>();
   for (const m of merged) mergedIds.add(m.id);
+  const cachedIds = new Set<string>();
+  for (const cm of cached) cachedIds.add(cm.id);
+
+  const hasNewOptimisticUser = merged.some(
+    (message) =>
+      message.role === "user" &&
+      isOptimisticLocalMessage(message) &&
+      !cachedIds.has(message.id),
+  );
+  if (!hasNewOptimisticUser) return merged;
 
   let hasMissing = false;
   for (const cm of cached) {

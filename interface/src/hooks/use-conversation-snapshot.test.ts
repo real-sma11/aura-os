@@ -504,14 +504,70 @@ describe("useConversationSnapshot", () => {
     ]);
   });
 
+  it("reinstates a prior persisted assistant when the send frame already has an assistant placeholder", () => {
+    // Same missing-assistant race as above, but the live stream has already
+    // appended the next turn's assistant placeholder after the optimistic
+    // user prompt. A tail-only send detector misses this shape because the
+    // merged result ends in `stream-asst-2`, not `temp-2`.
+    const streamKey = "project-1:agent-1:reinstate-with-placeholder";
+    const transcriptKey = streamKey;
+    const settledHistory: DisplaySessionEvent[] = [
+      { id: "evt-user-1", role: "user", content: "first prompt" },
+      { id: "evt-assistant-1", role: "assistant", content: "first reply" },
+    ];
+
+    setStreamMessages(streamKey, [
+      { id: "temp-1", role: "user", content: "first prompt" },
+      { id: "evt-assistant-1", role: "assistant", content: "first reply" },
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ history }: { history: DisplaySessionEvent[] }) =>
+        useConversationSnapshot({
+          streamKey,
+          transcriptKey,
+          historyMessages: history,
+        }),
+      { initialProps: { history: settledHistory } },
+    );
+
+    expect(result.current.messages).toEqual(settledHistory);
+
+    useMessageStore
+      .getState()
+      .setThread(transcriptKey, [
+        { id: "evt-user-1", role: "user", content: "first prompt" },
+      ]);
+    setStreamMessages(streamKey, [
+      { id: "temp-1", role: "user", content: "first prompt" },
+      { id: "temp-2", role: "user", content: "follow-up prompt" },
+      { id: "stream-asst-2", role: "assistant", content: "" },
+    ]);
+    rerender({
+      history: [{ id: "evt-user-1", role: "user", content: "first prompt" }],
+    });
+
+    expect(result.current.messages.map((m) => m.id)).toEqual([
+      "evt-user-1",
+      "evt-assistant-1",
+      "temp-2",
+      "stream-asst-2",
+    ]);
+    expect(result.current.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+  });
+
   it("does not reinstate when the merged tail is not an optimistic user prompt", () => {
-    // The reinstate path is keyed on "merged ends with an optimistic
-    // local user message" — the canonical Send frame. Idle refreshes
-    // (between turns, no user prompt in flight) must trust the merge so
-    // legitimate server-side history changes flow through. This test
-    // proves a delete-style refresh that drops the prior assistant
-    // does NOT get its assistant resurrected, because the trigger
-    // condition is absent.
+    // The reinstate path is keyed on a newly optimistic local user
+    // message — the canonical Send frame. Idle refreshes (between
+    // turns, no user prompt in flight) must trust the merge so legitimate
+    // server-side history changes flow through. This test proves a
+    // delete-style refresh that drops the prior assistant does NOT get
+    // its assistant resurrected, because the trigger condition is absent.
     const streamKey = "project-1:agent-1:idle";
     const transcriptKey = streamKey;
     const settledHistory: DisplaySessionEvent[] = [
