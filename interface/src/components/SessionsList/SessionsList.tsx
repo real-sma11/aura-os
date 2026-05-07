@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { EmptyState } from "../EmptyState";
 import {
   SidekickItemContextMenu,
@@ -11,6 +11,9 @@ import {
   type SessionRow,
 } from "./session-row-utils";
 import { useSessionSummaries } from "./use-session-summaries";
+import { useEventStore } from "../../stores/event-store";
+import { useSessionsListActions } from "../../stores/sessions-list-store";
+import { EventType } from "../../shared/types/aura-events";
 import styles from "./SessionsList.module.css";
 
 interface SessionsListProps {
@@ -60,6 +63,24 @@ export function SessionsList({
   onDismissError,
 }: SessionsListProps) {
   const summaries = useSessionSummaries(sessions);
+
+  // Live-patch the row label when the backend's on-send title
+  // generator (apps/aura-os-server/src/handlers/agents/sessions.rs
+  // `generate_session_title`) lands a ChatGPT-style title for a
+  // brand-new session. Without this the label only updates on the
+  // next sidekick mount / sessions list refetch, which usually
+  // happens after the assistant turn finishes — defeating the
+  // "title appears before the turn completes" UX goal.
+  const subscribe = useEventStore((s) => s.subscribe);
+  const { setSessionSummary } = useSessionsListActions();
+  useEffect(() => {
+    const unsub = subscribe(EventType.SessionSummaryUpdated, (event) => {
+      const { session_id, summary } = event.content;
+      if (!session_id || typeof summary !== "string") return;
+      setSessionSummary(session_id, summary);
+    });
+    return unsub;
+  }, [subscribe, setSessionSummary]);
 
   const sessionById = useMemo(
     () => new Map(sessions.map((s) => [s.session_id, s])),

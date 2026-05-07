@@ -53,6 +53,36 @@ pub(crate) fn publish_assistant_message_end_event(
     }));
 }
 
+/// Publish a `session_summary_updated` event on the WS bus once the
+/// on-send title generator (see
+/// `crate::handlers::agents::sessions::generate_session_title`) has
+/// landed a fresh ChatGPT-style title for a brand-new session. The
+/// client's `SessionsList` subscribes via `useEventStore` and patches
+/// the matching row so the sidekick label flips from
+/// `NEW_CHAT_PLACEHOLDER` ("New chat") to the real title without
+/// waiting for `useSessionSummaries` to lazy-fetch on next mount —
+/// crucially, this lands while the assistant turn is still streaming.
+///
+/// `summary` is the new label string; the field is named `summary`
+/// (not `title`) to match the storage column name
+/// `summary_of_previous_context` and to keep the wire payload
+/// symmetric with the persisted shape.
+pub(crate) fn publish_session_summary_updated_event(
+    bus: &tokio::sync::broadcast::Sender<serde_json::Value>,
+    ctx: &ChatPersistCtx,
+    summary: &str,
+) {
+    let _ = bus.send(serde_json::json!({
+        "type": "session_summary_updated",
+        "session_id": ctx.session_id,
+        "project_id": ctx.project_id,
+        "project_agent_id": ctx.project_agent_id,
+        "agent_instance_id": ctx.project_agent_id,
+        "agent_id": ctx.agent_id,
+        "summary": summary,
+    }));
+}
+
 /// Publish a heartbeat-style progress event on the WS bus for an
 /// in-flight assistant turn. Carries no payload beyond the routing
 /// keys so the chat-history-sync hook on the client can throttle

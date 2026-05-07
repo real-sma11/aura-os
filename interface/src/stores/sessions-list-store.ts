@@ -129,6 +129,18 @@ interface SessionsListStore {
     oldSessionId: string,
     newSessionId: string,
   ) => void;
+  /**
+   * Patch the persisted `summary_of_previous_context` for a session
+   * across every surface that currently holds a row for it. Driven
+   * by the `session_summary_updated` WebSocket event published from
+   * the backend's on-send title generator (see
+   * `apps/aura-os-server/src/handlers/agents/sessions.rs`
+   * `generate_session_title`), so the sidekick label flips from
+   * "New chat" to the ChatGPT-style title before the assistant turn
+   * finishes streaming. Surfaces that don't currently hold the row
+   * keep their existing array reference to avoid spurious renders.
+   */
+  setSessionSummary: (sessionId: string, summary: string) => void;
   /** Surface the user-facing reason a delete failed for `surfaceKey`. */
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
@@ -340,6 +352,29 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     }));
   },
 
+  setSessionSummary: (sessionId, summary) => {
+    const sessionsBySurface = get().sessionsBySurface;
+    let mutated = false;
+    const nextBySurface: Record<string, AnnotatedSession[]> = {};
+    for (const [key, list] of Object.entries(sessionsBySurface)) {
+      const idx = list.findIndex((s) => s.session_id === sessionId);
+      if (idx === -1) {
+        nextBySurface[key] = list;
+        continue;
+      }
+      if (list[idx].summary_of_previous_context === summary) {
+        nextBySurface[key] = list;
+        continue;
+      }
+      const nextList = list.slice();
+      nextList[idx] = { ...list[idx], summary_of_previous_context: summary };
+      nextBySurface[key] = nextList;
+      mutated = true;
+    }
+    if (!mutated) return;
+    set(() => ({ sessionsBySurface: nextBySurface }));
+  },
+
   setDeleteError: (surfaceKey, message) => {
     set((state) => ({
       deleteErrorBySurface: {
@@ -443,6 +478,7 @@ interface SessionsListActions {
     oldSessionId: string,
     newSessionId: string,
   ) => void;
+  setSessionSummary: (sessionId: string, summary: string) => void;
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
@@ -460,6 +496,7 @@ export function useSessionsListActions(): SessionsListActions {
       restoreSession: s.restoreSession,
       addOptimisticSession: s.addOptimisticSession,
       replaceSessionId: s.replaceSessionId,
+      setSessionSummary: s.setSessionSummary,
       setDeleteError: s.setDeleteError,
     })),
   );

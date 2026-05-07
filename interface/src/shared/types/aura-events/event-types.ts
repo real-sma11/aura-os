@@ -12,6 +12,18 @@ export const EventType = {
   UserMessage:           "user_message",
   MessageStart:          "message_start",
   MessageEnd:            "message_end",
+  /**
+   * Pushed by `publish_session_summary_updated_event` once
+   * `generate_session_title` lands a ChatGPT-style title for a
+   * brand-new chat session. `SessionsList` subscribes to this and
+   * patches the matching row's `summary_of_previous_context` so the
+   * sidekick label flips from `NEW_CHAT_PLACEHOLDER` ("New chat")
+   * to the real title without waiting for `useSessionSummaries` to
+   * lazy-fetch on next mount. Payload shape:
+   * `{ session_id, project_id, project_agent_id, agent_instance_id,
+   *    agent_id, summary }`.
+   */
+  SessionSummaryUpdated: "session_summary_updated",
 
   // Streaming (within MessageStart..MessageEnd)
   Delta:                 "delta",

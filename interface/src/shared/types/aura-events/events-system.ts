@@ -142,6 +142,14 @@ export type SystemEventVariant =
       agent_instance_id?: string;
       agent_id?: string;
     } }
+  | { type: typeof EventType.SessionSummaryUpdated; content: {
+      session_id: string;
+      summary: string;
+      project_id?: string;
+      project_agent_id?: string;
+      agent_instance_id?: string;
+      agent_id?: string | null;
+    } }
 
   // ── Billing ────────────────────────────────────────────────
   | { type: typeof EventType.CreditBalanceUpdated; content: {

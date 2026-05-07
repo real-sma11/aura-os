@@ -46,6 +46,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   [EventType.LoopActivityChanged]: "Loop",
   [EventType.LoopEnded]: "Loop",
   [EventType.SessionRolledOver]: "Session",
+  [EventType.SessionSummaryUpdated]: "Session",
   [EventType.BuildVerificationSkipped]: "Build",
   [EventType.BuildVerificationStarted]: "Build",
   [EventType.BuildVerificationPassed]: "Build",
