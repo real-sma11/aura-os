@@ -43,15 +43,51 @@ const EMPTY_TIMELINE: NonNullable<
   ReturnType<typeof useStreamStore.getState>["entries"][string]
 >["timeline"] = [];
 
-function messageRenderKey(
-  msg: DisplaySessionEvent,
-  index: number,
-  visibleCount: number,
-): string {
-  if (msg.role === "assistant" && index === visibleCount - 1) {
-    return "assistant-tail";
+/**
+ * React-key strategy for chat bubbles.
+ *
+ * The naive `key={msg.id}` strategy unmounts the trailing assistant
+ * bubble across the stream-placeholder -> persisted-id swap at end of
+ * turn (id changes, key changes, full remount). Conversely, the older
+ * "assistant-tail" position-based key kept that swap stable but caused
+ * a fresh remount of the *previous* turn's assistant whenever the user
+ * sent a new message: the prior assistant slid out of `visibleCount-1`,
+ * its key flipped from "assistant-tail" -> `msg.id`, the bubble
+ * unmounted/remounted, `useHighlightedHtml`/markdown/images all
+ * re-initialised, and the user saw the bubble disappear for hundreds
+ * of ms until the new mount finished its async work.
+ *
+ * `applyTailIdAliases` walks the previous and current visible-message
+ * arrays from the tail backward, and for each pair with the same role
+ * and content but a different id (the placeholder -> persisted swap)
+ * adds an alias from the new id to whatever stable key was used last
+ * render. The render then keys each bubble by
+ * `aliasMap.get(msg.id) ?? msg.id`, which keeps the placeholder id as
+ * the React identity for that slot across the swap while leaving every
+ * other bubble keyed by its stable id - so a new user message at the
+ * end never disturbs the prior assistant's reconciliation slot.
+ */
+function applyTailIdAliases(
+  aliasMap: Map<string, string>,
+  prev: readonly DisplaySessionEvent[],
+  curr: readonly DisplaySessionEvent[],
+): void {
+  const limit = Math.min(prev.length, curr.length);
+  for (let i = 0; i < limit; i += 1) {
+    const prevMsg = prev[prev.length - 1 - i];
+    const currMsg = curr[curr.length - 1 - i];
+    if (prevMsg.id === currMsg.id) {
+      continue;
+    }
+    if (prevMsg.role !== currMsg.role || prevMsg.content !== currMsg.content) {
+      // First non-aligned pair from the tail terminates the walk —
+      // anything earlier in the list is structurally a different turn
+      // and aliasing across it would conflate unrelated bubbles.
+      break;
+    }
+    const stableKey = aliasMap.get(prevMsg.id) ?? prevMsg.id;
+    aliasMap.set(currMsg.id, stableKey);
   }
-  return msg.id;
 }
 
 /**
@@ -116,6 +152,9 @@ export function ChatMessageList({
       : messages;
   const prevStreamingRef = useRef(nowStreaming);
   const justFinalizedIdRef = useRef<string | null>(null);
+  const idAliasRef = useRef<Map<string, string>>(new Map());
+  const prevVisibleRef = useRef<DisplaySessionEvent[]>([]);
+  const prevStreamKeyRef = useRef(streamKey);
 
   // Detect streaming -> not-streaming transition during render so the
   // MessageBubble for the just-finalized message mounts with its thinking /
@@ -134,6 +173,17 @@ export function ChatMessageList({
       justFinalizedIdRef.current = lastMsg ? lastMsg.id : null;
     }
     prevStreamingRef.current = nowStreaming;
+    // Reset alias bookkeeping when the panel switches to a different
+    // chat. Aliases recorded for the previous stream's placeholder
+    // ids are meaningless for a new conversation, and would otherwise
+    // accumulate across the app's lifetime.
+    if (prevStreamKeyRef.current !== streamKey) {
+      idAliasRef.current = new Map();
+      prevVisibleRef.current = [];
+      prevStreamKeyRef.current = streamKey;
+    }
+    applyTailIdAliases(idAliasRef.current, prevVisibleRef.current, visibleMessages);
+    prevVisibleRef.current = visibleMessages;
   }
   /* eslint-enable react-hooks/refs */
 
@@ -223,10 +273,10 @@ export function ChatMessageList({
             flexShrink: 0,
           }}
         >
-          {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
+          {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current and idAliasRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
           {visibleMessages.map((msg, index) => (
             <div
-              key={messageRenderKey(msg, index, visibleMessages.length)}
+              key={idAliasRef.current.get(msg.id) ?? msg.id}
               data-message-id={msg.id}
               style={{ display: "flex", width: "100%" }}
             >

@@ -406,4 +406,133 @@ describe("ChatMessageList", () => {
       screen.getByTestId("bubble-message-assistant").parentElement;
     expect(persistedWrapper).toBe(placeholderWrapper);
   });
+
+  // Regression test for the "previous assistant flickers when I send a
+  // new message" report. The old position-based "assistant-tail" key
+  // changed from "assistant-tail" -> a_old.id the moment a new user
+  // bubble was appended, forcing React to unmount + remount the prior
+  // assistant. With the id-alias keying strategy the prior assistant's
+  // DOM node must survive the append.
+  it("does not remount the prior assistant bubble when a new user message is appended", () => {
+    const scrollRef = makeScrollRef();
+
+    const { rerender } = render(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-old", "earlier prompt", "user"),
+          makeMessage("assistant-old", "earlier answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const priorAssistantWrapper =
+      screen.getByTestId("bubble-assistant-old").parentElement;
+    expect(priorAssistantWrapper).not.toBeNull();
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-old", "earlier prompt", "user"),
+          makeMessage("assistant-old", "earlier answer"),
+          makeMessage("temp-user-new", "follow-up prompt", "user"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const afterAppendWrapper =
+      screen.getByTestId("bubble-assistant-old").parentElement;
+    expect(afterAppendWrapper).toBe(priorAssistantWrapper);
+  });
+
+  // Negative case: the alias walk must terminate at the first
+  // non-matching pair from the tail. Two unrelated assistants with
+  // different content sitting at the same tail index across renders
+  // should NOT be aliased together — that would silently reuse one
+  // bubble's React node for an entirely different message.
+  it("does not alias unrelated trailing assistants with different content", () => {
+    const scrollRef = makeScrollRef();
+
+    const { rerender } = render(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-a", "first prompt", "user"),
+          makeMessage("assistant-a", "first answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const firstWrapper =
+      screen.getByTestId("bubble-assistant-a").parentElement;
+    expect(firstWrapper).not.toBeNull();
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-a", "first prompt", "user"),
+          makeMessage("assistant-b", "completely different answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    expect(screen.queryByTestId("bubble-assistant-a")).not.toBeInTheDocument();
+    const secondWrapper =
+      screen.getByTestId("bubble-assistant-b").parentElement;
+    expect(secondWrapper).not.toBe(firstWrapper);
+  });
+
+  // Switching to a different chat must drop accumulated aliases.
+  // Otherwise an alias recorded for stream-1 would silently apply to a
+  // colliding id in stream-2 and the new chat would render a stale
+  // bubble identity.
+  it("resets id aliases when streamKey changes", () => {
+    const scrollRef = makeScrollRef();
+
+    const { rerender } = render(
+      <ChatMessageList
+        messages={[
+          makeMessage("temp-user", "testing", "user"),
+          makeMessage("stream-assistant", "Final answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          makeMessage("message-user", "testing", "user"),
+          makeMessage("message-assistant", "Final answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const persistedWrapper =
+      screen.getByTestId("bubble-message-assistant").parentElement;
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          makeMessage("other-user", "different chat", "user"),
+          makeMessage("other-assistant", "different reply"),
+        ]}
+        streamKey="stream-2"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const newChatWrapper =
+      screen.getByTestId("bubble-other-assistant").parentElement;
+    expect(newChatWrapper).not.toBe(persistedWrapper);
+  });
 });
