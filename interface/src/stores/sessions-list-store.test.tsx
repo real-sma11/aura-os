@@ -311,8 +311,8 @@ describe("sessions-list-store", () => {
     // tracks it on a sibling axis from `sessionsBySurface` so the
     // request-id race protections in the loaders don't have to thread
     // the placeholder through their merge logic. The tests below pin
-    // the contract: set, clear, prepend-on-read, survives unrelated
-    // session writes.
+    // the contract: set, clear, prepend-on-read, promote, and reconcile
+    // once the matching real session arrives.
     it("setPendingNewChat then useSessionsForSurface returns the placeholder prepended", () => {
       const surfaceKey = agentSessionsSurfaceKey("agent-x");
       const pending = makePendingNewChat("p1", "i1");
@@ -362,15 +362,30 @@ describe("sessions-list-store", () => {
       expect(result.current).toBeNull();
     });
 
-    it("survives a real session being added to the surface — only explicit clearPendingNewChat removes it", async () => {
-      // Regression coverage for the placeholder lifecycle: the only
-      // signal that's allowed to drop the placeholder is the
-      // `SessionReady` -> `clearPendingNewChat` path. A `loadAgentSessions`
-      // refresh that brings in the real, server-persisted row must NOT
-      // automatically drop the placeholder, because the URL flip and
-      // the placeholder clear are the two sources of truth — clearing
-      // here too early would leave the user with a flicker between
-      // "highlighted New chat" and "no row highlighted, real row arrives".
+    it("promotePendingNewChat replaces the placeholder with a real session row", () => {
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const pending = makePendingNewChat("p1", "i1");
+      const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
+
+      act(() => {
+        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
+      });
+      expect(result.current.map((s) => s.session_id)).toEqual([PENDING_NEW_CHAT_ID]);
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .promotePendingNewChat(surfaceKey, "s-real");
+      });
+
+      expect(
+        useSessionsListStore.getState().pendingNewChatBySurface[surfaceKey],
+      ).toBeUndefined();
+      expect(result.current.map((s) => s.session_id)).toEqual(["s-real"]);
+      expect((result.current[0] as PendingNewChat)._pending).toBeUndefined();
+    });
+
+    it("clears a matching placeholder when loadAgentSessions returns the real row", async () => {
       useProjectsListStore.setState({
         projects: [{ project_id: "p1", name: "P1" } as never],
         agentsByProject: {
@@ -394,16 +409,13 @@ describe("sessions-list-store", () => {
         await useSessionsListStore.getState().loadAgentSessions("agent-x");
       });
 
-      const list =
-        useSessionsListStore
-          .getState()
-          .pendingNewChatBySurface[surfaceKey];
-      expect(list).toBeDefined();
-      expect(list?.session_id).toBe(PENDING_NEW_CHAT_ID);
+      expect(
+        useSessionsListStore.getState().pendingNewChatBySurface[surfaceKey],
+      ).toBeUndefined();
 
       const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
       const ids = result.current.map((s) => s.session_id);
-      expect(ids).toEqual([PENDING_NEW_CHAT_ID, "s-real"]);
+      expect(ids).toEqual(["s-real"]);
     });
 
     it("clearPendingNewChat is a no-op when no placeholder is set", () => {

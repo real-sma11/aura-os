@@ -211,13 +211,14 @@ export function useAgentChatStream({
                 onSessionReadyRef.current?.(newSessionId);
                 const sessionsStore = useSessionsListStore.getState();
                 sessionsStore.bumpVersion();
-                // Drop the optimistic "New chat" placeholder for the
-                // agents-shell sidekick. Standalone-stream `agentId`
-                // is already the org-level id, so the surface key
-                // resolves directly without a project lookup.
+                // Promote the optimistic "New chat" placeholder into
+                // a real, clickable row immediately. Standalone-stream
+                // `agentId` is already the org-level id, so the surface
+                // key resolves directly without a project lookup.
                 if (agentId) {
-                  sessionsStore.clearPendingNewChat(
+                  sessionsStore.promotePendingNewChat(
                     agentSessionsSurfaceKey(agentId),
+                    newSessionId,
                   );
                 }
               }

@@ -158,6 +158,7 @@ function ProjectAgentChatPanel({
     useChatStream({
       projectId,
       agentInstanceId,
+      orgAgentId,
       sessionId,
       onSessionReady: handleSessionReady,
     });

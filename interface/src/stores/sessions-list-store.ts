@@ -97,6 +97,8 @@ interface SessionsListStore {
   setDeleteError: (surfaceKey: string, message: string | null) => void;
   /** Set / replace the optimistic "New chat" placeholder for a surface. */
   setPendingNewChat: (surfaceKey: string, pending: PendingNewChat) => void;
+  /** Replace a pending placeholder with the server-assigned session id. */
+  promotePendingNewChat: (surfaceKey: string, sessionId: string) => void;
   /** Drop the optimistic "New chat" placeholder for a surface. */
   clearPendingNewChat: (surfaceKey: string) => void;
 }
@@ -105,6 +107,17 @@ function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
   return [...sessions].sort(
     (a, b) =>
       new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+  );
+}
+
+function pendingMatchesSession(
+  pending: PendingNewChat | undefined,
+  session: AnnotatedSession,
+): boolean {
+  if (!pending) return false;
+  return (
+    pending._projectId === session._projectId &&
+    pending._agentInstanceId === session._agentInstanceId
   );
 }
 
@@ -177,6 +190,18 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       const merged = sortSessionsDesc(results.flat());
       set((state) => ({
         sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: merged },
+        pendingNewChatBySurface: merged.some((session) =>
+          pendingMatchesSession(
+            state.pendingNewChatBySurface[surfaceKey],
+            session,
+          ),
+        )
+          ? Object.fromEntries(
+              Object.entries(state.pendingNewChatBySurface).filter(
+                ([key]) => key !== surfaceKey,
+              ),
+            )
+          : state.pendingNewChatBySurface,
       }));
     } catch (err) {
       console.error("Failed to load agent sessions", err);
@@ -258,6 +283,29 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
         [surfaceKey]: pending,
       },
     }));
+  },
+
+  promotePendingNewChat: (surfaceKey, sessionId) => {
+    const pending = get().pendingNewChatBySurface[surfaceKey];
+    if (!pending) return;
+    const realSession = {
+      ...pending,
+      session_id: sessionId,
+    } as AnnotatedSession & { _pending?: boolean };
+    delete realSession._pending;
+    set((state) => {
+      const current = state.sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+      const withoutDuplicate = current.filter((s) => s.session_id !== sessionId);
+      const pendingNewChatBySurface = { ...state.pendingNewChatBySurface };
+      delete pendingNewChatBySurface[surfaceKey];
+      return {
+        sessionsBySurface: {
+          ...state.sessionsBySurface,
+          [surfaceKey]: sortSessionsDesc([realSession, ...withoutDuplicate]),
+        },
+        pendingNewChatBySurface,
+      };
+    });
   },
 
   clearPendingNewChat: (surfaceKey) => {
@@ -389,6 +437,7 @@ interface SessionsListActions {
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
   setDeleteError: (surfaceKey: string, message: string | null) => void;
   setPendingNewChat: (surfaceKey: string, pending: PendingNewChat) => void;
+  promotePendingNewChat: (surfaceKey: string, sessionId: string) => void;
   clearPendingNewChat: (surfaceKey: string) => void;
 }
 
@@ -406,6 +455,7 @@ export function useSessionsListActions(): SessionsListActions {
       restoreSession: s.restoreSession,
       setDeleteError: s.setDeleteError,
       setPendingNewChat: s.setPendingNewChat,
+      promotePendingNewChat: s.promotePendingNewChat,
       clearPendingNewChat: s.clearPendingNewChat,
     })),
   );

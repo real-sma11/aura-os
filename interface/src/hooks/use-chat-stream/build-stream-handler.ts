@@ -48,6 +48,7 @@ import { useProjectsListStore } from "../../stores/projects-list-store";
 export interface DispatchDeps {
   projectId: string;
   agentInstanceId: string | undefined;
+  orgAgentId?: string | null;
   selectedModel?: string | null;
   refs: ReturnType<typeof useStreamCore>["refs"];
   setters: ReturnType<typeof useStreamCore>["setters"];
@@ -124,7 +125,7 @@ async function bridgeLoopToolResult(
 
 export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
   const {
-    projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
+    projectId, agentInstanceId, orgAgentId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
   } = deps;
@@ -313,25 +314,21 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           onSessionReady?.(newSessionId);
           const sessionsStore = useSessionsListStore.getState();
           sessionsStore.bumpVersion();
-          // Drop the optimistic "New chat" placeholder for the
-          // agents-shell sidekick now that the real session has been
-          // assigned. Resolved off the projects-list-store: this
-          // handler only knows `(projectId, agentInstanceId)`, but
-          // the placeholder was set on `agent:<agent_id>`. If the
-          // lookup misses (e.g. agentsByProject hasn't loaded yet for
-          // some race), the placeholder will still be cleared by the
-          // next `loadAgentSessions` returning the real row — the
-          // imperative clear here is just the immediate-feedback path.
-          if (agentInstanceId) {
+          // Promote the optimistic "New chat" placeholder into a real,
+          // clickable row immediately. The follow-up list refresh will
+          // replace this local row with the server copy.
+          const matchedAgentId = orgAgentId ?? (() => {
+            if (!agentInstanceId) return undefined;
             const projectsState = useProjectsListStore.getState();
-            const matchedAgentId = projectsState.agentsByProject[projectId]?.find(
+            return projectsState.agentsByProject[projectId]?.find(
               (instance) => instance.agent_instance_id === agentInstanceId,
             )?.agent_id;
-            if (matchedAgentId) {
-              sessionsStore.clearPendingNewChat(
-                agentSessionsSurfaceKey(matchedAgentId),
-              );
-            }
+          })();
+          if (matchedAgentId) {
+            sessionsStore.promotePendingNewChat(
+              agentSessionsSurfaceKey(matchedAgentId),
+              newSessionId,
+            );
           }
         }
         break;

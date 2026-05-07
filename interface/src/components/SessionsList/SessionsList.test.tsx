@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Session } from "../../shared/types";
 import { SessionsList } from "./SessionsList";
@@ -9,6 +9,8 @@ vi.mock("../../api/client", () => ({
     summarizeSession: vi.fn().mockResolvedValue({ summary_of_previous_context: "" }),
   },
 }));
+
+import { api } from "../../api/client";
 
 vi.mock("./SessionsList.module.css", () => ({
   default: new Proxy(
@@ -117,6 +119,46 @@ describe("SessionsList", () => {
 
     expect(screen.getByText("Has summary")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /s-untitled/ })).not.toBeInTheDocument();
+  });
+
+  it("retries summary generation after an empty first response", async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.summarizeSession)
+      .mockResolvedValueOnce({ summary_of_previous_context: "" })
+      .mockResolvedValueOnce({
+        summary_of_previous_context: "Summarized first request",
+      });
+
+    try {
+      render(
+        <SessionsList
+          sessions={[makeSession("s-new", isoToday, "")]}
+          loading={false}
+          selectedSessionId={null}
+          onSessionClick={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(api.summarizeSession).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(
+        screen.getByRole("button", { name: "Summarized first request" }),
+      ).toBeInTheDocument();
+      expect(api.summarizeSession).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks the selected session row with aria-current", () => {
