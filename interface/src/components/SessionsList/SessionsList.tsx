@@ -19,6 +19,16 @@ interface SessionsListProps {
   selectedSessionId: string | null;
   onSessionClick: (session: AnnotatedSession) => void;
   onDeleteSession?: (session: AnnotatedSession) => void;
+  /**
+   * Optional hover hook — fired on `onMouseEnter` of each row so the
+   * caller can pre-warm the destination chat-history-store entry for
+   * the hovered session. When the chat-history-store has the entry
+   * `"ready"` at click time, `ProjectAgentChatPanel`'s `historyResolved`
+   * is `true` on first render and `ChatPanel`'s cold-load reveal gate
+   * stays disarmed — no `.messageContentHidden` flicker on session
+   * navigation.
+   */
+  onSessionHover?: (session: AnnotatedSession) => void;
   /** Optional substring to filter rows by their resolved label. */
   searchQuery?: string;
   /**
@@ -55,6 +65,7 @@ export function SessionsList({
   selectedSessionId,
   onSessionClick,
   onDeleteSession,
+  onSessionHover,
   searchQuery,
   deleteError,
   onDismissError,
@@ -165,6 +176,8 @@ export function SessionsList({
                   data-session-id={session.session_id}
                   aria-current={isSelected ? "page" : undefined}
                   onClick={() => onSessionClick(session)}
+                  onMouseEnter={onSessionHover ? () => onSessionHover(session) : undefined}
+                  onFocus={onSessionHover ? () => onSessionHover(session) : undefined}
                 >
                   {label}
                 </button>

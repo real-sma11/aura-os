@@ -831,8 +831,17 @@ describe("useChatHistorySync", () => {
     expect(resetEvents).not.toHaveBeenCalledWith(longerPartial, expect.anything());
   });
 
-  it("invalidates history before fetching when not streaming", async () => {
+  it("invalidates history before fetching when the cache is stale", async () => {
     mocks.getIsStreaming.mockReturnValue(false);
+    // Drive the freshness gate to "stale" — older than the prefetch
+    // freshness window — so the invalidation path is exercised.
+    mocks.state.entries["agent:agent-1"] = {
+      events: mocks.historyMessages,
+      status: "ready",
+      fetchedAt: Date.now() - 60_000,
+      error: null,
+      lastMessageAt: "2026-04-13T00:00:00Z",
+    };
     const resetEvents = vi.fn();
     const fetchFn = vi.fn(async () => []);
 
@@ -850,6 +859,42 @@ describe("useChatHistorySync", () => {
       expect(mocks.state.invalidateHistory).toHaveBeenCalledWith("agent:agent-1");
     });
     expect(mocks.state.fetchHistory).toHaveBeenCalled();
+  });
+
+  // Hover-prefetch + click flicker fix: if a sidebar prefetch landed
+  // the destination key in the chat-history-store within the freshness
+  // window, the on-mount `invalidateBeforeFetch` path must NOT clobber
+  // `fetchedAt` — that would flip `historyResolved` false for one
+  // render and re-arm `ChatPanel`'s cold-load gate, recreating the
+  // exact `.messageContentHidden` flicker the prefetch is meant to
+  // eliminate. The follow-up `fetchHistory` still runs in this branch,
+  // so a freshness check against cross-tab writes is preserved.
+  it("skips invalidation when the entry was just prefetched", async () => {
+    mocks.getIsStreaming.mockReturnValue(false);
+    mocks.state.entries["agent:agent-1"] = {
+      events: mocks.historyMessages,
+      status: "ready",
+      fetchedAt: Date.now(),
+      error: null,
+      lastMessageAt: "2026-04-13T00:00:00Z",
+    };
+    const resetEvents = vi.fn();
+    const fetchFn = vi.fn(async () => []);
+
+    renderHook(() =>
+      useChatHistorySync({
+        historyKey: "agent:agent-1",
+        streamKey: "agent-1",
+        fetchFn,
+        resetEvents,
+        invalidateBeforeFetch: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.state.fetchHistory).toHaveBeenCalled();
+    });
+    expect(mocks.state.invalidateHistory).not.toHaveBeenCalled();
   });
 
   // Regression test for the "user message disappears mid-send" flicker.

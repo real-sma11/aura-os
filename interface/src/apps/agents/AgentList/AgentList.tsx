@@ -21,8 +21,12 @@ import {
 } from "../stores";
 import { useAuth } from "../../../stores/auth-store";
 import { useChatHandoffStore } from "../../../stores/chat-handoff-store";
-import { useChatHistoryStore, agentHistoryKey } from "../../../stores/chat-history-store";
+import { useChatHistoryStore, agentHistoryKey, sessionHistoryKey } from "../../../stores/chat-history-store";
 import { useProjectsListStore } from "../../../stores/projects-list-store";
+import {
+  agentSessionsSurfaceKey,
+  useSessionsListStore,
+} from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
@@ -244,6 +248,58 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     navigate(`/agents/${selectedAgentId}`);
   }, [agentId, navigate]);
 
+  // Pre-warm the chat-history-store entry for the most-recent session
+  // of `selectedAgentId`, which is the slot `ProjectAgentChatPanel`
+  // mounts on top of after `useDefaultStandaloneSessionRedirect` rewrites
+  // the URL with `?project=&instance=&session=`. Without this, the
+  // destination historyKey is `idle` at click time, `historyResolved`
+  // flips false on the first render, and `ChatPanel`'s cold-load gate
+  // re-arms — `.messageContentHidden` (`visibility: hidden`) is then
+  // applied across the message area for ~2 frames + a 120ms overlay
+  // fade, the user-visible "messages flicker on agent switch".
+  //
+  // Calls `loadAgentSessions` (idempotent — guarded by per-surface
+  // request ids) to discover the agent's bindings + sessions, then
+  // resolves the most-recent session synchronously off the store and
+  // calls `fetchHistory` (not `prefetchHistory`) so the entry lands in
+  // `useChatHistoryStore.entries` with `status: "ready"` — that is the
+  // store the panel reads, not the React Query cache `prefetchHistory`
+  // populates.
+  const warmDestinationSessionForAgent = useCallback((selectedAgentId: string) => {
+    const sessionsStore = useSessionsListStore.getState();
+    const surfaceKey = agentSessionsSurfaceKey(selectedAgentId);
+    const tryWarmFromCurrentSnapshot = () => {
+      const list = useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      if (!list || list.length === 0) return;
+      const mostRecent = list[0];
+      const key = sessionHistoryKey(
+        mostRecent._projectId,
+        mostRecent._agentInstanceId,
+        mostRecent.session_id,
+      );
+      void useChatHistoryStore.getState().fetchHistory(
+        key,
+        () =>
+          api.listSessionEvents(
+            mostRecent._projectId,
+            mostRecent._agentInstanceId,
+            mostRecent.session_id,
+          ),
+      );
+    };
+    // If sessions are already loaded for this surface, warm immediately.
+    if (sessionsStore.sessionsBySurface[surfaceKey] !== undefined) {
+      tryWarmFromCurrentSnapshot();
+      return;
+    }
+    // Otherwise kick off the load and warm once it lands. The store
+    // dedupes concurrent loaders via per-surface request ids so the
+    // hover-then-mount-worker overlap stays cheap.
+    void sessionsStore.loadAgentSessions(selectedAgentId).then(() => {
+      tryWarmFromCurrentSnapshot();
+    });
+  }, []);
+
   const handleHoverPrefetch = useCallback((selectedAgentId: string) => {
     if (isMobileLibrary) return;
     useChatHistoryStore.getState().prefetchHistory(
@@ -253,7 +309,8 @@ export function AgentList({ mode = "default" }: AgentListProps) {
           limit: STANDALONE_AGENT_HISTORY_LIMIT,
         }),
     );
-  }, [isMobileLibrary]);
+    warmDestinationSessionForAgent(selectedAgentId);
+  }, [isMobileLibrary, warmDestinationSessionForAgent]);
 
   // Prefetch last-message previews for the OTHER agents in the sidebar so
   // each row can render a recent-message snippet. Excludes the currently
@@ -310,6 +367,12 @@ export function AgentList({ mode = "default" }: AgentListProps) {
         } catch {
           // errors are stored on the history entry; keep draining the queue
         }
+        if (cancelled) break;
+        // Also warm the most-recent project session for this agent so
+        // clicking it lands on a `historyResolved=true` first render and
+        // skips the cold-load reveal cycle. Best-effort; failures are
+        // already absorbed by the loader and `fetchHistory`.
+        warmDestinationSessionForAgent(id);
       }
     };
     runWhenIdle(() => {
@@ -323,7 +386,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     return () => {
       cancelled = true;
     };
-  }, [prefetchAgentIds, activeHistoryResolved]);
+  }, [prefetchAgentIds, activeHistoryResolved, warmDestinationSessionForAgent]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {

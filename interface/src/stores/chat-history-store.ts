@@ -418,3 +418,19 @@ export function agentHistoryKey(agentId: string): string {
 export function projectChatHistoryKey(projectId: string, agentInstanceId: string): string {
   return `project:${projectId}:${agentInstanceId}`;
 }
+
+/**
+ * History key for a specific session view inside the project-agent
+ * chat panel. Mirrors the memo in `ProjectAgentChatPanel` and the
+ * resolver in `useAgentsShellTarget`; centralising the key shape here
+ * lets sidebar prefetchers warm the exact slot the panel will read on
+ * mount, so navigating into a session no longer triggers a cold-load
+ * reveal cycle (overlay flash + `visibility: hidden` flicker).
+ */
+export function sessionHistoryKey(
+  projectId: string,
+  agentInstanceId: string,
+  sessionId: string,
+): string {
+  return `session:${projectId}:${agentInstanceId}:${sessionId}`;
+}

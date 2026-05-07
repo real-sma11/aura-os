@@ -304,6 +304,11 @@ vi.mock("../../../../stores/chat-history-store", () => ({
   agentHistoryKey: (agentId: string) => `agent:${agentId}`,
   projectChatHistoryKey: (projectId: string, agentInstanceId: string) =>
     `project:${projectId}:${agentInstanceId}`,
+  sessionHistoryKey: (
+    projectId: string,
+    agentInstanceId: string,
+    sessionId: string,
+  ) => `session:${projectId}:${agentInstanceId}:${sessionId}`,
   useChatHistory: () => ({ events: [], status: "ready", error: null }),
   useChatHistoryStore: Object.assign(
     (selector: (state: { entries: Record<string, FakeHistoryEntry> }) => unknown) =>

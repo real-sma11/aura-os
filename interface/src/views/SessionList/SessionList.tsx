@@ -7,6 +7,10 @@ import {
   SessionsList,
   useSessionNavigate,
 } from "../../components/SessionsList";
+import {
+  sessionHistoryKey,
+  useChatHistoryStore,
+} from "../../stores/chat-history-store";
 import { useSessionListData } from "./useSessionListData";
 
 /**
@@ -52,12 +56,33 @@ export function SessionList({ searchQuery }: { searchQuery: string }) {
     [setDeleteError],
   );
 
+  // Pre-warm the chat-history-store entry for the hovered session so the
+  // ChatPanel mounts on a `historyResolved=true` first render and skips
+  // the cold-load reveal cycle. Mirrors the agents-app `ChatsTab` hover
+  // handler — the underlying store and key shape are shared.
+  const handleSessionHover = useCallback((target: AnnotatedSession) => {
+    void useChatHistoryStore.getState().fetchHistory(
+      sessionHistoryKey(
+        target._projectId,
+        target._agentInstanceId,
+        target.session_id,
+      ),
+      () =>
+        api.listSessionEvents(
+          target._projectId,
+          target._agentInstanceId,
+          target.session_id,
+        ),
+    );
+  }, []);
+
   return (
     <SessionsList
       sessions={sessions}
       loading={loading}
       selectedSessionId={selectedSessionId}
       onSessionClick={handleSessionClick}
+      onSessionHover={handleSessionHover}
       onDeleteSession={handleDelete}
       searchQuery={searchQuery}
       deleteError={deleteError}

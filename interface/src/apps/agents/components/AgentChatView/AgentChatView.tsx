@@ -16,6 +16,7 @@ import { MobileProjectAgentSwitcherSheet } from "../../../../mobile/chat/MobileP
 import {
   agentHistoryKey,
   projectChatHistoryKey,
+  sessionHistoryKey,
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
 import {
@@ -251,7 +252,7 @@ function ProjectAgentChatPanel({
       return `fresh:${projectId}:${agentInstanceId}:${freshChatNonce}`;
     }
     if (sessionId) {
-      return `session:${projectId}:${agentInstanceId}:${sessionId}`;
+      return sessionHistoryKey(projectId, agentInstanceId, sessionId);
     }
     return projectChatHistoryKey(projectId, agentInstanceId);
   }, [agentInstanceId, freshCanvasPending, freshChatNonce, projectId, sessionId]);
@@ -692,14 +693,6 @@ type AgentsShellTarget =
       sessionId: string | null;
     }
   | { kind: "standalone"; freshCanvasPending?: boolean };
-
-function sessionHistoryKey(
-  projectId: string,
-  agentInstanceId: string,
-  sessionId: string,
-): string {
-  return `session:${projectId}:${agentInstanceId}:${sessionId}`;
-}
 
 /**
  * Resolves what the agents-shell `/agents/:agentId` URL should render

@@ -200,6 +200,31 @@ describe("SessionsList", () => {
     expect(onClick.mock.calls[0][0].session_id).toBe("s1");
   });
 
+  // The prefetch hook is wired here (and not in the consumers) so the
+  // pointer-enter ordering matches the click ordering — both consumers
+  // (`ChatsTab`, projects-app `SessionList`) call into the shared
+  // chat-history-store from the handler. The flicker the prefetch
+  // exists to prevent only manifests when the cache is cold at click
+  // time, so make sure the row actually fires the hook.
+  it("calls onSessionHover on row pointer-enter", () => {
+    const onHover = vi.fn();
+    const sessions = [makeSession("s1", isoToday, "Hover me")];
+
+    render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+        onSessionHover={onHover}
+      />,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Hover me" }));
+    expect(onHover).toHaveBeenCalledTimes(1);
+    expect(onHover.mock.calls[0][0].session_id).toBe("s1");
+  });
+
   it("filters rows by searchQuery (case-insensitive)", () => {
     const sessions = [
       makeSession("s1", isoToday, "Sidekick refactor"),

@@ -31,6 +31,13 @@ import {
 // landed inside the merge's empty-frame window.
 const CHAT_MERGE_DEBUG_KEY = "aura.debug.chatMerge";
 const LIVE_EVENT_SETTLE_REFETCH_MS = 750;
+// How long after a `fetchHistory` (e.g. a sidebar hover prefetch) we
+// keep trusting the cached entry for `invalidateBeforeFetch` callers.
+// 30s mirrors `HISTORY_TTL_MS` in `chat-history-store` so the freshness
+// window stays consistent with the store's own TTL short-circuit. Long
+// enough to bridge hover→click and tab-switch sequences; short enough
+// that a stale cache from a prior session doesn't survive page reloads.
+const HISTORY_PREFETCH_FRESH_MS = 30_000;
 const chatHistorySyncDebugEnabled = ((): boolean => {
   try {
     return (
@@ -326,8 +333,28 @@ export function useChatHistorySync({
     // unhides it. The live SSE is the source of truth during a turn;
     // a normal `fetchHistory` (without invalidation) is enough to pick
     // up persisted server state in the background.
+    //
+    // Also skip invalidation when the entry was just hover-prefetched
+    // (fresh `fetchedAt`). The whole point of the sidebar's hover-warm
+    // chain in `AgentList` / `ChatsTab` / `ProjectList` is to land the
+    // chat-history-store entry as `"ready"` for the destination key
+    // before the user clicks, so that `historyResolved` is `true` on
+    // the panel's first render and the cold-load gate stays disarmed.
+    // Forcing an invalidate-on-mount immediately after the prefetch
+    // would flip `historyResolved` back to false for one render and
+    // re-arm the gate — exactly the flicker the prefetch is meant to
+    // eliminate. The follow-up `fetchHistory({ force: true })` below
+    // still hits the network in this branch, so freshness against
+    // cross-tab writes is preserved without the visible flash.
     if (invalidateBeforeFetch && !getIsStreaming(streamKey)) {
-      useChatHistoryStore.getState().invalidateHistory(historyKey);
+      const cachedEntry = useChatHistoryStore.getState().entries[historyKey];
+      const isFreshlyCached =
+        cachedEntry?.status === "ready" &&
+        cachedEntry.fetchedAt > 0 &&
+        Date.now() - cachedEntry.fetchedAt < HISTORY_PREFETCH_FRESH_MS;
+      if (!isFreshlyCached) {
+        useChatHistoryStore.getState().invalidateHistory(historyKey);
+      }
     }
     // Kick off IDB hydration in parallel with the network fetch. On a
     // cold app open IDB usually resolves first and paints the last-seen

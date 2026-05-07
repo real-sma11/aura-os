@@ -37,6 +37,26 @@ const mocks = vi.hoisted(() => ({
       }),
     },
   ),
+  sessionsBySurface: {} as Record<string, Array<{
+    session_id: string;
+    _projectId: string;
+    _agentInstanceId: string;
+  }>>,
+  loadAgentSessions: vi.fn(async () => {}),
+  useSessionsListStore: Object.assign(
+    (selector: (state: {
+      sessionsBySurface: Record<string, unknown>;
+    }) => unknown) =>
+      selector({
+        sessionsBySurface: mocks.sessionsBySurface,
+      }),
+    {
+      getState: () => ({
+        sessionsBySurface: mocks.sessionsBySurface,
+        loadAgentSessions: mocks.loadAgentSessions,
+      }),
+    },
+  ),
 }));
 Object.assign(mocks.useAgentStore, {
   getState: () => ({
@@ -176,6 +196,7 @@ vi.mock("../../../api/client", () => ({
       listProjectBindings: vi.fn(async () => []),
       removeProjectBinding: vi.fn(async () => {}),
     },
+    listSessionEvents: vi.fn(async () => []),
   },
   ApiClientError: class ApiClientError extends Error {
     body = { error: "error" };
@@ -193,6 +214,16 @@ vi.mock("../stores", () => ({
 vi.mock("../../../stores/chat-history-store", () => ({
   useChatHistoryStore: mocks.useChatHistoryStore,
   agentHistoryKey: (agentId: string) => `agent:${agentId}`,
+  sessionHistoryKey: (
+    projectId: string,
+    agentInstanceId: string,
+    sessionId: string,
+  ) => `session:${projectId}:${agentInstanceId}:${sessionId}`,
+}));
+
+vi.mock("../../../stores/sessions-list-store", () => ({
+  agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+  useSessionsListStore: mocks.useSessionsListStore,
 }));
 
 vi.mock("../../../stores/auth-store", () => ({
@@ -262,6 +293,8 @@ describe("AgentList", () => {
     mocks.pendingCreateAgentHandoff = null;
     mocks.entries = {};
     mocks.previewLastMessages = {};
+    mocks.sessionsBySurface = {};
+    mocks.loadAgentSessions = vi.fn(async () => {});
     mocks.storeFetchAgents = vi.fn();
     mocks.storeRemoveAgent = vi.fn();
     mocks.storePatchAgent = vi.fn();
@@ -353,6 +386,101 @@ describe("AgentList", () => {
     expect(listEvents).toHaveBeenCalledWith("agent-1", {
       limit: client.STANDALONE_AGENT_HISTORY_LIMIT,
     });
+  });
+
+  // Hover prefetch must also warm the project-session destination, not
+  // just the standalone-history slot. Without this, clicking the agent
+  // row routes into a `session:...` historyKey that the chat-history-
+  // store has never seen → `historyResolved=false` on first render →
+  // `ChatPanel` re-arms its cold-load gate (`.messageContentHidden` +
+  // overlay fade). Verifies the full chain: hover → loadAgentSessions
+  // → fetchHistory of the session key with the right `listSessionEvents`
+  // payload, so the click lands a `historyResolved=true` first render.
+  it("warms the most-recent project-session history on hover", async () => {
+    mocks.useParams.mockReturnValue({ agentId: undefined });
+    const user = userEvent.setup();
+    const prefetchHistory = vi.fn();
+    const fetchHistory = vi.fn(async () => {});
+    mocks.useChatHistoryStore.getState = () => ({
+      prefetchHistory,
+      fetchHistory,
+    });
+
+    const loadAgentSessions = vi.fn(async () => {
+      mocks.sessionsBySurface["agent:agent-1"] = [
+        {
+          session_id: "sess-most-recent",
+          _projectId: "proj-1",
+          _agentInstanceId: "inst-1",
+        },
+      ];
+    });
+    mocks.useSessionsListStore.getState = () => ({
+      sessionsBySurface: mocks.sessionsBySurface,
+      loadAgentSessions,
+    });
+
+    const listSessionEvents = vi.fn(async () => []);
+    const client = await import("../../../api/client");
+    vi.spyOn(client.api, "listSessionEvents").mockImplementation(listSessionEvents);
+
+    render(<AgentList />);
+    await user.hover(screen.getByRole("button", { name: "Builder Bot" }));
+
+    await waitFor(() => {
+      expect(loadAgentSessions).toHaveBeenCalledWith("agent-1");
+    });
+    await waitFor(() => {
+      expect(fetchHistory).toHaveBeenCalledWith(
+        "session:proj-1:inst-1:sess-most-recent",
+        expect.any(Function),
+      );
+    });
+
+    const sessionFetchFn = fetchHistory.mock.calls.find(
+      (call) => call[0] === "session:proj-1:inst-1:sess-most-recent",
+    )?.[1] as (() => Promise<unknown>) | undefined;
+    expect(sessionFetchFn).toBeDefined();
+    await sessionFetchFn?.();
+    expect(listSessionEvents).toHaveBeenCalledWith(
+      "proj-1",
+      "inst-1",
+      "sess-most-recent",
+    );
+  });
+
+  // Cached sessions short-circuit `loadAgentSessions` — repeat hovers
+  // should only ever issue `fetchHistory` on the destination key.
+  it("warms the destination session immediately when sessions are already cached", async () => {
+    mocks.useParams.mockReturnValue({ agentId: undefined });
+    const user = userEvent.setup();
+    const fetchHistory = vi.fn(async () => {});
+    mocks.useChatHistoryStore.getState = () => ({
+      prefetchHistory: vi.fn(),
+      fetchHistory,
+    });
+
+    mocks.sessionsBySurface["agent:agent-1"] = [
+      {
+        session_id: "sess-cached",
+        _projectId: "proj-1",
+        _agentInstanceId: "inst-1",
+      },
+    ];
+    const loadAgentSessions = vi.fn(async () => {});
+    mocks.useSessionsListStore.getState = () => ({
+      sessionsBySurface: mocks.sessionsBySurface,
+      loadAgentSessions,
+    });
+
+    render(<AgentList />);
+    await user.hover(screen.getByRole("button", { name: "Builder Bot" }));
+
+    expect(loadAgentSessions).not.toHaveBeenCalled();
+    expect(fetchHistory).toHaveBeenCalledWith(
+      "session:proj-1:inst-1:sess-cached",
+      expect.any(Function),
+    );
   });
 
   it("prefetches history for every visible agent on desktop sidebar mount", async () => {

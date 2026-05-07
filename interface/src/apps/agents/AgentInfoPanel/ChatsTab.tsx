@@ -14,6 +14,10 @@ import {
   useSessionsListActions,
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
+import {
+  sessionHistoryKey,
+  useChatHistoryStore,
+} from "../../../stores/chat-history-store";
 import { useSelectedAgent } from "../stores";
 import { EmptyState } from "../../../components/EmptyState";
 
@@ -61,6 +65,26 @@ export function ChatsTab() {
     [navigateToSession],
   );
 
+  // Pre-warm the chat-history-store entry for the hovered session so
+  // `ProjectAgentChatPanel` mounts with `historyResolved=true` and
+  // skips the cold-load reveal — eliminating the message-area
+  // `.messageContentHidden` flicker on session-row clicks.
+  const handleSessionHover = useCallback((target: AnnotatedSession) => {
+    void useChatHistoryStore.getState().fetchHistory(
+      sessionHistoryKey(
+        target._projectId,
+        target._agentInstanceId,
+        target.session_id,
+      ),
+      () =>
+        api.listSessionEvents(
+          target._projectId,
+          target._agentInstanceId,
+          target.session_id,
+        ),
+    );
+  }, []);
+
   const handleDelete = useCallback(
     (target: AnnotatedSession) => {
       if (!surfaceKey) return;
@@ -91,6 +115,7 @@ export function ChatsTab() {
       loading={isLoading}
       selectedSessionId={selectedSessionId}
       onSessionClick={handleSessionClick}
+      onSessionHover={handleSessionHover}
       onDeleteSession={handleDelete}
       deleteError={deleteError}
       onDismissError={surfaceKey ? () => setDeleteError(surfaceKey, null) : undefined}
