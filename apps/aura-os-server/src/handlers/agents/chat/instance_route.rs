@@ -22,6 +22,7 @@ use super::compaction::{
     append_project_state_to_system_prompt, load_project_state_snapshot,
     session_events_to_conversation_history,
 };
+use super::identity_preamble::build_identity_preamble;
 use super::loaders::{
     load_current_session_events_for_instance, load_pinned_session_events_for_instance,
 };
@@ -128,12 +129,26 @@ pub(crate) async fn send_event_stream(
     let pid_str = project_id.to_string();
     let project_path =
         resolve_agent_instance_workspace_path(&state, &project_id, Some(agent_instance_id)).await;
-    let system_prompt = build_project_system_prompt(
+    // Restore parity with the harness-side task-execution path
+    // (`build_agent_preamble`): the chat hot path used to forward only
+    // `instance.system_prompt`, silently dropping personality / role /
+    // skills on every interactive turn. The identity preamble lands
+    // FIRST — before the `<project_context>` block — so the LLM reads
+    // "who am I" before "what project am I operating in", matching the
+    // ordering `agentic_execution_system_prompt` uses.
+    let identity_preamble = build_identity_preamble(
+        &instance.name,
+        &instance.role,
+        &instance.personality,
+        &instance.skills,
+    );
+    let project_block = build_project_system_prompt(
         &state,
         &project_id,
         &instance.system_prompt,
         project_path.as_deref(),
     );
+    let system_prompt = format!("{identity_preamble}{project_block}");
     let system_prompt =
         append_project_state_to_system_prompt(&system_prompt, project_state_snapshot.as_deref());
 

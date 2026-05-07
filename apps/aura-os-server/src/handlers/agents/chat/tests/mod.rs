@@ -11,4 +11,7 @@ mod discovery_tests;
 mod compaction_tests;
 
 #[cfg(test)]
+mod identity_preamble_tests;
+
+#[cfg(test)]
 mod project_state_tests;

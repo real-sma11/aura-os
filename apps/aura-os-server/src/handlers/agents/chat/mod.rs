@@ -12,6 +12,7 @@ mod discovery;
 pub(crate) mod errors;
 mod event_bus;
 mod events;
+mod identity_preamble;
 mod instance_route;
 mod loaders;
 mod persist;

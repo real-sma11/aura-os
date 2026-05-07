@@ -22,6 +22,7 @@ use super::compaction::{
 };
 use super::constants::{CONVERSATION_HISTORY_WARN_BYTES, DEFAULT_AGENT_HISTORY_WINDOW_LIMIT};
 use super::discovery::find_matching_project_agents;
+use super::identity_preamble::build_identity_preamble;
 use super::instance_route::build_project_system_prompt;
 use super::loaders::{
     load_current_session_events_for_agent_with_matched, load_pinned_session_events_for_agent,
@@ -547,6 +548,15 @@ async fn build_agent_system_prompt(
     harness_mode: aura_os_core::HarnessMode,
     project_state_snapshot: Option<&str>,
 ) -> (String, Option<String>) {
+    // Restore parity with the harness-side task-execution path
+    // (`build_agent_preamble`): the chat hot path used to forward only
+    // `agent.system_prompt`, silently dropping personality / role /
+    // skills on every interactive turn. The identity preamble lands
+    // FIRST — before the `<project_context>` block — so the LLM reads
+    // "who am I" before "what project am I operating in", matching the
+    // ordering `agentic_execution_system_prompt` uses.
+    let preamble =
+        build_identity_preamble(&agent.name, &agent.role, &agent.personality, &agent.skills);
     let (base_prompt, project_path) = match effective_project_id
         .and_then(|pid| pid.parse::<ProjectId>().ok())
     {
@@ -558,15 +568,15 @@ async fn build_agent_system_prompt(
             // Swarm).
             let project_path =
                 resolve_project_tool_workspace_path(state, &project_id, harness_mode, None).await;
-            let prompt = build_project_system_prompt(
+            let project_block = build_project_system_prompt(
                 state,
                 &project_id,
                 &agent.system_prompt,
                 project_path.as_deref(),
             );
-            (prompt, project_path)
+            (format!("{preamble}{project_block}"), project_path)
         }
-        None => (agent.system_prompt.clone(), None),
+        None => (format!("{preamble}{}", agent.system_prompt), None),
     };
     let with_state = append_project_state_to_system_prompt(&base_prompt, project_state_snapshot);
     (with_state, project_path)
