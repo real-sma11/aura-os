@@ -304,31 +304,23 @@ function ProjectAgentChatPanel({
     // via `handleSessionReady` so the panel keeps streaming into a
     // clean session-scoped slot.
     useChatHistoryStore.getState().clearHistory(historyKeyRef.current);
-    // Also clear the *destination* history keys so a remount on the
-    // fresh canvas can't pull stale events back in. Two destinations
-    // need clearing because the URL flip drops `?session=` and the
-    // remount target depends on which AgentChatView branch wins:
+    // Also clear destination history keys so the fresh canvas can't
+    // pull stale events back in. The project no-session key is the
+    // normal agents-shell `+` destination; the standalone key remains
+    // a defensive clear for routes that do not carry project/instance.
     //   1. `projectChatHistoryKey(projectId, agentInstanceId)` —
     //      `ProjectAgentChatPanel`'s no-session `historyKey`. On the
     //      bare `/projects/.../agents/...` route this is the key the
     //      panel's next render reads from.
     //   2. `agentHistoryKey(orgAgentId)` — `StandaloneAgentChatPanel`'s
-    //      `historyKey`. On the agents-shell route the resolver swaps
-    //      to the standalone panel after `?session=` is dropped (see
-    //      `useAgentsShellTarget` and the `userClearedSession` branch).
-    //      Without this clear, `useChatHistorySync` calls
-    //      `api.agents.listEvents(agentId)` and fills the canvas with
-    //      the agent-wide event window instead of starting empty.
+    //      `historyKey` for fresh standalone-agent routes.
     const historyStore = useChatHistoryStore.getState();
     historyStore.clearHistory(projectChatHistoryKey(projectId, agentInstanceId));
     const resolvedOrgAgentId = orgAgentIdRef.current;
     if (resolvedOrgAgentId) {
       historyStore.clearHistory(agentHistoryKey(resolvedOrgAgentId));
-      // Wipe the standalone stream slot too — `useStreamCore` keys it
-      // off the agentId, so without this, `useConversationSnapshot`'s
-      // `lastNonEmptyRef` can resurrect stale events on the freshly
-      // mounted standalone panel. Mirrors the cross-session reset
-      // pattern in `useAgentsShellTarget` further down this file.
+      // Wipe the standalone stream slot too, for routes that really do
+      // fall back to the standalone fresh-canvas panel.
       const standaloneStreamKey = resolvedOrgAgentId;
       if (!getIsStreaming(standaloneStreamKey)) {
         useStreamStore.setState((s) => {
@@ -613,7 +605,7 @@ type AgentsShellTarget =
       kind: "project";
       projectId: string;
       agentInstanceId: string;
-      sessionId: string;
+      sessionId: string | null;
     }
   | { kind: "standalone"; freshCanvasPending?: boolean };
 
@@ -712,6 +704,7 @@ function useAgentsShellTarget(opts: {
 
   const resolvedTarget = urlTarget ?? fallbackTarget;
   const resolvedHistoryKey = resolvedTarget
+    && resolvedTarget.sessionId
     ? sessionHistoryKey(
         resolvedTarget.projectId,
         resolvedTarget.agentInstanceId,
@@ -744,18 +737,21 @@ function useAgentsShellTarget(opts: {
   }
 
   // 2. The user clicked "+" in the chat input bar — `handleNewChat`
-  //    dropped `?session=` from the URL with the explicit intent of
-  //    starting a fresh chat. Mount the standalone panel directly so
-  //    the chat lane shows an empty canvas with send enabled; once
-  //    the next send fires, `handleSessionReady` writes the new
-  //    session id back into the URL and the resolver flips to
-  //    `kind: "project"` for `ProjectAgentChatPanel` to take over.
-  //    Without this branch the resolver would fall into (3) below and
-  //    return `pending` indefinitely (the redirect hook can't
-  //    re-fire because its `didDefaultRef` is already stamped from the
-  //    prior session render), leaving the chat lane stuck on a blank
-  //    `lanePlaceholder` div.
+  //    dropped only `?session=` with the explicit intent of starting a
+  //    fresh chat in the same `(project, instance)`. Keep the project
+  //    panel mounted with `sessionId: null` so the stream hook that was
+  //    just armed with `new_session: true` is the one that handles the
+  //    first send. Once SessionReady writes the new id back into the URL,
+  //    this same branch becomes the normal URL-session branch above.
   if (userClearedSession) {
+    if (queryProjectId && queryInstanceId) {
+      return {
+        kind: "project",
+        projectId: queryProjectId,
+        agentInstanceId: queryInstanceId,
+        sessionId: null,
+      };
+    }
     return { kind: "standalone", freshCanvasPending: true };
   }
 

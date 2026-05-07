@@ -645,7 +645,7 @@ describe("AgentChatView", () => {
     expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
   });
 
-  it("renders the standalone fresh-canvas panel after the user clicks + (drops ?session=)", async () => {
+  it("keeps the project fresh-canvas panel after the user clicks + (drops ?session=)", async () => {
     // Regression: clicking "+" in the chat input bar fires
     // `handleNewChat`, which strips `?session=` from the URL with the
     // explicit intent of starting a fresh chat. Before the resolver
@@ -659,8 +659,8 @@ describe("AgentChatView", () => {
     //     already stamped from the prior render, so it never re-pushed
     //     a session into the URL — the placeholder never lifted.
     // After the fix, the resolver detects "previously had a session,
-    // now URL has none" and mounts the standalone panel for a fresh
-    // canvas instead.
+    // now URL has none" and keeps the project panel mounted with a
+    // null session so the stream that `+` armed sends `new_session: true`.
     mocks.params = {
       agentId: "agent-1",
       projectId: undefined,
@@ -697,7 +697,12 @@ describe("AgentChatView", () => {
       }),
     );
 
-    // User clicks "+" — `handleNewChat` strips `?session=` from URL.
+    // User clicks "+" — `handleNewChat` arms the project stream's
+    // next send and strips `?session=` from URL.
+    act(() => {
+      (mocks.latestChatPanelProps?.onNewChat as (() => void) | undefined)?.();
+    });
+    expect(mocks.markNextSendAsNewSession).toHaveBeenCalledTimes(1);
     mocks.searchParams = new URLSearchParams({
       project: "p1",
       instance: "i1",
@@ -705,27 +710,28 @@ describe("AgentChatView", () => {
     mocks.latestChatPanelProps = undefined;
     rerender(<AgentChatView />);
 
-    // Standalone fresh-canvas panel mounts (NOT the lane placeholder).
+    // Project fresh-canvas panel stays mounted (NOT the lane placeholder
+    // and not the standalone agent stream, which would lose the latch).
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
     expect(mocks.latestChatPanelProps).toEqual(
       expect.objectContaining({
-        agentId: "agent-1",
-        streamKey: "agent-stream",
-        scrollResetKey: "agent-1:fresh:route",
-        transcriptKey: "agent:agent-1:fresh:route",
+        agentId: "i1",
+        streamKey: "project-stream",
+        scrollResetKey: "i1:fresh:1",
+        transcriptKey: "fresh:p1:i1:1",
       }),
     );
     expect(mocks.latestHistorySyncOptions).toEqual(
       expect.objectContaining({
-        historyKey: "agent:agent-1:fresh:route",
+        historyKey: "fresh:p1:i1:1",
         suppressHistoryFetch: true,
       }),
     );
-    const standaloneFetchFn = mocks.latestHistorySyncOptions?.fetchFn as
+    const freshFetchFn = mocks.latestHistorySyncOptions?.fetchFn as
       | (() => Promise<unknown[]>)
       | undefined;
-    expect(standaloneFetchFn).toBeDefined();
-    await expect(standaloneFetchFn?.()).resolves.toEqual([]);
+    expect(freshFetchFn).toBeDefined();
+    await expect(freshFetchFn?.()).resolves.toEqual([]);
 
     // After the next send, `handleSessionReady` writes the new session
     // id back into the URL — the resolver should flip back to the
