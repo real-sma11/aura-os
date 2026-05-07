@@ -240,8 +240,9 @@ export function AgentList({ mode = "default" }: AgentListProps) {
   }, [navigate, shouldOpenMobileCreate]);
 
   const handleAgentRowClick = useCallback((selectedAgentId: string) => {
+    if (selectedAgentId === agentId) return;
     navigate(`/agents/${selectedAgentId}`);
-  }, [navigate]);
+  }, [agentId, navigate]);
 
   const handleHoverPrefetch = useCallback((selectedAgentId: string) => {
     if (isMobileLibrary) return;

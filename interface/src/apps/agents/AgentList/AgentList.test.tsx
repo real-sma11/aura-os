@@ -315,7 +315,7 @@ describe("AgentList", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/agents/agent-1");
   });
 
-  it("keeps desktop navigation behavior for the selected agent", async () => {
+  it("does not navigate when clicking the already selected agent", async () => {
     mocks.useParams.mockReturnValue({ agentId: "agent-1" });
     const user = userEvent.setup();
 
@@ -323,7 +323,7 @@ describe("AgentList", () => {
     expect(mocks.fetchAgentsMock).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Builder Bot" }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith("/agents/agent-1");
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it("prefetches a bounded recent history window on hover", async () => {
