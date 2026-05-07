@@ -279,6 +279,102 @@ function combineStoredAndStreamMessages(
   return [...storedMessages, ...liveOnlyMessages];
 }
 
+/**
+ * Defensive splice: when the just-merged `messages` array ends with an
+ * optimistic local user prompt — the canonical "user just clicked Send"
+ * frame — and the previous-frame cache for the same `transcriptKey`
+ * carries a persisted prior assistant that's gone missing from the new
+ * merge, splice the cached persisted entries back into the result before
+ * the trailing optimistic prompt.
+ *
+ * This is a backstop against transient flaps in the merge inputs that I
+ * could not pin down to a single race in static analysis: a WS-driven
+ * force-fetch returning a mid-persistence snapshot, message-store thread
+ * being temporarily replaced by an in-flight `setThread`, or a stream
+ * entry losing its prior assistant due to LRU eviction or shared-key
+ * pruning all manifest as the same symptom — "previous answer gets
+ * overwritten for a frame on send, then reappears at end of turn." Rather
+ * than chase each race independently, we observe the end-state invariant
+ * (the prior turn cannot disappear *just* because the user is in the act
+ * of sending the next one) and enforce it here.
+ *
+ * Scope is intentionally narrow:
+ *   1. Trigger only when `merged`'s last entry is an optimistic local
+ *      user message (id starts with `temp-` or `stream-`). Any other
+ *      tail means we're outside the "Send was just clicked" window and
+ *      the merge result should be trusted as-is.
+ *   2. Only reinstate persisted (non-optimistic) entries; we never
+ *      resurrect cached optimistic ids since those are local-only and
+ *      naturally churn.
+ *   3. Walk `cached` in order so the spliced result preserves
+ *      chronological ordering even when several persisted entries went
+ *      missing from `merged` simultaneously.
+ *
+ * Because the trigger is keyed on the trailing optimistic user prompt,
+ * idle (between-turn) refreshes — including legitimate server-side
+ * deletions that drop a prior assistant from history — pass through the
+ * reinstatement no-op branch and trust the merge.
+ */
+function reinstateMissingPersistedOnSend(
+  merged: DisplaySessionEvent[],
+  cached: DisplaySessionEvent[],
+): DisplaySessionEvent[] {
+  if (merged.length === 0 || cached.length === 0) return merged;
+
+  const last = merged[merged.length - 1];
+  if (last.role !== "user" || !isOptimisticLocalMessage(last)) {
+    return merged;
+  }
+
+  const mergedIds = new Set<string>();
+  for (const m of merged) mergedIds.add(m.id);
+
+  let hasMissing = false;
+  for (const cm of cached) {
+    if (isOptimisticLocalMessage(cm)) continue;
+    if (!mergedIds.has(cm.id)) {
+      hasMissing = true;
+      break;
+    }
+  }
+  if (!hasMissing) return merged;
+
+  const result: DisplaySessionEvent[] = [];
+  let mi = 0;
+
+  // Walk `cached` order; for each entry, either pull merged entries up
+  // to and including its match, or splice the cached persisted entry
+  // in. Optimistic cached entries are skipped (they correspond to the
+  // *previous* render's tail, not the current one).
+  for (const cm of cached) {
+    if (mergedIds.has(cm.id)) {
+      while (mi < merged.length) {
+        const me = merged[mi];
+        result.push(me);
+        mi += 1;
+        if (me.id === cm.id) break;
+      }
+      continue;
+    }
+    if (isOptimisticLocalMessage(cm)) continue;
+    result.push(cm);
+  }
+
+  // Append remaining merged entries that weren't covered by the cached
+  // walk — typically the trailing optimistic user prompt the user just
+  // sent, plus any newer entries (a fresh stream-... assistant
+  // placeholder if streaming has already begun this frame).
+  const resultIds = new Set<string>();
+  for (const m of result) resultIds.add(m.id);
+  while (mi < merged.length) {
+    const me = merged[mi];
+    if (!resultIds.has(me.id)) result.push(me);
+    mi += 1;
+  }
+
+  return result;
+}
+
 const EMPTY_MESSAGES: DisplaySessionEvent[] = [];
 
 interface UseConversationSnapshotOptions {
@@ -345,6 +441,25 @@ export function useConversationSnapshot({
     );
 
     if (merged.length > 0) {
+      const cached =
+        lastNonEmptyRef.current.key === transcriptKey
+          ? lastNonEmptyRef.current.messages
+          : EMPTY_MESSAGES;
+      const reinstated = reinstateMissingPersistedOnSend(merged, cached);
+      if (reinstated !== merged) {
+        chatMergeLog("snapshot: merged populated (reinstated prior persisted)", {
+          streamKey,
+          transcriptKey,
+          usedSource,
+          baseStoredCount: baseStored.length,
+          streamCount: streamMessages.length,
+          mergedCount: merged.length,
+          reinstatedCount: reinstated.length,
+          mergedLast: fingerprint(merged[merged.length - 1]),
+          reinstatedLast: fingerprint(reinstated[reinstated.length - 1]),
+        });
+        return reinstated;
+      }
       chatMergeLog("snapshot: merged populated", {
         streamKey,
         transcriptKey,

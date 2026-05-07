@@ -423,6 +423,133 @@ describe("useConversationSnapshot", () => {
     expect(result.current.messages).toEqual([]);
   });
 
+  it("reinstates a prior persisted assistant when send drops it from the merge", () => {
+    // The "previous answer overwrites for a frame on send, then reappears
+    // at end of turn" symptom: after a turn finishes, history+stream
+    // converge on `[user-1, asst-1]`. The user clicks Send to start the
+    // next turn — a `temp-user-2` lands in the stream — but a flap in
+    // any of the merge inputs (history-store entry briefly empty,
+    // stream-store events evicted, message-store thread reset) can make
+    // the merged result drop `asst-1` for one render. Without the
+    // defensive splice, that frame renders `[user-1, user-2-temp]` and
+    // ChatMessageList unmounts the prior assistant bubble. The cache-
+    // backed reinstate fix observes the optimistic-tail invariant and
+    // splices `asst-1` back in.
+    const streamKey = "project-1:agent-1:reinstate";
+    const transcriptKey = streamKey;
+    const settledHistory: DisplaySessionEvent[] = [
+      { id: "evt-user-1", role: "user", content: "first prompt" },
+      { id: "evt-assistant-1", role: "assistant", content: "first reply" },
+    ];
+
+    setStreamMessages(streamKey, [
+      { id: "temp-1", role: "user", content: "first prompt" },
+      { id: "evt-assistant-1", role: "assistant", content: "first reply" },
+    ]);
+
+    const { result, rerender } = renderHook(
+      ({ history }: { history: DisplaySessionEvent[] }) =>
+        useConversationSnapshot({
+          streamKey,
+          transcriptKey,
+          historyMessages: history,
+        }),
+      { initialProps: { history: settledHistory } },
+    );
+
+    // Settled state: prior turn fully visible and cached.
+    expect(result.current.messages).toEqual(settledHistory);
+
+    // Simulate the bug-trigger frame: a WS-driven force refetch lands
+    // a partial snapshot that's missing the prior assistant (e.g.
+    // server returned just `[user-1]` because `asst-1` had been pruned
+    // from the in-memory cache between the request and the response,
+    // or message-store thread was cleared by `invalidateHistory` on
+    // an unrelated key collision) AT THE SAME TIME as the user clicks
+    // Send and `temp-2` lands in the stream alongside the still-
+    // present `temp-1` optimistic from turn 1.
+    //
+    // With those inputs the merge anchors `temp-1` to the surviving
+    // `user-1` in stored (matching role + content) and emits
+    // `[user-1, temp-2]`. The prior assistant has vanished from the
+    // merged output for this frame even though it was visible just
+    // a tick ago.
+    useMessageStore
+      .getState()
+      .setThread(transcriptKey, [
+        { id: "evt-user-1", role: "user", content: "first prompt" },
+      ]);
+    setStreamMessages(streamKey, [
+      { id: "temp-1", role: "user", content: "first prompt" },
+      { id: "temp-2", role: "user", content: "follow-up prompt" },
+    ]);
+    rerender({
+      history: [{ id: "evt-user-1", role: "user", content: "first prompt" }],
+    });
+
+    // The defensive splice must reinstate `asst-1` from the cached
+    // last-non-empty snapshot, before the trailing optimistic
+    // `temp-2`. Without the fix the assistant bubble would unmount for
+    // this frame, manifesting as the reported "split-second blank"
+    // between the prior reply and the reappearance at end of turn.
+    expect(result.current.messages.map((m) => m.id)).toEqual([
+      "evt-user-1",
+      "evt-assistant-1",
+      "temp-2",
+    ]);
+    expect(result.current.messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+  });
+
+  it("does not reinstate when the merged tail is not an optimistic user prompt", () => {
+    // The reinstate path is keyed on "merged ends with an optimistic
+    // local user message" — the canonical Send frame. Idle refreshes
+    // (between turns, no user prompt in flight) must trust the merge so
+    // legitimate server-side history changes flow through. This test
+    // proves a delete-style refresh that drops the prior assistant
+    // does NOT get its assistant resurrected, because the trigger
+    // condition is absent.
+    const streamKey = "project-1:agent-1:idle";
+    const transcriptKey = streamKey;
+    const settledHistory: DisplaySessionEvent[] = [
+      { id: "evt-user-1", role: "user", content: "first prompt" },
+      { id: "evt-assistant-1", role: "assistant", content: "first reply" },
+    ];
+
+    setStreamMessages(streamKey, settledHistory);
+
+    const { result, rerender } = renderHook(
+      ({ history }: { history: DisplaySessionEvent[] }) =>
+        useConversationSnapshot({
+          streamKey,
+          transcriptKey,
+          historyMessages: history,
+        }),
+      { initialProps: { history: settledHistory } },
+    );
+
+    expect(result.current.messages).toEqual(settledHistory);
+
+    // Idle refresh: server returns just `user-1`, no in-flight
+    // optimistic prompt at the tail. The reinstate path must NOT
+    // resurrect `asst-1` here — that would silently undo a legitimate
+    // delete / pruning event.
+    useMessageStore.getState().clearThread(transcriptKey);
+    setStreamMessages(streamKey, [
+      { id: "evt-user-1", role: "user", content: "first prompt" },
+    ]);
+    rerender({
+      history: [{ id: "evt-user-1", role: "user", content: "first prompt" }],
+    });
+
+    expect(result.current.messages).toEqual([
+      { id: "evt-user-1", role: "user", content: "first prompt" },
+    ]);
+  });
+
   it("clears the fallback cache when the chat switches to a new streamKey", () => {
     // Switching agents must reset the cache so the new chat's empty
     // initial frame is not papered over by the previous chat's tail.
