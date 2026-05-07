@@ -1,7 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import type { Session } from "../shared/types";
+import type { AnnotatedSession } from "../components/SessionsList";
 import {
   agentSessionsSurfaceKey,
+  buildOptimisticSession,
+  isOptimisticSessionId,
+  OPTIMISTIC_SESSION_ID_PREFIX,
   projectSessionsSurfaceKey,
   useAgentBindingsKey,
   useMostRecentSession,
@@ -227,6 +231,161 @@ describe("sessions-list-store", () => {
           agentSessionsSurfaceKey("agent-x")
         ];
       expect(sessions?.map((s) => s.session_id)).toEqual(["v2"]);
+    });
+  });
+
+  describe("addOptimisticSession / replaceSessionId", () => {
+    function annotate(session: Session): AnnotatedSession {
+      return {
+        ...session,
+        _projectId: session.project_id,
+        _projectName: "P1",
+        _agentInstanceId: session.agent_instance_id,
+      };
+    }
+
+    it("inserts the optimistic row at the top of the surface for the just-pressed +", () => {
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const existing = annotate(
+        makeSession("s1", "2026-04-16T00:00:00Z", "i1", "p1"),
+      );
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [existing] },
+      });
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .addOptimisticSession(surfaceKey, optimistic);
+      });
+
+      const ids = useSessionsListStore
+        .getState()
+        .sessionsBySurface[surfaceKey]?.map((s) => s.session_id);
+      expect(ids?.[0]).toBe(optimistic.session_id);
+      expect(ids).toContain("s1");
+      expect(isOptimisticSessionId(optimistic.session_id)).toBe(true);
+    });
+
+    it("dedupes when the same optimistic id is added twice", () => {
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+
+      act(() => {
+        const store = useSessionsListStore.getState();
+        store.addOptimisticSession(surfaceKey, optimistic);
+        store.addOptimisticSession(surfaceKey, optimistic);
+      });
+
+      expect(
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey],
+      ).toHaveLength(1);
+    });
+
+    it("replaceSessionId rewrites the row in place when SessionReady arrives", () => {
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const existing = annotate(
+        makeSession("s1", "2026-04-16T01:00:00Z", "i1", "p1"),
+      );
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic, existing] },
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .replaceSessionId(surfaceKey, optimistic.session_id, "real-session");
+      });
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      expect(rows?.map((s) => s.session_id)).toEqual([
+        "real-session",
+        "s1",
+      ]);
+    });
+
+    it("replaceSessionId drops the optimistic row when the real id already exists", () => {
+      // Race: a parallel `loadAgentSessions` brings the real session
+      // back before `SessionReady` lands. We must not produce two rows
+      // for the same session.
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const real = annotate(
+        makeSession("real-session", "2026-04-16T01:00:00Z", "i1", "p1"),
+      );
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic, real] },
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .replaceSessionId(surfaceKey, optimistic.session_id, "real-session");
+      });
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      expect(rows?.map((s) => s.session_id)).toEqual(["real-session"]);
+    });
+
+    it("preserves optimistic rows across an in-flight loadAgentSessions refetch", async () => {
+      // The bumpVersion that fires alongside SessionReady triggers a
+      // fresh fan-out; the just-created session may still be filtered
+      // out by the server's `filter_nonempty_sessions`. The store
+      // carries the optimistic row through so the sidekick doesn't
+      // flicker empty.
+      useProjectsListStore.setState({
+        projects: [{ project_id: "p1", name: "P1" } as never],
+        agentsByProject: {
+          p1: [{ agent_instance_id: "i1", agent_id: "agent-x" } as never],
+        },
+      });
+      listSessions.mockResolvedValue([
+        makeSession("older", "2026-04-15T00:00:00Z", "i1", "p1"),
+      ]);
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic] },
+      });
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadAgentSessions("agent-x");
+      });
+
+      const ids = useSessionsListStore
+        .getState()
+        .sessionsBySurface[surfaceKey]?.map((s) => s.session_id);
+      expect(ids).toContain(optimistic.session_id);
+      expect(ids).toContain("older");
     });
   });
 

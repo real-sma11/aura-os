@@ -2,7 +2,58 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
 import type { AnnotatedSession } from "../components/SessionsList";
+import type { Session } from "../shared/types";
 import { useProjectsListStore } from "./projects-list-store";
+
+/** Synthetic session-id prefix for optimistic rows inserted on send. */
+export const OPTIMISTIC_SESSION_ID_PREFIX = "optimistic:";
+
+/**
+ * `true` when the row is an optimistic placeholder this client inserted
+ * after the user pressed `+` and sent a message but before the server
+ * has streamed back `SessionReady` with the real id.
+ */
+export function isOptimisticSessionId(sessionId: string): boolean {
+  return sessionId.startsWith(OPTIMISTIC_SESSION_ID_PREFIX);
+}
+
+/**
+ * Builds an `AnnotatedSession` placeholder for the just-sent first
+ * turn of a fresh chat. Empty `summary_of_previous_context` falls
+ * through to `NEW_CHAT_PLACEHOLDER` ("New chat") in
+ * `deriveSessionLabel`, matching how a real zero-summary session
+ * would render. `started_at` defaults to now so the row sorts to the
+ * top of `sortSessionsDesc`.
+ */
+export function buildOptimisticSession(args: {
+  optimisticId: string;
+  projectId: string;
+  projectName: string;
+  agentInstanceId: string;
+  startedAt?: string;
+}): AnnotatedSession {
+  const startedAt = args.startedAt ?? new Date().toISOString();
+  const session: Session = {
+    session_id: args.optimisticId,
+    agent_instance_id: args.agentInstanceId,
+    project_id: args.projectId,
+    active_task_id: null,
+    tasks_worked: [],
+    context_usage_estimate: 0,
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    summary_of_previous_context: "",
+    status: "active",
+    started_at: startedAt,
+    ended_at: null,
+  };
+  return {
+    ...session,
+    _projectName: args.projectName,
+    _projectId: args.projectId,
+    _agentInstanceId: args.agentInstanceId,
+  };
+}
 
 /**
  * Centralized session-list state shared by every surface that lists
@@ -58,6 +109,26 @@ interface SessionsListStore {
   /** Optimistic delete; pair with `restoreSession` to undo on error. */
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  /**
+   * Insert a placeholder row for a brand-new session immediately, before
+   * the server has streamed back `SessionReady`. Caller should pair with
+   * `replaceSessionId` once the real id arrives. Idempotent on
+   * `session_id`. The row carries the `OPTIMISTIC_SESSION_ID_PREFIX`
+   * marker so concurrent `loadAgentSessions` / `loadProjectSessions`
+   * calls preserve it across the merge.
+   */
+  addOptimisticSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  /**
+   * Rewrite a row's `session_id` in place. Used to swap an optimistic
+   * id for the real one once `SessionReady` arrives, keeping the row's
+   * sort position and any summary that may have been resolved against
+   * the optimistic id intact.
+   */
+  replaceSessionId: (
+    surfaceKey: string,
+    oldSessionId: string,
+    newSessionId: string,
+  ) => void;
   /** Surface the user-facing reason a delete failed for `surfaceKey`. */
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
@@ -67,6 +138,28 @@ function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
     (a, b) =>
       new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
   );
+}
+
+/**
+ * Carry forward any optimistic placeholder rows from the previous
+ * surface state into a fresh load result. The server's `list_sessions`
+ * filters out zero-event sessions, so a refetch triggered by
+ * `SessionReady` may briefly miss the just-created session — without
+ * this guard the optimistic row would flicker out and back in. Once
+ * `replaceSessionId` swaps the marker for the real id, the next load
+ * sees a non-optimistic id and the placeholder isn't carried again.
+ */
+function preserveOptimisticRows(
+  prev: AnnotatedSession[] | undefined,
+  next: AnnotatedSession[],
+): AnnotatedSession[] {
+  if (!prev || prev.length === 0) return next;
+  const optimistic = prev.filter((s) => isOptimisticSessionId(s.session_id));
+  if (optimistic.length === 0) return next;
+  const seen = new Set(next.map((s) => s.session_id));
+  const carried = optimistic.filter((s) => !seen.has(s.session_id));
+  if (carried.length === 0) return next;
+  return sortSessionsDesc([...next, ...carried]);
 }
 
 // Per-surface request-id counters keep racing responses from clobbering
@@ -136,7 +229,13 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       if (surfaceRequestIds[surfaceKey] !== requestId) return;
       const merged = sortSessionsDesc(results.flat());
       set((state) => ({
-        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: merged },
+        sessionsBySurface: {
+          ...state.sessionsBySurface,
+          [surfaceKey]: preserveOptimisticRows(
+            state.sessionsBySurface[surfaceKey],
+            merged,
+          ),
+        },
       }));
     } catch (err) {
       console.error("Failed to load agent sessions", err);
@@ -170,7 +269,13 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
         })),
       );
       set((state) => ({
-        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: annotated },
+        sessionsBySurface: {
+          ...state.sessionsBySurface,
+          [surfaceKey]: preserveOptimisticRows(
+            state.sessionsBySurface[surfaceKey],
+            annotated,
+          ),
+        },
       }));
     } catch (err) {
       console.error("Failed to load project sessions", err);
@@ -197,6 +302,39 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     const current = get().sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
     if (current.some((s) => s.session_id === session.session_id)) return;
     const next = sortSessionsDesc([...current, session]);
+    set((state) => ({
+      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+    }));
+  },
+
+  addOptimisticSession: (surfaceKey, session) => {
+    const current = get().sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+    if (current.some((s) => s.session_id === session.session_id)) return;
+    const next = sortSessionsDesc([...current, session]);
+    set((state) => ({
+      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+    }));
+  },
+
+  replaceSessionId: (surfaceKey, oldSessionId, newSessionId) => {
+    if (oldSessionId === newSessionId) return;
+    const current = get().sessionsBySurface[surfaceKey];
+    if (!current) return;
+    const idx = current.findIndex((s) => s.session_id === oldSessionId);
+    if (idx === -1) return;
+    // If a row with `newSessionId` already exists (e.g. a parallel
+    // load brought it in before SessionReady landed), drop the
+    // optimistic placeholder rather than producing two rows for the
+    // same session.
+    if (current.some((s) => s.session_id === newSessionId)) {
+      const next = current.filter((s) => s.session_id !== oldSessionId);
+      set((state) => ({
+        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+      }));
+      return;
+    }
+    const next = current.slice();
+    next[idx] = { ...current[idx], session_id: newSessionId };
     set((state) => ({
       sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
     }));
@@ -299,6 +437,12 @@ interface SessionsListActions {
   loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  addOptimisticSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  replaceSessionId: (
+    surfaceKey: string,
+    oldSessionId: string,
+    newSessionId: string,
+  ) => void;
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
@@ -314,6 +458,8 @@ export function useSessionsListActions(): SessionsListActions {
       loadProjectSessions: s.loadProjectSessions,
       removeSession: s.removeSession,
       restoreSession: s.restoreSession,
+      addOptimisticSession: s.addOptimisticSession,
+      replaceSessionId: s.replaceSessionId,
       setDeleteError: s.setDeleteError,
     })),
   );

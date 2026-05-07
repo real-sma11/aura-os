@@ -20,6 +20,9 @@ import {
 } from "../../../../stores/chat-history-store";
 import {
   agentSessionsSurfaceKey,
+  buildOptimisticSession,
+  OPTIMISTIC_SESSION_ID_PREFIX,
+  projectSessionsSurfaceKey,
   useAgentBindingsKey,
   useMostRecentSession,
   useSessionsListStore,
@@ -112,6 +115,7 @@ function ProjectAgentChatPanel({
   const [, setSearchParams] = useSearchParams();
   const { isMobileLayout } = useAuraCapabilities();
   const currentProject = useProjectsListStore(useShallow(selectCurrentProject(projectId)));
+  const projectName = currentProject[0]?.name ?? "";
   const projectAgents = useProjectsListStore((state) => state.agentsByProject[projectId] ?? EMPTY_AGENT_INSTANCES);
   const setAgentsByProject = useProjectsListStore((state) => state.setAgentsByProject);
   // The org-level `agent_id` for this `(project, instance)` pair. We
@@ -128,6 +132,15 @@ function ProjectAgentChatPanel({
       )?.agent_id ?? null,
   );
 
+  // Tracks the optimistic placeholder id this panel inserted into
+  // the SessionsList store on the most recent fresh-chat send. When
+  // `SessionReady` lands, we swap the synthetic id for the
+  // server-assigned one in place so the row keeps its position and
+  // any in-flight Haiku summary stays attached to the same session.
+  // Cleared after the swap; re-armed each time the user clicks `+`
+  // and sends again.
+  const pendingOptimisticIdRef = useRef<string | null>(null);
+
   // `?session=<id>` is the single source of truth for which session
   // this view is extending. When SessionReady arrives with a new id
   // (a fresh-canvas first-send creates one server-side), we mirror
@@ -137,6 +150,24 @@ function ProjectAgentChatPanel({
   const handleSessionReady = useCallback(
     (newSessionId: string) => {
       setFreshChatNonce(0);
+      const pendingOptimisticId = pendingOptimisticIdRef.current;
+      if (pendingOptimisticId) {
+        pendingOptimisticIdRef.current = null;
+        const sessionsStore = useSessionsListStore.getState();
+        const resolvedOrgAgentId = orgAgentIdRef.current;
+        if (resolvedOrgAgentId) {
+          sessionsStore.replaceSessionId(
+            agentSessionsSurfaceKey(resolvedOrgAgentId),
+            pendingOptimisticId,
+            newSessionId,
+          );
+        }
+        sessionsStore.replaceSessionId(
+          projectSessionsSurfaceKey(projectId),
+          pendingOptimisticId,
+          newSessionId,
+        );
+      }
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -147,7 +178,7 @@ function ProjectAgentChatPanel({
         { replace: true },
       );
     },
-    [setSearchParams],
+    [projectId, setSearchParams],
   );
 
   const { streamKey, sendMessage, stopStreaming, resetEvents, markNextSendAsNewSession } =
@@ -294,9 +325,18 @@ function ProjectAgentChatPanel({
     );
   }, [streamKey, resetEvents, setSearchParams]);
 
+  // Tracks whether the most recent user action armed a new-session
+  // send. Set in `handleNewChat`, consumed inside the `wrappedSend`
+  // wrapper to decide whether to insert an optimistic placeholder
+  // row into the SessionsList store. Mirrors `markNextSendAsNewSession`
+  // on the chat-stream side, but kept locally so we can react to the
+  // very first send without poking into `useChatStream`'s internals.
+  const pendingOptimisticArmedRef = useRef(false);
+
   const handleNewChat = useCallback(() => {
     void import("../../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
     markNextSendAsNewSessionRef.current();
+    pendingOptimisticArmedRef.current = true;
     // Blank the visible transcript immediately. The chat-history-store
     // entry is dropped (and the IDB cache for the *old* historyKey is
     // wiped); the local stream buffer is replaced with []. The next
@@ -444,10 +484,53 @@ function ProjectAgentChatPanel({
         console.error("Failed to rename project agent from first prompt", error);
       });
   }, []);
+  // Mirror the project-name lookup via a ref so the optimistic-insert
+  // path doesn't churn `wrappedSend`'s identity every time the projects
+  // store mutates. The chat input bar's `onSend` is `React.memo`-compared
+  // and a fresh function on every projects-store flip would defeat that.
+  const projectNameRef = useRef(projectName);
+  useEffect(() => { projectNameRef.current = projectName; }, [projectName]);
+  // Insert an optimistic "New chat" row into the SessionsList store the
+  // first time the user sends after pressing `+`. The row is keyed by
+  // a synthetic `optimistic:<uuid>` id and preserved across concurrent
+  // `loadAgentSessions` / `loadProjectSessions` refreshes (see
+  // `preserveOptimisticRows` in `sessions-list-store`). When
+  // `SessionReady` arrives, `handleSessionReady` swaps the synthetic id
+  // for the real session_id in place. Without this, the sidekick has
+  // no row at all between "Send" and the SSE round-trip + refetch.
+  const insertOptimisticSessionRow = useCallback((): string => {
+    const optimisticId =
+      `${OPTIMISTIC_SESSION_ID_PREFIX}${typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+    const optimisticSession = buildOptimisticSession({
+      optimisticId,
+      projectId,
+      projectName: projectNameRef.current,
+      agentInstanceId,
+    });
+    const sessionsStore = useSessionsListStore.getState();
+    const resolvedOrgAgentId = orgAgentIdRef.current;
+    if (resolvedOrgAgentId) {
+      sessionsStore.addOptimisticSession(
+        agentSessionsSurfaceKey(resolvedOrgAgentId),
+        optimisticSession,
+      );
+    }
+    sessionsStore.addOptimisticSession(
+      projectSessionsSurfaceKey(projectId),
+      optimisticSession,
+    );
+    return optimisticId;
+  }, [agentInstanceId, projectId]);
   const wrappedSend = useCallback((...args: Parameters<typeof wrappedSendBase>) => {
+    if (pendingOptimisticArmedRef.current) {
+      pendingOptimisticArmedRef.current = false;
+      pendingOptimisticIdRef.current = insertOptimisticSessionRow();
+    }
     maybeRenameFromFirstPrompt(args[0] ?? "");
     return wrappedSendBase(...args);
-  }, [maybeRenameFromFirstPrompt, wrappedSendBase]);
+  }, [insertOptimisticSessionRow, maybeRenameFromFirstPrompt, wrappedSendBase]);
 
   // Combine our own chat-SSE streaming state with automation-loop
   // activity against the same upstream agent so the chat input shows

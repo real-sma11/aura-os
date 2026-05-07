@@ -12,7 +12,13 @@ import {
   projectChatHistoryKey,
   useChatHistoryStore,
 } from "../stores/chat-history-store";
-import { useSessionsListStore } from "../stores/sessions-list-store";
+import {
+  agentSessionsSurfaceKey,
+  buildOptimisticSession,
+  OPTIMISTIC_SESSION_ID_PREFIX,
+  projectSessionsSurfaceKey,
+  useSessionsListStore,
+} from "../stores/sessions-list-store";
 import { useAgentStore } from "../apps/agents/stores";
 import { useProjectsListStore } from "../stores/projects-list-store";
 import { useContextUsage, useContextUsageStore } from "../stores/context-usage-store";
@@ -96,11 +102,50 @@ export function useStandaloneAgentChat(
     [agentId],
   );
 
+  // Tracks the optimistic placeholder id this hook inserted into the
+  // SessionsList store on the most recent fresh-chat send. When
+  // `SessionReady` lands, we swap the synthetic id for the real one
+  // in place. See the matching ref in `ProjectAgentChatPanel`.
+  const pendingOptimisticIdRef = useRef<string | null>(null);
+  // Mirror `agentId` and the project binding via refs so the
+  // `SessionReady`-side reconciliation doesn't ride along in
+  // `handleSessionReady`'s deps. The chat input bar's `onSend`/internal
+  // wiring is sensitive to identity churn from the projects store.
+  const agentIdRef = useRef(agentId);
+  useEffect(() => { agentIdRef.current = agentId; }, [agentId]);
+  const optimisticBindingRef = useRef<{
+    projectId: string;
+    projectName: string;
+    agentInstanceId: string;
+  } | null>(null);
+
   // Mirror the server-assigned session id back into the URL so the
   // panel reuses the same routing contract on every send. See the
   // matching effect in `ProjectAgentChatPanel`.
   const handleSessionReady = useCallback(
     (newSessionId: string) => {
+      const pendingOptimisticId = pendingOptimisticIdRef.current;
+      if (pendingOptimisticId) {
+        pendingOptimisticIdRef.current = null;
+        const sessionsStore = useSessionsListStore.getState();
+        const resolvedAgentId = agentIdRef.current;
+        if (resolvedAgentId) {
+          sessionsStore.replaceSessionId(
+            agentSessionsSurfaceKey(resolvedAgentId),
+            pendingOptimisticId,
+            newSessionId,
+          );
+        }
+        const binding = optimisticBindingRef.current;
+        optimisticBindingRef.current = null;
+        if (binding) {
+          sessionsStore.replaceSessionId(
+            projectSessionsSurfaceKey(binding.projectId),
+            pendingOptimisticId,
+            newSessionId,
+          );
+        }
+      }
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -213,10 +258,16 @@ export function useStandaloneAgentChat(
     );
   }, [agentId, markNextSendAsNewSession, streamKey, historyKey, resetEvents, setSearchParams]);
 
+  // Set in `handleNewChat`, consumed inside the `wrappedSend` wrapper
+  // to decide whether to insert an optimistic SessionsList row on the
+  // very next send. See the matching ref in `ProjectAgentChatPanel`.
+  const pendingOptimisticArmedRef = useRef(false);
+
   const handleNewChat = useCallback(() => {
     if (!agentId) return;
     void import("../lib/analytics").then(({ track }) => track("chat_new_chat"));
     markNextSendAsNewSession();
+    pendingOptimisticArmedRef.current = true;
     const historyStore = useChatHistoryStore.getState();
     if (historyKey) {
       historyStore.clearHistory(historyKey);
@@ -286,9 +337,80 @@ export function useStandaloneAgentChat(
       watchAgentId: agentId,
     });
 
-  const wrappedSend = useMemo(
+  const wrappedSendBase = useMemo(
     () => wrapSend(sendMessage),
     [wrapSend, sendMessage],
+  );
+  // Insert an optimistic "New chat" row into the SessionsList store
+  // the first time the user sends after pressing `+`. Mirrors the
+  // wrapper in `ProjectAgentChatPanel`. Skips the projects-app
+  // surface insert if the standalone agent has no resolvable project
+  // binding yet (no row to add — the user is on a truly fresh canvas
+  // with no project-side sidekick visible).
+  const insertOptimisticSessionRow = useCallback((): string | null => {
+    if (!agentId) return null;
+    const projectsState = useProjectsListStore.getState();
+    let resolvedBinding: {
+      projectId: string;
+      projectName: string;
+      agentInstanceId: string;
+    } | null = null;
+    if (effectiveProjectId) {
+      const project = projectsState.projects.find(
+        (p) => p.project_id === effectiveProjectId,
+      );
+      const instances = projectsState.agentsByProject[effectiveProjectId];
+      const matchedInstance = instances?.find(
+        (instance) => instance.agent_id === agentId,
+      );
+      if (project && matchedInstance) {
+        resolvedBinding = {
+          projectId: project.project_id,
+          projectName: project.name,
+          agentInstanceId: matchedInstance.agent_instance_id,
+        };
+      }
+    }
+    if (!resolvedBinding) {
+      // Without a project binding we can't construct an
+      // `AnnotatedSession` (it requires `_projectId` /
+      // `_agentInstanceId` for navigation back into a chat). Bail —
+      // the row will appear after `SessionReady`'s `bumpVersion`
+      // refetches.
+      return null;
+    }
+    const optimisticId =
+      `${OPTIMISTIC_SESSION_ID_PREFIX}${typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+    const optimisticSession = buildOptimisticSession({
+      optimisticId,
+      projectId: resolvedBinding.projectId,
+      projectName: resolvedBinding.projectName,
+      agentInstanceId: resolvedBinding.agentInstanceId,
+    });
+    const sessionsStore = useSessionsListStore.getState();
+    sessionsStore.addOptimisticSession(
+      agentSessionsSurfaceKey(agentId),
+      optimisticSession,
+    );
+    sessionsStore.addOptimisticSession(
+      projectSessionsSurfaceKey(resolvedBinding.projectId),
+      optimisticSession,
+    );
+    optimisticBindingRef.current = resolvedBinding;
+    return optimisticId;
+  }, [agentId, effectiveProjectId]);
+  const wrappedSend = useMemo(
+    () =>
+      (...args: Parameters<typeof wrappedSendBase>) => {
+        if (pendingOptimisticArmedRef.current) {
+          pendingOptimisticArmedRef.current = false;
+          pendingOptimisticIdRef.current = insertOptimisticSessionRow();
+        }
+        return wrappedSendBase(...args);
+      },
+    [insertOptimisticSessionRow, wrappedSendBase],
   );
 
   const deferredLoading = useDelayedLoading(isLoading);

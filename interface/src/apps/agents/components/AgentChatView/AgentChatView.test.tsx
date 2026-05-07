@@ -41,10 +41,16 @@ const mocks = vi.hoisted(() => ({
   fetchHistory: vi.fn(),
   clearHistory: vi.fn(),
   bumpVersion: vi.fn(),
+  addOptimisticSession: vi.fn(),
+  replaceSessionId: vi.fn(),
   defaultStandaloneRedirect: vi.fn(),
   streamState: {
     entries: {} as Record<string, { events: Array<{ id: string }> }>,
   },
+  // Captured per `useChatStream` invocation so tests can simulate the
+  // server-side `SessionReady` SSE event by calling the callback the
+  // panel registered.
+  capturedOnSessionReady: undefined as ((sessionId: string) => void) | undefined,
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -81,13 +87,16 @@ vi.mock("../../../../hooks/use-agent-chat-stream", () => ({
 }));
 
 vi.mock("../../../../hooks/use-chat-stream", () => ({
-  useChatStream: () => ({
-    streamKey: "project-stream",
-    sendMessage: mocks.sendMessage,
-    stopStreaming: mocks.stopStreaming,
-    resetEvents: mocks.resetEvents,
-    markNextSendAsNewSession: mocks.markNextSendAsNewSession,
-  }),
+  useChatStream: (options: { onSessionReady?: (id: string) => void }) => {
+    mocks.capturedOnSessionReady = options.onSessionReady;
+    return {
+      streamKey: "project-stream",
+      sendMessage: mocks.sendMessage,
+      stopStreaming: mocks.stopStreaming,
+      resetEvents: mocks.resetEvents,
+      markNextSendAsNewSession: mocks.markNextSendAsNewSession,
+    };
+  },
 }));
 
 vi.mock("../../../../hooks/use-chat-history-sync", () => ({
@@ -177,6 +186,44 @@ vi.mock("../../../../stores/sessions-list-store", () => {
   type FakeSessionsListState = {
     sessionsBySurface: Record<string, FakeAnnotatedSession[]>;
     bumpVersion: () => void;
+    addOptimisticSession: (
+      surfaceKey: string,
+      session: FakeAnnotatedSession,
+    ) => void;
+    replaceSessionId: (
+      surfaceKey: string,
+      oldSessionId: string,
+      newSessionId: string,
+    ) => void;
+  };
+  const addOptimisticSession = (
+    surfaceKey: string,
+    session: FakeAnnotatedSession,
+  ) => {
+    mocks.addOptimisticSession(surfaceKey, session);
+    const current = mocks.sessionsState.sessionsBySurface[surfaceKey] ?? [];
+    if (current.some((s) => s.session_id === session.session_id)) return;
+    mocks.sessionsState.sessionsBySurface[surfaceKey] = [session, ...current];
+  };
+  const replaceSessionId = (
+    surfaceKey: string,
+    oldSessionId: string,
+    newSessionId: string,
+  ) => {
+    mocks.replaceSessionId(surfaceKey, oldSessionId, newSessionId);
+    const current = mocks.sessionsState.sessionsBySurface[surfaceKey];
+    if (!current) return;
+    const idx = current.findIndex((s) => s.session_id === oldSessionId);
+    if (idx === -1) return;
+    if (current.some((s) => s.session_id === newSessionId)) {
+      mocks.sessionsState.sessionsBySurface[surfaceKey] = current.filter(
+        (s) => s.session_id !== oldSessionId,
+      );
+      return;
+    }
+    const next = current.slice();
+    next[idx] = { ...current[idx], session_id: newSessionId };
+    mocks.sessionsState.sessionsBySurface[surfaceKey] = next;
   };
   const sessionsHook: ((selector: (state: FakeSessionsListState) => unknown) => unknown) & {
     getState: () => FakeSessionsListState;
@@ -185,16 +232,32 @@ vi.mock("../../../../stores/sessions-list-store", () => {
       selector({
         sessionsBySurface: mocks.sessionsState.sessionsBySurface,
         bumpVersion: mocks.bumpVersion,
+        addOptimisticSession,
+        replaceSessionId,
       }),
     {
       getState: () => ({
         sessionsBySurface: mocks.sessionsState.sessionsBySurface,
         bumpVersion: mocks.bumpVersion,
+        addOptimisticSession,
+        replaceSessionId,
       }),
     },
   );
   return {
     agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+    projectSessionsSurfaceKey: (projectId: string) => `project:${projectId}`,
+    OPTIMISTIC_SESSION_ID_PREFIX: "optimistic:",
+    buildOptimisticSession: (args: {
+      optimisticId: string;
+      projectId: string;
+      projectName: string;
+      agentInstanceId: string;
+    }): FakeAnnotatedSession => ({
+      session_id: args.optimisticId,
+      _projectId: args.projectId,
+      _agentInstanceId: args.agentInstanceId,
+    }),
     useAgentBindingsKey: (agentId: string | undefined) => {
       if (!agentId) return "";
       const parts: string[] = [];
@@ -321,11 +384,14 @@ describe("AgentChatView", () => {
     mocks.fetchHistory.mockReset();
     mocks.clearHistory.mockReset();
     mocks.bumpVersion.mockReset();
+    mocks.addOptimisticSession.mockReset();
+    mocks.replaceSessionId.mockReset();
     mocks.defaultStandaloneRedirect.mockReset();
     mocks.resetEvents.mockReset();
     mocks.getIsStreaming.mockReset();
     mocks.getIsStreaming.mockImplementation(() => false);
     mocks.streamState = { entries: {} };
+    mocks.capturedOnSessionReady = undefined;
   });
 
   it("uses ChatPanel's desktop input autofocus for standalone agents", () => {
@@ -958,6 +1024,134 @@ describe("AgentChatView", () => {
 
       expect(mocks.bumpVersion).toHaveBeenCalledTimes(1);
       expect(mocks.sessionsState.sessionsBySurface).toEqual({});
+    });
+
+    it("inserts an optimistic sidekick row the moment the user sends after +", () => {
+      // Regression: until this wiring landed the new session only
+      // showed up after the SSE `SessionReady` round-trip + a
+      // `bumpVersion`-triggered refetch. The user's expectation is
+      // that pressing Enter immediately drops a "New chat" row in
+      // the sidekick.
+      mountProjectPanel({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: null,
+      });
+
+      fireNewChat();
+      // The send wrapper consumes the latch and calls
+      // `addOptimisticSession` on both the agents-app surface
+      // (`agent:agent-1`) and the projects-app surface
+      // (`project:p1`).
+      const onSend = mocks.latestChatPanelProps?.onSend as
+        | ((content: string) => void)
+        | undefined;
+      if (!onSend) throw new Error("onSend was not forwarded to ChatPanel");
+      act(() => {
+        onSend("hello");
+      });
+
+      expect(mocks.addOptimisticSession).toHaveBeenCalledTimes(2);
+      const surfaceKeys = mocks.addOptimisticSession.mock.calls.map(
+        (call) => call[0],
+      );
+      expect(surfaceKeys).toContain("agent:agent-1");
+      expect(surfaceKeys).toContain("project:p1");
+
+      const agentSurface = mocks.sessionsState.sessionsBySurface["agent:agent-1"];
+      const projectSurface = mocks.sessionsState.sessionsBySurface["project:p1"];
+      expect(agentSurface?.[0]?.session_id).toMatch(/^optimistic:/);
+      expect(projectSurface?.[0]?.session_id).toMatch(/^optimistic:/);
+      expect(agentSurface?.[0]?.session_id).toBe(projectSurface?.[0]?.session_id);
+    });
+
+    it("swaps the optimistic id for the real one when SessionReady arrives", () => {
+      mountProjectPanel({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: null,
+      });
+
+      fireNewChat();
+      const onSend = mocks.latestChatPanelProps?.onSend as
+        | ((content: string) => void)
+        | undefined;
+      if (!onSend) throw new Error("onSend was not forwarded to ChatPanel");
+      act(() => {
+        onSend("hello");
+      });
+
+      const optimisticId =
+        mocks.sessionsState.sessionsBySurface["agent:agent-1"]?.[0]?.session_id;
+      expect(optimisticId).toMatch(/^optimistic:/);
+
+      // The chat panel registers `onSessionReady` with `useChatStream`.
+      // Simulate the SSE event landing.
+      const onSessionReady = mocks.capturedOnSessionReady;
+      if (!onSessionReady) throw new Error("onSessionReady was not registered");
+      act(() => {
+        onSessionReady("real-session-id");
+      });
+
+      expect(mocks.replaceSessionId).toHaveBeenCalledWith(
+        "agent:agent-1",
+        optimisticId,
+        "real-session-id",
+      );
+      expect(mocks.replaceSessionId).toHaveBeenCalledWith(
+        "project:p1",
+        optimisticId,
+        "real-session-id",
+      );
+      expect(
+        mocks.sessionsState.sessionsBySurface["agent:agent-1"]?.[0]?.session_id,
+      ).toBe("real-session-id");
+      expect(
+        mocks.sessionsState.sessionsBySurface["project:p1"]?.[0]?.session_id,
+      ).toBe("real-session-id");
+    });
+
+    it("only inserts an optimistic row on the first send after +, not on subsequent sends", () => {
+      mountProjectPanel({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: null,
+      });
+
+      fireNewChat();
+      const onSend = mocks.latestChatPanelProps?.onSend as
+        | ((content: string) => void)
+        | undefined;
+      if (!onSend) throw new Error("onSend was not forwarded to ChatPanel");
+      act(() => {
+        onSend("hello");
+      });
+      mocks.addOptimisticSession.mockClear();
+      // Second send on the same fresh-canvas should not insert another
+      // row — the latch was consumed by the first send.
+      act(() => {
+        onSend("follow up");
+      });
+
+      expect(mocks.addOptimisticSession).not.toHaveBeenCalled();
+    });
+
+    it("does not insert an optimistic row when sending without pressing + first", () => {
+      mountProjectPanel({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: "s1",
+      });
+
+      const onSend = mocks.latestChatPanelProps?.onSend as
+        | ((content: string) => void)
+        | undefined;
+      if (!onSend) throw new Error("onSend was not forwarded to ChatPanel");
+      act(() => {
+        onSend("hello");
+      });
+
+      expect(mocks.addOptimisticSession).not.toHaveBeenCalled();
     });
 
     it("still resets history when the org agent_id lookup misses (unbound instance)", () => {
