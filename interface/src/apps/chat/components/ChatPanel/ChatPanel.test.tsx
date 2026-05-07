@@ -269,6 +269,45 @@ describe("ChatPanel", () => {
     expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
+  it("focuses the input after pressing the new-chat button on desktop", () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
+    const onNewChat = vi.fn();
+
+    renderPanel({
+      onNewChat,
+      historyResolved: true,
+      isLoading: false,
+      historyMessages: [...sampleHistoryMessages],
+    });
+
+    const input = getInputBar() as HTMLTextAreaElement;
+    input.blur();
+    expect(input).not.toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "new chat" }));
+
+    expect(getInputBar()).toHaveFocus();
+  });
+
+  it("does not auto-focus the input on the new-chat button on mobile", () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true });
+    const onNewChat = vi.fn();
+
+    renderPanel({
+      onNewChat,
+      historyResolved: true,
+      isLoading: false,
+      historyMessages: [...sampleHistoryMessages],
+    });
+
+    const input = getInputBar() as HTMLTextAreaElement;
+    expect(input).not.toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "new chat" }));
+
+    expect(getInputBar()).not.toHaveFocus();
+  });
+
   it("reveals cold-load history once it resolves and fades the loading overlay", () => {
     // The proactive [historyResolved, messages.length] reveal effect
     // schedules a double-rAF reveal as soon as history resolves with

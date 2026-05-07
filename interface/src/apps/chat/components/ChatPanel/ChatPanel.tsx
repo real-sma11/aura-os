@@ -180,7 +180,24 @@ export function ChatPanel({
     setCommands([]);
     useMessageQueueStore.getState().clear(streamKey);
     onNewChat?.();
-  }, [onNewChat, setAttachments, setCommands, setInput, streamKey]);
+    // Place the cursor back in the input on the fresh canvas. The
+    // standing focus effect below only re-fires when `inputFocusReadyRef`
+    // is `false`, but the new-chat flow doesn't flip `historyResolved`
+    // so that ref stays latched from the initial mount. Skip on mobile
+    // to avoid popping the on-screen keyboard unprompted, matching the
+    // guard on the thread-ready focus effect.
+    if (!isMobileLayout) {
+      requestAnimationFrame(() => inputBarRef.current?.focus());
+    }
+  }, [
+    inputBarRef,
+    isMobileLayout,
+    onNewChat,
+    setAttachments,
+    setCommands,
+    setInput,
+    streamKey,
+  ]);
 
   // Phase 3 server emits `progress { stage: "queued" }` as the first
   // SSE event when our turn is waiting behind another on the same
