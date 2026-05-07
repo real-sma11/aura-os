@@ -150,9 +150,9 @@
 .sidekickBody [class*="label"] {
   text-align: left;
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 300;
   line-height: 1.25;
-  color: var(--color-text-primary);
+  color: inherit;
 }
 
 .sidekickBody [class*="iconSpacer"] {
@@ -173,6 +173,12 @@
   outline: none;
 }
 
+.sidekickBody [class*="itemSelected"],
+.sidekickBody [class*="itemSelected"]:hover {
+  background: var(--color-overlay-subtle);
+  color: var(--color-text-primary);
+}
+
 /* Parent (collapsible) items: match Projects LeftMenu header color.
    Use aria-expanded="true"/"false" explicitly because leaf items also get
    aria-expanded="false" from the underlying Item component, which would
@@ -189,7 +195,7 @@
   min-height: 30px;
 }
 
-/* Child item labels: match Projects left-menu agent labels. */
+/* Child item labels: keep the agent-row typography explicit for nested rows. */
 .sidekickBody [class*="childrenInner"] [class*="label"] {
   font-size: 12px;
   font-weight: 300;

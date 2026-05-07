@@ -10,6 +10,37 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
+vi.mock("@cypher-asi/zui", () => ({
+  Explorer: ({
+    data,
+    defaultSelectedIds = [],
+    onSelect,
+  }: {
+    data: Array<{ id: string; label: string }>;
+    defaultSelectedIds?: string[];
+    onSelect?: (ids: string[]) => void;
+  }) => (
+    <div role="tree">
+      {data.map((node) => {
+        const selected = defaultSelectedIds.includes(node.id);
+        return (
+          <button
+            key={node.id}
+            type="button"
+            id={node.id}
+            role="treeitem"
+            aria-current={selected ? "page" : undefined}
+            aria-selected={selected}
+            onClick={() => onSelect?.([node.id])}
+          >
+            {node.label}
+          </button>
+        );
+      })}
+    </div>
+  ),
+}));
+
 import { api } from "../../api/client";
 
 vi.mock("./SessionsList.module.css", () => ({
@@ -118,7 +149,7 @@ describe("SessionsList", () => {
     );
 
     expect(screen.getByText("Has summary")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /s-untitled/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("treeitem", { name: /s-untitled/ })).not.toBeInTheDocument();
   });
 
   it("retries summary generation after an empty first response", async () => {
@@ -139,7 +170,7 @@ describe("SessionsList", () => {
         />,
       );
 
-      expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+      expect(screen.getByRole("treeitem", { name: "New chat" })).toBeInTheDocument();
       await act(async () => {
         await Promise.resolve();
       });
@@ -153,7 +184,7 @@ describe("SessionsList", () => {
       });
 
       expect(
-        screen.getByRole("button", { name: "Summarized first request" }),
+        screen.getByRole("treeitem", { name: "Summarized first request" }),
       ).toBeInTheDocument();
       expect(api.summarizeSession).toHaveBeenCalledTimes(2);
     } finally {
@@ -176,9 +207,9 @@ describe("SessionsList", () => {
       />,
     );
 
-    const second = screen.getByRole("button", { name: "Second" });
+    const second = screen.getByRole("treeitem", { name: "Second" });
     expect(second).toHaveAttribute("aria-current", "page");
-    const first = screen.getByRole("button", { name: "First" });
+    const first = screen.getByRole("treeitem", { name: "First" });
     expect(first).not.toHaveAttribute("aria-current");
   });
 
@@ -195,7 +226,7 @@ describe("SessionsList", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Pick me" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "Pick me" }));
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(onClick.mock.calls[0][0].session_id).toBe("s1");
   });
@@ -220,7 +251,7 @@ describe("SessionsList", () => {
       />,
     );
 
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "Hover me" }));
+    fireEvent.mouseEnter(screen.getByRole("treeitem", { name: "Hover me" }));
     expect(onHover).toHaveBeenCalledTimes(1);
     expect(onHover.mock.calls[0][0].session_id).toBe("s1");
   });

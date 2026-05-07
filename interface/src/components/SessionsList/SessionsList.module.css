@@ -24,58 +24,35 @@
   color: var(--color-text-muted);
 }
 
-.chatsRow {
-  display: block;
-  width: 100%;
+.sessionsExplorer [class*="label"] {
   text-align: left;
-  padding: var(--space-1) var(--space-3);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.4;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.25;
+  color: inherit;
 }
 
-.chatsRow:hover {
+.sessionsExplorer [class*="iconSpacer"] {
+  display: none;
+}
+
+.sessionsExplorer [class*="itemContent"] {
+  padding-left: var(--space-3, 12px) !important;
+  padding-right: var(--space-3, 12px);
+  height: 30px;
+  min-height: 30px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.sessionsExplorer [class*="itemContent"]:focus-visible,
+.sessionsExplorer [class*="item"]:focus-visible {
+  outline: none;
+}
+
+.sessionsExplorer [class*="itemSelected"],
+.sessionsExplorer [class*="itemSelected"]:hover {
   background: var(--color-overlay-subtle);
-}
-
-/* Active session row: matches the selected agent row in the left
-   menu (`AgentConversationRow.module.css` `.selected`) so both
-   surfaces share one visual treatment for "active item". Uses the
-   neutral overlay tokens from `@cypher-asi/zui/styles/themes.css`,
-   which adapt across dark and light themes. */
-.chatsRowSelected,
-.chatsRow[aria-current="page"] {
-  background: var(--color-overlay-medium);
-  color: var(--color-text-primary);
-}
-
-.chatsRowSelected:hover,
-.chatsRow[aria-current="page"]:hover {
-  background: var(--color-overlay-heavy);
-}
-
-/* Optimistic "New chat" placeholder row — the chat-input "+" button
-   synthesizes one of these the moment the user starts a fresh chat,
-   before the server has assigned a session id. Italic + muted text
-   reads as "fresh chat starting", matching ChatGPT's pre-first-send
-   sidebar treatment, so the row never gets confused with a real,
-   persisted session. The row is still selectable (the .chatsRowSelected
-   highlight still applies) but the muted color sticks even when
-   selected so it never quite looks "settled" — the placeholder is
-   replaced in place by the real row on `SessionReady`. */
-.chatsRowPending {
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-.chatsRowPending:hover {
   color: var(--color-text-primary);
 }
 
@@ -86,7 +63,9 @@
   flex: 1;
   padding: var(--space-6) var(--space-4);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm, 13px);
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.25;
 }
 
 /* Inline failure banner shown when right-click "Delete session" hits a

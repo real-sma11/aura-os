@@ -1,4 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { Explorer } from "@cypher-asi/zui";
+import type { ExplorerNode } from "@cypher-asi/zui";
 import { EmptyState } from "../EmptyState";
 import {
   SidekickItemContextMenu,
@@ -71,6 +73,7 @@ export function SessionsList({
   onDismissError,
 }: SessionsListProps) {
   const summaries = useSessionSummaries(sessions);
+  const lastHoveredSessionIdRef = useRef<string | null>(null);
 
   // Live-update of the row label when the backend's on-send title
   // generator (apps/aura-os-server/src/handlers/agents/sessions.rs
@@ -100,6 +103,18 @@ export function SessionsList({
   }, [sessions, summaries, searchQuery]);
 
   const buckets = useMemo(() => bucketizeByDate(titledRows), [titledRows]);
+  const explorerBuckets = useMemo(
+    () =>
+      buckets.map((bucket) => ({
+        label: bucket.label,
+        data: bucket.rows.map<ExplorerNode>(({ session, label }) => ({
+          id: session.session_id,
+          label,
+          metadata: { type: "session" },
+        })),
+      })),
+    [buckets],
+  );
 
   const resolveMenuTarget = useCallback(
     (nodeId: string): AnnotatedSession | null => sessionById.get(nodeId) ?? null,
@@ -118,6 +133,27 @@ export function SessionsList({
       onDeleteSession?.(target);
     },
     [menu, closeMenu, onDeleteSession],
+  );
+  const handleExplorerSelect = useCallback(
+    (ids: string[]) => {
+      const id = [...ids].reverse().find((candidate) => sessionById.has(candidate));
+      if (!id) return;
+      const session = sessionById.get(id);
+      if (session) onSessionClick(session);
+    },
+    [onSessionClick, sessionById],
+  );
+  const handleSessionHoverTarget = useCallback(
+    (target: EventTarget | null) => {
+      if (!onSessionHover || !(target instanceof HTMLElement)) return;
+      const row = target.closest<HTMLButtonElement>("button[id]");
+      if (!row) return;
+      const session = sessionById.get(row.id);
+      if (!session || lastHoveredSessionIdRef.current === session.session_id) return;
+      lastHoveredSessionIdRef.current = session.session_id;
+      onSessionHover(session);
+    },
+    [onSessionHover, sessionById],
   );
 
   const errorBanner = deleteError ? (
@@ -157,32 +193,25 @@ export function SessionsList({
   return (
     <>
       {errorBanner}
-      <div className={styles.chatsList} onContextMenu={handleContextMenu}>
-        {buckets.map((bucket) => (
+      <div
+        className={styles.chatsList}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={(event) => handleSessionHoverTarget(event.target)}
+        onMouseOver={(event) => handleSessionHoverTarget(event.target)}
+        onFocusCapture={(event) => handleSessionHoverTarget(event.target)}
+      >
+        {explorerBuckets.map((bucket) => (
           <section key={bucket.label} className={styles.chatsBucket}>
             <div className={styles.chatsBucketHeader}>{bucket.label}</div>
-            {bucket.rows.map(({ session, label }) => {
-              const isSelected = session.session_id === selectedSessionId;
-              const className = [
-                styles.chatsRow,
-                isSelected ? styles.chatsRowSelected : "",
-              ].filter(Boolean).join(" ");
-              return (
-                <button
-                  key={session.session_id}
-                  type="button"
-                  id={session.session_id}
-                  className={className}
-                  data-session-id={session.session_id}
-                  aria-current={isSelected ? "page" : undefined}
-                  onClick={() => onSessionClick(session)}
-                  onMouseEnter={onSessionHover ? () => onSessionHover(session) : undefined}
-                  onFocus={onSessionHover ? () => onSessionHover(session) : undefined}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            <Explorer
+              key={`${bucket.label}:${selectedSessionId ?? "none"}`}
+              data={bucket.data}
+              className={styles.sessionsExplorer}
+              enableDragDrop={false}
+              enableMultiSelect={false}
+              defaultSelectedIds={selectedSessionId ? [selectedSessionId] : []}
+              onSelect={handleExplorerSelect}
+            />
           </section>
         ))}
       </div>
