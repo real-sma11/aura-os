@@ -885,25 +885,48 @@ function useAgentsShellTarget(opts: {
  * reveal in `ChatPanel` cannot mask because the panel itself was not
  * rendered yet.
  *
- * Caching the *resolved* shape (not just the URL params) means we keep
- * rendering against the previous chat's `(projectId, agentInstanceId,
- * sessionId)` tuple, which `ProjectAgentChatPanel` then transitions
- * out of via its existing `historyKey` switch logic — letting the
- * already-warmed prefetched cache do the smooth reveal as soon as the
- * new target lands. On a true cold first boot (no cached target yet)
- * this falls through to `pending` so the resolver's existing
- * lane-placeholder behavior still kicks in.
+ * Caching the *resolved* shape (not just the URL params) also covers
+ * the short frame after a new agent's session list has resolved but
+ * before its session-events entry is ready. That keeps the previous
+ * chat visible until the destination can render without re-arming
+ * ChatPanel's cold-load reveal. On a true cold first boot (no cached
+ * target yet) this falls through to `pending` so the resolver's
+ * existing lane-placeholder behavior still kicks in.
  */
 function useStableAgentsShellTarget(
   opts: Parameters<typeof useAgentsShellTarget>[0],
 ): AgentsShellTarget {
   const target = useAgentsShellTarget(opts);
+  const targetHistoryStatus = useChatHistoryStore((state) => {
+    if (target.kind !== "project" || !target.sessionId) {
+      return "ready";
+    }
+    const historyKey = sessionHistoryKey(
+      target.projectId,
+      target.agentInstanceId,
+      target.sessionId,
+    );
+    return state.entries[historyKey]?.status ?? "idle";
+  });
   const lastResolvedRef = useRef<ResolvedAgentsShellTarget | null>(null);
+  const lastResolved = lastResolvedRef.current;
+  const shouldHoldPreviousProject =
+    target.kind === "project" &&
+    target.sessionId !== null &&
+    lastResolved?.kind === "project" &&
+    lastResolved.agentInstanceId !== target.agentInstanceId &&
+    targetHistoryStatus !== "ready" &&
+    targetHistoryStatus !== "error";
+
+  if (shouldHoldPreviousProject) {
+    return lastResolved;
+  }
+
   if (target.kind !== "pending") {
     lastResolvedRef.current = target;
     return target;
   }
-  return lastResolvedRef.current ?? target;
+  return lastResolved ?? target;
 }
 
 export function AgentChatView() {

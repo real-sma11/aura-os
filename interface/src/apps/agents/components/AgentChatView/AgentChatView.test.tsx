@@ -519,17 +519,18 @@ describe("AgentChatView", () => {
     expect(mocks.latestChatPanelProps).toBeUndefined();
   });
 
-  // First-load flicker fix: switching to a NEW agent whose bindings/
-  // sessions aren't loaded yet must keep rendering the previously-resolved
-  // panel (showing the prior chat) instead of a blank `lanePlaceholder`.
+  // First-load flicker fix: switching to a NEW agent whose bindings,
+  // sessions, or session events aren't loaded yet must keep rendering the
+  // previously-resolved panel (showing the prior chat) instead of a blank
+  // `lanePlaceholder` or a cold-load reveal.
   // Without `useStableAgentsShellTarget`, the user saw an empty lane for
   // the one or two frames between the URL change and the `loadAgentSessions`
   // round-trip — a faint flicker the in-panel `ChatPanel` cold-load reveal
   // can't mask because the panel itself was unmounted during that window.
-  // After the fix, the cached target keeps `ProjectAgentChatPanel` mounted
-  // through the transition; the reveal logic then handles the swap to the
-  // new chat smoothly via the existing prefetched-history path.
-  it("keeps the previously-resolved panel mounted when switching to an agent whose sessions are still loading", () => {
+  // After the fix, the cached target keeps `ProjectAgentChatPanel` on the
+  // prior target through the transition, then swaps to the new target only
+  // once its history entry can render without `historyResolved=false`.
+  it("keeps the previously-resolved panel mounted until the switched agent's history is ready", () => {
     // Initial render: agent A resolves to a concrete session target.
     mocks.params = {
       agentId: "agent-1",
@@ -577,9 +578,9 @@ describe("AgentChatView", () => {
       }),
     );
 
-    // Agent B's bindings + sessions arrive → the resolver returns the new
-    // concrete target → the same panel re-renders with B's props (the
-    // existing in-panel cold-load reveal handles the swap from there).
+    // Agent B's bindings + sessions arrive, but its session events are still
+    // loading. Keep showing A rather than swapping B into ChatPanel with
+    // `historyResolved=false`, which re-arms the cold-load reveal and flickers.
     mocks.bindingsLoadStatusByAgent = { "agent-2": "loaded" };
     mocks.projectsState = {
       projects: [{ project_id: "p1", name: "P1" }],
@@ -596,11 +597,30 @@ describe("AgentChatView", () => {
         "agent:agent-2": [{ session_id: "s2", _projectId: "p1", _agentInstanceId: "i2" }],
       },
     };
+    mocks.historyEntries = {
+      "session:p1:i2:s2": { status: "loading" },
+    };
+    rerender(<AgentChatView />);
+
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        historyResolved: true,
+        scrollResetKey: "i1:s1",
+      }),
+    );
+
+    // Once B's history is ready (or errored), the panel can swap directly to
+    // the destination without entering ChatPanel's cold-load loading state.
+    mocks.historyEntries = {
+      "session:p1:i2:s2": { status: "ready" },
+    };
     rerender(<AgentChatView />);
 
     expect(mocks.latestChatPanelProps).toEqual(
       expect.objectContaining({
         agentId: "i2",
+        historyResolved: true,
         scrollResetKey: "i2:s2",
       }),
     );
