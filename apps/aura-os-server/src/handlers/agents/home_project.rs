@@ -20,9 +20,12 @@
 //!    if the agent has no binding yet — this self-heals existing
 //!    orphans on prod without any manual step.
 
+use std::sync::Arc;
+
 use tracing::{info, warn};
 
 use aura_os_core::Agent;
+use aura_os_network::NetworkClient;
 
 use crate::handlers::projects;
 use crate::state::AppState;
@@ -106,14 +109,37 @@ pub(crate) async fn ensure_agent_home_project_and_binding(
         );
         return;
     };
-    let Some(org_id) = agent.org_id.as_ref().map(|o| o.to_string()) else {
-        warn!(
-            agent_id = %agent.agent_id,
-            "agent home: agent has no org_id; skipping binding"
-        );
-        return;
-    };
     let agent_id_str = agent.agent_id.to_string();
+    // Legacy agents created before the UI started stamping `org_id` (and any
+    // future agents whose upstream record drops the field) end up with
+    // `agent.org_id == None`. Without an org we can't decide which Home
+    // project to bind to, so historically we returned early — which made
+    // the chat hot path's lazy heal a no-op and surfaced
+    // `chat_persist_unavailable` to the user. Fall back to the caller's
+    // single org when there is exactly one; if the caller belongs to
+    // multiple orgs we still bail (ambiguous), and the existing
+    // `scripts/backfill_agent_orgs.ts` is the manual escape hatch.
+    let org_id: String = match agent.org_id.as_ref().map(|o| o.to_string()) {
+        Some(id) => id,
+        None => match resolve_caller_single_org(&network, jwt).await {
+            Some(id) => {
+                info!(
+                    %agent_id_str,
+                    caller_org_id = %id,
+                    "agent home: agent has no own org_id; falling back to caller's single org"
+                );
+                id
+            }
+            None => {
+                warn!(
+                    %agent_id_str,
+                    "agent home: agent has no org_id and caller has zero or multiple orgs; \
+                     skipping binding (run scripts/backfill_agent_orgs.ts to repair)"
+                );
+                return;
+            }
+        },
+    };
 
     // Don't resurrect a binding for an agent template that was just
     // deleted. The chat-side self-heal calls into here every turn for
@@ -230,7 +256,12 @@ pub(crate) async fn ensure_agent_home_project_and_binding(
     let binding_req = aura_os_storage::CreateProjectAgentRequest {
         agent_id: agent_id_str.clone(),
         name: agent.name.clone(),
-        org_id: agent.org_id.as_ref().map(|o| o.to_string()),
+        // Stamp the binding with the resolved org (which equals
+        // `agent.org_id` when present, or the caller's single org for
+        // legacy null-org agents) so teammates and downstream queries
+        // can scope by org even if the upstream template row is still
+        // missing the column.
+        org_id: Some(org_id.clone()),
         role: Some(agent.role.clone()),
         personality: Some(agent.personality.clone()),
         system_prompt: Some(agent.system_prompt.clone()),
@@ -264,6 +295,50 @@ pub(crate) async fn ensure_agent_home_project_and_binding(
             project_id = %home_pid,
             "agent home: failed to create project-agent binding"
         ),
+    }
+}
+
+/// Pure decision: given a list of org ids the caller belongs to, pick
+/// the unambiguous one to use for a legacy agent that has no `org_id`
+/// of its own. Exactly one org → `Some(id)`. Zero or many → `None`.
+///
+/// Multi-org orgs are intentionally left ambiguous: we don't have a
+/// way to know which of the caller's orgs the agent should belong to,
+/// and silently picking "first" would silently bind a teammate's
+/// agent into the wrong org. Callers are expected to repair these via
+/// [`scripts/backfill_agent_orgs.ts`](../../../../../../scripts/backfill_agent_orgs.ts).
+fn pick_unambiguous_caller_org(caller_org_ids: &[String]) -> Option<String> {
+    match caller_org_ids {
+        [single] => Some(single.clone()),
+        _ => None,
+    }
+}
+
+/// Network-side wrapper around [`pick_unambiguous_caller_org`]: lists
+/// the caller's orgs from aura-network and applies the
+/// "single org wins, multi/zero ambiguous" rule. Errors and missing
+/// network clients map to `None` so the heal degrades gracefully — it
+/// always was a best-effort path.
+async fn resolve_caller_single_org(network: &Arc<NetworkClient>, jwt: &str) -> Option<String> {
+    match network.list_orgs(jwt).await {
+        Ok(orgs) => {
+            let ids: Vec<String> = orgs.into_iter().map(|o| o.id).collect();
+            let picked = pick_unambiguous_caller_org(&ids);
+            if picked.is_none() {
+                info!(
+                    caller_org_count = ids.len(),
+                    "agent home: caller has zero or multiple orgs; cannot disambiguate"
+                );
+            }
+            picked
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                "agent home: failed to list caller orgs for null-org agent fallback"
+            );
+            None
+        }
     }
 }
 
@@ -302,5 +377,36 @@ mod tests {
         // safe to claim as auto-home.
         let embedded = format!("user prose {AGENT_HOME_PROJECT_MARKER} suffix");
         assert!(!description_is_auto_home(&embedded));
+    }
+
+    #[test]
+    fn picks_single_caller_org_for_null_org_agent() {
+        // The legacy null-org agents that the chat-side lazy heal
+        // exists to repair (see logs of agent 6df7ef90...) all hit
+        // this branch: the caller is in exactly one org so binding
+        // there is unambiguous. Without this fallback the heal returns
+        // early and the user sees `chat_persist_unavailable`.
+        let orgs = vec!["org-only-one".to_string()];
+        assert_eq!(
+            pick_unambiguous_caller_org(&orgs),
+            Some("org-only-one".to_string())
+        );
+    }
+
+    #[test]
+    fn refuses_to_pick_when_caller_has_multiple_orgs() {
+        // Silently picking "first" would risk binding a teammate's
+        // null-org agent into the wrong org. Bail and let the
+        // backfill script repair.
+        let orgs = vec!["org-a".to_string(), "org-b".to_string()];
+        assert_eq!(pick_unambiguous_caller_org(&orgs), None);
+    }
+
+    #[test]
+    fn refuses_to_pick_when_caller_has_no_orgs() {
+        // Zero-org callers shouldn't be able to bind agents at all;
+        // returning None keeps the heal a no-op for them.
+        let orgs: Vec<String> = Vec::new();
+        assert_eq!(pick_unambiguous_caller_org(&orgs), None);
     }
 }
