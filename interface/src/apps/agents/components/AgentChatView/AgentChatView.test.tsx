@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   bumpVersion: vi.fn(),
   addOptimisticSession: vi.fn(),
   replaceSessionId: vi.fn(),
+  loadProjectSessions: vi.fn().mockResolvedValue(undefined),
   defaultStandaloneRedirect: vi.fn(),
   streamState: {
     entries: {} as Record<string, { events: Array<{ id: string }> }>,
@@ -204,6 +205,7 @@ vi.mock("../../../../stores/sessions-list-store", () => {
       oldSessionId: string,
       newSessionId: string,
     ) => void;
+    loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   };
   const addOptimisticSession = (
     surfaceKey: string,
@@ -243,6 +245,7 @@ vi.mock("../../../../stores/sessions-list-store", () => {
         bumpVersion: mocks.bumpVersion,
         addOptimisticSession,
         replaceSessionId,
+        loadProjectSessions: mocks.loadProjectSessions,
       }),
     {
       getState: () => ({
@@ -250,6 +253,7 @@ vi.mock("../../../../stores/sessions-list-store", () => {
         bumpVersion: mocks.bumpVersion,
         addOptimisticSession,
         replaceSessionId,
+        loadProjectSessions: mocks.loadProjectSessions,
       }),
     },
   );
@@ -409,6 +413,7 @@ describe("AgentChatView", () => {
     mocks.bumpVersion.mockReset();
     mocks.addOptimisticSession.mockReset();
     mocks.replaceSessionId.mockReset();
+    mocks.loadProjectSessions.mockClear();
     mocks.defaultStandaloneRedirect.mockReset();
     mocks.resetEvents.mockReset();
     mocks.getIsStreaming.mockReset();
@@ -969,6 +974,83 @@ describe("AgentChatView", () => {
       );
       return render(<AgentChatView />);
     }
+
+    it("holds the previous project-route panel while a switched agent's default session is resolving", () => {
+      mocks.params = {
+        agentId: undefined,
+        projectId: "p1",
+        agentInstanceId: "i1",
+      };
+      mocks.projectsState = {
+        projects: [{ project_id: "p1", name: "P1" }],
+        agentsByProject: {
+          p1: [
+            { agent_instance_id: "i1", agent_id: "agent-1" },
+            { agent_instance_id: "i2", agent_id: "agent-2" },
+          ],
+        },
+      };
+      mocks.sessionsState = {
+        sessionsBySurface: {
+          "project:p1": [
+            { session_id: "s2", _projectId: "p1", _agentInstanceId: "i2" },
+            { session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" },
+          ],
+        },
+      };
+      mocks.searchParams = new URLSearchParams({ session: "s1" });
+      mocks.historyEntries = {
+        "session:p1:i1:s1": { status: "ready" },
+        "session:p1:i2:s2": { status: "loading" },
+      };
+
+      const { rerender } = render(<AgentChatView />);
+      const panel = screen.getByTestId("chat-panel");
+
+      expect(mocks.latestChatPanelProps).toEqual(
+        expect.objectContaining({
+          agentId: "i1",
+          scrollResetKey: "i1:s1",
+        }),
+      );
+
+      mocks.params = {
+        agentId: undefined,
+        projectId: "p1",
+        agentInstanceId: "i2",
+      };
+      mocks.searchParams = new URLSearchParams();
+      rerender(<AgentChatView />);
+
+      expect(screen.getByTestId("chat-panel")).toBe(panel);
+      expect(mocks.latestChatPanelProps).toEqual(
+        expect.objectContaining({
+          agentId: "i1",
+          historyResolved: true,
+          scrollResetKey: "i1:s1",
+        }),
+      );
+      expect(mocks.fetchHistory).toHaveBeenCalledWith(
+        "session:p1:i2:s2",
+        expect.any(Function),
+      );
+
+      mocks.historyEntries = {
+        "session:p1:i1:s1": { status: "ready" },
+        "session:p1:i2:s2": { status: "ready" },
+      };
+      rerender(<AgentChatView />);
+
+      expect(screen.getByTestId("chat-panel")).toBe(panel);
+      expect(mocks.latestChatPanelProps).toEqual(
+        expect.objectContaining({
+          agentId: "i2",
+          historyResolved: true,
+          scrollResetKey: "i2:s2",
+          transcriptKey: "session:p1:i2:s2",
+        }),
+      );
+    });
 
     it("does not clear the stream when the project panel mounts on a fresh canvas (null session)", () => {
       mountWithSession(null);

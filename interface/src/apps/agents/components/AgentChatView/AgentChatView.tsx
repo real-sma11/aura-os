@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams, type SetURLSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { Modal } from "@cypher-asi/zui";
 import { api } from "../../../../api/client";
@@ -929,6 +929,119 @@ function useStableAgentsShellTarget(
   return lastResolved ?? target;
 }
 
+type ProjectRouteTarget = {
+  projectId: string;
+  agentInstanceId: string;
+  sessionId: string | null;
+};
+
+function useStableProjectRouteTarget({
+  projectId,
+  agentInstanceId,
+  sessionId,
+  setSearchParams,
+}: {
+  projectId: string | undefined;
+  agentInstanceId: string | undefined;
+  sessionId: string | null;
+  setSearchParams: SetURLSearchParams;
+}): ProjectRouteTarget | null {
+  const routeKey = projectId && agentInstanceId
+    ? `${projectId}:${agentInstanceId}`
+    : null;
+  const projectSurfaceKey = projectId ? projectSessionsSurfaceKey(projectId) : null;
+  const projectName = useProjectsListStore((state) =>
+    projectId
+      ? state.projects.find((project) => project.project_id === projectId)?.name ?? ""
+      : "",
+  );
+  const projectSessions = useSessionsListStore((state) =>
+    projectSurfaceKey ? state.sessionsBySurface[projectSurfaceKey] : undefined,
+  );
+
+  const visitedSessionRef = useRef({ routeKey, visited: Boolean(sessionId) });
+  if (visitedSessionRef.current.routeKey !== routeKey) {
+    visitedSessionRef.current = { routeKey, visited: Boolean(sessionId) };
+  } else if (sessionId) {
+    visitedSessionRef.current.visited = true;
+  }
+  const userClearedSession =
+    routeKey !== null && !sessionId && visitedSessionRef.current.visited;
+
+  useEffect(() => {
+    if (!projectId || !agentInstanceId || sessionId || userClearedSession) return;
+    if (projectSessions !== undefined) return;
+    void useSessionsListStore.getState().loadProjectSessions(projectId, projectName);
+  }, [agentInstanceId, projectId, projectName, projectSessions, sessionId, userClearedSession]);
+
+  const mostRecentForInstance = useMemo(() => {
+    if (!agentInstanceId || !projectSessions) return null;
+    return projectSessions.find((session) => session._agentInstanceId === agentInstanceId) ?? null;
+  }, [agentInstanceId, projectSessions]);
+  const resolvedSessionId = sessionId
+    ?? (userClearedSession ? null : mostRecentForInstance?.session_id ?? null);
+  const targetHistoryStatus = useChatHistoryStore((state) => {
+    if (!projectId || !agentInstanceId || !resolvedSessionId) {
+      return "ready";
+    }
+    return state.entries[
+      sessionHistoryKey(projectId, agentInstanceId, resolvedSessionId)
+    ]?.status ?? "idle";
+  });
+  const targetHistoryKey = projectId && agentInstanceId && resolvedSessionId
+    ? sessionHistoryKey(projectId, agentInstanceId, resolvedSessionId)
+    : null;
+
+  useEffect(() => {
+    if (!projectId || !agentInstanceId || !resolvedSessionId || !targetHistoryKey) return;
+    void useChatHistoryStore.getState().fetchHistory(
+      targetHistoryKey,
+      () => api.listSessionEvents(projectId, agentInstanceId, resolvedSessionId),
+    );
+  }, [agentInstanceId, projectId, resolvedSessionId, targetHistoryKey]);
+
+  useEffect(() => {
+    if (!resolvedSessionId || sessionId === resolvedSessionId) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("session", resolvedSessionId);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [resolvedSessionId, sessionId, setSearchParams]);
+
+  const lastResolvedRef = useRef<ProjectRouteTarget | null>(null);
+  const lastResolved = lastResolvedRef.current;
+  const shouldHoldPreviousProject =
+    routeKey !== null &&
+    !sessionId &&
+    !userClearedSession &&
+    (
+      projectSessions === undefined ||
+      (
+        resolvedSessionId !== null &&
+        lastResolved !== null &&
+        lastResolved.agentInstanceId !== agentInstanceId &&
+        targetHistoryStatus !== "ready" &&
+        targetHistoryStatus !== "error"
+      )
+    );
+
+  if (shouldHoldPreviousProject && lastResolved) {
+    return lastResolved;
+  }
+
+  const target = projectId && agentInstanceId
+    ? { projectId, agentInstanceId, sessionId: resolvedSessionId }
+    : null;
+  if (target) {
+    lastResolvedRef.current = target;
+  }
+  return target;
+}
+
 export function AgentChatView() {
   const { projectId, agentInstanceId, agentId } = useParams<{
     projectId: string;
@@ -969,6 +1082,12 @@ export function AgentChatView() {
     queryInstanceId,
     sessionId,
   });
+  const projectRouteTarget = useStableProjectRouteTarget({
+    projectId,
+    agentInstanceId,
+    sessionId,
+    setSearchParams,
+  });
 
   const handleProjectHandoffReady = useCallback(() => {
     if (!projectId || !agentInstanceId) {
@@ -984,12 +1103,12 @@ export function AgentChatView() {
     completeCreateAgentHandoff(standaloneAgentHandoffTarget(agentId));
   }, [agentId, completeCreateAgentHandoff]);
 
-  if (projectId && agentInstanceId) {
+  if (projectRouteTarget) {
     return (
       <ProjectAgentChatPanel
-        projectId={projectId}
-        agentInstanceId={agentInstanceId}
-        sessionId={sessionId}
+        projectId={projectRouteTarget.projectId}
+        agentInstanceId={projectRouteTarget.agentInstanceId}
+        sessionId={projectRouteTarget.sessionId}
         initialCreateHandoff={isCreateHandoff}
         onInitialHandoffReady={isCreateHandoff ? handleProjectHandoffReady : undefined}
       />
