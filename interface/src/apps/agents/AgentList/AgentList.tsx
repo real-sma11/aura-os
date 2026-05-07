@@ -314,7 +314,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
 
   // Prefetch last-message previews for the OTHER agents in the sidebar so
   // each row can render a recent-message snippet. Excludes the currently
-  // selected agent because `AgentChatView` is already fetching that one —
+  // selected agent because `AgentChatRoute` is already fetching that one —
   // queuing it here would just put the foreground request at the back of
   // the line on cold boot. The currently-selected fetch also gates our
   // start so the active chat's history round-trip doesn't contend with

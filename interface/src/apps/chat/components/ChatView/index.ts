@@ -1,1 +1,2 @@
-export * from "../../../agents/components/AgentChatView";
+export * from "../../../agents/components/AgentChatRoute";
+

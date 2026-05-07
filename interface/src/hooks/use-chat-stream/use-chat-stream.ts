@@ -281,13 +281,19 @@ export function useChatStream({
     }
   }, [projectId, agentInstanceId, core.baseStopStreaming]);
 
+  // Stable callback identity so callers do not need to wrap it in a
+  // `useRef` mirror. The ref it mutates is local and per-hook-instance,
+  // so the closure can be reused across renders without churning props
+  // on memoized children.
+  const markNextSendAsNewSession = useCallback(() => {
+    nextSendStartsNewSessionRef.current = true;
+  }, []);
+
   return {
     streamKey: core.key,
     sendMessage,
     stopStreaming,
     resetEvents: core.resetEvents,
-    markNextSendAsNewSession: () => {
-      nextSendStartsNewSessionRef.current = true;
-    },
+    markNextSendAsNewSession,
   };
 }

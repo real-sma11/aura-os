@@ -17,7 +17,7 @@ interface UseSessionNavigateOptions {
 /**
  * Shared session-row click handler used by both the agents `ChatsTab`
  * and the projects sidekick. Mirrors the historical-session URL
- * contract documented in `AgentChatView`:
+ * contract documented in `AgentChatRoute`:
  *
  * - Agents shell:  `/agents/:agentId?project=&instance=&session=`
  * - Projects shell: `/projects/:projectId/agents/:instanceId?session=`

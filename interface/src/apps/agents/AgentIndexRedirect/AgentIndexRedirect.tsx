@@ -13,7 +13,7 @@ export function AgentIndexRedirect() {
 
   // Fast path: if we have a cached last-used agent id, redirect before
   // the `fetchAgents` network round-trip even completes. The downstream
-  // `AgentChatView` can happily load its own history in parallel with
+  // `AgentChatRoute` can happily load its own history in parallel with
   // the agent list, so there's no reason to gate first paint on the
   // list coming back. If the cached id is stale (agent was deleted
   // remotely), the chat view will render an empty/error state and the

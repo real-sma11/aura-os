@@ -572,7 +572,7 @@ export function useAgentBindingsKey(agentId: string | undefined): string {
 
 /**
  * Per-agent load status for [`bindingsByAgent`]. Lets callers like
- * `AgentChatView`'s shell-target picker render a `pending` state while
+ * `AgentChatRoute`'s conversation-target resolver render a `pending` state while
  * the binding fetch is in flight instead of falling back to the
  * fresh-canvas standalone view (which would otherwise flash on cold
  * load before bindings arrive).

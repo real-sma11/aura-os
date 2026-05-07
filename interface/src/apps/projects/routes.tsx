@@ -2,7 +2,7 @@
 import { lazy } from "react";
 import { Navigate, type RouteObject } from "react-router-dom";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
-import { AgentChatView } from "../agents/components/AgentChatView";
+import { AgentChatRoute } from "../agents/components/AgentChatRoute";
 import { MobileOrganizationView } from "../../mobile/screens/MobileOrganizationView";
 import { ExecutionView } from "../../views/ExecutionView";
 import { ProjectAgentDetailsView } from "../../views/ProjectAgentDetailsView";
@@ -76,7 +76,7 @@ export const projectsRoutes: RouteObject[] = [
       { path: "agents/create", element: <ProjectAgentSetupView mode="create" /> },
       { path: "agents/attach", element: <ProjectAgentSetupView mode="existing" /> },
       { path: "agents/:agentInstanceId/details", element: <ProjectAgentDetailsView /> },
-      { path: "agents/:agentInstanceId", element: <AgentChatView /> },
+      { path: "agents/:agentInstanceId", element: <AgentChatRoute /> },
       { path: "execution", element: <ExecutionView /> },
       { path: "work", element: <ProjectWorkView /> },
       { path: "tasks", element: <ProjectTasksView /> },

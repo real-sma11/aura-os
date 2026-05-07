@@ -349,13 +349,17 @@ export function useAgentChatStream({
     [agentId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
   );
 
+  // Stable callback identity so callers do not need to wrap it in a
+  // `useRef` mirror. See the matching block in `useChatStream`.
+  const markNextSendAsNewSession = useCallback(() => {
+    nextSendStartsNewSessionRef.current = true;
+  }, []);
+
   return {
     streamKey: core.key,
     sendMessage,
     stopStreaming: core.baseStopStreaming,
     resetEvents: core.resetEvents,
-    markNextSendAsNewSession: () => {
-      nextSendStartsNewSessionRef.current = true;
-    },
+    markNextSendAsNewSession,
   };
 }
