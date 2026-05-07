@@ -27,6 +27,7 @@ import type { AgentInstance, Project } from "../shared/types";
 
 const AGENT_PROJECT_KEY_PREFIX = "aura-agent-project:";
 const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_SESSION_EVENTS_FETCH = () => Promise.resolve([]);
 
 function selectProjectsForAgent(agentId: string | undefined) {
   return (state: { projects: Project[]; agentsByProject: Record<string, AgentInstance[]> }) => {
@@ -70,6 +71,7 @@ function persistAgentProject(agentId: string, projectId: string) {
 export function useStandaloneAgentChat(
   agentId: string | undefined,
   pinnedSessionId: string | null = null,
+  opts: { freshCanvasPending?: boolean } = {},
 ): ChatPanelProps {
   const agentProjects = useProjectsListStore(useShallow(selectProjectsForAgent(agentId)));
   const [, setSearchParams] = useSearchParams();
@@ -128,6 +130,14 @@ export function useStandaloneAgentChat(
     useStandaloneAgentMeta(agentId);
 
   const contextUsage = useContextUsage(streamKey);
+  const [freshChatNonce, setFreshChatNonce] = useState(0);
+  const freshCanvasPending = !pinnedSessionId && (opts.freshCanvasPending || freshChatNonce > 0);
+
+  useEffect(() => {
+    if (pinnedSessionId) {
+      setFreshChatNonce(0);
+    }
+  }, [pinnedSessionId]);
 
   // Clear the stream slot whenever the user navigates between two
   // historical sessions. Mirrors the same effect in
@@ -146,14 +156,20 @@ export function useStandaloneAgentChat(
 
   const historyKey = useMemo(() => {
     if (!agentId) return undefined;
+    if (freshCanvasPending) {
+      return `agent:${agentId}:fresh:${freshChatNonce || "route"}`;
+    }
     if (pinnedSessionId) {
       return `agent:${agentId}:session:${pinnedSessionId}`;
     }
     return agentHistoryKey(agentId);
-  }, [agentId, pinnedSessionId]);
+  }, [agentId, freshCanvasPending, freshChatNonce, pinnedSessionId]);
 
   const fetchFn = useMemo(() => {
     if (!agentId) return undefined;
+    if (freshCanvasPending) {
+      return EMPTY_SESSION_EVENTS_FETCH;
+    }
     // Standalone-agent chats don't expose a per-session events
     // endpoint yet — the agents-app session branch routes through
     // `ProjectAgentChatPanel` which uses `api.listSessionEvents`. For
@@ -165,7 +181,7 @@ export function useStandaloneAgentChat(
       api.agents.listEvents(agentId, {
         limit: STANDALONE_AGENT_HISTORY_LIMIT,
       });
-  }, [agentId]);
+  }, [agentId, freshCanvasPending]);
 
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
   const onSwitch = useCallback(() => {
@@ -181,6 +197,11 @@ export function useStandaloneAgentChat(
     if (!agentId) return;
     void import("../lib/analytics").then(({ track }) => track("chat_session_reset"));
     markNextSendAsNewSession();
+    if (historyKey) {
+      useChatHistoryStore.getState().clearHistory(historyKey);
+    }
+    setFreshChatNonce((nonce) => nonce + 1);
+    resetEvents([], { allowWhileStreaming: true });
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     // Mark a reset sentinel so the hydration hook doesn't resurrect the old
@@ -195,7 +216,7 @@ export function useStandaloneAgentChat(
       },
       { replace: true },
     );
-  }, [agentId, markNextSendAsNewSession, streamKey, setSearchParams]);
+  }, [agentId, markNextSendAsNewSession, streamKey, historyKey, resetEvents, setSearchParams]);
 
   const handleNewChat = useCallback(() => {
     if (!agentId) return;
@@ -227,6 +248,7 @@ export function useStandaloneAgentChat(
         );
       }
     }
+    setFreshChatNonce((nonce) => nonce + 1);
     resetEvents([], { allowWhileStreaming: true });
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
@@ -291,6 +313,7 @@ export function useStandaloneAgentChat(
       fetchFn,
       resetEvents,
       invalidateBeforeFetch: false,
+      suppressHistoryFetch: freshCanvasPending,
       onSwitch,
       onClear,
       hydrateToStream: false,
@@ -308,6 +331,11 @@ export function useStandaloneAgentChat(
   );
 
   const deferredLoading = useDelayedLoading(isLoading);
+  const scrollResetKey = agentId
+    ? freshCanvasPending
+      ? `${agentId}:fresh:${freshChatNonce || "route"}`
+      : agentId
+    : undefined;
 
   return {
     streamKey,
@@ -323,7 +351,7 @@ export function useStandaloneAgentChat(
     isLoading: deferredLoading,
     historyResolved,
     errorMessage: historyError ?? null,
-    scrollResetKey: agentId,
+    scrollResetKey,
     historyMessages,
     projects: agentProjects,
     selectedProjectId: effectiveProjectId,

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { AgentChatView } from "./AgentChatView";
 
@@ -656,7 +656,7 @@ describe("AgentChatView", () => {
     expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
   });
 
-  it("renders the standalone fresh-canvas panel after the user clicks + (drops ?session=)", () => {
+  it("renders the standalone fresh-canvas panel after the user clicks + (drops ?session=)", async () => {
     // Regression: clicking "+" in the chat input bar fires
     // `handleNewChat`, which strips `?session=` from the URL with the
     // explicit intent of starting a fresh chat. Before the resolver
@@ -722,8 +722,21 @@ describe("AgentChatView", () => {
       expect.objectContaining({
         agentId: "agent-1",
         streamKey: "agent-stream",
+        scrollResetKey: "agent-1:fresh:route",
+        transcriptKey: "agent:agent-1:fresh:route",
       }),
     );
+    expect(mocks.latestHistorySyncOptions).toEqual(
+      expect.objectContaining({
+        historyKey: "agent:agent-1:fresh:route",
+        suppressHistoryFetch: true,
+      }),
+    );
+    const standaloneFetchFn = mocks.latestHistorySyncOptions?.fetchFn as
+      | (() => Promise<unknown[]>)
+      | undefined;
+    expect(standaloneFetchFn).toBeDefined();
+    await expect(standaloneFetchFn?.()).resolves.toEqual([]);
 
     // After the next send, `handleSessionReady` writes the new session
     // id back into the URL — the resolver should flip back to the
@@ -864,7 +877,9 @@ describe("AgentChatView", () => {
         | (() => void)
         | undefined;
       if (!onNewChat) throw new Error("onNewChat was not forwarded to ChatPanel");
-      onNewChat();
+      act(() => {
+        onNewChat();
+      });
     }
 
     it("clears the project + agent destination history keys and the standalone stream slot", () => {
@@ -889,6 +904,38 @@ describe("AgentChatView", () => {
       // Standalone stream slot wiped so a swap to `StandaloneAgentChatPanel`
       // can't resurrect stale events on the fresh canvas.
       expect(mocks.streamState.entries["agent-1"].events).toHaveLength(0);
+    });
+
+    it("uses a transient empty transcript after + drops the project route session", async () => {
+      const { rerender } = mountProjectPanel({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: "s1",
+      });
+
+      fireNewChat();
+      mocks.searchParams = new URLSearchParams();
+      rerender(<AgentChatView />);
+
+      expect(mocks.latestChatPanelProps).toEqual(
+        expect.objectContaining({
+          agentId: "i1",
+          scrollResetKey: "i1:fresh:1",
+          streamKey: "project-stream",
+          transcriptKey: "fresh:p1:i1:1",
+        }),
+      );
+      expect(mocks.latestHistorySyncOptions).toEqual(
+        expect.objectContaining({
+          historyKey: "fresh:p1:i1:1",
+          suppressHistoryFetch: true,
+        }),
+      );
+      const fetchFn = mocks.latestHistorySyncOptions?.fetchFn as
+        | (() => Promise<unknown[]>)
+        | undefined;
+      expect(fetchFn).toBeDefined();
+      await expect(fetchFn?.()).resolves.toEqual([]);
     });
 
     it("does not clear the standalone stream slot while a turn is actively streaming", () => {

@@ -75,6 +75,13 @@ interface ChatHistorySyncOptions {
   /** When false, callers render directly from cached history instead of copying it into the stream store. */
   hydrateToStream?: boolean;
   /**
+   * Treat this panel as an intentionally empty fresh canvas. The caller still
+   * provides a transient history key for message-store isolation, but no
+   * cached or server history should be loaded until SessionReady pins a real
+   * session id.
+   */
+  suppressHistoryFetch?: boolean;
+  /**
    * When set, subscribes to live `UserMessage` and `AssistantMessageEnd`
    * WebSocket events for this project-agent / agent-instance id and
    * force-refetches history when a matching event arrives. Used to surface
@@ -132,6 +139,7 @@ export function useChatHistorySync({
   onSwitch,
   onClear,
   hydrateToStream = true,
+  suppressHistoryFetch,
   watchAgentInstanceId,
   watchAgentId,
   watchSessionId,
@@ -166,7 +174,7 @@ export function useChatHistorySync({
   useEffect(() => {
     if (prevIsStreamingRef.current && !isStreaming) {
       streamFinishedAtRef.current = Date.now();
-      if (historyKey && fetchFn) {
+      if (!suppressHistoryFetch && historyKey && fetchFn) {
         chatHistorySyncLog("history: post-stream forced refetch", {
           historyKey,
           streamKey,
@@ -175,7 +183,7 @@ export function useChatHistorySync({
       }
     }
     prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming, historyKey, fetchFn, streamKey]);
+  }, [isStreaming, historyKey, fetchFn, streamKey, suppressHistoryFetch]);
 
   // Subscribe to live WebSocket chat events for this agent and force-refetch
   // history on a match. This keeps the target agent's chat panel in sync when
@@ -184,6 +192,7 @@ export function useChatHistorySync({
   const subscribe = useEventStore((s) => s.subscribe);
   useEffect(() => {
     if (!historyKey || !fetchFn) return;
+    if (suppressHistoryFetch) return;
     if (!watchAgentInstanceId && !watchAgentId && !watchSessionId) return;
 
     const matches = (content: Record<string, unknown> | undefined): boolean => {
@@ -283,6 +292,7 @@ export function useChatHistorySync({
     historyKey,
     fetchFn,
     streamKey,
+    suppressHistoryFetch,
     subscribe,
     watchAgentInstanceId,
     watchAgentId,
@@ -293,6 +303,10 @@ export function useChatHistorySync({
   useEffect(() => {
     if (!historyKey || !fetchFn) {
       onClear?.();
+      return;
+    }
+    if (suppressHistoryFetch) {
+      onSwitch?.();
       return;
     }
     if (isAuraCaptureSessionActive()) {
@@ -324,7 +338,7 @@ export function useChatHistorySync({
     void useChatHistoryStore.getState().hydrateFromCache(historyKey);
     useChatHistoryStore.getState().fetchHistory(historyKey, fetchFn);
     onSwitch?.();
-  }, [historyKey, fetchFn, invalidateBeforeFetch, onSwitch, onClear, streamKey]);
+  }, [historyKey, fetchFn, invalidateBeforeFetch, onSwitch, onClear, streamKey, suppressHistoryFetch]);
 
   // Pin the active history key in the chat-history-store LRU for the
   // panel's lifetime. The store caps in-memory entries at
@@ -369,6 +383,7 @@ export function useChatHistorySync({
   //    history clobber it.
   useEffect(() => {
     if (!hydrateToStream) return;
+    if (suppressHistoryFetch) return;
     if (historyStatus !== "ready" || !historyKey) return;
     const histEntry = useChatHistoryStore.getState().entries[historyKey];
     const sEntry = getStreamEntry(streamKey);
@@ -416,13 +431,14 @@ export function useChatHistorySync({
     historyStatus,
     historyKey,
     hydrateToStream,
+    suppressHistoryFetch,
     streamKey,
     historyLastMessageAt,
   ]);
 
   const prevHistoryLastMessageAtRef = useRef<string | null>(null);
   useEffect(() => {
-    if (hydrateToStream || historyStatus !== "ready" || !historyKey) {
+    if (suppressHistoryFetch || hydrateToStream || historyStatus !== "ready" || !historyKey) {
       prevHistoryLastMessageAtRef.current = historyLastMessageAt;
       return;
     }
@@ -470,6 +486,7 @@ export function useChatHistorySync({
     historyMessages.length,
     historyStatus,
     hydrateToStream,
+    suppressHistoryFetch,
     isStreaming,
     streamKey,
   ]);
@@ -539,8 +556,9 @@ export function useChatHistorySync({
   );
 
   const rawLoading = historyStatus === "loading" || historyStatus === "idle";
-  const historyResolved =
-    (historyStatus === "ready" || historyStatus === "error") && !isFetchStale;
+  const historyResolved = suppressHistoryFetch
+    ? true
+    : (historyStatus === "ready" || historyStatus === "error") && !isFetchStale;
 
   const wrapSend = useCallback(
     <TArgs extends readonly unknown[], TReturn>(
@@ -554,7 +572,7 @@ export function useChatHistorySync({
   return {
     historyMessages,
     historyResolved,
-    isLoading: rawLoading || isFetchStale,
+    isLoading: suppressHistoryFetch ? false : rawLoading || isFetchStale,
     historyError: historyError ?? null,
     wrapSend,
   };

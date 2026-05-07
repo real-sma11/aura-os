@@ -50,6 +50,7 @@ import styles from "./AgentChatView.module.css";
 
 const EMPTY_PROJECTS: Project[] = [];
 const EMPTY_AGENT_INSTANCES: AgentInstance[] = [];
+const EMPTY_SESSION_EVENTS_FETCH = () => Promise.resolve([]);
 
 function selectCurrentProject(projectId: string) {
   return (state: { projects: Project[] }) => {
@@ -61,15 +62,19 @@ function selectCurrentProject(projectId: string) {
 function StandaloneAgentChatPanel({
   agentId,
   sessionId,
+  freshCanvasPending = false,
   initialCreateHandoff,
   onInitialHandoffReady,
 }: {
   agentId: string;
   sessionId: string | null;
+  freshCanvasPending?: boolean;
   initialCreateHandoff: boolean;
   onInitialHandoffReady?: () => void;
 }) {
-  const sharedChatProps = useStandaloneAgentChat(agentId, sessionId);
+  const sharedChatProps = useStandaloneAgentChat(agentId, sessionId, {
+    freshCanvasPending,
+  });
   const { isMobileLayout } = useAuraCapabilities();
 
   // Route-only side effect: keep the legacy "last agent" cookie used by
@@ -135,6 +140,7 @@ function ProjectAgentChatPanel({
   // SessionsList's `selectedSessionId` highlight follows along.
   const handleSessionReady = useCallback(
     (newSessionId: string) => {
+      setFreshChatNonce(0);
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -160,6 +166,14 @@ function ProjectAgentChatPanel({
     { projectId, agentInstanceId },
   );
   const contextUsage = useContextUsage(streamKey);
+  const [freshChatNonce, setFreshChatNonce] = useState(0);
+  const freshCanvasPending = !sessionId && freshChatNonce > 0;
+
+  useEffect(() => {
+    if (sessionId) {
+      setFreshChatNonce(0);
+    }
+  }, [sessionId]);
 
   // Clear the stream slot whenever the user navigates between two
   // historical sessions. Without this, switching from a session with N
@@ -205,18 +219,24 @@ function ProjectAgentChatPanel({
   });
 
   const historyKey = useMemo(() => {
+    if (freshCanvasPending) {
+      return `fresh:${projectId}:${agentInstanceId}:${freshChatNonce}`;
+    }
     if (sessionId) {
       return `session:${projectId}:${agentInstanceId}:${sessionId}`;
     }
     return projectChatHistoryKey(projectId, agentInstanceId);
-  }, [agentInstanceId, projectId, sessionId]);
+  }, [agentInstanceId, freshCanvasPending, freshChatNonce, projectId, sessionId]);
 
   const fetchFn = useMemo(() => {
+    if (freshCanvasPending) {
+      return EMPTY_SESSION_EVENTS_FETCH;
+    }
     if (sessionId) {
       return () => api.listSessionEvents(projectId, agentInstanceId, sessionId);
     }
     return () => api.getEvents(projectId, agentInstanceId);
-  }, [agentInstanceId, projectId, sessionId]);
+  }, [agentInstanceId, freshCanvasPending, projectId, sessionId]);
 
   const onProjectSwitch = useCallback(() => {
     setLastProject(projectId);
@@ -258,6 +278,9 @@ function ProjectAgentChatPanel({
   const handleNewSession = useCallback(() => {
     void import("../../../../lib/analytics").then(({ track }) => track("chat_session_reset"));
     markNextSendAsNewSessionRef.current();
+    useChatHistoryStore.getState().clearHistory(historyKeyRef.current);
+    setFreshChatNonce((nonce) => nonce + 1);
+    resetEvents([], { allowWhileStreaming: true });
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     store.markResetPending(streamKey);
@@ -273,7 +296,7 @@ function ProjectAgentChatPanel({
       },
       { replace: true },
     );
-  }, [streamKey, setSearchParams]);
+  }, [streamKey, resetEvents, setSearchParams]);
 
   const handleNewChat = useCallback(() => {
     void import("../../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
@@ -324,6 +347,7 @@ function ProjectAgentChatPanel({
         });
       }
     }
+    setFreshChatNonce((nonce) => nonce + 1);
     resetEvents([], { allowWhileStreaming: true });
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
@@ -389,6 +413,7 @@ function ProjectAgentChatPanel({
     streamKey,
     fetchFn,
     resetEvents,
+    suppressHistoryFetch: freshCanvasPending,
     // Pinned-session views need to invalidate the cache before
     // refetching so a stale `live-session:` snapshot from before
     // this refactor (or one written by another tab) doesn't block
@@ -498,7 +523,11 @@ function ProjectAgentChatPanel({
   }, [projectId, agentInstanceId, stopStreaming]);
 
   const deferredLoading = useDelayedLoading(isLoading);
-  const panelKey = sessionId ? `${agentInstanceId}:${sessionId}` : agentInstanceId;
+  const panelKey = sessionId
+    ? `${agentInstanceId}:${sessionId}`
+    : freshCanvasPending
+      ? `${agentInstanceId}:fresh:${freshChatNonce}`
+      : agentInstanceId;
   const shouldUseCreateHandoff = initialCreateHandoff && !sessionId;
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const showAgentSwitcher = projectAgents.length > 1;
@@ -625,7 +654,7 @@ type AgentsShellTarget =
       agentInstanceId: string;
       sessionId: string;
     }
-  | { kind: "standalone" };
+  | { kind: "standalone"; freshCanvasPending?: boolean };
 
 function sessionHistoryKey(
   projectId: string,
@@ -766,7 +795,7 @@ function useAgentsShellTarget(opts: {
   //    prior session render), leaving the chat lane stuck on a blank
   //    `lanePlaceholder` div.
   if (userClearedSession) {
-    return { kind: "standalone" };
+    return { kind: "standalone", freshCanvasPending: true };
   }
 
   // 3. No URL session yet but `mostRecent` is known — render the
@@ -889,6 +918,7 @@ export function AgentChatView() {
       <StandaloneAgentChatPanel
         agentId={agentId}
         sessionId={sessionId}
+        freshCanvasPending={agentsShellTarget.freshCanvasPending}
         initialCreateHandoff={isCreateHandoff}
         onInitialHandoffReady={isCreateHandoff ? handleStandaloneHandoffReady : undefined}
       />
