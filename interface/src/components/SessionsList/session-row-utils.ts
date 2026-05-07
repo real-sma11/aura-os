@@ -86,11 +86,13 @@ export const NEW_CHAT_PLACEHOLDER = "New chat";
  * which `useSessionSummaries` upgrades to the Haiku-generated summary
  * as soon as the round-trip completes.
  *
- * The previous behavior hid rows with empty summaries entirely; that
- * stopped making sense after the chat-input "+" became lazy (a row
- * is only ever in `listProjectSessions` after the user sent at least
- * one message), so brand-new sessions kept the sidekick on
- * "No sessions yet" for the entire 1-3s Haiku round-trip.
+ * `NEW_CHAT_PLACEHOLDER` rows are always navigable: aura-os-server's
+ * `filter_nonempty_sessions` drops zero-event sessions out of the
+ * list endpoints, so a "New chat" row here means "Haiku is mid-summary
+ * for a real, persisted first turn", never "orphan empty session that
+ * does nothing on click". An earlier iteration hid summary-less rows
+ * entirely; that papered over the orphan-session bug at the cost of
+ * making brand-new sessions vanish for the 1-3s Haiku round-trip.
  */
 export function deriveSessionLabel(
   session: AnnotatedSession,

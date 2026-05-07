@@ -40,9 +40,19 @@ interface SessionsListProps {
  * the API returns is rendered immediately — sessions that don't have
  * a Haiku summary yet show as `NEW_CHAT_PLACEHOLDER` ("New chat") and
  * upgrade in place once `useSessionSummaries` finishes the
- * Haiku round-trip. The chat-input "+" button is lazy, so any row
- * from `listProjectSessions` already has at least one user message —
- * there are no "truly empty" sessions to filter out.
+ * Haiku round-trip.
+ *
+ * The aura-os-server `list_project_sessions` / `list_sessions`
+ * handlers filter out sessions with zero persisted events (see
+ * `filter_nonempty_sessions` in
+ * `apps/aura-os-server/src/handlers/agents/sessions.rs`), so a row
+ * here is always navigable — clicking it always lands in a chat with
+ * at least one user message. The lazy chat-input "+" doesn't create
+ * a session until the first send, but `create_new_chat_session` runs
+ * before `persist_user_message`, so first-turn races used to leave
+ * orphan zero-event rows in the sidekick. The backend filter is the
+ * fix; this comment is a backstop for anyone reintroducing a
+ * "render every row" assumption client-side.
  */
 export function SessionsList({
   sessions,
