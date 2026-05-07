@@ -5,7 +5,7 @@ import { Modal } from "@cypher-asi/zui";
 import { api } from "../../../../api/client";
 import { useChatStream } from "../../../../hooks/use-chat-stream";
 import { useChatHistorySync } from "../../../../hooks/use-chat-history-sync";
-import { getIsStreaming } from "../../../../hooks/stream/store";
+import { getIsStreaming, useStreamStore } from "../../../../hooks/stream/store";
 import { useDelayedLoading } from "../../../../shared/hooks/use-delayed-loading";
 import { useAgentChatMeta } from "../../../../hooks/use-agent-chat-meta";
 import { useStandaloneAgentChat } from "../../../../hooks/use-standalone-agent-chat";
@@ -629,6 +629,65 @@ function useAgentsShellTarget(opts: {
       () => api.listSessionEvents(targetProjectId, targetAgentInstanceId, targetSessionId),
     );
   }, [resolvedHistoryKey, targetProjectId, targetAgentInstanceId, targetSessionId]);
+
+  // Cross-session stream-slot reset for the agents-app shell. The
+  // shared stream slot is keyed by `${projectId}:${agentInstanceId}`
+  // — every session of the same project-agent reads from the same
+  // entry. `ProjectAgentChatPanel` already clears the slot on a
+  // session change via its local `prevSessionIdRef`, but that ref
+  // does not survive the placeholder unmount/remount cycle this
+  // resolver triggers when the user clicks a different session in
+  // the sidekick (eventsReady flips false → true, the project
+  // panel unmounts → div placeholder → new project panel mounts
+  // fresh with `prevSessionIdRef` initialised to the new session,
+  // so the cross-session early-return suppresses the clear). Left
+  // alone, the fresh mount inherits the previous session's events
+  // and `useChatHistorySync`'s hydrate guard
+  // (`streamCount >= historyMessages.length`) refuses to overwrite
+  // them — manifesting as "first click does not load, second one
+  // does" because the stale events stay until a navigation back to
+  // a longer session happens to coincide with the cache contents.
+  // Run the clear here, at the resolver level, where the effect
+  // survives the panel's lifecycle and fires while the placeholder
+  // is up so the next paint of the new project panel lands hot.
+  const prevTargetRef = useRef<{
+    projectId: string;
+    agentInstanceId: string;
+    sessionId: string;
+  } | null>(null);
+  useEffect(() => {
+    const prev = prevTargetRef.current;
+    if (
+      targetProjectId &&
+      targetAgentInstanceId &&
+      targetSessionId
+    ) {
+      prevTargetRef.current = {
+        projectId: targetProjectId,
+        agentInstanceId: targetAgentInstanceId,
+        sessionId: targetSessionId,
+      };
+    } else {
+      prevTargetRef.current = null;
+    }
+    if (!prev) return;
+    if (!targetProjectId || !targetAgentInstanceId || !targetSessionId) return;
+    if (prev.projectId !== targetProjectId) return;
+    if (prev.agentInstanceId !== targetAgentInstanceId) return;
+    if (prev.sessionId === targetSessionId) return;
+    const streamKey = `${targetProjectId}:${targetAgentInstanceId}`;
+    if (getIsStreaming(streamKey)) return;
+    useStreamStore.setState((s) => {
+      const entry = s.entries[streamKey];
+      if (!entry || entry.events.length === 0) return s;
+      return {
+        entries: {
+          ...s.entries,
+          [streamKey]: { ...entry, events: [] },
+        },
+      };
+    });
+  }, [targetProjectId, targetAgentInstanceId, targetSessionId]);
 
   const eventsReady = useChatHistoryStore((state) => {
     if (!resolvedHistoryKey) return false;

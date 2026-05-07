@@ -39,6 +39,9 @@ const mocks = vi.hoisted(() => ({
   historyEntries: {} as Record<string, FakeHistoryEntry>,
   fetchHistory: vi.fn(),
   defaultStandaloneRedirect: vi.fn(),
+  streamState: {
+    entries: {} as Record<string, { events: Array<{ id: string }> }>,
+  },
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -99,6 +102,17 @@ vi.mock("../../../../hooks/use-chat-history-sync", () => ({
 
 vi.mock("../../../../hooks/stream/store", () => ({
   getIsStreaming: (key: string) => mocks.getIsStreaming(key),
+  useStreamStore: {
+    setState: (
+      updater: (
+        state: typeof mocks.streamState,
+      ) => Partial<typeof mocks.streamState> | typeof mocks.streamState,
+    ) => {
+      const patch = updater(mocks.streamState);
+      Object.assign(mocks.streamState, patch);
+    },
+    getState: () => mocks.streamState,
+  },
 }));
 
 vi.mock("../../../../shared/hooks/use-delayed-loading", () => ({
@@ -285,6 +299,7 @@ describe("AgentChatView", () => {
     mocks.resetEvents.mockReset();
     mocks.getIsStreaming.mockReset();
     mocks.getIsStreaming.mockImplementation(() => false);
+    mocks.streamState = { entries: {} };
   });
 
   it("uses ChatPanel's desktop input autofocus for standalone agents", () => {
@@ -448,6 +463,111 @@ describe("AgentChatView", () => {
     render(<AgentChatView />);
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  it("clears the shared stream slot on a cross-session click in the agents-app shell", () => {
+    // Bug being guarded: the project chat panel for session s1 unmounts
+    // when `useAgentsShellTarget` flips to `placeholder` while the new
+    // session's events fetch, then a brand-new project panel mounts for
+    // the new session. The panel's local `prevSessionIdRef` clear no
+    // longer survives the unmount/remount cycle, so without this
+    // resolver-level reset the fresh mount inherits the previous
+    // session's events from the shared `${projectId}:${agentInstanceId}`
+    // stream slot and `useChatHistorySync`'s
+    // `streamCount >= historyMessages.length` hydrate guard refuses to
+    // overwrite them — manifesting as "first session click does not
+    // load."
+    mocks.params = {
+      agentId: "agent-1",
+      projectId: undefined,
+      agentInstanceId: undefined,
+    };
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s1",
+    });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
+    // Pretend the s1 panel left two events in the shared stream slot —
+    // simulates the post-hydrate state when the user is actively
+    // viewing s1's transcript.
+    mocks.streamState = {
+      entries: {
+        "p1:i1": { events: [{ id: "e1" }, { id: "e2" }] },
+      },
+    };
+
+    const { rerender } = render(<AgentChatView />);
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    // First mount must not clear; the resolver only fires on a true
+    // cross-session change of the same project-agent.
+    expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
+
+    // User clicks s2 in the sidekick: URL flips to the new session,
+    // but the cache for s2 has not landed yet so the resolver returns
+    // `placeholder` — the project panel for s1 unmounts.
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s2",
+    });
+    rerender(<AgentChatView />);
+
+    expect(screen.queryByTestId("chat-panel")).toBeNull();
+    // Cross-session resolver effect cleared the slot while the
+    // placeholder is up so the next project mount lands hot.
+    expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(0);
+
+    // s2 events arrive in the cache → resolver flips to project, the
+    // fresh panel mounts with an empty stream slot ready for hydrate.
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s2": { status: "ready" },
+    };
+    rerender(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  it("does not clear the shared stream slot mid-stream on a cross-session URL change", () => {
+    // SessionReady's URL flip (null → defined) and any other transition
+    // that lands while a turn is actively streaming on the same
+    // project-agent must keep the live stream events. The resolver
+    // gates on `getIsStreaming` to honour the same invariant the
+    // `ProjectAgentChatPanel` `prevSessionIdRef` effect already does.
+    mocks.params = {
+      agentId: "agent-1",
+      projectId: undefined,
+      agentInstanceId: undefined,
+    };
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s1",
+    });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
+    mocks.streamState = {
+      entries: {
+        "p1:i1": { events: [{ id: "e1" }, { id: "e2" }] },
+      },
+    };
+
+    const { rerender } = render(<AgentChatView />);
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+
+    mocks.getIsStreaming.mockImplementation(() => true);
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s2",
+    });
+    rerender(<AgentChatView />);
+
+    expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
   });
 
   // Regression coverage for the "user message disappears mid-send"
