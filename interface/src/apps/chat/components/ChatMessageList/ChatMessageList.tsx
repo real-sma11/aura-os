@@ -274,7 +274,7 @@ export function ChatMessageList({
           }}
         >
           {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current and idAliasRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
-          {visibleMessages.map((msg, index) => (
+          {visibleMessages.map((msg) => (
             <div
               key={idAliasRef.current.get(msg.id) ?? msg.id}
               data-message-id={msg.id}
