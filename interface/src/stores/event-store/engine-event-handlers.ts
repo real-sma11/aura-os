@@ -7,6 +7,7 @@ import type {
 import { EventType } from "../../shared/types/aura-events";
 import { parseEventContent } from "../../shared/utils/event-content";
 import { useLoopActivityStore } from "../loop-activity-store";
+import { useSessionsListStore } from "../sessions-list-store";
 import { useSidekickStore } from "../sidekick-store";
 import { invalidateTaskOutputHydration } from "../task-output-hydration-cache";
 import { invalidateTaskTurns } from "../task-turn-cache";
@@ -298,6 +299,30 @@ function handleLoopEnded(event: AuraEvent, _u: OutputUpdate): void {
   useLoopActivityStore.getState().remove(payload.loopId.instance);
 }
 
+/**
+ * Patch the affected session row in `useSessionsListStore` the moment
+ * the backend's on-send title generator (see
+ * `apps/aura-os-server/src/handlers/agents/sessions.rs`
+ * `generate_session_title`) lands a ChatGPT-style title. Wired into
+ * the global engine-event dispatch (rather than via a React `useEffect`
+ * subscription inside `SessionsList`) so the title is captured even if
+ * no sidekick component is currently mounted — otherwise the user
+ * would have to refresh to see the title for a session whose title
+ * landed before they opened the sidekick.
+ *
+ * `setSessionSummary` itself bumps `version` to force a re-fetch when
+ * no row currently exists for the session, which covers the timing
+ * race where the title task completes before SessionReady's
+ * `bumpVersion`-driven `loadAgentSessions` brings the row into the
+ * store in the first place.
+ */
+function handleSessionSummaryUpdated(event: AuraEvent, _u: OutputUpdate): void {
+  void _u;
+  const c = event.content as { session_id?: string; summary?: string };
+  if (!c.session_id || typeof c.summary !== "string") return;
+  useSessionsListStore.getState().setSessionSummary(c.session_id, c.summary);
+}
+
 const DISPATCH: Partial<Record<EventType, EngineHandler>> = {
   [EventType.TaskStarted]: handleTaskStarted,
   [EventType.TextDelta]: handleTextDelta,
@@ -327,6 +352,7 @@ const DISPATCH: Partial<Record<EventType, EngineHandler>> = {
   [EventType.LoopOpened]: handleLoopOpened,
   [EventType.LoopActivityChanged]: handleLoopActivityChanged,
   [EventType.LoopEnded]: handleLoopEnded,
+  [EventType.SessionSummaryUpdated]: handleSessionSummaryUpdated,
 };
 
 export function handleEngineEvent(event: AuraEvent): void {

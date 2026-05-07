@@ -402,6 +402,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   setSessionSummary: (sessionId, summary) => {
     const sessionsBySurface = get().sessionsBySurface;
     let mutated = false;
+    let foundRow = false;
     const nextBySurface: Record<string, AnnotatedSession[]> = {};
     for (const [key, list] of Object.entries(sessionsBySurface)) {
       const idx = list.findIndex((s) => s.session_id === sessionId);
@@ -409,6 +410,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
         nextBySurface[key] = list;
         continue;
       }
+      foundRow = true;
       if (list[idx].summary_of_previous_context === summary) {
         nextBySurface[key] = list;
         continue;
@@ -418,8 +420,20 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       nextBySurface[key] = nextList;
       mutated = true;
     }
-    if (!mutated) return;
-    set(() => ({ sessionsBySurface: nextBySurface }));
+    if (mutated) {
+      set(() => ({ sessionsBySurface: nextBySurface }));
+      return;
+    }
+    if (!foundRow) {
+      // Row is not in any surface yet — the on-send title generator
+      // (apps/aura-os-server/src/handlers/agents/sessions.rs
+      // `generate_session_title`) raced the SessionReady-driven
+      // `loadAgentSessions` refetch and landed first. Bump the
+      // version so consumers re-fetch and pick up the row with the
+      // freshly-persisted summary already attached. Without this,
+      // the user would have to refresh the app to see the title.
+      set((state) => ({ version: state.version + 1 }));
+    }
   },
 
   setDeleteError: (surfaceKey, message) => {
