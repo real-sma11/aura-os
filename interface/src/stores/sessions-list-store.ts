@@ -39,6 +39,15 @@ interface SessionsListStore {
   sessionsBySurface: Record<string, AnnotatedSession[]>;
   /** Active in-flight load per surface (for empty-state UX). */
   loadingBySurface: Record<string, boolean>;
+  /**
+   * Most-recent failed-delete message per surface, surfaced inline by
+   * `SessionsList` as a small dismissible banner. `null` (or missing
+   * key) means "no error to show". Lives in the store rather than
+   * local component state so the agents-app `ChatsTab` and the
+   * projects-app `SessionList` reuse the same plumbing without each
+   * building their own toast wrapper.
+   */
+  deleteErrorBySurface: Record<string, string | null>;
   /** Bumped on every relevant write so polling consumers can re-run. */
   version: number;
   bumpVersion: () => void;
@@ -49,6 +58,8 @@ interface SessionsListStore {
   /** Optimistic delete; pair with `restoreSession` to undo on error. */
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  /** Surface the user-facing reason a delete failed for `surfaceKey`. */
+  setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
 function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
@@ -66,6 +77,7 @@ const surfaceRequestIds: Record<string, number> = {};
 export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   sessionsBySurface: {},
   loadingBySurface: {},
+  deleteErrorBySurface: {},
   version: 0,
 
   bumpVersion: () => set((s) => ({ version: s.version + 1 })),
@@ -189,6 +201,15 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
     }));
   },
+
+  setDeleteError: (surfaceKey, message) => {
+    set((state) => ({
+      deleteErrorBySurface: {
+        ...state.deleteErrorBySurface,
+        [surfaceKey]: message,
+      },
+    }));
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -214,6 +235,20 @@ export function useSessionsLoading(surfaceKey: string | undefined): boolean {
   return useSessionsListStore((state) => {
     if (!surfaceKey) return false;
     return state.loadingBySurface[surfaceKey] ?? false;
+  });
+}
+
+/**
+ * Most-recent failed-delete message for the surface, or `null` when
+ * the last delete succeeded (or none has run yet). `SessionsList`
+ * subscribes to this to render its inline error banner.
+ */
+export function useSessionsDeleteError(
+  surfaceKey: string | undefined,
+): string | null {
+  return useSessionsListStore((state) => {
+    if (!surfaceKey) return null;
+    return state.deleteErrorBySurface[surfaceKey] ?? null;
   });
 }
 
@@ -262,6 +297,7 @@ interface SessionsListActions {
   loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
+  setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
 /**
@@ -276,6 +312,7 @@ export function useSessionsListActions(): SessionsListActions {
       loadProjectSessions: s.loadProjectSessions,
       removeSession: s.removeSession,
       restoreSession: s.restoreSession,
+      setDeleteError: s.setDeleteError,
     })),
   );
 }

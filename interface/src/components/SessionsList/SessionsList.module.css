@@ -69,3 +69,42 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm, 13px);
 }
+
+/* Inline failure banner shown when right-click "Delete session" hits a
+   non-2xx response. Lives at the top of the chats list so the
+   restored row immediately below has visible context for "why did
+   that come back?". Subtle so it doesn't dominate the sidekick. */
+.errorBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-1) var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-error-subtle, color-mix(in srgb, var(--color-error, #dc2626) 12%, transparent));
+  border: 1px solid var(--color-border-error, color-mix(in srgb, var(--color-error, #dc2626) 32%, transparent));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-error, var(--color-text-primary));
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.4;
+}
+
+.errorBannerMessage {
+  flex: 1;
+  word-break: break-word;
+}
+
+.errorBannerDismiss {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 var(--space-1);
+  opacity: 0.7;
+}
+
+.errorBannerDismiss:hover {
+  opacity: 1;
+}

@@ -3,12 +3,14 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../../../api/client";
 import {
   type AnnotatedSession,
+  formatDeleteSessionError,
   SessionsList,
   useSessionNavigate,
 } from "../../../components/SessionsList";
 import {
   agentSessionsSurfaceKey,
   useAgentBindingsKey,
+  useSessionsDeleteError,
   useSessionsForSurface,
   useSessionsListActions,
   useSessionsListStore,
@@ -34,8 +36,9 @@ export function ChatsTab() {
   const isLoading = useSessionsListStore((s) =>
     surfaceKey ? (s.loadingBySurface[surfaceKey] ?? false) : false,
   );
-  const { loadAgentSessions, removeSession, restoreSession } =
+  const { loadAgentSessions, removeSession, restoreSession, setDeleteError } =
     useSessionsListActions();
+  const deleteError = useSessionsDeleteError(surfaceKey);
   const handleSessionClick = useSessionNavigate({ agentId: agentId ?? null });
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
@@ -53,6 +56,7 @@ export function ChatsTab() {
   const handleDelete = useCallback(
     (target: AnnotatedSession) => {
       if (!surfaceKey) return;
+      setDeleteError(surfaceKey, null);
       removeSession(surfaceKey, target.session_id);
       api
         .deleteSession(
@@ -63,9 +67,10 @@ export function ChatsTab() {
         .catch((err) => {
           console.error("Failed to delete session", err);
           restoreSession(surfaceKey, target);
+          setDeleteError(surfaceKey, formatDeleteSessionError(err));
         });
     },
-    [surfaceKey, removeSession, restoreSession],
+    [surfaceKey, removeSession, restoreSession, setDeleteError],
   );
 
   if (!selectedAgent) {
@@ -79,6 +84,8 @@ export function ChatsTab() {
       selectedSessionId={selectedSessionId}
       onSessionClick={handleSessionClick}
       onDeleteSession={handleDelete}
+      deleteError={deleteError}
+      onDismissError={surfaceKey ? () => setDeleteError(surfaceKey, null) : undefined}
     />
   );
 }

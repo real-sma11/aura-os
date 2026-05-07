@@ -21,6 +21,17 @@ interface SessionsListProps {
   onDeleteSession?: (session: AnnotatedSession) => void;
   /** Optional substring to filter rows by their resolved label. */
   searchQuery?: string;
+  /**
+   * Inline failure-banner copy for the most recent delete attempt.
+   * `null`/`undefined` hides the banner. Pair with `onDismissError`
+   * so the banner can be cleared after the user reads it. The agents
+   * `ChatsTab` and the projects `SessionList` both read this from
+   * `useSessionsDeleteError(surfaceKey)` so a 500 from
+   * `DELETE /api/projects/.../sessions/...` surfaces in the UI
+   * instead of vanishing into `console.error`.
+   */
+  deleteError?: string | null;
+  onDismissError?: () => void;
 }
 
 /**
@@ -40,6 +51,8 @@ export function SessionsList({
   onSessionClick,
   onDeleteSession,
   searchQuery,
+  deleteError,
+  onDismissError,
 }: SessionsListProps) {
   const summaries = useSessionSummaries(sessions);
 
@@ -80,16 +93,43 @@ export function SessionsList({
     [menu, closeMenu, onDeleteSession],
   );
 
+  const errorBanner = deleteError ? (
+    <div className={styles.errorBanner} role="alert">
+      <span className={styles.errorBannerMessage}>{deleteError}</span>
+      {onDismissError && (
+        <button
+          type="button"
+          className={styles.errorBannerDismiss}
+          onClick={onDismissError}
+          aria-label="Dismiss error"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (loading && sessions.length === 0) {
-    return <div className={styles.tabEmptyState}>Loading sessions...</div>;
+    return (
+      <>
+        {errorBanner}
+        <div className={styles.tabEmptyState}>Loading sessions...</div>
+      </>
+    );
   }
 
   if (titledRows.length === 0) {
-    return <EmptyState>No sessions yet</EmptyState>;
+    return (
+      <>
+        {errorBanner}
+        <EmptyState>No sessions yet</EmptyState>
+      </>
+    );
   }
 
   return (
     <>
+      {errorBanner}
       <div className={styles.chatsList} onContextMenu={handleContextMenu}>
         {buckets.map((bucket) => (
           <section key={bucket.label} className={styles.chatsBucket}>

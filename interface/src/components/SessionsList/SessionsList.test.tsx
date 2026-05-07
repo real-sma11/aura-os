@@ -203,4 +203,42 @@ describe("SessionsList", () => {
 
     expect(screen.getByTestId("empty-state")).toHaveTextContent("No sessions yet");
   });
+
+  it("renders the inline delete-error banner and dismiss button", () => {
+    const onDismiss = vi.fn();
+    render(
+      <SessionsList
+        sessions={[makeSession("s1", isoToday, "First")]}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+        deleteError="Couldn't delete session (409): session has unfinished tasks"
+        onDismissError={onDismiss}
+      />,
+    );
+
+    const banner = screen.getByRole("alert");
+    expect(banner).toHaveTextContent(
+      "Couldn't delete session (409): session has unfinished tasks",
+    );
+    fireEvent.click(screen.getByLabelText("Dismiss error"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the error banner alongside the empty state when there are no sessions", () => {
+    render(
+      <SessionsList
+        sessions={[]}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+        deleteError="Couldn't delete session (502): aura-storage unreachable"
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't delete session (502): aura-storage unreachable",
+    );
+    expect(screen.getByTestId("empty-state")).toHaveTextContent("No sessions yet");
+  });
 });

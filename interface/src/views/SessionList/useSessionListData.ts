@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useProjectActions } from "../../stores/project-action-store";
 import {
   projectSessionsSurfaceKey,
+  useSessionsDeleteError,
   useSessionsForSurface,
   useSessionsListActions,
   useSessionsListStore,
@@ -14,6 +15,14 @@ interface SessionListData {
   loading: boolean;
   removeSession: (sessionId: string) => void;
   restoreSession: (session: AnnotatedSession) => void;
+  /**
+   * Most-recent failed-delete message for this project surface, or
+   * `null`. Used by [SessionList](./SessionList.tsx) to drive the
+   * inline error banner so a 500 from the DELETE endpoint is visible
+   * to the user instead of vanishing into `console.error`.
+   */
+  deleteError: string | null;
+  setDeleteError: (message: string | null) => void;
 }
 
 /**
@@ -38,7 +47,9 @@ export function useSessionListData(): SessionListData {
     loadProjectSessions,
     removeSession: storeRemoveSession,
     restoreSession: storeRestoreSession,
+    setDeleteError: storeSetDeleteError,
   } = useSessionsListActions();
+  const deleteError = useSessionsDeleteError(surfaceKey);
 
   useEffect(() => {
     if (!projectId) return;
@@ -66,11 +77,21 @@ export function useSessionListData(): SessionListData {
     [surfaceKey, storeRestoreSession],
   );
 
+  const setDeleteError = useCallback(
+    (message: string | null) => {
+      if (!surfaceKey) return;
+      storeSetDeleteError(surfaceKey, message);
+    },
+    [surfaceKey, storeSetDeleteError],
+  );
+
   return {
     sessions,
     sessionById,
     loading,
     removeSession,
     restoreSession,
+    deleteError,
+    setDeleteError,
   };
 }

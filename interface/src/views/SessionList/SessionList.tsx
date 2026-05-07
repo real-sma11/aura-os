@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import {
   type AnnotatedSession,
+  formatDeleteSessionError,
   SessionsList,
   useSessionNavigate,
 } from "../../components/SessionsList";
@@ -15,14 +16,21 @@ import { useSessionListData } from "./useSessionListData";
  * agents `ChatsTab` uses, so behavior is identical across both apps.
  */
 export function SessionList({ searchQuery }: { searchQuery: string }) {
-  const { sessions, loading, removeSession, restoreSession } =
-    useSessionListData();
+  const {
+    sessions,
+    loading,
+    removeSession,
+    restoreSession,
+    deleteError,
+    setDeleteError,
+  } = useSessionListData();
   const handleSessionClick = useSessionNavigate({ agentId: null });
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
 
   const handleDelete = useCallback(
     (target: AnnotatedSession) => {
+      setDeleteError(null);
       removeSession(target.session_id);
       api
         .deleteSession(
@@ -33,9 +41,15 @@ export function SessionList({ searchQuery }: { searchQuery: string }) {
         .catch((err) => {
           console.error("Failed to delete session", err);
           restoreSession(target);
+          setDeleteError(formatDeleteSessionError(err));
         });
     },
-    [removeSession, restoreSession],
+    [removeSession, restoreSession, setDeleteError],
+  );
+
+  const handleDismissError = useCallback(
+    () => setDeleteError(null),
+    [setDeleteError],
   );
 
   return (
@@ -46,6 +60,8 @@ export function SessionList({ searchQuery }: { searchQuery: string }) {
       onSessionClick={handleSessionClick}
       onDeleteSession={handleDelete}
       searchQuery={searchQuery}
+      deleteError={deleteError}
+      onDismissError={handleDismissError}
     />
   );
 }

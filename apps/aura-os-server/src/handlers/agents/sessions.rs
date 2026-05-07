@@ -111,7 +111,31 @@ pub(crate) async fn delete_session(
             aura_os_storage::StorageError::Server { status: 404, .. } => {
                 ApiError::not_found("session not found")
             }
-            _ => ApiError::internal(format!("deleting session: {e}")),
+            // Anything else from aura-storage (auth, FK conflict, 5xx,
+            // transport, validation) used to be collapsed into a flat
+            // `ApiError::internal` with no server-side log, which made
+            // right-click "Delete session" appear silently broken — the
+            // tower-http `on_failure` line only carried the 500 and the
+            // optimistic UI rolled back without surfacing a reason.
+            // Log the upstream status + a body preview here and reuse
+            // the same `map_storage_error` mapping the sibling handlers
+            // (`get_session`, `list_session_tasks`, …) already use so
+            // the response carries the real upstream status (e.g. 409
+            // / 502) and the FE toast can show the actual reason.
+            aura_os_storage::StorageError::Server { status, body } => {
+                let preview: String = body.chars().take(300).collect();
+                warn!(
+                    %session_id,
+                    upstream_status = status,
+                    body_preview = %preview,
+                    "delete_session: aura-storage rejected DELETE",
+                );
+                map_storage_error(e)
+            }
+            _ => {
+                warn!(%session_id, error = %e, "delete_session: storage call failed");
+                map_storage_error(e)
+            }
         })?;
 
     info!(%session_id, "Session deleted");

@@ -6,10 +6,16 @@
 
 mod common;
 
-use axum::http::StatusCode;
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use axum::routing::delete;
+use axum::Router;
+use tokio::net::TcpListener;
 use tower::ServiceExt;
 
-use aura_os_storage::{CreateProjectAgentRequest, CreateSessionRequest};
+use aura_os_storage::{CreateProjectAgentRequest, CreateSessionRequest, StorageClient};
 
 use common::*;
 
@@ -110,4 +116,62 @@ async fn delete_session_returns_404_for_unknown_id() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+/// Regression for the original "right-click Delete session does
+/// nothing" report: when aura-storage rejects DELETE with a non-404
+/// upstream status (here a 409), `delete_session` used to collapse it
+/// into an opaque 500 (`internal_error`) with no server-side log.
+/// After the diagnostic-mapping fix the handler must surface the
+/// upstream status so the FE error banner can show
+/// "Couldn't delete session (409): ..." instead of a flat 500.
+#[tokio::test]
+async fn delete_session_preserves_non_404_upstream_status() {
+    let mock_storage = Router::new().route(
+        "/api/sessions/:session_id",
+        delete(|| async {
+            (
+                StatusCode::CONFLICT,
+                axum::Json(serde_json::json!({
+                    "error": "session has unfinished tasks",
+                    "code": "session_in_use",
+                })),
+            )
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let storage_url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, mock_storage).await.ok() });
+
+    let storage = Arc::new(StorageClient::with_base_url(&storage_url));
+    let store_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(aura_os_store::SettingsStore::open(store_dir.path()).unwrap());
+    store_zero_auth_session(&store);
+    let (app, _state) = build_test_app_from_store(
+        store,
+        store_dir.path().to_path_buf(),
+        None,
+        Some(storage),
+        None,
+        None,
+    );
+
+    let project_id = uuid::Uuid::new_v4().to_string();
+    let pa_id = uuid::Uuid::new_v4().to_string();
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let uri = format!("/api/projects/{project_id}/agents/{pa_id}/sessions/{session_id}");
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(&uri)
+        .header("authorization", format!("Bearer {}", TEST_JWT))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::CONFLICT,
+        "non-404 upstream status must pass through (was previously 500)",
+    );
 }
