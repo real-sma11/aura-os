@@ -83,7 +83,7 @@ fi
   else
     export AURA_SERVER_PORT="0"
   fi
-  exec cargo run -p aura-os-desktop
+  exec cargo run --no-default-features --features dev-channel -p aura-os-desktop
 ) &
 DESKTOP_PID=$!
 

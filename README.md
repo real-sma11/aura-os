@@ -113,7 +113,7 @@ AURA ships in two flavors that can run side-by-side on one machine so you can us
 | Windows single-instance mutex | `Local\com.aura.desktop.single-instance` | `Local\com.aura.desktop-dev.single-instance` |
 | Auto-updater | enabled | disabled |
 
-Channel selection is a build-time cargo feature on `aura-os-core`. `cargo run -p aura-os-desktop` and the `scripts/dev/*` runners default to the `dev-channel` feature; the release pipeline (`cargo packager`, `scripts/ci/verify-desktop.mjs`, and the `release-stable` / `release-nightly` workflows) builds with `--no-default-features --features stable-channel`. There is no runtime override — the channel is baked into the binary.
+Channel selection is a build-time cargo feature on `aura-os-core`. The default is **`stable-channel`**, so plain `cargo build -p aura-os-desktop` (and the release pipeline) produces a stable binary — this fails *closed* if a workflow regression ever drops the explicit `--features stable-channel` flag. To produce a dev build, pass `--no-default-features --features dev-channel`; the `scripts/dev/*` runners do this for you. There is no runtime override — the channel is baked into the binary.
 
 Remote services (`AURA_NETWORK_URL`, `AURA_STORAGE_URL`, `BILLING_SERVER_URL`, `ORBIT_BASE_URL`, etc.) are unaffected by the channel and shared via `.env`.
 
@@ -159,14 +159,14 @@ On Windows PowerShell:
 ./scripts/dev/run-desktop-dev.ps1
 ```
 
-This starts Vite first, waits for `@vite/client`, then launches `aura-os-desktop` against the live frontend URL so CSS and TypeScript edits update in the native shell without rebuilding. Plain debug runs now also try to start and attach a local Vite server automatically, but this script is still the clearest way to keep the desktop shell and frontend pinned to the same dev URL.
+This starts Vite first, waits for `@vite/client`, then launches `aura-os-desktop` against the live frontend URL so CSS and TypeScript edits update in the native shell without rebuilding. The runner passes `--no-default-features --features dev-channel` to cargo so the binary uses the dev data dir, dev ports, and dev single-instance mutex and can run alongside an installed stable AURA. Plain debug runs (`cargo run -p aura-os-desktop`) now produce a *stable* binary by default, which will collide with an installed stable AURA on data dir, ports, and the single-instance lock — use the runner script (or the explicit cargo flags below) for live dev.
 
 #### Use an external harness
 
 To run the desktop shell against a separately-running harness (for example, a sibling `aura-harness` checkout you started yourself), set `LOCAL_HARNESS_URL` to that harness URL and pass `--external-harness`:
 
 ```bash
-LOCAL_HARNESS_URL=http://127.0.0.1:3404 cargo run -p aura-os-desktop -- --external-harness
+LOCAL_HARNESS_URL=http://127.0.0.1:3404 cargo run --no-default-features --features dev-channel -p aura-os-desktop -- --external-harness
 ```
 
 With `--external-harness` the desktop binary refuses to start if `LOCAL_HARNESS_URL` is unset or `/health` is unreachable, and will not spawn the bundled local harness sidecar. The runtime config surfaces this as `AURA_DESKTOP_EXTERNAL_HARNESS=1` so the UI can reflect that the harness is externally managed.

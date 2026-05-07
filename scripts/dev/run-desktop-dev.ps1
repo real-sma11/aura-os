@@ -98,7 +98,7 @@ try {
 
     $desktopProcess = Start-Process `
         -FilePath "cargo" `
-        -ArgumentList @("run", "-p", "aura-os-desktop") `
+        -ArgumentList @("run", "--no-default-features", "--features", "dev-channel", "-p", "aura-os-desktop") `
         -WorkingDirectory $AuraRoot `
         -PassThru `
         -NoNewWindow

@@ -45,14 +45,19 @@ objc = "0.2"
 muda = "0.15"
 
 [features]
-default = ["dev-channel"]
-# Build-time channel selector. `dev-channel` is the default so plain
-# `cargo run -p aura-os-desktop` and the `scripts/dev/*` runners produce a
-# dev build that uses parallel-but-distinct identifiers (data dir name,
-# ports, single-instance mutex, window title, skills tree) and can run
-# alongside an installed stable AURA without colliding. The release pipeline
-# builds with `--no-default-features --features stable-channel` (see the
-# `before-packaging-command` below).
+default = ["stable-channel"]
+# Build-time channel selector. `stable-channel` is the default so plain
+# `cargo build -p aura-os-desktop` produces a stable binary — the release
+# pipeline therefore fails *closed* (still ships stable) if a workflow
+# regression ever drops the explicit `--features stable-channel` flag.
+# Dev builds (parallel-but-distinct identifiers: data dir name, ports,
+# single-instance mutex, window title, skills tree) are produced by the
+# `scripts/dev/*` runners, which invoke cargo with
+# `--no-default-features --features dev-channel`. The release pipeline
+# (`scripts/ci/verify-desktop.mjs`, `release-stable.yml`,
+# `release-nightly.yml`) keeps the explicit
+# `--no-default-features --features stable-channel` flags as a
+# belt-and-suspenders to encode intent and survive future default flips.
 dev-channel = ["aura-os-core/dev-channel", "aura-os-server/dev-channel"]
 stable-channel = ["aura-os-core/stable-channel", "aura-os-server/stable-channel"]
 
