@@ -202,6 +202,13 @@ export function AgentChatPanel({
       invalidateBeforeFetch: !!sessionId,
       onSwitch: onProjectSwitch,
       onClear,
+      // (Phase B refactor) Hydration is implicit: the projector in
+      // `useConversationSnapshot` reads `historyMessages` directly,
+      // and the stream store carries only live (optimistic + in-flight
+      // SSE) rows. Copying history into the stream store was the
+      // legacy multi-source-of-truth merge that introduced the
+      // post-stream "history clobbers stream" race the projector now
+      // makes structurally impossible.
       watchAgentInstanceId: agentInstanceId,
       watchSessionId: sessionId ?? undefined,
       projectIdForSidekick: projectId,

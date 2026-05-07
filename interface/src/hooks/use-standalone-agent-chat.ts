@@ -328,7 +328,6 @@ export function useStandaloneAgentChat(
       suppressHistoryFetch: freshCanvasPending,
       onSwitch,
       onClear,
-      hydrateToStream: false,
       // Standalone agent chats are keyed by the org-level `agent_id`
       // (see `agentHistoryKey`), so we subscribe to that axis — not
       // `project_agent_id`. Without this, a `send_to_agent` delivery

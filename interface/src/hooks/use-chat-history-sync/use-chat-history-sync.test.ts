@@ -182,24 +182,12 @@ describe("useChatHistorySync", () => {
     screenshotBridgeMocks.isAuraCaptureSessionActive.mockReturnValue(false);
   });
 
-  it("hydrates ready history into the stream store by default", async () => {
-    const resetEvents = vi.fn();
-
-    renderHook(() =>
-      useChatHistorySync({
-        historyKey: "agent:agent-1",
-        streamKey: "agent-1",
-        fetchFn: vi.fn(async () => []),
-        resetEvents,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(resetEvents).toHaveBeenCalledWith(mocks.historyMessages, {
-        allowWhileStreaming: true,
-      });
-    });
-  });
+  // Regression note: the legacy "hydrates ready history into the stream
+  // store by default" behavior was removed in the Phase B projector
+  // landing. Both project- and standalone-agent panels now rely on the
+  // pure `projectConversation` projector to merge history and stream
+  // events, so `useChatHistorySync` no longer copies history into the
+  // stream store. The test below documents what the hook does *not* do.
 
   // Regression test for the "CEO chat blink" eviction race: the active
   // chat panel must pin its `historyKey` in the chat-history-store
@@ -237,7 +225,10 @@ describe("useChatHistorySync", () => {
     expect(mocks.state.unpinKey).not.toHaveBeenCalled();
   });
 
-  it("skips initial stream hydration when hydrateToStream is false", async () => {
+  it("never hydrates ready history into the stream store", async () => {
+    // Phase B contract: the hook fetches and pins history but the
+    // projector in `useConversationSnapshot` reads `historyMessages`
+    // directly. `resetEvents` is reserved for the caught-up clear path.
     const resetEvents = vi.fn();
 
     renderHook(() =>
@@ -246,7 +237,6 @@ describe("useChatHistorySync", () => {
         streamKey: "agent-1",
         fetchFn: vi.fn(async () => []),
         resetEvents,
-        hydrateToStream: false,
       }),
     );
 
@@ -287,7 +277,6 @@ describe("useChatHistorySync", () => {
         streamKey: "agent-1",
         fetchFn: vi.fn(async () => []),
         resetEvents,
-        hydrateToStream: false,
       }),
     );
 
@@ -329,7 +318,6 @@ describe("useChatHistorySync", () => {
         streamKey: "agent-1",
         fetchFn: vi.fn(async () => []),
         resetEvents,
-        hydrateToStream: false,
       }),
     );
 
@@ -351,7 +339,6 @@ describe("useChatHistorySync", () => {
         streamKey: "agent-1",
         fetchFn,
         resetEvents,
-        hydrateToStream: false,
       }),
     );
 

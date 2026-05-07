@@ -27,18 +27,10 @@ import type { DisplaySessionEvent } from "../types/stream";
  * No anchor rules, no backstop hacks: the upstream invariants
  * (stable `clientId`, `handleEventSaved` preserves `clientId` across
  * the persisted-id swap) make the dedup deterministic.
- *
- * `liveAssistantHasContent` is currently consumed by `ChatMessageList`
- * to slice the trailing assistant placeholder while `<StreamingBubble>`
- * owns the visual; passed through here for forward compatibility with
- * the Phase B conversation-store rewrite that will move the slice into
- * the projector itself.
  */
 export function projectConversation(
   history: readonly DisplaySessionEvent[],
   stream: readonly DisplaySessionEvent[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for the conversation-store rewrite, see jsdoc
-  _liveAssistantHasContent: boolean,
 ): DisplaySessionEvent[] {
   if (stream.length === 0) {
     return history.length === 0 ? EMPTY : history.slice();

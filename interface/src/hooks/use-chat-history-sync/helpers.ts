@@ -9,30 +9,6 @@ import type { DisplaySessionEvent } from "../../shared/types/stream";
  */
 export const PROGRESS_REFETCH_DEBOUNCE_MS = 250;
 
-/**
- * Grace window after a streaming → not-streaming transition during which
- * we refuse to overwrite live stream events with a *shorter* history
- * snapshot. The forced `fetchHistory({ force: true })` call that fires
- * on stream finish often races with the server-side persistence of the
- * trailing `assistant_message_end`, so we frequently see a "user only"
- * snapshot land before the assistant row exists in storage. Without
- * this guard that snapshot would replace the just-finalized stream
- * events and the assistant content would visibly disappear at end of
- * turn (full content reappearing only on a hard reload, since the
- * server eventually persists it).
- *
- * 1500ms covered the typical persistence lag, but under load — long
- * tool-result writes, slow storage round trips, or a heavy harness
- * burst — we occasionally still saw the assistant turn flash to empty
- * before the next refetch caught up, which presented as the main chat
- * "just getting dropped with no explanation." 5000ms covers the worst
- * observed persistence lag with comfortable headroom; the staleness
- * guards below still let legitimate cross-session refreshes land
- * promptly because they short-circuit when history is provably newer
- * than the stream.
- */
-export const STREAM_FINISH_GRACE_MS = 5000;
-
 export function hasTransientStreamError(events: DisplaySessionEvent[]): boolean {
   return events.some((event) =>
     event.id.startsWith("error-") || event.displayVariant != null
