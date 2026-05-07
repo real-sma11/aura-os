@@ -43,6 +43,7 @@ const IMAGE_PIN_AFTER_STREAM_MS = 6000;
 
 export interface ChatPanelProps {
   streamKey: string;
+  transcriptKey?: string;
   onSend: (
     content: string,
     action: string | null,
@@ -102,6 +103,7 @@ export interface ChatPanelProps {
 
 export function ChatPanel({
   streamKey,
+  transcriptKey,
   onSend,
   onStop,
   isExternallyBusy = false,
@@ -160,6 +162,7 @@ export function ChatPanel({
     unreadCount,
   } = useChatPanelState({
     streamKey,
+    transcriptKey,
     onSend,
     adapterType,
     defaultModel,

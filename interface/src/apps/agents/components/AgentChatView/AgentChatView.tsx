@@ -553,6 +553,7 @@ function ProjectAgentChatPanel({
   );
   const panelProps: ChatPanelProps = {
     streamKey,
+    transcriptKey: historyKey,
     onSend: wrappedSend,
     onStop: handleCombinedStop,
     isExternallyBusy: loopOnlyBusy,

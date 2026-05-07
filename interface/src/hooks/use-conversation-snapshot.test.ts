@@ -66,7 +66,11 @@ describe("useConversationSnapshot", () => {
     ]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual(historyMessages);
@@ -83,7 +87,11 @@ describe("useConversationSnapshot", () => {
     ]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual(historyMessages);
@@ -104,7 +112,11 @@ describe("useConversationSnapshot", () => {
     setStreamMessages(streamKey, [optimisticUser]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual([...historyMessages, optimisticUser]);
@@ -130,7 +142,11 @@ describe("useConversationSnapshot", () => {
     );
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual(historyMessages);
@@ -151,7 +167,11 @@ describe("useConversationSnapshot", () => {
     setStreamMessages(streamKey, [optimisticUser]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual([...historyMessages, optimisticUser]);
@@ -179,7 +199,11 @@ describe("useConversationSnapshot", () => {
     ]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages.map((m) => m.id)).toEqual([
@@ -205,7 +229,11 @@ describe("useConversationSnapshot", () => {
     ]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual(historyMessages);
@@ -226,7 +254,11 @@ describe("useConversationSnapshot", () => {
     ]);
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, historyMessages),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages,
+      }),
     );
 
     expect(result.current.messages).toEqual(historyMessages);
@@ -250,7 +282,11 @@ describe("useConversationSnapshot", () => {
 
     const { result, rerender } = renderHook(
       ({ history }: { history: DisplaySessionEvent[] | undefined }) =>
-        useConversationSnapshot(streamKey, history),
+        useConversationSnapshot({
+          streamKey,
+          transcriptKey: streamKey,
+          historyMessages: history,
+        }),
       { initialProps: { history: historyMessages } },
     );
 
@@ -285,8 +321,104 @@ describe("useConversationSnapshot", () => {
     const streamKey = "thread-fresh";
 
     const { result } = renderHook(() =>
-      useConversationSnapshot(streamKey, []),
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: streamKey,
+        historyMessages: [],
+      }),
     );
+
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("does not read a previous transcript when the streamKey stays the same", () => {
+    const streamKey = "project-1:agent-1";
+    const previousTranscript: DisplaySessionEvent[] = [
+      { id: "evt-old-user", role: "user", content: "old session" },
+      { id: "evt-old-assistant", role: "assistant", content: "old reply" },
+    ];
+
+    useMessageStore.getState().setThread(streamKey, previousTranscript);
+
+    const { result } = renderHook(() =>
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey: "session:project-1:agent-1:new-session",
+        historyMessages: [],
+      }),
+    );
+
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("merges live stream messages with the current transcriptKey history", () => {
+    const streamKey = "project-1:agent-1";
+    const transcriptKey = "session:project-1:agent-1:current";
+    const currentTranscript: DisplaySessionEvent[] = [
+      { id: "evt-current-user", role: "user", content: "current session" },
+      { id: "evt-current-assistant", role: "assistant", content: "current reply" },
+    ];
+    const liveMessage: DisplaySessionEvent = {
+      id: "temp-current",
+      role: "user",
+      content: "live follow up",
+    };
+
+    useMessageStore.getState().setThread(streamKey, [
+      { id: "evt-old-user", role: "user", content: "old session" },
+    ]);
+    useMessageStore.getState().setThread(transcriptKey, currentTranscript);
+    setStreamMessages(streamKey, [liveMessage]);
+
+    const { result } = renderHook(() =>
+      useConversationSnapshot({
+        streamKey,
+        transcriptKey,
+        historyMessages: [],
+      }),
+    );
+
+    expect(result.current.messages).toEqual([...currentTranscript, liveMessage]);
+  });
+
+  it("does not use the last non-empty cache after a transcriptKey switch", () => {
+    const streamKey = "project-1:agent-1";
+    const firstHistory: DisplaySessionEvent[] = [
+      { id: "evt-user-a", role: "user", content: "first" },
+      { id: "evt-assistant-a", role: "assistant", content: "reply A" },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({
+        transcriptKey,
+        history,
+      }: {
+        transcriptKey: string;
+        history: DisplaySessionEvent[];
+      }) =>
+        useConversationSnapshot({
+          streamKey,
+          transcriptKey,
+          historyMessages: history,
+        }),
+      {
+        initialProps: {
+          transcriptKey: "session:project-1:agent-1:first",
+          history: firstHistory,
+        },
+      },
+    );
+
+    expect(result.current.messages).toEqual(firstHistory);
+
+    useMessageStore
+      .getState()
+      .clearThread("session:project-1:agent-1:first");
+    setStreamMessages(streamKey, []);
+    rerender({
+      transcriptKey: "session:project-1:agent-1:second",
+      history: [],
+    });
 
     expect(result.current.messages).toEqual([]);
   });
@@ -301,7 +433,11 @@ describe("useConversationSnapshot", () => {
 
     const { result, rerender } = renderHook(
       ({ key, history }: { key: string; history: DisplaySessionEvent[] }) =>
-        useConversationSnapshot(key, history),
+        useConversationSnapshot({
+          streamKey: key,
+          transcriptKey: key,
+          historyMessages: history,
+        }),
       { initialProps: { key: "thread-a", history: firstHistory } },
     );
 

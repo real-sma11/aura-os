@@ -31,6 +31,7 @@ const EMPTY_COMMANDS: SlashCommand[] = [];
 
 export interface UseChatPanelStateOptions {
   streamKey: string;
+  transcriptKey?: string;
   onSend: (
     content: string,
     action: string | null,
@@ -52,6 +53,7 @@ export interface UseChatPanelStateOptions {
 
 export function useChatPanelState({
   streamKey,
+  transcriptKey,
   onSend,
   adapterType,
   defaultModel,
@@ -72,7 +74,12 @@ export function useChatPanelState({
   const inputBarRef = useRef<ChatInputBarHandle>(null);
   const { isMobileLayout } = useAuraCapabilities();
   const attachmentsRef = useRef(attachments);
-  const { messages } = useConversationSnapshot(streamKey, historyMessages);
+  const effectiveTranscriptKey = transcriptKey ?? streamKey;
+  const { messages } = useConversationSnapshot({
+    streamKey,
+    transcriptKey: effectiveTranscriptKey,
+    historyMessages,
+  });
   const isStreaming = useIsStreaming(streamKey);
   const queue = useMessageQueue(streamKey);
 
@@ -107,7 +114,7 @@ export function useChatPanelState({
     });
 
   const { loadOlder, isLoadingOlder, hasOlderMessages } = useLoadOlderMessages({
-    threadKey: streamKey,
+    threadKey: effectiveTranscriptKey,
     agentId,
   });
 

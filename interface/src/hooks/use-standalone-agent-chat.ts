@@ -311,6 +311,7 @@ export function useStandaloneAgentChat(
 
   return {
     streamKey,
+    transcriptKey: historyKey,
     onSend: wrappedSend,
     onStop: stopStreaming,
     agentName,

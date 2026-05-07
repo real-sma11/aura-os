@@ -281,17 +281,24 @@ function combineStoredAndStreamMessages(
 
 const EMPTY_MESSAGES: DisplaySessionEvent[] = [];
 
-export function useConversationSnapshot(
-  streamKey: string,
-  historyMessages?: DisplaySessionEvent[],
-): {
+interface UseConversationSnapshotOptions {
+  streamKey: string;
+  transcriptKey: string;
+  historyMessages?: DisplaySessionEvent[];
+}
+
+export function useConversationSnapshot({
+  streamKey,
+  transcriptKey,
+  historyMessages,
+}: UseConversationSnapshotOptions): {
   messages: DisplaySessionEvent[];
 } {
   useEffect(() => {
     if (historyMessages && historyMessages.length > 0) {
-      useMessageStore.getState().setThread(streamKey, historyMessages);
+      useMessageStore.getState().setThread(transcriptKey, historyMessages);
     }
-  }, [streamKey, historyMessages]);
+  }, [transcriptKey, historyMessages]);
 
   const streamMessages = useStreamEvents(streamKey);
   const liveActivity = useStreamStore(
@@ -308,7 +315,7 @@ export function useConversationSnapshot(
     }),
   );
 
-  // Last non-empty merged result, tied to the current `streamKey`. Acts as
+  // Last non-empty merged result, tied to the current `transcriptKey`. Acts as
   // a safety net against transient mid-turn empty frames where every input
   // (history, stream events, message-store thread) momentarily reads empty
   // even though a populated transcript exists. This was the symptom of the
@@ -321,14 +328,14 @@ export function useConversationSnapshot(
   // message-store from the new history, the merged `messages` would
   // briefly be `[]` and `ChatMessageList` would render its empty state —
   // visually dropping the entire transcript for ~1-2 frames. The ref is
-  // reset on real chat switches by keying it on `streamKey`.
+  // reset on real transcript switches by keying it on `transcriptKey`.
   const lastNonEmptyRef = useRef<{ key: string; messages: DisplaySessionEvent[] }>({
-    key: streamKey,
+    key: transcriptKey,
     messages: EMPTY_MESSAGES,
   });
 
   const messages = useMemo(() => {
-    const stored = useMessageStore.getState().getThreadMessages(streamKey);
+    const stored = useMessageStore.getState().getThreadMessages(transcriptKey);
     const usedSource = stored.length > 0 ? "messageStore" : "historyProp";
     const baseStored = stored.length > 0 ? stored : historyMessages ?? [];
     const merged = combineStoredAndStreamMessages(
@@ -340,6 +347,7 @@ export function useConversationSnapshot(
     if (merged.length > 0) {
       chatMergeLog("snapshot: merged populated", {
         streamKey,
+        transcriptKey,
         usedSource,
         baseStoredCount: baseStored.length,
         streamCount: streamMessages.length,
@@ -350,15 +358,16 @@ export function useConversationSnapshot(
     }
 
     // Empty merged result — fall back to the last non-empty snapshot for
-    // the same `streamKey` if we have one. This keeps the prior transcript
+    // the same `transcriptKey` if we have one. This keeps the prior transcript
     // visible across a transient empty frame instead of flashing to the
     // empty state. On a brand-new chat (no prior snapshot), the cache is
     // also empty so we still return the legitimately-empty `merged`.
     const cacheHit =
-      lastNonEmptyRef.current.key === streamKey &&
+      lastNonEmptyRef.current.key === transcriptKey &&
       lastNonEmptyRef.current.messages.length > 0;
     chatMergeLog("snapshot: merged EMPTY", {
       streamKey,
+      transcriptKey,
       usedSource,
       baseStoredCount: baseStored.length,
       streamCount: streamMessages.length,
@@ -373,22 +382,22 @@ export function useConversationSnapshot(
         : "<none>",
     });
     return cacheHit ? lastNonEmptyRef.current.messages : merged;
-  }, [streamKey, streamMessages, historyMessages, liveActivity]);
+  }, [streamKey, transcriptKey, streamMessages, historyMessages, liveActivity]);
 
   // Keep the cache in sync after each commit. Doing this in an effect
   // (instead of inline in `useMemo`) keeps the memo a pure function of its
   // deps so React's render-phase invariants hold (Strict Mode double
   // render, concurrent renders that get discarded, etc.). The cache is
-  // only updated for the *current* `streamKey`; chat switches reset it to
+  // only updated for the *current* `transcriptKey`; transcript switches reset it to
   // an empty payload so the new chat never inherits a previous chat's tail.
   useEffect(() => {
-    if (lastNonEmptyRef.current.key !== streamKey) {
-      lastNonEmptyRef.current = { key: streamKey, messages: EMPTY_MESSAGES };
+    if (lastNonEmptyRef.current.key !== transcriptKey) {
+      lastNonEmptyRef.current = { key: transcriptKey, messages: EMPTY_MESSAGES };
     }
     if (messages.length > 0) {
-      lastNonEmptyRef.current = { key: streamKey, messages };
+      lastNonEmptyRef.current = { key: transcriptKey, messages };
     }
-  }, [streamKey, messages]);
+  }, [transcriptKey, messages]);
 
   return { messages };
 }
