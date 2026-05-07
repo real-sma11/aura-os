@@ -33,6 +33,33 @@ async fn proxy_forwards_get_facts() {
 }
 
 #[tokio::test]
+async fn proxy_forwards_partitioned_memory_agent_id() {
+    let _guard = HARNESS_URL_ENV_LOCK.lock().await;
+    let (mock_url, _handle) = start_mock_harness().await;
+    unsafe {
+        std::env::set_var("LOCAL_HARNESS_URL", &mock_url);
+    }
+
+    let (app, _, _db) = build_test_app_with_mocks().await;
+    let agent = "00000000-0000-0000-0000-000000000001";
+    let partition = format!("{agent}::default");
+    let req = json_request(
+        "GET",
+        &format!("/api/harness/agents/{agent}%3A%3Adefault/memory"),
+        None,
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = response_json(resp).await;
+    assert_eq!(body["echoed_method"], "GET");
+    assert!(body["echoed_uri"]
+        .as_str()
+        .unwrap()
+        .contains(&format!("/api/agents/{partition}/memory")));
+}
+
+#[tokio::test]
 async fn proxy_forwards_post_with_body() {
     let _guard = HARNESS_URL_ENV_LOCK.lock().await;
     let (mock_url, _handle) = start_mock_harness().await;

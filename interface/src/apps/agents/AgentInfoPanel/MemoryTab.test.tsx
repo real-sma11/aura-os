@@ -79,6 +79,7 @@ describe("MemoryTab", () => {
       expect(screen.getByText("task_run")).toBeDefined();
       expect(screen.getByText("deploy-flow")).toBeDefined();
     });
+    expect(mockGetSnapshot).toHaveBeenCalledWith("a1::default");
   });
 
   it("shows connection error for 502", async () => {
@@ -167,6 +168,7 @@ describe("MemoryTab", () => {
     await waitFor(() => {
       expect(mockGetSnapshot.mock.calls.length).toBeGreaterThan(initialCallCount);
     }, { timeout: 3000 });
+    expect(mockGetSnapshot).toHaveBeenLastCalledWith("a1::default");
 
     await waitFor(() => {
       expect(screen.getByText("new_fact")).toBeDefined();
