@@ -258,11 +258,15 @@ fn build_user_message_payload(
             .iter()
             .filter(|a| a.type_ == "image")
             .map(|a| {
-                serde_json::json!({
+                let mut block = serde_json::json!({
                     "type": "image",
                     "media_type": a.media_type,
                     "data": a.data,
-                })
+                });
+                if let Some(ref url) = a.source_url {
+                    block["source_url"] = serde_json::Value::String(url.clone());
+                }
+                block
             })
             .collect();
         if image_blocks.is_empty() {

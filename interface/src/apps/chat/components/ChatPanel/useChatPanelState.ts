@@ -180,7 +180,7 @@ export function useChatPanelState({
         ? toSend.map((a) => ({
             type: a.attachmentType,
             media_type: a.mediaType,
-            data: a.fileUrl ? "" : a.data,
+            data: a.data,
             name: a.name,
             source_url: a.fileUrl,
           }))

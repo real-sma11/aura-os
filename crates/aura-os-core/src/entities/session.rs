@@ -94,6 +94,8 @@ pub enum ChatContentBlock {
     Image {
         media_type: String,
         data: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_url: Option<String>,
     },
     ToolUse {
         id: String,

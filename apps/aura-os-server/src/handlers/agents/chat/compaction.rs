@@ -380,7 +380,7 @@ fn append_user_event(
                 ChatContentBlock::Text { text } => {
                     Some(serde_json::json!({ "type": "text", "text": text }))
                 }
-                ChatContentBlock::Image { media_type, data } => Some(serde_json::json!({
+                ChatContentBlock::Image { media_type, data, .. } => Some(serde_json::json!({
                     "type": "image",
                     "source": {
                         "type": "base64",
