@@ -913,7 +913,7 @@ export function AgentChatView() {
     );
   }
 
-  if (agentId) {
+  if (agentId && agentsShellTarget.kind === "standalone") {
     return (
       <StandaloneAgentChatPanel
         agentId={agentId}
