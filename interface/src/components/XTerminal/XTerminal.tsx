@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal, type ITerminalAddon } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -32,7 +32,49 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
   const viewportRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const hookRef = useRef(hook);
+  const fitFrameRef = useRef<number | null>(null);
+  const pendingFitRef = useRef({ force: false, notifyResize: false });
   const [viewportReady, setViewportReady] = useState(false);
+
+  useEffect(() => {
+    hookRef.current = hook;
+  }, [hook]);
+
+  const scheduleFit = useCallback((options: { force?: boolean; notifyResize?: boolean } = {}) => {
+    pendingFitRef.current = {
+      force: pendingFitRef.current.force || Boolean(options.force),
+      notifyResize: pendingFitRef.current.notifyResize || Boolean(options.notifyResize),
+    };
+
+    if (fitFrameRef.current !== null) return;
+
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = null;
+
+      const pending = pendingFitRef.current;
+      pendingFitRef.current = { force: false, notifyResize: false };
+
+      const container = containerRef.current;
+      const xterm = xtermRef.current;
+      const fitAddon = fitRef.current;
+      if (!container || !xterm || !fitAddon) return;
+      if (!pending.force && container.offsetHeight <= 0) return;
+
+      const proposed = pending.force ? undefined : fitAddon.proposeDimensions();
+      if (
+        !pending.force
+        && (!proposed || (proposed.cols === xterm.cols && proposed.rows === xterm.rows))
+      ) {
+        return;
+      }
+
+      fitAddon.fit();
+      if (pending.notifyResize) {
+        hookRef.current.resize(xterm.cols, xterm.rows);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -86,10 +128,7 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
       loadCanvasFallback();
     }
 
-    requestAnimationFrame(() => {
-      fitAddon.fit();
-      hook.resize(xterm.cols, xterm.rows);
-    });
+    scheduleFit({ force: true, notifyResize: true });
 
     const dataDisposable = xterm.onData((data) => {
       hook.write(data);
@@ -100,12 +139,7 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        if (fitRef.current && containerRef.current && containerRef.current.offsetHeight > 0) {
-          fitRef.current.fit();
-          hook.resize(xterm.cols, xterm.rows);
-        }
-      });
+      scheduleFit({ notifyResize: true });
     });
     resizeObserver.observe(container);
 
@@ -113,6 +147,10 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
       dataDisposable.dispose();
       outputUnsub();
       resizeObserver.disconnect();
+      if (fitFrameRef.current !== null) {
+        cancelAnimationFrame(fitFrameRef.current);
+        fitFrameRef.current = null;
+      }
       rendererAddon?.dispose();
       rendererAddon = null;
       xterm.dispose();
@@ -121,7 +159,7 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
       fitRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scheduleFit]);
 
   // Live theme swap: xterm.js v6 supports re-assigning `terminal.options.theme`
   // and re-renders without remounting, so existing scrollback survives a
@@ -146,19 +184,15 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
 
   useEffect(() => {
     if (visible && fitRef.current) {
-      requestAnimationFrame(() => {
-        fitRef.current?.fit();
-      });
+      scheduleFit({ force: true });
     }
-  }, [visible]);
+  }, [scheduleFit, visible]);
 
   useEffect(() => {
     if (focused && fitRef.current) {
-      requestAnimationFrame(() => {
-        fitRef.current?.fit();
-      });
+      scheduleFit({ force: true });
     }
-  }, [focused]);
+  }, [focused, scheduleFit]);
 
   return (
     <div

@@ -5,8 +5,19 @@ import { act, render } from "@testing-library/react";
 // implement. Replace it (and its addons) with inert stubs so we can mount
 // XTerminal and assert against the live `options.theme` swap that the
 // component performs in response to `<html data-theme>` flips.
-const { capturedTerminals } = vi.hoisted(() => ({
-  capturedTerminals: [] as Array<{ options: { theme: unknown } }>,
+const testState = vi.hoisted(() => ({
+  capturedTerminals: [] as Array<{
+    options: { theme: unknown };
+    cols: number;
+    rows: number;
+  }>,
+  capturedFitAddons: [] as Array<{
+    fit: ReturnType<typeof vi.fn>;
+    proposeDimensions: ReturnType<typeof vi.fn>;
+  }>,
+  proposedDimensions: { cols: 80, rows: 24 } as { cols: number; rows: number } | undefined,
+  resizeObserverCallback: null as ResizeObserverCallback | null,
+  rafCallbacks: [] as FrameRequestCallback[],
 }));
 
 vi.mock("@xterm/xterm", () => {
@@ -16,10 +27,16 @@ vi.mock("@xterm/xterm", () => {
     rows = 24;
     constructor(opts: { theme: unknown }) {
       this.options = { theme: opts.theme };
-      capturedTerminals.push(this);
+      testState.capturedTerminals.push(this);
     }
-    loadAddon(): void {}
-    open(): void {}
+    loadAddon(addon: { activate?: (terminal: StubTerminal) => void }): void {
+      addon.activate?.(this);
+    }
+    open(container?: HTMLElement): void {
+      const viewport = document.createElement("div");
+      viewport.className = "xterm-viewport";
+      container?.appendChild(viewport);
+    }
     onData(): { dispose: () => void } {
       return { dispose: () => {} };
     }
@@ -30,8 +47,20 @@ vi.mock("@xterm/xterm", () => {
 });
 
 vi.mock("@xterm/addon-fit", () => ({
-  FitAddon: class {
-    fit(): void {}
+  FitAddon: class StubFitAddon {
+    private terminal: { cols: number; rows: number } | null = null;
+    fit = vi.fn(() => {
+      if (!this.terminal || !testState.proposedDimensions) return;
+      this.terminal.cols = testState.proposedDimensions.cols;
+      this.terminal.rows = testState.proposedDimensions.rows;
+    });
+    proposeDimensions = vi.fn(() => testState.proposedDimensions);
+    constructor() {
+      testState.capturedFitAddons.push(this);
+    }
+    activate(terminal: { cols: number; rows: number }): void {
+      this.terminal = terminal;
+    }
   },
 }));
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class {} }));
@@ -61,18 +90,64 @@ function clearVars() {
   }
 }
 
+function makeHook() {
+  return {
+    terminalId: "t1",
+    connected: true,
+    write: vi.fn(),
+    resize: vi.fn(),
+    onOutput: vi.fn(() => () => {}),
+    kill: vi.fn(),
+  };
+}
+
 // MutationObserver delivers callbacks on a microtask queue; flush it.
 async function flushMicrotasks() {
   await Promise.resolve();
   await Promise.resolve();
 }
 
+async function flushAnimationFrames() {
+  const callbacks = testState.rafCallbacks.splice(0);
+  for (const callback of callbacks) {
+    callback(performance.now());
+  }
+  await Promise.resolve();
+}
+
 beforeEach(() => {
-  capturedTerminals.length = 0;
+  testState.capturedTerminals.length = 0;
+  testState.capturedFitAddons.length = 0;
+  testState.proposedDimensions = { cols: 80, rows: 24 };
+  testState.resizeObserverCallback = null;
+  testState.rafCallbacks.length = 0;
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn((callback: FrameRequestCallback) => {
+      testState.rafCallbacks.push(callback);
+      return testState.rafCallbacks.length;
+    }),
+  );
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  vi.stubGlobal(
+    "ResizeObserver",
+    class StubResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        testState.resizeObserverCallback = callback;
+      }
+      observe(): void {}
+      disconnect(): void {}
+    },
+  );
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get: () => 100,
+  });
   document.documentElement.setAttribute("data-theme", "dark");
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   clearVars();
   document.documentElement.removeAttribute("data-theme");
 });
@@ -82,18 +157,11 @@ describe("XTerminal theme syncing", () => {
     setVar("--color-terminal-bg", "#111111");
     const { XTerminal } = await import("./XTerminal");
 
-    const hook = {
-      terminalId: "t1",
-      connected: true,
-      write: vi.fn(),
-      resize: vi.fn(),
-      onOutput: vi.fn(() => () => {}),
-      kill: vi.fn(),
-    };
+    const hook = makeHook();
 
     render(<XTerminal terminal={hook} visible focused />);
 
-    const term = capturedTerminals.at(-1);
+    const term = testState.capturedTerminals.at(-1);
     expect(term).toBeDefined();
     // Initial mount: dark token reads through to xterm.
     expect((term!.options.theme as { background: string }).background).toBe("#111111");
@@ -111,5 +179,54 @@ describe("XTerminal theme syncing", () => {
     });
 
     expect((term!.options.theme as { background: string }).background).toBe("#fafafa");
+  });
+});
+
+describe("XTerminal resize fitting", () => {
+  it("skips resize observer fits when proposed dimensions are unchanged", async () => {
+    const { XTerminal } = await import("./XTerminal");
+    const hook = makeHook();
+
+    render(<XTerminal terminal={hook} visible focused />);
+    await act(async () => {
+      await flushAnimationFrames();
+    });
+
+    const fitAddon = testState.capturedFitAddons.at(-1);
+    expect(fitAddon).toBeDefined();
+    expect(fitAddon!.fit).toHaveBeenCalledTimes(1);
+    expect(hook.resize).toHaveBeenCalledTimes(1);
+
+    testState.resizeObserverCallback?.([] as ResizeObserverEntry[], {} as ResizeObserver);
+    await act(async () => {
+      await flushAnimationFrames();
+    });
+
+    expect(fitAddon!.proposeDimensions).toHaveBeenCalledTimes(1);
+    expect(fitAddon!.fit).toHaveBeenCalledTimes(1);
+    expect(hook.resize).toHaveBeenCalledTimes(1);
+  });
+
+  it("fits and notifies the terminal hook when proposed dimensions change", async () => {
+    const { XTerminal } = await import("./XTerminal");
+    const hook = makeHook();
+
+    render(<XTerminal terminal={hook} visible focused />);
+    await act(async () => {
+      await flushAnimationFrames();
+    });
+
+    const fitAddon = testState.capturedFitAddons.at(-1);
+    expect(fitAddon).toBeDefined();
+
+    testState.proposedDimensions = { cols: 100, rows: 30 };
+    testState.resizeObserverCallback?.([] as ResizeObserverEntry[], {} as ResizeObserver);
+    await act(async () => {
+      await flushAnimationFrames();
+    });
+
+    expect(fitAddon!.fit).toHaveBeenCalledTimes(2);
+    expect(hook.resize).toHaveBeenCalledTimes(2);
+    expect(hook.resize).toHaveBeenLastCalledWith(100, 30);
   });
 });
