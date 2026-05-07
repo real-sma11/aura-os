@@ -84,22 +84,10 @@ export function generationModeForAgentMode(mode: AgentMode): GenerationMode {
   }
 }
 
-function agentModeStorageKey(agentId: string): string {
-  return `aura-selected-mode:agent:${agentId}`;
-}
-
 const DEFAULT_AGENT_MODE_STORAGE_KEY = "aura-selected-mode:default";
 
-export function loadPersistedAgentMode(agentId?: string): AgentMode {
+export function loadPersistedAgentMode(_agentId?: string): AgentMode {
   try {
-    if (agentId) {
-      const stored = localStorage.getItem(agentModeStorageKey(agentId));
-      if (isAgentMode(stored)) return stored;
-      if (localStorage.getItem(agentModeStorageKey(agentId)) == null) {
-        const fallback = localStorage.getItem(DEFAULT_AGENT_MODE_STORAGE_KEY);
-        return isAgentMode(fallback) ? fallback : DEFAULT_AGENT_MODE;
-      }
-    }
     const fallback = localStorage.getItem(DEFAULT_AGENT_MODE_STORAGE_KEY);
     if (isAgentMode(fallback)) return fallback;
   } catch {
@@ -108,9 +96,8 @@ export function loadPersistedAgentMode(agentId?: string): AgentMode {
   return DEFAULT_AGENT_MODE;
 }
 
-export function persistAgentMode(mode: AgentMode, agentId?: string): void {
+export function persistAgentMode(mode: AgentMode, _agentId?: string): void {
   try {
-    if (agentId) localStorage.setItem(agentModeStorageKey(agentId), mode);
     localStorage.setItem(DEFAULT_AGENT_MODE_STORAGE_KEY, mode);
   } catch {
     // localStorage may be unavailable
