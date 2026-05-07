@@ -97,8 +97,9 @@ resources = ["../../interface/dist", "resources"]
 [package.metadata.packager.nsis]
 installer-mode = "currentUser"
 installer-icon = "assets/installer/installer-icon.ico"
-header-image = "assets/installer/header.bmp"
-sidebar-image = "assets/installer/sidebar.bmp"
+header-image = "assets/installer/header-dark.bmp"
+sidebar-image = "assets/installer/sidebar-dark.bmp"
+template = "assets/installer/installer.tera.nsi"
 
 [package.metadata.packager.dmg]
 background = "assets/installer/dmg-background.png"
