@@ -694,6 +694,8 @@ type AgentsShellTarget =
     }
   | { kind: "standalone"; freshCanvasPending?: boolean };
 
+type ResolvedAgentsShellTarget = Exclude<AgentsShellTarget, { kind: "pending" }>;
+
 /**
  * Resolves what the agents-shell `/agents/:agentId` URL should render
  * once the user clicks an agent in the sidebar. Two flicker sources
@@ -872,6 +874,38 @@ function useAgentsShellTarget(opts: {
   return { kind: "standalone" };
 }
 
+/**
+ * Wraps `useAgentsShellTarget` with a "last resolved" cache so the
+ * `pending` window between an agent click and the first server
+ * response (`listProjectBindings` + `listSessions`) re-renders the
+ * previous panel instead of an empty `lanePlaceholder` div. Without
+ * this, the very first navigation to an uncached agent flashed a blank
+ * lane for one or two frames before `ProjectAgentChatPanel` finally
+ * mounted — a faint but noticeable flicker the per-panel cold-load
+ * reveal in `ChatPanel` cannot mask because the panel itself was not
+ * rendered yet.
+ *
+ * Caching the *resolved* shape (not just the URL params) means we keep
+ * rendering against the previous chat's `(projectId, agentInstanceId,
+ * sessionId)` tuple, which `ProjectAgentChatPanel` then transitions
+ * out of via its existing `historyKey` switch logic — letting the
+ * already-warmed prefetched cache do the smooth reveal as soon as the
+ * new target lands. On a true cold first boot (no cached target yet)
+ * this falls through to `pending` so the resolver's existing
+ * lane-placeholder behavior still kicks in.
+ */
+function useStableAgentsShellTarget(
+  opts: Parameters<typeof useAgentsShellTarget>[0],
+): AgentsShellTarget {
+  const target = useAgentsShellTarget(opts);
+  const lastResolvedRef = useRef<ResolvedAgentsShellTarget | null>(null);
+  if (target.kind !== "pending") {
+    lastResolvedRef.current = target;
+    return target;
+  }
+  return lastResolvedRef.current ?? target;
+}
+
 export function AgentChatView() {
   const { projectId, agentInstanceId, agentId } = useParams<{
     projectId: string;
@@ -905,7 +939,7 @@ export function AgentChatView() {
     disabled: Boolean(projectId),
   });
 
-  const agentsShellTarget = useAgentsShellTarget({
+  const agentsShellTarget = useStableAgentsShellTarget({
     agentId,
     hasProjectPathParams: Boolean(projectId && agentInstanceId),
     queryProjectId,

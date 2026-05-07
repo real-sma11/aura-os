@@ -519,6 +519,93 @@ describe("AgentChatView", () => {
     expect(mocks.latestChatPanelProps).toBeUndefined();
   });
 
+  // First-load flicker fix: switching to a NEW agent whose bindings/
+  // sessions aren't loaded yet must keep rendering the previously-resolved
+  // panel (showing the prior chat) instead of a blank `lanePlaceholder`.
+  // Without `useStableAgentsShellTarget`, the user saw an empty lane for
+  // the one or two frames between the URL change and the `loadAgentSessions`
+  // round-trip — a faint flicker the in-panel `ChatPanel` cold-load reveal
+  // can't mask because the panel itself was unmounted during that window.
+  // After the fix, the cached target keeps `ProjectAgentChatPanel` mounted
+  // through the transition; the reveal logic then handles the swap to the
+  // new chat smoothly via the existing prefetched-history path.
+  it("keeps the previously-resolved panel mounted when switching to an agent whose sessions are still loading", () => {
+    // Initial render: agent A resolves to a concrete session target.
+    mocks.params = {
+      agentId: "agent-1",
+      projectId: undefined,
+      agentInstanceId: undefined,
+    };
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
+      },
+    };
+
+    const { rerender } = render(<AgentChatView />);
+    const initialPanel = screen.getByTestId("chat-panel");
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        scrollResetKey: "i1:s1",
+      }),
+    );
+
+    // User clicks agent B. Bindings + sessions for B haven't loaded yet —
+    // the resolver returns `pending`. The cache must hold the previous
+    // target so the panel keeps rendering instead of flashing the blank
+    // lane placeholder.
+    mocks.params = {
+      agentId: "agent-2",
+      projectId: undefined,
+      agentInstanceId: undefined,
+    };
+    mocks.bindingsLoadStatusByAgent = { "agent-2": "loading" };
+    rerender(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBe(initialPanel);
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        scrollResetKey: "i1:s1",
+      }),
+    );
+
+    // Agent B's bindings + sessions arrive → the resolver returns the new
+    // concrete target → the same panel re-renders with B's props (the
+    // existing in-panel cold-load reveal handles the swap from there).
+    mocks.bindingsLoadStatusByAgent = { "agent-2": "loaded" };
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [
+          { agent_instance_id: "i1", agent_id: "agent-1" },
+          { agent_instance_id: "i2", agent_id: "agent-2" },
+        ],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
+        "agent:agent-2": [{ session_id: "s2", _projectId: "p1", _agentInstanceId: "i2" }],
+      },
+    };
+    rerender(<AgentChatView />);
+
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i2",
+        scrollResetKey: "i2:s2",
+      }),
+    );
+  });
+
   it("renders the standalone panel when the agent has no bindings (no redirect possible)", () => {
     mocks.projectsState = { projects: [], agentsByProject: {} };
     mocks.sessionsState = { sessionsBySurface: {} };
