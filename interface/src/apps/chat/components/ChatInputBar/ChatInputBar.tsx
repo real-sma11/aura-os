@@ -52,6 +52,7 @@ import styles from "./ChatInputBar.module.css";
 
 export interface ChatInputBarHandle {
   focus: () => void;
+  isFocused?: () => boolean;
 }
 
 export interface AttachmentItem {
@@ -258,6 +259,7 @@ export const DesktopChatInputBar = memo(
     const fileInputRef = useRef<HTMLInputElement>(null);
     useImperativeHandle(ref, () => ({
       focus: () => shellRef.current?.focus(),
+      isFocused: () => document.activeElement === shellRef.current?.getTextarea(),
     }));
 
     const textareaRefShim = useMemo(

@@ -218,6 +218,7 @@ export function ChatPanel({
 
   const initialHandoffReadyRef = useRef(false);
   const inputFocusReadyRef = useRef(false);
+  const hasHandledThreadResetRef = useRef(false);
   const initialColdLoadRef = useRef(!historyResolved);
   // Latches `true` once we've completed the initial reveal for the current
   // chat (warm mount, cold-load anchor-ready, or empty-thread short circuit).
@@ -245,6 +246,7 @@ export function ChatPanel({
   );
 
   const contentReady = historyResolved && !isLoading;
+  const shouldArmColdLoad = !historyResolved;
   const shouldHideThreadForInitialReveal =
     initialColdLoadRef.current && historyResolved && messages.length > 0 && !isInitialThreadRevealReady;
   const shouldShowColdLoadOverlay =
@@ -252,20 +254,33 @@ export function ChatPanel({
   const threadReady = contentReady && !shouldHideThreadForInitialReveal;
 
   useEffect(() => {
+    const isThreadResetAfterMount = hasHandledThreadResetRef.current;
+    hasHandledThreadResetRef.current = true;
     initialHandoffReadyRef.current = false;
-    inputFocusReadyRef.current = false;
-    initialColdLoadRef.current = !historyResolved;
-    hasInitiallyRevealedRef.current = historyResolved;
-    setIsInitialThreadRevealReady(historyResolved);
     if (revealAnimationFrameRef.current != null) {
       cancelAnimationFrame(revealAnimationFrameRef.current);
       revealAnimationFrameRef.current = null;
     }
+
+    if (!shouldArmColdLoad) {
+      initialColdLoadRef.current = false;
+      hasInitiallyRevealedRef.current = true;
+      setIsInitialThreadRevealReady(true);
+      setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
+      return;
+    }
+
+    inputFocusReadyRef.current = isThreadResetAfterMount
+      ? !(inputBarRef.current?.isFocused?.() ?? false)
+      : false;
+    initialColdLoadRef.current = true;
+    hasInitiallyRevealedRef.current = false;
+    setIsInitialThreadRevealReady(false);
     if (loadingOverlayTimeoutRef.current != null) {
       clearTimeout(loadingOverlayTimeoutRef.current);
       loadingOverlayTimeoutRef.current = null;
     }
-    setIsLoadingOverlayVisible(!historyResolved);
+    setIsLoadingOverlayVisible(true);
     setIsLoadingOverlayFadingOut(false);
     setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
   }, [initialHandoff, scrollResetKey]);

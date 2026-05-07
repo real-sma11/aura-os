@@ -80,6 +80,7 @@ vi.mock("../ChatInputBar", async () => {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     React.useImperativeHandle(ref, () => ({
       focus: () => textareaRef.current?.focus(),
+      isFocused: () => document.activeElement === textareaRef.current,
     }));
 
     return (
@@ -472,7 +473,7 @@ describe("ChatPanel", () => {
     expect(getInputBar()).toHaveFocus();
   });
 
-  it("re-focuses the input when switching desktop chats", () => {
+  it("does not steal focus when switching desktop chats", () => {
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
 
     const { rerender } = render(
@@ -505,7 +506,7 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(getInputBar()).toHaveFocus();
+    expect(getInputBar()).not.toHaveFocus();
   });
 
   it("can skip desktop input autofocus when the thread becomes ready", () => {
