@@ -115,6 +115,8 @@ export function mockDesktopApi(): Record<string, ReturnType<typeof vi.fn>> {
     revealUpdateLogs: stub(),
     stageUpdateOnly: stub(),
     checkForUpdates: stub(),
+    getUpdateBundleInfo: stub(),
+    relocateAndRelaunch: stub(),
   };
 }
 

@@ -139,6 +139,15 @@ pub(crate) fn spawn_server(
                     "/api/update-stage-only",
                     axum_post(handlers::post_update_stage_only).with_state(update_state.clone()),
                 )
+                .route(
+                    "/api/update-bundle-info",
+                    axum_get(handlers::get_update_bundle_info),
+                )
+                .route(
+                    "/api/update-relocate-and-relaunch",
+                    axum_post(handlers::post_update_relocate_and_relaunch)
+                        .with_state(update_state.clone()),
+                )
                 .layer(aura_os_server::build_local_api_cors_layer());
 
             let app = aura_os_server::create_router_with_interface(app_state, interface_dir)

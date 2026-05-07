@@ -69,6 +69,18 @@
   line-height: 1.4;
 }
 
+/* Recovery actions row inside the macOS read-only-mount failure block.
+ * The buttons sit beneath the explanation text rather than to the right
+ * of the message so the long-form copy keeps full width on narrow
+ * settings columns. */
+.updateMacRecoveryActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 /* ── Attention panel (full-width, actionable states) ── */
 
 .updatePanel {

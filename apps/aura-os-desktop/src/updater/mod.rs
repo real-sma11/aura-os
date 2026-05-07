@@ -7,6 +7,7 @@
 //! * [`install`] — user-approved download & install (incl. Windows
 //!   installer hand-off and non-Windows relaunch).
 
+mod bundle_path;
 mod check;
 mod diagnostics;
 mod endpoint;
@@ -312,10 +313,13 @@ pub(super) fn record_step_only(
     );
 }
 
+pub(crate) use bundle_path::inspect_bundle;
 pub(crate) use check::{spawn_update_loop, trigger_recheck};
 pub(crate) use diagnostics::{
     load_state_snapshot, updater_log_path, updater_state_path, UpdateStep,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use install::relocate_and_relaunch_macos;
 pub(crate) use install::{stage_only, start_install};
 
 #[cfg(test)]

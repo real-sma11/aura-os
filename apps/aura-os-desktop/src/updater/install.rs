@@ -35,6 +35,7 @@ use std::fs;
 use tracing::debug;
 use tracing::{info, warn};
 
+use super::bundle_path::{inspect_bundle, BundleLocation};
 use super::diagnostics::append_updater_log;
 use super::endpoint::build_updater;
 use super::{
@@ -631,9 +632,59 @@ fn summarise_for_detail(value: &str) -> String {
     }
 }
 
+/// Inspect the running bundle and emit a `BundlePathResolved` step so
+/// every install attempt leaves the resolved path + `MNT_RDONLY` /
+/// translocation flags in `updater.log`. On macOS this also rejects the
+/// install up-front when the bundle is on a read-only filesystem
+/// (`cargo_packager_updater::Update::install` would otherwise surface
+/// `Read-only file system (os error 30)` mid-install with no actionable
+/// guidance — see `bundle_path` module docs).
+///
+/// Returns `Ok(BundleLocation)` on the writable path so callers can
+/// thread the inspected location into log details / relocate flows
+/// without inspecting twice. Returns `Err` only when we want to abort
+/// before downloading (preflight failure).
+fn run_preflight(state: &UpdateState) -> Result<BundleLocation, String> {
+    let bundle = inspect_bundle().map_err(|error| {
+        record_step_only(
+            state,
+            UpdateStep::BundlePathResolved,
+            Some(&format!("error={error}")),
+        );
+        format!("failed to inspect running app bundle: {error}")
+    })?;
+
+    record_step_only(
+        state,
+        UpdateStep::BundlePathResolved,
+        Some(&bundle.detail()),
+    );
+
+    if bundle.blocks_in_place_update() {
+        let detail = format!(
+            "reason={} {}",
+            bundle.reason(),
+            bundle.detail()
+        );
+        record_step_only(state, UpdateStep::PreflightFailed, Some(&detail));
+        return Err(format!(
+            "Aura is running from a read-only location ({reason}) and cannot install \
+             updates in place. Move Aura.app to /Applications, then reopen Aura and try again.",
+            reason = bundle.reason()
+        ));
+    }
+
+    Ok(bundle)
+}
+
 fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String> {
     let channel = *state.channel.read().expect("updater channel lock poisoned");
     record_step_only(state, UpdateStep::InstallRequested, None);
+
+    // Preflight runs *before* network or signature work so a translocated
+    // / read-only-mount install fails fast with a useful message instead
+    // of consuming bandwidth and CPU only to die at `update.install`.
+    let _bundle = run_preflight(state)?;
 
     let updater = build_updater(channel)?;
     record_step_only(state, UpdateStep::BuilderReady, None);
@@ -856,6 +907,199 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
     }
 }
 
+/// macOS-only recovery for the "running from a read-only mount"
+/// preflight failure (App Translocation, mounted DMG, etc.). Copies the
+/// running bundle into `/Applications`, clears `com.apple.quarantine`
+/// from the destination so the next launch is *not* re-translocated,
+/// then `open -n`s the destination and exits the current process.
+///
+/// Both shell-script steps run via `osascript … with administrator
+/// privileges` so the destination write succeeds even when the current
+/// user lacks write permission on `/Applications` (managed devices,
+/// non-admin accounts). The user sees the standard macOS authorisation
+/// prompt — no custom UI is needed.
+///
+/// Refuses to run unless the running bundle is actually translocated /
+/// read-only — there is no reason to migrate a bundle that is already
+/// in a writable location, and we don't want a stray API call to move
+/// a healthy install.
+#[cfg(target_os = "macos")]
+pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), String> {
+    use std::path::PathBuf;
+
+    let bundle = inspect_bundle()
+        .map_err(|e| format!("failed to inspect running bundle: {e}"))?;
+    if !bundle.blocks_in_place_update() {
+        return Err(format!(
+            "refusing to relocate a writable bundle (path={} translocated={} read_only={})",
+            bundle.path.display(),
+            bundle.translocated,
+            bundle.read_only
+        ));
+    }
+
+    let bundle_name = bundle
+        .path
+        .file_name()
+        .ok_or_else(|| {
+            format!(
+                "running bundle path has no file name: {}",
+                bundle.path.display()
+            )
+        })?
+        .to_string_lossy()
+        .into_owned();
+    if !bundle_name.ends_with(".app") {
+        return Err(format!(
+            "running bundle does not end in .app, refusing to relocate: {}",
+            bundle.path.display()
+        ));
+    }
+
+    let dest_dir = PathBuf::from("/Applications");
+    let dest = dest_dir.join(&bundle_name);
+    let staging = dest_dir.join(format!("{bundle_name}.aura-update-new"));
+
+    record_step_only(
+        state,
+        UpdateStep::RelocateRequested,
+        Some(&format!(
+            "src={} dest={} staging={} reason={}",
+            bundle.path.display(),
+            dest.display(),
+            staging.display(),
+            bundle.reason()
+        )),
+    );
+
+    // Refuse to embed any value that would break out of the AppleScript
+    // double-quoted string into the inner single-quoted shell argument.
+    // Translocation paths under `/private/var/folders/.../AppTranslocation/`
+    // have only ASCII path components in practice, but validate anyway:
+    // a malformed path here would let the user trick `osascript` into
+    // running unintended shell.
+    let src_str = bundle.path.to_string_lossy();
+    let dest_str = dest.to_string_lossy();
+    let staging_str = staging.to_string_lossy();
+    for (label, value) in [
+        ("src", src_str.as_ref()),
+        ("dest", dest_str.as_ref()),
+        ("staging", staging_str.as_ref()),
+    ] {
+        if value.contains('\'') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+            let message = format!(
+                "refusing to embed {label} path containing quote/CR/LF in osascript command: {value:?}"
+            );
+            record_step_only(state, UpdateStep::RelocateFailed, Some(&message));
+            return Err(message);
+        }
+    }
+
+    // The shell runs as root via `with administrator privileges`. We:
+    //   1. Copy the running bundle into a staging path next to the
+    //      destination using `ditto` (preserves resource forks / xattrs
+    //      / extended attrs that a plain `cp -R` would lose). Staging is
+    //      necessary because `mv` over an existing `.app` is *not*
+    //      atomic on its own — we want the existing install in place
+    //      until the new copy is fully on disk.
+    //   2. `xattr -dr com.apple.quarantine` the staging copy so macOS
+    //      does NOT re-translocate the next launch. Without this step,
+    //      the freshly-relocated bundle would still trigger Gatekeeper
+    //      Path Randomization on first launch from `/Applications`,
+    //      defeating the point of relocating.
+    //   3. Atomically swap: `rm -rf` the existing destination (only if
+    //      one exists) and `mv` the staging path into place. The user
+    //      is warned in advance that an existing `/Applications/Aura.app`
+    //      will be replaced — see the API handler.
+    let shell = format!(
+        "/usr/bin/ditto '{src}' '{staging}' && \
+         /usr/bin/xattr -dr com.apple.quarantine '{staging}' && \
+         /bin/rm -rf '{dest}' && \
+         /bin/mv '{staging}' '{dest}'",
+        src = src_str,
+        staging = staging_str,
+        dest = dest_str,
+    );
+    let apple_script = format!(
+        "do shell script \"{shell}\" with administrator privileges"
+    );
+
+    let status = Command::new("osascript")
+        .arg("-e")
+        .arg(&apple_script)
+        .status()
+        .map_err(|error| {
+            let message = format!(
+                "failed to spawn osascript for /Applications relocate: {error}"
+            );
+            record_step_only(state, UpdateStep::RelocateFailed, Some(&message));
+            message
+        })?;
+
+    if !status.success() {
+        // `osascript` returns non-zero on user cancel ("User canceled.")
+        // and on the `do shell script` failing for any reason. Either
+        // way, leave Aura running so the user can try again or move the
+        // bundle manually.
+        let exit = status
+            .code()
+            .map(|c| format!("exit_code={c}"))
+            .unwrap_or_else(|| "exit_code=signal".to_string());
+        let message = format!("osascript relocate failed ({exit})");
+        record_step_only(state, UpdateStep::RelocateFailed, Some(&message));
+        // Best-effort cleanup — if the staging path was created but the
+        // final `mv` never ran, we don't want orphaned `.aura-update-new`
+        // turds in `/Applications`. The cleanup also runs as the
+        // privileged user via osascript.
+        let cleanup_shell = format!("/bin/rm -rf '{staging}'", staging = staging_str);
+        let _ = Command::new("osascript")
+            .arg("-e")
+            .arg(format!(
+                "do shell script \"{cleanup_shell}\" with administrator privileges"
+            ))
+            .status();
+        return Err(message);
+    }
+
+    record_step_only(
+        state,
+        UpdateStep::RelocateSpawned,
+        Some(&format!("dest={}", dest.display())),
+    );
+
+    // Relaunch the relocated bundle. `open -n` forces a new instance
+    // even if LaunchServices thinks Aura is already running (it does —
+    // we are still alive). Failure here still tears down the current
+    // process; the user can launch from /Applications manually.
+    if let Err(error) = Command::new("open").arg("-n").arg(&dest).spawn() {
+        record_step_only(
+            state,
+            UpdateStep::RelaunchFailed,
+            Some(&format!(
+                "error={error} dest={}",
+                dest.display()
+            )),
+        );
+        // Don't return here — the bundle is in /Applications, the user
+        // can open it from Finder. Continue to shutdown.
+    } else {
+        record_step_only(
+            state,
+            UpdateStep::RelaunchSpawned,
+            Some(&format!("dest={}", dest.display())),
+        );
+    }
+
+    record_step_only(state, UpdateStep::ShutdownTriggered, None);
+    request_event_loop_shutdown(state);
+    record_step_only(
+        state,
+        UpdateStep::ProcessExitCalled,
+        Some("graceful=true reason=relocate"),
+    );
+    std::process::exit(0);
+}
+
 /// Trigger the tao event loop to drop sidecars and exit cleanly. Blocks
 /// briefly so the loop has time to honor the request before the install
 /// thread proceeds to `process::exit`.
@@ -914,6 +1158,27 @@ pub(crate) fn start_install(state: UpdateState) -> Result<(), String> {
         ) {
             return Err("update install already in progress".into());
         }
+    }
+
+    // Run preflight synchronously so the API caller sees a translocated /
+    // read-only-mount failure as the response to `/api/update-install`
+    // (and the UI can render the macOS recovery card) instead of needing
+    // to poll `/api/update-status` to find out.
+    if let Err(error) = run_preflight(&state) {
+        let last_step = super::diagnostics::load_state_snapshot(state.data_dir.as_ref())
+            .ok()
+            .flatten()
+            .map(|snap| snap.step);
+        set_status_with_step(
+            &state,
+            UpdateStatus::Failed {
+                error: error.clone(),
+                last_step: last_step.clone(),
+            },
+            UpdateStep::Failed,
+            last_step.as_deref(),
+        );
+        return Err(error);
     }
 
     std::thread::Builder::new()

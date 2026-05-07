@@ -58,6 +58,31 @@ pub(crate) enum UpdateStep {
     /// `updater.log` after a timeout, so post-mortem inspection has the
     /// child's own console output without needing a second log file.
     HandoffChildOutputCaptured,
+    /// Resolved app bundle path + filesystem read-only flag, recorded once
+    /// per install attempt before any network or disk work. Lets us
+    /// retroactively diagnose any failure mode that depends on *where*
+    /// the running app is (App Translocation, mounted DMG, MDM-managed
+    /// volumes), not just the ones we recognise today.
+    BundlePathResolved,
+    /// Pre-flight rejected the install before downloading. Currently used
+    /// on macOS when the running bundle sits on a read-only filesystem
+    /// (App Translocation, DMG, etc.) — `cargo_packager_updater` would
+    /// surface a raw `Read-only file system (os error 30)` mid-install,
+    /// but we can recognise the condition up front and fail with an
+    /// actionable message instead.
+    PreflightFailed,
+    /// The macOS "move me to /Applications and relaunch" recovery path was
+    /// invoked (typically by the user clicking the in-app button after a
+    /// preflight failure).
+    RelocateRequested,
+    /// `osascript … with administrator privileges` finished and the new
+    /// bundle is in place at `/Applications/<bundle>.app`; the relaunch /
+    /// process-exit step is up next.
+    RelocateSpawned,
+    /// The `osascript` admin move (or the post-move relaunch) failed.
+    /// Surfaced as a soft failure — Aura keeps running so the user can try
+    /// again or move the bundle manually.
+    RelocateFailed,
     InstallInnerStarted,
     InstallInnerFinished,
     RelaunchSpawned,
@@ -88,6 +113,11 @@ impl UpdateStep {
             Self::HandoffChildExitedEarly => "handoff_child_exited_early",
             Self::HandoffSentinelExtended => "handoff_sentinel_extended",
             Self::HandoffChildOutputCaptured => "handoff_child_output_captured",
+            Self::BundlePathResolved => "bundle_path_resolved",
+            Self::PreflightFailed => "preflight_failed",
+            Self::RelocateRequested => "relocate_requested",
+            Self::RelocateSpawned => "relocate_spawned",
+            Self::RelocateFailed => "relocate_failed",
             Self::InstallInnerStarted => "install_inner_started",
             Self::InstallInnerFinished => "install_inner_finished",
             Self::RelaunchSpawned => "relaunch_spawned",

@@ -276,6 +276,76 @@ pub(crate) async fn post_update_stage_only(
     }
 }
 
+pub(crate) async fn get_update_bundle_info() -> Json<serde_json::Value> {
+    // The classification only carries meaningful signal on macOS. On
+    // Windows/Linux every install is in-place against a writable
+    // location so the recovery flow is not applicable; we still return
+    // the resolved path so the client can render it for diagnostics if
+    // it wants to.
+    let supported = cfg!(target_os = "macos");
+    match crate::updater::inspect_bundle() {
+        Ok(bundle) => Json(serde_json::json!({
+            "ok": true,
+            "supported": supported,
+            "path": bundle.path.to_string_lossy(),
+            "translocated": bundle.translocated,
+            "read_only": bundle.read_only,
+            "on_dmg": bundle.on_dmg,
+        })),
+        Err(error) => {
+            warn!(%error, "failed to inspect running bundle");
+            Json(serde_json::json!({
+                "ok": false,
+                "supported": supported,
+                "error": error,
+            }))
+        }
+    }
+}
+
+pub(crate) async fn post_update_relocate_and_relaunch(
+    AxumState(state): AxumState<UpdateState>,
+) -> Json<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        // `relocate_and_relaunch_macos` ends in `process::exit(0)` on the
+        // happy path, so this future will never resolve when the move
+        // succeeds — the HTTP request is torn down by the OS as Aura
+        // exits, and the relaunched bundle will appear as a fresh
+        // process. We still wrap in `spawn_blocking` because the
+        // function does synchronous file I/O and synchronous
+        // `osascript` invocations that would otherwise block the
+        // tokio runtime.
+        let outcome = tokio::task::spawn_blocking(move || {
+            crate::updater::relocate_and_relaunch_macos(&state)
+        })
+        .await;
+        match outcome {
+            Ok(Ok(())) => {
+                // Unreachable in practice — see comment above. Keep a
+                // sane response shape for the type system.
+                Json(serde_json::json!({ "ok": true }))
+            }
+            Ok(Err(error)) => {
+                warn!(%error, "macOS relocate-and-relaunch failed");
+                Json(serde_json::json!({ "ok": false, "error": error }))
+            }
+            Err(error) => {
+                warn!(%error, "relocate join failed");
+                Json(serde_json::json!({ "ok": false, "error": error.to_string() }))
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = state;
+        Json(serde_json::json!({
+            "ok": false,
+            "error": "relocate-and-relaunch is only supported on macOS",
+        }))
+    }
+}
+
 pub(crate) async fn post_update_channel(
     AxumState(state): AxumState<UpdateState>,
     Json(req): Json<SetChannelRequest>,

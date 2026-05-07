@@ -54,6 +54,34 @@ export interface DesktopUpdateStatusResponse {
   diagnostics?: DesktopUpdateDiagnostics;
 }
 
+/**
+ * Classification of the running app bundle. Only carries actionable
+ * signal on macOS — `supported` is `false` everywhere else (Windows uses
+ * an out-of-process NSIS handoff and Linux replaces an AppImage in
+ * place, neither of which has a translocation/read-only-mount story).
+ *
+ * Surfaced on `Failed` updater states so the UI can detect "Aura is
+ * running from `/private/var/.../AppTranslocation/...`" or "Aura is
+ * running from `/Volumes/...`" and offer the macOS recovery flow
+ * (`relocateAndRelaunch`) instead of just an error message.
+ */
+export interface DesktopUpdateBundleInfo {
+  ok: boolean;
+  /** `true` when the running platform is macOS. */
+  supported: boolean;
+  /** Absolute path to the running `.app` bundle (or executable on
+   * non-macOS platforms). */
+  path?: string;
+  /** Bundle path contains an `AppTranslocation` component — macOS
+   * Gatekeeper Path Randomization is active. */
+  translocated?: boolean;
+  /** Filesystem hosting the bundle has the read-only mount flag set. */
+  read_only?: boolean;
+  /** Bundle is under `/Volumes/` AND the volume is read-only. */
+  on_dmg?: boolean;
+  error?: string;
+}
+
 export interface PersistDesktopRouteResponse {
   ok: boolean;
   route?: string;
@@ -124,6 +152,13 @@ export const desktopApi = {
   stageUpdateOnly: () =>
     apiFetch<{ ok: boolean; staged_path?: string; error?: string }>(
       "/api/update-stage-only",
+      { method: "POST" },
+    ),
+  getUpdateBundleInfo: () =>
+    apiFetch<DesktopUpdateBundleInfo>("/api/update-bundle-info"),
+  relocateAndRelaunch: () =>
+    apiFetch<{ ok: boolean; error?: string }>(
+      "/api/update-relocate-and-relaunch",
       { method: "POST" },
     ),
 };
