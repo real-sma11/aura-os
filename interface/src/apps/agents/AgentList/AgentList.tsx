@@ -249,7 +249,7 @@ export function AgentList({ mode = "default" }: AgentListProps) {
   }, [agentId, navigate]);
 
   // Pre-warm the chat-history-store entry for the most-recent session
-  // of `selectedAgentId`, which is the slot `ProjectAgentChatPanel`
+  // of `selectedAgentId`, which is the slot `AgentChatPanel`
   // mounts on top of after `useDefaultStandaloneSessionRedirect` rewrites
   // the URL with `?project=&instance=&session=`. Without this, the
   // destination historyKey is `idle` at click time, `historyResolved`

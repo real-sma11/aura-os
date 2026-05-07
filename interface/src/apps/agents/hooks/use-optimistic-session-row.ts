@@ -39,7 +39,7 @@ interface UseOptimisticSessionRowResult {
  * "+ New chat", swap the synthetic id for the real one when SessionReady
  * arrives. Replaces the `pendingOptimisticArmedRef` + `pendingOptimisticIdRef`
  * + `insertOptimisticSessionRow` triplet that lived inline in the old
- * `ProjectAgentChatPanel`.
+ * `AgentChatPanel`.
  */
 export function useOptimisticSessionRow(
   opts: UseOptimisticSessionRowOptions,

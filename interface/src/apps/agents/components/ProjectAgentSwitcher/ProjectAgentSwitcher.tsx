@@ -15,7 +15,7 @@ interface ProjectAgentSwitcherProps {
 /**
  * Modal/sheet that lets the user switch between agents inside the same
  * project chat surface. Extracted from the previous monolithic
- * `ProjectAgentChatPanel` so the panel only owns the open-state plumbing.
+ * `AgentChatPanel` so the panel only owns the open-state plumbing.
  */
 export function ProjectAgentSwitcher({
   isOpen,

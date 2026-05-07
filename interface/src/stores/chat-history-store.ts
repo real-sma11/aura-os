@@ -421,7 +421,7 @@ export function projectChatHistoryKey(projectId: string, agentInstanceId: string
 
 /**
  * History key for a specific session view inside the project-agent
- * chat panel. Mirrors the memo in `ProjectAgentChatPanel` and the
+ * chat panel. Mirrors the memo in `AgentChatPanel` and the
  * resolver in `useAgentsShellTarget`; centralising the key shape here
  * lets sidebar prefetchers warm the exact slot the panel will read on
  * mount, so navigating into a session no longer triggers a cold-load

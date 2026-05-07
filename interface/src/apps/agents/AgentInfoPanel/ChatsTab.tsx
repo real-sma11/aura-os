@@ -66,7 +66,7 @@ export function ChatsTab() {
   );
 
   // Pre-warm the chat-history-store entry for the hovered session so
-  // `ProjectAgentChatPanel` mounts with `historyResolved=true` and
+  // `AgentChatPanel` mounts with `historyResolved=true` and
   // skips the cold-load reveal — eliminating the message-area
   // `.messageContentHidden` flicker on session-row clicks.
   const handleSessionHover = useCallback((target: AnnotatedSession) => {

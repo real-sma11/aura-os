@@ -25,7 +25,7 @@ interface SessionsListProps {
    * Optional hover hook — fired on `onMouseEnter` of each row so the
    * caller can pre-warm the destination chat-history-store entry for
    * the hovered session. When the chat-history-store has the entry
-   * `"ready"` at click time, `ProjectAgentChatPanel`'s `historyResolved`
+   * `"ready"` at click time, `AgentChatPanel`'s `historyResolved`
    * is `true` on first render and `ChatPanel`'s cold-load reveal gate
    * stays disarmed — no `.messageContentHidden` flicker on session
    * navigation.

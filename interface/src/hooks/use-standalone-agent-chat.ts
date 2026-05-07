@@ -105,7 +105,7 @@ export function useStandaloneAgentChat(
   // Tracks the optimistic placeholder id this hook inserted into the
   // SessionsList store on the most recent fresh-chat send. When
   // `SessionReady` lands, we swap the synthetic id for the real one
-  // in place. See the matching ref in `ProjectAgentChatPanel`.
+  // in place. See the matching ref in `AgentChatPanel`.
   const pendingOptimisticIdRef = useRef<string | null>(null);
   // Mirror `agentId` and the project binding via refs so the
   // `SessionReady`-side reconciliation doesn't ride along in
@@ -121,7 +121,7 @@ export function useStandaloneAgentChat(
 
   // Mirror the server-assigned session id back into the URL so the
   // panel reuses the same routing contract on every send. See the
-  // matching effect in `ProjectAgentChatPanel`.
+  // matching effect in `AgentChatPanel`.
   const handleSessionReady = useCallback(
     (newSessionId: string) => {
       const pendingOptimisticId = pendingOptimisticIdRef.current;
@@ -181,7 +181,7 @@ export function useStandaloneAgentChat(
 
   // Clear the stream slot whenever the user navigates between two
   // historical sessions. Mirrors the same effect in
-  // `ProjectAgentChatPanel`; see that comment for the full rationale
+  // `AgentChatPanel`; see that comment for the full rationale
   // on why only the `defined → different-defined` transition is
   // allowed to clear, and only when no turn is actively streaming.
   const prevPinnedSessionIdRef = useRef<string | null>(pinnedSessionId);
@@ -212,7 +212,7 @@ export function useStandaloneAgentChat(
     }
     // Standalone-agent chats don't expose a per-session events
     // endpoint yet — the agents-app session branch routes through
-    // `ProjectAgentChatPanel` which uses `api.listSessionEvents`. For
+    // `AgentChatPanel` which uses `api.listSessionEvents`. For
     // the bare `/agents/:agentId` view we hit the per-agent timeline;
     // when a `pinnedSessionId` is set, the historyKey above gives us
     // a clean cache slot but the events still come from the same
@@ -260,7 +260,7 @@ export function useStandaloneAgentChat(
 
   // Set in `handleNewChat`, consumed inside the `wrappedSend` wrapper
   // to decide whether to insert an optimistic SessionsList row on the
-  // very next send. See the matching ref in `ProjectAgentChatPanel`.
+  // very next send. See the matching ref in `AgentChatPanel`.
   const pendingOptimisticArmedRef = useRef(false);
 
   const handleNewChat = useCallback(() => {
@@ -342,7 +342,7 @@ export function useStandaloneAgentChat(
   );
   // Insert an optimistic "New chat" row into the SessionsList store
   // the first time the user sends after pressing `+`. Mirrors the
-  // wrapper in `ProjectAgentChatPanel`. Skips the projects-app
+  // wrapper in `AgentChatPanel`. Skips the projects-app
   // surface insert if the standalone agent has no resolvable project
   // binding yet (no row to add — the user is on a truly fresh canvas
   // with no project-side sidekick visible).

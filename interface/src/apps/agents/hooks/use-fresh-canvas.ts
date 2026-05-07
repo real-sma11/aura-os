@@ -51,7 +51,7 @@ interface UseFreshCanvasResult {
 /**
  * Single owner of the "+" / "RotateCcw" reset semantics that used to be
  * spread across `handleNewSession` and `handleNewChat` in the old
- * `ProjectAgentChatPanel`. Both actions:
+ * `AgentChatPanel`. Both actions:
  *   - Mark the next stream send as starting a new session server-side.
  *   - Drop the chat-history-store entry for the current key.
  *   - Wipe the local stream slot.
