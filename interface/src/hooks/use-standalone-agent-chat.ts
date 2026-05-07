@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { api, STANDALONE_AGENT_HISTORY_LIMIT } from "../api/client";
 import { useAgentChatStream } from "./use-agent-chat-stream";
 import { useChatHistorySync } from "./use-chat-history-sync";
+import { getIsStreaming } from "./stream/store";
 import { useDelayedLoading } from "../shared/hooks/use-delayed-loading";
 import { useStandaloneAgentMeta } from "./use-agent-chat-meta";
 import { agentHistoryKey, useChatHistoryStore } from "../stores/chat-history-store";
@@ -119,18 +120,20 @@ export function useStandaloneAgentChat(
 
   const contextUsage = useContextUsage(streamKey);
 
-  // Clear the stream slot whenever the user navigates between
-  // sessions. Mirrors the same effect in `ProjectAgentChatPanel`;
-  // see that comment for why the `null → defined` transition is
-  // excluded.
+  // Clear the stream slot whenever the user navigates between two
+  // historical sessions. Mirrors the same effect in
+  // `ProjectAgentChatPanel`; see that comment for the full rationale
+  // on why only the `defined → different-defined` transition is
+  // allowed to clear, and only when no turn is actively streaming.
   const prevPinnedSessionIdRef = useRef<string | null>(pinnedSessionId);
   useEffect(() => {
     const previous = prevPinnedSessionIdRef.current;
     prevPinnedSessionIdRef.current = pinnedSessionId;
     if (previous === pinnedSessionId) return;
-    if (previous === null && pinnedSessionId !== null) return;
+    if (previous === null || pinnedSessionId === null) return;
+    if (getIsStreaming(streamKey)) return;
     resetEvents([], { allowWhileStreaming: true });
-  }, [pinnedSessionId, resetEvents]);
+  }, [pinnedSessionId, resetEvents, streamKey]);
 
   const historyKey = useMemo(() => {
     if (!agentId) return undefined;

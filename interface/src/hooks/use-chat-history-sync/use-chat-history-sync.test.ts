@@ -65,6 +65,7 @@ const mocks = vi.hoisted(() => {
     ),
     useIsStreaming: vi.fn(() => false),
     getStreamEntry: vi.fn(() => ({ events: [] as DisplaySessionEvent[] })),
+    getIsStreaming: vi.fn(() => false),
     streamMetaMap,
     useEventStore: Object.assign(
       vi.fn((selector: (s: { subscribe: typeof subscribe }) => unknown) =>
@@ -88,6 +89,7 @@ vi.mock("../stream/hooks", () => ({
 
 vi.mock("../stream/store", () => ({
   getStreamEntry: mocks.getStreamEntry,
+  getIsStreaming: mocks.getIsStreaming,
   streamMetaMap: mocks.streamMetaMap,
 }));
 
@@ -827,6 +829,55 @@ describe("useChatHistorySync", () => {
     // Grace window must defer the reset; resetEvents must not fire with
     // the stale longer snapshot.
     expect(resetEvents).not.toHaveBeenCalledWith(longerPartial, expect.anything());
+  });
+
+  it("invalidates history before fetching when not streaming", async () => {
+    mocks.getIsStreaming.mockReturnValue(false);
+    const resetEvents = vi.fn();
+    const fetchFn = vi.fn(async () => []);
+
+    renderHook(() =>
+      useChatHistorySync({
+        historyKey: "agent:agent-1",
+        streamKey: "agent-1",
+        fetchFn,
+        resetEvents,
+        invalidateBeforeFetch: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.state.invalidateHistory).toHaveBeenCalledWith("agent:agent-1");
+    });
+    expect(mocks.state.fetchHistory).toHaveBeenCalled();
+  });
+
+  // Regression test for the "user message disappears mid-send" flicker.
+  // After the first send on a fresh canvas, `SessionReady` flips the URL
+  // to `?session=<id>` which causes the panel's `historyKey` to recompute
+  // (`project:...` → `session:...:<id>`). If `invalidateHistory` runs on
+  // the new key it sets `fetchedAt=0`, drives `historyResolved` false,
+  // and re-arms the ChatPanel cold-load gate just long enough to flash
+  // `.messageContentHidden` over the optimistic user bubble.
+  it("skips invalidation when a turn is actively streaming on this streamKey", async () => {
+    mocks.getIsStreaming.mockReturnValue(true);
+    const resetEvents = vi.fn();
+    const fetchFn = vi.fn(async () => []);
+
+    renderHook(() =>
+      useChatHistorySync({
+        historyKey: "agent:agent-1",
+        streamKey: "agent-1",
+        fetchFn,
+        resetEvents,
+        invalidateBeforeFetch: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.state.fetchHistory).toHaveBeenCalled();
+    });
+    expect(mocks.state.invalidateHistory).not.toHaveBeenCalled();
   });
 
   it("does not overwrite live stream events when persisted history is older than the most recent stream mutation", async () => {

@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   stopStreaming: vi.fn(),
   resetEvents: vi.fn(),
   markNextSendAsNewSession: vi.fn(),
+  getIsStreaming: vi.fn(() => false),
   // Stores controlled per-test so we can exercise the defer-render gate
   // for "redirect is about to fire" without spinning up the real stores.
   projectsState: {
@@ -94,6 +95,10 @@ vi.mock("../../../../hooks/use-chat-history-sync", () => ({
       wrapSend: (fn: (...args: unknown[]) => unknown) => fn,
     };
   },
+}));
+
+vi.mock("../../../../hooks/stream/store", () => ({
+  getIsStreaming: (key: string) => mocks.getIsStreaming(key),
 }));
 
 vi.mock("../../../../shared/hooks/use-delayed-loading", () => ({
@@ -277,6 +282,9 @@ describe("AgentChatView", () => {
     mocks.historyEntries = {};
     mocks.fetchHistory.mockReset();
     mocks.defaultStandaloneRedirect.mockReset();
+    mocks.resetEvents.mockReset();
+    mocks.getIsStreaming.mockReset();
+    mocks.getIsStreaming.mockImplementation(() => false);
   });
 
   it("uses ChatPanel's desktop input autofocus for standalone agents", () => {
@@ -440,5 +448,80 @@ describe("AgentChatView", () => {
     render(<AgentChatView />);
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+  });
+
+  // Regression coverage for the "user message disappears mid-send"
+  // flicker on `ProjectAgentChatPanel`. The session-transition effect
+  // must NOT clear the stream slot on the post-`SessionReady` URL flip
+  // (null → defined) and must NOT clear during an active stream.
+  describe("ProjectAgentChatPanel session-transition effect", () => {
+    function mountWithSession(sessionId: string | null) {
+      mocks.params = {
+        agentId: "agent-1",
+        projectId: "p1",
+        agentInstanceId: "i1",
+      };
+      mocks.searchParams = new URLSearchParams(
+        sessionId ? { session: sessionId } : {},
+      );
+      return render(<AgentChatView />);
+    }
+
+    it("does not clear the stream when the project panel mounts on a fresh canvas (null session)", () => {
+      mountWithSession(null);
+
+      expect(mocks.resetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream when the project panel mounts on an existing session", () => {
+      mountWithSession("session-A");
+
+      expect(mocks.resetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream when sessionId flips null → defined (post-SessionReady URL flip)", () => {
+      const { rerender } = mountWithSession(null);
+      mocks.resetEvents.mockClear();
+
+      // Simulate the `SessionReady` URL update mid-stream.
+      mocks.searchParams = new URLSearchParams({ session: "session-A" });
+      rerender(<AgentChatView />);
+
+      expect(mocks.resetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream when sessionId flips defined → null (handleNewChat path)", () => {
+      const { rerender } = mountWithSession("session-A");
+      mocks.resetEvents.mockClear();
+
+      // Simulate clicking "+" — `handleNewChat` already calls
+      // `resetEvents` directly, so this transition effect should stay
+      // out of the way.
+      mocks.searchParams = new URLSearchParams();
+      rerender(<AgentChatView />);
+
+      expect(mocks.resetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream during an active turn even on a cross-session URL change", () => {
+      const { rerender } = mountWithSession("session-A");
+      mocks.resetEvents.mockClear();
+      mocks.getIsStreaming.mockImplementation(() => true);
+
+      mocks.searchParams = new URLSearchParams({ session: "session-B" });
+      rerender(<AgentChatView />);
+
+      expect(mocks.resetEvents).not.toHaveBeenCalled();
+    });
+
+    it("clears the stream on a true cross-session navigation when idle", () => {
+      const { rerender } = mountWithSession("session-A");
+      mocks.resetEvents.mockClear();
+
+      mocks.searchParams = new URLSearchParams({ session: "session-B" });
+      rerender(<AgentChatView />);
+
+      expect(mocks.resetEvents).toHaveBeenCalledWith([], { allowWhileStreaming: true });
+    });
   });
 });

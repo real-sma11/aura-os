@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useChatHistoryStore, useChatHistory } from "../../stores/chat-history-store";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useIsStreaming } from "../stream/hooks";
-import { getStreamEntry, streamMetaMap } from "../stream/store";
+import { getIsStreaming, getStreamEntry, streamMetaMap } from "../stream/store";
 import { useEventStore } from "../../stores/event-store/index";
 import { isAuraCaptureSessionActive } from "../../lib/screenshot-bridge";
 import { EventType } from "../../shared/types/aura-events";
@@ -299,7 +299,20 @@ export function useChatHistorySync({
       onSwitch?.();
       return;
     }
-    if (invalidateBeforeFetch) {
+    // Skip the cache invalidation when a turn is actively streaming on
+    // this `streamKey`. The historyKey changes mid-stream whenever a
+    // fresh-canvas first send triggers `SessionReady` → URL flips
+    // `?session=<id>` → the panel's `historyKey` memo recomputes from
+    // `project:...` to `session:...:<id>`. Calling `invalidateHistory`
+    // on the new key sets `fetchedAt=0`, which flips `isFetchStale`
+    // true, drives `historyResolved` to `false`, and (paired with the
+    // panel's `scrollResetKey` change on the same event) re-arms the
+    // ChatPanel cold-load gate — flashing `.messageContentHidden` over
+    // the just-sent user bubble for ~2 frames before the reveal cycle
+    // unhides it. The live SSE is the source of truth during a turn;
+    // a normal `fetchHistory` (without invalidation) is enough to pick
+    // up persisted server state in the background.
+    if (invalidateBeforeFetch && !getIsStreaming(streamKey)) {
       useChatHistoryStore.getState().invalidateHistory(historyKey);
     }
     // Kick off IDB hydration in parallel with the network fetch. On a
@@ -311,7 +324,7 @@ export function useChatHistorySync({
     void useChatHistoryStore.getState().hydrateFromCache(historyKey);
     useChatHistoryStore.getState().fetchHistory(historyKey, fetchFn);
     onSwitch?.();
-  }, [historyKey, fetchFn, invalidateBeforeFetch, onSwitch, onClear]);
+  }, [historyKey, fetchFn, invalidateBeforeFetch, onSwitch, onClear, streamKey]);
 
   // Pin the active history key in the chat-history-store LRU for the
   // panel's lifetime. The store caps in-memory entries at

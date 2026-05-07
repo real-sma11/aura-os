@@ -3,7 +3,12 @@ import { renderHook, act } from "@testing-library/react";
 const mockSendMessage = vi.fn();
 const mockStopStreaming = vi.fn();
 const mockResetEvents = vi.fn();
+const mockGetIsStreaming = vi.fn(() => false);
 const storageState = new Map<string, string>();
+
+vi.mock("./stream/store", () => ({
+  getIsStreaming: (key: string) => mockGetIsStreaming(key),
+}));
 
 vi.mock("./use-agent-chat-stream", () => ({
   useAgentChatStream: vi.fn(() => ({
@@ -94,6 +99,8 @@ describe("useStandaloneAgentChat", () => {
     mockSendMessage.mockReset();
     mockStopStreaming.mockReset();
     mockResetEvents.mockReset();
+    mockGetIsStreaming.mockReset();
+    mockGetIsStreaming.mockImplementation(() => false);
     mockSetSelectedAgent.mockReset();
     storageState.clear();
     Object.defineProperty(globalThis, "localStorage", {
@@ -232,5 +239,83 @@ describe("useStandaloneAgentChat", () => {
     const { result } = renderHook(() => useStandaloneAgentChat("agent-42"));
 
     expect(result.current.scrollResetKey).toBe("agent-42");
+  });
+
+  describe("session-pin transition effect", () => {
+    // Regression coverage for the "user message disappears mid-send"
+    // flicker. The effect that reacts to `pinnedSessionId` changes
+    // must NOT clear the stream slot on the post-`SessionReady` URL
+    // flip (null → defined) — that would erase the optimistic user
+    // bubble — and must NOT clear while a turn is actively streaming.
+    // It must still clear when the user genuinely navigates between
+    // two historical sessions.
+    it("does not clear the stream when pinnedSessionId stays null across renders", () => {
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: null } },
+      );
+
+      mockResetEvents.mockClear();
+      rerender({ sid: null });
+
+      expect(mockResetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream when pinnedSessionId flips null → defined (post-SessionReady)", () => {
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: null } },
+      );
+
+      mockResetEvents.mockClear();
+      // Simulates `SessionReady` updating `?session=A` while the
+      // current turn is still streaming — the stream slot already
+      // holds the optimistic user message and must be preserved.
+      rerender({ sid: "session-A" });
+
+      expect(mockResetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream when pinnedSessionId flips defined → null (handled by handleNewSession)", () => {
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: "session-A" } },
+      );
+
+      mockResetEvents.mockClear();
+      rerender({ sid: null });
+
+      // `handleNewSession` already calls `resetEvents` directly when
+      // the user clicks "+", so the transition effect should stay
+      // out of the way.
+      expect(mockResetEvents).not.toHaveBeenCalled();
+    });
+
+    it("does not clear the stream while a turn is actively streaming on the pinned session", () => {
+      mockGetIsStreaming.mockImplementation(() => true);
+
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: "session-A" } },
+      );
+
+      mockResetEvents.mockClear();
+      rerender({ sid: "session-B" });
+
+      expect(mockResetEvents).not.toHaveBeenCalled();
+    });
+
+    it("clears the stream on a true cross-session navigation when idle", () => {
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: "session-A" } },
+      );
+
+      mockResetEvents.mockClear();
+      rerender({ sid: "session-B" });
+
+      expect(mockResetEvents).toHaveBeenCalledTimes(1);
+      expect(mockResetEvents).toHaveBeenCalledWith([], { allowWhileStreaming: true });
+    });
   });
 });
