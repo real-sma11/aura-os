@@ -41,8 +41,6 @@ const mocks = vi.hoisted(() => ({
   fetchHistory: vi.fn(),
   clearHistory: vi.fn(),
   bumpVersion: vi.fn(),
-  setPendingNewChat: vi.fn(),
-  clearPendingNewChat: vi.fn(),
   defaultStandaloneRedirect: vi.fn(),
   streamState: {
     entries: {} as Record<string, { events: Array<{ id: string }> }>,
@@ -179,8 +177,6 @@ vi.mock("../../../../stores/sessions-list-store", () => {
   type FakeSessionsListState = {
     sessionsBySurface: Record<string, FakeAnnotatedSession[]>;
     bumpVersion: () => void;
-    setPendingNewChat: typeof mocks.setPendingNewChat;
-    clearPendingNewChat: typeof mocks.clearPendingNewChat;
   };
   const sessionsHook: ((selector: (state: FakeSessionsListState) => unknown) => unknown) & {
     getState: () => FakeSessionsListState;
@@ -189,20 +185,15 @@ vi.mock("../../../../stores/sessions-list-store", () => {
       selector({
         sessionsBySurface: mocks.sessionsState.sessionsBySurface,
         bumpVersion: mocks.bumpVersion,
-        setPendingNewChat: mocks.setPendingNewChat,
-        clearPendingNewChat: mocks.clearPendingNewChat,
       }),
     {
       getState: () => ({
         sessionsBySurface: mocks.sessionsState.sessionsBySurface,
         bumpVersion: mocks.bumpVersion,
-        setPendingNewChat: mocks.setPendingNewChat,
-        clearPendingNewChat: mocks.clearPendingNewChat,
       }),
     },
   );
   return {
-    PENDING_NEW_CHAT_ID: "pending-new-chat",
     agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
     useAgentBindingsKey: (agentId: string | undefined) => {
       if (!agentId) return "";
@@ -330,8 +321,6 @@ describe("AgentChatView", () => {
     mocks.fetchHistory.mockReset();
     mocks.clearHistory.mockReset();
     mocks.bumpVersion.mockReset();
-    mocks.setPendingNewChat.mockReset();
-    mocks.clearPendingNewChat.mockReset();
     mocks.defaultStandaloneRedirect.mockReset();
     mocks.resetEvents.mockReset();
     mocks.getIsStreaming.mockReset();
@@ -956,32 +945,20 @@ describe("AgentChatView", () => {
       expect(mocks.streamState.entries["agent-1"].events).toHaveLength(1);
     });
 
-    it("surfaces the optimistic 'New chat' placeholder on the agents-shell sidekick surface", () => {
+    it("does not create a sidekick row before the first message is sent", () => {
       mountProjectPanel({ projectId: "p1", agentInstanceId: "i1", sessionId: "s1" });
 
       fireNewChat();
 
-      expect(mocks.setPendingNewChat).toHaveBeenCalledTimes(1);
-      const [surfaceKey, placeholder] = mocks.setPendingNewChat.mock.calls[0];
-      expect(surfaceKey).toBe("agent:agent-1");
-      expect(placeholder).toEqual(
-        expect.objectContaining({
-          session_id: "pending-new-chat",
-          _projectId: "p1",
-          _agentInstanceId: "i1",
-          _pending: true,
-          summary_of_previous_context: "",
-        }),
-      );
+      expect(mocks.bumpVersion).toHaveBeenCalledTimes(1);
+      expect(mocks.sessionsState.sessionsBySurface).toEqual({});
     });
 
-    it("skips the placeholder when the org agent_id lookup misses (unbound instance)", () => {
+    it("still resets history when the org agent_id lookup misses (unbound instance)", () => {
       // Edge case: a session URL points to a `(project, instance)`
       // pair the projects store hasn't loaded yet (or that's a stale
-      // pointer to a deleted instance). The optimistic placeholder
-      // would land on the wrong agents-shell surface, so we skip it
-      // entirely and let the next `loadAgentSessions` show the real
-      // row when it arrives.
+      // pointer to a deleted instance). The local reset should still
+      // clear the known session/project history keys.
       mocks.params = { agentId: undefined, projectId: "p1", agentInstanceId: "i1" };
       mocks.searchParams = new URLSearchParams({ session: "s1" });
       mocks.projectsState = { projects: [], agentsByProject: {} };
@@ -989,10 +966,6 @@ describe("AgentChatView", () => {
       render(<AgentChatView />);
       fireNewChat();
 
-      expect(mocks.setPendingNewChat).not.toHaveBeenCalled();
-      // The current historyKey (session-scoped) is still cleared even
-      // when the agent lookup misses — the placeholder is the only
-      // path gated on the lookup.
       const clearedKeys = mocks.clearHistory.mock.calls.map((call) => call[0]);
       expect(clearedKeys).toContain("session:p1:i1:s1");
       expect(clearedKeys).toContain("project:p1:i1");

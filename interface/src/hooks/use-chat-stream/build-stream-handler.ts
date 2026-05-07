@@ -39,16 +39,11 @@ import {
   useContextUsageStore,
   approxTokensFromText,
 } from "../../stores/context-usage-store";
-import {
-  agentSessionsSurfaceKey,
-  useSessionsListStore,
-} from "../../stores/sessions-list-store";
-import { useProjectsListStore } from "../../stores/projects-list-store";
+import { useSessionsListStore } from "../../stores/sessions-list-store";
 
 export interface DispatchDeps {
   projectId: string;
   agentInstanceId: string | undefined;
-  orgAgentId?: string | null;
   selectedModel?: string | null;
   refs: ReturnType<typeof useStreamCore>["refs"];
   setters: ReturnType<typeof useStreamCore>["setters"];
@@ -125,7 +120,7 @@ async function bridgeLoopToolResult(
 
 export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
   const {
-    projectId, agentInstanceId, orgAgentId, selectedModel, refs, setters, abortRef, coreKey,
+    projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
   } = deps;
@@ -314,22 +309,6 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           onSessionReady?.(newSessionId);
           const sessionsStore = useSessionsListStore.getState();
           sessionsStore.bumpVersion();
-          // Promote the optimistic "New chat" placeholder into a real,
-          // clickable row immediately. The follow-up list refresh will
-          // replace this local row with the server copy.
-          const matchedAgentId = orgAgentId ?? (() => {
-            if (!agentInstanceId) return undefined;
-            const projectsState = useProjectsListStore.getState();
-            return projectsState.agentsByProject[projectId]?.find(
-              (instance) => instance.agent_instance_id === agentInstanceId,
-            )?.agent_id;
-          })();
-          if (matchedAgentId) {
-            sessionsStore.promotePendingNewChat(
-              agentSessionsSurfaceKey(matchedAgentId),
-              newSessionId,
-            );
-          }
         }
         break;
       }

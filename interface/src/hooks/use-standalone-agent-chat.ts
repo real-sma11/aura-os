@@ -12,12 +12,7 @@ import {
   projectChatHistoryKey,
   useChatHistoryStore,
 } from "../stores/chat-history-store";
-import {
-  agentSessionsSurfaceKey,
-  PENDING_NEW_CHAT_ID,
-  type PendingNewChat,
-  useSessionsListStore,
-} from "../stores/sessions-list-store";
+import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useAgentStore } from "../apps/agents/stores";
 import { useProjectsListStore } from "../stores/projects-list-store";
 import { useContextUsage, useContextUsageStore } from "../stores/context-usage-store";
@@ -263,40 +258,6 @@ export function useStandaloneAgentChat(
     );
     const sessionsStore = useSessionsListStore.getState();
     sessionsStore.bumpVersion();
-    // ChatGPT-style optimistic "New chat" row in the agents-shell
-    // sidekick. The standalone hook is the chat-input owner for the
-    // agents-shell fresh-canvas mount (`StandaloneAgentChatPanel`),
-    // so the placeholder belongs on `agent:<agentId>`. The matching
-    // clear runs on `SessionReady` (see `use-agent-chat-stream.ts`).
-    // Synthesize the `(project, instance)` pair so a click on the
-    // placeholder, if it ever leaks past `ChatsTab`'s no-op guard,
-    // would still navigate somewhere reasonable.
-    const projectsState = useProjectsListStore.getState();
-    const projectIdForPlaceholder = effectiveProjectId ?? "";
-    const instanceForPlaceholder = effectiveProjectId
-      ? projectsState.agentsByProject[effectiveProjectId]?.find(
-          (instance) => instance.agent_id === agentId,
-        )?.agent_instance_id ?? ""
-      : "";
-    const placeholder: PendingNewChat = {
-      session_id: PENDING_NEW_CHAT_ID,
-      agent_instance_id: instanceForPlaceholder,
-      project_id: projectIdForPlaceholder,
-      active_task_id: null,
-      tasks_worked: [],
-      context_usage_estimate: 0,
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      summary_of_previous_context: "",
-      status: "active",
-      started_at: new Date().toISOString(),
-      ended_at: null,
-      _projectId: projectIdForPlaceholder,
-      _agentInstanceId: instanceForPlaceholder,
-      _projectName: "",
-      _pending: true,
-    };
-    sessionsStore.setPendingNewChat(agentSessionsSurfaceKey(agentId), placeholder);
   }, [agentId, markNextSendAsNewSession, streamKey, historyKey, effectiveProjectId, resetEvents, setSearchParams]);
 
   const contextUsageFetcher = useMemo(() => {

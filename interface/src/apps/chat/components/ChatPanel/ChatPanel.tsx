@@ -18,6 +18,7 @@ import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
 import { useChatPanelState } from "./useChatPanelState";
 import { findLatestGeneratedImage } from "./latest-generated-image";
 import { useChatUIStore } from "../../../../stores/chat-ui-store";
+import { useMessageQueueStore } from "../../../../stores/message-queue-store";
 import { useProgressText } from "../../../../hooks/stream/hooks";
 import type { ChatAttachment } from "../../../../api/streams";
 import type { Project } from "../../../../shared/types";
@@ -172,6 +173,14 @@ export function ChatPanel({
     selectedProjectId,
     agentId,
   });
+
+  const handleNewChat = useCallback(() => {
+    setInput("");
+    setAttachments([]);
+    setCommands([]);
+    useMessageQueueStore.getState().clear(streamKey);
+    onNewChat?.();
+  }, [onNewChat, setAttachments, setCommands, setInput, streamKey]);
 
   // Phase 3 server emits `progress { stage: "queued" }` as the first
   // SSE event when our turn is waiting behind another on the same
@@ -543,7 +552,7 @@ export function ChatPanel({
           compact={compact}
           contextUsage={contextUsage}
           onNewSession={onNewSession}
-          onNewChat={onNewChat}
+          onNewChat={onNewChat ? handleNewChat : undefined}
         />
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { act, useLayoutEffect, type ComponentProps } from "react";
 import { vi } from "vitest";
 import { ChatPanel } from "./ChatPanel";
@@ -7,6 +7,7 @@ import { useMessageStore } from "../../../../stores/message-store";
 import { useChatViewStore } from "../../../../stores/chat-view-store";
 
 const mockUseAuraCapabilities = vi.fn();
+const mockClearQueue = vi.hoisted(() => vi.fn());
 let autoSignalInitialAnchorReady = false;
 let requestAnimationFrameSpy: ReturnType<typeof vi.spyOn> | null = null;
 const sampleHistoryMessages: DisplaySessionEvent[] = [
@@ -69,7 +70,19 @@ function resetInputBarRenderCount() {
 vi.mock("../ChatInputBar", async () => {
   const React = await import("react");
   const InnerInputBar = React.forwardRef(function InnerInputBar(
-    { isVisible, isCentered }: { isVisible?: boolean; isCentered?: boolean },
+    {
+      input,
+      onInputChange,
+      onNewChat,
+      isVisible,
+      isCentered,
+    }: {
+      input?: string;
+      onInputChange?: (value: string) => void;
+      onNewChat?: () => void;
+      isVisible?: boolean;
+      isCentered?: boolean;
+    },
     ref: React.ForwardedRef<{ focus: () => void }>,
   ) {
     // Test-only render probe: deliberately mutate during render to count
@@ -84,12 +97,21 @@ vi.mock("../ChatInputBar", async () => {
     }));
 
     return (
-      <textarea
-        ref={textareaRef}
-        data-testid="chat-input-bar"
-        data-visible={isVisible ? "true" : "false"}
-        data-centered={isCentered ? "true" : "false"}
-      />
+      <>
+        <textarea
+          ref={textareaRef}
+          data-testid="chat-input-bar"
+          data-visible={isVisible ? "true" : "false"}
+          data-centered={isCentered ? "true" : "false"}
+          value={input ?? ""}
+          onChange={(event) => onInputChange?.(event.currentTarget.value)}
+        />
+        {onNewChat ? (
+          <button type="button" onClick={onNewChat}>
+            new chat
+          </button>
+        ) : null}
+      </>
     );
   });
   // `React.memo` mirrors the production `DesktopChatInputBar` wrapper so
@@ -114,6 +136,7 @@ vi.mock("../../../../stores/message-queue-store", () => ({
       dequeue: vi.fn(),
       remove: vi.fn(),
       moveUp: vi.fn(),
+      clear: mockClearQueue,
     }),
   },
   useMessageQueue: () => [],
@@ -136,6 +159,7 @@ describe("ChatPanel", () => {
     mockUseAuraCapabilities.mockReset();
     autoSignalInitialAnchorReady = false;
     resetInputBarRenderCount();
+    mockClearQueue.mockReset();
     useMessageStore.setState({ messages: {}, orderedIds: {} });
     useChatViewStore.setState({ threads: {} });
     requestAnimationFrameSpy = vi
@@ -227,6 +251,22 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(container.querySelector(".messageContentHidden")).toBeNull();
     expect(getInputBar()).toHaveAttribute("data-visible", "true");
+  });
+
+  it("clears the draft and queued messages before starting a new chat", () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
+    const onNewChat = vi.fn();
+
+    renderPanel({ onNewChat });
+    const input = getInputBar() as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "draft message" } });
+    expect(input.value).toBe("draft message");
+
+    fireEvent.click(screen.getByRole("button", { name: "new chat" }));
+
+    expect(input.value).toBe("");
+    expect(mockClearQueue).toHaveBeenCalledWith("stream-1");
+    expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
   it("reveals cold-load history once it resolves and fades the loading overlay", () => {

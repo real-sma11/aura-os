@@ -2,12 +2,9 @@ import { act, renderHook } from "@testing-library/react";
 import type { Session } from "../shared/types";
 import {
   agentSessionsSurfaceKey,
-  PENDING_NEW_CHAT_ID,
-  type PendingNewChat,
   projectSessionsSurfaceKey,
   useAgentBindingsKey,
   useMostRecentSession,
-  usePendingNewChat,
   useSessionsForSurface,
   useSessionsListStore,
 } from "./sessions-list-store";
@@ -44,37 +41,12 @@ function resetStores() {
   useSessionsListStore.setState({
     sessionsBySurface: {},
     loadingBySurface: {},
-    pendingNewChatBySurface: {},
     version: 0,
   });
   useProjectsListStore.setState({
     projects: [],
     agentsByProject: {},
   });
-}
-
-function makePendingNewChat(
-  projectId: string,
-  agentInstanceId: string,
-): PendingNewChat {
-  return {
-    session_id: PENDING_NEW_CHAT_ID,
-    agent_instance_id: agentInstanceId,
-    project_id: projectId,
-    active_task_id: null,
-    tasks_worked: [],
-    context_usage_estimate: 0,
-    total_input_tokens: 0,
-    total_output_tokens: 0,
-    summary_of_previous_context: "",
-    status: "active",
-    started_at: "2026-04-16T05:00:00Z",
-    ended_at: null,
-    _projectId: projectId,
-    _agentInstanceId: agentInstanceId,
-    _projectName: "",
-    _pending: true,
-  };
 }
 
 describe("sessions-list-store", () => {
@@ -304,128 +276,4 @@ describe("sessions-list-store", () => {
     });
   });
 
-  describe("pendingNewChat (optimistic '+' placeholder)", () => {
-    // The chat-input "+" button surfaces a synthetic "New chat" row in
-    // the sidekick before the server has assigned a session id (and
-    // before any `loadAgentSessions` returns the real row). The store
-    // tracks it on a sibling axis from `sessionsBySurface` so the
-    // request-id race protections in the loaders don't have to thread
-    // the placeholder through their merge logic. The tests below pin
-    // the contract: set, clear, prepend-on-read, promote, and reconcile
-    // once the matching real session arrives.
-    it("setPendingNewChat then useSessionsForSurface returns the placeholder prepended", () => {
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      const pending = makePendingNewChat("p1", "i1");
-
-      act(() => {
-        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
-      });
-
-      const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
-      expect(result.current).toHaveLength(1);
-      expect(result.current[0].session_id).toBe(PENDING_NEW_CHAT_ID);
-      expect((result.current[0] as PendingNewChat)._pending).toBe(true);
-    });
-
-    it("clearPendingNewChat removes the placeholder from useSessionsForSurface", () => {
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      const pending = makePendingNewChat("p1", "i1");
-
-      const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
-
-      act(() => {
-        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
-      });
-      expect(result.current).toHaveLength(1);
-
-      act(() => {
-        useSessionsListStore.getState().clearPendingNewChat(surfaceKey);
-      });
-      expect(result.current).toHaveLength(0);
-    });
-
-    it("usePendingNewChat tracks the placeholder per surface", () => {
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      const pending = makePendingNewChat("p1", "i1");
-
-      const { result } = renderHook(() => usePendingNewChat(surfaceKey));
-      expect(result.current).toBeNull();
-
-      act(() => {
-        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
-      });
-      expect(result.current?.session_id).toBe(PENDING_NEW_CHAT_ID);
-
-      act(() => {
-        useSessionsListStore.getState().clearPendingNewChat(surfaceKey);
-      });
-      expect(result.current).toBeNull();
-    });
-
-    it("promotePendingNewChat replaces the placeholder with a real session row", () => {
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      const pending = makePendingNewChat("p1", "i1");
-      const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
-
-      act(() => {
-        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
-      });
-      expect(result.current.map((s) => s.session_id)).toEqual([PENDING_NEW_CHAT_ID]);
-
-      act(() => {
-        useSessionsListStore
-          .getState()
-          .promotePendingNewChat(surfaceKey, "s-real");
-      });
-
-      expect(
-        useSessionsListStore.getState().pendingNewChatBySurface[surfaceKey],
-      ).toBeUndefined();
-      expect(result.current.map((s) => s.session_id)).toEqual(["s-real"]);
-      expect((result.current[0] as PendingNewChat)._pending).toBeUndefined();
-    });
-
-    it("clears a matching placeholder when loadAgentSessions returns the real row", async () => {
-      useProjectsListStore.setState({
-        projects: [{ project_id: "p1", name: "P1" } as never],
-        agentsByProject: {
-          p1: [
-            { agent_instance_id: "i1", agent_id: "agent-x" } as never,
-          ],
-        },
-      });
-      listSessions.mockResolvedValue([
-        makeSession("s-real", "2026-04-16T05:00:00Z", "i1", "p1"),
-      ]);
-
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      const pending = makePendingNewChat("p1", "i1");
-
-      act(() => {
-        useSessionsListStore.getState().setPendingNewChat(surfaceKey, pending);
-      });
-
-      await act(async () => {
-        await useSessionsListStore.getState().loadAgentSessions("agent-x");
-      });
-
-      expect(
-        useSessionsListStore.getState().pendingNewChatBySurface[surfaceKey],
-      ).toBeUndefined();
-
-      const { result } = renderHook(() => useSessionsForSurface(surfaceKey));
-      const ids = result.current.map((s) => s.session_id);
-      expect(ids).toEqual(["s-real"]);
-    });
-
-    it("clearPendingNewChat is a no-op when no placeholder is set", () => {
-      const surfaceKey = agentSessionsSurfaceKey("agent-x");
-      act(() => {
-        useSessionsListStore.getState().clearPendingNewChat(surfaceKey);
-      });
-      expect(
-        useSessionsListStore.getState().pendingNewChatBySurface,
-      ).toEqual({});
-    });
-  });
 });

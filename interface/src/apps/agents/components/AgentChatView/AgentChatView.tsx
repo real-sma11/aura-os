@@ -20,8 +20,6 @@ import {
 } from "../../../../stores/chat-history-store";
 import {
   agentSessionsSurfaceKey,
-  PENDING_NEW_CHAT_ID,
-  type PendingNewChat,
   useAgentBindingsKey,
   useMostRecentSession,
   useSessionsListStore,
@@ -121,9 +119,7 @@ function ProjectAgentChatPanel({
   // history key and stream slot — the agents-shell resolver may swap
   // to `StandaloneAgentChatPanel` once `?session=` is dropped, and the
   // standalone panel keys its history off this id, not the
-  // instance-scoped one — and (b) target the agents-shell sidekick's
-  // sessions surface (`agent:<agent_id>`) for the optimistic "New
-  // chat" placeholder. Resolved off the projects-list-store: a stable
+  // instance-scoped one. Resolved off the projects-list-store: a stable
   // string lookup that updates if the agent rebinds.
   const orgAgentId = useProjectsListStore(
     (state) =>
@@ -158,7 +154,6 @@ function ProjectAgentChatPanel({
     useChatStream({
       projectId,
       agentInstanceId,
-      orgAgentId,
       sessionId,
       onSessionReady: handleSessionReady,
     });
@@ -361,42 +356,7 @@ function ProjectAgentChatPanel({
       },
       { replace: true },
     );
-    // Optimistic refresh; the real new session row arrives after the
-    // user's first send (the chat stream bumps again on `SessionReady`).
-    const sessionsStore = useSessionsListStore.getState();
-    sessionsStore.bumpVersion();
-    // ChatGPT-style optimistic "New chat" row in the agents-shell
-    // sidekick — surfaces immediately so the user sees feedback for
-    // the click, even though no real session exists server-side until
-    // the first send. Cleared on `SessionReady` (see
-    // `build-stream-handler.ts`). Skip when the agent's
-    // `(project, instance) -> agent_id` lookup hasn't resolved yet —
-    // there's no `surfaceKey` to target, and a stale lookup later
-    // would attach the placeholder to the wrong surface anyway.
-    if (resolvedOrgAgentId) {
-      const placeholder: PendingNewChat = {
-        session_id: PENDING_NEW_CHAT_ID,
-        agent_instance_id: agentInstanceId,
-        project_id: projectId,
-        active_task_id: null,
-        tasks_worked: [],
-        context_usage_estimate: 0,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-        summary_of_previous_context: "",
-        status: "active",
-        started_at: new Date().toISOString(),
-        ended_at: null,
-        _projectId: projectId,
-        _agentInstanceId: agentInstanceId,
-        _projectName: "",
-        _pending: true,
-      };
-      sessionsStore.setPendingNewChat(
-        agentSessionsSurfaceKey(resolvedOrgAgentId),
-        placeholder,
-      );
-    }
+    useSessionsListStore.getState().bumpVersion();
   }, [streamKey, resetEvents, setSearchParams, projectId, agentInstanceId]);
 
   const contextUsageFetcher = useMemo(() => {

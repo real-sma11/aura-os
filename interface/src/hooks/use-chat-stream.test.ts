@@ -2,11 +2,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useChatStream } from "./use-chat-stream";
 import { useStreamStore, streamMetaMap } from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
-import {
-  agentSessionsSurfaceKey,
-  PENDING_NEW_CHAT_ID,
-  useSessionsListStore,
-} from "../stores/sessions-list-store";
+import { useSessionsListStore } from "../stores/sessions-list-store";
 import { EventType, type AuraEvent } from "../shared/types/aura-events";
 
 const mockSetStreamingAgentInstanceId = vi.fn();
@@ -74,7 +70,6 @@ describe("useChatStream", () => {
       sessionsBySurface: {},
       loadingBySurface: {},
       deleteErrorBySurface: {},
-      pendingNewChatBySurface: {},
       version: 0,
     });
     vi.clearAllMocks();
@@ -133,7 +128,7 @@ describe("useChatStream", () => {
     expect(entry.events[0].content).toBe("hello");
   });
 
-  it("promotes the pending new chat row when SessionReady includes the real id", async () => {
+  it("bumps the sessions list when SessionReady includes the real id", async () => {
     vi.mocked(api.sendEventStream).mockImplementation(
       async (_projectId, _agentInstanceId, _content, _action, _model, _attachments, handler) => {
         handler?.onEvent({
@@ -142,31 +137,11 @@ describe("useChatStream", () => {
         } as AuraEvent);
       },
     );
-    const surfaceKey = agentSessionsSurfaceKey("agent-1");
-    useSessionsListStore.getState().setPendingNewChat(surfaceKey, {
-      session_id: PENDING_NEW_CHAT_ID,
-      agent_instance_id: "ai-1",
-      project_id: "p-1",
-      active_task_id: null,
-      tasks_worked: [],
-      context_usage_estimate: 0,
-      total_input_tokens: 0,
-      total_output_tokens: 0,
-      summary_of_previous_context: "",
-      status: "active",
-      started_at: "2026-04-16T05:00:00Z",
-      ended_at: null,
-      _projectId: "p-1",
-      _projectName: "Project One",
-      _agentInstanceId: "ai-1",
-      _pending: true,
-    });
 
     const { result } = renderHook(() =>
       useChatStream({
         projectId: "p-1",
         agentInstanceId: "ai-1",
-        orgAgentId: "agent-1",
       }),
     );
 
@@ -178,14 +153,8 @@ describe("useChatStream", () => {
     });
 
     const state = useSessionsListStore.getState();
-    expect(state.pendingNewChatBySurface[surfaceKey]).toBeUndefined();
-    expect(state.sessionsBySurface[surfaceKey]?.map((s) => s.session_id)).toEqual([
-      "s-new",
-    ]);
-    expect(
-      (state.sessionsBySurface[surfaceKey]?.[0] as { _pending?: boolean } | undefined)
-        ?._pending,
-    ).toBeUndefined();
+    expect(state.version).toBe(1);
+    expect(state.sessionsBySurface).toEqual({});
   });
 
   it("routes image generation through the dedicated image stream", async () => {

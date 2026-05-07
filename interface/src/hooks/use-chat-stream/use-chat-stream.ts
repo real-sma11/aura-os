@@ -20,7 +20,6 @@ import { buildStreamHandler } from "./build-stream-handler";
 interface UseChatStreamOptions {
   projectId: string | undefined;
   agentInstanceId: string | undefined;
-  orgAgentId?: string | null;
   /**
    * Pin this stream's send + SessionReady handling to a specific
    * historical session id. When set, every `sendMessage` is forwarded
@@ -45,7 +44,6 @@ interface UseChatStreamOptions {
 export function useChatStream({
   projectId,
   agentInstanceId,
-  orgAgentId,
   sessionId,
   onSessionReady,
 }: UseChatStreamOptions) {
@@ -135,7 +133,7 @@ export function useChatStream({
       const controller = new AbortController();
       abortRef.current = controller;
       const handler = buildStreamHandler({
-        projectId, agentInstanceId, orgAgentId, selectedModel, refs, setters, abortRef, coreKey: core.key,
+        projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey: core.key,
         setProgressText: core.setProgressText, sidekickRef, projectCtxRef,
         pendingSpecIdsRef, pendingTaskIdsRef,
         onSessionReady: (id) => onSessionReadyRef.current?.(id),
@@ -264,7 +262,7 @@ export function useChatStream({
         inFlightRef.current = false;
       }
     },
-    [projectId, agentInstanceId, orgAgentId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
+    [projectId, agentInstanceId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
   );
 
   const stopStreaming = useCallback(() => {
