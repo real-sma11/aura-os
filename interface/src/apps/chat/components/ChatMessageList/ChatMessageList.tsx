@@ -66,19 +66,48 @@ const EMPTY_TIMELINE: NonNullable<
  * the React identity for that slot across the swap while leaving every
  * other bubble keyed by its stable id - so a new user message at the
  * end never disturbs the prior assistant's reconciliation slot.
+ *
+ * When `curr` is longer than `prev` — the canonical "user just hit
+ * Send" transition — naive tail-alignment compares `prev`'s last entry
+ * against the freshly appended `temp-` user prompt at `curr.length-1`,
+ * mismatches on role, and `break`s before it can alias an id that
+ * legitimately changed in the prior tail position (e.g. the prior
+ * assistant's `stream-...` placeholder being swapped to its persisted
+ * event id at the same render `core.setEvents` appends `userMsg`).
+ * The unaliased key change forces a remount of the prior assistant
+ * bubble, manifesting as "previous answer overwrites for a frame on
+ * send, then reappears at end of turn."
+ *
+ * The pre-walk skip below trims trailing `curr` entries whose id is
+ * neither present in `prev` nor already aliased — i.e. structurally
+ * brand-new appends that don't correspond to anything in `prev` —
+ * before the tail-aligned walk starts. That re-aligns `prev`'s last
+ * entry with the last `curr` entry that genuinely maps back into
+ * `prev`, so the placeholder->persisted alias survives across the
+ * append.
  */
 function applyTailIdAliases(
   aliasMap: Map<string, string>,
   prev: readonly DisplaySessionEvent[],
   curr: readonly DisplaySessionEvent[],
 ): void {
-  const limit = Math.min(prev.length, curr.length);
-  for (let i = 0; i < limit; i += 1) {
-    const prevMsg = prev[prev.length - 1 - i];
-    const currMsg = curr[curr.length - 1 - i];
-    if (prevMsg.id === currMsg.id) {
-      continue;
+  let pi = prev.length - 1;
+  let ci = curr.length - 1;
+
+  if (ci > pi) {
+    const prevIds = new Set<string>();
+    for (const m of prev) prevIds.add(m.id);
+    while (ci > pi) {
+      const candidate = curr[ci];
+      if (prevIds.has(candidate.id) || aliasMap.has(candidate.id)) break;
+      ci -= 1;
     }
+  }
+
+  for (; pi >= 0 && ci >= 0; pi -= 1, ci -= 1) {
+    const prevMsg = prev[pi];
+    const currMsg = curr[ci];
+    if (prevMsg.id === currMsg.id) continue;
     if (prevMsg.role !== currMsg.role || prevMsg.content !== currMsg.content) {
       // First non-aligned pair from the tail terminates the walk —
       // anything earlier in the list is structurally a different turn

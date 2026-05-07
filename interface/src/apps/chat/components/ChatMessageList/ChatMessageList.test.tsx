@@ -448,6 +448,58 @@ describe("ChatMessageList", () => {
     expect(afterAppendWrapper).toBe(priorAssistantWrapper);
   });
 
+  // Regression test for the "previous assistant overwrites the new
+  // user message slot, then reappears at end of turn" report. The
+  // user-side trigger is `core.setEvents((p) => [...p, userMsg])`
+  // appending a temp-user bubble in the same render the prior
+  // assistant's id is still flipping from `stream-...` to its
+  // persisted event id. The naive tail-aligned walk in
+  // `applyTailIdAliases` would compare `prev[asst-stream]` against
+  // `curr[temp-user-new]`, mismatch on role, and break before
+  // aliasing the assistant — so the assistant's React key changed
+  // and React unmounted/remounted its bubble for a frame.
+  it("aliases the prior assistant when its id swaps at the same tick a new user message is appended", () => {
+    const scrollRef = makeScrollRef();
+
+    const { rerender } = render(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-old", "earlier prompt", "user"),
+          makeMessage("stream-assistant-old", "earlier answer"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    const priorAssistantWrapper =
+      screen.getByTestId("bubble-stream-assistant-old").parentElement;
+    expect(priorAssistantWrapper).not.toBeNull();
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          makeMessage("user-old", "earlier prompt", "user"),
+          // Same role + content as before but a different id — this
+          // is the placeholder->persisted swap that lands when
+          // `MessageEnd` fires.
+          makeMessage("persisted-assistant-old", "earlier answer"),
+          // ...landing in the same render as the user pressing Send.
+          makeMessage("temp-user-new", "follow-up prompt", "user"),
+        ]}
+        streamKey="stream-1"
+        scrollRef={scrollRef}
+      />,
+    );
+
+    // The prior assistant must keep its React node identity even
+    // though its `msg.id` changed: the alias map should map
+    // `persisted-assistant-old` -> `stream-assistant-old`.
+    const afterAppendWrapper =
+      screen.getByTestId("bubble-persisted-assistant-old").parentElement;
+    expect(afterAppendWrapper).toBe(priorAssistantWrapper);
+  });
+
   // Negative case: the alias walk must terminate at the first
   // non-matching pair from the tail. Two unrelated assistants with
   // different content sitting at the same tail index across renders
