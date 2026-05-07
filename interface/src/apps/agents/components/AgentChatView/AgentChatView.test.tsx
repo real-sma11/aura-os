@@ -570,6 +570,99 @@ describe("AgentChatView", () => {
     expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
   });
 
+  it("renders the standalone fresh-canvas panel after the user clicks + (drops ?session=)", () => {
+    // Regression: clicking "+" in the chat input bar fires
+    // `handleNewChat`, which strips `?session=` from the URL with the
+    // explicit intent of starting a fresh chat. Before the resolver
+    // gained `userClearedSession` detection, the agents-shell route
+    // would lock on a blank `lanePlaceholder` div forever:
+    //   - `urlTarget` requires a `?session=` to resolve → null.
+    //   - `fallbackTarget` still resolves to the just-abandoned
+    //     `mostRecent` session.
+    //   - Resolver returned `kind: "placeholder"`.
+    //   - `useDefaultStandaloneSessionRedirect`'s `didDefaultRef` was
+    //     already stamped from the prior render, so it never re-pushed
+    //     a session into the URL — the placeholder never lifted.
+    // After the fix, the resolver detects "previously had a session,
+    // now URL has none" and mounts the standalone panel for a fresh
+    // canvas instead.
+    mocks.params = {
+      agentId: "agent-1",
+      projectId: undefined,
+      agentInstanceId: undefined,
+    };
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
+      },
+    };
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s1",
+    });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
+
+    const { rerender } = render(<AgentChatView />);
+
+    // First mount: project panel for s1.
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        streamKey: "project-stream",
+      }),
+    );
+
+    // User clicks "+" — `handleNewChat` strips `?session=` from URL.
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+    });
+    mocks.latestChatPanelProps = undefined;
+    rerender(<AgentChatView />);
+
+    // Standalone fresh-canvas panel mounts (NOT the lane placeholder).
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "agent-1",
+        streamKey: "agent-stream",
+      }),
+    );
+
+    // After the next send, `handleSessionReady` writes the new session
+    // id back into the URL — the resolver should flip back to the
+    // project panel for that new session.
+    mocks.searchParams = new URLSearchParams({
+      project: "p1",
+      instance: "i1",
+      session: "s2",
+    });
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s2": { status: "ready" },
+    };
+    mocks.latestChatPanelProps = undefined;
+    rerender(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        streamKey: "project-stream",
+      }),
+    );
+  });
+
   // Regression coverage for the "user message disappears mid-send"
   // flicker on `ProjectAgentChatPanel`. The session-transition effect
   // must NOT clear the stream slot on the post-`SessionReady` URL flip

@@ -588,6 +588,25 @@ function useAgentsShellTarget(opts: {
     return state.sessionsBySurface[standaloneSurfaceKey] !== undefined;
   });
 
+  // Latches `true` once the URL has carried a `?session=` for the
+  // current agent. Reset on agent change. Used to distinguish "cold
+  // load with no session" (default-redirect imminent → keep the
+  // placeholder up) from "user clicked + to start a fresh chat"
+  // (URL just dropped its session → mount the standalone panel for a
+  // fresh canvas instead of falling back to most-recent, which would
+  // otherwise lock the lane on a `lanePlaceholder` div forever:
+  // `useDefaultStandaloneSessionRedirect`'s `didDefaultRef` is already
+  // stamped, so no redirect re-fires to put a session back in the URL).
+  const visitedSessionRef = useRef(Boolean(sessionId));
+  const prevAgentRef = useRef(agentId);
+  if (prevAgentRef.current !== agentId) {
+    prevAgentRef.current = agentId;
+    visitedSessionRef.current = Boolean(sessionId);
+  } else if (sessionId) {
+    visitedSessionRef.current = true;
+  }
+  const userClearedSession = !sessionId && visitedSessionRef.current;
+
   const urlTarget = (queryProjectId && queryInstanceId && sessionId)
     ? {
         projectId: queryProjectId,
@@ -705,7 +724,23 @@ function useAgentsShellTarget(opts: {
       : { kind: "placeholder" };
   }
 
-  // 2. No URL session yet but `mostRecent` is known — the redirect
+  // 2. The user clicked "+" in the chat input bar — `handleNewChat`
+  //    dropped `?session=` from the URL with the explicit intent of
+  //    starting a fresh chat. Mount the standalone panel directly so
+  //    the chat lane shows an empty canvas with send enabled; once
+  //    the next send fires, `handleSessionReady` writes the new
+  //    session id back into the URL and the resolver flips to
+  //    `kind: "project"` for `ProjectAgentChatPanel` to take over.
+  //    Without this branch the resolver would fall into (3) below and
+  //    return `placeholder` indefinitely (the redirect hook can't
+  //    re-fire because its `didDefaultRef` is already stamped from the
+  //    prior session render), leaving the chat lane stuck on a blank
+  //    `lanePlaceholder` div.
+  if (userClearedSession) {
+    return { kind: "standalone" };
+  }
+
+  // 3. No URL session yet but `mostRecent` is known — the redirect
   //    hook is about to push the URL. Hold the placeholder until both
   //    the URL settles AND the events for the imminent session are
   //    in cache.
@@ -713,18 +748,18 @@ function useAgentsShellTarget(opts: {
     return { kind: "placeholder" };
   }
 
-  // 3. No bindings (and never will until the agent is added to a
+  // 4. No bindings (and never will until the agent is added to a
   //    project) → fresh-canvas standalone view.
   if (!agentId) return { kind: "standalone" };
   if (!bindingsKey) return { kind: "standalone" };
 
-  // 4. Bindings exist but the sessions surface hasn't reported back
+  // 5. Bindings exist but the sessions surface hasn't reported back
   //    yet — `loadAgentSessions` is in flight. A redirect *may*
   //    follow once the response lands, so defer to avoid a flash of
   //    the standalone panel.
   if (!sessionsKnown) return { kind: "placeholder" };
 
-  // 5. Sessions loaded empty → no redirect possible, mount the
+  // 6. Sessions loaded empty → no redirect possible, mount the
   //    standalone panel for the fresh-canvas first chat.
   return { kind: "standalone" };
 }
