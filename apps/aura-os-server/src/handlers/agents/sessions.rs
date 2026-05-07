@@ -303,12 +303,21 @@ pub(crate) async fn generate_session_summary(
     let req_body = json!({
         "model": HAIKU_MODEL,
         "max_tokens": SUMMARY_MAX_TOKENS,
+        // Content-agnostic framing: the previous prompt called this an
+        // "agent coding session" and asked what "tasks were worked on /
+        // accomplished," which made Haiku refuse with meta prose like
+        // "I don't have any agent coding session to summarize" whenever
+        // the transcript was a casual or one-off chat (e.g. `User: cat
+        // / Assistant: Meow?`). That refusal then got persisted as the
+        // session title because the only guard below is `!is_empty()`,
+        // and `useSessionSummaries` never re-runs on a non-empty value.
+        //
         // Plain text, no markdown — the sidekick renders this as a
         // single-line label and any leading `#`/`**`/`-` decoration
         // leaks through as literal characters in the chats list (the
         // render-time strip in `session-row-utils.ts` is a backstop
         // for older summaries that already carry these prefixes).
-        "system": "Generate a 2-3 line summary of this agent coding session. Focus on what tasks were worked on and what was accomplished. Be concise and direct, no preamble. Plain text only — do not use markdown headings, bold, lists, or any other formatting.",
+        "system": "Generate a 2-3 line summary of this conversation. Describe what the user asked about and how the assistant responded. Work for any topic — coding, questions, casual chat, anything. Be concise and direct, no preamble. Plain text only — do not use markdown headings, bold, lists, or any other formatting.",
         "messages": [{"role": "user", "content": transcript}],
     });
 
