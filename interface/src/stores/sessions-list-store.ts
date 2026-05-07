@@ -400,40 +400,38 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   },
 
   setSessionSummary: (sessionId, summary) => {
+    // Patch the matching real-id row in every surface that holds it.
+    // Also patch any pending optimistic placeholder rows in those
+    // same surfaces — `replaceSessionId` (driven by SSE `SessionReady`)
+    // rewrites the row's `session_id` in place but preserves every
+    // other field, so seeding the title on the optimistic row makes
+    // it survive the swap and removes the need for a refetch
+    // fallback (which would race the swap and cause a duplicate row
+    // to render: one with the real id + new title from the refetch
+    // and one optimistic placeholder still showing "New chat").
     const sessionsBySurface = get().sessionsBySurface;
     let mutated = false;
-    let foundRow = false;
     const nextBySurface: Record<string, AnnotatedSession[]> = {};
     for (const [key, list] of Object.entries(sessionsBySurface)) {
-      const idx = list.findIndex((s) => s.session_id === sessionId);
-      if (idx === -1) {
-        nextBySurface[key] = list;
-        continue;
+      let nextList: AnnotatedSession[] | null = null;
+      for (let i = 0; i < list.length; i += 1) {
+        const row = list[i];
+        const isMatch =
+          row.session_id === sessionId || isOptimisticSessionId(row.session_id);
+        if (!isMatch) continue;
+        if (row.summary_of_previous_context === summary) continue;
+        if (!nextList) nextList = list.slice();
+        nextList[i] = { ...row, summary_of_previous_context: summary };
       }
-      foundRow = true;
-      if (list[idx].summary_of_previous_context === summary) {
+      if (nextList) {
+        nextBySurface[key] = nextList;
+        mutated = true;
+      } else {
         nextBySurface[key] = list;
-        continue;
       }
-      const nextList = list.slice();
-      nextList[idx] = { ...list[idx], summary_of_previous_context: summary };
-      nextBySurface[key] = nextList;
-      mutated = true;
     }
-    if (mutated) {
-      set(() => ({ sessionsBySurface: nextBySurface }));
-      return;
-    }
-    if (!foundRow) {
-      // Row is not in any surface yet — the on-send title generator
-      // (apps/aura-os-server/src/handlers/agents/sessions.rs
-      // `generate_session_title`) raced the SessionReady-driven
-      // `loadAgentSessions` refetch and landed first. Bump the
-      // version so consumers re-fetch and pick up the row with the
-      // freshly-persisted summary already attached. Without this,
-      // the user would have to refresh the app to see the title.
-      set((state) => ({ version: state.version + 1 }));
-    }
+    if (!mutated) return;
+    set(() => ({ sessionsBySurface: nextBySurface }));
   },
 
   setDeleteError: (surfaceKey, message) => {
