@@ -24,6 +24,7 @@ import {
   OPTIMISTIC_SESSION_ID_PREFIX,
   projectSessionsSurfaceKey,
   useAgentBindingsKey,
+  useAgentBindingsLoadStatus,
   useMostRecentSession,
   useSessionsListStore,
 } from "../../../../stores/sessions-list-store";
@@ -744,6 +745,7 @@ function useAgentsShellTarget(opts: {
   const standaloneSurfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
   const mostRecent = useMostRecentSession(standaloneSurfaceKey);
   const bindingsKey = useAgentBindingsKey(agentId);
+  const bindingsLoadStatus = useAgentBindingsLoadStatus(agentId);
 
   const sessionsKnown = useSessionsListStore((state) => {
     if (!standaloneSurfaceKey) return false;
@@ -845,18 +847,34 @@ function useAgentsShellTarget(opts: {
     return { kind: "project", ...fallbackTarget };
   }
 
-  // 4. No bindings (and never will until the agent is added to a
-  //    project) → fresh-canvas standalone view.
   if (!agentId) return { kind: "standalone" };
+
+  // 4. Bindings haven't been fetched (or are still in flight). The
+  //    server-authoritative `listProjectBindings` call inside
+  //    `loadAgentSessions` may still surface a Home / cross-org binding
+  //    that the active-org sidebar doesn't expose, so we *cannot*
+  //    short-circuit to the standalone view yet — it would flash the
+  //    fresh-canvas panel for an agent that actually has prior chats.
+  if (
+    bindingsLoadStatus === "idle" ||
+    bindingsLoadStatus === "loading"
+  ) {
+    return { kind: "pending" };
+  }
+
+  // 5. Server confirmed the agent has zero bindings (lazy-repair
+  //    failure or template orphan). Fall through to the fresh-canvas
+  //    standalone view; sending a message will trigger another
+  //    repair attempt server-side.
   if (!bindingsKey) return { kind: "standalone" };
 
-  // 5. Bindings exist but the sessions surface hasn't reported back
+  // 6. Bindings exist but the sessions surface hasn't reported back
   //    yet — `loadAgentSessions` is in flight. A redirect *may*
   //    follow once the response lands, so defer to avoid a flash of
   //    the standalone panel.
   if (!sessionsKnown) return { kind: "pending" };
 
-  // 6. Sessions loaded empty → no redirect possible, mount the
+  // 7. Sessions loaded empty → no redirect possible, mount the
   //    standalone panel for the fresh-canvas first chat.
   return { kind: "standalone" };
 }

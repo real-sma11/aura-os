@@ -3,7 +3,23 @@ import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
 import type { AnnotatedSession } from "../components/SessionsList";
 import type { Session } from "../shared/types";
-import { useProjectsListStore } from "./projects-list-store";
+
+/**
+ * Server-authoritative project_agent binding for an agent template,
+ * matches the shape returned by `GET /api/agents/:agent_id/projects`
+ * (see [`list_agent_project_bindings`](apps/aura-os-server/src/handlers/agents/crud/delete.rs)).
+ */
+export interface AgentProjectBinding {
+  project_agent_id: string;
+  project_id: string;
+  project_name: string;
+}
+
+/** Per-agent fetch state for `bindingsByAgent`. Used by consumers that
+ *  need to distinguish "still loading" from "loaded empty" — e.g. the
+ *  agents shell wants to render `pending` rather than the standalone
+ *  fresh-canvas view while the binding fetch is in flight. */
+export type BindingsLoadStatus = "idle" | "loading" | "loaded" | "error";
 
 /** Synthetic session-id prefix for optimistic rows inserted on send. */
 export const OPTIMISTIC_SESSION_ID_PREFIX = "optimistic:";
@@ -90,6 +106,21 @@ interface SessionsListStore {
   sessionsBySurface: Record<string, AnnotatedSession[]>;
   /** Active in-flight load per surface (for empty-state UX). */
   loadingBySurface: Record<string, boolean>;
+  /**
+   * Server-authoritative project_agent bindings keyed by template
+   * `agent_id`. Populated by `loadAgentSessions` from
+   * `api.agents.listProjectBindings`, which walks every project the
+   * caller's JWT can see — including the auto-created Home project
+   * that may not be present in the active-org-scoped
+   * `useProjectsListStore.projects` snapshot. This is the source the
+   * agents-app sidekick uses to find which `(project, project_agent)`
+   * pairs to fan out `listSessions` over, so an agent whose only
+   * binding is in a project not visible in the active sidebar still
+   * shows its session history.
+   */
+  bindingsByAgent: Record<string, AgentProjectBinding[]>;
+  /** Per-agent load status for `bindingsByAgent`. */
+  bindingsLoadStatusByAgent: Record<string, BindingsLoadStatus>;
   /**
    * Most-recent failed-delete message per surface, surfaced inline by
    * `SessionsList` as a small dismissible banner. `null` (or missing
@@ -182,6 +213,8 @@ const surfaceRequestIds: Record<string, number> = {};
 export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   sessionsBySurface: {},
   loadingBySurface: {},
+  bindingsByAgent: {},
+  bindingsLoadStatusByAgent: {},
   deleteErrorBySurface: {},
   version: 0,
 
@@ -194,45 +227,59 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
 
     set((state) => ({
       loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: true },
+      bindingsLoadStatusByAgent: {
+        ...state.bindingsLoadStatusByAgent,
+        [agentId]: "loading",
+      },
     }));
 
-    // Bindings are derived from a snapshot of `useProjectsListStore`
-    // rather than via a live selector — that's deliberate. A subscribed
-    // selector that materializes `{ projectId, agentInstanceId }` pairs
-    // hands `useShallow` fresh object references on every call, which
-    // re-triggers the consumer in an infinite loop and is exactly the
-    // bug this store replaces.
-    const projectsState = useProjectsListStore.getState();
-    const bindings: {
-      projectId: string;
-      agentInstanceId: string;
-      projectName: string;
-    }[] = [];
-    for (const project of projectsState.projects) {
-      const instances = projectsState.agentsByProject[project.project_id];
-      if (!instances) continue;
-      for (const instance of instances) {
-        if (instance.agent_id === agentId) {
-          bindings.push({
-            projectId: project.project_id,
-            agentInstanceId: instance.agent_instance_id,
-            projectName: project.name,
-          });
-        }
-      }
+    // Authoritative binding discovery comes from the server, NOT from
+    // the active-org-scoped `useProjectsListStore`. The previous
+    // implementation walked `projects × agentsByProject`, which only
+    // exposes bindings whose project is currently in the active org's
+    // projects list. The server-side chat / persistence pipeline
+    // (`find_matching_project_agents`, `list_agent_project_bindings`)
+    // walks every project the JWT can see — including the auto-created
+    // Home project a remote agent gets bound to on creation. The mismatch
+    // meant chats persisted fine but the sidekick "Chats" tab silently
+    // listed zero bindings and rendered "No sessions yet" while sessions
+    // existed in storage.
+    let bindings: AgentProjectBinding[];
+    try {
+      bindings = await api.agents.listProjectBindings(agentId);
+    } catch (err) {
+      if (surfaceRequestIds[surfaceKey] !== requestId) return;
+      console.error("Failed to load agent project bindings", err);
+      set((state) => ({
+        loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: false },
+        bindingsLoadStatusByAgent: {
+          ...state.bindingsLoadStatusByAgent,
+          [agentId]: "error",
+        },
+      }));
+      return;
     }
+    if (surfaceRequestIds[surfaceKey] !== requestId) return;
+
+    set((state) => ({
+      bindingsByAgent: { ...state.bindingsByAgent, [agentId]: bindings },
+      bindingsLoadStatusByAgent: {
+        ...state.bindingsLoadStatusByAgent,
+        [agentId]: "loaded",
+      },
+    }));
 
     try {
       const results = await Promise.all(
         bindings.map((b) =>
           api
-            .listSessions(b.projectId, b.agentInstanceId)
+            .listSessions(b.project_id, b.project_agent_id)
             .then((list) =>
               list.map<AnnotatedSession>((s) => ({
                 ...s,
-                _projectName: b.projectName,
-                _projectId: b.projectId,
-                _agentInstanceId: b.agentInstanceId,
+                _projectName: b.project_name,
+                _projectId: b.project_id,
+                _agentInstanceId: b.project_agent_id,
               })),
             )
             .catch(() => [] as AnnotatedSession[]),
@@ -443,27 +490,43 @@ export function useMostRecentSession(
 }
 
 /**
- * Stable string fingerprint of an agent's `(projectId, instanceId)`
- * bindings. Returns "" when the agent has none yet. Use this as a hook
- * dependency to drive a `loadAgentSessions` call when bindings appear
- * (e.g. once the background `agentsByProject` prefetch lands) without
- * the infinite-render-loop trap that an object-array selector hits.
+ * Stable string fingerprint of an agent's `(projectId, projectAgentId)`
+ * bindings. Returns "" when no bindings have been fetched yet OR when
+ * the server reports the agent has none. Use [`useAgentBindingsLoadStatus`]
+ * if you need to discriminate "not yet fetched" from "fetched empty".
+ *
+ * Reads from `bindingsByAgent`, populated by `loadAgentSessions` from
+ * the server endpoint `GET /api/agents/:agent_id/projects`. This is
+ * deliberately NOT derived from `useProjectsListStore` — that store is
+ * scoped to the active org and misses bindings (like the auto-Home
+ * project) that the agent actually has on the server.
  */
 export function useAgentBindingsKey(agentId: string | undefined): string {
-  return useProjectsListStore((s) => {
+  return useSessionsListStore((s) => {
     if (!agentId) return "";
-    const parts: string[] = [];
-    for (const project of s.projects) {
-      const instances = s.agentsByProject[project.project_id];
-      if (!instances) continue;
-      for (const instance of instances) {
-        if (instance.agent_id === agentId) {
-          parts.push(`${project.project_id}:${instance.agent_instance_id}`);
-        }
-      }
-    }
+    const bindings = s.bindingsByAgent[agentId];
+    if (!bindings || bindings.length === 0) return "";
+    const parts = bindings.map(
+      (b) => `${b.project_id}:${b.project_agent_id}`,
+    );
     parts.sort();
     return parts.join(",");
+  });
+}
+
+/**
+ * Per-agent load status for [`bindingsByAgent`]. Lets callers like
+ * `AgentChatView`'s shell-target picker render a `pending` state while
+ * the binding fetch is in flight instead of falling back to the
+ * fresh-canvas standalone view (which would otherwise flash on cold
+ * load before bindings arrive).
+ */
+export function useAgentBindingsLoadStatus(
+  agentId: string | undefined,
+): BindingsLoadStatus {
+  return useSessionsListStore((s) => {
+    if (!agentId) return "idle";
+    return s.bindingsLoadStatusByAgent[agentId] ?? "idle";
   });
 }
 

@@ -37,6 +37,15 @@ const mocks = vi.hoisted(() => ({
   sessionsState: {
     sessionsBySurface: {} as Record<string, FakeAnnotatedSession[]>,
   },
+  // Per-agent bindings load status. Tests that exercise the
+  // "loadAgentSessions in flight" defer-render branch override an
+  // entry to `"loading"` so the shell falls into the pending state.
+  // Default falls back to `"loaded"` inside the mocked hook so most
+  // tests behave like before this fix.
+  bindingsLoadStatusByAgent: {} as Record<
+    string,
+    "idle" | "loading" | "loaded" | "error"
+  >,
   historyEntries: {} as Record<string, FakeHistoryEntry>,
   fetchHistory: vi.fn(),
   clearHistory: vi.fn(),
@@ -272,6 +281,15 @@ vi.mock("../../../../stores/sessions-list-store", () => {
       }
       parts.sort();
       return parts.join(",");
+    },
+    // The real hook reads from the sessions-list-store's
+    // `bindingsLoadStatusByAgent`. Unit tests for the shell-target
+    // picker don't exercise the in-flight "pending" state, so we mirror
+    // the legacy behavior: anything with bindings looks "loaded";
+    // anything without is "loaded" too (= no pending flicker).
+    useAgentBindingsLoadStatus: (agentId: string | undefined) => {
+      if (!agentId) return "idle";
+      return mocks.bindingsLoadStatusByAgent?.[agentId] ?? "loaded";
     },
     useMostRecentSession: (surfaceKey: string | undefined) => {
       if (!surfaceKey) return null;

@@ -9,7 +9,6 @@ import {
 } from "../../../components/SessionsList";
 import {
   agentSessionsSurfaceKey,
-  useAgentBindingsKey,
   useSessionsDeleteError,
   useSessionsForSurface,
   useSessionsListActions,
@@ -31,7 +30,6 @@ export function ChatsTab() {
   const agentId = selectedAgent?.agent_id;
   const surfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
   const sessions = useSessionsForSurface(surfaceKey);
-  const bindingsKey = useAgentBindingsKey(agentId);
   const sessionsVersion = useSessionsListStore((s) => s.version);
   const isLoading = useSessionsListStore((s) =>
     surfaceKey ? (s.loadingBySurface[surfaceKey] ?? false) : false,
@@ -43,15 +41,18 @@ export function ChatsTab() {
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
 
-  // Re-fan-out when the agent's bindings change shape (background
-  // `agentsByProject` prefetch lands) or a write bumps the version
-  // (chat-input "+" / RotateCcw / `SessionReady`). The store itself
-  // handles the request-id race protection.
+  // Always trigger a fan-out on agent change or version bump. The
+  // loader is now self-sufficient: it fetches the authoritative
+  // binding list from the server before issuing per-binding session
+  // requests, so we no longer gate on a client-derived `bindingsKey`
+  // that could never be populated for agents whose only binding lives
+  // outside the active-org `useProjectsListStore` snapshot (e.g. the
+  // auto-Home project a remote agent gets bound to). Per-surface
+  // request-id protection inside the store handles racing fans.
   useEffect(() => {
     if (!agentId) return;
-    if (!bindingsKey) return;
     void loadAgentSessions(agentId);
-  }, [agentId, bindingsKey, sessionsVersion, loadAgentSessions]);
+  }, [agentId, sessionsVersion, loadAgentSessions]);
 
   const handleSessionClick = useCallback(
     (target: AnnotatedSession) => {

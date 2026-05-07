@@ -9,11 +9,16 @@ import { useProjectsListStore } from "../../stores/projects-list-store";
 
 const listProjectSessions = vi.fn();
 const listSessions = vi.fn();
+const listProjectBindings = vi.fn();
 
 vi.mock("../../api/client", () => ({
   api: {
     listProjectSessions: (...args: unknown[]) => listProjectSessions(...args),
     listSessions: (...args: unknown[]) => listSessions(...args),
+    agents: {
+      listProjectBindings: (...args: unknown[]) =>
+        listProjectBindings(...args),
+    },
   },
 }));
 
@@ -43,6 +48,8 @@ function resetStores() {
   useSessionsListStore.setState({
     sessionsBySurface: {},
     loadingBySurface: {},
+    bindingsByAgent: {},
+    bindingsLoadStatusByAgent: {},
     version: 0,
   });
   useProjectsListStore.setState({
@@ -55,20 +62,18 @@ describe("useDefaultStandaloneSessionRedirect", () => {
   beforeEach(() => {
     listProjectSessions.mockReset();
     listSessions.mockReset();
+    listProjectBindings.mockReset();
     resetStores();
   });
 
-  it("does not infinite-loop when projects state has bindings (regression)", () => {
+  it("does not infinite-loop when bindings load (regression)", () => {
     // The previous implementation handed `useShallow` fresh
     // `{ projectId, agentInstanceId }` objects on every selector call,
     // which broke shallow equality and triggered "Maximum update depth
     // exceeded". Mounting the hook below would have crashed.
-    useProjectsListStore.setState({
-      projects: [{ project_id: "p1", name: "P1" } as never],
-      agentsByProject: {
-        p1: [{ agent_instance_id: "i1", agent_id: "agent-x" } as never],
-      },
-    });
+    listProjectBindings.mockResolvedValue([
+      { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+    ]);
     listSessions.mockResolvedValue([]);
 
     const setSearchParams = vi.fn();
@@ -88,12 +93,9 @@ describe("useDefaultStandaloneSessionRedirect", () => {
   });
 
   it("redirects to the most recent session once it loads", async () => {
-    useProjectsListStore.setState({
-      projects: [{ project_id: "p1", name: "P1" } as never],
-      agentsByProject: {
-        p1: [{ agent_instance_id: "i1", agent_id: "agent-x" } as never],
-      },
-    });
+    listProjectBindings.mockResolvedValue([
+      { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+    ]);
     listSessions.mockResolvedValue([
       makeSession("older", "2026-04-16T00:00:00Z", "i1", "p1"),
       makeSession("newest", "2026-04-16T05:00:00Z", "i1", "p1"),
@@ -123,12 +125,9 @@ describe("useDefaultStandaloneSessionRedirect", () => {
   });
 
   it("only fires once even if the most recent session changes after the redirect", async () => {
-    useProjectsListStore.setState({
-      projects: [{ project_id: "p1", name: "P1" } as never],
-      agentsByProject: {
-        p1: [{ agent_instance_id: "i1", agent_id: "agent-x" } as never],
-      },
-    });
+    listProjectBindings.mockResolvedValue([
+      { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+    ]);
     listSessions.mockResolvedValueOnce([
       makeSession("first", "2026-04-16T00:00:00Z", "i1", "p1"),
     ]);
@@ -159,12 +158,9 @@ describe("useDefaultStandaloneSessionRedirect", () => {
   });
 
   it("skips when disabled", () => {
-    useProjectsListStore.setState({
-      projects: [{ project_id: "p1", name: "P1" } as never],
-      agentsByProject: {
-        p1: [{ agent_instance_id: "i1", agent_id: "agent-x" } as never],
-      },
-    });
+    listProjectBindings.mockResolvedValue([
+      { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+    ]);
     listSessions.mockResolvedValue([
       makeSession("s1", "2026-04-16T00:00:00Z", "i1", "p1"),
     ]);
@@ -181,6 +177,7 @@ describe("useDefaultStandaloneSessionRedirect", () => {
     );
 
     expect(setSearchParams).not.toHaveBeenCalled();
+    expect(listProjectBindings).not.toHaveBeenCalled();
     expect(listSessions).not.toHaveBeenCalled();
   });
 });

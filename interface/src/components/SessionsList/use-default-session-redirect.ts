@@ -3,7 +3,6 @@ import type { SetURLSearchParams } from "react-router-dom";
 import {
   agentSessionsSurfaceKey,
   projectSessionsSurfaceKey,
-  useAgentBindingsKey,
   useMostRecentSession,
   useSessionsForSurface,
   useSessionsListActions,
@@ -96,11 +95,12 @@ interface StandaloneRedirectOptions {
  * `/agents/:agentId` with no `?session=`, redirect to the most recent
  * session across the agent's project bindings.
  *
- * Subscribes to a stable string fingerprint of the agent's bindings
- * (see `useAgentBindingsKey`) so the redirect re-runs once the
- * background `agentsByProject` prefetch lands — without the
- * fresh-object-array selector pattern that previously triggered an
- * infinite render loop.
+ * The redirect waits on `useSessionsListStore`'s shared per-surface
+ * fan-out, which now sources bindings from the server-authoritative
+ * `GET /api/agents/:agent_id/projects` endpoint instead of an
+ * active-org-scoped client snapshot. That keeps the redirect honest
+ * for agents whose only binding is a Home / cross-org project the
+ * current sidebar doesn't surface.
  */
 export function useDefaultStandaloneSessionRedirect({
   agentId,
@@ -110,25 +110,26 @@ export function useDefaultStandaloneSessionRedirect({
 }: StandaloneRedirectOptions): void {
   const surfaceKey = agentId ? agentSessionsSurfaceKey(agentId) : undefined;
   const mostRecent = useMostRecentSession(surfaceKey);
-  const bindingsKey = useAgentBindingsKey(agentId);
   const sessionsVersion = useSessionsListStore((s) => s.version);
   const { loadAgentSessions } = useSessionsListActions();
   const didDefaultRef = useRef<string | null>(null);
 
-  // Trigger a load whenever the agent's bindings change shape (e.g. the
-  // background prefetch fills in `agentsByProject`) or a write bumps
-  // the version. The store's per-surface request-id pattern serializes
-  // out-of-order responses.
+  // Trigger a load on agent change or any version bump. The loader is
+  // self-sufficient — it fetches `listProjectBindings` from the server
+  // before fanning out per-binding `listSessions` — so we don't gate
+  // on a client-derived bindings fingerprint. (That fingerprint used
+  // to come from the active-org `useProjectsListStore`, which silently
+  // hides Home / cross-org bindings and was the cause of the empty
+  // session-history bug for legacy remote agents.) The store's
+  // per-surface request id serializes out-of-order responses.
   useEffect(() => {
     if (disabled || !agentId) return;
     if (sessionId) return;
-    if (!bindingsKey) return;
     void loadAgentSessions(agentId);
   }, [
     disabled,
     agentId,
     sessionId,
-    bindingsKey,
     sessionsVersion,
     loadAgentSessions,
   ]);
