@@ -28,6 +28,10 @@ export function buildDisplayEvents(msgs: SessionEvent[]): DisplaySessionEvent[] 
       const thinking = m.thinking || undefined;
       return {
         id: m.event_id,
+        // For hydrated history rows the persisted `event_id` IS the
+        // stable React identity; matches the no-placeholder branch in
+        // `handleEventSaved`.
+        clientId: m.event_id,
         role: m.role,
         content: m.content,
         contentBlocks: displayBlocks.length > 0 ? displayBlocks : undefined,

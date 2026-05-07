@@ -32,6 +32,20 @@ export type TimelineItem =
 
 export interface DisplaySessionEvent {
   id: string;
+  /**
+   * Stable React identity for the bubble across the entire lifecycle:
+   *   - First assigned when the message is first created (optimistic
+   *     user, stream placeholder, or hydrated history row).
+   *   - Preserved across `id` mutations such as the
+   *     `stream-...` -> persisted `event_id` swap that
+   *     `handleEventSaved` performs at end-of-turn.
+   *
+   * `ChatMessageList` keys on `clientId ?? id` so React reconciliation
+   * does NOT unmount/remount the bubble when the persisted id arrives.
+   * Replaces the old `applyTailIdAliases` walk that compensated for
+   * the same race after the fact.
+   */
+  clientId?: string;
   role: "user" | "assistant" | "system";
   content: string;
   displayVariant?:

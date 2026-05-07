@@ -58,8 +58,12 @@ export function buildUserChatMessage(
   attachments: ChatAttachment[] | undefined,
   fallbackContent?: string,
 ): DisplaySessionEvent {
+  const id = `temp-${Date.now()}`;
   return {
-    id: `temp-${Date.now()}`,
+    id,
+    // Stable React identity across the temp- -> persisted-id swap so
+    // `ChatMessageList` reconciles in place without remounting.
+    clientId: id,
     role: "user",
     content: trimmed || fallbackContent || buildAttachmentLabel(attachments),
     contentBlocks: buildContentBlocks(trimmed, attachments),

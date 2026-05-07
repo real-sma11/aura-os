@@ -3,8 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { ChatMessageList } from "./ChatMessageList";
 import type { DisplaySessionEvent } from "../../../../shared/types/stream";
 
-function makeMessage(id: string, content: string, role: DisplaySessionEvent["role"] = "assistant"): DisplaySessionEvent {
-  return { id, role, content } as DisplaySessionEvent;
+function makeMessage(
+  id: string,
+  content: string,
+  role: DisplaySessionEvent["role"] = "assistant",
+  clientId?: string,
+): DisplaySessionEvent {
+  return { id, clientId: clientId ?? id, role, content } as DisplaySessionEvent;
 }
 
 const mockMessageBubble = vi.fn();
@@ -380,7 +385,10 @@ describe("ChatMessageList", () => {
       <ChatMessageList
         messages={[
           makeMessage("temp-user", "testing", "user"),
-          makeMessage("stream-assistant", "Final answer"),
+          // The stream lifecycle handler stamps a stable `clientId` on
+          // the assistant placeholder; `mergeSavedAssistantMessage`
+          // preserves it when `id` swaps to the persisted `event_id`.
+          makeMessage("stream-assistant", "Final answer", "assistant", "stream-assistant"),
         ]}
         streamKey="stream-1"
         scrollRef={scrollRef}
@@ -394,8 +402,10 @@ describe("ChatMessageList", () => {
     rerender(
       <ChatMessageList
         messages={[
-          makeMessage("message-user", "testing", "user"),
-          makeMessage("message-assistant", "Final answer"),
+          makeMessage("message-user", "testing", "user", "temp-user"),
+          // Same `clientId` as the placeholder above: React keeps the
+          // bubble's identity across the persisted-id swap.
+          makeMessage("message-assistant", "Final answer", "assistant", "stream-assistant"),
         ]}
         streamKey="stream-1"
         scrollRef={scrollRef}
@@ -453,19 +463,18 @@ describe("ChatMessageList", () => {
   // user-side trigger is `core.setEvents((p) => [...p, userMsg])`
   // appending a temp-user bubble in the same render the prior
   // assistant's id is still flipping from `stream-...` to its
-  // persisted event id. The naive tail-aligned walk in
-  // `applyTailIdAliases` would compare `prev[asst-stream]` against
-  // `curr[temp-user-new]`, mismatch on role, and break before
-  // aliasing the assistant — so the assistant's React key changed
-  // and React unmounted/remounted its bubble for a frame.
-  it("aliases the prior assistant when its id swaps at the same tick a new user message is appended", () => {
+  // persisted event id. With the stable `clientId` strategy
+  // (`mergeSavedAssistantMessage` preserves the placeholder's
+  // `clientId` across the persisted-id swap), React keeps the prior
+  // assistant's bubble identity even when its `msg.id` changes.
+  it("keeps the prior assistant bubble identity when its id swaps at the same tick a new user message is appended", () => {
     const scrollRef = makeScrollRef();
 
     const { rerender } = render(
       <ChatMessageList
         messages={[
           makeMessage("user-old", "earlier prompt", "user"),
-          makeMessage("stream-assistant-old", "earlier answer"),
+          makeMessage("stream-assistant-old", "earlier answer", "assistant", "stream-assistant-old"),
         ]}
         streamKey="stream-1"
         scrollRef={scrollRef}
@@ -480,10 +489,14 @@ describe("ChatMessageList", () => {
       <ChatMessageList
         messages={[
           makeMessage("user-old", "earlier prompt", "user"),
-          // Same role + content as before but a different id — this
-          // is the placeholder->persisted swap that lands when
-          // `MessageEnd` fires.
-          makeMessage("persisted-assistant-old", "earlier answer"),
+          // Same `clientId` as before — `mergeSavedAssistantMessage`
+          // preserves it across the placeholder -> persisted-id swap.
+          makeMessage(
+            "persisted-assistant-old",
+            "earlier answer",
+            "assistant",
+            "stream-assistant-old",
+          ),
           // ...landing in the same render as the user pressing Send.
           makeMessage("temp-user-new", "follow-up prompt", "user"),
         ]}
@@ -492,9 +505,6 @@ describe("ChatMessageList", () => {
       />,
     );
 
-    // The prior assistant must keep its React node identity even
-    // though its `msg.id` changed: the alias map should map
-    // `persisted-assistant-old` -> `stream-assistant-old`.
     const afterAppendWrapper =
       screen.getByTestId("bubble-persisted-assistant-old").parentElement;
     expect(afterAppendWrapper).toBe(priorAssistantWrapper);

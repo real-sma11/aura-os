@@ -161,6 +161,12 @@ function mergeSavedAssistantMessage(
 ): DisplaySessionEvent {
   return {
     ...savedMessage,
+    // Preserve the placeholder's stable React key across the
+    // `stream-...` -> persisted `event_id` swap. `id` flips to the
+    // server-assigned identifier (used for dedup against the persisted
+    // history list); `clientId` keeps the same React identity so the
+    // bubble does not unmount on save.
+    clientId: placeholder.clientId ?? placeholder.id,
     content: chooseFinalAssistantContent(savedMessage, placeholder),
     toolCalls: savedMessage.toolCalls ?? placeholder.toolCalls,
     thinkingText: savedMessage.thinkingText ?? placeholder.thinkingText,
@@ -195,6 +201,11 @@ export function handleEventSaved(
     ?? (refs.thinkingStart.current != null ? Date.now() - refs.thinkingStart.current : null);
   const savedMessage: DisplaySessionEvent = {
     id: msg.event_id,
+    // Default `clientId = id` for the no-placeholder branch. The
+    // placeholder branch overrides this in `mergeSavedAssistantMessage`
+    // to preserve the bubble's React identity across the
+    // `stream-...` -> persisted `event_id` swap.
+    clientId: msg.event_id,
     role: "assistant",
     content: msg.content,
     contentBlocks: displayBlocks.length > 0 ? displayBlocks : undefined,
@@ -245,10 +256,14 @@ export function handleAssistantTurnBoundary(
       refs.snapshottedToolCallIds.current.add(tc.id);
     }
 
+    const placeholderId = `stream-${Date.now()}`;
     setters.setEvents((prev) => [
       ...prev,
       {
-        id: `stream-${Date.now()}`,
+        id: placeholderId,
+        // Stable React identity; preserved by `mergeSavedAssistantMessage`
+        // when `MessageEnd` swaps `id` to the persisted `event_id`.
+        clientId: placeholderId,
         role: "assistant",
         content: bufferedContent,
         toolCalls: newToolCalls.length > 0 ? [...newToolCalls] : undefined,
@@ -322,10 +337,12 @@ export function handleStreamError(
   const prefix = refs.streamBuffer.current
     ? refs.streamBuffer.current + "\n\n"
     : "";
+  const errorId = `error-${Date.now()}`;
   setters.setEvents((prev) => [
     ...prev,
     {
-      id: `error-${Date.now()}`,
+      id: errorId,
+      clientId: errorId,
       role: "assistant",
       content: displayVariant
         ? prefix + displayMessage
@@ -382,10 +399,12 @@ export function finalizeStream(
     for (const tc of unsnapshottedToolCalls) {
       refs.snapshottedToolCallIds.current.add(tc.id);
     }
+    const finalizeId = `stream-${Date.now()}`;
     setters.setEvents((prev) => [
       ...prev,
       {
-        id: `stream-${Date.now()}`,
+        id: finalizeId,
+        clientId: finalizeId,
         role: "assistant",
         content: bufferedContent,
         toolCalls: hasUnsnapshottedTools ? [...unsnapshottedToolCalls] : undefined,

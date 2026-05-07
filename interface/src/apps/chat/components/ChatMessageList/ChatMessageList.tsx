@@ -44,82 +44,6 @@ const EMPTY_TIMELINE: NonNullable<
 >["timeline"] = [];
 
 /**
- * React-key strategy for chat bubbles.
- *
- * The naive `key={msg.id}` strategy unmounts the trailing assistant
- * bubble across the stream-placeholder -> persisted-id swap at end of
- * turn (id changes, key changes, full remount). Conversely, the older
- * "assistant-tail" position-based key kept that swap stable but caused
- * a fresh remount of the *previous* turn's assistant whenever the user
- * sent a new message: the prior assistant slid out of `visibleCount-1`,
- * its key flipped from "assistant-tail" -> `msg.id`, the bubble
- * unmounted/remounted, `useHighlightedHtml`/markdown/images all
- * re-initialised, and the user saw the bubble disappear for hundreds
- * of ms until the new mount finished its async work.
- *
- * `applyTailIdAliases` walks the previous and current visible-message
- * arrays from the tail backward, and for each pair with the same role
- * and content but a different id (the placeholder -> persisted swap)
- * adds an alias from the new id to whatever stable key was used last
- * render. The render then keys each bubble by
- * `aliasMap.get(msg.id) ?? msg.id`, which keeps the placeholder id as
- * the React identity for that slot across the swap while leaving every
- * other bubble keyed by its stable id - so a new user message at the
- * end never disturbs the prior assistant's reconciliation slot.
- *
- * When `curr` is longer than `prev` — the canonical "user just hit
- * Send" transition — naive tail-alignment compares `prev`'s last entry
- * against the freshly appended `temp-` user prompt at `curr.length-1`,
- * mismatches on role, and `break`s before it can alias an id that
- * legitimately changed in the prior tail position (e.g. the prior
- * assistant's `stream-...` placeholder being swapped to its persisted
- * event id at the same render `core.setEvents` appends `userMsg`).
- * The unaliased key change forces a remount of the prior assistant
- * bubble, manifesting as "previous answer overwrites for a frame on
- * send, then reappears at end of turn."
- *
- * The pre-walk skip below trims trailing `curr` entries whose id is
- * neither present in `prev` nor already aliased — i.e. structurally
- * brand-new appends that don't correspond to anything in `prev` —
- * before the tail-aligned walk starts. That re-aligns `prev`'s last
- * entry with the last `curr` entry that genuinely maps back into
- * `prev`, so the placeholder->persisted alias survives across the
- * append.
- */
-function applyTailIdAliases(
-  aliasMap: Map<string, string>,
-  prev: readonly DisplaySessionEvent[],
-  curr: readonly DisplaySessionEvent[],
-): void {
-  let pi = prev.length - 1;
-  let ci = curr.length - 1;
-
-  if (ci > pi) {
-    const prevIds = new Set<string>();
-    for (const m of prev) prevIds.add(m.id);
-    while (ci > pi) {
-      const candidate = curr[ci];
-      if (prevIds.has(candidate.id) || aliasMap.has(candidate.id)) break;
-      ci -= 1;
-    }
-  }
-
-  for (; pi >= 0 && ci >= 0; pi -= 1, ci -= 1) {
-    const prevMsg = prev[pi];
-    const currMsg = curr[ci];
-    if (prevMsg.id === currMsg.id) continue;
-    if (prevMsg.role !== currMsg.role || prevMsg.content !== currMsg.content) {
-      // First non-aligned pair from the tail terminates the walk —
-      // anything earlier in the list is structurally a different turn
-      // and aliasing across it would conflate unrelated bubbles.
-      break;
-    }
-    const stableKey = aliasMap.get(prevMsg.id) ?? prevMsg.id;
-    aliasMap.set(currMsg.id, stableKey);
-  }
-}
-
-/**
  * Renders the full chat transcript in natural flex flow. Pin-to-bottom and
  * reading-position preservation when content above the viewport changes
  * size are handled by the browser via CSS `overflow-anchor: auto` on the
@@ -181,9 +105,6 @@ export function ChatMessageList({
       : messages;
   const prevStreamingRef = useRef(nowStreaming);
   const justFinalizedIdRef = useRef<string | null>(null);
-  const idAliasRef = useRef<Map<string, string>>(new Map());
-  const prevVisibleRef = useRef<DisplaySessionEvent[]>([]);
-  const prevStreamKeyRef = useRef(streamKey);
 
   // Detect streaming -> not-streaming transition during render so the
   // MessageBubble for the just-finalized message mounts with its thinking /
@@ -202,17 +123,6 @@ export function ChatMessageList({
       justFinalizedIdRef.current = lastMsg ? lastMsg.id : null;
     }
     prevStreamingRef.current = nowStreaming;
-    // Reset alias bookkeeping when the panel switches to a different
-    // chat. Aliases recorded for the previous stream's placeholder
-    // ids are meaningless for a new conversation, and would otherwise
-    // accumulate across the app's lifetime.
-    if (prevStreamKeyRef.current !== streamKey) {
-      idAliasRef.current = new Map();
-      prevVisibleRef.current = [];
-      prevStreamKeyRef.current = streamKey;
-    }
-    applyTailIdAliases(idAliasRef.current, prevVisibleRef.current, visibleMessages);
-    prevVisibleRef.current = visibleMessages;
   }
   /* eslint-enable react-hooks/refs */
 
@@ -302,10 +212,10 @@ export function ChatMessageList({
             flexShrink: 0,
           }}
         >
-          {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current and idAliasRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
+          {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
           {visibleMessages.map((msg) => (
             <div
-              key={idAliasRef.current.get(msg.id) ?? msg.id}
+              key={msg.clientId ?? msg.id}
               data-message-id={msg.id}
               style={{ display: "flex", width: "100%" }}
             >
