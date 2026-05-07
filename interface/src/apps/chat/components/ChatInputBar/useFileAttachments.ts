@@ -3,8 +3,6 @@ import type { AttachmentItem } from "./ChatInputBar";
 import { uploadFile } from "../../../../api/upload";
 
 const MAX_ATTACHMENTS = 5;
-const MAX_FILE_SIZE_MB = 5;
-const MAX_TOTAL_SIZE_MB = 10;
 const MAX_IMAGE_UPLOAD_BYTES = 1_100_000;
 const MAX_IMAGE_DIMENSION = 1536;
 const IMAGE_JPEG_QUALITY = 0.82;
@@ -147,14 +145,6 @@ function processTextFile(file: File): Promise<AttachmentItem | null> {
 }
 
 export function processFile(file: File): Promise<AttachmentItem | null> {
-  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-    console.warn("[attach] processFile rejected: size cap", {
-      name: file.name,
-      size: file.size,
-      cap: MAX_FILE_SIZE_MB * 1024 * 1024,
-    });
-    return Promise.resolve(null);
-  }
   if (IMAGE_TYPES.includes(file.type)) return processImageFile(file);
   if (isTextFile(file)) return processTextFile(file);
   console.warn("[attach] processFile rejected: unsupported type", {
@@ -225,8 +215,7 @@ export function useFileAttachments(
     for (const controller of uploadAbortRefs.current.values()) controller.abort();
   }, []);
 
-  const totalSizeMB = attachments.reduce((sum, a) => sum + a.file.size, 0) / (1024 * 1024);
-  const canAddMore = attachments.length < MAX_ATTACHMENTS && totalSizeMB < MAX_TOTAL_SIZE_MB;
+  const canAddMore = attachments.length < MAX_ATTACHMENTS;
 
   const addFiles = useCallback(async (files: FileList | null) => {
     console.log("[attach] addFiles entry", {
