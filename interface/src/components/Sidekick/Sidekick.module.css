@@ -189,9 +189,12 @@
   min-height: 30px;
 }
 
-/* Child item labels: lighter weight than parent labels to reinforce hierarchy */
+/* Child item labels: match Projects left-menu agent labels. */
 .sidekickBody [class*="childrenInner"] [class*="label"] {
+  font-size: 12px;
   font-weight: 300;
+  line-height: 1.25;
+  color: inherit;
 }
 
 .infoArea {
