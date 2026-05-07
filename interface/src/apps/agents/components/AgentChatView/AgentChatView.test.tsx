@@ -95,10 +95,13 @@ vi.mock("../../../../hooks/use-chat-stream", () => ({
 vi.mock("../../../../hooks/use-chat-history-sync", () => ({
   useChatHistorySync: (options: Record<string, unknown>) => {
     mocks.latestHistorySyncOptions = options;
+    const historyKey = options.historyKey;
+    const entry = typeof historyKey === "string" ? mocks.historyEntries[historyKey] : undefined;
+    const historyResolved = entry ? entry.status === "ready" || entry.status === "error" : true;
     return {
       historyMessages: [],
-      historyResolved: true,
-      isLoading: false,
+      historyResolved,
+      isLoading: entry ? entry.status === "loading" : false,
       historyError: null,
       wrapSend: (fn: (...args: unknown[]) => unknown) => fn,
     };
@@ -362,12 +365,13 @@ describe("AgentChatView", () => {
     );
   });
 
-  it("renders the lane placeholder while a default-session redirect is pending (cached sessions)", () => {
+  it("renders the project panel while a default-session redirect is pending (cached sessions)", () => {
     // Agent has bindings AND its sessions surface already holds a row, so the
     // redirect hook is going to write `?session=` into the URL on the very
     // next tick. Mounting `StandaloneAgentChatPanel` here would fire its
     // per-agent history fetch and produce a flicker when the URL settles
-    // and `ProjectAgentChatPanel` swaps in.
+    // and `ProjectAgentChatPanel` swaps in. The concrete project target is
+    // already known, so keep the project panel mounted while the URL catches up.
     mocks.projectsState = {
       projects: [{ project_id: "p1", name: "P1" }],
       agentsByProject: {
@@ -382,8 +386,15 @@ describe("AgentChatView", () => {
 
     render(<AgentChatView />);
 
-    expect(screen.queryByTestId("chat-panel")).toBeNull();
-    expect(mocks.latestChatPanelProps).toBeUndefined();
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        historyResolved: true,
+        scrollResetKey: "i1:s1",
+        streamKey: "project-stream",
+      }),
+    );
   });
 
   it("eagerly prefetches session events for the imminent redirect target", () => {
@@ -460,12 +471,12 @@ describe("AgentChatView", () => {
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
   });
 
-  it("keeps the placeholder up while session events are still loading after the URL has session params", () => {
+  it("renders the project panel while session events are still loading after the URL has session params", () => {
     // URL carries the redirected session params, but `chat-history-store`
-    // hasn't reported `ready` for them yet — mounting `ProjectAgentChatPanel`
-    // here would paint the chat shell (header + input bar) first and then
-    // fade the messages in. Hold the placeholder so the final reveal lands
-    // fully formed in one go.
+    // hasn't reported `ready` for them yet. With the transcript now scoped
+    // per session, the project panel can stay mounted and let ChatPanel's
+    // cold-load overlay handle the in-panel reveal instead of swapping to
+    // an outer placeholder.
     mocks.searchParams = new URLSearchParams({
       project: "p1",
       instance: "i1",
@@ -477,40 +488,69 @@ describe("AgentChatView", () => {
 
     render(<AgentChatView />);
 
-    expect(screen.queryByTestId("chat-panel")).toBeNull();
-    expect(mocks.latestChatPanelProps).toBeUndefined();
+    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        agentId: "i1",
+        historyResolved: false,
+        isLoading: true,
+        scrollResetKey: "i1:s1",
+        streamKey: "project-stream",
+        transcriptKey: "session:p1:i1:s1",
+      }),
+    );
   });
 
-  it("renders the project panel as soon as session events are cached", () => {
-    // Once the per-session history is `ready` in the cache, the chat
-    // panel mounts hot — `historyResolved` is true on its first render
-    // so the cold-load overlay stays unmounted.
+  it("keeps the project panel mounted across session events loading to ready", () => {
+    // Once the per-session history is `ready` in the cache, the same chat
+    // panel instance receives `historyResolved=true` without an outer
+    // placeholder/remount cycle.
     mocks.searchParams = new URLSearchParams({
       project: "p1",
       instance: "i1",
       session: "s1",
     });
     mocks.historyEntries = {
-      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s1": { status: "loading" },
     };
 
-    render(<AgentChatView />);
+    const { rerender } = render(<AgentChatView />);
 
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    const panel = screen.getByTestId("chat-panel");
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        historyResolved: false,
+        isLoading: true,
+      }),
+    );
+
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
+    rerender(<AgentChatView />);
+
+    expect(screen.getByTestId("chat-panel")).toBe(panel);
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        historyResolved: true,
+        isLoading: false,
+      }),
+    );
   });
 
-  it("clears the shared stream slot on a cross-session click in the agents-app shell", () => {
+  it("keeps the project panel mounted and lets it reset the stream on a cross-session click in the agents-app shell", () => {
     // Bug being guarded: the project chat panel for session s1 unmounts
-    // when `useAgentsShellTarget` flips to `placeholder` while the new
-    // session's events fetch, then a brand-new project panel mounts for
-    // the new session. The panel's local `prevSessionIdRef` clear no
-    // longer survives the unmount/remount cycle, so without this
-    // resolver-level reset the fresh mount inherits the previous
+    // used to unmount when `useAgentsShellTarget` flipped to `placeholder`
+    // while the new session's events fetched, then a brand-new project
+    // panel mounted for the new session. The panel's local
+    // `prevSessionIdRef` clear no longer survived the unmount/remount
+    // cycle, so without a resolver-level reset the fresh mount inherited the previous
     // session's events from the shared `${projectId}:${agentInstanceId}`
     // stream slot and `useChatHistorySync`'s
     // `streamCount >= historyMessages.length` hydrate guard refuses to
     // overwrite them — manifesting as "first session click does not
-    // load."
+    // load." The resolver no longer unmounts the panel; the panel-owned
+    // session transition effect survives and owns the reset.
     mocks.params = {
       agentId: "agent-1",
       projectId: undefined,
@@ -534,14 +574,18 @@ describe("AgentChatView", () => {
     };
 
     const { rerender } = render(<AgentChatView />);
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
-    // First mount must not clear; the resolver only fires on a true
-    // cross-session change of the same project-agent.
-    expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
+    const panel = screen.getByTestId("chat-panel");
+    // First mount must not clear; the panel effect only fires on a true
+    // cross-session prop change.
+    expect(mocks.resetEvents).not.toHaveBeenCalled();
 
     // User clicks s2 in the sidekick: URL flips to the new session,
-    // but the cache for s2 has not landed yet so the resolver returns
-    // `placeholder` — the project panel for s1 unmounts.
+    // but the cache for s2 has not landed yet. The resolver still returns
+    // the concrete project target, so the project panel stays mounted.
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s2": { status: "loading" },
+    };
     mocks.searchParams = new URLSearchParams({
       project: "p1",
       instance: "i1",
@@ -549,28 +593,33 @@ describe("AgentChatView", () => {
     });
     rerender(<AgentChatView />);
 
-    expect(screen.queryByTestId("chat-panel")).toBeNull();
-    // Cross-session resolver effect cleared the slot while the
-    // placeholder is up so the next project mount lands hot.
-    expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(0);
+    expect(screen.getByTestId("chat-panel")).toBe(panel);
+    expect(mocks.resetEvents).toHaveBeenCalledWith([], { allowWhileStreaming: true });
+    expect(mocks.latestChatPanelProps).toEqual(
+      expect.objectContaining({
+        historyResolved: false,
+        isLoading: true,
+        scrollResetKey: "i1:s2",
+        transcriptKey: "session:p1:i1:s2",
+      }),
+    );
 
-    // s2 events arrive in the cache → resolver flips to project, the
-    // fresh panel mounts with an empty stream slot ready for hydrate.
+    // s2 events arrive in the cache → the same panel resolves in place.
     mocks.historyEntries = {
       "session:p1:i1:s1": { status: "ready" },
       "session:p1:i1:s2": { status: "ready" },
     };
     rerender(<AgentChatView />);
 
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-panel")).toBe(panel);
   });
 
   it("does not clear the shared stream slot mid-stream on a cross-session URL change", () => {
     // SessionReady's URL flip (null → defined) and any other transition
     // that lands while a turn is actively streaming on the same
     // project-agent must keep the live stream events. The resolver
-    // gates on `getIsStreaming` to honour the same invariant the
-    // `ProjectAgentChatPanel` `prevSessionIdRef` effect already does.
+    // panel's `prevSessionIdRef` effect gates on `getIsStreaming` to
+    // honour the same invariant while staying mounted in the agents shell.
     mocks.params = {
       agentId: "agent-1",
       projectId: undefined,
@@ -591,7 +640,8 @@ describe("AgentChatView", () => {
     };
 
     const { rerender } = render(<AgentChatView />);
-    expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
+    const panel = screen.getByTestId("chat-panel");
+    mocks.resetEvents.mockClear();
 
     mocks.getIsStreaming.mockImplementation(() => true);
     mocks.searchParams = new URLSearchParams({
@@ -601,6 +651,8 @@ describe("AgentChatView", () => {
     });
     rerender(<AgentChatView />);
 
+    expect(screen.getByTestId("chat-panel")).toBe(panel);
+    expect(mocks.resetEvents).not.toHaveBeenCalled();
     expect(mocks.streamState.entries["p1:i1"].events).toHaveLength(2);
   });
 
