@@ -216,6 +216,58 @@ function preserveOptimisticRows(
   return sortSessionsDesc([...next, ...carried]);
 }
 
+/**
+ * Apply `pendingSummariesById` titles to any incoming session rows
+ * whose server-provided `summary_of_previous_context` is empty. The
+ * Haiku title generator can land via the `session_summary_updated`
+ * WebSocket event before the just-triggered `loadProjectSessions` /
+ * `loadAgentSessions` resolves. Without this merge the load would
+ * overwrite the in-memory row with the server's empty summary and the
+ * cached title would never make it back onto the row, leaving the
+ * sidekick stuck on "New chat".
+ *
+ * Returns the same array reference when nothing changes so consumers
+ * subscribed via `useShallow` don't see a spurious update.
+ */
+function applyPendingSummariesToList(
+  list: AnnotatedSession[],
+  pendingSummariesById: Record<string, string>,
+): AnnotatedSession[] {
+  let mutated = false;
+  const next = list.map((row) => {
+    const cached = pendingSummariesById[row.session_id];
+    if (!cached) return row;
+    if (row.summary_of_previous_context) return row;
+    mutated = true;
+    return { ...row, summary_of_previous_context: cached };
+  });
+  return mutated ? next : list;
+}
+
+/**
+ * Drop entries from `pendingSummariesById` that have now been
+ * materialized onto a row in `list`. Keeps the cache from growing
+ * unboundedly while leaving entries that haven't yet found a home
+ * (the optimistic-row swap path still consumes those in
+ * `replaceSessionId`).
+ */
+function dropAppliedEntries(
+  pendingSummariesById: Record<string, string>,
+  list: AnnotatedSession[],
+): Record<string, string> {
+  const ids = Object.keys(pendingSummariesById);
+  if (ids.length === 0) return pendingSummariesById;
+  let next: Record<string, string> | null = null;
+  for (const row of list) {
+    const cached = pendingSummariesById[row.session_id];
+    if (cached === undefined) continue;
+    if (row.summary_of_previous_context !== cached) continue;
+    if (!next) next = { ...pendingSummariesById };
+    delete next[row.session_id];
+  }
+  return next ?? pendingSummariesById;
+}
+
 // Per-surface request-id counters keep racing responses from clobbering
 // each other when, e.g., a stream-driven `bumpVersion` lands while a
 // previous load is still in flight.
@@ -299,15 +351,29 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       );
       if (surfaceRequestIds[surfaceKey] !== requestId) return;
       const merged = sortSessionsDesc(results.flat());
-      set((state) => ({
-        sessionsBySurface: {
-          ...state.sessionsBySurface,
-          [surfaceKey]: preserveOptimisticRows(
-            state.sessionsBySurface[surfaceKey],
-            merged,
-          ),
-        },
-      }));
+      set((state) => {
+        const withCachedTitles = applyPendingSummariesToList(
+          merged,
+          state.pendingSummariesById,
+        );
+        const finalList = preserveOptimisticRows(
+          state.sessionsBySurface[surfaceKey],
+          withCachedTitles,
+        );
+        const nextPending = dropAppliedEntries(
+          state.pendingSummariesById,
+          finalList,
+        );
+        return {
+          sessionsBySurface: {
+            ...state.sessionsBySurface,
+            [surfaceKey]: finalList,
+          },
+          ...(nextPending !== state.pendingSummariesById
+            ? { pendingSummariesById: nextPending }
+            : {}),
+        };
+      });
     } catch (err) {
       console.error("Failed to load agent sessions", err);
     } finally {
@@ -339,15 +405,29 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
           _agentInstanceId: s.agent_instance_id,
         })),
       );
-      set((state) => ({
-        sessionsBySurface: {
-          ...state.sessionsBySurface,
-          [surfaceKey]: preserveOptimisticRows(
-            state.sessionsBySurface[surfaceKey],
-            annotated,
-          ),
-        },
-      }));
+      set((state) => {
+        const withCachedTitles = applyPendingSummariesToList(
+          annotated,
+          state.pendingSummariesById,
+        );
+        const finalList = preserveOptimisticRows(
+          state.sessionsBySurface[surfaceKey],
+          withCachedTitles,
+        );
+        const nextPending = dropAppliedEntries(
+          state.pendingSummariesById,
+          finalList,
+        );
+        return {
+          sessionsBySurface: {
+            ...state.sessionsBySurface,
+            [surfaceKey]: finalList,
+          },
+          ...(nextPending !== state.pendingSummariesById
+            ? { pendingSummariesById: nextPending }
+            : {}),
+        };
+      });
     } catch (err) {
       console.error("Failed to load project sessions", err);
     } finally {
@@ -531,9 +611,15 @@ export function useSessionsDeleteError(
 }
 
 /**
- * Most-recent session by `started_at` for the surface. Sessions are
- * stored already-sorted desc, so this is just `[0]` — a stable
- * reference that doesn't allocate.
+ * Most-recent session by `started_at` for the surface, skipping any
+ * optimistic placeholder rows. Sessions are stored already-sorted
+ * desc; we walk for the first non-synthetic id rather than picking
+ * `[0]` blindly so default-session redirects can never write a
+ * synthetic `?session=optimistic:...` into the URL (which would 400
+ * the very next history fetch). Optimistic rows can leak past the
+ * `replaceSessionId` swap if `SessionReady` never arrives — e.g. the
+ * panel is unmounted mid-stream — and would otherwise be picked here
+ * as the most-recent target.
  */
 export function useMostRecentSession(
   surfaceKey: string | undefined,
@@ -541,7 +627,10 @@ export function useMostRecentSession(
   return useSessionsListStore((state) => {
     if (!surfaceKey) return null;
     const list = state.sessionsBySurface[surfaceKey];
-    return list && list.length > 0 ? list[0] : null;
+    if (!list || list.length === 0) return null;
+    return (
+      list.find((s) => !isOptimisticSessionId(s.session_id)) ?? null
+    );
   });
 }
 

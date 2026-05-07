@@ -124,5 +124,34 @@ export function useOptimisticSessionRow(
     );
   }, [projectId]);
 
+  // Sweep any optimistic placeholder that was inserted but never
+  // swapped on unmount. The panel can tear down mid-stream (user
+  // navigates to another agent before `SessionReady` arrives, the
+  // request is aborted, the network drops, etc.) and a leaked row
+  // otherwise sits in `sessionsBySurface` indefinitely — picked up
+  // by default-session redirects on revisit and surfaced as a
+  // 400 Bad Request when the synthetic id hits the history fetch.
+  // Capture `projectId` in the cleanup closure so unmount targets
+  // the same surface the row was inserted into.
+  useEffect(() => {
+    return () => {
+      const pendingId = pendingIdRef.current;
+      if (!pendingId) return;
+      pendingIdRef.current = null;
+      const sessionsStore = useSessionsListStore.getState();
+      const resolvedOrgAgentId = orgAgentIdRef.current;
+      if (resolvedOrgAgentId) {
+        sessionsStore.removeSession(
+          agentSessionsSurfaceKey(resolvedOrgAgentId),
+          pendingId,
+        );
+      }
+      sessionsStore.removeSession(
+        projectSessionsSurfaceKey(projectId),
+        pendingId,
+      );
+    };
+  }, [projectId]);
+
   return { arm, wrap, swap };
 }

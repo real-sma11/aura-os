@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
 import {
   agentSessionsSurfaceKey,
+  isOptimisticSessionId,
   projectSessionsSurfaceKey,
   useMostRecentSession,
   useSessionsForSurface,
@@ -40,10 +41,18 @@ export function useDefaultProjectSessionRedirect({
   const didDefaultRef = useRef<string | null>(null);
 
   // Sessions are stored sorted desc by `started_at`, so the first
-  // match is also the most recent for this agent instance.
+  // match is also the most recent for this agent instance. Skip
+  // optimistic placeholder rows: a leaked optimistic id (e.g. the
+  // panel was unmounted mid-stream before `SessionReady` could swap
+  // it for the real id) would otherwise be primed into the URL as
+  // `?session=optimistic:...`, immediately 400ing the history fetch.
   const mostRecentForInstance = useMemo(() => {
     return (
-      sessions.find((s) => s._agentInstanceId === agentInstanceId) ?? null
+      sessions.find(
+        (s) =>
+          s._agentInstanceId === agentInstanceId &&
+          !isOptimisticSessionId(s.session_id),
+      ) ?? null
     );
   }, [sessions, agentInstanceId]);
 

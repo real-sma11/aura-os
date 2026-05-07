@@ -271,6 +271,35 @@ describe("sessions-list-store", () => {
       expect(result.current?.session_id).toBe("newer");
     });
 
+    it("useMostRecentSession skips optimistic placeholder rows", () => {
+      // A leaked optimistic row (panel unmounted mid-stream before
+      // SessionReady could swap) sorted to the top by `started_at` —
+      // without this filter, default-session redirects would prime
+      // `?session=optimistic:...` and 400 the next history fetch.
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const real = {
+        ...makeSession("real-1", "2026-04-16T00:00:00Z", "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      } as AnnotatedSession;
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}leak`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+        startedAt: "2026-04-16T05:00:00Z",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic, real] },
+      });
+
+      const { result } = renderHook(() =>
+        useMostRecentSession(surfaceKey),
+      );
+      expect(result.current?.session_id).toBe("real-1");
+    });
+
     it("marks the bindings status as 'error' when listProjectBindings fails and skips the session fan-out", async () => {
       listProjectBindings.mockRejectedValue(new Error("boom"));
       const consoleErr = vi
@@ -641,6 +670,93 @@ describe("sessions-list-store", () => {
         useSessionsListStore.getState().sessionsBySurface[surfaceKey];
       expect(rows).toHaveLength(1);
       expect(rows?.[0].session_id).toBe("real-A");
+      expect(rows?.[0].summary_of_previous_context).toBe("Title-A");
+      expect(
+        useSessionsListStore.getState().pendingSummariesById,
+      ).toEqual({});
+    });
+
+    it("loadProjectSessions applies a pending title to the materialized row when the load resolves AFTER the WS event", async () => {
+      // The clobber race: SessionReady's bumpVersion kicked off
+      // loadProjectSessions; the Haiku title arrived first and
+      // setSessionSummary stashed it in pendingSummariesById. Without
+      // this merge, the load's empty-summary row would overwrite the
+      // patched title and the cache would never re-apply, leaving the
+      // sidekick stuck on "New chat".
+      listProjectSessions.mockResolvedValue([
+        makeSession("real-A", "2026-04-16T00:00:00Z", "i1", "p1"),
+      ]);
+      useSessionsListStore.setState({
+        pendingSummariesById: { "real-A": "Title-A" },
+      });
+
+      await act(async () => {
+        await useSessionsListStore
+          .getState()
+          .loadProjectSessions("p1", "Project One");
+      });
+
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].session_id).toBe("real-A");
+      expect(rows?.[0].summary_of_previous_context).toBe("Title-A");
+      expect(
+        useSessionsListStore.getState().pendingSummariesById,
+      ).toEqual({});
+    });
+
+    it("loadProjectSessions prefers the server's non-empty summary when both are present", async () => {
+      const serverSession = makeSession(
+        "real-A",
+        "2026-04-16T00:00:00Z",
+        "i1",
+        "p1",
+      );
+      serverSession.summary_of_previous_context = "Server Title";
+      listProjectSessions.mockResolvedValue([serverSession]);
+      useSessionsListStore.setState({
+        pendingSummariesById: { "real-A": "Cached Title" },
+      });
+
+      await act(async () => {
+        await useSessionsListStore
+          .getState()
+          .loadProjectSessions("p1", "Project One");
+      });
+
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      expect(rows?.[0].summary_of_previous_context).toBe("Server Title");
+      // The cached entry doesn't match the server's title so we must
+      // keep it for any *other* surface that might still apply it
+      // (loadAgentSessions for this same id, replaceSessionId during
+      // an in-flight optimistic swap, etc.).
+      expect(
+        useSessionsListStore.getState().pendingSummariesById["real-A"],
+      ).toBe("Cached Title");
+    });
+
+    it("loadAgentSessions also applies pending titles to the materialized list", async () => {
+      listProjectBindings.mockResolvedValue([
+        { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+      ]);
+      listSessions.mockResolvedValue([
+        makeSession("real-A", "2026-04-16T00:00:00Z", "i1", "p1"),
+      ]);
+      useSessionsListStore.setState({
+        pendingSummariesById: { "real-A": "Title-A" },
+      });
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadAgentSessions("agent-x");
+      });
+
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
       expect(rows?.[0].summary_of_previous_context).toBe("Title-A");
       expect(
         useSessionsListStore.getState().pendingSummariesById,

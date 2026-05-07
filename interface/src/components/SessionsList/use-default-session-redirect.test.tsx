@@ -238,4 +238,47 @@ describe("useDefaultProjectSessionRedirect", () => {
     });
     expect(setSearchParams).not.toHaveBeenCalled();
   });
+
+  it("skips an optimistic placeholder row when picking the most-recent default", async () => {
+    // Repro for "Bad Request on revisit": a leaked optimistic row
+    // (panel torn down before SessionReady could swap) sorts above
+    // any real row by `started_at`. Without filtering, the redirect
+    // would prime `?session=optimistic:...` and the very next
+    // history fetch would 400.
+    listProjectSessions.mockResolvedValue([
+      makeSession("real-1", "2026-04-16T00:00:00Z", "i1", "p1"),
+    ]);
+    const { OPTIMISTIC_SESSION_ID_PREFIX, buildOptimisticSession } =
+      await import("../../stores/sessions-list-store");
+    const optimistic = buildOptimisticSession({
+      optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}leak`,
+      projectId: "p1",
+      projectName: "P1",
+      agentInstanceId: "i1",
+      startedAt: "2026-04-16T08:00:00Z",
+    });
+    useSessionsListStore.setState({
+      sessionsBySurface: { "project:p1": [optimistic] },
+    });
+
+    const setSearchParams = vi.fn();
+    renderHook(() =>
+      useDefaultProjectSessionRedirect({
+        projectId: "p1",
+        agentInstanceId: "i1",
+        sessionId: null,
+        liveSessionId: null,
+        setSearchParams,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(setSearchParams).toHaveBeenCalledTimes(1);
+    });
+    const updater = setSearchParams.mock.calls[0][0] as (
+      prev: URLSearchParams,
+    ) => URLSearchParams;
+    const next = updater(new URLSearchParams());
+    expect(next.get("session")).toBe("real-1");
+  });
 });
