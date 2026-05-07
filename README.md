@@ -113,7 +113,7 @@ AURA ships in two flavors that can run side-by-side on one machine so you can us
 | Windows single-instance mutex | `Local\com.aura.desktop.single-instance` | `Local\com.aura.desktop-dev.single-instance` |
 | Auto-updater | enabled | disabled |
 
-Channel selection is a build-time cargo feature on `aura-os-core`. The default is **`stable-channel`**, so plain `cargo build -p aura-os-desktop` (and the release pipeline) produces a stable binary — this fails *closed* if a workflow regression ever drops the explicit `--features stable-channel` flag. To produce a dev build, pass `--no-default-features --features dev-channel`; the `scripts/dev/*` runners do this for you. There is no runtime override — the channel is baked into the binary.
+Channel selection is a build-time cargo feature on `aura-os-core`. The default is **`dev-channel`**, so plain `cargo run -p aura-os-desktop` (and `cargo run -p aura-os-server`, and the `scripts/dev/*` runners) produces a Dev binary that coexists with an installed stable AURA — different window title, different data dir, different ports, different single-instance mutex, and the in-app updater is disabled. Stable (published-installer) binaries are produced exclusively by the release pipeline, which passes `--no-default-features --features stable-channel` explicitly in `scripts/ci/verify-desktop.mjs`, `release-stable.yml`, `release-nightly.yml`, and the `before-packaging-command` for `cargo packager`. There is no runtime override — the channel is baked into the binary.
 
 Remote services (`AURA_NETWORK_URL`, `AURA_STORAGE_URL`, `BILLING_SERVER_URL`, `ORBIT_BASE_URL`, etc.) are unaffected by the channel and shared via `.env`.
 
@@ -159,7 +159,7 @@ On Windows PowerShell:
 ./scripts/dev/run-desktop-dev.ps1
 ```
 
-This starts Vite first, waits for `@vite/client`, then launches `aura-os-desktop` against the live frontend URL so CSS and TypeScript edits update in the native shell without rebuilding. The runner passes `--no-default-features --features dev-channel` to cargo so the binary uses the dev data dir, dev ports, and dev single-instance mutex and can run alongside an installed stable AURA. Plain debug runs (`cargo run -p aura-os-desktop`) now produce a *stable* binary by default, which will collide with an installed stable AURA on data dir, ports, and the single-instance lock — use the runner script (or the explicit cargo flags below) for live dev.
+This starts Vite first, waits for `@vite/client`, then launches `aura-os-desktop` against the live frontend URL so CSS and TypeScript edits update in the native shell without rebuilding. The runner passes `--no-default-features --features dev-channel` to cargo for clarity, but plain debug runs (`cargo run -p aura-os-desktop`) also produce a Dev binary now that `dev-channel` is the default — both safely coexist with an installed stable AURA on data dir, ports, and the single-instance lock.
 
 #### Use an external harness
 

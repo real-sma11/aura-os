@@ -9,12 +9,13 @@
 //!   while the installed stable build is also running, and neither steps on
 //!   the other's files, ports, single-instance lock, or skills.
 //!
-//! Selection is driven by cargo features on this crate (`stable-channel`
-//! default, `dev-channel` opt-in). Downstream binaries forward the choice via
-//! their own pass-through features. Because the answer is `cfg!(...)`-based,
-//! it is a `const fn` and is baked into the binary at compile time — there is
-//! no env-var override and no risk of "stable build acting like dev" at
-//! runtime.
+//! Selection is driven by cargo features on this crate (`dev-channel`
+//! default, `stable-channel` opt-in via the release pipeline's explicit
+//! `--no-default-features --features stable-channel` flags). Downstream
+//! binaries forward the choice via their own pass-through features.
+//! Because the answer is `cfg!(...)`-based, it is a `const fn` and is
+//! baked into the binary at compile time — there is no env-var override
+//! and no risk of "stable build acting like dev" at runtime.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {

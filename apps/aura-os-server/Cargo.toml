@@ -57,14 +57,16 @@ uuid = { workspace = true }
 url = { workspace = true }
 
 [features]
-default = ["stable-channel"]
-# Build-time channel selector. `stable-channel` is the default so plain
-# `cargo build -p aura-os-server` produces a stable binary — release
-# packaging therefore fails *closed* (still ships stable) if a workflow
-# regression ever drops the explicit `--features stable-channel` flag. Dev
-# builds (different data dir, ports, etc.) are produced by the
-# `scripts/dev/*` runners, which invoke cargo with
-# `--no-default-features --features dev-channel`.
+default = ["dev-channel"]
+# Build-time channel selector. `dev-channel` is the default so plain
+# `cargo run -p aura-os-server` produces a Dev binary (dev data dir,
+# dev ports, etc.) that can run alongside an installed stable AURA
+# without colliding on data dir, ports, or the single-instance lock.
+# Stable (published-distribution) builds are produced by the release
+# pipeline, which passes `--no-default-features --features stable-channel`
+# explicitly. The channel is baked in at compile time, so picking the
+# wrong one is loud (different ports, different data dir) rather than
+# silent.
 dev-channel = ["aura-os-core/dev-channel"]
 stable-channel = ["aura-os-core/stable-channel"]
 # Enables the real Chromium/CDP-backed browser backend. Requires a local

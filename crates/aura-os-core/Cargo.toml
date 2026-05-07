@@ -7,7 +7,14 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["stable-channel"]
+# `dev-channel` is the default so plain `cargo run` / `cargo build`
+# produces a Dev binary. Downstream binaries forward this through their
+# own pass-through features. Stable (released) binaries are produced
+# only by the release pipeline, which passes
+# `--no-default-features --features stable-channel` explicitly. See
+# `src/channel.rs` for the full mapping (data dir, ports, window title,
+# updater enablement, etc.).
+default = ["dev-channel"]
 stable-channel = []
 dev-channel = []
 test-utils = ["dep:tempfile"]

@@ -50,19 +50,27 @@ muda = "0.15"
 libc = "0.2"
 
 [features]
-default = ["stable-channel"]
-# Build-time channel selector. `stable-channel` is the default so plain
-# `cargo build -p aura-os-desktop` produces a stable binary — the release
-# pipeline therefore fails *closed* (still ships stable) if a workflow
-# regression ever drops the explicit `--features stable-channel` flag.
-# Dev builds (parallel-but-distinct identifiers: data dir name, ports,
-# single-instance mutex, window title, skills tree) are produced by the
-# `scripts/dev/*` runners, which invoke cargo with
-# `--no-default-features --features dev-channel`. The release pipeline
-# (`scripts/ci/verify-desktop.mjs`, `release-stable.yml`,
-# `release-nightly.yml`) keeps the explicit
-# `--no-default-features --features stable-channel` flags as a
-# belt-and-suspenders to encode intent and survive future default flips.
+default = ["dev-channel"]
+# Build-time channel selector. `dev-channel` is the default so plain
+# `cargo run -p aura-os-desktop` (and any other unqualified cargo invocation)
+# produces a Dev binary with parallel-but-distinct identifiers (window
+# title "AURA Dev", `aura-dev` data dir, dev ports, dev single-instance
+# mutex, dev skills tree, in-app updater disabled). This lets a developer
+# run a dev build alongside an installed stable AURA without either
+# stomping on the other's files, ports, or single-instance lock.
+#
+# Stable (published-installer) binaries are produced exclusively by the
+# release pipeline, which passes the explicit
+# `--no-default-features --features stable-channel` flag in every place
+# that builds for distribution:
+#   - `scripts/ci/verify-desktop.mjs`
+#   - `.github/workflows/release-stable.yml`
+#   - `.github/workflows/release-nightly.yml`
+#   - the `before-packaging-command` line below (used by `cargo packager`)
+# Forgetting that flag is a release bug, not a default-features safety
+# net — the channel is baked in at compile time, so producing the wrong
+# kind of binary is loud (different title, different data dir) rather
+# than silent.
 dev-channel = ["aura-os-core/dev-channel", "aura-os-server/dev-channel"]
 stable-channel = ["aura-os-core/stable-channel", "aura-os-server/stable-channel"]
 
