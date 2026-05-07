@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     agentInstanceId?: string;
   },
   searchParams: new URLSearchParams(),
+  setSearchParams: vi.fn(),
   isMobileLayout: false,
   latestChatPanelProps: undefined as Record<string, unknown> | undefined,
   latestHistorySyncOptions: undefined as Record<string, unknown> | undefined,
@@ -38,6 +39,10 @@ const mocks = vi.hoisted(() => ({
   },
   historyEntries: {} as Record<string, FakeHistoryEntry>,
   fetchHistory: vi.fn(),
+  clearHistory: vi.fn(),
+  bumpVersion: vi.fn(),
+  setPendingNewChat: vi.fn(),
+  clearPendingNewChat: vi.fn(),
   defaultStandaloneRedirect: vi.fn(),
   streamState: {
     entries: {} as Record<string, { events: Array<{ id: string }> }>,
@@ -48,7 +53,7 @@ vi.mock("react-router-dom", () => ({
   useParams: () => mocks.params,
   useLocation: () => ({ state: null }),
   useNavigate: () => vi.fn(),
-  useSearchParams: () => [mocks.searchParams, vi.fn()],
+  useSearchParams: () => [mocks.searchParams, mocks.setSearchParams],
 }));
 
 vi.mock("../../../../api/client", () => ({
@@ -167,39 +172,63 @@ vi.mock("../../../../stores/projects-list-store", () => ({
     }),
 }));
 
-vi.mock("../../../../stores/sessions-list-store", () => ({
-  agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
-  useAgentBindingsKey: (agentId: string | undefined) => {
-    if (!agentId) return "";
-    const parts: string[] = [];
-    for (const project of mocks.projectsState.projects) {
-      const instances = mocks.projectsState.agentsByProject[project.project_id];
-      if (!instances) continue;
-      for (const instance of instances) {
-        if (instance.agent_id === agentId) {
-          parts.push(`${project.project_id}:${instance.agent_instance_id}`);
+vi.mock("../../../../stores/sessions-list-store", () => {
+  type FakeSessionsListState = {
+    sessionsBySurface: Record<string, FakeAnnotatedSession[]>;
+    bumpVersion: () => void;
+    setPendingNewChat: typeof mocks.setPendingNewChat;
+    clearPendingNewChat: typeof mocks.clearPendingNewChat;
+  };
+  const sessionsHook: ((selector: (state: FakeSessionsListState) => unknown) => unknown) & {
+    getState: () => FakeSessionsListState;
+  } = Object.assign(
+    (selector: (state: FakeSessionsListState) => unknown) =>
+      selector({
+        sessionsBySurface: mocks.sessionsState.sessionsBySurface,
+        bumpVersion: mocks.bumpVersion,
+        setPendingNewChat: mocks.setPendingNewChat,
+        clearPendingNewChat: mocks.clearPendingNewChat,
+      }),
+    {
+      getState: () => ({
+        sessionsBySurface: mocks.sessionsState.sessionsBySurface,
+        bumpVersion: mocks.bumpVersion,
+        setPendingNewChat: mocks.setPendingNewChat,
+        clearPendingNewChat: mocks.clearPendingNewChat,
+      }),
+    },
+  );
+  return {
+    PENDING_NEW_CHAT_ID: "pending-new-chat",
+    agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+    useAgentBindingsKey: (agentId: string | undefined) => {
+      if (!agentId) return "";
+      const parts: string[] = [];
+      for (const project of mocks.projectsState.projects) {
+        const instances = mocks.projectsState.agentsByProject[project.project_id];
+        if (!instances) continue;
+        for (const instance of instances) {
+          if (instance.agent_id === agentId) {
+            parts.push(`${project.project_id}:${instance.agent_instance_id}`);
+          }
         }
       }
-    }
-    parts.sort();
-    return parts.join(",");
-  },
-  useMostRecentSession: (surfaceKey: string | undefined) => {
-    if (!surfaceKey) return null;
-    const list = mocks.sessionsState.sessionsBySurface[surfaceKey];
-    return list && list.length > 0 ? list[0] : null;
-  },
-  useSessionsListStore: (selector: (state: { sessionsBySurface: Record<string, FakeAnnotatedSession[]>; bumpVersion: () => void }) => unknown) =>
-    selector({
-      sessionsBySurface: mocks.sessionsState.sessionsBySurface,
-      bumpVersion: vi.fn(),
-    }),
-}));
+      parts.sort();
+      return parts.join(",");
+    },
+    useMostRecentSession: (surfaceKey: string | undefined) => {
+      if (!surfaceKey) return null;
+      const list = mocks.sessionsState.sessionsBySurface[surfaceKey];
+      return list && list.length > 0 ? list[0] : null;
+    },
+    useSessionsListStore: sessionsHook,
+  };
+});
 
 vi.mock("../../../../stores/chat-history-store", () => ({
   agentHistoryKey: (agentId: string) => `agent:${agentId}`,
   projectChatHistoryKey: (projectId: string, agentInstanceId: string) =>
-    `${projectId}:${agentInstanceId}`,
+    `project:${projectId}:${agentInstanceId}`,
   useChatHistory: () => ({ events: [], status: "ready", error: null }),
   useChatHistoryStore: Object.assign(
     (selector: (state: { entries: Record<string, FakeHistoryEntry> }) => unknown) =>
@@ -208,7 +237,7 @@ vi.mock("../../../../stores/chat-history-store", () => ({
       getState: () => ({
         entries: mocks.historyEntries,
         fetchHistory: mocks.fetchHistory,
-        clearHistory: vi.fn(),
+        clearHistory: mocks.clearHistory,
         invalidateHistory: vi.fn(),
         prefetchHistory: vi.fn(),
         hydrateFromCache: vi.fn(),
@@ -288,6 +317,7 @@ describe("AgentChatView", () => {
   beforeEach(() => {
     mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
     mocks.searchParams = new URLSearchParams();
+    mocks.setSearchParams.mockReset();
     mocks.isMobileLayout = false;
     mocks.latestChatPanelProps = undefined;
     mocks.latestHistorySyncOptions = undefined;
@@ -295,6 +325,10 @@ describe("AgentChatView", () => {
     mocks.sessionsState = { sessionsBySurface: {} };
     mocks.historyEntries = {};
     mocks.fetchHistory.mockReset();
+    mocks.clearHistory.mockReset();
+    mocks.bumpVersion.mockReset();
+    mocks.setPendingNewChat.mockReset();
+    mocks.clearPendingNewChat.mockReset();
     mocks.defaultStandaloneRedirect.mockReset();
     mocks.resetEvents.mockReset();
     mocks.getIsStreaming.mockReset();
@@ -735,6 +769,136 @@ describe("AgentChatView", () => {
       rerender(<AgentChatView />);
 
       expect(mocks.resetEvents).toHaveBeenCalledWith([], { allowWhileStreaming: true });
+    });
+  });
+
+  describe("ProjectAgentChatPanel handleNewChat (chat-input '+')", () => {
+    // Regression coverage for the "fresh canvas still shows old
+    // messages" bug. After `handleNewChat` strips `?session=` from the
+    // URL the next mount reads from a *destination* history key —
+    // either `projectChatHistoryKey(...)` on the project route or
+    // `agentHistoryKey(...)` after the agents-shell resolver swaps to
+    // the standalone panel. If neither of those is cleared,
+    // `useChatHistorySync` re-fetches and the agent-wide event window
+    // (or the project-route persisted blob) leaks back onto what
+    // should be a blank canvas. The tests below assert that
+    // `handleNewChat` clears every destination key plus the standalone
+    // stream slot, and surfaces the optimistic "New chat" placeholder
+    // in the agents-shell sidekick.
+    function mountProjectPanel({
+      projectId,
+      agentInstanceId,
+      sessionId,
+      agentId = "agent-1",
+    }: {
+      projectId: string;
+      agentInstanceId: string;
+      sessionId: string | null;
+      agentId?: string;
+    }) {
+      mocks.params = { agentId: undefined, projectId, agentInstanceId };
+      mocks.searchParams = new URLSearchParams(sessionId ? { session: sessionId } : {});
+      mocks.projectsState = {
+        projects: [{ project_id: projectId, name: projectId.toUpperCase() }],
+        agentsByProject: {
+          [projectId]: [{ agent_instance_id: agentInstanceId, agent_id: agentId }],
+        },
+      };
+      return render(<AgentChatView />);
+    }
+
+    function fireNewChat() {
+      const onNewChat = mocks.latestChatPanelProps?.onNewChat as
+        | (() => void)
+        | undefined;
+      if (!onNewChat) throw new Error("onNewChat was not forwarded to ChatPanel");
+      onNewChat();
+    }
+
+    it("clears the project + agent destination history keys and the standalone stream slot", () => {
+      mocks.streamState = {
+        entries: {
+          // Standalone panel's stream slot keyed by org agent id.
+          "agent-1": { events: [{ id: "e1" }, { id: "e2" }] },
+        },
+      };
+
+      mountProjectPanel({ projectId: "p1", agentInstanceId: "i1", sessionId: "s1" });
+
+      fireNewChat();
+
+      const clearedKeys = mocks.clearHistory.mock.calls.map((call) => call[0]);
+      // Three keys cleared: the current `historyKey` (session-scoped)
+      // plus both destination keys (`project:...` and `agent:...`).
+      expect(clearedKeys).toContain("session:p1:i1:s1");
+      expect(clearedKeys).toContain("project:p1:i1");
+      expect(clearedKeys).toContain("agent:agent-1");
+
+      // Standalone stream slot wiped so a swap to `StandaloneAgentChatPanel`
+      // can't resurrect stale events on the fresh canvas.
+      expect(mocks.streamState.entries["agent-1"].events).toHaveLength(0);
+    });
+
+    it("does not clear the standalone stream slot while a turn is actively streaming", () => {
+      mocks.streamState = {
+        entries: {
+          "agent-1": { events: [{ id: "e1" }] },
+        },
+      };
+      mocks.getIsStreaming.mockImplementation(() => true);
+
+      mountProjectPanel({ projectId: "p1", agentInstanceId: "i1", sessionId: "s1" });
+      fireNewChat();
+
+      // Stream slot preserved for the in-flight turn — clearing here
+      // would erase the optimistic user bubble. Keys are still
+      // cleared because they only wipe persisted history, not live
+      // stream state.
+      expect(mocks.streamState.entries["agent-1"].events).toHaveLength(1);
+    });
+
+    it("surfaces the optimistic 'New chat' placeholder on the agents-shell sidekick surface", () => {
+      mountProjectPanel({ projectId: "p1", agentInstanceId: "i1", sessionId: "s1" });
+
+      fireNewChat();
+
+      expect(mocks.setPendingNewChat).toHaveBeenCalledTimes(1);
+      const [surfaceKey, placeholder] = mocks.setPendingNewChat.mock.calls[0];
+      expect(surfaceKey).toBe("agent:agent-1");
+      expect(placeholder).toEqual(
+        expect.objectContaining({
+          session_id: "pending-new-chat",
+          _projectId: "p1",
+          _agentInstanceId: "i1",
+          _pending: true,
+          summary_of_previous_context: "",
+        }),
+      );
+    });
+
+    it("skips the placeholder when the org agent_id lookup misses (unbound instance)", () => {
+      // Edge case: a session URL points to a `(project, instance)`
+      // pair the projects store hasn't loaded yet (or that's a stale
+      // pointer to a deleted instance). The optimistic placeholder
+      // would land on the wrong agents-shell surface, so we skip it
+      // entirely and let the next `loadAgentSessions` show the real
+      // row when it arrives.
+      mocks.params = { agentId: undefined, projectId: "p1", agentInstanceId: "i1" };
+      mocks.searchParams = new URLSearchParams({ session: "s1" });
+      mocks.projectsState = { projects: [], agentsByProject: {} };
+
+      render(<AgentChatView />);
+      fireNewChat();
+
+      expect(mocks.setPendingNewChat).not.toHaveBeenCalled();
+      // The current historyKey (session-scoped) is still cleared even
+      // when the agent lookup misses — the placeholder is the only
+      // path gated on the lookup.
+      const clearedKeys = mocks.clearHistory.mock.calls.map((call) => call[0]);
+      expect(clearedKeys).toContain("session:p1:i1:s1");
+      expect(clearedKeys).toContain("project:p1:i1");
+      // No `agent:...` clear because `orgAgentId` did not resolve.
+      expect(clearedKeys.find((k) => k.startsWith("agent:"))).toBeUndefined();
     });
   });
 });

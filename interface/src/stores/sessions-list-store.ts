@@ -34,6 +34,30 @@ export function projectSessionsSurfaceKey(projectId: string): string {
   return `project:${projectId}`;
 }
 
+/**
+ * Synthetic session id used by the optimistic "New chat" placeholder
+ * row that the chat-input "+" button surfaces in the sidekick. The
+ * placeholder is purely client-side: it never hits the API, never
+ * appears in `loadAgentSessions` results, and is replaced by the real
+ * session row once the first send fires `SessionReady`. Exported so
+ * tests and downstream consumers can match against the same constant.
+ */
+export const PENDING_NEW_CHAT_ID = "pending-new-chat";
+
+/**
+ * `AnnotatedSession` carrying a `_pending: true` flag so the rest of
+ * the app can distinguish the optimistic placeholder from a real,
+ * server-persisted session row. The placeholder is synthesized in
+ * `handleNewChat` (chat-input "+" path) and dropped on `SessionReady`
+ * once the server hands back the real session id. Consumers that care
+ * about the placeholder vs real-session distinction key off this flag
+ * directly (see `SessionsList` row rendering and `ChatsTab` click /
+ * delete short-circuits).
+ */
+export interface PendingNewChat extends AnnotatedSession {
+  _pending: true;
+}
+
 interface SessionsListStore {
   /** Newest-first AnnotatedSession arrays keyed by surface. */
   sessionsBySurface: Record<string, AnnotatedSession[]>;
@@ -48,6 +72,17 @@ interface SessionsListStore {
    * building their own toast wrapper.
    */
   deleteErrorBySurface: Record<string, string | null>;
+  /**
+   * Optimistic "New chat" placeholder per surface. Set when the user
+   * clicks "+" in the chat input bar so the sidekick gets immediate
+   * "yes, you started a fresh chat" feedback (mirrors ChatGPT's
+   * behaviour where the side panel jumps to a "New chat" row before
+   * the first message sends). `useSessionsForSurface` prepends the
+   * placeholder to its returned list. Cleared by `clearPendingNewChat`
+   * on `SessionReady` (the real row arrives from the next
+   * `loadAgentSessions` driven by `bumpVersion`).
+   */
+  pendingNewChatBySurface: Record<string, PendingNewChat>;
   /** Bumped on every relevant write so polling consumers can re-run. */
   version: number;
   bumpVersion: () => void;
@@ -60,6 +95,10 @@ interface SessionsListStore {
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
   /** Surface the user-facing reason a delete failed for `surfaceKey`. */
   setDeleteError: (surfaceKey: string, message: string | null) => void;
+  /** Set / replace the optimistic "New chat" placeholder for a surface. */
+  setPendingNewChat: (surfaceKey: string, pending: PendingNewChat) => void;
+  /** Drop the optimistic "New chat" placeholder for a surface. */
+  clearPendingNewChat: (surfaceKey: string) => void;
 }
 
 function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
@@ -78,6 +117,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   sessionsBySurface: {},
   loadingBySurface: {},
   deleteErrorBySurface: {},
+  pendingNewChatBySurface: {},
   version: 0,
 
   bumpVersion: () => set((s) => ({ version: s.version + 1 })),
@@ -210,6 +250,23 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       },
     }));
   },
+
+  setPendingNewChat: (surfaceKey, pending) => {
+    set((state) => ({
+      pendingNewChatBySurface: {
+        ...state.pendingNewChatBySurface,
+        [surfaceKey]: pending,
+      },
+    }));
+  },
+
+  clearPendingNewChat: (surfaceKey) => {
+    const current = get().pendingNewChatBySurface;
+    if (!(surfaceKey in current)) return;
+    const next = { ...current };
+    delete next[surfaceKey];
+    set({ pendingNewChatBySurface: next });
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -221,13 +278,46 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
  * underlying store entry hasn't changed. The empty fallback is a
  * module-level singleton so consumers that call this for not-yet-loaded
  * surfaces don't churn `useShallow` consumers.
+ *
+ * When an optimistic "New chat" placeholder is set for the surface
+ * (via `setPendingNewChat` from the chat-input "+" path), it is
+ * prepended to the returned list so the sidekick highlights a "New
+ * chat" row immediately. The placeholder participates in render-time
+ * rendering only — it carries `_pending: true` so consumers (clicks,
+ * deletes, summarization) can short-circuit on it. It is intentionally
+ * kept out of the underlying `sessionsBySurface[surfaceKey]` array so
+ * `loadAgentSessions` / `loadProjectSessions` writes don't have to
+ * thread the placeholder through their request-id race protections —
+ * the placeholder lives on a sibling axis and is only dropped via
+ * explicit `clearPendingNewChat` (typically on `SessionReady`).
  */
 export function useSessionsForSurface(
   surfaceKey: string | undefined,
 ): AnnotatedSession[] {
+  return useSessionsListStore(
+    useShallow((state) => {
+      if (!surfaceKey) return EMPTY_SESSIONS;
+      const list = state.sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+      const pending = state.pendingNewChatBySurface[surfaceKey];
+      if (!pending) return list;
+      return [pending, ...list];
+    }),
+  );
+}
+
+/**
+ * Subscribes to the optimistic "New chat" placeholder for `surfaceKey`,
+ * or `null` when none is set. `ChatsTab` uses this to compute an
+ * effective `selectedSessionId` that highlights the placeholder row
+ * while `?session=` is absent from the URL (post chat-input "+" but
+ * pre-`SessionReady`).
+ */
+export function usePendingNewChat(
+  surfaceKey: string | undefined,
+): PendingNewChat | null {
   return useSessionsListStore((state) => {
-    if (!surfaceKey) return EMPTY_SESSIONS;
-    return state.sessionsBySurface[surfaceKey] ?? EMPTY_SESSIONS;
+    if (!surfaceKey) return null;
+    return state.pendingNewChatBySurface[surfaceKey] ?? null;
   });
 }
 
@@ -298,6 +388,8 @@ interface SessionsListActions {
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
   setDeleteError: (surfaceKey: string, message: string | null) => void;
+  setPendingNewChat: (surfaceKey: string, pending: PendingNewChat) => void;
+  clearPendingNewChat: (surfaceKey: string) => void;
 }
 
 /**
@@ -313,6 +405,8 @@ export function useSessionsListActions(): SessionsListActions {
       removeSession: s.removeSession,
       restoreSession: s.restoreSession,
       setDeleteError: s.setDeleteError,
+      setPendingNewChat: s.setPendingNewChat,
+      clearPendingNewChat: s.clearPendingNewChat,
     })),
   );
 }

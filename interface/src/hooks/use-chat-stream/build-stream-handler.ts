@@ -39,7 +39,11 @@ import {
   useContextUsageStore,
   approxTokensFromText,
 } from "../../stores/context-usage-store";
-import { useSessionsListStore } from "../../stores/sessions-list-store";
+import {
+  agentSessionsSurfaceKey,
+  useSessionsListStore,
+} from "../../stores/sessions-list-store";
+import { useProjectsListStore } from "../../stores/projects-list-store";
 
 export interface DispatchDeps {
   projectId: string;
@@ -307,7 +311,28 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         if (newSessionId && newSessionId !== lastNotifiedSessionId) {
           lastNotifiedSessionId = newSessionId;
           onSessionReady?.(newSessionId);
-          useSessionsListStore.getState().bumpVersion();
+          const sessionsStore = useSessionsListStore.getState();
+          sessionsStore.bumpVersion();
+          // Drop the optimistic "New chat" placeholder for the
+          // agents-shell sidekick now that the real session has been
+          // assigned. Resolved off the projects-list-store: this
+          // handler only knows `(projectId, agentInstanceId)`, but
+          // the placeholder was set on `agent:<agent_id>`. If the
+          // lookup misses (e.g. agentsByProject hasn't loaded yet for
+          // some race), the placeholder will still be cleared by the
+          // next `loadAgentSessions` returning the real row — the
+          // imperative clear here is just the immediate-feedback path.
+          if (agentInstanceId) {
+            const projectsState = useProjectsListStore.getState();
+            const matchedAgentId = projectsState.agentsByProject[projectId]?.find(
+              (instance) => instance.agent_instance_id === agentInstanceId,
+            )?.agent_id;
+            if (matchedAgentId) {
+              sessionsStore.clearPendingNewChat(
+                agentSessionsSurfaceKey(matchedAgentId),
+              );
+            }
+          }
         }
         break;
       }

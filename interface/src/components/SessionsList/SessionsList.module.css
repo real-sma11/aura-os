@@ -61,6 +61,24 @@
   background: var(--color-overlay-heavy);
 }
 
+/* Optimistic "New chat" placeholder row — the chat-input "+" button
+   synthesizes one of these the moment the user starts a fresh chat,
+   before the server has assigned a session id. Italic + muted text
+   reads as "fresh chat starting", matching ChatGPT's pre-first-send
+   sidebar treatment, so the row never gets confused with a real,
+   persisted session. The row is still selectable (the .chatsRowSelected
+   highlight still applies) but the muted color sticks even when
+   selected so it never quite looks "settled" — the placeholder is
+   replaced in place by the real row on `SessionReady`. */
+.chatsRowPending {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.chatsRowPending:hover {
+  color: var(--color-text-primary);
+}
+
 .tabEmptyState {
   display: flex;
   align-items: center;

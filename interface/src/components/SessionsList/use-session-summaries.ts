@@ -27,6 +27,12 @@ export function useSessionSummaries(
   useEffect(() => {
     for (const session of sessions) {
       if (session.summary_of_previous_context) continue;
+      // Optimistic "New chat" placeholder rows live entirely client-side
+      // (synthesized by `useSessionsListStore.setPendingNewChat`) and
+      // would 404 the summarize endpoint. Skip them; the real row that
+      // replaces the placeholder on `SessionReady` will summarize on
+      // its own.
+      if ((session as { _pending?: boolean })._pending) continue;
       if (summarizingRef.current.has(session.session_id)) continue;
 
       // Always attempt one Haiku summarize per session-without-summary per

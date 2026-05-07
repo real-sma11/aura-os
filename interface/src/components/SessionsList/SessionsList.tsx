@@ -13,6 +13,17 @@ import {
 import { useSessionSummaries } from "./use-session-summaries";
 import styles from "./SessionsList.module.css";
 
+// Optimistic "New chat" placeholder rows carry an extra `_pending: true`
+// flag added by `useSessionsListStore.setPendingNewChat`. The flag never
+// rides along on real, server-persisted sessions, so its presence is the
+// single test we need to short-circuit row interactions (delete, context
+// menu) and apply the muted style. Kept inline so the SessionsList file
+// stays self-contained — the type declaration lives in
+// `sessions-list-store` next to the action that produces it.
+function isPendingSession(session: AnnotatedSession): boolean {
+  return (session as { _pending?: boolean })._pending === true;
+}
+
 interface SessionsListProps {
   sessions: AnnotatedSession[];
   loading: boolean;
@@ -66,8 +77,13 @@ export function SessionsList({
 }: SessionsListProps) {
   const summaries = useSessionSummaries(sessions);
 
+  // The optimistic "New chat" placeholder row carries `_pending: true`
+  // (set by `useSessionsListStore.setPendingNewChat` from the chat-input
+  // "+" handler). It is rendered like any other row but never wired to
+  // delete or context-menu actions — there's nothing on the server yet
+  // to delete, and the row is auto-replaced on `SessionReady`.
   const sessionById = useMemo(
-    () => new Map(sessions.map((s) => [s.session_id, s])),
+    () => new Map(sessions.filter((s) => !isPendingSession(s)).map((s) => [s.session_id, s])),
     [sessions],
   );
 
@@ -98,6 +114,7 @@ export function SessionsList({
       const target = menu?.item;
       closeMenu();
       if (!target || actionId !== "delete") return;
+      if (isPendingSession(target)) return;
       onDeleteSession?.(target);
     },
     [menu, closeMenu, onDeleteSession],
@@ -146,13 +163,20 @@ export function SessionsList({
             <div className={styles.chatsBucketHeader}>{bucket.label}</div>
             {bucket.rows.map(({ session, label }) => {
               const isSelected = session.session_id === selectedSessionId;
+              const isPending = isPendingSession(session);
+              const className = [
+                styles.chatsRow,
+                isSelected ? styles.chatsRowSelected : "",
+                isPending ? styles.chatsRowPending : "",
+              ].filter(Boolean).join(" ");
               return (
                 <button
                   key={session.session_id}
                   type="button"
                   id={session.session_id}
-                  className={`${styles.chatsRow}${isSelected ? ` ${styles.chatsRowSelected}` : ""}`}
+                  className={className}
                   data-session-id={session.session_id}
+                  data-pending={isPending ? "true" : undefined}
                   aria-current={isSelected ? "page" : undefined}
                   onClick={() => onSessionClick(session)}
                 >

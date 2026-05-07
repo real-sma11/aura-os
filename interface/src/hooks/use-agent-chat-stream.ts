@@ -26,7 +26,10 @@ import {
 } from "./use-stream-core";
 import type { DisplaySessionEvent } from "../shared/types/stream";
 import { useContextUsageStore } from "../stores/context-usage-store";
-import { useSessionsListStore } from "../stores/sessions-list-store";
+import {
+  agentSessionsSurfaceKey,
+  useSessionsListStore,
+} from "../stores/sessions-list-store";
 
 interface UseAgentChatStreamOptions {
   agentId: string | undefined;
@@ -206,7 +209,17 @@ export function useAgentChatStream({
               if (newSessionId && newSessionId !== lastNotifiedSessionIdRef.current) {
                 lastNotifiedSessionIdRef.current = newSessionId;
                 onSessionReadyRef.current?.(newSessionId);
-                useSessionsListStore.getState().bumpVersion();
+                const sessionsStore = useSessionsListStore.getState();
+                sessionsStore.bumpVersion();
+                // Drop the optimistic "New chat" placeholder for the
+                // agents-shell sidekick. Standalone-stream `agentId`
+                // is already the org-level id, so the surface key
+                // resolves directly without a project lookup.
+                if (agentId) {
+                  sessionsStore.clearPendingNewChat(
+                    agentSessionsSurfaceKey(agentId),
+                  );
+                }
               }
               break;
             }
