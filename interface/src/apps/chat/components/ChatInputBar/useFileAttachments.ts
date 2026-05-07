@@ -77,20 +77,39 @@ function processImageFile(file: File): Promise<AttachmentItem | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = async () => {
-      const data = reader.result as string;
-      const processed = await compressImageDataUrl(data).catch(() => ({
-        data: dataUrlToBase64(data),
-        mediaType: file.type,
-      }));
-      resolve({
-        id: crypto.randomUUID(), file,
-        data: processed.data,
-        mediaType: processed.mediaType, name: file.name,
-        attachmentType: "image",
-        preview: URL.createObjectURL(file),
-      });
+      try {
+        const data = reader.result as string;
+        const processed = await compressImageDataUrl(data).catch(() => ({
+          data: dataUrlToBase64(data),
+          mediaType: file.type,
+        }));
+        resolve({
+          id: crypto.randomUUID(), file,
+          data: processed.data,
+          mediaType: processed.mediaType, name: file.name,
+          attachmentType: "image",
+          preview: URL.createObjectURL(file),
+        });
+      } catch (err) {
+        console.warn("[attach] processImageFile onload threw, dropping", { name: file.name, err });
+        resolve(null);
+      }
     };
-    reader.readAsDataURL(file);
+    // Without an explicit onerror the Promise hangs forever on read failure
+    // (e.g. when the clipboard hands us a synthetic File that the browser
+    // can't actually fulfil). The hang fans out into `Promise.all` inside
+    // `addFiles` and silently swallows every paste/drop/+ intake — exactly
+    // the symptom we hit before this guard.
+    reader.onerror = () => {
+      console.warn("[attach] processImageFile FileReader error", { name: file.name, error: reader.error });
+      resolve(null);
+    };
+    try {
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn("[attach] processImageFile readAsDataURL threw", { name: file.name, err });
+      resolve(null);
+    }
   });
 }
 
@@ -98,25 +117,50 @@ function processTextFile(file: File): Promise<AttachmentItem | null> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const text = (reader.result as string) ?? "";
-      const bytes = new TextEncoder().encode(text);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      resolve({
-        id: crypto.randomUUID(), file,
-        data: btoa(binary),
-        mediaType: file.type || "text/plain", name: file.name,
-        attachmentType: "text",
-      });
+      try {
+        const text = (reader.result as string) ?? "";
+        const bytes = new TextEncoder().encode(text);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        resolve({
+          id: crypto.randomUUID(), file,
+          data: btoa(binary),
+          mediaType: file.type || "text/plain", name: file.name,
+          attachmentType: "text",
+        });
+      } catch (err) {
+        console.warn("[attach] processTextFile onload threw, dropping", { name: file.name, err });
+        resolve(null);
+      }
     };
-    reader.readAsText(file);
+    reader.onerror = () => {
+      console.warn("[attach] processTextFile FileReader error", { name: file.name, error: reader.error });
+      resolve(null);
+    };
+    try {
+      reader.readAsText(file);
+    } catch (err) {
+      console.warn("[attach] processTextFile readAsText threw", { name: file.name, err });
+      resolve(null);
+    }
   });
 }
 
 export function processFile(file: File): Promise<AttachmentItem | null> {
-  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) return Promise.resolve(null);
+  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    console.warn("[attach] processFile rejected: size cap", {
+      name: file.name,
+      size: file.size,
+      cap: MAX_FILE_SIZE_MB * 1024 * 1024,
+    });
+    return Promise.resolve(null);
+  }
   if (IMAGE_TYPES.includes(file.type)) return processImageFile(file);
   if (isTextFile(file)) return processTextFile(file);
+  console.warn("[attach] processFile rejected: unsupported type", {
+    name: file.name,
+    type: file.type,
+  });
   return Promise.resolve(null);
 }
 
@@ -174,15 +218,49 @@ export function useFileAttachments(
   const canAddMore = attachments.length < MAX_ATTACHMENTS && totalSizeMB < MAX_TOTAL_SIZE_MB;
 
   const addFiles = useCallback(async (files: FileList | null) => {
-    if (!files?.length || !onAttachmentsChange || !canAddMore) return;
+    console.log("[attach] addFiles entry", {
+      count: files?.length ?? 0,
+      hasCallback: Boolean(onAttachmentsChange),
+      canAddMore,
+      currentLen: attachments.length,
+    });
+    if (!files?.length) {
+      console.warn("[attach] addFiles short-circuit: no files");
+      return;
+    }
+    if (!onAttachmentsChange) {
+      console.warn("[attach] addFiles short-circuit: no onAttachmentsChange");
+      return;
+    }
+    if (!canAddMore) {
+      console.warn("[attach] addFiles short-circuit: canAddMore=false", {
+        currentLen: attachments.length,
+        max: MAX_ATTACHMENTS,
+      });
+      return;
+    }
     const toAdd = Array.from(files).slice(0, MAX_ATTACHMENTS - attachments.length);
+    console.log("[attach] addFiles processing", {
+      toAddCount: toAdd.length,
+      types: toAdd.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+    });
     const results = await Promise.all(toAdd.map(processFile));
     const valid = results.filter((r): r is AttachmentItem => r !== null);
+    console.log("[attach] addFiles processed", {
+      processed: results.length,
+      valid: valid.length,
+      droppedNull: results.length - valid.length,
+    });
     if (valid.length) {
       void import("../../../../lib/analytics").then(({ track }) =>
         track("file_attached", { file_count: valid.length }),
       );
-      onAttachmentsChange([...attachments, ...valid]);
+      const next = [...attachments, ...valid];
+      console.log("[attach] addFiles invoking onAttachmentsChange", {
+        from: attachments.length,
+        to: next.length,
+      });
+      onAttachmentsChange(next);
 
       // Kick off S3 uploads after the state update renders so the ref
       // has the new items before onUpdate reads it.
@@ -198,6 +276,8 @@ export function useFileAttachments(
           }
         }, 0);
       }
+    } else {
+      console.warn("[attach] addFiles produced zero valid items, no preview will render");
     }
     textareaRef?.current?.focus();
   }, [attachments, canAddMore, onAttachmentsChange, onUpdateAttachment, textareaRef]);

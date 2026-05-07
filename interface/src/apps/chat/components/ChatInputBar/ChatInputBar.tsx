@@ -160,6 +160,7 @@ function AttachmentPreviews({
   attachments: AttachmentItem[];
   onRemove: (id: string) => void;
 }) {
+  console.log("[attach] AttachmentPreviews render", { count: attachments.length });
   if (attachments.length === 0) return null;
   return (
     <div className={styles.attachmentPreviews}>
@@ -349,7 +350,14 @@ export const DesktopChatInputBar = memo(
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
-        if (generationMode === "3d") return;
+        console.log("[attach] handleDrop fired", {
+          mode: generationMode,
+          fileCount: e.dataTransfer.files?.length ?? 0,
+        });
+        if (generationMode === "3d") {
+          console.warn("[attach] handleDrop short-circuit: 3d mode");
+          return;
+        }
         addFiles(e.dataTransfer.files);
       },
       [addFiles, generationMode],
@@ -357,9 +365,19 @@ export const DesktopChatInputBar = memo(
 
     const handlePaste = useCallback(
       (e: React.ClipboardEvent) => {
-        if (generationMode === "3d") return;
+        console.log("[attach] handlePaste fired", {
+          mode: generationMode,
+          itemCount: e.clipboardData?.items?.length ?? 0,
+        });
+        if (generationMode === "3d") {
+          console.warn("[attach] handlePaste short-circuit: 3d mode");
+          return;
+        }
         const items = e.clipboardData?.items;
-        if (!items) return;
+        if (!items) {
+          console.warn("[attach] handlePaste short-circuit: no clipboardData.items");
+          return;
+        }
         const imageFiles: File[] = [];
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
@@ -368,6 +386,9 @@ export const DesktopChatInputBar = memo(
             if (file) imageFiles.push(file);
           }
         }
+        console.log("[attach] handlePaste collected", {
+          imageFiles: imageFiles.length,
+        });
         if (imageFiles.length > 0) {
           e.preventDefault();
           const dt = new DataTransfer();
@@ -669,6 +690,9 @@ export const DesktopChatInputBar = memo(
           multiple
           className={inputBarShellStyles.fileInputHidden}
           onChange={(e) => {
+            console.log("[attach] fileInput onChange", {
+              fileCount: e.target.files?.length ?? 0,
+            });
             addFiles(e.target.files);
             e.target.value = "";
           }}
