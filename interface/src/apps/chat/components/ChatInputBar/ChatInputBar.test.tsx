@@ -555,6 +555,48 @@ describe("ChatInputBar", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
+  it("keeps send enabled in image mode while attachment upload is pending", async () => {
+    const user = userEvent.setup();
+    mockSelectedMode = "image";
+    const onSend = vi.fn();
+    const attachment: AttachmentItem = {
+      id: "a1",
+      file: new File(["data"], "reference.png", { type: "image/png" }),
+      data: "base64data",
+      mediaType: "image/png",
+      name: "reference.png",
+      attachmentType: "image",
+      uploading: true,
+    };
+
+    render(
+      <ChatInputBar
+        {...makeProps({ input: "", attachments: [attachment], onSend })}
+      />,
+    );
+
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeEnabled();
+    await user.click(send);
+    expect(onSend).toHaveBeenCalledWith("", undefined, undefined);
+  });
+
+  it("keeps send disabled in chat mode while attachment upload is pending", () => {
+    const attachment: AttachmentItem = {
+      id: "a1",
+      file: new File(["data"], "reference.png", { type: "image/png" }),
+      data: "base64data",
+      mediaType: "image/png",
+      name: "reference.png",
+      attachmentType: "image",
+      uploading: true,
+    };
+
+    render(<ChatInputBar {...makeProps({ input: "", attachments: [attachment] })} />);
+
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
   it("intercepts image pastes even when the clipboard includes text formats", () => {
     const file = new File(["img"], "pasted.png", { type: "image/png" });
     const fileList = makeFileList(file);

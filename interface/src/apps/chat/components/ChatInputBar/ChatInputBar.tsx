@@ -923,7 +923,7 @@ export const DesktopChatInputBar = memo(
         : "Describe an image to generate\u2026"
       : "What do you want to create?";
 
-    const isUploading = attachments.some((a) => a.uploading);
+    const isUploading = generationMode !== "image" && attachments.some((a) => a.uploading);
 
     return (
       <InputBarShell
