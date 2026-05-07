@@ -89,6 +89,16 @@
   margin-top: var(--space-1);
 }
 
+.moreButtonWrap > button[class*="selected"] {
+  color: var(--color-text-primary);
+  text-shadow: none;
+}
+
+.moreMenu [class*="menuItem"][class*="selected"],
+.moreMenu [class*="menuItem"][class*="selected"]:hover {
+  color: var(--color-text-primary);
+}
+
 .sidekickBody {
   position: relative;
   display: flex;

@@ -8,7 +8,7 @@ import {
   Check,
   ScrollText,
   BarChart3,
-  Monitor,
+  MessageSquare,
   FolderClosed,
   Play,
   Plus,
@@ -72,6 +72,7 @@ export function SidekickTaskbar() {
   const handleArchive = ctx?.handleArchive;
   const tabs = useMemo<TabItem[]>(
     () => [
+      { id: "sessions", icon: <MessageSquare size={16} />, title: "Sessions" },
       { id: "terminal", icon: <SquareTerminal size={16} />, title: "Terminal" },
       { id: "browser", icon: <Globe size={16} />, title: "Browser" },
       { id: "specs", icon: <File size={16} />, title: "Specs" },
@@ -103,7 +104,6 @@ export function SidekickTaskbar() {
       },
       { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
       { id: "log", icon: <ScrollText size={16} />, title: "Log" },
-      { id: "sessions", icon: <Monitor size={16} />, title: "Sessions" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
       { id: "new-terminal", icon: <Plus size={16} />, title: "New terminal", kind: "action" },
       { id: "new-browser", icon: <Plus size={16} />, title: "New browser", kind: "action" },

@@ -36,6 +36,10 @@
   display: none;
 }
 
+.sessionsExplorer [class*="leafSpacer"] {
+  display: none;
+}
+
 .sessionsExplorer [class*="itemContent"] {
   padding-left: var(--space-3, 12px) !important;
   padding-right: var(--space-3, 12px);
@@ -51,7 +55,8 @@
 }
 
 .sessionsExplorer [class*="itemSelected"],
-.sessionsExplorer [class*="itemSelected"]:hover {
+.sessionsExplorer [class*="itemSelected"]:hover,
+.sessionsExplorer [class*="itemContent"][class*="selected"]:hover:not(:disabled) {
   background: var(--color-overlay-subtle);
   color: var(--color-text-primary);
 }
