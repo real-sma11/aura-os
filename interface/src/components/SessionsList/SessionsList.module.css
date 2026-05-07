@@ -45,19 +45,20 @@
   background: var(--color-overlay-subtle);
 }
 
-/* Active session row: subtle accent so the user always knows which
-   session the main chat is rendering. The CSS variable falls back to
-   a light theme tint when the variable isn't defined. */
+/* Active session row: matches the selected agent row in the left
+   menu (`AgentConversationRow.module.css` `.selected`) so both
+   surfaces share one visual treatment for "active item". Uses the
+   neutral overlay tokens from `@cypher-asi/zui/styles/themes.css`,
+   which adapt across dark and light themes. */
 .chatsRowSelected,
 .chatsRow[aria-current="page"] {
-  background: var(--color-bg-selected, color-mix(in srgb, var(--color-accent, #6366f1) 14%, transparent));
-  color: var(--color-text);
-  font-weight: 500;
+  background: var(--color-overlay-medium);
+  color: var(--color-text-primary);
 }
 
 .chatsRowSelected:hover,
 .chatsRow[aria-current="page"]:hover {
-  background: var(--color-bg-selected, color-mix(in srgb, var(--color-accent, #6366f1) 18%, transparent));
+  background: var(--color-overlay-heavy);
 }
 
 .tabEmptyState {
