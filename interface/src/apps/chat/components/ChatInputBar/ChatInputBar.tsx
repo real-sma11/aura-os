@@ -272,24 +272,10 @@ export const DesktopChatInputBar = memo(
       [],
     );
 
-    const attachmentsRef = useRef(attachments);
-    attachmentsRef.current = attachments;
-
-    const handleUpdateAttachment = useCallback(
-      (id: string, updates: Partial<AttachmentItem>) => {
-        if (!onAttachmentsChange) return;
-        onAttachmentsChange(
-          attachmentsRef.current.map((a) => (a.id === id ? { ...a, ...updates } : a)),
-        );
-      },
-      [onAttachmentsChange],
-    );
-
     const { canAddMore, addFiles, handleRemove } = useFileAttachments(
       attachments,
       onAttachmentsChange,
       onRemoveAttachment,
-      handleUpdateAttachment,
       textareaRefShim as React.RefObject<HTMLTextAreaElement | null>,
     );
 

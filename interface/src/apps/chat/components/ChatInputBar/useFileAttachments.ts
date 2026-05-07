@@ -175,25 +175,25 @@ function base64ToBlob(base64: string, mediaType: string): Blob {
 /** Fire-and-forget S3 upload for a single attachment. */
 async function uploadAttachmentToS3(
   item: AttachmentItem,
-  onUpdate: (id: string, updates: Partial<AttachmentItem>) => void,
+  updateAttachment: (id: string, updates: Partial<AttachmentItem>) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  onUpdate(item.id, { uploading: true, uploadProgress: 0 });
+  updateAttachment(item.id, { uploading: true, uploadProgress: 0 });
   try {
     const blob = base64ToBlob(item.data, item.mediaType);
     const fileUrl = await uploadFile(
       blob,
       item.name,
       item.mediaType,
-      (percent) => onUpdate(item.id, { uploadProgress: percent }),
+      (percent) => updateAttachment(item.id, { uploadProgress: percent }),
       signal,
     );
-    onUpdate(item.id, { fileUrl, uploading: false, uploadProgress: 100 });
+    updateAttachment(item.id, { fileUrl, uploading: false, uploadProgress: 100 });
   } catch (err) {
     if (signal.aborted) return;
     const message = err instanceof Error ? err.message : "Upload failed";
     console.warn("[upload] S3 upload failed, will fall back to base64:", message);
-    onUpdate(item.id, { uploading: false, uploadError: message });
+    updateAttachment(item.id, { uploading: false, uploadError: message });
   }
 }
 
@@ -201,12 +201,23 @@ export function useFileAttachments(
   attachments: AttachmentItem[],
   onAttachmentsChange?: (items: AttachmentItem[]) => void,
   onRemoveAttachment?: (id: string) => void,
-  onUpdateAttachment?: (id: string, updates: Partial<AttachmentItem>) => void,
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>,
 ) {
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
   useEffect(() => () => { attachmentsRef.current.forEach((a) => a.preview && URL.revokeObjectURL(a.preview)); }, []);
+
+  const onAttachmentsChangeRef = useRef(onAttachmentsChange);
+  onAttachmentsChangeRef.current = onAttachmentsChange;
+
+  /** Update a single attachment by id using the latest ref state. */
+  const updateAttachment = useCallback((id: string, updates: Partial<AttachmentItem>) => {
+    const updated = attachmentsRef.current.map((a) =>
+      a.id === id ? { ...a, ...updates } : a,
+    );
+    attachmentsRef.current = updated;
+    onAttachmentsChangeRef.current?.(updated);
+  }, []);
 
   // Abort controllers for in-flight uploads, keyed by attachment id.
   const uploadAbortRefs = useRef<Map<string, AbortController>>(new Map());
@@ -260,27 +271,24 @@ export function useFileAttachments(
         from: attachments.length,
         to: next.length,
       });
+      attachmentsRef.current = next;
       onAttachmentsChange(next);
 
-      // Kick off S3 uploads after the state update renders so the ref
-      // has the new items before onUpdate reads it.
-      if (onUpdateAttachment) {
-        const itemsToUpload = [...valid];
-        setTimeout(() => {
-          for (const item of itemsToUpload) {
-            const controller = new AbortController();
-            uploadAbortRefs.current.set(item.id, controller);
-            void uploadAttachmentToS3(item, onUpdateAttachment, controller.signal).finally(() => {
-              uploadAbortRefs.current.delete(item.id);
-            });
-          }
-        }, 0);
+      // Kick off S3 uploads in background (fire-and-forget).
+      // The ref is already updated above so updateAttachment reads
+      // the current array including the new items.
+      for (const item of valid) {
+        const controller = new AbortController();
+        uploadAbortRefs.current.set(item.id, controller);
+        void uploadAttachmentToS3(item, updateAttachment, controller.signal).finally(() => {
+          uploadAbortRefs.current.delete(item.id);
+        });
       }
     } else {
       console.warn("[attach] addFiles produced zero valid items, no preview will render");
     }
     textareaRef?.current?.focus();
-  }, [attachments, canAddMore, onAttachmentsChange, onUpdateAttachment, textareaRef]);
+  }, [attachments, canAddMore, onAttachmentsChange, updateAttachment, textareaRef]);
 
   const handleRemove = useCallback((id: string) => {
     // Abort any in-flight upload for this attachment

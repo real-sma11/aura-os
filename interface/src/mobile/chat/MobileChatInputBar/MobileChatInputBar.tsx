@@ -132,7 +132,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       attachments,
       onAttachmentsChange,
       onRemoveAttachment,
-      undefined, // onUpdateAttachment — S3 uploads not yet wired on mobile
       textareaRef,
     );
 
