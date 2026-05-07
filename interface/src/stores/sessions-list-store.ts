@@ -122,6 +122,17 @@ interface SessionsListStore {
   /** Per-agent load status for `bindingsByAgent`. */
   bindingsLoadStatusByAgent: Record<string, BindingsLoadStatus>;
   /**
+   * Pending session summaries keyed by their *real* `session_id`. The
+   * on-send title generator (Haiku) can land before `SessionReady`
+   * delivers the real id to the client, in which case
+   * `setSessionSummary` has no row yet to patch. Stashing the summary
+   * here lets `replaceSessionId` apply it the moment the optimistic
+   * placeholder is swapped for the real id, so the title survives
+   * the swap without ever cross-contaminating an unrelated optimistic
+   * row that happens to be in flight for a different session.
+   */
+  pendingSummariesById: Record<string, string>;
+  /**
    * Most-recent failed-delete message per surface, surfaced inline by
    * `SessionsList` as a small dismissible banner. `null` (or missing
    * key) means "no error to show". Lives in the store rather than
@@ -215,6 +226,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   loadingBySurface: {},
   bindingsByAgent: {},
   bindingsLoadStatusByAgent: {},
+  pendingSummariesById: {},
   deleteErrorBySurface: {},
   version: 0,
 
@@ -352,9 +364,16 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     if (!current) return;
     const next = current.filter((s) => s.session_id !== sessionId);
     if (next.length === current.length) return;
-    set((state) => ({
-      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
-    }));
+    set((state) => {
+      const nextPending = { ...state.pendingSummariesById };
+      // Drop any cached pending summary for this id so deleted sessions
+      // don't leak entries into `pendingSummariesById`.
+      delete nextPending[sessionId];
+      return {
+        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+        pendingSummariesById: nextPending,
+      };
+    });
   },
 
   restoreSession: (surfaceKey, session) => {
@@ -392,46 +411,71 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       }));
       return;
     }
+    // Pick up any title that landed before SessionReady. Stashed by
+    // `setSessionSummary` keyed on the REAL session id so an in-flight
+    // Haiku title for *this* session attaches to the row exactly when
+    // we know the optimistic placeholder maps to it — no
+    // cross-contamination with other in-flight optimistic rows.
+    const pendingSummary = get().pendingSummariesById[newSessionId];
     const next = current.slice();
-    next[idx] = { ...current[idx], session_id: newSessionId };
-    set((state) => ({
-      sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
-    }));
+    const swapped: AnnotatedSession = { ...current[idx], session_id: newSessionId };
+    if (pendingSummary !== undefined) {
+      swapped.summary_of_previous_context = pendingSummary;
+    }
+    next[idx] = swapped;
+    set((state) => {
+      const nextPending =
+        pendingSummary !== undefined
+          ? (() => {
+              const copy = { ...state.pendingSummariesById };
+              delete copy[newSessionId];
+              return copy;
+            })()
+          : state.pendingSummariesById;
+      return {
+        sessionsBySurface: { ...state.sessionsBySurface, [surfaceKey]: next },
+        ...(nextPending !== state.pendingSummariesById
+          ? { pendingSummariesById: nextPending }
+          : {}),
+      };
+    });
   },
 
   setSessionSummary: (sessionId, summary) => {
     // Patch the matching real-id row in every surface that holds it.
-    // Also patch any pending optimistic placeholder rows in those
-    // same surfaces — `replaceSessionId` (driven by SSE `SessionReady`)
-    // rewrites the row's `session_id` in place but preserves every
-    // other field, so seeding the title on the optimistic row makes
-    // it survive the swap and removes the need for a refetch
-    // fallback (which would race the swap and cause a duplicate row
-    // to render: one with the real id + new title from the refetch
-    // and one optimistic placeholder still showing "New chat").
+    // Optimistic placeholder rows are NOT matched here: a Title-K event
+    // arriving while opt-(K+1) is in flight for a different session
+    // used to stamp opt-(K+1) with Title-K, which then survived
+    // `replaceSessionId`'s swap and surfaced as a duplicate row.
+    // Instead we always cache the summary in `pendingSummariesById`
+    // keyed by the REAL session id so `replaceSessionId` can apply it
+    // when (and only when) it knows the optimistic placeholder really
+    // does map to this session.
     const sessionsBySurface = get().sessionsBySurface;
     let mutated = false;
     const nextBySurface: Record<string, AnnotatedSession[]> = {};
     for (const [key, list] of Object.entries(sessionsBySurface)) {
-      let nextList: AnnotatedSession[] | null = null;
-      for (let i = 0; i < list.length; i += 1) {
-        const row = list[i];
-        const isMatch =
-          row.session_id === sessionId || isOptimisticSessionId(row.session_id);
-        if (!isMatch) continue;
-        if (row.summary_of_previous_context === summary) continue;
-        if (!nextList) nextList = list.slice();
-        nextList[i] = { ...row, summary_of_previous_context: summary };
-      }
-      if (nextList) {
-        nextBySurface[key] = nextList;
-        mutated = true;
-      } else {
+      const idx = list.findIndex((s) => s.session_id === sessionId);
+      if (idx === -1) {
         nextBySurface[key] = list;
+        continue;
       }
+      if (list[idx].summary_of_previous_context === summary) {
+        nextBySurface[key] = list;
+        continue;
+      }
+      const nextList = list.slice();
+      nextList[idx] = { ...list[idx], summary_of_previous_context: summary };
+      nextBySurface[key] = nextList;
+      mutated = true;
     }
-    if (!mutated) return;
-    set(() => ({ sessionsBySurface: nextBySurface }));
+    set((state) => ({
+      ...(mutated ? { sessionsBySurface: nextBySurface } : {}),
+      pendingSummariesById: {
+        ...state.pendingSummariesById,
+        [sessionId]: summary,
+      },
+    }));
   },
 
   setDeleteError: (surfaceKey, message) => {

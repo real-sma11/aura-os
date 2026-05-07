@@ -53,6 +53,7 @@ function resetStores() {
     loadingBySurface: {},
     bindingsByAgent: {},
     bindingsLoadStatusByAgent: {},
+    pendingSummariesById: {},
     version: 0,
   });
   useProjectsListStore.setState({
@@ -528,6 +529,186 @@ describe("sessions-list-store", () => {
           .getState()
           .sessionsBySurface[surfaceKey]?.map((s) => s.session_id),
       ).toEqual(["s2"]);
+    });
+
+    it("removeSession drops any cached pending summary so the entry doesn't leak", () => {
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const session = {
+        ...makeSession("s1", "2026-04-16T00:00:00Z", "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      };
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [session] },
+        pendingSummariesById: { s1: "Stale Title" },
+      });
+
+      act(() => {
+        useSessionsListStore.getState().removeSession(surfaceKey, "s1");
+      });
+
+      expect(
+        useSessionsListStore.getState().pendingSummariesById,
+      ).toEqual({});
+    });
+  });
+
+  describe("setSessionSummary / pendingSummariesById", () => {
+    function annotate(session: Session): AnnotatedSession {
+      return {
+        ...session,
+        _projectId: session.project_id,
+        _projectName: "P1",
+        _agentInstanceId: session.agent_instance_id,
+      };
+    }
+
+    it("does NOT touch unrelated optimistic rows when a different session's title arrives", () => {
+      // Repro for the duplicate-row bug: while opt-B is the placeholder
+      // for session B, a delayed Title-A event for session A used to
+      // stamp opt-B with Title-A and survive `replaceSessionId`'s swap,
+      // making real-B render with Title-A — a visual duplicate of
+      // real-A. The fix is to scope `setSessionSummary` to its real id
+      // and stash the pending title in `pendingSummariesById` instead.
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const realA = annotate(
+        makeSession("real-A", "2026-04-16T00:00:00Z", "i1", "p1"),
+      );
+      const optimisticB = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}b`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimisticB, realA] },
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-A", "Title-A");
+      });
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      const optimisticRow = rows?.find(
+        (s) => s.session_id === optimisticB.session_id,
+      );
+      const realRow = rows?.find((s) => s.session_id === "real-A");
+      expect(optimisticRow?.summary_of_previous_context).toBe("");
+      expect(realRow?.summary_of_previous_context).toBe("Title-A");
+    });
+
+    it("caches the title when the row isn't in any surface yet (Haiku faster than SessionReady)", () => {
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-A", "Title-A");
+      });
+
+      expect(
+        useSessionsListStore.getState().pendingSummariesById["real-A"],
+      ).toBe("Title-A");
+    });
+
+    it("replaceSessionId applies a cached pending summary and clears the entry", () => {
+      // The title race: Haiku finished and emitted before SessionReady
+      // delivered the real id to the client. The optimistic placeholder
+      // therefore still has an empty summary, but `pendingSummariesById`
+      // remembers the title against the real id. The swap should pick
+      // it up so the new chat row renders with its title immediately.
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}a`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic] },
+        pendingSummariesById: { "real-A": "Title-A" },
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .replaceSessionId(surfaceKey, optimistic.session_id, "real-A");
+      });
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].session_id).toBe("real-A");
+      expect(rows?.[0].summary_of_previous_context).toBe("Title-A");
+      expect(
+        useSessionsListStore.getState().pendingSummariesById,
+      ).toEqual({});
+    });
+
+    it("regression: rapid + chat creates with delayed titles do not produce a duplicate-titled row", () => {
+      // Walks the full sequence the bug report describes:
+      //   1. send #1, SessionReady-1 swaps opt-1 -> real-1.
+      //   2. user clicks +, send #2 -> opt-2 inserted alongside real-1.
+      //   3. Title-1 arrives late.
+      //   4. SessionReady-2 swaps opt-2 -> real-2.
+      //   5. Title-2 arrives.
+      // Before the fix step 3 also stamped opt-2 with Title-1, causing
+      // the post-swap row at step 4 to duplicate real-1's title.
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const opt1 = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}1`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+        startedAt: "2026-04-16T01:00:00Z",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [opt1] },
+      });
+
+      const store = useSessionsListStore.getState();
+      act(() => {
+        store.replaceSessionId(surfaceKey, opt1.session_id, "real-1");
+      });
+
+      const opt2 = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}2`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+        startedAt: "2026-04-16T02:00:00Z",
+      });
+      act(() => {
+        useSessionsListStore.getState().addOptimisticSession(surfaceKey, opt2);
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-1", "Title-1");
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .replaceSessionId(surfaceKey, opt2.session_id, "real-2");
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-2", "Title-2");
+      });
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[surfaceKey];
+      const realOne = rows?.find((s) => s.session_id === "real-1");
+      const realTwo = rows?.find((s) => s.session_id === "real-2");
+      expect(realOne?.summary_of_previous_context).toBe("Title-1");
+      expect(realTwo?.summary_of_previous_context).toBe("Title-2");
+      expect(rows?.length).toBe(2);
     });
   });
 
