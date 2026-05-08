@@ -54,10 +54,21 @@
   outline: none;
 }
 
-.sessionsExplorer [class*="itemSelected"],
+/* Selected and hover must be visually distinct: the underlying ZUI
+   Explorer's `:hover` paints rows with `--color-overlay-subtle`, so
+   if we used the same token for selected, a hovered row in one date
+   bucket would look identical to the selected row in another bucket
+   and the list would appear to multi-select across days. Mirrors the
+   AgentConversationRow pattern (subtle hover / medium selected /
+   heavy selected+hover). */
+.sessionsExplorer [class*="itemSelected"] {
+  background: var(--color-overlay-medium);
+  color: var(--color-text-primary);
+}
+
 .sessionsExplorer [class*="itemSelected"]:hover,
 .sessionsExplorer [class*="itemContent"][class*="selected"]:hover:not(:disabled) {
-  background: var(--color-overlay-subtle);
+  background: var(--color-overlay-heavy);
   color: var(--color-text-primary);
 }
 
