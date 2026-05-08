@@ -25,6 +25,7 @@ import { useChatHistoryStore, agentHistoryKey, sessionHistoryKey } from "../../.
 import { useProjectsListStore } from "../../../stores/projects-list-store";
 import {
   agentSessionsSurfaceKey,
+  findMostRecentRealSession,
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
@@ -271,7 +272,8 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     const tryWarmFromCurrentSnapshot = () => {
       const list = useSessionsListStore.getState().sessionsBySurface[surfaceKey];
       if (!list || list.length === 0) return;
-      const mostRecent = list[0];
+      const mostRecent = findMostRecentRealSession(list);
+      if (!mostRecent) return;
       const key = sessionHistoryKey(
         mostRecent._projectId,
         mostRecent._agentInstanceId,

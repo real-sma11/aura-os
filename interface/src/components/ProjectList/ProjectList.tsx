@@ -13,6 +13,7 @@ import {
   useChatHistoryStore,
 } from "../../stores/chat-history-store";
 import {
+  findMostRecentRealSessionForInstance,
   projectSessionsSurfaceKey,
   useSessionsListStore,
 } from "../../stores/sessions-list-store";
@@ -72,8 +73,9 @@ export function ProjectList() {
     const tryWarmRecent = () => {
       const list = useSessionsListStore.getState().sessionsBySurface[surfaceKey];
       if (!list || list.length === 0) return;
-      const mostRecentForInstance = list.find(
-        (s) => s._agentInstanceId === agentInstanceId,
+      const mostRecentForInstance = findMostRecentRealSessionForInstance(
+        list,
+        agentInstanceId,
       );
       if (!mostRecentForInstance) return;
       const key = sessionHistoryKey(

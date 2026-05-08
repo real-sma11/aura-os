@@ -63,18 +63,18 @@ export function AgentChatRoute() {
     queryInstanceId,
     setSearchParams,
   });
-  // Hold the previous ready target across `pending` windows so the
-  // user sees the previous panel (or a stable lane placeholder) instead
-  // of a blank lane while bindings/sessions resolve.
-  const target = usePreviousReadyTarget(liveTarget);
 
   // While the next session's history is still cold-loading, hold the
   // previous panel mounted to avoid the per-panel cold-load reveal
   // blinking the lane between two distinct sessions.
-  const targetHistoryStatus = useTargetHistoryStatus(target);
+  const targetHistoryStatus = useTargetHistoryStatus(liveTarget);
   const holdPrevious =
-    target.kind === "ready" && target.sessionId !== null &&
+    liveTarget.kind === "ready" && liveTarget.sessionId !== null &&
     (targetHistoryStatus === "idle" || targetHistoryStatus === "loading");
+  // Hold the previous ready target across resolver `pending` windows and
+  // cold history loads so the user sees the previous panel instead of a
+  // blank/flickering lane while the destination warms.
+  const target = usePreviousReadyTarget(liveTarget, holdPrevious);
 
   const handleProjectHandoffReady = useCallback(() => {
     if (target.kind !== "ready") return;
@@ -103,10 +103,6 @@ export function AgentChatRoute() {
       />
     );
   }
-
-  // `holdPrevious` retains the previous panel during cross-session
-  // cold-load; the chat panel itself owns its in-mount loading overlay.
-  void holdPrevious;
 
   return (
     <AgentChatPanel

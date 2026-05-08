@@ -33,6 +33,27 @@ export function isOptimisticSessionId(sessionId: string): boolean {
   return sessionId.startsWith(OPTIMISTIC_SESSION_ID_PREFIX);
 }
 
+export function findMostRecentRealSession(
+  sessions: AnnotatedSession[] | undefined,
+): AnnotatedSession | null {
+  if (!sessions || sessions.length === 0) return null;
+  return sessions.find((s) => !isOptimisticSessionId(s.session_id)) ?? null;
+}
+
+export function findMostRecentRealSessionForInstance(
+  sessions: AnnotatedSession[] | undefined,
+  agentInstanceId: string | undefined,
+): AnnotatedSession | null {
+  if (!agentInstanceId || !sessions || sessions.length === 0) return null;
+  return (
+    sessions.find(
+      (s) =>
+        s._agentInstanceId === agentInstanceId &&
+        !isOptimisticSessionId(s.session_id),
+    ) ?? null
+  );
+}
+
 /**
  * Builds an `AnnotatedSession` placeholder for the just-sent first
  * turn of a fresh chat. Empty `summary_of_previous_context` falls
@@ -533,6 +554,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     // does map to this session.
     const sessionsBySurface = get().sessionsBySurface;
     let mutated = false;
+    let foundRow = false;
     const nextBySurface: Record<string, AnnotatedSession[]> = {};
     for (const [key, list] of Object.entries(sessionsBySurface)) {
       const idx = list.findIndex((s) => s.session_id === sessionId);
@@ -540,6 +562,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
         nextBySurface[key] = list;
         continue;
       }
+      foundRow = true;
       if (list[idx].summary_of_previous_context === summary) {
         nextBySurface[key] = list;
         continue;
@@ -555,6 +578,10 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
         ...state.pendingSummariesById,
         [sessionId]: summary,
       },
+      // If the title arrives before any mounted surface has materialized
+      // the real row, wake the list loaders so they can merge the cached
+      // title instead of leaving "New chat" until a manual refresh.
+      ...(!foundRow ? { version: state.version + 1 } : {}),
     }));
   },
 
@@ -626,11 +653,7 @@ export function useMostRecentSession(
 ): AnnotatedSession | null {
   return useSessionsListStore((state) => {
     if (!surfaceKey) return null;
-    const list = state.sessionsBySurface[surfaceKey];
-    if (!list || list.length === 0) return null;
-    return (
-      list.find((s) => !isOptimisticSessionId(s.session_id)) ?? null
-    );
+    return findMostRecentRealSession(state.sessionsBySurface[surfaceKey]);
   });
 }
 

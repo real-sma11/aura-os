@@ -111,6 +111,19 @@ vi.mock("../../../../stores/sessions-list-store", () => {
   );
   return {
     agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+    findMostRecentRealSessionForInstance: (
+      sessions: FakeAnnotatedSession[] | undefined,
+      agentInstanceId: string | undefined,
+    ) => {
+      if (!agentInstanceId || !sessions) return null;
+      return (
+        sessions.find(
+          (s) =>
+            s._agentInstanceId === agentInstanceId &&
+            !s.session_id.startsWith("optimistic:"),
+        ) ?? null
+      );
+    },
     projectSessionsSurfaceKey: (projectId: string) => `project:${projectId}`,
     useAgentBindingsKey: (agentId: string | undefined) => {
       if (!agentId) return "";
@@ -133,7 +146,7 @@ vi.mock("../../../../stores/sessions-list-store", () => {
     useMostRecentSession: (surfaceKey: string | undefined) => {
       if (!surfaceKey) return null;
       const list = mocks.sessionsState.sessionsBySurface[surfaceKey];
-      return list && list.length > 0 ? list[0] : null;
+      return list?.find((s) => !s.session_id.startsWith("optimistic:")) ?? null;
     },
     useSessionsListStore: sessionsHook,
   };
@@ -243,5 +256,84 @@ describe("AgentChatRoute", () => {
       "session:p1:i1:s1",
       expect.any(Function),
     );
+  });
+
+  it("skips optimistic project sessions when defaulting and warming history", () => {
+    mocks.params = {
+      projectId: "p1",
+      agentInstanceId: "i1",
+      agentId: undefined,
+    };
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "project:p1": [
+          {
+            session_id: "optimistic:pending",
+            _projectId: "p1",
+            _agentInstanceId: "i1",
+          },
+          { session_id: "real-1", _projectId: "p1", _agentInstanceId: "i1" },
+        ],
+      },
+    };
+
+    render(<AgentChatRoute />);
+
+    const props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("real-1");
+    expect(mocks.fetchHistory).toHaveBeenCalledWith(
+      "session:p1:i1:real-1",
+      expect.any(Function),
+    );
+    expect(mocks.fetchHistory).not.toHaveBeenCalledWith(
+      "session:p1:i1:optimistic:pending",
+      expect.any(Function),
+    );
+
+    const updater = mocks.setSearchParams.mock.calls[0][0] as (
+      prev: URLSearchParams,
+    ) => URLSearchParams;
+    const next = updater(new URLSearchParams());
+    expect(next.get("session")).toBe("real-1");
+  });
+
+  it("keeps the previous ready panel mounted while a clicked session is cold-loading", () => {
+    mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
+    mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s1");
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+    };
+
+    const { rerender } = render(<AgentChatRoute />);
+
+    let props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("s1");
+
+    mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s2");
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s2": { status: "loading" },
+    };
+    rerender(<AgentChatRoute />);
+
+    props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("s1");
+
+    mocks.historyEntries = {
+      "session:p1:i1:s1": { status: "ready" },
+      "session:p1:i1:s2": { status: "ready" },
+    };
+    rerender(<AgentChatRoute />);
+
+    props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("s2");
   });
 });

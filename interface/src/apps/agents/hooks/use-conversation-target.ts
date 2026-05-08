@@ -8,6 +8,7 @@ import {
 } from "../../../stores/chat-history-store";
 import {
   agentSessionsSurfaceKey,
+  findMostRecentRealSessionForInstance,
   projectSessionsSurfaceKey,
   useAgentBindingsKey,
   useAgentBindingsLoadStatus,
@@ -135,8 +136,7 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
   // Most-recent session for the project route's specific instance (used
   // to default-select when `?session=` is missing).
   const mostRecentForInstance = useMemo(() => {
-    if (!agentInstanceId || !projectSessions) return null;
-    return projectSessions.find((s) => s._agentInstanceId === agentInstanceId) ?? null;
+    return findMostRecentRealSessionForInstance(projectSessions, agentInstanceId);
   }, [agentInstanceId, projectSessions]);
 
   // Eagerly warm the chat-history-store for the resolved (projectId,
@@ -290,9 +290,12 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
  * cache with a single, externalized hook.
  */
 /* eslint-disable react-hooks/refs -- legitimate prev-value latch read during render */
-export function usePreviousReadyTarget(target: ConversationTarget): ConversationTarget {
+export function usePreviousReadyTarget(
+  target: ConversationTarget,
+  holdPrevious = false,
+): ConversationTarget {
   const lastReadyRef = useRef<ConversationTarget | null>(null);
-  if (target.kind === "pending" && lastReadyRef.current) {
+  if ((target.kind === "pending" || holdPrevious) && lastReadyRef.current) {
     return lastReadyRef.current;
   }
   if (target.kind !== "pending") {

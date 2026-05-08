@@ -4,6 +4,7 @@ import type { AnnotatedSession } from "../components/SessionsList";
 import {
   agentSessionsSurfaceKey,
   buildOptimisticSession,
+  findMostRecentRealSessionForInstance,
   isOptimisticSessionId,
   OPTIMISTIC_SESSION_ID_PREFIX,
   projectSessionsSurfaceKey,
@@ -298,6 +299,35 @@ describe("sessions-list-store", () => {
         useMostRecentSession(surfaceKey),
       );
       expect(result.current?.session_id).toBe("real-1");
+    });
+
+    it("findMostRecentRealSessionForInstance skips optimistic placeholder rows", () => {
+      const otherInstance = {
+        ...makeSession("other-agent", "2026-04-16T09:00:00Z", "i2", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i2",
+      } as AnnotatedSession;
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}leak`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+        startedAt: "2026-04-16T08:00:00Z",
+      });
+      const real = {
+        ...makeSession("real-1", "2026-04-16T00:00:00Z", "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      } as AnnotatedSession;
+
+      expect(
+        findMostRecentRealSessionForInstance(
+          [otherInstance, optimistic, real],
+          "i1",
+        )?.session_id,
+      ).toBe("real-1");
     });
 
     it("marks the bindings status as 'error' when listProjectBindings fails and skips the session fan-out", async () => {
@@ -640,6 +670,40 @@ describe("sessions-list-store", () => {
       expect(
         useSessionsListStore.getState().pendingSummariesById["real-A"],
       ).toBe("Title-A");
+    });
+
+    it("bumps version when a title arrives before the row exists", () => {
+      expect(useSessionsListStore.getState().version).toBe(0);
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-A", "Title-A");
+      });
+
+      expect(useSessionsListStore.getState().version).toBe(1);
+    });
+
+    it("does not bump version when the matching row is already present", () => {
+      const surfaceKey = projectSessionsSurfaceKey("p1");
+      const real = {
+        ...makeSession("real-A", "2026-04-16T00:00:00Z", "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      } as AnnotatedSession;
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [real] },
+        version: 4,
+      });
+
+      act(() => {
+        useSessionsListStore
+          .getState()
+          .setSessionSummary("real-A", "Title-A");
+      });
+
+      expect(useSessionsListStore.getState().version).toBe(4);
     });
 
     it("replaceSessionId applies a cached pending summary and clears the entry", () => {
