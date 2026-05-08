@@ -120,14 +120,19 @@ fn handle_recovery_readiness_error(
             );
             ApiError::bad_gateway("new machine provisioned but timed out waiting for ready state")
         }
-        SwarmAgentReadyError::ErrorState => {
-            broadcast_recovery_phase(
-                state,
-                aura_agent_id,
-                "error",
-                Some("New machine entered error state after provisioning"),
-            );
-            ApiError::bad_gateway("new machine entered error state after provisioning")
+        SwarmAgentReadyError::ErrorState(reason) => {
+            // Forward the swarm-supplied diagnostic (e.g. an `Unschedulable`
+            // PodScheduled message) all the way to the UI and the API
+            // response. Without this, callers fell back to a generic
+            // "entered error state" string and the user had no way to
+            // distinguish a transient pull failure from a hard scheduling
+            // problem.
+            let display = reason.as_deref().unwrap_or("no detail provided");
+            let banner = format!("New machine entered error state: {display}");
+            broadcast_recovery_phase(state, aura_agent_id, "error", Some(&banner));
+            ApiError::bad_gateway(format!(
+                "new machine entered error state after provisioning: {display}"
+            ))
         }
         SwarmAgentReadyError::Transport(msg) => {
             broadcast_recovery_phase(

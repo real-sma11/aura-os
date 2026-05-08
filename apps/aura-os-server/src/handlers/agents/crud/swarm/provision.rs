@@ -42,13 +42,19 @@ pub(in crate::handlers::agents::crud) async fn provision_remote_agent(
     );
 
     if !matches!(provisioned.status.as_str(), "running" | "idle") {
+        // The spawned readiness check may invoke
+        // `recover_remote_agent_pipeline` on timeout, which needs an owned
+        // `AppState` + `Arc<NetworkClient>` + `NetworkAgent`. We re-derive
+        // the network client from state instead of cloning the borrowed
+        // `&NetworkClient` so the spawned task gets a long-lived Arc.
+        let network_arc = state.require_network_client()?.clone();
         spawn_swarm_readiness_check(super::readiness::BackgroundReadinessTask {
-            http: client.http_client().clone(),
-            swarm_base_url: swarm_base_url.to_owned(),
+            state: state.clone(),
+            network: network_arc,
+            net_agent: net_agent.clone(),
             jwt: jwt.to_string(),
             provisioned_agent_id: provisioned.agent_id.clone(),
             vm_id: provisioned.vm_id.clone(),
-            agent_id: net_agent.id.clone(),
         });
     }
 

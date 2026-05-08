@@ -30,9 +30,14 @@ struct ProvisionedSwarmAgent {
 
 /// Errors surfaced by [`readiness::wait_for_swarm_agent_ready`]. Kept private
 /// to the swarm submodules; the recovery pipeline maps these to API errors.
+///
+/// `ErrorState` carries the optional swarm-supplied diagnostic so callers
+/// (the recovery handler, the auto-recovery wrapper) can surface the actual
+/// root cause -- e.g. an `Unschedulable` or `ImagePullBackOff` reason --
+/// instead of a generic "entered error state" string.
 enum SwarmAgentReadyError {
     Timeout,
-    ErrorState,
+    ErrorState(Option<String>),
     Transport(String),
     Parse(String),
 }

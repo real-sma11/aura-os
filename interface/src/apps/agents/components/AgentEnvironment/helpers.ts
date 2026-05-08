@@ -24,6 +24,11 @@ export const PHASE_NOTICES: Record<string, RecoveryNotice> = {
   deleting: { tone: "info", message: "Deleting old machine..." },
   provisioning: { tone: "info", message: "Provisioning new machine..." },
   waiting_for_ready: { tone: "info", message: "Waiting for machine to come online..." },
+  starting: { tone: "info", message: "First start failed - auto-recovering..." },
+  startup_failed: {
+    tone: "error",
+    message: "Machine failed to start. Click Recovery to try again.",
+  },
 }
 
 export function formatUptime(seconds: number): string {
