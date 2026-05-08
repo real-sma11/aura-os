@@ -26,9 +26,12 @@
 ;     bitmap swap via LoadImageW + STM_SETIMAGE on the welcome/finish sidebar
 ;     control (id 1201) in case MUI cached an HBITMAP from the dark variant
 ;     before our .onInit swap landed.
-;   * .onGUIInit + welcome/finish show: DwmSetWindowAttribute(
-;     DWMWA_USE_IMMERSIVE_DARK_MODE = 20) for a dark wizard title bar when
-;     the user is in dark mode (Win10 1809+; silently no-ops on older).
+;   * MUI_CUSTOMFUNCTION_GUIINIT (AuraOnGUIInit) + welcome/finish show:
+;     DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE = 20) for a dark
+;     wizard title bar when the user is in dark mode (Win10 1809+; silently
+;     no-ops on older). We must NOT define `.onGUIInit` directly because
+;     MUI2 auto-generates one and makensis aborts on duplicate function
+;     names.
 ;
 ; Re-syncing with upstream:
 ;   1. Fetch a newer crates/packager/src/package/nsis/installer.nsi
@@ -161,6 +164,14 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; first welcome/finish macro consumption, but cargo-packager's template only
 ; instantiates each once.
 !define MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW AuraThemedWelcomeShow
+
+; AURA: MUI2 auto-generates its own `.onGUIInit` from MUI_PAGE_* macro
+; expansion, so defining a bare `Function .onGUIInit ... FunctionEnd` in
+; this template causes makensis to abort with "Function named '.onGUIInit'
+; already exists". The documented MUI2 hook is MUI_CUSTOMFUNCTION_GUIINIT:
+; MUI's generated `.onGUIInit` calls this function name. Must be defined
+; before the first MUI_PAGE_* insertion below.
+!define MUI_CUSTOMFUNCTION_GUIINIT AuraOnGUIInit
 
 ; Define registry key to store installer language
 !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
@@ -533,7 +544,11 @@ FunctionEnd
 ; ignores the unknown attribute. We don't check the OS version because
 ; DwmSetWindowAttribute returns E_INVALIDARG on older Windows and we don't
 ; care about the return value.
-Function .onGUIInit
+;
+; Registered as MUI_CUSTOMFUNCTION_GUIINIT above so MUI2 calls us from its
+; own generated `.onGUIInit` (we cannot define `.onGUIInit` ourselves
+; without colliding with MUI's).
+Function AuraOnGUIInit
   ${If} $R8 == "0"
     System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, *i 1, i 4) i .r0'
   ${EndIf}
