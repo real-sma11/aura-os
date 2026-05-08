@@ -12,7 +12,6 @@ import { StandaloneAgentChatPanel } from "../StandaloneAgentChatPanel";
 import {
   useConversationTarget,
   usePreviousReadyTarget,
-  useTargetHistoryStatus,
 } from "../../hooks/use-conversation-target";
 import styles from "./AgentChatRoute.module.css";
 
@@ -64,17 +63,10 @@ export function AgentChatRoute() {
     setSearchParams,
   });
 
-  // While the next session's history is still cold-loading, hold the
-  // previous panel mounted to avoid the per-panel cold-load reveal
-  // blinking the lane between two distinct sessions.
-  const targetHistoryStatus = useTargetHistoryStatus(liveTarget);
-  const holdPrevious =
-    liveTarget.kind === "ready" && liveTarget.sessionId !== null &&
-    (targetHistoryStatus === "idle" || targetHistoryStatus === "loading");
-  // Hold the previous ready target across resolver `pending` windows and
-  // cold history loads so the user sees the previous panel instead of a
-  // blank/flickering lane while the destination warms.
-  const target = usePreviousReadyTarget(liveTarget, holdPrevious);
+  // Hold the previous ready target only across resolver `pending` windows.
+  // Explicit session clicks must render the clicked target immediately;
+  // the chat panel owns the in-thread loading/reveal state.
+  const target = usePreviousReadyTarget(liveTarget);
 
   const handleProjectHandoffReady = useCallback(() => {
     if (target.kind !== "ready") return;

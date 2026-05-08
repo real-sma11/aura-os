@@ -299,7 +299,7 @@ describe("AgentChatRoute", () => {
     expect(next.get("session")).toBe("real-1");
   });
 
-  it("keeps the previous ready panel mounted while a clicked session is cold-loading", () => {
+  it("renders a clicked session immediately even while its history is loading", () => {
     mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
     mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s1");
     mocks.historyEntries = {
@@ -323,7 +323,7 @@ describe("AgentChatRoute", () => {
     props = JSON.parse(
       screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
     ) as Record<string, unknown>;
-    expect(props.sessionId).toBe("s1");
+    expect(props.sessionId).toBe("s2");
 
     mocks.historyEntries = {
       "session:p1:i1:s1": { status: "ready" },

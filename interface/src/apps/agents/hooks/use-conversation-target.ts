@@ -290,12 +290,9 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
  * cache with a single, externalized hook.
  */
 /* eslint-disable react-hooks/refs -- legitimate prev-value latch read during render */
-export function usePreviousReadyTarget(
-  target: ConversationTarget,
-  holdPrevious = false,
-): ConversationTarget {
+export function usePreviousReadyTarget(target: ConversationTarget): ConversationTarget {
   const lastReadyRef = useRef<ConversationTarget | null>(null);
-  if ((target.kind === "pending" || holdPrevious) && lastReadyRef.current) {
+  if (target.kind === "pending" && lastReadyRef.current) {
     return lastReadyRef.current;
   }
   if (target.kind !== "pending") {
