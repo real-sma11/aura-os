@@ -242,6 +242,24 @@ export const useProfileStore = create<ProfileState>()((set, get) => {
 
 setupCommentLoadingSubscription(useProfileStore.subscribe, useProfileStore.setState);
 
+/** Reset profile store to initial state (called on logout). */
+export function resetProfileStore(): void {
+  _initialized = false;
+  useProfileStore.setState({
+    profile: {
+      name: "", bio: "", website: "", location: "",
+      joinedDate: new Date().toISOString(),
+      id: undefined, networkUserId: undefined, avatarUrl: undefined, handle: "",
+    },
+    projects: [],
+    projectsStatus: "idle",
+    liveEvents: [],
+    eventsStatus: "idle",
+    totalTokenUsage: 0,
+    selectedProject: null,
+  });
+}
+
 let _prevProfileOrgId: string | null = null;
 useOrgStore.subscribe((state) => {
   if (!_initialized) return;

@@ -266,6 +266,18 @@ export const useAuthStore = create<AuthState>()((set) => ({
     } catch {
       // best-effort; missing store should not block logout
     }
+    try {
+      const { resetProfileStore } = await import("./profile-store");
+      resetProfileStore();
+    } catch {}
+    try {
+      const { resetFeedStore } = await import("./feed-store");
+      resetFeedStore();
+    } catch {}
+    try {
+      const { useBillingStore } = await import("./billing-store");
+      useBillingStore.getState().reset();
+    } catch {}
     // Setting `hasResolvedInitialSession: true` flips the App.tsx gate so
     // `showShell` immediately follows the live (`user === null`) state
     // instead of the sticky `initiallyLoggedIn` boot snapshot. React Router
