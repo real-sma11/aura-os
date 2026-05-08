@@ -224,6 +224,54 @@ describe("SessionsList", () => {
     expect(first).not.toHaveAttribute("aria-current");
   });
 
+  it("selects the optimistic New chat row when the URL has no real session yet", () => {
+    const sessions = [
+      makeSession("optimistic:new", isoToday, ""),
+      makeSession("s1", isoYesterday, "Previous"),
+    ];
+
+    render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("treeitem", { name: "New chat" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("treeitem", { name: "Previous" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("keeps the explicit selected session over an optimistic New chat fallback", () => {
+    const sessions = [
+      makeSession("optimistic:new", isoToday, ""),
+      makeSession("s1", isoYesterday, "Previous"),
+    ];
+
+    render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="s1"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("treeitem", { name: "Previous" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("treeitem", { name: "New chat" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   // Regression: clicking another session used to remount the entire
   // ZUI Explorer subtree (the bucket-keyed `${label}:${id}` hack that
   // `SessionsList` carried before the controlled-`selectedIds`

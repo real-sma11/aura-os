@@ -255,15 +255,30 @@ function preservePendingRows(
 ): AnnotatedSession[] {
   if (!prev || prev.length === 0) return next;
   const seen = new Set(next.map((s) => s.session_id));
+  const newestServerMsByBinding = new Map<string, number>();
   const newestServerMs = next.reduce(
-    (acc, s) => Math.max(acc, new Date(s.started_at).getTime()),
+    (acc, s) => {
+      const rowMs = new Date(s.started_at).getTime();
+      if (Number.isNaN(rowMs)) return acc;
+      const key = `${s._projectId}:${s._agentInstanceId}`;
+      newestServerMsByBinding.set(
+        key,
+        Math.max(newestServerMsByBinding.get(key) ?? 0, rowMs),
+      );
+      return Math.max(acc, rowMs);
+    },
     0,
   );
   const nowMs = Date.now();
   const carried = prev.filter((s) => {
     if (seen.has(s.session_id)) return false;
-    if (isOptimisticSessionId(s.session_id)) return true;
     const rowMs = new Date(s.started_at).getTime();
+    if (isOptimisticSessionId(s.session_id)) {
+      if (Number.isNaN(rowMs)) return true;
+      const key = `${s._projectId}:${s._agentInstanceId}`;
+      if ((newestServerMsByBinding.get(key) ?? 0) >= rowMs) return false;
+      return true;
+    }
     if (Number.isNaN(rowMs)) return false;
     if (rowMs <= newestServerMs) return false;
     if (nowMs - rowMs > PENDING_ROW_PRESERVE_TTL_MS) return false;

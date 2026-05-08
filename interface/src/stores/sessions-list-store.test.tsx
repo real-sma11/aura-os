@@ -544,6 +544,36 @@ describe("sessions-list-store", () => {
       expect(ids).toContain("older");
     });
 
+    it("replaces an optimistic row when the reload already contains the materialized session", async () => {
+      listProjectBindings.mockResolvedValue([
+        { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+      ]);
+      listSessions.mockResolvedValue([
+        makeSession("real-session", "2026-04-16T00:00:01Z", "i1", "p1"),
+        makeSession("older", "2026-04-15T00:00:00Z", "i1", "p1"),
+      ]);
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const optimistic = buildOptimisticSession({
+        optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}abc`,
+        projectId: "p1",
+        projectName: "P1",
+        agentInstanceId: "i1",
+        startedAt: "2026-04-16T00:00:00Z",
+      });
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [optimistic] },
+      });
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadAgentSessions("agent-x");
+      });
+
+      const ids = useSessionsListStore
+        .getState()
+        .sessionsBySurface[surfaceKey]?.map((s) => s.session_id);
+      expect(ids).toEqual(["real-session", "older"]);
+    });
+
     // Regression for "New Chat vanishes after first send": once
     // `replaceSessionId` swaps `optimistic:abc → real-X`, a stale
     // list response that started before the swap may not include

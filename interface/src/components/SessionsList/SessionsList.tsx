@@ -6,6 +6,7 @@ import {
   SidekickItemContextMenu,
   useSidekickItemContextMenu,
 } from "../SidekickItemContextMenu";
+import { isOptimisticSessionId } from "../../stores/sessions-list-store";
 import {
   type AnnotatedSession,
   bucketizeByDate,
@@ -115,14 +116,28 @@ export function SessionsList({
       })),
     [buckets],
   );
+  // Highlight the optimistic "New chat" row in the sidekick while the
+  // user is mid-creation: after `+` is pressed the URL has no
+  // `?session=` yet (the real id is only assigned when SessionReady
+  // streams back from the server). Without this, the row visibly
+  // appears at the top of the list but no row reads as selected, so
+  // the user can't tell which chat their first send will land in.
+  const effectiveSelectedSessionId = useMemo(() => {
+    if (selectedSessionId) return selectedSessionId;
+    return (
+      titledRows.find(({ session }) =>
+        isOptimisticSessionId(session.session_id),
+      )?.session.session_id ?? null
+    );
+  }, [selectedSessionId, titledRows]);
   // Stable controlled-selection array so the Explorer's `useMemo`s
   // for `selectedIds` / context value don't see a new identity on
   // every parent render (which would still be cheap, but this keeps
-  // referential equality for `[selectedSessionId]` when it's
+  // referential equality for `[effectiveSelectedSessionId]` when it's
   // unchanged).
   const explorerSelectedIds = useMemo(
-    () => (selectedSessionId ? [selectedSessionId] : []),
-    [selectedSessionId],
+    () => (effectiveSelectedSessionId ? [effectiveSelectedSessionId] : []),
+    [effectiveSelectedSessionId],
   );
 
   const resolveMenuTarget = useCallback(
