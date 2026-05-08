@@ -356,6 +356,21 @@ export const useFeedStore = create<FeedState>()((set, get) => {
 
 setupCommentLoadingSubscription(useFeedStore.subscribe, useFeedStore.setState);
 
+/** Reset feed store to initial state (called on logout). */
+export function resetFeedStore(): void {
+  _initialized = false;
+  _seenIds.clear();
+  for (const unsub of _eventUnsubs) unsub();
+  _eventUnsubs.length = 0;
+  useFeedStore.setState({
+    liveEvents: null,
+    userAvatarUrl: undefined,
+    filter: "everything",
+    selectedProfile: null,
+    selectedEventId: null,
+  });
+}
+
 /* ── derived selectors ── */
 
 const EMPTY_EVENTS: FeedEvent[] = [];
