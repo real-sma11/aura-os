@@ -272,6 +272,43 @@ describe("SessionsList", () => {
     );
   });
 
+  // Regression: after `replaceSessionId` swaps the optimistic id for the
+  // server-assigned UUID, the row in this list is no longer optimistic
+  // but `?session=` may not have propagated through `useSearchParams`
+  // yet (the React Router navigate from `useNewSessionUrlSync` lands a
+  // tick later). Without the most-recent fallback, the just-created
+  // session visibly appeared at the top of the list with its
+  // server-generated title but read as unselected for the gap. Falling
+  // back to `titledRows[0]` keeps it highlighted.
+  it("falls back to the newest row after optimistic→real swap before the URL settles", () => {
+    const sessions = [
+      // Just-swapped row: real UUID, started_at stamped at insert time
+      // so it sorts to the top of TODAY.
+      makeSession(
+        "11111111-1111-4111-8111-111111111111",
+        isoToday,
+        "What Is A Cat",
+      ),
+      makeSession("s1", isoYesterday, "Greeting"),
+    ];
+
+    render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("treeitem", { name: "What Is A Cat" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("treeitem", { name: "Greeting" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   // Regression: clicking another session used to remount the entire
   // ZUI Explorer subtree (the bucket-keyed `${label}:${id}` hack that
   // `SessionsList` carried before the controlled-`selectedIds`

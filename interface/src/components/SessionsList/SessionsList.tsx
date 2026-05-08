@@ -116,19 +116,34 @@ export function SessionsList({
       })),
     [buckets],
   );
-  // Highlight the optimistic "New chat" row in the sidekick while the
-  // user is mid-creation: after `+` is pressed the URL has no
-  // `?session=` yet (the real id is only assigned when SessionReady
-  // streams back from the server). Without this, the row visibly
-  // appears at the top of the list but no row reads as selected, so
-  // the user can't tell which chat their first send will land in.
+  // Highlight the row the user is actively in even when the URL hasn't
+  // settled yet:
+  //
+  //   1. `?session=<id>` set: the URL is the source of truth.
+  //   2. `?session=` empty + an optimistic row exists: pre-SessionReady
+  //      "+ New chat" window. Highlight the placeholder so the user
+  //      sees which chat their first send will land in.
+  //   3. `?session=` empty + no optimistic row: post-`replaceSessionId`,
+  //      pre-`setSearchParams` window. The row was just renamed from
+  //      `optimistic:<uuid>` to the server-assigned UUID, but the
+  //      router state hasn't propagated through `useSearchParams`
+  //      yet. Without a fallback, the just-created row visibly
+  //      appears with its summary but reads as unselected for the
+  //      gap (and *persistently* in cases where the URL update was
+  //      dropped — back/forward stack, suspended tab, etc.). Falling
+  //      back to the newest row in the list keeps the selection on
+  //      the just-created session, which sorted to the top because
+  //      its `started_at` was stamped at insert time. `titledRows`
+  //      is already in `sortSessionsDesc` order from
+  //      `loadAgentSessions` / `loadProjectSessions` so `[0]` is the
+  //      newest.
   const effectiveSelectedSessionId = useMemo(() => {
     if (selectedSessionId) return selectedSessionId;
-    return (
-      titledRows.find(({ session }) =>
-        isOptimisticSessionId(session.session_id),
-      )?.session.session_id ?? null
+    const optimistic = titledRows.find(({ session }) =>
+      isOptimisticSessionId(session.session_id),
     );
+    if (optimistic) return optimistic.session.session_id;
+    return titledRows[0]?.session.session_id ?? null;
   }, [selectedSessionId, titledRows]);
   // Stable controlled-selection array so the Explorer's `useMemo`s
   // for `selectedIds` / context value don't see a new identity on
