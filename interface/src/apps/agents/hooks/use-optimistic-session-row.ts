@@ -19,13 +19,22 @@ interface UseOptimisticSessionRowOptions {
 }
 
 interface UseOptimisticSessionRowResult {
-  /** Arms the optimistic insert so the very next `wrappedSend` inserts a
-   *  placeholder row into the sessions list. Called from the "+ New chat"
-   *  handler. */
+  /** Inserts the optimistic placeholder row into the sessions list
+   *  immediately, so the sidekick has a visible, selectable "New chat"
+   *  row the moment the user presses "+". Idempotent: if a placeholder
+   *  is already pending (user double-clicked "+", or hit it again
+   *  before sending), the existing row is reused instead of stacking
+   *  another. The synthetic id is remembered for `swap`.
+   *
+   *  Insertion happens on `arm` (rather than on first send) so the
+   *  `SessionsList` `effectiveSelectedSessionId` fallback can pick the
+   *  optimistic row and highlight it right away — without the row,
+   *  the sidekick had no `?session=` and no optimistic match, so
+   *  nothing read as selected on a brand-new chat. */
   arm: () => void;
-  /** Wraps a send function: on the first send after `arm`, inserts the
-   *  optimistic row and remembers the synthetic id for `swap`. Subsequent
-   *  sends pass through unchanged. */
+  /** Passthrough wrapper retained for callsite symmetry — the
+   *  optimistic row is now inserted in `arm`, so `wrap` simply
+   *  forwards to the underlying `send`. */
   wrap: <TArgs extends readonly unknown[], TReturn>(
     send: (...args: TArgs) => TReturn,
   ) => (...args: TArgs) => TReturn;
@@ -35,9 +44,10 @@ interface UseOptimisticSessionRowResult {
 }
 
 /**
- * Owns the optimistic-session-row lifecycle: insert on first send after
- * "+ New chat", swap the synthetic id for the real one when SessionReady
- * arrives. Replaces the `pendingOptimisticArmedRef` + `pendingOptimisticIdRef`
+ * Owns the optimistic-session-row lifecycle: insert on "+ New chat"
+ * press so the sidekick has a visible, selected row immediately, then
+ * swap the synthetic id for the real one when SessionReady arrives.
+ * Replaces the `pendingOptimisticArmedRef` + `pendingOptimisticIdRef`
  * + `insertOptimisticSessionRow` triplet that lived inline in the old
  * `AgentChatPanel`.
  */
@@ -56,12 +66,7 @@ export function useOptimisticSessionRow(
     projectNameRef.current = projectName;
   });
 
-  const armedRef = useRef(false);
   const pendingIdRef = useRef<string | null>(null);
-
-  const arm = useCallback(() => {
-    armedRef.current = true;
-  }, []);
 
   const insertRow = useCallback((): string => {
     const optimisticId = `${OPTIMISTIC_SESSION_ID_PREFIX}${
@@ -90,18 +95,17 @@ export function useOptimisticSessionRow(
     return optimisticId;
   }, [projectId, agentInstanceId]);
 
+  const arm = useCallback(() => {
+    if (pendingIdRef.current) return;
+    pendingIdRef.current = insertRow();
+  }, [insertRow]);
+
   const wrap = useCallback(
     <TArgs extends readonly unknown[], TReturn>(
       send: (...args: TArgs) => TReturn,
     ): ((...args: TArgs) => TReturn) =>
-      (...args: TArgs) => {
-        if (armedRef.current) {
-          armedRef.current = false;
-          pendingIdRef.current = insertRow();
-        }
-        return send(...args);
-      },
-    [insertRow],
+      (...args: TArgs) => send(...args),
+    [],
   );
 
   const swap = useCallback((newSessionId: string) => {
