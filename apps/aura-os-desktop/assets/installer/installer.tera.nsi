@@ -11,11 +11,11 @@
 ; for plan/discoverability; the syntax inside is Handlebars + NSIS. The only
 ; helpers cargo-packager registers are `or`, `association-description`,
 ; `unescape_newlines`, and `unescape_dollar_sign`, so no string manipulation
-; on substituted values (like `{{header_image | replace(...)}}`) is possible
+; on substituted values (like `\{{header_image | replace(...)}}`) is possible
 ; from inside the template. We work around that by deriving the light-variant
 ; bitmap paths at NSIS preprocess time via `!searchparse` against the dark
-; variant path that cargo-packager substitutes for `{{header_image}}` /
-; `{{sidebar_image}}`.
+; variant path that cargo-packager substitutes for `\{{header_image}}` /
+; `\{{sidebar_image}}`.
 ;
 ; Local AURA modifications (search the file for `AURA:` to locate them):
 ;   * .onInit: read HKCU\...\Personalize\AppsUseLightTheme into $R8 (default
@@ -497,8 +497,8 @@ Function .onInit
 
   ; Stage our four bitmap variants into $PLUGINSDIR so the runtime swap
   ; below can find them by absolute path. The `File` directives reference
-  ; absolute paths cargo-packager substituted via {{header_image}} /
-  ; {{sidebar_image}} (already canonicalized by dunce::canonicalize), plus
+  ; absolute paths cargo-packager substituted via \{{header_image}} /
+  ; \{{sidebar_image}} (already canonicalized by dunce::canonicalize), plus
   ; the *-light.bmp paths derived via !searchparse at the top of this file.
   !if "${HEADERIMAGE}" != ""
     File "/oname=header-dark.bmp"  "${HEADERIMAGE}"
