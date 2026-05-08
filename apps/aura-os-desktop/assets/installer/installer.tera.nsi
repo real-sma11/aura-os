@@ -19,9 +19,9 @@
 ;
 ; Local AURA modifications (search the file for `AURA:` to locate them):
 ;   * .onInit: read HKCU\...\Personalize\AppsUseLightTheme into $R8 (default
-;     to "1" / light when missing). When light, copy the *-light.bmp variants
-;     over MUI's pre-extracted bitmap files in $PLUGINSDIR before MUI's
-;     .onGUIInit gets a chance to LoadImage them.
+;     to "1" / light when missing), and stage the four theme bitmap variants
+;     directly into $PLUGINSDIR so runtime image swaps can load them by
+;     absolute path.
 ;   * MUI_PAGE_CUSTOMFUNCTION_SHOW (= AuraThemedWelcomeShow): runtime bitmap
 ;     swap via LoadImageW + STM_SETIMAGE on the welcome/finish sidebar
 ;     control (id 1201). MUI's per-page GUIInit re-extracts the embedded
@@ -30,12 +30,14 @@
 ;     LoadImageW is what actually puts the light variant on screen. Must be
 ;     re-defined before BOTH MUI_PAGE_WELCOME and MUI_PAGE_FINISH because
 ;     MUI_PAGE_FUNCTION_CUSTOM `!undef`s the symbol after consumption.
-;   * MUI_CUSTOMFUNCTION_GUIINIT (AuraOnGUIInit) + welcome/finish show:
-;     DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE = 20) for a dark
-;     wizard title bar when the user is in dark mode (Win10 1809+; silently
-;     no-ops on older). We must NOT define `.onGUIInit` directly because
-;     MUI2 auto-generates one and makensis aborts on duplicate function
-;     names.
+;   * MUI_CUSTOMFUNCTION_GUIINIT (AuraOnGUIInit): runtime header bitmap swap
+;     on control id 1046, plus DwmSetWindowAttribute(
+;     DWMWA_USE_IMMERSIVE_DARK_MODE = 20) for a dark wizard title bar when
+;     the user is in dark mode (Win10 1809+; silently no-ops on older). We
+;     must NOT define `.onGUIInit` directly because MUI2 auto-generates one
+;     and makensis aborts on duplicate function names.
+;   * MUI_CUSTOMFUNCTION_UNGUIINIT (AuraUnOnGUIInit): apply the same dark
+;     title-bar setting to the uninstaller when the user is in dark mode.
 ;
 ; Re-syncing with upstream:
 ;   1. Fetch a newer crates/packager/src/package/nsis/installer.nsi
@@ -89,16 +91,24 @@ ${StrLoc}
 ; AURA: derive the absolute paths of the *-light.bmp variants from the
 ; dark-variant paths cargo-packager substituted above. We rely on the project
 ; convention `header-dark.bmp` / `sidebar-dark.bmp` -> `*-light.bmp`. If the
-; default bitmaps in Cargo.toml ever stop ending in `-dark.bmp`, these
-; !searchparse calls produce empty defines and the File directives below will
-; abort the build with a clear "File: missing source file" error.
+; default bitmaps in Cargo.toml ever stop ending in `-dark.bmp`, fail the
+; build here with a clear error instead of letting a later `File` directive
+; trip over an undefined `AURA_*_LIGHT` path.
 !if "${HEADERIMAGE}" != ""
   !searchparse /noerrors "${HEADERIMAGE}" "" AURA_HEADER_PREFIX "-dark.bmp"
-  !define AURA_HEADER_LIGHT "${AURA_HEADER_PREFIX}-light.bmp"
+  !ifdef AURA_HEADER_PREFIX
+    !define AURA_HEADER_LIGHT "${AURA_HEADER_PREFIX}-light.bmp"
+  !else
+    !error "AURA: HEADERIMAGE must end in -dark.bmp so header-light.bmp can be derived: ${HEADERIMAGE}"
+  !endif
 !endif
 !if "${SIDEBARIMAGE}" != ""
   !searchparse /noerrors "${SIDEBARIMAGE}" "" AURA_SIDEBAR_PREFIX "-dark.bmp"
-  !define AURA_SIDEBAR_LIGHT "${AURA_SIDEBAR_PREFIX}-light.bmp"
+  !ifdef AURA_SIDEBAR_PREFIX
+    !define AURA_SIDEBAR_LIGHT "${AURA_SIDEBAR_PREFIX}-light.bmp"
+  !else
+    !error "AURA: SIDEBARIMAGE must end in -dark.bmp so sidebar-light.bmp can be derived: ${SIDEBARIMAGE}"
+  !endif
 !endif
 
 Name "${PRODUCTNAME}"
@@ -170,6 +180,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; MUI's generated `.onGUIInit` calls this function name. Must be defined
 ; before the first MUI_PAGE_* insertion below.
 !define MUI_CUSTOMFUNCTION_GUIINIT AuraOnGUIInit
+!define MUI_CUSTOMFUNCTION_UNGUIINIT AuraUnOnGUIInit
 
 ; AURA NOTE: the welcome / finish "show" callback is wired up via
 ; MUI_PAGE_CUSTOMFUNCTION_SHOW (NOT MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW
@@ -502,12 +513,11 @@ Function .onInit
   ; (1) which matches the historical Windows behavior. After this block,
   ; $R8 holds "0" (dark) or "1" (light / fallback).
   ;
-  ; The default bitmaps embedded into the installer .exe at compile time
-  ; are the *-dark.bmp variants (see Cargo.toml -> [package.metadata.
-  ; packager.nsis] header-image / sidebar-image), so when $R8 == "0" we do
-  ; nothing. When light, we copy the *-light.bmp variants on top of MUI's
-  ; pre-extracted bitmap files in $PLUGINSDIR before MUI's .onGUIInit
-  ; calls LoadImage on them.
+  ; The default bitmaps embedded into the installer .exe at compile time are
+  ; the *-dark.bmp variants (see Cargo.toml -> [package.metadata.packager.nsis]
+  ; header-image / sidebar-image). We stage both dark and light variants into
+  ; $PLUGINSDIR so the GUI callbacks below can load the right theme variant by
+  ; absolute path after MUI has created its controls.
   ;
   ; MUI's internal $PLUGINSDIR filenames are `modern-header.bmp` and
   ; `modern-wizard.bmp` (see NSIS Contrib/Modern UI 2 sources). Those files
@@ -519,18 +529,18 @@ Function .onInit
   ; ========================================================================
   InitPluginsDir
 
-  ; Stage our four bitmap variants into $PLUGINSDIR so the runtime swap
-  ; below can find them by absolute path. The `File` directives reference
-  ; absolute paths cargo-packager substituted via \{{header_image}} /
-  ; \{{sidebar_image}} (already canonicalized by dunce::canonicalize), plus
-  ; the *-light.bmp paths derived via !searchparse at the top of this file.
+  ; Stage our four bitmap variants into $PLUGINSDIR so the runtime swaps below
+  ; can find them by absolute path. The source paths are cargo-packager's
+  ; \{{header_image}} / \{{sidebar_image}} substitutions (already canonicalized
+  ; by dunce::canonicalize), plus the *-light.bmp paths derived via
+  ; !searchparse at the top of this file.
   !if "${HEADERIMAGE}" != ""
-    File "/oname=header-dark.bmp"  "${HEADERIMAGE}"
-    File "/oname=header-light.bmp" "${AURA_HEADER_LIGHT}"
+    File "/oname=$PLUGINSDIR\header-dark.bmp"  "${HEADERIMAGE}"
+    File "/oname=$PLUGINSDIR\header-light.bmp" "${AURA_HEADER_LIGHT}"
   !endif
   !if "${SIDEBARIMAGE}" != ""
-    File "/oname=sidebar-dark.bmp"  "${SIDEBARIMAGE}"
-    File "/oname=sidebar-light.bmp" "${AURA_SIDEBAR_LIGHT}"
+    File "/oname=$PLUGINSDIR\sidebar-dark.bmp"  "${SIDEBARIMAGE}"
+    File "/oname=$PLUGINSDIR\sidebar-light.bmp" "${AURA_SIDEBAR_LIGHT}"
   !endif
 
   ClearErrors
@@ -552,16 +562,45 @@ Function .onInit
   ${EndIf}
 FunctionEnd
 
-; AURA: apply DWMWA_USE_IMMERSIVE_DARK_MODE (=20) to the wizard outer window
-; once the GUI exists. Win10 1809+ honors this; earlier Windows silently
-; ignores the unknown attribute. We don't check the OS version because
-; DwmSetWindowAttribute returns E_INVALIDARG on older Windows and we don't
-; care about the return value.
+; AURA: once the GUI exists, swap the header bitmap for light mode and apply
+; DWMWA_USE_IMMERSIVE_DARK_MODE (=20) to the wizard outer window for dark
+; mode. Win10 1809+ honors the DWM attribute; earlier Windows silently ignores
+; the unknown attribute. We don't check the OS version because
+; DwmSetWindowAttribute returns E_INVALIDARG on older Windows and we don't care
+; about the return value.
 ;
 ; Registered as MUI_CUSTOMFUNCTION_GUIINIT above so MUI2 calls us from its
 ; own generated `.onGUIInit` (we cannot define `.onGUIInit` ourselves
 ; without colliding with MUI's).
 Function AuraOnGUIInit
+  ${If} $R8 != "0"
+    GetDlgItem $0 $HWNDPARENT 1046
+    ${If} $0 != 0
+      ; LoadImageW(hInst=0, name=path, type=IMAGE_BITMAP=0, cx=0, cy=0,
+      ;            fuLoad=LR_LOADFROMFILE=0x0010) -> HBITMAP
+      System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\header-light.bmp", i 0, i 0, i 0, i 0x10) p .r1'
+      ${If} $1 != 0
+        ; STM_SETIMAGE = 0x0172, IMAGE_BITMAP = 0. Capture and release the
+        ; previous bitmap handle MUI attached to avoid leaking it.
+        SendMessage $0 0x172 0 $1 $2
+        ${If} $2 != 0
+          System::Call 'gdi32::DeleteObject(pr2)'
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+  ${Else}
+    System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, *i 1, i 4) i .r0'
+  ${EndIf}
+FunctionEnd
+
+; AURA: apply the same dark title-bar setting to the uninstaller outer window.
+Function AuraUnOnGUIInit
+  ClearErrors
+  ReadRegDWORD $R8 HKCU "Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" "AppsUseLightTheme"
+  ${If} ${Errors}
+    StrCpy $R8 "1"
+  ${EndIf}
+
   ${If} $R8 == "0"
     System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, *i 1, i 4) i .r0'
   ${EndIf}
