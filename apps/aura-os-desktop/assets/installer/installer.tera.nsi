@@ -22,10 +22,14 @@
 ;     to "1" / light when missing). When light, copy the *-light.bmp variants
 ;     over MUI's pre-extracted bitmap files in $PLUGINSDIR before MUI's
 ;     .onGUIInit gets a chance to LoadImage them.
-;   * MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW: belt-and-suspenders runtime
-;     bitmap swap via LoadImageW + STM_SETIMAGE on the welcome/finish sidebar
-;     control (id 1201) in case MUI cached an HBITMAP from the dark variant
-;     before our .onInit swap landed.
+;   * MUI_PAGE_CUSTOMFUNCTION_SHOW (= AuraThemedWelcomeShow): runtime bitmap
+;     swap via LoadImageW + STM_SETIMAGE on the welcome/finish sidebar
+;     control (id 1201). MUI's per-page GUIInit re-extracts the embedded
+;     dark variant via `File "/oname=$PLUGINSDIR\modern-wizard.bmp" ..."`,
+;     which overwrites the .onInit CopyFiles swap, so this runtime-stage
+;     LoadImageW is what actually puts the light variant on screen. Must be
+;     re-defined before BOTH MUI_PAGE_WELCOME and MUI_PAGE_FINISH because
+;     MUI_PAGE_FUNCTION_CUSTOM `!undef`s the symbol after consumption.
 ;   * MUI_CUSTOMFUNCTION_GUIINIT (AuraOnGUIInit) + welcome/finish show:
 ;     DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE = 20) for a dark
 ;     wizard title bar when the user is in dark mode (Win10 1809+; silently
@@ -159,12 +163,6 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !define MUI_HEADERIMAGE_BITMAP "${HEADERIMAGE}"
 !endif
 
-; AURA: register the show callback BEFORE any MUI_PAGE_* macro insertion so
-; both the welcome and finish pages pick it up. MUI undefines this after the
-; first welcome/finish macro consumption, but cargo-packager's template only
-; instantiates each once.
-!define MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW AuraThemedWelcomeShow
-
 ; AURA: MUI2 auto-generates its own `.onGUIInit` from MUI_PAGE_* macro
 ; expansion, so defining a bare `Function .onGUIInit ... FunctionEnd` in
 ; this template causes makensis to abort with "Function named '.onGUIInit'
@@ -172,6 +170,14 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; MUI's generated `.onGUIInit` calls this function name. Must be defined
 ; before the first MUI_PAGE_* insertion below.
 !define MUI_CUSTOMFUNCTION_GUIINIT AuraOnGUIInit
+
+; AURA NOTE: the welcome / finish "show" callback is wired up via
+; MUI_PAGE_CUSTOMFUNCTION_SHOW (NOT MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW
+; -- that name does not exist in MUI2; see Modern UI 2/Pages.nsh
+; MUI_PAGE_FUNCTION_CUSTOM, which only reads MUI_PAGE_CUSTOMFUNCTION_${TYPE}).
+; Because that macro `!undef`s the symbol after consumption, we must redefine
+; MUI_PAGE_CUSTOMFUNCTION_SHOW immediately before BOTH MUI_PAGE_WELCOME and
+; MUI_PAGE_FINISH below.
 
 ; Define registry key to store installer language
 !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
@@ -181,6 +187,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+; AURA: see "AURA NOTE" above re: MUI_PAGE_CUSTOMFUNCTION_SHOW being the real
+; MUI2 hook for welcome/finish show. MUI consumes + undefs after this insert,
+; so it's redefined again before MUI_PAGE_FINISH below.
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW AuraThemedWelcomeShow
 !insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
@@ -387,6 +397,9 @@ Var AppStartMenuFolder
 ; Show run app after installation.
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${MAINBINARYNAME}.exe"
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+; AURA: re-register the show callback (MUI_PAGE_FUNCTION_CUSTOM SHOW undef'd
+; the previous define when MUI_PAGE_WELCOME consumed it).
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW AuraThemedWelcomeShow
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstaller Pages
