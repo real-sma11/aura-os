@@ -296,9 +296,18 @@ export function ChatPanel({
       return;
     }
 
-    inputFocusReadyRef.current = isThreadResetAfterMount
-      ? !(inputBarRef.current?.isFocused?.() ?? false)
-      : false;
+    // The create-agent handoff represents an explicit user request
+    // (clicking "+" next to a project, or creating a fresh standalone
+    // agent) to start typing immediately. Bypass the "don't steal
+    // focus when switching chats" latch so the input gets focused
+    // even though focus left the textarea to land on the "+" button
+    // during the click.
+    const isCreateAgentHandoff = initialHandoff === "create-agent";
+    inputFocusReadyRef.current = isCreateAgentHandoff
+      ? false
+      : isThreadResetAfterMount
+        ? !(inputBarRef.current?.isFocused?.() ?? false)
+        : false;
     initialColdLoadRef.current = true;
     hasInitiallyRevealedRef.current = false;
     setIsInitialThreadRevealReady(false);

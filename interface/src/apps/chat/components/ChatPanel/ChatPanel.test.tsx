@@ -588,6 +588,64 @@ describe("ChatPanel", () => {
     expect(getInputBar()).not.toHaveFocus();
   });
 
+  it("focuses the input on a create-agent handoff even when focus left the textarea", () => {
+    // Repro for the "+" next to a project name in the left menu: the
+    // click moves focus from the previous chat's textarea to the "+"
+    // button before the new agent's panel mounts. The standard
+    // "don't steal focus when switching chats" latch should NOT
+    // suppress focus in this case because the user explicitly asked
+    // to start a new agent.
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
+
+    const { rerender } = render(
+      <ChatPanel
+        streamKey="stream-1"
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        agentName="Coca"
+        machineType="remote"
+        historyResolved
+        scrollResetKey="chat-a"
+      />,
+    );
+
+    const inputBar = getInputBar();
+    expect(inputBar).toHaveFocus();
+
+    inputBar.blur();
+    expect(inputBar).not.toHaveFocus();
+
+    rerender(
+      <ChatPanel
+        streamKey="stream-2"
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        agentName="Coca"
+        machineType="remote"
+        isLoading={false}
+        historyResolved={false}
+        scrollResetKey="chat-b"
+        initialHandoff="create-agent"
+      />,
+    );
+
+    rerender(
+      <ChatPanel
+        streamKey="stream-2"
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        agentName="Coca"
+        machineType="remote"
+        isLoading={false}
+        historyResolved
+        scrollResetKey="chat-b"
+        initialHandoff="create-agent"
+      />,
+    );
+
+    expect(getInputBar()).toHaveFocus();
+  });
+
   it("can skip desktop input autofocus when the thread becomes ready", () => {
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
 
