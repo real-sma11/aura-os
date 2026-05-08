@@ -10,35 +10,46 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
+// The Explorer mock honors *both* the controlled `selectedIds` prop
+// (what `SessionsList` actually uses) and `defaultSelectedIds` for
+// any future callers — and it intentionally does *not* manage its
+// own selection state, so a "click then re-render with the same
+// `selectedIds`" path correctly leaves the row unselected (the
+// real ZUI Explorer's controlled mode behaves the same way).
 vi.mock("@cypher-asi/zui", () => ({
   Explorer: ({
     data,
+    selectedIds,
     defaultSelectedIds = [],
     onSelect,
   }: {
     data: Array<{ id: string; label: string }>;
+    selectedIds?: string[];
     defaultSelectedIds?: string[];
     onSelect?: (ids: string[]) => void;
-  }) => (
-    <div role="tree">
-      {data.map((node) => {
-        const selected = defaultSelectedIds.includes(node.id);
-        return (
-          <button
-            key={node.id}
-            type="button"
-            id={node.id}
-            role="treeitem"
-            aria-current={selected ? "page" : undefined}
-            aria-selected={selected}
-            onClick={() => onSelect?.([node.id])}
-          >
-            {node.label}
-          </button>
-        );
-      })}
-    </div>
-  ),
+  }) => {
+    const effectiveSelected = selectedIds ?? defaultSelectedIds;
+    return (
+      <div role="tree">
+        {data.map((node) => {
+          const selected = effectiveSelected.includes(node.id);
+          return (
+            <button
+              key={node.id}
+              type="button"
+              id={node.id}
+              role="treeitem"
+              aria-current={selected ? "page" : undefined}
+              aria-selected={selected}
+              onClick={() => onSelect?.([node.id])}
+            >
+              {node.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  },
 }));
 
 import { api } from "../../api/client";
@@ -211,6 +222,48 @@ describe("SessionsList", () => {
     expect(second).toHaveAttribute("aria-current", "page");
     const first = screen.getByRole("treeitem", { name: "First" });
     expect(first).not.toHaveAttribute("aria-current");
+  });
+
+  // Regression: clicking another session used to remount the entire
+  // ZUI Explorer subtree (the bucket-keyed `${label}:${id}` hack that
+  // `SessionsList` carried before the controlled-`selectedIds`
+  // refactor), which manifested as a flicker / dropped click in the
+  // sidekick. With controlled selection the row DOM nodes are
+  // referentially stable across selection changes.
+  it("does not remount session rows when the selection changes", () => {
+    const sessions = [
+      makeSession("s1", isoToday, "First"),
+      makeSession("s2", isoToday, "Second"),
+    ];
+
+    const { rerender } = render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="s1"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    const firstBefore = screen.getByRole("treeitem", { name: "First" });
+    const secondBefore = screen.getByRole("treeitem", { name: "Second" });
+
+    rerender(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="s2"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    const firstAfter = screen.getByRole("treeitem", { name: "First" });
+    const secondAfter = screen.getByRole("treeitem", { name: "Second" });
+
+    expect(firstAfter).toBe(firstBefore);
+    expect(secondAfter).toBe(secondBefore);
+    expect(secondAfter).toHaveAttribute("aria-current", "page");
+    expect(firstAfter).not.toHaveAttribute("aria-current");
   });
 
   it("calls onSessionClick with the clicked session", () => {

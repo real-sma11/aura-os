@@ -543,6 +543,73 @@ describe("sessions-list-store", () => {
       expect(ids).toContain(optimistic.session_id);
       expect(ids).toContain("older");
     });
+
+    // Regression for "New Chat vanishes after first send": once
+    // `replaceSessionId` swaps `optimistic:abc → real-X`, a stale
+    // list response that started before the swap may not include
+    // `real-X` (server's `list_sessions` filters zero-event sessions
+    // and the persistence write may still be in flight). The store
+    // must carry the just-swapped real-id row across that reload so
+    // the row stays put while the title generator catches up.
+    it("preserves a recently-swapped real-id row across a stale loadAgentSessions response", async () => {
+      listProjectBindings.mockResolvedValue([
+        { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+      ]);
+      listSessions.mockResolvedValue([
+        makeSession("older", "2026-04-15T00:00:00Z", "i1", "p1"),
+      ]);
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const swapped: AnnotatedSession = {
+        ...makeSession("real-X", new Date().toISOString(), "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      };
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [swapped] },
+      });
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadAgentSessions("agent-x");
+      });
+
+      const ids = useSessionsListStore
+        .getState()
+        .sessionsBySurface[surfaceKey]?.map((s) => s.session_id);
+      expect(ids).toEqual(["real-X", "older"]);
+    });
+
+    it("drops a stale real-id row that the server no longer returns once the row's started_at is older than the newest server row", async () => {
+      // Sanity: the real-id preservation only fires while the row is
+      // still "newer than the newest server row", so an authoritative
+      // server-side delete (or any server view that legitimately drops
+      // the row) eventually wins out and the local state converges.
+      listProjectBindings.mockResolvedValue([
+        { project_agent_id: "i1", project_id: "p1", project_name: "P1" },
+      ]);
+      listSessions.mockResolvedValue([
+        makeSession("newer-on-server", "2030-01-01T00:00:00Z", "i1", "p1"),
+      ]);
+      const surfaceKey = agentSessionsSurfaceKey("agent-x");
+      const stale: AnnotatedSession = {
+        ...makeSession("stale-local", "2026-04-15T00:00:00Z", "i1", "p1"),
+        _projectId: "p1",
+        _projectName: "P1",
+        _agentInstanceId: "i1",
+      };
+      useSessionsListStore.setState({
+        sessionsBySurface: { [surfaceKey]: [stale] },
+      });
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadAgentSessions("agent-x");
+      });
+
+      const ids = useSessionsListStore
+        .getState()
+        .sessionsBySurface[surfaceKey]?.map((s) => s.session_id);
+      expect(ids).toEqual(["newer-on-server"]);
+    });
   });
 
   describe("removeSession / restoreSession", () => {

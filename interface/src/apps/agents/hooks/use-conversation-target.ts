@@ -9,6 +9,7 @@ import {
 import {
   agentSessionsSurfaceKey,
   findMostRecentRealSessionForInstance,
+  isOptimisticSessionId,
   projectSessionsSurfaceKey,
   useAgentBindingsKey,
   useAgentBindingsLoadStatus,
@@ -85,11 +86,24 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
     projectId,
     agentInstanceId,
     agentId,
-    sessionId,
+    sessionId: rawSessionId,
     queryProjectId,
     queryInstanceId,
     setSearchParams,
   } = input;
+
+  // Defense-in-depth: an `optimistic:<uuid>` placeholder must never
+  // leak into the resolved target — `api.listSessionEvents` would
+  // 400 on the synthetic id (the backend `SessionId` is a UUID,
+  // see `crates/aura-os-core/src/ids.rs`). Treat an optimistic
+  // `?session=` exactly like no `?session=` so the redirect effect
+  // can replace it with the real id once the SSE swap completes
+  // (`useNewSessionUrlSync` + `sessions-list-store.replaceSessionId`).
+  // None of our writers currently produce such a URL, but the user
+  // can still land on one via back/forward, deep-link share, or a
+  // stale tab where SessionReady never arrived.
+  const sessionId =
+    rawSessionId && !isOptimisticSessionId(rawSessionId) ? rawSessionId : null;
 
   const onProjectRoute = Boolean(projectId && agentInstanceId);
 
@@ -115,13 +129,15 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
   // Latch tracking whether the user has visited a real session in
   // this lane. Reset on lane change. Distinguishes "cold-load with no
   // session" (default-redirect imminent) from "user clicked + to start
-  // fresh" (URL just dropped its session).
+  // fresh" (URL just dropped its session). Uses `rawSessionId` so a
+  // defensive null-out of an optimistic `?session=` value (above)
+  // doesn't fool the latch into thinking the user cleared the lane.
   const laneKey = onProjectRoute
     ? `project:${projectId}:${agentInstanceId}`
     : agentId
       ? `agent:${agentId}`
       : "";
-  const userClearedSession = useUserClearedSession(laneKey, sessionId);
+  const userClearedSession = useUserClearedSession(laneKey, rawSessionId);
 
   // Trigger project session load when entering a project route without
   // any cached sessions yet. Side-effect kept as a hook so the resolver
@@ -192,14 +208,37 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
     );
   }, [warmTarget]);
 
-  // Mirror "most recent for instance" back into the URL on the project
-  // route so the rest of the panel sees `?session=` as the single
-  // source of truth.
+  // Project-route default-session redirect: when the URL lacks
+  // `?session=` (cold open or stale link), replace it with the most
+  // recent real session for the active instance. Single writer of
+  // `?session=` for the project route — the previous duplicate
+  // `useDefaultProjectSessionRedirect` call inside `AgentChatPanel`
+  // was folded in here so two effects can't race for the same URL.
+  //
+  // Guards:
+  //   - `sessionId` is non-null: user has an explicit session
+  //     selected (clicked a row, navigated via deep link, etc.) —
+  //     leave the URL alone or we'd clobber a deliberate click with
+  //     "most recent" on every render.
+  //   - `userClearedSession`: user clicked "+" in this lane and is
+  //     on a fresh canvas. Redirecting back to most-recent would
+  //     immediately undo the new-chat affordance.
+  //   - `setRedirectFiredRef` per-lane latch: once we've defaulted
+  //     a lane on a given mount we don't re-fire if the user later
+  //     manually clears `?session=` — that path is now owned by
+  //     the fresh-canvas + `userClearedSession` latch.
+  const lastRedirectedLaneRef = useRef<string | null>(null);
   useEffect(() => {
     if (!onProjectRoute) return;
-    const resolved = mostRecentForInstance?.session_id ?? null;
-    if (!resolved || sessionId === resolved) return;
+    if (sessionId) {
+      lastRedirectedLaneRef.current = laneKey;
+      return;
+    }
     if (userClearedSession) return;
+    if (lastRedirectedLaneRef.current === laneKey) return;
+    const resolved = mostRecentForInstance?.session_id ?? null;
+    if (!resolved) return;
+    lastRedirectedLaneRef.current = laneKey;
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -208,7 +247,14 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
       },
       { replace: true },
     );
-  }, [onProjectRoute, mostRecentForInstance, sessionId, userClearedSession, setSearchParams]);
+  }, [
+    onProjectRoute,
+    laneKey,
+    mostRecentForInstance,
+    sessionId,
+    userClearedSession,
+    setSearchParams,
+  ]);
 
   // 1. Project route is authoritative.
   if (onProjectRoute && projectId && agentInstanceId) {

@@ -67,7 +67,6 @@ vi.mock(
   () => ({
     useDefaultStandaloneSessionRedirect: (...args: unknown[]) =>
       mocks.defaultStandaloneRedirect(...args),
-    useDefaultProjectSessionRedirect: vi.fn(),
   }),
 );
 
@@ -124,6 +123,7 @@ vi.mock("../../../../stores/sessions-list-store", () => {
         ) ?? null
       );
     },
+    isOptimisticSessionId: (id: string) => id.startsWith("optimistic:"),
     projectSessionsSurfaceKey: (projectId: string) => `project:${projectId}`,
     useAgentBindingsKey: (agentId: string | undefined) => {
       if (!agentId) return "";
@@ -296,6 +296,72 @@ describe("AgentChatRoute", () => {
       prev: URLSearchParams,
     ) => URLSearchParams;
     const next = updater(new URLSearchParams());
+    expect(next.get("session")).toBe("real-1");
+  });
+
+  // Regression: the resolver's default-redirect previously fired on
+  // every render where `mostRecentForInstance` differed from the
+  // pinned `sessionId`. Clicking an older session row would therefore
+  // be clobbered back to "most recent" within the same tick. The
+  // single-writer redirect in `useConversationTarget` now exits
+  // early when `?session=` is set.
+  it("does not redirect away from an explicit older session click", () => {
+    mocks.params = {
+      projectId: "p1",
+      agentInstanceId: "i1",
+      agentId: undefined,
+    };
+    mocks.searchParams = new URLSearchParams("session=ours-older");
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "project:p1": [
+          { session_id: "ours-newest", _projectId: "p1", _agentInstanceId: "i1" },
+          { session_id: "ours-older", _projectId: "p1", _agentInstanceId: "i1" },
+        ],
+      },
+    };
+
+    render(<AgentChatRoute />);
+
+    const props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("ours-older");
+    expect(mocks.setSearchParams).not.toHaveBeenCalled();
+  });
+
+  // Defense-in-depth: if any caller (deep link, share, stale tab where
+  // SessionReady never arrived) lands the URL on `?session=optimistic:...`,
+  // the resolver must treat it as if no session were selected and
+  // overwrite it with the real most-recent id rather than passing the
+  // synthetic id straight to `api.listSessionEvents` (instant 400).
+  it("treats `?session=optimistic:...` as missing and redirects to the real most-recent", () => {
+    mocks.params = {
+      projectId: "p1",
+      agentInstanceId: "i1",
+      agentId: undefined,
+    };
+    mocks.searchParams = new URLSearchParams("session=optimistic:leak");
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "project:p1": [
+          { session_id: "real-1", _projectId: "p1", _agentInstanceId: "i1" },
+        ],
+      },
+    };
+
+    render(<AgentChatRoute />);
+
+    const props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("real-1");
+
+    expect(mocks.setSearchParams).toHaveBeenCalled();
+    const updater = mocks.setSearchParams.mock.calls[0][0] as (
+      prev: URLSearchParams,
+    ) => URLSearchParams;
+    const next = updater(new URLSearchParams("session=optimistic:leak"));
     expect(next.get("session")).toBe("real-1");
   });
 

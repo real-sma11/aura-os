@@ -1,9 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { Session } from "../../shared/types";
-import {
-  useDefaultProjectSessionRedirect,
-  useDefaultStandaloneSessionRedirect,
-} from "./use-default-session-redirect";
+import { useDefaultStandaloneSessionRedirect } from "./use-default-session-redirect";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
 import { useProjectsListStore } from "../../stores/projects-list-store";
 
@@ -182,103 +179,9 @@ describe("useDefaultStandaloneSessionRedirect", () => {
   });
 });
 
-describe("useDefaultProjectSessionRedirect", () => {
-  beforeEach(() => {
-    listProjectSessions.mockReset();
-    resetStores();
-  });
-
-  it("redirects to the most recent session for the active agent instance", async () => {
-    listProjectSessions.mockResolvedValue([
-      makeSession("other-agent", "2026-04-16T08:00:00Z", "i-other", "p1"),
-      makeSession("ours-newest", "2026-04-16T05:00:00Z", "i1", "p1"),
-      makeSession("ours-older", "2026-04-16T00:00:00Z", "i1", "p1"),
-    ]);
-
-    const setSearchParams = vi.fn();
-    renderHook(() =>
-      useDefaultProjectSessionRedirect({
-        projectId: "p1",
-        agentInstanceId: "i1",
-        sessionId: null,
-        liveSessionId: null,
-        setSearchParams,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(setSearchParams).toHaveBeenCalledTimes(1);
-    });
-    const updater = setSearchParams.mock.calls[0][0] as (
-      prev: URLSearchParams,
-    ) => URLSearchParams;
-    const next = updater(new URLSearchParams());
-    expect(next.get("session")).toBe("ours-newest");
-  });
-
-  it("does not redirect when sessionId is already pinned", async () => {
-    listProjectSessions.mockResolvedValue([
-      makeSession("recent", "2026-04-16T05:00:00Z", "i1", "p1"),
-    ]);
-
-    const setSearchParams = vi.fn();
-    renderHook(() =>
-      useDefaultProjectSessionRedirect({
-        projectId: "p1",
-        agentInstanceId: "i1",
-        sessionId: "already-set",
-        liveSessionId: null,
-        setSearchParams,
-      }),
-    );
-
-    // Give effects a tick to run
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(setSearchParams).not.toHaveBeenCalled();
-  });
-
-  it("skips an optimistic placeholder row when picking the most-recent default", async () => {
-    // Repro for "Bad Request on revisit": a leaked optimistic row
-    // (panel torn down before SessionReady could swap) sorts above
-    // any real row by `started_at`. Without filtering, the redirect
-    // would prime `?session=optimistic:...` and the very next
-    // history fetch would 400.
-    listProjectSessions.mockResolvedValue([
-      makeSession("real-1", "2026-04-16T00:00:00Z", "i1", "p1"),
-    ]);
-    const { OPTIMISTIC_SESSION_ID_PREFIX, buildOptimisticSession } =
-      await import("../../stores/sessions-list-store");
-    const optimistic = buildOptimisticSession({
-      optimisticId: `${OPTIMISTIC_SESSION_ID_PREFIX}leak`,
-      projectId: "p1",
-      projectName: "P1",
-      agentInstanceId: "i1",
-      startedAt: "2026-04-16T08:00:00Z",
-    });
-    useSessionsListStore.setState({
-      sessionsBySurface: { "project:p1": [optimistic] },
-    });
-
-    const setSearchParams = vi.fn();
-    renderHook(() =>
-      useDefaultProjectSessionRedirect({
-        projectId: "p1",
-        agentInstanceId: "i1",
-        sessionId: null,
-        liveSessionId: null,
-        setSearchParams,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(setSearchParams).toHaveBeenCalledTimes(1);
-    });
-    const updater = setSearchParams.mock.calls[0][0] as (
-      prev: URLSearchParams,
-    ) => URLSearchParams;
-    const next = updater(new URLSearchParams());
-    expect(next.get("session")).toBe("real-1");
-  });
-});
+// Project-route default-session redirect tests live alongside the
+// resolver that owns it: see
+// `apps/agents/hooks/use-conversation-target.test.ts`. Keeping a
+// single set of redirect tests guarantees the resolver (single
+// writer of `?session=`) is exercised end-to-end without two
+// near-identical specs drifting apart.

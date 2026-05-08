@@ -17,7 +17,6 @@ import {
 import { useProjectsListStore } from "../../../../stores/projects-list-store";
 import { useContextUsage } from "../../../../stores/context-usage-store";
 import { useHydrateContextUtilization } from "../../../../hooks/use-hydrate-context-utilization";
-import { useDefaultProjectSessionRedirect } from "../../../../components/SessionsList/use-default-session-redirect";
 import type { AgentInstance, Project } from "../../../../shared/types";
 import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
 import { useAgentBusy } from "../../../../hooks/use-agent-busy";
@@ -112,15 +111,11 @@ export function AgentChatPanel({
 
   const contextUsage = useContextUsage(streamKey);
 
-  // Default-select the most recent session by `started_at` when the URL
-  // has no `?session=`. The session view is editable so this is the
-  // "open your last chat on cold open" behavior.
-  useDefaultProjectSessionRedirect({
-    projectId,
-    agentInstanceId,
-    sessionId,
-    setSearchParams,
-  });
+  // Default-session redirect for the project route is owned by
+  // `useConversationTarget` in `AgentChatRoute` so a single writer
+  // controls `?session=`. Adding a duplicate redirect here used to
+  // race with the resolver's writer, occasionally overwriting an
+  // explicit row click with "most recent for instance".
 
   const historyKeyForFreshCanvas = useMemo(
     () => projectChatHistoryKey(projectId, agentInstanceId),

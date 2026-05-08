@@ -36,6 +36,17 @@ export interface ExplorerProps {
   defaultExpandedIds?: string[];
   /** IDs of nodes that should be selected by default */
   defaultSelectedIds?: string[];
+  /**
+   * Controlled selection. When provided, the Explorer ignores its
+   * internal selection state and renders exactly these ids as
+   * selected — `defaultSelectedIds` is then unused. Pair with
+   * `onSelect` to drive the value from the parent.
+   *
+   * Use this when an external source of truth (router URL, store,
+   * etc.) needs to drive the selected row without forcing a full
+   * remount of the Explorer (and its DnD context) on every change.
+   */
+  selectedIds?: string[];
   /** Additional CSS class name */
   className?: string;
   /** Whether to enable drag and drop (default: true) */

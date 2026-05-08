@@ -115,6 +115,15 @@ export function SessionsList({
       })),
     [buckets],
   );
+  // Stable controlled-selection array so the Explorer's `useMemo`s
+  // for `selectedIds` / context value don't see a new identity on
+  // every parent render (which would still be cheap, but this keeps
+  // referential equality for `[selectedSessionId]` when it's
+  // unchanged).
+  const explorerSelectedIds = useMemo(
+    () => (selectedSessionId ? [selectedSessionId] : []),
+    [selectedSessionId],
+  );
 
   const resolveMenuTarget = useCallback(
     (nodeId: string): AnnotatedSession | null => sessionById.get(nodeId) ?? null,
@@ -204,12 +213,11 @@ export function SessionsList({
           <section key={bucket.label} className={styles.chatsBucket}>
             <div className={styles.chatsBucketHeader}>{bucket.label}</div>
             <Explorer
-              key={`${bucket.label}:${selectedSessionId ?? "none"}`}
               data={bucket.data}
               className={styles.sessionsExplorer}
               enableDragDrop={false}
               enableMultiSelect={false}
-              defaultSelectedIds={selectedSessionId ? [selectedSessionId] : []}
+              selectedIds={explorerSelectedIds}
               onSelect={handleExplorerSelect}
             />
           </section>

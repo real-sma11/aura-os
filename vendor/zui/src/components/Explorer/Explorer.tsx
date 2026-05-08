@@ -582,6 +582,7 @@ export function Explorer({
   onDrop,
   defaultExpandedIds,
   defaultSelectedIds,
+  selectedIds,
   className,
   enableDragDrop = true,
   enableMultiSelect = true,
@@ -617,6 +618,7 @@ export function Explorer({
         data={data}
         defaultExpandedIds={defaultExpandedIds}
         defaultSelectedIds={defaultSelectedIds}
+        selectedIds={selectedIds}
         enableMultiSelect={enableMultiSelect}
         enableDragDrop={enableDragDrop}
         expandOnSelect={expandOnSelect}

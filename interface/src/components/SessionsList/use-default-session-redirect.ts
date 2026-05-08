@@ -1,95 +1,17 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
 import {
   agentSessionsSurfaceKey,
-  isOptimisticSessionId,
-  projectSessionsSurfaceKey,
   useMostRecentSession,
-  useSessionsForSurface,
   useSessionsListActions,
   useSessionsListStore,
 } from "../../stores/sessions-list-store";
 
-interface ProjectRedirectOptions {
-  projectId: string;
-  agentInstanceId: string;
-  sessionId: string | null;
-  setSearchParams: SetURLSearchParams;
-}
-
-/**
- * Project-panel default-session redirect: when the user lands on a
- * project-agent chat URL with no `?session=`, pick the most recent
- * session for the active agent instance and replace the URL with
- * `?session=<id>`. Now that session views are editable, this is just
- * "open your last chat".
- *
- * The hook reads from the shared `useSessionsListStore` instead of
- * issuing its own `api.listSessions` request, so the redirect always
- * agrees with the sidekick that's rendering the same list. The store
- * holds project-wide sessions; we filter to the active instance here.
- */
-export function useDefaultProjectSessionRedirect({
-  projectId,
-  agentInstanceId,
-  sessionId,
-  setSearchParams,
-}: ProjectRedirectOptions): void {
-  const surfaceKey = projectSessionsSurfaceKey(projectId);
-  const sessions = useSessionsForSurface(surfaceKey);
-  const sessionsVersion = useSessionsListStore((s) => s.version);
-  const didDefaultRef = useRef<string | null>(null);
-
-  // Sessions are stored sorted desc by `started_at`, so the first
-  // match is also the most recent for this agent instance. Skip
-  // optimistic placeholder rows: a leaked optimistic id (e.g. the
-  // panel was unmounted mid-stream before `SessionReady` could swap
-  // it for the real id) would otherwise be primed into the URL as
-  // `?session=optimistic:...`, immediately 400ing the history fetch.
-  const mostRecentForInstance = useMemo(() => {
-    return (
-      sessions.find(
-        (s) =>
-          s._agentInstanceId === agentInstanceId &&
-          !isOptimisticSessionId(s.session_id),
-      ) ?? null
-    );
-  }, [sessions, agentInstanceId]);
-
-  // Trigger a load if the store doesn't yet have this project. The
-  // store dedupes via per-surface request ids; recalling on every
-  // render-tick when nothing has changed is cheap because the deps
-  // gate the effect.
-  useEffect(() => {
-    if (sessionId) return;
-    void useSessionsListStore.getState().loadProjectSessions(projectId, "");
-  }, [projectId, sessionId, sessionsVersion]);
-
-  useEffect(() => {
-    const key = `${projectId}:${agentInstanceId}`;
-    if (sessionId) {
-      didDefaultRef.current = key;
-      return;
-    }
-    if (didDefaultRef.current === key) return;
-    if (!mostRecentForInstance) return;
-    didDefaultRef.current = key;
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("session", mostRecentForInstance.session_id);
-        return next;
-      },
-      { replace: true },
-    );
-  }, [
-    projectId,
-    agentInstanceId,
-    sessionId,
-    mostRecentForInstance,
-    setSearchParams,
-  ]);
-}
+// Project-route default-session redirect lives in
+// `apps/agents/hooks/use-conversation-target.ts` so a single writer
+// owns `?session=` for the project route. The previous
+// `useDefaultProjectSessionRedirect` hook was folded in there; this
+// file now only exports the standalone-agents redirect.
 
 interface StandaloneRedirectOptions {
   agentId: string | undefined;

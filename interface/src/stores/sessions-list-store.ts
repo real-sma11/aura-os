@@ -215,24 +215,60 @@ function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
   );
 }
 
+/** Hard cap on how long a locally-known row may be carried across a
+ *  stale list reload before we trust the server's view. 5 minutes is
+ *  generous: the typical window between a `SessionReady` swap and the
+ *  next list call materializing the real id is sub-second; the cap is
+ *  purely a safety net for orphaned local state. */
+const PENDING_ROW_PRESERVE_TTL_MS = 5 * 60 * 1000;
+
 /**
- * Carry forward any optimistic placeholder rows from the previous
- * surface state into a fresh load result. The server's `list_sessions`
- * filters out zero-event sessions, so a refetch triggered by
- * `SessionReady` may briefly miss the just-created session — without
- * this guard the optimistic row would flicker out and back in. Once
- * `replaceSessionId` swaps the marker for the real id, the next load
- * sees a non-optimistic id and the placeholder isn't carried again.
+ * Carry forward locally-known rows that the server's just-returned
+ * list doesn't include yet. Two failure modes this guards against,
+ * both of which manifested as "row flickers out and back in" in
+ * `SessionsList`:
+ *
+ *   1. Optimistic placeholders inserted before SessionReady arrives.
+ *      `list_sessions` filters out zero-event sessions, so a refetch
+ *      kicked off after `+ New chat` (e.g. by another component's
+ *      `bumpVersion`) won't include the just-created session. Once
+ *      `replaceSessionId` swaps the marker for the real id, the
+ *      placeholder is no longer optimistic and falls into case (2).
+ *   2. Just-swapped real-id rows. After `replaceSessionId` runs, a
+ *      stale list response that started flying before the swap will
+ *      arrive without the new id. Without preservation the just-
+ *      created row disappears from the sidekick for ~the
+ *      `loadSessions` round-trip, then pops back when the next
+ *      version-bump triggers a follow-up load. The user sees this
+ *      as a "New chat" row vanishing right after sending the first
+ *      message.
+ *
+ * Real-id preservation is bounded by a `started_at`/TTL guard so a
+ * server that's authoritatively dropped a row (delete from another
+ * tab, soft-delete, etc.) eventually wins out. `removeSession` is the
+ * primary path for "drop a row I know is gone" — this preservation is
+ * for the race where the server *will* return the row but hasn't yet.
  */
-function preserveOptimisticRows(
+function preservePendingRows(
   prev: AnnotatedSession[] | undefined,
   next: AnnotatedSession[],
 ): AnnotatedSession[] {
   if (!prev || prev.length === 0) return next;
-  const optimistic = prev.filter((s) => isOptimisticSessionId(s.session_id));
-  if (optimistic.length === 0) return next;
   const seen = new Set(next.map((s) => s.session_id));
-  const carried = optimistic.filter((s) => !seen.has(s.session_id));
+  const newestServerMs = next.reduce(
+    (acc, s) => Math.max(acc, new Date(s.started_at).getTime()),
+    0,
+  );
+  const nowMs = Date.now();
+  const carried = prev.filter((s) => {
+    if (seen.has(s.session_id)) return false;
+    if (isOptimisticSessionId(s.session_id)) return true;
+    const rowMs = new Date(s.started_at).getTime();
+    if (Number.isNaN(rowMs)) return false;
+    if (rowMs <= newestServerMs) return false;
+    if (nowMs - rowMs > PENDING_ROW_PRESERVE_TTL_MS) return false;
+    return true;
+  });
   if (carried.length === 0) return next;
   return sortSessionsDesc([...next, ...carried]);
 }
@@ -377,7 +413,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
           merged,
           state.pendingSummariesById,
         );
-        const finalList = preserveOptimisticRows(
+        const finalList = preservePendingRows(
           state.sessionsBySurface[surfaceKey],
           withCachedTitles,
         );
@@ -431,7 +467,7 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
           annotated,
           state.pendingSummariesById,
         );
-        const finalList = preserveOptimisticRows(
+        const finalList = preservePendingRows(
           state.sessionsBySurface[surfaceKey],
           withCachedTitles,
         );
