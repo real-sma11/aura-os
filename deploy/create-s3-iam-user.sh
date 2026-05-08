@@ -12,6 +12,18 @@ set -euo pipefail
 BUCKET_NAME="aura-asi-production-assets"
 IAM_USER="aura-router-s3"
 
+echo "=== Verifying AWS credentials ==="
+if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
+  echo "ERROR: AWS credentials are missing or invalid." >&2
+  echo "Set them in this shell before re-running:" >&2
+  echo "  export AWS_ACCESS_KEY_ID=..." >&2
+  echo "  export AWS_SECRET_ACCESS_KEY=..." >&2
+  echo "  export AWS_SESSION_TOKEN=...   # only for SSO/temporary creds" >&2
+  echo "  export AWS_REGION=us-east-1" >&2
+  exit 1
+fi
+aws sts get-caller-identity --output text
+
 echo "=== Creating IAM user: ${IAM_USER} ==="
 
 aws iam create-user --user-name "${IAM_USER}" 2>/dev/null || echo "User may already exist, continuing..."
@@ -41,12 +53,23 @@ aws iam put-user-policy \
     ]
   }'
 
-# Create access key
+# Create access key. NOTE: each call to create-access-key produces a NEW key,
+# and AWS limits each user to 2 active keys, so we must call it once and parse
+# both fields from a single response. Use sed (no python3 dependency, works in
+# Git Bash on Windows where python3 is often not on PATH).
 echo "=== Creating access key ==="
-CREDS=$(aws iam create-access-key --user-name "${IAM_USER}" --output json)
+CREDS_FILE=$(mktemp)
+trap 'rm -f "${CREDS_FILE}"' EXIT
+aws iam create-access-key --user-name "${IAM_USER}" --output json > "${CREDS_FILE}"
 
-ACCESS_KEY=$(echo "${CREDS}" | python3 -c "import sys,json; print(json.load(sys.stdin)['AccessKey']['AccessKeyId'])")
-SECRET_KEY=$(echo "${CREDS}" | python3 -c "import sys,json; print(json.load(sys.stdin)['AccessKey']['SecretAccessKey'])")
+ACCESS_KEY=$(sed -nE 's/.*"AccessKeyId"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p'    "${CREDS_FILE}")
+SECRET_KEY=$(sed -nE 's/.*"SecretAccessKey"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "${CREDS_FILE}")
+
+if [[ -z "${ACCESS_KEY}" || -z "${SECRET_KEY}" ]]; then
+  echo "ERROR: failed to parse access key from create-access-key response:" >&2
+  cat "${CREDS_FILE}" >&2
+  exit 1
+fi
 
 echo ""
 echo "=== IAM user created ==="

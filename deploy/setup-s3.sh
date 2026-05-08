@@ -16,13 +16,37 @@ set -euo pipefail
 BUCKET_NAME="aura-asi-production-assets"
 REGION="us-east-1"
 
+echo "=== Verifying AWS credentials ==="
+if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
+  echo "ERROR: AWS credentials are missing or invalid." >&2
+  echo "Set them in this shell before re-running:" >&2
+  echo "  export AWS_ACCESS_KEY_ID=..." >&2
+  echo "  export AWS_SECRET_ACCESS_KEY=..." >&2
+  echo "  export AWS_SESSION_TOKEN=...   # only for SSO/temporary creds" >&2
+  echo "  export AWS_REGION=${REGION}" >&2
+  exit 1
+fi
+aws sts get-caller-identity --output text
+
 echo "=== Creating S3 bucket: ${BUCKET_NAME} in ${REGION} ==="
 
-# Create bucket
-aws s3api create-bucket \
+# Create bucket. Swallow only the "already exists and we own it" errors;
+# surface anything else (auth, permissions, name taken by someone else) so the
+# script fails fast instead of silently continuing into a misconfigured state.
+CREATE_ERR=$(mktemp)
+if ! aws s3api create-bucket \
   --bucket "${BUCKET_NAME}" \
   --region "${REGION}" \
-  2>/dev/null || echo "Bucket may already exist, continuing..."
+  2>"${CREATE_ERR}"; then
+  if grep -qE "BucketAlreadyOwnedByYou|BucketAlreadyExists" "${CREATE_ERR}"; then
+    echo "Bucket already exists, continuing..."
+  else
+    cat "${CREATE_ERR}" >&2
+    rm -f "${CREATE_ERR}"
+    exit 1
+  fi
+fi
+rm -f "${CREATE_ERR}"
 
 # Disable block public access (needed for public read)
 echo "=== Configuring public access ==="
