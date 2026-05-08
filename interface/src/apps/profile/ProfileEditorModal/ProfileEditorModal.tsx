@@ -5,6 +5,7 @@ import type { UserProfileData } from "../../../stores/profile-store";
 import { useModalInitialFocus } from "../../../hooks/use-modal-initial-focus";
 import { useAuraCapabilities } from "../../../hooks/use-aura-capabilities";
 import { ImageCropModal } from "../../../components/ImageCropModal";
+import { uploadFile } from "../../../api/upload";
 import editorStyles from "../../agents/components/AgentEditorModal/AgentEditorModal.module.css";
 import mobileStyles from "./ProfileEditorModal.module.css";
 
@@ -48,18 +49,38 @@ export function ProfileEditorModal({ isOpen, profile, onClose, onSave }: Profile
     onClose();
   }, [rawImageSrc, onClose]);
 
+  const [saving, setSaving] = useState(false);
+
   const handleSave = async () => {
     if (!name.trim()) {
       setNameError("Name is required");
       return;
     }
     setNameError("");
+
+    let finalAvatarUrl = avatarUrl.trim() || undefined;
+
+    // Upload data URL to S3 so the avatar persists as a real URL
+    if (finalAvatarUrl && finalAvatarUrl.startsWith("data:")) {
+      setSaving(true);
+      try {
+        const resp = await fetch(finalAvatarUrl);
+        const blob = await resp.blob();
+        finalAvatarUrl = await uploadFile(blob, "avatar.png", blob.type || "image/png");
+      } catch (err) {
+        console.warn("Avatar upload failed, saving without avatar", err);
+        finalAvatarUrl = undefined;
+      } finally {
+        setSaving(false);
+      }
+    }
+
     onSave({
       name: name.trim(),
       bio: bio.trim(),
       website: website.trim(),
       location: location.trim(),
-      avatarUrl: avatarUrl.trim() || undefined,
+      avatarUrl: finalAvatarUrl,
     });
     onClose();
   };
@@ -201,8 +222,8 @@ export function ProfileEditorModal({ isOpen, profile, onClose, onSave }: Profile
             Cancel
           </button>
           <h2 className={mobileStyles.title}>Edit Profile</h2>
-          <button type="button" className={mobileStyles.headerButtonPrimary} onClick={handleSave}>
-            Save
+          <button type="button" className={mobileStyles.headerButtonPrimary} onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save"}
           </button>
         </header>
         <div className={mobileStyles.content}>{form}</div>
@@ -224,8 +245,8 @@ export function ProfileEditorModal({ isOpen, profile, onClose, onSave }: Profile
               <Button variant="ghost" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleSave}>
-                Save Changes
+              <Button variant="primary" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           }
