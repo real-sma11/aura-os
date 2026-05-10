@@ -105,6 +105,7 @@ function currentAuthor(): FeedbackAuthor {
     name: user?.display_name ?? "You",
     type: "user",
     avatarUrl: user?.profile_image ?? undefined,
+    profileId: user?.profile_id,
   };
 }
 
@@ -115,6 +116,7 @@ function dtoToItem(dto: FeedbackItemDto): FeedbackItem {
       name: dto.authorName ?? "Unknown",
       avatarUrl: dto.authorAvatar ?? undefined,
       type: "user",
+      profileId: dto.profileId,
     },
     title: dto.title ?? "",
     body: dto.summary ?? "",
@@ -139,6 +141,7 @@ function dtoToComment(dto: FeedbackCommentDto): FeedbackComment {
       name: dto.authorName ?? "Unknown",
       avatarUrl: dto.authorAvatar ?? undefined,
       type: "user",
+      profileId: dto.profileId,
     },
     text: dto.content,
     createdAt: dto.createdAt ?? new Date().toISOString(),

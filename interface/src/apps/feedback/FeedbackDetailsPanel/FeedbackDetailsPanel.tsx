@@ -1,15 +1,31 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Info } from "lucide-react";
 import { Avatar } from "../../../components/Avatar";
 import { EmptyState } from "../../../components/EmptyState";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
+import { useAuthStore } from "../../../stores/auth-store";
 import {
   useFeedback,
+  useFeedbackComments,
   useFeedbackItem,
 } from "../../../stores/feedback-store";
 import { timeAgo } from "../../../shared/utils/format";
-import { categoryLabel, productLabel, statusLabel } from "../types";
+import {
+  categoryLabel,
+  productLabel,
+  statusLabel,
+  type FeedbackStatus,
+} from "../types";
 import styles from "./FeedbackDetailsPanel.module.css";
+
+/** Statuses the submitting author can flip their own feedback to from the
+ *  Details panel. The current status is prepended (and deduped) so the
+ *  `<select>` always has its current value as an option. */
+const AUTHOR_STATUS_TARGETS: readonly FeedbackStatus[] = [
+  "not_started",
+  "done",
+  "deployed",
+];
 
 function formatCreatedAt(iso: string): string {
   try {
@@ -32,9 +48,31 @@ function formatCreatedAt(iso: string): string {
  * category/status/product, vote totals, and creation timestamp.
  */
 export function FeedbackDetailsPanel() {
-  const { selectedId } = useFeedback();
+  const { selectedId, setStatus } = useFeedback();
   const item = useFeedbackItem(selectedId);
+  const comments = useFeedbackComments(selectedId);
+  const viewerProfileId = useAuthStore((s) => s.user?.profile_id);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isAuthor =
+    !!viewerProfileId &&
+    !!item?.author.profileId &&
+    viewerProfileId === item.author.profileId;
+
+  const sortedComments = useMemo(
+    () =>
+      [...comments].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [comments],
+  );
+
+  const statusOptions = useMemo<readonly FeedbackStatus[]>(() => {
+    if (!item) return AUTHOR_STATUS_TARGETS;
+    const rest = AUTHOR_STATUS_TARGETS.filter((s) => s !== item.status);
+    return [item.status, ...rest];
+  }, [item]);
 
   if (!item) {
     return (
@@ -81,13 +119,33 @@ export function FeedbackDetailsPanel() {
             <div className={styles.metaRow}>
               <dt className={styles.metaLabel}>Status</dt>
               <dd className={styles.metaValue}>
-                <span
-                  className={styles.statusTag}
-                  data-status={item.status}
-                  data-agent-proof="feedback-details-status-visible"
-                >
-                  {statusLabel(item.status)}
-                </span>
+                {isAuthor ? (
+                  <select
+                    className={styles.statusSelect}
+                    data-status={item.status}
+                    data-agent-action="change-feedback-status"
+                    data-agent-proof="feedback-details-status-editable"
+                    aria-label="Change feedback status"
+                    value={item.status}
+                    onChange={(event) =>
+                      setStatus(item.id, event.target.value as FeedbackStatus)
+                    }
+                  >
+                    {statusOptions.map((value) => (
+                      <option key={value} value={value}>
+                        {statusLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span
+                    className={styles.statusTag}
+                    data-status={item.status}
+                    data-agent-proof="feedback-details-status-visible"
+                  >
+                    {statusLabel(item.status)}
+                  </span>
+                )}
               </dd>
             </div>
             <div className={styles.metaRow}>
@@ -107,11 +165,47 @@ export function FeedbackDetailsPanel() {
                 {item.voteScore} ({item.upvotes} up &middot; {item.downvotes} down)
               </dd>
             </div>
-            <div className={styles.metaRow}>
-              <dt className={styles.metaLabel}>Comments</dt>
-              <dd className={styles.metaValue}>{item.commentCount}</dd>
-            </div>
           </dl>
+
+          <section
+            className={styles.commentsSection}
+            aria-label="Comments"
+            data-agent-list="feedback-comments"
+            data-agent-context-anchor="feedback-details-comments"
+          >
+            <h3 className={styles.commentsHeading}>
+              Comments
+              <span className={styles.commentsCount}>{item.commentCount}</span>
+            </h3>
+            {sortedComments.length === 0 ? (
+              <p className={styles.commentsEmpty}>No comments yet</p>
+            ) : (
+              <ul className={styles.commentList}>
+                {sortedComments.map((comment) => (
+                  <li key={comment.id} className={styles.commentItem}>
+                    <Avatar
+                      avatarUrl={comment.author.avatarUrl}
+                      name={comment.author.name}
+                      type={comment.author.type}
+                      size={28}
+                      className={styles.commentAvatar}
+                    />
+                    <div className={styles.commentContent}>
+                      <div className={styles.commentHeader}>
+                        <span className={styles.commentAuthor}>
+                          {comment.author.name}
+                        </span>
+                        <span className={styles.commentTime}>
+                          {timeAgo(comment.createdAt)}
+                        </span>
+                      </div>
+                      <span className={styles.commentText}>{comment.text}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
       <OverlayScrollbar scrollRef={scrollRef} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, MessageSquare } from "lucide-react";
 import { EmptyState } from "../../../components/EmptyState";
 import { Avatar } from "../../../components/Avatar";
@@ -22,6 +22,14 @@ export function FeedbackCommentsPanel() {
   const { selectedId } = useFeedback();
   const item = useFeedbackItem(selectedId);
   const comments = useFeedbackComments(selectedId);
+  const sortedComments = useMemo(
+    () =>
+      [...comments].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [comments],
+  );
   const addComment = useAddFeedbackComment();
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,10 +87,10 @@ export function FeedbackCommentsPanel() {
             data-agent-proof={comments.length > 0 ? "feedback-thread-populated" : undefined}
             data-agent-context-anchor="feedback-comment-list"
           >
-            {comments.length === 0 ? (
+            {sortedComments.length === 0 ? (
               <EmptyState>No comments yet</EmptyState>
             ) : (
-              comments.map((comment) => (
+              sortedComments.map((comment) => (
                 <div key={comment.id} className={styles.commentItem}>
                   <Avatar
                     avatarUrl={comment.author.avatarUrl}

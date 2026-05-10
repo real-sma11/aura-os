@@ -35,6 +35,10 @@ export interface FeedbackAuthor {
   name: string;
   avatarUrl?: string;
   type: "user" | "agent";
+  /** Network profile id of the author. Used to gate author-only actions
+   *  (e.g. the submitter changing their feedback's status). Optional because
+   *  legacy mocks and capture sessions don't always thread it through. */
+  profileId?: string;
 }
 
 export interface FeedbackItem {
