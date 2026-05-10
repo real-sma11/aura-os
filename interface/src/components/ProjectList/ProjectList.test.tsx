@@ -115,7 +115,6 @@ const mockActions = {
   handleAddAgent: vi.fn(),
   handleQuickAddAgent: vi.fn(),
   handleArchiveAgent: vi.fn(),
-  creatingGeneralAgentProjectIds: [],
   archivingAgentInstanceIds: [],
 };
 vi.mock("../../hooks/use-project-list-actions", () => ({

@@ -88,12 +88,15 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
 
     // Keep the active row scrolled into view. Mirrors the behavior in
     // `SlashCommandMenu` so long fleets behave the same as the slash
-    // command palette already in this codebase.
+    // command palette already in this codebase. Guarded against
+    // environments without `scrollIntoView` (jsdom / older webviews).
     useEffect(() => {
       const active = listRef.current?.querySelector<HTMLElement>(
         `.${styles.rowActive}`,
       );
-      active?.scrollIntoView({ block: "nearest" });
+      if (active && typeof active.scrollIntoView === "function") {
+        active.scrollIntoView({ block: "nearest" });
+      }
     }, [activeIndex]);
 
     const activate = useCallback(

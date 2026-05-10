@@ -206,21 +206,18 @@ describe("useProjectListActions", () => {
     expect(result.current.pendingCreatedAgent).toBeNull();
   });
 
-  it("handleQuickAddAgent creates a general agent and navigates to it", async () => {
+  it("handleQuickAddAgent opens the agent picker for the project", () => {
     const { result } = renderHook(() => useProjectListActions(), { wrapper });
 
-    await act(async () => {
-      await result.current.handleQuickAddAgent("p-9");
+    act(() => {
+      result.current.handleQuickAddAgent("p-9");
     });
 
-    expect(api.createGeneralAgentInstance).toHaveBeenCalledWith("p-9");
-    expect(mockNavigate).toHaveBeenCalledWith("/projects/p-9/agents/general-ai", {
-      state: {
-        agentChatHandoff: {
-          type: CREATE_AGENT_CHAT_HANDOFF,
-        },
-      },
-    });
+    expect(result.current.agentSelectorProjectId).toBe("p-9");
+    // The picker is now what calls `createGeneralAgentInstance` for
+    // the Standard row, so the hook no longer fires that API itself.
+    expect(api.createGeneralAgentInstance).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("handleArchiveAgent archives the target instance locally", async () => {

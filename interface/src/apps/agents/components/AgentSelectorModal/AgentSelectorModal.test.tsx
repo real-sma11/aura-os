@@ -1,24 +1,25 @@
 import type React from "react";
-import { render, screen } from "../../../../test/render";
+import { fireEvent, render, screen } from "../../../../test/render";
 import type { Agent } from "../../../../shared/types";
 import { AgentSelectorModal } from "./AgentSelectorModal";
 
 const mockUseAuraCapabilities = vi.fn();
 const mockUseAgentSelectorData = vi.fn();
 const mockUseProjectsListStore = vi.fn();
+const mockHandleSelect = vi.fn();
+const mockHandleSelectStandard = vi.fn();
+const mockHandleClose = vi.fn();
 
 vi.mock("@cypher-asi/zui", () => ({
   Modal: ({
     isOpen,
     title,
-    footer,
     children,
   }: {
     isOpen: boolean;
     title: string;
-    footer?: React.ReactNode;
     children?: React.ReactNode;
-  }) => (isOpen ? <div><h1>{title}</h1>{children}{footer}</div> : null),
+  }) => (isOpen ? <div><h1>{title}</h1>{children}</div> : null),
   Drawer: ({
     isOpen,
     title,
@@ -28,12 +29,28 @@ vi.mock("@cypher-asi/zui", () => ({
     title: string;
     children?: React.ReactNode;
   }) => (isOpen ? <div><h1>{title}</h1>{children}</div> : null),
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Input: ({
+    value,
+    onChange,
+    placeholder,
+    "aria-label": ariaLabel,
+    ...rest
+  }: React.InputHTMLAttributes<HTMLInputElement>) => (
+    <input
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      {...rest}
+    />
+  ),
   Spinner: () => <div>Loading</div>,
   Text: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("lucide-react", () => ({
+  Search: () => <span data-testid="icon-search" />,
+  Sparkles: () => <span data-testid="icon-sparkles" />,
 }));
 
 vi.mock("../../../../hooks/use-aura-capabilities", () => ({
@@ -42,6 +59,11 @@ vi.mock("../../../../hooks/use-aura-capabilities", () => ({
 
 vi.mock("./useAgentSelectorData", () => ({
   useAgentSelectorData: (...args: unknown[]) => mockUseAgentSelectorData(...args),
+  STANDARD_AGENT_CREATING_KEY: "__standard_agent__",
+}));
+
+vi.mock("../../../../hooks/use-avatar-state", () => ({
+  useAvatarState: () => ({ status: undefined, isLocal: false }),
 }));
 
 vi.mock("../../../../stores/projects-list-store", () => ({
@@ -49,16 +71,8 @@ vi.mock("../../../../stores/projects-list-store", () => ({
     selector(mockUseProjectsListStore()),
 }));
 
-vi.mock("../../../../components/EmptyState", () => ({
-  EmptyState: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-}));
-
 vi.mock("../../../../components/Avatar", () => ({
   Avatar: ({ name }: { name: string }) => <div>{name}</div>,
-}));
-
-vi.mock("../AgentEditorModal", () => ({
-  AgentEditorModal: () => null,
 }));
 
 vi.mock("./AgentSelectorModal.module.css", () => ({
@@ -81,25 +95,33 @@ function makeAgent(name: string, machineType: string): Agent {
   };
 }
 
+function setDataMock(overrides: Record<string, unknown> = {}) {
+  mockUseAgentSelectorData.mockReturnValue({
+    agents: [makeAgent("Local Agent", "local"), makeAgent("Remote Agent", "remote")],
+    loading: false,
+    creating: null,
+    error: "",
+    handleSelect: mockHandleSelect,
+    handleSelectStandard: mockHandleSelectStandard,
+    handleClose: mockHandleClose,
+    showEditor: false,
+    setShowEditor: vi.fn(),
+    handleAgentSaved: vi.fn(),
+    failedIcons: new Set<string>(),
+    setFailedIcons: vi.fn(),
+    ...overrides,
+  });
+}
+
 describe("AgentSelectorModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
     mockUseProjectsListStore.mockReturnValue({ agentsByProject: {} });
-    mockUseAgentSelectorData.mockReturnValue({
-      agents: [makeAgent("Local Agent", "local"), makeAgent("Remote Agent", "remote")],
-      loading: false,
-      creating: null,
-      error: "",
-      showEditor: false,
-      setShowEditor: vi.fn(),
-      handleSelect: vi.fn(),
-      handleAgentSaved: vi.fn(),
-      handleClose: vi.fn(),
-    });
+    setDataMock();
   });
 
-  it("shows both local and remote agents on desktop", () => {
+  it("renders the Standard Agent row at the top with the search input", () => {
     render(
       <AgentSelectorModal
         isOpen
@@ -109,11 +131,16 @@ describe("AgentSelectorModal", () => {
       />,
     );
 
-    expect(screen.getAllByText("Local Agent").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Remote Agent").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Select an agent" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Search agents")).toBeInTheDocument();
+
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Standard Agent");
+    expect(options[1]).toHaveTextContent("Local Agent");
+    expect(options[2]).toHaveTextContent("Remote Agent");
   });
 
-  it("shows only remote agents on mobile", () => {
+  it("shows only remote agents on mobile and uses the mobile drawer title", () => {
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true });
 
     render(
@@ -125,13 +152,15 @@ describe("AgentSelectorModal", () => {
       />,
     );
 
+    expect(screen.getByRole("heading", { name: "Add agent" })).toBeInTheDocument();
     expect(screen.queryByText("Local Agent")).not.toBeInTheDocument();
+    // The Avatar mock and the row both render the agent name, so use
+    // option count instead — Standard + Remote = 2.
+    expect(screen.getAllByRole("option")).toHaveLength(2);
     expect(screen.getAllByText("Remote Agent").length).toBeGreaterThan(0);
-    expect(screen.getByText("Add Remote Agent to Project")).toBeInTheDocument();
   });
 
-  it("hides agents that are already attached to the project", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true });
+  it("hides agents already attached to the project", () => {
     mockUseProjectsListStore.mockReturnValue({
       agentsByProject: {
         "project-1": [{ agent_id: "remote-agent" }],
@@ -148,39 +177,12 @@ describe("AgentSelectorModal", () => {
     );
 
     expect(screen.queryByText("Remote Agent")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create agent" })).toBeInTheDocument();
+    expect(screen.getByText("Standard Agent")).toBeInTheDocument();
+    expect(screen.getAllByText("Local Agent").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("option")).toHaveLength(2);
   });
 
-  it("keeps the selector visible without a second overlay while switching", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true });
-
-    render(
-      <AgentSelectorModal
-        isOpen
-        projectId="project-1"
-        onClose={vi.fn()}
-        onCreated={vi.fn()}
-        isTransitioning
-      />,
-    );
-
-    expect(screen.queryByTestId("agent-selector-transition")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Not now" })).toBeDisabled();
-  });
-
-  it("does not add a selector overlay while creating a new agent", () => {
-    mockUseAgentSelectorData.mockReturnValue({
-      agents: [makeAgent("Atlas", "remote")],
-      loading: false,
-      creating: "atlas",
-      error: "",
-      showEditor: false,
-      setShowEditor: vi.fn(),
-      handleSelect: vi.fn(),
-      handleAgentSaved: vi.fn(),
-      handleClose: vi.fn(),
-    });
-
+  it("filters the list by query and resets the highlight to the top", () => {
     render(
       <AgentSelectorModal
         isOpen
@@ -190,6 +192,82 @@ describe("AgentSelectorModal", () => {
       />,
     );
 
-    expect(screen.queryByTestId("agent-selector-transition")).not.toBeInTheDocument();
+    const search = screen.getByLabelText("Search agents") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "Remote" } });
+
+    expect(screen.queryByText("Standard Agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Local Agent")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Remote Agent").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("activates the highlighted row with arrow-down + enter", () => {
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    const search = screen.getByLabelText("Search agents");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(mockHandleSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ agent_id: "local-agent" }),
+    );
+    expect(mockHandleSelectStandard).not.toHaveBeenCalled();
+  });
+
+  it("activates Standard Agent on enter when no row navigation has happened", () => {
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    const search = screen.getByLabelText("Search agents");
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(mockHandleSelectStandard).toHaveBeenCalledTimes(1);
+    expect(mockHandleSelect).not.toHaveBeenCalled();
+  });
+
+  it("invokes handleSelectStandard when the Standard row is clicked", () => {
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    const standardRow = screen.getByRole("option", { name: /Standard Agent/i });
+    fireEvent.mouseDown(standardRow);
+
+    expect(mockHandleSelectStandard).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables every row while a row is creating", () => {
+    setDataMock({ creating: "remote-agent" });
+
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    for (const option of screen.getAllByRole("option")) {
+      expect(option).toBeDisabled();
+    }
   });
 });
