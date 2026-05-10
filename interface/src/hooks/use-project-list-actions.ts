@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { queryClient } from "../shared/lib/query-client";
 import { mergeAgentIntoProjectAgents, projectQueryKeys } from "../queries/project-queries";
@@ -45,14 +45,11 @@ export function useProjectListActions() {
   const [deleteAgentError, setDeleteAgentError] = useState<string | null>(null);
   const [agentSelectorProjectId, setAgentSelectorProjectId] = useState<string | null>(null);
   const [pendingCreatedAgent, setPendingCreatedAgent] = useState<AgentInstance | null>(null);
-  const [creatingGeneralAgentProjectIds, setCreatingGeneralAgentProjectIds] = useState<string[]>([]);
   const [archivingAgentInstanceIds, setArchivingAgentInstanceIds] = useState<string[]>([]);
 
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const ctxMenuStateRef = useRef(ctxMenu);
   ctxMenuStateRef.current = ctxMenu;
-  const creatingGeneralAgentProjectIdsRef = useRef(creatingGeneralAgentProjectIds);
-  creatingGeneralAgentProjectIdsRef.current = creatingGeneralAgentProjectIds;
   const archivingAgentInstanceIdsRef = useRef(archivingAgentInstanceIds);
   archivingAgentInstanceIdsRef.current = archivingAgentInstanceIds;
 
@@ -118,21 +115,14 @@ export function useProjectListActions() {
     [beginCreateAgentHandoff, navigate, refreshProjectAgents, setAgentsByProject],
   );
 
-  const handleQuickAddAgent = useCallback(async (pid: string) => {
-    if (creatingGeneralAgentProjectIdsRef.current.includes(pid)) {
-      return;
-    }
-
-    setCreatingGeneralAgentProjectIds((prev) => [...prev, pid]);
-    try {
-      const instance = await api.createGeneralAgentInstance(pid);
-      handleAgentCreated(instance);
-    } catch (err) {
-      console.error("Failed to create general project agent", err);
-    } finally {
-      setCreatingGeneralAgentProjectIds((prev) => prev.filter((projectId) => projectId !== pid));
-    }
-  }, [handleAgentCreated]);
+  // The project-row "+" used to call `api.createGeneralAgentInstance`
+  // directly and silently navigate to the resulting chat. It now opens
+  // the same picker as the right-click "Add Agent" menu so the user can
+  // either pick the "Standard Agent" row (the old general-agent path,
+  // wired inside the modal) or attach one of their saved fleet agents.
+  const handleQuickAddAgent = useCallback((pid: string) => {
+    setAgentSelectorProjectId(pid);
+  }, []);
 
   const handleMenuAction = useCallback((actionId: string) => {
     const menu = ctxMenuStateRef.current;
@@ -300,7 +290,6 @@ export function useProjectListActions() {
     deleteTarget, setDeleteTarget, deleteLoading, deleteError, setDeleteError,
     deleteAgentTarget, setDeleteAgentTarget, deleteAgentLoading, deleteAgentError, setDeleteAgentError,
     agentSelectorProjectId, setAgentSelectorProjectId, pendingCreatedAgent,
-    creatingGeneralAgentProjectIds,
     archivingAgentInstanceIds,
     handleAddAgent,
     handleQuickAddAgent,

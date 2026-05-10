@@ -37,7 +37,6 @@ export interface ProjectExplorerBuildContext {
    * indicator on every concurrent stream after the first.
    */
   streamingAgentInstanceIds: string[];
-  creatingGeneralAgentProjectIds: string[];
   archivingAgentInstanceIds: string[];
   handleQuickAddAgent: (projectId: string) => void;
   handleArchiveAgent: (agent: ProjectAgentNode) => void;
@@ -78,7 +77,6 @@ function buildProjectSuffix(
   context: ProjectExplorerBuildContext,
   explorerStyles: ProjectExplorerNodeStyles,
 ): ReactNode {
-  const isCreating = context.creatingGeneralAgentProjectIds.includes(projectId);
   return (
     <span className={explorerStyles.projectSuffix}>
       <span
@@ -88,7 +86,6 @@ function buildProjectSuffix(
         <ProjectsPlusButton
           onClick={() => context.handleQuickAddAgent(projectId)}
           title="Add Agent"
-          disabled={isCreating}
         />
       </span>
     </span>

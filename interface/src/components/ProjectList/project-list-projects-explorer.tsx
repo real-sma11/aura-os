@@ -119,7 +119,6 @@ function useProjectExplorerData(
       automatingAgentInstanceId: data.automatingAgentInstanceId,
       isMobileLayout: data.isMobileLayout,
       streamingAgentInstanceIds: data.sidekick.streamingAgentInstanceIds,
-      creatingGeneralAgentProjectIds: data.actions.creatingGeneralAgentProjectIds,
       archivingAgentInstanceIds: data.actions.archivingAgentInstanceIds,
       handleQuickAddAgent: data.actions.handleQuickAddAgent,
       handleArchiveAgent: data.actions.handleArchiveAgent,
