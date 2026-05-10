@@ -4,6 +4,12 @@ import type { Agent, AgentInstance } from "../../../../shared/types";
 import { useProfileStatusStore } from "../../../../stores/profile-status-store";
 import { useOrgStore } from "../../../../stores/org-store";
 
+// Sentinel used by `creating` for the "Standard Agent" row so the list
+// can show its loading affordance without conflicting with a real
+// `Agent.agent_id`. Real agent ids are UUIDs so this string is safely
+// disjoint from the agent_id space.
+export const STANDARD_AGENT_CREATING_KEY = "__standard_agent__";
+
 interface AgentSelectorData {
   agents: Agent[];
   loading: boolean;
@@ -14,6 +20,7 @@ interface AgentSelectorData {
   failedIcons: Set<string>;
   setFailedIcons: React.Dispatch<React.SetStateAction<Set<string>>>;
   handleSelect: (agent: Agent) => Promise<void>;
+  handleSelectStandard: () => Promise<void>;
   handleAgentSaved: (agent: Agent) => void;
   handleClose: () => void;
 }
@@ -73,6 +80,24 @@ export function useAgentSelectorData(
     }
   }, [projectId, onCreated]);
 
+  // "Standard Agent" path: replaces what the project-row "+" used to do
+  // inline (`api.createGeneralAgentInstance`). Selecting it spawns a
+  // fresh general-purpose agent for the project — no AgentEditorModal,
+  // no naming step — and routes through the same `onCreated` so the
+  // sidebar/cache updates and navigation match the existing flow.
+  const handleSelectStandard = useCallback(async () => {
+    setCreating(STANDARD_AGENT_CREATING_KEY);
+    setError("");
+    try {
+      const instance = await api.createGeneralAgentInstance(projectId);
+      onCreated(instance);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create standard agent");
+    } finally {
+      setCreating(null);
+    }
+  }, [projectId, onCreated]);
+
   const handleAgentSaved = useCallback(async (agent: Agent) => {
     setAgents((prev) => {
       const idx = prev.findIndex((a) => a.agent_id === agent.agent_id);
@@ -100,6 +125,7 @@ export function useAgentSelectorData(
 
   return {
     agents, loading, creating, error, showEditor, setShowEditor,
-    failedIcons, setFailedIcons, handleSelect, handleAgentSaved, handleClose,
+    failedIcons, setFailedIcons, handleSelect, handleSelectStandard,
+    handleAgentSaved, handleClose,
   };
 }
