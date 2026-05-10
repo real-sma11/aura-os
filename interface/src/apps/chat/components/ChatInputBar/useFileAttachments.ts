@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AttachmentItem } from "./ChatInputBar";
 import { uploadFile } from "../../../../api/upload";
+import { api } from "../../../../api/client";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_IMAGE_UPLOAD_BYTES = 1_100_000;
@@ -200,6 +201,12 @@ export function useFileAttachments(
   onAttachmentsChange?: (items: AttachmentItem[]) => void,
   onRemoveAttachment?: (id: string) => void,
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>,
+  /**
+   * When set, `addFileFromPath` reads files via the remote-agent
+   * filesystem API (`api.swarm.readRemoteFile`) instead of the local
+   * desktop API. Mirrors the same routing the file explorer uses.
+   */
+  remoteAgentId?: string,
 ) {
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
@@ -287,6 +294,59 @@ export function useFileAttachments(
     textareaRef?.current?.focus();
   }, [attachments, canAddMore, onAttachmentsChange, updateAttachment, textareaRef]);
 
+  /**
+   * Read a project file by path and attach it as a text attachment.
+   * Used by the @-mention autocomplete in the input bar; it skips the
+   * `processFile` dispatch (which is gated on browser-supplied MIME
+   * type / extension whitelist) because the user explicitly picked
+   * this file from the project tree — so any text-readable extension
+   * is fair game.
+   */
+  const addFileFromPath = useCallback(async (path: string) => {
+    if (!onAttachmentsChange) return;
+    if (!canAddMore) return;
+    const name = path.split(/[\\/]/).pop() ?? path;
+    if (attachmentsRef.current.some((a) => a.name === name && a.attachmentType === "text")) {
+      // Re-pick of the same file is a no-op rather than a duplicate
+      // attachment row; matches how the user mentally models @file.
+      textareaRef?.current?.focus();
+      return;
+    }
+    const res = remoteAgentId
+      ? await api.swarm.readRemoteFile(remoteAgentId, path)
+      : await api.readFile(path);
+    if (!res.ok || res.content == null) {
+      console.warn("[mention] readFile failed", { path, error: res.error });
+      return;
+    }
+    const text = res.content;
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const mediaType = "text/plain";
+    const file = new File([text], name, { type: mediaType });
+    const item: AttachmentItem = {
+      id: crypto.randomUUID(),
+      file,
+      data: btoa(binary),
+      mediaType,
+      name,
+      attachmentType: "text",
+    };
+    void import("../../../../lib/analytics").then(({ track }) =>
+      track("file_attached", { file_count: 1, source: "mention" }),
+    );
+    const next = [...attachmentsRef.current, item];
+    attachmentsRef.current = next;
+    onAttachmentsChange(next);
+    const controller = new AbortController();
+    uploadAbortRefs.current.set(item.id, controller);
+    void uploadAttachmentToS3(item, updateAttachment, controller.signal).finally(() => {
+      uploadAbortRefs.current.delete(item.id);
+    });
+    textareaRef?.current?.focus();
+  }, [canAddMore, onAttachmentsChange, remoteAgentId, textareaRef, updateAttachment]);
+
   const handleRemove = useCallback((id: string) => {
     // Abort any in-flight upload for this attachment
     const controller = uploadAbortRefs.current.get(id);
@@ -299,5 +359,5 @@ export function useFileAttachments(
     onRemoveAttachment?.(id);
   }, [attachments, onRemoveAttachment]);
 
-  return { canAddMore, addFiles, handleRemove };
+  return { canAddMore, addFiles, addFileFromPath, handleRemove };
 }
