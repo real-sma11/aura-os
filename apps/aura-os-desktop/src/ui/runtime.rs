@@ -194,13 +194,14 @@ impl LoopState {
         file_path: &str,
         root_path: Option<&str>,
     ) {
-        // Rebuild the same auth/host bootstrap the main webview receives so the IDE
-        // webview can talk to the API. The IDE window uses an isolated WebContext,
-        // so without this script `window.__AURA_BOOT_AUTH__` and the
-        // `aura-jwt` / `aura-session` localStorage mirrors are missing and every
-        // request fails the server's auth guard with "missing authorization
-        // token". Load fresh literals from disk each time so a user who logs in
-        // after desktop startup still gets an authenticated IDE window.
+        // Share the main webview's WebContext (web storage / cookies /
+        // IndexedDB) so the IDE inherits the parent's live `aura-jwt` /
+        // `aura-session` localStorage entries directly — every API call from
+        // the IDE then gets a real `Authorization: Bearer …` header. The
+        // host-origin/auth bootstrap script is kept as a defensive belt-and-
+        // braces seed for the rare case where localStorage hasn't been
+        // mirrored yet (e.g. user logged in but never persisted to
+        // localStorage), but the shared context is the load-bearing piece.
         let bootstrapped = load_bootstrapped_auth_literals(&self.ctx.store_path);
         let init_script =
             build_initialization_script(self.ctx.host_origin.as_deref(), bootstrapped.as_ref());
@@ -208,6 +209,7 @@ impl LoopState {
         let proxy_clone = self.ctx.proxy.clone();
         match aura_os_ide::open_ide_window(
             elwt,
+            &mut self.web_context,
             &self.frontend_base_url,
             file_path,
             root_path,

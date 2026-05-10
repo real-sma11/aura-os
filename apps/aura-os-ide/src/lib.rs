@@ -1,7 +1,7 @@
 use tao::event_loop::EventLoopWindowTarget;
 use tao::window::{Icon, Window, WindowBuilder, WindowId};
 use tracing::info;
-use wry::{WebView, WebViewBuilder};
+use wry::{WebContext, WebView, WebViewBuilder};
 
 fn filename_from_path(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
@@ -38,6 +38,16 @@ fn build_app_url(base_url: &str, route: &str, params: &[(&str, &str)]) -> String
 
 /// Spawn a new IDE window that loads the interface IDE route for the given file.
 ///
+/// `web_context` is the same `WebContext` used by the main window, so the IDE
+/// webview shares localStorage / cookies / IndexedDB with it. That sharing is
+/// load-bearing: it means the IDE inherits the parent's live `aura-jwt` /
+/// `aura-session` localStorage entries directly, and every API call from the
+/// IDE webview gets an `Authorization: Bearer …` header without any per-window
+/// init-script auth bake-in. With an isolated WebContext, the IDE's
+/// localStorage starts empty and the per-window auth bootstrap was not
+/// landing reliably on Windows WebView2, leaving the file tree blank with
+/// "ApiClientError: missing authorization token".
+///
 /// `make_ipc` receives the new window's `WindowId` and must return an IPC
 /// handler closure. This lets the caller wire per-window events without
 /// knowing the ID ahead of time.
@@ -46,6 +56,7 @@ fn build_app_url(base_url: &str, route: &str, params: &[(&str, &str)]) -> String
 /// the window should remain open.
 pub fn open_ide_window<E: 'static>(
     event_loop: &EventLoopWindowTarget<E>,
+    web_context: &mut WebContext,
     base_url: &str,
     file_path: &str,
     root_path: Option<&str>,
@@ -83,16 +94,19 @@ pub fn open_ide_window<E: 'static>(
             window.ipc.postMessage('ready'); \
         }";
 
-    // WebViewBuilder only keeps the last `with_initialization_script` value, so
-    // concatenate the caller-provided bootstrap (auth/host seeding) with the
-    // IDE-specific ready notifier into a single script.
+    // The shared WebContext already carries the live auth/host state, so the
+    // caller-provided bootstrap is mostly redundant. We still concatenate it
+    // (kept as a defensive belt-and-braces seed for first-run scenarios where
+    // localStorage hasn't been mirrored yet) and append the IDE-specific
+    // ready notifier into a single script — WebViewBuilder only keeps the
+    // last `with_initialization_script` value.
     let combined_script = if initialization_script.is_empty() {
         ready_script.to_string()
     } else {
         format!("{initialization_script}\n{ready_script}")
     };
 
-    let webview = WebViewBuilder::new()
+    let webview = WebViewBuilder::new_with_web_context(web_context)
         .with_background_color((0, 0, 0, 255))
         .with_url(&url)
         .with_initialization_script(&combined_script)
