@@ -10,7 +10,7 @@ import type { DisplaySessionEvent } from "../../../../shared/types/stream";
 import { isGenerationCommand, type SlashCommand } from "../../../../constants/commands";
 import type { GenerationMode } from "../../../../constants/models";
 import { availableModelsForAdapter } from "../../../../constants/models";
-import { useChatUI } from "../../../../stores/chat-ui-store";
+import { useChatDraft, useChatUI } from "../../../../stores/chat-ui-store";
 import { useConversationSnapshot } from "../../../../hooks/use-conversation-snapshot";
 import { useLoadOlderMessages } from "../../../../hooks/use-load-older-messages";
 import { useChatViewStore, useThreadView } from "../../../../stores/chat-view-store";
@@ -63,7 +63,7 @@ export function useChatPanelState({
   selectedProjectId,
   agentId,
 }: UseChatPanelStateOptions) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useChatDraft(streamKey);
   const [attachments, setAttachments] = useState<AttachmentItem[]>(EMPTY_ATTACHMENTS);
   const [commands, setCommands] = useState<SlashCommand[]>(EMPTY_COMMANDS);
   const availableModels = availableModelsForAdapter(adapterType);
@@ -93,12 +93,14 @@ export function useChatPanelState({
       resetKeyMountRef.current = false;
       return;
     }
-    // Bail out of the reset writes when the state is already empty so React
-    // skips the re-render entirely. Combined with the module-level
-    // `EMPTY_*` constants below, this lets the input bar's `React.memo`
-    // shallow-compare see identical `attachments` / `selectedCommands`
-    // refs across same-agent session switches.
-    setInput((prev) => (prev === "" ? prev : ""));
+    // Drafts live in `chat-ui-store.drafts` keyed by `streamKey`, so
+    // switching sessions reads the new key's slot automatically and the
+    // previous chat's unsent text survives a round trip. Attachments
+    // and command chips still get wiped here — they carry per-session
+    // upload / chip state that doesn't make sense outside the session
+    // it was created in. Bail out of the writes when state is already
+    // empty so the input bar's `React.memo` shallow-compare keeps
+    // skipping re-renders on same-agent session switches.
     setAttachments((prev) => (prev.length === 0 ? prev : EMPTY_ATTACHMENTS));
     setCommands((prev) => (prev.length === 0 ? prev : EMPTY_COMMANDS));
   }, [scrollResetKey]);

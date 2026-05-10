@@ -84,9 +84,16 @@ vi.mock("../../../../constants/models", () => ({
   availableModelsForAdapter: () => [],
 }));
 
-vi.mock("../../../../stores/chat-ui-store", () => ({
-  useChatUI: () => mockChatUI,
-}));
+vi.mock("../../../../stores/chat-ui-store", async () => {
+  const { useState } = await import("react");
+  return {
+    useChatUI: () => mockChatUI,
+    // Stand-in for the real per-streamKey draft store. Tests don't
+    // exercise cross-session draft persistence — they just need a
+    // setState-shaped pair so `useChatPanelState`'s input still works.
+    useChatDraft: () => useState(""),
+  };
+});
 
 vi.mock("../../../../stores/message-queue-store", () => ({
   useMessageQueueStore: {
