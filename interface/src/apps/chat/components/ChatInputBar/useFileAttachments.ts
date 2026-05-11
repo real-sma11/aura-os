@@ -7,8 +7,16 @@ const MAX_IMAGE_UPLOAD_BYTES = 1_100_000;
 const MAX_IMAGE_DIMENSION = 1536;
 const IMAGE_JPEG_QUALITY = 0.82;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-const TEXT_TYPES = ["text/plain", "text/markdown", "text/x-markdown"];
-const TEXT_EXTENSIONS = [".md", ".txt", ".markdown"];
+const TEXT_TYPES = [
+  "text/plain",
+  "text/markdown",
+  "text/x-markdown",
+  "application/json",
+  "application/sql",
+  "application/x-sql",
+  "text/sql",
+];
+const TEXT_EXTENSIONS = [".md", ".txt", ".markdown", ".json", ".sql"];
 
 function isTextFile(file: File): boolean {
   if (TEXT_TYPES.includes(file.type)) return true;
