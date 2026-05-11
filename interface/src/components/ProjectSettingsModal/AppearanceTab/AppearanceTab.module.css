@@ -129,6 +129,15 @@
   color: var(--color-text-primary);
 }
 
+/* Pressed-state for toggle minibuttons (e.g. background Invert).
+   Uses the surface fill instead of overlay-light so the active
+   state reads as held-down rather than hovered. */
+.miniButtonActive {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-color: var(--project-accent, var(--color-accent));
+}
+
 .opacitySlider {
   flex: 1;
   height: 4px;
