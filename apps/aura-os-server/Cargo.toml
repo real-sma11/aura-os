@@ -7,7 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aura-os-core = { path = "../../crates/aura-os-core" }
+# `default-features = false` because aura-os-core has no default channel
+# anymore; the channel is forwarded explicitly via this crate's own
+# `dev-channel` / `stable-channel` features below. Pulling in defaults
+# here would silently re-activate dev-channel in every workspace build
+# (including the release pipeline's stable build).
+aura-os-core = { path = "../../crates/aura-os-core", default-features = false }
 aura-os-events = { path = "../../crates/aura-os-events" }
 aura-os-loops = { path = "../../crates/aura-os-loops" }
 aura-os-integrations = { path = "../../crates/aura-os-integrations" }
@@ -67,6 +72,16 @@ default = ["dev-channel"]
 # explicitly. The channel is baked in at compile time, so picking the
 # wrong one is loud (different ports, different data dir) rather than
 # silent.
+#
+# All `aura-os-core` deps in this crate (the main `[dependencies]` row
+# and the `[dev-dependencies]` row below) carry `default-features =
+# false`. Forgetting that is the bug that previously caused the
+# published "stable" desktop installer to run as Dev at runtime: Cargo
+# feature unification would activate `aura-os-core/dev-channel` via
+# this crate even when the desktop was built with
+# `--features stable-channel`. See `crates/aura-os-core/src/channel.rs`
+# for the full invariant and `scripts/ci/verify-desktop.mjs` for the
+# end-to-end guard.
 dev-channel = ["aura-os-core/dev-channel"]
 stable-channel = ["aura-os-core/stable-channel"]
 # Enables the real Chromium/CDP-backed browser backend. Requires a local
@@ -80,7 +95,7 @@ tokio = { workspace = true, features = ["test-util"] }
 reqwest = { workspace = true }
 tower = { version = "0.5", features = ["util"] }
 uuid = { workspace = true }
-aura-os-core = { path = "../../crates/aura-os-core" }
+aura-os-core = { path = "../../crates/aura-os-core", default-features = false }
 aura-os-storage = { path = "../../crates/aura-os-storage", features = ["test-utils"] }
 aura-os-harness = { path = "../../crates/aura-os-harness", features = ["test-support"] }
 

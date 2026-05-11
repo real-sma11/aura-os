@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 aura-loop-log-schema = { path = "../aura-loop-log-schema" }
-aura-os-core = { path = "../aura-os-core" }
+aura-os-core = { path = "../aura-os-core", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

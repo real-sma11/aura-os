@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aura-os-core = { path = "../aura-os-core" }
+aura-os-core = { path = "../aura-os-core", default-features = false }
 aura-os-network = { path = "../aura-os-network" }
 aura-os-store = { path = "../aura-os-store" }
 chrono = { workspace = true }

@@ -33,7 +33,7 @@ use crate::frontend::routing::{
 };
 use crate::harness::external::enforce_external_harness_or_exit;
 use crate::harness::sidecar::maybe_spawn_local_harness_sidecar;
-use crate::init::cli::{parse_cli_args, DesktopCliArgs};
+use crate::init::cli::{maybe_handle_print_channel, parse_cli_args, DesktopCliArgs};
 use crate::init::crash::{install_native_crash_handler, install_panic_hook};
 use crate::init::env::apply_desktop_runtime_defaults;
 use crate::init::init_script::{build_initialization_script, load_bootstrapped_auth_literals};
@@ -66,6 +66,13 @@ struct ServerStartup {
 }
 
 fn main() {
+    // `--print-channel` is a CI smoke test that must NOT side-effect: no
+    // logging, no data dir creation, no single-instance mutex. Handle it
+    // before any other startup work so the just-built stable binary can
+    // be invoked from `scripts/ci/verify-desktop.mjs` without races
+    // against an installed AURA on the same machine.
+    maybe_handle_print_channel();
+
     if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }

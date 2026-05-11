@@ -258,6 +258,16 @@ jobs:
         # `aura-dev` data dir, dev ports, in-app updater disabled). The
         # packaged installer ships the binary built here verbatim via the
         # `binaries-dir` injection in the package job.
+        #
+        # The flag alone is not sufficient: every library crate must also
+        # depend on `aura-os-core` with `default-features = false`, and
+        # `aura-os-core` itself must have no default channel. Otherwise
+        # Cargo feature unification re-activates `dev-channel` through a
+        # transitive dep and produces a Dev-in-disguise stable binary.
+        # `scripts/ci/verify-desktop.mjs` invokes the just-built binary
+        # with `--print-channel` and fails the lane if it doesn't report
+        # `channel=Stable`, so a regression here turns the release red
+        # instead of shipping silently.
         run: |
           args=(build --release --no-default-features --features stable-channel --package aura-os-desktop)
           if [ -n "$AURA_CARGO_TIMINGS" ]; then

@@ -7,14 +7,24 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-# `dev-channel` is the default so plain `cargo run` / `cargo build`
-# produces a Dev binary. Downstream binaries forward this through their
-# own pass-through features. Stable (released) binaries are produced
-# only by the release pipeline, which passes
-# `--no-default-features --features stable-channel` explicitly. See
+# IMPORTANT: this crate has NO default channel on purpose. The channel is
+# selected by the binary crates (`aura-os-desktop`, `aura-os-server`)
+# through their own `dev-channel` / `stable-channel` features, which
+# forward to `aura-os-core/dev-channel` or `aura-os-core/stable-channel`.
+#
+# Library crates that depend on `aura-os-core` MUST set
+# `default-features = false` on the dependency. If they don't, they
+# can't currently activate any channel (because the default here is
+# empty), but if a future maintainer adds a default back they would
+# silently re-pollute every release binary via Cargo feature unification.
+# Plain `cargo run -p aura-os-desktop` produces a Dev binary because
+# `aura-os-desktop`'s own `default = ["dev-channel"]` forwards the
+# flag. The release pipeline builds Stable via
+# `--no-default-features --features stable-channel`. See
 # `src/channel.rs` for the full mapping (data dir, ports, window title,
-# updater enablement, etc.).
-default = ["dev-channel"]
+# updater enablement, etc.) and `Channel::current()` for how the
+# "neither feature set" library-test case is handled.
+default = []
 stable-channel = []
 dev-channel = []
 test-utils = ["dep:tempfile"]

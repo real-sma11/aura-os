@@ -10,7 +10,7 @@ repository.workspace = true
 test-utils = ["dep:axum", "dep:uuid", "dep:tokio"]
 
 [dependencies]
-aura-os-core = { path = "../aura-os-core" }
+aura-os-core = { path = "../aura-os-core", default-features = false }
 aura-protocol = { path = "../aura-protocol" }
 chrono = { workspace = true }
 reqwest = { workspace = true }

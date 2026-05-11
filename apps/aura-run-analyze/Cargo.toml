@@ -9,7 +9,7 @@ repository.workspace = true
 [dependencies]
 aura-run-heuristics = { path = "../../crates/aura-run-heuristics" }
 aura-loop-log-schema = { path = "../../crates/aura-loop-log-schema" }
-aura-os-core = { path = "../../crates/aura-os-core" }
+aura-os-core = { path = "../../crates/aura-os-core", default-features = false }
 clap = { version = "4", features = ["derive"] }
 anyhow = { workspace = true }
 serde = { workspace = true }

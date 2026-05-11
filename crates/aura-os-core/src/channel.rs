@@ -9,10 +9,28 @@
 //!   while the installed stable build is also running, and neither steps on
 //!   the other's files, ports, single-instance lock, or skills.
 //!
-//! Selection is driven by cargo features on this crate (`dev-channel`
-//! default, `stable-channel` opt-in via the release pipeline's explicit
-//! `--no-default-features --features stable-channel` flags). Downstream
-//! binaries forward the choice via their own pass-through features.
+//! Selection is driven by cargo features on this crate (`stable-channel`
+//! and `dev-channel`). This crate has **no default channel** so that
+//! library crates depending on `aura-os-core` (with
+//! `default-features = false`, which they must do) cannot accidentally
+//! pin the workspace to a channel via Cargo feature unification — a
+//! regression that previously caused the published "stable" installer
+//! to run as Dev at runtime (same mutex, same `~/AppData/Local/aura-dev`
+//! data dir, "AURA Dev" window title) because transitive library deps
+//! pulled in `aura-os-core`'s old `default = ["dev-channel"]`.
+//!
+//! The two binary crates (`aura-os-desktop`, `aura-os-server`) own
+//! channel selection: plain `cargo run` activates their
+//! `default = ["dev-channel"]` (which forwards
+//! `aura-os-core/dev-channel`); the release pipeline builds Stable via
+//! `--no-default-features --features stable-channel` (which forwards
+//! `aura-os-core/stable-channel`). `stable-channel` takes precedence
+//! when both happen to be set, so any future re-pollution can never
+//! silently downgrade a stable build to Dev. When neither feature is
+//! set (e.g. `cargo test -p aura-os-events` exercising only library
+//! crates), the fallback is Dev so plain library-level tinkering keeps
+//! pointing at the Dev data dir.
+//!
 //! Because the answer is `cfg!(...)`-based, it is a `const fn` and is
 //! baked into the binary at compile time — there is no env-var override
 //! and no risk of "stable build acting like dev" at runtime.
@@ -25,10 +43,18 @@ pub enum Channel {
 
 impl Channel {
     pub const fn current() -> Self {
-        if cfg!(feature = "dev-channel") {
-            Self::Dev
-        } else {
+        // `stable-channel` wins explicitly so that even if a future
+        // refactor reintroduces a transitive `dev-channel` activation
+        // through feature unification, a release build configured with
+        // `--features stable-channel` still resolves to Stable rather
+        // than silently degrading. Plain `cargo build` / `cargo test`
+        // for a library crate (no channel feature on) falls back to
+        // Dev so day-to-day development keeps writing to the
+        // `aura-dev` data dir.
+        if cfg!(feature = "stable-channel") {
             Self::Stable
+        } else {
+            Self::Dev
         }
     }
 
@@ -132,17 +158,29 @@ mod tests {
 
     #[test]
     fn current_matches_feature_flag() {
+        // `stable-channel` is the only feature that can produce Stable —
+        // not "anything other than dev-channel", because both features
+        // can be active simultaneously under feature unification and
+        // Stable must win in that case (the actual bug that motivated
+        // this module: the published stable installer was silently
+        // running as Dev because a transitive library dep pulled in
+        // `dev-channel`).
         let c = Channel::current();
-        if cfg!(feature = "dev-channel") {
-            assert_eq!(c, Channel::Dev);
-            assert_eq!(c.data_dir_name(), "aura-dev");
-            assert_eq!(c.skills_home_name(), ".aura-dev");
-            assert!(!c.updater_enabled());
-        } else {
+        if cfg!(feature = "stable-channel") {
             assert_eq!(c, Channel::Stable);
             assert_eq!(c.data_dir_name(), "aura");
             assert_eq!(c.skills_home_name(), ".aura");
             assert!(c.updater_enabled());
+        } else {
+            // Both `dev-channel` and "neither feature" land here. The
+            // neither-feature branch is the cargo-test-on-a-library
+            // case that used to be impossible because aura-os-core had
+            // `default = ["dev-channel"]`; it's now reachable and must
+            // still produce sensible Dev identifiers.
+            assert_eq!(c, Channel::Dev);
+            assert_eq!(c.data_dir_name(), "aura-dev");
+            assert_eq!(c.skills_home_name(), ".aura-dev");
+            assert!(!c.updater_enabled());
         }
     }
 

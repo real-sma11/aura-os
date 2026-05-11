@@ -273,7 +273,13 @@ jobs:
         shell: bash
         # `--no-default-features --features stable-channel` is required: the
         # default features on aura-os-desktop are `dev-channel`, so plain
-        # `cargo build` would produce a Dev binary (window title "AURA Dev",
+        # `cargo build` would produce a Dev binary. Combined with the
+        # `default-features = false` discipline on every internal
+        # `aura-os-core` dep + the `--print-channel` self-check in
+        # `scripts/ci/verify-desktop.mjs`, this guarantees the produced
+        # binary actually identifies as Stable at runtime — not the
+        # Dev-in-disguise build that shipped before the channel-selection
+        # bug was fixed (window title "AURA Dev",
         # `aura-dev` data dir, dev ports, in-app updater disabled). The
         # packaged installer ships the binary built here verbatim via the
         # `binaries-dir` injection in the package job.

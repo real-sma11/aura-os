@@ -29,6 +29,9 @@ tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
 cargo-packager-updater = "0.2"
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Threading", "Win32_Security"] }
 
@@ -63,14 +66,24 @@ default = ["dev-channel"]
 # release pipeline, which passes the explicit
 # `--no-default-features --features stable-channel` flag in every place
 # that builds for distribution:
-#   - `scripts/ci/verify-desktop.mjs`
+#   - `scripts/ci/verify-desktop.mjs` (also asserts the built binary
+#      self-reports `channel=Stable` via `--print-channel`)
 #   - `.github/workflows/release-stable.yml`
 #   - `.github/workflows/release-nightly.yml`
 #   - the `before-packaging-command` line below (used by `cargo packager`)
-# Forgetting that flag is a release bug, not a default-features safety
-# net — the channel is baked in at compile time, so producing the wrong
-# kind of binary is loud (different title, different data dir) rather
-# than silent.
+#
+# CRITICAL invariant: every other crate in the workspace that depends on
+# `aura-os-core` MUST use `default-features = false`, and the
+# `aura-os-core` crate itself has no default channel. Otherwise Cargo
+# feature unification will silently activate `aura-os-core/dev-channel`
+# through a transitive library dep and turn the "stable" build into a
+# Dev-in-disguise binary at runtime (same mutex, same `aura-dev` data
+# dir, "AURA Dev" window title). That regression is what the
+# `--print-channel` CI check in `scripts/ci/verify-desktop.mjs` exists
+# to catch. The `stable-channel` arm of `Channel::current()` wins over
+# `dev-channel` for the same reason — so even if a future audit slip
+# re-activates `dev-channel` transitively, a build that *also* has
+# `stable-channel` on still resolves to Stable.
 dev-channel = ["aura-os-core/dev-channel", "aura-os-server/dev-channel"]
 stable-channel = ["aura-os-core/stable-channel", "aura-os-server/stable-channel"]
 

@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Headless-browser session + project-aware initial URL resolution for aura-os."
 
 [dependencies]
-aura-os-core = { path = "../aura-os-core" }
+aura-os-core = { path = "../aura-os-core", default-features = false }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 serde = { workspace = true }
