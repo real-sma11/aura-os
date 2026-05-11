@@ -23,6 +23,7 @@ export interface LeftMenuGroupEntry {
   kind: "group";
   id: string;
   label: string;
+  icon?: ReactNode;
   suffix?: ReactNode;
   variant?: "default" | "section";
   expanded: boolean;

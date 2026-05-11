@@ -385,6 +385,20 @@
   flex-shrink: 0;
 }
 
+/* Slot for the project-row glyph emitted by `<ProjectRowIcon>` — sits
+   before the label inside the project button, picks up the same
+   flex layout as the chevron wrapper next to it. */
+.projectIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
 .agentLabel {
   flex: 1;
   min-width: 0;
