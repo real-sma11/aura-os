@@ -11,6 +11,7 @@ import {
   projectAgentHandoffTarget,
 } from "../utils/chat-handoff";
 import { useProjectsList } from "../apps/projects/useProjectsList";
+import type { ProjectSettingsTab } from "../components/ProjectSettingsModal/ProjectSettingsModal";
 import type { Project, AgentInstance } from "../shared/types";
 
 interface ContextMenuState {
@@ -37,6 +38,11 @@ export function useProjectListActions() {
   const [renameTarget, setRenameTarget] = useState<Project | null>(null);
   const [renameAgentTarget, setRenameAgentTarget] = useState<AgentInstance | null>(null);
   const [settingsTarget, setSettingsTarget] = useState<Project | null>(null);
+  // Which tab the settings modal should open with. Reset to "general"
+  // implicitly each time a fresh target is set via the explicit
+  // setSettingsTargetWithTab helper below.
+  const [settingsInitialTab, setSettingsInitialTab] =
+    useState<ProjectSettingsTab>("general");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -146,6 +152,13 @@ export function useProjectListActions() {
     } else if (actionId === "rename" && target) {
       setRenameTarget(target);
     } else if (actionId === "settings" && target) {
+      setSettingsInitialTab("general");
+      setSettingsTarget(target);
+    } else if ((actionId === "change-icon" || actionId === "change-color") && target) {
+      // Both items deep-link into the Appearance tab; the difference is
+      // purely a hint to the user about which control they'll find
+      // there. The tab itself owns the full set of controls.
+      setSettingsInitialTab("appearance");
       setSettingsTarget(target);
     } else if (actionId === "delete" && target) {
       setDeleteTarget(target);
@@ -296,7 +309,7 @@ export function useProjectListActions() {
     ctxMenu, setCtxMenu, ctxMenuRef,
     renameTarget, setRenameTarget,
     renameAgentTarget, setRenameAgentTarget,
-    settingsTarget, setSettingsTarget,
+    settingsTarget, setSettingsTarget, settingsInitialTab,
     deleteTarget, setDeleteTarget, deleteLoading, deleteError, setDeleteError,
     deleteAgentTarget, setDeleteAgentTarget, deleteAgentLoading, deleteAgentError, setDeleteAgentError,
     agentSelectorProjectId, setAgentSelectorProjectId, pendingCreatedAgent,
