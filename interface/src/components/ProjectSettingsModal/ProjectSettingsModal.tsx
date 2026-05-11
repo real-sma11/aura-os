@@ -8,6 +8,7 @@ import {
 } from "../../hooks/use-workspace-defaults";
 import { FolderPickerField } from "../FolderPickerField";
 import { OrbitRepoSection } from "../OrbitRepoSection";
+import { AppearanceTab } from "./AppearanceTab";
 import { useOrbitRepos } from "../../hooks/use-orbit-repos";
 import type { OrbitRepoMode } from "../../hooks/use-new-project-form";
 import { useOrgStore } from "../../stores/org-store";
@@ -280,11 +281,8 @@ export function ProjectSettingsModal({
               />
             </>
           )}
-          {activeTab === "appearance" && (
-            <div className={styles.placeholder}>
-              Appearance controls coming next. Accent color, icon, banner, and
-              background customization will live here.
-            </div>
+          {activeTab === "appearance" && project && (
+            <AppearanceTab projectId={project.project_id} />
           )}
           {activeTab === "integrations" && (
             <>
