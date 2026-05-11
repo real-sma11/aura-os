@@ -36,7 +36,13 @@ export function useProjectAppearance(
 
   useEffect(() => {
     if (!projectId) return;
-    void load(projectId);
+    // Swallow load failures so a transient network error (or a test
+    // environment without `fetch` wiring) can't crash the surrounding
+    // tree. Appearance is a non-critical UI customization; when it
+    // fails to load the project just renders with defaults.
+    load(projectId).catch((err) => {
+      console.warn("Failed to load project appearance:", err);
+    });
   }, [projectId, load]);
 
   const entry = useProjectAppearanceStore(
