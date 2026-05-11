@@ -1,4 +1,8 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+} from "react";
 import type { ExplorerNode } from "@cypher-asi/zui";
 import { Archive, Gauge, Loader2 } from "lucide-react";
 import { Avatar } from "../Avatar";
@@ -247,29 +251,27 @@ export function buildProjectExplorerNode(
   appearance?: ProjectAppearance,
 ): ExplorerNodeWithSuffix {
   // Header chip styling: accent left-edge stripe, background fill,
-  // outline. The accent stripe is painted via `inset box-shadow` so
-  // it stacks cleanly with the rest of the chip without using up
-  // the `border` shorthand. Outline takes priority — when an outline
-  // color is set, the accent stripe is suppressed so the two don't
-  // compete for the left edge.
+  // outline. The accent stripe is rendered by `.projectHeader::before`
+  // in LeftMenuTree.module.css — we just expose the color here via a
+  // `--accent-stripe-color` custom property. Pseudo-element painting
+  // bypasses the row's 6px border-radius clip so the stripe stays
+  // straight top-to-bottom (inset by the radius amount). Outline
+  // takes priority — when an outline color is set, the stripe is
+  // suppressed so the two don't compete for the left edge.
   const hasOutline = !!appearance?.headerOutline;
   const showAccentStripe = !!appearance?.accent && !hasOutline;
   const hasChipStyling =
     showAccentStripe || appearance?.headerBackground || hasOutline;
   const headerStyle = hasChipStyling
-    ? {
+    ? ({
         background: appearance!.headerBackground,
         border: hasOutline
           ? `1px solid ${appearance!.headerOutline}`
           : undefined,
-        // Straight 4px vertical stripe on the left edge; rendered
-        // via inset shadow rather than border-left so the row stays
-        // rectangular (no rounded corners that would clip the
-        // stripe at top/bottom).
-        boxShadow: showAccentStripe
-          ? `inset 4px 0 0 0 ${appearance!.accent}`
-          : undefined,
-      }
+        ...(showAccentStripe
+          ? { ["--accent-stripe-color" as string]: appearance!.accent! }
+          : {}),
+      } as CSSProperties)
     : undefined;
   return {
     id: project.project_id,

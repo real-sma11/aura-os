@@ -103,6 +103,7 @@
 }
 
 .projectHeader {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -111,6 +112,24 @@
   padding: 0 16px;
   border-radius: 6px;
   transition: background-color 0.15s ease;
+}
+
+/* Accent stripe for projects with `appearance.accent` set. Rendered
+   as a ::before pseudo-element rather than via `inset box-shadow`
+   so the line stays straight regardless of the row's 6px border
+   radius — top and bottom inset by the radius amount so the stripe
+   doesn't poke past the curve. Color is piped in via the
+   `--accent-stripe-color` custom property set inline by
+   `buildProjectExplorerNode`; when unset, the rule paints nothing. */
+.projectHeader::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  background: var(--accent-stripe-color, transparent);
+  pointer-events: none;
 }
 
 .sectionHeader {
