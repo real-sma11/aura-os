@@ -1,0 +1,100 @@
+/* The frame is a passive layout host: it fills its parent and emits
+   CSS custom properties (via inline style) plus a `data-bg-pattern`
+   attribute (via React). The background tint and pattern overlay are
+   composited here so descendant content (main panel, etc.) sits on
+   top of the painted backdrop without needing per-page styling. */
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  isolation: isolate;
+}
+
+/* The background tint layer. Sits behind the children, never paints
+   when `--project-bg-color` is unset. The `currentColor`-style
+   fallback lets us avoid emitting the rule entirely when no color is
+   set: an unset custom property in `background` collapses to no
+   paint. */
+.frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: var(--project-bg-color, transparent);
+  pointer-events: none;
+}
+
+/* The pattern overlay layer. Same z-stack as ::before but always
+   *above* the color so the pattern reads on the tinted backdrop.
+   Each `data-bg-pattern` value below paints a different
+   background-image; opacity is parameterised via
+   `--project-bg-opacity` so the user can dial intensity. */
+.frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: var(--project-bg-opacity, 0.4);
+  pointer-events: none;
+  background-image: none;
+}
+
+.frame[data-bg-pattern="dots"]::after {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--project-accent, var(--color-text-muted)) 1px,
+    transparent 0
+  );
+  background-size: 16px 16px;
+}
+
+.frame[data-bg-pattern="grid"]::after {
+  background-image:
+    linear-gradient(
+      to right,
+      var(--project-accent, var(--color-border)) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      var(--project-accent, var(--color-border)) 1px,
+      transparent 1px
+    );
+  background-size: 32px 32px;
+}
+
+.frame[data-bg-pattern="diagonal"]::after {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--project-accent, var(--color-border)),
+    var(--project-accent, var(--color-border)) 1px,
+    transparent 1px,
+    transparent 12px
+  );
+}
+
+.frame[data-bg-pattern="radial"]::after {
+  background-image: radial-gradient(
+    ellipse at top,
+    var(--project-accent, var(--color-accent, transparent)),
+    transparent 70%
+  );
+}
+
+/* SVG noise — small inline filter so we don't need an asset file.
+   Stylistically subtle; the user can crank opacity for grain or back
+   it off to almost nothing. */
+.frame[data-bg-pattern="noise"]::after {
+  background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%220.6%22%2F%3E%3C%2Fsvg%3E");
+  background-size: 120px 120px;
+}
+
+/* `none` and any unknown pattern value: no overlay. The ::after rule
+   above with `background-image: none` already handles this. */
+.frame[data-bg-pattern="none"]::after {
+  background-image: none;
+}
