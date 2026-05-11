@@ -282,7 +282,10 @@ export function ProjectSettingsModal({
             </>
           )}
           {activeTab === "appearance" && project && (
-            <AppearanceTab projectId={project.project_id} />
+            <AppearanceTab
+              projectId={project.project_id}
+              projectName={project.name}
+            />
           )}
           {activeTab === "integrations" && (
             <>

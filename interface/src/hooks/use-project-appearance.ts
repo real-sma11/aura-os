@@ -2,7 +2,23 @@ import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useProjectAppearanceStore } from "../stores/project-appearance-store";
 import { projectBannerUrl } from "../shared/api/appearance";
+import { getStoredJwt } from "../shared/lib/auth-token";
 import type { ProjectAppearance } from "../shared/api/appearance";
+
+/**
+ * Append the current JWT as a `?token=` query param so a bare
+ * `<img src=...>` can authenticate against the protected API routes.
+ * Browsers don't include `Authorization` on `<img>` requests, but the
+ * server's `extract_request_token` accepts the query-param fallback
+ * (originally added for WebSockets; mirrors the
+ * `aura3d-store::withToken` pattern used for artifact thumbnails).
+ */
+function withToken(url: string): string {
+  const jwt = getStoredJwt();
+  if (!jwt) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(jwt)}`;
+}
 
 /**
  * Read-and-write hook for a single project's appearance. Triggers a
@@ -64,7 +80,7 @@ export function useProjectAppearance(
     loaded: entry?.loaded ?? false,
     loading: entry?.loading ?? false,
     bannerUrl: projectId
-      ? `${projectBannerUrl(projectId)}?v=${bannerVersion}`
+      ? withToken(`${projectBannerUrl(projectId)}?v=${bannerVersion}`)
       : "",
     update: async (next) => {
       if (!projectId) return;

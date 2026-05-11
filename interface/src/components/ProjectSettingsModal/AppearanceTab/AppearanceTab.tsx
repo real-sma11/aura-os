@@ -1,4 +1,6 @@
 import { useCallback } from "react";
+import { DynamicIcon } from "lucide-react/dynamic";
+import { Folder } from "lucide-react";
 import { Text } from "@cypher-asi/zui";
 import { useProjectAppearance } from "../../../hooks/use-project-appearance";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
@@ -10,6 +12,9 @@ import styles from "./AppearanceTab.module.css";
 
 interface AppearanceTabProps {
   projectId: string;
+  /** Project display name, shown in the live preview chip so the user
+   *  can see how the project will appear in the sidebar / headers. */
+  projectName?: string;
 }
 
 /**
@@ -25,7 +30,7 @@ interface AppearanceTabProps {
  * appearance is a low-stakes personal preference, and a live preview
  * across the actual app surfaces beats a confirm-modal flow.
  */
-export function AppearanceTab({ projectId }: AppearanceTabProps) {
+export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
   const { appearance, update, uploadBanner, deleteBanner, bannerUrl } =
     useProjectAppearance(projectId);
 
@@ -47,8 +52,40 @@ export function AppearanceTab({ projectId }: AppearanceTabProps) {
 
   return (
     <div className={styles.tabBody}>
+      {/* Live preview: shows the icon (in the accent color if both
+          are set) next to the project name. Mirrors how the project
+          renders in the sidebar so the user can see changes immediately
+          without leaving the modal. */}
+      <div
+        className={styles.preview}
+        style={
+          appearance.accent
+            ? { borderLeftColor: appearance.accent }
+            : undefined
+        }
+      >
+        <span
+          className={styles.previewIcon}
+          style={appearance.accent ? { color: appearance.accent } : undefined}
+        >
+          {appearance.icon ? (
+            <DynamicIcon
+              name={
+                appearance.icon as Parameters<typeof DynamicIcon>[0]["name"]
+              }
+              size={20}
+            />
+          ) : (
+            <Folder size={20} />
+          )}
+        </span>
+        <span className={styles.previewName}>
+          {projectName ?? "Project preview"}
+        </span>
+      </div>
       <Text variant="muted" size="xs" className={styles.tabHint}>
-        Changes save instantly and preview live across the app.
+        Changes save instantly. The icon shows in the sidebar; the
+        background tint and pattern apply to the project landing view.
       </Text>
       <AccentColorPicker
         value={appearance.accent}

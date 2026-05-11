@@ -8,6 +8,37 @@
   margin-bottom: calc(var(--space-2) * -1);
 }
 
+/* Live preview chip: shows the icon (in the accent color when set)
+   next to the project name. Border-left thickens to use the accent so
+   even un-iconed projects get a visible accent treatment. Lives at
+   the top of the tab so the user sees the effect of their picks
+   without having to close the modal. */
+.preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.previewIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--color-text-secondary);
+}
+
+.previewName {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
 .controlGroup {
   display: flex;
   flex-direction: column;

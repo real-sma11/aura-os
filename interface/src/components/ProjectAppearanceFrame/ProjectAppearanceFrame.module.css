@@ -43,10 +43,16 @@
   background-image: none;
 }
 
+/* Pattern fallback color: a translucent mid-gray that reads on both
+   light AND dark backgrounds. Theme tokens like `--color-border`
+   would blend straight into the user's chosen background tint, so a
+   fixed rgba gives reliable contrast without depending on `color-mix`
+   browser support. When the project has an accent set, it wins and
+   the user gets a themed pattern. */
 .frame[data-bg-pattern="dots"]::after {
   background-image: radial-gradient(
     circle at 1px 1px,
-    var(--project-accent, var(--color-text-muted)) 1px,
+    var(--project-accent, rgba(127, 127, 127, 0.9)) 1px,
     transparent 0
   );
   background-size: 16px 16px;
@@ -56,12 +62,12 @@
   background-image:
     linear-gradient(
       to right,
-      var(--project-accent, var(--color-border)) 1px,
+      var(--project-accent, rgba(127, 127, 127, 0.7)) 1px,
       transparent 1px
     ),
     linear-gradient(
       to bottom,
-      var(--project-accent, var(--color-border)) 1px,
+      var(--project-accent, rgba(127, 127, 127, 0.7)) 1px,
       transparent 1px
     );
   background-size: 32px 32px;
@@ -70,8 +76,8 @@
 .frame[data-bg-pattern="diagonal"]::after {
   background-image: repeating-linear-gradient(
     45deg,
-    var(--project-accent, var(--color-border)),
-    var(--project-accent, var(--color-border)) 1px,
+    var(--project-accent, rgba(127, 127, 127, 0.8)),
+    var(--project-accent, rgba(127, 127, 127, 0.8)) 1px,
     transparent 1px,
     transparent 12px
   );
@@ -80,7 +86,7 @@
 .frame[data-bg-pattern="radial"]::after {
   background-image: radial-gradient(
     ellipse at top,
-    var(--project-accent, var(--color-accent, transparent)),
+    var(--project-accent, rgba(127, 127, 127, 0.55)),
     transparent 70%
   );
 }
