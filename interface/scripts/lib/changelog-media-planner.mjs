@@ -1,3 +1,4 @@
+import { describeApiHttpFailure } from "./api-credit-errors.mjs";
 import { normalizeCaptureSeedPlan } from "./changelog-media-seed-plan.mjs";
 import { summarizeChangelogMediaKnowledge } from "./changelog-media-knowledge.mjs";
 
@@ -1239,7 +1240,14 @@ async function planChangelogMediaChunkWithAnthropic({
     });
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      throw new Error(`Anthropic media planning failed with ${response.status}: ${body.slice(0, 500)}`);
+      // Anthropic returns its credit-low message inside a 400 body —
+      // surface it with the [Anthropic] tag and the env var to top up so
+      // the failure isn't confused with the Browser Use credit error.
+      throw new Error(describeApiHttpFailure("anthropic", {
+        status: response.status,
+        body,
+        contextLabel: "media planning",
+      }));
     }
     const json = await response.json();
     const rawPlan = parseAnthropicMediaPlanResponse(json);

@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { buildAuraNavigationContract } from "./lib/aura-navigation-contract.mjs";
+import { wrapProviderError } from "./lib/api-credit-errors.mjs";
 import { loadLocalEnv } from "./lib/load-local-env.mjs";
 
 export const DEFAULT_BROWSER_USE_MODEL = "claude-opus-4.7";
@@ -477,13 +478,20 @@ export async function runBrowserUseTask({
   const messages = [];
   let configuredSession = null;
   if (desktopViewport?.width && desktopViewport?.height) {
-    configuredSession = await client.sessions.create({
-      ...(profileId ? { profileId } : {}),
-      browserScreenWidth: desktopViewport.width,
-      browserScreenHeight: desktopViewport.height,
-      keepAlive: true,
-      enableRecording: Boolean(enableRecording),
-    });
+    try {
+      configuredSession = await client.sessions.create({
+        ...(profileId ? { profileId } : {}),
+        browserScreenWidth: desktopViewport.width,
+        browserScreenHeight: desktopViewport.height,
+        keepAlive: true,
+        enableRecording: Boolean(enableRecording),
+      });
+    } catch (error) {
+      // Browser Use cloud surfaces "You need at least $1.00 in credits.
+      // Current balance: $X.XX" here when the account is short on credits;
+      // tag it so CI logs name the provider and the env var to top up.
+      throw wrapProviderError("browser-use", error, { contextLabel: "session create" });
+    }
   }
   const runOptions = buildBrowserUseRunOptions({
     model,
@@ -498,17 +506,26 @@ export async function runBrowserUseTask({
     intervalMs,
   });
   try {
-    const run = client.run(task, runOptions);
+    let run;
+    try {
+      run = client.run(task, runOptions);
 
-    for await (const message of run) {
-      messages.push({
-        id: message.id || null,
-        role: message.role || null,
-        type: message.type || null,
-        summary: redactCaptureLoginSecrets(message.summary || ""),
-        screenshot_url: message.screenshot_url || message.screenshotUrl || null,
-        data: redactCaptureLoginSecrets(message.data || null),
-      });
+      for await (const message of run) {
+        messages.push({
+          id: message.id || null,
+          role: message.role || null,
+          type: message.type || null,
+          summary: redactCaptureLoginSecrets(message.summary || ""),
+          screenshot_url: message.screenshot_url || message.screenshotUrl || null,
+          data: redactCaptureLoginSecrets(message.data || null),
+        });
+      }
+    } catch (error) {
+      // Browser Use rejects the task during the run loop when the
+      // account dips below the $1.00 cloud minimum. Re-tag so the
+      // failure clearly names BROWSER_USE_API_KEY rather than looking
+      // like a generic pipeline crash.
+      throw wrapProviderError("browser-use", error, { contextLabel: "task run" });
     }
 
     const result = run.result;

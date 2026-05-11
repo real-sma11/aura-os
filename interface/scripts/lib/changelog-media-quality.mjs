@@ -2,6 +2,8 @@ import fs from "node:fs";
 
 import { PNG } from "pngjs";
 
+import { describeApiHttpFailure } from "./api-credit-errors.mjs";
+
 const BAD_PROOF_PATTERNS = [
   /\b(?:404|not found|error page)\b/i,
   /\b(?:login|log in|sign in|auth(?:entication)? required)\s+(?:screen|page|form|wall|required|needed)\b/i,
@@ -495,7 +497,11 @@ export async function judgeChangelogMediaWithOpenAI({
     return {
       ok: false,
       status: "failed",
-      concerns: [`OpenAI vision quality judge failed with HTTP ${response.status}: ${body.slice(0, 300)}`],
+      concerns: [describeApiHttpFailure("openai", {
+        status: response.status,
+        body,
+        contextLabel: "vision quality judge",
+      })],
       judgment: null,
     };
   }

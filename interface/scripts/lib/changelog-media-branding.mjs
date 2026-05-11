@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { describeApiHttpFailure } from "./api-credit-errors.mjs";
+
 export function readPngDimensionsFromFile(filePath) {
   const buffer = fs.readFileSync(filePath);
   if (buffer.length < 24 || buffer.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
@@ -118,7 +120,11 @@ export async function createOpenAIProductionMediaImage({
   if (!response.ok) {
     return {
       status: "failed",
-      reason: `OpenAI production image generation failed with HTTP ${response.status}: ${body.slice(0, 300)}`,
+      reason: describeApiHttpFailure("openai", {
+        status: response.status,
+        body,
+        contextLabel: "production image generation",
+      }),
     };
   }
 
