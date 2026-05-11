@@ -66,11 +66,20 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
           without leaving the modal. */}
       <div
         className={styles.preview}
-        style={
-          appearance.accent
-            ? { borderLeftColor: appearance.accent }
-            : undefined
-        }
+        // Compose the user's header fill / outline with the accent
+        // border-left so the chip mirrors what the sidebar renders.
+        // Order matters: spread the appearance overrides first so
+        // explicit overrides win, then layer the accent stripe only
+        // when no full outline is set (otherwise the two would
+        // double-up visually).
+        style={{
+          background: appearance.headerBackground,
+          ...(appearance.headerOutline
+            ? { border: `1px solid ${appearance.headerOutline}` }
+            : appearance.accent
+              ? { borderLeftColor: appearance.accent }
+              : {}),
+        }}
       >
         <span
           className={styles.previewIcon}
@@ -112,6 +121,18 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
         noun="name color"
         value={appearance.nameColor}
         onChange={(nameColor) => patch({ nameColor })}
+      />
+      <ColorPicker
+        label="Header background color"
+        noun="header background"
+        value={appearance.headerBackground}
+        onChange={(headerBackground) => patch({ headerBackground })}
+      />
+      <ColorPicker
+        label="Header outline color"
+        noun="header outline"
+        value={appearance.headerOutline}
+        onChange={(headerOutline) => patch({ headerOutline })}
       />
       <LucideIconPicker
         value={appearance.icon}

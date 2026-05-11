@@ -127,7 +127,10 @@ function LeftMenuGroup({
     <section className={isSection ? styles.sectionGroup : styles.projectGroup}>
       <div
         className={headerClassName}
-        style={{ paddingLeft: 16 + depth * 16 }}
+        // Padding stays per-depth indentation; entry.headerStyle is
+        // merged after so a project that sets `background` / `border`
+        // can override but cannot clobber the indent.
+        style={{ paddingLeft: 16 + depth * 16, ...entry.headerStyle }}
       >
         <button
           id={entry.id}

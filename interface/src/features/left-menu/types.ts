@@ -28,6 +28,10 @@ export interface LeftMenuGroupEntry {
    *  project rows to tint the name via appearance.nameColor without
    *  coupling LeftMenu to per-project state. */
   labelStyle?: CSSProperties;
+  /** Inline style applied to the rendered row container. Used by
+   *  the project rows for background fill / outline driven by
+   *  appearance.headerBackground / appearance.headerOutline. */
+  headerStyle?: CSSProperties;
   suffix?: ReactNode;
   variant?: "default" | "section";
   expanded: boolean;

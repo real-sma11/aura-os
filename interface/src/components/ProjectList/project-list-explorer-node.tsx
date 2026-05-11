@@ -246,6 +246,23 @@ export function buildProjectExplorerNode(
   explorerStyles: ProjectExplorerNodeStyles,
   appearance?: ProjectAppearance,
 ): ExplorerNodeWithSuffix {
+  // Header chip styling (background fill, outline). Skip the
+  // `headerStyle` field entirely when neither is set so we don't
+  // leave an empty `style` object on the row that React would still
+  // diff against on every render.
+  const headerStyle =
+    appearance?.headerBackground || appearance?.headerOutline
+      ? {
+          background: appearance.headerBackground,
+          border: appearance.headerOutline
+            ? `1px solid ${appearance.headerOutline}`
+            : undefined,
+          // Round the corners slightly when there's any fill /
+          // outline so the chip reads as a discrete row treatment
+          // rather than fighting the rest of the sidebar's chrome.
+          borderRadius: 6,
+        }
+      : undefined;
   return {
     id: project.project_id,
     label: project.name,
@@ -260,6 +277,7 @@ export function buildProjectExplorerNode(
     labelStyle: appearance?.nameColor
       ? { color: appearance.nameColor }
       : undefined,
+    headerStyle,
     suffix: buildProjectSuffix(
       project.project_id,
       context,

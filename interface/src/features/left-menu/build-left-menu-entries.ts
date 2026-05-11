@@ -104,6 +104,7 @@ function buildGroupEntry(
     label: node.label,
     icon: node.icon,
     labelStyle: node.labelStyle,
+    headerStyle: node.headerStyle,
     suffix: node.suffix,
     variant: resolveGroupVariant(node),
     expanded: Boolean(options.searchActive) || options.expandedIds.has(node.id),
