@@ -154,10 +154,9 @@ export function useProjectListActions() {
     } else if (actionId === "settings" && target) {
       setSettingsInitialTab("general");
       setSettingsTarget(target);
-    } else if ((actionId === "change-icon" || actionId === "change-color") && target) {
-      // Both items deep-link into the Appearance tab; the difference is
-      // purely a hint to the user about which control they'll find
-      // there. The tab itself owns the full set of controls.
+    } else if (actionId === "appearance" && target) {
+      // Deep-link into the Appearance tab so the user lands
+      // directly on the controls invoked from the right-click menu.
       setSettingsInitialTab("appearance");
       setSettingsTarget(target);
     } else if (actionId === "delete" && target) {
