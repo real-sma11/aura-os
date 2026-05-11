@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Button, Text } from "@cypher-asi/zui";
 import { BannerCropDialog } from "./BannerCropDialog";
 import styles from "./AppearanceTab.module.css";
@@ -17,6 +17,15 @@ export function BannerControl({ bannerUrl, onUpload, onDelete }: BannerControlPr
   const [pickedSrc, setPickedSrc] = useState<string | null>(null);
   const [hasBanner, setHasBanner] = useState(true);
   const [removing, setRemoving] = useState(false);
+
+  // Reset to "try again" whenever the URL changes (cache-bust on
+  // upload/delete bumps the `?v=` query param). Without this, the
+  // initial 404 on a project with no banner sticks at `hasBanner=false`,
+  // the `<img>` unmounts entirely, and a subsequent upload never gets
+  // a chance to render.
+  useEffect(() => {
+    setHasBanner(true);
+  }, [bannerUrl]);
 
   const openFilePicker = () => fileInputRef.current?.click();
 
@@ -51,7 +60,11 @@ export function BannerControl({ bannerUrl, onUpload, onDelete }: BannerControlPr
     setRemoving(true);
     try {
       await onDelete();
-      setHasBanner(false);
+      // No need to flip `hasBanner` here — the bannerVersion bump
+      // changes `bannerUrl`, the useEffect above resets hasBanner to
+      // true, the `<img>` tries the new URL, gets a 404, and onError
+      // settles back to the empty state. Letting that flow happen
+      // keeps the source of truth in one place.
     } finally {
       setRemoving(false);
     }
