@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { Box, Grid3x3, Triangle, Paintbrush } from "lucide-react";
+import { Box, Download, Grid3x3, Triangle, Paintbrush } from "lucide-react";
 import { ModalConfirm, Spinner } from "@cypher-asi/zui";
 import { useAura3DStore } from "../../../stores/aura3d-store";
 import { generate3dStream } from "../../../api/streams";
@@ -298,6 +298,17 @@ export function ModelGeneration() {
                   {current3DModel.polyCount.toLocaleString()} polys
                 </span>
               )}
+              <a
+                href={current3DModel.glbUrl}
+                download="aura-3d-model.glb"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.controlButton}
+                title="Download GLB"
+                aria-label="Download GLB"
+              >
+                <Download size={14} />
+              </a>
             </div>
           </div>
         ) : generateSourceImage ? (
