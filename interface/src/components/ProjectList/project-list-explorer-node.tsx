@@ -7,6 +7,7 @@ import { ProjectsPlusButton } from "../ProjectsPlusButton";
 import type { useProjectListData } from "./useProjectListData";
 import { resolveStatus } from "./project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../lib/zui-compat";
+import type { ProjectAppearance } from "../../shared/api/appearance";
 import { agentDisplayName } from "../../lib/derive-project-agent-title";
 
 export type ProjectAgentNode =
@@ -243,11 +244,22 @@ export function buildProjectExplorerNode(
   statusMap: Record<string, string>,
   machineTypesMap: Record<string, string>,
   explorerStyles: ProjectExplorerNodeStyles,
+  appearance?: ProjectAppearance,
 ): ExplorerNodeWithSuffix {
   return {
     id: project.project_id,
     label: project.name,
     icon: <ProjectRowIcon projectId={project.project_id} />,
+    // `nameColor` tints the project name text in the sidebar row.
+    // Kept synchronous (read from a Map snapshot in the caller)
+    // rather than via a subscribing wrapper component, because the
+    // styled `<span>` carries the `data-inline-rename-label` hook
+    // that the rename flow relies on — wrapping it would break that
+    // querySelector path. Inline `style` is the lowest-friction
+    // route that preserves the existing DOM contract.
+    labelStyle: appearance?.nameColor
+      ? { color: appearance.nameColor }
+      : undefined,
     suffix: buildProjectSuffix(
       project.project_id,
       context,

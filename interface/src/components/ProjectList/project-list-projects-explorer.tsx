@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ExplorerNode } from "@cypher-asi/zui";
+import { useShallow } from "zustand/react/shallow";
+import { useProjectAppearanceStore } from "../../stores/project-appearance-store";
 import { useProfileStatusStore } from "../../stores/profile-status-store";
+import type { ProjectAppearance } from "../../shared/api/appearance";
 import {
   getMobileProjectDestination,
   projectAgentRoute,
@@ -127,6 +130,23 @@ function useProjectExplorerData(
     [data],
   );
 
+  // Project appearance lookup keyed by project id. Subscribed via
+  // `useShallow` on the full `entries` Map so the explorer memo
+  // re-runs when any project's appearance changes (e.g. the user
+  // saves a `nameColor` in the settings modal → the corresponding
+  // sidebar row tints in the same render). The Map reference flips
+  // whenever the store updates, which triggers the dep.
+  const appearanceEntries = useProjectAppearanceStore(
+    useShallow((s) => s.entries),
+  );
+  const appearanceByProject = useMemo(() => {
+    const out = new Map<string, ProjectAppearance>();
+    for (const [id, entry] of appearanceEntries) {
+      out.set(id, entry.appearance);
+    }
+    return out;
+  }, [appearanceEntries]);
+
   const explorerData = useMemo(
     () => {
       const projectNodes = data.projects
@@ -138,6 +158,7 @@ function useProjectExplorerData(
             statusMap,
             machineTypesMap,
             explorerStyles,
+            appearanceByProject.get(project.project_id),
           ),
         );
       return [
@@ -150,7 +171,14 @@ function useProjectExplorerData(
         ),
       ];
     },
-    [data.projects, explorerStyles, machineTypesMap, nodeBuildContext, statusMap],
+    [
+      data.projects,
+      explorerStyles,
+      machineTypesMap,
+      nodeBuildContext,
+      statusMap,
+      appearanceByProject,
+    ],
   );
 
   const filteredExplorerData = useMemo(

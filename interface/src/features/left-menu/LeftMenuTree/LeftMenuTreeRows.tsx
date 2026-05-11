@@ -147,6 +147,7 @@ function LeftMenuGroup({
           <span
             className={isSection ? styles.sectionLabel : styles.projectLabel}
             data-inline-rename-label
+            style={entry.labelStyle}
           >
             {entry.label}
           </span>

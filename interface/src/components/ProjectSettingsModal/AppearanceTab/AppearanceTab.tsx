@@ -4,9 +4,9 @@ import { Folder } from "lucide-react";
 import { Text } from "@cypher-asi/zui";
 import { useProjectAppearance } from "../../../hooks/use-project-appearance";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
-import { AccentColorPicker } from "./AccentColorPicker";
 import { BackgroundControl } from "./BackgroundControl";
 import { BannerControl } from "./BannerControl";
+import { ColorPicker } from "./ColorPicker";
 import { LucideIconPicker } from "./LucideIconPicker";
 import styles from "./AppearanceTab.module.css";
 
@@ -79,17 +79,31 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
             <Folder size={20} />
           )}
         </span>
-        <span className={styles.previewName}>
+        <span
+          className={styles.previewName}
+          style={
+            appearance.nameColor ? { color: appearance.nameColor } : undefined
+          }
+        >
           {projectName ?? "Project preview"}
         </span>
       </div>
       <Text variant="muted" size="xs" className={styles.tabHint}>
-        Changes save instantly. The icon shows in the sidebar; the
-        background tint and pattern apply to the project landing view.
+        Changes save instantly. The icon and name color show in the
+        sidebar; the background tint and pattern apply to the project
+        landing view.
       </Text>
-      <AccentColorPicker
+      <ColorPicker
+        label="Accent color"
+        noun="accent"
         value={appearance.accent}
         onChange={(accent) => patch({ accent })}
+      />
+      <ColorPicker
+        label="Project name color"
+        noun="name color"
+        value={appearance.nameColor}
+        onChange={(nameColor) => patch({ nameColor })}
       />
       <LucideIconPicker
         value={appearance.icon}
