@@ -36,8 +36,11 @@
 ;     the user is in dark mode (Win10 1809+; silently no-ops on older). We
 ;     must NOT define `.onGUIInit` directly because MUI2 auto-generates one
 ;     and makensis aborts on duplicate function names.
-;   * MUI_CUSTOMFUNCTION_UNGUIINIT (AuraUnOnGUIInit): apply the same dark
+;   * MUI_CUSTOMFUNCTION_UNGUIINIT (un.AuraOnGUIInit): apply the same dark
 ;     title-bar setting to the uninstaller when the user is in dark mode.
+;     Must be `un.`-prefixed because MUI's MUI_UNFUNCTION_GUIINIT macro
+;     expands a `Call ${MUI_CUSTOMFUNCTION_UNGUIINIT}` inside the uninstaller
+;     section, where NSIS only accepts function names starting with "un.".
 ;
 ; Re-syncing with upstream:
 ;   1. Fetch a newer crates/packager/src/package/nsis/installer.nsi
@@ -180,7 +183,13 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; MUI's generated `.onGUIInit` calls this function name. Must be defined
 ; before the first MUI_PAGE_* insertion below.
 !define MUI_CUSTOMFUNCTION_GUIINIT AuraOnGUIInit
-!define MUI_CUSTOMFUNCTION_UNGUIINIT AuraUnOnGUIInit
+; The uninstaller variant MUST be `un.`-prefixed: MUI's MUI_UNFUNCTION_GUIINIT
+; macro emits `Call ${MUI_CUSTOMFUNCTION_UNGUIINIT}` inside the uninstaller
+; section, and NSIS rejects any call from the uninstall section to a function
+; whose name does not start with "un." (makensis aborts with
+; "Call must be used with function names starting with 'un.' in the
+; uninstall section").
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.AuraOnGUIInit
 
 ; AURA NOTE: the welcome / finish "show" callback is wired up via
 ; MUI_PAGE_CUSTOMFUNCTION_SHOW (NOT MUI_WELCOMEFINISHPAGE_CUSTOMFUNCTION_SHOW
@@ -594,7 +603,11 @@ Function AuraOnGUIInit
 FunctionEnd
 
 ; AURA: apply the same dark title-bar setting to the uninstaller outer window.
-Function AuraUnOnGUIInit
+; Must be defined as `un.AuraOnGUIInit` (with the `un.` prefix) because MUI2's
+; MUI_UNFUNCTION_GUIINIT macro expands a `Call` to this function inside the
+; uninstall section, and NSIS only allows uninstall-section calls to functions
+; whose names start with "un.".
+Function un.AuraOnGUIInit
   ClearErrors
   ReadRegDWORD $R8 HKCU "Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" "AppsUseLightTheme"
   ${If} ${Errors}
