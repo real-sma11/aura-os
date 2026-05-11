@@ -19,7 +19,7 @@ interface ProjectBannerStripProps {
  * `<img>`'s GET is in flight or after it 404s.
  */
 export function ProjectBannerStrip({ projectId }: ProjectBannerStripProps) {
-  const { bannerUrl } = useProjectAppearance(projectId);
+  const { appearance, bannerUrl } = useProjectAppearance(projectId);
   const [loaded, setLoaded] = useState(false);
 
   // Reset the "did this URL succeed?" flag whenever the URL changes
@@ -31,6 +31,11 @@ export function ProjectBannerStrip({ projectId }: ProjectBannerStripProps) {
 
   if (!bannerUrl) return null;
 
+  // When the user opted into scale-to-fit during upload, switch the
+  // `<img>`'s object-fit so the full image shows letterboxed instead
+  // of being cover-cropped to the strip's aspect ratio.
+  const scaleToFit = appearance.bannerScaleToFit === true;
+
   return (
     <div
       className={styles.strip}
@@ -40,6 +45,7 @@ export function ProjectBannerStrip({ projectId }: ProjectBannerStripProps) {
         src={bannerUrl}
         alt=""
         className={styles.image}
+        style={scaleToFit ? { objectFit: "contain" } : undefined}
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(false)}
       />

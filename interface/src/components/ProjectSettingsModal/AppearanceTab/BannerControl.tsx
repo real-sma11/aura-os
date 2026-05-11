@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Button, Text } from "@cypher-asi/zui";
-import { BannerCropDialog } from "./BannerCropDialog";
+import { BannerCropDialog, type BannerCropResult } from "./BannerCropDialog";
 import styles from "./AppearanceTab.module.css";
 
 interface BannerControlProps {
@@ -10,9 +10,19 @@ interface BannerControlProps {
   bannerUrl: string;
   onUpload: (blob: Blob) => Promise<void>;
   onDelete: () => Promise<void>;
+  /** Persist the "scale to fit" flag on the appearance JSON so the
+   *  rendering surfaces (`ProjectBannerStrip`, `ProjectBanner`) know
+   *  to use `object-fit: contain` instead of `cover`. Called after
+   *  the blob upload succeeds. */
+  onSetScaleToFit: (scaleToFit: boolean) => void;
 }
 
-export function BannerControl({ bannerUrl, onUpload, onDelete }: BannerControlProps) {
+export function BannerControl({
+  bannerUrl,
+  onUpload,
+  onDelete,
+  onSetScaleToFit,
+}: BannerControlProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pickedSrc, setPickedSrc] = useState<string | null>(null);
   const [hasBanner, setHasBanner] = useState(true);
@@ -48,8 +58,13 @@ export function BannerControl({ bannerUrl, onUpload, onDelete }: BannerControlPr
     reader.readAsDataURL(file);
   };
 
-  const handleConfirm = async (blob: Blob) => {
+  const handleConfirm = async ({ blob, scaleToFit }: BannerCropResult) => {
     await onUpload(blob);
+    // Mirror the crop mode on the appearance JSON so the rendering
+    // surfaces pick the right `object-fit` (cover vs contain). Sent
+    // AFTER the blob upload so the optimistic appearance write
+    // can't race ahead of the bytes that produced it.
+    onSetScaleToFit(scaleToFit);
     // Force the preview to re-evaluate the new URL — the bannerUrl
     // already cache-busts on upload, but resetting the local error
     // state ensures the `<img>` re-renders.

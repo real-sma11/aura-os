@@ -18,6 +18,11 @@ export interface ProjectAppearance {
    *  row and modal preview. Distinct from `accent` so users can tint
    *  the glyph in one color and the text in another. */
   nameColor?: string;
+  /** When true, the banner image renders with `object-fit: contain`
+   *  (scale-to-fit, letterboxed) instead of the default `cover`. The
+   *  source image is uploaded at its native aspect — no cropping
+   *  during upload — so the full image is always preserved. */
+  bannerScaleToFit?: boolean;
   /** Hex color for the sidebar project-header row's background fill.
    *  Applied to the row container so it reads as a chip/pill around
    *  the icon + name. */
