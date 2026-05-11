@@ -140,7 +140,7 @@ export function AgentSelectorModal({
         <Drawer
           side="bottom"
           isOpen={isOpen && !showEditor}
-          onClose={() => { if (!isBusy) handleClose(); }}
+          onClose={handleClose}
           title="Add Remote Agent to Project"
           className={styles.mobileSheet}
           showMinimizedBar={false}
@@ -164,11 +164,11 @@ export function AgentSelectorModal({
       ) : (
         <Modal
           isOpen={isOpen && !showEditor}
-          onClose={() => { if (!isBusy) handleClose(); }}
+          onClose={handleClose}
           title="Add Agent to Project"
           size="md"
           footer={visibleAgents.length > 0 ? (
-            <Button variant="ghost" onClick={handleOpenCreate} disabled={isBusy}>
+            <Button variant="ghost" onClick={handleOpenCreate} disabled={!!creating}>
               + Create New Agent
             </Button>
           ) : undefined}
