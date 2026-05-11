@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Button, Select, Text } from "@cypher-asi/zui";
+import { Button, Input, Select, Text } from "@cypher-asi/zui";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
 import styles from "./AppearanceTab.module.css";
+
+/** True if `value` parses as a six-digit hex (with leading `#`).
+ *  Matches the validator in `ColorPicker` so the freeform hex input
+ *  for the background color behaves identically to the other color
+ *  fields' hex inputs. */
+function isValidHex(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
 
 type Pattern = NonNullable<NonNullable<ProjectAppearance["background"]>["pattern"]>;
 
@@ -78,6 +86,24 @@ export function BackgroundControl({
 
   const handleColor = (e: ChangeEvent<HTMLInputElement>) => {
     update({ ...background, color: e.target.value.toLowerCase() });
+  };
+
+  const handleHexInput = (e: ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.trim();
+    if (raw === "") {
+      // Empty → treat as clear so the user can wipe the value by
+      // selecting the field and deleting the text.
+      const { color: _color, ...rest } = background;
+      void _color;
+      update(rest);
+      return;
+    }
+    // Only commit on a valid hex so half-typed values don't poison
+    // the live preview / server. The Input keeps showing whatever
+    // the user typed until they finish.
+    if (isValidHex(raw)) {
+      update({ ...background, color: raw.toLowerCase() });
+    }
   };
 
   const handleClearColor = () => {
@@ -172,6 +198,11 @@ export function BackgroundControl({
           onChange={handleColor}
           className={styles.nativeColorInput}
           aria-label="Pick background color"
+        />
+        <Input
+          value={color}
+          onChange={handleHexInput}
+          placeholder="#1a1a1a"
         />
         {color && (
           <button
