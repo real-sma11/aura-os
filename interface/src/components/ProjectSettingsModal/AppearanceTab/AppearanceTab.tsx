@@ -67,19 +67,22 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
       <div
         className={styles.preview}
         // Mirror the sidebar row treatment exactly: outline takes
-        // priority over the accent stripe so the two don't compete
-        // for the left edge. Fill, outline, and stripe stack via
-        // background / border / inset shadow respectively.
-        style={{
-          background: appearance.headerBackground,
-          border: appearance.headerOutline
-            ? `1px solid ${appearance.headerOutline}`
-            : undefined,
-          boxShadow:
-            appearance.accent && !appearance.headerOutline
-              ? `inset 4px 0 0 0 ${appearance.accent}`
+        // priority over the accent stripe (the two would otherwise
+        // compete for the left edge). The stripe color is piped
+        // through `--accent-stripe-color`; the actual painting is
+        // done by `.preview::before` in the stylesheet so the
+        // stripe stays straight inside the rounded chip.
+        style={
+          {
+            background: appearance.headerBackground,
+            border: appearance.headerOutline
+              ? `1px solid ${appearance.headerOutline}`
               : undefined,
-        }}
+            ...(appearance.accent && !appearance.headerOutline
+              ? { ["--accent-stripe-color" as string]: appearance.accent }
+              : {}),
+          } as React.CSSProperties
+        }
       >
         <span
           className={styles.previewIcon}
