@@ -248,30 +248,27 @@ export function buildProjectExplorerNode(
 ): ExplorerNodeWithSuffix {
   // Header chip styling: accent left-edge stripe, background fill,
   // outline. The accent stripe is painted via `inset box-shadow` so
-  // it stacks cleanly with `border` (used for the outline) without
-  // fighting the shorthand. Skip the `headerStyle` field entirely
-  // when nothing is set so we don't leave an empty `style` object
-  // on the row that React would still diff against on every render.
+  // it stacks cleanly with the rest of the chip without using up
+  // the `border` shorthand. Outline takes priority — when an outline
+  // color is set, the accent stripe is suppressed so the two don't
+  // compete for the left edge.
+  const hasOutline = !!appearance?.headerOutline;
+  const showAccentStripe = !!appearance?.accent && !hasOutline;
   const hasChipStyling =
-    appearance?.accent ||
-    appearance?.headerBackground ||
-    appearance?.headerOutline;
+    showAccentStripe || appearance?.headerBackground || hasOutline;
   const headerStyle = hasChipStyling
     ? {
-        background: appearance.headerBackground,
-        border: appearance.headerOutline
-          ? `1px solid ${appearance.headerOutline}`
+        background: appearance!.headerBackground,
+        border: hasOutline
+          ? `1px solid ${appearance!.headerOutline}`
           : undefined,
-        // Accent shows as a 4px vertical stripe on the left edge of
-        // the row — readable at a glance even when icon and text
-        // are the row's only other identity cues.
-        boxShadow: appearance.accent
-          ? `inset 4px 0 0 0 ${appearance.accent}`
+        // Straight 4px vertical stripe on the left edge; rendered
+        // via inset shadow rather than border-left so the row stays
+        // rectangular (no rounded corners that would clip the
+        // stripe at top/bottom).
+        boxShadow: showAccentStripe
+          ? `inset 4px 0 0 0 ${appearance!.accent}`
           : undefined,
-        // Round the corners slightly when there's any chip styling
-        // so the row reads as a discrete treatment rather than
-        // fighting the rest of the sidebar's chrome.
-        borderRadius: 6,
       }
     : undefined;
   return {

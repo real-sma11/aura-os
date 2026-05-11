@@ -9,18 +9,16 @@
 }
 
 /* Live preview chip: shows the icon (in the accent color when set)
-   next to the project name. The accent paints as a 4px stripe on
-   the left edge via `inset box-shadow` (set inline when an accent
-   is configured), matching the sidebar row treatment. Lives at the
-   top of the tab so the user sees the effect of their picks
-   without having to close the modal. */
+   next to the project name. The accent paints as a 4px straight
+   stripe on the left edge via `inset box-shadow` (set inline when
+   an accent is configured), matching the sidebar row treatment.
+   Square corners so the stripe doesn't get clipped at top/bottom. */
 .preview {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 
