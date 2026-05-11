@@ -135,10 +135,36 @@ export function BackgroundControl({
     }
   };
 
+  const handleToggleFrost = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      update({ ...background, frost: true });
+    } else {
+      // Drop both frost flags together so opting back in re-applies
+      // the default amount instead of the user's last slider value
+      // (which they might have dialed down to near-zero before
+      // unchecking).
+      const { frost: _f, frostAmount: _a, ...rest } = background;
+      void _f;
+      void _a;
+      update(rest);
+    }
+  };
+
+  const handleFrostAmount = (e: ChangeEvent<HTMLInputElement>) => {
+    const num = Number(e.target.value);
+    if (Number.isFinite(num)) {
+      update({ ...background, frostAmount: num });
+    }
+  };
+
   const invert = background.invert === true;
   // Solid has nothing to invert; hide the toggle in that case so the
   // user isn't presented with a control that does nothing.
   const canInvert = pattern !== "solid";
+
+  const frost = background.frost === true;
+  const frostAmount =
+    typeof background.frostAmount === "number" ? background.frostAmount : 8;
 
   // Hard reset: drop the entire `background` field. Also deletes the
   // uploaded image so the project genuinely reverts to the Aura
@@ -294,6 +320,34 @@ export function BackgroundControl({
         />
         <span className={styles.opacityValue}>{Math.round(opacity * 100)}%</span>
       </div>
+
+      <div className={styles.bgRow}>
+        <span className={styles.bgRowLabel}>Frost</span>
+        <label className={styles.frostCheckLabel}>
+          <input
+            type="checkbox"
+            checked={frost}
+            onChange={handleToggleFrost}
+          />
+          <span>Frosted overlay</span>
+        </label>
+      </div>
+      {frost && (
+        <div className={styles.bgRow}>
+          <span className={styles.bgRowLabel}>Amount</span>
+          <input
+            type="range"
+            min={1}
+            max={30}
+            step={1}
+            value={frostAmount}
+            onChange={handleFrostAmount}
+            className={styles.opacitySlider}
+            aria-label="Frost amount"
+          />
+          <span className={styles.opacityValue}>{frostAmount}px</span>
+        </div>
+      )}
     </div>
   );
 }

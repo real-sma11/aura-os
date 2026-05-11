@@ -63,6 +63,14 @@ export function ProjectAppearanceFrame({
   }
 
   const invert = appearance.background?.invert === true;
+  const frost = appearance.background?.frost === true;
+  // 1-30 px range (slider) with 8 as the default-when-enabled. Falls
+  // back here rather than at the CSS level so the inline style is
+  // always a complete `blur(Npx)` value.
+  const frostAmount =
+    frost && typeof appearance.background?.frostAmount === "number"
+      ? Math.max(0, Math.min(30, appearance.background.frostAmount))
+      : 8;
 
   return (
     <div
@@ -72,7 +80,20 @@ export function ProjectAppearanceFrame({
       data-bg-invert={invert ? "true" : undefined}
       data-project-id={projectId ?? undefined}
     >
-      {children}
+      {/* Frosted-glass layer between the background painting (color,
+          pattern, image) and the content. Sits at z-index 0 so it
+          paints over the negative-z pseudo-elements; the content
+          wrapper below sits at z-index 1 to ensure children render
+          on top of the frost regardless of normal-flow / positioned
+          painting rules. */}
+      {frost && (
+        <div
+          className={styles.frost}
+          style={{ backdropFilter: `blur(${frostAmount}px)` }}
+          aria-hidden="true"
+        />
+      )}
+      <div className={styles.content}>{children}</div>
     </div>
   );
 }

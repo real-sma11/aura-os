@@ -259,7 +259,12 @@ export function buildProjectExplorerNode(
   // takes priority — when an outline color is set, the stripe is
   // suppressed so the two don't compete for the left edge.
   const hasOutline = !!appearance?.headerOutline;
-  const showAccentStripe = !!appearance?.accent && !hasOutline;
+  const hasBackground = !!appearance?.headerBackground;
+  // Outline OR background fill both take priority over the accent
+  // stripe — they each "own" the row's visual treatment and stacking
+  // a stripe over them just adds noise.
+  const showAccentStripe =
+    !!appearance?.accent && !hasOutline && !hasBackground;
   const hasChipStyling =
     showAccentStripe || appearance?.headerBackground || hasOutline;
   const headerStyle = hasChipStyling

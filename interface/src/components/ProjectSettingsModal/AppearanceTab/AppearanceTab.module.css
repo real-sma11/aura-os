@@ -188,6 +188,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Inline label for the frost checkbox so the box and its text read
+   as one clickable target — matches typical settings-row patterns
+   elsewhere in the app. */
+.frostCheckLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
 /* Icon picker */
 .iconHeader {
   display: flex;
