@@ -16,7 +16,7 @@ const projectMenuItems: MenuItem[] = [
 const agentMenuItems: MenuItem[] = [
   { id: "rename-agent", label: "Rename", icon: <Pencil size={14} /> },
   { type: "separator" },
-  { id: "delete-agent", label: "Delete", icon: <Trash2 size={14} /> },
+  { id: "delete-agent", label: "Remove from Project", icon: <Trash2 size={14} /> },
 ];
 
 interface Props {
