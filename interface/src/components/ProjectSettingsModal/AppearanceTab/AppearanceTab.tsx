@@ -66,18 +66,19 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
           without leaving the modal. */}
       <div
         className={styles.preview}
-        // Mirror the sidebar row treatment exactly: outline / fill
-        // via border + background, accent as a 4px inset shadow on
-        // the left edge so it stacks with the outline without
-        // fighting the `border` shorthand.
+        // Mirror the sidebar row treatment exactly: outline takes
+        // priority over the accent stripe so the two don't compete
+        // for the left edge. Fill, outline, and stripe stack via
+        // background / border / inset shadow respectively.
         style={{
           background: appearance.headerBackground,
           border: appearance.headerOutline
             ? `1px solid ${appearance.headerOutline}`
             : undefined,
-          boxShadow: appearance.accent
-            ? `inset 4px 0 0 0 ${appearance.accent}`
-            : undefined,
+          boxShadow:
+            appearance.accent && !appearance.headerOutline
+              ? `inset 4px 0 0 0 ${appearance.accent}`
+              : undefined,
         }}
       >
         <span
