@@ -44,13 +44,15 @@ export function useAgentSelectorData(
   const fetchAgents = useCallback(() => {
     setLoading(true);
     setError("");
+    // Scope to the active org so aura-network returns the full org
+    // fleet (matching `useAgentStore.fetchAgents`). Without the
+    // `org_id` arg, aura-network falls back to `WHERE user_id = $1`
+    // and only returns agents the current user authored, hiding
+    // teammates' shared agents from the picker.
     api.agents
-      .list()
+      .list(activeOrg?.org_id)
       .then((nextAgents) => {
-        const visibleAgents = activeOrg?.org_id
-          ? nextAgents.filter((agent) => agent.org_id === activeOrg.org_id)
-          : nextAgents;
-        setAgents(visibleAgents);
+        setAgents(nextAgents);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load agents"))
       .finally(() => setLoading(false));

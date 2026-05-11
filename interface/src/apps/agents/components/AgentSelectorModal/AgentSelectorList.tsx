@@ -158,44 +158,46 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
           />
         </div>
 
-        {loading ? (
-          <div className={styles.loadingWrap}>
-            <Spinner size="sm" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className={styles.emptyHint}>
-            <Text size="sm" variant="muted">No agents match your search.</Text>
-          </div>
-        ) : (
-          <div className={styles.list} ref={listRef} role="listbox">
-            {rows.map((row, index) => {
-              const active = index === activeIndex;
-              if (row.kind === "standard") {
+        <div className={styles.pickerBody}>
+          {loading ? (
+            <div className={styles.loadingWrap}>
+              <Spinner size="sm" />
+            </div>
+          ) : rows.length === 0 ? (
+            <div className={styles.emptyHint}>
+              <Text size="sm" variant="muted">No agents match your search.</Text>
+            </div>
+          ) : (
+            <div className={styles.list} ref={listRef} role="listbox">
+              {rows.map((row, index) => {
+                const active = index === activeIndex;
+                if (row.kind === "standard") {
+                  return (
+                    <StandardAgentRow
+                      key={row.key}
+                      active={active}
+                      busy={creating === STANDARD_AGENT_CREATING_KEY}
+                      disabled={isCreating}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onSelect={() => activate(row)}
+                    />
+                  );
+                }
                 return (
-                  <StandardAgentRow
+                  <AgentRow
                     key={row.key}
+                    agent={row.agent}
                     active={active}
-                    busy={creating === STANDARD_AGENT_CREATING_KEY}
+                    busy={creating === row.agent.agent_id}
                     disabled={isCreating}
                     onMouseEnter={() => setActiveIndex(index)}
                     onSelect={() => activate(row)}
                   />
                 );
-              }
-              return (
-                <AgentRow
-                  key={row.key}
-                  agent={row.agent}
-                  active={active}
-                  busy={creating === row.agent.agent_id}
-                  disabled={isCreating}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onSelect={() => activate(row)}
-                />
-              );
-            })}
-          </div>
-        )}
+              })}
+            </div>
+          )}
+        </div>
 
         {error && (
           <Text size="sm" variant="muted" className={styles.error}>

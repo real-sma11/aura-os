@@ -7,6 +7,21 @@
   outline: none;
 }
 
+/*
+ * `.pickerBody` locks the picker's vertical footprint so the modal
+ * doesn't grow/shrink between loading -> loaded, between search
+ * filters, or while a row the user just selected is being removed
+ * from the visible list during the create+handoff transition. The
+ * 360px floor matches the existing `.list` `max-height`.
+ */
+.pickerBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 360px;
+  min-width: 0;
+}
+
 .searchRow {
   position: relative;
   display: flex;
@@ -30,6 +45,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-height: 0;
   max-height: 360px;
   overflow-y: auto;
   padding: var(--space-1) 0;
@@ -110,14 +127,15 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 120px;
+  min-height: 0;
 }
 
 .emptyHint {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 80px;
+  flex: 1;
+  min-height: 0;
   padding: var(--space-3);
 }
 
@@ -158,6 +176,15 @@
 @media (max-width: 640px) {
   .pickerRoot {
     gap: var(--space-4);
+  }
+
+  /*
+   * Drawer sets its own height via `defaultSize`/`maxSize`; let the
+   * body grow naturally inside the sheet instead of locking the
+   * desktop 360px floor.
+   */
+  .pickerBody {
+    min-height: 0;
   }
 
   .list {
