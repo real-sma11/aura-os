@@ -66,19 +66,18 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
           without leaving the modal. */}
       <div
         className={styles.preview}
-        // Compose the user's header fill / outline with the accent
-        // border-left so the chip mirrors what the sidebar renders.
-        // Order matters: spread the appearance overrides first so
-        // explicit overrides win, then layer the accent stripe only
-        // when no full outline is set (otherwise the two would
-        // double-up visually).
+        // Mirror the sidebar row treatment exactly: outline / fill
+        // via border + background, accent as a 4px inset shadow on
+        // the left edge so it stacks with the outline without
+        // fighting the `border` shorthand.
         style={{
           background: appearance.headerBackground,
-          ...(appearance.headerOutline
-            ? { border: `1px solid ${appearance.headerOutline}` }
-            : appearance.accent
-              ? { borderLeftColor: appearance.accent }
-              : {}),
+          border: appearance.headerOutline
+            ? `1px solid ${appearance.headerOutline}`
+            : undefined,
+          boxShadow: appearance.accent
+            ? `inset 4px 0 0 0 ${appearance.accent}`
+            : undefined,
         }}
       >
         <span
