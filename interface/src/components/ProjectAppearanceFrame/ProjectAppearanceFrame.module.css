@@ -123,3 +123,58 @@
   background-position: center;
   background-repeat: no-repeat;
 }
+
+/* ─── Inverted variants ──────────────────────────────────────────
+   `data-bg-invert="true"` flips figure/ground for the geometric
+   patterns: the color paints the surrounding area, the pattern
+   shape becomes transparent cut-out. For image and noise (which
+   have intrinsic textures rather than a figure/ground), inverting
+   applies `filter: invert(1)` to flip the rendered colors. */
+.frame[data-bg-pattern="dots"][data-bg-invert="true"]::after {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    transparent 1px,
+    var(--project-bg-color, rgba(127, 127, 127, 0.9)) 0
+  );
+}
+
+.frame[data-bg-pattern="grid"][data-bg-invert="true"]::after {
+  /* Grid lines (transparent) on a colored field: stops swap so the
+     lines are the cut-out and everything else fills. */
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 1px,
+      var(--project-bg-color, rgba(127, 127, 127, 0.7)) 1px
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 1px,
+      var(--project-bg-color, rgba(127, 127, 127, 0.7)) 1px
+    );
+}
+
+.frame[data-bg-pattern="diagonal"][data-bg-invert="true"]::after {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 1px,
+    var(--project-bg-color, rgba(127, 127, 127, 0.8)) 1px,
+    var(--project-bg-color, rgba(127, 127, 127, 0.8)) 12px
+  );
+}
+
+.frame[data-bg-pattern="radial"][data-bg-invert="true"]::after {
+  /* The original is a soft glow at top fading to transparent;
+     inverted is a soft hole at top fading from solid color. */
+  background-image: radial-gradient(
+    ellipse at top,
+    transparent,
+    var(--project-bg-color, rgba(127, 127, 127, 0.55)) 70%
+  );
+}
+
+.frame[data-bg-pattern="image"][data-bg-invert="true"]::after,
+.frame[data-bg-pattern="noise"][data-bg-invert="true"]::after {
+  filter: invert(1);
+}

@@ -96,6 +96,24 @@ export function BackgroundControl({
     update({ ...background, opacity: Number.isFinite(num) ? num : undefined });
   };
 
+  const handleToggleInvert = () => {
+    const next = !background.invert;
+    // Store `true` explicitly; drop the key when off so the persisted
+    // JSON stays minimal on the common path.
+    if (next) {
+      update({ ...background, invert: true });
+    } else {
+      const { invert: _, ...rest } = background;
+      void _;
+      update(rest);
+    }
+  };
+
+  const invert = background.invert === true;
+  // Solid has nothing to invert; hide the toggle in that case so the
+  // user isn't presented with a control that does nothing.
+  const canInvert = pattern !== "solid";
+
   // Hard reset: drop the entire `background` field. Also deletes the
   // uploaded image so the project genuinely reverts to the Aura
   // default and there's no orphaned `background.png` left behind in
@@ -175,6 +193,21 @@ export function BackgroundControl({
             </option>
           ))}
         </Select>
+        {canInvert && (
+          <button
+            type="button"
+            className={`${styles.miniButton} ${invert ? styles.miniButtonActive : ""}`}
+            onClick={handleToggleInvert}
+            title={
+              pattern === "image" || pattern === "noise"
+                ? "Invert image colors"
+                : "Swap pattern figure/ground"
+            }
+            aria-pressed={invert}
+          >
+            Invert
+          </button>
+        )}
       </div>
 
       {pattern === "image" && (

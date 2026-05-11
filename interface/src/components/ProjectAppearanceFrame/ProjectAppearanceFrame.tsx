@@ -62,11 +62,14 @@ export function ProjectAppearanceFrame({
       `url("${backgroundImageUrl}")`;
   }
 
+  const invert = appearance.background?.invert === true;
+
   return (
     <div
       className={styles.frame}
       style={style}
       data-bg-pattern={pattern}
+      data-bg-invert={invert ? "true" : undefined}
       data-project-id={projectId ?? undefined}
     >
       {children}

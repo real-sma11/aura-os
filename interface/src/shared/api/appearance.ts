@@ -45,6 +45,16 @@ export interface ProjectAppearance {
     /** 0..1. Applied uniformly across the color + pattern/image
      *  composite so the slider scales the entire background. */
     opacity?: number;
+    /** When true, flip the chosen style so it does the opposite:
+     *  - `dots / grid / diagonal / radial`: the figure becomes the
+     *    transparent cut-out and the surrounding area paints in the
+     *    chosen color (so a "dot" becomes a hole through a colored
+     *    field).
+     *  - `image`: applies `filter: invert(1)` to the rendered image.
+     *  - `noise`: applies `filter: invert(1)` to the grain.
+     *  - `solid`: no-op (there's nothing to invert).
+     */
+    invert?: boolean;
   };
 }
 
