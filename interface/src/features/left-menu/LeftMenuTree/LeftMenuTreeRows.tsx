@@ -141,6 +141,9 @@ function LeftMenuGroup({
           onKeyDown={handleProjectKeyDown}
           onPointerDown={handlePointerDown}
         >
+          {entry.icon ? (
+            <span className={styles.projectIcon}>{entry.icon}</span>
+          ) : null}
           <span
             className={isSection ? styles.sectionLabel : styles.projectLabel}
             data-inline-rename-label
