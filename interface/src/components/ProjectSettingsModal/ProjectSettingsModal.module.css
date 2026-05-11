@@ -26,3 +26,17 @@
 .dangerText {
   color: var(--color-danger);
 }
+
+/* Sits above the tab body so tab navigation feels separate from the
+   scrollable form fields. */
+.tabsHeader {
+  margin-bottom: var(--space-3);
+}
+
+/* Placeholder text shown in the Appearance tab until Epic 4 lands its
+   controls. Removed once the real picker UI ships. */
+.placeholder {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  text-align: center;
+}
