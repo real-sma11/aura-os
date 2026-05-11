@@ -157,6 +157,13 @@ export function BackgroundControl({
     }
   };
 
+  const handlePatternSize = (e: ChangeEvent<HTMLInputElement>) => {
+    const num = Number(e.target.value);
+    if (Number.isFinite(num)) {
+      update({ ...background, patternSize: num });
+    }
+  };
+
   const invert = background.invert === true;
   // Solid has nothing to invert; hide the toggle in that case so the
   // user isn't presented with a control that does nothing.
@@ -165,6 +172,20 @@ export function BackgroundControl({
   const frost = background.frost === true;
   const frostAmount =
     typeof background.frostAmount === "number" ? background.frostAmount : 8;
+
+  // Size slider only makes sense for the tile-based patterns. Solid
+  // has no shape; image uses `object-fit: cover` so any "size" is
+  // just the container.
+  const SCALABLE_PATTERNS: Pattern[] = [
+    "dots",
+    "grid",
+    "diagonal",
+    "noise",
+    "radial",
+  ];
+  const canResize = SCALABLE_PATTERNS.includes(pattern);
+  const patternSize =
+    typeof background.patternSize === "number" ? background.patternSize : 1;
 
   // Hard reset: drop the entire `background` field. Also deletes the
   // uploaded image so the project genuinely reverts to the Aura
@@ -266,6 +287,25 @@ export function BackgroundControl({
           </button>
         )}
       </div>
+
+      {canResize && (
+        <div className={styles.bgRow}>
+          <span className={styles.bgRowLabel}>Size</span>
+          <input
+            type="range"
+            min={0.25}
+            max={4}
+            step={0.25}
+            value={patternSize}
+            onChange={handlePatternSize}
+            className={styles.opacitySlider}
+            aria-label="Pattern size"
+          />
+          <span className={styles.opacityValue}>
+            {Math.round(patternSize * 100)}%
+          </span>
+        </div>
+      )}
 
       {pattern === "image" && (
         <div className={styles.bgImageBlock}>

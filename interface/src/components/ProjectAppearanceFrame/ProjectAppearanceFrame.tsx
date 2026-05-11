@@ -45,6 +45,10 @@ export function ProjectAppearanceFrame({
     (style as Record<string, string>)["--project-bg-opacity"] =
       String(appearance.background.opacity);
   }
+  if (typeof appearance.background?.patternSize === "number") {
+    (style as Record<string, string>)["--project-bg-pattern-scale"] =
+      String(appearance.background.patternSize);
+  }
 
   const rawPattern = appearance.background?.pattern ?? "none";
   // Legacy `none` is treated as `solid` for new code paths: when the
