@@ -104,6 +104,13 @@ export function SessionsList({
   }, [sessions, summaries, searchQuery]);
 
   const buckets = useMemo(() => bucketizeByDate(titledRows), [titledRows]);
+  // Check if sessions span multiple projects — only show the project
+  // prefix when there's more than one to avoid noise in the common case.
+  const hasMultipleProjects = useMemo(() => {
+    const projectIds = new Set(sessions.map((s) => s._projectId));
+    return projectIds.size > 1;
+  }, [sessions]);
+
   const explorerBuckets = useMemo(
     () =>
       buckets.map((bucket) => ({
@@ -111,10 +118,13 @@ export function SessionsList({
         data: bucket.rows.map<ExplorerNode>(({ session, label }) => ({
           id: session.session_id,
           label,
+          suffix: hasMultipleProjects && session._projectName
+            ? <span className={styles.sessionProject}>{session._projectName}</span>
+            : undefined,
           metadata: { type: "session" },
         })),
       })),
-    [buckets],
+    [buckets, hasMultipleProjects],
   );
   // Highlight the row the user is actively in even when the URL hasn't
   // settled yet:

@@ -122,3 +122,10 @@
 .errorBannerDismiss:hover {
   opacity: 1;
 }
+
+.sessionProject {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-left: var(--space-1, 4px);
+  white-space: nowrap;
+}
