@@ -465,6 +465,190 @@ test("runChangelogMediaEvaluation plans media and blocks capture when Browser Us
   }
 });
 
+test("runChangelogMediaEvaluation downgrades Browser Use credit-low to a warning and skips remaining candidates", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aura-media-eval-"));
+  const changelogPath = path.join(tempDir, "latest.json");
+  fs.writeFileSync(changelogPath, JSON.stringify({
+    rawCommits: [
+      {
+        sha: "abc123456789",
+        subject: "feat(chat): add GPT-5.5 model picker option",
+        files: ["interface/src/apps/agents/components/AgentChat/ChatInputBar.tsx"],
+      },
+      {
+        sha: "def456789abc",
+        subject: "feat(projects): add project main panel",
+        files: ["interface/src/apps/projects/ProjectMainPanel/ProjectMainPanel.tsx"],
+      },
+    ],
+    rendered: {
+      entries: [
+        {
+          batch_id: "entry-1",
+          title: "GPT-5.5 available in the chat model picker",
+          summary: "Users can choose GPT-5.5 in chat.",
+          items: [
+            {
+              text: "Added GPT-5.5 to the model picker.",
+              commit_shas: ["abc123456789"],
+              changed_files: ["interface/src/apps/agents/components/AgentChat/ChatInputBar.tsx"],
+            },
+          ],
+        },
+        {
+          batch_id: "entry-2",
+          title: "Project main panel shows project details",
+          summary: "The new project main panel lists project details inline.",
+          items: [
+            {
+              text: "Added a project main panel that shows project details.",
+              commit_shas: ["def456789abc"],
+              changed_files: ["interface/src/apps/projects/ProjectMainPanel/ProjectMainPanel.tsx"],
+            },
+          ],
+        },
+      ],
+    },
+  }));
+
+  const previousAnthropic = process.env.ANTHROPIC_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  const previousBrowserUse = process.env.BROWSER_USE_API_KEY;
+  const previousCaptureSecret = process.env.AURA_CHANGELOG_CAPTURE_SECRET;
+  process.env.ANTHROPIC_API_KEY = "test-key";
+  process.env.OPENAI_API_KEY = "openai-test-key";
+  process.env.BROWSER_USE_API_KEY = "browser-use-test-key";
+  process.env.AURA_CHANGELOG_CAPTURE_SECRET = "capture-secret-with-enough-entropy";
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    async json() {
+      return {
+        content: [
+          {
+            type: "tool_use",
+            name: "submit_changelog_media_plan",
+            input: {
+              candidates: [
+                {
+                  entryId: "entry-1",
+                  title: "GPT-5.5 available in the chat model picker",
+                  shouldCapture: true,
+                  reason: "The model picker option is visible desktop UI.",
+                  targetAppId: "agents",
+                  targetPath: "/agents",
+                  proofGoal: "Open the chat model picker and show GPT-5.5.",
+                  publicCaption: "GPT-5.5 is now available directly from the chat model picker.",
+                  confidence: 0.91,
+                  changedFiles: ["interface/src/apps/agents/components/AgentChat/ChatInputBar.tsx"],
+                },
+                {
+                  entryId: "entry-2",
+                  title: "Project main panel shows project details",
+                  shouldCapture: true,
+                  reason: "The new project main panel is visible desktop UI.",
+                  targetAppId: "projects",
+                  targetPath: "/projects",
+                  proofGoal: "Open the project main panel.",
+                  publicCaption: "Project main panel lists project details inline.",
+                  confidence: 0.88,
+                  changedFiles: ["interface/src/apps/projects/ProjectMainPanel/ProjectMainPanel.tsx"],
+                },
+              ],
+              skipped: [],
+            },
+          },
+        ],
+      };
+    },
+  });
+
+  let browserUseCalls = 0;
+  const progressEvents = [];
+  try {
+    const report = await runChangelogMediaEvaluation({
+      changelogFile: changelogPath,
+      outputDir: path.join(tempDir, "out"),
+      baseUrl: "https://example.com",
+      maxCandidates: 2,
+      preflightCaptureAuthImpl: async () => ({ ok: true, concerns: [], loginStatus: 200, sessionStatus: 201 }),
+      requestCaptureSessionImpl: async () => ({
+        ok: true,
+        sessionStatus: 201,
+        concerns: [],
+        session: {
+          user_id: "capture-demo-user",
+          display_name: "Aura Capture",
+          profile_image: "",
+          primary_zid: "0://aura-capture",
+          zero_wallet: "0x0000000000000000000000000000000000000000",
+          wallets: [],
+          is_zero_pro: true,
+          is_access_granted: true,
+          access_token: "aura-capture:test-token",
+          created_at: "2026-04-24T00:00:00Z",
+          validated_at: "2026-04-24T00:00:00Z",
+        },
+      }),
+      runBrowserUseTaskImpl: async () => {
+        browserUseCalls += 1;
+        const error = new Error(
+          "[Browser Use] credit balance is too low (top up the account tied to BROWSER_USE_API_KEY"
+          + " — https://cloud.browser-use.com/billing): You need at least $1.00 in credits. Current balance: $0.34",
+        );
+        error.provider = "browser-use";
+        error.providerCreditError = true;
+        throw error;
+      },
+      runHighResolutionCaptureImpl: async () => {
+        throw new Error("High-res capture should not run after Browser Use credit exhaustion.");
+      },
+      onProgress: (event) => {
+        progressEvents.push(event);
+      },
+    });
+
+    assert.equal(browserUseCalls, 1, "Browser Use SDK is called once, then the credit flag short-circuits the rest");
+    assert.equal(report.browserUseCreditExhausted, true);
+    assert.match(report.browserUseCreditMessage, /\[Browser Use\] credit balance is too low/);
+    assert.match(report.browserUseCreditMessage, /BROWSER_USE_API_KEY/);
+    assert.equal(report.counts.plannedCandidates, 2);
+    assert.equal(report.counts.captureBlocked, 2);
+    assert.equal(report.counts.captureSkippedForCredits, 2);
+    assert.equal(report.counts.captureAccepted, 0);
+    assert.equal(report.counts.publishableMediaAssets, 0);
+    assert.deepEqual(report.publishableMedia.assets, []);
+    for (const captureResult of report.captureResults) {
+      assert.equal(captureResult.status, "blocked");
+      assert.ok(
+        captureResult.blockers.some((blocker) => /\[Browser Use\] credit balance is too low/.test(blocker)),
+        `expected credit-low blocker on ${captureResult.entryId}`,
+      );
+    }
+    assert.ok(
+      progressEvents.some((event) =>
+        event.stage === "browser-use-credit-exhausted"
+          && typeof event.message === "string"
+          && event.message.includes("[Browser Use] credit balance is too low"),
+      ),
+      "emits a browser-use-credit-exhausted progress event",
+    );
+    assert.equal(fs.existsSync(path.join(tempDir, "out", "evaluation-report.json")), true);
+    assert.equal(fs.existsSync(path.join(tempDir, "out", "publishable-media-manifest.json")), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropic;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+    if (previousBrowserUse === undefined) delete process.env.BROWSER_USE_API_KEY;
+    else process.env.BROWSER_USE_API_KEY = previousBrowserUse;
+    if (previousCaptureSecret === undefined) delete process.env.AURA_CHANGELOG_CAPTURE_SECRET;
+    else process.env.AURA_CHANGELOG_CAPTURE_SECRET = previousCaptureSecret;
+  }
+});
+
 test("runChangelogMediaEvaluation creates branded media only after quality and vision pass", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aura-media-eval-"));
   const changelogPath = path.join(tempDir, "latest.json");

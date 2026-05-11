@@ -808,6 +808,14 @@ export async function runChangelogMediaEvaluation({
     ? await preflightCaptureAuthImpl({ baseUrl, apiBaseUrl: resolvedApiBaseUrl, captureSecret })
     : null;
   const captureResults = [];
+  // When Browser Use rejects a run for low credits we want the rest of
+  // the pipeline (planner output, report, manifest) to keep producing
+  // artifacts so CI stays green and the workflow simply ships no new
+  // media that cycle. The first credit-low failure flips this flag and
+  // every remaining candidate gets short-circuited as `blocked` with
+  // the credit message instead of re-calling the SDK.
+  let browserUseCreditExhausted = false;
+  let browserUseCreditMessage = "";
 
   for (const [index, candidate] of planning.plan.candidates.entries()) {
     const candidateDir = path.join(outputDir, `candidate-${index + 1}-${safeName(candidate.entryId || candidate.title)}`);
@@ -826,6 +834,7 @@ export async function runChangelogMediaEvaluation({
     const blockers = [];
     if (!runBrowserUse) blockers.push("Browser Use execution disabled by --plan-only.");
     if (!browserUseKeyAvailable) blockers.push("BROWSER_USE_API_KEY is not available.");
+    if (browserUseCreditExhausted) blockers.push(browserUseCreditMessage);
     if (visionJudge && !visionApiKey) blockers.push("OPENAI_API_KEY is not available for media vision review.");
     if (runBrowserUse && !modelQualityGate.ok) {
       blockers.push(...modelQualityGate.concerns);
@@ -910,19 +919,57 @@ export async function runChangelogMediaEvaluation({
     });
     fs.writeFileSync(path.join(candidateDir, "browser-use-task.md"), `${redactCaptureLoginSecrets(task)}\n`, "utf8");
 
-    const result = await runBrowserUseTaskImpl({
-      task,
-      model: browserUseModel,
-      outputDir: candidateDir,
-      profileId: "",
-      enableRecording,
-      desktopViewport: contract.desktopCapturePolicy.viewport,
-      maxCostUsd,
-      useOutputSchema: true,
-      sensitiveData: captureAuth.enabled ? { captureSecret } : null,
-      timeoutMs: browserUseTimeoutMs,
-      intervalMs: browserUseIntervalMs,
-    });
+    let result;
+    try {
+      result = await runBrowserUseTaskImpl({
+        task,
+        model: browserUseModel,
+        outputDir: candidateDir,
+        profileId: "",
+        enableRecording,
+        desktopViewport: contract.desktopCapturePolicy.viewport,
+        maxCostUsd,
+        useOutputSchema: true,
+        sensitiveData: captureAuth.enabled ? { captureSecret } : null,
+        timeoutMs: browserUseTimeoutMs,
+        intervalMs: browserUseIntervalMs,
+      });
+    } catch (error) {
+      // Credit-low rejections come back from `wrapProviderError` in
+      // [interface/scripts/lib/api-credit-errors.mjs](interface/scripts/lib/api-credit-errors.mjs)
+      // with `providerCreditError === true` and `provider === "browser-use"`.
+      // Convert them into a per-candidate `blocked` outcome and stop
+      // calling the SDK for the rest of the run instead of failing CI.
+      if (error?.providerCreditError && error.provider === "browser-use") {
+        browserUseCreditExhausted = true;
+        browserUseCreditMessage = error.message;
+        onProgress?.({
+          stage: "browser-use-credit-exhausted",
+          message: error.message,
+        });
+        const skipped = {
+          candidate,
+          status: "blocked",
+          blockers: [error.message],
+          capturePreflight,
+          captureAccepted: false,
+          publishReady: false,
+          qualityGate: {
+            ok: false,
+            status: "blocked",
+            concerns: [error.message],
+          },
+          branding: buildBlockedBrandingDecision({
+            captureAccepted: false,
+            screenshot: null,
+          }),
+        };
+        writeJson(path.join(candidateDir, "capture-summary.json"), skipped);
+        captureResults.push(skipped);
+        continue;
+      }
+      throw error;
+    }
     const highResolutionCapture = runHighResolutionCaptureImpl && captureSessionResult?.session
       ? await runHighResolutionCaptureImpl({
         baseUrl,
@@ -1105,6 +1152,8 @@ export async function runChangelogMediaEvaluation({
       captureAuthAvailable,
     },
     capturePreflight,
+    browserUseCreditExhausted,
+    browserUseCreditMessage: browserUseCreditExhausted ? browserUseCreditMessage : null,
     existingPublishedMediaCount,
     counts: {
       changelogEntries: changelogEntries.length,
@@ -1122,6 +1171,13 @@ export async function runChangelogMediaEvaluation({
       captureAccepted: captureResults.filter((entry) => entry.captureAccepted).length,
       captureRejected: captureResults.filter((entry) => entry.status === "rejected").length,
       captureBlocked: captureResults.filter((entry) => entry.status === "blocked").length,
+      captureSkippedForCredits: browserUseCreditExhausted
+        ? captureResults.filter((entry) =>
+          entry.status === "blocked"
+            && Array.isArray(entry.blockers)
+            && entry.blockers.some((blocker) => typeof blocker === "string" && blocker.includes("[Browser Use] credit balance is too low")))
+          .length
+        : 0,
       visionAccepted: captureResults.filter((entry) => entry.visionGate?.ok).length,
       visionRejected: captureResults.filter((entry) => entry.visionGate?.status === "rejected").length,
       brandingCreated: captureResults.filter((entry) => entry.branding?.status === "created").length,
@@ -1201,6 +1257,11 @@ export async function main(argv = process.argv.slice(2)) {
     openAIImageQuality: String(args["openai-image-quality"] || process.env.AURA_CHANGELOG_MEDIA_OPENAI_IMAGE_QUALITY || "high").trim(),
     openAIImageSize: String(args["openai-image-size"] || process.env.AURA_CHANGELOG_MEDIA_OPENAI_IMAGE_SIZE || "2560x1440").trim(),
     onProgress: (event) => {
+      if (event.stage === "browser-use-credit-exhausted") {
+        process.stderr.write(`[changelog-media] WARNING ${event.message}\n`);
+        process.stderr.write("[changelog-media] browser-use-credit-exhausted: skipping remaining capture candidates; the pipeline will publish no new media this cycle.\n");
+        return;
+      }
       const label = [
         "[changelog-media]",
         event.stage,
@@ -1223,6 +1284,8 @@ export async function main(argv = process.argv.slice(2)) {
     env: report.env,
     modelQualityGate: report.modelQualityGate,
     browserUseRunOptions: report.browserUseRunOptions,
+    browserUseCreditExhausted: report.browserUseCreditExhausted,
+    browserUseCreditMessage: report.browserUseCreditMessage,
     publishableMedia: {
       assetCount: report.publishableMedia.assets.length,
       recoveryPolicy: report.publishableMedia.recoveryPolicy,
