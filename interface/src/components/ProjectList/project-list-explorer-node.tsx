@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import type { ExplorerNode } from "@cypher-asi/zui";
 import { Archive, Gauge, Loader2 } from "lucide-react";
 import { Avatar } from "../Avatar";
+import { ProjectRowIcon } from "./ProjectRowIcon";
 import { ProjectsPlusButton } from "../ProjectsPlusButton";
 import type { useProjectListData } from "./useProjectListData";
 import { resolveStatus } from "./project-list-shared";
@@ -246,6 +247,7 @@ export function buildProjectExplorerNode(
   return {
     id: project.project_id,
     label: project.name,
+    icon: <ProjectRowIcon projectId={project.project_id} />,
     suffix: buildProjectSuffix(
       project.project_id,
       context,
