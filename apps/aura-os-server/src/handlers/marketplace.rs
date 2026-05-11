@@ -414,6 +414,10 @@ fn build_marketplace_agent(
         .and_then(|p| p.display_name.clone())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| creator_user_id.clone());
+    let creator_avatar_url = profiles
+        .get(&creator_user_id)
+        .and_then(|p| p.avatar_url.clone())
+        .filter(|s| !s.is_empty());
     let listed_at = agent.created_at.to_rfc3339();
     let description = agent.role.clone();
     let jobs = agent.jobs;
@@ -429,6 +433,7 @@ fn build_marketplace_agent(
         reputation,
         creator_display_name,
         creator_user_id,
+        creator_avatar_url,
         cover_image_url: None,
         listed_at,
     }
@@ -610,8 +615,61 @@ mod tests {
         // When no profile is available, fall back to the raw user_id so the
         // UI still has *something* to render.
         assert_eq!(entry.creator_display_name, "user-x");
+        assert!(entry.creator_avatar_url.is_none());
         assert_eq!(entry.completed_tasks, 0);
         assert_eq!(entry.jobs, 0);
+    }
+
+    #[test]
+    fn build_marketplace_agent_surfaces_creator_avatar_from_profile() {
+        let mut profiles: HashMap<String, NetworkProfile> = HashMap::new();
+        profiles.insert(
+            "user-x".to_string(),
+            NetworkProfile {
+                id: "profile-x".into(),
+                display_name: Some("Mira Osei".into()),
+                avatar_url: Some("https://cdn.test/mira.png".into()),
+                bio: None,
+                profile_type: Some("user".into()),
+                entity_id: None,
+                user_id: Some("user-x".into()),
+                agent_id: None,
+            },
+        );
+        let entry = build_marketplace_agent(
+            sample_agent("x", AgentListingStatus::Hireable, vec![], 0),
+            &profiles,
+            0,
+        );
+        assert_eq!(entry.creator_display_name, "Mira Osei");
+        assert_eq!(
+            entry.creator_avatar_url.as_deref(),
+            Some("https://cdn.test/mira.png"),
+        );
+    }
+
+    #[test]
+    fn build_marketplace_agent_drops_blank_avatar_url() {
+        let mut profiles: HashMap<String, NetworkProfile> = HashMap::new();
+        profiles.insert(
+            "user-x".to_string(),
+            NetworkProfile {
+                id: "profile-x".into(),
+                display_name: Some("Mira Osei".into()),
+                avatar_url: Some(String::new()),
+                bio: None,
+                profile_type: Some("user".into()),
+                entity_id: None,
+                user_id: Some("user-x".into()),
+                agent_id: None,
+            },
+        );
+        let entry = build_marketplace_agent(
+            sample_agent("x", AgentListingStatus::Hireable, vec![], 0),
+            &profiles,
+            0,
+        );
+        assert!(entry.creator_avatar_url.is_none());
     }
 
     #[test]

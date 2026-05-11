@@ -17,6 +17,8 @@ export interface MarketplaceAgent {
   reputation: number;
   creator_display_name: string;
   creator_user_id: string;
+  /** Profile avatar URL for the creator; optional. */
+  creator_avatar_url?: string | null;
   /** Cover image URL for the talent card header; optional. */
   cover_image_url?: string;
   /** When this agent first became discoverable in the marketplace. */

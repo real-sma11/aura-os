@@ -1,6 +1,7 @@
 import { createElement, useState } from "react";
 import { Button, Text } from "@cypher-asi/zui";
 import { Bot, Briefcase } from "lucide-react";
+import { Avatar } from "../../../components/Avatar";
 import { formatCompact, formatCurrency } from "../../../shared/utils/format";
 import { MARKETPLACE_EXPERTISE } from "../marketplace-expertise";
 import type { MarketplaceAgent } from "../marketplace-types";
@@ -46,7 +47,14 @@ export function AgentTalentCard({
   onHire,
   hirePreparing = false,
 }: AgentTalentCardProps) {
-  const { agent, description, completed_tasks, revenue_usd } = marketplaceAgent;
+  const {
+    agent,
+    description,
+    completed_tasks,
+    revenue_usd,
+    creator_display_name,
+    creator_avatar_url,
+  } = marketplaceAgent;
   const expertise = primaryExpertise(agent.expertise);
   const roleText = agent.role.trim();
   const descriptionText = description.trim();
@@ -100,6 +108,18 @@ export function AgentTalentCard({
           <div className={styles.stat}>
             <dt className={styles.statLabel}>Revenue</dt>
             <dd className={styles.statValue}>{formatCurrency(revenue_usd)}</dd>
+          </div>
+          <div className={styles.stat}>
+            <dt className={styles.statLabel}>Creator</dt>
+            <dd className={`${styles.statValue} ${styles.creatorValue}`}>
+              <Avatar
+                avatarUrl={creator_avatar_url ?? undefined}
+                name={creator_display_name}
+                type="user"
+                size={16}
+              />
+              <span className={styles.creatorName}>{creator_display_name}</span>
+            </dd>
           </div>
         </dl>
       </button>

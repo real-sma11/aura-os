@@ -221,6 +221,8 @@ pub(crate) struct MarketplaceAgent {
     pub creator_display_name: String,
     pub creator_user_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator_avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_image_url: Option<String>,
     pub listed_at: String,
 }

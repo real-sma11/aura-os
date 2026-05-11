@@ -32,6 +32,23 @@ vi.mock("@cypher-asi/zui", () => ({
   }) => <span className={className}>{children}</span>,
 }));
 
+vi.mock("../../../components/Avatar", () => ({
+  Avatar: ({
+    avatarUrl,
+    name,
+  }: {
+    avatarUrl?: string;
+    name?: string;
+  }) =>
+    avatarUrl ? (
+      <img data-testid="creator-avatar" src={avatarUrl} alt={name ?? ""} />
+    ) : (
+      <span data-testid="creator-avatar-fallback" aria-hidden>
+        {name ? name.charAt(0) : ""}
+      </span>
+    ),
+}));
+
 import { AgentTalentCard } from "./AgentTalentCard";
 
 function makeAgent(overrides: Partial<Agent> & { agent_id: string; name: string }): Agent {
@@ -78,6 +95,7 @@ const atlas: MarketplaceAgent = {
   reputation: 4.92,
   creator_display_name: "Mira Osei",
   creator_user_id: "user-mira",
+  creator_avatar_url: "https://cdn.test/mira.png",
   listed_at: "2026-03-02T00:00:00Z",
 };
 
@@ -149,6 +167,38 @@ describe("AgentTalentCard", () => {
 
     fireEvent.click(screen.getByText(atlas.agent.name));
     expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the creator name and avatar when creator_avatar_url is provided", () => {
+    render(
+      <AgentTalentCard
+        marketplaceAgent={atlas}
+        isSelected={false}
+        onSelect={vi.fn()}
+        onHire={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Creator")).toBeInTheDocument();
+    expect(screen.getByText(atlas.creator_display_name)).toBeInTheDocument();
+    const avatar = screen.getByTestId("creator-avatar") as HTMLImageElement;
+    expect(avatar.src).toBe(atlas.creator_avatar_url);
+  });
+
+  it("falls back to the user-icon avatar when creator_avatar_url is missing", () => {
+    const noAvatarAgent: MarketplaceAgent = { ...atlas, creator_avatar_url: undefined };
+    render(
+      <AgentTalentCard
+        marketplaceAgent={noAvatarAgent}
+        isSelected={false}
+        onSelect={vi.fn()}
+        onHire={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(atlas.creator_display_name)).toBeInTheDocument();
+    expect(screen.getByTestId("creator-avatar-fallback")).toBeInTheDocument();
+    expect(screen.queryByTestId("creator-avatar")).not.toBeInTheDocument();
   });
 
   it("invokes onHire (and not onSelect) when the Hire button is clicked", () => {

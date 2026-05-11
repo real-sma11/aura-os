@@ -92,6 +92,7 @@ describe("marketplaceApi", () => {
       reputation: 0,
       creator_display_name: "u",
       creator_user_id: "u",
+      creator_avatar_url: null,
       listed_at: "2025-01-01T00:00:00Z",
     });
 
