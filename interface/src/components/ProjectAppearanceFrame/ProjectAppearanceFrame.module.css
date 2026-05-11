@@ -83,13 +83,20 @@
   background-position: center;
 }
 
+/* Each scalable pattern multiplies its natural tile / spacing by
+   `--project-bg-pattern-scale` (unitless, default `1`). The variable
+   is set inline by `ProjectAppearanceFrame` only when the user has
+   moved the Size slider, so the default-1.0 case never emits the
+   property and the calc() falls back to the natural defaults. */
 .frame[data-bg-pattern="dots"]::after {
   background-image: radial-gradient(
     circle at 1px 1px,
     var(--project-bg-color, rgba(127, 127, 127, 0.9)) 1px,
     transparent 0
   );
-  background-size: 16px 16px;
+  background-size:
+    calc(16px * var(--project-bg-pattern-scale, 1))
+    calc(16px * var(--project-bg-pattern-scale, 1));
 }
 
 .frame[data-bg-pattern="grid"]::after {
@@ -104,24 +111,32 @@
       var(--project-bg-color, rgba(127, 127, 127, 0.7)) 1px,
       transparent 1px
     );
-  background-size: 32px 32px;
+  background-size:
+    calc(32px * var(--project-bg-pattern-scale, 1))
+    calc(32px * var(--project-bg-pattern-scale, 1));
 }
 
 .frame[data-bg-pattern="diagonal"]::after {
+  /* Line stays 1px; only the spacing between lines scales so a
+     "size" change reads as repeat density rather than thickness. */
   background-image: repeating-linear-gradient(
     45deg,
     var(--project-bg-color, rgba(127, 127, 127, 0.8)),
     var(--project-bg-color, rgba(127, 127, 127, 0.8)) 1px,
     transparent 1px,
-    transparent 12px
+    transparent calc(12px * var(--project-bg-pattern-scale, 1))
   );
 }
 
 .frame[data-bg-pattern="radial"]::after {
+  /* Scale changes how far the colored glow reaches before fading
+     to transparent. `min/max` clamp keeps the value in the legal
+     0-100% range even at extreme scales. */
   background-image: radial-gradient(
     ellipse at top,
     var(--project-bg-color, rgba(127, 127, 127, 0.55)),
-    transparent 70%
+    transparent
+      max(10%, min(100%, calc(70% * var(--project-bg-pattern-scale, 1))))
   );
 }
 
@@ -133,7 +148,9 @@
    pattern with a colored frame underneath in a future iteration. */
 .frame[data-bg-pattern="noise"]::after {
   background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20stitchTiles%3D%22stitch%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url(%23n)%22%20opacity%3D%220.6%22%2F%3E%3C%2Fsvg%3E");
-  background-size: 120px 120px;
+  background-size:
+    calc(120px * var(--project-bg-pattern-scale, 1))
+    calc(120px * var(--project-bg-pattern-scale, 1));
 }
 
 /* `none` and `solid` are color-fill-only; ::after stays empty.

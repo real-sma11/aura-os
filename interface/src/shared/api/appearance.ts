@@ -63,6 +63,12 @@ export interface ProjectAppearance {
     /** Blur radius in pixels for the frosted overlay (1–30). Only
      *  used when `frost: true`. Falls back to 8 when unset. */
     frostAmount?: number;
+    /** Tile / repeat scale for the geometric patterns (dots, grid,
+     *  diagonal, noise, radial). Unitless multiplier — `1` is the
+     *  default visual size; `0.25` is one-quarter, `4` is four
+     *  times. Ignored for `solid` (no tile) and `image`
+     *  (`object-fit: cover` already covers any size). */
+    patternSize?: number;
   };
 }
 
