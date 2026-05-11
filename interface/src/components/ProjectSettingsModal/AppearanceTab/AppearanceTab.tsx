@@ -78,7 +78,9 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
             border: appearance.headerOutline
               ? `1px solid ${appearance.headerOutline}`
               : undefined,
-            ...(appearance.accent && !appearance.headerOutline
+            ...(appearance.accent &&
+            !appearance.headerOutline &&
+            !appearance.headerBackground
               ? { ["--accent-stripe-color" as string]: appearance.accent }
               : {}),
           } as React.CSSProperties

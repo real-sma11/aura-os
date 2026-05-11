@@ -55,6 +55,14 @@ export interface ProjectAppearance {
      *  - `solid`: no-op (there's nothing to invert).
      */
     invert?: boolean;
+    /** When true, render a frosted-glass layer between the
+     *  background (color + pattern/image) and the content. The
+     *  blur softens the background, which helps content readability
+     *  on busy images / strong colors. */
+    frost?: boolean;
+    /** Blur radius in pixels for the frosted overlay (1–30). Only
+     *  used when `frost: true`. Falls back to 8 when unset. */
+    frostAmount?: number;
   };
 }
 

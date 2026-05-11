@@ -14,6 +14,37 @@
   isolation: isolate;
 }
 
+/* Frosted-glass overlay. Sits between the ::before/::after
+   background layers (negative z-index) and the `.content` wrapper
+   (positive z-index) so the blur softens the color + pattern/image
+   composite without affecting the actual page content. The tint is
+   intentionally minimal — the `backdrop-filter` blur is the main
+   effect; the rgba is just enough to make the layer visible on
+   browsers that haven't repainted blur yet. */
+.frost {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Children wrapper. `position: relative` + `z-index: 1` guarantees
+   page content paints above both the frost overlay and the
+   background pseudo-elements regardless of normal-flow vs
+   positioned painting rules. Flex passthrough so existing layouts
+   that expected the frame to be the flex parent keep working. */
+.content {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
 /* The background color layer. Only paints when style is `solid` (or
    the legacy `none`) — once the user picks a pattern or image, the
    chosen color drives the pattern itself via `::after`, NOT a fill
