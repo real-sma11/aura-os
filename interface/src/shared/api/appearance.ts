@@ -14,6 +14,10 @@ export interface ProjectAppearance {
   accent?: string;
   /** Lucide icon name, e.g. `"Rocket"`. */
   icon?: string;
+  /** Hex color applied to the project's display name in the sidebar
+   *  row and modal preview. Distinct from `accent` so users can tint
+   *  the glyph in one color and the text in another. */
+  nameColor?: string;
   background?: {
     /** Hex color for the background tint. */
     color?: string;
