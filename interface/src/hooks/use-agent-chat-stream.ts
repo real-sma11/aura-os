@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { generate3dStream, generateImageStream } from "../api/streams";
 import type { ChatAttachment, StreamEventHandler } from "../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../constants/models";
+import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { buildUserChatMessage } from "./attachment-helpers";
 import type { Spec, Task } from "../shared/types";
 import type { AuraEvent } from "../shared/types/aura-events";
@@ -270,9 +271,10 @@ export function useAgentChatStream({
           // the pinned source image: image step when no thumb,
           // model step when one is pinned.
           if (!_sourceImageUrl) {
+            const styledPrompt = `${userMsg.content}${STYLE_LOCK_SUFFIX}`;
             core.setProgressText("Generating image...");
             await generateImageStream(
-              userMsg.content,
+              styledPrompt,
               DEFAULT_IMAGE_MODEL_ID,
               attachments,
               {
@@ -287,6 +289,9 @@ export function useAgentChatStream({
                     useChatUIStore.getState().setPinnedSourceImage(core.key, {
                       imageUrl: event.content.imageUrl,
                       originalUrl: event.content.originalUrl,
+                      // Persist the user's verbatim prompt (without the
+                      // style suffix) so the thumb tooltip / future
+                      // refinement chips read naturally.
                       prompt: userMsg.content,
                     });
                   }

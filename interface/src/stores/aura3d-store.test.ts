@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useAura3DStore } from "./aura3d-store";
+import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { artifactsApi } from "../shared/api/artifacts";
 import * as authToken from "../shared/lib/auth-token";
 
@@ -309,6 +310,12 @@ describe("aura3d-store", () => {
   it("setTokenizeSymbol uppercases and limits to 8 chars", () => {
     // setTokenizeSymbol was removed in Sprint 2 store update, verify it's gone
     expect("setTokenizeSymbol" in useAura3DStore.getState()).toBe(false);
+  });
+
+  it("STYLE_LOCK_SUFFIX is exported and non-empty", () => {
+    expect(STYLE_LOCK_SUFFIX).toBeTruthy();
+    expect(STYLE_LOCK_SUFFIX).toContain("standalone product only");
+    expect(STYLE_LOCK_SUFFIX).toContain("jet black background");
   });
 
 

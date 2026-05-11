@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { ModalConfirm } from "@cypher-asi/zui";
 import { useAura3DStore } from "../../../stores/aura3d-store";
+import { STYLE_LOCK_SUFFIX } from "../../../constants/generation";
 import { generateImageStream } from "../../../api/streams";
 import { EventType } from "../../../shared/types/aura-events";
 import { ImagePreview } from "../ImagePreview";
@@ -93,10 +94,18 @@ export function ImageGeneration() {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // The AURA 3D app's image flow exists to feed the Tripo image-to-3D
+    // pipeline, so every generation here is an implicit 3D source. Append
+    // the product-photography lock so the result frames as a clean 3D
+    // sculpture input. The verbatim `prompt` is still passed to
+    // `completeImageGeneration` so the saved artifact label / sidekick
+    // tile read naturally.
+    const fullPrompt = `${prompt}${STYLE_LOCK_SUFFIX}`;
+
     setGeneratingImage(true);
 
     generateImageStream(
-      prompt,
+      fullPrompt,
       imagineModel,
       undefined,
       {

@@ -6,6 +6,7 @@ import { useProjectActions } from "../../stores/project-action-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
 import type { ChatAttachment } from "../../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../../constants/models";
+import { STYLE_LOCK_SUFFIX } from "../../constants/generation";
 import { EventType } from "../../shared/types/aura-events";
 
 import {
@@ -171,9 +172,10 @@ export function useChatStream({
           // panel-state layer sources from the per-stream pinned
           // image slice in `chat-ui-store` (NOT from chat history).
           if (!_sourceImageUrl) {
+            const styledPrompt = `${userMsg.content}${STYLE_LOCK_SUFFIX}`;
             core.setProgressText("Generating image...");
             await generateImageStream(
-              userMsg.content,
+              styledPrompt,
               DEFAULT_IMAGE_MODEL_ID,
               attachments,
               {
