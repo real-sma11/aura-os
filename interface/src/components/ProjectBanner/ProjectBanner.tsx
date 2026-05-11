@@ -46,7 +46,17 @@ export function ProjectBanner({ projectId, projectName }: ProjectBannerProps) {
         onError={() => setBannerLoaded(false)}
         onLoad={() => setBannerLoaded(true)}
         aria-hidden={!hasBanner}
-        style={hasBanner ? undefined : { display: "none" }}
+        // Hidden state collapses the image entirely; visible state
+        // switches `object-fit` to `contain` when the user uploaded
+        // in scale-to-fit mode so the full image shows letterboxed
+        // rather than cover-cropped to 16:5.
+        style={
+          !hasBanner
+            ? { display: "none" }
+            : appearance.bannerScaleToFit
+              ? { objectFit: "contain" }
+              : undefined
+        }
       />
       <div className={styles.overlay}>
         {hasIcon && (

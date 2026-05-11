@@ -15,11 +15,55 @@ const BANNER_ASPECT = 16 / 5;
 const BANNER_OUTPUT_W = 1600;
 const BANNER_OUTPUT_H = 500;
 
+export interface BannerCropResult {
+  blob: Blob;
+  /** When true, the user opted out of cropping. The image was
+   *  uploaded at its native aspect and the consumer should mirror
+   *  that on `appearance.bannerScaleToFit` so the rendering
+   *  surfaces switch `object-fit` accordingly. */
+  scaleToFit: boolean;
+}
+
 interface BannerCropDialogProps {
   isOpen: boolean;
   imageSrc: string;
-  onConfirm: (blob: Blob) => Promise<void> | void;
+  onConfirm: (result: BannerCropResult) => Promise<void> | void;
   onClose: () => void;
+}
+
+/**
+ * Read the raw image at `imageSrc` and re-encode as a PNG blob via
+ * an offscreen canvas. Used for the scale-to-fit path so the
+ * uploaded asset stays a PNG matching the rest of the banner
+ * pipeline; preserves the source's native aspect (no cropping) and
+ * caps the output's longest edge so we don't ship 20-megapixel
+ * originals.
+ */
+async function reencodeForScaleToFit(imageSrc: string): Promise<Blob> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`failed to load image: ${imageSrc}`));
+    img.src = imageSrc;
+  });
+  // Cap the longest edge so very large originals don't bloat the
+  // upload. Aspect is preserved either way.
+  const MAX_EDGE = 2000;
+  const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.round(image.naturalWidth * scale);
+  const height = Math.round(image.naturalHeight * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("failed to acquire 2d canvas context");
+  ctx.drawImage(image, 0, 0, width, height);
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("canvas.toBlob returned null"))),
+      "image/png",
+    );
+  });
 }
 
 export function BannerCropDialog({
@@ -33,14 +77,16 @@ export function BannerCropDialog({
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scaleToFit, setScaleToFit] = useState(false);
 
   // Reset every time a fresh image source loads so the previous
-  // crop/zoom doesn't bleed into a re-pick.
+  // crop/zoom/mode doesn't bleed into a re-pick.
   useEffect(() => {
     setCrop({ x: 0, y: 0 });
     setZoom(1);
     setCroppedArea(null);
     setError(null);
+    setScaleToFit(false);
   }, [imageSrc]);
 
   const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
@@ -48,25 +94,34 @@ export function BannerCropDialog({
   }, []);
 
   const handleConfirm = useCallback(async () => {
-    if (!croppedArea) return;
     setSaving(true);
     setError(null);
     try {
-      const blob = await cropImageToBlob(
-        imageSrc,
-        croppedArea,
-        BANNER_OUTPUT_W,
-        BANNER_OUTPUT_H,
-        "image/png",
-      );
-      await onConfirm(blob);
+      const blob = scaleToFit
+        ? await reencodeForScaleToFit(imageSrc)
+        : croppedArea
+          ? await cropImageToBlob(
+              imageSrc,
+              croppedArea,
+              BANNER_OUTPUT_W,
+              BANNER_OUTPUT_H,
+              "image/png",
+            )
+          : null;
+      if (!blob) {
+        // Cropper hasn't reported a region yet; nothing to save.
+        return;
+      }
+      await onConfirm({ blob, scaleToFit });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  }, [croppedArea, imageSrc, onConfirm, onClose]);
+  }, [croppedArea, imageSrc, onConfirm, onClose, scaleToFit]);
+
+  const canConfirm = scaleToFit || !!croppedArea;
 
   return (
     <Modal
@@ -79,14 +134,18 @@ export function BannerCropDialog({
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleConfirm} disabled={saving || !croppedArea}>
-            {saving ? "Saving…" : "Save banner"}
+          <Button
+            variant="primary"
+            onClick={handleConfirm}
+            disabled={saving || !canConfirm}
+          >
+            {saving ? "Saving…" : scaleToFit ? "Save banner" : "Save banner"}
           </Button>
         </div>
       }
     >
       <div className={styles.cropContainer}>
-        {imageSrc && (
+        {imageSrc && !scaleToFit && (
           <Cropper
             image={imageSrc}
             crop={crop}
@@ -101,18 +160,41 @@ export function BannerCropDialog({
             onCropComplete={onCropComplete}
           />
         )}
+        {/* Scale-to-fit preview: show the entire image letterboxed
+            inside the same crop container so the user sees what the
+            uploaded asset will look like. Replaces the interactive
+            Cropper; the original is uploaded at its native aspect. */}
+        {imageSrc && scaleToFit && (
+          <img
+            src={imageSrc}
+            alt="Banner preview"
+            className={styles.fitPreview}
+          />
+        )}
       </div>
       <div className={styles.controls}>
-        <span className={styles.zoomLabel}>Zoom</span>
-        <input
-          type="range"
-          className={styles.zoomSlider}
-          min={0.5}
-          max={3}
-          step={0.05}
-          value={zoom}
-          onChange={(e) => setZoom(Number(e.target.value))}
-        />
+        <label className={styles.scaleToFitLabel}>
+          <input
+            type="checkbox"
+            checked={scaleToFit}
+            onChange={(e) => setScaleToFit(e.target.checked)}
+          />
+          <span>Scale to fit (no crop)</span>
+        </label>
+        {!scaleToFit && (
+          <>
+            <span className={styles.zoomLabel}>Zoom</span>
+            <input
+              type="range"
+              className={styles.zoomSlider}
+              min={0.5}
+              max={3}
+              step={0.05}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+            />
+          </>
+        )}
       </div>
       {error && <div className={styles.error}>{error}</div>}
     </Modal>

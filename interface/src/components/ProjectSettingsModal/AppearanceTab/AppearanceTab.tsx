@@ -147,6 +147,11 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
         bannerUrl={bannerUrl}
         onUpload={uploadBanner}
         onDelete={deleteBanner}
+        // Drop the key when off so the persisted JSON stays minimal
+        // — `patch` removes undefined top-level keys before writing.
+        onSetScaleToFit={(scaleToFit) =>
+          patch({ bannerScaleToFit: scaleToFit ? true : undefined })
+        }
       />
       <BackgroundControl
         value={appearance.background}

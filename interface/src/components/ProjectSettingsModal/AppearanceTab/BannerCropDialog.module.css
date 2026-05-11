@@ -67,3 +67,27 @@
   color: var(--color-danger);
   font-size: var(--font-size-sm);
 }
+
+/* Scale-to-fit preview: full image letterboxed inside the same
+   container the cropper would have occupied. `object-fit: contain`
+   shows the whole image without cropping; transparent gaps reveal
+   the container's subtle background. */
+.fitPreview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Inline label for the scale-to-fit checkbox so the box and its
+   text read as one clickable target. */
+.scaleToFitLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  margin-right: var(--space-3);
+  flex-shrink: 0;
+}
