@@ -14,6 +14,7 @@ use crate::handlers::system;
 use crate::state::AppState;
 
 mod agents;
+mod appearance;
 mod auth;
 mod cors;
 mod debug_loops;
@@ -42,6 +43,7 @@ mod users_orgs_billing;
 pub(super) const ATTACHMENT_REQUEST_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 use agents::agent_routes;
+use appearance::appearance_routes;
 use auth::{auth_routes, protected_auth_routes};
 pub use cors::build_local_api_cors_layer;
 use debug_loops::{debug_routes, loops_routes};
@@ -84,6 +86,7 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
         .merge(generation_routes())
         .merge(harness_proxy_routes())
         .merge(notes_routes())
+        .merge(appearance_routes())
         .merge(marketplace_routes())
         .merge(debug_routes())
         .merge(loops_routes())
