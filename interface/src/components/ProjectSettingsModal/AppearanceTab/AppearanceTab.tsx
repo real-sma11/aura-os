@@ -31,8 +31,16 @@ interface AppearanceTabProps {
  * across the actual app surfaces beats a confirm-modal flow.
  */
 export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
-  const { appearance, update, uploadBanner, deleteBanner, bannerUrl } =
-    useProjectAppearance(projectId);
+  const {
+    appearance,
+    update,
+    uploadBanner,
+    deleteBanner,
+    bannerUrl,
+    backgroundImageUrl,
+    uploadBackgroundImage,
+    deleteBackgroundImage,
+  } = useProjectAppearance(projectId);
 
   // Merge a partial change into the full appearance shape and write
   // through. The server replaces the file wholesale, so we always
@@ -117,6 +125,9 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
       <BackgroundControl
         value={appearance.background}
         onChange={(background) => patch({ background })}
+        backgroundImageUrl={backgroundImageUrl}
+        onUploadImage={uploadBackgroundImage}
+        onDeleteImage={deleteBackgroundImage}
       />
     </div>
   );

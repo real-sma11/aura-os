@@ -31,7 +31,7 @@ export function ProjectAppearanceFrame({
   projectId,
   children,
 }: ProjectAppearanceFrameProps) {
-  const { appearance } = useProjectAppearance(projectId);
+  const { appearance, backgroundImageUrl } = useProjectAppearance(projectId);
 
   const style: CSSProperties = {};
   if (appearance.accent) {
@@ -46,7 +46,21 @@ export function ProjectAppearanceFrame({
       String(appearance.background.opacity);
   }
 
-  const pattern = appearance.background?.pattern ?? "none";
+  const rawPattern = appearance.background?.pattern ?? "none";
+  // Legacy `none` is treated as `solid` for new code paths: when the
+  // user has a color set with no overlay, the unified "solid" branch
+  // paints the color at the chosen opacity. Both values still produce
+  // the same visual when no color is set (i.e. nothing renders).
+  const pattern = rawPattern === "none" ? "solid" : rawPattern;
+
+  // Pipe the cache-busted background image URL into the CSS as a
+  // custom property so the `data-bg-pattern="image"` rule can pick it
+  // up via `url(var(--project-bg-image))`. Wrapped in `url("...")`
+  // here so the CSS doesn't have to know about quoting.
+  if (pattern === "image" && backgroundImageUrl) {
+    (style as Record<string, string>)["--project-bg-image"] =
+      `url("${backgroundImageUrl}")`;
+  }
 
   return (
     <div

@@ -21,21 +21,31 @@ export interface ProjectAppearance {
   background?: {
     /** Hex color for the background tint. */
     color?: string;
-    /** Pattern overlay drawn on top of the color. */
+    /** Background style. `solid` paints just the color; the named
+     *  patterns overlay onto the color; `image` shows the user's
+     *  uploaded image (served from the `/background-image` endpoint).
+     *  Legacy `none` still accepted for compatibility with v1 saves. */
     pattern?:
       | "none"
+      | "solid"
       | "dots"
       | "grid"
       | "diagonal"
       | "noise"
-      | "radial";
-    /** 0..1. Applied to the composited pattern, not the color. */
+      | "radial"
+      | "image";
+    /** 0..1. Applied uniformly across the color + pattern/image
+     *  composite so the slider scales the entire background. */
     opacity?: number;
   };
 }
 
 export interface UploadBannerResponse {
   bannerUrl: string;
+}
+
+export interface UploadBackgroundImageResponse {
+  backgroundImageUrl: string;
 }
 
 /**
@@ -49,6 +59,14 @@ export interface UploadBannerResponse {
  */
 export function projectBannerUrl(projectId: string): string {
   return `/api/projects/${projectId}/appearance/banner`;
+}
+
+/**
+ * Same shape as `projectBannerUrl` but for the project's background
+ * image (`pattern: "image"`).
+ */
+export function projectBackgroundImageUrl(projectId: string): string {
+  return `/api/projects/${projectId}/appearance/background-image`;
 }
 
 export const appearanceApi = {
@@ -105,6 +123,42 @@ export const appearanceApi = {
   deleteBanner: (projectId: string) =>
     apiFetch<{ deleted: boolean }>(
       `/api/projects/${projectId}/appearance/banner`,
+      { method: "DELETE" },
+    ),
+
+  /**
+   * Upload a PNG or JPEG used as the project's `pattern: "image"`
+   * background. Mirrors `uploadBanner` end-to-end.
+   */
+  uploadBackgroundImage: async (
+    projectId: string,
+    blob: Blob,
+  ): Promise<UploadBackgroundImageResponse> => {
+    const res = await fetch(
+      resolveApiUrl(`/api/projects/${projectId}/appearance/background-image`),
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": blob.type || "application/octet-stream",
+          ...authHeaders(),
+        },
+        body: blob,
+      },
+    );
+    if (!res.ok) {
+      const err: ApiError = await res.json().catch(() => ({
+        error: res.statusText,
+        code: "unknown",
+        details: null,
+      }));
+      throw new ApiClientError(res.status, err);
+    }
+    return res.json();
+  },
+
+  deleteBackgroundImage: (projectId: string) =>
+    apiFetch<{ deleted: boolean }>(
+      `/api/projects/${projectId}/appearance/background-image`,
       { method: "DELETE" },
     ),
 };

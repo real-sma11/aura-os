@@ -14,33 +14,34 @@
   isolation: isolate;
 }
 
-/* The background tint layer. Sits behind the children, never paints
-   when `--project-bg-color` is unset. The `currentColor`-style
-   fallback lets us avoid emitting the rule entirely when no color is
-   set: an unset custom property in `background` collapses to no
-   paint. */
+/* The background color layer. Both ::before and ::after share the
+   same `--project-bg-opacity` value so the slider scales the entire
+   background composite — color + pattern/image all fade together.
+   When `--project-bg-color` is unset the layer collapses to no
+   paint (transparent background, no flicker). */
 .frame::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -2;
   background: var(--project-bg-color, transparent);
+  opacity: var(--project-bg-opacity, 1);
   pointer-events: none;
 }
 
-/* The pattern overlay layer. Same z-stack as ::before but always
-   *above* the color so the pattern reads on the tinted backdrop.
-   Each `data-bg-pattern` value below paints a different
-   background-image; opacity is parameterised via
-   `--project-bg-opacity` so the user can dial intensity. */
+/* The pattern / image overlay layer. Sits above the color so the
+   pattern reads on the tinted backdrop. Each `data-bg-pattern` value
+   below paints a different background-image. */
 .frame::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  opacity: var(--project-bg-opacity, 0.4);
+  opacity: var(--project-bg-opacity, 1);
   pointer-events: none;
   background-image: none;
+  background-size: cover;
+  background-position: center;
 }
 
 /* Pattern fallback color: a translucent mid-gray that reads on both
@@ -99,8 +100,23 @@
   background-size: 120px 120px;
 }
 
-/* `none` and any unknown pattern value: no overlay. The ::after rule
-   above with `background-image: none` already handles this. */
-.frame[data-bg-pattern="none"]::after {
+/* `none` and `solid` paint just the color layer (::before); the
+   overlay stays empty. Both are accepted: `solid` is the new
+   user-facing label, `none` is preserved for v1 saves that haven't
+   been re-saved yet. */
+.frame[data-bg-pattern="none"]::after,
+.frame[data-bg-pattern="solid"]::after {
   background-image: none;
+}
+
+/* Image pattern: paints the user's uploaded image (served from
+   `/appearance/background-image`). The URL is piped in via
+   `--project-bg-image` from the frame component; an unset variable
+   collapses the rule to no paint, so picking `image` before uploading
+   yields nothing (no broken-image icon, no stretched fallback). */
+.frame[data-bg-pattern="image"]::after {
+  background-image: var(--project-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
