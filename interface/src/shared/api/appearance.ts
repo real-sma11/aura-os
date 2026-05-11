@@ -18,6 +18,14 @@ export interface ProjectAppearance {
    *  row and modal preview. Distinct from `accent` so users can tint
    *  the glyph in one color and the text in another. */
   nameColor?: string;
+  /** Hex color for the sidebar project-header row's background fill.
+   *  Applied to the row container so it reads as a chip/pill around
+   *  the icon + name. */
+  headerBackground?: string;
+  /** Hex color for the sidebar project-header row's outline. Applied
+   *  as a 1px border around the row container, independent of
+   *  `headerBackground` so users can outline-only or fill-only. */
+  headerOutline?: string;
   background?: {
     /** Hex color for the background tint. */
     color?: string;
