@@ -26,6 +26,9 @@ interface AppearanceEntry {
   /** Bumped on successful banner upload/delete so `<img>` URLs can
    * cache-bust by appending `?v=${bannerVersion}` */
   bannerVersion: number;
+  /** Same idea as `bannerVersion` but for the background image
+   *  served at `/appearance/background-image`. */
+  backgroundImageVersion: number;
 }
 
 interface ProjectAppearanceState {
@@ -52,6 +55,12 @@ interface ProjectAppearanceState {
   /** Delete the banner and bump the version so currently-mounted
    *  `<img>` elements re-fetch and render the fallback. */
   deleteBanner: (projectId: string) => Promise<void>;
+
+  /** Upload a PNG/JPEG background image blob and bump the version. */
+  uploadBackgroundImage: (projectId: string, blob: Blob) => Promise<void>;
+
+  /** Delete the background image and bump the version. */
+  deleteBackgroundImage: (projectId: string) => Promise<void>;
 }
 
 const EMPTY_ENTRY: AppearanceEntry = {
@@ -59,6 +68,7 @@ const EMPTY_ENTRY: AppearanceEntry = {
   loaded: false,
   loading: false,
   bannerVersion: 0,
+  backgroundImageVersion: 0,
 };
 
 export const useProjectAppearanceStore = create<ProjectAppearanceState>((set, get) => ({
@@ -184,6 +194,32 @@ export const useProjectAppearanceStore = create<ProjectAppearanceState>((set, ge
       entries.set(projectId, {
         ...prev,
         bannerVersion: prev.bannerVersion + 1,
+      });
+      return { entries };
+    });
+  },
+
+  uploadBackgroundImage: async (projectId, blob) => {
+    await appearanceApi.uploadBackgroundImage(projectId, blob);
+    set((s) => {
+      const entries = new Map(s.entries);
+      const prev = entries.get(projectId) ?? EMPTY_ENTRY;
+      entries.set(projectId, {
+        ...prev,
+        backgroundImageVersion: prev.backgroundImageVersion + 1,
+      });
+      return { entries };
+    });
+  },
+
+  deleteBackgroundImage: async (projectId) => {
+    await appearanceApi.deleteBackgroundImage(projectId);
+    set((s) => {
+      const entries = new Map(s.entries);
+      const prev = entries.get(projectId) ?? EMPTY_ENTRY;
+      entries.set(projectId, {
+        ...prev,
+        backgroundImageVersion: prev.backgroundImageVersion + 1,
       });
       return { entries };
     });

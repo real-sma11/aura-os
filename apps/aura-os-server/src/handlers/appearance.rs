@@ -41,10 +41,11 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::projects_helpers::canonical_workspace_path;
 use crate::state::{AppState, AuthJwt};
 
-/// Cap a banner upload at 5 MiB. Large enough for a hero-resolution
-/// PNG/JPEG without blowing up request memory; small enough that a
-/// pathological client can't keep posting unbounded payloads.
-pub(crate) const BANNER_MAX_BYTES: usize = 5 * 1024 * 1024;
+/// Cap an uploaded image asset (banner, background image) at 5 MiB.
+/// Large enough for a hero-resolution PNG/JPEG without blowing up
+/// request memory; small enough that a pathological client can't keep
+/// posting unbounded payloads.
+pub(crate) const IMAGE_ASSET_MAX_BYTES: usize = 5 * 1024 * 1024;
 
 const PNG_MAGIC: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 const JPEG_MAGIC: &[u8] = &[0xFF, 0xD8, 0xFF];
@@ -52,6 +53,30 @@ const JPEG_MAGIC: &[u8] = &[0xFF, 0xD8, 0xFF];
 const APPEARANCE_FILENAME: &str = "appearance.json";
 const BANNER_PNG: &str = "banner.png";
 const BANNER_JPG: &str = "banner.jpg";
+const BACKGROUND_PNG: &str = "background.png";
+const BACKGROUND_JPG: &str = "background.jpg";
+
+/// One pair of `(png_name, jpg_name)` filenames the image-asset
+/// handlers probe / write under in the `.aura/` directory. Lets the
+/// banner and background-image flows share PUT/GET/DELETE bodies
+/// without copy-pasting magic-byte handling, atomic-rename, etc.
+struct ImageAssetSpec {
+    label: &'static str,
+    png: &'static str,
+    jpg: &'static str,
+}
+
+const BANNER_ASSET: ImageAssetSpec = ImageAssetSpec {
+    label: "banner",
+    png: BANNER_PNG,
+    jpg: BANNER_JPG,
+};
+
+const BACKGROUND_ASSET: ImageAssetSpec = ImageAssetSpec {
+    label: "background image",
+    png: BACKGROUND_PNG,
+    jpg: BACKGROUND_JPG,
+};
 
 /// Resolve the `.aura/` directory for a project. Prefers the project's
 /// `local_workspace_path` when set so the file can be committed to the
@@ -145,44 +170,50 @@ pub(crate) async fn put_appearance(
     Ok(Json(body))
 }
 
-/// Identify the upload's image format by magic bytes and return the
-/// canonical filename to write it under. PNG and JPEG only — covers
-/// the formats every browser file picker can produce out of the box.
-fn detect_banner_format(body: &[u8]) -> Option<&'static str> {
+/// Identify an image upload's format by magic bytes and return the
+/// canonical filename it should be written under for the given asset
+/// spec. PNG and JPEG only — covers the formats every browser file
+/// picker can produce out of the box.
+fn detect_image_format(body: &[u8], spec: &ImageAssetSpec) -> Option<&'static str> {
     if body.len() >= PNG_MAGIC.len() && &body[..PNG_MAGIC.len()] == PNG_MAGIC {
-        Some(BANNER_PNG)
+        Some(spec.png)
     } else if body.len() >= JPEG_MAGIC.len() && &body[..JPEG_MAGIC.len()] == JPEG_MAGIC {
-        Some(BANNER_JPG)
+        Some(spec.jpg)
     } else {
         None
     }
 }
 
-/// `PUT /api/projects/:project_id/appearance/banner` — writes the
-/// uploaded image to `<workspace>/.aura/banner.{png,jpg}`. Magic
-/// bytes are validated up front so the endpoint can't be coerced into
-/// dropping arbitrary blobs onto disk. Removes any stale banner with
-/// the *other* extension so swapping PNG→JPEG (or vice-versa) doesn't
-/// leave orphans.
-pub(crate) async fn put_banner(
-    State(state): State<AppState>,
-    AuthJwt(_jwt): AuthJwt,
-    AxumPath(project_id): AxumPath<String>,
-    body: Bytes,
+/// Shared body for image-asset uploads (banner, background image).
+/// Validates size + magic bytes, writes atomically via tmp+rename,
+/// removes any stale other-extension file so format swaps don't
+/// leave orphans. Returns the asset-specific URL keyed by the
+/// `url_key` parameter so the caller's JSON shape stays predictable.
+async fn put_image_asset(
+    state: &AppState,
+    project_id_raw: &str,
+    spec: &ImageAssetSpec,
+    body: &Bytes,
+    url_key: &str,
+    url_path: impl Fn(&ProjectId) -> String,
 ) -> ApiResult<Json<Value>> {
-    if body.len() > BANNER_MAX_BYTES {
+    if body.len() > IMAGE_ASSET_MAX_BYTES {
         return Err(ApiError::bad_request(format!(
-            "banner payload {} bytes exceeds the {} byte limit",
+            "{} payload {} bytes exceeds the {} byte limit",
+            spec.label,
             body.len(),
-            BANNER_MAX_BYTES
+            IMAGE_ASSET_MAX_BYTES
         )));
     }
-    let filename = detect_banner_format(&body).ok_or_else(|| {
-        ApiError::bad_request("banner body must be a PNG or JPEG image".to_string())
+    let filename = detect_image_format(body, spec).ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "{} body must be a PNG or JPEG image",
+            spec.label
+        ))
     })?;
 
-    let project_id = parse_project_id(&project_id)?;
-    let dir = appearance_dir(&state, &project_id);
+    let project_id = parse_project_id(project_id_raw)?;
+    let dir = appearance_dir(state, &project_id);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| {
         ApiError::internal(format!(
             "failed to create appearance directory {}: {e}",
@@ -192,44 +223,44 @@ pub(crate) async fn put_banner(
 
     let target = dir.join(filename);
     let tmp = dir.join(format!("{filename}.tmp"));
-    tokio::fs::write(&tmp, &body).await.map_err(|e| {
+    tokio::fs::write(&tmp, body).await.map_err(|e| {
         ApiError::internal(format!(
-            "failed to write banner tmp file {}: {e}",
+            "failed to write {} tmp file {}: {e}",
+            spec.label,
             tmp.display()
         ))
     })?;
     tokio::fs::rename(&tmp, &target).await.map_err(|e| {
         ApiError::internal(format!(
-            "failed to commit banner file {}: {e}",
+            "failed to commit {} file {}: {e}",
+            spec.label,
             target.display()
         ))
     })?;
 
     // Best-effort: clean up the other-extension file so swapping formats
-    // doesn't leave a stale banner that would still be served by the
-    // GET handler (which probes PNG first).
-    let other = if filename == BANNER_PNG { BANNER_JPG } else { BANNER_PNG };
+    // doesn't leave a stale file that the GET handler (which probes PNG
+    // first) would keep serving.
+    let other = if filename == spec.png { spec.jpg } else { spec.png };
     let _ = tokio::fs::remove_file(dir.join(other)).await;
 
-    Ok(Json(json!({
-        "bannerUrl": format!("/api/projects/{project_id}/appearance/banner"),
-    })))
+    Ok(Json(json!({ url_key: url_path(&project_id) })))
 }
 
-/// `GET /api/projects/:project_id/appearance/banner` — serves the
-/// stored banner. Probes PNG first, then JPEG. Returns 404 when
-/// neither exists so the frontend can fall back to a default header.
-pub(crate) async fn get_banner(
-    State(state): State<AppState>,
-    AuthJwt(_jwt): AuthJwt,
-    AxumPath(project_id): AxumPath<String>,
+/// Shared body for image-asset GETs. Probes PNG then JPEG; 404 when
+/// neither exists. Frontend treats 404 as "no asset yet" rather than
+/// surfacing an error.
+async fn get_image_asset(
+    state: &AppState,
+    project_id_raw: &str,
+    spec: &ImageAssetSpec,
 ) -> Response {
-    let project_id = match parse_project_id(&project_id) {
+    let project_id = match parse_project_id(project_id_raw) {
         Ok(id) => id,
         Err((status, body)) => return (status, body).into_response(),
     };
-    let dir = appearance_dir(&state, &project_id);
-    for (filename, mime) in [(BANNER_PNG, "image/png"), (BANNER_JPG, "image/jpeg")] {
+    let dir = appearance_dir(state, &project_id);
+    for (filename, mime) in [(spec.png, "image/png"), (spec.jpg, "image/jpeg")] {
         let path = dir.join(filename);
         match tokio::fs::read(&path).await {
             Ok(bytes) => {
@@ -238,7 +269,7 @@ pub(crate) async fn get_banner(
                         (header::CONTENT_TYPE, mime),
                         // Frontend cache-busts on update so a modest
                         // cache here is safe and avoids re-downloading
-                        // the banner on every project navigation.
+                        // the asset on every project navigation.
                         (header::CACHE_CONTROL, "private, max-age=300"),
                     ],
                     bytes,
@@ -247,12 +278,96 @@ pub(crate) async fn get_banner(
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
             Err(err) => {
-                warn!(path = %path.display(), %err, "failed to read banner file");
+                warn!(path = %path.display(), %err, "failed to read {} file", spec.label);
                 return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
             }
         }
     }
-    (StatusCode::NOT_FOUND, "banner not found").into_response()
+    (StatusCode::NOT_FOUND, format!("{} not found", spec.label)).into_response()
+}
+
+/// Shared body for image-asset DELETEs. Removes both possible files
+/// (png + jpg) so format swaps and follow-up deletes stay consistent.
+/// Missing files are not an error.
+async fn delete_image_asset(
+    state: &AppState,
+    project_id_raw: &str,
+    spec: &ImageAssetSpec,
+) -> ApiResult<Json<Value>> {
+    let project_id = parse_project_id(project_id_raw)?;
+    let dir = appearance_dir(state, &project_id);
+    remove_if_present(&dir.join(spec.png)).await;
+    remove_if_present(&dir.join(spec.jpg)).await;
+    Ok(Json(json!({ "deleted": true })))
+}
+
+/// `PUT /api/projects/:project_id/appearance/banner` — writes the
+/// uploaded image to `<workspace>/.aura/banner.{png,jpg}`.
+pub(crate) async fn put_banner(
+    State(state): State<AppState>,
+    AuthJwt(_jwt): AuthJwt,
+    AxumPath(project_id): AxumPath<String>,
+    body: Bytes,
+) -> ApiResult<Json<Value>> {
+    put_image_asset(
+        &state,
+        &project_id,
+        &BANNER_ASSET,
+        &body,
+        "bannerUrl",
+        |id| format!("/api/projects/{id}/appearance/banner"),
+    )
+    .await
+}
+
+/// `GET /api/projects/:project_id/appearance/banner` — serves the
+/// stored banner.
+pub(crate) async fn get_banner(
+    State(state): State<AppState>,
+    AuthJwt(_jwt): AuthJwt,
+    AxumPath(project_id): AxumPath<String>,
+) -> Response {
+    get_image_asset(&state, &project_id, &BANNER_ASSET).await
+}
+
+/// `PUT /api/projects/:project_id/appearance/background-image` — writes
+/// the uploaded image to `<workspace>/.aura/background.{png,jpg}`. Used
+/// by the Appearance tab's `Image` background pattern.
+pub(crate) async fn put_background_image(
+    State(state): State<AppState>,
+    AuthJwt(_jwt): AuthJwt,
+    AxumPath(project_id): AxumPath<String>,
+    body: Bytes,
+) -> ApiResult<Json<Value>> {
+    put_image_asset(
+        &state,
+        &project_id,
+        &BACKGROUND_ASSET,
+        &body,
+        "backgroundImageUrl",
+        |id| format!("/api/projects/{id}/appearance/background-image"),
+    )
+    .await
+}
+
+/// `GET /api/projects/:project_id/appearance/background-image` — serves
+/// the stored background image.
+pub(crate) async fn get_background_image(
+    State(state): State<AppState>,
+    AuthJwt(_jwt): AuthJwt,
+    AxumPath(project_id): AxumPath<String>,
+) -> Response {
+    get_image_asset(&state, &project_id, &BACKGROUND_ASSET).await
+}
+
+/// `DELETE /api/projects/:project_id/appearance/background-image` —
+/// removes the stored background image (both PNG and JPEG variants).
+pub(crate) async fn delete_background_image(
+    State(state): State<AppState>,
+    AuthJwt(_jwt): AuthJwt,
+    AxumPath(project_id): AxumPath<String>,
+) -> ApiResult<Json<Value>> {
+    delete_image_asset(&state, &project_id, &BACKGROUND_ASSET).await
 }
 
 /// `DELETE /api/projects/:project_id/appearance/banner` — removes
@@ -263,11 +378,7 @@ pub(crate) async fn delete_banner(
     AuthJwt(_jwt): AuthJwt,
     AxumPath(project_id): AxumPath<String>,
 ) -> ApiResult<Json<Value>> {
-    let project_id = parse_project_id(&project_id)?;
-    let dir = appearance_dir(&state, &project_id);
-    remove_if_present(&dir.join(BANNER_PNG)).await;
-    remove_if_present(&dir.join(BANNER_JPG)).await;
-    Ok(Json(json!({ "deleted": true })))
+    delete_image_asset(&state, &project_id, &BANNER_ASSET).await
 }
 
 async fn remove_if_present(path: &Path) {
@@ -278,26 +389,41 @@ async fn remove_if_present(path: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_banner_format, BANNER_JPG, BANNER_PNG, JPEG_MAGIC, PNG_MAGIC};
+    use super::{
+        detect_image_format, BACKGROUND_ASSET, BANNER_ASSET, BANNER_JPG, BANNER_PNG, JPEG_MAGIC,
+        PNG_MAGIC,
+    };
 
     #[test]
-    fn detect_banner_format_recognises_png() {
+    fn detect_image_format_recognises_png() {
         let mut body = Vec::from(PNG_MAGIC);
         body.extend_from_slice(b"trailing pixels");
-        assert_eq!(detect_banner_format(&body), Some(BANNER_PNG));
+        assert_eq!(detect_image_format(&body, &BANNER_ASSET), Some(BANNER_PNG));
     }
 
     #[test]
-    fn detect_banner_format_recognises_jpeg() {
+    fn detect_image_format_recognises_jpeg() {
         let mut body = Vec::from(JPEG_MAGIC);
         body.extend_from_slice(b"trailing pixels");
-        assert_eq!(detect_banner_format(&body), Some(BANNER_JPG));
+        assert_eq!(detect_image_format(&body, &BANNER_ASSET), Some(BANNER_JPG));
     }
 
     #[test]
-    fn detect_banner_format_rejects_unknown_magic() {
-        assert_eq!(detect_banner_format(b"GIF89a"), None);
-        assert_eq!(detect_banner_format(b""), None);
-        assert_eq!(detect_banner_format(b"\x89"), None);
+    fn detect_image_format_rejects_unknown_magic() {
+        assert_eq!(detect_image_format(b"GIF89a", &BANNER_ASSET), None);
+        assert_eq!(detect_image_format(b"", &BANNER_ASSET), None);
+        assert_eq!(detect_image_format(b"\x89", &BANNER_ASSET), None);
+    }
+
+    #[test]
+    fn detect_image_format_routes_to_the_named_asset() {
+        let mut body = Vec::from(PNG_MAGIC);
+        body.extend_from_slice(b"pixels");
+        // Same body, different spec → different target filename.
+        assert_eq!(detect_image_format(&body, &BANNER_ASSET), Some(BANNER_PNG));
+        assert_eq!(
+            detect_image_format(&body, &BACKGROUND_ASSET),
+            Some(BACKGROUND_ASSET.png),
+        );
     }
 }

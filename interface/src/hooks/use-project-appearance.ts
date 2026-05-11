@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useProjectAppearanceStore } from "../stores/project-appearance-store";
-import { projectBannerUrl } from "../shared/api/appearance";
+import {
+  projectBackgroundImageUrl,
+  projectBannerUrl,
+} from "../shared/api/appearance";
 import { getStoredJwt } from "../shared/lib/auth-token";
 import type { ProjectAppearance } from "../shared/api/appearance";
 
@@ -40,9 +43,15 @@ export interface UseProjectAppearanceResult {
    *  always points at the same endpoint regardless of whether a
    *  banner is set — the consumer should treat a 404 as "no banner". */
   bannerUrl: string;
+  /** Same as `bannerUrl` but for the project's `pattern: "image"`
+   *  background. Cache-busted on upload/delete via a separate version
+   *  counter so the two assets don't invalidate each other. */
+  backgroundImageUrl: string;
   update: (next: ProjectAppearance) => Promise<void>;
   uploadBanner: (blob: Blob) => Promise<void>;
   deleteBanner: () => Promise<void>;
+  uploadBackgroundImage: (blob: Blob) => Promise<void>;
+  deleteBackgroundImage: () => Promise<void>;
 }
 
 export function useProjectAppearance(
@@ -71,9 +80,16 @@ export function useProjectAppearance(
   const updateStore = useProjectAppearanceStore((s) => s.update);
   const uploadBannerStore = useProjectAppearanceStore((s) => s.uploadBanner);
   const deleteBannerStore = useProjectAppearanceStore((s) => s.deleteBanner);
+  const uploadBgImageStore = useProjectAppearanceStore(
+    (s) => s.uploadBackgroundImage,
+  );
+  const deleteBgImageStore = useProjectAppearanceStore(
+    (s) => s.deleteBackgroundImage,
+  );
 
   const appearance = entry?.appearance ?? {};
   const bannerVersion = entry?.bannerVersion ?? 0;
+  const backgroundImageVersion = entry?.backgroundImageVersion ?? 0;
 
   return {
     appearance,
@@ -81,6 +97,11 @@ export function useProjectAppearance(
     loading: entry?.loading ?? false,
     bannerUrl: projectId
       ? withToken(`${projectBannerUrl(projectId)}?v=${bannerVersion}`)
+      : "",
+    backgroundImageUrl: projectId
+      ? withToken(
+          `${projectBackgroundImageUrl(projectId)}?v=${backgroundImageVersion}`,
+        )
       : "",
     update: async (next) => {
       if (!projectId) return;
@@ -93,6 +114,14 @@ export function useProjectAppearance(
     deleteBanner: async () => {
       if (!projectId) return;
       await deleteBannerStore(projectId);
+    },
+    uploadBackgroundImage: async (blob) => {
+      if (!projectId) return;
+      await uploadBgImageStore(projectId, blob);
+    },
+    deleteBackgroundImage: async () => {
+      if (!projectId) return;
+      await deleteBgImageStore(projectId);
     },
   };
 }

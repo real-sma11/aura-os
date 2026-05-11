@@ -239,3 +239,34 @@
   display: flex;
   gap: var(--space-2);
 }
+
+/* Background-image upload block: stacks preview + actions, shown
+   only when the user picks `Image` from the Style dropdown. Wider
+   aspect than the banner preview (closer to a project workspace
+   shape) so the user has a reasonable sense of how the image will
+   tile/cover behind their content. */
+.bgImageBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: 72px;
+}
+
+.bgImagePreview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bgImagePreviewImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
