@@ -533,7 +533,7 @@ mod tests {
             revenue_usd: 0.0,
             reputation: 0.0,
             local_workspace_path: None,
-            permissions: aura_os_core::AgentPermissions::full_access(),
+            permissions: aura_os_core::AgentPermissions::empty(),
             intent_classifier: None,
             created_at: created,
             updated_at: created,

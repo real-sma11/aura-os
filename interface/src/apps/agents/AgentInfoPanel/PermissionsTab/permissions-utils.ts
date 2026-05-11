@@ -1,5 +1,5 @@
 import {
-  fullAccessAgentPermissions,
+  emptyAgentPermissions,
   type AgentPermissions,
   type AgentScope,
   type Capability,
@@ -55,8 +55,8 @@ export function permissionsEqual(
   a: AgentPermissions | undefined,
   b: AgentPermissions | undefined,
 ): boolean {
-  const aa = a ?? fullAccessAgentPermissions();
-  const bb = b ?? fullAccessAgentPermissions();
+  const aa = a ?? emptyAgentPermissions();
+  const bb = b ?? emptyAgentPermissions();
   const sa = sortedScope(aa.scope);
   const sb = sortedScope(bb.scope);
   if (

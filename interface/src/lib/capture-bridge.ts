@@ -19,7 +19,7 @@ import type { DebugRunMetadata } from "../shared/api/debug";
 import type { NotesTreeNode } from "../shared/api/notes";
 import type { FeedbackComment, FeedbackItem } from "../apps/feedback/types";
 import type { DisplaySessionEvent } from "../shared/types/stream";
-import { fullAccessAgentPermissions } from "../shared/types/permissions-wire";
+import { emptyAgentPermissions } from "../shared/types/permissions-wire";
 import { sanitizeRestorePath } from "../utils/last-app-path";
 import type { ProjectStatsData } from "../shared/api/projects";
 import { writeCaptureDemoProjectStats } from "./capture-demo-stats";
@@ -338,7 +338,7 @@ function demoAgent(
     profile_id: "capture-demo-profile",
     tags: ["demo"],
     is_pinned: overrides.is_pinned ?? true,
-    permissions: fullAccessAgentPermissions(),
+    permissions: emptyAgentPermissions(),
     created_at: now,
     updated_at: now,
   };
@@ -454,7 +454,7 @@ function demoProjectAgent(modelId = AURA_MANAGED_CHAT_MODELS[0]?.id ?? "default"
     total_input_tokens: 18400,
     total_output_tokens: 4200,
     model: modelId,
-    permissions: fullAccessAgentPermissions(),
+    permissions: emptyAgentPermissions(),
     created_at: now,
     updated_at: now,
   };

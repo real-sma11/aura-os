@@ -167,15 +167,18 @@ impl AgentPermissions {
             .all(|c| self.capabilities.contains(c))
     }
 
-    /// Read-time safety net for records whose `permissions` bundle was
+    /// Read-time safety net for CEO records whose `permissions` bundle was
     /// persisted empty (older `aura-network` deployments didn't store the
     /// column, so legacy records round-trip as `AgentPermissions::empty()`).
     ///
-    /// Empty/default bundles are treated as the product default,
-    /// [`Self::full_access`]. If `(name, role)` identifies the CEO role and
-    /// `self` is not already canonical, this also returns the full-access
-    /// preset so downstream callers (tool manifest builders, sidekick toggles,
-    /// etc.) see the expected capability set.
+    /// If `(name, role)` identifies the CEO role *and* `self` is not
+    /// already the canonical [`Self::ceo_preset`], this returns the
+    /// preset so downstream callers (tool manifest builders, sidekick
+    /// toggles, etc.) see an agent with the capabilities users expect
+    /// from the CEO icon. For every other case it returns `self`
+    /// unchanged — non-CEO agents with empty permissions stay empty,
+    /// matching the product rule that only the CEO defaults to the
+    /// full-access preset.
     ///
     /// The check is intentionally narrow — only `name == "CEO"` *and*
     /// `role == "CEO"` (case-insensitive) — so a non-CEO agent can't
@@ -189,8 +192,6 @@ impl AgentPermissions {
             name.eq_ignore_ascii_case("CEO") && role.is_some_and(|r| r.eq_ignore_ascii_case("CEO"));
         if looks_like_ceo && !self.is_ceo_preset() {
             Self::ceo_preset()
-        } else if self.is_empty() {
-            Self::full_access()
         } else {
             self
         }

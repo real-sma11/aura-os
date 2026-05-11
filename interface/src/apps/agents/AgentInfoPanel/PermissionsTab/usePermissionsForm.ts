@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  fullAccessAgentPermissions,
+  emptyAgentPermissions,
   type AgentPermissions,
   type Capability,
 } from "../../../../shared/types/permissions-wire";
@@ -43,7 +43,7 @@ export function usePermissionsForm(
   isOwnAgent: boolean,
 ): PermissionsFormHandle {
   const initial = useMemo<AgentPermissions>(
-    () => agent.permissions ?? fullAccessAgentPermissions(),
+    () => agent.permissions ?? emptyAgentPermissions(),
     // `agent.permissions` is only read on first render / agent switch;
     // subsequent edits flow through the local `draft` and are persisted
     // via the autosave effect. We intentionally do NOT resync `draft`
@@ -66,7 +66,7 @@ export function usePermissionsForm(
   }, [draft]);
 
   useEffect(() => {
-    const next = agent.permissions ?? fullAccessAgentPermissions();
+    const next = agent.permissions ?? emptyAgentPermissions();
     setDraft(next);
     lastSavedRef.current = next;
     draftRef.current = next;

@@ -30,9 +30,13 @@ fn normalized_for_identity_upgrades_empty_ceo_to_preset() {
 }
 
 #[test]
-fn normalized_for_identity_upgrades_empty_default_to_full_access() {
-    let upgraded = AgentPermissions::empty().normalized_for_identity("Atlas", Some("Engineer"));
-    assert_eq!(upgraded, AgentPermissions::full_access());
+fn normalized_for_identity_leaves_non_ceo_empty_bundle_alone() {
+    // Only the CEO defaults to the full-access preset; a regular agent
+    // with empty permissions stays empty so users opt into capabilities
+    // explicitly via the Permissions tab.
+    let empty = AgentPermissions::empty();
+    let same = empty.clone().normalized_for_identity("Atlas", Some("Engineer"));
+    assert_eq!(same, empty);
 }
 
 #[test]

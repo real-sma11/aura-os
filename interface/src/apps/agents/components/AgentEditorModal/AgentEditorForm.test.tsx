@@ -251,7 +251,7 @@ describe("useAgentEditorForm save payload", () => {
     expect(tags.some((t) => t.startsWith("migration:"))).toBe(false);
   });
 
-  it("does not send any system tags on create and ships full-access permissions", async () => {
+  it("does not send any system tags on create and ships empty permissions", async () => {
     const { result } = renderHook(() =>
       useAgentEditorForm(true, undefined, vi.fn(), vi.fn()),
     );
@@ -274,9 +274,10 @@ describe("useAgentEditorForm save payload", () => {
     expect(tags.some((t) => t.startsWith("host_mode:"))).toBe(false);
     expect(tags.some((t) => t.startsWith("preset:"))).toBe(false);
     expect(tags.some((t) => t.startsWith("migration:"))).toBe(false);
+    // Only the CEO bootstrap ships with capabilities turned on by default;
+    // regular create flows submit an empty bundle that the Permissions tab
+    // can deliberately widen later.
     expect(payload.permissions).toBeDefined();
-    expect(payload.permissions.capabilities).toEqual(
-      expect.arrayContaining([{ type: "invokeProcess" }]),
-    );
+    expect(payload.permissions.capabilities).toEqual([]);
   });
 });

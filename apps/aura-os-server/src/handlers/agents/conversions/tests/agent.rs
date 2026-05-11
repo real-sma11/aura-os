@@ -70,9 +70,11 @@ fn agent_from_network_ceo_preset_matches_case_insensitively() {
 }
 
 #[test]
-fn agent_from_network_upgrades_empty_default_permissions() {
-    // Missing/default permissions mean full access for every agent. Name/role
-    // only matters for the historical CEO repair path.
+fn agent_from_network_leaves_non_ceo_empty_permissions_alone() {
+    // Only the CEO is upgraded by the read-time safety net; agents whose
+    // `(name, role)` doesn't match the strict CEO identity keep their empty
+    // bundle so the Permissions tab stays the single source of truth for what
+    // they're allowed to do.
     let cases = vec![
         blank_network_agent("CEO", Some("Coach")),
         blank_network_agent("Eve", Some("CEO")),
@@ -80,10 +82,17 @@ fn agent_from_network_upgrades_empty_default_permissions() {
     ];
     for net in cases {
         let agent = agent_from_network(&net);
-        assert_eq!(agent.permissions, AgentPermissions::full_access());
+        assert!(
+            !agent.permissions.is_ceo_preset(),
+            "non-CEO records must not be promoted to the preset"
+        );
+        assert!(
+            agent.permissions.capabilities.is_empty(),
+            "non-CEO records keep their persisted (empty) capability set"
+        );
         assert!(
             agent.intent_classifier.is_none(),
-            "default permission repair does not synthesize the old classifier"
+            "no classifier should be synthesized for non-CEO agents"
         );
     }
 }

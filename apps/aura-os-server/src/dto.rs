@@ -154,9 +154,10 @@ pub(crate) struct CreateAgentRequest {
     /// for local machines; takes precedence over the project's folder.
     #[serde(default)]
     pub local_workspace_path: Option<String>,
-    /// Required capability + scope bundle for the new agent. Agents default to
-    /// [`aura_os_core::AgentPermissions::full_access`] unless the caller
-    /// deliberately sends a narrower bundle.
+    /// Required capability + scope bundle for the new agent. Regular agents
+    /// pass [`aura_os_core::AgentPermissions::empty`] and opt into capabilities
+    /// via the Permissions tab; the CEO bootstrap is the only path that ships
+    /// [`aura_os_core::AgentPermissions::ceo_preset`] by default.
     pub permissions: aura_os_core::AgentPermissions,
     /// Optional intent classifier spec (CEO-style agents only).
     #[serde(default)]

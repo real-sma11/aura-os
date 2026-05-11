@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use tracing::warn;
 
 use aura_os_core::expertise;
 use aura_os_core::listing_status::AgentListingStatus;
@@ -108,18 +107,16 @@ fn derive_expertise(net: &NetworkAgent, tags: &[String]) -> Vec<String> {
     }
 }
 
-/// Safety-net repair for agent records whose stored permissions bundle is
-/// missing/default.
+/// CEO-only safety-net repair for agent records whose stored permissions
+/// bundle is missing/default.
 ///
 /// Older aura-network deployments didn't persist the `permissions` column
 /// for agents, so `NetworkAgent.permissions` deserializes to the default
-/// (empty) [`AgentPermissions`] via `#[serde(default)]`. Product semantics are
-/// full access by default, so an empty/default bundle must be normalized before
-/// the harness session is opened.
-///
-/// The historical CEO repair still routes through the same helper, but
-/// ordinary agents with missing permissions now receive the same full-access
-/// default.
+/// (empty) [`AgentPermissions`] via `#[serde(default)]`. The product rule is
+/// that only the CEO agent defaults to the full-access preset, so this
+/// helper repairs CEO/CEO records and leaves every other agent's empty
+/// bundle untouched. Non-CEO agents opt into capabilities explicitly via
+/// the Permissions tab.
 ///
 /// Permission normalisation is delegated to
 /// [`AgentPermissions::normalized_for_identity`] so this handler and the
@@ -128,7 +125,6 @@ fn derive_expertise(net: &NetworkAgent, tags: &[String]) -> Vec<String> {
 /// helper. The classifier fix-up stays here because it pulls the
 /// canonical spec from the former in-process agent runtime, which sat above
 /// `aura-os-agents` in the crate graph.
-///
 fn effective_permissions_and_classifier(
     net: &NetworkAgent,
 ) -> (AgentPermissions, Option<IntentClassifierSpec>) {
@@ -136,18 +132,6 @@ fn effective_permissions_and_classifier(
         .permissions
         .clone()
         .normalized_for_identity(&net.name, net.role.as_deref());
-    let permissions_were_repaired = permissions != net.permissions;
-    if permissions_were_repaired {
-        warn!(
-            agent_id = %net.id,
-            "agent has default permissions in network record; applying full-access default"
-        );
-        // Native cross-agent tool visibility is derived by the harness from
-        // `SessionConfig.agent_permissions`, so preserve whatever classifier
-        // the network record carries and avoid retroactively clobbering legacy
-        // stored classifiers.
-        return (permissions, net.intent_classifier.clone());
-    }
     (permissions, net.intent_classifier.clone())
 }
 
