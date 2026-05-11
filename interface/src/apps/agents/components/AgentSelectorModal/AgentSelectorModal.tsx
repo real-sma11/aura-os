@@ -84,9 +84,7 @@ export function AgentSelectorModal({
         <Drawer
           side="bottom"
           isOpen={isOpen}
-          onClose={() => {
-            if (!isBusy) handleClose();
-          }}
+          onClose={handleClose}
           title="Add agent"
           className={styles.mobileSheet}
           showMinimizedBar={false}
@@ -98,9 +96,7 @@ export function AgentSelectorModal({
       ) : (
         <Modal
           isOpen={isOpen}
-          onClose={() => {
-            if (!isBusy) handleClose();
-          }}
+          onClose={handleClose}
           title="Select an agent"
           size="sm"
           initialFocusRef={searchInputRef as React.RefObject<HTMLElement>}

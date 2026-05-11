@@ -446,6 +446,15 @@ export function useProjectsExplorerModel(
     useProjectExplorerData(data, explorerStyles, statusMap, machineTypesMap);
   const { defaultExpandedIds, expandedIds, setExpandedState } =
     useProjectExpandedIds(computedExpandedIds, loadingProjects);
+
+  // Auto-expand the project containing the active agent so the sidebar
+  // reflects the current context when switching from the Agents app.
+  useEffect(() => {
+    if (data.projectId) {
+      setExpandedState(data.projectId, true, false);
+    }
+  }, [data.projectId, setExpandedState]);
+
   const { defaultSelectedIds, selectedNodeId } = useSelectedProjectNode(data);
   const handleProjectSelection = useProjectSelectionHandler(data);
   const handleChildSelection = useProjectChildSelectionHandler(data);

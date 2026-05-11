@@ -127,6 +127,12 @@ function normalizeStreamError(error: unknown): {
     };
   }
 
+  if (rawMessage.includes("agent not found") || rawMessage.includes("agent instance not found")) {
+    return {
+      message: "Agent not found. Make sure the agent is assigned to a project.",
+    };
+  }
+
   return {
     message: rawMessage,
   };
