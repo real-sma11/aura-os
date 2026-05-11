@@ -1,0 +1,17 @@
+/* Slim banner strip at the top of the project layout. Fixed height
+   keeps the disruption to per-app views predictable; `flex-shrink: 0`
+   ensures the strip doesn't get squeezed when content below grows. */
+.strip {
+  flex-shrink: 0;
+  width: 100%;
+  height: 80px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

@@ -4,6 +4,7 @@ import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { EmptyState } from "../../components/EmptyState";
 import { ProjectAppearanceFrame } from "../../components/ProjectAppearanceFrame";
+import { ProjectBannerStrip } from "../../components/ProjectBanner";
 import { PageEmptyState, Button } from "@cypher-asi/zui";
 import { useDelayedLoading } from "../../shared/hooks/use-delayed-loading";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
@@ -83,6 +84,7 @@ export function ProjectLayout() {
   return (
     <ErrorBoundary name="project-view">
       <ProjectAppearanceFrame projectId={displayProject.project_id}>
+        <ProjectBannerStrip projectId={displayProject.project_id} />
         <Outlet />
       </ProjectAppearanceFrame>
     </ErrorBoundary>
