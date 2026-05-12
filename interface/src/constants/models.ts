@@ -1,4 +1,4 @@
-export type GenerationMode = "chat" | "image" | "3d";
+export type GenerationMode = "chat" | "image" | "3d" | "video";
 
 export interface ModelOption {
   id: string;
@@ -124,10 +124,19 @@ export const MODEL_3D_MODELS: ModelOption[] = [
 
 export const DEFAULT_3D_MODEL_ID: string = MODEL_3D_MODELS[0]?.id ?? "tripo-v2";
 
+export const VIDEO_MODELS: ModelOption[] = [
+  { id: "veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", tier: "video", mode: "video" },
+  { id: "veo-3.1-generate-preview", label: "Veo 3.1 Standard", tier: "video", mode: "video" },
+  { id: "veo-3.1-lite-generate-preview", label: "Veo 3.1 Lite", tier: "video", mode: "video" },
+];
+
+export const DEFAULT_VIDEO_MODEL_ID: string = VIDEO_MODELS[0]?.id ?? "veo-3.1-fast-generate-preview";
+
 export const AVAILABLE_MODELS: ModelOption[] = [
   ...AURA_MANAGED_CHAT_MODELS,
   ...IMAGE_MODELS,
   ...MODEL_3D_MODELS,
+  ...VIDEO_MODELS,
 ];
 
 const CHAT_MODELS: ModelOption[] = AVAILABLE_MODELS.filter((m) => m.mode === "chat");

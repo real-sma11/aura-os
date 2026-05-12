@@ -308,6 +308,42 @@ export function generate3dStream(
   );
 }
 
+export interface GenerateVideoOptions {
+  prompt: string;
+  model?: string;
+  aspectRatio?: string;
+  durationSeconds?: number;
+  resolution?: string;
+  generateAudio?: boolean;
+  projectId?: string;
+  name?: string;
+}
+
+export function generateVideoStream(
+  options: GenerateVideoOptions,
+  handler: StreamEventHandler = { onEvent: () => {}, onError: () => {} },
+  signal?: AbortSignal,
+) {
+  const body: Record<string, unknown> = { prompt: options.prompt };
+  if (options.model) body.model = options.model;
+  if (options.aspectRatio) body.aspectRatio = options.aspectRatio;
+  if (options.durationSeconds) body.durationSeconds = options.durationSeconds;
+  if (options.resolution) body.resolution = options.resolution;
+  if (options.generateAudio !== undefined) body.generateAudio = options.generateAudio;
+  if (options.projectId) body.projectId = options.projectId;
+  if (options.name) body.name = options.name;
+  return streamSSE<string>(
+    `${BASE_URL}/api/generate/video/stream`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    createChatStreamHandler(handler),
+    signal,
+  );
+}
+
 export function sendEventStream(
   projectId: ProjectId,
   agentInstanceId: string,
