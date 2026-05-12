@@ -190,6 +190,9 @@ vi.mock("../../apps/agents/components/AgentWindow/AgentWindow", () => ({
 vi.mock("../BottomTaskbar", () => ({
   BottomTaskbar: () => <div data-testid="bottom-taskbar" />,
 }));
+vi.mock("../EarnCreditsButton", () => ({
+  EarnCreditsButton: () => <div data-testid="earn-credits-button" />,
+}));
 // `DesktopShell` now wraps the active app's `MainPanel` in a persistent
 // `ResponsiveMainLane` so the visible middle container survives app switches.
 // Mock it as a passthrough so the existing `mainPanelHost` / `main-panel`

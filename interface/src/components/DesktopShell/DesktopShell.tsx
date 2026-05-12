@@ -20,6 +20,7 @@ import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useDesktopBackgroundStore } from "../../stores/desktop-background-store";
 import { useShallow } from "zustand/react/shallow";
 import { LeftMenu } from "../../features/left-menu";
+import { EarnCreditsButton } from "../EarnCreditsButton";
 import {
   persistSidekickWidth,
   readStoredSidekickWidth,
@@ -163,6 +164,7 @@ export function DesktopShell() {
                 )}
               </Lane>
             </div>
+            <EarnCreditsButton />
           </div>
 
           <div

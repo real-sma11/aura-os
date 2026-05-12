@@ -1,0 +1,31 @@
+.button {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--color-border-main-panel);
+  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+  backdrop-filter: blur(40px) saturate(1.4);
+  -webkit-backdrop-filter: blur(40px) saturate(1.4);
+  color: var(--color-accent);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.button:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg));
+}
+
+.label {
+  font-size: calc(var(--text-2xs) - 1.5px);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: inherit;
+}

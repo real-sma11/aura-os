@@ -1,0 +1,1 @@
+export { EarnCreditsButton } from "./EarnCreditsButton";
