@@ -60,6 +60,24 @@
   letter-spacing: 0.02em;
 }
 
+/*
+ * Fill the selected pill with the accent color (instead of the
+ * default elevated-surface background + 1px accent border that
+ * `SlidingPills` ships with) so the active mode reads as a fully
+ * tinted chip. The text color flips to `--color-accent-contrast`,
+ * which is defined per-accent in the theme tokens (near-black on
+ * cyan/green/orange, white on blue/purple/rose) so the label stays
+ * legible regardless of the user's accent choice.
+ */
+.modeIndicator {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.modeSegment[aria-checked="true"] {
+  color: var(--color-accent-contrast);
+}
+
 @media (max-width: 640px) {
   .root {
     padding: 0 10px;

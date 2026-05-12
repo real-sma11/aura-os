@@ -58,6 +58,7 @@ export const ModeSelector = memo(function ModeSelector({
         ariaLabel="Agent mode"
         className={styles.pills}
         segmentClassName={styles.modeSegment}
+        indicatorClassName={styles.modeIndicator}
       />
     </div>
   );
