@@ -37,6 +37,7 @@ export function BottomTaskbar() {
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
   const inviteModalOpen = useUIModalStore((s) => s.inviteModalOpen);
+  const openInviteModal = useUIModalStore((s) => s.openInviteModal);
   const closeInviteModal = useUIModalStore((s) => s.closeInviteModal);
   const activeApp = useActiveApp();
   const time = useClock();
@@ -75,21 +76,32 @@ export function BottomTaskbar() {
       data-agent-context-anchor="desktop-shell-bottom-taskbar"
       onContextMenu={onContextMenu}
     >
-      <div className={styles.left}>
-        <TaskbarIconButton
-          selected={activeApp.id === "desktop"}
-          icon={<Circle size={TASKBAR_ICON_SIZE} />}
-          title="Desktop"
-          aria-label="Desktop"
-          onClick={() => {
-            if (activeApp.id === "desktop") {
-              if (previousPath) navigate(previousPath);
-            } else {
-              navigate("/desktop");
-            }
-          }}
-        />
-        <FavoriteAgentsStrip />
+      <div className={styles.leftGroup}>
+        <div className={styles.left}>
+          <TaskbarIconButton
+            selected={activeApp.id === "desktop"}
+            icon={<Circle size={TASKBAR_ICON_SIZE} />}
+            title="Desktop"
+            aria-label="Desktop"
+            onClick={() => {
+              if (activeApp.id === "desktop") {
+                if (previousPath) navigate(previousPath);
+              } else {
+                navigate("/desktop");
+              }
+            }}
+          />
+          <FavoriteAgentsStrip />
+        </div>
+
+        <button
+          className={styles.inviteButton}
+          onClick={openInviteModal}
+          title="Earn credits by inviting a friend"
+          aria-label="Earn credits"
+        >
+          <span className={styles.inviteLabel}>EARN CREDITS</span>
+        </button>
       </div>
 
       <div className={styles.center}>

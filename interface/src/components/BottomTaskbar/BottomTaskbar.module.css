@@ -29,6 +29,13 @@
   padding: 0 var(--space-2);
 }
 
+.leftGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .left {
   display: flex;
   align-items: center;
@@ -103,4 +110,30 @@
 
 .clock {
   padding: 0 4px;
+}
+
+.inviteButton {
+  display: flex;
+  align-items: center;
+  height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
+  border-radius: var(--shell-chrome-radius, 20px);
+  border: none;
+  background: var(--color-accent);
+  color: #000;
+  cursor: pointer;
+  padding: 0 var(--space-3);
+  flex-shrink: 0;
+}
+
+.inviteButton:hover {
+  background: color-mix(in srgb, var(--color-accent) 85%, #000);
+  color: #000;
+}
+
+.inviteLabel {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: inherit;
 }

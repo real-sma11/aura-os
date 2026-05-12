@@ -181,29 +181,6 @@
   gap: var(--space-1);
 }
 
-/*
- * Sizing wrapper + pill override for accent CTA pills hosted in the
- * titlebar (e.g. EARN CREDITS). Mirrors UpdatePill.module.css so all
- * titlebar pills share the same 24px height and surrounding padding.
- */
-.titlebarPillWrap {
-  display: inline-flex;
-  align-items: center;
-  margin-right: var(--space-1);
-  padding-block: 4px;
-}
-
-.titlebarPill {
-  min-height: 24px;
-  height: 24px;
-  padding-inline: 9px;
-  padding-block: 0;
-  font-size: var(--font-size-xs, 12px);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
 .desktopSidebar,
 .desktopSidebar * {
   user-select: none;

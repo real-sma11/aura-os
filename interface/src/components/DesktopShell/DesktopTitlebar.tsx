@@ -5,8 +5,6 @@ import { WindowControls } from "../WindowControls";
 import { MenuBar } from "../MenuBar";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { UpdatePill } from "../UpdateBanner";
-import { PillButton } from "../PillButton";
-import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import {
   cycleTheme,
@@ -46,24 +44,6 @@ function ThemeToggleButton() {
   );
 }
 
-function EarnCreditsPill() {
-  const openInviteModal = useUIModalStore((s) => s.openInviteModal);
-
-  return (
-    <span className={`titlebar-no-drag ${styles.titlebarPillWrap}`}>
-      <PillButton
-        size="sm"
-        className={styles.titlebarPill}
-        onClick={openInviteModal}
-        aria-label="Earn credits"
-        title="Earn credits by inviting a friend"
-      >
-        EARN CREDITS
-      </PillButton>
-    </span>
-  );
-}
-
 export function DesktopTitlebar({
   sidekickCollapsed,
   onToggleSidekick,
@@ -76,7 +56,7 @@ export function DesktopTitlebar({
       icon={
         <span className={`${styles.titleLeading} titlebar-no-drag`}>
           <OrgSelector variant="icon" />
-          <MenuBar trailingSlot={<UpdatePill />} />
+          <MenuBar />
         </span>
       }
       title={
@@ -95,7 +75,7 @@ export function DesktopTitlebar({
           className={styles.titleActions}
           onDoubleClick={(e) => e.stopPropagation()}
         >
-          <EarnCreditsPill />
+          <UpdatePill />
           <ThemeToggleButton />
           {features.hostRetargeting && (
             <Button
