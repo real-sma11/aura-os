@@ -193,10 +193,10 @@
 
 .inputRowEnd {
   position: absolute;
-  /* Sit clear of the send button's hit area (right: 14px, width: 24px,
-     so left edge ~38px from the right) plus enough breathing room so
+  /* Sit clear of the send button's hit area (right: 2px, width: 24px,
+     so left edge ~26px from the right) plus enough breathing room so
      inline chips don't visually crowd the arrow. */
-  right: 52px;
+  right: 40px;
   /* Vertically center inside the input row so chips don't read as
      bottom-anchored relative to the textarea. */
   top: 50%;
@@ -231,9 +231,13 @@
 
 .sendButton {
   position: absolute;
-  /* Sit just inside the textarea's right edge, leaving the native scrollbar
-     (when present) visible on the far right. */
-  right: 14px;
+  /* Match the attach button's `left: 2px` inset so the two corner
+     buttons are visually equidistant from the rounded-container
+     edges. The textarea sits underneath at `padding: 6px 32px`, so
+     text wrapping ends at 32px from the right while the button's
+     left edge is at 26px from the right — a 6px gap, which keeps
+     typed text clear of the arrow without hiding glyphs behind it. */
+  right: 2px;
   bottom: 4px;
   display: flex;
   align-items: center;
