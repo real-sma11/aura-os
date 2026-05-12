@@ -3,28 +3,23 @@ export const SIDEKICK_MIN_WIDTH = 200;
 export const SIDEKICK_MAX_WIDTH = 1200;
 
 /**
- * Per-app storage key prefix. Each app (tasks, agents, projects, notes, ...)
- * persists its own sidekick width so switching apps restores the size the user
- * chose for the target app.
+ * Single shared storage key for the sidekick width. The sidekick lane is the
+ * same width across every app and never changes when switching apps, so all
+ * apps read from and write to this one key.
  */
-export const PER_APP_SIDEKICK_STORAGE_PREFIX = "aura-sidekick-width:";
+export const SIDEKICK_STORAGE_KEY = "aura-sidekick-width";
 
-// Legacy keys kept for one-time read-through migration to the per-app scheme.
-export const LEGACY_SHARED_SIDEKICK_STORAGE_KEY = "aura-sidekick-v2";
-export const LEGACY_PROJECTS_SIDEKICK_STORAGE_KEY = "aura-projects-sidekick-v1";
+// Legacy keys kept only for one-time read-through migration so existing users
+// keep whatever width they had configured before the shared-width change.
+const LEGACY_SHARED_KEY = "aura-sidekick-v2";
+const LEGACY_PROJECTS_KEY = "aura-projects-sidekick-v1";
+const LEGACY_PER_APP_PREFIX = "aura-sidekick-width:";
+// Preferred order for picking which per-app value to inherit when nothing else
+// is set. Anything not in this list is considered last (in storage order).
+const LEGACY_PER_APP_PREFERENCE = ["projects", "tasks", "agents"];
 
 function clampSidekickWidth(width: number) {
   return Math.min(SIDEKICK_MAX_WIDTH, Math.max(SIDEKICK_MIN_WIDTH, width));
-}
-
-function getSidekickStorageKey(appId: string) {
-  return `${PER_APP_SIDEKICK_STORAGE_PREFIX}${appId}`;
-}
-
-function getLegacyStorageKey(appId: string): string {
-  return appId === "projects"
-    ? LEGACY_PROJECTS_SIDEKICK_STORAGE_KEY
-    : LEGACY_SHARED_SIDEKICK_STORAGE_KEY;
 }
 
 function parseStoredWidth(rawValue: string | null): number | null {
@@ -34,25 +29,65 @@ function parseStoredWidth(rawValue: string | null): number | null {
   return clampSidekickWidth(parsedValue);
 }
 
+function readLegacyPerAppWidth(): number | null {
+  let preferredValue: number | null = null;
+  let preferredRank = Number.POSITIVE_INFINITY;
+  let fallbackValue: number | null = null;
+
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(LEGACY_PER_APP_PREFIX)) continue;
+    const value = parseStoredWidth(localStorage.getItem(key));
+    if (value == null) continue;
+    const appId = key.slice(LEGACY_PER_APP_PREFIX.length);
+    const rank = LEGACY_PER_APP_PREFERENCE.indexOf(appId);
+    if (rank !== -1 && rank < preferredRank) {
+      preferredRank = rank;
+      preferredValue = value;
+    } else if (fallbackValue == null) {
+      fallbackValue = value;
+    }
+  }
+
+  return preferredValue ?? fallbackValue;
+}
+
 /**
- * Read the stored sidekick width for an app. If no per-app value exists,
- * falls back to the legacy key (shared-v2 / projects-v1) so existing users
- * don't lose their preference on first load after the upgrade.
+ * Read the persisted sidekick width. The same value is used for every app.
  *
- * Returns DEFAULT_SIDEKICK_WIDTH when nothing is stored.
+ * Migration order (only used when the shared key is unset):
+ *   1. New shared key (`aura-sidekick-width`).
+ *   2. Legacy shared key (`aura-sidekick-v2`).
+ *   3. Any `aura-sidekick-width:<appId>` per-app entry, preferring projects,
+ *      then tasks, then agents, then any other.
+ *   4. `DEFAULT_SIDEKICK_WIDTH`.
+ *
+ * When a legacy value is used it is also written through to the new shared key
+ * so subsequent reads short-circuit on step 1.
  */
-export function readStoredSidekickWidth(appId: string): number {
+export function readStoredSidekickWidth(): number {
   if (typeof window === "undefined") return DEFAULT_SIDEKICK_WIDTH;
   try {
-    const perAppValue = parseStoredWidth(
-      localStorage.getItem(getSidekickStorageKey(appId)),
-    );
-    if (perAppValue != null) return perAppValue;
+    const current = parseStoredWidth(localStorage.getItem(SIDEKICK_STORAGE_KEY));
+    if (current != null) return current;
 
-    const legacyValue = parseStoredWidth(
-      localStorage.getItem(getLegacyStorageKey(appId)),
-    );
-    if (legacyValue != null) return legacyValue;
+    const legacyShared = parseStoredWidth(localStorage.getItem(LEGACY_SHARED_KEY));
+    if (legacyShared != null) {
+      localStorage.setItem(SIDEKICK_STORAGE_KEY, String(legacyShared));
+      return legacyShared;
+    }
+
+    const legacyProjects = parseStoredWidth(localStorage.getItem(LEGACY_PROJECTS_KEY));
+    if (legacyProjects != null) {
+      localStorage.setItem(SIDEKICK_STORAGE_KEY, String(legacyProjects));
+      return legacyProjects;
+    }
+
+    const inheritedPerApp = readLegacyPerAppWidth();
+    if (inheritedPerApp != null) {
+      localStorage.setItem(SIDEKICK_STORAGE_KEY, String(inheritedPerApp));
+      return inheritedPerApp;
+    }
 
     return DEFAULT_SIDEKICK_WIDTH;
   } catch {
@@ -60,59 +95,11 @@ export function readStoredSidekickWidth(appId: string): number {
   }
 }
 
-export function persistSidekickWidth(appId: string, width: number): void {
+export function persistSidekickWidth(width: number): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(
-      getSidekickStorageKey(appId),
-      String(clampSidekickWidth(width)),
-    );
+    localStorage.setItem(SIDEKICK_STORAGE_KEY, String(clampSidekickWidth(width)));
   } catch {
     // Ignore storage failures.
   }
-}
-
-/**
- * Returns true when no per-app width has been stored for `appId` (ignoring the
- * legacy fallback). Used to decide when the Projects app should fall back to
- * the balanced-width default the first time it's entered.
- */
-export function hasStoredSidekickWidth(appId: string): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return localStorage.getItem(getSidekickStorageKey(appId)) != null;
-  } catch {
-    return false;
-  }
-}
-
-export function getProjectsSidekickTargetWidth(
-  mainWidth: number,
-  sidekickWidth: number,
-) {
-  return clampSidekickWidth(Math.round((mainWidth + sidekickWidth) / 2));
-}
-
-/**
- * Width the sidekick Lane should be resized to when `appId` becomes the
- * active app.
- *
- * - Projects: when no per-app width has been persisted yet, use a balanced
- *   average of the current main-panel width and current sidekick width. This
- *   preserves the historical "projects enters with a wide sidekick" behavior
- *   for first-time users. Once the user drags, the persisted value wins.
- * - Everything else: the stored per-app width (or the legacy fallback, or the
- *   default).
- */
-export function getSidekickTargetWidth(
-  appId: string,
-  context: { mainWidth: number; currentSidekickWidth: number },
-): number {
-  if (appId === "projects" && !hasStoredSidekickWidth("projects")) {
-    return getProjectsSidekickTargetWidth(
-      context.mainWidth,
-      context.currentSidekickWidth,
-    );
-  }
-  return readStoredSidekickWidth(appId);
 }

@@ -2,15 +2,14 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useDesktopWindowStore } from "../../stores/desktop-window-store";
 import { DesktopShell } from "../DesktopShell";
-import {
-  LEGACY_PROJECTS_SIDEKICK_STORAGE_KEY,
-  LEGACY_SHARED_SIDEKICK_STORAGE_KEY,
-  PER_APP_SIDEKICK_STORAGE_PREFIX,
-  getProjectsSidekickTargetWidth,
-} from "./desktop-shell-sidekick";
+import { SIDEKICK_STORAGE_KEY } from "./desktop-shell-sidekick";
 
-function getPerAppSidekickKey(appId: string) {
-  return `${PER_APP_SIDEKICK_STORAGE_PREFIX}${appId}`;
+const LEGACY_SHARED_KEY = "aura-sidekick-v2";
+const LEGACY_PROJECTS_KEY = "aura-projects-sidekick-v1";
+const LEGACY_PER_APP_PREFIX = "aura-sidekick-width:";
+
+function legacyPerAppKey(appId: string) {
+  return `${LEGACY_PER_APP_PREFIX}${appId}`;
 }
 
 function createMockApp(id: string, label: string, basePath: string) {
@@ -52,11 +51,6 @@ let currentVisitedAppIds = new Set(["projects"]);
 let currentSidekickCollapsed = false;
 const toggleSidekick = vi.fn();
 const laneRenderSpy = vi.fn();
-const setSidekickSize = vi.fn((size: number) => {
-  currentSidekickWidth = size;
-});
-let currentSidekickWidth = 320;
-let mainPanelHostWidth = 640;
 
 vi.mock("@cypher-asi/zui", () => ({
   Topbar: ({ title, actions, icon }: { title?: React.ReactNode; actions?: React.ReactNode; icon?: React.ReactNode }) => (
@@ -215,7 +209,6 @@ vi.mock("../Lane", () => ({
     defaultWidth = 240,
     collapsed = false,
     animateCollapse = true,
-    resizeControlsRef,
     onResizeEnd,
   }: {
     children?: React.ReactNode;
@@ -226,19 +219,9 @@ vi.mock("../Lane", () => ({
     defaultWidth?: number;
     collapsed?: boolean;
     animateCollapse?: boolean;
-    resizeControlsRef?: { current: { getSize: () => number; setSize: (size: number) => void } | null };
     onResizeEnd?: (size: number) => void;
   }) => {
     laneRenderSpy({ resizePosition, storageKey, defaultWidth, collapsed, animateCollapse, onResizeEnd });
-    if (resizePosition === "left" && resizeControlsRef) {
-      if (!resizeControlsRef.current) {
-        currentSidekickWidth = defaultWidth;
-      }
-      resizeControlsRef.current = {
-        getSize: () => currentSidekickWidth,
-        setSize: setSidekickSize,
-      };
-    }
 
     return (
       <div
@@ -285,51 +268,14 @@ beforeAll(() => {
   } as unknown as typeof ResizeObserver;
 });
 
-beforeAll(() => {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect() {
-    if (String((this as HTMLElement).className).includes("mainPanelHost")) {
-      return {
-        width: mainPanelHostWidth,
-        height: 0,
-        top: 0,
-        right: mainPanelHostWidth,
-        bottom: 0,
-        left: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect;
-    }
-
-    return {
-      width: 0,
-      height: 0,
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect;
-  });
-});
-
-afterAll(() => {
-  vi.restoreAllMocks();
-});
-
 beforeEach(() => {
   localStorage.clear();
   useDesktopWindowStore.setState({ windows: {}, nextZ: 1 });
   currentActiveApp = mockProjectsApp;
   currentVisitedAppIds = new Set(["projects"]);
   currentSidekickCollapsed = false;
-  currentSidekickWidth = 320;
-  mainPanelHostWidth = 640;
   toggleSidekick.mockClear();
   laneRenderSpy.mockClear();
-  setSidekickSize.mockClear();
 });
 
 function renderShell(pathname = "/projects") {
@@ -358,6 +304,18 @@ function getLatestSidekickLaneProps() {
   return sidekickLaneCalls.at(-1);
 }
 
+function getAllSidekickLaneProps() {
+  return laneRenderSpy.mock.calls
+    .map(
+      ([props]) =>
+        props as {
+          resizePosition?: "left" | "right";
+          defaultWidth?: number;
+        },
+    )
+    .filter((props) => props.resizePosition === "left");
+}
+
 function getLatestSidebarLaneProps() {
   const sidebarLaneCalls = laneRenderSpy.mock.calls
     .map(([props]) => props as { storageKey?: string; defaultWidth?: number; collapsed?: boolean; animateCollapse?: boolean })
@@ -367,12 +325,6 @@ function getLatestSidebarLaneProps() {
 }
 
 describe("DesktopShell", () => {
-  it("balances the projects sidekick width and clamps the result", () => {
-    expect(getProjectsSidekickTargetWidth(640, 320)).toBe(480);
-    expect(getProjectsSidekickTargetWidth(150, 0)).toBe(200);
-    expect(getProjectsSidekickTargetWidth(1400, 1200)).toBe(1200);
-  });
-
   it("renders the AURA title link", () => {
     renderShell();
     expect(screen.getByAltText("AURA")).toBeInTheDocument();
@@ -584,105 +536,102 @@ describe("DesktopShell", () => {
     expect(rerenderedHost?.parentElement).toHaveClass("desktopContent");
   });
 
-  it("keeps the persistent sidekick lane mounted for shared apps", () => {
+  it("keeps the persistent sidekick lane mounted with no internal storage key", () => {
     currentActiveApp = mockTasksApp;
 
     renderShell();
 
     expect(getLatestSidekickLaneProps()?.storageKey).toBeNull();
-    expect(setSidekickSize).not.toHaveBeenCalled();
   });
 
-  it("retargets the sidekick to the target app's stored width when switching apps", () => {
-    localStorage.setItem(getPerAppSidekickKey("agents"), "420");
-    localStorage.setItem(getPerAppSidekickKey("tasks"), "260");
+  it("keeps the same sidekick width across app switches (no retargeting)", () => {
+    localStorage.setItem(SIDEKICK_STORAGE_KEY, "420");
     currentActiveApp = mockAgentsApp;
     currentVisitedAppIds = new Set(["agents"]);
     const view = renderShell("/agents");
 
-    // No retarget on initial mount - the Lane's defaultWidth already covers it.
-    expect(setSidekickSize).not.toHaveBeenCalled();
+    const initialWidth = getLatestSidekickLaneProps()?.defaultWidth;
+    expect(initialWidth).toBe(420);
 
     currentActiveApp = mockTasksApp;
     currentVisitedAppIds = new Set(["agents", "tasks"]);
-    mainPanelHostWidth = 800;
     view.rerender(
       <MemoryRouter initialEntries={["/tasks"]}>
         <DesktopShell />
       </MemoryRouter>,
     );
 
-    expect(setSidekickSize).toHaveBeenLastCalledWith(260);
-
-    currentActiveApp = mockAgentsApp;
-    view.rerender(
-      <MemoryRouter initialEntries={["/agents"]}>
-        <DesktopShell />
-      </MemoryRouter>,
-    );
-
-    expect(setSidekickSize).toHaveBeenLastCalledWith(420);
-  });
-
-  it("uses the projects balanced default only when projects has no stored width", () => {
-    localStorage.setItem(getPerAppSidekickKey("agents"), "320");
-    currentActiveApp = mockAgentsApp;
-    currentVisitedAppIds = new Set(["agents"]);
-    mainPanelHostWidth = 640;
-    const view = renderShell("/agents");
-
     currentActiveApp = mockProjectsApp;
-    currentVisitedAppIds = new Set(["agents", "projects"]);
+    currentVisitedAppIds = new Set(["agents", "tasks", "projects"]);
     view.rerender(
       <MemoryRouter initialEntries={["/projects"]}>
         <DesktopShell />
       </MemoryRouter>,
     );
 
-    // Projects with no stored width falls back to the balanced-default formula:
-    // clamp((mainWidth + currentSidekickWidth) / 2) = (640 + 320) / 2 = 480.
-    expect(setSidekickSize).toHaveBeenLastCalledWith(480);
-
-    // Once projects has a persisted width, the balanced formula is not used.
-    localStorage.setItem(getPerAppSidekickKey("projects"), "550");
-    currentActiveApp = mockAgentsApp;
-    view.rerender(
-      <MemoryRouter initialEntries={["/agents"]}>
-        <DesktopShell />
-      </MemoryRouter>,
-    );
-    currentActiveApp = mockProjectsApp;
-    view.rerender(
-      <MemoryRouter initialEntries={["/projects"]}>
-        <DesktopShell />
-      </MemoryRouter>,
-    );
-
-    expect(setSidekickSize).toHaveBeenLastCalledWith(550);
+    const renderedWidths = getAllSidekickLaneProps().map((p) => p.defaultWidth);
+    expect(new Set(renderedWidths)).toEqual(new Set([420]));
   });
 
-  it("reads legacy storage keys as a fallback when no per-app width exists", () => {
-    localStorage.setItem(LEGACY_SHARED_SIDEKICK_STORAGE_KEY, "440");
-    localStorage.setItem(LEGACY_PROJECTS_SIDEKICK_STORAGE_KEY, "360");
+  it("reads the new shared key when present (regardless of active app)", () => {
+    localStorage.setItem(SIDEKICK_STORAGE_KEY, "500");
 
-    // Agents (non-projects) falls back to the legacy shared key on initial
-    // mount because no per-app key is set.
     currentActiveApp = mockAgentsApp;
     currentVisitedAppIds = new Set(["agents"]);
     renderShell("/agents");
+    expect(getLatestSidekickLaneProps()?.defaultWidth).toBe(500);
+  });
+
+  it("migrates from the legacy shared key when no shared width is set", () => {
+    localStorage.setItem(LEGACY_SHARED_KEY, "440");
+
+    currentActiveApp = mockAgentsApp;
+    currentVisitedAppIds = new Set(["agents"]);
+    renderShell("/agents");
+
     expect(getLatestSidekickLaneProps()?.defaultWidth).toBe(440);
+    // The migrated value should be written through to the new key so
+    // subsequent reads short-circuit.
+    expect(localStorage.getItem(SIDEKICK_STORAGE_KEY)).toBe("440");
   });
 
-  it("reads the legacy projects key when projects has no per-app width yet", () => {
-    localStorage.setItem(LEGACY_PROJECTS_SIDEKICK_STORAGE_KEY, "360");
+  it("migrates from the legacy projects key when nothing else is set", () => {
+    localStorage.setItem(LEGACY_PROJECTS_KEY, "360");
 
-    currentActiveApp = mockProjectsApp;
-    currentVisitedAppIds = new Set(["projects"]);
-    renderShell("/projects");
+    currentActiveApp = mockTasksApp;
+    currentVisitedAppIds = new Set(["tasks"]);
+    renderShell("/tasks");
+
     expect(getLatestSidekickLaneProps()?.defaultWidth).toBe(360);
+    expect(localStorage.getItem(SIDEKICK_STORAGE_KEY)).toBe("360");
   });
 
-  it("persists sidekick resize under the active app's per-app key", () => {
+  it("inherits the projects per-app width when no shared/legacy width exists", () => {
+    localStorage.setItem(legacyPerAppKey("agents"), "260");
+    localStorage.setItem(legacyPerAppKey("tasks"), "300");
+    localStorage.setItem(legacyPerAppKey("projects"), "555");
+
+    currentActiveApp = mockAgentsApp;
+    currentVisitedAppIds = new Set(["agents"]);
+    renderShell("/agents");
+
+    expect(getLatestSidekickLaneProps()?.defaultWidth).toBe(555);
+    expect(localStorage.getItem(SIDEKICK_STORAGE_KEY)).toBe("555");
+  });
+
+  it("falls back to tasks per-app width when projects has none", () => {
+    localStorage.setItem(legacyPerAppKey("agents"), "260");
+    localStorage.setItem(legacyPerAppKey("tasks"), "388");
+
+    currentActiveApp = mockAgentsApp;
+    currentVisitedAppIds = new Set(["agents"]);
+    renderShell("/agents");
+
+    expect(getLatestSidekickLaneProps()?.defaultWidth).toBe(388);
+    expect(localStorage.getItem(SIDEKICK_STORAGE_KEY)).toBe("388");
+  });
+
+  it("persists sidekick resize under the single shared key regardless of active app", () => {
     localStorage.clear();
     currentActiveApp = mockTasksApp;
     currentVisitedAppIds = new Set(["tasks"]);
@@ -694,9 +643,11 @@ describe("DesktopShell", () => {
     expect(laneProps?.onResizeEnd).toBeDefined();
     laneProps!.onResizeEnd!(512);
 
-    expect(localStorage.getItem(getPerAppSidekickKey("tasks"))).toBe("512");
-    expect(localStorage.getItem(getPerAppSidekickKey("agents"))).toBeNull();
-    expect(localStorage.getItem(getPerAppSidekickKey("projects"))).toBeNull();
+    expect(localStorage.getItem(SIDEKICK_STORAGE_KEY)).toBe("512");
+    // No per-app entries should ever be written.
+    expect(localStorage.getItem(legacyPerAppKey("tasks"))).toBeNull();
+    expect(localStorage.getItem(legacyPerAppKey("agents"))).toBeNull();
+    expect(localStorage.getItem(legacyPerAppKey("projects"))).toBeNull();
   });
 
   it("disables left sidebar collapse animation in desktop mode", () => {

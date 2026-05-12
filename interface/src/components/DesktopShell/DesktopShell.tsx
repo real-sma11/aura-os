@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useOutlet } from "react-router-dom";
 import { cn } from "@cypher-asi/zui";
-import { Lane, type LaneResizeControls } from "../Lane";
+import { Lane } from "../Lane";
 import { ResponsiveMainLane } from "../ResponsiveMainLane";
 import { BottomTaskbar } from "../BottomTaskbar";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -30,10 +30,7 @@ import { DesktopTitlebar } from "./DesktopTitlebar";
 import { PersistentSidekickLane } from "./PersistentSidekickLane";
 import { SidebarSearchInput } from "./SidebarSearchInput";
 import { SidekickPortalBridge } from "./SidekickPortalBridge";
-import {
-  useLeftPanelWidthCssVar,
-  useSidekickWidthRetargeting,
-} from "./desktop-shell-effects";
+import { useLeftPanelWidthCssVar } from "./desktop-shell-effects";
 import styles from "./DesktopShell.module.css";
 
 const DesktopWindowLayer = lazy(() =>
@@ -73,25 +70,10 @@ export function DesktopShell() {
   );
   const routeContent = useOutlet();
   const leftPanelRef = useRef<HTMLDivElement>(null);
-  // Callback-ref-backed state on the persistent `mainPanelHost` div. The host
-  // div is now rendered above `ActiveProvider` so it stays mounted across app
-  // switches — this `setState`-on-ref still gives us a stable handle that's
-  // resilient to first-render timing (e.g. initial layout pass before the ref
-  // has populated) and lets the sidekick retarget effect react if the host is
-  // ever recreated for unrelated reasons.
-  const [mainPanelEl, setMainPanelEl] = useState<HTMLDivElement | null>(null);
-  const handleMainPanelRef = useCallback((node: HTMLDivElement | null) => {
-    setMainPanelEl(node);
-  }, []);
-  const sidekickResizeControlsRef = useRef<LaneResizeControls | null>(null);
-  // Tracks the app whose width is currently applied to the Lane. We only mark
-  // an app as "applied" after successfully calling setSize, so if the Lane or
-  // main panel isn't ready yet, a later effect run (when they come online)
-  // still retries instead of skipping.
-  const appliedSidekickAppIdRef = useRef<string | null>(null);
-  const [sidekickInitialWidth] = useState(() =>
-    readStoredSidekickWidth(activeApp.id),
-  );
+  // The sidekick lane uses a single shared width across every app. We read it
+  // once at mount and pass it as `defaultWidth` to the persistent `Lane`; the
+  // lane is never re-targeted on app switches so its size stays stable.
+  const [sidekickInitialWidth] = useState(() => readStoredSidekickWidth());
   const [sidekickHeaderTarget, setSidekickHeaderTarget] =
     useState<HTMLDivElement | null>(null);
   const [sidekickPanelTarget, setSidekickPanelTarget] =
@@ -124,24 +106,14 @@ export function DesktopShell() {
     [],
   );
 
-  const handleSidekickResizeEnd = useCallback(
-    (size: number) => {
-      persistSidekickWidth(activeApp.id, size);
-    },
-    [activeApp.id],
-  );
+  const handleSidekickResizeEnd = useCallback((size: number) => {
+    persistSidekickWidth(size);
+  }, []);
 
   useLeftPanelWidthCssVar({
     leftPanelRef,
     isDesktop,
     activeAppId: activeApp.id,
-  });
-  useSidekickWidthRetargeting({
-    activeAppId: activeApp.id,
-    sidekickCollapsed,
-    mainPanelEl,
-    sidekickResizeControlsRef,
-    appliedSidekickAppIdRef,
   });
 
   return (
@@ -194,7 +166,6 @@ export function DesktopShell() {
           </div>
 
           <div
-            ref={handleMainPanelRef}
             className={cn(
               styles.mainPanelHost,
               sidekickHostCollapsed && styles.mainPanelHostNoSidekick,
@@ -229,7 +200,6 @@ export function DesktopShell() {
             </ErrorBoundary>
           )}
           <PersistentSidekickLane
-            resizeControlsRef={sidekickResizeControlsRef}
             collapsed={sidekickHostCollapsed}
             defaultWidth={sidekickInitialWidth}
             showHeaderSlot={showSidekickHeader}

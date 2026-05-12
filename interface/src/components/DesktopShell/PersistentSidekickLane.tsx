@@ -1,4 +1,4 @@
-import { Lane, type LaneResizeControls } from "../Lane";
+import { Lane } from "../Lane";
 import {
   SIDEKICK_MAX_WIDTH,
   SIDEKICK_MIN_WIDTH,
@@ -6,7 +6,6 @@ import {
 import styles from "./DesktopShell.module.css";
 
 interface PersistentSidekickLaneProps {
-  resizeControlsRef?: { current: LaneResizeControls | null };
   collapsed: boolean;
   defaultWidth: number;
   showHeaderSlot: boolean;
@@ -16,7 +15,6 @@ interface PersistentSidekickLaneProps {
 }
 
 export function PersistentSidekickLane({
-  resizeControlsRef,
   collapsed,
   defaultWidth,
   showHeaderSlot,
@@ -35,7 +33,6 @@ export function PersistentSidekickLane({
       collapsible
       collapsed={collapsed}
       animateResizeRelease={false}
-      resizeControlsRef={resizeControlsRef}
       onResizeEnd={onResizeEnd}
       className={styles.sidekickLane}
       header={
