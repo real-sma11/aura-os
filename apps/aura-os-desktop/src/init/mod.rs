@@ -4,6 +4,7 @@
 pub(crate) mod cli;
 pub(crate) mod crash;
 pub(crate) mod env;
+pub(crate) mod fatal_dialog;
 pub(crate) mod init_script;
 pub(crate) mod logging;
 pub(crate) mod paths;

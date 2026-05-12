@@ -71,7 +71,44 @@ impl SettingsStore {
             return Ok(BTreeMap::new());
         }
         let raw = fs::read_to_string(&path)?;
-        let encoded: BTreeMap<String, String> = serde_json::from_str(&raw)?;
+        // Self-heal a corrupt store file instead of taking the whole
+        // process down. Torn writes on Windows (BSOD, hard kill, power
+        // loss between `fs::write` and the OS flushing the file's
+        // contents) routinely leave a `<cf>.json` that is the right
+        // length but full of NUL bytes, which `serde_json` rejects with
+        // "expected value at line 1 column 1". Without this branch the
+        // error propagated up through `SettingsStore::open` ->
+        // `aura_os_server::build_app_state` -> the `.expect(...)` on the
+        // embedded server thread inside `aura-os-desktop`, which dropped
+        // the ready-channel sender and panicked the main thread with a
+        // RecvError. On a windows-subsystem build that means the app
+        // exits silently with no UI and only `crash.log` to show for it.
+        // Quarantining the bad file and starting with an empty CF lets
+        // the user keep launching the app; the auth cache will be
+        // re-bootstrapped on next login and any other state in this CF
+        // is best-effort recoverable from remote services.
+        let encoded: BTreeMap<String, String> = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(err) => {
+                let backup = path.with_extension(format!(
+                    "json.corrupt-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0)
+                ));
+                let rename_result = fs::rename(&path, &backup);
+                tracing::warn!(
+                    cf = cf_name,
+                    error = %err,
+                    path = %path.display(),
+                    backup = %backup.display(),
+                    rename_ok = rename_result.is_ok(),
+                    "settings store file unreadable; quarantined and starting with an empty column family"
+                );
+                return Ok(BTreeMap::new());
+            }
+        };
         let mut map = BTreeMap::new();
         for (k, v) in encoded {
             use base64::Engine;
@@ -89,6 +126,7 @@ impl SettingsStore {
 
     fn persist_cf(dir: &Path, cf_name: &str, map: &CfMap) -> StoreResult<()> {
         use base64::Engine;
+        use std::io::Write;
         fs::create_dir_all(dir)?;
         let encoded: BTreeMap<&str, String> = map
             .iter()
@@ -102,7 +140,25 @@ impl SettingsStore {
         let json = serde_json::to_string_pretty(&encoded)?;
         let path = Self::cf_path(dir, cf_name);
         let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, json.as_bytes())?;
+        // Write + flush + fsync the tmp file BEFORE rename so the
+        // atomic-rename promise actually holds across crashes. NTFS
+        // happily renames a file whose contents the OS hasn't yet
+        // flushed; without `sync_all` a power loss between the
+        // `fs::write` and the rename leaves the destination as the
+        // right size but filled with NUL bytes, which is exactly the
+        // failure mode that took the desktop app down silently
+        // (`load_cf` then sees `\\0\\0\\0...` and returns a JSON
+        // parse error). The cost is a single fsync per persist, which
+        // is already the dominant cost of the rename pattern.
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&tmp)?;
+            f.write_all(json.as_bytes())?;
+            f.sync_all()?;
+        }
         fs::rename(&tmp, &path)?;
         Ok(())
     }

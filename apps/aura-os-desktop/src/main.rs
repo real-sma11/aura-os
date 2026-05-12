@@ -36,6 +36,7 @@ use crate::harness::sidecar::maybe_spawn_local_harness_sidecar;
 use crate::init::cli::{maybe_handle_print_channel, parse_cli_args, DesktopCliArgs};
 use crate::init::crash::{install_native_crash_handler, install_panic_hook};
 use crate::init::env::apply_desktop_runtime_defaults;
+use crate::init::fatal_dialog::show_fatal_startup_failure;
 use crate::init::init_script::{build_initialization_script, load_bootstrapped_auth_literals};
 use crate::init::logging::init_logging;
 use crate::init::paths::init_data_dirs;
@@ -101,10 +102,37 @@ fn main() {
         ide_proxy,
         pre_bind.route_state.clone(),
     );
-    ready_rx
-        .recv()
-        .expect("server thread failed before becoming ready");
-    info!("axum server ready");
+    // Surface server-thread startup failures through a real dialog
+    // instead of panicking. Previously this site `.expect(...)`'d on
+    // `RecvError`, which on a `windows_subsystem = "windows"` build is
+    // an invisible exit — the user double-clicks AURA, the harness
+    // sidecar spawns, and then nothing happens because the server
+    // thread already panicked on (e.g.) a corrupt settings store.
+    match ready_rx.recv() {
+        Ok(Ok(())) => info!("axum server ready"),
+        Ok(Err(message)) => {
+            let data_dir = pre_bind
+                .store_path
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| pre_bind.store_path.clone());
+            show_fatal_startup_failure(&data_dir, &message);
+            std::process::exit(1);
+        }
+        Err(_) => {
+            let data_dir = pre_bind
+                .store_path
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| pre_bind.store_path.clone());
+            show_fatal_startup_failure(
+                &data_dir,
+                "The embedded server thread exited unexpectedly before becoming ready. \
+                 See crash.log for the underlying panic.",
+            );
+            std::process::exit(1);
+        }
+    }
 
     let server = resolve_frontend(&server_url, server_port);
     let icon_data = load_icon_data();

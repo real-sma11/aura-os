@@ -65,14 +65,22 @@ pub(crate) fn bind_listener() -> (StdTcpListener, u16, String) {
     (std_listener, port, url)
 }
 
+/// Result of the embedded-server boot phase. `Ok(())` means the server
+/// is bound and serving; `Err(message)` is a human-readable description
+/// of why startup failed. The main thread surfaces this in a dialog
+/// rather than panicking with an opaque `RecvError`, so a corrupt
+/// settings store or other one-off failure no longer makes the desktop
+/// shell exit silently with no UI.
+pub(crate) type ServerReadyResult = Result<(), String>;
+
 pub(crate) fn spawn_server(
     std_listener: StdTcpListener,
     store_path: PathBuf,
     interface_dir: Option<PathBuf>,
     ide_proxy: Arc<EventLoopProxy<UserEvent>>,
     route_state: RouteState,
-) -> std::sync::mpsc::Receiver<()> {
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<()>();
+) -> std::sync::mpsc::Receiver<ServerReadyResult> {
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<ServerReadyResult>();
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
@@ -95,8 +103,29 @@ pub(crate) fn spawn_server(
                 update_state: update_state.clone(),
             };
 
-            let app_state = aura_os_server::build_app_state(&store_path)
-                .expect("failed to open local settings store");
+            // Don't panic on a settings-store open failure: send the
+            // error back over the ready channel so the main thread can
+            // pop a real "AURA could not start" dialog instead of
+            // exiting silently. The previous `.expect(...)` here is
+            // exactly what made a corrupt `<data>/store/settings.json`
+            // (e.g. all-NUL after a torn write) take the entire app
+            // down with no UI on Windows release builds.
+            let app_state = match aura_os_server::build_app_state(&store_path) {
+                Ok(state) => state,
+                Err(error) => {
+                    let message = format!(
+                        "failed to open local settings store at {}: {error}",
+                        store_path.display()
+                    );
+                    tracing::error!(
+                        error = %error,
+                        store_path = %store_path.display(),
+                        "embedded server startup failed: settings store could not be opened"
+                    );
+                    let _ = ready_tx.send(Err(message));
+                    return;
+                }
+            };
             let desktop_routes = Router::new()
                 .route("/api/pick-folder", axum_post(handlers::pick_folder))
                 .route("/api/pick-file", axum_post(handlers::pick_file))
@@ -155,9 +184,17 @@ pub(crate) fn spawn_server(
 
             updater::spawn_update_loop(update_state);
 
-            let listener = TcpListener::from_std(std_listener).expect("failed to create listener");
+            let listener = match TcpListener::from_std(std_listener) {
+                Ok(listener) => listener,
+                Err(error) => {
+                    let message = format!("failed to convert std listener to tokio: {error}");
+                    tracing::error!(%error, "{message}");
+                    let _ = ready_tx.send(Err(message));
+                    return;
+                }
+            };
 
-            let _ = ready_tx.send(());
+            let _ = ready_tx.send(Ok(()));
             axum::serve(listener, app).await.expect("server error");
         });
     });
