@@ -809,7 +809,7 @@ export const DesktopChatInputBar = memo(
                 ? "/image mode"
                 : generationMode === "3d"
                   ? "/3d mode"
-                  : "/ for commands"}
+                  : "/ for commands, @ for context"}
             </button>
           </>
         )}
