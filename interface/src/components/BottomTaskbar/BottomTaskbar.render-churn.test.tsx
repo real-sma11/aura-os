@@ -115,7 +115,7 @@ vi.mock("../Avatar", () => ({
 }));
 
 vi.mock("../AppNavRail", () => ({
-  TASKBAR_ICON_SIZE: 19,
+  TASKBAR_ICON_SIZE: 15,
   AppNavRail: () => {
     appNavRailRenderCount += 1;
     return <div data-testid="app-nav-rail" />;

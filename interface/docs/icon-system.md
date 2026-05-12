@@ -20,7 +20,7 @@ Sizes currently in use (passed via the Lucide `size` prop):
 | Surface                                 | `size` |
 | --------------------------------------- | -----: |
 | Dense inline chips, status dots         |  12–14 |
-| Taskbar icon buttons (`TaskbarIconButton`) | **19** (`TASKBAR_ICON_SIZE` constant, in a 30x30 hit target) |
+| Taskbar icon buttons (`TaskbarIconButton`) | **15** (`TASKBAR_ICON_SIZE` constant, in a 30x30 hit target with a 26x26 hover plate) |
 | In-row action buttons, list rows        |     16 |
 | Bar layout nav (`AppNavRail` `bar`)     |     17 |
 | Rail layout nav (`AppNavRail` `rail`)   |     18 |
