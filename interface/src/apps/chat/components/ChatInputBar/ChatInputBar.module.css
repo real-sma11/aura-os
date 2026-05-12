@@ -392,11 +392,25 @@
   width: 100%;
   min-width: 0;
   padding-right: 14px;
+  /* Own the divider for the whole mode-bar row (including the 14px
+     padding-right gap above the send button) so the line spans the
+     full input-container width. The two children below have their
+     own border-bottoms suppressed to avoid stacking a second
+     semi-transparent border on top of this one. */
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
 }
 
 .modeSelectorFlex {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* The ModeSelector ships with its own `.root` border-bottom for the
+   standalone case (no `onNewChat`); when nested inside `.modeBarRow`
+   the row owns the divider, so suppress the child border to keep a
+   single 1px line. Higher specificity than ModeSelector's `.root`. */
+.modeBarRow .modeSelectorFlex {
+  border-bottom: none;
 }
 
 .modeNewChatButton {
@@ -405,10 +419,7 @@
   align-items: center;
   justify-content: center;
   width: 24px;
-  /* Match ModeSelector.root border-bottom so the row reads as a single
-     strip even though the two children own their own borders. */
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
