@@ -55,6 +55,8 @@ describe("CustomTokensPanel", () => {
     renderWithTheme(<CustomTokensPanel />);
     for (const label of [
       "Border",
+      "Main panel border",
+      "Topbar / taskbar border",
       "Surface tint",
       "Elevated tint",
       "Sidebar background",

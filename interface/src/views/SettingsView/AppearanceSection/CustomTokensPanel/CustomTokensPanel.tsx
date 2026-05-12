@@ -10,6 +10,8 @@ import styles from "./CustomTokensPanel.module.css";
 
 const TOKEN_LABELS: Record<EditableToken, string> = {
   "--color-border": "Border",
+  "--color-border-main-panel": "Main panel border",
+  "--color-border-chrome": "Topbar / taskbar border",
   "--color-surface-tint": "Surface tint",
   "--color-elevated-tint": "Elevated tint",
   "--color-sidebar-bg": "Sidebar background",

@@ -67,6 +67,17 @@
   --shell-chrome-radius: 20px;
   --shell-chrome-background: color-mix(in srgb, var(--color-titlebar-bg) 90%, transparent);
   --shell-chrome-backdrop-filter: blur(40px) saturate(1.4);
+
+  /*
+   * Per-surface border tints. Both default to --color-border so the shell
+   * looks identical unless the user customizes them from
+   * Settings > Appearance > Custom colors. `--color-border-main-panel`
+   * paints the three desktop lanes (sidebar / main / sidekick);
+   * `--color-border-chrome` paints the topbar pill and the bottom-taskbar
+   * pills.
+   */
+  --color-border-main-panel: var(--color-border);
+  --color-border-chrome: var(--color-border);
 }
 
 html, body, #root {

@@ -10,6 +10,8 @@ import type { ResolvedTheme } from "@cypher-asi/zui";
  */
 export const EDITABLE_TOKENS = [
   "--color-border",
+  "--color-border-main-panel",
+  "--color-border-chrome",
   "--color-surface-tint",
   "--color-elevated-tint",
   "--color-sidebar-bg",

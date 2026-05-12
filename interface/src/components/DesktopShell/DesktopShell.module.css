@@ -34,6 +34,7 @@
   display: flex;
   overflow: hidden;
   background: var(--color-bg);
+  border: 1px solid var(--color-border-main-panel);
 }
 
 /*
@@ -41,11 +42,12 @@
  * marquee/context-menu surface layered over the wallpaper-backed
  * BackgroundLayer. The opaque `background: var(--color-bg)` above
  * would paint a solid rectangle over the wallpaper, so clear it
- * (and the inset border that separates the main panel from the
- * sidekick) when the shell is in desktop mode.
+ * (and the lane border) when the shell is in desktop mode so the
+ * wallpaper isn't sliced by stray hairlines.
  */
 .desktopShell[data-desktop-mode] .mainPanelHost {
   background: transparent;
+  border-color: transparent;
 }
 
 .desktopShell[data-desktop-mode] .mainPanelHostWithSidekick {
@@ -70,10 +72,12 @@
   flex-direction: column;
   margin-right: 2px;
   background: var(--color-sidebar-bg);
+  border: 1px solid var(--color-border-main-panel);
 }
 
 :global([data-desktop-mode]) .desktopSidebar {
   background: transparent;
+  border-color: transparent;
 }
 
 .desktopSidebarBody {
@@ -137,6 +141,11 @@
 .sidekickLane {
   margin-left: 2px;
   background: var(--color-sidekick-bg);
+  border: 1px solid var(--color-border-main-panel);
+}
+
+.desktopShell[data-desktop-mode] .sidekickLane {
+  border-color: transparent;
 }
 
 .titleLink {
