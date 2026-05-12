@@ -64,7 +64,12 @@ vi.mock("../apps/agents/stores", () => ({
     selector({ setSelectedAgent: mockSetSelectedAgent }),
 }));
 
-let mockProjects: { project_id: string }[] = [];
+interface MockProject {
+  project_id: string;
+  name?: string;
+  description?: string;
+}
+let mockProjects: MockProject[] = [];
 let mockAgentsByProject: Record<string, { agent_id: string }[]> = {};
 
 vi.mock("../stores/projects-list-store", () => ({
@@ -239,6 +244,124 @@ describe("useStandaloneAgentChat", () => {
     const { result } = renderHook(() => useStandaloneAgentChat("agent-42"));
 
     expect(result.current.scrollResetKey).toBe("agent-42");
+  });
+
+  describe("home-project pinning", () => {
+    // The standalone Agents-app surfaces pin to the agent's auto-created
+    // Home project (see `apps/aura-os-server/src/handlers/agents/home_project.rs`
+    // for how it's stamped). When the binding is present, the hook
+    // collapses the project picker to a single non-interactive "Home"
+    // label by trimming `projects` to that one entry and dropping
+    // `onProjectChange`. Falls back to multi-project behavior only when
+    // no Home binding exists.
+    it("pins selectedProjectId to the Home project when bound (new marker)", () => {
+      mockProjects = [
+        { project_id: "proj-other", name: "Customer Work", description: "Other work" },
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = {
+        "proj-other": [{ agent_id: "agent-1" }],
+        "proj-home": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.selectedProjectId).toBe("proj-home");
+      expect(result.current.projects).toHaveLength(1);
+      expect(result.current.projects![0].project_id).toBe("proj-home");
+      expect(result.current.onProjectChange).toBeUndefined();
+    });
+
+    it("recognizes the legacy CEO home marker", () => {
+      mockProjects = [
+        {
+          project_id: "proj-ceo-home",
+          name: "Home",
+          description: "[aura:ceo-home] CEO workspace",
+        },
+        { project_id: "proj-side", name: "Side Project", description: "Side work" },
+      ];
+      mockAgentsByProject = {
+        "proj-ceo-home": [{ agent_id: "agent-1" }],
+        "proj-side": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.selectedProjectId).toBe("proj-ceo-home");
+      expect(result.current.projects).toHaveLength(1);
+      expect(result.current.onProjectChange).toBeUndefined();
+    });
+
+    it("ignores a user-authored project literally named 'Home' without the marker prefix", () => {
+      // Mirrors `description_is_auto_home`'s rejection in the server
+      // helper: only descriptions WE wrote are treated as auto-home,
+      // so a project named "Home" with custom description falls back
+      // to the existing multi-project picker behavior.
+      mockProjects = [
+        {
+          project_id: "proj-user-home",
+          name: "Home",
+          description: "My personal workspace",
+        },
+        { project_id: "proj-work", name: "Work", description: "Day job" },
+      ];
+      mockAgentsByProject = {
+        "proj-user-home": [{ agent_id: "agent-1" }],
+        "proj-work": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.projects).toHaveLength(2);
+      expect(typeof result.current.onProjectChange).toBe("function");
+    });
+
+    it("falls back to existing multi-project behavior when no Home binding exists", () => {
+      mockProjects = [
+        { project_id: "proj-a", name: "A", description: "" },
+        { project_id: "proj-b", name: "B", description: "" },
+      ];
+      mockAgentsByProject = {
+        "proj-a": [{ agent_id: "agent-1" }],
+        "proj-b": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.projects).toHaveLength(2);
+      expect(result.current.selectedProjectId).toBe("proj-a");
+      expect(typeof result.current.onProjectChange).toBe("function");
+    });
+
+    it("home pinning overrides a persisted non-home selection", () => {
+      // Stale `aura-agent-project:<id>` entries from before the
+      // Home-pin rollout (or from a brief window when the user had
+      // multiple bindings) must NOT win over the Home default.
+      localStorage.setItem("aura-agent-project:agent-1", "proj-other");
+
+      mockProjects = [
+        { project_id: "proj-other", name: "Other", description: "" },
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = {
+        "proj-other": [{ agent_id: "agent-1" }],
+        "proj-home": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.selectedProjectId).toBe("proj-home");
+      expect(result.current.onProjectChange).toBeUndefined();
+    });
   });
 
   describe("session-pin transition effect", () => {

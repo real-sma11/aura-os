@@ -30,6 +30,27 @@ const AGENT_PROJECT_KEY_PREFIX = "aura-agent-project:";
 const EMPTY_PROJECTS: Project[] = [];
 const EMPTY_SESSION_EVENTS_FETCH = () => Promise.resolve([]);
 
+// Markers for the server-side auto-created Home project. Kept in sync
+// with `HOME_PROJECT_NAME` / `AGENT_HOME_PROJECT_MARKER` /
+// `CEO_HOME_PROJECT_MARKER` in
+// `apps/aura-os-server/src/handlers/agents/home_project.rs`. The
+// description-prefix check matches the server's `description_is_auto_home`
+// so a user-authored project literally named "Home" is NOT mistaken for
+// the auto-home binding.
+const AGENT_HOME_PROJECT_NAME = "Home";
+const AGENT_HOME_DESCRIPTION_MARKERS = [
+  "[aura:agent-home]",
+  "[aura:ceo-home]",
+];
+
+function isAutoHomeProject(project: Project): boolean {
+  if (project.name !== AGENT_HOME_PROJECT_NAME) return false;
+  const description = project.description ?? "";
+  return AGENT_HOME_DESCRIPTION_MARKERS.some((marker) =>
+    description.startsWith(marker),
+  );
+}
+
 function selectProjectsForAgent(agentId: string | undefined) {
   return (state: { projects: Project[]; agentsByProject: Record<string, AgentInstance[]> }) => {
     if (!agentId) return EMPTY_PROJECTS;
@@ -87,12 +108,26 @@ export function useStandaloneAgentChat(
     setSelectedProjectId(loadPersistedProject(agentId));
   }, [agentId]);
 
+  // The standalone Agents-app surfaces pin to the agent's auto-created
+  // Home project so the project picker in the chat input bar always
+  // reads "Home" and is non-interactive. The project-scoped chat
+  // (`/projects/:projectId/agents/...`) is unaffected; it uses its
+  // route project via `AgentChatPanel`, not this hook. Falls back to
+  // the previous "first / persisted" behavior only when the agent has
+  // no Home binding yet (transient pre-bind state, legacy data) so
+  // the chat surface keeps working instead of going blank.
+  const homeProject = useMemo(
+    () => agentProjects.find(isAutoHomeProject),
+    [agentProjects],
+  );
+
   const effectiveProjectId = useMemo(() => {
+    if (homeProject) return homeProject.project_id;
     if (selectedProjectId && agentProjects.some((project) => project.project_id === selectedProjectId)) {
       return selectedProjectId;
     }
     return agentProjects[0]?.project_id;
-  }, [selectedProjectId, agentProjects]);
+  }, [homeProject, selectedProjectId, agentProjects]);
 
   const handleProjectChange = useCallback(
     (projectId: string) => {
@@ -435,9 +470,9 @@ export function useStandaloneAgentChat(
     errorMessage: historyError ?? null,
     scrollResetKey,
     historyMessages,
-    projects: agentProjects,
+    projects: homeProject ? [homeProject] : agentProjects,
     selectedProjectId: effectiveProjectId,
-    onProjectChange: handleProjectChange,
+    onProjectChange: homeProject ? undefined : handleProjectChange,
     contextUsage,
     onNewSession: handleNewSession,
     onNewChat: handleNewChat,
