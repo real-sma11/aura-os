@@ -22,7 +22,7 @@ import {
 } from "../../utils/storage";
 import styles from "./AppNavRail.module.css";
 
-export const TASKBAR_ICON_SIZE = 17;
+export const TASKBAR_ICON_SIZE = 19;
 
 function resolveAppPath(app: { id: string; basePath: string }): string {
   if (app.id === "agents") {

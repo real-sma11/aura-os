@@ -142,10 +142,10 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--taskbar-item-size, 28px);
-  height: var(--taskbar-item-size, 28px);
-  min-width: var(--taskbar-item-size, 28px);
-  min-height: var(--taskbar-item-size, 28px);
+  width: var(--taskbar-item-size, 30px);
+  height: var(--taskbar-item-size, 30px);
+  min-width: var(--taskbar-item-size, 30px);
+  min-height: var(--taskbar-item-size, 30px);
   padding: 0;
   border: none;
   background: transparent;
@@ -153,12 +153,22 @@
   border-radius: var(--radius-md);
   opacity: 0.6;
   cursor: pointer;
+  /* Kill inline line-height so the icon sits on the geometric center of
+     the button instead of being nudged by the inherited line-box. */
+  line-height: 0;
   transition:
     color var(--transition-fast),
     opacity var(--transition-fast),
     transform 140ms ease;
   touch-action: none;
   user-select: none;
+}
+
+/* SVG-as-block removes the inline-baseline gap and keeps the icon's
+   bounding box exactly where flex centering puts it (perfectly inside
+   the inner-plate hover bg). */
+.taskbarBtn > svg {
+  display: block;
 }
 
 /* Inner rounded "halo" hover plate. Hit target stays full-size for a11y;
