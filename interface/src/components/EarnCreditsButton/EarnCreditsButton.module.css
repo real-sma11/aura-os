@@ -1,25 +1,20 @@
 .button {
-  position: absolute;
-  left: 50%;
-  bottom: var(--space-3);
-  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 22px;
   padding: 0 var(--space-3);
+  margin-right: var(--space-1);
   border-radius: 999px;
   border: 1px solid var(--color-border-main-panel);
-  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
-  backdrop-filter: blur(40px) saturate(1.4);
-  -webkit-backdrop-filter: blur(40px) saturate(1.4);
+  background: transparent;
   color: var(--color-accent);
   cursor: pointer;
-  z-index: 2;
+  flex-shrink: 0;
 }
 
 .button:hover {
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg));
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .label {

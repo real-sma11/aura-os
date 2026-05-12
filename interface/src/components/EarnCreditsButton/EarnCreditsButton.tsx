@@ -11,12 +11,12 @@ export function EarnCreditsButton() {
     <>
       <button
         type="button"
-        className={styles.button}
+        className={`titlebar-no-drag ${styles.button}`}
         onClick={openInviteModal}
         title="Earn credits by inviting a friend"
         aria-label="Earn credits"
       >
-        <span className={styles.label}>EARN CREDITS</span>
+        <span className={styles.label}>EARN</span>
       </button>
       <InviteModal isOpen={inviteModalOpen} onClose={closeInviteModal} />
     </>

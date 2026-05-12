@@ -5,6 +5,7 @@ import { WindowControls } from "../WindowControls";
 import { MenuBar } from "../MenuBar";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { UpdatePill } from "../UpdateBanner";
+import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import styles from "./DesktopShell.module.css";
 
@@ -58,6 +59,7 @@ export function DesktopTitlebar({
               <Server size={14} strokeWidth={2} />
             </Button>
           )}
+          <EarnCreditsButton />
           <WindowControls
             sidekickCollapsed={sidekickCollapsed}
             onToggleSidekick={onToggleSidekick}
