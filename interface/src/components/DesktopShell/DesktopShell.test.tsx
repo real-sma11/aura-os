@@ -80,6 +80,8 @@ vi.mock("@cypher-asi/zui", () => ({
     setTheme: vi.fn(),
     setAccent: vi.fn(),
   }),
+  cn: (...args: Array<string | false | null | undefined>) =>
+    args.filter(Boolean).join(" "),
 }));
 
 vi.mock("../../hooks/use-active-app", () => ({
@@ -465,7 +467,7 @@ describe("DesktopShell", () => {
 
     expect(screen.getByTestId("sidekick-panel")).toHaveAttribute("data-app", "agents");
     expect(mainPanelHost).not.toBeNull();
-    expect(mainPanelHost).toHaveClass("mainPanelHostWithSidekick");
+    expect(mainPanelHost).not.toHaveClass("mainPanelHostNoSidekick");
 
     currentActiveApp = mockProjectsApp;
     currentVisitedAppIds = new Set(["agents", "projects"]);
@@ -478,7 +480,7 @@ describe("DesktopShell", () => {
     expect(screen.getByTestId("sidekick-lane")).toBe(sidekickLane);
     expect(screen.getByTestId("sidekick-panel")).toHaveAttribute("data-app", "projects");
     expect(screen.getByTestId("main-panel").closest(".mainPanelHost")).toBe(mainPanelHost);
-    expect(mainPanelHost).toHaveClass("mainPanelHostWithSidekick");
+    expect(mainPanelHost).not.toHaveClass("mainPanelHostNoSidekick");
 
     currentActiveApp = mockAgentsApp;
     view.rerender(
@@ -490,7 +492,7 @@ describe("DesktopShell", () => {
     expect(screen.getByTestId("sidekick-lane")).toBe(sidekickLane);
     expect(screen.getByTestId("sidekick-panel")).toHaveAttribute("data-app", "agents");
     expect(screen.getByTestId("main-panel").closest(".mainPanelHost")).toBe(mainPanelHost);
-    expect(mainPanelHost).toHaveClass("mainPanelHostWithSidekick");
+    expect(mainPanelHost).not.toHaveClass("mainPanelHostNoSidekick");
   });
 
   it("keeps shared desktop left menu panes mounted across app switches", () => {

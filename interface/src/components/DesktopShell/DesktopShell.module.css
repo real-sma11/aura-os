@@ -50,12 +50,9 @@
   border-color: transparent;
 }
 
-.desktopShell[data-desktop-mode] .mainPanelHostWithSidekick {
-  box-shadow: none;
-}
-
-.mainPanelHostWithSidekick {
-  box-shadow: inset -1px 0 0 0 var(--color-border);
+.mainPanelHostNoSidekick {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
 }
 
 .windowLayerHost {
@@ -73,6 +70,8 @@
   margin-right: 2px;
   background: var(--color-sidebar-bg);
   border: 1px solid var(--color-border-main-panel);
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
 }
 
 :global([data-desktop-mode]) .desktopSidebar {
@@ -142,6 +141,8 @@
   margin-left: 2px;
   background: var(--color-sidekick-bg);
   border: 1px solid var(--color-border-main-panel);
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
 }
 
 .desktopShell[data-desktop-mode] .sidekickLane {

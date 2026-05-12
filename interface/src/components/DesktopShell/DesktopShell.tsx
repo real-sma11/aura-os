@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { useOutlet } from "react-router-dom";
+import { cn } from "@cypher-asi/zui";
 import { Lane, type LaneResizeControls } from "../Lane";
 import { ResponsiveMainLane } from "../ResponsiveMainLane";
 import { BottomTaskbar } from "../BottomTaskbar";
@@ -194,7 +195,10 @@ export function DesktopShell() {
 
           <div
             ref={handleMainPanelRef}
-            className={styles.mainPanelHost}
+            className={cn(
+              styles.mainPanelHost,
+              sidekickHostCollapsed && styles.mainPanelHostNoSidekick,
+            )}
             data-agent-surface="main-panel"
             data-agent-active-app-id={activeApp.id}
             data-agent-active-app-label={activeApp.label}
