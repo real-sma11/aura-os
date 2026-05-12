@@ -342,7 +342,7 @@
   align-items: center;
   gap: 12px;
   width: auto;
-  margin: 0 var(--space-2);
+  margin: 1px var(--space-2);
   min-height: var(--left-menu-item-height);
   padding: 0 16px;
   border: none;
