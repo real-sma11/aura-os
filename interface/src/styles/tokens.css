@@ -60,9 +60,14 @@
      instead of a slab that fills the whole button. The recipe lives in
      interface/docs/icon-system.md; per-module overrides set
      --icon-hover-radius: 999px when the surrounding control is a circular
-     pill (e.g. BrowserAddressBar.actionButton). */
-  --icon-hover-inset: 3px;
-  --icon-hover-radius: var(--radius-md);
+     pill (e.g. BrowserAddressBar.actionButton).
+
+     Note: --radius-md is intentionally 0 across the rest of the design
+     system, so we hardcode a rounded value here — the icon hover halo is
+     the one place that should always feel softly rounded regardless of
+     the global radius scale. */
+  --icon-hover-inset: 2px;
+  --icon-hover-radius: 8px;
   --icon-hover-bg: var(--color-overlay-light);
 
   /* ----------------------------------------------------------------------

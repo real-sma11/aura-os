@@ -20,7 +20,7 @@ Sizes currently in use (passed via the Lucide `size` prop):
 | Surface                                 | `size` |
 | --------------------------------------- | -----: |
 | Dense inline chips, status dots         |  12–14 |
-| Taskbar icon buttons (`TaskbarIconButton`) | **15** (`TASKBAR_ICON_SIZE` constant) |
+| Taskbar icon buttons (`TaskbarIconButton`) | **17** (`TASKBAR_ICON_SIZE` constant) |
 | In-row action buttons, list rows        |     16 |
 | Bar layout nav (`AppNavRail` `bar`)     |     17 |
 | Rail layout nav (`AppNavRail` `rail`)   |     18 |
@@ -79,8 +79,12 @@ as a halo around the icon.
 Tokens (defined in [`interface/src/styles/tokens.css`](../src/styles/tokens.css)):
 
 ```css
---icon-hover-inset: 3px;              /* visible inset from the hit target */
---icon-hover-radius: var(--radius-md); /* soft square; override to 999px for circular pills */
+--icon-hover-inset: 2px;   /* visible inset from the hit target */
+--icon-hover-radius: 8px;  /* soft square; override to 999px for circular pills.
+                              Hardcoded (not --radius-md) because the design
+                              system keeps --radius-md at 0 globally; the icon
+                              hover halo is the one place that should always
+                              feel softly rounded. */
 --icon-hover-bg: var(--color-overlay-light);
 ```
 
