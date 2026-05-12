@@ -26,8 +26,6 @@ const DELETE_MENU_ITEMS: MenuItem[] = [
   { id: "delete", label: "Delete", icon: <Trash2 size={14} /> },
 ];
 
-const defaultMemoryAgentId = (agentId: string) => `${agentId}::default`;
-
 interface MemoryTabProps {
   agent: Agent;
 }
@@ -40,14 +38,13 @@ export function MemoryTab({ agent }: MemoryTabProps) {
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   const { viewMemoryFact, viewMemoryEvent, viewMemoryProcedure } = useAgentSidekickStore();
-  const memoryAgentId = useMemo(() => defaultMemoryAgentId(agent.agent_id), [agent.agent_id]);
 
   const fetchMemory = useCallback(() => {
     setLoading(true);
     setError(null);
     setSnapshot(null);
     let cancelled = false;
-    api.memory.getSnapshot(memoryAgentId)
+    api.memory.getSnapshot(agent.agent_id)
       .then((data) => {
         if (!cancelled) setSnapshot(data);
       })
@@ -67,15 +64,15 @@ export function MemoryTab({ agent }: MemoryTabProps) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [memoryAgentId]);
+  }, [agent.agent_id]);
 
   const softRefresh = useCallback(() => {
     let cancelled = false;
-    api.memory.getSnapshot(memoryAgentId)
+    api.memory.getSnapshot(agent.agent_id)
       .then((data) => { if (!cancelled) setSnapshot(data); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [memoryAgentId]);
+  }, [agent.agent_id]);
 
   useEffect(() => {
     return fetchMemory();
@@ -115,22 +112,22 @@ export function MemoryTab({ agent }: MemoryTabProps) {
     try {
       switch (target.kind) {
         case "fact":
-          await api.memory.deleteFact(memoryAgentId, target.id);
+          await api.memory.deleteFact(agent.agent_id, target.id);
           setSnapshot((prev) => prev ? { ...prev, facts: prev.facts.filter((f) => f.fact_id !== target.id) } : prev);
           break;
         case "event":
-          await api.memory.deleteEvent(memoryAgentId, target.id);
+          await api.memory.deleteEvent(agent.agent_id, target.id);
           setSnapshot((prev) => prev ? { ...prev, events: prev.events.filter((e) => e.event_id !== target.id) } : prev);
           break;
         case "procedure":
-          await api.memory.deleteProcedure(memoryAgentId, target.id);
+          await api.memory.deleteProcedure(agent.agent_id, target.id);
           setSnapshot((prev) => prev ? { ...prev, procedures: prev.procedures.filter((p) => p.procedure_id !== target.id) } : prev);
           break;
       }
     } catch {
       // silent — row stays if delete fails
     }
-  }, [memoryAgentId]);
+  }, [agent.agent_id]);
 
   const handleMenuAction = useCallback((actionId: string) => {
     if (actionId === "delete" && ctxMenu) {

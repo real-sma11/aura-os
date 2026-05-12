@@ -229,13 +229,6 @@ describe("memoryApi - Aggregate", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/harness/agents/a1/memory", expect.any(Object));
   });
 
-  it("encodes partitioned agent ids", async () => {
-    const fetchMock = mockFetch(200, { facts: [], events: [], procedures: [] });
-    globalThis.fetch = fetchMock;
-    await memoryApi.getSnapshot("a1::default");
-    expect(fetchMock).toHaveBeenCalledWith("/api/harness/agents/a1%3A%3Adefault/memory", expect.any(Object));
-  });
-
   it("getStats fetches memory stats", async () => {
     const fetchMock = mockFetch(200, { fact_count: 5, event_count: 10 });
     globalThis.fetch = fetchMock;

@@ -2,11 +2,13 @@ use axum::extract::{Path, RawQuery, State};
 use axum::http::Method;
 use axum::response::Response;
 
+use aura_os_core::AgentId;
+
 use crate::state::AppState;
 
 pub(crate) async fn list_facts(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -22,7 +24,7 @@ pub(crate) async fn list_facts(
 
 pub(crate) async fn get_fact(
     State(state): State<AppState>,
-    Path((agent_id, fact_id)): Path<(String, String)>,
+    Path((agent_id, fact_id)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -37,7 +39,7 @@ pub(crate) async fn get_fact(
 
 pub(crate) async fn create_fact(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -53,7 +55,7 @@ pub(crate) async fn create_fact(
 
 pub(crate) async fn update_fact(
     State(state): State<AppState>,
-    Path((agent_id, fact_id)): Path<(String, String)>,
+    Path((agent_id, fact_id)): Path<(AgentId, String)>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -69,7 +71,7 @@ pub(crate) async fn update_fact(
 
 pub(crate) async fn delete_fact(
     State(state): State<AppState>,
-    Path((agent_id, fact_id)): Path<(String, String)>,
+    Path((agent_id, fact_id)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -84,7 +86,7 @@ pub(crate) async fn delete_fact(
 
 pub(crate) async fn get_fact_by_key(
     State(state): State<AppState>,
-    Path((agent_id, key)): Path<(String, String)>,
+    Path((agent_id, key)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -99,7 +101,7 @@ pub(crate) async fn get_fact_by_key(
 
 pub(crate) async fn list_events(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -115,7 +117,7 @@ pub(crate) async fn list_events(
 
 pub(crate) async fn create_event(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -131,7 +133,7 @@ pub(crate) async fn create_event(
 
 pub(crate) async fn delete_event(
     State(state): State<AppState>,
-    Path((agent_id, event_id)): Path<(String, String)>,
+    Path((agent_id, event_id)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -146,7 +148,7 @@ pub(crate) async fn delete_event(
 
 pub(crate) async fn list_procedures(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -162,7 +164,7 @@ pub(crate) async fn list_procedures(
 
 pub(crate) async fn get_procedure(
     State(state): State<AppState>,
-    Path((agent_id, proc_id)): Path<(String, String)>,
+    Path((agent_id, proc_id)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -177,7 +179,7 @@ pub(crate) async fn get_procedure(
 
 pub(crate) async fn create_procedure(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -193,7 +195,7 @@ pub(crate) async fn create_procedure(
 
 pub(crate) async fn update_procedure(
     State(state): State<AppState>,
-    Path((agent_id, proc_id)): Path<(String, String)>,
+    Path((agent_id, proc_id)): Path<(AgentId, String)>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -209,7 +211,7 @@ pub(crate) async fn update_procedure(
 
 pub(crate) async fn delete_procedure(
     State(state): State<AppState>,
-    Path((agent_id, proc_id)): Path<(String, String)>,
+    Path((agent_id, proc_id)): Path<(AgentId, String)>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -224,7 +226,7 @@ pub(crate) async fn delete_procedure(
 
 pub(crate) async fn list_procedures_by_skill(
     State(state): State<AppState>,
-    Path((agent_id, skill_name)): Path<(String, String)>,
+    Path((agent_id, skill_name)): Path<(AgentId, String)>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     let mut qs = format!("skill={skill_name}");
@@ -244,7 +246,7 @@ pub(crate) async fn list_procedures_by_skill(
 
 pub(crate) async fn get_memory_snapshot(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -260,7 +262,7 @@ pub(crate) async fn get_memory_snapshot(
 
 pub(crate) async fn wipe_memory(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
 ) -> Result<Response, axum::http::StatusCode> {
     state
         .harness_http
@@ -275,7 +277,7 @@ pub(crate) async fn wipe_memory(
 
 pub(crate) async fn get_memory_stats(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, axum::http::StatusCode> {
     state
@@ -291,7 +293,7 @@ pub(crate) async fn get_memory_stats(
 
 pub(crate) async fn trigger_consolidation(
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id): Path<AgentId>,
     body: String,
 ) -> Result<Response, axum::http::StatusCode> {
     state
