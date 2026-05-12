@@ -6,21 +6,22 @@ interface ProjectRowIconProps {
 }
 
 /**
- * Icon rendered in the explorer row for each project. Reads
- * appearance for `projectId` and composes whichever of (Lucide icon,
- * accent color) the user has configured:
+ * Icon rendered in the explorer row for each project, used by every
+ * app that builds a project-list tree (projects sidebar, tasks,
+ * process, …). Reads appearance for `projectId` and composes
+ * whichever of (Lucide icon, accent color) the user has configured:
  *
  * - **Both icon + accent:** the Lucide glyph painted in the accent
  *   color. Reads as "this project is themed."
  * - **Icon only:** plain Lucide glyph in the default text color.
  * - **Accent only:** a small filled dot in the accent color. Acts as
  *   a row pip without taking up icon real estate.
- * - **Neither:** nothing — Explorer renders the label without a
- *   leading glyph, matching the pre-feature default.
+ * - **Neither:** nothing — the row renders without a leading glyph,
+ *   matching the pre-feature default.
  *
- * The store dedupes loads per project id so mounting many of these
- * concurrently (e.g. sidebar boot) collapses to one request per
- * project.
+ * The appearance store dedupes loads per project id so mounting many
+ * of these concurrently (e.g. sidebar boot) collapses to one request
+ * per project.
  */
 export function ProjectRowIcon({ projectId }: ProjectRowIconProps) {
   const { appearance } = useProjectAppearance(projectId);
