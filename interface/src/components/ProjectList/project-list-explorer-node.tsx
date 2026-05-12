@@ -1,17 +1,13 @@
-import type {
-  CSSProperties,
-  KeyboardEvent as ReactKeyboardEvent,
-  ReactNode,
-} from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import type { ExplorerNode } from "@cypher-asi/zui";
 import { Archive, Gauge, Loader2 } from "lucide-react";
 import { Avatar } from "../Avatar";
-import { ProjectRowIcon } from "./ProjectRowIcon";
 import { ProjectsPlusButton } from "../ProjectsPlusButton";
 import type { useProjectListData } from "./useProjectListData";
 import { resolveStatus } from "./project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../lib/zui-compat";
 import type { ProjectAppearance } from "../../shared/api/appearance";
+import { buildProjectRowAppearance } from "../../features/project-row-appearance";
 import { agentDisplayName } from "../../lib/derive-project-agent-title";
 
 export type ProjectAgentNode =
@@ -250,49 +246,14 @@ export function buildProjectExplorerNode(
   explorerStyles: ProjectExplorerNodeStyles,
   appearance?: ProjectAppearance,
 ): ExplorerNodeWithSuffix {
-  // Header chip styling: accent left-edge stripe, background fill,
-  // outline. The accent stripe is rendered by `.projectHeader::before`
-  // in LeftMenuTree.module.css — we just expose the color here via a
-  // `--accent-stripe-color` custom property. Pseudo-element painting
-  // bypasses the row's 6px border-radius clip so the stripe stays
-  // straight top-to-bottom (inset by the radius amount). Outline
-  // takes priority — when an outline color is set, the stripe is
-  // suppressed so the two don't compete for the left edge.
-  const hasOutline = !!appearance?.headerOutline;
-  const hasBackground = !!appearance?.headerBackground;
-  // Outline OR background fill both take priority over the accent
-  // stripe — they each "own" the row's visual treatment and stacking
-  // a stripe over them just adds noise.
-  const showAccentStripe =
-    !!appearance?.accent && !hasOutline && !hasBackground;
-  const hasChipStyling =
-    showAccentStripe || appearance?.headerBackground || hasOutline;
-  const headerStyle = hasChipStyling
-    ? ({
-        background: appearance!.headerBackground,
-        border: hasOutline
-          ? `1px solid ${appearance!.headerOutline}`
-          : undefined,
-        ...(showAccentStripe
-          ? { ["--accent-stripe-color" as string]: appearance!.accent! }
-          : {}),
-      } as CSSProperties)
-    : undefined;
   return {
     id: project.project_id,
     label: project.name,
-    icon: <ProjectRowIcon projectId={project.project_id} />,
-    // `nameColor` tints the project name text in the sidebar row.
-    // Kept synchronous (read from a Map snapshot in the caller)
-    // rather than via a subscribing wrapper component, because the
-    // styled `<span>` carries the `data-inline-rename-label` hook
-    // that the rename flow relies on — wrapping it would break that
-    // querySelector path. Inline `style` is the lowest-friction
-    // route that preserves the existing DOM contract.
-    labelStyle: appearance?.nameColor
-      ? { color: appearance.nameColor }
-      : undefined,
-    headerStyle,
+    // Appearance-derived fields (icon, label tint, chip styling) live
+    // in the shared `features/project-row-appearance/` module so every
+    // project-list surface (projects / tasks / process) reads the
+    // same logic instead of duplicating the priority rules.
+    ...buildProjectRowAppearance(project.project_id, appearance),
     suffix: buildProjectSuffix(
       project.project_id,
       context,
