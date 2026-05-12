@@ -52,6 +52,23 @@
 :root {
   color-scheme: light dark;
   --font-sans: 'Inter Variable', sans-serif;
+}
+
+/* Pin `color-scheme` to the app's current theme so OS-native form
+   widgets (`<select>` dropdown popups, scrollbars, date pickers)
+   render in the matching light/dark variant instead of falling back
+   to the OS preference. Without this the closed `<select>` reads
+   correctly (themed via CSS) but the open dropdown shows the OS's
+   light/dark default. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root {
 
   /*
    * Shell chrome tokens shared by every surface that participates in the
