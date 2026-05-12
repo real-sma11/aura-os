@@ -622,8 +622,11 @@ jobs:
           }
 
           should_retry_packaging() {
+            # macOS: retry on transient DMG creation flakes, and on transient
+            # HTTP failures from Apple's notary service (notarytool surfaces
+            # 5xx / 429 as `HTTP status code: NNN`).
             if [ "${{ matrix.target }}" = "macos" ] \
-              && grep -Eiq "hdiutil: .*Resource busy|resource is being held|resource temporarily unavailable" packager.log; then
+              && grep -Eiq "hdiutil: .*Resource busy|resource is being held|resource temporarily unavailable|HTTP status code: (429|5[0-9][0-9])" packager.log; then
               return 0
             fi
 
