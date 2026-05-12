@@ -23,23 +23,54 @@ const DEFAULTS: DesktopPrefs = {
   pulseFromColor: "",
 };
 
-function readLocal(): DesktopPrefs {
+function parseStored(): DesktopPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
-    // Migrate legacy single-color key
     const legacy = localStorage.getItem(LEGACY_COLOR_KEY);
     if (legacy) return { ...DEFAULTS, color: legacy };
-    return DEFAULTS;
-  } catch {
-    return DEFAULTS;
-  }
+  } catch {}
+  return DEFAULTS;
 }
 
-function writeLocal(prefs: DesktopPrefs): void {
+// Module-level stable reference — useSyncExternalStore requires the same
+// object reference to be returned when the data hasn't changed.
+let _prefs: DesktopPrefs = parseStored();
+
+function getSnapshot(): DesktopPrefs {
+  return _prefs;
+}
+
+function writeLocal(next: DesktopPrefs): void {
+  _prefs = next;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {}
+}
+
+const listeners = new Set<() => void>();
+
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) {
+      try {
+        _prefs = e.newValue ? { ...DEFAULTS, ...JSON.parse(e.newValue) } : DEFAULTS;
+      } catch {
+        _prefs = DEFAULTS;
+      }
+      cb();
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    listeners.delete(cb);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
+function notify(): void {
+  for (const cb of listeners) cb();
 }
 
 function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
@@ -62,38 +93,20 @@ function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
   };
 }
 
-const listeners = new Set<() => void>();
-
-function subscribe(cb: () => void): () => void {
-  listeners.add(cb);
-  const handleStorage = () => cb();
-  window.addEventListener("storage", handleStorage);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
-
-function notify(): void {
-  for (const cb of listeners) cb();
-}
-
-function patch(update: Partial<DesktopPrefs>): void {
-  const next = { ...readLocal(), ...update };
+function applyPatch(update: Partial<DesktopPrefs>): void {
+  const next = { ..._prefs, ...update };
   writeLocal(next);
   notify();
   api.patchDesktopPreferences(toApiPrefs(next)).catch(() => {});
 }
 
 export function useDesktopLogoColor() {
-  const prefs = useSyncExternalStore(subscribe, readLocal, () => DEFAULTS);
+  const prefs = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULTS);
 
   useEffect(() => {
     api.getDesktopPreferences().then((remote) => {
-      const local = readLocal();
       const fromRemote = fromApiPrefs(remote);
-      // Only sync if remote differs — remote is authoritative after reinstall
-      if (JSON.stringify(fromRemote) !== JSON.stringify(local)) {
+      if (JSON.stringify(fromRemote) !== JSON.stringify(_prefs)) {
         writeLocal(fromRemote);
         notify();
       }
@@ -101,23 +114,23 @@ export function useDesktopLogoColor() {
   }, []);
 
   const setColor = useCallback((next: string | undefined) => {
-    patch({ color: next ?? "" });
+    applyPatch({ color: next ?? "" });
   }, []);
 
   const setPulseEnabled = useCallback((next: boolean) => {
-    patch({ pulseEnabled: next });
+    applyPatch({ pulseEnabled: next });
   }, []);
 
   const setPulseMode = useCallback((next: PulseMode) => {
-    patch({ pulseMode: next });
+    applyPatch({ pulseMode: next });
   }, []);
 
   const setPulseSpeed = useCallback((next: number) => {
-    patch({ pulseSpeed: next });
+    applyPatch({ pulseSpeed: next });
   }, []);
 
   const setPulseFromColor = useCallback((next: string | undefined) => {
-    patch({ pulseFromColor: next ?? "" });
+    applyPatch({ pulseFromColor: next ?? "" });
   }, []);
 
   return {
