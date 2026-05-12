@@ -21,6 +21,7 @@ import {
 } from "../stores/sessions-list-store";
 import { useAgentStore } from "../apps/agents/stores";
 import { useProjectsListStore } from "../stores/projects-list-store";
+import type { AnnotatedSession } from "../components/SessionsList";
 import { useContextUsage, useContextUsageStore } from "../stores/context-usage-store";
 import { useHydrateContextUtilization } from "./use-hydrate-context-utilization";
 import type { ChatPanelProps } from "../apps/chat/components/ChatPanel";
@@ -59,6 +60,24 @@ function selectProjectsForAgent(agentId: string | undefined) {
       return instances?.some((instance) => instance.agent_id === agentId);
     });
   };
+}
+
+/**
+ * Find the project a session was originally created in by looking it
+ * up across the agent's surface in `sessions-list-store`. Used by the
+ * agents app to thread the LLM-input `project_id` of an existing
+ * session through `body.project_id` so the harness restores the
+ * project context (`with_project_self_caps`, workspace path,
+ * `<project_context>` block) the chat originally ran with — even when
+ * the user lands on `/agents/:agentId?session=<id>` from a row
+ * unrelated to today's selected display project.
+ */
+function findSessionProjectId(
+  sessions: AnnotatedSession[] | undefined,
+  sessionId: string,
+): string | undefined {
+  if (!sessions || sessions.length === 0) return undefined;
+  return sessions.find((s) => s.session_id === sessionId)?._projectId;
 }
 
 function loadPersistedProject(agentId: string): string | undefined {
@@ -149,6 +168,52 @@ export function useStandaloneAgentChat(
     return [{ ...baseProject, name: AGENT_HOME_PROJECT_NAME }];
   }, [homeProject, effectiveProjectId, agentProjects]);
 
+  // Look up the session-of-record's original project so an existing
+  // chat opened via `/agents/:agentId?session=<id>` ships THAT
+  // project as the LLM-input `body.project_id`, regardless of which
+  // display project the picker is showing today.
+  const sessionProjectId = useSessionsListStore((state) => {
+    if (!agentId || !pinnedSessionId) return undefined;
+    return findSessionProjectId(
+      state.sessionsBySurface[agentSessionsSurfaceKey(agentId)],
+      pinnedSessionId,
+    );
+  });
+
+  // The wire `project_id`. Decoupled from `selectedProjectId` (which
+  // anchors the picker label and chat-persistence target) so that:
+  //   - new sessions / fresh canvas / context reset always ship Home;
+  //   - existing sessions ship their original project (recovered from
+  //     `sessions-list-store`);
+  //   - legacy agents with no Home binding ship `undefined` and let
+  //     the server's lazy heal in
+  //     `setup_agent_chat_persistence_with_matched` create the
+  //     binding on first turn — see the heal-refresh effect below
+  //     which materializes the resulting Home row for subsequent
+  //     sends.
+  const llmProjectId = useMemo<string | undefined>(() => {
+    if (pinnedSessionId && sessionProjectId) return sessionProjectId;
+    if (homeProject) return homeProject.project_id;
+    return undefined;
+  }, [pinnedSessionId, sessionProjectId, homeProject]);
+
+  // Eagerly poke `useProjectsListStore` so a freshly-healed Home
+  // binding (the server creates one inside the first chat turn for
+  // legacy agents that never had any binding, see
+  // `ensure_agent_home_project_and_binding`) materializes in the
+  // local store for subsequent sends. Without this nudge the Home
+  // row would only appear after a hard reload, and the second turn
+  // would still ship `undefined` instead of the Home id.
+  const refreshProjects = useProjectsListStore((s) => s.refreshProjects);
+  const hasHomeBinding = homeProject != null;
+  const hasAgentBindings = agentProjects.length > 0;
+  useEffect(() => {
+    if (!agentId) return;
+    if (hasHomeBinding) return;
+    if (hasAgentBindings) return;
+    void refreshProjects();
+  }, [agentId, hasHomeBinding, hasAgentBindings, refreshProjects]);
+
   // Tracks the optimistic placeholder id this hook inserted into the
   // SessionsList store on the most recent fresh-chat send. When
   // `SessionReady` lands, we swap the synthetic id for the real one
@@ -165,6 +230,14 @@ export function useStandaloneAgentChat(
     projectName: string;
     agentInstanceId: string;
   } | null>(null);
+
+  // Mirror `hasHomeBinding` via a ref so the `SessionReady` callback
+  // can decide whether to refetch the projects list without
+  // re-binding on every render — `handleSessionReady` is read by
+  // `useAgentChatStream` via a ref of its own, so a stable identity
+  // here keeps the chat input bar's memoization intact.
+  const hasHomeBindingRef = useRef(hasHomeBinding);
+  useEffect(() => { hasHomeBindingRef.current = hasHomeBinding; }, [hasHomeBinding]);
 
   // Mirror the server-assigned session id back into the URL so the
   // panel reuses the same routing contract on every send. See the
@@ -192,6 +265,15 @@ export function useStandaloneAgentChat(
             newSessionId,
           );
         }
+      }
+      // After the first turn for a legacy agent, the server may have
+      // just created a Home `project_agent` binding (see
+      // `ensure_agent_home_project_and_binding`). Refresh the projects
+      // list so the new Home row appears in `useProjectsListStore`
+      // and the next send ships the Home id as `body.project_id`
+      // instead of falling back to `undefined`.
+      if (!hasHomeBindingRef.current) {
+        void useProjectsListStore.getState().refreshProjects();
       }
       setSearchParams(
         (prev) => {
@@ -484,6 +566,7 @@ export function useStandaloneAgentChat(
     historyMessages,
     projects: displayProjects,
     selectedProjectId: effectiveProjectId,
+    llmProjectId,
     onProjectChange: undefined,
     contextUsage,
     onNewSession: handleNewSession,

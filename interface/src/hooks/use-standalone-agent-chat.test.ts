@@ -71,11 +71,62 @@ interface MockProject {
 }
 let mockProjects: MockProject[] = [];
 let mockAgentsByProject: Record<string, { agent_id: string }[]> = {};
+const mockRefreshProjects = vi.fn(() => Promise.resolve());
 
-vi.mock("../stores/projects-list-store", () => ({
-  useProjectsListStore: (selector: (s: { projects: typeof mockProjects; agentsByProject: typeof mockAgentsByProject }) => unknown) =>
-    selector({ projects: mockProjects, agentsByProject: mockAgentsByProject }),
-}));
+vi.mock("../stores/projects-list-store", () => {
+  const buildState = () => ({
+    projects: mockProjects,
+    agentsByProject: mockAgentsByProject,
+    refreshProjects: mockRefreshProjects,
+  });
+  type MockState = ReturnType<typeof buildState>;
+  const useProjectsListStore = ((
+    selector: (s: MockState) => unknown,
+  ) => selector(buildState())) as unknown as {
+    (selector: (s: MockState) => unknown): unknown;
+    getState: () => MockState;
+  };
+  useProjectsListStore.getState = buildState;
+  return { useProjectsListStore };
+});
+
+interface MockAnnotatedSession {
+  session_id: string;
+  _projectId: string;
+}
+let mockSessionsBySurface: Record<string, MockAnnotatedSession[]> = {};
+const mockReplaceSessionId = vi.fn();
+const mockBumpVersion = vi.fn();
+const mockAddOptimisticSession = vi.fn();
+
+vi.mock("../stores/sessions-list-store", () => {
+  const buildState = () => ({
+    sessionsBySurface: mockSessionsBySurface,
+    replaceSessionId: mockReplaceSessionId,
+    bumpVersion: mockBumpVersion,
+    addOptimisticSession: mockAddOptimisticSession,
+  });
+  type MockState = ReturnType<typeof buildState>;
+  const useSessionsListStore = ((
+    selector: (s: MockState) => unknown,
+  ) => selector(buildState())) as unknown as {
+    (selector: (s: MockState) => unknown): unknown;
+    getState: () => MockState;
+  };
+  useSessionsListStore.getState = buildState;
+  return {
+    useSessionsListStore,
+    agentSessionsSurfaceKey: (id: string) => `agent:${id}`,
+    projectSessionsSurfaceKey: (id: string) => `project:${id}`,
+    buildOptimisticSession: (args: {
+      optimisticId: string;
+      projectId: string;
+      projectName: string;
+      agentInstanceId: string;
+    }) => ({ session_id: args.optimisticId, _projectId: args.projectId }),
+    OPTIMISTIC_SESSION_ID_PREFIX: "optimistic:",
+  };
+});
 
 vi.mock("../stores/context-usage-store", () => ({
   useContextUsage: vi.fn(() => undefined),
@@ -101,12 +152,17 @@ describe("useStandaloneAgentChat", () => {
   beforeEach(() => {
     mockProjects = [];
     mockAgentsByProject = {};
+    mockSessionsBySurface = {};
     mockSendMessage.mockReset();
     mockStopStreaming.mockReset();
     mockResetEvents.mockReset();
     mockGetIsStreaming.mockReset();
     mockGetIsStreaming.mockImplementation(() => false);
     mockSetSelectedAgent.mockReset();
+    mockRefreshProjects.mockClear();
+    mockReplaceSessionId.mockReset();
+    mockBumpVersion.mockReset();
+    mockAddOptimisticSession.mockReset();
     storageState.clear();
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -370,6 +426,143 @@ describe("useStandaloneAgentChat", () => {
 
       expect(result.current.selectedProjectId).toBe("proj-home");
       expect(result.current.onProjectChange).toBeUndefined();
+    });
+  });
+
+  describe("llmProjectId (wire body.project_id)", () => {
+    // The wire `project_id` is what the LLM sees as the active project
+    // (drives `with_project_self_caps`, workspace path, the
+    // `<project_context>` block — see `agent_route.rs::resolve_effective_project_id`).
+    // It is intentionally decoupled from `selectedProjectId` (which
+    // anchors the picker label and chat-persistence target). The
+    // agents-app rules:
+    //   - fresh canvas / new session / context reset: ship Home id;
+    //   - existing pinned session: ship the session-of-record's
+    //     original `_projectId` from `sessions-list-store`;
+    //   - no Home binding yet: ship `undefined` and let the server's
+    //     lazy heal create one — see `ensure_agent_home_project_and_binding`.
+
+    it("pins llmProjectId to Home on a fresh canvas with a Home binding", () => {
+      mockProjects = [
+        { project_id: "proj-other", name: "Customer Work", description: "Other" },
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = {
+        "proj-other": [{ agent_id: "agent-1" }],
+        "proj-home": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.llmProjectId).toBe("proj-home");
+    });
+
+    it("ships llmProjectId=undefined when the agent has no Home binding (server self-heals)", () => {
+      // Legacy agent bound only to a non-Home project. The picker
+      // still synthesizes "Home" and `selectedProjectId` keeps the
+      // legacy id for chat persistence, but the wire MUST NOT leak
+      // the legacy project as `body.project_id`.
+      mockProjects = [
+        { project_id: "zero-sdk-10", name: "zero-sdk-10", description: "Legacy" },
+      ];
+      mockAgentsByProject = {
+        "zero-sdk-10": [{ agent_id: "agent-1" }],
+      };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(result.current.selectedProjectId).toBe("zero-sdk-10");
+      expect(result.current.llmProjectId).toBeUndefined();
+    });
+
+    it("looks up the originating project for an existing pinned session", () => {
+      mockProjects = [
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+        { project_id: "proj-customer", name: "Customer", description: "" },
+      ];
+      mockAgentsByProject = {
+        "proj-home": [{ agent_id: "agent-1" }],
+        "proj-customer": [{ agent_id: "agent-1" }],
+      };
+      mockSessionsBySurface = {
+        "agent:agent-1": [
+          { session_id: "session-A", _projectId: "proj-customer" },
+        ],
+      };
+
+      const { result } = renderHook(() =>
+        useStandaloneAgentChat("agent-1", "session-A"),
+      );
+
+      // Picker stays "Home" but the wire ships the session's
+      // originating project so the LLM rebuilds the same context the
+      // chat originally ran with.
+      expect(result.current.selectedProjectId).toBe("proj-home");
+      expect(result.current.llmProjectId).toBe("proj-customer");
+    });
+
+    it("falls back to Home when the pinned session is not in the sessions store yet", () => {
+      // Sessions list still loading on first render. Until it
+      // resolves, ship Home so the turn at least has a sensible
+      // project context — when the list lands the next render will
+      // pick up the real session project.
+      mockProjects = [
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = {
+        "proj-home": [{ agent_id: "agent-1" }],
+      };
+      mockSessionsBySurface = {};
+
+      const { result } = renderHook(() =>
+        useStandaloneAgentChat("agent-1", "session-not-loaded"),
+      );
+
+      expect(result.current.llmProjectId).toBe("proj-home");
+    });
+
+    it("triggers refreshProjects on mount when the agent has no bindings at all", () => {
+      // A brand-new (or freshly-resurrected) agent that the local
+      // projects store has not yet discovered. Nudging the store
+      // here lets a server-side Home binding (created by
+      // `ensure_agent_home_project_and_binding` during agent
+      // bootstrap, or by a concurrent chat turn) materialize without
+      // requiring a hard reload.
+      mockProjects = [];
+      mockAgentsByProject = {};
+
+      renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(mockRefreshProjects).toHaveBeenCalled();
+    });
+
+    it("does not trigger refreshProjects on mount when a Home binding is already present", () => {
+      mockProjects = [
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = {
+        "proj-home": [{ agent_id: "agent-1" }],
+      };
+
+      renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(mockRefreshProjects).not.toHaveBeenCalled();
     });
   });
 

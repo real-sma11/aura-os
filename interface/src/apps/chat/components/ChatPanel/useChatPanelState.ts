@@ -48,6 +48,17 @@ export interface UseChatPanelStateOptions {
   scrollToBottomOnReset?: boolean;
   historyMessages?: DisplaySessionEvent[];
   selectedProjectId?: string;
+  /**
+   * Project id forwarded as `body.project_id` on the wire. Distinct
+   * from `selectedProjectId` (which only drives the picker label and
+   * chat-persistence anchor) so the agents-app can ship a different
+   * project to the LLM than the one rendered in the picker — e.g.
+   * Home for new sessions / context resets, or the originating
+   * project for an existing session opened from a row that was
+   * created elsewhere. Defaults to `selectedProjectId` when not set
+   * so existing callers (projects app) keep their current behavior.
+   */
+  llmProjectId?: string;
   agentId?: string;
 }
 
@@ -61,8 +72,10 @@ export function useChatPanelState({
   scrollToBottomOnReset,
   historyMessages,
   selectedProjectId,
+  llmProjectId,
   agentId,
 }: UseChatPanelStateOptions) {
+  const wireProjectId = llmProjectId ?? selectedProjectId;
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>(EMPTY_ATTACHMENTS);
   const [commands, setCommands] = useState<SlashCommand[]>(EMPTY_COMMANDS);
@@ -206,10 +219,15 @@ export function useChatPanelState({
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
 
-  const selectedProjectIdRef = useRef(selectedProjectId);
+  // Tracks the project id that should ride along with each send as
+  // `body.project_id`. Decoupled from `selectedProjectId` so the
+  // picker's "Home" label can stay even when the wire ships a
+  // different (e.g. session-of-record) project. See `llmProjectId`
+  // in this hook's options.
+  const selectedProjectIdRef = useRef(wireProjectId);
   useEffect(() => {
-    selectedProjectIdRef.current = selectedProjectId;
-  }, [selectedProjectId]);
+    selectedProjectIdRef.current = wireProjectId;
+  }, [wireProjectId]);
 
   const selectedModeRef = useRef(selectedMode);
   useEffect(() => {

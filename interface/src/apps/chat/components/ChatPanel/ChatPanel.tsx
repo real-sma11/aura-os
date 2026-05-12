@@ -81,6 +81,16 @@ export interface ChatPanelProps {
   historyMessages?: DisplaySessionEvent[];
   projects?: Project[];
   selectedProjectId?: string;
+  /**
+   * Project id sent as `body.project_id` on the wire. Defaults to
+   * `selectedProjectId` when omitted. The agents-app passes a
+   * different value here so the picker's static "Home" label can
+   * stay while the LLM still receives the correct context project
+   * (Home for fresh canvases, the originating session's project for
+   * an existing session). See `useChatPanelState` for the full
+   * rationale.
+   */
+  llmProjectId?: string;
   onProjectChange?: (projectId: string) => void;
   header?: ReactNode;
   InputBarComponent?: ForwardRefExoticComponent<ChatInputBarProps & RefAttributes<ChatInputBarHandle>>;
@@ -128,6 +138,7 @@ export function ChatPanel({
   historyMessages,
   projects,
   selectedProjectId,
+  llmProjectId,
   onProjectChange,
   header,
   InputBarComponent = DesktopChatInputBar,
@@ -174,6 +185,7 @@ export function ChatPanel({
     scrollToBottomOnReset,
     historyMessages,
     selectedProjectId,
+    llmProjectId,
     agentId,
   });
 

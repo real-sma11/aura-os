@@ -296,6 +296,12 @@ export function AgentChatPanel({
     historyMessages,
     projects: currentProject,
     selectedProjectId: projectId,
+    // The projects-app pins the wire `project_id` to the route
+    // project — same value as the picker. Threaded explicitly so
+    // the chat panel can't accidentally swap in a different LLM
+    // context project. See `useStandaloneAgentChat` for the
+    // agents-app side that decouples picker from wire.
+    llmProjectId: projectId,
     contextUsage,
     onNewSession: fresh.newSession,
     onNewChat: () => {
