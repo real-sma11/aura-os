@@ -13,6 +13,7 @@ interface DesktopPrefs {
   pulseMode: PulseMode;
   pulseSpeed: number;
   pulseFromColor: string;
+  sweepReversed: boolean;
 }
 
 const DEFAULTS: DesktopPrefs = {
@@ -21,6 +22,7 @@ const DEFAULTS: DesktopPrefs = {
   pulseMode: "fade",
   pulseSpeed: 2,
   pulseFromColor: "",
+  sweepReversed: false,
 };
 
 function parseStored(): DesktopPrefs {
@@ -80,6 +82,7 @@ function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
     pulse_mode: p.pulseMode,
     pulse_speed: p.pulseSpeed,
     pulse_from_color: p.pulseFromColor || null,
+    sweep_reversed: p.sweepReversed,
   };
 }
 
@@ -90,6 +93,7 @@ function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
     pulseMode: p.pulse_mode ?? "fade",
     pulseSpeed: p.pulse_speed ?? 2,
     pulseFromColor: p.pulse_from_color ?? "",
+    sweepReversed: p.sweep_reversed ?? false,
   };
 }
 
@@ -133,16 +137,22 @@ export function useDesktopLogoColor() {
     applyPatch({ pulseFromColor: next ?? "" });
   }, []);
 
+  const setSweepReversed = useCallback((next: boolean) => {
+    applyPatch({ sweepReversed: next });
+  }, []);
+
   return {
     color: prefs.color,
     pulseEnabled: prefs.pulseEnabled,
     pulseMode: prefs.pulseMode,
     pulseSpeed: prefs.pulseSpeed,
     pulseFromColor: prefs.pulseFromColor,
+    sweepReversed: prefs.sweepReversed,
     setColor,
     setPulseEnabled,
     setPulseMode,
     setPulseSpeed,
     setPulseFromColor,
+    setSweepReversed,
   };
 }

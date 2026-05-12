@@ -192,12 +192,24 @@
   animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
 }
 
+.logoPreviewSweepOverlayReversed {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+}
+
 @keyframes logo-fade {
   from { background-color: var(--logo-pulse-from, white); }
   to   { background-color: var(--logo-pulse-to, white); }
 }
 
 @keyframes logo-sweep {
+  from { clip-path: inset(0 0 0 100%); }
+  to   { clip-path: inset(0 0 0 0%); }
+}
+
+@keyframes logo-sweep-reversed {
   from { clip-path: inset(0 100% 0 0); }
   to   { clip-path: inset(0 0% 0 0); }
 }

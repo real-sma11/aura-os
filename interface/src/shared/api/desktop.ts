@@ -94,6 +94,7 @@ export interface DesktopPreferences {
   pulse_mode: "fade" | "sweep" | null;
   pulse_speed: number | null;
   pulse_from_color: string | null;
+  sweep_reversed: boolean | null;
 }
 
 export const desktopApi = {

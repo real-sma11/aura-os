@@ -173,6 +173,11 @@
 }
 
 @keyframes logo-sweep {
+  from { clip-path: inset(0 0 0 100%); }
+  to   { clip-path: inset(0 0 0 0%); }
+}
+
+@keyframes logo-sweep-reversed {
   from { clip-path: inset(0 100% 0 0); }
   to   { clip-path: inset(0 0% 0 0); }
 }
@@ -221,9 +226,13 @@
   display: block;
 }
 
-/* Top layer sweeps left→right, revealing the "to" color */
+/* Top layer sweeps, revealing the "to" color */
 .titleLogoSweepOverlay {
   animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+}
+
+.titleLogoSweepOverlayReversed {
+  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
 }
 
 .titleLeading {

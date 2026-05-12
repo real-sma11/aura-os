@@ -57,11 +57,13 @@ export function AppearanceSection() {
     pulseMode, setPulseMode,
     pulseSpeed, setPulseSpeed,
     pulseFromColor, setPulseFromColor,
+    sweepReversed, setSweepReversed,
   } = useDesktopLogoColor();
   const defaultLogoHex = resolvedTheme === "light" ? "#000000" : "#ffffff";
   const [hexDraft, setHexDraft] = useState<string | null>(null);
   const [fromHexDraft, setFromHexDraft] = useState<string | null>(null);
   const pulseCheckboxId = useId();
+  const sweepReverseId = useId();
 
   const handleLogoColorPicker = (e: ChangeEvent<HTMLInputElement>) => {
     setLogoColor(e.target.value.toLowerCase());
@@ -242,10 +244,26 @@ export function AppearanceSection() {
                   className={`${styles.pulseModeButton}${pulseMode === m ? ` ${styles.pulseModeButtonActive}` : ""}`}
                   onClick={() => setPulseMode(m)}
                 >
-                  {m === "fade" ? "Fade" : "Left → Right"}
+                  {m === "fade" ? "Fade" : "Sweep"}
                 </button>
               ))}
             </div>
+
+            {/* Sweep direction — only shown in sweep mode */}
+            {pulseMode === "sweep" && (
+              <div className={styles.pulseToggleRow}>
+                <input
+                  type="checkbox"
+                  id={sweepReverseId}
+                  checked={sweepReversed}
+                  onChange={(e) => setSweepReversed(e.target.checked)}
+                  className={styles.pulseCheckbox}
+                />
+                <label htmlFor={sweepReverseId} className={styles.pulseLabel}>
+                  Reverse direction
+                </label>
+              </div>
+            )}
 
             {/* Speed */}
             <Text variant="muted" size="xs">Speed</Text>
@@ -254,7 +272,7 @@ export function AppearanceSection() {
               <input
                 type="range"
                 min="0.5"
-                max="5"
+                max="30"
                 step="0.1"
                 value={pulseSpeed}
                 onChange={(e) => setPulseSpeed(parseFloat(e.target.value))}
@@ -326,7 +344,7 @@ export function AppearanceSection() {
                 style={{ backgroundColor: effectiveFromColor }}
               />
               <div
-                className={`${styles.logoPreviewMark} ${styles.logoPreviewSweepOverlay}`}
+                className={`${styles.logoPreviewMark} ${sweepReversed ? styles.logoPreviewSweepOverlayReversed : styles.logoPreviewSweepOverlay}`}
                 style={{
                   backgroundColor: effectiveToColor,
                   "--logo-pulse-duration": `${pulseSpeed}s`,

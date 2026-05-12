@@ -24,7 +24,7 @@ export function DesktopTitlebar({
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
   const { resolvedTheme } = useTheme();
-  const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor } = useDesktopLogoColor();
+  const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor, sweepReversed } = useDesktopLogoColor();
 
   const themeDefault = resolvedTheme === "light" ? "#000000" : "#ffffff";
   const toColor = logoColor || themeDefault;
@@ -62,7 +62,7 @@ export function DesktopTitlebar({
           style={{ "--desktop-logo-color": fromColor } as CSSProperties}
         />
         <div
-          className={`${styles.titleLogoLayer} ${styles.titleLogoSweepOverlay}`}
+          className={`${styles.titleLogoLayer} ${sweepReversed ? styles.titleLogoSweepOverlayReversed : styles.titleLogoSweepOverlay}`}
           style={{
             "--desktop-logo-color": toColor,
             "--logo-pulse-duration": durationCss,
