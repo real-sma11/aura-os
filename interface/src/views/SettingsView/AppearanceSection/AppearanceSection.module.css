@@ -189,14 +189,14 @@
   position: absolute;
   inset: 0;
   height: 100%;
-  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite;
 }
 
 .logoPreviewSweepOverlayReversed {
   position: absolute;
   inset: 0;
   height: 100%;
-  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite;
 }
 
 @keyframes logo-fade {
@@ -205,13 +205,15 @@
 }
 
 @keyframes logo-sweep {
-  from { clip-path: inset(0 0 0 100%); }
-  to   { clip-path: inset(0 0 0 0%); }
+  0%   { clip-path: inset(0 100% 0 0); }
+  50%  { clip-path: inset(0 0% 0 0); }
+  100% { clip-path: inset(0 0 0 100%); }
 }
 
 @keyframes logo-sweep-reversed {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0% 0 0); }
+  0%   { clip-path: inset(0 100% 0 0); }
+  50%  { clip-path: inset(0 0% 0 0); }
+  100% { clip-path: inset(0 100% 0 0); }
 }
 
 /* Pulse toggle */
