@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { formatShortcut } from "../../lib/platform";
@@ -63,7 +64,12 @@ function MenuPanel({ menu, position, onSelect, onClose, panelRef, isItemDisabled
   );
 }
 
-export function MenuBar() {
+interface MenuBarProps {
+  /** Optional content rendered at the end of the menu bar, after the last menu trigger. */
+  trailingSlot?: ReactNode;
+}
+
+export function MenuBar({ trailingSlot }: MenuBarProps = {}) {
   const { actions, isItemDisabled } = useMenuActions();
   useMenuShortcuts({ actions, isItemDisabled });
 
@@ -181,6 +187,7 @@ export function MenuBar() {
           </button>
         );
       })}
+      {trailingSlot}
       {activeMenu && typeof document !== "undefined"
         ? createPortal(
             <MenuPanel
