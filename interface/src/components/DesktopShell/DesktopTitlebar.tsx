@@ -7,6 +7,7 @@ import { ShellTitlebar } from "../ShellTitlebar";
 import { UpdatePill } from "../UpdateBanner";
 import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
+import { useDesktopLogoColor } from "../../hooks/use-desktop-logo-color";
 import styles from "./DesktopShell.module.css";
 
 interface DesktopTitlebarProps {
@@ -21,6 +22,7 @@ export function DesktopTitlebar({
   onOpenHostSettings,
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
+  const { color: logoColor } = useDesktopLogoColor();
 
   return (
     <ShellTitlebar
@@ -32,12 +34,11 @@ export function DesktopTitlebar({
       }
       title={
         <span className={`titlebar-center ${styles.titleCenter}`}>
-          <img
-            src="/AURA_logo_text_mark.png"
-            alt="AURA"
-            draggable={false}
+          <div
             className={styles.titleLogo}
-            data-aura-wordmark
+            role="img"
+            aria-label="AURA"
+            style={logoColor ? { ["--desktop-logo-color" as string]: logoColor } : undefined}
           />
         </span>
       }

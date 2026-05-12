@@ -168,10 +168,21 @@
 }
 
 .titleLogo {
+  /* SVG aspect ratio is 3322 × 421 */
   height: 11px;
+  aspect-ratio: 3322 / 421;
   display: block;
   user-select: none;
   pointer-events: none;
+  background-color: var(--desktop-logo-color, white);
+  mask-image: url('/AURA_logo_text_mark.svg');
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url('/AURA_logo_text_mark.svg');
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
 }
 
 .titleLeading {

@@ -1,3 +1,4 @@
+import { type ChangeEvent, useState } from "react";
 import {
   Button,
   Panel,
@@ -9,9 +10,14 @@ import {
   type AccentColor,
 } from "@cypher-asi/zui";
 import { Sun, Moon, MonitorSmartphone } from "lucide-react";
+import { useDesktopLogoColor } from "../../../hooks/use-desktop-logo-color";
 import { CustomTokensPanel } from "./CustomTokensPanel";
 import { PresetsPanel } from "./PresetsPanel";
 import styles from "./AppearanceSection.module.css";
+
+function isValidHex(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
 
 const THEME_LABELS: Record<Theme, string> = {
   dark: "Dark",
@@ -44,7 +50,33 @@ const SWATCH_CLASSES: Record<AccentColor, string> = {
 };
 
 export function AppearanceSection() {
-  const { theme, accent, setTheme, setAccent } = useTheme();
+  const { theme, resolvedTheme, accent, setTheme, setAccent } = useTheme();
+  const { color: logoColor, setColor: setLogoColor } = useDesktopLogoColor();
+  const defaultLogoHex = resolvedTheme === "light" ? "#000000" : "#ffffff";
+  const [hexDraft, setHexDraft] = useState<string | null>(null);
+
+  const handleLogoColorPicker = (e: ChangeEvent<HTMLInputElement>) => {
+    setLogoColor(e.target.value.toLowerCase());
+    setHexDraft(null);
+  };
+
+  const handleLogoHexChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setHexDraft(raw);
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      setLogoColor(undefined);
+    } else if (isValidHex(trimmed)) {
+      setLogoColor(trimmed.toLowerCase());
+    }
+  };
+
+  const handleLogoHexBlur = () => setHexDraft(null);
+
+  const handleLogoReset = () => {
+    setLogoColor(undefined);
+    setHexDraft(null);
+  };
 
   return (
     <Panel
@@ -111,6 +143,50 @@ export function AppearanceSection() {
       </Text>
 
       <PresetsPanel />
+
+      <div className={styles.logoSection}>
+        <Text weight="semibold" size="sm">
+          Aura Logo
+        </Text>
+        <Text variant="muted" size="xs">
+          Customize the wordmark color in the desktop title bar.
+        </Text>
+        <div className={styles.logoColorRow}>
+          <input
+            type="color"
+            value={logoColor || defaultLogoHex}
+            onChange={handleLogoColorPicker}
+            className={styles.logoColorInput}
+            aria-label="Pick logo color"
+          />
+          <input
+            type="text"
+            value={hexDraft ?? logoColor}
+            onChange={handleLogoHexChange}
+            onBlur={handleLogoHexBlur}
+            placeholder={defaultLogoHex}
+            className={styles.logoHexInput}
+            aria-label="Logo color hex value"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className={styles.logoResetButton}
+            onClick={handleLogoReset}
+            disabled={!logoColor}
+          >
+            Reset
+          </button>
+        </div>
+        <div className={styles.logoPreview}>
+          <div
+            className={styles.logoPreviewMark}
+            role="img"
+            aria-label="AURA logo preview"
+            style={{ backgroundColor: logoColor || defaultLogoHex }}
+          />
+        </div>
+      </div>
     </Panel>
   );
 }
