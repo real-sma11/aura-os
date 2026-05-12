@@ -770,13 +770,25 @@ jobs:
           path: release-metadata/release-metadata.json
 
       - name: Create GitHub Release
+        id: release_stable
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: AURA ${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
           files: all-artifacts/**/*
+
+      - name: Reconcile stable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          bash infra/scripts/release/upload-release-assets-with-retry.sh \
+            "${{ github.repository }}" \
+            "${{ steps.version.outputs.tag }}" \
+            all-artifacts
 
       - name: Attach release summary to job
         shell: bash

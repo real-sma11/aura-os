@@ -871,7 +871,9 @@ jobs:
           path: release-metadata/release-metadata.json
 
       - name: Create immutable nightly release
+        id: release_immutable
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
           name: AURA ${{ needs.resolve-version.outputs.version }}
@@ -885,6 +887,16 @@ jobs:
 
             **Version**: `${{ needs.resolve-version.outputs.version }}`
 
+      - name: Reconcile immutable nightly release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          bash infra/scripts/release/upload-release-assets-with-retry.sh \
+            "${{ github.repository }}" \
+            "${{ needs.resolve-version.outputs.tag }}" \
+            all-artifacts
+
       - name: Prune existing nightly release alias assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -895,7 +907,9 @@ jobs:
             nightly
 
       - name: Create or update nightly release
+        id: release_nightly_alias
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: nightly
           name: "Nightly (${{ needs.resolve-version.outputs.version }})"
@@ -909,6 +923,16 @@ jobs:
 
             **Version**: `${{ needs.resolve-version.outputs.version }}`
             **Immutable release**: `https://github.com/${{ github.repository }}/releases/tag/${{ needs.resolve-version.outputs.tag }}`
+
+      - name: Reconcile nightly alias release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          bash infra/scripts/release/upload-release-assets-with-retry.sh \
+            "${{ github.repository }}" \
+            nightly \
+            all-artifacts
 
       - name: Attach release summary to job
         shell: bash

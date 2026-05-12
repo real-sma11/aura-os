@@ -298,7 +298,9 @@ jobs:
           merge-multiple: true
 
       - name: Create or update mobile nightly release
+        id: release_mobile_nightly
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: mobile-nightly
           name: "Mobile Nightly (${{ steps.version.outputs.version }})"
@@ -315,6 +317,16 @@ jobs:
             - Includes the mobile artifacts produced by the successful jobs in this run.
             - Pushes to `main` currently publish the Android APK automatically.
             - iOS IPA publication to this GitHub Release remains manual-only via workflow dispatch.
+
+      - name: Reconcile mobile nightly release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          bash infra/scripts/release/upload-release-assets-with-retry.sh \
+            "${{ github.repository }}" \
+            mobile-nightly \
+            mobile-artifacts
 
       - name: Attach mobile release summaries
         shell: bash
