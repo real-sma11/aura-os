@@ -1,6 +1,25 @@
+/* Wraps the chrome pill with breathing room so the search row matches the
+   inset spacing of the titlebar / bottom-taskbar pills above and below. */
 .root {
+  padding: var(--shell-chrome-inset, 5px);
+}
+
+/* Chrome pill: same tokens as ShellTitlebar.blur and BottomTaskbar pills so
+   every search row reads as part of the same chrome family. `overflow: hidden`
+   lets the inner Input render flush against the rounded corners without its
+   own border-radius. */
+.chrome {
   position: relative;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  height: var(--shell-chrome-height, var(--control-height-sm));
+  border-radius: var(--shell-chrome-radius, 20px);
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+  border: 1px solid var(--color-border-chrome);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .root input {
@@ -25,7 +44,7 @@
 
 .icon {
   position: absolute;
-  left: var(--space-4, 16px);
+  left: var(--space-2, 8px);
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-muted);
@@ -34,18 +53,22 @@
 
 .action {
   position: absolute;
-  right: var(--space-4, 16px);
+  right: var(--space-2, 8px);
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
 }
 
+/* The chrome pill provides the visual frame, so the Input itself is reduced
+   to a transparent text field that fills the pill height. Hover/focus states
+   keep the same transparency so the chrome border stays the only stroke. */
 .searchInput {
-  padding-left: calc(var(--space-4, 16px) + 14px + var(--space-2, 8px));
+  width: 100%;
+  height: 100%;
+  padding-left: calc(var(--space-2, 8px) + 14px + var(--space-2, 8px));
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--color-border);
   border-radius: 0;
   box-shadow: none;
 }
@@ -53,13 +76,12 @@
 .searchInput:hover {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--color-border);
+  box-shadow: none;
 }
 
 .searchInput:focus,
 .searchInput:focus-visible {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--color-border);
   box-shadow: none;
 }

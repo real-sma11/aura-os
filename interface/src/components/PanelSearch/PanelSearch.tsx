@@ -13,16 +13,18 @@ interface PanelSearchProps {
 export function PanelSearch({ placeholder = "Search", value, onChange, action }: PanelSearchProps) {
   return (
     <div className={styles.root}>
-      <Search size={14} className={styles.icon} />
-      <Input
-        size="sm"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={styles.searchInput}
-        style={action ? { paddingRight: "calc(var(--space-4, 16px) + var(--control-height-sm, 28px))" } : undefined}
-      />
-      {action && <div className={styles.action}>{action}</div>}
+      <div className={styles.chrome}>
+        <Search size={14} className={styles.icon} />
+        <Input
+          size="sm"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={styles.searchInput}
+          style={action ? { paddingRight: "calc(var(--space-2, 8px) + var(--control-height-sm, 28px))" } : undefined}
+        />
+        {action && <div className={styles.action}>{action}</div>}
+      </div>
     </div>
   );
 }
