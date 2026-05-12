@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 
 const mockSendMessage = vi.fn();
 const mockStopStreaming = vi.fn();
@@ -165,11 +165,16 @@ describe("useStandaloneAgentChat", () => {
     expect(typeof result.current.onStop).toBe("function");
   });
 
-  it("filters projects for the given agent", () => {
+  it("collapses the project picker to a single non-interactive entry", () => {
+    // The Agents-app picker is locked to a static "Home" label; the
+    // hook always returns a 1-item `projects` array regardless of how
+    // many real project bindings the agent has. The picker is
+    // non-interactive (`onProjectChange === undefined`), so
+    // ChatInputBar renders it without a chevron or dropdown.
     mockProjects = [
-      { project_id: "proj-1" },
-      { project_id: "proj-2" },
-      { project_id: "proj-3" },
+      { project_id: "proj-1", name: "Alpha", description: "" },
+      { project_id: "proj-2", name: "Beta", description: "" },
+      { project_id: "proj-3", name: "Gamma", description: "" },
     ];
     mockAgentsByProject = {
       "proj-1": [{ agent_id: "agent-1" }],
@@ -179,12 +184,13 @@ describe("useStandaloneAgentChat", () => {
 
     const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
 
-    expect(result.current.projects).toHaveLength(2);
-    expect(result.current.projects!.map((p) => p.project_id)).toEqual(["proj-1", "proj-3"]);
+    expect(result.current.projects).toHaveLength(1);
+    expect(result.current.projects![0].name).toBe("Home");
+    expect(result.current.onProjectChange).toBeUndefined();
   });
 
-  it("selects first matching project when no persisted selection", () => {
-    mockProjects = [{ project_id: "proj-1" }];
+  it("targets the agent's first bound project for chat persistence when no selection persisted", () => {
+    mockProjects = [{ project_id: "proj-1", name: "Alpha", description: "" }];
     mockAgentsByProject = { "proj-1": [{ agent_id: "agent-1" }] };
 
     const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
@@ -192,32 +198,16 @@ describe("useStandaloneAgentChat", () => {
     expect(result.current.selectedProjectId).toBe("proj-1");
   });
 
-  it("persists project selection on change", () => {
-    mockProjects = [
-      { project_id: "proj-1" },
-      { project_id: "proj-2" },
-    ];
-    mockAgentsByProject = {
-      "proj-1": [{ agent_id: "agent-1" }],
-      "proj-2": [{ agent_id: "agent-1" }],
-    };
-
-    const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
-
-    act(() => {
-      result.current.onProjectChange!("proj-2");
-    });
-
-    expect(result.current.selectedProjectId).toBe("proj-2");
-    expect(localStorage.getItem("aura-agent-project:agent-1")).toBe("proj-2");
-  });
-
-  it("loads persisted project on mount", () => {
+  it("honors a persisted project selection as the chat-persistence target", () => {
+    // Legacy selections written to localStorage before the Home pin
+    // landed must still resolve to the same underlying binding so the
+    // user's historical sessions stay reachable. The picker label
+    // still reads "Home" thanks to the synthetic relabel.
     localStorage.setItem("aura-agent-project:agent-1", "proj-2");
 
     mockProjects = [
-      { project_id: "proj-1" },
-      { project_id: "proj-2" },
+      { project_id: "proj-1", name: "Alpha", description: "" },
+      { project_id: "proj-2", name: "Beta", description: "" },
     ];
     mockAgentsByProject = {
       "proj-1": [{ agent_id: "agent-1" }],
@@ -227,12 +217,14 @@ describe("useStandaloneAgentChat", () => {
     const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
 
     expect(result.current.selectedProjectId).toBe("proj-2");
+    expect(result.current.projects).toHaveLength(1);
+    expect(result.current.projects![0].name).toBe("Home");
   });
 
   it("falls back to first project when persisted project no longer valid", () => {
     localStorage.setItem("aura-agent-project:agent-1", "proj-gone");
 
-    mockProjects = [{ project_id: "proj-1" }];
+    mockProjects = [{ project_id: "proj-1", name: "Alpha", description: "" }];
     mockAgentsByProject = { "proj-1": [{ agent_id: "agent-1" }] };
 
     const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
@@ -299,43 +291,60 @@ describe("useStandaloneAgentChat", () => {
 
     it("ignores a user-authored project literally named 'Home' without the marker prefix", () => {
       // Mirrors `description_is_auto_home`'s rejection in the server
-      // helper: only descriptions WE wrote are treated as auto-home,
-      // so a project named "Home" with custom description falls back
-      // to the existing multi-project picker behavior.
+      // helper: only descriptions WE wrote are treated as auto-home.
+      // The hook treats the user-authored "Home" as a regular legacy
+      // binding and surfaces it through the synthetic Home label
+      // path, NOT the real `homeProject` branch. Either way the
+      // picker still reads "Home" — what we're asserting here is
+      // that we don't blindly trust the name.
       mockProjects = [
         {
           project_id: "proj-user-home",
           name: "Home",
           description: "My personal workspace",
         },
-        { project_id: "proj-work", name: "Work", description: "Day job" },
       ];
       mockAgentsByProject = {
         "proj-user-home": [{ agent_id: "agent-1" }],
-        "proj-work": [{ agent_id: "agent-1" }],
       };
 
       const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
 
-      expect(result.current.projects).toHaveLength(2);
-      expect(typeof result.current.onProjectChange).toBe("function");
+      // The selected project's underlying id is the user's project,
+      // not a real auto-home (none exists). The picker label is the
+      // synthetic "Home" relabel of the user's project — confirmed by
+      // the project's description NOT carrying the auto-home marker.
+      expect(result.current.selectedProjectId).toBe("proj-user-home");
+      expect(result.current.projects).toHaveLength(1);
+      expect(result.current.projects![0].name).toBe("Home");
+      expect(result.current.projects![0].description).toBe("My personal workspace");
+      expect(result.current.onProjectChange).toBeUndefined();
     });
 
-    it("falls back to existing multi-project behavior when no Home binding exists", () => {
+    it("synthesizes a 'Home' label for legacy agents with non-Home bindings", () => {
+      // Existing agents created before the auto-Home heal landed
+      // (e.g. the "zero-sdk-10"-bound agent in the screenshot from
+      // the user report) still have their original project binding.
+      // The Agents-app picker must read "Home" for them too — the
+      // hook synthesizes a single-entry picker that keeps the real
+      // project_id (so chat persistence keeps working) but rewrites
+      // the displayed `name` to "Home".
       mockProjects = [
-        { project_id: "proj-a", name: "A", description: "" },
-        { project_id: "proj-b", name: "B", description: "" },
+        { project_id: "zero-sdk-10", name: "zero-sdk-10", description: "Legacy" },
+        { project_id: "proj-other", name: "Other", description: "" },
       ];
       mockAgentsByProject = {
-        "proj-a": [{ agent_id: "agent-1" }],
-        "proj-b": [{ agent_id: "agent-1" }],
+        "zero-sdk-10": [{ agent_id: "agent-1" }],
+        "proj-other": [{ agent_id: "agent-1" }],
       };
 
       const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
 
-      expect(result.current.projects).toHaveLength(2);
-      expect(result.current.selectedProjectId).toBe("proj-a");
-      expect(typeof result.current.onProjectChange).toBe("function");
+      expect(result.current.projects).toHaveLength(1);
+      expect(result.current.projects![0].project_id).toBe("zero-sdk-10");
+      expect(result.current.projects![0].name).toBe("Home");
+      expect(result.current.selectedProjectId).toBe("zero-sdk-10");
+      expect(result.current.onProjectChange).toBeUndefined();
     });
 
     it("home pinning overrides a persisted non-home selection", () => {

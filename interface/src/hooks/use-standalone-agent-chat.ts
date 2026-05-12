@@ -69,12 +69,6 @@ function loadPersistedProject(agentId: string): string | undefined {
   }
 }
 
-function persistAgentProject(agentId: string, projectId: string) {
-  try {
-    localStorage.setItem(`${AGENT_PROJECT_KEY_PREFIX}${agentId}`, projectId);
-  } catch { /* ignore */ }
-}
-
 /**
  * Single source of truth for standalone-agent chat wiring.
  *
@@ -98,6 +92,14 @@ export function useStandaloneAgentChat(
   const agentProjects = useProjectsListStore(useShallow(selectProjectsForAgent(agentId)));
   const [, setSearchParams] = useSearchParams();
 
+  // Existing agents created before the auto-Home heal landed still
+  // carry their original project binding (e.g. "zero-sdk-10") and have
+  // no real Home project to switch to. We honor the persisted/legacy
+  // selection as the chat-persistence target so historical sessions
+  // remain reachable, but the picker label always reads "Home" in the
+  // Agents app (see `displayProjects` below). The picker itself is
+  // non-interactive going forward, so no NEW localStorage entries
+  // are written — only legacy entries are read on mount.
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(() => {
     if (!agentId) return undefined;
     return loadPersistedProject(agentId);
@@ -108,14 +110,22 @@ export function useStandaloneAgentChat(
     setSelectedProjectId(loadPersistedProject(agentId));
   }, [agentId]);
 
-  // The standalone Agents-app surfaces pin to the agent's auto-created
-  // Home project so the project picker in the chat input bar always
-  // reads "Home" and is non-interactive. The project-scoped chat
-  // (`/projects/:projectId/agents/...`) is unaffected; it uses its
-  // route project via `AgentChatPanel`, not this hook. Falls back to
-  // the previous "first / persisted" behavior only when the agent has
-  // no Home binding yet (transient pre-bind state, legacy data) so
-  // the chat surface keeps working instead of going blank.
+  // The standalone Agents-app surfaces always render the project
+  // picker as a single static "Home" label, no dropdown. The
+  // project-scoped chat (`/projects/:projectId/agents/...`) is
+  // unaffected; it uses its route project via `AgentChatPanel`, not
+  // this hook.
+  //
+  // When the agent has a real auto-Home binding (matched by name +
+  // `[aura:agent-home]` / `[aura:ceo-home]` description marker) we use
+  // that project directly. Otherwise we keep using whichever project
+  // `effectiveProjectId` resolves to for chat persistence but
+  // synthesize a single-entry picker with `name: "Home"` so the Agents
+  // app reads consistently. The server-side `home_project.rs` only
+  // lazily creates the Home binding for agents that have *no* bindings
+  // at all; agents bound to other projects pre-rollout never get a
+  // Home row, which is why we relabel rather than try to surface the
+  // real Home record.
   const homeProject = useMemo(
     () => agentProjects.find(isAutoHomeProject),
     [agentProjects],
@@ -129,13 +139,15 @@ export function useStandaloneAgentChat(
     return agentProjects[0]?.project_id;
   }, [homeProject, selectedProjectId, agentProjects]);
 
-  const handleProjectChange = useCallback(
-    (projectId: string) => {
-      setSelectedProjectId(projectId);
-      if (agentId) persistAgentProject(agentId, projectId);
-    },
-    [agentId],
-  );
+  const displayProjects = useMemo<Project[]>(() => {
+    if (homeProject) return [homeProject];
+    if (!effectiveProjectId) return EMPTY_PROJECTS;
+    const baseProject = agentProjects.find(
+      (project) => project.project_id === effectiveProjectId,
+    );
+    if (!baseProject) return EMPTY_PROJECTS;
+    return [{ ...baseProject, name: AGENT_HOME_PROJECT_NAME }];
+  }, [homeProject, effectiveProjectId, agentProjects]);
 
   // Tracks the optimistic placeholder id this hook inserted into the
   // SessionsList store on the most recent fresh-chat send. When
@@ -470,9 +482,9 @@ export function useStandaloneAgentChat(
     errorMessage: historyError ?? null,
     scrollResetKey,
     historyMessages,
-    projects: homeProject ? [homeProject] : agentProjects,
+    projects: displayProjects,
     selectedProjectId: effectiveProjectId,
-    onProjectChange: homeProject ? undefined : handleProjectChange,
+    onProjectChange: undefined,
     contextUsage,
     onNewSession: handleNewSession,
     onNewChat: handleNewChat,
