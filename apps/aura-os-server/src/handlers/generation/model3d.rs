@@ -60,6 +60,10 @@ pub(crate) async fn generate_3d_stream(
             project_id: body.project_id,
             parent_id: body.parent_id,
             is_iteration: None,
+            aspect_ratio: None,
+            duration_seconds: None,
+            resolution: None,
+            generate_audio: None,
         },
         identity,
         // 3D mode does not yet round-trip chat scope; persistence is

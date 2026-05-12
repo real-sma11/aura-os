@@ -269,4 +269,16 @@ pub struct GenerationRequest {
     pub parent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_iteration: Option<bool>,
+    /// Video generation: aspect ratio (e.g. "16:9", "9:16").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect_ratio: Option<String>,
+    /// Video generation: duration in seconds (4, 6, or 8).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<u8>,
+    /// Video generation: resolution (e.g. "720p", "1080p", "4k").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
+    /// Video generation: whether to generate audio.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generate_audio: Option<bool>,
 }

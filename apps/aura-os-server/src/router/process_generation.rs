@@ -77,4 +77,8 @@ pub(super) fn generation_routes() -> Router<AppState> {
             post(generation::generate_3d_stream)
                 .layer(DefaultBodyLimit::max(ATTACHMENT_REQUEST_MAX_BYTES)),
         )
+        .route(
+            "/api/generate/video/stream",
+            post(generation::generate_video_stream),
+        )
 }
