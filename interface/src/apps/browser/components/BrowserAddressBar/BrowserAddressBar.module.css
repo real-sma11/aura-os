@@ -7,6 +7,7 @@
 }
 
 .navButton {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -19,9 +20,29 @@
   cursor: pointer;
 }
 
+/* Inner-plate hover (see interface/docs/icon-system.md). */
+.navButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.navButton > * {
+  position: relative;
+  z-index: 1;
+}
+
 .navButton:hover {
   color: var(--color-text-primary);
-  background: var(--color-overlay-light);
+}
+
+.navButton:hover::before {
+  background: var(--icon-hover-bg);
 }
 
 .navButton[aria-disabled="true"],
@@ -31,8 +52,11 @@
 }
 
 .navButton:disabled:hover {
-  background: transparent;
   color: var(--color-text-muted);
+}
+
+.navButton:disabled:hover::before {
+  background: transparent;
 }
 
 .inputWrap {
@@ -93,6 +117,11 @@
 }
 
 .actionButton {
+  /* Circular pill: keep the inner halo circular too. */
+  --icon-hover-radius: 999px;
+  --icon-hover-bg: var(--color-overlay-medium);
+
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -105,9 +134,29 @@
   cursor: pointer;
 }
 
+/* Inner-plate hover (see interface/docs/icon-system.md). */
+.actionButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.actionButton > * {
+  position: relative;
+  z-index: 1;
+}
+
 .actionButton:hover {
   color: var(--color-text-primary);
-  background: var(--color-overlay-medium);
+}
+
+.actionButton:hover::before {
+  background: var(--icon-hover-bg);
 }
 
 .actionButton[aria-pressed="true"] {

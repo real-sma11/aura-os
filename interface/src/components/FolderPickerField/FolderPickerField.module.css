@@ -38,6 +38,9 @@
 }
 
 .iconButton {
+  --icon-hover-bg: var(--color-overlay-medium);
+
+  position: relative;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -52,9 +55,29 @@
   cursor: pointer;
 }
 
+/* Inner-plate hover (see interface/docs/icon-system.md). */
+.iconButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.iconButton > * {
+  position: relative;
+  z-index: 1;
+}
+
 .iconButton:hover:not(:disabled) {
-  background: var(--color-overlay-medium);
   color: var(--color-text-primary);
+}
+
+.iconButton:hover:not(:disabled)::before {
+  background: var(--icon-hover-bg);
 }
 
 .iconButton:disabled {

@@ -54,6 +54,18 @@
   --color-border-strong: var(--color-border);
 
   /* ----------------------------------------------------------------------
+     Icon-button hover plate. Icon-only buttons keep their full hit target
+     for accessibility, but the visible hover background is a tighter
+     rounded plate centered behind the glyph (a halo around the icon)
+     instead of a slab that fills the whole button. The recipe lives in
+     interface/docs/icon-system.md; per-module overrides set
+     --icon-hover-radius: 999px when the surrounding control is a circular
+     pill (e.g. BrowserAddressBar.actionButton). */
+  --icon-hover-inset: 3px;
+  --icon-hover-radius: var(--radius-md);
+  --icon-hover-bg: var(--color-overlay-light);
+
+  /* ----------------------------------------------------------------------
      Editable chrome tokens (phase 7). Defaults live here; the theme
      overrides layer (`interface/src/lib/theme-overrides.ts`) can rewrite
      them via `document.documentElement.style.setProperty(...)` for per-

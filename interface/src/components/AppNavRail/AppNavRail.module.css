@@ -154,7 +154,6 @@
   opacity: 0.6;
   cursor: pointer;
   transition:
-    background var(--transition-fast),
     color var(--transition-fast),
     opacity var(--transition-fast),
     transform 140ms ease;
@@ -162,10 +161,33 @@
   user-select: none;
 }
 
+/* Inner rounded "halo" hover plate. Hit target stays full-size for a11y;
+   the visible hover background is inset by --icon-hover-inset so it sits
+   tightly behind the glyph instead of slabbing the whole button.
+   See interface/docs/icon-system.md. */
+.taskbarBtn::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.taskbarBtn > * {
+  position: relative;
+  z-index: 1;
+}
+
 .taskbarBtn:not(:disabled):hover {
   color: var(--color-text-primary);
   opacity: 1;
-  background: var(--color-overlay-light);
+}
+
+.taskbarBtn:not(:disabled):hover::before {
+  background: var(--icon-hover-bg);
 }
 
 .taskbarBtn:not(:disabled)[aria-pressed="true"],

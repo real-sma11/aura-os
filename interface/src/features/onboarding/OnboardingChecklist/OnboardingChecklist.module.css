@@ -55,6 +55,9 @@
 }
 
 .iconButton {
+  --icon-hover-bg: var(--color-surface);
+
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -67,9 +70,29 @@
   cursor: pointer;
 }
 
+/* Inner-plate hover (see interface/docs/icon-system.md). */
+.iconButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.iconButton > * {
+  position: relative;
+  z-index: 1;
+}
+
 .iconButton:hover {
-  background: var(--color-surface);
   color: var(--color-text-primary);
+}
+
+.iconButton:hover::before {
+  background: var(--icon-hover-bg);
 }
 
 /* ── Progress bar ── */
