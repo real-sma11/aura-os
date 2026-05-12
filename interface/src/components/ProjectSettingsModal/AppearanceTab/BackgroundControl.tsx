@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Button, Input, Select, Text } from "@cypher-asi/zui";
+import { Button, Input, Text } from "@cypher-asi/zui";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
+import { ThemedSelect } from "./ThemedSelect";
 import styles from "./AppearanceTab.module.css";
 
 /** True if `value` parses as a six-digit hex (with leading `#`).
@@ -112,8 +113,7 @@ export function BackgroundControl({
     update(rest);
   };
 
-  const handlePattern = (e: ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as Pattern;
+  const handlePattern = (next: Pattern) => {
     update({ ...background, pattern: next });
   };
 
@@ -264,13 +264,12 @@ export function BackgroundControl({
 
       <div className={styles.bgRow}>
         <span className={styles.bgRowLabel}>Style</span>
-        <Select value={pattern} onChange={handlePattern}>
-          {PATTERN_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
+        <ThemedSelect
+          value={pattern}
+          onChange={handlePattern}
+          options={PATTERN_OPTIONS}
+          ariaLabel="Background style"
+        />
         {canInvert && (
           <button
             type="button"
