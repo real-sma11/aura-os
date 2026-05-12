@@ -16,6 +16,7 @@ import {
   Cpu,
   Cross,
   FileText,
+  Film,
   FolderOpen,
   GitCommitVertical,
   Plug,
@@ -34,6 +35,7 @@ import { integrationsRoutes } from "./integrations/routes";
 import { debugRoutes } from "./debug/routes";
 import { profileRoutes } from "./profile/routes";
 import { aura3dRoutes } from "./aura3d/routes";
+import { auraVideoRoutes } from "./auravideo/routes";
 import { desktopRoutes } from "./desktop/routes";
 
 type AppModuleLoader = () => Promise<AuraAppModule>;
@@ -180,6 +182,8 @@ const loadProfileApp = () =>
   import("./profile/ProfileApp").then((module) => module.ProfileApp);
 const loadAura3DApp = () =>
   import("./aura3d/Aura3DApp").then((module) => module.Aura3DApp);
+const loadAuraVideoApp = () =>
+  import("./auravideo/AuraVideoApp").then((module) => module.AuraVideoApp);
 const loadDesktopApp = () =>
   import("./desktop/DesktopApp/index").then((module) => module.DesktopApp);
 
@@ -408,6 +412,18 @@ export const apps: AuraApp[] = [
       hasSidekickPanel: true,
       hasSidekickTaskbar: true,
     },
+  ),
+  createAppDefinition(
+    {
+      id: "auravideo",
+      label: "AURA Video",
+      agentDescription: "AI video generation studio using Google Veo models.",
+      agentKeywords: ["video", "generate", "veo", "film", "clip", "animate"],
+      icon: Film,
+      basePath: "/video",
+      routes: auraVideoRoutes,
+    },
+    loadAuraVideoApp,
   ),
   createAppDefinition(
     {

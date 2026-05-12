@@ -1,0 +1,72 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.previewArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.videoPlayer {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md, 8px);
+  background: #000;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.generatingWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.generatingMessage {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.progressBar {
+  width: 200px;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-primary, #01f4cb);
+  transition: width 0.3s ease;
+}
+
+.errorBanner {
+  padding: var(--space-3) var(--space-4);
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: var(--radius-md, 8px);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  max-width: 400px;
+  text-align: center;
+}
+
+.inputArea {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
