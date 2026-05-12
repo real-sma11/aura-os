@@ -71,7 +71,7 @@
 
 .sessionsExplorer [class*="itemSelected"]:hover,
 .sessionsExplorer [class*="itemContent"][class*="selected"]:hover:not(:disabled) {
-  background: var(--color-overlay-heavy);
+  background: var(--color-overlay-medium);
   color: var(--color-text-primary);
 }
 

@@ -365,7 +365,7 @@
 
 .agentRowSelected,
 .agentRowSelected:hover {
-  background: var(--left-menu-selected-bg);
+  background: var(--color-overlay-medium);
   color: var(--color-text-primary);
 }
 

@@ -188,7 +188,7 @@
 
 .sidekickBody [class*="itemSelected"],
 .sidekickBody [class*="itemSelected"]:hover {
-  background: var(--color-overlay-subtle);
+  background: var(--color-overlay-medium);
   color: var(--color-text-primary);
 }
 

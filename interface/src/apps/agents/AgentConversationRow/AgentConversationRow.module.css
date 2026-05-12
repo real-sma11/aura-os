@@ -27,7 +27,7 @@
   }
 
   .selected:hover {
-    background: var(--color-overlay-heavy);
+    background: var(--color-overlay-medium);
   }
 }
 
