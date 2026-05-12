@@ -132,10 +132,11 @@ export interface ChatInputBarProps {
   isVisible?: boolean;
   isCentered?: boolean;
   /**
-   * When true, hides the "/ for commands" hint in the info bar to save
-   * horizontal space. Used in floating desktop agent windows where the
-   * chat surface can be very narrow. Image / 3D mode labels are still
-   * shown since they convey active state, not just a hint.
+   * Reserved for compact-layout tweaks (e.g. floating desktop agent
+   * windows where the chat surface can be very narrow). Currently a
+   * no-op now that the info-bar slash hint has been removed; kept on
+   * the public props so callers (`ChatPanel`, `AgentWindow`) don't
+   * need to be touched if a future compact affordance is added.
    */
   compact?: boolean;
   contextUsage?: ContextUsageEntry;
@@ -213,7 +214,6 @@ export const DesktopChatInputBar = memo(
       onProjectChange,
       isVisible = true,
       isCentered = false,
-      compact = false,
       contextUsage,
       onNewSession,
       onNewChat,
@@ -780,39 +780,6 @@ export const DesktopChatInputBar = memo(
         <span className={styles.orbitWrap}>
           <OrbitStatusIndicator project={selectedProject} />
         </span>
-        {compact && generationMode === "chat" ? null : (
-          <>
-            <span className={styles.infoDivider} aria-hidden="true">
-              ·
-            </span>
-            <button
-              type="button"
-              className={styles.commandsTrigger}
-              onClick={() => {
-                if (generationMode !== "chat") return;
-                onInputChange(
-                  input.endsWith(" ") || input.length === 0
-                    ? input + "/"
-                    : input + " /",
-                );
-                slashStartRef.current = (
-                  input.endsWith(" ") || input.length === 0
-                    ? input
-                    : input + " "
-                ).length;
-                setSlashQuery("");
-                setSlashMenuOpen(true);
-                shellRef.current?.focus();
-              }}
-            >
-              {generationMode === "image"
-                ? "/image mode"
-                : generationMode === "3d"
-                  ? "/3d mode"
-                  : "/ for commands, @ for context"}
-            </button>
-          </>
-        )}
       </>
     );
 
@@ -926,7 +893,9 @@ export const DesktopChatInputBar = memo(
       ? has3DSource
         ? "Refine your 3D model (optional)"
         : "Describe an image to generate\u2026"
-      : "What do you want to create?";
+      : selectedMode === "code"
+        ? "/ for commands, @ for context"
+        : "What do you want to create?";
 
     const isUploading = generationMode !== "image" && attachments.some((a) => a.uploading);
 

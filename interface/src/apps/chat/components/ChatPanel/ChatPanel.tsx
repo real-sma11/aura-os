@@ -97,8 +97,10 @@ export interface ChatPanelProps {
    */
   onNewChat?: () => void;
   /**
-   * Render the input bar in compact mode (e.g. inside floating desktop
-   * agent windows). Suppresses the "/ for commands" hint to save room.
+   * Forwarded to the input bar as a compact-layout flag (e.g. inside
+   * floating desktop agent windows). Currently a no-op now that the
+   * info-bar slash hint has been removed; reserved for future
+   * compact-mode tweaks.
    */
   compact?: boolean;
 }

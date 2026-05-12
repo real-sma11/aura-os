@@ -133,7 +133,7 @@ beforeEach(() => {
 describe("ChatInputBar", () => {
   it("renders the textarea with placeholder", () => {
     render(<ChatInputBar {...makeProps()} />);
-    expect(screen.getByPlaceholderText("What do you want to create?")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("/ for commands, @ for context")).toBeInTheDocument();
   });
 
   it("renders the current input value", () => {
@@ -146,7 +146,7 @@ describe("ChatInputBar", () => {
     const onInputChange = vi.fn();
     render(<ChatInputBar {...makeProps({ onInputChange })} />);
 
-    await user.type(screen.getByPlaceholderText("What do you want to create?"), "H");
+    await user.type(screen.getByPlaceholderText("/ for commands, @ for context"), "H");
     expect(onInputChange).toHaveBeenCalled();
   });
 
@@ -155,7 +155,7 @@ describe("ChatInputBar", () => {
     const onSend = vi.fn();
     render(<ChatInputBar {...makeProps({ input: "Test message", onSend })} />);
 
-    const textarea = screen.getByPlaceholderText("What do you want to create?");
+    const textarea = screen.getByPlaceholderText("/ for commands, @ for context");
     await user.click(textarea);
     await user.keyboard("{Enter}");
     // Mode is now read from the per-stream store inside `useChatPanelState.handleSend`,
@@ -168,7 +168,7 @@ describe("ChatInputBar", () => {
     const onSend = vi.fn();
     render(<ChatInputBar {...makeProps({ input: "Test message", onSend })} />);
 
-    const textarea = screen.getByPlaceholderText("What do you want to create?");
+    const textarea = screen.getByPlaceholderText("/ for commands, @ for context");
     await user.click(textarea);
     await user.keyboard("{Shift>}{Enter}{/Shift}");
     expect(onSend).not.toHaveBeenCalled();
@@ -332,7 +332,6 @@ describe("ChatInputBar", () => {
     mockSelectedModel = "gpt-image-2";
     render(<ChatInputBar {...makeProps()} />);
 
-    expect(screen.getByText("/image mode")).toBeInTheDocument();
     expect(screen.getAllByText("GPT Image 2")[0]).toBeInTheDocument();
 
     await user.click(screen.getAllByText("GPT Image 2")[0]);
@@ -479,7 +478,7 @@ describe("ChatInputBar", () => {
     // Simulates the brief window after switching agents, when
     // useAgentChatMeta returns machineType=undefined while the new
     // projectAgentInstance query is in flight. The slot must remain in the
-    // DOM so the orbit indicator and "/ for commands" don't shift.
+    // DOM so the orbit indicator does not shift.
     const { container } = render(<ChatInputBar {...makeProps({ machineType: undefined })} />);
 
     expect(container.querySelector(".environmentWrap")).not.toBeNull();
@@ -602,7 +601,7 @@ describe("ChatInputBar", () => {
     const fileList = makeFileList(file);
 
     withMockDataTransfer(fileList, () => {
-      const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("What do you want to create?");
+      const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("/ for commands, @ for context");
       const event = createEvent.paste(textarea, {
         clipboardData: {
           items: [
@@ -630,7 +629,7 @@ describe("ChatInputBar", () => {
   });
 
   it("preserves text-only pastes for the browser to handle", () => {
-    const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("What do you want to create?");
+    const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("/ for commands, @ for context");
     const event = createEvent.paste(textarea, {
       clipboardData: {
         items: [
@@ -655,7 +654,7 @@ describe("ChatInputBar", () => {
     const fileList = makeFileList(file);
 
     withMockDataTransfer(fileList, () => {
-      const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("What do you want to create?");
+      const textarea = render(<ChatInputBar {...makeProps()} />).getByPlaceholderText("/ for commands, @ for context");
       const event = createEvent.paste(textarea, {
         clipboardData: {
           items: [
