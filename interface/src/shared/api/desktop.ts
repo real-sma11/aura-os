@@ -88,7 +88,18 @@ export interface PersistDesktopRouteResponse {
   error?: string;
 }
 
+export interface DesktopPreferences {
+  logo_color: string | null;
+}
+
 export const desktopApi = {
+  getDesktopPreferences: () =>
+    apiFetch<DesktopPreferences>("/api/desktop/preferences"),
+  patchDesktopPreferences: (prefs: { logo_color: string | null }) =>
+    apiFetch<DesktopPreferences>("/api/desktop/preferences", {
+      method: "PATCH",
+      body: JSON.stringify(prefs),
+    }),
   getLogEntries: (limit = 1000) =>
     apiFetch<{ timestamp_ms: number; event: import("../types/aura-events").AuraEvent }[]>(
       `/api/log-entries?limit=${limit}`,

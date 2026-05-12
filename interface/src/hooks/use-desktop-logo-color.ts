@@ -1,4 +1,5 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { api } from "../api/client";
 
 const STORAGE_KEY = "aura-desktop-logo-color";
 
@@ -8,6 +9,16 @@ function read(): string {
   } catch {
     return "";
   }
+}
+
+function writeLocal(next: string | undefined): void {
+  try {
+    if (next) {
+      localStorage.setItem(STORAGE_KEY, next);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {}
 }
 
 const listeners = new Set<() => void>();
@@ -29,17 +40,24 @@ function notify(): void {
 export function useDesktopLogoColor() {
   const color = useSyncExternalStore(subscribe, read, () => "");
 
-  const setColor = useCallback((next: string | undefined) => {
-    try {
-      if (next) {
-        localStorage.setItem(STORAGE_KEY, next);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
+  // On mount, pull the authoritative value from the native store and sync
+  // it into localStorage so the next render (and other tabs) see it.
+  useEffect(() => {
+    api.getDesktopPreferences().then((prefs) => {
+      const remote = prefs.logo_color ?? "";
+      if (remote !== read()) {
+        writeLocal(remote || undefined);
+        notify();
       }
-    } catch {
-      // localStorage unavailable
-    }
+    }).catch(() => {});
+  }, []);
+
+  const setColor = useCallback((next: string | undefined) => {
+    // Update localStorage immediately — the title bar repaints this frame.
+    writeLocal(next);
     notify();
+    // Persist to the native store in the background.
+    api.patchDesktopPreferences({ logo_color: next ?? null }).catch(() => {});
   }, []);
 
   return { color, setColor };

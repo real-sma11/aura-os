@@ -1,7 +1,7 @@
 use axum::routing::{delete, get, post};
 use axum::Router;
 
-use crate::handlers::{browser, dev_loop, log, remote_terminal, system, terminal, ws};
+use crate::handlers::{browser, desktop_preferences, dev_loop, log, remote_terminal, system, terminal, ws};
 use crate::state::AppState;
 
 pub(super) fn system_routes() -> Router<AppState> {
@@ -56,5 +56,10 @@ pub(super) fn system_routes() -> Router<AppState> {
         .route(
             "/api/system/workspace_defaults",
             get(system::get_workspace_defaults),
+        )
+        .route(
+            "/api/desktop/preferences",
+            get(desktop_preferences::get_desktop_preferences)
+                .patch(desktop_preferences::patch_desktop_preferences),
         )
 }
