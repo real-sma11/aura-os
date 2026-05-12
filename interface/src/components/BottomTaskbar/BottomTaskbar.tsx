@@ -18,7 +18,7 @@ import { useCreditBalance } from "../CreditsBadge/useCreditBalance";
 import { useDesktopContextMenu } from "../DesktopContextMenu";
 import { FavoriteAgentsStrip } from "./FavoriteAgentsStrip";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
-import { InviteModal } from "../InviteModal/InviteModal";
+import { ThemeToggleButton } from "./ThemeToggleButton";
 import styles from "./BottomTaskbar.module.css";
 
 const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
@@ -36,9 +36,6 @@ export function BottomTaskbar() {
   const openBuyCredits = useUIModalStore((s) => s.openBuyCredits);
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
-  const inviteModalOpen = useUIModalStore((s) => s.inviteModalOpen);
-  const openInviteModal = useUIModalStore((s) => s.openInviteModal);
-  const closeInviteModal = useUIModalStore((s) => s.closeInviteModal);
   const activeApp = useActiveApp();
   const time = useClock();
   const navigate = useNavigate();
@@ -76,32 +73,21 @@ export function BottomTaskbar() {
       data-agent-context-anchor="desktop-shell-bottom-taskbar"
       onContextMenu={onContextMenu}
     >
-      <div className={styles.leftGroup}>
-        <div className={styles.left}>
-          <TaskbarIconButton
-            selected={activeApp.id === "desktop"}
-            icon={<Circle size={TASKBAR_ICON_SIZE} />}
-            title="Desktop"
-            aria-label="Desktop"
-            onClick={() => {
-              if (activeApp.id === "desktop") {
-                if (previousPath) navigate(previousPath);
-              } else {
-                navigate("/desktop");
-              }
-            }}
-          />
-          <FavoriteAgentsStrip />
-        </div>
-
-        <button
-          className={styles.inviteButton}
-          onClick={openInviteModal}
-          title="Earn credits by inviting a friend"
-          aria-label="Earn credits"
-        >
-          <span className={styles.inviteLabel}>EARN CREDITS</span>
-        </button>
+      <div className={styles.left}>
+        <TaskbarIconButton
+          selected={activeApp.id === "desktop"}
+          icon={<Circle size={TASKBAR_ICON_SIZE} />}
+          title="Desktop"
+          aria-label="Desktop"
+          onClick={() => {
+            if (activeApp.id === "desktop") {
+              if (previousPath) navigate(previousPath);
+            } else {
+              navigate("/desktop");
+            }
+          }}
+        />
+        <FavoriteAgentsStrip />
       </div>
 
       <div className={styles.center}>
@@ -160,6 +146,7 @@ export function BottomTaskbar() {
             aria-label="Settings"
             onClick={openOrgSettings}
           />
+          <ThemeToggleButton />
           <HelpButton />
           <AppNavRail
             layout="taskbar"
@@ -170,7 +157,6 @@ export function BottomTaskbar() {
         <span className={styles.clock}>{time}</span>
       </div>
       {menuElement}
-      <InviteModal isOpen={inviteModalOpen} onClose={closeInviteModal} />
     </div>
   );
 }

@@ -4,9 +4,21 @@ import { useDesktopWindowStore } from "../../stores/desktop-window-store";
 const mockNavigate = vi.fn();
 const openBuyCredits = vi.fn();
 const openOrgSettings = vi.fn();
+const openAppsModal = vi.fn();
+const openInviteModal = vi.fn();
+const closeInviteModal = vi.fn();
 const toggleFavorite = vi.fn();
 const registerAgents = vi.fn();
 const registerRemoteAgents = vi.fn();
+
+const uiModalState = {
+  openBuyCredits,
+  openOrgSettings,
+  openAppsModal,
+  openInviteModal,
+  closeInviteModal,
+  inviteModalOpen: false,
+};
 
 let appNavRailRenderCount = 0;
 
@@ -50,6 +62,8 @@ vi.mock("lucide-react", () => ({
   ChevronUp: () => <svg />,
   Image: () => <svg />,
   Upload: () => <svg />,
+  Sun: () => <svg />,
+  Moon: () => <svg />,
 }));
 
 vi.mock("@cypher-asi/zui", () => ({
@@ -64,10 +78,19 @@ vi.mock("@cypher-asi/zui", () => ({
   Modal: () => null,
   Heading: ({ children }: { children?: React.ReactNode }) => <h4>{children}</h4>,
   Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+  useTheme: () => ({
+    theme: "dark" as const,
+    resolvedTheme: "dark" as const,
+    setTheme: vi.fn(),
+  }),
 }));
 
 vi.mock("../../apps/desktop/BackgroundModal", () => ({
   BackgroundModal: () => null,
+}));
+
+vi.mock("../InviteModal/InviteModal", () => ({
+  InviteModal: () => null,
 }));
 
 vi.mock("../CreditsBadge/useCreditBalance", () => ({
@@ -75,9 +98,7 @@ vi.mock("../CreditsBadge/useCreditBalance", () => ({
 }));
 
 vi.mock("../../stores/ui-modal-store", () => ({
-  useUIModalStore: (
-    selector: (state: { openBuyCredits: typeof openBuyCredits; openOrgSettings: typeof openOrgSettings }) => unknown,
-  ) => selector({ openBuyCredits, openOrgSettings }),
+  useUIModalStore: (selector: (state: typeof uiModalState) => unknown) => selector(uiModalState),
 }));
 
 vi.mock("../../hooks/use-active-app", () => ({

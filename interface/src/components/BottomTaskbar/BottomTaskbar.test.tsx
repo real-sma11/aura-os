@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 const mockNavigate = vi.fn();
 const openBuyCredits = vi.fn();
 const openOrgSettings = vi.fn();
+const openAppsModal = vi.fn();
+const openInviteModal = vi.fn();
+const closeInviteModal = vi.fn();
 const openOrFocus = vi.fn();
 const closeWindow = vi.fn();
 const toggleFavorite = vi.fn();
@@ -11,6 +14,15 @@ const registerAgents = vi.fn();
 const registerRemoteAgents = vi.fn();
 const getTaskbarAppsCollapsed = vi.fn();
 const setTaskbarAppsCollapsed = vi.fn();
+
+const uiModalState = {
+  openBuyCredits,
+  openOrgSettings,
+  openAppsModal,
+  openInviteModal,
+  closeInviteModal,
+  inviteModalOpen: false,
+};
 
 const activeAppState = {
   activeApp: { id: "projects" },
@@ -58,6 +70,8 @@ vi.mock("lucide-react", () => ({
   ChevronUp: () => <svg />,
   Image: () => <svg />,
   Upload: () => <svg />,
+  Sun: () => <svg data-testid="theme-icon-sun" />,
+  Moon: () => <svg data-testid="theme-icon-moon" />,
 }));
 
 interface MockMenuItem {
@@ -97,6 +111,11 @@ vi.mock("@cypher-asi/zui", () => ({
     isOpen ? <div data-testid="modal">{children}</div> : null,
   Heading: ({ children }: { children?: React.ReactNode }) => <h4>{children}</h4>,
   Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+  useTheme: () => ({
+    theme: "dark" as const,
+    resolvedTheme: "dark" as const,
+    setTheme: vi.fn(),
+  }),
 }));
 
 vi.mock("../../apps/desktop/BackgroundModal", () => ({
@@ -104,14 +123,17 @@ vi.mock("../../apps/desktop/BackgroundModal", () => ({
     isOpen ? <div data-testid="background-modal" /> : null,
 }));
 
+vi.mock("../InviteModal/InviteModal", () => ({
+  InviteModal: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="invite-modal" /> : null,
+}));
+
 vi.mock("../CreditsBadge/useCreditBalance", () => ({
   useCreditBalance: () => ({ credits: 1200 }),
 }));
 
 vi.mock("../../stores/ui-modal-store", () => ({
-  useUIModalStore: (
-    selector: (state: { openBuyCredits: typeof openBuyCredits; openOrgSettings: typeof openOrgSettings }) => unknown,
-  ) => selector({ openBuyCredits, openOrgSettings }),
+  useUIModalStore: (selector: (state: typeof uiModalState) => unknown) => selector(uiModalState),
 }));
 
 vi.mock("../../hooks/use-active-app", () => ({
