@@ -115,40 +115,25 @@
 .inviteButton {
   display: flex;
   align-items: center;
-  gap: 6px;
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   border-radius: var(--shell-chrome-radius, 20px);
-  border: 1px solid rgba(1, 244, 203, 0.3);
-  background: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
-  backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
-  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
-  color: var(--color-text-secondary);
+  border: none;
+  background: var(--color-accent);
+  color: #000;
   cursor: pointer;
-  padding: 0 var(--space-3) 0 var(--space-2);
+  padding: 0 var(--space-3);
   flex-shrink: 0;
-  animation: invitePulse 4s ease-in-out infinite;
 }
 
 .inviteButton:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
-  border-color: rgba(1, 244, 203, 0.5);
-  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 85%, #000);
+  color: #000;
 }
 
 .inviteLabel {
   font-size: var(--text-2xs);
-  font-weight: 400;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   white-space: nowrap;
   color: inherit;
-}
-
-@keyframes invitePulse {
-  0%, 100% {
-    border-color: rgba(1, 244, 203, 0.2);
-    box-shadow: none;
-  }
-  50% {
-    border-color: rgba(1, 244, 203, 0.5);
-    box-shadow: 0 0 10px rgba(1, 244, 203, 0.12);
-  }
 }

@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   LayoutGrid,
   Settings,
-  Gift,
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useActiveApp } from "../../hooks/use-active-app";
@@ -98,11 +97,10 @@ export function BottomTaskbar() {
         <button
           className={styles.inviteButton}
           onClick={openInviteModal}
-          title="Invite a friend"
-          aria-label="Invite a friend"
+          title="Earn credits by inviting a friend"
+          aria-label="Earn credits"
         >
-          <Gift size={14} />
-          <span className={styles.inviteLabel}>Earn Credits — Invite Friends</span>
+          <span className={styles.inviteLabel}>EARN CREDITS</span>
         </button>
       </div>
 
