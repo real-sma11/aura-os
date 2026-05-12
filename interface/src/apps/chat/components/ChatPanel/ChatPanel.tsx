@@ -19,6 +19,7 @@ import { useChatPanelState } from "./useChatPanelState";
 import { findLatestGeneratedImage } from "./latest-generated-image";
 import { useChatUIStore } from "../../../../stores/chat-ui-store";
 import { useMessageQueueStore } from "../../../../stores/message-queue-store";
+import { useOnboardingStore, selectHasSentFirstMessage } from "../../../../features/onboarding/onboarding-store";
 import { useProgressText } from "../../../../hooks/stream/hooks";
 import type { ChatAttachment } from "../../../../api/streams";
 import type { Project } from "../../../../shared/types";
@@ -472,6 +473,14 @@ export function ChatPanel({
     queue.length === 0 &&
     !shouldHideThreadForInitialReveal;
 
+  // Onboarding-only affordance: the prompt suggestion chips appear on
+  // the empty-thread canvas to give brand-new users something to click.
+  // Once the user has sent any message ever (latched in the
+  // onboarding-store's `send_message` task by useOnboardingTaskWatcher
+  // and persisted per user), they're past onboarding and the chips
+  // should not reappear when opening fresh empty chats.
+  const hasSentFirstMessage = useOnboardingStore(selectHasSentFirstMessage);
+
   const emptyState = errorMessage ? (
     <div className={styles.emptyState}>
       <AlertCircle size={40} />
@@ -545,7 +554,7 @@ export function ChatPanel({
 
         <ChatStreamingIndicator streamKey={streamKey} />
 
-        {isThreadEmpty && (
+        {isThreadEmpty && !hasSentFirstMessage && (
           <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
         )}
 

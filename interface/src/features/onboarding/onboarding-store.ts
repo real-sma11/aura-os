@@ -182,3 +182,7 @@ export function selectProgressPercent(s: OnboardingState): number {
 export function selectIsFullyComplete(s: OnboardingState): boolean {
   return countCompleted(s.checklistTasks) >= TOTAL_TASKS;
 }
+
+export function selectHasSentFirstMessage(s: OnboardingState): boolean {
+  return s.userId !== null && s.checklistTasks.send_message === true;
+}
