@@ -181,39 +181,11 @@
   height: 100%;
 }
 
-.logoPreviewPulseFade {
-  animation: logo-fade var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
-}
-
-.logoPreviewSweepOverlay {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite;
-}
-
+.logoPreviewSweepOverlay,
 .logoPreviewSweepOverlayReversed {
   position: absolute;
   inset: 0;
   height: 100%;
-  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite;
-}
-
-@keyframes logo-fade {
-  from { background-color: var(--logo-pulse-from, white); }
-  to   { background-color: var(--logo-pulse-to, white); }
-}
-
-@keyframes logo-sweep {
-  0%   { clip-path: inset(0 100% 0 0); }
-  50%  { clip-path: inset(0 0% 0 0); }
-  100% { clip-path: inset(0 0 0 100%); }
-}
-
-@keyframes logo-sweep-reversed {
-  0%   { clip-path: inset(0 100% 0 0); }
-  50%  { clip-path: inset(0 0% 0 0); }
-  100% { clip-path: inset(0 100% 0 0); }
 }
 
 /* Pulse toggle */

@@ -95,6 +95,7 @@ export interface DesktopPreferences {
   pulse_speed: number | null;
   pulse_from_color: string | null;
   sweep_reversed: boolean | null;
+  pulse_pause: number | null;
 }
 
 export const desktopApi = {

@@ -16,6 +16,7 @@ pub(crate) struct DesktopPreferences {
     pub pulse_speed: Option<f32>,    // seconds, 0.5–5.0
     pub pulse_from_color: Option<String>,
     pub sweep_reversed: Option<bool>,
+    pub pulse_pause: Option<f32>,
 }
 
 pub(crate) async fn get_desktop_preferences(

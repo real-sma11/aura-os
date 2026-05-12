@@ -24,12 +24,12 @@ export function DesktopTitlebar({
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
   const { resolvedTheme } = useTheme();
-  const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor, sweepReversed } = useDesktopLogoColor();
+  const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor, sweepReversed, pauseDuration } = useDesktopLogoColor();
 
   const themeDefault = resolvedTheme === "light" ? "#000000" : "#ffffff";
   const toColor = logoColor || themeDefault;
   const fromColor = pulseFromColor || themeDefault;
-  const durationCss = `${pulseSpeed}s`;
+  const totalDuration = `${pulseSpeed + pauseDuration}s`;
 
   let logoElement: React.ReactNode;
   if (!pulseEnabled) {
@@ -44,17 +44,18 @@ export function DesktopTitlebar({
   } else if (pulseMode === "fade") {
     logoElement = (
       <div
-        className={`${styles.titleLogo} ${styles.titleLogoPulseFade}`}
+        className={styles.titleLogo}
         role="img"
         aria-label="AURA"
         style={{
           "--logo-pulse-from": fromColor,
           "--logo-pulse-to": toColor,
-          "--logo-pulse-duration": durationCss,
+          animation: `aura-logo-fade ${totalDuration} ease-in-out infinite`,
         } as CSSProperties}
       />
     );
   } else {
+    const sweepAnim = sweepReversed ? "aura-logo-sweep-rev" : "aura-logo-sweep";
     logoElement = (
       <div className={styles.titleLogoWrapper} role="img" aria-label="AURA">
         <div
@@ -62,10 +63,10 @@ export function DesktopTitlebar({
           style={{ "--desktop-logo-color": fromColor } as CSSProperties}
         />
         <div
-          className={`${styles.titleLogoLayer} ${sweepReversed ? styles.titleLogoSweepOverlayReversed : styles.titleLogoSweepOverlay}`}
+          className={styles.titleLogoLayer}
           style={{
             "--desktop-logo-color": toColor,
-            "--logo-pulse-duration": durationCss,
+            animation: `${sweepAnim} ${totalDuration} ease-in-out infinite`,
           } as CSSProperties}
         />
       </div>

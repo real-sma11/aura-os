@@ -14,6 +14,7 @@ interface DesktopPrefs {
   pulseSpeed: number;
   pulseFromColor: string;
   sweepReversed: boolean;
+  pauseDuration: number;
 }
 
 const DEFAULTS: DesktopPrefs = {
@@ -23,6 +24,7 @@ const DEFAULTS: DesktopPrefs = {
   pulseSpeed: 2,
   pulseFromColor: "",
   sweepReversed: false,
+  pauseDuration: 0,
 };
 
 function parseStored(): DesktopPrefs {
@@ -43,8 +45,52 @@ function getSnapshot(): DesktopPrefs {
   return _prefs;
 }
 
+// Singleton <style> element for dynamic pulse keyframes.
+// Keyframe percentages depend on speed + pause so they can't be static CSS.
+// We inject global (non-hashed) names so inline animation: can reference them.
+let _styleEl: HTMLStyleElement | null = null;
+
+function syncPulseStyle(p: DesktopPrefs): void {
+  if (typeof document === "undefined") return;
+  if (!_styleEl) {
+    _styleEl = document.createElement("style");
+    _styleEl.dataset.id = "aura-pulse";
+    document.head.appendChild(_styleEl);
+  }
+
+  if (!p.pulseEnabled) {
+    _styleEl.textContent = "";
+    return;
+  }
+
+  const total = p.pulseSpeed + p.pauseDuration;
+  const fi = ((p.pulseSpeed / 2 / total) * 100).toFixed(3);  // fade-in end %
+  const pe = (((p.pulseSpeed / 2 + p.pauseDuration) / total) * 100).toFixed(3); // pause end %
+
+  _styleEl.textContent = `
+@keyframes aura-logo-fade {
+  0%      { background-color: var(--logo-pulse-from, white); }
+  ${fi}%  { background-color: var(--logo-pulse-to, white); }
+  ${pe}%  { background-color: var(--logo-pulse-to, white); }
+  100%    { background-color: var(--logo-pulse-from, white); }
+}
+@keyframes aura-logo-sweep {
+  0%      { clip-path: inset(0 100% 0 0); }
+  ${fi}%  { clip-path: inset(0 0% 0 0); }
+  ${pe}%  { clip-path: inset(0 0% 0 0); }
+  100%    { clip-path: inset(0 0 0 100%); }
+}
+@keyframes aura-logo-sweep-rev {
+  0%      { clip-path: inset(0 100% 0 0); }
+  ${fi}%  { clip-path: inset(0 0% 0 0); }
+  ${pe}%  { clip-path: inset(0 0% 0 0); }
+  100%    { clip-path: inset(0 100% 0 0); }
+}`;
+}
+
 function writeLocal(next: DesktopPrefs): void {
   _prefs = next;
+  syncPulseStyle(next);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {}
@@ -83,6 +129,7 @@ function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
     pulse_speed: p.pulseSpeed,
     pulse_from_color: p.pulseFromColor || null,
     sweep_reversed: p.sweepReversed,
+    pulse_pause: p.pauseDuration,
   };
 }
 
@@ -94,6 +141,7 @@ function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
     pulseSpeed: p.pulse_speed ?? 2,
     pulseFromColor: p.pulse_from_color ?? "",
     sweepReversed: p.sweep_reversed ?? false,
+    pauseDuration: p.pulse_pause ?? 0,
   };
 }
 
@@ -104,10 +152,17 @@ function applyPatch(update: Partial<DesktopPrefs>): void {
   api.patchDesktopPreferences(toApiPrefs(next)).catch(() => {});
 }
 
+// Eagerly initialize the style element on module load so keyframes exist
+// before the first render.
+if (typeof window !== "undefined") {
+  syncPulseStyle(_prefs);
+}
+
 export function useDesktopLogoColor() {
   const prefs = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULTS);
 
   useEffect(() => {
+    syncPulseStyle(_prefs);
     api.getDesktopPreferences().then((remote) => {
       const fromRemote = fromApiPrefs(remote);
       if (JSON.stringify(fromRemote) !== JSON.stringify(_prefs)) {
@@ -141,6 +196,10 @@ export function useDesktopLogoColor() {
     applyPatch({ sweepReversed: next });
   }, []);
 
+  const setPauseDuration = useCallback((next: number) => {
+    applyPatch({ pauseDuration: next });
+  }, []);
+
   return {
     color: prefs.color,
     pulseEnabled: prefs.pulseEnabled,
@@ -148,11 +207,13 @@ export function useDesktopLogoColor() {
     pulseSpeed: prefs.pulseSpeed,
     pulseFromColor: prefs.pulseFromColor,
     sweepReversed: prefs.sweepReversed,
+    pauseDuration: prefs.pauseDuration,
     setColor,
     setPulseEnabled,
     setPulseMode,
     setPulseSpeed,
     setPulseFromColor,
     setSweepReversed,
+    setPauseDuration,
   };
 }

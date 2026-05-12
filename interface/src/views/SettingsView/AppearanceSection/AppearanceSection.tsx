@@ -58,6 +58,7 @@ export function AppearanceSection() {
     pulseSpeed, setPulseSpeed,
     pulseFromColor, setPulseFromColor,
     sweepReversed, setSweepReversed,
+    pauseDuration, setPauseDuration,
   } = useDesktopLogoColor();
   const defaultLogoHex = resolvedTheme === "light" ? "#000000" : "#ffffff";
   const [hexDraft, setHexDraft] = useState<string | null>(null);
@@ -285,6 +286,26 @@ export function AppearanceSection() {
               </Text>
             </div>
 
+            {/* Pause */}
+            <Text variant="muted" size="xs">Pause</Text>
+            <div className={styles.pulseSpeedRow}>
+              <Text variant="muted" size="xs">0s</Text>
+              <input
+                type="range"
+                min="0"
+                max="60"
+                step="0.5"
+                value={pauseDuration}
+                onChange={(e) => setPauseDuration(parseFloat(e.target.value))}
+                className={styles.pulseSpeedSlider}
+                aria-label="Pause duration"
+              />
+              <Text variant="muted" size="xs">60s</Text>
+              <Text variant="muted" size="xs" className={styles.pulseSpeedValue}>
+                {pauseDuration.toFixed(1)}s
+              </Text>
+            </div>
+
             {/* Pulse-from color */}
             <Text variant="muted" size="xs">Pulse from</Text>
             <div className={styles.logoColorRow}>
@@ -328,13 +349,13 @@ export function AppearanceSection() {
             />
           ) : pulseMode === "fade" ? (
             <div
-              className={`${styles.logoPreviewMark} ${styles.logoPreviewPulseFade}`}
+              className={styles.logoPreviewMark}
               role="img"
               aria-label="AURA logo preview"
               style={{
                 "--logo-pulse-from": effectiveFromColor,
                 "--logo-pulse-to": effectiveToColor,
-                "--logo-pulse-duration": `${pulseSpeed}s`,
+                animation: `aura-logo-fade ${pulseSpeed + pauseDuration}s ease-in-out infinite`,
               } as React.CSSProperties}
             />
           ) : (
@@ -347,7 +368,7 @@ export function AppearanceSection() {
                 className={`${styles.logoPreviewMark} ${sweepReversed ? styles.logoPreviewSweepOverlayReversed : styles.logoPreviewSweepOverlay}`}
                 style={{
                   backgroundColor: effectiveToColor,
-                  "--logo-pulse-duration": `${pulseSpeed}s`,
+                  animation: `${sweepReversed ? "aura-logo-sweep-rev" : "aura-logo-sweep"} ${pulseSpeed + pauseDuration}s ease-in-out infinite`,
                 } as React.CSSProperties}
               />
             </div>

@@ -167,25 +167,6 @@
   user-select: none;
 }
 
-@keyframes logo-fade {
-  from { background-color: var(--logo-pulse-from, white); }
-  to   { background-color: var(--logo-pulse-to, white); }
-}
-
-/* Both animations reveal left-to-right; they differ only in fade-out direction.
-   3-keyframe full cycle avoids alternate so in/out directions are independent. */
-@keyframes logo-sweep {
-  0%   { clip-path: inset(0 100% 0 0); }
-  50%  { clip-path: inset(0 0% 0 0); }
-  100% { clip-path: inset(0 0 0 100%); }
-}
-
-@keyframes logo-sweep-reversed {
-  0%   { clip-path: inset(0 100% 0 0); }
-  50%  { clip-path: inset(0 0% 0 0); }
-  100% { clip-path: inset(0 100% 0 0); }
-}
-
 /* Shared mask properties — applied to both the single-div and layered cases */
 .titleLogo,
 .titleLogoLayer {
@@ -209,11 +190,6 @@
   pointer-events: none;
 }
 
-/* Fade pulse — single div, animates background-color between two vars */
-.titleLogoPulseFade {
-  animation: logo-fade var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
-}
-
 /* Sweep pulse — wrapper positions two layers on top of each other */
 .titleLogoWrapper {
   position: relative;
@@ -230,14 +206,6 @@
   display: block;
 }
 
-/* Top layer sweeps, revealing the "to" color */
-.titleLogoSweepOverlay {
-  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite;
-}
-
-.titleLogoSweepOverlayReversed {
-  animation: logo-sweep-reversed var(--logo-pulse-duration, 2s) ease-in-out infinite;
-}
 
 .titleLeading {
   display: inline-flex;
