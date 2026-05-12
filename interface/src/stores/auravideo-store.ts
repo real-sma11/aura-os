@@ -55,15 +55,15 @@ interface AuraVideoState {
 
 function artifactToVideo(a: ProjectArtifact): GeneratedVideo {
   return {
-    id: a.artifact_id,
-    artifactId: a.artifact_id,
+    id: a.id,
+    artifactId: a.id,
     prompt: a.prompt ?? "",
-    videoUrl: a.asset_url,
+    videoUrl: a.assetUrl ?? "",
     model: a.model ?? "",
     durationSeconds: 8,
     resolution: "720p",
     aspectRatio: "16:9",
-    createdAt: a.created_at,
+    createdAt: a.createdAt ?? new Date().toISOString(),
   };
 }
 
@@ -138,7 +138,7 @@ export const useAuraVideoStore = create<AuraVideoState>()((set, get) => ({
     try {
       const artifacts = await artifactsApi.listArtifacts(projectId);
       const videoArtifacts = artifacts
-        .filter((a) => a.artifact_type === "video")
+        .filter((a) => a.type === "video")
         .map(artifactToVideo);
       set({ videos: videoArtifacts });
     } catch {
@@ -152,19 +152,19 @@ export const useAuraVideoStore = create<AuraVideoState>()((set, get) => ({
     if (!video || video.artifactId || !selectedProjectId) return;
     try {
       const artifact = await artifactsApi.createArtifact(selectedProjectId, {
-        artifact_type: "video",
-        asset_url: video.videoUrl,
+        type: "video",
+        name: video.prompt.slice(0, 80) || "Video",
+        assetUrl: video.videoUrl,
         prompt: video.prompt,
         model: video.model,
-        provider: "google",
       });
       set({
         videos: videos.map((v) =>
-          v.id === videoId ? { ...v, artifactId: artifact.artifact_id } : v,
+          v.id === videoId ? { ...v, artifactId: artifact.id } : v,
         ),
         currentVideo:
           get().currentVideo?.id === videoId
-            ? { ...get().currentVideo!, artifactId: artifact.artifact_id }
+            ? { ...get().currentVideo!, artifactId: artifact.id }
             : get().currentVideo,
       });
     } catch {

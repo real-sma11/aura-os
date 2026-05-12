@@ -25,7 +25,7 @@ export interface ProjectArtifact {
 }
 
 export interface CreateProjectArtifactBody {
-  type: "image" | "model";
+  type: "image" | "model" | "video";
   name: string;
   description?: string;
   assetUrl: string;

@@ -3,7 +3,7 @@ export type GenerationMode = "chat" | "image" | "3d" | "video";
 export interface ModelOption {
   id: string;
   label: string;
-  tier: "opus" | "sonnet" | "haiku" | "gpt" | "image" | "3d";
+  tier: "opus" | "sonnet" | "haiku" | "gpt" | "image" | "3d" | "video";
   mode: GenerationMode;
 }
 

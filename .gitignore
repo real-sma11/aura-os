@@ -37,3 +37,4 @@ logs/run_evaluation/
 
 # Secrets
 .env
+AURA_VIDEO_PLAN.md

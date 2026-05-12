@@ -424,6 +424,11 @@ export const apps: AuraApp[] = [
       routes: auraVideoRoutes,
     },
     loadAuraVideoApp,
+    {
+      hasResponsiveControls: true,
+      hasSidekickPanel: true,
+      hasSidekickTaskbar: true,
+    },
   ),
   createAppDefinition(
     {

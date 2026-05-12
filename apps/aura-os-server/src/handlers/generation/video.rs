@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::Json;
 use tracing::info;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::handlers::billing;
 use crate::state::{AppState, AuthJwt, AuthSession};
 
