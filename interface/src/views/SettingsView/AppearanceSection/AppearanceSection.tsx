@@ -328,7 +328,7 @@ export function AppearanceSection() {
               <div
                 className={`${styles.logoPreviewMark} ${styles.logoPreviewSweepOverlay}`}
                 style={{
-                  "--desktop-logo-color": effectiveToColor,
+                  backgroundColor: effectiveToColor,
                   "--logo-pulse-duration": `${pulseSpeed}s`,
                 } as React.CSSProperties}
               />
