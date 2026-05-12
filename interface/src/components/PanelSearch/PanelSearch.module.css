@@ -17,7 +17,7 @@
   background: var(--shell-chrome-background);
   backdrop-filter: var(--shell-chrome-backdrop-filter);
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
-  border: 1px solid var(--color-border-chrome);
+  border: 1px solid color-mix(in srgb, var(--color-border-chrome) 30%, transparent);
   box-sizing: border-box;
   overflow: hidden;
 }
