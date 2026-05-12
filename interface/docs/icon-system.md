@@ -128,7 +128,9 @@ override locally:
 
 Already converted: `TaskbarIconButton` (`.taskbarBtn`), `BrowserAddressBar`
 (`.navButton`, `.actionButton`), `FolderPickerField` (`.iconButton`),
-`OnboardingChecklist` (`.iconButton`).
+`OnboardingChecklist` (`.iconButton`), `InputBarShell` (`.attachButton`,
+`.sendButton` — desktop only; the mobile media query disables the plate
+since the mobile send button paints its own pill bg).
 
 ## 7. Consolidation candidates (long tail)
 

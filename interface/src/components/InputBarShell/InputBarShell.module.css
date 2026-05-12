@@ -208,6 +208,11 @@
   align-items: center;
 }
 
+/* Attach (`+`) and send (arrow) corner buttons share the same shared
+   icon-button hover treatment as TaskbarIconButton: a rounded plate
+   centered behind the glyph (driven by --icon-hover-* tokens in
+   styles/tokens.css). Mobile media query below disables the plate
+   because the mobile send button already paints its own pill bg. */
 .attachButton {
   position: absolute;
   left: 2px;
@@ -222,11 +227,37 @@
   background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
+  /* Match TaskbarIconButton centering safeguards. */
+  line-height: 0;
   z-index: 1;
 }
 
-.attachButton:hover {
+.attachButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.attachButton > * {
+  position: relative;
+  z-index: 1;
+}
+
+.attachButton > svg {
+  display: block;
+}
+
+.attachButton:hover:not(:disabled) {
   color: var(--color-text-primary);
+}
+
+.attachButton:hover:not(:disabled)::before {
+  background: var(--icon-hover-bg);
 }
 
 .sendButton {
@@ -249,12 +280,37 @@
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
+  line-height: 0;
   transition: color 0.15s ease;
   z-index: 1;
 }
 
+.sendButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sendButton > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sendButton > svg {
+  display: block;
+}
+
 .sendButton:hover:not(:disabled) {
   color: var(--color-text-primary);
+}
+
+.sendButton:hover:not(:disabled)::before {
+  background: var(--icon-hover-bg);
 }
 
 .sendButton:disabled {
@@ -491,6 +547,14 @@
     height: 44px;
     border-radius: 999px;
     bottom: 0;
+  }
+
+  /* Mobile uses 44px pill-shaped tap targets with their own visual
+     treatment (.sendButton has a solid pill bg, .attachButton stays
+     transparent), so the desktop inner-plate hover doesn't apply. */
+  .attachButton::before,
+  .sendButton::before {
+    display: none;
   }
 
   .attachButton {
