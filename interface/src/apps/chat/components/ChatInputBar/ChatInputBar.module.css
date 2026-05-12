@@ -414,24 +414,53 @@
   border-bottom: none;
 }
 
+/* Top-right new-chat "+" mirrors the bottom-left attach "+" in
+   InputBarShell so both `+` affordances on the LLM input are visually
+   indistinguishable: same 24x24 hit target, same shared icon-button
+   inner-plate hover (driven by --icon-hover-* tokens in
+   styles/tokens.css), same Plus glyph size/strokeWidth in the TSX. */
 .modeNewChatButton {
+  position: relative;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition:
-    color 0.1s ease,
-    background 0.1s ease;
+  line-height: 0;
+  transition: color 0.1s ease;
+}
+
+.modeNewChatButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.modeNewChatButton > * {
+  position: relative;
+  z-index: 1;
+}
+
+.modeNewChatButton > svg {
+  display: block;
 }
 
 .modeNewChatButton:hover {
   color: var(--color-text-primary);
-  background: var(--color-overlay-medium);
+}
+
+.modeNewChatButton:hover::before {
+  background: var(--icon-hover-bg);
 }
 
 .projectMenuWrap {

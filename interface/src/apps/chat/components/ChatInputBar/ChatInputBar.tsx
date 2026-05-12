@@ -868,7 +868,9 @@ export const DesktopChatInputBar = memo(
           aria-label="Start new chat"
           data-agent-action="start-new-chat"
         >
-          <Plus size={14} strokeWidth={2} />
+          {/* Match the bottom-left attach button's glyph so both `+`
+              affordances on the LLM input are visually identical. */}
+          <Plus size={16} strokeWidth={1} />
         </button>
       </div>
     ) : (

@@ -139,7 +139,7 @@ duplicate the icon-button pattern locally. They're flagged for a future PR and
 should adopt the hover recipe above when touched:
 
 - [`MessageQueue.module.css`](../src/apps/chat/components/MessageQueue/MessageQueue.module.css) `.queueActionBtn`
-- [`ChatInputBar.module.css`](../src/apps/chat/components/ChatInputBar/ChatInputBar.module.css) (`.newSessionButton`, `.modeNewChatButton`, etc.)
+- [`ChatInputBar.module.css`](../src/apps/chat/components/ChatInputBar/ChatInputBar.module.css) `.newSessionButton` (`.modeNewChatButton` already adopted, mirrors `InputBarShell.attachButton`)
 - [`Preview.module.css`](../src/components/Preview/Preview.module.css) `.copyOutputButton`
 - [`OrgSelector.module.css`](../src/components/OrgSelector/OrgSelector.module.css) `.iconTrigger`
 - [`MobileThemeToggleButton.module.css`](../src/components/MobileThemeToggleButton/MobileThemeToggleButton.module.css) (could be a size variant on `TaskbarIconButton` instead)
