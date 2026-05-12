@@ -5,11 +5,13 @@ import {
   getProjectOrder,
   getTaskbarAppOrder,
   getTaskbarAppsCollapsed,
+  getTaskbarRightCollapsed,
   setLastAgent,
   setLastProject,
   setProjectOrder,
   setTaskbarAppOrder,
   setTaskbarAppsCollapsed,
+  setTaskbarRightCollapsed,
 } from "./storage";
 
 const LAST_AGENT_KEY = "aura-last-agent";
@@ -17,6 +19,7 @@ const LAST_PROJECT_KEY = "aura-last-project";
 const PROJECT_ORDER_KEY = "aura-project-order";
 const TASKBAR_APP_ORDER_KEY = "aura-taskbar-app-order";
 const TASKBAR_APPS_COLLAPSED_KEY = "aura-taskbar-apps-collapsed";
+const TASKBAR_RIGHT_COLLAPSED_KEY = "aura-taskbar-right-collapsed";
 
 describe("storage", () => {
   let store: Record<string, string>;
@@ -235,6 +238,39 @@ describe("storage", () => {
     it("stores the expanded state", () => {
       setTaskbarAppsCollapsed(false);
       expect(localStorage.setItem).toHaveBeenCalledWith(TASKBAR_APPS_COLLAPSED_KEY, "false");
+    });
+  });
+
+  describe("getTaskbarRightCollapsed", () => {
+    it("defaults to collapsed when nothing is stored", () => {
+      expect(getTaskbarRightCollapsed()).toBe(true);
+    });
+
+    it("returns true when the collapsed state is stored", () => {
+      store[TASKBAR_RIGHT_COLLAPSED_KEY] = "true";
+      expect(getTaskbarRightCollapsed()).toBe(true);
+    });
+
+    it("returns false when the expanded state is stored", () => {
+      store[TASKBAR_RIGHT_COLLAPSED_KEY] = "false";
+      expect(getTaskbarRightCollapsed()).toBe(false);
+    });
+
+    it("falls back to collapsed for malformed values", () => {
+      store[TASKBAR_RIGHT_COLLAPSED_KEY] = "maybe";
+      expect(getTaskbarRightCollapsed()).toBe(true);
+    });
+  });
+
+  describe("setTaskbarRightCollapsed", () => {
+    it("stores the collapsed state", () => {
+      setTaskbarRightCollapsed(true);
+      expect(localStorage.setItem).toHaveBeenCalledWith(TASKBAR_RIGHT_COLLAPSED_KEY, "true");
+    });
+
+    it("stores the expanded state", () => {
+      setTaskbarRightCollapsed(false);
+      expect(localStorage.setItem).toHaveBeenCalledWith(TASKBAR_RIGHT_COLLAPSED_KEY, "false");
     });
   });
 

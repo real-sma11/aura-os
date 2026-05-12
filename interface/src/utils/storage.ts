@@ -10,6 +10,7 @@ import {
   TASKBAR_APP_ORDER_KEY,
   TASKBAR_APPS_COLLAPSED_KEY,
   TASKBAR_HIDDEN_APPS_KEY,
+  TASKBAR_RIGHT_COLLAPSED_KEY,
 } from "../constants";
 
 type LastAgentMap = Record<string, string>;
@@ -329,6 +330,25 @@ export function getTaskbarAppsCollapsed(): boolean {
 export function setTaskbarAppsCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(TASKBAR_APPS_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+export function getTaskbarRightCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(TASKBAR_RIGHT_COLLAPSED_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  } catch {
+    // ignore storage failures
+  }
+  return true;
+}
+
+export function setTaskbarRightCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(TASKBAR_RIGHT_COLLAPSED_KEY, String(collapsed));
   } catch {
     // ignore storage failures
   }

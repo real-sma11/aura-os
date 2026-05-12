@@ -14,6 +14,8 @@ const registerAgents = vi.fn();
 const registerRemoteAgents = vi.fn();
 const getTaskbarAppsCollapsed = vi.fn();
 const setTaskbarAppsCollapsed = vi.fn();
+const getTaskbarRightCollapsed = vi.fn();
+const setTaskbarRightCollapsed = vi.fn();
 
 const uiModalState = {
   openBuyCredits,
@@ -160,6 +162,8 @@ vi.mock("../../stores/desktop-window-store", () => ({
 vi.mock("../../utils/storage", () => ({
   getTaskbarAppsCollapsed: () => getTaskbarAppsCollapsed(),
   setTaskbarAppsCollapsed: (collapsed: boolean) => setTaskbarAppsCollapsed(collapsed),
+  getTaskbarRightCollapsed: () => getTaskbarRightCollapsed(),
+  setTaskbarRightCollapsed: (collapsed: boolean) => setTaskbarRightCollapsed(collapsed),
 }));
 
 vi.mock("../ConnectionDot/ConnectionDot", () => ({
@@ -219,6 +223,7 @@ beforeEach(() => {
   appUIState.previousPath = "/projects";
   desktopWindowState.windows = {};
   getTaskbarAppsCollapsed.mockReturnValue(true);
+  getTaskbarRightCollapsed.mockReturnValue(true);
 });
 
 describe("BottomTaskbar", () => {
@@ -269,8 +274,8 @@ describe("BottomTaskbar", () => {
     render(<BottomTaskbar />);
 
     expect(screen.getByRole("button", { name: "Expand apps" })).toBeInTheDocument();
-    expect(screen.getByTestId("chevron-right")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show credits balance" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("chevron-right").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
 
     const navRails = screen.getAllByTestId("app-nav-rail");
     const leftNavRail = navRails[0];
@@ -294,44 +299,58 @@ describe("BottomTaskbar", () => {
     expect(leftNavRail).toHaveAttribute("data-include-ids", "null");
   });
 
-  it("shows the credits balance inline from the right chevron", async () => {
-    const user = userEvent.setup();
+  it("hides everything except profile when the right cluster is collapsed by default", () => {
     render(<BottomTaskbar />);
 
-    expect(screen.queryByText("1,200 Z")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
 
-    const creditsToggle = screen.getByRole("button", { name: "Show credits balance" });
-    const creditsButton = screen.getByRole("button", { name: "Credits" });
-
-    expect(
-      creditsToggle.compareDocumentPosition(creditsButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-
-    await user.click(creditsToggle);
-
-    const creditsSummary = screen.getByText("1,200 Z");
-    expect(screen.getByRole("button", { name: "Hide credits balance" })).toBeInTheDocument();
-    expect(
-      creditsToggle.compareDocumentPosition(creditsSummary) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      creditsSummary.compareDocumentPosition(creditsButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const profileNavRail = screen.getAllByTestId("app-nav-rail").find((rail) =>
+      rail.getAttribute("data-include-ids") === JSON.stringify(["profile"]),
+    );
+    expect(profileNavRail).toBeDefined();
   });
 
-  it("hides the credits balance on a second right chevron click", async () => {
+  it("expands the right cluster and persists the state when the chevron is clicked", async () => {
     const user = userEvent.setup();
     render(<BottomTaskbar />);
 
-    await user.click(screen.getByRole("button", { name: "Show credits balance" }));
-    await user.click(screen.getByRole("button", { name: "Hide credits balance" }));
+    await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
 
-    expect(screen.getByRole("button", { name: "Show credits balance" })).toBeInTheDocument();
-    expect(screen.queryByText("1,200 Z")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse taskbar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Credits" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(setTaskbarRightCollapsed).toHaveBeenCalledWith(false);
+  });
+
+  it("re-collapses the right cluster on a second chevron click", async () => {
+    const user = userEvent.setup();
+    render(<BottomTaskbar />);
+
+    await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
+    await user.click(screen.getByRole("button", { name: "Collapse taskbar" }));
+
+    expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    expect(setTaskbarRightCollapsed).toHaveBeenNthCalledWith(1, false);
+    expect(setTaskbarRightCollapsed).toHaveBeenNthCalledWith(2, true);
+  });
+
+  it("restores the expanded right cluster state from storage", () => {
+    getTaskbarRightCollapsed.mockReturnValue(false);
+
+    render(<BottomTaskbar />);
+
+    expect(screen.getByRole("button", { name: "Collapse taskbar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Credits" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 
   it("opens settings from the taskbar shortcut", async () => {
     const user = userEvent.setup();
+    getTaskbarRightCollapsed.mockReturnValue(false);
 
     render(<BottomTaskbar />);
 
@@ -398,7 +417,7 @@ describe("BottomTaskbar", () => {
     it("does not open the desktop context menu when right-clicking a taskbar button", () => {
       render(<BottomTaskbar />);
 
-      fireEvent.contextMenu(screen.getByRole("button", { name: "Settings" }));
+      fireEvent.contextMenu(screen.getByRole("button", { name: "Apps" }));
 
       expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
     });

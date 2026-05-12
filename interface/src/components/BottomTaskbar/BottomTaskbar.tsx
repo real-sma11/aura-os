@@ -11,10 +11,13 @@ import {
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
-import { getTaskbarAppsCollapsed, setTaskbarAppsCollapsed } from "../../utils/storage";
-import { formatCredits } from "../../shared/utils/format";
+import {
+  getTaskbarAppsCollapsed,
+  getTaskbarRightCollapsed,
+  setTaskbarAppsCollapsed,
+  setTaskbarRightCollapsed,
+} from "../../utils/storage";
 import { AppNavRail, TaskbarIconButton, TASKBAR_ICON_SIZE } from "../AppNavRail";
-import { useCreditBalance } from "../CreditsBadge/useCreditBalance";
 import { useDesktopContextMenu } from "../DesktopContextMenu";
 import { FavoriteAgentsStrip } from "./FavoriteAgentsStrip";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
@@ -40,16 +43,22 @@ export function BottomTaskbar() {
   const time = useClock();
   const navigate = useNavigate();
   const previousPath = useAppUIStore((s) => s.previousPath);
-  const { credits } = useCreditBalance();
   const [collapsed, setCollapsed] = useState(() => getTaskbarAppsCollapsed());
-  const [creditsExpanded, setCreditsExpanded] = useState(false);
-  const creditsLabel = credits !== null ? formatCredits(credits) : "---";
+  const [rightCollapsed, setRightCollapsed] = useState(() => getTaskbarRightCollapsed());
   const { handleContextMenu, menuElement } = useDesktopContextMenu();
 
   const toggleAppsCollapsed = () => {
     setCollapsed((current) => {
       const next = !current;
       setTaskbarAppsCollapsed(next);
+      return next;
+    });
+  };
+
+  const toggleRightCollapsed = () => {
+    setRightCollapsed((current) => {
+      const next = !current;
+      setTaskbarRightCollapsed(next);
       return next;
     });
   };
@@ -120,34 +129,33 @@ export function BottomTaskbar() {
         <div className={styles.rightPrimary}>
           <TaskbarIconButton
             icon={
-              creditsExpanded ? (
-                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-              ) : (
+              rightCollapsed ? (
                 <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+              ) : (
+                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
               )
             }
-            onClick={() => setCreditsExpanded((current) => !current)}
-            aria-label={creditsExpanded ? "Hide credits balance" : "Show credits balance"}
+            onClick={toggleRightCollapsed}
+            aria-label={rightCollapsed ? "Expand taskbar" : "Collapse taskbar"}
           />
-          {creditsExpanded ? (
-            <span className={styles.creditsSummary} aria-live="polite">
-              {creditsLabel}
-            </span>
-          ) : null}
-          <TaskbarIconButton
-            icon={<CreditCard size={TASKBAR_ICON_SIZE} />}
-            title="Credits"
-            aria-label="Credits"
-            onClick={openBuyCredits}
-          />
-          <TaskbarIconButton
-            icon={<Settings size={TASKBAR_ICON_SIZE} />}
-            title="Settings"
-            aria-label="Settings"
-            onClick={openOrgSettings}
-          />
-          <ThemeToggleButton />
-          <HelpButton />
+          {!rightCollapsed && (
+            <>
+              <TaskbarIconButton
+                icon={<CreditCard size={TASKBAR_ICON_SIZE} />}
+                title="Credits"
+                aria-label="Credits"
+                onClick={openBuyCredits}
+              />
+              <TaskbarIconButton
+                icon={<Settings size={TASKBAR_ICON_SIZE} />}
+                title="Settings"
+                aria-label="Settings"
+                onClick={openOrgSettings}
+              />
+              <ThemeToggleButton />
+              <HelpButton />
+            </>
+          )}
           <AppNavRail
             layout="taskbar"
             includeIds={["profile"]}
