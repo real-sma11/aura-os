@@ -117,22 +117,24 @@
   align-items: center;
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   border-radius: var(--shell-chrome-radius, 20px);
-  border: none;
-  background: var(--color-accent);
-  color: #000;
+  border: 1px solid var(--color-accent);
+  background: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  color: var(--color-accent);
   cursor: pointer;
   padding: 0 var(--space-3);
   flex-shrink: 0;
 }
 
 .inviteButton:hover {
-  background: color-mix(in srgb, var(--color-accent) 85%, #000);
-  color: #000;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg));
+  color: var(--color-accent);
 }
 
 .inviteLabel {
-  font-size: var(--text-2xs);
-  font-weight: 600;
+  font-size: calc(var(--text-2xs) - 1.5px);
+  font-weight: 400;
   letter-spacing: 0.06em;
   white-space: nowrap;
   color: inherit;
