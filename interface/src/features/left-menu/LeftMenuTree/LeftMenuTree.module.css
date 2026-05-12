@@ -310,6 +310,7 @@
   align-items: center;
   gap: 8px;
   min-height: var(--left-menu-item-height);
+  margin: 0 var(--space-2);
   padding: 0 16px;
   color: var(--color-text-muted);
 }
@@ -340,11 +341,12 @@
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  width: auto;
+  margin: 0 var(--space-2);
   min-height: var(--left-menu-item-height);
   padding: 0 16px;
   border: none;
-  border-radius: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--color-text-primary);
   font: inherit;
