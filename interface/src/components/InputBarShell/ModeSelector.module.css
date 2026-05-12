@@ -1,10 +1,9 @@
 /* ============================================================
  * Mode selector — topmost row of the agent chat input. Owns the
- * row chrome (border, padding, MODE label) and the typography
- * overrides that make the inner `SlidingPills` segments render
- * compact enough to fit alongside the textarea / containerTop
- * slot. The slide animation and selection chrome belong to
- * `SlidingPills` itself.
+ * row chrome (border, padding) and the typography overrides that
+ * make the inner `SlidingPills` segments render compact enough to
+ * fit alongside the textarea / containerTop slot. The slide
+ * animation and selection chrome belong to `SlidingPills` itself.
  * ============================================================ */
 
 .root {
@@ -14,20 +13,11 @@
   padding: 0 12px;
   min-height: var(--control-height-sm, 32px);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
-  /* The MODE label and pill buttons are pure controls — text selection
-     here is never useful and produces a stray highlight when users
+  /* The pill buttons are pure controls — text selection here is
+     never useful and produces a stray highlight when users
      drag-click across segments. */
   user-select: none;
   -webkit-user-select: none;
-}
-
-.label {
-  flex-shrink: 0;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .pills {
@@ -88,9 +78,5 @@
     min-width: 68px;
     padding: 4px 12px;
     font-size: 12px;
-  }
-
-  .label {
-    font-size: 10px;
   }
 }

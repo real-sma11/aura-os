@@ -40,15 +40,8 @@ describe("ModeSelector", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("renders the MODE label by default and hides it when hideLabel is set", () => {
-    const { rerender } = render(
-      <ModeSelector selectedMode="code" onChange={vi.fn()} />,
-    );
-    expect(screen.getByText("MODE")).toBeInTheDocument();
-
-    rerender(
-      <ModeSelector selectedMode="code" onChange={vi.fn()} hideLabel />,
-    );
+  it("does not render a MODE label", () => {
+    render(<ModeSelector selectedMode="code" onChange={vi.fn()} />);
     expect(screen.queryByText("MODE")).not.toBeInTheDocument();
   });
 

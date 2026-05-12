@@ -891,7 +891,6 @@ export const DesktopChatInputBar = memo(
         <ModeSelector
           selectedMode={selectedMode}
           onChange={onModeChange}
-          hideLabel={compact}
           className={styles.modeSelectorFlex}
         />
         <button
@@ -906,11 +905,7 @@ export const DesktopChatInputBar = memo(
         </button>
       </div>
     ) : (
-      <ModeSelector
-        selectedMode={selectedMode}
-        onChange={onModeChange}
-        hideLabel={compact}
-      />
+      <ModeSelector selectedMode={selectedMode} onChange={onModeChange} />
     );
 
     // In 3D mode the bar is a two-step pipeline:

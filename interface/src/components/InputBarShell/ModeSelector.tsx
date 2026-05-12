@@ -12,21 +12,18 @@ export interface ModeSelectorProps {
   onChange: (mode: AgentMode) => void;
   /** Optional className appended to the row wrapper for layout overrides. */
   className?: string;
-  /** Hide the leading "MODE" label (e.g. on very narrow surfaces). */
-  hideLabel?: boolean;
 }
 
 /**
  * Topmost row of the agent chat input. Owns the row chrome (border,
- * padding, MODE label) and delegates the segmented pill control to
- * the generic `SlidingPills` component, which handles the slide
- * animation, ARIA radiogroup semantics, and keyboard navigation.
+ * padding) and delegates the segmented pill control to the generic
+ * `SlidingPills` component, which handles the slide animation, ARIA
+ * radiogroup semantics, and keyboard navigation.
  */
 export const ModeSelector = memo(function ModeSelector({
   selectedMode,
   onChange,
   className,
-  hideLabel = false,
 }: ModeSelectorProps) {
   const items = useMemo<readonly SlidingPillItem<AgentMode>[]>(
     () =>
@@ -50,7 +47,6 @@ export const ModeSelector = memo(function ModeSelector({
       data-agent-surface="mode-selector"
       data-agent-mode={selectedMode}
     >
-      {hideLabel ? null : <span className={styles.label}>MODE</span>}
       <SlidingPills
         items={items}
         value={selectedMode}
