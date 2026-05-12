@@ -36,7 +36,24 @@
   gap: 2px;
 }
 
+/*
+ * All four mode segments share the same min-width so the SlidingPills
+ * indicator slides between segments without also having to animate its
+ * own width / height. `transform` is GPU-composited and produces a
+ * perfectly smooth slide on its own; the previous design also
+ * transitioned `width` (CPU layout + paint per frame) in lockstep,
+ * which paints the 1px accent border at slightly inconsistent
+ * sub-pixel positions on each intermediate frame and reads as a
+ * small visual jitter on the pill border. Keeping every segment a
+ * single fixed size means the width transition is effectively a no-op
+ * — only the transform actually changes — so the slide is jitter-free
+ * even though we leave the SlidingPills internals untouched (and
+ * still safe for other consumers that may genuinely need width
+ * animation).
+ */
 .modeSegment {
+  box-sizing: border-box;
+  min-width: 56px;
   padding: 3px 10px;
   font-size: 11px;
   font-weight: 600;
@@ -50,6 +67,7 @@
   }
 
   .modeSegment {
+    min-width: 68px;
     padding: 4px 12px;
     font-size: 12px;
   }
