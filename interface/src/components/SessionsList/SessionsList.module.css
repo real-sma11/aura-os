@@ -44,7 +44,7 @@
   padding-left: var(--space-3, 12px) !important;
   padding-right: var(--space-3, 12px);
   width: auto;
-  margin: 0 var(--space-2);
+  margin: 1px var(--space-2);
   border-radius: 6px;
   height: 30px;
   min-height: 30px;
