@@ -1,24 +1,65 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { api } from "../api/client";
+import type { DesktopPreferences } from "../shared/api/desktop";
 
-const STORAGE_KEY = "aura-desktop-logo-color";
+const STORAGE_KEY = "aura-desktop-preferences";
+const LEGACY_COLOR_KEY = "aura-desktop-logo-color";
 
-function read(): string {
+export type PulseMode = "fade" | "sweep";
+
+interface DesktopPrefs {
+  color: string;
+  pulseEnabled: boolean;
+  pulseMode: PulseMode;
+  pulseSpeed: number;
+  pulseFromColor: string;
+}
+
+const DEFAULTS: DesktopPrefs = {
+  color: "",
+  pulseEnabled: false,
+  pulseMode: "fade",
+  pulseSpeed: 2,
+  pulseFromColor: "",
+};
+
+function readLocal(): DesktopPrefs {
   try {
-    return localStorage.getItem(STORAGE_KEY) ?? "";
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    // Migrate legacy single-color key
+    const legacy = localStorage.getItem(LEGACY_COLOR_KEY);
+    if (legacy) return { ...DEFAULTS, color: legacy };
+    return DEFAULTS;
   } catch {
-    return "";
+    return DEFAULTS;
   }
 }
 
-function writeLocal(next: string | undefined): void {
+function writeLocal(prefs: DesktopPrefs): void {
   try {
-    if (next) {
-      localStorage.setItem(STORAGE_KEY, next);
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch {}
+}
+
+function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
+  return {
+    logo_color: p.color || null,
+    pulse_enabled: p.pulseEnabled,
+    pulse_mode: p.pulseMode,
+    pulse_speed: p.pulseSpeed,
+    pulse_from_color: p.pulseFromColor || null,
+  };
+}
+
+function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
+  return {
+    color: p.logo_color ?? "",
+    pulseEnabled: p.pulse_enabled ?? false,
+    pulseMode: p.pulse_mode ?? "fade",
+    pulseSpeed: p.pulse_speed ?? 2,
+    pulseFromColor: p.pulse_from_color ?? "",
+  };
 }
 
 const listeners = new Set<() => void>();
@@ -37,28 +78,58 @@ function notify(): void {
   for (const cb of listeners) cb();
 }
 
-export function useDesktopLogoColor() {
-  const color = useSyncExternalStore(subscribe, read, () => "");
+function patch(update: Partial<DesktopPrefs>): void {
+  const next = { ...readLocal(), ...update };
+  writeLocal(next);
+  notify();
+  api.patchDesktopPreferences(toApiPrefs(next)).catch(() => {});
+}
 
-  // On mount, pull the authoritative value from the native store and sync
-  // it into localStorage so the next render (and other tabs) see it.
+export function useDesktopLogoColor() {
+  const prefs = useSyncExternalStore(subscribe, readLocal, () => DEFAULTS);
+
   useEffect(() => {
-    api.getDesktopPreferences().then((prefs) => {
-      const remote = prefs.logo_color ?? "";
-      if (remote !== read()) {
-        writeLocal(remote || undefined);
+    api.getDesktopPreferences().then((remote) => {
+      const local = readLocal();
+      const fromRemote = fromApiPrefs(remote);
+      // Only sync if remote differs — remote is authoritative after reinstall
+      if (JSON.stringify(fromRemote) !== JSON.stringify(local)) {
+        writeLocal(fromRemote);
         notify();
       }
     }).catch(() => {});
   }, []);
 
   const setColor = useCallback((next: string | undefined) => {
-    // Update localStorage immediately — the title bar repaints this frame.
-    writeLocal(next);
-    notify();
-    // Persist to the native store in the background.
-    api.patchDesktopPreferences({ logo_color: next ?? null }).catch(() => {});
+    patch({ color: next ?? "" });
   }, []);
 
-  return { color, setColor };
+  const setPulseEnabled = useCallback((next: boolean) => {
+    patch({ pulseEnabled: next });
+  }, []);
+
+  const setPulseMode = useCallback((next: PulseMode) => {
+    patch({ pulseMode: next });
+  }, []);
+
+  const setPulseSpeed = useCallback((next: number) => {
+    patch({ pulseSpeed: next });
+  }, []);
+
+  const setPulseFromColor = useCallback((next: string | undefined) => {
+    patch({ pulseFromColor: next ?? "" });
+  }, []);
+
+  return {
+    color: prefs.color,
+    pulseEnabled: prefs.pulseEnabled,
+    pulseMode: prefs.pulseMode,
+    pulseSpeed: prefs.pulseSpeed,
+    pulseFromColor: prefs.pulseFromColor,
+    setColor,
+    setPulseEnabled,
+    setPulseMode,
+    setPulseSpeed,
+    setPulseFromColor,
+  };
 }

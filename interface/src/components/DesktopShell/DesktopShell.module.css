@@ -167,13 +167,19 @@
   user-select: none;
 }
 
-.titleLogo {
-  /* SVG aspect ratio is 3322 × 421 */
-  height: 11px;
-  aspect-ratio: 3322 / 421;
-  display: block;
-  user-select: none;
-  pointer-events: none;
+@keyframes logo-fade {
+  from { background-color: var(--logo-pulse-from, white); }
+  to   { background-color: var(--logo-pulse-to, white); }
+}
+
+@keyframes logo-sweep {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0% 0 0); }
+}
+
+/* Shared mask properties — applied to both the single-div and layered cases */
+.titleLogo,
+.titleLogoLayer {
   background-color: var(--desktop-logo-color, white);
   mask-image: url('/AURA_logo_text_mark.svg');
   mask-size: contain;
@@ -183,6 +189,41 @@
   -webkit-mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
+}
+
+.titleLogo {
+  /* SVG aspect ratio is 3322 × 421 */
+  height: 11px;
+  aspect-ratio: 3322 / 421;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Fade pulse — single div, animates background-color between two vars */
+.titleLogoPulseFade {
+  animation: logo-fade var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+}
+
+/* Sweep pulse — wrapper positions two layers on top of each other */
+.titleLogoWrapper {
+  position: relative;
+  height: 11px;
+  aspect-ratio: 3322 / 421;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.titleLogoLayer {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* Top layer sweeps left→right, revealing the "to" color */
+.titleLogoSweepOverlay {
+  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
 }
 
 .titleLeading {

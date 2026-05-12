@@ -11,6 +11,10 @@ const CF: &str = "settings";
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub(crate) struct DesktopPreferences {
     pub logo_color: Option<String>,
+    pub pulse_enabled: Option<bool>,
+    pub pulse_mode: Option<String>,  // "fade" | "sweep"
+    pub pulse_speed: Option<f32>,    // seconds, 0.5–5.0
+    pub pulse_from_color: Option<String>,
 }
 
 pub(crate) async fn get_desktop_preferences(
@@ -25,22 +29,14 @@ pub(crate) async fn get_desktop_preferences(
     Ok(Json(prefs))
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct PatchDesktopPreferencesRequest {
-    pub logo_color: Option<String>,
-}
-
 pub(crate) async fn patch_desktop_preferences(
     State(state): State<AppState>,
-    Json(req): Json<PatchDesktopPreferencesRequest>,
+    Json(req): Json<DesktopPreferences>,
 ) -> ApiResult<Json<DesktopPreferences>> {
-    let prefs = DesktopPreferences {
-        logo_color: req.logo_color,
-    };
-    let bytes = serde_json::to_vec(&prefs).map_err(|e| ApiError::internal(e.to_string()))?;
+    let bytes = serde_json::to_vec(&req).map_err(|e| ApiError::internal(e.to_string()))?;
     state
         .store
         .put_cf_bytes(CF, PREFS_KEY.as_bytes(), &bytes)
         .map_err(|e| ApiError::internal(e.to_string()))?;
-    Ok(Json(prefs))
+    Ok(Json(req))
 }

@@ -167,3 +167,117 @@
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
 }
+
+.logoPreviewWrapper {
+  position: relative;
+  height: 14px;
+  aspect-ratio: 3322 / 421;
+  display: block;
+}
+
+.logoPreviewWrapper .logoPreviewMark {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.logoPreviewPulseFade {
+  animation: logo-fade var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+}
+
+.logoPreviewSweepOverlay {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  animation: logo-sweep var(--logo-pulse-duration, 2s) ease-in-out infinite alternate;
+}
+
+@keyframes logo-fade {
+  from { background-color: var(--logo-pulse-from, white); }
+  to   { background-color: var(--logo-pulse-to, white); }
+}
+
+@keyframes logo-sweep {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0% 0 0); }
+}
+
+/* Pulse toggle */
+.pulseToggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pulseCheckbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+}
+
+.pulseLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Pulse settings panel */
+.pulseSettings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+
+/* Mode buttons */
+.pulseModeRow {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.pulseModeButton {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  padding: 3px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.pulseModeButton:hover:not(.pulseModeButtonActive) {
+  background: var(--color-overlay-light);
+  color: var(--color-text-primary);
+}
+
+.pulseModeButtonActive {
+  background: var(--color-accent);
+  color: var(--color-on-accent, white);
+  border-color: var(--color-accent);
+}
+
+/* Speed slider */
+.pulseSpeedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pulseSpeedSlider {
+  flex: 1;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.pulseSpeedValue {
+  min-width: 2.5rem;
+  text-align: right;
+  font-family: var(--font-family-mono, monospace);
+}

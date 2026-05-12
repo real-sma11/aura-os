@@ -90,12 +90,16 @@ export interface PersistDesktopRouteResponse {
 
 export interface DesktopPreferences {
   logo_color: string | null;
+  pulse_enabled: boolean | null;
+  pulse_mode: "fade" | "sweep" | null;
+  pulse_speed: number | null;
+  pulse_from_color: string | null;
 }
 
 export const desktopApi = {
   getDesktopPreferences: () =>
     apiFetch<DesktopPreferences>("/api/desktop/preferences"),
-  patchDesktopPreferences: (prefs: { logo_color: string | null }) =>
+  patchDesktopPreferences: (prefs: DesktopPreferences) =>
     apiFetch<DesktopPreferences>("/api/desktop/preferences", {
       method: "PATCH",
       body: JSON.stringify(prefs),

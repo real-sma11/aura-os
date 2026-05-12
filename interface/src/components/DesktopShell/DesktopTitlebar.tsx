@@ -1,4 +1,5 @@
-import { Button } from "@cypher-asi/zui";
+import { Button, useTheme } from "@cypher-asi/zui";
+import type { CSSProperties } from "react";
 import { Server } from "lucide-react";
 import { OrgSelector } from "../OrgSelector";
 import { WindowControls } from "../WindowControls";
@@ -22,7 +23,54 @@ export function DesktopTitlebar({
   onOpenHostSettings,
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
-  const { color: logoColor } = useDesktopLogoColor();
+  const { resolvedTheme } = useTheme();
+  const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor } = useDesktopLogoColor();
+
+  const themeDefault = resolvedTheme === "light" ? "#000000" : "#ffffff";
+  const toColor = logoColor || themeDefault;
+  const fromColor = pulseFromColor || themeDefault;
+  const durationCss = `${pulseSpeed}s`;
+
+  let logoElement: React.ReactNode;
+  if (!pulseEnabled) {
+    logoElement = (
+      <div
+        className={styles.titleLogo}
+        role="img"
+        aria-label="AURA"
+        style={logoColor ? { "--desktop-logo-color": logoColor } as CSSProperties : undefined}
+      />
+    );
+  } else if (pulseMode === "fade") {
+    logoElement = (
+      <div
+        className={`${styles.titleLogo} ${styles.titleLogoPulseFade}`}
+        role="img"
+        aria-label="AURA"
+        style={{
+          "--logo-pulse-from": fromColor,
+          "--logo-pulse-to": toColor,
+          "--logo-pulse-duration": durationCss,
+        } as CSSProperties}
+      />
+    );
+  } else {
+    logoElement = (
+      <div className={styles.titleLogoWrapper} role="img" aria-label="AURA">
+        <div
+          className={styles.titleLogoLayer}
+          style={{ "--desktop-logo-color": fromColor } as CSSProperties}
+        />
+        <div
+          className={`${styles.titleLogoLayer} ${styles.titleLogoSweepOverlay}`}
+          style={{
+            "--desktop-logo-color": toColor,
+            "--logo-pulse-duration": durationCss,
+          } as CSSProperties}
+        />
+      </div>
+    );
+  }
 
   return (
     <ShellTitlebar
@@ -34,12 +82,7 @@ export function DesktopTitlebar({
       }
       title={
         <span className={`titlebar-center ${styles.titleCenter}`}>
-          <div
-            className={styles.titleLogo}
-            role="img"
-            aria-label="AURA"
-            style={logoColor ? { ["--desktop-logo-color" as string]: logoColor } : undefined}
-          />
+          {logoElement}
         </span>
       }
       actions={
