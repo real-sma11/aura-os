@@ -61,6 +61,13 @@ export const STREAM_CLOSE_EVENT = "aura:stream-close" as const;
  * (Vite's idiomatic flag) and fall back to a `process.env.NODE_ENV`
  * check so the helper works under jsdom + Vitest, which polyfills
  * `process.env` even in browser-like environments.
+ *
+ * The `process` reference is guarded behind a `globalThis` lookup
+ * because the production `tsconfig` does not include `@types/node`
+ * (the bundle is browser-only). A direct `process.env` reference
+ * trips TS2591 under that config; the indirect access via
+ * `globalThis` keeps the runtime fallback while satisfying the
+ * browser-only type universe.
  */
 function isDevBuild(): boolean {
   // `import.meta.env` is Vite-specific; guard for environments
@@ -70,7 +77,9 @@ function isDevBuild(): boolean {
   if (meta && meta.env && typeof meta.env.DEV === "boolean") {
     return meta.env.DEV;
   }
-  if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {
+  type MaybeProcessHost = { process?: { env?: { NODE_ENV?: string } } };
+  const host = globalThis as unknown as MaybeProcessHost;
+  if (host.process && host.process.env && host.process.env.NODE_ENV === "development") {
     return true;
   }
   return false;
