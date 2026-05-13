@@ -97,13 +97,6 @@ jobs:
       - name: Install Rust toolchain
         uses: ./.github/actions/setup-rust-toolchain
 
-      - name: Restore Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: desktop-${{ runner.os }}-${{ runner.arch }}
-          workspaces: |
-            . -> .aura-shared-target
-
       - name: Set up sccache
         id: sccache
         uses: mozilla-actions/sccache-action@v0.0.9
