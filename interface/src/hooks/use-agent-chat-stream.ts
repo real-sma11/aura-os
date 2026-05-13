@@ -339,6 +339,7 @@ export function useAgentChatStream({
               prompt: userMsg.content,
               model: selectedModel ?? undefined,
               projectId,
+              agentId,
             },
             handler,
             controller.signal,

@@ -331,6 +331,8 @@ export interface GenerateVideoOptions {
   generateAudio?: boolean;
   projectId?: string;
   name?: string;
+  agentId?: string;
+  agentInstanceId?: string;
 }
 
 export function generateVideoStream(
@@ -346,6 +348,8 @@ export function generateVideoStream(
   if (options.generateAudio !== undefined) body.generateAudio = options.generateAudio;
   if (options.projectId) body.projectId = options.projectId;
   if (options.name) body.name = options.name;
+  if (options.agentId) body.agentId = options.agentId;
+  if (options.agentInstanceId) body.agentInstanceId = options.agentInstanceId;
   return streamSSE<string>(
     `${BASE_URL}/api/generate/video/stream`,
     {
