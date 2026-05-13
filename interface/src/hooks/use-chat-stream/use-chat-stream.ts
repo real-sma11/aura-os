@@ -18,6 +18,17 @@ import {
 import { buildUserChatMessage } from "../attachment-helpers";
 import { buildStreamHandler } from "./build-stream-handler";
 
+type UseChatStreamSendMessage = (
+  content: string,
+  action?: string | null,
+  selectedModel?: string | null,
+  attachments?: ChatAttachment[],
+  commands?: string[],
+  projectIdOverride?: string,
+  generationMode?: GenerationMode,
+  sourceImageUrl?: string,
+) => Promise<void>;
+
 interface UseChatStreamOptions {
   projectId: string | undefined;
   agentInstanceId: string | undefined;
@@ -75,6 +86,46 @@ export function useChatStream({
   // `getIsStreaming` read and proceed to issue parallel POSTs.
   const inFlightRef = useRef(false);
 
+  // Phase 2 auto-retry plumbing. When a chat turn dies mid-stream
+  // because the harness WS dropped (or the SSE idle watchdog fires),
+  // we silently re-issue the last user message on a fresh harness
+  // session — the harness rebuilds context from `aura_session_id` in
+  // storage. Bounded to `MAX_AUTO_RETRIES` to avoid hammering a
+  // genuinely-down upstream.
+  const MAX_AUTO_RETRIES = 2;
+  interface LastSendArgs {
+    content: string;
+    action: string | null;
+    selectedModel?: string | null;
+    attachments?: ChatAttachment[];
+    commands?: string[];
+    projectIdOverride?: string;
+    generationMode?: GenerationMode;
+    sourceImageUrl?: string;
+  }
+  const lastSendArgsRef = useRef<LastSendArgs | null>(null);
+  const autoRetryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flipped to `true` for the single sendMessage invocation scheduled
+  // by the auto-retry timer. Lets the entry-point distinguish a
+  // retry from a brand-new user send (which should reset the budget).
+  const inAutoRetryRef = useRef(false);
+  // sendMessage is defined below; ref-indirection so the auto-retry
+  // callback can call the current `sendMessage` without re-binding
+  // the dependency list of every memoized child that holds the
+  // callback identity.
+  const sendMessageRef = useRef<UseChatStreamSendMessage | null>(null);
+
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current != null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   useEffect(() => () => {
     if (agentInstanceId && !getIsStreaming(core.key)) {
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -93,6 +144,32 @@ export function useChatStream({
       _sourceImageUrl?: string,
     ) => {
       if (!projectId || !agentInstanceId || inFlightRef.current || getIsStreaming(core.key)) return;
+
+      // A user-initiated send (not the auto-retry timer firing)
+      // resets the Phase 2 retry budget. Otherwise a user that
+      // exhausted the budget once would never get a retry on their
+      // next message even after a clean break.
+      const isAutoRetry = inAutoRetryRef.current;
+      inAutoRetryRef.current = false;
+      if (!isAutoRetry) {
+        autoRetryCountRef.current = 0;
+      }
+
+      // Capture every successful entry to `sendMessage` so the Phase 2
+      // auto-retry path can re-issue the exact same call after a
+      // transient WS drop. We snapshot BEFORE the empty-content guard
+      // because the retry needs the original payload regardless of
+      // whether the user typed text vs. relied on attachments.
+      lastSendArgsRef.current = {
+        content,
+        action,
+        selectedModel,
+        attachments,
+        commands,
+        projectIdOverride: _projectIdOverride,
+        generationMode: _generationMode,
+        sourceImageUrl: _sourceImageUrl,
+      };
       const trimmed = content.trim();
       // 3D model step (`generationMode === "3d"` with a pinned source image)
       // dispatches without text or attachments — the source image is the
@@ -118,7 +195,13 @@ export function useChatStream({
             ? "Generate 3D model"
             : undefined,
       );
-      core.setEvents((prev) => [...prev, userMsg]);
+      // On an auto-retry, the user's bubble is already on screen from
+      // the original send — only the assistant turn is being re-issued
+      // — so re-appending it here would duplicate the question. The
+      // partial assistant buffer was already discarded in `tryAutoRetry`.
+      if (!isAutoRetry) {
+        core.setEvents((prev) => [...prev, userMsg]);
+      }
       core.setIsStreaming(true);
       sidekickRef.current.setAgentStreaming(agentInstanceId, true);
       resetStreamBuffers(refs, setters);
@@ -133,11 +216,61 @@ export function useChatStream({
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+
+      const tryAutoRetry = (_error: unknown): boolean => {
+        // Never auto-retry if the user explicitly aborted the turn
+        // (Stop button) — that controller is the same one we'd
+        // re-attach to, so respect their intent.
+        if (controller.signal.aborted) return false;
+        if (abortRef.current?.signal.aborted) return false;
+        if (autoRetryCountRef.current >= MAX_AUTO_RETRIES) return false;
+        const args = lastSendArgsRef.current;
+        if (!args) return false;
+        autoRetryCountRef.current += 1;
+        const delayMs = 1000 * autoRetryCountRef.current;
+        // Discard any partial assistant state from the dropped turn
+        // so the retry produces a clean assistant bubble. The user's
+        // own message remains on screen because it's already in
+        // `events` and the retry skips re-appending it.
+        resetStreamBuffers(refs, setters);
+        // Swap the would-be error bubble for a transient "Reconnecting"
+        // banner. The next send will rehydrate from session history
+        // (the harness picks up by `aura_session_id`).
+        core.setProgressText("Reconnecting…");
+        // We can't fire the resend synchronously because the current
+        // `sendMessage` call is still on the stack and `inFlightRef` /
+        // `setIsStreaming(true)` will fight a re-entrant invocation.
+        // Defer past the surrounding `finally` so the latch is clear
+        // by the time the retry runs.
+        if (retryTimerRef.current != null) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          const send = sendMessageRef.current;
+          if (!send) return;
+          inAutoRetryRef.current = true;
+          void send(
+            args.content,
+            args.action,
+            args.selectedModel,
+            args.attachments,
+            args.commands,
+            args.projectIdOverride,
+            args.generationMode,
+            args.sourceImageUrl,
+          );
+        }, delayMs);
+        return true;
+      };
+
       const handler = buildStreamHandler({
         projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey: core.key,
         setProgressText: core.setProgressText, sidekickRef, projectCtxRef,
         pendingSpecIdsRef, pendingTaskIdsRef,
         onSessionReady: (id) => onSessionReadyRef.current?.(id),
+        onAssistantTurnCompleted: () => {
+          autoRetryCountRef.current = 0;
+        },
+        onMaybeAutoRetry: tryAutoRetry,
       });
 
       try {
@@ -267,7 +400,20 @@ export function useChatStream({
     [projectId, agentInstanceId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
   );
 
+  // Mirror the live `sendMessage` identity into a ref so the
+  // auto-retry timer (scheduled below) can call the current closure
+  // without re-rendering every memoized child whenever the callback
+  // identity changes.
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
   const stopStreaming = useCallback(() => {
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    autoRetryCountRef.current = 0;
     core.baseStopStreaming();
     if (agentInstanceId) {
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -289,6 +435,14 @@ export function useChatStream({
   // on memoized children.
   const markNextSendAsNewSession = useCallback(() => {
     nextSendStartsNewSessionRef.current = true;
+    // New chat means a fresh auto-retry budget for any future
+    // transient WS drop on the new session.
+    autoRetryCountRef.current = 0;
+    lastSendArgsRef.current = null;
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
   }, []);
 
   return {

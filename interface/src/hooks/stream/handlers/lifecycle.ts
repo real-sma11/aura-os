@@ -58,11 +58,31 @@ function getStreamErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function isStreamDroppedError(error: unknown, message: string): boolean {
+/**
+ * Detects errors that the chat hook should treat as a transient
+ * "stream dropped" event rather than a hard failure. Includes:
+ *
+ * - `SSEIdleTimeoutError` (client-side 90s read-watchdog),
+ * - `stream_lagged` (server-side broadcast backpressure),
+ * - `harness_ws_closed` / `harness_ws_read_error` (Phase 2: the
+ *   upstream harness WebSocket dropped mid-turn; the next send
+ *   transparently rehydrates state from session storage),
+ * - `harness_protocol_mismatch` (untyped harness frame; same
+ *   recovery path applies because the WS reader bails after
+ *   emitting this error).
+ */
+export function isStreamDroppedError(error: unknown, message?: string): boolean {
   if (error instanceof SSEIdleTimeoutError) return true;
   if (error instanceof Error && error.name === "SSEIdleTimeoutError") return true;
   const code = getStreamErrorCode(error);
   if (code === "STREAM_LAGGED" || code === "stream_lagged") return true;
+  if (
+    code === "harness_ws_closed" ||
+    code === "harness_ws_read_error" ||
+    code === "harness_protocol_mismatch"
+  ) {
+    return true;
+  }
   if (
     typeof error === "object"
     && error !== null
@@ -71,18 +91,21 @@ function isStreamDroppedError(error: unknown, message: string): boolean {
   ) {
     return true;
   }
-  if (/^SSE idle timeout/i.test(message)) return true;
-  if (/^Stream lagged/i.test(message)) return true;
+  const text = message ?? getStreamErrorMessage(error);
+  if (/^SSE idle timeout/i.test(text)) return true;
+  if (/^Stream lagged/i.test(text)) return true;
   return false;
 }
 
-function normalizeStreamError(error: unknown): {
+export type StreamErrorDisplayVariant =
+  | "insufficientCreditsError"
+  | "agentBusyError"
+  | "harnessCapacityExhaustedError"
+  | "streamDropped";
+
+export function normalizeStreamError(error: unknown): {
   message: string;
-  displayVariant?:
-    | "insufficientCreditsError"
-    | "agentBusyError"
-    | "harnessCapacityExhaustedError"
-    | "streamDropped";
+  displayVariant?: StreamErrorDisplayVariant;
 } {
   if (isInsufficientCreditsError(error)) {
     return {
@@ -122,7 +145,7 @@ function normalizeStreamError(error: unknown): {
   if (isStreamDroppedError(error, rawMessage)) {
     return {
       message:
-        "The chat stream went quiet unexpectedly. Your assistant turn is being recovered from history — refresh if it does not reappear shortly.",
+        "The connection to the agent dropped. Your turn is being recovered from history — refresh if it does not reappear shortly.",
       displayVariant: "streamDropped",
     };
   }

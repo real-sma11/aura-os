@@ -237,6 +237,12 @@ fn debug_payload(text: &str) -> String {
 // distinguish bounded-channel backpressure and reader close/error events; a
 // true reconnect loop should be added at the session-open layer once protocol
 // resume semantics are available.
+//
+// Phase 2 of the chat reliability plan deliberately handles WS death via
+// initial-connect retry (see `LocalHarness::open_session` and
+// `SwarmHarness::open_session_socket`) plus client-side auto-retry of the
+// last user message on `streamDropped`, since true mid-turn resume blocks
+// on `session_resume` semantics in aura-node that are not yet on the wire.
 
 #[cfg(test)]
 mod tests {

@@ -22,6 +22,7 @@ import {
   handleStreamError,
   finalizeStream,
   getThinkingDurationMs,
+  isStreamDroppedError,
 } from "../use-stream-core";
 
 import {
@@ -62,6 +63,24 @@ export interface DispatchDeps {
    * Replaces the legacy `useLiveSessionStore.pin(...)` machinery.
    */
   onSessionReady?: (sessionId: string) => void;
+  /**
+   * Notifies the chat hook that the assistant turn completed cleanly
+   * (received `AssistantMessageEnd` with a non-tool_use stop reason).
+   * The hook uses this to reset the Phase 2 auto-retry counter so a
+   * later transient WS drop again gets the full retry budget.
+   */
+  onAssistantTurnCompleted?: () => void;
+  /**
+   * Last-chance hook for the chat-stream hook to swallow an error and
+   * silently retry the last user message instead of surfacing a hard
+   * "*Error*" bubble. Invoked from the handler's `onError` and on any
+   * `EventType.Error` whose payload classifies as `streamDropped`.
+   * Returning `true` means the hook has taken ownership of the error
+   * (e.g. scheduled a retry + shown a "Reconnecting…" banner); the
+   * handler then skips its usual `handleStreamError` + pending-artifact
+   * cleanup.
+   */
+  onMaybeAutoRetry?: (error: unknown) => boolean;
 }
 
 interface SessionReadyPayload {
@@ -123,6 +142,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
     projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
+    onAssistantTurnCompleted, onMaybeAutoRetry,
   } = deps;
   // Track the last session id we forwarded to `onSessionReady` so a
   // chatty stream that re-emits `SessionReady` (e.g. mid-stream
@@ -291,6 +311,10 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           if (agentInstanceId) {
             sidekickRef.current.setAgentStreaming(agentInstanceId, false);
           }
+          // Phase 2: the assistant finished a turn cleanly, so the
+          // auto-retry budget should reset for any future transient WS
+          // drop on the NEXT user message.
+          onAssistantTurnCompleted?.();
         }
         break;
       }
@@ -343,9 +367,21 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       case EventType.GenerationError:
         handleStreamError(refs, setters, event.content);
         break;
-      case EventType.Error:
+      case EventType.Error: {
+        // Phase 2: a transient WS-side `Error` payload (`harness_ws_closed`,
+        // `harness_ws_read_error`, `harness_protocol_mismatch`,
+        // `stream_lagged`, ...) classifies as `streamDropped`. Give the
+        // hook a chance to silently auto-retry the last user message
+        // instead of showing a hard error bubble.
+        if (
+          isStreamDroppedError(event.content) &&
+          onMaybeAutoRetry?.(event.content)
+        ) {
+          break;
+        }
         handleStreamError(refs, setters, event.content);
         break;
+      }
       case EventType.Done:
         finalizeStream(refs, setters, abortRef, false);
         if (agentInstanceId) {
@@ -364,6 +400,14 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
   return {
     onEvent,
     onError: (error) => {
+      // Phase 2: streamDropped errors (SSE idle, harness WS close,
+      // stream_lagged, ...) get a chance at silent auto-retry before
+      // we surface a hard error and clear optimistic artifacts. The
+      // hook returning `true` means it has scheduled a retry and
+      // taken ownership of the user-visible state.
+      if (isStreamDroppedError(error) && onMaybeAutoRetry?.(error)) {
+        return;
+      }
       handleStreamError(refs, setters, error);
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);

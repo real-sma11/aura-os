@@ -20,5 +20,8 @@ export {
   handleAssistantTurnBoundary,
   handleStreamError,
   finalizeStream,
+  isStreamDroppedError,
+  normalizeStreamError,
   type FinalizeStreamReason,
+  type StreamErrorDisplayVariant,
 } from "./lifecycle";

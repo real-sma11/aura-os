@@ -17,6 +17,65 @@ use aura_protocol::{InboundMessage, OutboundMessage};
 /// matching the tungstenite close-frame code numerically.
 pub(crate) const WS_CLOSE_CODE_TRY_AGAIN_LATER: u16 = 1013;
 
+/// Env var that overrides the per-attempt WS connect timeout. Falls
+/// back to [`DEFAULT_CONNECT_TIMEOUT_SECS`] when unset, blank, or
+/// non-numeric. Shared by [`LocalHarness`] and `SwarmHarness`.
+pub const CONNECT_TIMEOUT_ENV: &str = "AURA_HARNESS_CONNECT_TIMEOUT_SECS";
+
+/// Env var that overrides the number of WS connect attempts. Clamped
+/// to `1..=MAX_CONNECT_ATTEMPTS`; falls back to
+/// [`DEFAULT_CONNECT_ATTEMPTS`] when unset, blank, or non-numeric.
+pub const CONNECT_ATTEMPTS_ENV: &str = "AURA_HARNESS_CONNECT_ATTEMPTS";
+
+/// Default per-attempt WS connect timeout, matching the pre-Phase 2
+/// behavior so the operational ceiling is unchanged when the retry
+/// loop short-circuits after a single attempt.
+pub const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 8;
+
+/// Default number of WS connect attempts. Three attempts with
+/// 500ms/1000ms/2000ms backoff covers the brief network blips
+/// observed in the Phase 2 capture without materially extending
+/// failure latency for genuinely-down upstreams.
+pub const DEFAULT_CONNECT_ATTEMPTS: u32 = 3;
+
+/// Hard upper bound on retry attempts to prevent a misconfigured
+/// env var from turning a 422-class failure into a 60s stall.
+pub const MAX_CONNECT_ATTEMPTS: u32 = 10;
+
+fn read_connect_attempts_from_env() -> u32 {
+    std::env::var(CONNECT_ATTEMPTS_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .map(|n| n.clamp(1, MAX_CONNECT_ATTEMPTS))
+        .unwrap_or(DEFAULT_CONNECT_ATTEMPTS)
+}
+
+fn read_connect_timeout_from_env() -> Duration {
+    let secs = std::env::var(CONNECT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_CONNECT_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
+
+/// Backoff schedule between WS connect attempts. Hand-tuned to the
+/// 500ms/1s/2s ramp called out in the Phase 2 plan; attempts beyond
+/// the third cap at 4s so a misconfigured `AURA_HARNESS_CONNECT_ATTEMPTS=10`
+/// stays under a 30s budget.
+///
+/// `attempt` is 1-indexed; the returned duration is the gap *before*
+/// the next attempt, so `next_backoff(1)` is the gap between attempt
+/// 1 (just failed) and attempt 2 (about to run).
+pub(crate) fn next_backoff(attempt: u32) -> Duration {
+    match attempt {
+        0 | 1 => Duration::from_millis(500),
+        2 => Duration::from_millis(1000),
+        3 => Duration::from_millis(2000),
+        _ => Duration::from_millis(4000),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalHarness {
     base_url: String,
@@ -53,24 +112,60 @@ impl HarnessLink for LocalHarness {
                 .context("local harness rejected session_init: identity preflight"));
         }
         let ws_url = self.ws_url();
-        let connect_result = tokio::time::timeout(
-            Duration::from_secs(8),
-            tokio_tungstenite::connect_async(&ws_url),
-        )
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!("timed out connecting to local harness websocket: {ws_url}")
-        })?;
-        let (ws_stream, _) = match connect_result {
-            Ok(ok) => ok,
-            Err(err) => {
-                if is_capacity_exhausted_ws_error(&err) {
-                    return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
-                        .context(format!("local harness websocket connect rejected: {err}")));
+        let max_attempts = read_connect_attempts_from_env();
+        let per_attempt_timeout = read_connect_timeout_from_env();
+        let mut last_err: Option<anyhow::Error> = None;
+        let mut ws_stream_opt = None;
+        for attempt in 1..=max_attempts {
+            let connect_outcome = tokio::time::timeout(
+                per_attempt_timeout,
+                tokio_tungstenite::connect_async(&ws_url),
+            )
+            .await;
+            match connect_outcome {
+                Ok(Ok((ws_stream, _))) => {
+                    ws_stream_opt = Some(ws_stream);
+                    break;
                 }
-                return Err(
-                    anyhow::Error::new(err).context("local harness websocket connect failed")
+                Ok(Err(err)) => {
+                    // Capacity exhaustion is an authoritative upstream
+                    // rejection — retrying would only delay the
+                    // 503/1013 surface and waste a slot. Short-circuit
+                    // immediately so the existing capacity mapper in
+                    // the server keeps firing.
+                    if is_capacity_exhausted_ws_error(&err) {
+                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted).context(
+                            format!("local harness websocket connect rejected: {err}"),
+                        ));
+                    }
+                    last_err = Some(
+                        anyhow::Error::new(err).context("local harness websocket connect failed"),
+                    );
+                }
+                Err(_) => {
+                    last_err = Some(anyhow::anyhow!(
+                        "timed out connecting to local harness websocket: {ws_url}"
+                    ));
+                }
+            }
+            if attempt < max_attempts {
+                let backoff = next_backoff(attempt);
+                info!(
+                    attempt,
+                    max_attempts,
+                    backoff_ms = backoff.as_millis() as u64,
+                    error = ?last_err.as_ref().map(|e| e.to_string()),
+                    "local harness websocket connect failed, retrying"
                 );
+                tokio::time::sleep(backoff).await;
+            }
+        }
+        let ws_stream = match ws_stream_opt {
+            Some(stream) => stream,
+            None => {
+                return Err(last_err.unwrap_or_else(|| {
+                    anyhow::anyhow!("local harness websocket connect failed (no attempts ran)")
+                }));
             }
         };
 
@@ -171,5 +266,30 @@ mod tests {
             "nope",
         ));
         assert!(!is_capacity_exhausted_ws_error(&err));
+    }
+
+    #[test]
+    fn next_backoff_follows_plan_schedule() {
+        // Pinned to the 500ms/1s/2s ramp called out in the Phase 2
+        // plan so a future refactor that swaps the math has to update
+        // the docs in lock-step.
+        assert_eq!(next_backoff(1), Duration::from_millis(500));
+        assert_eq!(next_backoff(2), Duration::from_millis(1000));
+        assert_eq!(next_backoff(3), Duration::from_millis(2000));
+    }
+
+    #[test]
+    fn next_backoff_caps_at_four_seconds_for_high_attempts() {
+        // Misconfigured env should not let the loop drift into
+        // arbitrarily-long sleeps — the cap matches the Phase 2 plan.
+        assert_eq!(next_backoff(4), Duration::from_millis(4000));
+        assert_eq!(next_backoff(10), Duration::from_millis(4000));
+    }
+
+    #[test]
+    fn next_backoff_treats_zeroth_attempt_like_first() {
+        // Defensive: callers iterate from 1, but guard the off-by-one
+        // so a future direct-from-zero loop doesn't trip on a panic.
+        assert_eq!(next_backoff(0), Duration::from_millis(500));
     }
 }

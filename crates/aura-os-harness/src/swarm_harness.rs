@@ -17,11 +17,59 @@ use crate::harness::{
     HarnessLink, HarnessSession, SessionConfig, build_remote_handshake, build_session_init,
     validate_session_init_identity,
 };
+use crate::local_harness::{
+    CONNECT_ATTEMPTS_ENV, CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_ATTEMPTS,
+    DEFAULT_CONNECT_TIMEOUT_SECS, MAX_CONNECT_ATTEMPTS,
+};
 use crate::ws_bridge::spawn_ws_bridge;
 
 const AGENT_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const AGENT_READY_TIMEOUT: Duration = Duration::from_secs(90);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Swarm-side mirror of [`crate::local_harness::next_backoff`]. Kept
+/// in this module so the unit test for the swarm path is self-
+/// contained and can pin its own pre/post values, even though the
+/// two implementations share the same plan-mandated schedule.
+pub(crate) fn next_backoff(attempt: u32) -> Duration {
+    crate::local_harness::next_backoff(attempt)
+}
+
+fn read_connect_attempts_from_env() -> u32 {
+    std::env::var(CONNECT_ATTEMPTS_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .map(|n| n.clamp(1, MAX_CONNECT_ATTEMPTS))
+        .unwrap_or(DEFAULT_CONNECT_ATTEMPTS)
+}
+
+fn read_connect_timeout_from_env() -> Duration {
+    let secs = std::env::var(CONNECT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_CONNECT_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
+
+/// Returns `true` when the tungstenite connect error matches a
+/// non-retriable upstream rejection: HTTP 503 / "capacity_exhausted"
+/// from the aura-node gateway, or a WS handshake that completed only
+/// to be slammed with close code 1013 ("Try Again Later"). Mirrors
+/// [`crate::local_harness::is_capacity_exhausted_ws_error`] but
+/// scoped to what the swarm path can observe at the WS layer.
+fn is_capacity_exhausted_ws_handshake_error(
+    err: &tokio_tungstenite::tungstenite::Error,
+) -> bool {
+    use tokio_tungstenite::tungstenite::Error as WsError;
+    if let WsError::Http(resp) = err {
+        if resp.status().as_u16() == 503 {
+            return true;
+        }
+    }
+    let display = err.to_string();
+    display.contains("1013") && display.to_ascii_lowercase().contains("try again")
+}
 
 #[derive(Debug, Clone)]
 pub struct SwarmHarness {
@@ -248,21 +296,71 @@ impl SwarmHarness {
             self.ws_base_url()?,
             session_resp.ws_url.trim_start_matches('/')
         );
-        let mut ws_request = ws_url
-            .into_client_request()
-            .context("swarm websocket request build failed")?;
-        if let Some(t) = token {
-            ws_request.headers_mut().insert(
-                "Authorization",
-                format!("Bearer {t}").parse().map_err(|e| {
-                    anyhow::anyhow!("swarm websocket auth header build failed: {e}")
-                })?,
-            );
+        let max_attempts = read_connect_attempts_from_env();
+        let per_attempt_timeout = read_connect_timeout_from_env();
+        let mut last_err: Option<anyhow::Error> = None;
+        let mut ws_stream_opt = None;
+        for attempt in 1..=max_attempts {
+            // Each attempt rebuilds the request because `IntoClientRequest`
+            // consumes the URL; cheap, and keeps the auth header fresh
+            // in case a future change rotates the token between retries.
+            let mut ws_request = ws_url
+                .clone()
+                .into_client_request()
+                .context("swarm websocket request build failed")?;
+            if let Some(t) = token {
+                ws_request.headers_mut().insert(
+                    "Authorization",
+                    format!("Bearer {t}").parse().map_err(|e| {
+                        anyhow::anyhow!("swarm websocket auth header build failed: {e}")
+                    })?,
+                );
+            }
+            let connect_outcome = tokio::time::timeout(
+                per_attempt_timeout,
+                tokio_tungstenite::connect_async(ws_request),
+            )
+            .await;
+            match connect_outcome {
+                Ok(Ok((ws_stream, _))) => {
+                    ws_stream_opt = Some(ws_stream);
+                    break;
+                }
+                Ok(Err(err)) => {
+                    if is_capacity_exhausted_ws_handshake_error(&err) {
+                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted).context(
+                            format!("swarm websocket connect rejected as capacity_exhausted: {err}"),
+                        ));
+                    }
+                    last_err =
+                        Some(anyhow::Error::new(err).context("swarm websocket connect failed"));
+                }
+                Err(_) => {
+                    last_err = Some(anyhow::anyhow!(
+                        "timed out connecting to swarm websocket: {ws_url}"
+                    ));
+                }
+            }
+            if attempt < max_attempts {
+                let backoff = next_backoff(attempt);
+                info!(
+                    attempt,
+                    max_attempts,
+                    backoff_ms = backoff.as_millis() as u64,
+                    error = ?last_err.as_ref().map(|e| e.to_string()),
+                    "swarm websocket connect failed, retrying"
+                );
+                tokio::time::sleep(backoff).await;
+            }
         }
-
-        let (ws_stream, _) = tokio_tungstenite::connect_async(ws_request)
-            .await
-            .context("swarm websocket connect failed")?;
+        let ws_stream = match ws_stream_opt {
+            Some(stream) => stream,
+            None => {
+                return Err(last_err.unwrap_or_else(|| {
+                    anyhow::anyhow!("swarm websocket connect failed (no attempts ran)")
+                }));
+            }
+        };
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
         let mut ready_rx = events_tx.subscribe();
         send_session_init(&commands_tx, config)?;
@@ -627,5 +725,35 @@ mod tests {
     fn lifecycle_action_for_initial_status_leaves_ready_agents_alone() {
         assert_eq!(lifecycle_action_for_initial_status("running"), None);
         assert_eq!(lifecycle_action_for_initial_status("idle"), None);
+    }
+
+    #[test]
+    fn next_backoff_matches_local_harness_schedule() {
+        // The swarm helper delegates to the local module but is
+        // re-exposed here so the swarm retry loop and its docs can
+        // be refactored in isolation. Pinning the values here keeps
+        // the two paths in lock-step.
+        assert_eq!(next_backoff(1), Duration::from_millis(500));
+        assert_eq!(next_backoff(2), Duration::from_millis(1000));
+        assert_eq!(next_backoff(3), Duration::from_millis(2000));
+        assert_eq!(next_backoff(7), Duration::from_millis(4000));
+    }
+
+    #[test]
+    fn capacity_handshake_detector_matches_503_and_1013() {
+        use tokio_tungstenite::tungstenite::http::Response;
+        let resp: Response<Option<Vec<u8>>> = Response::builder()
+            .status(503)
+            .body(None)
+            .expect("response");
+        let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
+        assert!(is_capacity_exhausted_ws_handshake_error(&err));
+
+        let other: Response<Option<Vec<u8>>> = Response::builder()
+            .status(502)
+            .body(None)
+            .expect("response");
+        let other_err = tokio_tungstenite::tungstenite::Error::Http(Box::new(other));
+        assert!(!is_capacity_exhausted_ws_handshake_error(&other_err));
     }
 }

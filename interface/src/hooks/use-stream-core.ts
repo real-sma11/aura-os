@@ -48,6 +48,8 @@ export {
   handleAssistantTurnBoundary,
   handleStreamError,
   finalizeStream,
+  isStreamDroppedError,
+  normalizeStreamError,
 } from "./stream/handlers";
 
 export { getIsStreaming, getThinkingDurationMs } from "./stream/store";
