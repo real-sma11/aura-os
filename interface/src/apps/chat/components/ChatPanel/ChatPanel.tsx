@@ -92,6 +92,18 @@ export interface ChatPanelProps {
    */
   llmProjectId?: string;
   onProjectChange?: (projectId: string) => void;
+  /**
+   * Workspace path of the active project (or remote agent). Forwarded
+   * to the input bar so `@`-typed file mentions can resolve against
+   * the project's file tree. Standalone (project-less) agents leave
+   * this unset and the mention menu stays dormant.
+   */
+  workspacePath?: string;
+  /**
+   * When set, the input bar reads mentioned files via the remote-agent
+   * filesystem API instead of the local desktop API.
+   */
+  remoteAgentId?: string;
   header?: ReactNode;
   InputBarComponent?: ForwardRefExoticComponent<ChatInputBarProps & RefAttributes<ChatInputBarHandle>>;
   initialHandoff?: ChatPanelHandoffMode;
@@ -140,6 +152,8 @@ export function ChatPanel({
   selectedProjectId,
   llmProjectId,
   onProjectChange,
+  workspacePath,
+  remoteAgentId,
   header,
   InputBarComponent = DesktopChatInputBar,
   initialHandoff,
@@ -596,6 +610,8 @@ export function ChatPanel({
           projects={projects}
           selectedProjectId={selectedProjectId}
           onProjectChange={onProjectChange}
+          workspacePath={workspacePath}
+          remoteAgentId={remoteAgentId}
           isVisible
           isCentered={isThreadEmpty}
           compact={compact}

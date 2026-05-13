@@ -673,6 +673,27 @@
   white-space: nowrap;
 }
 
+/* ── @-file mention menu ─────────────────────────────────────── */
+
+/* The mention menu reuses .slashMenu / .slashMenuItem chrome; these
+   tweaks add the file icon and a slightly lighter grid (path and
+   name share the row, so descriptions get more breathing room). */
+.mentionMenuItem {
+  gap: 6px;
+}
+
+.mentionMenuIcon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.mentionMenuEmpty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 /* Hide chat-only info-bar chrome on narrow viewports. The shell
  * stylesheet handles responsive sizing for everything it owns
  * (model picker, textarea, send/attach buttons); we only need

@@ -20,6 +20,7 @@ import { useHydrateContextUtilization } from "../../../../hooks/use-hydrate-cont
 import type { AgentInstance, Project } from "../../../../shared/types";
 import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
 import { useAgentBusy } from "../../../../hooks/use-agent-busy";
+import { useTerminalTarget } from "../../../../hooks/use-terminal-target";
 import { useFreshCanvas } from "../../hooks/use-fresh-canvas";
 import { useOptimisticSessionRow } from "../../hooks/use-optimistic-session-row";
 import { useAutoRenameFromPrompt } from "../../hooks/use-auto-rename-from-prompt";
@@ -88,6 +89,12 @@ export function AgentChatPanel({
 
   const { agentName, machineType, templateAgentId, adapterType, defaultModel } =
     useAgentChatMeta("project", { projectId, agentInstanceId });
+
+  // Resolves the project's workspace path (and remote-agent id when
+  // the project's agent runs on a remote VM). Same hook the file
+  // explorer + terminal use, so @-mention reads the same tree the
+  // user sees in the side panel.
+  const terminalTarget = useTerminalTarget({ projectId, agentInstanceId });
 
   const optimisticRow = useOptimisticSessionRow({
     projectId,
@@ -302,6 +309,8 @@ export function AgentChatPanel({
     // context project. See `useStandaloneAgentChat` for the
     // agents-app side that decouples picker from wire.
     llmProjectId: projectId,
+    workspacePath: terminalTarget.workspacePath,
+    remoteAgentId: terminalTarget.remoteAgentId,
     contextUsage,
     onNewSession: fresh.newSession,
     onNewChat: () => {

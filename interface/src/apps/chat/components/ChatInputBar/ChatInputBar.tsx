@@ -44,6 +44,8 @@ import {
   type InputBarShellHandle,
 } from "../../../../components/InputBarShell";
 import { SlashCommandMenu } from "./SlashCommandMenu";
+import { FileMentionMenu } from "./FileMentionMenu";
+import { useProjectFiles } from "./useProjectFiles";
 import { CommandChips } from "./CommandChips";
 import { useChatUI } from "../../../../stores/chat-ui-store";
 import type { SlashCommand } from "../../../../constants/commands";
@@ -129,6 +131,20 @@ export interface ChatInputBarProps {
   projects?: Project[];
   selectedProjectId?: string;
   onProjectChange?: (projectId: string) => void;
+  /**
+   * Absolute path of the project's workspace on disk (or remote agent
+   * filesystem). When set, typing `@` in the textarea opens the file
+   * mention autocomplete; selecting a file reads it via the desktop /
+   * remote-agent API and attaches it as a text attachment. Standalone
+   * (project-less) chats omit this and the mention menu stays dormant.
+   */
+  workspacePath?: string;
+  /**
+   * When set, file reads for @-mention go through the swarm
+   * remote-agent API instead of the local desktop API. Mirrors the
+   * routing the file explorer uses.
+   */
+  remoteAgentId?: string;
   isVisible?: boolean;
   isCentered?: boolean;
   /**
@@ -212,6 +228,8 @@ export const DesktopChatInputBar = memo(
       projects = [],
       selectedProjectId,
       onProjectChange,
+      workspacePath,
+      remoteAgentId,
       isVisible = true,
       isCentered = false,
       contextUsage,
@@ -255,6 +273,16 @@ export const DesktopChatInputBar = memo(
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashQuery, setSlashQuery] = useState("");
     const slashStartRef = useRef<number | null>(null);
+    const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentionRefreshNonce, setMentionRefreshNonce] = useState(0);
+    const mentionStartRef = useRef<number | null>(null);
+    const canUseMentions = Boolean(workspacePath);
+    const projectFiles = useProjectFiles({
+      workspacePath: canUseMentions ? workspacePath : undefined,
+      remoteAgentId,
+      refreshNonce: mentionRefreshNonce,
+    });
     const projectMenuRef = useRef<HTMLDivElement>(null);
     const shellRef = useRef<InputBarShellHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -272,11 +300,12 @@ export const DesktopChatInputBar = memo(
       [],
     );
 
-    const { canAddMore, addFiles, handleRemove } = useFileAttachments(
+    const { canAddMore, addFiles, addFileFromPath, handleRemove } = useFileAttachments(
       attachments,
       onAttachmentsChange,
       onRemoveAttachment,
       textareaRefShim as React.RefObject<HTMLTextAreaElement | null>,
+      remoteAgentId,
     );
 
     useEffect(() => {
@@ -491,23 +520,72 @@ export const DesktopChatInputBar = memo(
           setSlashQuery("");
           slashStartRef.current = null;
         }
+
+        // @-mention detection mirrors the slash-menu trigger shape but
+        // is only armed when the surrounding chat is project-scoped
+        // (workspacePath is set). The two menus are mutually exclusive
+        // in practice — `@` and `/` are different leading tokens — so
+        // no tie-breaking is needed here.
+        if (canUseMentions) {
+          const mentionMatch = textBefore.match(/(^|\s)@(\S*)$/);
+          if (mentionMatch) {
+            const wasClosed = !mentionMenuOpen;
+            mentionStartRef.current = textBefore.lastIndexOf("@");
+            setMentionQuery(mentionMatch[2]);
+            setMentionMenuOpen(true);
+            // Refresh the file listing the moment the menu opens so
+            // newly-created files show up without waiting for the
+            // explorer's 3s polling loop.
+            if (wasClosed) setMentionRefreshNonce((n) => n + 1);
+          } else if (mentionMenuOpen) {
+            setMentionMenuOpen(false);
+            setMentionQuery("");
+            mentionStartRef.current = null;
+          }
+        }
       },
-      [onInputChange, slashMenuOpen],
+      [canUseMentions, mentionMenuOpen, onInputChange, slashMenuOpen],
     );
 
     const handleTextareaKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (
-          slashMenuOpen &&
+          (slashMenuOpen || mentionMenuOpen) &&
           ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)
         ) {
-          // The slash menu owns these keys while open; preventDefault tells
-          // the shell not to treat Enter as submit.
+          // The slash / mention menu owns these keys while open;
+          // preventDefault tells the shell not to treat Enter as submit.
           e.preventDefault();
         }
       },
-      [slashMenuOpen],
+      [slashMenuOpen, mentionMenuOpen],
     );
+
+    const handleMentionSelect = useCallback(
+      (file: { path: string; name: string }) => {
+        // Strip the `@query` token from the input the same way the
+        // slash menu strips its `/cmd` token, then push the file into
+        // the attachment pipeline (S3 upload starts in the background).
+        if (mentionStartRef.current !== null) {
+          const before = input.slice(0, mentionStartRef.current);
+          const afterAt = input.slice(mentionStartRef.current);
+          const spaceIdx = afterAt.indexOf(" ");
+          const after = spaceIdx === -1 ? "" : afterAt.slice(spaceIdx + 1);
+          onInputChange(before + after);
+        }
+        setMentionMenuOpen(false);
+        setMentionQuery("");
+        mentionStartRef.current = null;
+        void addFileFromPath(file.path);
+      },
+      [input, onInputChange, addFileFromPath],
+    );
+
+    const handleMentionClose = useCallback(() => {
+      setMentionMenuOpen(false);
+      setMentionQuery("");
+      mentionStartRef.current = null;
+    }, []);
 
     // 3D mode is a two-step in-bar pipeline: with no source image
     // pinned, the user types a prompt and the first send runs the
@@ -667,6 +745,14 @@ export const DesktopChatInputBar = memo(
               setSlashQuery("");
               slashStartRef.current = null;
             }}
+          />
+        )}
+        {mentionMenuOpen && canUseMentions && (
+          <FileMentionMenu
+            query={mentionQuery}
+            files={projectFiles}
+            onSelect={handleMentionSelect}
+            onClose={handleMentionClose}
           />
         )}
         <input
