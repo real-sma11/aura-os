@@ -19,11 +19,13 @@ import {
   Film,
   FolderOpen,
   GitCommitVertical,
+  MessageSquare,
   Plug,
   Store,
 } from "lucide-react";
 import type { AuraApp, AuraAppModule } from "./types";
 import { agentsRoutes } from "./agents/routes";
+import { chatAppRoutes } from "./chat-app/routes";
 import { marketplaceRoutes } from "./marketplace/routes";
 import { projectsRoutes } from "./projects/routes";
 import { tasksRoutes } from "./tasks/routes";
@@ -160,6 +162,8 @@ function createAppDefinition(
 
 const loadAgentsApp = () =>
   import("./agents/AgentsApp").then((module) => module.AgentsApp);
+const loadChatApp = () =>
+  import("./chat-app/ChatApp").then((module) => module.ChatApp);
 const loadMarketplaceApp = () =>
   import("./marketplace/MarketplaceApp").then((module) => module.MarketplaceApp);
 const loadProjectsApp = () =>
@@ -205,6 +209,24 @@ export const apps: AuraApp[] = [
       hasSidekickPanel: true,
       hasSidekickTaskbar: true,
       includePrefetch: true,
+    },
+  ),
+  createAppDefinition(
+    {
+      id: "chat",
+      label: "Chat",
+      agentDescription: "ChatGPT-style chat with the user's super-agent (CEO).",
+      agentKeywords: ["chat", "chatgpt", "gpt", "llm", "assistant", "ask", "conversation"],
+      icon: MessageSquare,
+      basePath: "/chat",
+      searchPlaceholder: "Search",
+      routes: chatAppRoutes,
+    },
+    loadChatApp,
+    {
+      hasResponsiveControls: true,
+      hasSidekickPanel: true,
+      hasSidekickTaskbar: true,
     },
   ),
   createAppDefinition(
