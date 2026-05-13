@@ -103,7 +103,6 @@ jobs:
           shared-key: desktop-${{ runner.os }}-${{ runner.arch }}
           workspaces: |
             . -> ../.aura-shared-target
-            ../aura-harness -> ../.aura-shared-target
 
       - name: Set up sccache
         id: sccache

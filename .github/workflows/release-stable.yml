@@ -18,6 +18,12 @@ env:
 
 jobs:
   build-sidecar:
+    env:
+      # Place the sidecar Cargo target inside GITHUB_WORKSPACE so that
+      # Swatinem/rust-cache and upload-artifact can access it. The true-sibling
+      # aura-harness checkout (../aura-harness) is outside the workspace
+      # boundary enforced by actions/cache v4 / upload-artifact@v5.
+      CARGO_TARGET_DIR: .aura-harness-target
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +60,7 @@ jobs:
         with:
           shared-key: desktop-sidecar-${{ runner.os }}-${{ runner.arch }}
           workspaces: |
-            ../aura-harness -> target
+            ../aura-harness -> .aura-harness-target
 
       - name: Set up sccache
         id: sccache-sidecar
