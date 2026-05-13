@@ -128,6 +128,8 @@ export const VIDEO_MODELS: ModelOption[] = [
   { id: "veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", tier: "video", mode: "video" },
   { id: "veo-3.1-generate-preview", label: "Veo 3.1 Standard", tier: "video", mode: "video" },
   { id: "veo-3.1-lite-generate-preview", label: "Veo 3.1 Lite", tier: "video", mode: "video" },
+  { id: "dreamina-seedance-2-0-260128", label: "Seedance 2.0", tier: "video", mode: "video" },
+  { id: "dreamina-seedance-2-0-fast-260128", label: "Seedance 2.0 Fast", tier: "video", mode: "video" },
 ];
 
 export const DEFAULT_VIDEO_MODEL_ID: string = VIDEO_MODELS[0]?.id ?? "veo-3.1-fast-generate-preview";
