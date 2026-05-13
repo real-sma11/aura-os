@@ -20,7 +20,6 @@ pub(crate) struct GenerateVideoRequest {
     pub generate_audio: Option<bool>,
     #[serde(rename = "projectId")]
     pub project_id: Option<String>,
-    pub name: Option<String>,
 }
 
 pub(crate) async fn generate_video_stream(
