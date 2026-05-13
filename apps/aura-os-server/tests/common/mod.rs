@@ -313,7 +313,7 @@ pub fn build_test_app_from_store(
         session_service,
         local_harness,
         swarm_harness,
-        chat_sessions: Arc::new(Mutex::new(HashMap::new())),
+        chat_sessions: Arc::new(dashmap::DashMap::new()),
         credit_cache: Arc::new(Mutex::new(HashMap::new())),
         event_broadcast,
         event_hub,

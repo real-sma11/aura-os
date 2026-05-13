@@ -206,12 +206,17 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     ))
 }
 
+/// Phase 4 widened the chat-session registry from a single
+/// `String → ChatSession` map to `(session_key, model) → ChatSession`,
+/// so a partition may hold multiple alive entries (one per model the
+/// caller has used). Callers here only care whether ANY entry on the
+/// partition is alive / what storage session it belongs to; we walk
+/// the DashMap and short-circuit on the first match.
 pub(super) async fn has_live_session(state: &AppState, key: &str) -> bool {
-    let reg = state.chat_sessions.lock().await;
-    if let Some(s) = reg.get(key) {
-        return s.is_alive();
-    }
-    false
+    state
+        .chat_sessions
+        .iter()
+        .any(|entry| entry.key().session_key == key && entry.value().is_alive())
 }
 
 /// Return the storage `session_id` the live harness session (if any)
@@ -220,16 +225,37 @@ pub(super) async fn has_live_session(state: &AppState, key: &str) -> bool {
 /// to evict the in-memory session before opening a new one. Without
 /// the eviction the harness would keep replying with conversation
 /// state from the previously-active session.
+///
+/// Phase 4: with `(session_key, model)` keys, multiple alive entries
+/// can exist for one partition, but every entry on the same partition
+/// is delegated against the same storage session — so returning the
+/// first alive entry's id is correct, and the per-model variants stay
+/// in sync.
 pub(super) async fn live_session_storage_id(state: &AppState, key: &str) -> Option<String> {
-    let reg = state.chat_sessions.lock().await;
-    reg.get(key)
-        .filter(|s| s.is_alive())
-        .map(|s| s.session_id.clone())
+    state
+        .chat_sessions
+        .iter()
+        .find(|entry| entry.key().session_key == key && entry.value().is_alive())
+        .map(|entry| entry.value().session_id.clone())
 }
 
+/// Drop EVERY chat-session entry that shares this `session_key`,
+/// regardless of model. Phase 3 rollover-eviction and Phase 4 pin /
+/// force-new flows both rely on this sweeping behaviour: when the
+/// storage session is replaced (auto-fork, force_new, pin change),
+/// every per-model entry on the partition is now stale and must be
+/// rebuilt on the next turn so the fresh `aura_session_id` propagates
+/// into outbound `/v1/messages` calls.
 pub(super) async fn remove_live_session(state: &AppState, key: &str) {
-    let mut reg = state.chat_sessions.lock().await;
-    reg.remove(key);
+    let stale_keys: Vec<crate::state::ChatSessionKey> = state
+        .chat_sessions
+        .iter()
+        .filter(|entry| entry.key().session_key == key)
+        .map(|entry| entry.key().clone())
+        .collect();
+    for stale in stale_keys {
+        state.chat_sessions.remove(&stale);
+    }
 }
 
 pub(crate) async fn reset_agent_session(

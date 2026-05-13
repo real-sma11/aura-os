@@ -15,7 +15,7 @@ use crate::handlers::projects_helpers::{
 };
 use crate::state::{AppState, AuthJwt};
 
-use super::busy::reject_if_partition_busy;
+use super::busy::{reject_if_partition_busy, BusyScope};
 use super::compaction::{
     append_project_state_to_system_prompt, load_project_state_snapshot,
     session_events_to_conversation_history,
@@ -58,14 +58,30 @@ pub(crate) async fn send_agent_event_stream(
         )));
     }
 
-    // Block the bare-agent chat route when *any* AgentInstance of
-    // this template is currently running an automaton. The legacy
-    // route has no project / instance scope of its own, so it
-    // collides with the harness turn-lock as soon as any partition
-    // for this template is occupied. Surfacing `agent_busy` here
-    // matches the instance-route guard and keeps the raw upstream
-    // "turn in progress" wording from leaking to the UI.
-    reject_if_partition_busy(&state, &agent_id, None).await?;
+    // Phase 4: narrow the bare-agent guard. The legacy `None` branch
+    // scanned EVERY instance of the template and rejected chat when
+    // ANY was busy — but the bare-agent harness partition
+    // `{template}::default` never collides with any automaton's
+    // `{template}::{instance_uuid}` partition, so a loop on a sibling
+    // instance has no harness-level reason to block bare-agent chat.
+    //
+    // When the chat request carries a `project_id`, scope the scan
+    // to that project so an automaton in the same project on the
+    // same template still blocks (matching the instance-route
+    // semantics). Otherwise treat the bare-agent partition as
+    // never-busy and rely on the harness's `turn_in_progress`
+    // (Phase 2 SSE-remapped to `agent_busy`) for the rare collision
+    // the narrowed guard misses.
+    let bare_agent_project_scope = body
+        .project_id
+        .as_deref()
+        .filter(|pid| !pid.is_empty())
+        .and_then(|pid| pid.parse::<ProjectId>().ok());
+    let busy_scope = match bare_agent_project_scope.as_ref() {
+        Some(pid) => BusyScope::TemplateInProject { project_id: pid },
+        None => BusyScope::Unscoped,
+    };
+    reject_if_partition_busy(&state, &agent_id, busy_scope).await?;
 
     let force_new = body.new_session.unwrap_or(false);
     let partition_agent_id = aura_os_core::harness_agent_id(&agent_id, None);

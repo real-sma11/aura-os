@@ -14,10 +14,10 @@
 //!   the synchronous predicate behind `chat::busy::reject_if_partition_busy`,
 //!   reachable here without an `AppState`.
 //! * `aura_os_server::handlers_test_support::acquire_turn_slot` /
-//!   `MAX_PENDING_TURNS` / `TurnSlotQueueFull` — the per-partition queue
-//!   the chat handler holds for the duration of one user turn, exposed
-//!   through the same `chat_pub` re-export pattern used elsewhere in
-//!   `tests/`.
+//!   `DEFAULT_MAX_PENDING_TURNS` / `TurnSlotQueueFull` — the per-partition
+//!   queue the chat handler holds for the duration of one user turn,
+//!   exposed through the same `chat_pub` re-export pattern used
+//!   elsewhere in `tests/`.
 //!
 //! Driving these primitives directly lets us pin the concurrency
 //! contract without dragging in axum / project-service / agent-service
@@ -36,7 +36,7 @@ use aura_os_harness::{
 };
 use aura_os_server::handlers_test_support::{
     acquire_turn_slot, build_active_automaton_for_test, evaluate_partition_busy,
-    fresh_turn_slot_state, ActiveAutomaton, MAX_PENDING_TURNS,
+    fresh_turn_slot_state, ActiveAutomaton, BusyScope, DEFAULT_MAX_PENDING_TURNS,
 };
 
 // ---------------------------------------------------------------------------
@@ -266,14 +266,28 @@ async fn chat_during_automation_isolated_instance() {
         entry_for(template, project, "auto-A"),
     );
 
-    let busy_b = evaluate_partition_busy(&registry, &template, Some((&project, &instance_b)));
+    let busy_b = evaluate_partition_busy(
+        &registry,
+        &template,
+        BusyScope::Instance {
+            project_id: &project,
+            agent_instance_id: &instance_b,
+        },
+    );
     assert!(
         busy_b.is_none(),
         "chat on a sibling instance must be allowed: got busy={busy_b:?}"
     );
 
-    let busy_a = evaluate_partition_busy(&registry, &template, Some((&project, &instance_a)))
-        .expect("chat on the automating instance must be refused");
+    let busy_a = evaluate_partition_busy(
+        &registry,
+        &template,
+        BusyScope::Instance {
+            project_id: &project,
+            agent_instance_id: &instance_a,
+        },
+    )
+    .expect("chat on the automating instance must be refused");
     assert_eq!(busy_a.project_id, project);
     assert_eq!(busy_a.agent_instance_id, instance_a);
     assert_eq!(busy_a.automaton_id, "auto-A");
@@ -359,45 +373,60 @@ async fn same_partition_second_turn_queues() {
     );
 }
 
-/// Phase-5 1d follow-on: a third concurrent caller on the same
+/// Phase-5 1d follow-on: an N+1th concurrent caller on the same
 /// partition must be rejected with `TurnSlotQueueFull`, which the
 /// chat handler maps to `ApiError::agent_busy { reason: "queue full" }`.
+/// Phase 4 raised the cap from 2 to [`DEFAULT_MAX_PENDING_TURNS`]
+/// (1 in-flight + 3 queued), so this test saturates at the new
+/// default and asserts the (cap+1)th caller is the one that trips.
 #[tokio::test]
-async fn same_partition_third_turn_rejects() {
+async fn same_partition_overflow_turn_rejects() {
     let (slot, counter) = fresh_turn_slot_state();
 
     let first = acquire_turn_slot(Arc::clone(&slot), Arc::clone(&counter))
         .await
         .expect("first acquire");
-    let slot_2 = Arc::clone(&slot);
-    let counter_2 = Arc::clone(&counter);
-    let second_handle = tokio::spawn(async move { acquire_turn_slot(slot_2, counter_2).await });
+
+    let mut queued_handles = Vec::new();
+    for _ in 1..DEFAULT_MAX_PENDING_TURNS {
+        let slot_clone = Arc::clone(&slot);
+        let counter_clone = Arc::clone(&counter);
+        queued_handles.push(tokio::spawn(async move {
+            acquire_turn_slot(slot_clone, counter_clone).await
+        }));
+    }
 
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert_eq!(
         counter.load(Ordering::Acquire),
-        MAX_PENDING_TURNS,
-        "two acquirers must occupy the slot before the bound trips"
+        DEFAULT_MAX_PENDING_TURNS,
+        "all acquirers must occupy the slot before the bound trips"
     );
 
-    let third = acquire_turn_slot(Arc::clone(&slot), Arc::clone(&counter)).await;
+    let overflow = acquire_turn_slot(Arc::clone(&slot), Arc::clone(&counter)).await;
     assert!(
-        third.is_err(),
-        "third concurrent acquire must surface TurnSlotQueueFull (got {third:?})",
-        third = third.as_ref().err()
+        overflow.is_err(),
+        "concurrent acquire past the default cap must surface TurnSlotQueueFull (got {overflow:?})",
+        overflow = overflow.as_ref().err()
     );
     assert_eq!(
         counter.load(Ordering::Acquire),
-        MAX_PENDING_TURNS,
+        DEFAULT_MAX_PENDING_TURNS,
         "rejected acquire must roll back its counter increment"
     );
 
     drop(first.guard);
-    let second = second_handle
-        .await
-        .expect("second join")
-        .expect("second acquire");
-    drop(second.guard);
+    for handle in queued_handles {
+        let acquired = tokio::time::timeout(Duration::from_millis(500), handle)
+            .await
+            .expect("queued waiter timed out")
+            .expect("queued join")
+            .expect("queued acquire");
+        // Drop NOW so the next waiter can take the lock; otherwise
+        // the next `handle.await` would hang behind the still-held
+        // guard.
+        drop(acquired.guard);
+    }
     assert_eq!(counter.load(Ordering::Acquire), 0);
 }
 

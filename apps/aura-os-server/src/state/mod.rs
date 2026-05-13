@@ -115,12 +115,61 @@ pub type AutomatonRegistryKey = (ProjectId, AgentInstanceId);
 
 pub(crate) type AutomatonRegistry = Arc<Mutex<HashMap<AutomatonRegistryKey, ActiveAutomaton>>>;
 
+/// Composite key for the chat-session registry.
+///
+/// Phase 4 of the agent-stream reliability plan splits the previous
+/// flat `String` partition key into `(session_key, model)` so two
+/// clients on the same partition picking different models can run in
+/// parallel cleanly. Before this split, `streaming::try_reuse_session`
+/// evicted the harness session whenever the requested model differed
+/// from the resident one, which torpedoed any user that had a Sonnet
+/// chat in one tab and an Opus chat in another against the same
+/// agent instance.
+///
+/// The `session_key` field is the same partitioned `harness_agent_id`
+/// (`{template}::{instance}` or `{template}::default`) used before
+/// — the registry just gains a second axis. `model` is `None` when
+/// the caller didn't pin a model (rare; falls back to the agent's
+/// default), so two `(session_key, None)` callers still share an
+/// entry the way the legacy single-key registry did.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ChatSessionKey {
+    /// Partitioned harness `agent_id` — `{template}::{instance}` or
+    /// `{template}::default` — built by `aura_os_core::harness_agent_id`.
+    pub session_key: String,
+    /// Optional model selector. `None` when the request didn't pin a
+    /// model; otherwise the exact model string sent with the chat
+    /// request. Two requests with `Some("opus")` and `Some("sonnet")`
+    /// for the same `session_key` get separate registry entries and
+    /// run in parallel.
+    pub model: Option<String>,
+}
+
+impl ChatSessionKey {
+    /// Build a `(session_key, model)` key in one call.
+    #[must_use]
+    pub fn new(session_key: impl Into<String>, model: Option<String>) -> Self {
+        Self {
+            session_key: session_key.into(),
+            model,
+        }
+    }
+}
+
 /// Reusable chat session for agent / instance chat endpoints.
 pub struct ChatSession {
     #[allow(dead_code)]
     pub session_id: String,
     pub commands_tx: HarnessCommandSender,
     pub events_tx: broadcast::Sender<HarnessOutbound>,
+    /// Model the harness session was opened with. After Phase 4 this
+    /// field is **NOT** consulted for cache invalidation — the
+    /// registry now lives on a `(session_key, model)` composite key
+    /// (`ChatSessionKey`), so every model lives in its own entry and
+    /// `try_reuse_session` simply looks up by the full key. The field
+    /// is kept as a diagnostic / sanity sentinel so logs and the
+    /// permissions-update sweep can tell which model an entry was
+    /// opened with at insert time.
     pub model: Option<String>,
     /// Upstream harness `agent_id` partition key for this session.
     ///
@@ -167,7 +216,23 @@ impl ChatSession {
     }
 }
 
-pub type ChatSessionRegistry = Arc<Mutex<HashMap<String, ChatSession>>>;
+/// Phase 4: process-wide chat-session registry.
+///
+/// Backed by a [`DashMap`] (no surrounding `Mutex`) keyed on
+/// [`ChatSessionKey`] so per-key reads / writes don't fight a single
+/// process-wide lock. Every legacy call site was already a brief
+/// synchronous read followed by a clone of the channel handles; the
+/// migration drops the `Mutex` entirely and operates directly on the
+/// shard-locked DashMap entries.
+///
+/// Care contract: callers MUST drop any [`dashmap::mapref::one::Ref`]
+/// returned by `chat_sessions.get(...)` before awaiting on the cloned
+/// handles — holding a `Ref` across `.await` would block other
+/// partitions on the same shard. `streaming::try_reuse_session`
+/// follows this pattern: the `Ref` is consumed inside a synchronous
+/// block that clones out the channel handles plus the turn-slot
+/// `Arc`s, then dropped before the slot `await`.
+pub type ChatSessionRegistry = Arc<DashMap<ChatSessionKey, ChatSession>>;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -317,7 +317,7 @@ fn mock_app_state_with_cache(cache: crate::state::ValidationCache) -> AppState {
         event_hub,
         loop_registry,
         require_zero_pro: false,
-        chat_sessions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        chat_sessions: Arc::new(dashmap::DashMap::new()),
         credit_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         automaton_client: Arc::new(aura_os_harness::AutomatonClient::new(
             "http://localhost:9999",

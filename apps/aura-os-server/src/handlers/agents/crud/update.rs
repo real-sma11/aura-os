@@ -276,16 +276,22 @@ fn apply_local_overrides(
 /// worst case is a stale session that will self-correct on the next
 /// `reset_*_session` call or a server restart.
 async fn invalidate_chat_sessions_for_agent(state: &AppState, agent_id: &AgentId) {
+    // Phase 4: chat_sessions is now a DashMap keyed on
+    // `(session_key, model)`. The sweep still scans every entry and
+    // matches on `template_agent_id`, but we no longer hold a
+    // process-wide mutex; we collect the matching composite keys
+    // first (so the iteration's shard locks are released) and then
+    // drop each entry individually.
     let target_template_id = agent_id.to_string();
-    let mut reg = state.chat_sessions.lock().await;
-    let keys_to_drop: Vec<String> = reg
+    let keys_to_drop: Vec<crate::state::ChatSessionKey> = state
+        .chat_sessions
         .iter()
-        .filter_map(|(key, session)| {
-            let owner = session.template_agent_id.as_deref()?;
-            (owner == target_template_id).then(|| key.clone())
+        .filter_map(|entry| {
+            let owner = entry.value().template_agent_id.as_deref()?;
+            (owner == target_template_id).then(|| entry.key().clone())
         })
         .collect();
     for key in keys_to_drop {
-        reg.remove(&key);
+        state.chat_sessions.remove(&key);
     }
 }

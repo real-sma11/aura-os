@@ -42,12 +42,13 @@ pub(crate) use setup::{
     setup_project_chat_persistence,
 };
 
-pub use busy::{evaluate_partition_busy, BusyMatch};
+pub use busy::{evaluate_partition_busy, BusyMatch, BusyScope};
 pub use compaction::{session_events_to_agent_history, session_events_to_conversation_history};
 pub use loaders::{
     load_current_session_events_for_agent, load_current_session_events_for_instance,
 };
 pub use streaming::harness_broadcast_to_sse;
 pub use turn_slot::{
-    acquire_turn_slot, TurnSlotAcquired, TurnSlotGuard, TurnSlotQueueFull, MAX_PENDING_TURNS,
+    acquire_turn_slot, max_pending_turns, TurnSlotAcquired, TurnSlotGuard, TurnSlotQueueFull,
+    DEFAULT_MAX_PENDING_TURNS,
 };

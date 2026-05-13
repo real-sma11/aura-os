@@ -67,8 +67,9 @@ pub async fn load_current_session_events_for_instance_pub(
 // ---------------------------------------------------------------------------
 
 pub use crate::handlers::agents::chat_pub::{
-    acquire_turn_slot, evaluate_partition_busy, harness_broadcast_to_sse, BusyMatch,
-    TurnSlotAcquired, TurnSlotGuard, TurnSlotQueueFull, MAX_PENDING_TURNS,
+    acquire_turn_slot, evaluate_partition_busy, harness_broadcast_to_sse, max_pending_turns,
+    BusyMatch, BusyScope, TurnSlotAcquired, TurnSlotGuard, TurnSlotQueueFull,
+    DEFAULT_MAX_PENDING_TURNS,
 };
 
 /// Build the per-partition turn-slot `(Mutex, AtomicUsize)` pair the

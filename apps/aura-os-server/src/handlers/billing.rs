@@ -360,7 +360,7 @@ mod tests {
                 event_hub,
                 loop_registry,
                 require_zero_pro: false,
-                chat_sessions: Arc::new(Mutex::new(HashMap::new())),
+                chat_sessions: Arc::new(dashmap::DashMap::new()),
                 credit_cache: Arc::new(Mutex::new(HashMap::new())),
                 automaton_client,
                 harness_http,

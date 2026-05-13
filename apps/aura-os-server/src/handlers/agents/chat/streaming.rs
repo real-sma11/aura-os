@@ -21,7 +21,7 @@ use tracing::{error, info, warn};
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::agents::chat::types::sse_response_headers;
-use crate::state::{AppState, ChatSession};
+use crate::state::{AppState, ChatSession, ChatSessionKey};
 
 use super::errors::{
     map_session_bridge_error, map_session_bridge_start_error, remap_harness_error_to_sse,
@@ -595,34 +595,34 @@ async fn try_reuse_session(
     key: &str,
     requested_model: &Option<String>,
 ) -> Option<ReusedSessionHandles> {
-    let mut reg = state.chat_sessions.lock().await;
-    let session = reg.get(key)?;
-    if !session.is_alive() {
+    // Phase 4: the registry is now keyed on `(session_key, model)`,
+    // so two clients on the same partition picking different models
+    // each get their own entry and never evict each other. The
+    // `model_changed(...)` helper that used to wipe the resident
+    // session whenever the requested model drifted is gone — its
+    // job is taken over by the composite key lookup.
+    let composite_key = ChatSessionKey::new(key, requested_model.clone());
+    let entry = state.chat_sessions.get(&composite_key)?;
+    if !entry.is_alive() {
+        // Drop the `Ref` BEFORE removing the same key: DashMap shard
+        // locks are non-reentrant, and remove() would deadlock if a
+        // read guard for the same shard is still alive on this task.
+        drop(entry);
+        state.chat_sessions.remove(&composite_key);
         return None;
     }
-    if model_changed(&session.model, requested_model) {
-        info!(
-            key,
-            "Model changed; closing existing delegated chat session"
-        );
-        reg.remove(key);
-        return None;
-    }
-    Some(ReusedSessionHandles {
-        rx: session.events_tx.subscribe(),
-        events_tx: session.events_tx.clone(),
-        commands_tx: session.commands_tx.clone(),
-        turn_slot: Arc::clone(&session.turn_slot),
-        turn_pending_count: Arc::clone(&session.turn_pending_count),
-    })
-}
-
-fn model_changed(current: &Option<String>, requested: &Option<String>) -> bool {
-    match (current, requested) {
-        (Some(current), Some(requested)) => current != requested,
-        (None, Some(_)) => true,
-        _ => false,
-    }
+    let handles = ReusedSessionHandles {
+        rx: entry.events_tx.subscribe(),
+        events_tx: entry.events_tx.clone(),
+        commands_tx: entry.commands_tx.clone(),
+        turn_slot: Arc::clone(&entry.turn_slot),
+        turn_pending_count: Arc::clone(&entry.turn_pending_count),
+    };
+    // Drop the read `Ref` before the caller `await`s on the
+    // turn-slot mutex — holding it across `.await` would block any
+    // other partition that hashes onto the same DashMap shard.
+    drop(entry);
+    Some(handles)
 }
 
 async fn insert_delegated_chat_session(
@@ -650,9 +650,9 @@ async fn insert_delegated_chat_session(
 
     let rx = started.events_rx;
     let events_tx = started.session.events_tx.clone();
-    let mut reg = state.chat_sessions.lock().await;
-    reg.insert(
-        key.to_string(),
+    let composite_key = ChatSessionKey::new(key, requested_model.clone());
+    state.chat_sessions.insert(
+        composite_key,
         ChatSession {
             session_id: started.session.session_id,
             commands_tx: started.session.commands_tx,

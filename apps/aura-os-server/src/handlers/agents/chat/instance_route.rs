@@ -17,7 +17,7 @@ use crate::handlers::projects_helpers::{
 };
 use crate::state::{AppState, AuthJwt};
 
-use super::busy::reject_if_partition_busy;
+use super::busy::{reject_if_partition_busy, BusyScope};
 use super::compaction::{
     append_project_state_to_system_prompt, load_project_state_snapshot,
     session_events_to_conversation_history,
@@ -54,7 +54,10 @@ pub(crate) async fn send_event_stream(
     reject_if_partition_busy(
         &state,
         &instance.agent_id,
-        Some((&project_id, &agent_instance_id)),
+        BusyScope::Instance {
+            project_id: &project_id,
+            agent_instance_id: &agent_instance_id,
+        },
     )
     .await?;
 
