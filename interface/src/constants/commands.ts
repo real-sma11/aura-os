@@ -61,9 +61,10 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // Generation
   { id: "generate_image", label: "Image", description: "Generate an image from a text prompt", category: "Generation" },
   { id: "generate_3d", label: "3D", description: "Generate a 3D model from an image", category: "Generation" },
+  { id: "generate_video", label: "Video", description: "Generate a video from a text prompt", category: "Generation" },
 ];
 
-export const GENERATION_COMMAND_IDS = new Set(["generate_image", "generate_3d"]);
+export const GENERATION_COMMAND_IDS = new Set(["generate_image", "generate_3d", "generate_video"]);
 
 export function isGenerationCommand(id: string): boolean {
   return GENERATION_COMMAND_IDS.has(id);

@@ -1,6 +1,6 @@
 import type { GenerationMode } from "./models";
 
-export type AgentMode = "code" | "plan" | "image" | "3d";
+export type AgentMode = "code" | "plan" | "image" | "3d" | "video";
 
 export const DEFAULT_AGENT_MODE: AgentMode = "code";
 
@@ -9,6 +9,7 @@ export const AGENT_MODE_ORDER: readonly AgentMode[] = [
   "plan",
   "image",
   "3d",
+  "video",
 ];
 
 export type HarnessAction = "generate_specs";
@@ -25,7 +26,8 @@ export type AgentModeBehavior =
   | { kind: "chat" }
   | { kind: "chat_with_action"; action: HarnessAction }
   | { kind: "generate_image"; commandId: "generate_image" }
-  | { kind: "generate_3d"; commandId: "generate_3d" };
+  | { kind: "generate_3d"; commandId: "generate_3d" }
+  | { kind: "generate_video"; commandId: "generate_video" };
 
 export interface AgentModeDescriptor {
   mode: AgentMode;
@@ -59,6 +61,12 @@ export const AGENT_MODE_DESCRIPTORS: Record<AgentMode, AgentModeDescriptor> = {
     description: "Generate a 3D model",
     behavior: { kind: "generate_3d", commandId: "generate_3d" },
   },
+  video: {
+    mode: "video",
+    label: "Video",
+    description: "Generate a video from a prompt",
+    behavior: { kind: "generate_video", commandId: "generate_video" },
+  },
 };
 
 const AGENT_MODE_SET: ReadonlySet<AgentMode> = new Set(AGENT_MODE_ORDER);
@@ -81,6 +89,8 @@ export function generationModeForAgentMode(mode: AgentMode): GenerationMode {
       return "image";
     case "3d":
       return "3d";
+    case "video":
+      return "video";
   }
 }
 

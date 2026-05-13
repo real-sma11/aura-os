@@ -209,7 +209,7 @@ export type SystemEventVariant =
 
   // ── Generation (image / 3D) ─────────────────────────────────
   | { type: typeof EventType.GenerationStart; content: {
-      mode: "image" | "3d";
+      mode: "image" | "3d" | "video";
       ts?: string;
     } }
   | { type: typeof EventType.GenerationProgress; content: {
@@ -220,7 +220,7 @@ export type SystemEventVariant =
       data: string;
     } }
   | { type: typeof EventType.GenerationCompleted; content: {
-      mode: "image" | "3d";
+      mode: "image" | "3d" | "video";
       imageUrl?: string;
       originalUrl?: string;
       artifactId?: string;
