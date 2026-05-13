@@ -47,9 +47,13 @@ export function run(command, args, options = {}) {
     const prefix = label ? `[${label}] ` : "";
     console.log(`\n> ${prefix}${rendered}${suffix}`);
 
-    const result = spawnSync(commandName(command), args, {
+    const resolvedCommand = commandName(command);
+    const result = spawnSync(resolvedCommand, args, {
       cwd: repoRoot,
       stdio: "inherit",
+      // .cmd files on Windows require shell:true — without it spawnSync
+      // returns EINVAL on some GitHub Actions runner configurations.
+      shell: resolvedCommand.endsWith(".cmd"),
       ...spawnOptions,
     });
 
@@ -71,10 +75,12 @@ export function run(command, args, options = {}) {
 }
 
 export function capture(command, args, options = {}) {
-  const result = spawnSync(commandName(command), args, {
+  const resolvedCommand = commandName(command);
+  const result = spawnSync(resolvedCommand, args, {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    shell: resolvedCommand.endsWith(".cmd"),
     ...options,
   });
 
