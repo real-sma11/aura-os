@@ -21,14 +21,14 @@ import {
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
 import { useSidebarSearch } from "../../../../hooks/use-sidebar-search";
-import { useAgents, useSuperAgent } from "../../../agents/stores";
+import { useChatAppAgent } from "../../hooks/use-chat-app-agent";
 import styles from "./ChatAppLeftPanel.module.css";
 
 /**
  * Date-bucketed sessions list for the Chat app's left panel. Reuses
  * the shared `SessionsList` (the same component the Agents app's
  * `ChatsTab` and the Projects app's `SessionList` mount) keyed on the
- * super-agent's surface key.
+ * chat agent's surface key.
  *
  * Click → `/chat?session=<id>` so navigation stays inside the Chat
  * app rather than rerouting into the Agents shell. Hover prefetches
@@ -43,11 +43,10 @@ export function ChatAppLeftPanel() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
-  const { fetchAgents, status: agentsStatus } = useAgents();
-  const superAgent = useSuperAgent();
-  const superAgentId = superAgent?.agent_id;
-  const surfaceKey = superAgentId
-    ? agentSessionsSurfaceKey(superAgentId)
+  const { agent: chatAgent, status: agentStatus } = useChatAppAgent();
+  const chatAgentId = chatAgent?.agent_id;
+  const surfaceKey = chatAgentId
+    ? agentSessionsSurfaceKey(chatAgentId)
     : undefined;
   const sessions = useSessionsForSurface(surfaceKey);
   const sessionsVersion = useSessionsListStore((s) => s.version);
@@ -60,13 +59,9 @@ export function ChatAppLeftPanel() {
   const { query: searchQuery, setAction } = useSidebarSearch("chat");
 
   useEffect(() => {
-    fetchAgents().catch(() => {});
-  }, [fetchAgents]);
-
-  useEffect(() => {
-    if (!superAgentId) return;
-    void loadAgentSessions(superAgentId);
-  }, [superAgentId, sessionsVersion, loadAgentSessions]);
+    if (!chatAgentId) return;
+    void loadAgentSessions(chatAgentId);
+  }, [chatAgentId, sessionsVersion, loadAgentSessions]);
 
   const handleNewChat = useCallback(() => {
     // Navigating to `/chat` (no `?session=`) lands on a fresh canvas.
@@ -131,8 +126,8 @@ export function ChatAppLeftPanel() {
     setDeleteError(surfaceKey, null);
   }, [surfaceKey, setDeleteError]);
 
-  if (!superAgent) {
-    if (agentsStatus === "loading" || agentsStatus === "idle") {
+  if (!chatAgent) {
+    if (agentStatus === "loading") {
       return (
         <div className={styles.loadingState}>
           <Loader2 size={16} className="animate-spin" aria-hidden />

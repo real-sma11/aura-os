@@ -4,53 +4,49 @@ import { Loader2 } from "lucide-react";
 import { PageEmptyState } from "@cypher-asi/zui";
 import { ChatPanel } from "../../../chat/components/ChatPanel";
 import { MobileChatPanel } from "../../../../mobile/chat/MobileChatPanel";
-import { useAgents, useSuperAgent } from "../../../agents/stores";
 import { useSelectedAgent } from "../../../agents/stores";
 import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
+import { useChatAppAgent } from "../../hooks/use-chat-app-agent";
 import { useChatAppChat } from "../../hooks/use-chat-app-chat";
 
 /**
- * Top-level Chat app route. Resolves the user's super-agent (CEO),
- * which the agents-store auto-provisions via `api.superAgent.setup()`
- * on first fetch, then mounts the standard `ChatPanel` against it.
+ * Top-level Chat app route. Resolves the canonical chat agent via
+ * `useChatAppAgent` (which calls the idempotent
+ * `POST /api/agents/harness/setup` and caches the result for the app
+ * session), then mounts the standard `ChatPanel` against it.
  *
  * - `/chat`             -> fresh canvas (next send creates a session).
- * - `/chat?session=<id>`-> opens that historical CEO session.
+ * - `/chat?session=<id>`-> opens that historical chat-agent session.
  *
- * Sessions back onto the super-agent + Home project, so they show up
+ * Sessions back onto the chat agent + Home project, so they show up
  * in the Agents app's "Chats" sidekick and the Projects app's
  * "Sessions" list as well — by design.
  */
 export function ChatAppRoute() {
-  const { fetchAgents, status } = useAgents();
-  const superAgent = useSuperAgent();
+  const { agent, status, error } = useChatAppAgent();
   const { setSelectedAgent } = useSelectedAgent();
   const { isMobileLayout } = useAuraCapabilities();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session");
 
-  useEffect(() => {
-    fetchAgents().catch(() => {});
-  }, [fetchAgents]);
-
-  // Mirror the resolved super-agent into the shared selected-agent
+  // Mirror the resolved chat agent into the shared selected-agent
   // slot so the sidekick (which reuses `AgentInfoPanel` /
-  // `AgentSidekickTaskbar`) renders the CEO's profile, memory, skills,
-  // etc. instead of an empty "select an agent" state.
+  // `AgentSidekickTaskbar`) renders the agent's profile, memory,
+  // skills, etc. instead of an empty "select an agent" state.
   useEffect(() => {
-    if (superAgent) {
-      setSelectedAgent(superAgent.agent_id);
+    if (agent) {
+      setSelectedAgent(agent.agent_id);
     }
-  }, [superAgent, setSelectedAgent]);
+  }, [agent, setSelectedAgent]);
 
-  const sharedChatProps = useChatAppChat(superAgent?.agent_id, sessionId);
+  const sharedChatProps = useChatAppChat(agent?.agent_id, sessionId);
 
-  if (!superAgent) {
+  if (!agent) {
     if (status === "error") {
       return (
         <PageEmptyState
-          title="Couldn't load chat"
-          description="Try again in a moment."
+          title="Couldn't start chat"
+          description={error ?? "Try again in a moment."}
         />
       );
     }
