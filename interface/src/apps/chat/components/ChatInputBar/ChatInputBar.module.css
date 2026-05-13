@@ -425,6 +425,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Vertically center on the mode-bar row instead of inheriting the
+     parent's `align-items: stretch` fallback (which collapses to
+     `flex-start` once we pin an explicit 24px height to match the
+     attach button). */
+  align-self: center;
   width: 24px;
   height: 24px;
   border: none;
