@@ -15,11 +15,12 @@ runs:
   steps:
     - name: Checkout aura-harness
       if: inputs.include-harness == 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ inputs.repository-owner }}/aura-harness
-        # Check out directly as a true sibling (../aura-harness relative to
-        # GITHUB_WORKSPACE). This avoids the symlink workaround that previously
-        # caused cargo to canonicalize the path and resolve relative path
-        # dependencies (../aura-os/crates/...) from the wrong location.
-        path: ../aura-harness
+      shell: bash
+      run: |
+        # actions/checkout@v4 enforces that path: must be within GITHUB_WORKSPACE,
+        # but aura-harness must live as a true sibling (../aura-harness) so that
+        # cargo's canonicalize() resolves path dependencies correctly. A raw git
+        # clone has no workspace boundary restriction.
+        git clone --depth 1 \
+          "https://github.com/${{ inputs.repository-owner }}/aura-harness.git" \
+          "../aura-harness"
