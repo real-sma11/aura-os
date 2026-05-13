@@ -4,6 +4,7 @@ import {
   availableModelsForAdapter,
   defaultModelForAdapter,
   DEFAULT_3D_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_ID,
   hasAgentScopedModel,
   loadPersistedImageModel,
   loadPersistedModel,
@@ -29,6 +30,9 @@ function modelForMode(
   }
   if (behavior.kind === "generate_3d") {
     return DEFAULT_3D_MODEL_ID;
+  }
+  if (behavior.kind === "generate_video") {
+    return DEFAULT_VIDEO_MODEL_ID;
   }
   return loadPersistedModel(adapterType, defaultModel ?? undefined, agentId);
 }
@@ -223,6 +227,8 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         nextModel = loadPersistedImageModel(agentId);
       } else if (behavior.kind === "generate_3d") {
         nextModel = DEFAULT_3D_MODEL_ID;
+      } else if (behavior.kind === "generate_video") {
+        nextModel = DEFAULT_VIDEO_MODEL_ID;
       } else if (behavior.kind === "chat" || behavior.kind === "chat_with_action") {
         const restored = loadPersistedModel(adapterType, undefined, agentId);
         nextModel = restored;

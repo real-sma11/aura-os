@@ -381,7 +381,10 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         break;
       case EventType.GenerationCompleted: {
         const gc = event.content;
-        const toolName = gc.mode === "3d" ? "generate_3d_model" : "generate_image";
+        const toolName =
+          gc.mode === "3d" ? "generate_3d_model" :
+          gc.mode === "video" ? "generate_video" :
+          "generate_image";
         const toolId = `gen-${Date.now()}`;
         coreHandleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
         coreHandleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });

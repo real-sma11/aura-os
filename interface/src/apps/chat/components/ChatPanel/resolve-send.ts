@@ -60,6 +60,13 @@ export type ResolvedSend =
        * from the chat history snapshot.
        */
       sourceImageUrl: string;
+    }
+  | {
+      kind: "video";
+      content: string;
+      model: string | null;
+      attachments: ChatAttachment[];
+      commands: string[];
     };
 
 export interface ResolveSendInput {
@@ -147,6 +154,14 @@ export function resolveSend({
         commands,
       };
     }
+    case "generate_video":
+      return {
+        kind: "video",
+        content,
+        model: selectedModel,
+        attachments,
+        commands: dedupe([behavior.commandId, ...userCommandIds]),
+      };
   }
 }
 
@@ -223,6 +238,17 @@ export function dispatch(
         send.sourceImageUrl,
       );
       return;
+    case "video":
+      onSend(
+        send.content,
+        null,
+        send.model,
+        attachments,
+        commands,
+        projectId,
+        "video",
+      );
+      return;
   }
 }
 
@@ -295,6 +321,15 @@ export function toQueuedRecord(send: ResolvedSend): QueuedSendRecord {
         commands,
         generationMode: "3d",
         sourceImageUrl: send.sourceImageUrl,
+      };
+    case "video":
+      return {
+        content: send.content,
+        action: null,
+        model: send.model,
+        attachments,
+        commands,
+        generationMode: "video",
       };
   }
 }

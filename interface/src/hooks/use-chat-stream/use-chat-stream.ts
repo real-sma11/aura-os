@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect } from "react";
 import type { MutableRefObject } from "react";
 import { api } from "../../api/client";
-import { generate3dStream, generateImageStream } from "../../api/streams";
+import { generate3dStream, generateImageStream, generateVideoStream } from "../../api/streams";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
@@ -388,6 +388,20 @@ export function useChatStream({
             },
             controller.signal,
             capturedProjectId,
+          );
+          return;
+        }
+
+        if (_generationMode === "video") {
+          core.setProgressText("Generating video...");
+          await generateVideoStream(
+            {
+              prompt: userMsg.content,
+              model: selectedModel ?? undefined,
+              projectId,
+            },
+            handler,
+            controller.signal,
           );
           return;
         }
