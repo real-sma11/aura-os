@@ -304,7 +304,10 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const handleCommandSelect = useCallback(
       (command: SlashCommand) => {
         if (isGenerationCommand(command.id)) {
-          const targetMode: AgentMode = command.id === "generate_image" ? "image" : "3d";
+          const targetMode: AgentMode =
+            command.id === "generate_image" ? "image" :
+            command.id === "generate_video" ? "video" :
+            "3d";
           chatUI.setSelectedMode(streamKey, targetMode, adapterType, agentId);
         } else {
           onCommandsChange?.([...selectedCommands, command]);

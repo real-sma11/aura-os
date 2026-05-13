@@ -469,7 +469,10 @@ export const DesktopChatInputBar = memo(
           // Slash command becomes a fast keyboard path to the mode
           // selector. The mode itself injects the matching command
           // id at send time, so we don't add a redundant chip.
-          const targetMode: AgentMode = cmd.id === "generate_image" ? "image" : "3d";
+          const targetMode: AgentMode =
+            cmd.id === "generate_image" ? "image" :
+            cmd.id === "generate_video" ? "video" :
+            "3d";
           chatUI.setSelectedMode(streamKey, targetMode, adapterType, agentId);
         } else {
           onCommandsChange?.([...selectedCommands, cmd]);
