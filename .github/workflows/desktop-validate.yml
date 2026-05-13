@@ -55,8 +55,8 @@ jobs:
   desktop-smoke:
     if: github.event_name != 'push'
     env:
-      CARGO_TARGET_DIR: ../.aura-shared-target
-      AURA_RELEASE_DIR: ../.aura-shared-target/release
+      CARGO_TARGET_DIR: .aura-shared-target
+      AURA_RELEASE_DIR: .aura-shared-target/release
       AURA_NETWORK_URL: ${{ vars.AURA_NETWORK_URL }}
       AURA_STORAGE_URL: ${{ vars.AURA_STORAGE_URL }}
       AURA_INTEGRATIONS_URL: ${{ vars.AURA_INTEGRATIONS_URL }}
@@ -72,16 +72,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
-            binary: ../.aura-shared-target/release/aura-os-desktop
+            binary: .aura-shared-target/release/aura-os-desktop
           - os: macos-latest
             target: macos-arm64
-            binary: ../.aura-shared-target/release/aura-os-desktop
+            binary: .aura-shared-target/release/aura-os-desktop
           - os: macos-15-intel
             target: macos-x64
-            binary: ../.aura-shared-target/release/aura-os-desktop
+            binary: .aura-shared-target/release/aura-os-desktop
           - os: windows-latest
             target: windows-x64
-            binary: ../.aura-shared-target/release/aura-os-desktop.exe
+            binary: .aura-shared-target/release/aura-os-desktop.exe
 
     runs-on: ${{ matrix.os == 'windows-latest' && 'aura-os-windows-x64-large' || matrix.os == 'ubuntu-latest' && 'aura-os-linux-x64-large' || matrix.os == 'macos-15-intel' && 'macos-15-large' || matrix.os }}
 
@@ -102,7 +102,7 @@ jobs:
         with:
           shared-key: desktop-${{ runner.os }}-${{ runner.arch }}
           workspaces: |
-            . -> ../.aura-shared-target
+            . -> .aura-shared-target
 
       - name: Set up sccache
         id: sccache
@@ -168,9 +168,9 @@ jobs:
         shell: bash
         run: |
           rm -rf cargo-timings-upload
-          if [ -d ../.aura-shared-target/cargo-timings ]; then
+          if [ -d .aura-shared-target/cargo-timings ]; then
             mkdir -p cargo-timings-upload
-            cp -R ../.aura-shared-target/cargo-timings/. cargo-timings-upload/
+            cp -R .aura-shared-target/cargo-timings/. cargo-timings-upload/
           fi
 
       - name: Upload Cargo timings
