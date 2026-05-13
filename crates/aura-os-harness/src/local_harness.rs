@@ -9,6 +9,7 @@ use crate::harness::{
     build_session_init, validate_session_init_identity, HarnessLink, HarnessSession, SessionConfig,
 };
 use crate::harness_url::local_harness_base_url;
+use crate::stability_metrics;
 use crate::ws_bridge::spawn_ws_bridge;
 use aura_protocol::{InboundMessage, OutboundMessage};
 
@@ -157,6 +158,12 @@ impl HarnessLink for LocalHarness {
                     error = ?last_err.as_ref().map(|e| e.to_string()),
                     "local harness websocket connect failed, retrying"
                 );
+                // Phase 5 observability: every retry attempt past the
+                // first bumps the global counter aura-os-server reads
+                // through `stability_metrics::initial_connect_retries()`.
+                // The first attempt failing on its own is not a retry —
+                // we count the *additional* attempts the loop spends.
+                stability_metrics::inc_initial_connect_retry();
                 tokio::time::sleep(backoff).await;
             }
         }

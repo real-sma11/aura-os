@@ -38,6 +38,12 @@ pub(crate) async fn setup_project_chat_persistence(
         state.chat_auto_fork_threshold,
     )
     .await?;
+    // NOTE: `inc_auto_fork_applied` is bumped by the call site in
+    // `instance_route::send_event_stream` when `fork_info.is_some()`,
+    // not here, so the project chat path counts each apply exactly
+    // once even when this helper is reused (e.g. from
+    // `reset_instance_session` below, which deliberately does NOT
+    // count as a real "next user send rolled into the new session").
     Some((
         ChatPersistCtx {
             storage,
@@ -193,6 +199,12 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             return None;
         }
     };
+    // NOTE: `inc_auto_fork_applied` is bumped by the caller in
+    // `agent_route::send_agent_event_stream` when `fork_info.is_some()`,
+    // not here, so the agent chat path counts each apply exactly
+    // once (and matches the symmetry with the project route, where
+    // `instance_route::send_event_stream` is the canonical bump
+    // site).
     Some((
         ChatPersistCtx {
             storage: storage.clone(),

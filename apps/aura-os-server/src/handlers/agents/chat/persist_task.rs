@@ -16,6 +16,7 @@ use super::event_bus::{
 };
 use super::persist::ChatPersistCtx;
 use super::persist_task_dispatch::handle_outbound;
+use crate::stability_metrics::StabilityMetrics;
 
 /// Bundle of process-wide handles the persist task needs above and
 /// beyond the `ChatPersistCtx`. Held alongside `ctx` so the
@@ -29,6 +30,13 @@ pub(crate) struct ChatPersistTaskExtras {
     pub http_client: reqwest::Client,
     pub router_url: String,
     pub auto_fork_threshold: f64,
+    /// Phase 5 observability bag. The persist task is the canonical
+    /// "did this turn make it" observer — bumps `chat_turns_completed_ok`
+    /// on a clean `AssistantMessageEnd` and `auto_fork_triggered`
+    /// when the threshold marker fires. `Option` so the existing
+    /// `persist_task_dispatch` unit tests can construct extras
+    /// without needing a real `StabilityMetrics` instance.
+    pub stability_metrics: Option<Arc<StabilityMetrics>>,
 }
 
 /// Mutable state accumulated across the streamed assistant turn. Holds
@@ -93,12 +101,22 @@ async fn run_persist_loop(
     extras: ChatPersistTaskExtras,
 ) {
     let mut state = PersistTaskState::new();
+    // Phase 5 observability: a turn is "completed_ok" only when the
+    // persist task observes a clean `AssistantMessageEnd` AND no
+    // `Error` event preceded it on this broadcast. An error before
+    // end (or instead of end) flips this to false so the
+    // `chat_turns_completed_ok` counter advances exactly once per
+    // genuinely-clean turn.
+    let mut saw_error = false;
     loop {
         match rx.recv().await {
             Ok(evt) => {
                 state.seq += 1;
                 let produced_progress =
                     handle_outbound(&mut state, &ctx, &event_bus, &evt, model.as_deref()).await;
+                if matches!(evt, HarnessOutbound::Error(_)) {
+                    saw_error = true;
+                }
                 // Phase 3: peek at the terminal AssistantMessageEnd so
                 // we can fire the auto-fork bookkeeping (summary +
                 // `rolled_over` flag) into a detached task before this
@@ -108,6 +126,13 @@ async fn run_persist_loop(
                 // NEXT user send rolls over.
                 if let HarnessOutbound::AssistantMessageEnd(end) = &evt {
                     maybe_spawn_auto_fork_marker(&ctx, end, &extras);
+                    // Phase 5: clean terminal — only counts if no
+                    // `Error` was observed earlier in the same turn.
+                    if !saw_error {
+                        if let Some(metrics) = extras.stability_metrics.as_ref() {
+                            metrics.inc_chat_turns_completed_ok();
+                        }
+                    }
                 }
                 if matches!(
                     evt,
@@ -156,6 +181,9 @@ fn maybe_spawn_auto_fork_marker(
         threshold = extras.auto_fork_threshold,
         "Marked chat session for auto-fork at next user send"
     );
+    if let Some(metrics) = extras.stability_metrics.as_ref() {
+        metrics.inc_auto_fork_triggered();
+    }
     let ctx = ctx.clone();
     let extras = extras.clone();
     tokio::spawn(async move {
@@ -421,5 +449,103 @@ pub(crate) async fn persist_event(ctx: &ChatPersistCtx, event_type: &str, conten
             );
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aura_os_harness::{AssistantMessageEnd, FilesChanged, SessionUsage};
+
+    /// Phase 5 wiring guard: when `maybe_spawn_auto_fork_marker` fires
+    /// because the assistant turn's `usage.context_utilization`
+    /// exceeded the configured threshold, it must bump
+    /// [`crate::stability_metrics::StabilityMetrics::inc_auto_fork_triggered`]
+    /// once. The synchronous prefix runs before the spawned summary
+    /// task so this test does NOT need to await any background work
+    /// — the increment happens on the calling thread.
+    ///
+    /// Constructs a minimal `ChatPersistCtx` via a temporary storage
+    /// client; the marker function only reads `ctx.session_id` /
+    /// `project_agent_id` for log fields and never actually invokes
+    /// the storage client when the threshold path is short-circuited
+    /// in this thread (the spawned task is detached and can race the
+    /// test's drop without tripping the assertion).
+    #[tokio::test]
+    async fn maybe_spawn_auto_fork_marker_increments_triggered_counter_when_over_threshold() {
+        let metrics = Arc::new(StabilityMetrics::new());
+        let extras = ChatPersistTaskExtras {
+            http_client: reqwest::Client::new(),
+            router_url: "http://localhost:9999".to_string(),
+            auto_fork_threshold: 0.8,
+            stability_metrics: Some(Arc::clone(&metrics)),
+        };
+        let ctx = ChatPersistCtx {
+            storage: Arc::new(aura_os_storage::StorageClient::with_base_url(
+                "http://localhost:9999",
+            )),
+            session_id: "session-test".to_string(),
+            project_id: "project-test".to_string(),
+            project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+            agent_id: None,
+            jwt: "jwt".to_string(),
+        };
+        let mut end = AssistantMessageEnd {
+            message_id: "msg-1".to_string(),
+            stop_reason: "stop".to_string(),
+            usage: SessionUsage::default(),
+            files_changed: FilesChanged::default(),
+            originating_user_id: None,
+        };
+        end.usage.context_utilization = 0.9;
+
+        maybe_spawn_auto_fork_marker(&ctx, &end, &extras);
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(
+            snapshot.auto_fork_triggered, 1,
+            "auto_fork_triggered must advance on first over-threshold finalization"
+        );
+    }
+
+    /// Negative case: utilization below threshold must NOT advance
+    /// the counter. Pins the threshold gating logic so a future
+    /// reorder of the early-return doesn't silently leak triggered
+    /// events.
+    #[tokio::test]
+    async fn maybe_spawn_auto_fork_marker_skips_increment_when_below_threshold() {
+        let metrics = Arc::new(StabilityMetrics::new());
+        let extras = ChatPersistTaskExtras {
+            http_client: reqwest::Client::new(),
+            router_url: "http://localhost:9999".to_string(),
+            auto_fork_threshold: 0.8,
+            stability_metrics: Some(Arc::clone(&metrics)),
+        };
+        let ctx = ChatPersistCtx {
+            storage: Arc::new(aura_os_storage::StorageClient::with_base_url(
+                "http://localhost:9999",
+            )),
+            session_id: "session-test".to_string(),
+            project_id: "project-test".to_string(),
+            project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+            agent_id: None,
+            jwt: "jwt".to_string(),
+        };
+        let mut end = AssistantMessageEnd {
+            message_id: "msg-1".to_string(),
+            stop_reason: "stop".to_string(),
+            usage: SessionUsage::default(),
+            files_changed: FilesChanged::default(),
+            originating_user_id: None,
+        };
+        end.usage.context_utilization = 0.5;
+
+        maybe_spawn_auto_fork_marker(&ctx, &end, &extras);
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(
+            snapshot.auto_fork_triggered, 0,
+            "auto_fork_triggered must not advance below the threshold"
+        );
     }
 }

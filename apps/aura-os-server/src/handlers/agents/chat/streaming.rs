@@ -21,6 +21,7 @@ use tracing::{error, info, warn};
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::agents::chat::types::sse_response_headers;
+use crate::stability_metrics::StabilityMetrics;
 use crate::state::{AppState, ChatSession, ChatSessionKey};
 
 use super::errors::{
@@ -37,10 +38,20 @@ use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
 };
 
+/// Bridge a harness broadcast receiver into the SSE wire format.
+///
+/// `metrics`, when `Some`, is bumped on the non-terminal `Lagged` arm
+/// — Phase 5 wiring so the operator-visible `stream_lagged` counter
+/// reflects every "consumer fell behind" event. Tests pass `None`
+/// because the existing `harness_broadcast_to_sse_lagged_emits_*`
+/// regressions only assert the SSE shape; the dedicated
+/// `harness_broadcast_to_sse_lagged_increments_metric` test below
+/// exercises the metrics path.
 pub fn harness_broadcast_to_sse(
     rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
+    metrics: Option<Arc<StabilityMetrics>>,
 ) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {
-    stream::unfold((rx, false), |(mut rx, done)| async move {
+    stream::unfold((rx, false, metrics), |(mut rx, done, metrics)| async move {
         if done {
             return None;
         }
@@ -65,7 +76,7 @@ pub fn harness_broadcast_to_sse(
                     _ => evt,
                 };
                 let event = super::super::super::sse::harness_event_to_sse(&normalized);
-                Some((event, (rx, should_close)))
+                Some((event, (rx, should_close, metrics)))
             }
             // The harness broadcast channel evicted `n` events before we
             // could read them — typically because heavy text-delta + large
@@ -86,6 +97,9 @@ pub fn harness_broadcast_to_sse(
                     skipped = n,
                     "harness_broadcast_to_sse: receiver lagged; emitting progress:lagged and continuing"
                 );
+                if let Some(m) = metrics.as_ref() {
+                    m.inc_stream_lagged();
+                }
                 let payload = serde_json::json!({
                     "type": "progress",
                     "stage": "lagged",
@@ -100,7 +114,7 @@ pub fn harness_broadcast_to_sse(
                             .event("progress")
                             .data("{\"type\":\"progress\",\"stage\":\"lagged\"}")
                     });
-                Some((Ok(event), (rx, false)))
+                Some((Ok(event), (rx, false, metrics)))
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => None,
         }
@@ -199,6 +213,14 @@ pub(super) async fn open_harness_chat_stream(
     let ctx = require_persist_ctx(&session_key, persist_ctx)?;
     let err_ctx = persist_error_ctx(&ctx);
 
+    // Phase 5 observability: bump the lifecycle counter at the
+    // `accept-the-turn` boundary, after `require_persist_ctx`
+    // (anything that fails the preflight is NOT a turn) and BEFORE
+    // any harness IO. Pairs with `chat_turns_completed_ok` in the
+    // persist task — the gap is the operator-visible "failed turns"
+    // signal.
+    state.stability_metrics.inc_chat_turns_started();
+
     // Tier 1 fail-fast: refuse to open a chat session that would be
     // missing one of the required X-Aura-* identity headers on the
     // outbound /v1/messages call. Without this, the harness would
@@ -288,6 +310,7 @@ pub(super) async fn open_harness_chat_stream(
             http_client: state.http_client.clone(),
             router_url: state.router_url.clone(),
             auto_fork_threshold: state.chat_auto_fork_threshold,
+            stability_metrics: Some(Arc::clone(&state.stability_metrics)),
         },
     );
 
@@ -301,10 +324,17 @@ pub(super) async fn open_harness_chat_stream(
         watchdog_rx,
         state.turn_first_event_timeout,
         state.turn_max_idle_timeout,
+        Arc::clone(&state.stability_metrics),
     );
     spawn_turn_slot_release(slot_guard, release_rx);
 
-    let stream = build_sse_stream(rx, is_new, was_queued, fork_info);
+    let stream = build_sse_stream(
+        rx,
+        is_new,
+        was_queued,
+        fork_info,
+        Some(Arc::clone(&state.stability_metrics)),
+    );
     let boxed: SseStream = Box::pin(stream);
 
     Ok((
@@ -462,6 +492,7 @@ fn build_sse_stream(
     is_new: bool,
     was_queued: bool,
     fork_info: Option<ForkInfo>,
+    metrics: Option<Arc<StabilityMetrics>>,
 ) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {
     let mut prefix: Vec<Result<Event, Infallible>> = Vec::new();
     // Phase 3 auto-fork: emit the `forked_for_context` event FIRST so
@@ -512,7 +543,7 @@ fn build_sse_stream(
             prefix.push(Ok(progress_event));
         }
     }
-    let broadcast_stream = harness_broadcast_to_sse(rx);
+    let broadcast_stream = harness_broadcast_to_sse(rx, metrics);
     FuturesStreamExt::chain(stream::iter(prefix), broadcast_stream)
 }
 
@@ -525,7 +556,13 @@ async fn get_or_create_delegated_chat_session(
     turn: SessionBridgeTurn,
 ) -> ApiResult<SessionForTurn> {
     if let Some(reused) = try_reuse_session(state, key, &requested_model).await {
-        return reuse_with_turn_slot(reused, turn, state.harness_ws_slots).await;
+        return reuse_with_turn_slot(
+            reused,
+            turn,
+            state.harness_ws_slots,
+            Arc::clone(&state.stability_metrics),
+        )
+        .await;
     }
 
     let harness = state.harness_for(harness_mode);
@@ -559,10 +596,12 @@ async fn reuse_with_turn_slot(
     reused: ReusedSessionHandles,
     turn: SessionBridgeTurn,
     ws_slots_cap: usize,
+    metrics: Arc<StabilityMetrics>,
 ) -> ApiResult<SessionForTurn> {
     let acquired = acquire_turn_slot(reused.turn_slot, reused.turn_pending_count)
         .await
         .map_err(|_| {
+            metrics.inc_agent_busy_queue_full();
             ApiError::agent_busy(
                 "Agent is busy: another turn is already running and one is queued.",
                 None,
@@ -757,6 +796,7 @@ mod tests {
             /* is_new */ false,
             /* was_queued */ true,
             /* fork_info */ None,
+            /* metrics */ None,
         );
         tokio::pin!(stream);
         let first = stream
@@ -798,6 +838,7 @@ mod tests {
             /* is_new */ false,
             /* was_queued */ false,
             /* fork_info */ None,
+            /* metrics */ None,
         );
         tokio::pin!(stream);
         let first = stream
@@ -833,6 +874,7 @@ mod tests {
                 previous_session_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
                 new_session_id: "00000000-0000-0000-0000-000000000bbb".to_string(),
             }),
+            /* metrics */ None,
         );
         tokio::pin!(stream);
 
@@ -880,6 +922,7 @@ mod tests {
             /* is_new */ true,
             /* was_queued */ true,
             /* fork_info */ None,
+            /* metrics */ None,
         );
         tokio::pin!(stream);
         let first = dump(&stream.next().await.expect("connecting event").expect("ok"));
@@ -943,7 +986,7 @@ mod tests {
         tx.send(end_event()).expect("seed end");
         drop(tx);
 
-        let stream = build_sse_stream(rx, /* is_new */ false, second.queued, None);
+        let stream = build_sse_stream(rx, /* is_new */ false, second.queued, None, None);
         tokio::pin!(stream);
         let first_evt = dump(
             &stream
@@ -997,7 +1040,7 @@ mod tests {
         tx.send(end_event()).expect("seed end");
         drop(tx);
 
-        let stream = harness_broadcast_to_sse(rx);
+        let stream = harness_broadcast_to_sse(rx, None);
         tokio::pin!(stream);
 
         let first = tokio::time::timeout(Duration::from_millis(200), stream.next())
@@ -1050,6 +1093,44 @@ mod tests {
         );
     }
 
+    /// Phase 5 wiring guard: the new non-terminal `Lagged` arm of
+    /// `harness_broadcast_to_sse` must bump
+    /// [`crate::stability_metrics::StabilityMetrics::inc_stream_lagged`]
+    /// every time it synthesizes a `progress: lagged` event. Mirrors
+    /// the existing `harness_broadcast_to_sse_lagged_emits_progress_*`
+    /// regression but additionally pins the metrics-side wiring so a
+    /// future refactor can't silently regress to "log + emit but
+    /// counter never moves".
+    #[tokio::test]
+    async fn harness_broadcast_to_sse_lagged_increments_metric() {
+        use crate::stability_metrics::StabilityMetrics;
+        use std::sync::Arc as StdArc;
+
+        let metrics = StdArc::new(StabilityMetrics::new());
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(2);
+        tx.send(text_delta("first")).expect("seed first delta");
+        tx.send(text_delta("second")).expect("seed second delta");
+        tx.send(text_delta("third")).expect("seed third delta");
+        tx.send(end_event()).expect("seed end");
+        drop(tx);
+
+        let stream = harness_broadcast_to_sse(rx, Some(StdArc::clone(&metrics)));
+        tokio::pin!(stream);
+        // Drain to completion so the Lagged arm is definitely hit.
+        while tokio::time::timeout(Duration::from_millis(200), stream.next())
+            .await
+            .ok()
+            .flatten()
+            .is_some()
+        {}
+
+        let snapshot = metrics.snapshot();
+        assert!(
+            snapshot.stream_lagged >= 1,
+            "Lagged arm must bump stream_lagged at least once, got snapshot={snapshot:?}"
+        );
+    }
+
     /// Phase-5 regression guard for the in-stream busy remap.
     ///
     /// `harness_broadcast_to_sse` must intercept any
@@ -1072,7 +1153,7 @@ mod tests {
         .expect("seed turn_in_progress error");
         drop(tx);
 
-        let stream = harness_broadcast_to_sse(rx);
+        let stream = harness_broadcast_to_sse(rx, None);
         tokio::pin!(stream);
         let first = tokio::time::timeout(Duration::from_secs(1), stream.next())
             .await

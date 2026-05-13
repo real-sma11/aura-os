@@ -13,10 +13,22 @@ mod local_harness;
 pub mod runner;
 pub mod session;
 pub mod signals;
+pub mod stability_metrics;
 mod swarm_harness;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod ws_bridge;
+
+/// Re-exports for the harness WebSocket bridge tuning surface so
+/// downstream crates (currently `aura-os-server`'s `/api/admin/health`
+/// snapshot and the Phase 5 observability wiring) can read the
+/// runtime-configured broadcast capacity without duplicating the
+/// env-var name. The full module stays private.
+pub mod ws_bridge_config {
+    pub use crate::ws_bridge::{
+        read_broadcast_capacity_from_env, BROADCAST_CAPACITY_ENV, DEFAULT_BROADCAST_CAPACITY,
+    };
+}
 
 pub use automaton_client::{
     validate_automaton_start_identity, AutomatonClient, AutomatonStartError, AutomatonStartParams,

@@ -507,6 +507,11 @@ describe("useChatStream", () => {
       // id when the panel passes one in the hook options, which
       // this test doesn't set.
       null,
+      // Phase 5 wiring: `clientRetryAttempt` is `undefined` on a
+      // first send (the chat hook only sets it when it auto-retries
+      // a `streamDropped` close), so the 12th positional argument
+      // must remain `undefined` end-to-end here.
+      undefined,
     );
     expect(api.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -521,6 +526,7 @@ describe("useChatStream", () => {
       undefined,
       false,
       null,
+      undefined,
     );
   });
 });

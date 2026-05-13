@@ -36,13 +36,51 @@ use super::types::SseResponse;
 
 use super::super::runtime::session_model_overrides;
 
+/// Inbound header the chat client sets on every Phase 2 auto-retry
+/// POST. Holds the retry attempt number as ASCII digits (1, 2, 3,
+/// …); the server only checks for *presence* of a parseable
+/// non-zero value to bump `client_auto_retry_streamdropped`. The
+/// actual retry semantics (whether to retry, how long to back off)
+/// stay client-side — this header is purely observability.
+pub(super) const CLIENT_RETRY_HEADER: &str = "x-aura-client-retry";
+
+/// Returns `true` if the request carries a parseable
+/// `X-Aura-Client-Retry: <n>` header with `n >= 1`. Anything else —
+/// missing header, blank string, non-ASCII bytes, non-numeric
+/// payload, or `0` — is treated as "not a retry" and silently
+/// ignored. Header parse failures must NEVER reject the request:
+/// the counter is best-effort observability.
+pub(super) fn header_indicates_client_retry(headers: &axum::http::HeaderMap) -> bool {
+    let Some(value) = headers.get(CLIENT_RETRY_HEADER) else {
+        return false;
+    };
+    let Ok(text) = value.to_str() else {
+        return false;
+    };
+    text.trim().parse::<u64>().map(|n| n >= 1).unwrap_or(false)
+}
+
 pub(crate) async fn send_event_stream(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
     crate::state::AuthSession(auth_session): crate::state::AuthSession,
     Path((project_id, agent_instance_id)): Path<(ProjectId, AgentInstanceId)>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<SendChatRequest>,
 ) -> ApiResult<SseResponse> {
+    // Phase 5 observability (5.3): the chat client sets
+    // `X-Aura-Client-Retry: <n>` on every auto-retry POST so the
+    // server-side counter reflects the same close-reason the client
+    // breadcrumb dispatcher emits. Header value MUST be ASCII digits;
+    // anything else (missing, blank, non-numeric) is silently
+    // ignored — the counter is best-effort observability, not
+    // load-bearing for the request itself.
+    if header_indicates_client_retry(&headers) {
+        state
+            .stability_metrics
+            .inc_client_auto_retry_streamdropped();
+    }
+
     let instance = state
         .agent_instance_service
         .get_instance(&project_id, &agent_instance_id)
@@ -130,6 +168,16 @@ pub(crate) async fn send_event_stream(
     // history and the new `aura_session_id` never propagates onto
     // outbound `/v1/messages` calls.
     if fork_info.is_some() {
+        // Phase 5 observability: a fresh session was actually minted
+        // for this user send (the persist task previously flagged the
+        // candidate `rolled_over`, OR the `usage_estimate` fallback
+        // tripped). The matching `auto_fork_triggered` counter ticks
+        // earlier in the persist task; this counter ticks at the
+        // "next user send transparently rolled into the new session"
+        // boundary. Walking the gap between the two is how an
+        // operator spots users stuck on a flagged session that never
+        // sends another turn.
+        state.stability_metrics.inc_auto_fork_applied();
         remove_live_session(&state, &session_key).await;
     }
 
@@ -419,6 +467,48 @@ pub(crate) fn render_project_context(
          Create large or multi-phase plans as multiple focused specs, one `create_spec` call at a time, instead of one huge markdown payload.\n\n",
     );
     ctx
+}
+
+#[cfg(test)]
+mod client_retry_header_tests {
+    use super::header_indicates_client_retry;
+    use axum::http::HeaderMap;
+
+    /// Pin the parsing rules for `X-Aura-Client-Retry`: any positive
+    /// integer counts as a retry, blank / zero / non-numeric /
+    /// missing values do not. The chat client always sends the
+    /// attempt number (1+) on retries, so the threshold is "any
+    /// positive integer". Header parse failures must never reject
+    /// the request — the counter is best-effort observability.
+    #[test]
+    fn header_indicates_client_retry_only_for_positive_integers() {
+        let mut headers = HeaderMap::new();
+        assert!(
+            !header_indicates_client_retry(&headers),
+            "missing header must not bump the counter"
+        );
+
+        headers.insert("x-aura-client-retry", "1".parse().unwrap());
+        assert!(header_indicates_client_retry(&headers));
+
+        headers.insert("x-aura-client-retry", "  3  ".parse().unwrap());
+        assert!(
+            header_indicates_client_retry(&headers),
+            "leading/trailing whitespace must be tolerated"
+        );
+
+        headers.insert("x-aura-client-retry", "0".parse().unwrap());
+        assert!(
+            !header_indicates_client_retry(&headers),
+            "explicit 0 must not bump - only retries (>=1) count"
+        );
+
+        headers.insert("x-aura-client-retry", "abc".parse().unwrap());
+        assert!(
+            !header_indicates_client_retry(&headers),
+            "non-numeric values must be silently ignored"
+        );
+    }
 }
 
 pub(crate) fn render_project_context_fallback(project_id: &ProjectId) -> String {

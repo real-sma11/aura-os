@@ -340,6 +340,9 @@ fn mock_app_state_with_cache(cache: crate::state::ValidationCache) -> AppState {
         turn_first_event_timeout: std::time::Duration::from_secs(120),
         turn_max_idle_timeout: std::time::Duration::from_secs(1800),
         chat_auto_fork_threshold: 0.80,
+        stability_metrics: Arc::new(crate::stability_metrics::StabilityMetrics::new()),
+        started_at: std::time::Instant::now(),
+        harness_broadcast_capacity: 16384,
     }
 }
 

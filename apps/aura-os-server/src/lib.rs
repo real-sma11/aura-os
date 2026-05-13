@@ -22,6 +22,7 @@ pub(crate) mod persistence;
 pub(crate) mod process_automaton;
 pub(crate) mod reconciler;
 pub(crate) mod router;
+pub mod stability_metrics;
 pub(crate) mod state;
 pub(crate) mod sync_state;
 

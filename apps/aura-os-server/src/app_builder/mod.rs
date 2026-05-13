@@ -15,6 +15,7 @@ use aura_os_integrations::IntegrationsClient;
 use crate::agent_events::AgentEventListener;
 use crate::harness_gateway::HarnessHttpGateway;
 use crate::loop_log::LoopLogWriter;
+use crate::stability_metrics::StabilityMetrics;
 use aura_os_network::{NetworkClient, OrbitClient};
 use aura_os_orgs::OrgService;
 use aura_os_projects::ProjectService;
@@ -282,6 +283,20 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         "Configured chat auto-fork threshold (next user send rolls into a fresh storage session above this context_utilization)"
     );
 
+    // Phase 5 observability bag. Captured BEFORE the long startup chain
+    // below so `started_at` reflects "moment of process bootstrap"
+    // rather than "moment we finished probing storage / network / orgs",
+    // which can take several seconds on a slow box.
+    let stability_metrics = Arc::new(StabilityMetrics::new());
+    let started_at = std::time::Instant::now();
+    let harness_broadcast_capacity =
+        aura_os_harness::ws_bridge_config::read_broadcast_capacity_from_env();
+    info!(
+        harness_broadcast_capacity,
+        env_var = aura_os_harness::ws_bridge_config::BROADCAST_CAPACITY_ENV,
+        "Captured harness broadcast capacity for /api/admin/health snapshot"
+    );
+
     ensure_local_harness_running();
 
     let core = init_core_services(&store);
@@ -397,6 +412,9 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         turn_first_event_timeout,
         turn_max_idle_timeout,
         chat_auto_fork_threshold,
+        stability_metrics,
+        started_at,
+        harness_broadcast_capacity,
     })
 }
 

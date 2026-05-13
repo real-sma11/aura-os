@@ -1,3 +1,4 @@
+pub(crate) mod admin;
 pub(crate) mod agent_bootstrap;
 pub(crate) mod agents;
 pub(crate) mod auth;

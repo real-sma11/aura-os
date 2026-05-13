@@ -16,6 +16,8 @@ use tracing::{debug, warn};
 
 use aura_protocol::{ErrorMsg, InboundMessage, OutboundMessage};
 
+use crate::stability_metrics;
+
 const WS_COMMAND_BUFFER: usize = 1024;
 const WS_DEBUG_PAYLOAD_LIMIT: usize = 256;
 
@@ -32,7 +34,12 @@ pub const DEFAULT_BROADCAST_CAPACITY: usize = 16384;
 /// non-numeric) falls back to the default.
 pub const BROADCAST_CAPACITY_ENV: &str = "AURA_HARNESS_BROADCAST_CAPACITY";
 
-fn read_broadcast_capacity_from_env() -> usize {
+/// Reads `AURA_HARNESS_BROADCAST_CAPACITY` from the environment with
+/// the same fallbacks `spawn_ws_bridge` uses. Re-exported via
+/// [`crate::ws_bridge_config`] so aura-os-server's `/api/admin/health`
+/// snapshot reports the exact value the harness bridge will sum onto
+/// its broadcast channels.
+pub fn read_broadcast_capacity_from_env() -> usize {
     std::env::var(BROADCAST_CAPACITY_ENV)
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
@@ -102,6 +109,7 @@ fn handle_ws_message(
             false
         }
         Ok(WsMessage::Close(_)) => {
+            stability_metrics::inc_ws_closed();
             let _ = reader_tx.send(bridge_error(
                 "harness_ws_closed",
                 "harness websocket closed",
@@ -111,6 +119,7 @@ fn handle_ws_message(
         }
         Err(e) => {
             debug!(error = %e, "WebSocket read error");
+            stability_metrics::inc_ws_read_error();
             let _ = reader_tx.send(bridge_error(
                 "harness_ws_read_error",
                 format!("harness websocket read error: {e}"),
@@ -150,6 +159,7 @@ fn forward_untyped_ws_text(
             error = %err,
             "Forwarding untyped harness event"
         );
+        stability_metrics::inc_protocol_mismatch();
         let _ = reader_raw_tx.send(value);
         let _ = reader_tx.send(bridge_error(
             "harness_protocol_mismatch",
@@ -163,6 +173,7 @@ fn forward_untyped_ws_text(
             payload = %debug_payload(text),
             "Non-JSON harness message, dropping"
         );
+        stability_metrics::inc_protocol_mismatch();
         let _ = reader_tx.send(bridge_error(
             "harness_protocol_mismatch",
             "harness websocket emitted a non-JSON message",

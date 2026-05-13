@@ -35,6 +35,8 @@ use std::time::Duration;
 use aura_os_harness::{ErrorMsg, HarnessOutbound};
 use tokio::sync::{broadcast, Mutex, OwnedMutexGuard};
 
+use crate::stability_metrics::StabilityMetrics;
+
 /// Default first-event timeout when `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS`
 /// is unset or invalid. Raised from the original 30s because Opus
 /// router cold-start + first thinking delta is often >30s; a
@@ -213,12 +215,14 @@ pub(crate) fn spawn_turn_watchdog(
     events_rx: broadcast::Receiver<HarnessOutbound>,
     first_event_timeout: Duration,
     max_turn_idle_timeout: Duration,
+    metrics: Arc<StabilityMetrics>,
 ) {
     spawn_turn_watchdog_with_timeouts(
         events_tx,
         events_rx,
         first_event_timeout,
         max_turn_idle_timeout,
+        Some(metrics),
     );
 }
 
@@ -227,6 +231,7 @@ fn spawn_turn_watchdog_with_timeouts(
     mut events_rx: broadcast::Receiver<HarnessOutbound>,
     first_event_timeout: Duration,
     max_turn_idle_timeout: Duration,
+    metrics: Option<Arc<StabilityMetrics>>,
 ) {
     tokio::spawn(async move {
         match tokio::time::timeout(first_event_timeout, events_rx.recv()).await {
@@ -236,6 +241,9 @@ fn spawn_turn_watchdog_with_timeouts(
             Ok(Ok(_)) | Ok(Err(broadcast::error::RecvError::Lagged(_))) => {}
             Ok(Err(broadcast::error::RecvError::Closed)) => return,
             Err(_) => {
+                if let Some(m) = metrics.as_ref() {
+                    m.inc_stream_stalled();
+                }
                 let _ = events_tx.send(timeout_error(
                     "stream_stalled",
                     format!(
@@ -260,6 +268,9 @@ fn spawn_turn_watchdog_with_timeouts(
                 | Ok(Err(broadcast::error::RecvError::Closed)) => return,
                 Ok(Ok(_)) | Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
                 Err(_) => {
+                    if let Some(m) = metrics.as_ref() {
+                        m.inc_turn_timeout();
+                    }
                     let _ = events_tx.send(timeout_error(
                         "turn_timeout",
                         format!(
@@ -582,6 +593,7 @@ mod tests {
             rx,
             Duration::from_millis(10),
             Duration::from_secs(1),
+            None,
         );
 
         let event = tokio::time::timeout(Duration::from_millis(200), observed.recv())
@@ -592,6 +604,97 @@ mod tests {
             event,
             HarnessOutbound::Error(ErrorMsg { ref code, .. }) if code == "stream_stalled"
         ));
+    }
+
+    /// Phase 5 wiring: when a `stream_stalled` synthesis fires, the
+    /// watchdog must also bump the
+    /// [`crate::stability_metrics::StabilityMetrics::inc_stream_stalled`]
+    /// counter. Drives the same first-event timeout as the prior
+    /// test, then asserts the snapshot moved by exactly +1 (and that
+    /// the unrelated `turn_timeout` counter stayed put).
+    #[tokio::test]
+    async fn turn_watchdog_increments_stream_stalled_metric_on_first_event_timeout() {
+        use crate::stability_metrics::StabilityMetrics;
+        use std::sync::Arc as StdArc;
+
+        let metrics = StdArc::new(StabilityMetrics::new());
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        let mut observed = tx.subscribe();
+
+        spawn_turn_watchdog_with_timeouts(
+            tx,
+            rx,
+            Duration::from_millis(10),
+            Duration::from_secs(1),
+            Some(StdArc::clone(&metrics)),
+        );
+
+        let event = tokio::time::timeout(Duration::from_millis(200), observed.recv())
+            .await
+            .expect("watchdog event timed out")
+            .expect("watchdog broadcast");
+        assert!(matches!(
+            event,
+            HarnessOutbound::Error(ErrorMsg { ref code, .. }) if code == "stream_stalled"
+        ));
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.stream_stalled, 1, "stalled counter must advance");
+        assert_eq!(
+            snapshot.turn_timeout, 0,
+            "turn_timeout must not advance on first-event stall"
+        );
+    }
+
+    /// Phase 5 wiring: when the sliding-idle watchdog synthesizes a
+    /// `turn_timeout`, it must bump the
+    /// [`crate::stability_metrics::StabilityMetrics::inc_turn_timeout`]
+    /// counter. Drives the same idle-exceeded scenario as the prior
+    /// test, then asserts the snapshot reflects exactly +1 on the
+    /// `turn_timeout` counter (and `stream_stalled` is unaffected).
+    #[tokio::test]
+    async fn turn_watchdog_increments_turn_timeout_metric_on_idle_exceeded() {
+        use crate::stability_metrics::StabilityMetrics;
+        use std::sync::Arc as StdArc;
+
+        let metrics = StdArc::new(StabilityMetrics::new());
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        let mut observed = tx.subscribe();
+
+        spawn_turn_watchdog_with_timeouts(
+            tx.clone(),
+            rx,
+            Duration::from_secs(1),
+            Duration::from_millis(10),
+            Some(StdArc::clone(&metrics)),
+        );
+        tx.send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+            text: "working".to_string(),
+        }))
+        .expect("seed nonterminal event");
+
+        let mut saw_timeout = false;
+        for _ in 0..2 {
+            let event = tokio::time::timeout(Duration::from_millis(200), observed.recv())
+                .await
+                .expect("watchdog event timed out")
+                .expect("watchdog broadcast");
+            if matches!(
+                event,
+                HarnessOutbound::Error(ErrorMsg { ref code, .. }) if code == "turn_timeout"
+            ) {
+                saw_timeout = true;
+                break;
+            }
+        }
+        assert!(saw_timeout, "watchdog must emit turn_timeout");
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.turn_timeout, 1, "turn_timeout counter must advance");
+        assert_eq!(
+            snapshot.stream_stalled, 0,
+            "stream_stalled must not advance on sliding-idle timeout"
+        );
     }
 
     /// Sliding-idle watchdog: a single non-terminal event lifts the
@@ -609,6 +712,7 @@ mod tests {
             rx,
             Duration::from_secs(1),
             Duration::from_millis(10),
+            None,
         );
         tx.send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
             text: "working".to_string(),
@@ -646,7 +750,7 @@ mod tests {
         let interval = idle / 2;
         let total = idle * 3;
 
-        spawn_turn_watchdog_with_timeouts(tx.clone(), rx, Duration::from_secs(5), idle);
+        spawn_turn_watchdog_with_timeouts(tx.clone(), rx, Duration::from_secs(5), idle, None);
 
         // Seed traffic at idle/2 cadence for idle*3 wall-clock seconds.
         // Each send must arrive on the broadcast inside the watchdog's

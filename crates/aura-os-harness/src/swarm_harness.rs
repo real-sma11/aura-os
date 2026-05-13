@@ -21,6 +21,7 @@ use crate::local_harness::{
     CONNECT_ATTEMPTS_ENV, CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_ATTEMPTS,
     DEFAULT_CONNECT_TIMEOUT_SECS, MAX_CONNECT_ATTEMPTS,
 };
+use crate::stability_metrics;
 use crate::ws_bridge::spawn_ws_bridge;
 
 const AGENT_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -350,6 +351,12 @@ impl SwarmHarness {
                     error = ?last_err.as_ref().map(|e| e.to_string()),
                     "swarm websocket connect failed, retrying"
                 );
+                // Phase 5 observability: count every additional retry
+                // attempt (not the first attempt). Same global counter
+                // the local harness retry loop bumps so the
+                // `/api/admin/health` snapshot reports a single
+                // process-wide tally regardless of which path failed.
+                stability_metrics::inc_initial_connect_retry();
                 tokio::time::sleep(backoff).await;
             }
         }

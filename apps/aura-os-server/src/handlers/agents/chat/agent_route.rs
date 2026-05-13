@@ -45,8 +45,19 @@ pub(crate) async fn send_agent_event_stream(
     AuthJwt(jwt): AuthJwt,
     crate::state::AuthSession(auth_session): crate::state::AuthSession,
     Path(agent_id): Path<AgentId>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<SendChatRequest>,
 ) -> ApiResult<SseResponse> {
+    // Phase 5 observability (5.3): the chat client sets
+    // `X-Aura-Client-Retry: <n>` on every Phase 2 auto-retry POST.
+    // Mirror the instance route's header parser so the same metric
+    // bumps regardless of which chat endpoint the client hit.
+    if super::instance_route::header_indicates_client_retry(&headers) {
+        state
+            .stability_metrics
+            .inc_client_auto_retry_streamdropped();
+    }
+
     let agent = resolve_agent_for_chat(&state, &agent_id, &jwt).await?;
     require_credits_for_auth_source(&state, &jwt, &agent.auth_source).await?;
     info!(%agent_id, action = ?body.action, "Agent message stream requested");
@@ -132,6 +143,12 @@ pub(crate) async fn send_agent_event_stream(
     // partition and the fresh `aura_session_id` would never propagate
     // into outbound `/v1/messages` calls.
     if fork_info.is_some() {
+        // Phase 5 observability: pair with the `auto_fork_triggered`
+        // bump in `persist_task::maybe_spawn_auto_fork_marker`. This
+        // counter records the moment the next user send actually
+        // landed in the fresh session, so the gap between the two
+        // is "users we flagged but who never sent another turn".
+        state.stability_metrics.inc_auto_fork_applied();
         remove_live_session(&state, &session_key).await;
     }
 

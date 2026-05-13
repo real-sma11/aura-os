@@ -182,6 +182,14 @@ export function sendAgentEventStream(
   projectId?: string,
   newSession?: boolean,
   sessionId?: string | null,
+  /**
+   * Phase 5 wiring: when the chat hook auto-retries a `streamDropped`
+   * close, it bumps a per-turn counter and passes it here. The
+   * server reads `X-Aura-Client-Retry: <n>` in `instance_route` /
+   * `agent_route` to bump `client_auto_retry_streamdropped`. Pass
+   * `undefined` (or 0) on first sends to skip the header entirely.
+   */
+  clientRetryAttempt?: number,
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) body.model = model;
@@ -198,11 +206,17 @@ export function sendAgentEventStream(
   // routing — see `try_pin_session` in `agent_route.rs`. Skipped when
   // `newSession` is set (force-new wins server-side too).
   if (sessionId && !newSession) body.session_id = sessionId;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (typeof clientRetryAttempt === "number" && clientRetryAttempt >= 1) {
+    // Server-side parser is in `instance_route.rs::header_indicates_client_retry`
+    // — accepts any positive integer, ignores blanks / non-numeric.
+    headers["X-Aura-Client-Retry"] = String(Math.floor(clientRetryAttempt));
+  }
   return streamSSE<string>(
     `${BASE_URL}/api/agents/${agentId}/events/stream`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     },
     createChatStreamHandler(handler),
@@ -356,6 +370,14 @@ export function sendEventStream(
   commands?: string[],
   newSession?: boolean,
   sessionId?: string | null,
+  /**
+   * Phase 5 wiring: when the chat hook auto-retries a `streamDropped`
+   * close, it bumps a per-turn counter and passes it here. The
+   * server reads `X-Aura-Client-Retry: <n>` in `instance_route` to
+   * bump `client_auto_retry_streamdropped`. Pass `undefined` (or 0)
+   * on first sends to skip the header entirely.
+   */
+  clientRetryAttempt?: number,
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) body.model = model;
@@ -370,11 +392,15 @@ export function sendEventStream(
   // the project chat. Forwarded to the server as `session_id` so
   // `try_pin_session` in `instance_route.rs` can validate ownership.
   if (sessionId && !newSession) body.session_id = sessionId;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (typeof clientRetryAttempt === "number" && clientRetryAttempt >= 1) {
+    headers["X-Aura-Client-Retry"] = String(Math.floor(clientRetryAttempt));
+  }
   return streamSSE<string>(
     `${BASE_URL}/api/projects/${projectId}/agents/${agentInstanceId}/events/stream`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     },
     createChatStreamHandler(handler),

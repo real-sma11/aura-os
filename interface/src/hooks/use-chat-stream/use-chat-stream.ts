@@ -8,6 +8,7 @@ import type { ChatAttachment } from "../../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../../constants/generation";
 import { EventType } from "../../shared/types/aura-events";
+import { recordStreamCloseReason } from "../../shared/observability/stream-breadcrumbs";
 
 import {
   useStreamCore,
@@ -217,7 +218,7 @@ export function useChatStream({
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const tryAutoRetry = (_error: unknown): boolean => {
+      const tryAutoRetry = (error: unknown): boolean => {
         // Never auto-retry if the user explicitly aborted the turn
         // (Stop button) — that controller is the same one we'd
         // re-attach to, so respect their intent.
@@ -227,6 +228,19 @@ export function useChatStream({
         const args = lastSendArgsRef.current;
         if (!args) return false;
         autoRetryCountRef.current += 1;
+        // Phase 5 wiring: emit the auto-retry breadcrumb BEFORE
+        // scheduling the timer so a future telemetry handler observes
+        // the close + retry sequence on the same tick the original
+        // close happened. Joins to `client_auto_retry_streamdropped`
+        // on the server when the matching POST lands with
+        // `X-Aura-Client-Retry`.
+        const errorMessage =
+          error instanceof Error ? error.message : typeof error === "string" ? error : "stream dropped";
+        recordStreamCloseReason({
+          classified: "streamDropped",
+          message: errorMessage,
+          auto_retry: true,
+        });
         const delayMs = 1000 * autoRetryCountRef.current;
         // Discard any partial assistant state from the dropped turn
         // so the retry produces a clean assistant bubble. The user's
@@ -360,6 +374,10 @@ export function useChatStream({
         }
 
         const modelForTurn = _generationMode ? null : selectedModel;
+        // On an auto-retry call, surface the attempt number to the
+        // server so it can bump `client_auto_retry_streamdropped`.
+        // First sends pass `undefined` so no header is set.
+        const clientRetryAttempt = isAutoRetry ? autoRetryCountRef.current : undefined;
         await api.sendEventStream(
           projectId,
           agentInstanceId,
@@ -372,6 +390,7 @@ export function useChatStream({
           commands,
           shouldStartNewSession,
           shouldStartNewSession ? null : sessionIdRef.current,
+          clientRetryAttempt,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

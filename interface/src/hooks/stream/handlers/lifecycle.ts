@@ -6,6 +6,10 @@ import {
   dispatchInsufficientCredits,
 } from "../../../api/client";
 import { SSEIdleTimeoutError } from "../../../shared/api/sse";
+import {
+  recordStreamCloseReason,
+  type StreamCloseClassification,
+} from "../../../shared/observability/stream-breadcrumbs";
 import type { SessionEvent, ChatContentBlock } from "../../../shared/types";
 import { extractToolCalls, extractArtifactRefs } from "../../../utils/chat-history";
 import type {
@@ -26,6 +30,57 @@ import {
 import { resolvePendingToolCalls } from "./tool";
 
 export type FinalizeStreamReason = "completed" | "failed" | "disconnected";
+
+/**
+ * Map the `displayVariant` returned by `normalizeStreamError` (or
+ * the absence of it) onto the
+ * {@link StreamCloseClassification} bucket the
+ * `aura:stream-close` breadcrumb consumer expects. `failed` is the
+ * default for "we got an error but it didn't fall into a known
+ * bucket" — matches the existing `*Error: ${displayMessage}*`
+ * fallback.
+ */
+function classifyStreamErrorVariant(
+  displayVariant?:
+    | "insufficientCreditsError"
+    | "agentBusyError"
+    | "harnessCapacityExhaustedError"
+    | "streamDropped",
+): StreamCloseClassification {
+  switch (displayVariant) {
+    case "insufficientCreditsError":
+      return "insufficientCredits";
+    case "agentBusyError":
+      return "agentBusy";
+    case "harnessCapacityExhaustedError":
+      return "harnessCapacity";
+    case "streamDropped":
+      return "streamDropped";
+    default:
+      return "failed";
+  }
+}
+
+/**
+ * Map a {@link FinalizeStreamReason} (the optional `reason` field
+ * passed to `finalizeStream`) onto a breadcrumb classification. The
+ * mapping is identity except that the `disconnected` reason — i.e.
+ * `finalizeStream` was called without an explicit reason or with
+ * `reason: "disconnected"` — emits a `disconnected` breadcrumb.
+ */
+function classifyFinalizeReason(
+  reason: FinalizeStreamReason | undefined,
+): StreamCloseClassification {
+  switch (reason ?? "disconnected") {
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "disconnected":
+    default:
+      return "disconnected";
+  }
+}
 
 interface FinalizeStreamOptions {
   reason?: FinalizeStreamReason;
@@ -350,6 +405,15 @@ export function handleStreamError(
   const displayMessage = rawCode && !displayVariant ? `${message} (${rawCode})` : message;
 
   console.error("Chat stream error:", rawCode ? `${rawCode}: ${rawMessage}` : rawMessage);
+  // Phase 5 client-side breadcrumb. Fires BEFORE `dispatchInsufficientCredits`
+  // and the React state churn below so a future telemetry handler
+  // wiring to `aura:stream-close` sees the close reason on the same
+  // tick the consumer first surfaces it.
+  recordStreamCloseReason({
+    classified: classifyStreamErrorVariant(displayVariant),
+    message: rawMessage,
+    code: rawCode,
+  });
   if (displayVariant === "insufficientCreditsError") {
     dispatchInsufficientCredits();
   }
@@ -396,6 +460,15 @@ export function finalizeStream(
   closureIsStreaming: boolean,
   options?: FinalizeStreamOptions,
 ): void {
+  // Phase 5 client-side breadcrumb. Mirrors `handleStreamError` so
+  // every stream-close (clean finalize OR error) fires exactly one
+  // `aura:stream-close` event. `message` defaults to the
+  // classification name when no explicit message is passed so the
+  // consumer always has *something* to render.
+  recordStreamCloseReason({
+    classified: classifyFinalizeReason(options?.reason),
+    message: options?.message ?? options?.reason ?? "completed",
+  });
   if (refs.streamBuffer.current) {
     flushStreamingText(refs, setters);
   } else {

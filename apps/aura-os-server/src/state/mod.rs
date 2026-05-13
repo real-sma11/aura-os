@@ -37,6 +37,7 @@ use aura_os_tasks::TaskService;
 use aura_os_terminal::TerminalManager;
 
 use crate::error::ApiError;
+use crate::stability_metrics::StabilityMetrics;
 use crate::sync_state::{TaskSyncCheckpoint, TaskSyncState};
 
 mod auth_extractors;
@@ -365,6 +366,24 @@ pub struct AppState {
     /// `(0.0, 1.0]`; out-of-range values clamp to the default at
     /// startup with a `warn!`.
     pub chat_auto_fork_threshold: f64,
+    /// Process-wide stability counters (Phase 5 of the agent-stream
+    /// reliability plan). Lock-free `AtomicU64` counters covering the
+    /// reliability decisions added in phases 1-4 — turn lifecycle,
+    /// watchdog firings, broadcast lag, harness ws health, auto-fork
+    /// triggers/applies, and the new `X-Aura-Client-Retry` header
+    /// path. Snapshotted by `/api/admin/health`. Held by `Arc` so
+    /// every clone of `AppState` (every request) hands out the same
+    /// instance.
+    pub stability_metrics: Arc<StabilityMetrics>,
+    /// Process start time used by `/api/admin/health` to compute
+    /// `uptime_seconds`. Captured once in `build_app_state`.
+    pub started_at: Instant,
+    /// Configured per-partition broadcast capacity (env
+    /// `AURA_HARNESS_BROADCAST_CAPACITY`, default `1024`). Surfaced
+    /// through `/api/admin/health.config.harness_broadcast_capacity`
+    /// so an operator can see the runtime config the binary is
+    /// actually using.
+    pub harness_broadcast_capacity: usize,
 }
 
 impl AppState {
