@@ -27,8 +27,8 @@ use super::errors::{
     map_session_bridge_error, map_session_bridge_start_error, remap_harness_error_to_sse,
 };
 use super::event_bus::{publish_session_summary_updated_event, publish_user_message_event};
-use super::persist::{persist_user_message, ChatPersistCtx};
-use super::persist_task::spawn_chat_persist_task;
+use super::persist::{persist_user_message, ChatPersistCtx, ForkInfo};
+use super::persist_task::{spawn_chat_persist_task, ChatPersistTaskExtras};
 use super::turn_slot::{
     acquire_turn_slot, spawn_turn_slot_release, spawn_turn_watchdog, TurnSlotGuard,
 };
@@ -140,6 +140,14 @@ pub(super) struct OpenChatStreamArgs {
     pub(super) persist_ctx: Option<ChatPersistCtx>,
     pub(super) attachments: Option<Vec<ChatAttachmentDto>>,
     pub(super) commands: Option<Vec<String>>,
+    /// Phase 3 auto-fork breadcrumb. When `Some`, the chat resolver
+    /// just minted a fresh storage session because the prior one
+    /// crossed `AURA_CHAT_AUTO_FORK_THRESHOLD`; `build_sse_stream`
+    /// prepends a single `progress: forked_for_context` SSE event
+    /// so the chat panel can swap `?session=<old>` → `?session=<new>`
+    /// and surface a one-shot soft banner before the
+    /// `connecting` / `queued` prefix.
+    pub(super) fork_info: Option<ForkInfo>,
 }
 
 pub(super) fn tool_hints_from_commands(commands: Option<&[String]>) -> Option<Vec<String>> {
@@ -170,6 +178,7 @@ pub(super) async fn open_harness_chat_stream(
         persist_ctx,
         attachments,
         commands,
+        fork_info,
     } = args;
 
     // Guiding invariant: no silent success. If the inbound user message
@@ -275,6 +284,11 @@ pub(super) async fn open_harness_chat_stream(
         ctx,
         state.event_broadcast.clone(),
         persist_model,
+        ChatPersistTaskExtras {
+            http_client: state.http_client.clone(),
+            router_url: state.router_url.clone(),
+            auto_fork_threshold: state.chat_auto_fork_threshold,
+        },
     );
 
     // Hand the turn-slot guard to a sentinel that releases it on the
@@ -290,7 +304,7 @@ pub(super) async fn open_harness_chat_stream(
     );
     spawn_turn_slot_release(slot_guard, release_rx);
 
-    let stream = build_sse_stream(rx, is_new, was_queued);
+    let stream = build_sse_stream(rx, is_new, was_queued, fork_info);
     let boxed: SseStream = Box::pin(stream);
 
     Ok((
@@ -447,8 +461,30 @@ fn build_sse_stream(
     rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
     is_new: bool,
     was_queued: bool,
+    fork_info: Option<ForkInfo>,
 ) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {
     let mut prefix: Vec<Result<Event, Infallible>> = Vec::new();
+    // Phase 3 auto-fork: emit the `forked_for_context` event FIRST so
+    // the chat panel can swap `?session=<old>` → `?session=<new>` and
+    // mount its one-shot soft banner before `connecting` / `queued`
+    // arrive. Older clients that don't recognise the stage gracefully
+    // ignore the event (the progress dispatcher is a switch on
+    // `stage` strings).
+    if let Some(fork) = fork_info {
+        if let Ok(forked_event) =
+            Event::default()
+                .event("progress")
+                .json_data(serde_json::json!({
+                    "type": "progress",
+                    "stage": "forked_for_context",
+                    "previous_session_id": fork.previous_session_id,
+                    "new_session_id": fork.new_session_id,
+                    "message": "Continued from previous chat — context was filling up",
+                }))
+        {
+            prefix.push(Ok(forked_event));
+        }
+    }
     if is_new {
         if let Ok(progress_event) = Event::default()
             .event("progress")
@@ -649,6 +685,7 @@ mod tests {
     use futures_util::StreamExt;
     use tokio::sync::{broadcast, Mutex};
 
+    use super::super::persist::ForkInfo;
     use super::super::turn_slot::acquire_turn_slot;
     use super::{build_sse_stream, harness_broadcast_to_sse, tool_hints_from_commands};
 
@@ -715,7 +752,12 @@ mod tests {
         tx.send(end_event()).expect("seed terminal end");
         drop(tx);
 
-        let stream = build_sse_stream(rx, /* is_new */ false, /* was_queued */ true);
+        let stream = build_sse_stream(
+            rx,
+            /* is_new */ false,
+            /* was_queued */ true,
+            /* fork_info */ None,
+        );
         tokio::pin!(stream);
         let first = stream
             .next()
@@ -751,7 +793,12 @@ mod tests {
         tx.send(end_event()).expect("seed terminal end");
         drop(tx);
 
-        let stream = build_sse_stream(rx, /* is_new */ false, /* was_queued */ false);
+        let stream = build_sse_stream(
+            rx,
+            /* is_new */ false,
+            /* was_queued */ false,
+            /* fork_info */ None,
+        );
         tokio::pin!(stream);
         let first = stream
             .next()
@@ -765,13 +812,75 @@ mod tests {
         );
     }
 
+    /// Phase 3 auto-fork guard: when `fork_info` is set, the stream
+    /// must lead with the `progress: forked_for_context` event
+    /// (carrying both the previous and new session ids) BEFORE any
+    /// other prefix or broadcast event so the chat panel can swap
+    /// `?session=` and surface the soft banner before the assistant
+    /// turn starts streaming.
+    #[tokio::test]
+    async fn build_sse_stream_prepends_forked_for_context_when_fork_info_set() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        tx.send(text_delta("after-fork")).expect("seed text delta");
+        tx.send(end_event()).expect("seed terminal end");
+        drop(tx);
+
+        let stream = build_sse_stream(
+            rx,
+            /* is_new */ true,
+            /* was_queued */ false,
+            Some(ForkInfo {
+                previous_session_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+                new_session_id: "00000000-0000-0000-0000-000000000bbb".to_string(),
+            }),
+        );
+        tokio::pin!(stream);
+
+        let first = dump(
+            &stream
+                .next()
+                .await
+                .expect("forked progress event")
+                .expect("ok"),
+        );
+        assert!(
+            first.contains("forked_for_context"),
+            "first event must be the forked_for_context progress event, got: {first}"
+        );
+        assert!(
+            first.contains("00000000-0000-0000-0000-000000000aaa"),
+            "forked event must carry the previous session id, got: {first}"
+        );
+        assert!(
+            first.contains("00000000-0000-0000-0000-000000000bbb"),
+            "forked event must carry the new session id, got: {first}"
+        );
+
+        let second = dump(
+            &stream
+                .next()
+                .await
+                .expect("connecting event after fork")
+                .expect("ok"),
+        );
+        assert!(
+            second.contains("connecting"),
+            "connecting prefix must follow the forked_for_context event, got: {second}"
+        );
+    }
+
     #[tokio::test]
     async fn build_sse_stream_emits_both_connecting_and_queued_when_set() {
         let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
         tx.send(end_event()).expect("seed terminal end");
         drop(tx);
 
-        let stream = build_sse_stream(rx, /* is_new */ true, /* was_queued */ true);
+        let stream = build_sse_stream(
+            rx,
+            /* is_new */ true,
+            /* was_queued */ true,
+            /* fork_info */ None,
+        );
         tokio::pin!(stream);
         let first = dump(&stream.next().await.expect("connecting event").expect("ok"));
         let second = dump(&stream.next().await.expect("queued event").expect("ok"));
@@ -834,7 +943,7 @@ mod tests {
         tx.send(end_event()).expect("seed end");
         drop(tx);
 
-        let stream = build_sse_stream(rx, /* is_new */ false, second.queued);
+        let stream = build_sse_stream(rx, /* is_new */ false, second.queued, None);
         tokio::pin!(stream);
         let first_evt = dump(
             &stream

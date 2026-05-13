@@ -168,6 +168,64 @@ pub(crate) fn read_turn_max_idle_timeout_from_env() -> Duration {
     ))
 }
 
+/// Env var that overrides the chat auto-fork threshold (mirrors
+/// `SessionService::should_rollover` for the chat path). When the
+/// most recent assistant turn's `context_utilization` crosses this
+/// value, the persist task flags the storage session `rolled_over`
+/// and the next user send transparently lands in a fresh session.
+pub(crate) const CHAT_AUTO_FORK_THRESHOLD_ENV: &str = "AURA_CHAT_AUTO_FORK_THRESHOLD";
+
+/// Default chat auto-fork threshold matching Phase 3 of the
+/// agent-stream reliability plan. Picked to fire well before the
+/// upstream emergency body cap, so the next turn is always served
+/// from a fresh, summary-seeded session instead of hitting a 403
+/// Cloudflare WAF response.
+pub(crate) const DEFAULT_CHAT_AUTO_FORK_THRESHOLD: f64 = 0.80;
+
+/// Parse `AURA_CHAT_AUTO_FORK_THRESHOLD` into the half-open interval
+/// `(0.0, 1.0]`. Values outside that range, blank inputs, or
+/// non-numeric strings fall back to [`DEFAULT_CHAT_AUTO_FORK_THRESHOLD`]
+/// with a `warn!` so the operator-visible signal matches the
+/// `parse_turn_timeout_secs` / `parse_harness_ws_slots` style. A
+/// threshold of `0.0` would auto-fork every session on its first
+/// turn (no operational meaning); a threshold above `1.0` would
+/// never trip (defeats the point of the env var).
+pub(crate) fn parse_chat_auto_fork_threshold(raw: Option<&str>) -> f64 {
+    let Some(raw) = raw else {
+        return DEFAULT_CHAT_AUTO_FORK_THRESHOLD;
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return DEFAULT_CHAT_AUTO_FORK_THRESHOLD;
+    }
+    match trimmed.parse::<f64>() {
+        Ok(value) if value > 0.0 && value <= 1.0 && value.is_finite() => value,
+        Ok(value) => {
+            warn!(
+                env_var = CHAT_AUTO_FORK_THRESHOLD_ENV,
+                value,
+                default = DEFAULT_CHAT_AUTO_FORK_THRESHOLD,
+                "AURA_CHAT_AUTO_FORK_THRESHOLD must be in (0.0, 1.0]; falling back to default"
+            );
+            DEFAULT_CHAT_AUTO_FORK_THRESHOLD
+        }
+        Err(error) => {
+            warn!(
+                env_var = CHAT_AUTO_FORK_THRESHOLD_ENV,
+                value = trimmed,
+                %error,
+                default = DEFAULT_CHAT_AUTO_FORK_THRESHOLD,
+                "AURA_CHAT_AUTO_FORK_THRESHOLD is not a valid f64; falling back to default"
+            );
+            DEFAULT_CHAT_AUTO_FORK_THRESHOLD
+        }
+    }
+}
+
+pub(crate) fn read_chat_auto_fork_threshold_from_env() -> f64 {
+    parse_chat_auto_fork_threshold(env_opt(CHAT_AUTO_FORK_THRESHOLD_ENV).as_deref())
+}
+
 pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
     let data_dir = store_path
         .parent()
@@ -215,6 +273,13 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         first_event_env = TURN_FIRST_EVENT_TIMEOUT_ENV,
         max_idle_env = TURN_MAX_TIMEOUT_ENV,
         "Configured chat-turn watchdog timings (first-event window for stream_stalled; sliding idle ceiling for turn_timeout)"
+    );
+
+    let chat_auto_fork_threshold = read_chat_auto_fork_threshold_from_env();
+    info!(
+        chat_auto_fork_threshold,
+        env_var = CHAT_AUTO_FORK_THRESHOLD_ENV,
+        "Configured chat auto-fork threshold (next user send rolls into a fresh storage session above this context_utilization)"
     );
 
     ensure_local_harness_running();
@@ -331,6 +396,7 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         harness_ws_slots,
         turn_first_event_timeout,
         turn_max_idle_timeout,
+        chat_auto_fork_threshold,
     })
 }
 

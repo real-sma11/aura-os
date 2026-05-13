@@ -105,7 +105,7 @@ pub(crate) async fn send_event_stream(
         remove_live_session(&state, &session_key).await;
     }
 
-    let persist_ctx = setup_project_chat_persistence(
+    let persist_outcome = setup_project_chat_persistence(
         &state,
         &project_id,
         &agent_instance_id,
@@ -114,6 +114,21 @@ pub(crate) async fn send_event_stream(
         pinned_session_id.as_deref(),
     )
     .await;
+    let (persist_ctx, fork_info) = match persist_outcome {
+        Some((ctx, fork)) => (Some(ctx), fork),
+        None => (None, None),
+    };
+
+    // Phase 3 auto-fork: when the resolver minted a fresh session
+    // because the prior one crossed the context-pressure threshold,
+    // the in-memory ChatSession bound to the OLD storage session id
+    // must be evicted before we open the harness session. Without
+    // eviction the harness keeps replying with the previous session's
+    // history and the new `aura_session_id` never propagates onto
+    // outbound `/v1/messages` calls.
+    if fork_info.is_some() {
+        remove_live_session(&state, &session_key).await;
+    }
 
     let (conversation_messages, project_state_snapshot) = load_history_and_project_state(
         &state,
@@ -216,6 +231,7 @@ pub(crate) async fn send_event_stream(
             persist_ctx,
             attachments: body.attachments,
             commands: body.commands,
+            fork_info,
         },
     )
     .await

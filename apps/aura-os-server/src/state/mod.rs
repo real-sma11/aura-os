@@ -286,6 +286,20 @@ pub struct AppState {
     /// tool events never trips, but a truly hung session does after
     /// the idle window elapses.
     pub turn_max_idle_timeout: Duration,
+    /// Auto-fork threshold for chat sessions sourced from
+    /// `AURA_CHAT_AUTO_FORK_THRESHOLD` at startup (default `0.80`,
+    /// see `app_builder::DEFAULT_CHAT_AUTO_FORK_THRESHOLD`). When the
+    /// most recent `assistant_message_end.usage.context_utilization`
+    /// for an active chat session crosses this value, the persist
+    /// task flags the storage row `rolled_over`, writes a
+    /// `rollover_summary` event with a one-paragraph summary, and the
+    /// next user send transparently lands in a fresh session via
+    /// `SessionService::create_chat_followup_session`. The chat UI
+    /// surfaces a single `progress: forked_for_context` SSE event
+    /// rather than asking the user to click "+". Range-checked to
+    /// `(0.0, 1.0]`; out-of-range values clamp to the default at
+    /// startup with a `warn!`.
+    pub chat_auto_fork_threshold: f64,
 }
 
 impl AppState {

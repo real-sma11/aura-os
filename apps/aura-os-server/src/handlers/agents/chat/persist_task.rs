@@ -2,7 +2,10 @@
 //! storage events and publishes lifecycle/progress signals onto the
 //! WebSocket event bus.
 
+use std::sync::Arc;
+
 use aura_os_harness::HarnessOutbound;
+use aura_os_storage::StorageClient;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
@@ -13,6 +16,20 @@ use super::event_bus::{
 };
 use super::persist::ChatPersistCtx;
 use super::persist_task_dispatch::handle_outbound;
+
+/// Bundle of process-wide handles the persist task needs above and
+/// beyond the `ChatPersistCtx`. Held alongside `ctx` so the
+/// auto-fork-on-context-pressure spawn (Phase 3 of the agent-stream
+/// reliability plan) can call back into `generate_session_summary`
+/// and update the storage row without dragging the full `AppState`
+/// through the chat hot path. Equivalent in spirit to
+/// `spawn_session_title_task`'s opt-in plumbing.
+#[derive(Clone)]
+pub(crate) struct ChatPersistTaskExtras {
+    pub http_client: reqwest::Client,
+    pub router_url: String,
+    pub auto_fork_threshold: f64,
+}
 
 /// Mutable state accumulated across the streamed assistant turn. Holds
 /// the full text, thinking, content_blocks, and bookkeeping needed to
@@ -63,8 +80,9 @@ pub(crate) fn spawn_chat_persist_task(
     ctx: ChatPersistCtx,
     event_bus: broadcast::Sender<Value>,
     model: Option<String>,
+    extras: ChatPersistTaskExtras,
 ) {
-    tokio::spawn(async move { run_persist_loop(rx, ctx, event_bus, model).await });
+    tokio::spawn(async move { run_persist_loop(rx, ctx, event_bus, model, extras).await });
 }
 
 async fn run_persist_loop(
@@ -72,6 +90,7 @@ async fn run_persist_loop(
     ctx: ChatPersistCtx,
     event_bus: broadcast::Sender<Value>,
     model: Option<String>,
+    extras: ChatPersistTaskExtras,
 ) {
     let mut state = PersistTaskState::new();
     loop {
@@ -80,6 +99,16 @@ async fn run_persist_loop(
                 state.seq += 1;
                 let produced_progress =
                     handle_outbound(&mut state, &ctx, &event_bus, &evt, model.as_deref()).await;
+                // Phase 3: peek at the terminal AssistantMessageEnd so
+                // we can fire the auto-fork bookkeeping (summary +
+                // `rolled_over` flag) into a detached task before this
+                // loop breaks. We deliberately do NOT block the
+                // turn-finalization sentinel on the summary call: the
+                // user-visible turn completes on this session, only the
+                // NEXT user send rolls over.
+                if let HarnessOutbound::AssistantMessageEnd(end) = &evt {
+                    maybe_spawn_auto_fork_marker(&ctx, end, &extras);
+                }
                 if matches!(
                     evt,
                     HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
@@ -101,6 +130,131 @@ async fn run_persist_loop(
         }
     }
     finalize_if_needed(&mut state, &ctx, &event_bus, model.as_deref()).await;
+}
+
+/// Phase 3 auto-fork trigger. When the just-finalized assistant turn
+/// reports `usage.context_utilization >= AURA_CHAT_AUTO_FORK_THRESHOLD`,
+/// detach a background task that summarises the session and flags the
+/// storage row `rolled_over`. The next user send to this partition
+/// observes the flag in `resolve_chat_session_with_pin` and
+/// transparently mints a fresh session via
+/// `SessionService::create_chat_followup_session` carrying the summary
+/// forward — the user never has to click `+`.
+fn maybe_spawn_auto_fork_marker(
+    ctx: &ChatPersistCtx,
+    end: &aura_os_harness::AssistantMessageEnd,
+    extras: &ChatPersistTaskExtras,
+) {
+    let utilization = end.usage.context_utilization as f64;
+    if !utilization.is_finite() || utilization < extras.auto_fork_threshold {
+        return;
+    }
+    info!(
+        session_id = %ctx.session_id,
+        project_agent_id = %ctx.project_agent_id,
+        utilization,
+        threshold = extras.auto_fork_threshold,
+        "Marked chat session for auto-fork at next user send"
+    );
+    let ctx = ctx.clone();
+    let extras = extras.clone();
+    tokio::spawn(async move {
+        run_auto_fork_marker(ctx, extras, utilization).await;
+    });
+}
+
+async fn run_auto_fork_marker(
+    ctx: ChatPersistCtx,
+    extras: ChatPersistTaskExtras,
+    utilization: f64,
+) {
+    // 1. Best-effort summarisation. `generate_session_summary` returns
+    // an empty string when there's nothing useful to summarise (e.g.
+    // every turn was tool-use only). Fall back to a static label so
+    // the next session at least carries the context-pressure trigger
+    // forward instead of an empty summary that
+    // `create_chat_followup_session` would drop.
+    let summary = generate_rollover_summary_for_session(&ctx, &extras).await;
+    persist_rollover_summary_event(&ctx, &summary, utilization).await;
+    mark_storage_session_rolled_over(&ctx).await;
+}
+
+async fn generate_rollover_summary_for_session(
+    ctx: &ChatPersistCtx,
+    extras: &ChatPersistTaskExtras,
+) -> String {
+    let result = crate::handlers::agents::sessions::generate_session_summary(
+        &ctx.storage,
+        &extras.http_client,
+        &extras.router_url,
+        &ctx.jwt,
+        &ctx.session_id,
+        &ctx.project_id,
+        &ctx.project_agent_id,
+    )
+    .await;
+    match result {
+        Ok(summary) if !summary.trim().is_empty() => summary,
+        Ok(_) => {
+            info!(
+                session_id = %ctx.session_id,
+                "Auto-fork summary was empty; using fallback label"
+            );
+            "Continued from a long conversation (no summary available).".to_string()
+        }
+        Err(error) => {
+            warn!(
+                session_id = %ctx.session_id,
+                %error,
+                "Auto-fork summary generation failed; using fallback label"
+            );
+            "Continued from a long conversation (no summary available).".to_string()
+        }
+    }
+}
+
+async fn persist_rollover_summary_event(ctx: &ChatPersistCtx, summary: &str, utilization: f64) {
+    let payload = json!({
+        "summary": summary,
+        "trigger": "context_pressure",
+        "utilization": utilization,
+    });
+    if !persist_event(ctx, "rollover_summary", payload).await {
+        warn!(
+            session_id = %ctx.session_id,
+            "Failed to persist rollover_summary event; next send will fall back to a generic summary"
+        );
+    }
+}
+
+async fn mark_storage_session_rolled_over(ctx: &ChatPersistCtx) {
+    let req = aura_os_storage::UpdateSessionRequest {
+        status: Some("rolled_over".to_string()),
+        total_input_tokens: None,
+        total_output_tokens: None,
+        context_usage_estimate: None,
+        summary_of_previous_context: None,
+        tasks_worked_count: None,
+        ended_at: Some(chrono::Utc::now().to_rfc3339()),
+    };
+    if let Err(error) = update_session_with_storage(&ctx.storage, &ctx.session_id, &ctx.jwt, &req)
+        .await
+    {
+        warn!(
+            session_id = %ctx.session_id,
+            %error,
+            "Failed to flag chat session rolled_over; auto-fork will rely on the context_usage_estimate fallback"
+        );
+    }
+}
+
+async fn update_session_with_storage(
+    storage: &Arc<StorageClient>,
+    session_id: &str,
+    jwt: &str,
+    req: &aura_os_storage::UpdateSessionRequest,
+) -> Result<(), aura_os_storage::StorageError> {
+    storage.update_session(session_id, jwt, req).await
 }
 
 fn maybe_publish_progress(

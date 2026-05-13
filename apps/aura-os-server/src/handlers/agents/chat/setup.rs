@@ -13,7 +13,7 @@ use crate::error::ApiResult;
 use crate::state::{AppState, AuthJwt};
 
 use super::discovery::{find_matching_project_agents, invalidate_agent_discovery_cache};
-use super::persist::{resolve_chat_session_with_pin, ChatPersistCtx};
+use super::persist::{resolve_chat_session_with_pin, ChatPersistCtx, ForkInfo};
 
 pub(crate) async fn setup_project_chat_persistence(
     state: &AppState,
@@ -22,31 +22,36 @@ pub(crate) async fn setup_project_chat_persistence(
     jwt: &str,
     force_new: bool,
     pinned_session_id: Option<&str>,
-) -> Option<ChatPersistCtx> {
+) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = state.storage_client.as_ref()?.clone();
     let jwt = jwt.to_string();
     let pai = agent_instance_id.to_string();
     let pid = project_id.to_string();
-    let session_id = resolve_chat_session_with_pin(
+    let resolved = resolve_chat_session_with_pin(
         &storage,
         &jwt,
         &pai,
         &pid,
         force_new,
         pinned_session_id,
+        state.session_service.as_ref(),
+        state.chat_auto_fork_threshold,
     )
     .await?;
-    Some(ChatPersistCtx {
-        storage,
-        jwt,
-        session_id,
-        project_agent_id: pai,
-        project_id: pid,
-        // Project chats don't have an org-level agent handle to
-        // broadcast — the sidebar's standalone-chat view wouldn't key
-        // on a project session anyway.
-        agent_id: None,
-    })
+    Some((
+        ChatPersistCtx {
+            storage,
+            jwt,
+            session_id: resolved.session_id,
+            project_agent_id: pai,
+            project_id: pid,
+            // Project chats don't have an org-level agent handle to
+            // broadcast — the sidebar's standalone-chat view wouldn't key
+            // on a project session anyway.
+            agent_id: None,
+        },
+        resolved.fork,
+    ))
 }
 
 pub(crate) async fn setup_agent_chat_persistence(
@@ -56,7 +61,7 @@ pub(crate) async fn setup_agent_chat_persistence(
     jwt: &str,
     force_new: bool,
     pinned_session_id: Option<&str>,
-) -> Option<ChatPersistCtx> {
+) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = match state.storage_client.as_ref() {
         Some(s) => s.clone(),
         None => {
@@ -78,6 +83,8 @@ pub(crate) async fn setup_agent_chat_persistence(
         force_new,
         &matching,
         pinned_session_id,
+        state.session_service.as_ref(),
+        state.chat_auto_fork_threshold,
     )
     .await
 }
@@ -131,6 +138,7 @@ pub(super) async fn lazy_repair_home_project_binding(
 /// `find_matching_project_agents` once per turn and feeds the result
 /// into both this function and the history loader so we don't double
 /// the network/storage traffic for every CEO message.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn setup_agent_chat_persistence_with_matched(
     storage: &Arc<StorageClient>,
     agent_id: &AgentId,
@@ -138,7 +146,9 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     force_new: bool,
     matching: &[aura_os_storage::StorageProjectAgent],
     pinned_session_id: Option<&str>,
-) -> Option<ChatPersistCtx> {
+    session_service: &aura_os_sessions::SessionService,
+    auto_fork_threshold: f64,
+) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let (pai, pid) = if let Some(pa) = matching.first() {
         let pid = pa.project_id.clone().unwrap_or_default();
         if pid.is_empty() {
@@ -160,17 +170,19 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
         return None;
     };
 
-    let session_id = match resolve_chat_session_with_pin(
+    let resolved = match resolve_chat_session_with_pin(
         storage,
         jwt,
         &pai,
         &pid,
         force_new,
         pinned_session_id,
+        session_service,
+        auto_fork_threshold,
     )
     .await
     {
-        Some(sid) => sid,
+        Some(r) => r,
         None => {
             warn!(
                 %agent_id,
@@ -181,14 +193,17 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             return None;
         }
     };
-    Some(ChatPersistCtx {
-        storage: storage.clone(),
-        jwt: jwt.to_string(),
-        session_id,
-        project_agent_id: pai,
-        project_id: pid,
-        agent_id: Some(agent_id.to_string()),
-    })
+    Some((
+        ChatPersistCtx {
+            storage: storage.clone(),
+            jwt: jwt.to_string(),
+            session_id: resolved.session_id,
+            project_agent_id: pai,
+            project_id: pid,
+            agent_id: Some(agent_id.to_string()),
+        },
+        resolved.fork,
+    ))
 }
 
 pub(super) async fn has_live_session(state: &AppState, key: &str) -> bool {
@@ -305,8 +320,9 @@ mod tests {
         let storage = Arc::new(StorageClient::with_base_url(&url));
         let agent_id = AgentId::new();
 
+        let svc = test_session_service(storage.clone());
         let ctx = setup_agent_chat_persistence_with_matched(
-            &storage, &agent_id, "jwt", false, &[], None,
+            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8,
         )
         .await;
 
@@ -323,7 +339,7 @@ mod tests {
         let (url, _db) = start_mock_storage().await;
         let storage = Arc::new(StorageClient::with_base_url(&url));
         let agent_id = AgentId::new();
-        let project_id = "project-1".to_string();
+        let project_id = aura_os_core::ProjectId::new().to_string();
         let project_agent = StorageProjectAgent {
             id: "pa-1".to_string(),
             project_id: Some(project_id.clone()),
@@ -347,13 +363,16 @@ mod tests {
             updated_at: None,
         };
 
-        let ctx = setup_agent_chat_persistence_with_matched(
+        let svc = test_session_service(storage.clone());
+        let (ctx, fork) = setup_agent_chat_persistence_with_matched(
             &storage,
             &agent_id,
             "jwt",
             false,
             std::slice::from_ref(&project_agent),
             None,
+            &svc,
+            0.8,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -366,5 +385,27 @@ mod tests {
             "session_id must be populated so SessionConfig.aura_session_id passes \
              the Tier-1 chat preflight"
         );
+        assert!(
+            fork.is_none(),
+            "a freshly-created chat session must not surface a fork event"
+        );
+    }
+
+    /// Build a SessionService wired to the same mock storage these
+    /// tests use, mirroring the helper in `persist::pin_tests`. The
+    /// auto-fork branch is a no-op for the active sessions these
+    /// tests create, so the SettingsStore-backed `JwtProvider` never
+    /// needs a real JWT.
+    fn test_session_service(
+        storage: Arc<StorageClient>,
+    ) -> aura_os_sessions::SessionService {
+        let tmp = tempfile::TempDir::new().expect("temp dir for SettingsStore");
+        let store = Arc::new(
+            aura_os_store::SettingsStore::open(tmp.path())
+                .expect("SettingsStore should open in temp dir"),
+        );
+        std::mem::forget(tmp);
+        aura_os_sessions::SessionService::new(store, 0.8, 200_000)
+            .with_storage_client(Some(storage))
     }
 }

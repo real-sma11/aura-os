@@ -4,13 +4,43 @@
 
 use std::sync::Arc;
 
+use aura_os_core::{ProjectId, SessionId};
+use aura_os_sessions::SessionService;
 use aura_os_storage::StorageClient;
 use chrono::Utc;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::dto::ChatAttachmentDto;
 
 use super::discovery::storage_session_sort_key;
+
+/// Carries the previous-vs-new session id pair when
+/// `resolve_chat_session_with_pin` detected a context-pressure
+/// auto-fork (or fell back to the
+/// `context_usage_estimate >= threshold` rule when the persist task's
+/// `rolled_over` flag never landed). Surfaces through the chat
+/// `OpenChatStreamArgs` into `build_sse_stream`, which prepends a
+/// single `progress: forked_for_context` SSE event before the usual
+/// `connecting` / `queued` prefix so the chat panel can swap
+/// `?session=<old>` → `?session=<new>` and show a one-shot soft
+/// banner without the user having to click `+`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForkInfo {
+    pub(crate) previous_session_id: String,
+    pub(crate) new_session_id: String,
+}
+
+/// Output of `resolve_chat_session_with_pin`. The new shape carries
+/// the resolved `session_id` PLUS the optional [`ForkInfo`] that
+/// `build_sse_stream` needs to emit the `progress: forked_for_context`
+/// event. Returning a tuple instead of widening `Option<String>` keeps
+/// the migration mechanical at the call sites and avoids hiding the
+/// fork signal inside an unrelated wrapper.
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedChatSession {
+    pub(crate) session_id: String,
+    pub(crate) fork: Option<ForkInfo>,
+}
 
 #[derive(Clone)]
 pub(crate) struct ChatPersistCtx {
@@ -82,7 +112,58 @@ pub(crate) async fn try_pin_session(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn resolve_chat_session_with_pin(
+    storage: &StorageClient,
+    jwt: &str,
+    project_agent_id: &str,
+    project_id: &str,
+    force_new: bool,
+    pinned_session_id: Option<&str>,
+    session_service: &SessionService,
+    auto_fork_threshold: f64,
+) -> Option<ResolvedChatSession> {
+    let candidate = pick_candidate_session(
+        storage,
+        jwt,
+        project_agent_id,
+        project_id,
+        force_new,
+        pinned_session_id,
+    )
+    .await?;
+    // Phase 3 auto-fork: if the candidate session already crossed the
+    // context-pressure threshold (either because the persist task
+    // flagged it `rolled_over` after the previous turn, or because the
+    // persisted `context_usage_estimate` is past the auto-fork mark),
+    // mint a fresh session here and route the user message into it.
+    // Forking happens NOW (before this user's turn opens) so the
+    // harness session config sees the new `aura_session_id` and the
+    // SSE stream can emit `progress: forked_for_context` to update
+    // `?session=` in the URL.
+    match maybe_auto_fork_chat_session(
+        storage,
+        jwt,
+        project_agent_id,
+        project_id,
+        &candidate,
+        session_service,
+        auto_fork_threshold,
+    )
+    .await
+    {
+        Some(fork) => Some(ResolvedChatSession {
+            session_id: fork.new_session_id.clone(),
+            fork: Some(fork),
+        }),
+        None => Some(ResolvedChatSession {
+            session_id: candidate,
+            fork: None,
+        }),
+    }
+}
+
+async fn pick_candidate_session(
     storage: &StorageClient,
     jwt: &str,
     project_agent_id: &str,
@@ -108,6 +189,148 @@ pub(crate) async fn resolve_chat_session_with_pin(
     }
     close_active_sessions_for_agent(storage, jwt, project_agent_id).await;
     create_new_chat_session(storage, jwt, project_agent_id, project_id).await
+}
+
+/// Inspect the candidate storage session and, if it qualifies for an
+/// auto-fork (status `rolled_over` set by the persist task, or
+/// `context_usage_estimate` past the configured threshold as a
+/// fallback when the summary write failed), mint a fresh session via
+/// [`SessionService::create_chat_followup_session`] carrying the
+/// previous summary forward.
+///
+/// Returns `None` when no fork is needed or when minting the new
+/// session fails — in the latter case the caller falls back to the
+/// candidate so the chat at least lands somewhere instead of erroring
+/// the user out of their conversation.
+async fn maybe_auto_fork_chat_session(
+    storage: &StorageClient,
+    jwt: &str,
+    project_agent_id: &str,
+    project_id: &str,
+    candidate_session_id: &str,
+    session_service: &SessionService,
+    auto_fork_threshold: f64,
+) -> Option<ForkInfo> {
+    let candidate = match storage.get_session(candidate_session_id, jwt).await {
+        Ok(s) => s,
+        Err(error) => {
+            warn!(
+                session_id = %candidate_session_id,
+                %error,
+                "auto-fork check: failed to load candidate session; skipping fork"
+            );
+            return None;
+        }
+    };
+
+    let is_rolled_over = candidate.status.as_deref() == Some("rolled_over");
+    let usage_over_threshold = candidate
+        .context_usage_estimate
+        .map(|usage| usage >= auto_fork_threshold)
+        .unwrap_or(false);
+    if !is_rolled_over && !usage_over_threshold {
+        return None;
+    }
+
+    let parsed_project_id = match project_id.parse::<ProjectId>() {
+        Ok(p) => p,
+        Err(error) => {
+            warn!(
+                %project_id,
+                %error,
+                "auto-fork check: project_id is not a valid UUID; skipping fork"
+            );
+            return None;
+        }
+    };
+    let parsed_session_id = match candidate_session_id.parse::<SessionId>() {
+        Ok(s) => s,
+        Err(error) => {
+            warn!(
+                session_id = %candidate_session_id,
+                %error,
+                "auto-fork check: candidate session id is not a valid UUID; skipping fork"
+            );
+            return None;
+        }
+    };
+
+    let summary = lookup_rollover_summary(storage, jwt, candidate_session_id).await;
+    let summary = if summary.trim().is_empty() {
+        // Fallback path: the persist task failed to write the summary
+        // event (or this is the `usage_over_threshold` branch where the
+        // `rolled_over` flag never landed). Carry forward a static
+        // label so the fresh session at least signals continuity to
+        // the user.
+        "Continued from a long conversation (no summary available).".to_string()
+    } else {
+        summary
+    };
+
+    match session_service
+        .create_chat_followup_session(
+            &parsed_project_id,
+            project_agent_id,
+            &parsed_session_id,
+            summary,
+            candidate.model.clone(),
+        )
+        .await
+    {
+        Ok(new_session_id) => {
+            info!(
+                previous_session_id = %candidate_session_id,
+                new_session_id = %new_session_id,
+                project_agent_id = %project_agent_id,
+                trigger = if is_rolled_over { "rolled_over_flag" } else { "usage_estimate" },
+                "Auto-forked chat session at context pressure"
+            );
+            Some(ForkInfo {
+                previous_session_id: candidate_session_id.to_string(),
+                new_session_id: new_session_id.to_string(),
+            })
+        }
+        Err(error) => {
+            warn!(
+                session_id = %candidate_session_id,
+                %error,
+                "Auto-fork: create_chat_followup_session failed; staying on the candidate session"
+            );
+            None
+        }
+    }
+}
+
+/// Pull the most recent `rollover_summary` event for `session_id` and
+/// extract its `summary` text. Returns the empty string when nothing
+/// usable was found (the caller substitutes a static fallback). The
+/// chat persist task writes one of these events per auto-fork-trigger
+/// turn; reading them here lets the next user send carry the
+/// conversation summary forward without re-running the LLM call.
+async fn lookup_rollover_summary(storage: &StorageClient, jwt: &str, session_id: &str) -> String {
+    let events = match storage.list_events(session_id, jwt, None, None).await {
+        Ok(events) => events,
+        Err(error) => {
+            warn!(
+                %session_id,
+                %error,
+                "auto-fork: list_events failed while looking up rollover_summary"
+            );
+            return String::new();
+        }
+    };
+    events
+        .iter()
+        .rev()
+        .filter(|evt| evt.event_type.as_deref() == Some("rollover_summary"))
+        .find_map(|evt| {
+            evt.content
+                .as_ref()
+                .and_then(|c| c.get("summary"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_default()
 }
 
 async fn existing_session_for_agent(
@@ -315,12 +538,32 @@ mod pin_tests {
     //! tests use the in-memory mock storage so we don't need to pay
     //! the cost of a real backend.
 
+    use std::sync::Arc;
+
+    use aura_os_sessions::SessionService;
     use aura_os_storage::testutil::start_mock_storage;
     use aura_os_storage::{CreateSessionRequest, StorageClient};
 
     use super::{
         resolve_chat_session_with_pin, try_pin_session, PinnedSessionOutcome,
     };
+
+    /// Build a minimal `SessionService` wired to the same mock storage
+    /// the rest of these tests use, so `resolve_chat_session_with_pin`
+    /// can route through the auto-fork check without reaching for a
+    /// real aura-storage backend.
+    fn test_session_service(storage: Arc<StorageClient>) -> SessionService {
+        let tmp = tempfile::TempDir::new().expect("temp dir for SettingsStore");
+        let store = Arc::new(
+            aura_os_store::SettingsStore::open(tmp.path())
+                .expect("SettingsStore should open in temp dir"),
+        );
+        // Leak the temp dir so the SettingsStore stays alive for the
+        // lifetime of the test process; mirrors what `fixture` does for
+        // the storage `_db` handle below.
+        std::mem::forget(tmp);
+        SessionService::new(store, 0.8, 200_000).with_storage_client(Some(storage))
+    }
 
     /// Helper: spin up the mock storage and create one session for
     /// `agent_id` so the tests have a real session id to pin.
@@ -381,18 +624,31 @@ mod pin_tests {
     async fn resolve_with_pin_uses_pinned_id_without_round_trip() {
         // When `pinned_session_id` is `Some`, the resolver trusts the
         // upstream `try_pin_session` validation and returns the pin
-        // verbatim — even if the agent has other sessions.
-        let (storage, _sid) = fixture("agent-d").await;
+        // verbatim — even if the agent has other sessions. With the
+        // Phase 3 auto-fork hook in place the pinned session is still
+        // run through `maybe_auto_fork_chat_session`; the mock storage
+        // returns `status="active"` and a 0.0 usage estimate so the
+        // fork branch is a no-op and the resolved id matches the pin.
+        let (storage, sid) = fixture("agent-d").await;
+        let storage_arc = Arc::new(storage);
+        let svc = test_session_service(storage_arc.clone());
         let result = resolve_chat_session_with_pin(
-            &storage,
+            storage_arc.as_ref(),
             "jwt",
             "agent-d",
             "project-x",
             false,
-            Some("pin-from-url"),
+            Some(&sid),
+            &svc,
+            0.8,
         )
-        .await;
-        assert_eq!(result.as_deref(), Some("pin-from-url"));
+        .await
+        .expect("resolver should yield a session");
+        assert_eq!(result.session_id, sid);
+        assert!(
+            result.fork.is_none(),
+            "pinned session below the threshold must not auto-fork"
+        );
     }
 
     #[tokio::test]
@@ -402,19 +658,27 @@ mod pin_tests {
         // pin is supplied. Otherwise the user would land in the old
         // session because their URL still has `?session=`.
         let (storage, sid) = fixture("agent-e").await;
+        let storage_arc = Arc::new(storage);
+        let svc = test_session_service(storage_arc.clone());
         let result = resolve_chat_session_with_pin(
-            &storage,
+            storage_arc.as_ref(),
             "jwt",
             "agent-e",
             "project-x",
             true,
             Some(&sid),
+            &svc,
+            0.8,
         )
-        .await;
-        let new_sid = result.expect("resolver should create a new session");
+        .await
+        .expect("resolver should create a new session");
         assert_ne!(
-            new_sid, sid,
+            result.session_id, sid,
             "force_new must beat the pin and yield a different session id"
+        );
+        assert!(
+            result.fork.is_none(),
+            "force_new without rollover state must not surface a fork event"
         );
     }
 }

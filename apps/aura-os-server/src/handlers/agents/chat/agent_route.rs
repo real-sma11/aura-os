@@ -27,7 +27,7 @@ use super::instance_route::build_project_system_prompt;
 use super::loaders::{
     load_current_session_events_for_agent_with_matched, load_pinned_session_events_for_agent,
 };
-use super::persist::{try_pin_session, ChatPersistCtx, PinnedSessionOutcome};
+use super::persist::{try_pin_session, ChatPersistCtx, ForkInfo, PinnedSessionOutcome};
 use super::request::slice_recent_agent_events;
 use super::setup::{
     has_live_session, lazy_repair_home_project_binding, live_session_storage_id,
@@ -95,7 +95,7 @@ pub(crate) async fn send_agent_event_stream(
     }
     let live_session = has_live_session(&state, &session_key).await;
 
-    let (persist_ctx, conversation_messages) = load_persistence_and_history(
+    let (persist_ctx, fork_info, conversation_messages) = load_persistence_and_history(
         &state,
         &agent_id,
         &jwt,
@@ -107,6 +107,17 @@ pub(crate) async fn send_agent_event_stream(
 
     log_persistence_status(&agent_id, persist_ctx.is_some());
     log_history_size(&agent_id, conversation_messages.as_deref());
+
+    // Phase 3 auto-fork: if `resolve_chat_session_with_pin` minted a
+    // fresh session because the candidate crossed the context-pressure
+    // threshold, the in-memory ChatSession bound to the OLD storage
+    // session id must be evicted before the harness session opens.
+    // Without eviction, the next turn would reuse the old harness
+    // partition and the fresh `aura_session_id` would never propagate
+    // into outbound `/v1/messages` calls.
+    if fork_info.is_some() {
+        remove_live_session(&state, &session_key).await;
+    }
 
     let project_state_snapshot =
         load_project_state_for_agent(&state, &body, &persist_ctx, &jwt, force_new, live_session)
@@ -194,6 +205,7 @@ pub(crate) async fn send_agent_event_stream(
             persist_ctx,
             attachments: body.attachments,
             commands: body.commands,
+            fork_info,
         },
     )
     .await
@@ -274,7 +286,11 @@ async fn load_persistence_and_history(
     force_new: bool,
     live_session: bool,
     pinned_session_id: Option<&str>,
-) -> (Option<ChatPersistCtx>, Option<Vec<ConversationMessage>>) {
+) -> (
+    Option<ChatPersistCtx>,
+    Option<ForkInfo>,
+    Option<Vec<ConversationMessage>>,
+) {
     // `setup_agent_chat_persistence` and the history loader both need
     // the set of project agents bound to this agent id. Previously
     // each called `find_matching_project_agents` independently, which
@@ -282,7 +298,7 @@ async fn load_persistence_and_history(
     // `list_project_agents` fan-out on every turn. Fetch it once here
     // and thread it into both consumers.
     let Some(ref storage) = state.storage_client else {
-        return (None, None);
+        return (None, None, None);
     };
     let mut matching =
         find_matching_project_agents(state, storage, jwt, &agent_id.to_string()).await;
@@ -309,6 +325,8 @@ async fn load_persistence_and_history(
         force_new,
         &matching,
         pinned_session_id,
+        state.session_service.as_ref(),
+        state.chat_auto_fork_threshold,
     );
     let history_fut = build_history_future(
         storage,
@@ -320,8 +338,12 @@ async fn load_persistence_and_history(
         pinned_session_id,
     );
 
-    let (persist_ctx, conversation_messages) = tokio::join!(persist_fut, history_fut);
-    (persist_ctx, conversation_messages)
+    let (persist_outcome, conversation_messages) = tokio::join!(persist_fut, history_fut);
+    let (persist_ctx, fork_info) = match persist_outcome {
+        Some((ctx, fork)) => (Some(ctx), fork),
+        None => (None, None),
+    };
+    (persist_ctx, fork_info, conversation_messages)
 }
 
 async fn build_history_future(

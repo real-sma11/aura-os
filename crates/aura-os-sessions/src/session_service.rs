@@ -214,6 +214,80 @@ impl SessionService {
         .await
     }
 
+    /// Chat-flavoured rollover used by the auto-fork-on-context-pressure
+    /// path. The chat resolver doesn't have an `AgentInstanceId` (the
+    /// chat surface partitions sessions by `project_agent_id` — the
+    /// project-binding handle aura-storage uses for its
+    /// `/api/project-agents/{id}/sessions` endpoint), so this helper
+    /// closes the previous chat session and mints the next one from
+    /// chat-native identifiers without conflating with the dev-loop
+    /// `rollover_session` API.
+    ///
+    /// Steps:
+    /// 1. PUT the previous session to `status="rolled_over"` with
+    ///    `ended_at=now` so the sidekick stops painting it as active
+    ///    and `latest_context_usage_for_session` snapshots the right
+    ///    row.
+    /// 2. POST a fresh storage session for `project_agent_id` carrying
+    ///    `summary_of_previous_context = summary` so the harness can
+    ///    seed the new turn with the prior conversation summary.
+    /// 3. Return the new session id parsed back into [`SessionId`].
+    ///
+    /// Returns [`SessionError::Parse`] when no `storage_client` is
+    /// configured — chat auto-fork is meaningless without persistence,
+    /// and silently no-op'ing would leave the harness pinned to a
+    /// session storage already considers `rolled_over`.
+    pub async fn create_chat_followup_session(
+        &self,
+        project_id: &ProjectId,
+        project_agent_id: &str,
+        previous_session_id: &SessionId,
+        summary: String,
+        model: Option<String>,
+    ) -> Result<SessionId, SessionError> {
+        let storage = self.storage_client.as_ref().ok_or_else(|| {
+            SessionError::Parse(
+                "create_chat_followup_session requires a configured storage client".into(),
+            )
+        })?;
+        let jwt = self.get_jwt()?;
+
+        let close_req = aura_os_storage::UpdateSessionRequest {
+            status: Some("rolled_over".to_string()),
+            total_input_tokens: None,
+            total_output_tokens: None,
+            context_usage_estimate: None,
+            summary_of_previous_context: None,
+            tasks_worked_count: None,
+            ended_at: Some(Utc::now().to_rfc3339()),
+        };
+        storage
+            .update_session(&previous_session_id.to_string(), &jwt, &close_req)
+            .await?;
+
+        let create_req = aura_os_storage::CreateSessionRequest {
+            project_id: project_id.to_string(),
+            org_id: None,
+            model,
+            status: Some("active".to_string()),
+            context_usage_estimate: Some(0.0),
+            summary_of_previous_context: if summary.trim().is_empty() {
+                None
+            } else {
+                Some(summary)
+            },
+        };
+        let created = storage
+            .create_session(project_agent_id, &jwt, &create_req)
+            .await?;
+        created.id.parse::<SessionId>().map_err(|e| {
+            SessionError::Parse(format!(
+                "storage returned a non-UUID session id `{}`: {e}",
+                created.id
+            ))
+        })
+    }
+
     pub async fn end_session(
         &self,
         project_id: &ProjectId,

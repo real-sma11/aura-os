@@ -57,7 +57,7 @@ pub(super) async fn resolve_persist_ctx(
         let parsed_project = project_id.parse::<ProjectId>().ok();
         let parsed_instance = agent_instance_id.parse::<AgentInstanceId>().ok();
         if let (Some(parsed_project), Some(parsed_instance)) = (parsed_project, parsed_instance) {
-            if let Some(ctx) = setup_project_chat_persistence(
+            if let Some((ctx, _fork)) = setup_project_chat_persistence(
                 state,
                 &parsed_project,
                 &parsed_instance,
@@ -67,6 +67,11 @@ pub(super) async fn resolve_persist_ctx(
             )
             .await
             {
+                // Image-mode persistence does not surface the
+                // Phase 3 auto-fork SSE event — these turns flow
+                // through a separate generation pipeline that
+                // doesn't open a chat SSE stream — so we discard
+                // the `ForkInfo` breadcrumb here.
                 return Some(ctx);
             }
             warn!(
@@ -84,9 +89,12 @@ pub(super) async fn resolve_persist_ctx(
     }
     if let Some(agent_id) = agent_id {
         if let Ok(parsed_agent) = agent_id.parse::<AgentId>() {
-            if let Some(ctx) =
+            if let Some((ctx, _fork)) =
                 setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None).await
             {
+                // See the project-chat branch above: generation
+                // turns don't surface the auto-fork SSE event so
+                // we discard the breadcrumb here.
                 return Some(ctx);
             }
             warn!(

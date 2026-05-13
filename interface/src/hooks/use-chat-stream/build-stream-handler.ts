@@ -175,6 +175,33 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         const stage = event.content.stage;
         if (stage === "lagged") {
           setProgressText("Catching up on stream output…");
+        } else if (stage === "forked_for_context") {
+          // Phase 3 auto-fork: the server transparently rolled this
+          // chat over to a fresh storage session because the prior
+          // one's `context_utilization` crossed
+          // `AURA_CHAT_AUTO_FORK_THRESHOLD`. The payload carries
+          // `previous_session_id` + `new_session_id`; we surface a
+          // one-shot soft banner, swap `?session=` to the new id via
+          // `onSessionReady`, and bump the sessions list so the
+          // sidekick reorders the row to the top. Treated as a
+          // generic Progress payload here (the server emits it as
+          // `EventType.Progress` with `stage="forked_for_context"`)
+          // so the protocol stays backwards-compatible with older
+          // clients that ignore unknown stages.
+          const fork = event.content as {
+            stage: string;
+            previous_session_id?: string;
+            new_session_id?: string;
+            message?: string;
+          };
+          setProgressText(
+            fork.message ?? "Continued from previous chat — context was filling up",
+          );
+          if (fork.new_session_id && fork.new_session_id !== lastNotifiedSessionId) {
+            lastNotifiedSessionId = fork.new_session_id;
+            onSessionReady?.(fork.new_session_id);
+            useSessionsListStore.getState().bumpVersion();
+          }
         } else {
           setProgressText(stage);
         }

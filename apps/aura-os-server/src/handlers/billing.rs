@@ -380,6 +380,7 @@ mod tests {
                 harness_ws_slots: 128,
                 turn_first_event_timeout: std::time::Duration::from_secs(120),
                 turn_max_idle_timeout: std::time::Duration::from_secs(1800),
+                chat_auto_fork_threshold: 0.80,
             },
             store_dir,
         )
