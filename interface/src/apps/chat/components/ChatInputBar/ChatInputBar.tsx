@@ -338,7 +338,9 @@ export const DesktopChatInputBar = memo(
         ? "image"
         : modeBehavior.kind === "generate_3d"
           ? "3d"
-          : "chat";
+          : modeBehavior.kind === "generate_video"
+            ? "video"
+            : "chat";
 
     // 3D mode is a two-step in-bar pipeline (image step → model step,
     // see the `isThreeDMode` block below). Manual file attachments are

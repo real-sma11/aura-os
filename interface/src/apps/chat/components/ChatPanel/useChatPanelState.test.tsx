@@ -108,7 +108,7 @@ vi.mock("../../../../stores/message-queue-store", () => ({
 }));
 
 vi.mock("../../../../constants/commands", () => ({
-  isGenerationCommand: (id: string) => id === "generate_image" || id === "generate_3d",
+  isGenerationCommand: (id: string) => id === "generate_image" || id === "generate_3d" || id === "generate_video",
 }));
 
 describe("useChatPanelState", () => {

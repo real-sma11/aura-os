@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect } from "react";
 import { api } from "../api/client";
-import { generate3dStream, generateImageStream } from "../api/streams";
+import { generate3dStream, generateImageStream, generateVideoStream } from "../api/streams";
 import type { ChatAttachment, StreamEventHandler } from "../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
@@ -321,6 +321,20 @@ export function useAgentChatStream({
             },
             controller.signal,
             projectId,
+          );
+          return;
+        }
+
+        if (_generationMode === "video") {
+          core.setProgressText("Generating video...");
+          await generateVideoStream(
+            {
+              prompt: userMsg.content,
+              model: selectedModel ?? undefined,
+              projectId,
+            },
+            handler,
+            controller.signal,
           );
           return;
         }

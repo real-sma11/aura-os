@@ -142,7 +142,9 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
         ? "image"
         : modeBehavior.kind === "generate_3d"
           ? "3d"
-          : "chat";
+          : modeBehavior.kind === "generate_video"
+            ? "video"
+            : "chat";
     const isLocalAgent = machineType === "local";
     const isThreeDMode = generationMode === "3d";
     const pinnedSourceImage = chatUI.pinnedSourceImage;
