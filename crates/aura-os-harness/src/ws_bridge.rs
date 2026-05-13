@@ -1,3 +1,14 @@
+//! Bridge between the harness WebSocket and the in-process broadcast
+//! channels used by aura-os-server. The broadcast capacity for both
+//! outbound (typed) and raw harness events is controlled by
+//! `AURA_HARNESS_BROADCAST_CAPACITY` (default
+//! [`DEFAULT_BROADCAST_CAPACITY`]). Raising it reduces the chance
+//! that a slow SSE consumer falls behind on tool-heavy turns and
+//! triggers a `broadcast::RecvError::Lagged` — which Phase 1.2 of
+//! the agent-stream reliability plan now surfaces as a
+//! `progress: lagged` SSE hint rather than a terminal error, but is
+//! still preferable to avoid entirely on heavy turns.
+
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
@@ -7,6 +18,27 @@ use aura_protocol::{ErrorMsg, InboundMessage, OutboundMessage};
 
 const WS_COMMAND_BUFFER: usize = 1024;
 const WS_DEBUG_PAYLOAD_LIMIT: usize = 256;
+
+/// Default capacity of the per-bridge broadcast channels that fan a
+/// single upstream WebSocket out to every interested SSE consumer
+/// (live UI stream, `chat_persist_task`, watchdog, etc.). Raised
+/// from 4096 → 16384 in Phase 1.3 of the agent-stream reliability
+/// plan to absorb bursty tool-heavy turns without dropping events.
+/// Override at runtime with `AURA_HARNESS_BROADCAST_CAPACITY`.
+pub const DEFAULT_BROADCAST_CAPACITY: usize = 16384;
+
+/// Env var that overrides [`DEFAULT_BROADCAST_CAPACITY`]. Must parse
+/// to a positive `usize`; any other value (missing, blank, 0, or
+/// non-numeric) falls back to the default.
+pub const BROADCAST_CAPACITY_ENV: &str = "AURA_HARNESS_BROADCAST_CAPACITY";
+
+fn read_broadcast_capacity_from_env() -> usize {
+    std::env::var(BROADCAST_CAPACITY_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_BROADCAST_CAPACITY)
+}
 
 pub(crate) fn spawn_ws_bridge<S>(
     ws_stream: S,
@@ -22,8 +54,9 @@ where
         + 'static,
     <S as futures_util::Sink<WsMessage>>::Error: std::fmt::Display + Send,
 {
-    let (outbound_tx, _) = broadcast::channel::<OutboundMessage>(4096);
-    let (raw_tx, _) = broadcast::channel::<serde_json::Value>(4096);
+    let cap = read_broadcast_capacity_from_env();
+    let (outbound_tx, _) = broadcast::channel::<OutboundMessage>(cap);
+    let (raw_tx, _) = broadcast::channel::<serde_json::Value>(cap);
     let (inbound_tx, inbound_rx) = mpsc::channel::<InboundMessage>(WS_COMMAND_BUFFER);
 
     let (ws_sink, ws_stream_read) = ws_stream.split();

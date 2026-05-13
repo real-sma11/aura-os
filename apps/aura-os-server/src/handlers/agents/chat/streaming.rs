@@ -69,39 +69,38 @@ pub fn harness_broadcast_to_sse(
             }
             // The harness broadcast channel evicted `n` events before we
             // could read them — typically because heavy text-delta + large
-            // tool-result traffic outran the SSE writer. Previously we
-            // silently `continue`d the recv loop, which meant a dropped
-            // terminal `AssistantMessageEnd` would leave the client
-            // waiting until its 90s idle timeout fired and the run
-            // appeared to "just get dropped with no explanation."
+            // tool-result traffic outran the SSE writer.
             //
-            // Now we log, surface a synthetic SSE error event so the UI
-            // can render an explicit banner, and close the stream. The
-            // parallel `chat_persist_task` keeps draining through lag, so
-            // the post-stream history refetch will repaint the full
-            // assistant turn from storage.
+            // Phase 1.2 of the agent-stream reliability plan demotes this
+            // from a terminal SSE `error` (which closed the stream and
+            // showed the user a red banner) to a transient
+            // `progress: lagged` hint. The parallel `chat_persist_task`
+            // already drains through lag, so the post-stream history
+            // refetch will repaint the full assistant turn from storage;
+            // there is no reliability reason to kill the live stream. We
+            // log, emit the synthetic progress event, and keep reading —
+            // termination still happens cleanly on the broadcast's `Closed`
+            // arm below.
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                 warn!(
                     skipped = n,
-                    "harness_broadcast_to_sse: receiver lagged; closing SSE with synthetic error"
+                    "harness_broadcast_to_sse: receiver lagged; emitting progress:lagged and continuing"
                 );
                 let payload = serde_json::json!({
-                    "type": "error",
-                    "message": format!(
-                        "Stream lagged ({n} events skipped). Reloading history…"
-                    ),
-                    "code": "stream_lagged",
-                    "recoverable": true,
+                    "type": "progress",
+                    "stage": "lagged",
+                    "skipped": n,
+                    "message": "Catching up...",
                 });
                 let event = Event::default()
-                    .event("error")
+                    .event("progress")
                     .json_data(&payload)
                     .unwrap_or_else(|_| {
                         Event::default()
-                            .event("error")
-                            .data("{\"type\":\"error\",\"message\":\"Stream lagged\",\"code\":\"stream_lagged\",\"recoverable\":true}")
+                            .event("progress")
+                            .data("{\"type\":\"progress\",\"stage\":\"lagged\"}")
                     });
-                Some((Ok(event), (rx, true)))
+                Some((Ok(event), (rx, false)))
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => None,
         }
@@ -283,7 +282,12 @@ pub(super) async fn open_harness_chat_stream(
     // would drop as soon as `open_harness_chat_stream` returns and a
     // back-to-back send would race the WS writer just like before
     // Phase 3.
-    spawn_turn_watchdog(events_tx, watchdog_rx);
+    spawn_turn_watchdog(
+        events_tx,
+        watchdog_rx,
+        state.turn_first_event_timeout,
+        state.turn_max_idle_timeout,
+    );
     spawn_turn_slot_release(slot_guard, release_rx);
 
     let stream = build_sse_stream(rx, is_new, was_queued);
@@ -860,6 +864,80 @@ mod tests {
             counter.load(Ordering::Acquire),
             0,
             "both guards dropped should leave the counter at zero",
+        );
+    }
+
+    /// Phase 1.2 regression guard: a `broadcast::RecvError::Lagged`
+    /// observed by `harness_broadcast_to_sse` must NOT close the SSE
+    /// stream — it must emit a synthetic `progress: lagged` event and
+    /// keep reading subsequent broadcast events. The previous
+    /// terminal `error: stream_lagged` killed the live turn whenever
+    /// a slow consumer fell behind; now backpressure is a transient
+    /// hint and the assistant turn streams to completion.
+    #[tokio::test]
+    async fn harness_broadcast_to_sse_lagged_emits_progress_and_keeps_streaming() {
+        // Capacity 2: send three text deltas before reading so the
+        // receiver lags by at least one event on its next recv. After
+        // the synthetic progress event, the bridge must forward the
+        // remaining events that survived eviction (e.g. the most
+        // recent text delta and the terminal end).
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(2);
+        tx.send(text_delta("first")).expect("seed first delta");
+        tx.send(text_delta("second")).expect("seed second delta");
+        tx.send(text_delta("third")).expect("seed third delta");
+        tx.send(end_event()).expect("seed end");
+        drop(tx);
+
+        let stream = harness_broadcast_to_sse(rx);
+        tokio::pin!(stream);
+
+        let first = tokio::time::timeout(Duration::from_millis(200), stream.next())
+            .await
+            .expect("lagged progress event in time")
+            .expect("first event")
+            .expect("ok");
+        let first_body = dump(&first);
+        assert!(
+            first_body.contains("event: progress"),
+            "first event must be a progress SSE event, got: {first_body}"
+        );
+        assert!(
+            first_body.contains("lagged"),
+            "first event must carry the lagged stage, got: {first_body}"
+        );
+        assert!(
+            !first_body.contains("event: error"),
+            "lagged path must NOT surface an error SSE event, got: {first_body}"
+        );
+
+        // The stream must NOT terminate after a lagged event. Drain a
+        // few more items and ensure at least one is a forwarded
+        // broadcast event (text_delta with a payload). The end event
+        // terminates the stream cleanly via `should_close=true`.
+        let mut saw_post_lag_forward = false;
+        let mut saw_terminal = false;
+        for _ in 0..3 {
+            let next = match tokio::time::timeout(Duration::from_millis(200), stream.next()).await {
+                Ok(Some(Ok(evt))) => evt,
+                Ok(Some(Err(_))) | Ok(None) => break,
+                Err(_) => break,
+            };
+            let body = dump(&next);
+            if body.contains("event: text_delta") {
+                saw_post_lag_forward = true;
+            }
+            if body.contains("event: assistant_message_end") {
+                saw_terminal = true;
+                break;
+            }
+        }
+        assert!(
+            saw_post_lag_forward,
+            "stream must forward a subsequent text_delta after the lagged progress event"
+        );
+        assert!(
+            saw_terminal,
+            "stream must still reach the terminal assistant_message_end event"
         );
     }
 

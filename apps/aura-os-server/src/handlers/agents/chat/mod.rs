@@ -22,7 +22,7 @@ mod request;
 mod setup;
 mod streaming;
 mod tools;
-mod turn_slot;
+pub(crate) mod turn_slot;
 mod types;
 
 #[cfg(test)]

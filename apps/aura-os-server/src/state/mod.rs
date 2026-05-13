@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::async_trait;
 use axum::extract::FromRequestParts;
@@ -272,6 +272,20 @@ pub struct AppState {
     /// the server's view is still authoritative for error messaging
     /// but the actual upstream limit may stay at the harness default.
     pub harness_ws_slots: usize,
+    /// First-event watchdog window for chat turns. Sourced from
+    /// `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS` at startup (default
+    /// `120s`, see `app_builder::DEFAULT_TURN_FIRST_EVENT_TIMEOUT_SECS`).
+    /// Synthesizes `stream_stalled` only when the harness emits zero
+    /// events inside this window — chosen to comfortably accommodate
+    /// Opus router cold-start + first thinking delta.
+    pub turn_first_event_timeout: Duration,
+    /// Sliding idle ceiling for chat turns. Sourced from
+    /// `AURA_TURN_MAX_TIMEOUT_SECS` at startup (default `1800s`,
+    /// 30 min). Resets on every non-terminal event observed by the
+    /// chat watchdog so a long Opus turn with regular text-deltas or
+    /// tool events never trips, but a truly hung session does after
+    /// the idle window elapses.
+    pub turn_max_idle_timeout: Duration,
 }
 
 impl AppState {

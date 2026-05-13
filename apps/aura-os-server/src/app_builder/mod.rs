@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::{broadcast, Mutex};
 use tracing::{info, warn};
@@ -104,6 +105,69 @@ pub(crate) fn read_harness_ws_slots_from_env() -> usize {
     parse_harness_ws_slots(env_opt(HARNESS_WS_SLOTS_ENV).as_deref())
 }
 
+/// Env var that overrides the chat-turn watchdog first-event
+/// window (`stream_stalled` synth fires only if the harness emits
+/// zero events inside this window).
+pub(crate) const TURN_FIRST_EVENT_TIMEOUT_ENV: &str = "AURA_TURN_FIRST_EVENT_TIMEOUT_SECS";
+
+/// Env var that overrides the chat-turn sliding idle ceiling
+/// (`turn_timeout` synth fires only if the broadcast goes idle for
+/// this long with no terminal event).
+pub(crate) const TURN_MAX_TIMEOUT_ENV: &str = "AURA_TURN_MAX_TIMEOUT_SECS";
+
+/// Mirrors `parse_harness_ws_slots`: parse a positive whole number of
+/// seconds, falling back to `default_secs` on missing / blank /
+/// non-numeric / zero. Zero is treated as a parse failure because a
+/// zero-second watchdog would synthesize timeouts immediately on
+/// every turn, which has no operationally useful meaning.
+pub(crate) fn parse_turn_timeout_secs(raw: Option<&str>, default_secs: u64, env_var: &str) -> u64 {
+    let Some(raw) = raw else {
+        return default_secs;
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return default_secs;
+    }
+    match trimmed.parse::<u64>() {
+        Ok(0) => {
+            warn!(
+                env_var,
+                value = trimmed,
+                default = default_secs,
+                "turn timeout env var set to 0 has no operational meaning; falling back to default"
+            );
+            default_secs
+        }
+        Ok(n) => n,
+        Err(error) => {
+            warn!(
+                env_var,
+                value = trimmed,
+                %error,
+                default = default_secs,
+                "turn timeout env var is not a valid u64 second count; falling back to default"
+            );
+            default_secs
+        }
+    }
+}
+
+pub(crate) fn read_turn_first_event_timeout_from_env() -> Duration {
+    Duration::from_secs(parse_turn_timeout_secs(
+        env_opt(TURN_FIRST_EVENT_TIMEOUT_ENV).as_deref(),
+        crate::handlers::agents::chat::turn_slot::DEFAULT_FIRST_EVENT_TIMEOUT_SECS,
+        TURN_FIRST_EVENT_TIMEOUT_ENV,
+    ))
+}
+
+pub(crate) fn read_turn_max_idle_timeout_from_env() -> Duration {
+    Duration::from_secs(parse_turn_timeout_secs(
+        env_opt(TURN_MAX_TIMEOUT_ENV).as_deref(),
+        crate::handlers::agents::chat::turn_slot::DEFAULT_MAX_IDLE_TIMEOUT_SECS,
+        TURN_MAX_TIMEOUT_ENV,
+    ))
+}
+
 pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
     let data_dir = store_path
         .parent()
@@ -141,6 +205,16 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         harness_ws_slots,
         env_var = HARNESS_WS_SLOTS_ENV,
         "Configured upstream harness WS-slot cap (used for harness_capacity_exhausted operator message and forwarded to autospawned child)"
+    );
+
+    let turn_first_event_timeout = read_turn_first_event_timeout_from_env();
+    let turn_max_idle_timeout = read_turn_max_idle_timeout_from_env();
+    info!(
+        first_event_secs = turn_first_event_timeout.as_secs(),
+        max_idle_secs = turn_max_idle_timeout.as_secs(),
+        first_event_env = TURN_FIRST_EVENT_TIMEOUT_ENV,
+        max_idle_env = TURN_MAX_TIMEOUT_ENV,
+        "Configured chat-turn watchdog timings (first-event window for stream_stalled; sliding idle ceiling for turn_timeout)"
     );
 
     ensure_local_harness_running();
@@ -255,6 +329,8 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         agent_event_listener,
         loop_log,
         harness_ws_slots,
+        turn_first_event_timeout,
+        turn_max_idle_timeout,
     })
 }
 

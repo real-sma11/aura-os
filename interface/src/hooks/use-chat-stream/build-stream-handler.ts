@@ -151,9 +151,15 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           .bumpEstimatedTokens(coreKey, approxTokensFromText(text));
         break;
       }
-      case EventType.Progress:
-        setProgressText(event.content.stage);
+      case EventType.Progress: {
+        const stage = event.content.stage;
+        if (stage === "lagged") {
+          setProgressText("Catching up on stream output…");
+        } else {
+          setProgressText(stage);
+        }
         break;
+      }
       case EventType.ToolCallStarted:
       case EventType.ToolUseStart: {
         const tcs = event.content as { id: string; name: string };

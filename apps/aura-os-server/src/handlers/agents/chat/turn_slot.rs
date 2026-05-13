@@ -33,8 +33,20 @@ use std::time::Duration;
 use aura_os_harness::{ErrorMsg, HarnessOutbound};
 use tokio::sync::{broadcast, Mutex, OwnedMutexGuard};
 
-const FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_TURN_TIMEOUT: Duration = Duration::from_secs(300);
+/// Default first-event timeout when `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS`
+/// is unset or invalid. Raised from the original 30s because Opus
+/// router cold-start + first thinking delta is often >30s; a
+/// premature `stream_stalled` synthesis killed turns that were
+/// otherwise progressing normally upstream.
+pub const DEFAULT_FIRST_EVENT_TIMEOUT_SECS: u64 = 120;
+
+/// Default sliding-idle timeout when `AURA_TURN_MAX_TIMEOUT_SECS`
+/// is unset or invalid. Interpreted as the maximum quiet window
+/// between non-terminal events on the harness broadcast (NOT an
+/// absolute wall-clock cap on the whole turn) — so a long Opus
+/// turn that keeps emitting text-deltas or tool events for 20+
+/// minutes will not synthesize `turn_timeout` mid-stream.
+pub const DEFAULT_MAX_IDLE_TIMEOUT_SECS: u64 = 1800;
 
 /// Maximum simultaneous "in-flight + queued" turns on one partition.
 /// One actively holding the lock plus at most one waiter; a third
@@ -135,18 +147,38 @@ pub(crate) fn spawn_turn_slot_release(
     });
 }
 
+/// Watchdog for a single chat turn.
+///
+/// `first_event_timeout` bounds the cold-start window: if the harness
+/// emits no event at all within this duration, we synthesize a
+/// `stream_stalled` error so the SSE client surfaces a real failure
+/// rather than waiting on its idle timeout.
+///
+/// `max_turn_idle_timeout` is a **sliding** ceiling: it resets every
+/// time a non-terminal event is observed on the broadcast. Only a
+/// genuinely quiet window longer than this duration synthesizes a
+/// `turn_timeout`. A long Opus turn that keeps streaming text-deltas
+/// or tool events will never trip this, but a truly hung session will
+/// after the configured idle window elapses with no traffic.
 pub(crate) fn spawn_turn_watchdog(
     events_tx: broadcast::Sender<HarnessOutbound>,
     events_rx: broadcast::Receiver<HarnessOutbound>,
+    first_event_timeout: Duration,
+    max_turn_idle_timeout: Duration,
 ) {
-    spawn_turn_watchdog_with_timeouts(events_tx, events_rx, FIRST_EVENT_TIMEOUT, MAX_TURN_TIMEOUT);
+    spawn_turn_watchdog_with_timeouts(
+        events_tx,
+        events_rx,
+        first_event_timeout,
+        max_turn_idle_timeout,
+    );
 }
 
 fn spawn_turn_watchdog_with_timeouts(
     events_tx: broadcast::Sender<HarnessOutbound>,
     mut events_rx: broadcast::Receiver<HarnessOutbound>,
     first_event_timeout: Duration,
-    max_turn_timeout: Duration,
+    max_turn_idle_timeout: Duration,
 ) {
     tokio::spawn(async move {
         match tokio::time::timeout(first_event_timeout, events_rx.recv()).await {
@@ -167,27 +199,29 @@ fn spawn_turn_watchdog_with_timeouts(
             }
         }
 
-        let terminal = async {
-            loop {
-                match events_rx.recv().await {
-                    Ok(HarnessOutbound::AssistantMessageEnd(_))
-                    | Ok(HarnessOutbound::Error(_))
-                    | Err(broadcast::error::RecvError::Closed) => break,
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+        // Sliding ceiling: each non-terminal event resets the per-recv
+        // timer. The previous hard `MAX_TURN_TIMEOUT` synthesized a
+        // `turn_timeout` on long but actively-progressing turns; now
+        // only a quiet window longer than `max_turn_idle_timeout`
+        // trips. The Closed arm covers the case where the broadcast
+        // is dropped before any terminal event arrives.
+        loop {
+            match tokio::time::timeout(max_turn_idle_timeout, events_rx.recv()).await {
+                Ok(Ok(HarnessOutbound::AssistantMessageEnd(_)))
+                | Ok(Ok(HarnessOutbound::Error(_)))
+                | Ok(Err(broadcast::error::RecvError::Closed)) => return,
+                Ok(Ok(_)) | Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                Err(_) => {
+                    let _ = events_tx.send(timeout_error(
+                        "turn_timeout",
+                        format!(
+                            "Remote agent turn was idle for more than {}s with no progress event.",
+                            max_turn_idle_timeout.as_secs()
+                        ),
+                    ));
+                    return;
                 }
             }
-        };
-        if tokio::time::timeout(max_turn_timeout, terminal)
-            .await
-            .is_err()
-        {
-            let _ = events_tx.send(timeout_error(
-                "turn_timeout",
-                format!(
-                    "Remote agent turn did not finish within {}s.",
-                    max_turn_timeout.as_secs()
-                ),
-            ));
         }
     });
 }
@@ -431,8 +465,13 @@ mod tests {
         ));
     }
 
+    /// Sliding-idle watchdog: a single non-terminal event lifts the
+    /// watchdog out of `first_event_timeout` into the per-recv idle
+    /// loop. With no further traffic, the idle window must trip the
+    /// `turn_timeout` synth — pinning the behaviour for the
+    /// genuinely-hung case after the Phase-1 sliding rewrite.
     #[tokio::test]
-    async fn turn_watchdog_emits_turn_timeout_after_nonterminal_event() {
+    async fn turn_watchdog_emits_turn_timeout_when_idle_exceeded() {
         let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
         let mut observed = tx.subscribe();
 
@@ -462,5 +501,60 @@ mod tests {
             }
         }
         assert!(saw_timeout, "watchdog must emit turn_timeout");
+    }
+
+    /// Sliding-idle regression guard for Phase 1.1: the watchdog must
+    /// keep the per-recv idle timer ticking against the most recent
+    /// event, not against the wall-clock start of the turn. Periodic
+    /// non-terminal events arriving at `idle / 2` cadence for `idle *
+    /// 3` of wall-clock time must NOT synthesize a `turn_timeout`.
+    #[tokio::test]
+    async fn turn_watchdog_sliding_idle_resets_on_periodic_events() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(64);
+        let mut observed = tx.subscribe();
+
+        let idle = Duration::from_millis(200);
+        let interval = idle / 2;
+        let total = idle * 3;
+
+        spawn_turn_watchdog_with_timeouts(tx.clone(), rx, Duration::from_secs(5), idle);
+
+        // Seed traffic at idle/2 cadence for idle*3 wall-clock seconds.
+        // Each send must arrive on the broadcast inside the watchdog's
+        // current idle window, resetting its timer.
+        let started = std::time::Instant::now();
+        let mut tick = 0usize;
+        while started.elapsed() < total {
+            tx.send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+                text: format!("tick-{tick}"),
+            }))
+            .expect("seed sliding delta");
+            tick += 1;
+            tokio::time::sleep(interval).await;
+        }
+        assert!(
+            tick >= 4,
+            "test must emit enough deltas to outlast a non-sliding window (sent {tick})"
+        );
+
+        // Drain whatever observed picked up. We DO NOT close the
+        // watchdog yet — if the sliding clock was broken, a
+        // `turn_timeout` Error would already be sitting in the
+        // broadcast.
+        loop {
+            match tokio::time::timeout(Duration::from_millis(10), observed.recv()).await {
+                Ok(Ok(event)) => {
+                    assert!(
+                        !matches!(
+                            event,
+                            HarnessOutbound::Error(ErrorMsg { ref code, .. })
+                                if code == "turn_timeout"
+                        ),
+                        "sliding watchdog must not emit turn_timeout while periodic events arrive"
+                    );
+                }
+                Ok(Err(_)) | Err(_) => break,
+            }
+        }
     }
 }
