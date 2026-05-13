@@ -74,6 +74,32 @@ describe("FeedbackCommentsPanel", () => {
     expect(screen.getByText("Nice idea")).toBeInTheDocument();
   });
 
+  it("renders comments newest first regardless of store order", () => {
+    const older: FeedbackComment = {
+      id: "c-older",
+      itemId: "fb-1",
+      author: { name: "Older", type: "user" },
+      text: "First message",
+      createdAt: new Date("2026-04-01T10:00:00Z").toISOString(),
+    };
+    const newer: FeedbackComment = {
+      id: "c-newer",
+      itemId: "fb-1",
+      author: { name: "Newer", type: "user" },
+      text: "Second message",
+      createdAt: new Date("2026-04-02T10:00:00Z").toISOString(),
+    };
+    useFeedbackStore.setState({ selectedId: "fb-1", comments: [older, newer] });
+
+    render(<FeedbackCommentsPanel />);
+
+    const messages = screen.getAllByText(/message/);
+    expect(messages.map((node) => node.textContent)).toEqual([
+      "Second message",
+      "First message",
+    ]);
+  });
+
   it("calls addComment through the store on Enter and clears the draft", () => {
     const addComment = vi.fn();
     useFeedbackStore.setState({ selectedId: "fb-1", addComment });
