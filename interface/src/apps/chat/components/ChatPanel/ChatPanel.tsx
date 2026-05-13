@@ -309,9 +309,13 @@ export function ChatPanel({
   const threadReady = contentReady && !shouldHideThreadForInitialReveal;
 
   useEffect(() => {
-    const isThreadResetAfterMount = hasHandledThreadResetRef.current;
     hasHandledThreadResetRef.current = true;
     initialHandoffReadyRef.current = false;
+    // Re-arm focus on every thread reset (agent switch, session switch,
+    // fresh-canvas reset, create-agent handoff) so the cursor lands in
+    // the chat input automatically. The focus effect below is guarded
+    // on `isMobileLayout` so this won't pop the on-screen keyboard.
+    inputFocusReadyRef.current = false;
     if (revealAnimationFrameRef.current != null) {
       cancelAnimationFrame(revealAnimationFrameRef.current);
       revealAnimationFrameRef.current = null;
@@ -325,18 +329,6 @@ export function ChatPanel({
       return;
     }
 
-    // The create-agent handoff represents an explicit user request
-    // (clicking "+" next to a project, or creating a fresh standalone
-    // agent) to start typing immediately. Bypass the "don't steal
-    // focus when switching chats" latch so the input gets focused
-    // even though focus left the textarea to land on the "+" button
-    // during the click.
-    const isCreateAgentHandoff = initialHandoff === "create-agent";
-    inputFocusReadyRef.current = isCreateAgentHandoff
-      ? false
-      : isThreadResetAfterMount
-        ? !(inputBarRef.current?.isFocused?.() ?? false)
-        : false;
     initialColdLoadRef.current = true;
     hasInitiallyRevealedRef.current = false;
     setIsInitialThreadRevealReady(false);

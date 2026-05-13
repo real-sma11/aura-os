@@ -552,7 +552,10 @@ describe("ChatPanel", () => {
     expect(getInputBar()).toHaveFocus();
   });
 
-  it("does not steal focus when switching desktop chats", () => {
+  it("focuses the input when switching between desktop chats", () => {
+    // Navigating between agents/sessions/projects should drop the
+    // cursor straight into the input so users can start typing without
+    // a manual click. Mirrors ChatGPT-style chat-switch UX.
     mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
 
     const { rerender } = render(
@@ -585,7 +588,7 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(getInputBar()).not.toHaveFocus();
+    expect(getInputBar()).toHaveFocus();
   });
 
   it("focuses the input on a create-agent handoff even when focus left the textarea", () => {
