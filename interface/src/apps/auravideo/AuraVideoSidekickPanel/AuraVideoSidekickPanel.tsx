@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Spinner } from "@cypher-asi/zui";
 import { Film } from "lucide-react";
 import {
@@ -12,11 +12,26 @@ import {
 } from "../../../components/SidekickItemContextMenu";
 import styles from "./AuraVideoSidekickPanel.module.css";
 
-function VideoThumb({ video: _video }: { video: GeneratedVideo }) {
+function VideoThumb({ video }: { video: GeneratedVideo }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed || !video.videoUrl) {
+    return (
+      <div className={styles.thumbIcon}>
+        <Film size={20} />
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.thumbIcon}>
-      <Film size={20} />
-    </div>
+    <video
+      src={`${video.videoUrl}#t=0.5`}
+      className={styles.thumbImage}
+      muted
+      preload="auto"
+      playsInline
+      onError={() => setFailed(true)}
+    />
   );
 }
 
