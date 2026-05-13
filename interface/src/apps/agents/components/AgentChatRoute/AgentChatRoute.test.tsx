@@ -365,6 +365,82 @@ describe("AgentChatRoute", () => {
     expect(next.get("session")).toBe("real-1");
   });
 
+  // Regression: clicking "+" on the agents shell should keep
+  // `AgentChatPanel` mounted on the same `(project, instance)` lane
+  // with `sessionId=null` so the just-armed optimistic "New chat" row
+  // in `useOptimisticSessionRow` survives, the panel's own
+  // `freshCanvasPending` plumbing resets the transcript, and there's
+  // no flicker from a `StandaloneAgentChatPanel` swap. The user-cleared
+  // latch fires when `?session=` flips defined -> null in the same
+  // lane.
+  it("keeps AgentChatPanel mounted on the same lane after `+` clears `?session=` (query mirrors retained)", () => {
+    mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
+    mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s1");
+
+    const { rerender } = render(<AgentChatRoute />);
+
+    let props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("s1");
+
+    // Simulates `useFreshCanvas.dropSessionParam` after `+`: only
+    // `?session=` is removed; `?project=` and `?instance=` stay so
+    // the resolver keeps targeting the same lane.
+    mocks.searchParams = new URLSearchParams("project=p1&instance=i1");
+    rerender(<AgentChatRoute />);
+
+    expect(screen.queryByTestId("standalone-agent-chat-panel")).toBeNull();
+    props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.projectId).toBe("p1");
+    expect(props.agentInstanceId).toBe("i1");
+    expect(props.sessionId).toBeNull();
+  });
+
+  // Defensive fallthrough: even if a caller (or a stale tab) lands the
+  // user on `/agents/:agentId` with no query mirrors at all after
+  // having visited a session in this lane, the resolver should keep
+  // `AgentChatPanel` mounted on the agent's most-recent binding rather
+  // than swapping to `StandaloneAgentChatPanel` (which would yank the
+  // optimistic row via `useOptimisticSessionRow` unmount cleanup).
+  it("falls through to the agent's most-recent binding when `userClearedSession` and no query mirrors are present", () => {
+    mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
+    mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s1");
+    mocks.sessionsState = {
+      sessionsBySurface: {
+        "agent:agent-1": [{ session_id: "s1", _projectId: "p1", _agentInstanceId: "i1" }],
+      },
+    };
+    mocks.projectsState = {
+      projects: [{ project_id: "p1", name: "P1" }],
+      agentsByProject: {
+        p1: [{ agent_instance_id: "i1", agent_id: "agent-1" }],
+      },
+    };
+
+    const { rerender } = render(<AgentChatRoute />);
+
+    let props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.sessionId).toBe("s1");
+
+    // All three URL params dropped (defensive — not what `+` actually
+    // does today, but covers stale tabs / external navigators).
+    mocks.searchParams = new URLSearchParams();
+    rerender(<AgentChatRoute />);
+
+    expect(screen.queryByTestId("standalone-agent-chat-panel")).toBeNull();
+    props = JSON.parse(
+      screen.getByTestId("agent-chat-panel").getAttribute("data-props") ?? "{}",
+    ) as Record<string, unknown>;
+    expect(props.projectId).toBe("p1");
+    expect(props.agentInstanceId).toBe("i1");
+    expect(props.sessionId).toBeNull();
+  });
+
   it("renders a clicked session immediately even while its history is loading", () => {
     mocks.params = { agentId: "agent-1", projectId: undefined, agentInstanceId: undefined };
     mocks.searchParams = new URLSearchParams("project=p1&instance=i1&session=s1");

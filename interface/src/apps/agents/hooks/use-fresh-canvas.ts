@@ -88,24 +88,28 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     }
   }, [sessionId]);
 
-  // Drop the agents-shell URL triple (`?project=&instance=&session=`)
-  // wholesale, not just `?session=`. The default-session redirect at
-  // `/agents/:agentId` (see `useDefaultStandaloneSessionRedirect`)
-  // writes all three so a cold open snaps to the most-recent session;
-  // if a "+" / RotateCcw only cleared `?session=`, the lingering
-  // `?project=&instance=` would still route the resolver back through
-  // `AgentChatPanel` for the legacy binding (e.g. "zero-sdk-10")
-  // instead of falling through to the standalone "Home" canvas. In
-  // the projects route the path itself carries the binding so the
-  // query mirrors are redundant — dropping them there is a safe
-  // no-op.
+  // Drop only `?session=`. The agents-shell `?project=&instance=`
+  // mirrors must stay so `useConversationTarget` keeps resolving to
+  // the same `(projectId, agentInstanceId)` lane and `AgentChatPanel`
+  // stays mounted across the "+" press. If we cleared the triple, the
+  // resolver would flip to `kind: "empty"` and `AgentChatRoute` would
+  // swap us out for `StandaloneAgentChatPanel` — the unmount cleanup
+  // in `useOptimisticSessionRow` would then yank the just-armed
+  // optimistic "New chat" row, and the new panel would re-fetch the
+  // agent's full timeline so the transcript would not appear cleared.
+  //
+  // Trade-off: the picker label still reads the legacy project name
+  // for legacy agents on a fresh canvas (the wire `body.project_id`
+  // is also the legacy id here, since `AgentChatPanel` ships
+  // `llmProjectId={projectId}`). That's the same behaviour we had
+  // before commit f28e2c62a; ship a dedicated agents-shell-aware
+  // picker/wire override on top of `AgentChatPanel` to fix it without
+  // reintroducing the panel-swap regression.
   const dropSessionParam = useCallback(() => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("session");
-        next.delete("project");
-        next.delete("instance");
         return next;
       },
       { replace: true },

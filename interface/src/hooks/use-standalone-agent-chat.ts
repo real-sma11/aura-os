@@ -381,13 +381,6 @@ export function useStandaloneAgentChat(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("session");
-        // Also drop the agents-shell `?project=&instance=` mirrors so
-        // the resolver falls through to the standalone "Home" canvas
-        // instead of re-binding the next render to the legacy
-        // project the default-session redirect wrote in. See the
-        // matching delete in `useFreshCanvas.dropSessionParam`.
-        next.delete("project");
-        next.delete("instance");
         return next;
       },
       { replace: true },
@@ -439,12 +432,6 @@ export function useStandaloneAgentChat(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("session");
-        // See `useFreshCanvas.dropSessionParam` — the agents-shell
-        // URL triple must be cleared together so a fresh canvas
-        // routes through the standalone "Home" panel instead of the
-        // legacy project's `AgentChatPanel`.
-        next.delete("project");
-        next.delete("instance");
         return next;
       },
       { replace: true },

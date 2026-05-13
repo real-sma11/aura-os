@@ -289,13 +289,29 @@ export function useConversationTarget(input: UseConversationTargetInput): Conver
     };
   }
 
-  // 3. Agents shell, user cleared session in this lane: empty (fresh).
+  // 3. Agents shell, user cleared session in this lane: keep the
+  //    same (project, instance) lane mounted with `sessionId=null`
+  //    so the optimistic "New chat" row armed by `+` survives and
+  //    `freshCanvasPending` can take over inside the panel without a
+  //    `AgentChatPanel` -> `StandaloneAgentChatPanel` swap. The query
+  //    mirrors are the primary signal (the default-session redirect
+  //    writes them on cold open); `mostRecentStandalone` is a defensive
+  //    fallback for the case where the user lands on `/agents/:agentId`
+  //    without query params but has a known most-recent binding.
   if (agentId && userClearedSession) {
     if (queryProjectId && queryInstanceId) {
       return {
         kind: "ready",
         projectId: queryProjectId,
         agentInstanceId: queryInstanceId,
+        sessionId: null,
+      };
+    }
+    if (mostRecentStandalone) {
+      return {
+        kind: "ready",
+        projectId: mostRecentStandalone._projectId,
+        agentInstanceId: mostRecentStandalone._agentInstanceId,
         sessionId: null,
       };
     }
