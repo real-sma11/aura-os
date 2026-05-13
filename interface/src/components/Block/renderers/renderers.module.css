@@ -250,10 +250,12 @@
 }
 
 .mediaImage {
+  display: block;
   max-width: 100%;
   max-height: 160px;
   object-fit: contain;
   border: 1px solid var(--color-border);
+  border-radius: 4px;
 }
 
 .mediaCaption {
@@ -273,6 +275,13 @@
   margin-top: 6px;
 }
 
+/* Inline-flex shrink-wrapper around the generated <img>. The wrapper paints
+   the visible 1px frame (border + rounded corners); without `overflow: hidden`
+   the inner image's square corners poke past the wrapper's rounded arcs and
+   visually clip the border at each corner — the "border missing edges of
+   corners" symptom in chat-rendered LLM image outputs. Clipping the wrapper
+   keeps the rounded frame intact regardless of the rendered image's
+   aspect-ratio / pixel content. */
 .generatedImageLink {
   display: inline-flex;
   max-width: min(100%, 520px);
@@ -281,6 +290,7 @@
   padding: 0;
   cursor: zoom-in;
   border-radius: 4px;
+  overflow: hidden;
 }
 
 .generatedImageLink:focus-visible {
@@ -295,6 +305,7 @@
   background: none;
   cursor: zoom-in;
   border-radius: 4px;
+  overflow: hidden;
 }
 
 .mediaImageButton:focus-visible {
