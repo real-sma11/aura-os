@@ -67,6 +67,18 @@ const NAVIGATION_KEYS: ReadonlySet<string> = new Set([
  * snaps. Writing straight to the DOM here keeps a single style write
  * per click and lets the browser see a clean previous → next
  * transform between paints, which is what fires the slide.
+ *
+ * Slide is suppressed for any apply that is NOT a user-driven `value`
+ * change: the initial mount (where the CSS default `translate(0, 0)`
+ * would otherwise visibly slide into the active segment) and every
+ * `ResizeObserver` callback (host-driven layout shifts like the chat
+ * panel's centered → bottom reveal, sidekick resize, scrollbar
+ * appearing, font swap). Those write `transition: none`, set the
+ * geometry, force a reflow to commit, then restore the CSS-cascaded
+ * transition so the next user click still slides. This is what fixes
+ * the "pill jitters for a split moment when switching apps" bug:
+ * remounting `ModeSelector` no longer slides the indicator into place,
+ * and post-mount layout settling no longer re-triggers a slide.
  */
 export function SlidingPills<T extends string>({
   items,
@@ -80,6 +92,13 @@ export function SlidingPills<T extends string>({
   const containerRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const itemRefs = useRef(new Map<T, HTMLButtonElement | null>());
+  // Tracks the `value` that the indicator was last positioned for. A
+  // null sentinel means "nothing has been applied yet" (i.e. initial
+  // mount); a stored value that matches the incoming `value` means
+  // the re-run was driven by `items.length` or a ResizeObserver
+  // callback rather than a user changing modes — neither should
+  // animate.
+  const lastAppliedValueRef = useRef<T | null>(null);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -87,7 +106,10 @@ export function SlidingPills<T extends string>({
     const selectedEl = itemRefs.current.get(value);
     if (!container || !indicator || !selectedEl) return;
 
-    const apply = () => {
+    const apply = (animate: boolean) => {
+      if (!animate) {
+        indicator.style.transition = "none";
+      }
       const containerRect = container.getBoundingClientRect();
       const selectedRect = selectedEl.getBoundingClientRect();
       indicator.style.transform = `translate(${
@@ -96,10 +118,26 @@ export function SlidingPills<T extends string>({
       indicator.style.width = `${selectedRect.width}px`;
       indicator.style.height = `${selectedRect.height}px`;
       indicator.style.opacity = "1";
+      if (!animate) {
+        // Force a style flush so the `transition: none` write is
+        // committed against the new geometry before we restore the
+        // CSS-cascaded transition; otherwise the browser can collapse
+        // both writes into a single change and animate the delta.
+        // `offsetWidth` is a layout-forcing property read (no function
+        // call), so it avoids re-entering any `getBoundingClientRect`
+        // spy that tests may have installed on `Element.prototype`.
+        void indicator.offsetWidth;
+        indicator.style.transition = "";
+      }
     };
-    apply();
 
-    const observer = new ResizeObserver(apply);
+    const isUserDriven =
+      lastAppliedValueRef.current !== null &&
+      lastAppliedValueRef.current !== value;
+    apply(isUserDriven);
+    lastAppliedValueRef.current = value;
+
+    const observer = new ResizeObserver(() => apply(false));
     observer.observe(container);
     return () => observer.disconnect();
   }, [value, items.length]);
