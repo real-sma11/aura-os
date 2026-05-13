@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { create } from "zustand";
 import {
   availableModelsForAdapter,
@@ -54,6 +55,13 @@ interface StreamState {
 
 interface ChatUIState {
   streams: Record<string, StreamState>;
+  /**
+   * In-progress prompt drafts keyed by `streamKey`. Only chats with a
+   * non-empty unsent draft live here — `setDraft(_, "")` removes the
+   * entry so the map naturally bounds itself to "chats the user is
+   * mid-typing in." In-memory only; cleared on app restart.
+   */
+  drafts: Record<string, string>;
 }
 
 interface ChatUIActions {
@@ -105,6 +113,12 @@ interface ChatUIActions {
     image: PinnedSourceImage | null,
   ) => void;
   getPinnedSourceImage: (streamKey: string) => PinnedSourceImage | null;
+  /**
+   * Write (or clear) the in-progress draft for a stream. Empty strings
+   * delete the key so the `drafts` map stays small.
+   */
+  setDraft: (streamKey: string, text: string) => void;
+  getDraft: (streamKey: string) => string;
 }
 
 type ChatUIStore = ChatUIState & ChatUIActions;
@@ -119,6 +133,7 @@ const getStream = (state: ChatUIState, key: string): StreamState =>
 
 export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
   streams: {},
+  drafts: {},
 
   init: (streamKey, adapterType, defaultModel, agentId) => {
     const existing = get().streams[streamKey];
@@ -245,6 +260,21 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
   getPinnedSourceImage: (streamKey) =>
     getStream(get(), streamKey).pinnedSourceImage,
 
+  setDraft: (streamKey, text) => {
+    set((s) => {
+      if (text === "") {
+        if (!(streamKey in s.drafts)) return s;
+        const next = { ...s.drafts };
+        delete next[streamKey];
+        return { drafts: next };
+      }
+      if (s.drafts[streamKey] === text) return s;
+      return { drafts: { ...s.drafts, [streamKey]: text } };
+    });
+  },
+
+  getDraft: (streamKey) => get().drafts[streamKey] ?? "",
+
   syncAvailableModels: (streamKey, adapterType, defaultModel, agentId) => {
     const chatModels = availableModelsForAdapter(adapterType);
     set((s) => {
@@ -339,4 +369,29 @@ export function useChatUI(streamKey: string) {
     init,
     syncAvailableModels,
   };
+}
+
+/**
+ * Drop-in replacement for `useState<string>("")` that backs the input by
+ * the per-`streamKey` slot in `chat-ui-store.drafts`. Persists the
+ * unsent prompt across session/route switches within the same app
+ * session; the entry is removed automatically when the value is set
+ * back to `""` (i.e. after send, or when the user clears the field).
+ */
+export function useChatDraft(
+  streamKey: string,
+): [string, (next: string | ((prev: string) => string)) => void] {
+  const draft = useChatUIStore((s) => s.drafts[streamKey] ?? "");
+  const set = useCallback(
+    (next: string | ((prev: string) => string)) => {
+      const store = useChatUIStore.getState();
+      const value =
+        typeof next === "function"
+          ? next(store.drafts[streamKey] ?? "")
+          : next;
+      store.setDraft(streamKey, value);
+    },
+    [streamKey],
+  );
+  return [draft, set];
 }

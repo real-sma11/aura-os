@@ -27,7 +27,7 @@ vi.mock("../constants/models", () => ({
 }));
 
 function resetStore() {
-  useChatUIStore.setState({ streams: {} });
+  useChatUIStore.setState({ streams: {}, drafts: {} });
 }
 
 describe("chat-ui-store", () => {
@@ -293,6 +293,50 @@ describe("chat-ui-store", () => {
       expect(
         useChatUIStore.getState().getPinnedSourceImage("stream-1"),
       ).toBeNull();
+    });
+  });
+
+  describe("drafts", () => {
+    it("getDraft returns an empty string when no draft has been set", () => {
+      expect(useChatUIStore.getState().getDraft("stream-1")).toBe("");
+    });
+
+    it("setDraft stores a non-empty draft per streamKey", () => {
+      useChatUIStore.getState().setDraft("stream-1", "hello");
+      useChatUIStore.getState().setDraft("stream-2", "world");
+      expect(useChatUIStore.getState().getDraft("stream-1")).toBe("hello");
+      expect(useChatUIStore.getState().getDraft("stream-2")).toBe("world");
+      expect(useChatUIStore.getState().drafts).toEqual({
+        "stream-1": "hello",
+        "stream-2": "world",
+      });
+    });
+
+    it("setDraft removes the entry when the value becomes empty", () => {
+      useChatUIStore.getState().setDraft("stream-1", "draft text");
+      expect(useChatUIStore.getState().drafts).toHaveProperty("stream-1");
+      useChatUIStore.getState().setDraft("stream-1", "");
+      expect(useChatUIStore.getState().drafts).not.toHaveProperty("stream-1");
+    });
+
+    it("setDraft is a no-op when clearing a stream that has no draft", () => {
+      const before = useChatUIStore.getState().drafts;
+      useChatUIStore.getState().setDraft("stream-1", "");
+      expect(useChatUIStore.getState().drafts).toBe(before);
+    });
+
+    it("setDraft skips re-writes when the value is unchanged", () => {
+      useChatUIStore.getState().setDraft("stream-1", "same");
+      const before = useChatUIStore.getState().drafts;
+      useChatUIStore.getState().setDraft("stream-1", "same");
+      expect(useChatUIStore.getState().drafts).toBe(before);
+    });
+
+    it("each streamKey owns its own draft slot", () => {
+      useChatUIStore.getState().setDraft("stream-1", "a");
+      useChatUIStore.getState().setDraft("stream-2", "b");
+      useChatUIStore.getState().setDraft("stream-1", "");
+      expect(useChatUIStore.getState().drafts).toEqual({ "stream-2": "b" });
     });
   });
 });
