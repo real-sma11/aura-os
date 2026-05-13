@@ -258,12 +258,15 @@ export const MessageBubble = memo(function MessageBubble({
   const renderUserBubble =
     isUser && (!hasContentBlocks || nonImageBlocks.length > 0);
   const renderBubble = isUser ? renderUserBubble : true;
+  const isUserImageOnly = isUser && hasUserImages && !renderUserBubble;
 
   return (
     <div
       className={`${styles.message} ${
         isUser ? styles.messageUser : styles.messageAssistant
-      } ${userBlocksAreAllWidgets ? styles.messageUserWidgetOnly : ""}`}
+      } ${userBlocksAreAllWidgets ? styles.messageUserWidgetOnly : ""} ${
+        isUserImageOnly ? styles.messageUserImageOnly : ""
+      }`}
     >
       {hasUserImages && (
         <div className={styles.userImageStrip}>

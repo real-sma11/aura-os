@@ -21,6 +21,15 @@
   width: 100%;
 }
 
+/* When a user message is image-only (no text bubble below the strip), the
+   transcript-level gap is too tight against the assistant's reply,
+   especially when the reply also contains image components. Add bottom
+   margin so the user image and the assistant's first content read as
+   distinct rows rather than a single image stack. */
+.messageUserImageOnly {
+  margin-bottom: var(--space-2);
+}
+
 .messageAssistant {
   align-self: stretch;
   width: 100%;
