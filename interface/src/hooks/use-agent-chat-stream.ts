@@ -213,7 +213,11 @@ export function useAgentChatStream({
               break;
             }
             case EventType.GenerationStart:
-              core.setProgressText(event.content.mode === "image" ? "Generating image..." : "Generating 3D model...");
+              core.setProgressText(
+                event.content.mode === "image" ? "Generating image..." :
+                event.content.mode === "video" ? "Generating video..." :
+                "Generating 3D model...",
+              );
               break;
             case EventType.GenerationProgress:
               core.setProgressText(event.content.message || `${event.content.percent}%`);
@@ -222,7 +226,10 @@ export function useAgentChatStream({
               break;
             case EventType.GenerationCompleted: {
               const gc = event.content;
-              const toolName = gc.mode === "3d" ? "generate_3d_model" : "generate_image";
+              const toolName =
+                gc.mode === "3d" ? "generate_3d_model" :
+                gc.mode === "video" ? "generate_video" :
+                "generate_image";
               const toolId = `gen-${Date.now()}`;
               handleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
               handleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });

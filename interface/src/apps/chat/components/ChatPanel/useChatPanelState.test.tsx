@@ -19,7 +19,7 @@ const mockUseScrollAnchorV2 = scrollAnchorMocks.useScrollAnchorV2;
 const mockEnqueue = vi.fn();
 const mockDequeue = vi.fn();
 const mockChatUI: {
-  selectedMode: "code" | "plan" | "image" | "3d";
+  selectedMode: "code" | "plan" | "image" | "3d" | "video";
   selectedModel: string | null;
   pinnedSourceImage: { imageUrl: string; originalUrl?: string; prompt: string } | null;
   init: ReturnType<typeof vi.fn>;

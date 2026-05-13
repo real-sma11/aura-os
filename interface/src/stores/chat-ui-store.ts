@@ -310,6 +310,16 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           },
         };
       }
+      // Video mode pins to the default video model; same rationale as 3D.
+      if (behavior.kind === "generate_video") {
+        if (current.selectedModel === DEFAULT_VIDEO_MODEL_ID) return s;
+        return {
+          streams: {
+            ...s.streams,
+            [streamKey]: { ...current, selectedModel: DEFAULT_VIDEO_MODEL_ID },
+          },
+        };
+      }
       const persisted = loadPersistedModel(adapterType, defaultModel, agentId);
       // Prefer a per-agent persisted value even when the current model is
       // still technically valid for this adapter. This rescues the cold-

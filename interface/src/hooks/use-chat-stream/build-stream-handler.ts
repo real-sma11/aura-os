@@ -372,7 +372,11 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       case EventType.TokenUsage:
         break;
       case EventType.GenerationStart:
-        setProgressText(event.content.mode === "image" ? "Generating image..." : "Generating 3D model...");
+        setProgressText(
+          event.content.mode === "image" ? "Generating image..." :
+          event.content.mode === "video" ? "Generating video..." :
+          "Generating 3D model...",
+        );
         break;
       case EventType.GenerationProgress:
         setProgressText(event.content.message || `${event.content.percent}%`);
