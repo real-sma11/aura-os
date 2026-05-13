@@ -208,7 +208,7 @@ export function ChatMessageList({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: density === "mobile" ? 6 : 2,
+            gap: density === "mobile" ? 6 : 8,
             flexShrink: 0,
           }}
         >
