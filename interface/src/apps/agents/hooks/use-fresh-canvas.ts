@@ -88,11 +88,24 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     }
   }, [sessionId]);
 
+  // Drop the agents-shell URL triple (`?project=&instance=&session=`)
+  // wholesale, not just `?session=`. The default-session redirect at
+  // `/agents/:agentId` (see `useDefaultStandaloneSessionRedirect`)
+  // writes all three so a cold open snaps to the most-recent session;
+  // if a "+" / RotateCcw only cleared `?session=`, the lingering
+  // `?project=&instance=` would still route the resolver back through
+  // `AgentChatPanel` for the legacy binding (e.g. "zero-sdk-10")
+  // instead of falling through to the standalone "Home" canvas. In
+  // the projects route the path itself carries the binding so the
+  // query mirrors are redundant — dropping them there is a safe
+  // no-op.
   const dropSessionParam = useCallback(() => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         next.delete("session");
+        next.delete("project");
+        next.delete("instance");
         return next;
       },
       { replace: true },
