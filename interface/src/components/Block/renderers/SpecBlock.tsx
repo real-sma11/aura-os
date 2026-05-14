@@ -33,12 +33,12 @@ export function SpecBlock({ entry, defaultExpanded }: SpecBlockProps) {
       forceExpanded={entry.pending}
       autoScroll={entry.pending}
       flushBody
-    >
-      {showCopyToolbar ? (
-        <div className={styles.blockBodyToolbar}>
+      trailing={
+        showCopyToolbar ? (
           <CopyButton getText={() => content} ariaLabel={`Copy ${filename}`} />
-        </div>
-      ) : null}
+        ) : undefined
+      }
+    >
       <div className={styles.codeArea}>
         <pre>
           <code
