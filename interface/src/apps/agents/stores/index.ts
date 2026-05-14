@@ -10,7 +10,6 @@ export {
   useFavoriteAgents,
   useResolvedAgentOrder,
   normalizeAgentOrder,
-  applyPartialReorder,
 } from "./agent-selectors";
 export type { AgentOrderSurface } from "./agent-selectors";
 export { LAST_AGENT_ID_KEY, getLastSelectedAgentId } from "./last-selected-agent";
