@@ -97,21 +97,41 @@ fn is_powershell_shell(shell: &str) -> bool {
 
 /// Args to pass to PowerShell on spawn.
 ///
-/// Beyond `-NoLogo` (suppress the startup banner), we install a
-/// `Clear-Host` override that emits the standard VT reset sequences:
+/// Beyond `-NoLogo` (suppress the startup banner), the `-Command`
+/// payload installs two compatibility fixes for running PowerShell over
+/// a `portable_pty` ConPTY pipe into xterm.js:
+///
+/// **1. `Clear-Host` override.** Emits the standard VT reset
+/// sequences directly:
 ///
 ///  * `ESC[H`  — cursor home
 ///  * `ESC[2J` — erase visible viewport
 ///  * `ESC[3J` — erase saved lines (xterm.js scrollback)
 ///
-/// Why: Windows PowerShell 5.1's built-in `Clear-Host` calls
+/// Windows PowerShell 5.1's built-in `Clear-Host` calls
 /// `[Console]::Clear()`, which routes through Win32 console APIs.
-/// Over a `portable_pty` ConPTY pipe to xterm.js the translation is
-/// imperfect (the visible viewport isn't always fully wiped) and, more
-/// importantly, no `ESC[3J` is ever emitted, so the 100k-line xterm.js
-/// scrollback survives — leaving old output sitting one scroll-up away
-/// from a "cleared" screen. Emitting the sequences directly fixes both
-/// issues, and works identically on PowerShell 7 (`pwsh.exe`).
+/// Over ConPTY the translation is imperfect (the visible viewport
+/// isn't always fully wiped) and never emits `ESC[3J`, so the
+/// 100k-line xterm.js scrollback survives — leaving old output one
+/// scroll-up away from a "cleared" screen.
+///
+/// **2. PSReadLine compatibility.** Disables `PredictionSource` and
+/// `BellStyle`. PSReadLine's inline prediction (greyed-out completion
+/// at the end of the line) emits a mix of cursor-save / selective-erase
+/// / cursor-restore VT sequences on every keystroke. When navigating
+/// history with Up/Down those redraws don't clean up cleanly in
+/// xterm.js — fragments of previous predictions and longer history
+/// entries remain on screen on top of the current line, especially
+/// after the line has wrapped. Turning prediction off sidesteps the
+/// entire problematic redraw path while keeping core line editing.
+/// Bell is disabled to avoid the audible/visual ping on every Tab.
+///
+/// The PSReadLine block is wrapped in nested `try/catch` because:
+/// - The module may not be installed (rare).
+/// - PSReadLine 2.0 (the default on Windows PowerShell 5.1) doesn't
+///   know about `-PredictionSource`. Unknown parameters are
+///   *terminating* errors that `-ErrorAction SilentlyContinue` does
+///   not suppress, so each option is tried independently.
 ///
 /// `[char]27` is used instead of the `` `e `` escape literal because the
 /// latter only exists in PowerShell 6+ and would be a syntax error on
@@ -123,7 +143,12 @@ pub(crate) fn powershell_args() -> Vec<&'static str> {
         "-NoExit",
         "-Command",
         "function global:Clear-Host { \
-         [Console]::Out.Write([char]27 + '[H' + [char]27 + '[2J' + [char]27 + '[3J') }",
+         [Console]::Out.Write([char]27 + '[H' + [char]27 + '[2J' + [char]27 + '[3J') }; \
+         try { \
+         Import-Module PSReadLine -ErrorAction Stop; \
+         try { Set-PSReadLineOption -PredictionSource None } catch {}; \
+         try { Set-PSReadLineOption -BellStyle None } catch {} \
+         } catch {}",
     ]
 }
 
@@ -407,6 +432,38 @@ mod tests {
                 "init script missing VT sequence {seq}: {init}"
             );
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_args_disable_psreadline_prediction() {
+        let args = powershell_args();
+        let cmd_idx = args
+            .iter()
+            .position(|a| *a == "-Command")
+            .expect("-Command flag missing");
+        let init = args
+            .get(cmd_idx + 1)
+            .expect("-Command must be followed by a script");
+        assert!(
+            init.contains("Import-Module PSReadLine"),
+            "init script must load PSReadLine: {init}"
+        );
+        assert!(
+            init.contains("Set-PSReadLineOption -PredictionSource None"),
+            "init script must disable PSReadLine prediction to avoid history-nav rendering artifacts: {init}"
+        );
+        // Each Set-PSReadLineOption call must be wrapped in its own
+        // try/catch because PSReadLine 2.0 (PS 5.1's default) doesn't
+        // recognize -PredictionSource and would crash the init.
+        let predict_pos = init
+            .find("Set-PSReadLineOption -PredictionSource None")
+            .expect("expected PredictionSource line");
+        let prefix = &init[..predict_pos];
+        assert!(
+            prefix.trim_end().ends_with("try {"),
+            "PredictionSource call must be wrapped in its own try/catch: {init}"
+        );
     }
 
     #[test]
