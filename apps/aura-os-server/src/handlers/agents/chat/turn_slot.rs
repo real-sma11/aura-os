@@ -38,19 +38,108 @@ use tokio::sync::{broadcast, Mutex, OwnedMutexGuard};
 use crate::stability_metrics::StabilityMetrics;
 
 /// Default first-event timeout when `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS`
-/// is unset or invalid. Raised from the original 30s because Opus
-/// router cold-start + first thinking delta is often >30s; a
-/// premature `stream_stalled` synthesis killed turns that were
-/// otherwise progressing normally upstream.
-pub const DEFAULT_FIRST_EVENT_TIMEOUT_SECS: u64 = 120;
+/// is unset or invalid.
+///
+/// Phase 3 of the agent-stuck-and-reset plan tightened this from
+/// `120s` -> `90s` so the server-side cold-start window matches the
+/// client SSE idle timeout (`IDLE_TIMEOUT_MS = 90_000` in
+/// `interface/src/shared/api/sse.ts`). Past 90s the browser was going
+/// to disconnect the SSE stream anyway; holding the server watchdog
+/// for an extra 30s past that just left the user staring at a frozen
+/// "cooking" indicator with no actionable error. Opus router
+/// cold-start + first thinking delta normally completes well inside
+/// this window; the rare run that doesn't surfaces a `stream_stalled`
+/// the client can act on instead of timing out silently.
+pub const DEFAULT_FIRST_EVENT_TIMEOUT_SECS: u64 = 90;
 
 /// Default sliding-idle timeout when `AURA_TURN_MAX_TIMEOUT_SECS`
-/// is unset or invalid. Interpreted as the maximum quiet window
-/// between non-terminal events on the harness broadcast (NOT an
-/// absolute wall-clock cap on the whole turn) — so a long Opus
-/// turn that keeps emitting text-deltas or tool events for 20+
-/// minutes will not synthesize `turn_timeout` mid-stream.
-pub const DEFAULT_MAX_IDLE_TIMEOUT_SECS: u64 = 1800;
+/// is unset or invalid.
+///
+/// Interpreted as the maximum quiet window between non-terminal
+/// events on the harness broadcast (NOT an absolute wall-clock cap
+/// on the whole turn) — so a long turn that keeps emitting
+/// text-deltas, thinking, tool calls, or progress heartbeats never
+/// trips this watchdog mid-stream.
+///
+/// Phase 3 dropped this from `1800s` (30 min) -> `180s` (3 min) so a
+/// genuinely hung turn surfaces in minutes instead of half an hour.
+/// Long-running tool calls — the previous justification for the 30
+/// min ceiling — are kept under this idle window by the harness-side
+/// tool heartbeat (Phase 6: `progress { stage: "tool_running", … }`
+/// every [`DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS`]). Power users with
+/// pathological tool latency can still raise the ceiling via
+/// `AURA_TURN_MAX_TIMEOUT_SECS`.
+pub const DEFAULT_MAX_IDLE_TIMEOUT_SECS: u64 = 180;
+
+/// Default tool-heartbeat cadence when
+/// `AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS` is unset or invalid.
+///
+/// During a long-running tool call the harness is expected to emit
+/// a `progress { stage: "tool_running", elapsed_ms, … }` event at
+/// least this often so the server-side sliding-idle watchdog (driven
+/// by [`DEFAULT_MAX_IDLE_TIMEOUT_SECS`]) keeps resetting and a real
+/// hang is the only thing that can trip `turn_timeout`.
+///
+/// Phase 3 reserves this knob as a passive observability hook only:
+/// the watchdog does NOT consume it yet — Phase 6 will wire harness
+/// emission against it. Exposing the env override here lets ops tune
+/// the cadence ahead of the harness change without a server rebuild.
+pub const DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS: u64 = 20;
+
+// Phase 3 exposes the tool-heartbeat knob ahead of the consumer in
+// Phase 6 (harness-side emission). The constants and accessor below
+// are deliberately unused at the call-site level until that phase
+// lands; the `#[allow(dead_code)]` attributes keep `cargo clippy
+// -D warnings` clean without losing the documented type signatures
+// the harness will plug into.
+
+/// Env var that overrides [`DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS`].
+/// Clamped to `[1, 600]`s on read; out-of-range or unparsable values
+/// fall back to the default.
+#[allow(dead_code)]
+const TOOL_HEARTBEAT_INTERVAL_ENV: &str = "AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS";
+
+/// Lower bound on the tool-heartbeat cadence. A cadence of zero would
+/// degenerate into a hot loop and a cadence of milliseconds would
+/// drown the broadcast in heartbeat noise; one second is the smallest
+/// operationally useful value.
+#[allow(dead_code)]
+const MIN_TOOL_HEARTBEAT_INTERVAL_SECS: u64 = 1;
+
+/// Upper bound on the tool-heartbeat cadence. Ten minutes between
+/// heartbeats already exceeds the default `turn_timeout` ceiling
+/// ([`DEFAULT_MAX_IDLE_TIMEOUT_SECS`]) and would defeat the purpose
+/// of the heartbeat. Values past this are clamped down so a typo can't
+/// silently disable the heartbeat.
+#[allow(dead_code)]
+const MAX_TOOL_HEARTBEAT_INTERVAL_SECS: u64 = 600;
+
+#[allow(dead_code)]
+fn read_tool_heartbeat_interval_from_env() -> Duration {
+    let secs = match std::env::var(TOOL_HEARTBEAT_INTERVAL_ENV) {
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(parsed) => parsed.clamp(
+                MIN_TOOL_HEARTBEAT_INTERVAL_SECS,
+                MAX_TOOL_HEARTBEAT_INTERVAL_SECS,
+            ),
+            Err(_) => DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS,
+        },
+        Err(_) => DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS,
+    };
+    Duration::from_secs(secs)
+}
+
+/// Tool-heartbeat cadence resolved from
+/// `AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS` (default
+/// [`DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS`]). Clamped to
+/// `[1, 600]`s; out-of-range or unparsable values fall back to the
+/// default. Phase 3 only exposes this knob; Phase 6 will wire harness
+/// emission against it.
+#[allow(dead_code)] // wired up by Phase 6 (harness-side heartbeat emission)
+pub fn tool_heartbeat_interval() -> Duration {
+    static CACHED: OnceLock<Duration> = OnceLock::new();
+    *CACHED.get_or_init(read_tool_heartbeat_interval_from_env)
+}
 
 /// Default partition turn queue size when `AURA_PARTITION_TURN_QUEUE`
 /// is unset or out of range. One actively holding the lock plus at
@@ -285,12 +374,25 @@ fn spawn_turn_watchdog_with_timeouts(
     });
 }
 
+/// Synthesize a watchdog-issued `HarnessOutbound::Error` event with
+/// a stamped `support_id` (Phase 3 of agent-stuck-and-reset).
+///
+/// The synthesized message is suffixed with `(support_id=<id>)` and
+/// the same id is emitted on a structured tracing record by
+/// [`super::errors::stamp_support_id`], so a user pasting the id
+/// back into feedback joins straight to the server log line that
+/// recorded the synthesis. `code` is one of the stable identifiers
+/// (`stream_stalled`, `turn_timeout`) the client classifier already
+/// knows. Recoverable from the user's perspective — they can retry
+/// the same prompt — so the helper logs at `warn!` not `error!`.
 fn timeout_error(code: &str, message: String) -> HarnessOutbound {
-    HarnessOutbound::Error(ErrorMsg {
+    let mut err = ErrorMsg {
         code: code.to_string(),
         message,
         recoverable: true,
-    })
+    };
+    let _ = super::errors::stamp_support_id(&mut err, code);
+    HarnessOutbound::Error(err)
 }
 
 #[cfg(test)]
@@ -789,5 +891,105 @@ mod tests {
                 Ok(Err(_)) | Err(_) => break,
             }
         }
+    }
+
+    /// Phase 3: every server-synthesized SSE-bound `ErrorMsg` carries
+    /// a `support_id=<id>` suffix. Drives the same first-event
+    /// timeout as `turn_watchdog_emits_stream_stalled_when_no_first_event_arrives`
+    /// then asserts the suffix is present on the synthesized message
+    /// and the canonical machine code (`stream_stalled`) is preserved.
+    #[tokio::test]
+    async fn turn_watchdog_stamps_support_id_in_stream_stalled_message() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        let mut observed = tx.subscribe();
+
+        spawn_turn_watchdog_with_timeouts(
+            tx,
+            rx,
+            Duration::from_millis(10),
+            Duration::from_secs(1),
+            None,
+        );
+
+        let event = tokio::time::timeout(Duration::from_millis(200), observed.recv())
+            .await
+            .expect("watchdog event timed out")
+            .expect("watchdog broadcast");
+        let err = match event {
+            HarnessOutbound::Error(err) => err,
+            other => panic!("expected Error event, got {other:?}"),
+        };
+        assert_eq!(
+            err.code, "stream_stalled",
+            "stable machine code must remain `stream_stalled`"
+        );
+        assert!(
+            err.message.contains("(support_id="),
+            "synthesized stream_stalled message must carry a support_id suffix, got: {}",
+            err.message
+        );
+        assert!(
+            err.recoverable,
+            "stream_stalled is recoverable from the user's perspective"
+        );
+    }
+
+    /// Phase 3 (continued): the sliding-idle synthesis also stamps a
+    /// support_id, so a user who sees a `turn_timeout` can paste the
+    /// id back into feedback. Exercises the same idle-exceeded path
+    /// as `turn_watchdog_emits_turn_timeout_when_idle_exceeded`.
+    #[tokio::test]
+    async fn turn_watchdog_stamps_support_id_in_turn_timeout_message() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        let mut observed = tx.subscribe();
+
+        spawn_turn_watchdog_with_timeouts(
+            tx.clone(),
+            rx,
+            Duration::from_secs(1),
+            Duration::from_millis(10),
+            None,
+        );
+        tx.send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+            text: "working".to_string(),
+        }))
+        .expect("seed nonterminal event");
+
+        let mut stamped = None;
+        for _ in 0..2 {
+            let event = tokio::time::timeout(Duration::from_millis(200), observed.recv())
+                .await
+                .expect("watchdog event timed out")
+                .expect("watchdog broadcast");
+            if let HarnessOutbound::Error(err) = event {
+                if err.code == "turn_timeout" {
+                    stamped = Some(err);
+                    break;
+                }
+            }
+        }
+        let err = stamped.expect("watchdog must emit turn_timeout");
+        assert!(
+            err.message.contains("(support_id="),
+            "synthesized turn_timeout message must carry a support_id suffix, got: {}",
+            err.message
+        );
+    }
+
+    /// Phase 3: `tool_heartbeat_interval` reads the env-driven knob
+    /// once, falls back to [`DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS`]
+    /// when the env is unset, and clamps the value to
+    /// `[MIN_TOOL_HEARTBEAT_INTERVAL_SECS, MAX_TOOL_HEARTBEAT_INTERVAL_SECS]`.
+    /// The test process never sets the override, so the public
+    /// accessor must observe exactly the documented default.
+    #[tokio::test]
+    async fn tool_heartbeat_interval_defaults_when_env_unset() {
+        use super::{tool_heartbeat_interval, DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS};
+        assert_eq!(
+            tool_heartbeat_interval(),
+            Duration::from_secs(DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS),
+            "tool_heartbeat_interval must default to DEFAULT_TOOL_HEARTBEAT_INTERVAL_SECS \
+             without an env override"
+        );
     }
 }

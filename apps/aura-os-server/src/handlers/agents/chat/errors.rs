@@ -9,6 +9,55 @@ use tracing::warn;
 
 use crate::error::ApiError;
 
+/// Generate a short, user-friendly support ID stamped onto every
+/// SSE-bound `ErrorMsg` so users can paste it back in feedback and
+/// support can join their report to server logs immediately.
+///
+/// 12 lowercase hex chars (~48 bits of entropy) is plenty for
+/// support-bundle disambiguation without leaking PII or asking users
+/// to copy a 32-char UUID. Sourced from a v4 UUID — `uuid` is already
+/// a workspace dependency, so no new crate is pulled in.
+pub(crate) fn fresh_support_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+}
+
+/// Stamp `err` in place with a fresh `support_id` and a stable
+/// machine-readable `code`. The id is appended to the human-readable
+/// message as `(support_id=<id>)` because the `aura_os_harness::ErrorMsg`
+/// wire type does not yet carry a first-class `support_id` field —
+/// Phase 6 will promote it. Returns the stamped id so the caller can
+/// re-emit it on its own log line if it has additional context to
+/// attach (agent_id, session_id, project_id, …).
+///
+/// Also emits a single structured tracing record:
+/// - `tracing::warn!` for `recoverable: true` (user can retry, e.g.
+///   `stream_stalled` / `turn_timeout`).
+/// - `tracing::error!` for non-recoverable errors that terminated
+///   the turn from the server's perspective.
+pub(crate) fn stamp_support_id(err: &mut ErrorMsg, code: &str) -> String {
+    let id = fresh_support_id();
+    err.code = code.to_string();
+    err.message = format!("{} (support_id={id})", err.message);
+    if err.recoverable {
+        tracing::warn!(
+            support_id = %id,
+            code = %err.code,
+            recoverable = err.recoverable,
+            message = %err.message,
+            "SSE-bound harness error stamped with support_id"
+        );
+    } else {
+        tracing::error!(
+            support_id = %id,
+            code = %err.code,
+            recoverable = err.recoverable,
+            message = %err.message,
+            "SSE-bound harness error stamped with support_id"
+        );
+    }
+    id
+}
+
 /// Wire-level error code emitted by aura-harness when a new
 /// `UserMessage` arrives on an agent that already has a turn in flight.
 const HARNESS_TURN_IN_PROGRESS_CODE: &str = "turn_in_progress";
@@ -65,27 +114,43 @@ pub(crate) fn remap_harness_error_to_api(err: &ErrorMsg) -> Option<(StatusCode, 
 }
 
 /// In-stream variant of [`remap_harness_error_to_api`]. Returns a
-/// cleaned [`ErrorMsg`] with the canonical `agent_busy` code and
-/// the same user-visible wording the structured API path uses,
-/// preserving the upstream `recoverable` flag. Returns `None` for
-/// any other error so callers pass the original event through
-/// unchanged.
+/// cleaned [`ErrorMsg`] suitable for forwarding to the SSE wire,
+/// with two responsibilities:
 ///
-/// Used by the chat SSE forwarder to swap out a mid-stream
-/// `HarnessOutbound::Error { code: "turn_in_progress", … }` (which
-/// happens when a `UserMessage` races an in-flight turn on the
-/// same partition — e.g. fast double-click on send) for a
-/// structured `agent_busy` error event before closing the stream,
-/// so the UI never sees the raw harness wording.
-pub(super) fn remap_harness_error_to_sse(err: &ErrorMsg) -> Option<ErrorMsg> {
-    if !is_turn_in_progress(err) {
-        return None;
-    }
-    Some(ErrorMsg {
-        code: "agent_busy".to_string(),
-        message: AGENT_BUSY_CONCURRENT_TURN_MESSAGE.to_string(),
+/// 1. **Code/message normalization.** Turn-in-progress errors are
+///    rewritten to the canonical `agent_busy` code + the same
+///    user-visible wording the structured API path uses, so the UI
+///    never has to string-match raw upstream wording. Other error
+///    codes pass through unchanged (preserving the upstream
+///    `recoverable` flag in both cases).
+/// 2. **Support-ID stamping.** Phase 3 of the agent-stuck-and-reset
+///    plan: every error that hits the SSE wire carries a short
+///    `support_id` appended to its message as `(support_id=<id>)`,
+///    and a structured tracing record (`warn!` / `error!`) is
+///    emitted with the same id so user-reported support_ids join
+///    cleanly to server logs. The `aura_os_harness::ErrorMsg` wire
+///    type does not yet carry a first-class field — Phase 6 will
+///    promote it.
+///
+/// Always returns `Some(_)` since every SSE-bound error must carry a
+/// support_id. Returning a fresh `ErrorMsg` (rather than mutating in
+/// place) keeps the caller's match expression cheap to read.
+pub(super) fn remap_harness_error_to_sse(err: &ErrorMsg) -> ErrorMsg {
+    let (code, message) = if is_turn_in_progress(err) {
+        (
+            "agent_busy".to_string(),
+            AGENT_BUSY_CONCURRENT_TURN_MESSAGE.to_string(),
+        )
+    } else {
+        (err.code.clone(), err.message.clone())
+    };
+    let mut new_err = ErrorMsg {
+        code: code.clone(),
+        message,
         recoverable: err.recoverable,
-    })
+    };
+    let _ = stamp_support_id(&mut new_err, &code);
+    new_err
 }
 
 pub(super) fn map_session_bridge_start_error(
@@ -239,10 +304,18 @@ mod tests {
     fn remap_harness_error_to_sse_matches_canonical_code() {
         let mut original = err("turn_in_progress", "anything");
         original.recoverable = true;
-        let mapped = remap_harness_error_to_sse(&original)
-            .expect("turn_in_progress code should remap to agent_busy");
+        let mapped = remap_harness_error_to_sse(&original);
         assert_eq!(mapped.code, "agent_busy");
-        assert_eq!(mapped.message, AGENT_BUSY_CONCURRENT_TURN_MESSAGE);
+        assert!(
+            mapped.message.starts_with(AGENT_BUSY_CONCURRENT_TURN_MESSAGE),
+            "remapped message must keep the canonical wording prefix, got: {}",
+            mapped.message
+        );
+        assert!(
+            mapped.message.contains("(support_id="),
+            "remapped message must carry a support_id suffix, got: {}",
+            mapped.message
+        );
         assert!(
             mapped.recoverable,
             "recoverable flag from upstream must be preserved"
@@ -254,15 +327,59 @@ mod tests {
         let mapped = remap_harness_error_to_sse(&err(
             "internal_error",
             "A turn is currently in progress; send cancel first",
-        ))
-        .expect("legacy raw message should remap to agent_busy");
+        ));
         assert_eq!(mapped.code, "agent_busy");
-        assert_eq!(mapped.message, AGENT_BUSY_CONCURRENT_TURN_MESSAGE);
+        assert!(
+            mapped
+                .message
+                .starts_with(AGENT_BUSY_CONCURRENT_TURN_MESSAGE),
+            "legacy-message remap must still produce the canonical wording, got: {}",
+            mapped.message
+        );
+        assert!(
+            mapped.message.contains("(support_id="),
+            "legacy-message remap must still stamp a support_id, got: {}",
+            mapped.message
+        );
     }
 
+    /// Phase 3: every SSE-bound `ErrorMsg` carries a support_id, even
+    /// the unrelated upstream errors that previously passed through
+    /// untouched. The original `code` and human-readable message are
+    /// preserved (only suffixed with `(support_id=…)`), so existing
+    /// classifier branches in the client still match.
     #[test]
-    fn remap_harness_error_to_sse_passes_through_unrelated_errors() {
-        assert!(remap_harness_error_to_sse(&err("something_else", "boom")).is_none());
+    fn remap_harness_error_to_sse_stamps_unrelated_errors_with_support_id() {
+        let original = err("something_else", "boom");
+        let mapped = remap_harness_error_to_sse(&original);
+        assert_eq!(
+            mapped.code, "something_else",
+            "non-busy errors must keep their upstream code"
+        );
+        assert!(
+            mapped.message.starts_with("boom"),
+            "non-busy errors must keep their upstream message text, got: {}",
+            mapped.message
+        );
+        assert!(
+            mapped.message.contains("(support_id="),
+            "every SSE-bound error must carry a support_id suffix, got: {}",
+            mapped.message
+        );
+    }
+
+    /// Phase 3: the stamped support_id must be 12 lowercase hex chars
+    /// — short enough to be user-friendly for "paste this id into
+    /// feedback" but with enough entropy to disambiguate concurrent
+    /// failures in support bundles.
+    #[test]
+    fn fresh_support_id_is_12_lowercase_hex_chars() {
+        let id = fresh_support_id();
+        assert_eq!(id.len(), 12, "support_id must be 12 chars, got: {id}");
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            "support_id must be lowercase hex only, got: {id}"
+        );
     }
 
     #[test]

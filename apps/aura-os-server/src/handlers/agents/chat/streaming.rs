@@ -62,18 +62,22 @@ pub fn harness_broadcast_to_sse(
                     evt,
                     HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
                 );
-                // Intercept the harness "turn already in progress"
-                // error mid-stream and surface it as the structured
-                // `agent_busy` SSE event so the UI never has to
-                // string-match the raw upstream wording. The error
-                // still closes the SSE stream — the `should_close`
-                // flag above already covers `Error(_)` regardless of
-                // remap outcome.
-                let normalized = match &evt {
-                    HarnessOutbound::Error(err) => remap_harness_error_to_sse(err)
-                        .map(HarnessOutbound::Error)
-                        .unwrap_or(evt),
-                    _ => evt,
+                // Phase 3 of agent-stuck-and-reset: every SSE-bound
+                // error goes through `remap_harness_error_to_sse`,
+                // which (a) intercepts the harness "turn already in
+                // progress" error mid-stream and rewrites it to the
+                // structured `agent_busy` code, and (b) stamps every
+                // forwarded error — busy or not — with a fresh
+                // `support_id=<id>` suffix so users can paste the id
+                // back into feedback and support can grep server
+                // logs immediately. The error still closes the SSE
+                // stream — `should_close` above already covers
+                // `Error(_)` regardless of remap outcome.
+                let normalized = match evt {
+                    HarnessOutbound::Error(err) => {
+                        HarnessOutbound::Error(remap_harness_error_to_sse(&err))
+                    }
+                    other => other,
                 };
                 let event = super::super::super::sse::harness_event_to_sse(&normalized);
                 Some((event, (rx, should_close, metrics)))
