@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect } from "react";
+import type { MutableRefObject } from "react";
 import { api } from "../../api/client";
 import { generate3dStream, generateImageStream } from "../../api/streams";
 import { useSidekickStore } from "../../stores/sidekick-store";
@@ -16,19 +17,21 @@ import {
   handleStreamError,
   getIsStreaming,
 } from "../use-stream-core";
+import { ensureEntry, createSetters } from "../stream/store";
 import { buildUserChatMessage } from "../attachment-helpers";
 import { buildStreamHandler } from "./build-stream-handler";
+import {
+  getPartitionSendControl,
+  type LastSendArgs,
+} from "./partition-send-control";
 
-type UseChatStreamSendMessage = (
-  content: string,
-  action?: string | null,
-  selectedModel?: string | null,
-  attachments?: ChatAttachment[],
-  commands?: string[],
-  projectIdOverride?: string,
-  generationMode?: GenerationMode,
-  sourceImageUrl?: string,
-) => Promise<void>;
+// Phase 2 auto-retry plumbing. When a chat turn dies mid-stream
+// because the harness WS dropped (or the SSE idle watchdog fires),
+// we silently re-issue the last user message on a fresh harness
+// session — the harness rebuilds context from `aura_session_id` in
+// storage. Bounded to `MAX_AUTO_RETRIES` to avoid hammering a
+// genuinely-down upstream.
+const MAX_AUTO_RETRIES = 2;
 
 interface UseChatStreamOptions {
   projectId: string | undefined;
@@ -54,6 +57,16 @@ interface UseChatStreamOptions {
   onSessionReady?: (sessionId: string) => void;
 }
 
+/** Captured partition-of-record. The send and any auto-retry replay
+ *  fired by it always write to THIS partition's slot, even if the
+ *  hook's `core.key` has since changed because the panel swapped
+ *  agents. */
+interface CapturedPartition {
+  key: string;
+  projectId: string;
+  instanceId: string;
+}
+
 export function useChatStream({
   projectId,
   agentInstanceId,
@@ -68,10 +81,6 @@ export function useChatStream({
   useEffect(() => { projectCtxRef.current = projectCtx; }, [projectCtx]);
 
   const core = useStreamCore([projectId, agentInstanceId]);
-  const { refs, setters, abortRef } = core;
-  const pendingSpecIdsRef = useRef<string[]>([]);
-  const pendingTaskIdsRef = useRef<string[]>([]);
-  const nextSendStartsNewSessionRef = useRef(false);
   // `sessionId` and `onSessionReady` change whenever the URL
   // `?session=` flips. Reading them via refs in `sendMessage` keeps
   // the callback identity stable so the chat input bar's
@@ -80,48 +89,20 @@ export function useChatStream({
   useEffect(() => { sessionIdRef.current = sessionId ?? null; }, [sessionId]);
   const onSessionReadyRef = useRef(onSessionReady);
   useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
-  // See `use-agent-chat-stream.ts`: synchronous latch covering the gap
-  // between `sendMessage` invocation and the moment `setIsStreaming(true)`
-  // propagates through Zustand. Without it two clicks (or a click + queue
-  // dequeue replay) landing in the same microtask both pass the
-  // `getIsStreaming` read and proceed to issue parallel POSTs.
-  const inFlightRef = useRef(false);
 
-  // Phase 2 auto-retry plumbing. When a chat turn dies mid-stream
-  // because the harness WS dropped (or the SSE idle watchdog fires),
-  // we silently re-issue the last user message on a fresh harness
-  // session — the harness rebuilds context from `aura_session_id` in
-  // storage. Bounded to `MAX_AUTO_RETRIES` to avoid hammering a
-  // genuinely-down upstream.
-  const MAX_AUTO_RETRIES = 2;
-  interface LastSendArgs {
-    content: string;
-    action: string | null;
-    selectedModel?: string | null;
-    attachments?: ChatAttachment[];
-    commands?: string[];
-    projectIdOverride?: string;
-    generationMode?: GenerationMode;
-    sourceImageUrl?: string;
-  }
-  const lastSendArgsRef = useRef<LastSendArgs | null>(null);
-  const autoRetryCountRef = useRef(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Flipped to `true` for the single sendMessage invocation scheduled
-  // by the auto-retry timer. Lets the entry-point distinguish a
-  // retry from a brand-new user send (which should reset the budget).
-  const inAutoRetryRef = useRef(false);
-  // sendMessage is defined below; ref-indirection so the auto-retry
-  // callback can call the current `sendMessage` without re-binding
-  // the dependency list of every memoized child that holds the
-  // callback identity.
-  const sendMessageRef = useRef<UseChatStreamSendMessage | null>(null);
+  // Track the partition key this hook is currently bound to so the
+  // unmount cleanup can hygienically clear THIS hook's last partition's
+  // pending retry timer (the partition entry itself stays intact in the
+  // partition-send-control map; only the dangling timer is killed).
+  const currentKeyRef = useRef(core.key);
+  useEffect(() => { currentKeyRef.current = core.key; }, [core.key]);
 
   useEffect(
     () => () => {
-      if (retryTimerRef.current != null) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
+      const ctrl = getPartitionSendControl(currentKeyRef.current);
+      if (ctrl.retryTimer != null) {
+        clearTimeout(ctrl.retryTimer);
+        ctrl.retryTimer = null;
       }
     },
     [],
@@ -133,35 +114,51 @@ export function useChatStream({
     }
   }, [projectId, agentInstanceId, core.key]);
 
-  const sendMessage = useCallback(
-    async (
-      content: string,
-      action: string | null = null,
-      selectedModel?: string | null,
-      attachments?: ChatAttachment[],
-      commands?: string[],
-      _projectIdOverride?: string,
-      _generationMode?: GenerationMode,
-      _sourceImageUrl?: string,
-    ) => {
-      if (!projectId || !agentInstanceId || inFlightRef.current || getIsStreaming(core.key)) return;
+  /**
+   * Core send routine. Always writes to the OWNING partition's slot
+   * (specified by `captured`) regardless of which partition the panel
+   * is currently rendering. Both the user-facing `sendMessage` and the
+   * auto-retry timer route through here so a transient SSE drop on
+   * agent A recovers cleanly even after the panel has switched to
+   * agent B.
+   */
+  const performSend = useCallback(
+    async (args: LastSendArgs, captured: CapturedPartition) => {
+      const { key: capturedKey, projectId: capturedProjectId, instanceId: capturedInstanceId } = captured;
 
-      // A user-initiated send (not the auto-retry timer firing)
-      // resets the Phase 2 retry budget. Otherwise a user that
-      // exhausted the budget once would never get a retry on their
-      // next message even after a clean break.
-      const isAutoRetry = inAutoRetryRef.current;
-      inAutoRetryRef.current = false;
+      const partitionMeta = ensureEntry(capturedKey);
+      const partitionRefs = partitionMeta.refs;
+      const partitionSetters = createSetters(capturedKey);
+      const ctrl = getPartitionSendControl(capturedKey);
+
+      // Per-partition entry latch. The synchronous `inFlight` flip
+      // covers the gap between this call and the moment
+      // `setIsStreaming(true)` propagates through Zustand: two clicks
+      // (or a click + queue-dequeue replay) landing in the same
+      // microtask both pass the `getIsStreaming` read and would
+      // otherwise issue parallel POSTs. Per-partition keying is what
+      // makes parallel chats work — agent A's in-flight latch never
+      // blocks agent B's send.
+      if (ctrl.inFlight || getIsStreaming(capturedKey)) return;
+
+      // A user-initiated send (not the auto-retry timer firing) resets
+      // the Phase 2 retry budget. Otherwise a user that exhausted the
+      // budget once would never get a retry on their next message
+      // even after a clean break.
+      const isAutoRetry = ctrl.inAutoRetry;
+      ctrl.inAutoRetry = false;
       if (!isAutoRetry) {
-        autoRetryCountRef.current = 0;
+        ctrl.autoRetryCount = 0;
       }
 
-      // Capture every successful entry to `sendMessage` so the Phase 2
-      // auto-retry path can re-issue the exact same call after a
-      // transient WS drop. We snapshot BEFORE the empty-content guard
-      // because the retry needs the original payload regardless of
-      // whether the user typed text vs. relied on attachments.
-      lastSendArgsRef.current = {
+      // Capture every successful entry so the Phase 2 auto-retry path
+      // can re-issue the exact same call after a transient WS drop.
+      // Snapshot BEFORE the empty-content guard because the retry
+      // needs the original payload regardless of whether the user
+      // typed text vs. relied on attachments.
+      ctrl.lastSendArgs = args;
+
+      const {
         content,
         action,
         selectedModel,
@@ -170,7 +167,9 @@ export function useChatStream({
         projectIdOverride: _projectIdOverride,
         generationMode: _generationMode,
         sourceImageUrl: _sourceImageUrl,
-      };
+      } = args;
+      void _projectIdOverride;
+
       const trimmed = content.trim();
       // 3D model step (`generationMode === "3d"` with a pinned source image)
       // dispatches without text or attachments — the source image is the
@@ -185,7 +184,7 @@ export function useChatStream({
       )
         return;
 
-      inFlightRef.current = true;
+      ctrl.inFlight = true;
 
       const userMsg = buildUserChatMessage(
         trimmed,
@@ -201,33 +200,52 @@ export function useChatStream({
       // — so re-appending it here would duplicate the question. The
       // partial assistant buffer was already discarded in `tryAutoRetry`.
       if (!isAutoRetry) {
-        core.setEvents((prev) => [...prev, userMsg]);
+        partitionSetters.setEvents((prev) => [...prev, userMsg]);
       }
-      core.setIsStreaming(true);
-      sidekickRef.current.setAgentStreaming(agentInstanceId, true);
-      resetStreamBuffers(refs, setters);
-      pendingSpecIdsRef.current = [];
-      pendingTaskIdsRef.current = [];
+      partitionSetters.setIsStreaming(true);
+      sidekickRef.current.setAgentStreaming(capturedInstanceId, true);
+      resetStreamBuffers(partitionRefs, partitionSetters);
+      ctrl.pendingSpecIds = [];
+      ctrl.pendingTaskIds = [];
 
       if (action === "generate_specs") {
         sidekickRef.current.clearGeneratedArtifacts();
         sidekickRef.current.setActiveTab("specs");
       }
 
-      abortRef.current?.abort();
+      // Abort any prior in-flight controller on THIS partition. Cross-
+      // partition controllers stay untouched so agent A keeps streaming
+      // when the user fires a fresh send on agent B.
+      ctrl.currentController?.abort();
       const controller = new AbortController();
-      abortRef.current = controller;
+      ctrl.currentController = controller;
+
+      // Shim refs around partition-keyed mutable state so existing
+      // handlers (`buildStreamHandler`, `pushPendingSpec`, ...) that
+      // expect `MutableRefObject<T>` keep working unchanged.
+      const partitionAbortRef: MutableRefObject<AbortController | null> = {
+        get current() { return ctrl.currentController; },
+        set current(v: AbortController | null) { ctrl.currentController = v; },
+      };
+      const pendingSpecIdsShim: MutableRefObject<string[]> = {
+        get current() { return ctrl.pendingSpecIds; },
+        set current(v: string[]) { ctrl.pendingSpecIds = v; },
+      };
+      const pendingTaskIdsShim: MutableRefObject<string[]> = {
+        get current() { return ctrl.pendingTaskIds; },
+        set current(v: string[]) { ctrl.pendingTaskIds = v; },
+      };
 
       const tryAutoRetry = (error: unknown): boolean => {
         // Never auto-retry if the user explicitly aborted the turn
         // (Stop button) — that controller is the same one we'd
         // re-attach to, so respect their intent.
         if (controller.signal.aborted) return false;
-        if (abortRef.current?.signal.aborted) return false;
-        if (autoRetryCountRef.current >= MAX_AUTO_RETRIES) return false;
-        const args = lastSendArgsRef.current;
-        if (!args) return false;
-        autoRetryCountRef.current += 1;
+        if (ctrl.currentController?.signal.aborted) return false;
+        if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
+        const replayArgs = ctrl.lastSendArgs;
+        if (!replayArgs) return false;
+        ctrl.autoRetryCount += 1;
         // Phase 5 wiring: emit the auto-retry breadcrumb BEFORE
         // scheduling the timer so a future telemetry handler observes
         // the close + retry sequence on the same tick the original
@@ -241,57 +259,58 @@ export function useChatStream({
           message: errorMessage,
           auto_retry: true,
         });
-        const delayMs = 1000 * autoRetryCountRef.current;
+        const delayMs = 1000 * ctrl.autoRetryCount;
         // Discard any partial assistant state from the dropped turn
         // so the retry produces a clean assistant bubble. The user's
         // own message remains on screen because it's already in
         // `events` and the retry skips re-appending it.
-        resetStreamBuffers(refs, setters);
+        resetStreamBuffers(partitionRefs, partitionSetters);
         // Swap the would-be error bubble for a transient "Reconnecting"
         // banner. The next send will rehydrate from session history
         // (the harness picks up by `aura_session_id`).
-        core.setProgressText("Reconnecting…");
+        partitionSetters.setProgressText("Reconnecting…");
         // We can't fire the resend synchronously because the current
-        // `sendMessage` call is still on the stack and `inFlightRef` /
+        // call is still on the stack and `inFlight` /
         // `setIsStreaming(true)` will fight a re-entrant invocation.
         // Defer past the surrounding `finally` so the latch is clear
-        // by the time the retry runs.
-        if (retryTimerRef.current != null) clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = setTimeout(() => {
-          retryTimerRef.current = null;
-          const send = sendMessageRef.current;
-          if (!send) return;
-          inAutoRetryRef.current = true;
-          void send(
-            args.content,
-            args.action,
-            args.selectedModel,
-            args.attachments,
-            args.commands,
-            args.projectIdOverride,
-            args.generationMode,
-            args.sourceImageUrl,
-          );
+        // by the time the retry runs. The replay always uses the
+        // captured-partition path so it lands on the originating
+        // partition's slot even if the panel has since switched to a
+        // different agent.
+        if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
+        ctrl.retryTimer = setTimeout(() => {
+          ctrl.retryTimer = null;
+          ctrl.inAutoRetry = true;
+          void performSendRef.current?.(replayArgs, captured);
         }, delayMs);
         return true;
       };
 
       const handler = buildStreamHandler({
-        projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey: core.key,
-        setProgressText: core.setProgressText, sidekickRef, projectCtxRef,
-        pendingSpecIdsRef, pendingTaskIdsRef,
+        projectId: capturedProjectId,
+        agentInstanceId: capturedInstanceId,
+        selectedModel,
+        refs: partitionRefs,
+        setters: partitionSetters,
+        abortRef: partitionAbortRef,
+        coreKey: capturedKey,
+        setProgressText: partitionSetters.setProgressText,
+        sidekickRef,
+        projectCtxRef,
+        pendingSpecIdsRef: pendingSpecIdsShim,
+        pendingTaskIdsRef: pendingTaskIdsShim,
         onSessionReady: (id) => onSessionReadyRef.current?.(id),
         onAssistantTurnCompleted: () => {
-          autoRetryCountRef.current = 0;
+          ctrl.autoRetryCount = 0;
         },
         onMaybeAutoRetry: tryAutoRetry,
       });
 
       try {
-        const shouldStartNewSession = nextSendStartsNewSessionRef.current;
-        nextSendStartsNewSessionRef.current = false;
+        const shouldStartNewSession = ctrl.nextSendStartsNewSession;
+        ctrl.nextSendStartsNewSession = false;
         if (_generationMode === "image") {
-          core.setProgressText("Generating image...");
+          partitionSetters.setProgressText("Generating image...");
           // Forward project + agent-instance ids so the server can
           // resolve the project chat session and persist this turn
           // into history — without it the synthesized `generate_image`
@@ -302,7 +321,7 @@ export function useChatStream({
             attachments,
             handler,
             controller.signal,
-            { projectId, agentInstanceId },
+            { projectId: capturedProjectId, agentInstanceId: capturedInstanceId },
           );
           return;
         }
@@ -320,7 +339,7 @@ export function useChatStream({
           // image slice in `chat-ui-store` (NOT from chat history).
           if (!_sourceImageUrl) {
             const styledPrompt = `${userMsg.content}${STYLE_LOCK_SUFFIX}`;
-            core.setProgressText("Generating image...");
+            partitionSetters.setProgressText("Generating image...");
             await generateImageStream(
               styledPrompt,
               DEFAULT_IMAGE_MODEL_ID,
@@ -334,7 +353,7 @@ export function useChatStream({
                     event.content.mode === "image" &&
                     event.content.imageUrl
                   ) {
-                    useChatUIStore.getState().setPinnedSourceImage(core.key, {
+                    useChatUIStore.getState().setPinnedSourceImage(capturedKey, {
                       imageUrl: event.content.imageUrl,
                       originalUrl: event.content.originalUrl,
                       // Persist the user's verbatim prompt (without the
@@ -346,11 +365,11 @@ export function useChatStream({
                 },
               },
               controller.signal,
-              { projectId, agentInstanceId },
+              { projectId: capturedProjectId, agentInstanceId: capturedInstanceId },
             );
             return;
           }
-          core.setProgressText("Generating 3D model...");
+          partitionSetters.setProgressText("Generating 3D model...");
           await generate3dStream(
             { kind: "url", imageUrl: _sourceImageUrl },
             trimmed || null,
@@ -363,12 +382,12 @@ export function useChatStream({
                   event.content.mode === "3d" &&
                   event.content.glbUrl
                 ) {
-                  useChatUIStore.getState().setPinnedSourceImage(core.key, null);
+                  useChatUIStore.getState().setPinnedSourceImage(capturedKey, null);
                 }
               },
             },
             controller.signal,
-            projectId,
+            capturedProjectId,
           );
           return;
         }
@@ -377,10 +396,10 @@ export function useChatStream({
         // On an auto-retry call, surface the attempt number to the
         // server so it can bump `client_auto_retry_streamdropped`.
         // First sends pass `undefined` so no header is set.
-        const clientRetryAttempt = isAutoRetry ? autoRetryCountRef.current : undefined;
+        const clientRetryAttempt = isAutoRetry ? ctrl.autoRetryCount : undefined;
         await api.sendEventStream(
-          projectId,
-          agentInstanceId,
+          capturedProjectId,
+          capturedInstanceId,
           userMsg.content,
           action,
           modelForTurn,
@@ -394,45 +413,84 @@ export function useChatStream({
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        handleStreamError(refs, setters, err);
+        handleStreamError(partitionRefs, partitionSetters, err);
       } finally {
-        if (abortRef.current === controller) {
-          core.setIsStreaming(false);
-          sidekickRef.current.setAgentStreaming(agentInstanceId, false);
+        // Partition-scoped finalization sentinel. The legacy
+        // `abortRef.current === controller` gate re-read
+        // `streamMetaMap[currentKey]`, so after a panel swap the
+        // gate failed and `setIsStreaming(false)` / sidekick spinner
+        // cleanup never fired on the originating partition. The
+        // captured `ctrl.currentController` is per-partition, so the
+        // gate now correctly recognizes "this is still my turn"
+        // regardless of which partition the panel is rendering.
+        if (ctrl.currentController === controller) {
+          partitionSetters.setIsStreaming(false);
+          sidekickRef.current.setAgentStreaming(capturedInstanceId, false);
           controller.abort();
-          abortRef.current = null;
+          ctrl.currentController = null;
         }
         // Whatever path we took out (success, error, abort), drop any
         // placeholders that were never promoted. Safe because successful
-        // promotions have already removed themselves from these refs.
-        for (const id of pendingSpecIdsRef.current) {
+        // promotions have already removed themselves from these arrays.
+        for (const id of ctrl.pendingSpecIds) {
           sidekickRef.current.removeSpec(id);
         }
-        pendingSpecIdsRef.current = [];
-        for (const id of pendingTaskIdsRef.current) {
+        ctrl.pendingSpecIds = [];
+        for (const id of ctrl.pendingTaskIds) {
           sidekickRef.current.removeTask(id);
         }
-        pendingTaskIdsRef.current = [];
-        inFlightRef.current = false;
+        ctrl.pendingTaskIds = [];
+        ctrl.inFlight = false;
       }
     },
-    [projectId, agentInstanceId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
+    [],
   );
 
-  // Mirror the live `sendMessage` identity into a ref so the
-  // auto-retry timer (scheduled below) can call the current closure
-  // without re-rendering every memoized child whenever the callback
-  // identity changes.
-  useEffect(() => {
-    sendMessageRef.current = sendMessage;
-  }, [sendMessage]);
+  // Mirror the live `performSend` identity into a ref so the
+  // auto-retry timer can call the current closure even though
+  // `tryAutoRetry` was scheduled from an older invocation.
+  const performSendRef = useRef(performSend);
+  useEffect(() => { performSendRef.current = performSend; }, [performSend]);
+
+  const sendMessage = useCallback(
+    async (
+      content: string,
+      action: string | null = null,
+      selectedModel?: string | null,
+      attachments?: ChatAttachment[],
+      commands?: string[],
+      _projectIdOverride?: string,
+      _generationMode?: GenerationMode,
+      _sourceImageUrl?: string,
+    ) => {
+      if (!projectId || !agentInstanceId) return;
+      const args: LastSendArgs = {
+        content,
+        action,
+        selectedModel,
+        attachments,
+        commands,
+        projectIdOverride: _projectIdOverride,
+        generationMode: _generationMode,
+        sourceImageUrl: _sourceImageUrl,
+      };
+      const captured: CapturedPartition = {
+        key: core.key,
+        projectId,
+        instanceId: agentInstanceId,
+      };
+      await performSend(args, captured);
+    },
+    [projectId, agentInstanceId, core.key, performSend],
+  );
 
   const stopStreaming = useCallback(() => {
-    if (retryTimerRef.current != null) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
+    const ctrl = getPartitionSendControl(core.key);
+    if (ctrl.retryTimer != null) {
+      clearTimeout(ctrl.retryTimer);
+      ctrl.retryTimer = null;
     }
-    autoRetryCountRef.current = 0;
+    ctrl.autoRetryCount = 0;
     core.baseStopStreaming();
     if (agentInstanceId) {
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -446,23 +504,24 @@ export function useChatStream({
       setTimeout(refetch, 2000);
       setTimeout(refetch, 5000);
     }
-  }, [projectId, agentInstanceId, core.baseStopStreaming]);
+  }, [projectId, agentInstanceId, core.key, core.baseStopStreaming]);
 
   // Stable callback identity so callers do not need to wrap it in a
-  // `useRef` mirror. The ref it mutates is local and per-hook-instance,
+  // `useRef` mirror. The control state it mutates is partition-keyed,
   // so the closure can be reused across renders without churning props
   // on memoized children.
   const markNextSendAsNewSession = useCallback(() => {
-    nextSendStartsNewSessionRef.current = true;
+    const ctrl = getPartitionSendControl(core.key);
+    ctrl.nextSendStartsNewSession = true;
     // New chat means a fresh auto-retry budget for any future
     // transient WS drop on the new session.
-    autoRetryCountRef.current = 0;
-    lastSendArgsRef.current = null;
-    if (retryTimerRef.current != null) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
+    ctrl.autoRetryCount = 0;
+    ctrl.lastSendArgs = null;
+    if (ctrl.retryTimer != null) {
+      clearTimeout(ctrl.retryTimer);
+      ctrl.retryTimer = null;
     }
-  }, []);
+  }, [core.key]);
 
   return {
     streamKey: core.key,

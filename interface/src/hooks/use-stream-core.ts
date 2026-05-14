@@ -102,17 +102,32 @@ export function useStreamCore(resetDeps: unknown[]): StreamCoreResult {
 
   useLayoutEffect(() => {
     return () => {
-      if (meta.refs.flushTimeout.current !== null) {
-        clearTimeout(meta.refs.flushTimeout.current);
-        meta.refs.flushTimeout.current = null;
-      }
-      if (meta.refs.raf.current !== null) {
-        cancelAnimationFrame(meta.refs.raf.current);
-        meta.refs.raf.current = null;
-      }
-      if (meta.refs.thinkingRaf.current !== null) {
-        cancelAnimationFrame(meta.refs.thinkingRaf.current);
-        meta.refs.thinkingRaf.current = null;
+      // Skip the RAF / flushTimeout cancel when this entry is still
+      // actively streaming. Inside a kept-mounted `<AgentChatPanel />`
+      // a `projectId`/`agentInstanceId` change re-runs `resetDeps`
+      // and triggers this cleanup even though the underlying hook
+      // instance is alive — treating that as a true unmount stranded
+      // the originating partition's buffered text and cancelled the
+      // in-flight handler's scheduled flushes (Symptom 2 of the
+      // parallel-chats freeze). When the entry is still streaming the
+      // captured-partition handler will continue to drive its own
+      // RAF/flushTimeout schedule, so leaving them in place is correct;
+      // a true unmount lands here later via `pruneStreamStore`'s
+      // eviction path once the partition is genuinely idle.
+      const stillActive = getIsStreaming(key);
+      if (!stillActive) {
+        if (meta.refs.flushTimeout.current !== null) {
+          clearTimeout(meta.refs.flushTimeout.current);
+          meta.refs.flushTimeout.current = null;
+        }
+        if (meta.refs.raf.current !== null) {
+          cancelAnimationFrame(meta.refs.raf.current);
+          meta.refs.raf.current = null;
+        }
+        if (meta.refs.thinkingRaf.current !== null) {
+          cancelAnimationFrame(meta.refs.thinkingRaf.current);
+          meta.refs.thinkingRaf.current = null;
+        }
       }
       meta.lastAccessedAt = Date.now();
       pruneStreamStore(key);

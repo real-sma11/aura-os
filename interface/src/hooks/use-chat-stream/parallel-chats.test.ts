@@ -1,0 +1,365 @@
+import { renderHook, act } from "@testing-library/react";
+import { useChatStream } from "./use-chat-stream";
+import { useStreamStore, streamMetaMap } from "../stream/store";
+import { useChatUIStore } from "../../stores/chat-ui-store";
+import { useSessionsListStore } from "../../stores/sessions-list-store";
+import { EventType, type AuraEvent } from "../../shared/types/aura-events";
+import {
+  _resetAllPartitionSendControl,
+  _peekPartitionSendControl,
+} from "./partition-send-control";
+import type { StreamEventHandler } from "../../api/streams";
+
+const mockSetStreamingAgentInstanceId = vi.fn();
+const mockSetAgentStreaming = vi.fn();
+const mockClearGeneratedArtifacts = vi.fn();
+const mockSetActiveTab = vi.fn();
+const mockPushSpec = vi.fn();
+const mockPushTask = vi.fn();
+const mockRemoveSpec = vi.fn();
+const mockRemoveTask = vi.fn();
+const mockNotifyAgentInstanceUpdate = vi.fn();
+
+const mockSidekickState = {
+  previewItem: null,
+  streamingAgentInstanceIds: [] as string[],
+  streamingAgentInstanceId: null as string | null,
+  setStreamingAgentInstanceId: mockSetStreamingAgentInstanceId,
+  setAgentStreaming: mockSetAgentStreaming,
+  clearGeneratedArtifacts: mockClearGeneratedArtifacts,
+  setActiveTab: mockSetActiveTab,
+  pushSpec: mockPushSpec,
+  pushTask: mockPushTask,
+  removeSpec: mockRemoveSpec,
+  removeTask: mockRemoveTask,
+  notifyAgentInstanceUpdate: mockNotifyAgentInstanceUpdate,
+};
+vi.mock("../../stores/sidekick-store", () => ({
+  useSidekickStore: Object.assign(
+    vi.fn((selector?: (s: any) => any) => selector ? selector(mockSidekickState) : mockSidekickState),
+    { getState: () => mockSidekickState, subscribe: vi.fn(() => vi.fn()) },
+  ),
+}));
+
+vi.mock("../../stores/project-action-store", () => ({
+  useProjectActions: () => ({
+    setProject: vi.fn(),
+  }),
+}));
+
+vi.mock("../../api/client", () => ({
+  api: {
+    sendEventStream: vi.fn().mockResolvedValue(undefined),
+    getAgentInstance: vi.fn().mockResolvedValue({}),
+  },
+  isInsufficientCreditsError: vi.fn(() => false),
+  isAgentBusyError: vi.fn(() => null),
+  isHarnessCapacityExhaustedError: vi.fn(() => null),
+  dispatchInsufficientCredits: vi.fn(),
+}));
+
+vi.mock("../../api/streams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/streams")>();
+  return {
+    ...actual,
+    generateImageStream: vi.fn().mockResolvedValue(undefined),
+    generate3dStream: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+import { api } from "../../api/client";
+
+interface CapturedSendCall {
+  projectId: string;
+  agentInstanceId: string;
+  content: string;
+  handler: StreamEventHandler;
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
+function setupSendStreamCapture(): {
+  calls: CapturedSendCall[];
+  installHandler: (cb: (call: CapturedSendCall) => void | Promise<void>) => void;
+  reset: () => void;
+} {
+  const calls: CapturedSendCall[] = [];
+  let onCall: ((call: CapturedSendCall) => void | Promise<void>) | null = null;
+  vi.mocked(api.sendEventStream).mockImplementation(
+    (
+      projectId,
+      agentInstanceId,
+      content,
+      _action,
+      _model,
+      _attachments,
+      handler,
+    ) => {
+      let resolve!: () => void;
+      let reject!: (err: unknown) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      const call: CapturedSendCall = {
+        projectId: projectId as string,
+        agentInstanceId,
+        content,
+        handler: handler as StreamEventHandler,
+        resolve,
+        reject,
+      };
+      calls.push(call);
+      if (onCall) void onCall(call);
+      return promise;
+    },
+  );
+  return {
+    calls,
+    installHandler: (cb) => {
+      onCall = cb;
+    },
+    reset: () => {
+      calls.length = 0;
+      onCall = null;
+    },
+  };
+}
+
+describe("useChatStream parallel chats", () => {
+  beforeEach(() => {
+    streamMetaMap.clear();
+    useStreamStore.setState({ entries: {} });
+    useChatUIStore.setState({ streams: {} });
+    useSessionsListStore.setState({
+      sessionsBySurface: {},
+      loadingBySurface: {},
+      deleteErrorBySurface: {},
+      version: 0,
+    });
+    _resetAllPartitionSendControl();
+    vi.clearAllMocks();
+    vi.mocked(api.sendEventStream).mockReset().mockResolvedValue(undefined);
+  });
+
+  it("Symptom 1: B's send is not blocked by A's in-flight stream after a panel swap", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result, rerender } = renderHook(
+      ({ projectId, agentInstanceId }) =>
+        useChatStream({ projectId, agentInstanceId }),
+      { initialProps: { projectId: "p-1", agentInstanceId: "ai-A" } },
+    );
+
+    await act(async () => {
+      void result.current.sendMessage("hi from A");
+      await Promise.resolve();
+    });
+
+    rerender({ projectId: "p-1", agentInstanceId: "ai-B" });
+
+    await act(async () => {
+      void result.current.sendMessage("hi from B");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(2);
+    expect(capture.calls[0].agentInstanceId).toBe("ai-A");
+    expect(capture.calls[0].content).toBe("hi from A");
+    expect(capture.calls[1].agentInstanceId).toBe("ai-B");
+    expect(capture.calls[1].content).toBe("hi from B");
+
+    // Both partitions should be marked streaming on their own slots
+    // (no cross-partition leak).
+    const entries = useStreamStore.getState().entries;
+    expect(entries["p-1:ai-A"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-B"]?.isStreaming).toBe(true);
+
+    // Cleanup so unawaited promises don't hang the suite.
+    for (const c of capture.calls) c.resolve();
+  });
+
+  it("Symptom 2: A's stream finalizes on the captured partition after a switch to B", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result, rerender } = renderHook(
+      ({ projectId, agentInstanceId }) =>
+        useChatStream({ projectId, agentInstanceId }),
+      { initialProps: { projectId: "p-1", agentInstanceId: "ai-A" } },
+    );
+
+    await act(async () => {
+      void result.current.sendMessage("hi from A");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(1);
+    const aHandler = capture.calls[0].handler;
+
+    // Panel swaps to agent B mid-stream. A's stream is still in flight.
+    rerender({ projectId: "p-1", agentInstanceId: "ai-B" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Drive A's stream to a clean assistant end via the captured handler.
+    await act(async () => {
+      aHandler.onEvent?.({
+        type: EventType.TextDelta,
+        content: { text: "hello from A" },
+      } as AuraEvent);
+      aHandler.onEvent?.({
+        type: EventType.AssistantMessageEnd,
+        content: { stop_reason: "end_turn" },
+      } as AuraEvent);
+      await Promise.resolve();
+    });
+
+    // Resolve A's POST so the finally block runs.
+    await act(async () => {
+      capture.calls[0].resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const aEntry = useStreamStore.getState().entries["p-1:ai-A"];
+    expect(aEntry).toBeDefined();
+    expect(aEntry.isStreaming).toBe(false);
+    // Should contain the user message + the assistant placeholder
+    // appended by handleAssistantTurnBoundary.
+    expect(aEntry.events.length).toBeGreaterThanOrEqual(2);
+    const assistantEvent = aEntry.events.find((e) => e.role === "assistant");
+    expect(assistantEvent).toBeDefined();
+    expect(assistantEvent?.content).toBe("hello from A");
+
+    expect(mockSetAgentStreaming).toHaveBeenCalledWith("ai-A", false);
+
+    // Partition send-control for A is no longer in-flight.
+    expect(_peekPartitionSendControl("p-1:ai-A")?.inFlight).toBe(false);
+  });
+
+  it("Mid-stream switch with no second send: A still finalizes on its partition", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result, rerender } = renderHook(
+      ({ projectId, agentInstanceId }) =>
+        useChatStream({ projectId, agentInstanceId }),
+      { initialProps: { projectId: "p-1", agentInstanceId: "ai-A" } },
+    );
+
+    await act(async () => {
+      void result.current.sendMessage("hi from A");
+      await Promise.resolve();
+    });
+
+    rerender({ projectId: "p-1", agentInstanceId: "ai-B" });
+
+    const aHandler = capture.calls[0].handler;
+    await act(async () => {
+      aHandler.onEvent?.({
+        type: EventType.TextDelta,
+        content: { text: "A finishes alone" },
+      } as AuraEvent);
+      aHandler.onEvent?.({
+        type: EventType.AssistantMessageEnd,
+        content: { stop_reason: "end_turn" },
+      } as AuraEvent);
+      capture.calls[0].resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const aEntry = useStreamStore.getState().entries["p-1:ai-A"];
+    expect(aEntry.isStreaming).toBe(false);
+    const assistant = aEntry.events.find((e) => e.role === "assistant");
+    expect(assistant?.content).toBe("A finishes alone");
+    expect(mockSetAgentStreaming).toHaveBeenCalledWith("ai-A", false);
+  });
+
+  it("Two parallel hooks at distinct partitions can both send concurrently", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result: rA } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-A" }),
+    );
+    const { result: rB } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-B" }),
+    );
+
+    await act(async () => {
+      void rA.current.sendMessage("from A");
+      void rB.current.sendMessage("from B");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(2);
+    const aCall = capture.calls.find((c) => c.agentInstanceId === "ai-A");
+    const bCall = capture.calls.find((c) => c.agentInstanceId === "ai-B");
+    expect(aCall?.content).toBe("from A");
+    expect(bCall?.content).toBe("from B");
+
+    const entries = useStreamStore.getState().entries;
+    expect(entries["p-1:ai-A"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-B"]?.isStreaming).toBe(true);
+
+    for (const c of capture.calls) c.resolve();
+  });
+
+  it("Auto-retry replays on the originating partition even after the panel swaps", async () => {
+    vi.useFakeTimers();
+    const capture = setupSendStreamCapture();
+
+    // First send: synchronously surface a stream-dropped error via the
+    // handler's onError so tryAutoRetry schedules a timer.
+    capture.installHandler((call) => {
+      if (call.agentInstanceId === "ai-A" && capture.calls.length === 1) {
+        const err = Object.assign(new Error("stream lagged"), {
+          code: "stream_lagged",
+        });
+        call.handler.onError?.(err);
+        // Resolve so performSend's finally runs and the latch clears
+        // before the retry timer fires.
+        call.resolve();
+      }
+    });
+
+    const { result, rerender } = renderHook(
+      ({ projectId, agentInstanceId }) =>
+        useChatStream({ projectId, agentInstanceId }),
+      { initialProps: { projectId: "p-1", agentInstanceId: "ai-A" } },
+    );
+
+    await act(async () => {
+      void result.current.sendMessage("retry me");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The first POST happened on partition A.
+    expect(capture.calls).toHaveLength(1);
+    expect(capture.calls[0].agentInstanceId).toBe("ai-A");
+
+    // User switches the panel to agent B before the retry timer fires.
+    rerender({ projectId: "p-1", agentInstanceId: "ai-B" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Fast-forward past the 1s retry delay.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    // The retry POST must target the ORIGINATING partition (ai-A),
+    // not the panel's currently-mounted one (ai-B).
+    expect(capture.calls.length).toBeGreaterThanOrEqual(2);
+    const retryCall = capture.calls[1];
+    expect(retryCall.projectId).toBe("p-1");
+    expect(retryCall.agentInstanceId).toBe("ai-A");
+    expect(retryCall.content).toBe("retry me");
+
+    // Cleanup outstanding promises.
+    for (const c of capture.calls) c.resolve();
+    vi.useRealTimers();
+  });
+});

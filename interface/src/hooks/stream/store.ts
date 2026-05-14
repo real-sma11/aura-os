@@ -7,6 +7,7 @@ import type {
   StreamRefs,
   StreamSetters,
 } from "../../shared/types/stream";
+import { clearPartitionSendControl } from "../use-chat-stream/partition-send-control";
 
 /* ------------------------------------------------------------------ */
 /*  Zustand stream store                                               */
@@ -214,7 +215,13 @@ export function pruneStreamStore(preserveKey?: string): void {
 
   if (toDelete.length === 0) return;
 
-  for (const key of toDelete) streamMetaMap.delete(key);
+  for (const key of toDelete) {
+    streamMetaMap.delete(key);
+    // Keep the partition-send-control map in lockstep with the stream meta
+    // so an evicted partition doesn't leak its retry timer / cached send
+    // payload past its last live handler.
+    clearPartitionSendControl(key);
+  }
   useStreamStore.setState((s) => {
     const next = { ...s.entries };
     for (const key of toDelete) delete next[key];
