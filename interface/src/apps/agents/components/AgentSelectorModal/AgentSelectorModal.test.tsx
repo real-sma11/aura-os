@@ -270,4 +270,45 @@ describe("AgentSelectorModal", () => {
       expect(option).toBeDisabled();
     }
   });
+
+  it("renders the Standard Agent row immediately while agents are still loading", () => {
+    setDataMock({ agents: [], loading: true });
+
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    const standardRow = screen.getByRole("option", { name: /Standard Agent/i });
+    expect(standardRow).toBeInTheDocument();
+    expect(standardRow).not.toBeDisabled();
+
+    fireEvent.mouseDown(standardRow);
+    expect(mockHandleSelectStandard).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a rapid second click on the Standard row before the creating state lands", () => {
+    render(
+      <AgentSelectorModal
+        isOpen
+        projectId="project-1"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    const standardRow = screen.getByRole("option", { name: /Standard Agent/i });
+    // Two synchronous mousedowns model a fast double-click that lands
+    // before React has flushed the `setCreating(...)` from the first
+    // activation. The synchronous activatingRef guard inside the list
+    // must short-circuit the second one.
+    fireEvent.mouseDown(standardRow);
+    fireEvent.mouseDown(standardRow);
+
+    expect(mockHandleSelectStandard).toHaveBeenCalledTimes(1);
+  });
 });
