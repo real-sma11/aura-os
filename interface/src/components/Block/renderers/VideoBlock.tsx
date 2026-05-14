@@ -1,4 +1,4 @@
-import { Film } from "lucide-react";
+import { Download, Film } from "lucide-react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { Block } from "../Block";
 import styles from "./renderers.module.css";
@@ -53,6 +53,18 @@ export function VideoBlock({ entry, defaultExpanded }: VideoBlockProps) {
           playsInline
           preload="metadata"
         />
+        <div className={styles.generatedModel3DMeta}>
+          <a
+            href={videoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.generatedModel3DDownload}
+            aria-label="Download video"
+          >
+            <Download size={11} aria-hidden="true" />
+            <span>Download MP4</span>
+          </a>
+        </div>
       </div>
     );
   }
