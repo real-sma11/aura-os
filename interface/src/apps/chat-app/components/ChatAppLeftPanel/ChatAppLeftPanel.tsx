@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { api } from "../../../../api/client";
@@ -10,6 +10,7 @@ import {
 import { EmptyState } from "../../../../components/EmptyState";
 import { Avatar } from "../../../../components/Avatar";
 import { ProjectsPlusButton } from "../../../../components/ProjectsPlusButton";
+import { AgentSelectorModal } from "../../../agents/components/AgentSelectorModal";
 import {
   agentSessionsSurfaceKey,
   projectSessionsSurfaceKey,
@@ -21,9 +22,15 @@ import {
   sessionHistoryKey,
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
+import { useProjectsListStore } from "../../../../stores/projects-list-store";
+import { queryClient } from "../../../../shared/lib/query-client";
+import {
+  mergeAgentIntoProjectAgents,
+  projectQueryKeys,
+} from "../../../../queries/project-queries";
 import { useSidebarSearch } from "../../../../hooks/use-sidebar-search";
 import { useAgents } from "../../../agents/stores";
-import type { Agent } from "../../../../shared/types";
+import type { Agent, AgentInstance } from "../../../../shared/types";
 import { useChatAppAgent } from "../../hooks/use-chat-app-agent";
 import { useChatAppSessions } from "../../hooks/use-chat-app-sessions";
 import styles from "./ChatAppLeftPanel.module.css";
@@ -50,7 +57,11 @@ import styles from "./ChatAppLeftPanel.module.css";
  *
  * Header surfaces a `+` button via `useSidebarSearch("chat").setAction`
  * so it lands in the shared sidebar search header next to the search
- * input — same UX as the Agents and Projects apps.
+ * input — same UX as the Agents and Projects apps. Clicking it opens
+ * the same `AgentSelectorModal` the Projects app uses for its
+ * project-row "+", scoped to the CEO chat agent's auto-Home project so
+ * picking an agent attaches it to that project and lands the user in
+ * a fresh `/chat` canvas against the new instance.
  */
 export function ChatAppLeftPanel() {
   const navigate = useNavigate();
@@ -123,21 +134,77 @@ export function ChatAppLeftPanel() {
     [resolveSessionAgent],
   );
 
-  const handleNewChat = useCallback(() => {
-    // Navigating to `/chat` (no params) lands on a fresh canvas
-    // against the canonical CEO chat agent. The route's
-    // `useStandaloneAgentChat` wiring handles the empty
-    // `pinnedSessionId` and arms the next send to create a session.
-    navigate("/chat");
-  }, [navigate]);
+  // Resolve the CEO chat agent's auto-Home project_id from the
+  // server-authoritative bindings populated by the fan-out
+  // `loadAgentSessions` above. We prefer the binding whose project name
+  // is "Home" (matches `AGENT_HOME_PROJECT_NAME` in
+  // `use-standalone-agent-chat.ts`) and fall back to the first binding
+  // for legacy agents that don't have a Home row yet — same fallback
+  // shape as `useStandaloneAgentChat.effectiveProjectId`.
+  const chatAgentBindings = useSessionsListStore((s) =>
+    chatAgent ? s.bindingsByAgent[chatAgent.agent_id] : undefined,
+  );
+  const ceoHomeProjectId = useMemo<string | null>(() => {
+    if (!chatAgentBindings || chatAgentBindings.length === 0) return null;
+    const homeBinding =
+      chatAgentBindings.find((b) => b.project_name === "Home") ??
+      chatAgentBindings[0];
+    return homeBinding?.project_id ?? null;
+  }, [chatAgentBindings]);
+
+  const [selectorOpen, setSelectorOpen] = useState(false);
+
+  const handleOpenSelector = useCallback(() => {
+    if (!ceoHomeProjectId) return;
+    setSelectorOpen(true);
+  }, [ceoHomeProjectId]);
+
+  const handleCloseSelector = useCallback(() => {
+    setSelectorOpen(false);
+  }, []);
+
+  // Mirror the projects-app's `handleAgentCreated` cache writes
+  // (`use-project-list-actions.ts`) so the new instance shows up in
+  // `useProjectsListStore.agentsByProject` immediately. That feeds
+  // `useStandaloneAgentChat.agentProjects` on the destination route so
+  // the first turn ships the right `body.project_id` instead of falling
+  // back to `undefined`. We then route into `/chat?...` rather than
+  // `/projects/.../agents/...` so the user stays in the Chat app.
+  const handleAgentCreated = useCallback(
+    (instance: AgentInstance) => {
+      const pid = instance.project_id;
+      const projectsStore = useProjectsListStore.getState();
+      projectsStore.setAgentsByProject((prev) => ({
+        ...prev,
+        [pid]: mergeAgentIntoProjectAgents(prev[pid], instance),
+      }));
+      queryClient.setQueryData(
+        projectQueryKeys.agentInstance(pid, instance.agent_instance_id),
+        instance,
+      );
+      void projectsStore.refreshProjectAgents(pid);
+      setSelectorOpen(false);
+      const params = new URLSearchParams({
+        agent: instance.agent_id,
+        project: pid,
+        instance: instance.agent_instance_id,
+      });
+      navigate(`/chat?${params.toString()}`);
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     setAction(
       "chat",
-      <ProjectsPlusButton onClick={handleNewChat} title="New chat" />,
+      <ProjectsPlusButton
+        onClick={handleOpenSelector}
+        title="New chat"
+        disabled={!ceoHomeProjectId}
+      />,
     );
     return () => setAction("chat", null);
-  }, [handleNewChat, setAction]);
+  }, [ceoHomeProjectId, handleOpenSelector, setAction]);
 
   const handleSessionClick = useCallback(
     (target: AnnotatedSession) => {
@@ -244,6 +311,14 @@ export function ChatAppLeftPanel() {
         onDismissError={handleDismissError}
         renderRowSuffix={renderRowSuffix}
       />
+      {ceoHomeProjectId && (
+        <AgentSelectorModal
+          isOpen={selectorOpen}
+          projectId={ceoHomeProjectId}
+          onClose={handleCloseSelector}
+          onCreated={handleAgentCreated}
+        />
+      )}
     </div>
   );
 }
