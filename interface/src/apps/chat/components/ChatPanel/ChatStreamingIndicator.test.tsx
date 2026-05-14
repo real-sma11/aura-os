@@ -87,15 +87,24 @@ describe("ChatStreamingIndicator", () => {
     expect(screen.getByText("Thinking...")).toBeInTheDocument();
   });
 
-  it("hides the label (but keeps the pinned slot mounted) while text is actively writing", () => {
+  it("keeps the cooking shimmer visible while text is actively writing (no flicker between word reveals)", () => {
     mockStreamEntry.isStreaming = true;
     mockStreamEntry.streamingText = "hello";
     mockStreamEntry.isWriting = true;
 
     const { container } = render(<ChatStreamingIndicator streamKey="stream-1" />);
 
-    expect(screen.queryByText("Cooking...")).not.toBeInTheDocument();
+    expect(screen.getByText("Cooking...")).toBeInTheDocument();
     expect(container.querySelector(".pinnedStreamingIndicator")).not.toBeNull();
+  });
+
+  it("renders the Queued... shimmer when the partition is waiting behind another turn", () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamEntry.progressText = "queued";
+
+    render(<ChatStreamingIndicator streamKey="stream-1" />);
+
+    expect(screen.getByText("Queued...")).toBeInTheDocument();
   });
 
   it("swaps to the StuckStreamPill when the watchdog reports isStuck", () => {

@@ -20,7 +20,6 @@ import { findLatestGeneratedImage } from "./latest-generated-image";
 import { useChatUIStore } from "../../../../stores/chat-ui-store";
 import { useMessageQueueStore } from "../../../../stores/message-queue-store";
 import { useOnboardingStore, selectHasSentFirstMessage } from "../../../../features/onboarding/onboarding-store";
-import { useProgressText } from "../../../../hooks/stream/hooks";
 import {
   useStreamHealth,
   useStuckStreamAutoTimeout,
@@ -310,13 +309,11 @@ export function ChatPanel({
 
   // Phase 3 server emits `progress { stage: "queued" }` as the first
   // SSE event when our turn is waiting behind another on the same
-  // upstream agent partition. The chat-stream handler stamps that
-  // stage into the stream store's `progressText`; downstream text /
-  // tool / thinking deltas wipe it (handlers/text.ts, thinking.ts,
-  // shared.ts). So a derived `isQueued` from this slot is exactly
-  // "queued and the actual turn hasn't started yet".
-  const progressText = useProgressText(streamKey);
-  const isQueued = progressText === "queued";
+  // upstream agent partition. The pinned `ChatStreamingIndicator`
+  // surfaces this state as the "Queued..." shimmer (see
+  // `getStreamingPhaseLabel`); we no longer derive a separate
+  // `isQueued` flag here because the input bar's queued pill would
+  // duplicate the pinned indicator.
 
   // One-shot pin seeding for chat 3D mode: the moment the user
   // enters 3D mode, if the chat thread already contains a generated
@@ -671,7 +668,6 @@ export function ChatPanel({
           streamKey={streamKey}
           isExternallyBusy={isExternallyBusy}
           externalBusyMessage={externalBusyMessage}
-          isQueued={isQueued}
           adapterType={adapterType}
           defaultModel={defaultModel}
           agentName={agentName}

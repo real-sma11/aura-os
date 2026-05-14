@@ -53,10 +53,9 @@ export function ChatStreamingIndicator({
   onRetry,
   onReport,
 }: ChatStreamingIndicatorProps) {
-  const { isStreaming, isWriting, streamingText, thinkingText, toolCalls, progressText } = useStreamStore(
+  const { isStreaming, streamingText, thinkingText, toolCalls, progressText } = useStreamStore(
     useShallow((state) => ({
       isStreaming: state.entries[streamKey]?.isStreaming ?? false,
-      isWriting: state.entries[streamKey]?.isWriting ?? false,
       streamingText: state.entries[streamKey]?.streamingText ?? "",
       thinkingText: state.entries[streamKey]?.thinkingText ?? "",
       toolCalls: state.entries[streamKey]?.activeToolCalls ?? EMPTY_TOOL_CALLS,
@@ -93,13 +92,12 @@ export function ChatStreamingIndicator({
     thinkingText,
     toolCalls,
     progressText,
-    isWriting,
   });
 
   return (
     <div className={styles.pinnedStreamingIndicator} aria-live="polite">
       <div className={styles.pinnedStreamingIndicatorInner}>
-        <CookingIndicator label={label ?? "Cooking..."} hidden={!label} />
+        <CookingIndicator label={label ?? "Cooking..."} />
       </div>
     </div>
   );
