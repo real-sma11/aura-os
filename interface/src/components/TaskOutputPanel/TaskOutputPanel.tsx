@@ -1,18 +1,17 @@
 import { useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Text, ModalConfirm } from "@cypher-asi/zui";
-import { Trash2, Play, Pause, Square, Loader2, X } from "lucide-react";
+import { Trash2, Play, Pause, Square, Loader2 } from "lucide-react";
 import {
   useTaskOutputPanelStore,
   useTasksForProject,
 } from "../../stores/task-output-panel-store";
-import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
-import { useShallow } from "zustand/react/shallow";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useAutomationStatus } from "../AutomationBar/useAutomationStatus";
 import { useScrollAnchorV2 } from "../../shared/hooks/use-scroll-anchor-v2";
 import { OverlayScrollbar } from "../OverlayScrollbar";
 import { TerminalPanelBody } from "../TerminalPanelBody";
+import { TerminalInstanceTabs } from "../TerminalInstanceTabs";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import {
   useIsStreaming,
@@ -116,42 +115,6 @@ function AutomationControls({ projectId }: { projectId: string }) {
         />
       )}
     </>
-  );
-}
-
-function TerminalInstanceTabs() {
-  const { terminals, activeId, setActiveId, removeTerminal } = useTerminalPanelStore(
-    useShallow((s) => ({
-      terminals: s.terminals,
-      activeId: s.activeId,
-      setActiveId: s.setActiveId,
-      removeTerminal: s.removeTerminal,
-    })),
-  );
-
-  if (terminals.length <= 1) return null;
-
-  return (
-    <div className={styles.terminalInstanceTabs}>
-      {terminals.map((t, i) => (
-        <button
-          key={t.id}
-          type="button"
-          className={t.id === activeId ? styles.terminalInstanceTabActive : styles.terminalInstanceTab}
-          onClick={() => setActiveId(t.id)}
-        >
-          {t.title}
-          {i > 0 && (
-            <span
-              className={styles.terminalInstanceTabClose}
-              onClick={(e) => { e.stopPropagation(); removeTerminal(t.id); }}
-            >
-              <X size={9} />
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
   );
 }
 
