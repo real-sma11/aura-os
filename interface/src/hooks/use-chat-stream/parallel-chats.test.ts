@@ -74,6 +74,7 @@ interface CapturedSendCall {
   agentInstanceId: string;
   content: string;
   handler: StreamEventHandler;
+  signal: AbortSignal | undefined;
   resolve: () => void;
   reject: (err: unknown) => void;
 }
@@ -94,6 +95,7 @@ function setupSendStreamCapture(): {
       _model,
       _attachments,
       handler,
+      signal,
     ) => {
       let resolve!: () => void;
       let reject!: (err: unknown) => void;
@@ -106,6 +108,7 @@ function setupSendStreamCapture(): {
         agentInstanceId,
         content,
         handler: handler as StreamEventHandler,
+        signal,
         resolve,
         reject,
       };
@@ -361,5 +364,48 @@ describe("useChatStream parallel chats", () => {
     // Cleanup outstanding promises.
     for (const c of capture.calls) c.resolve();
     vi.useRealTimers();
+  });
+
+  it("stopStreaming aborts the AbortSignal that was wired into the in-flight SSE fetch", async () => {
+    // Regression: after the per-partition send-control refactor, the
+    // controller actually passed to `api.sendEventStream` lives on
+    // `partitionSendControlMap[key].currentController`, not on
+    // `streamMetaMap[key].abort`. `core.baseStopStreaming()` only
+    // aborts the latter, so for chat sends the SSE reader never saw
+    // a real abort and Stop became a no-op. This test pins the wiring
+    // so the regression cannot return silently.
+    const capture = setupSendStreamCapture();
+
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-A" }),
+    );
+
+    await act(async () => {
+      void result.current.sendMessage("please stop me");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(1);
+    const sentSignal = capture.calls[0].signal;
+    expect(sentSignal).toBeDefined();
+    expect(sentSignal!.aborted).toBe(false);
+    expect(useStreamStore.getState().entries["p-1:ai-A"]?.isStreaming).toBe(
+      true,
+    );
+
+    await act(async () => {
+      result.current.stopStreaming();
+      await Promise.resolve();
+    });
+
+    expect(sentSignal!.aborted).toBe(true);
+    expect(useStreamStore.getState().entries["p-1:ai-A"]?.isStreaming).toBe(
+      false,
+    );
+    expect(_peekPartitionSendControl("p-1:ai-A")?.currentController).toBeNull();
+
+    // Resolve the captured promise so the test doesn't leak it; in real
+    // code the AbortError from `streamSSE` would reject this for us.
+    capture.calls[0].resolve();
   });
 });

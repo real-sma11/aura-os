@@ -536,6 +536,14 @@ export function useChatStream({
       ctrl.retryTimer = null;
     }
     ctrl.autoRetryCount = 0;
+    // The per-partition send-control refactor moved the controller
+    // actually wired into the fetch off `streamMetaMap[key].abort`
+    // and onto `ctrl.currentController`. `baseStopStreaming` still
+    // aborts the former (used by task-stream + agent-chat flows), so
+    // chat sends need an explicit abort of the partition controller
+    // or the SSE reader keeps running after the user presses Stop.
+    ctrl.currentController?.abort();
+    ctrl.currentController = null;
     core.baseStopStreaming();
     if (agentInstanceId) {
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);
