@@ -16,6 +16,8 @@ import {
   handleAssistantTurnBoundary,
   handleEventSaved,
   handleTextDelta,
+  isStreamDroppedError,
+  normalizeStreamError,
 } from "./handlers";
 import {
   dispatchInsufficientCredits,
@@ -180,6 +182,51 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
       expect(result[0].displayVariant).toBe("streamDropped");
       expect(result[0].content).not.toMatch(/\*Error: /);
     });
+  });
+
+  describe("watchdog stream-drop errors", () => {
+    it("recognizes turn_timeout as streamDropped", () => {
+      expect(
+        isStreamDroppedError({
+          code: "turn_timeout",
+          message: "Turn timed out before producing another event",
+        }),
+      ).toBe(true);
+      expect(
+        isStreamDroppedError({
+          code: "TURN_TIMEOUT",
+          message: "Turn timed out before producing another event",
+        }),
+      ).toBe(true);
+    });
+
+    it("recognizes stream_stalled as streamDropped", () => {
+      expect(
+        isStreamDroppedError({
+          code: "stream_stalled",
+          message: "Stream stalled before producing another event",
+        }),
+      ).toBe(true);
+      expect(
+        isStreamDroppedError({
+          code: "STREAM_STALLED",
+          message: "Stream stalled before producing another event",
+        }),
+      ).toBe(true);
+    });
+
+    it.each(["turn_timeout", "stream_stalled"])(
+      "normalizes %s as a streamDropped display variant",
+      (code) => {
+        const normalized = normalizeStreamError({
+          code,
+          message: "watchdog fired",
+        });
+
+        expect(normalized.displayVariant).toBe("streamDropped");
+        expect(normalized.message).toMatch(/connection to the agent dropped/i);
+      },
+    );
   });
 
   describe("finalizeStream", () => {

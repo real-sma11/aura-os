@@ -119,6 +119,7 @@ function getStreamErrorCode(error: unknown): string | undefined {
  *
  * - `SSEIdleTimeoutError` (client-side 90s read-watchdog),
  * - `stream_lagged` (server-side broadcast backpressure),
+ * - `turn_timeout` / `stream_stalled` (server-side turn watchdogs),
  * - `harness_ws_closed` / `harness_ws_read_error` (Phase 2: the
  *   upstream harness WebSocket dropped mid-turn; the next send
  *   transparently rehydrates state from session storage),
@@ -131,6 +132,14 @@ export function isStreamDroppedError(error: unknown, message?: string): boolean 
   if (error instanceof Error && error.name === "SSEIdleTimeoutError") return true;
   const code = getStreamErrorCode(error);
   if (code === "STREAM_LAGGED" || code === "stream_lagged") return true;
+  if (
+    code === "TURN_TIMEOUT" ||
+    code === "turn_timeout" ||
+    code === "STREAM_STALLED" ||
+    code === "stream_stalled"
+  ) {
+    return true;
+  }
   if (
     code === "harness_ws_closed" ||
     code === "harness_ws_read_error" ||
