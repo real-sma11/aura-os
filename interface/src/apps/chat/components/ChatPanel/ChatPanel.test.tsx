@@ -740,7 +740,6 @@ describe("ChatPanel", () => {
     const sharedSend = vi.fn();
     const sharedStop = vi.fn();
     const sharedOnNewChat = vi.fn();
-    const sharedOnNewSession = vi.fn();
 
     const { rerender } = render(
       <ChatPanel
@@ -752,7 +751,6 @@ describe("ChatPanel", () => {
         historyResolved
         scrollResetKey="session-a"
         onNewChat={sharedOnNewChat}
-        onNewSession={sharedOnNewSession}
       />,
     );
 
@@ -769,7 +767,6 @@ describe("ChatPanel", () => {
         historyResolved
         scrollResetKey="session-b"
         onNewChat={sharedOnNewChat}
-        onNewSession={sharedOnNewSession}
       />,
     );
 

@@ -650,7 +650,7 @@ describe("useStandaloneAgentChat", () => {
       expect(mockResetEvents).not.toHaveBeenCalled();
     });
 
-    it("does not clear the stream when pinnedSessionId flips defined → null (handled by handleNewSession)", () => {
+    it("does not clear the stream when pinnedSessionId flips defined → null (handled by handleNewChat)", () => {
       const { rerender } = renderHook(
         ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
         { initialProps: { sid: "session-A" } },
@@ -659,9 +659,9 @@ describe("useStandaloneAgentChat", () => {
       mockResetEvents.mockClear();
       rerender({ sid: null });
 
-      // `handleNewSession` already calls `resetEvents` directly when
-      // the user clicks "+", so the transition effect should stay
-      // out of the way.
+      // `handleNewChat` already calls `resetEvents` directly when the
+      // user clicks "+", so the transition effect should stay out of
+      // the way.
       expect(mockResetEvents).not.toHaveBeenCalled();
     });
 
@@ -764,10 +764,11 @@ describe("useStandaloneAgentChat", () => {
   describe("queue clearing on reset (Phase 4)", () => {
     // Phase 1 made the chat send pipeline queue-by-default when a
     // stream is busy. Phase 4 closes the loop on the matching reset
-    // affordances: pressing `+` (`handleNewChat`) or RotateCcw
-    // (`handleNewSession`) must drop any queued message so it
-    // doesn't bleed into the freshly-minted session as the next
-    // dequeue's "first send".
+    // affordance: pressing `+` (`handleNewChat`) must drop any queued
+    // message so it doesn't bleed into the freshly-minted session as
+    // the next dequeue's "first send". (The previous RotateCcw
+    // `handleNewSession` reset path was retired alongside the inline
+    // context-reset button.)
     it("handleNewChat clears useMessageQueueStore for the streamKey", () => {
       mockProjects = [
         {
@@ -782,24 +783,6 @@ describe("useStandaloneAgentChat", () => {
 
       expect(typeof result.current.onNewChat).toBe("function");
       result.current.onNewChat?.();
-
-      expect(mockMessageQueueClear).toHaveBeenCalledWith("test-stream-key");
-    });
-
-    it("handleNewSession clears useMessageQueueStore for the streamKey", () => {
-      mockProjects = [
-        {
-          project_id: "proj-home",
-          name: "Home",
-          description: "[aura:agent-home] Auto-created workspace",
-        },
-      ];
-      mockAgentsByProject = { "proj-home": [{ agent_id: "agent-1" }] };
-
-      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
-
-      expect(typeof result.current.onNewSession).toBe("function");
-      result.current.onNewSession?.();
 
       expect(mockMessageQueueClear).toHaveBeenCalledWith("test-stream-key");
     });

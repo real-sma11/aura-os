@@ -58,7 +58,7 @@ interface AgentChatPanelProps {
  *   - URL session sync (mirrors `SessionReady` into `?session=`).
  *   - Optimistic session row + swap.
  *   - Auto-rename from first prompt.
- *   - Fresh-canvas reset semantics ("+" / RotateCcw).
+ *   - Fresh-canvas reset semantics ("+" new-chat).
  *
  * Delegates all transcript merging to `ChatPanel`/`useChatHistorySync`;
  * the projector + conversation store rewrites in Phase B will reduce
@@ -312,7 +312,6 @@ export function AgentChatPanel({
     workspacePath: terminalTarget.workspacePath,
     remoteAgentId: terminalTarget.remoteAgentId,
     contextUsage,
-    onNewSession: fresh.newSession,
     onNewChat: () => {
       optimisticRow.arm();
       fresh.newChat();

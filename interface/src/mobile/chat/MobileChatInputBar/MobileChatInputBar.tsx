@@ -105,7 +105,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       isVisible = true,
       isCentered = false,
       contextUsage,
-      onNewSession,
       onNewChat,
     },
     ref,
@@ -677,7 +676,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
                 utilization={contextUsage.utilization}
                 estimatedTokens={contextUsage.estimatedTokens}
                 breakdown={contextUsage.breakdown}
-                onNewSession={onNewSession}
               />
             ) : null}
             {modelsForMode.length > 0 ? (

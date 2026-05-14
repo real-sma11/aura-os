@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { ContextBreakdown } from "../../../../stores/context-usage-store";
 import styles from "./ChatInputBar.module.css";
 
@@ -16,7 +16,6 @@ export interface ContextUsageIndicatorProps {
    * regresses.
    */
   breakdown?: ContextBreakdown;
-  onNewSession?: () => void;
 }
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
@@ -80,7 +79,10 @@ function buildBucketRows(b: ContextBreakdown): BucketRow[] {
 
 /**
  * Hover/pin popover for the bottom-bar context-window indicator. The
- * visible trigger keeps the legacy "NN%" pill and the reset button.
+ * visible trigger is a tiny progress ring + lowercase "NN% context"
+ * label that opens a popover on hover and pins on click. There is no
+ * inline reset affordance — to reset the context, start a new
+ * session via the chat header's "+" new-chat button.
  *
  * Two popover variants live here:
  *  - When `breakdown` is populated, render the Cursor-style stacked-bar
@@ -94,7 +96,6 @@ export function ContextUsageIndicator({
   utilization,
   estimatedTokens,
   breakdown,
-  onNewSession,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -219,16 +220,6 @@ export function ContextUsageIndicator({
         </svg>
         <span className={styles.contextIndicatorLabel}>{percent}% context</span>
       </span>
-      {onNewSession ? (
-        <button
-          type="button"
-          className={styles.newSessionButton}
-          onClick={onNewSession}
-          aria-label="Start new session"
-        >
-          <RotateCcw size={10} />
-        </button>
-      ) : null}
 
       {open && breakdown && hasTokens && (
         <div

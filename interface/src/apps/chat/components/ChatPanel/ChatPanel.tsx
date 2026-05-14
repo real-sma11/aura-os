@@ -121,13 +121,13 @@ export interface ChatPanelProps {
   initialHandoff?: ChatPanelHandoffMode;
   onInitialHandoffReady?: () => void;
   contextUsage?: ContextUsageEntry;
-  onNewSession?: () => void;
   /**
    * Optional ChatGPT-style "+" new-chat handler. When set, the input
    * bar shows a small Plus button at the right end of the mode row
    * that wipes the visible transcript and arms the next send to
-   * create a fresh session. Distinct from `onNewSession` (the
-   * RotateCcw context-reset affordance).
+   * create a fresh session. This is the only "reset / new
+   * conversation" affordance the panel exposes — the previous
+   * RotateCcw inline context-reset button has been removed.
    */
   onNewChat?: () => void;
   /**
@@ -171,7 +171,6 @@ export function ChatPanel({
   initialHandoff,
   onInitialHandoffReady,
   contextUsage,
-  onNewSession,
   onNewChat,
   compact = false,
 }: ChatPanelProps) {
@@ -688,7 +687,6 @@ export function ChatPanel({
           isCentered={isThreadEmpty}
           compact={compact}
           contextUsage={contextUsage}
-          onNewSession={onNewSession}
           onNewChat={onNewChat ? handleNewChat : undefined}
         />
       </div>

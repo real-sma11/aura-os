@@ -38,30 +38,28 @@ interface UseFreshCanvasResult {
   /** Whether the panel is sitting on a fresh canvas — no `?session=` and
    *  the user has at least once started a new chat in this mount. */
   freshCanvasPending: boolean;
-  /** Equivalent to "RotateCcw" in the ChatPanel input bar — the chat
-   *  history-store entry is dropped, the URL session is cleared, the next
-   *  send arms a new session. */
-  newSession: () => void;
-  /** Equivalent to "+" in the ChatPanel input bar — same as `newSession`
-   *  plus optimistic side-effects (cross-key clears for standalone, sessions
-   *  store version bump). */
+  /** Equivalent to "+" in the ChatPanel input bar — drops the chat
+   *  history-store entry, wipes the stream slot, resets context
+   *  tracking, clears `?session=` from the URL, performs cross-key
+   *  clears for standalone-agent fallbacks, and bumps the sessions
+   *  store so sidekick lists refresh. This is the only "reset / new
+   *  conversation" affordance — the previous RotateCcw inline reset
+   *  (`newSession`) was retired alongside its UI button. */
   newChat: () => void;
 }
 
 /**
- * Single owner of the "+" / "RotateCcw" reset semantics that used to be
- * spread across `handleNewSession` and `handleNewChat` in the old
- * `AgentChatPanel`. Both actions:
- *   - Mark the next stream send as starting a new session server-side.
- *   - Drop the chat-history-store entry for the current key.
- *   - Wipe the local stream slot.
- *   - Reset context-utilization tracking.
- *   - Delete `?session=` from the URL.
- *
- * `newChat` adds two extra responsibilities:
- *   - Cross-key clears so a standalone-agent fallback render never sees
- *     stale events from a project-route key (or vice versa).
- *   - Version bump on the sessions store so sidekick lists refresh.
+ * Single owner of the "+" reset semantics that used to be spread
+ * across `handleNewSession` and `handleNewChat` in the old
+ * `AgentChatPanel`. The action:
+ *   - Marks the next stream send as starting a new session server-side.
+ *   - Drops the chat-history-store entry for the current key (and
+ *     cross-key entries so standalone-agent fallbacks don't resurrect
+ *     stale events).
+ *   - Wipes the local stream slot.
+ *   - Resets context-utilization tracking.
+ *   - Deletes `?session=` from the URL.
+ *   - Bumps the sessions store version so sidekick lists refresh.
  */
 export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResult {
   const {
@@ -126,22 +124,6 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     ctx.markResetPending(streamKey);
   }, [streamKey]);
 
-  const newSession = useCallback(() => {
-    void import("../../../lib/analytics").then(({ track }) => track("chat_session_reset"));
-    markNextSendAsNewSession();
-    useChatHistoryStore.getState().clearHistory(historyKey);
-    setFreshChatNonce((n) => n + 1);
-    clearStreamSlot();
-    clearContextUsage();
-    dropSessionParam();
-  }, [
-    markNextSendAsNewSession,
-    historyKey,
-    clearStreamSlot,
-    clearContextUsage,
-    dropSessionParam,
-  ]);
-
   const newChat = useCallback(() => {
     void import("../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
     markNextSendAsNewSession();
@@ -182,5 +164,5 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     dropSessionParam,
   ]);
 
-  return { freshChatNonce, freshCanvasPending, newSession, newChat };
+  return { freshChatNonce, freshCanvasPending, newChat };
 }

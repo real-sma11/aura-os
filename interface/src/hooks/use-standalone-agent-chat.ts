@@ -374,37 +374,6 @@ export function useStandaloneAgentChat(
     resetEvents([], { allowWhileStreaming: true });
   }, [resetEvents]);
 
-  const handleNewSession = useCallback(() => {
-    if (!agentId) return;
-    void import("../lib/analytics").then(({ track }) => track("chat_session_reset"));
-    markNextSendAsNewSession();
-    if (historyKey) {
-      useChatHistoryStore.getState().clearHistory(historyKey);
-    }
-    setFreshChatNonce((nonce) => nonce + 1);
-    resetEvents([], { allowWhileStreaming: true });
-    // Drop any messages still queued against the prior session
-    // (Phase 1 made the chat send pipeline queue-by-default when the
-    // stream is busy). Without this clear a queued message would
-    // survive the reset and dequeue against the freshly-minted
-    // session, defeating the user's "start over" intent.
-    useMessageQueueStore.getState().clear(streamKey);
-    const store = useContextUsageStore.getState();
-    store.clearContextUtilization(streamKey);
-    // Mark a reset sentinel so the hydration hook doesn't resurrect the old
-    // session's value if the view remounts before the next send (e.g. nav
-    // away and back).
-    store.markResetPending(streamKey);
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("session");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [agentId, markNextSendAsNewSession, streamKey, historyKey, resetEvents, setSearchParams]);
-
   // Set in `handleNewChat`, consumed inside the `wrappedSend` wrapper
   // to decide whether to insert an optimistic SessionsList row on the
   // very next send. See the matching ref in `AgentChatPanel`.
@@ -443,11 +412,10 @@ export function useStandaloneAgentChat(
     }
     setFreshChatNonce((nonce) => nonce + 1);
     resetEvents([], { allowWhileStreaming: true });
-    // Symmetric with `handleNewSession`: a queued message from the
-    // prior session must NOT bleed forward into the fresh canvas.
-    // Without this, the next dequeue would fire as the first send of
-    // the new session and re-inject the user's old prompt, which
-    // looks like the chat ignored the `+` press.
+    // A queued message from the prior session must NOT bleed forward
+    // into the fresh canvas. Without this, the next dequeue would fire
+    // as the first send of the new session and re-inject the user's
+    // old prompt, which looks like the chat ignored the `+` press.
     useMessageQueueStore.getState().clear(streamKey);
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
@@ -593,7 +561,6 @@ export function useStandaloneAgentChat(
     llmProjectId,
     onProjectChange: undefined,
     contextUsage,
-    onNewSession: handleNewSession,
     onNewChat: handleNewChat,
   };
 }

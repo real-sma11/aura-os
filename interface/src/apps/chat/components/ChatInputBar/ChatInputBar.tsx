@@ -14,7 +14,6 @@ import {
   FileText,
   ChevronDown,
   FolderOpen,
-  RotateCcw,
 } from "lucide-react";
 import { track } from "../../../../lib/analytics";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
@@ -156,16 +155,14 @@ export interface ChatInputBarProps {
    */
   compact?: boolean;
   contextUsage?: ContextUsageEntry;
-  onNewSession?: () => void;
   /**
    * Optional handler for the "+" new-chat button rendered at the
    * right end of the mode row (directly above the send button).
    * When provided, the button appears; when omitted, the mode row
-   * renders `<ModeSelector>` exactly as before. Distinct from
-   * `onNewSession` (the RotateCcw soft reset) — `onNewChat` is a
-   * stronger ChatGPT-style "blank slate" action that drops
-   * `?session=` from the URL and clears the visible transcript so
-   * the next send creates a fresh session id server-side.
+   * renders `<ModeSelector>` exactly as before. This is the only
+   * "reset / new conversation" affordance — the previous inline
+   * RotateCcw context-reset button has been removed in favor of
+   * routing all reset intent through the "+" / new-chat path.
    */
   onNewChat?: () => void;
 }
@@ -233,7 +230,6 @@ export const DesktopChatInputBar = memo(
       isVisible = true,
       isCentered = false,
       contextUsage,
-      onNewSession,
       onNewChat,
     },
     ref,
@@ -927,18 +923,7 @@ export const DesktopChatInputBar = memo(
             utilization={contextUsage.utilization}
             estimatedTokens={contextUsage.estimatedTokens}
             breakdown={contextUsage.breakdown}
-            onNewSession={onNewSession}
           />
-        ) : onNewSession ? (
-          <button
-            type="button"
-            className={styles.newSessionButton}
-            onClick={onNewSession}
-            title="Start a new session and reset context."
-            aria-label="Start new session"
-          >
-            <RotateCcw size={10} />
-          </button>
         ) : null}
         {modelsForMode.length > 0 && (
           <ModelPicker

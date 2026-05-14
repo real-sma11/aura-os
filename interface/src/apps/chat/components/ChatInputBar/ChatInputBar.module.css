@@ -586,26 +586,6 @@
   background: #f08a5c;
 }
 
-.newSessionButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition:
-    color 0.1s ease,
-    background 0.1s ease;
-}
-
-.newSessionButton:hover {
-  color: var(--color-text-primary);
-  background: var(--color-overlay-medium);
-}
-
 /* Mode-row "+" new-chat button. Wraps `<ModeSelector>` and a small
    icon button so the "+" sits at the right end of the mode row,
    visually directly above the send button. The trailing padding
@@ -930,8 +910,7 @@
   .orbitWrap,
   .projectMenuWrap,
   .infoDivider,
-  .contextUsageWrap,
-  .newSessionButton {
+  .contextUsageWrap {
     display: none;
   }
 }

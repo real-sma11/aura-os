@@ -85,19 +85,6 @@ describe("ContextUsageIndicator", () => {
     );
   });
 
-  it("renders a reset button that calls onNewSession", async () => {
-    const user = userEvent.setup();
-    const onNewSession = vi.fn();
-    render(
-      <ContextUsageIndicator utilization={0.42} onNewSession={onNewSession} />,
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Start new session" }),
-    );
-    expect(onNewSession).toHaveBeenCalledOnce();
-  });
-
   it("pins the popover open after click", async () => {
     const user = userEvent.setup();
     render(
