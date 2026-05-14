@@ -1,5 +1,23 @@
-import { useMemo, useCallback, useState, useEffect, useRef } from "react";
+import { useMemo, useCallback, useState, useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
@@ -126,6 +144,56 @@ function AgentConversationRowWithHistory({
       onContextMenu={onContextMenu}
       onMouseEnter={onMouseEnter}
     />
+  );
+}
+
+function SortableAgentConversationRow({
+  agent,
+  isMobileLibrary,
+  isSelected,
+  onClick,
+  onContextMenu,
+  onMouseEnter,
+}: {
+  agent: Agent;
+  isMobileLibrary: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onMouseEnter: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: agent.agent_id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={styles.sortableRow}
+      {...attributes}
+      {...listeners}
+    >
+      <AgentConversationRowWithHistory
+        agent={agent}
+        isMobileLibrary={isMobileLibrary}
+        isSelected={isSelected}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        onMouseEnter={onMouseEnter}
+      />
+    </div>
   );
 }
 
@@ -433,6 +501,13 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     [cascade, ctxMenu, togglePin, toggleFavorite],
   );
 
+  const setAgentOrder = useAgentStore((s) => s.setAgentOrder);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+
   const sortedAgents = useSortedAgents();
   const registerAgents = useProfileStatusStore((s) => s.registerAgents);
   const registerRemote = useProfileStatusStore((s) => s.registerRemoteAgents);
@@ -457,6 +532,24 @@ export function AgentList({ mode = "default" }: AgentListProps) {
       return haystack.includes(q);
     });
   }, [visibleSortedAgents, searchQuery]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveAgentId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveAgentId(null);
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const currentIds = visibleSortedAgents.map((a) => a.agent_id);
+      const fromIndex = currentIds.indexOf(String(active.id));
+      const toIndex = currentIds.indexOf(String(over.id));
+      if (fromIndex === -1 || toIndex === -1) return;
+      setAgentOrder(arrayMove(currentIds, fromIndex, toIndex));
+    },
+    [visibleSortedAgents, setAgentOrder],
+  );
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -504,17 +597,38 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     );
   }
 
-  const entries = filteredAgents.map((agent) => (
-    <AgentConversationRowWithHistory
-      key={agent.agent_id}
-      agent={agent}
-      isMobileLibrary={isMobileLibrary}
-      isSelected={agent.agent_id === agentId}
-      onClick={() => handleAgentRowClick(agent.agent_id)}
-      onContextMenu={handleContextMenu}
-      onMouseEnter={() => handleHoverPrefetch(agent.agent_id)}
-    />
-  ));
+  // Drag-to-reorder is only active in the desktop sidebar with no active search.
+  // Searching filters the list, so reordering filtered results would be confusing.
+  const isDraggable = isDesktopSidebar && !searchQuery;
+
+  const activeAgent = activeAgentId ? agentMap.get(activeAgentId) ?? null : null;
+
+  const rowAgents = isDraggable ? visibleSortedAgents : filteredAgents;
+  const entries = rowAgents.map((agent) =>
+    isDraggable ? (
+      <SortableAgentConversationRow
+        key={agent.agent_id}
+        agent={agent}
+        isMobileLibrary={isMobileLibrary}
+        isSelected={agent.agent_id === agentId}
+        onClick={() => handleAgentRowClick(agent.agent_id)}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => handleHoverPrefetch(agent.agent_id)}
+      />
+    ) : (
+      <AgentConversationRowWithHistory
+        key={agent.agent_id}
+        agent={agent}
+        isMobileLibrary={isMobileLibrary}
+        isSelected={agent.agent_id === agentId}
+        onClick={() => handleAgentRowClick(agent.agent_id)}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => handleHoverPrefetch(agent.agent_id)}
+      />
+    ),
+  );
+
+  const sortableIds = rowAgents.map((a) => a.agent_id);
 
   return (
     <>
@@ -524,20 +638,47 @@ export function AgentList({ mode = "default" }: AgentListProps) {
           data-agent-surface="agent-list"
           data-agent-mode={mode}
         >
-          <div
-            ref={scrollRef}
-            className={styles.sidebarScrollArea}
-            onContextMenu={handleContextMenu}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveAgentId(null)}
           >
-            <div className={styles.sidebarEntries}>{entries}</div>
-          </div>
-          <div className={styles.scrollTrack}>
             <div
-              className={`${styles.scrollThumb} ${visible ? styles.scrollThumbVisible : ""}`}
-              style={thumbStyle}
-              onPointerDown={onThumbPointerDown}
-            />
-          </div>
+              ref={scrollRef}
+              className={styles.sidebarScrollArea}
+              onContextMenu={handleContextMenu}
+            >
+              <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                <div className={styles.sidebarEntries}>{entries}</div>
+              </SortableContext>
+            </div>
+            <div className={styles.scrollTrack}>
+              <div
+                className={`${styles.scrollThumb} ${visible ? styles.scrollThumbVisible : ""}`}
+                style={thumbStyle}
+                onPointerDown={onThumbPointerDown}
+              />
+            </div>
+            {activeAgent &&
+              createPortal(
+                <DragOverlay dropAnimation={null} style={{ zIndex: 9998 }}>
+                  <div className={styles.sortableRowOverlay}>
+                    <AgentConversationRow
+                      agent={activeAgent}
+                      lastMessage={undefined}
+                      isSelected={activeAgent.agent_id === agentId}
+                      onClick={() => {}}
+                      onContextMenu={() => {}}
+                      onMouseEnter={() => {}}
+                    />
+                  </div>
+                </DragOverlay>,
+                document.body,
+              )}
+          </DndContext>
         </div>
       ) : (
         <div

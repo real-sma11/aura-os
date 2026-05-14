@@ -47,6 +47,7 @@ import { harnessSkillsApi } from "../shared/api/harness-skills";
 import { notesApi } from "../shared/api/notes";
 import { marketplaceApi } from "./marketplace";
 import { debugApi } from "../shared/api/debug";
+import { preferencesApi } from "../shared/api/preferences";
 
 export const api = {
   auth: authApi,
@@ -76,4 +77,5 @@ export const api = {
   notes: notesApi,
   marketplace: marketplaceApi,
   debug: debugApi,
+  preferences: preferencesApi,
 };

@@ -25,6 +25,9 @@ type PersistedAgentState = {
   selectedAgentId: string | null;
   pinnedAgentIds: string[];
   favoriteAgentIds: string[];
+  agentOrderIds: string[];
+  projectsAgentOrderIds: string[] | null;
+  tasksAgentOrderIds: string[] | null;
 };
 
 const PINNED_KEY = "aura:pinnedAgentIds";
@@ -54,6 +57,12 @@ type AgentState = {
   pinnedAgentIds: Set<string>;
   favoriteAgentIds: Set<string>;
 
+  /** Explicit display order for the Agents app sidebar (agent IDs in order). */
+  agentOrderIds: string[];
+  /** Per-surface overrides. null = inherit agents_app order. */
+  projectsAgentOrderIds: string[] | null;
+  tasksAgentOrderIds: string[] | null;
+
   createAgentModalOpen: boolean;
   openCreateAgentModal: () => void;
   closeCreateAgentModal: () => void;
@@ -67,6 +76,9 @@ type AgentState = {
   setSelectedAgent: (agentId: string | null) => void;
   togglePin: (agentId: string) => void;
   toggleFavorite: (agentId: string) => void;
+  setAgentOrder: (ids: string[]) => void;
+  setProjectsAgentOrder: (ids: string[] | null) => void;
+  setTasksAgentOrder: (ids: string[] | null) => void;
 };
 
 const HISTORY_TTL_MS = 30_000;
@@ -124,7 +136,32 @@ async function hydratePersistedAgentState(userId: string): Promise<void> {
     selectedAgentId: cached.selectedAgentId,
     pinnedAgentIds: new Set(cached.pinnedAgentIds),
     favoriteAgentIds: new Set(cached.favoriteAgentIds),
+    agentOrderIds: cached.agentOrderIds ?? [],
+    projectsAgentOrderIds: cached.projectsAgentOrderIds ?? null,
+    tasksAgentOrderIds: cached.tasksAgentOrderIds ?? null,
   });
+}
+
+async function fetchAndApplyServerAgentOrderPrefs(): Promise<void> {
+  try {
+    const prefs = await api.preferences.getAgentOrder();
+    // Only apply if the server has meaningful data — non-empty agents_app order
+    // or a surface-specific override. An empty response (fresh install) is
+    // equivalent to "no preference saved" and should not overwrite local state.
+    if (
+      prefs.agents_app.length > 0 ||
+      prefs.projects_app !== null ||
+      prefs.tasks_app !== null
+    ) {
+      useAgentStore.setState({
+        agentOrderIds: prefs.agents_app,
+        projectsAgentOrderIds: prefs.projects_app,
+        tasksAgentOrderIds: prefs.tasks_app,
+      });
+    }
+  } catch {
+    // Server unavailable or no prefs saved yet — keep the IndexedDB state.
+  }
 }
 
 export const useAgentStore = create<AgentState>()(
@@ -141,6 +178,9 @@ export const useAgentStore = create<AgentState>()(
       selectedAgentId: null,
       pinnedAgentIds: readIdSet(PINNED_KEY),
       favoriteAgentIds: readIdSet(FAVORITE_KEY),
+      agentOrderIds: [],
+      projectsAgentOrderIds: null,
+      tasksAgentOrderIds: null,
 
       createAgentModalOpen: false,
       openCreateAgentModal: () => set({ createAgentModalOpen: true }),
@@ -380,6 +420,42 @@ export const useAgentStore = create<AgentState>()(
           return { favoriteAgentIds: next };
         });
       },
+
+      setAgentOrder: (ids): void => {
+        set({ agentOrderIds: ids });
+        const { projectsAgentOrderIds, tasksAgentOrderIds } = get();
+        void api.preferences
+          .putAgentOrder({
+            agents_app: ids,
+            projects_app: projectsAgentOrderIds,
+            tasks_app: tasksAgentOrderIds,
+          })
+          .catch(() => { /* best-effort — IndexedDB subscription persists locally */ });
+      },
+
+      setProjectsAgentOrder: (ids): void => {
+        set({ projectsAgentOrderIds: ids });
+        const { agentOrderIds, tasksAgentOrderIds } = get();
+        void api.preferences
+          .putAgentOrder({
+            agents_app: agentOrderIds,
+            projects_app: ids,
+            tasks_app: tasksAgentOrderIds,
+          })
+          .catch(() => {});
+      },
+
+      setTasksAgentOrder: (ids): void => {
+        set({ tasksAgentOrderIds: ids });
+        const { agentOrderIds, projectsAgentOrderIds } = get();
+        void api.preferences
+          .putAgentOrder({
+            agents_app: agentOrderIds,
+            projects_app: projectsAgentOrderIds,
+            tasks_app: ids,
+          })
+          .catch(() => {});
+      },
     };
   }),
 );
@@ -400,12 +476,17 @@ useAuthStore.subscribe((state) => {
       selectedAgentId: null,
       pinnedAgentIds: new Set(),
       favoriteAgentIds: new Set(),
+      agentOrderIds: [],
+      projectsAgentOrderIds: null,
+      tasksAgentOrderIds: null,
     });
     return;
   }
 
   hasEnsuredCeoHomeThisSession = false;
   void hydratePersistedAgentState(userId);
+  // Fetch from server after IndexedDB hydration — server wins for reinstall survival.
+  void fetchAndApplyServerAgentOrderPrefs();
 });
 
 useAgentStore.subscribe((state) => {
@@ -419,5 +500,8 @@ useAgentStore.subscribe((state) => {
     selectedAgentId: state.selectedAgentId,
     pinnedAgentIds: [...state.pinnedAgentIds],
     favoriteAgentIds: [...state.favoriteAgentIds],
+    agentOrderIds: state.agentOrderIds,
+    projectsAgentOrderIds: state.projectsAgentOrderIds,
+    tasksAgentOrderIds: state.tasksAgentOrderIds,
   });
 });
