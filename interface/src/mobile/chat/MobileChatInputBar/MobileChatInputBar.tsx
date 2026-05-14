@@ -101,6 +101,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       onRemoveAttachment,
       selectedCommands = [],
       onCommandsChange,
+      workspacePath,
       isVisible = true,
       isCentered = false,
       contextUsage,
@@ -659,7 +660,11 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           </div>
           <div className={styles.metaRow}>
             <span className={styles.environmentWrap}>
-              <AgentEnvironment machineType={machineType} agentId={templateAgentId ?? agentId} />
+              <AgentEnvironment
+                machineType={machineType}
+                agentId={templateAgentId ?? agentId}
+                workspacePath={workspacePath}
+              />
             </span>
             <span className={styles.metaSpacer} />
             {contextUsage != null && contextUsage.utilization > 0 ? (

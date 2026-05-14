@@ -20,8 +20,18 @@ vi.mock("../../../../api/client", () => ({
   },
 }))
 
+const envInfoMock = vi.hoisted(() => ({
+  data: null as null | {
+    os: string
+    architecture: string
+    hostname: string
+    ip: string
+    cwd: string
+  },
+}))
+
 vi.mock("../../../../hooks/use-environment-info", () => ({
-  useEnvironmentInfo: () => ({ data: null }),
+  useEnvironmentInfo: () => ({ data: envInfoMock.data }),
 }))
 
 vi.mock("../../../../hooks/use-avatar-state", () => ({
@@ -39,6 +49,7 @@ describe("AgentEnvironment", () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+    envInfoMock.data = null
     swarmApiMocks.getRemoteAgentState.mockResolvedValue({
       state: "error",
       uptime_seconds: 0,
@@ -185,6 +196,49 @@ describe("AgentEnvironment", () => {
         expect.any(Function),
       )
     })
+  })
+
+  it("shows the agent's workspace folder (not the server CWD) when workspacePath is provided", async () => {
+    envInfoMock.data = {
+      os: "windows",
+      architecture: "x86_64",
+      hostname: "host",
+      ip: "192.168.1.180",
+      cwd: "C:\\code\\aura-os",
+    }
+
+    const user = userEvent.setup()
+    render(
+      <AgentEnvironment
+        machineType="local"
+        workspacePath={"C:\\code\\my-project"}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Local" }))
+
+    expect(await screen.findByText("Workspace Folder")).toBeInTheDocument()
+    expect(screen.getByText("C:\\code\\my-project")).toBeInTheDocument()
+    expect(screen.queryByText("C:\\code\\aura-os")).not.toBeInTheDocument()
+    expect(screen.queryByText("File Path")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the server CWD when no workspacePath is provided", async () => {
+    envInfoMock.data = {
+      os: "windows",
+      architecture: "x86_64",
+      hostname: "host",
+      ip: "192.168.1.180",
+      cwd: "C:\\code\\aura-os",
+    }
+
+    const user = userEvent.setup()
+    render(<AgentEnvironment machineType="local" />)
+
+    await user.click(screen.getByRole("button", { name: "Local" }))
+
+    expect(await screen.findByText("Workspace Folder")).toBeInTheDocument()
+    expect(screen.getByText("C:\\code\\aura-os")).toBeInTheDocument()
   })
 
   it("renders an inert placeholder when machineType is undefined so the slot keeps width", async () => {

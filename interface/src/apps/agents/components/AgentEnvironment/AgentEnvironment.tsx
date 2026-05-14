@@ -22,9 +22,16 @@ import {
 interface AgentEnvironmentProps {
   machineType: "local" | "remote" | undefined
   agentId?: string
+  /**
+   * Resolved workspace folder for the agent (typically
+   * `AgentInstance.workspace_path`, which already honors
+   * `Agent.local_workspace_path` and `Project.local_workspace_path`).
+   * When omitted, the popover falls back to the server process's CWD.
+   */
+  workspacePath?: string | null
 }
 
-export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps) {
+export function AgentEnvironment({ machineType, agentId, workspacePath }: AgentEnvironmentProps) {
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState(false)
   const [statusCardStyle, setStatusCardStyle] = useState<CSSProperties | null>(null)
@@ -145,6 +152,7 @@ export function AgentEnvironment({ machineType, agentId }: AgentEnvironmentProps
           setShowActions={setShowActions}
           handleAction={handleAction}
           envInfo={data}
+          workspacePath={workspacePath}
         />,
         document.body,
       )

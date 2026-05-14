@@ -858,6 +858,7 @@ export const DesktopChatInputBar = memo(
           <AgentEnvironment
             machineType={machineType}
             agentId={templateAgentId ?? agentId}
+            workspacePath={workspacePath}
           />
         </span>
         <span className={styles.infoDivider} aria-hidden="true">

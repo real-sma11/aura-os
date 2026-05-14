@@ -33,6 +33,7 @@ interface StatusCardProps {
   setShowActions: Dispatch<SetStateAction<boolean>>
   handleAction: (action: LifecycleAction | "recover") => void
   envInfo: { os: string; architecture: string; ip: string; cwd: string } | null | undefined
+  workspacePath?: string | null
 }
 
 interface RemoteActionsProps {
@@ -230,9 +231,11 @@ function RemoteStatusContent({
 interface LocalStatusContentProps {
   isLocal: boolean
   envInfo: { os: string; architecture: string; ip: string; cwd: string } | null | undefined
+  workspacePath?: string | null
 }
 
-function LocalStatusContent({ isLocal, envInfo }: LocalStatusContentProps) {
+function LocalStatusContent({ isLocal, envInfo, workspacePath }: LocalStatusContentProps) {
+  const displayWorkspace = workspacePath ?? envInfo?.cwd ?? "—"
   return (
     <>
       <div className={styles.statusRow}>
@@ -244,8 +247,8 @@ function LocalStatusContent({ isLocal, envInfo }: LocalStatusContentProps) {
         <span className={styles.statusValue}>{envInfo?.ip ?? "—"}</span>
       </div>
       <div className={styles.statusRow}>
-        <span className={styles.statusLabel}>File Path</span>
-        <span className={styles.statusValue}>{envInfo?.cwd ?? "—"}</span>
+        <span className={styles.statusLabel}>Workspace Folder</span>
+        <span className={styles.statusValue}>{displayWorkspace}</span>
       </div>
       <div className={styles.statusRow}>
         <span className={styles.statusLabel}>OS</span>
@@ -276,6 +279,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
     setShowActions,
     handleAction,
     envInfo,
+    workspacePath,
   },
   ref,
 ) {
@@ -302,7 +306,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
           handleAction={handleAction}
         />
       ) : (
-        <LocalStatusContent isLocal={isLocal} envInfo={envInfo} />
+        <LocalStatusContent isLocal={isLocal} envInfo={envInfo} workspacePath={workspacePath} />
       )}
     </div>
   )
