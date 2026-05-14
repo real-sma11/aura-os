@@ -1,8 +1,28 @@
 import { create } from "zustand";
 
+/**
+ * Per-bucket context-window token estimates emitted by the harness in
+ * `AssistantMessageEnd.usage.context_breakdown`. The frontend keeps
+ * these on the store so the bottom-bar Context popover can render the
+ * stacked-bar / category breakdown.
+ *
+ * `mcpTokens` is reserved (always 0 today) for future MCP support; the
+ * popover hides it until it goes positive so existing layouts stay
+ * stable.
+ */
+export interface ContextBreakdown {
+  systemPromptTokens: number;
+  toolsTokens: number;
+  skillsTokens: number;
+  mcpTokens: number;
+  subagentsTokens: number;
+  conversationTokens: number;
+}
+
 export interface ContextUsageEntry {
   utilization: number;
   estimatedTokens?: number;
+  breakdown?: ContextBreakdown;
 }
 
 interface ContextUsageState {
@@ -30,6 +50,7 @@ interface ContextUsageState {
     key: string,
     utilization: number,
     estimatedTokens?: number,
+    breakdown?: ContextBreakdown,
   ) => void;
   /**
    * Optimistically bump the estimated token count for a stream by
@@ -37,6 +58,12 @@ interface ContextUsageState {
    * when available so the UI moves during a live turn. The next
    * `setContextUtilization` call reconciles the optimistic value with the
    * server-reported authoritative one.
+   *
+   * Also nudges `breakdown.conversationTokens` upward by the same
+   * delta so the stacked-bar popover stays alive between authoritative
+   * refreshes — only the conversation bucket grows mid-turn; the
+   * static buckets (system prompt / tools / skills / subagents)
+   * cannot change between turns.
    */
   bumpEstimatedTokens: (key: string, tokensDelta: number) => void;
   clearContextUtilization: (key: string) => void;
@@ -44,11 +71,24 @@ interface ContextUsageState {
   isResetPending: (key: string) => boolean;
 }
 
+/** True when every bucket is zero — treated by the UI as "not available". */
+function isBreakdownEmpty(b: ContextBreakdown | undefined): boolean {
+  if (!b) return true;
+  return (
+    b.systemPromptTokens === 0 &&
+    b.toolsTokens === 0 &&
+    b.skillsTokens === 0 &&
+    b.mcpTokens === 0 &&
+    b.subagentsTokens === 0 &&
+    b.conversationTokens === 0
+  );
+}
+
 export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
   usageByStreamKey: {},
   utilPerTokenByStreamKey: {},
   resetPendingByStreamKey: {},
-  setContextUtilization: (key, utilization, estimatedTokens) =>
+  setContextUtilization: (key, utilization, estimatedTokens, breakdown) =>
     set((state) => {
       const { [key]: _, ...resetRest } = state.resetPendingByStreamKey;
       const entry: ContextUsageEntry = { utilization };
@@ -65,6 +105,12 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
             [key]: utilization / estimatedTokens,
           };
         }
+      }
+      // Drop the breakdown when every bucket is zero — that's the
+      // "older harness, didn't emit it" sentinel and the UI's fallback
+      // path keys off `breakdown == null`.
+      if (!isBreakdownEmpty(breakdown)) {
+        entry.breakdown = breakdown;
       }
       return {
         usageByStreamKey: { ...state.usageByStreamKey, [key]: entry },
@@ -84,10 +130,25 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
       // Only advance forward so we don't undo a larger authoritative
       // value that might have landed between deltas.
       const nextUtil = Math.max(prevUtil, projectedUtil);
+      // Mid-turn growth is conversation-only — system prompt, tools,
+      // skills, and subagent registry can't change between turns. If a
+      // breakdown has been seeded by an authoritative `AssistantMessageEnd`,
+      // grow the conversation bucket so the popover bar tracks the live
+      // turn instead of freezing at the last reconciled value.
+      const nextBreakdown = prev?.breakdown
+        ? {
+            ...prev.breakdown,
+            conversationTokens: prev.breakdown.conversationTokens + tokensDelta,
+          }
+        : prev?.breakdown;
       return {
         usageByStreamKey: {
           ...state.usageByStreamKey,
-          [key]: { utilization: nextUtil, estimatedTokens: nextTokens },
+          [key]: {
+            utilization: nextUtil,
+            estimatedTokens: nextTokens,
+            breakdown: nextBreakdown,
+          },
         },
       };
     });

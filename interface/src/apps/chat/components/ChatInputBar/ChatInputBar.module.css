@@ -360,6 +360,184 @@
   line-height: 1.4;
 }
 
+/* ---------- Context breakdown popover (Cursor-style) -----------------
+   Triggered when the harness emits a non-empty `context_breakdown` on
+   `AssistantMessageEnd`. Replaces the legacy two-row Used/Total view
+   with a stacked-bar graph + per-bucket token list. The buckets are
+   color-coded via fixed CSS variables so the bar segments and the swatch
+   dots in the list always agree.
+   ------------------------------------------------------------------- */
+
+.contextBreakdownCard {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  z-index: 100;
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 280px;
+  max-width: 360px;
+  box-shadow: 0 8px 24px var(--color-backdrop-light);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contextBreakdownCard::before {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+}
+
+.contextBreakdownHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.contextBreakdownTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: 0.01em;
+}
+
+.contextBreakdownClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.contextBreakdownClose:hover {
+  color: var(--color-text-primary);
+  background: var(--color-overlay-medium);
+}
+
+.contextBreakdownSummary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.contextBreakdownPercent {
+  color: var(--color-text-secondary);
+}
+
+.contextBreakdownTokens {
+  color: var(--color-text-muted);
+}
+
+/* Stacked horizontal bar. Each child `.contextBreakdownSegment` carries
+   its own `flex-basis` (via inline style) for its bucket's share of the
+   used context, and a fixed background color matching the swatch in the
+   list below. The trailing empty space inside the bar is the unused
+   portion of the model's window. */
+.contextBreakdownBar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--color-overlay-light);
+}
+
+.contextBreakdownSegment {
+  height: 100%;
+  min-width: 1px;
+  /* Soften segment edges so a tiny bucket doesn't look like a crisp
+     vertical hairline against the next color. */
+  box-shadow: inset -1px 0 0 var(--color-elevated);
+}
+
+.contextBreakdownSegment:last-child {
+  box-shadow: none;
+}
+
+.contextBreakdownList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.contextBreakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.contextBreakdownRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+}
+
+.contextBreakdownSwatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.contextBreakdownRowValue {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-bucket palette. Tied to a `data-context-bucket` attribute on both
+   the stacked-bar segment and the swatch in the list so they always
+   render the same color. Values are intentionally distinct hues, not
+   theme tokens, so the breakdown is recognizable across light + dark
+   themes. */
+.contextBreakdownSwatch[data-context-bucket="system_prompt"],
+.contextBreakdownSegment[data-context-bucket="system_prompt"] {
+  background: #8b8b8b;
+}
+.contextBreakdownSwatch[data-context-bucket="tools"],
+.contextBreakdownSegment[data-context-bucket="tools"] {
+  background: #7c6df0;
+}
+.contextBreakdownSwatch[data-context-bucket="skills"],
+.contextBreakdownSegment[data-context-bucket="skills"] {
+  background: #f0b54a;
+}
+.contextBreakdownSwatch[data-context-bucket="mcp"],
+.contextBreakdownSegment[data-context-bucket="mcp"] {
+  background: #d96fa3;
+}
+.contextBreakdownSwatch[data-context-bucket="subagents"],
+.contextBreakdownSegment[data-context-bucket="subagents"] {
+  background: #5cc0f0;
+}
+.contextBreakdownSwatch[data-context-bucket="conversation"],
+.contextBreakdownSegment[data-context-bucket="conversation"] {
+  background: #f08a5c;
+}
+
 .newSessionButton {
   display: inline-flex;
   align-items: center;

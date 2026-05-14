@@ -180,6 +180,65 @@ pub struct SessionUsage {
     pub model: String,
     /// Provider name (e.g., "anthropic").
     pub provider: String,
+    /// Per-bucket token estimates that sum (approximately) to
+    /// `estimated_context_tokens`. Strictly additive — older harness
+    /// builds emit `ContextBreakdown::default()` (all zeros), and the
+    /// frontend treats an all-zero breakdown as "not available" and
+    /// falls back to the legacy used/total view.
+    #[serde(default)]
+    pub context_breakdown: ContextBreakdown,
+}
+
+/// Per-bucket token estimates for the current session context, computed
+/// using the same `chars / CHARS_PER_TOKEN` heuristic as
+/// [`SessionUsage::estimated_context_tokens`]. The buckets approximate
+/// what the model actually receives on the next turn:
+///
+/// - `system_prompt_tokens` — the rendered system prompt.
+/// - `tools_tokens` — serialized tool definitions (name + description +
+///   JSON schema for each tool the request would carry).
+/// - `skills_tokens` — installed skill metadata (name + description).
+/// - `mcp_tokens` — reserved for MCP server context once aura-harness
+///   gains MCP support; today this is always `0`.
+/// - `subagents_tokens` — registered subagent kind specs.
+/// - `conversation_tokens` — the live message transcript including
+///   tool results and assistant turns. This is the same number as
+///   `estimated_context_tokens` minus the static buckets above.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS), ts(export))]
+pub struct ContextBreakdown {
+    pub system_prompt_tokens: u64,
+    pub tools_tokens: u64,
+    pub skills_tokens: u64,
+    pub mcp_tokens: u64,
+    pub subagents_tokens: u64,
+    pub conversation_tokens: u64,
+}
+
+impl ContextBreakdown {
+    /// True when every bucket is zero. Used by the frontend to detect
+    /// pre-upgrade harness builds and fall back to the legacy popover.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.system_prompt_tokens == 0
+            && self.tools_tokens == 0
+            && self.skills_tokens == 0
+            && self.mcp_tokens == 0
+            && self.subagents_tokens == 0
+            && self.conversation_tokens == 0
+    }
+
+    /// Sum of every bucket. Useful as a sanity check against
+    /// [`SessionUsage::estimated_context_tokens`].
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.system_prompt_tokens
+            .saturating_add(self.tools_tokens)
+            .saturating_add(self.skills_tokens)
+            .saturating_add(self.mcp_tokens)
+            .saturating_add(self.subagents_tokens)
+            .saturating_add(self.conversation_tokens)
+    }
 }
 
 /// A single file mutation observed during a turn.

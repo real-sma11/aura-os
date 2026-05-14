@@ -24,6 +24,7 @@ import {
   getThinkingDurationMs,
   isStreamDroppedError,
 } from "../use-stream-core";
+import type { StreamCloseContext } from "../../shared/observability/stream-breadcrumbs";
 
 import {
   pushPendingSpec,
@@ -81,6 +82,16 @@ export interface DispatchDeps {
    * cleanup.
    */
   onMaybeAutoRetry?: (error: unknown) => boolean;
+  /**
+   * Phase 5 breadcrumb context. Forwarded to every `handleStreamError`
+   * / `finalizeStream` call inside the handler so the persisted
+   * breadcrumb ring carries the originating stream key + agent +
+   * session ids. Optional because `useProcessNodeStream` and the
+   * task-stream bootstrap reuse the lifecycle handlers without a
+   * stream-key context (their breadcrumbs land context-less, which
+   * is fine — the support workflow targets chat surfaces only).
+   */
+  breadcrumbContext?: StreamCloseContext;
 }
 
 interface SessionReadyPayload {
@@ -142,7 +153,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
     projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
-    onAssistantTurnCompleted, onMaybeAutoRetry,
+    onAssistantTurnCompleted, onMaybeAutoRetry, breadcrumbContext,
   } = deps;
   // Track the last session id we forwarded to `onSessionReady` so a
   // chatty stream that re-emits `SessionReady` (e.g. mid-stream
@@ -321,15 +332,41 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         handleAssistantTurnBoundary(refs, setters);
         const amc = event.content as {
           stop_reason?: string;
-          usage?: { context_utilization?: number; estimated_context_tokens?: number };
+          usage?: {
+            context_utilization?: number;
+            estimated_context_tokens?: number;
+            // Optional because older harness builds omit it; the store
+            // treats an undefined or all-zero breakdown as "fall back
+            // to the legacy used/total view".
+            context_breakdown?: {
+              system_prompt_tokens?: number;
+              tools_tokens?: number;
+              skills_tokens?: number;
+              mcp_tokens?: number;
+              subagents_tokens?: number;
+              conversation_tokens?: number;
+            };
+          };
         };
         if (amc.usage?.context_utilization != null) {
+          const cb = amc.usage.context_breakdown;
+          const breakdown = cb
+            ? {
+                systemPromptTokens: cb.system_prompt_tokens ?? 0,
+                toolsTokens: cb.tools_tokens ?? 0,
+                skillsTokens: cb.skills_tokens ?? 0,
+                mcpTokens: cb.mcp_tokens ?? 0,
+                subagentsTokens: cb.subagents_tokens ?? 0,
+                conversationTokens: cb.conversation_tokens ?? 0,
+              }
+            : undefined;
           useContextUsageStore
             .getState()
             .setContextUtilization(
               coreKey,
               amc.usage.context_utilization,
               amc.usage.estimated_context_tokens,
+              breakdown,
             );
         }
         if (amc.stop_reason !== "tool_use") {
@@ -392,14 +429,14 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         const toolId = `gen-${Date.now()}`;
         coreHandleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
         coreHandleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
-        finalizeStream(refs, setters, abortRef, false, { reason: "completed" });
+        finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
         }
         break;
       }
       case EventType.GenerationError:
-        handleStreamError(refs, setters, event.content);
+        handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       case EventType.Error: {
         // Phase 2: a transient WS-side `Error` payload (`harness_ws_closed`,
@@ -413,11 +450,11 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         ) {
           break;
         }
-        handleStreamError(refs, setters, event.content);
+        handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       }
       case EventType.Done:
-        finalizeStream(refs, setters, abortRef, false);
+        finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
         }
@@ -442,7 +479,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       if (isStreamDroppedError(error) && onMaybeAutoRetry?.(error)) {
         return;
       }
-      handleStreamError(refs, setters, error);
+      handleStreamError(refs, setters, error, breadcrumbContext);
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);
       }
@@ -454,7 +491,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       );
     },
     onDone: () => {
-      finalizeStream(refs, setters, abortRef, false);
+      finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);
       }

@@ -926,6 +926,7 @@ export const DesktopChatInputBar = memo(
           <ContextUsageIndicator
             utilization={contextUsage.utilization}
             estimatedTokens={contextUsage.estimatedTokens}
+            breakdown={contextUsage.breakdown}
             onNewSession={onNewSession}
           />
         ) : onNewSession ? (

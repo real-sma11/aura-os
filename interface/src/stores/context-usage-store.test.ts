@@ -128,4 +128,53 @@ describe("useContextUsageStore", () => {
     expect(approxTokensFromText("abcd")).toBe(1);
     expect(approxTokensFromText("hello world!")).toBe(3);
   });
+
+  it("stores an authoritative breakdown alongside utilization", () => {
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, {
+      systemPromptTokens: 5_000,
+      toolsTokens: 20_000,
+      skillsTokens: 1_500,
+      mcpTokens: 0,
+      subagentsTokens: 800,
+      conversationTokens: 72_700,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown?.systemPromptTokens).toBe(5_000);
+    expect(entry?.breakdown?.conversationTokens).toBe(72_700);
+  });
+
+  it("ignores an all-zero breakdown so the UI can fall back", () => {
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, {
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 0,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown).toBeUndefined();
+  });
+
+  it("bumpEstimatedTokens grows the conversation bucket only", () => {
+    const s = useContextUsageStore.getState();
+    s.setContextUtilization("k1", 0.5, 50_000, {
+      systemPromptTokens: 5_000,
+      toolsTokens: 10_000,
+      skillsTokens: 1_000,
+      mcpTokens: 0,
+      subagentsTokens: 500,
+      conversationTokens: 33_500,
+    });
+    s.bumpEstimatedTokens("k1", 4_000);
+
+    const breakdown = useContextUsageStore.getState().usageByStreamKey.k1?.breakdown;
+    expect(breakdown?.conversationTokens).toBe(37_500);
+    // Static buckets stay frozen — they only change between turns,
+    // not mid-stream.
+    expect(breakdown?.systemPromptTokens).toBe(5_000);
+    expect(breakdown?.toolsTokens).toBe(10_000);
+    expect(breakdown?.skillsTokens).toBe(1_000);
+    expect(breakdown?.subagentsTokens).toBe(500);
+  });
 });

@@ -133,6 +133,26 @@ export interface SessionUsage {
   context_utilization: number;
   model: string;
   provider: string;
+  /**
+   * Per-bucket token estimates that approximately sum to
+   * `estimated_context_tokens`. Optional because older harness builds
+   * omit it; the frontend treats an absent or all-zero breakdown as
+   * "not available" and falls back to the legacy used/total view.
+   */
+  context_breakdown?: ContextBreakdown;
+}
+
+/**
+ * Per-bucket context-window token estimates emitted by the harness.
+ * `mcp_tokens` is reserved (always 0 today) for future MCP integration.
+ */
+export interface ContextBreakdown {
+  system_prompt_tokens: number;
+  tools_tokens: number;
+  skills_tokens: number;
+  mcp_tokens: number;
+  subagents_tokens: number;
+  conversation_tokens: number;
 }
 
 export interface FileOp {

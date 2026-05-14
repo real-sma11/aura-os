@@ -676,6 +676,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               <ContextUsageIndicator
                 utilization={contextUsage.utilization}
                 estimatedTokens={contextUsage.estimatedTokens}
+                breakdown={contextUsage.breakdown}
                 onNewSession={onNewSession}
               />
             ) : null}

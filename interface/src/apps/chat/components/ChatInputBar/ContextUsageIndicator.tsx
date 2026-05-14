@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcw, X } from "lucide-react";
+import type { ContextBreakdown } from "../../../../stores/context-usage-store";
 import styles from "./ChatInputBar.module.css";
 
 export interface ContextUsageIndicatorProps {
   utilization: number;
   estimatedTokens?: number;
+  /**
+   * Per-bucket token estimates for the current session context.
+   * When present, the popover renders the Cursor-style stacked-bar
+   * breakdown (System prompt / Tools / Skills / MCP / Subagents /
+   * Conversation). When absent (older harness builds, dev-loop
+   * fallback, or fresh hydrate before the first turn), the popover
+   * falls back to the legacy two-row Used/Total view so nothing
+   * regresses.
+   */
+  breakdown?: ContextBreakdown;
   onNewSession?: () => void;
 }
 
@@ -16,21 +27,59 @@ function formatTokens(value: number | undefined): string {
 }
 
 /**
+ * Compact "12.3K" style for the popover's token-count summary line so
+ * it matches the visual density of the screenshot. Uses fixed-precision
+ * 1-decimal `K` past 10K and integer `K` past 100K so two adjacent
+ * popovers (Used vs Total) line up nicely.
+ */
+function formatTokensShort(value: number | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const v = Math.round(value);
+  if (v < 1_000) return `${v}`;
+  if (v < 10_000) return `${(v / 1_000).toFixed(1)}K`;
+  if (v < 1_000_000) return `${Math.round(v / 1_000)}K`;
+  return `${(v / 1_000_000).toFixed(1)}M`;
+}
+
+interface BucketRow {
+  /** Stable id used for color-coding and `data-context-bucket`. */
+  id: "system_prompt" | "tools" | "skills" | "mcp" | "subagents" | "conversation";
+  label: string;
+  tokens: number;
+}
+
+/**
+ * Order matches the screenshot: System prompt, Tools, Skills, MCP,
+ * Subagents, Conversation. `Conversation` lives at the bottom because
+ * it's the dominant bucket on long sessions.
+ */
+function buildBucketRows(b: ContextBreakdown): BucketRow[] {
+  return [
+    { id: "system_prompt", label: "System prompt", tokens: b.systemPromptTokens },
+    { id: "tools", label: "Tools", tokens: b.toolsTokens },
+    { id: "skills", label: "Skills", tokens: b.skillsTokens },
+    { id: "mcp", label: "MCP", tokens: b.mcpTokens },
+    { id: "subagents", label: "Subagents", tokens: b.subagentsTokens },
+    { id: "conversation", label: "Conversation", tokens: b.conversationTokens },
+  ];
+}
+
+/**
  * Hover/pin popover for the bottom-bar context-window indicator. The
- * visible trigger keeps the legacy "NN%" pill and the reset button; the
- * popover that appears above (mirroring AgentEnvironment's status card)
- * exposes the raw token numbers alongside the percentage.
+ * visible trigger keeps the legacy "NN%" pill and the reset button.
  *
- * Total context is derived from `estimatedTokens / utilization` — the
- * backend only emits the ratio and used tokens, so we back out the
- * model's advertised window here. When either is missing (e.g. the
- * dev-loop fallback, or before the first stream turn on a freshly
- * hydrated REST seed), we hide the Used/Total rows and only show the
- * percentage so the popover still communicates something useful.
+ * Two popover variants live here:
+ *  - When `breakdown` is populated, render the Cursor-style stacked-bar
+ *    breakdown that shows the percentage, total tokens, and a
+ *    color-coded segment per bucket alongside a labeled list.
+ *  - Otherwise fall back to the legacy three-row "Context / Used /
+ *    Total" card so older harness builds and the pre-first-turn state
+ *    still communicate something useful.
  */
 export function ContextUsageIndicator({
   utilization,
   estimatedTokens,
+  breakdown,
   onNewSession,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
@@ -52,6 +101,10 @@ export function ContextUsageIndicator({
       setOpen(true);
     }
   }, [pinned]);
+  const handleClose = useCallback(() => {
+    setPinned(false);
+    setOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -77,6 +130,34 @@ export function ContextUsageIndicator({
       : utilization >= 0.7
         ? styles.contextWarning
         : "";
+
+  const bucketRows: BucketRow[] = useMemo(
+    () => (breakdown ? buildBucketRows(breakdown) : []),
+    [breakdown],
+  );
+  // Hide MCP until the harness gains it (today the bucket is hard-zero
+  // by design); never hide Conversation even when it's zero, so the
+  // breakdown always shows the dominant bucket label.
+  const visibleRows = useMemo(
+    () =>
+      bucketRows.filter(
+        (r) => r.id === "conversation" || (r.id === "mcp" ? r.tokens > 0 : true),
+      ),
+    [bucketRows],
+  );
+  // The bar's total width represents the model's context window; each
+  // segment's width is its bucket's share of the *window*, not just of
+  // the used portion. That keeps the trailing empty space in the bar
+  // visually meaningful as "headroom you still have".
+  const segments = useMemo(() => {
+    if (!breakdown || totalTokens == null || totalTokens <= 0) return [];
+    return bucketRows
+      .filter((r) => r.tokens > 0)
+      .map((r) => ({
+        ...r,
+        widthPct: Math.min(100, (r.tokens / totalTokens) * 100),
+      }));
+  }, [bucketRows, breakdown, totalTokens]);
 
   return (
     <span
@@ -106,7 +187,70 @@ export function ContextUsageIndicator({
         </button>
       ) : null}
 
-      {open && (
+      {open && breakdown && hasTokens && (
+        <div
+          className={styles.contextBreakdownCard}
+          role="dialog"
+          aria-label="Context breakdown"
+          data-agent-surface="chat-context-breakdown"
+        >
+          <div className={styles.contextBreakdownHeader}>
+            <span className={styles.contextBreakdownTitle}>Context</span>
+            <button
+              type="button"
+              className={styles.contextBreakdownClose}
+              onClick={handleClose}
+              aria-label="Close context breakdown"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className={styles.contextBreakdownSummary}>
+            <span
+              className={`${styles.contextBreakdownPercent}${toneClass ? ` ${toneClass}` : ""}`}
+            >
+              {percent}% Full
+            </span>
+            <span className={styles.contextBreakdownTokens}>
+              ~{formatTokensShort(usedTokens)} / {formatTokensShort(totalTokens)} Tokens
+            </span>
+          </div>
+          <div
+            className={styles.contextBreakdownBar}
+            role="img"
+            aria-label={`Context usage: ${percent} percent of the model window`}
+          >
+            {segments.map((s) => (
+              <span
+                key={s.id}
+                className={styles.contextBreakdownSegment}
+                data-context-bucket={s.id}
+                style={{ flexBasis: `${s.widthPct}%` }}
+                title={`${s.label}: ${formatTokens(s.tokens)} tokens`}
+              />
+            ))}
+          </div>
+          <div className={styles.contextBreakdownList}>
+            {visibleRows.map((row) => (
+              <div key={row.id} className={styles.contextBreakdownRow}>
+                <span className={styles.contextBreakdownRowLeft}>
+                  <span
+                    className={styles.contextBreakdownSwatch}
+                    data-context-bucket={row.id}
+                    aria-hidden="true"
+                  />
+                  {row.label}
+                </span>
+                <span className={styles.contextBreakdownRowValue}>
+                  {formatTokensShort(row.tokens)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {open && (!breakdown || !hasTokens) && (
         <div className={styles.contextUsageCard} role="dialog">
           <div className={styles.contextUsageRow}>
             <span className={styles.contextUsageLabel}>Context</span>
