@@ -9,7 +9,8 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::billing;
 use crate::state::{AppState, AuthJwt, AuthSession};
 
-use super::harness_stream::{open_generation_stream, resolve_generation_identity};
+use super::harness_stream::{open_generation_stream, resolve_generation_identity, GenerationPersistArgs};
+use super::persist::{persist_user_prompt, resolve_persist_ctx, GenerationPersistMeta};
 use super::router_proxy::router_url;
 use super::sse::SseResponse;
 
@@ -47,6 +48,35 @@ pub(crate) async fn generate_3d_stream(
     let identity =
         resolve_generation_identity(&state, &auth_session, &jwt, body.project_id.as_deref())
             .await?;
+
+    // 3D-mode generation lives outside the regular chat stream, so
+    // we resolve the chat-session persistence context separately and
+    // (best-effort) write a `user_message` row up front. The companion
+    // assistant turn is persisted when the harness stream emits its
+    // terminal completion event. If no chat scope was threaded through
+    // (legacy clients, AURA 3D app), `persist` stays `None` and
+    // generation streams without durable history.
+    let persist_ctx = resolve_persist_ctx(
+        &state,
+        &jwt,
+        body.agent_id.as_deref(),
+        body.project_id.as_deref(),
+        body.agent_instance_id.as_deref(),
+    )
+    .await;
+    if let Some(ctx) = persist_ctx.as_ref() {
+        persist_user_prompt(&state, ctx, body.prompt.as_deref().unwrap_or(""), None).await;
+    }
+    let persist_args = persist_ctx.map(|ctx| GenerationPersistArgs {
+        ctx,
+        meta: GenerationPersistMeta {
+            prompt: body.prompt.clone().unwrap_or_default(),
+            model: None,
+            size: None,
+            tool_name: "generate_3d_model",
+        },
+    });
+
     open_generation_stream(
         state,
         jwt,
@@ -66,11 +96,7 @@ pub(crate) async fn generate_3d_stream(
             generate_audio: None,
         },
         identity,
-        // 3D mode does not yet round-trip chat scope; persistence is
-        // tracked separately. Callers wanting durable history should
-        // use `useChatStream` (which already handles 3D via the LLM
-        // tool path) until parity is added.
-        None,
+        persist_args,
     )
     .await
 }

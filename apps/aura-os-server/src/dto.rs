@@ -338,6 +338,10 @@ pub(crate) struct Generate3dRequest {
     pub project_id: Option<String>,
     #[serde(rename = "parentId")]
     pub parent_id: Option<String>,
+    #[serde(default, rename = "agentId")]
+    pub agent_id: Option<String>,
+    #[serde(default, rename = "agentInstanceId")]
+    pub agent_instance_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
