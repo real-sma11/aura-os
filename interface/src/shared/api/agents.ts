@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { apiFetch } from "./core";
 import { sendAgentEventStream, sendEventStream } from "../../api/streams";
+import type { WireContextBreakdown } from "../../stores/context-usage-store";
 
 type ApiRequestOptions = {
   signal?: AbortSignal;
@@ -44,6 +45,15 @@ export interface ContextUsageResponse {
    * when only the legacy `context_utilization` ratio is known (e.g.
    * dev-loop fallback). */
   estimated_context_tokens?: number;
+  /** Per-bucket token estimates from the most recent persisted
+   * `assistant_message_end` event for the session. Absent on older
+   * harness builds (or when every bucket was zero); the frontend treats
+   * an absent breakdown as "not available" and falls back to the legacy
+   * two-row Used/Total card in `ContextUsageIndicator`. Plumbed through
+   * `useHydrateContextUtilization` so the new stacked-bar popover
+   * renders immediately on chat mount instead of waiting for the next
+   * assistant turn. */
+  context_breakdown?: WireContextBreakdown;
 }
 
 export const agentTemplatesApi = {

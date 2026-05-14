@@ -8,6 +8,7 @@ use tracing::{info, warn};
 use aura_os_core::{AgentId, AgentInstanceId, ProjectId, Session, SessionEvent, SessionId, Task};
 use aura_os_sessions::storage_session_to_session;
 use aura_os_storage::StorageClient;
+use aura_protocol::ContextBreakdown;
 
 use crate::capture_auth::{demo_agent_id, demo_agent_instance_id, is_capture_access_token};
 use crate::error::{map_storage_error, ApiError, ApiResult};
@@ -540,14 +541,37 @@ pub(crate) struct ContextUsageResponse {
     pub context_utilization: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_context_tokens: Option<u64>,
+    /// Per-bucket token estimates from the most recent persisted
+    /// `assistant_message_end` event for the session. Absent on older
+    /// harness builds (where the field was either missing or all-zero);
+    /// the frontend treats an absent breakdown as "not available" and
+    /// falls back to the legacy two-row Used/Total card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_breakdown: Option<ContextBreakdown>,
 }
 
 /// Usage snapshot derived from the most recent persisted
 /// `assistant_message_end` event for a session.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct SessionContextUsage {
     utilization: f32,
     estimated_context_tokens: Option<u64>,
+    context_breakdown: Option<ContextBreakdown>,
+}
+
+/// Representative breakdown returned by the demo capture-token branches
+/// of the context-usage endpoints. The buckets are sized to roughly
+/// match the demo's `estimated_context_tokens = 33_280` so the marketing
+/// surface can exercise the new stacked-bar popover end-to-end.
+fn demo_context_breakdown() -> ContextBreakdown {
+    ContextBreakdown {
+        system_prompt_tokens: 4_200,
+        tools_tokens: 6_800,
+        skills_tokens: 1_500,
+        mcp_tokens: 0,
+        subagents_tokens: 980,
+        conversation_tokens: 19_800,
+    }
 }
 
 /// Pull the most recent context usage out of a storage session.
@@ -578,6 +602,7 @@ async fn latest_context_usage_for_session(
             return session.context_usage_estimate.map(|v| SessionContextUsage {
                 utilization: v as f32,
                 estimated_context_tokens: None,
+                context_breakdown: None,
             });
         }
     };
@@ -596,9 +621,20 @@ async fn latest_context_usage_for_session(
             let estimated_context_tokens = usage
                 .get("estimated_context_tokens")
                 .and_then(|v| v.as_u64());
+            // Older harness builds may omit `context_breakdown` entirely
+            // or emit `ContextBreakdown::default()` (all zeros). In both
+            // cases we want the response to *not* carry the field so
+            // the frontend stays on its legacy popover branch via the
+            // existing `breakdown == null` check. Parse failures are
+            // treated the same as missing.
+            let context_breakdown = usage
+                .get("context_breakdown")
+                .and_then(|cb| serde_json::from_value::<ContextBreakdown>(cb.clone()).ok())
+                .filter(|cb| !cb.is_empty());
             Some(SessionContextUsage {
                 utilization: raw as f32,
                 estimated_context_tokens,
+                context_breakdown,
             })
         });
 
@@ -606,6 +642,7 @@ async fn latest_context_usage_for_session(
         session.context_usage_estimate.map(|v| SessionContextUsage {
             utilization: v as f32,
             estimated_context_tokens: None,
+            context_breakdown: None,
         })
     })
 }
@@ -628,6 +665,7 @@ pub(crate) async fn get_agent_context_usage(
         return Ok(Json(ContextUsageResponse {
             context_utilization: 0.34,
             estimated_context_tokens: Some(33_280),
+            context_breakdown: Some(demo_context_breakdown()),
         }));
     }
 
@@ -638,6 +676,7 @@ pub(crate) async fn get_agent_context_usage(
         return Ok(Json(ContextUsageResponse {
             context_utilization: 0.0,
             estimated_context_tokens: None,
+            context_breakdown: None,
         }));
     }
 
@@ -672,6 +711,7 @@ pub(crate) async fn get_agent_context_usage(
     Ok(Json(ContextUsageResponse {
         context_utilization: usage.utilization,
         estimated_context_tokens: usage.estimated_context_tokens,
+        context_breakdown: usage.context_breakdown,
     }))
 }
 
@@ -687,6 +727,7 @@ pub(crate) async fn get_instance_context_usage(
         return Ok(Json(ContextUsageResponse {
             context_utilization: 0.34,
             estimated_context_tokens: Some(33_280),
+            context_breakdown: Some(demo_context_breakdown()),
         }));
     }
 
@@ -708,5 +749,6 @@ pub(crate) async fn get_instance_context_usage(
     Ok(Json(ContextUsageResponse {
         context_utilization: usage.utilization,
         estimated_context_tokens: usage.estimated_context_tokens,
+        context_breakdown: usage.context_breakdown,
     }))
 }
