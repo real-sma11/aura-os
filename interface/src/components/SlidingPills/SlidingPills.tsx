@@ -137,7 +137,17 @@ export function SlidingPills<T extends string>({
     apply(isUserDriven);
     lastAppliedValueRef.current = value;
 
-    const observer = new ResizeObserver(() => apply(false));
+    // ResizeObserver fires its callback once immediately on
+    // `.observe()`. Skip that first invocation so it doesn't
+    // overwrite an in-progress slide animation with `transition:none`.
+    let firstCallback = true;
+    const observer = new ResizeObserver(() => {
+      if (firstCallback) {
+        firstCallback = false;
+        return;
+      }
+      apply(false);
+    });
     observer.observe(container);
     return () => observer.disconnect();
   }, [value, items.length]);
