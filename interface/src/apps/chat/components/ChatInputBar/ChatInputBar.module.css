@@ -168,6 +168,25 @@
   margin-left: auto;
 }
 
+/* Multi-line state: the same `<ModelPicker>` is rendered inside the
+   shell's `containerBottom` slot (a footer row below the textarea,
+   above the info bar). This wrapper just left-aligns the picker so
+   it sits flush past the bottom-left attach button — the shell's
+   `.containerBottomRow` already supplies the 32px corner padding
+   that clears the absolutely-positioned attach (+) and send (↑)
+   buttons. */
+.bottomChromeRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+
+.bottomChromeRow .inlineModelPicker {
+  margin-left: 0;
+}
+
 .threeDHintFlash {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   animation: threeDHintShake 280ms ease;

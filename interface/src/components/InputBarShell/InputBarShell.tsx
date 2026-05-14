@@ -5,6 +5,7 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
   type ClipboardEvent,
   type DragEvent,
   type HTMLAttributes,
@@ -96,6 +97,15 @@ export interface InputBarShellProps {
   modeBar?: ReactNode;
   /** Slot rendered inside the container, above the input row. */
   containerTop?: ReactNode;
+  /**
+   * Slot rendered inside the container, BELOW the input row. Used for
+   * chrome that should sit at the bottom of the rounded container
+   * (e.g. the chat surface drops the model picker here when the
+   * textarea has wrapped to multiple lines so the prompt can use the
+   * full container width). The shell does not style this slot beyond
+   * making it a flex child; consumers own padding and layout.
+   */
+  containerBottom?: ReactNode;
   /** Slot rendered inside the input row at the start (e.g. attach button). */
   inputRowStart?: ReactNode;
   /** Slot rendered inside the input row at the end, before send/stop. */
@@ -111,6 +121,15 @@ export interface InputBarShellProps {
   stopAriaLabel?: string;
   /** Title for the stop button (tooltip). */
   stopTitle?: string;
+
+  /**
+   * Fired when the textarea transitions between single-line and
+   * multi-line states (text wrapped to a second visual row, or
+   * reduced back to one). Fires once on mount with the initial state
+   * so consumers can use it to drive layout (e.g. moving the model
+   * picker out of the inline `inputRowEnd` slot).
+   */
+  onMultiLineChange?: (isMultiLine: boolean) => void;
 
   /** Extra HTML attributes for the outer wrapper (e.g. data-attrs). */
   rootProps?: Omit<HTMLAttributes<HTMLDivElement>, "className"> & {
@@ -141,6 +160,7 @@ function InputBarShellInner(
     onContainerDrop,
     modeBar,
     containerTop,
+    containerBottom,
     inputRowStart,
     inputRowEnd,
     infoBarStart,
@@ -148,11 +168,14 @@ function InputBarShellInner(
     sendAriaLabel = "Send",
     stopAriaLabel = "Stop",
     stopTitle,
+    onMultiLineChange,
     rootProps,
   }: InputBarShellProps,
   ref: Ref<InputBarShellHandle>,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const singleLineHeightRef = useRef<number | null>(null);
+  const [isMultiLine, setIsMultiLine] = useState(false);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -169,6 +192,25 @@ function InputBarShellInner(
     // Arrow keys keeps working).
     const cap = Math.min(window.innerHeight * 0.7, 800);
     el.style.height = Math.min(el.scrollHeight, cap) + "px";
+
+    // Capture the single-line baseline lazily from computed styles so
+    // the threshold tracks the current font-size / line-height (which
+    // changes between desktop and mobile via the @media override on
+    // `.textarea`). Falls back to 32px (the default control height).
+    if (singleLineHeightRef.current == null) {
+      const cs = getComputedStyle(el);
+      const lineHeight = parseFloat(cs.lineHeight);
+      const padTop = parseFloat(cs.paddingTop);
+      const padBottom = parseFloat(cs.paddingBottom);
+      if (Number.isFinite(lineHeight)) {
+        singleLineHeightRef.current = lineHeight + padTop + padBottom;
+      }
+    }
+    const baseline = singleLineHeightRef.current ?? 32;
+    // 4px tolerance covers sub-pixel rounding on HiDPI screens where
+    // scrollHeight can land at e.g. 32.5px for a single-line textarea.
+    const multi = el.scrollHeight > baseline + 4;
+    setIsMultiLine((prev) => (prev === multi ? prev : multi));
   }, []);
 
   useEffect(() => {
@@ -176,10 +218,22 @@ function InputBarShellInner(
   }, [value, autoResize]);
 
   useEffect(() => {
-    const onResize = () => autoResize();
+    const onResize = () => {
+      // Width changes can rewrap the textarea (long line that fit at
+      // wide widths now wraps), so re-measure the multi-line state too.
+      // Reset the baseline when the font-size media-query crosses the
+      // 900px / 640px breakpoints so the threshold tracks the new
+      // line-height.
+      singleLineHeightRef.current = null;
+      autoResize();
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [autoResize]);
+
+  useEffect(() => {
+    onMultiLineChange?.(isMultiLine);
+  }, [isMultiLine, onMultiLineChange]);
 
   const sendEnabled = isSendEnabled ?? value.trim().length > 0;
   const canSubmit = sendEnabled && !disabled;
@@ -206,6 +260,7 @@ function InputBarShellInner(
     styles.inputContainer,
     isDropZone ? styles.dropZoneActive : "",
     isPulsing || isCentered ? styles.inputContainerPulse : "",
+    isMultiLine ? styles.inputContainerMultiLine : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -227,6 +282,7 @@ function InputBarShellInner(
     >
       <div
         className={containerClassName}
+        data-multiline={isMultiLine ? "true" : "false"}
         onDragOver={onContainerDragOver}
         onDragLeave={onContainerDragLeave}
         onDrop={onContainerDrop}
@@ -274,6 +330,9 @@ function InputBarShellInner(
             </button>
           )}
         </div>
+        {containerBottom ? (
+          <div className={styles.containerBottomRow}>{containerBottom}</div>
+        ) : null}
       </div>
       {(infoBarStart || infoBarEnd) && (
         <div className={styles.inputInfoBar}>

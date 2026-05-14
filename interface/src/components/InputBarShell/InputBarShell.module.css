@@ -193,19 +193,48 @@
 
 .inputRowEnd {
   position: absolute;
-  /* Sit clear of the send button's hit area (right: 2px, width: 24px,
-     so left edge ~26px from the right) plus enough breathing room so
-     inline chips don't visually crowd the arrow. */
-  right: 40px;
+  /* Sit close to the send button's hit area (right: 2px, width: 24px,
+     so left edge ~26px from the right) with a small visual gap. */
+  right: 32px;
   /* Vertically center inside the input row so chips don't read as
      bottom-anchored relative to the textarea. */
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
   display: flex;
-  max-width: min(170px, calc(100% - 94px));
+  max-width: min(170px, calc(100% - 86px));
   min-width: 0;
   align-items: center;
+}
+
+/* When the textarea has wrapped to a second visual row, the inline
+   `inputRowEnd` slot reads as a floating pill anchored to the middle
+   of a tall block of text — visually messy and it steals horizontal
+   space the user needs for the prompt itself. Consumers that want the
+   adaptive layout (chat) move the picker into the `containerBottom`
+   slot when multi-line; we hide the absolute slot here and restore
+   the textarea's full width by dropping the `padding-right` reservation
+   the single-line layout uses. The corner inset (~32px) still keeps
+   wrapped lines clear of the send-button hit target. */
+.inputContainer[data-multiline="true"] .inputRowEnd {
+  display: none;
+}
+
+.inputContainer[data-multiline="true"] .inputRowHasEnd .textarea {
+  padding-right: 32px;
+}
+
+/* Bottom row inside the rounded container, used by consumers via the
+   `containerBottom` slot. Padding clears the absolutely-positioned
+   attach (`+`, left: 2px, w: 24px) and send (`↑`, right: 2px, w: 24px)
+   corner buttons so footer chrome (e.g. the model picker in
+   multi-line state) sits between them rather than under them. */
+.containerBottomRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 32px 6px 32px;
 }
 
 /* Attach (`+`) and send (arrow) corner buttons share the same shared

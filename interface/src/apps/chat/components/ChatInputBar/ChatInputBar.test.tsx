@@ -315,6 +315,83 @@ describe("ChatInputBar", () => {
     expect(screen.getAllByText("GPT-OSS 120B")[0]).toBeInTheDocument();
   });
 
+  it("relocates the model picker into the bottom chrome row when the textarea wraps to multi-line", async () => {
+    // The shell measures multi-line state via `textarea.scrollHeight` against
+    // a single-line baseline (~32px); JSDOM doesn't run real layout, so stub
+    // the property to simulate a textarea tall enough to clear the threshold.
+    // 80px is unambiguously > the 36px (32 + 4) cutoff in `autoResize`.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 80;
+      },
+    });
+
+    try {
+      mockSelectedModel = "aura-claude-opus-4-6";
+      const { container } = render(
+        <ChatInputBar
+          {...makeProps({
+            input:
+              "a long prompt that pretends to wrap across multiple visual lines so the picker should drop into the footer",
+          })}
+        />,
+      );
+
+      // The chat surface wraps the relocated picker in `.bottomChromeRow`
+      // (class names are string-proxied to their own names by the CSS
+      // module mock). Two ModelPicker instances always render — the
+      // hidden `.mobileModelBar` one and the desktop one — so query
+      // by structural class instead of by accessible name to avoid
+      // matching the mobile copy.
+      const bottomRow = container.querySelector(".bottomChromeRow");
+      expect(bottomRow).not.toBeNull();
+      // The picker trigger lives under the bottom row and surfaces the
+      // active model label.
+      const trigger = bottomRow!.querySelector(
+        '[data-agent-action="open-model-picker"]',
+      );
+      expect(trigger).not.toBeNull();
+      expect(trigger?.textContent).toMatch(/Opus 4\.6/);
+      // The single-line slot must be empty (no inline picker present).
+      expect(container.querySelector(".inputRowEnd")).toBeNull();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "scrollHeight",
+          originalDescriptor,
+        );
+      } else {
+        // @ts-expect-error - delete a custom getter we installed above
+        delete HTMLTextAreaElement.prototype.scrollHeight;
+      }
+    }
+  });
+
+  it("keeps the model picker inline near the send button when the textarea fits on one line", () => {
+    // Default JSDOM behavior: scrollHeight is 0, well under the 36px multi-line
+    // threshold, so the picker stays in the absolutely-positioned `inputRowEnd`
+    // slot to the left of the send button (single-line layout).
+    mockSelectedModel = "aura-claude-opus-4-6";
+    const { container } = render(
+      <ChatInputBar {...makeProps({ input: "short prompt" })} />,
+    );
+
+    const inlineSlot = container.querySelector(".inputRowEnd");
+    expect(inlineSlot).not.toBeNull();
+    const trigger = inlineSlot!.querySelector(
+      '[data-agent-action="open-model-picker"]',
+    );
+    expect(trigger).not.toBeNull();
+    expect(trigger?.textContent).toMatch(/Opus 4\.6/);
+    expect(container.querySelector(".bottomChromeRow")).toBeNull();
+  });
+
   it("does not show image-only models in the chat model picker", async () => {
     const user = userEvent.setup();
     mockSelectedModel = "aura-gpt-5-4";

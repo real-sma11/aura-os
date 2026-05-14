@@ -266,6 +266,13 @@ export const DesktopChatInputBar = memo(
     const [isDragOver, setIsDragOver] = useState(false);
     const [showAllModels, setShowAllModels] = useState(false);
     const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+    // Driven by `<InputBarShell onMultiLineChange>` — flips to true the
+    // moment the textarea wraps to a second visual row. Used to relocate
+    // the model picker from the inline `inputRowEnd` slot (next to the
+    // send button) into the `containerBottom` slot (a footer row inside
+    // the rounded container) so the prompt can use the full width when
+    // it grows tall.
+    const [isMultiLine, setIsMultiLine] = useState(false);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashQuery, setSlashQuery] = useState("");
     const slashStartRef = useRef<number | null>(null);
@@ -851,13 +858,31 @@ export const DesktopChatInputBar = memo(
         </button>
       );
 
-    // Slot rendered just to the left of the send button, inside the
-    // input container itself. Always shows the model picker when the
-    // current mode has model options so the active model is visible
-    // alongside the typing target. Selected slash-command chips, when
-    // present, sit to the left of the picker.
-    const hasInputRowEnd =
-      selectedCommands.length > 0 || modelsForMode.length > 0;
+    // The model picker has two homes depending on the textarea's
+    // visual height:
+    //   - Single-line: rendered inline inside `inputRowEnd`, hugged to
+    //     the send button so the active model is glanceable next to
+    //     the typing target.
+    //   - Multi-line: dropped into `containerBottom` (a footer row
+    //     inside the rounded container), left-aligned past the attach
+    //     button — matches the reference layout in the design and
+    //     frees the full input width for the prompt.
+    // Slash-command chips always stay inline in `inputRowEnd` because
+    // they read as part of the prompt itself, not as global chrome.
+    const hasModelPicker = modelsForMode.length > 0;
+    const modelPickerNode = hasModelPicker ? (
+      <ModelPicker
+        selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
+        isInteractive={isModelPickerInteractive}
+        renderMenu={renderModelMenuItems}
+        onOpen={handleModelPickerOpen}
+        triggerProps={{ "data-agent-action": "open-model-picker" }}
+        className={styles.inlineModelPicker}
+      />
+    ) : null;
+    const showPickerInline = hasModelPicker && !isMultiLine;
+    const showPickerInBottomRow = hasModelPicker && isMultiLine;
+    const hasInputRowEnd = selectedCommands.length > 0 || showPickerInline;
     const inputRowEnd = hasInputRowEnd ? (
       <>
         {selectedCommands.length > 0 ? (
@@ -867,17 +892,11 @@ export const DesktopChatInputBar = memo(
             variant="inline"
           />
         ) : null}
-        {modelsForMode.length > 0 && (
-          <ModelPicker
-            selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
-            isInteractive={isModelPickerInteractive}
-            renderMenu={renderModelMenuItems}
-            onOpen={handleModelPickerOpen}
-            triggerProps={{ "data-agent-action": "open-model-picker" }}
-            className={styles.inlineModelPicker}
-          />
-        )}
+        {showPickerInline ? modelPickerNode : null}
       </>
+    ) : null;
+    const containerBottom = showPickerInBottomRow ? (
+      <div className={styles.bottomChromeRow}>{modelPickerNode}</div>
     ) : null;
 
     const infoBarStart = (
@@ -1020,10 +1039,12 @@ export const DesktopChatInputBar = memo(
         onContainerDrop={handleDrop}
         modeBar={modeBar}
         containerTop={containerTop}
+        containerBottom={containerBottom}
         inputRowStart={inputRowStart}
         inputRowEnd={inputRowEnd}
         infoBarStart={infoBarStart}
         infoBarEnd={infoBarEnd}
+        onMultiLineChange={setIsMultiLine}
         sendAriaLabel="Send"
         stopAriaLabel={
           isExternallyBusy && !isChatStreaming ? "Stop automation" : "Stop"
