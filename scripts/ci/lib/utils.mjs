@@ -90,7 +90,22 @@ export function capture(command, args, options = {}) {
   return `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
 }
 
-function parseVersion(raw, label) {
+function parseVersion(raw, label, prefix = label) {
+  // Prefer a match anchored to the program name (e.g. `rustc 1.94.1 (...)`)
+  // so we don't accidentally pick up an unrelated `X.Y.Z` printed by a
+  // wrapper. macos-latest now ships rustup 1.29.0 (released 2026-03-12),
+  // and the rustup proxy emits info lines on stderr that mention its own
+  // version before the actual rustc version reaches us via stdout, which
+  // would otherwise trip the bare `(\d+)\.(\d+)\.(\d+)` fallback below.
+  if (prefix) {
+    const anchored = raw.match(
+      new RegExp(`(?:^|\\W)${prefix}\\s+(\\d+)\\.(\\d+)\\.(\\d+)`, "m"),
+    );
+    if (anchored) {
+      return anchored.slice(1, 4).map((part) => Number.parseInt(part, 10));
+    }
+  }
+
   const match = raw.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) {
     fail(`Unable to parse ${label} version from: ${raw}`);
@@ -122,10 +137,13 @@ export function assertNodeMajor(expectedMajor, lane) {
 }
 
 export function assertRustVersionAtLeast(minimumVersion = RUST_VERSION) {
-  const actual = parseVersion(capture("rustc", ["--version"]), "rustc");
+  const raw = capture("rustc", ["--version"]);
+  const actual = parseVersion(raw, "rustc");
   const minimum = minimumVersion.split(".").map((part) => Number.parseInt(part, 10));
   if (compareVersions(actual, minimum) < 0) {
-    fail(`Desktop builds require rustc >= ${minimumVersion}, but found rustc ${actual.join(".")}.`);
+    fail(
+      `Desktop builds require rustc >= ${minimumVersion}, but found rustc ${actual.join(".")} (raw: ${JSON.stringify(raw)}).`,
+    );
   }
 }
 
