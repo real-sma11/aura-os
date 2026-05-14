@@ -159,6 +159,15 @@
   margin: 0;
 }
 
+/* Model picker rendered inside the input row's `inputRowEnd` slot
+   (just left of the send button). `margin-left: auto` keeps the
+   picker hugged to the right edge of the slot so it stays adjacent
+   to the send button even when other items (e.g. command chips)
+   share the slot. */
+.inlineModelPicker {
+  margin-left: auto;
+}
+
 .threeDHintFlash {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   animation: threeDHintShake 280ms ease;

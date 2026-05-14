@@ -851,12 +851,33 @@ export const DesktopChatInputBar = memo(
         </button>
       );
 
-    const inputRowEnd = selectedCommands.length > 0 ? (
-      <CommandChips
-        commands={selectedCommands}
-        onRemove={handleCommandRemove}
-        variant="inline"
-      />
+    // Slot rendered just to the left of the send button, inside the
+    // input container itself. Always shows the model picker when the
+    // current mode has model options so the active model is visible
+    // alongside the typing target. Selected slash-command chips, when
+    // present, sit to the left of the picker.
+    const hasInputRowEnd =
+      selectedCommands.length > 0 || modelsForMode.length > 0;
+    const inputRowEnd = hasInputRowEnd ? (
+      <>
+        {selectedCommands.length > 0 ? (
+          <CommandChips
+            commands={selectedCommands}
+            onRemove={handleCommandRemove}
+            variant="inline"
+          />
+        ) : null}
+        {modelsForMode.length > 0 && (
+          <ModelPicker
+            selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
+            isInteractive={isModelPickerInteractive}
+            renderMenu={renderModelMenuItems}
+            onOpen={handleModelPickerOpen}
+            triggerProps={{ "data-agent-action": "open-model-picker" }}
+            className={styles.inlineModelPicker}
+          />
+        )}
+      </>
     ) : null;
 
     const infoBarStart = (
@@ -925,15 +946,6 @@ export const DesktopChatInputBar = memo(
             breakdown={contextUsage.breakdown}
           />
         ) : null}
-        {modelsForMode.length > 0 && (
-          <ModelPicker
-            selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
-            isInteractive={isModelPickerInteractive}
-            renderMenu={renderModelMenuItems}
-            onOpen={handleModelPickerOpen}
-            triggerProps={{ "data-agent-action": "open-model-picker" }}
-          />
-        )}
       </>
     );
 
