@@ -40,6 +40,8 @@ import {
 import {
   useContextUsageStore,
   approxTokensFromText,
+  mapWireContextBreakdown,
+  type WireContextBreakdown,
 } from "../../stores/context-usage-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
 
@@ -338,35 +340,17 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
             // Optional because older harness builds omit it; the store
             // treats an undefined or all-zero breakdown as "fall back
             // to the legacy used/total view".
-            context_breakdown?: {
-              system_prompt_tokens?: number;
-              tools_tokens?: number;
-              skills_tokens?: number;
-              mcp_tokens?: number;
-              subagents_tokens?: number;
-              conversation_tokens?: number;
-            };
+            context_breakdown?: WireContextBreakdown;
           };
         };
         if (amc.usage?.context_utilization != null) {
-          const cb = amc.usage.context_breakdown;
-          const breakdown = cb
-            ? {
-                systemPromptTokens: cb.system_prompt_tokens ?? 0,
-                toolsTokens: cb.tools_tokens ?? 0,
-                skillsTokens: cb.skills_tokens ?? 0,
-                mcpTokens: cb.mcp_tokens ?? 0,
-                subagentsTokens: cb.subagents_tokens ?? 0,
-                conversationTokens: cb.conversation_tokens ?? 0,
-              }
-            : undefined;
           useContextUsageStore
             .getState()
             .setContextUtilization(
               coreKey,
               amc.usage.context_utilization,
               amc.usage.estimated_context_tokens,
-              breakdown,
+              mapWireContextBreakdown(amc.usage.context_breakdown),
             );
         }
         if (amc.stop_reason !== "tool_use") {

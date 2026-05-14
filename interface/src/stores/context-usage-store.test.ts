@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   approxTokensFromText,
+  mapWireContextBreakdown,
   useContextUsageStore,
 } from "./context-usage-store";
 
@@ -152,6 +153,55 @@ describe("useContextUsageStore", () => {
       subagentsTokens: 0,
       conversationTokens: 0,
     });
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown).toBeUndefined();
+  });
+
+  it("mapWireContextBreakdown returns undefined when the payload is missing", () => {
+    expect(mapWireContextBreakdown(undefined)).toBeUndefined();
+  });
+
+  it("mapWireContextBreakdown rewrites snake_case fields into the camelCase store shape", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 5_000,
+      tools_tokens: 20_000,
+      skills_tokens: 1_500,
+      mcp_tokens: 0,
+      subagents_tokens: 800,
+      conversation_tokens: 72_700,
+    });
+    expect(mapped).toEqual({
+      systemPromptTokens: 5_000,
+      toolsTokens: 20_000,
+      skillsTokens: 1_500,
+      mcpTokens: 0,
+      subagentsTokens: 800,
+      conversationTokens: 72_700,
+    });
+  });
+
+  it("mapWireContextBreakdown defaults missing snake fields to zero so a partial payload doesn't NaN", () => {
+    expect(mapWireContextBreakdown({ conversation_tokens: 100 })).toEqual({
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 100,
+    });
+  });
+
+  it("mapWireContextBreakdown + setContextUtilization drops an all-zero payload (older harness fallback)", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 0,
+      tools_tokens: 0,
+      skills_tokens: 0,
+      mcp_tokens: 0,
+      subagents_tokens: 0,
+      conversation_tokens: 0,
+    });
+    expect(mapped).not.toBeUndefined();
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, mapped);
     const entry = useContextUsageStore.getState().usageByStreamKey.k1;
     expect(entry?.breakdown).toBeUndefined();
   });

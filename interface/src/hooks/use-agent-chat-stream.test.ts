@@ -3,6 +3,7 @@ import { useAgentChatStream } from "./use-agent-chat-stream";
 import { useStreamStore, streamMetaMap } from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
+import { useContextUsageStore } from "../stores/context-usage-store";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { EventType, type AuraEvent } from "../shared/types/aura-events";
@@ -33,6 +34,11 @@ describe("useAgentChatStream", () => {
     useStreamStore.setState({ entries: {} });
     useChatUIStore.setState({ streams: {} });
     useMessageQueueStore.setState({ queues: {} });
+    useContextUsageStore.setState({
+      usageByStreamKey: {},
+      utilPerTokenByStreamKey: {},
+      resetPendingByStreamKey: {},
+    });
     vi.mocked(api.agents.sendEventStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generateImageStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generate3dStream).mockReset().mockResolvedValue(undefined);
@@ -541,6 +547,101 @@ describe("useAgentChatStream", () => {
     expect(queue).toHaveLength(1);
     expect(queue[0].content).toBe("send anyway please");
     expect(queue[0].pendingDueToStuckStream).toBe(true);
+  });
+
+  it("populates context_breakdown into useContextUsageStore on AssistantMessageEnd", async () => {
+    // Regression: the standalone agent chat / Chat-app surface used to
+    // drop `usage.context_breakdown` on the floor, so the Context
+    // popover never rendered the rich per-bucket panel even when the
+    // harness emitted the field. The handler now mirrors
+    // `build-stream-handler.ts` and forwards the breakdown into the
+    // store via `mapWireContextBreakdown` so both chat surfaces show
+    // the same UI.
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        handler?.onEvent({
+          type: EventType.AssistantMessageEnd,
+          content: {
+            stop_reason: "stop",
+            usage: {
+              context_utilization: 0.5,
+              estimated_context_tokens: 100_000,
+              context_breakdown: {
+                system_prompt_tokens: 5_000,
+                tools_tokens: 20_000,
+                skills_tokens: 1_500,
+                mcp_tokens: 0,
+                subagents_tokens: 800,
+                conversation_tokens: 72_700,
+              },
+            },
+          },
+        } as AuraEvent);
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("hi");
+    });
+
+    const entry =
+      useContextUsageStore.getState().usageByStreamKey[result.current.streamKey];
+    expect(entry?.utilization).toBeCloseTo(0.5);
+    expect(entry?.estimatedTokens).toBe(100_000);
+    expect(entry?.breakdown).toEqual({
+      systemPromptTokens: 5_000,
+      toolsTokens: 20_000,
+      skillsTokens: 1_500,
+      mcpTokens: 0,
+      subagentsTokens: 800,
+      conversationTokens: 72_700,
+    });
+  });
+
+  it("bumps estimated tokens during streaming text/thinking/tool deltas so the Context ring moves mid-turn", async () => {
+    // Regression: standalone agent chat used to freeze the Context
+    // ring between authoritative `AssistantMessageEnd` events because
+    // the three delta paths (TextDelta / ThinkingDelta / ToolResult)
+    // didn't call `bumpEstimatedTokens`. The handler now mirrors
+    // `build-stream-handler.ts`.
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        handler?.onEvent({
+          type: EventType.TextDelta,
+          content: { text: "hello world" },
+        } as AuraEvent);
+        handler?.onEvent({
+          type: EventType.ThinkingDelta,
+          content: { text: "musing" },
+        } as AuraEvent);
+        handler?.onEvent({
+          type: EventType.ToolResult,
+          content: {
+            id: "tool-1",
+            name: "read_file",
+            result: "file contents here",
+            is_error: false,
+          },
+        } as AuraEvent);
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("inspect");
+    });
+
+    const entry =
+      useContextUsageStore.getState().usageByStreamKey[result.current.streamKey];
+    // hello world (11 chars) -> 3, musing (6) -> 2, file contents here (18) -> 5
+    expect(entry?.estimatedTokens).toBe(3 + 2 + 5);
   });
 
   it("marks only the next send as a new session", async () => {

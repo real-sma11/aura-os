@@ -26,7 +26,12 @@ import {
   getThinkingDurationMs,
 } from "./use-stream-core";
 import type { DisplaySessionEvent } from "../shared/types/stream";
-import { useContextUsageStore } from "../stores/context-usage-store";
+import {
+  useContextUsageStore,
+  approxTokensFromText,
+  mapWireContextBreakdown,
+  type WireContextBreakdown,
+} from "../stores/context-usage-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
 import { getLastEventAt } from "./stream/store";
@@ -263,12 +268,21 @@ export function useAgentChatStream({
         onEvent(event: AuraEvent) {
           switch (event.type) {
             case EventType.Delta:
-            case EventType.TextDelta:
-              handleTextDelta(refs, setters, getThinkingDurationMs(core.key), (event.content as { text: string }).text);
+            case EventType.TextDelta: {
+              const text = (event.content as { text: string }).text;
+              handleTextDelta(refs, setters, getThinkingDurationMs(core.key), text);
+              useContextUsageStore
+                .getState()
+                .bumpEstimatedTokens(core.key, approxTokensFromText(text));
               break;
+            }
             case EventType.ThinkingDelta: {
               const tc = event.content as { text?: string; thinking?: string };
-              handleThinkingDelta(refs, setters, tc.text ?? tc.thinking ?? "");
+              const text = tc.text ?? tc.thinking ?? "";
+              handleThinkingDelta(refs, setters, text);
+              useContextUsageStore
+                .getState()
+                .bumpEstimatedTokens(core.key, approxTokensFromText(text));
               break;
             }
             case EventType.Progress:
@@ -284,9 +298,16 @@ export function useAgentChatStream({
             case EventType.ToolCall:
               handleToolCall(refs, setters, event.content);
               break;
-            case EventType.ToolResult:
-              handleToolResult(refs, setters, event.content as { id: string; name: string; result: string; is_error: boolean });
+            case EventType.ToolResult: {
+              const tr = event.content as { id: string; name: string; result: string; is_error: boolean };
+              handleToolResult(refs, setters, tr);
+              if (typeof tr.result === "string" && tr.result.length > 0) {
+                useContextUsageStore
+                  .getState()
+                  .bumpEstimatedTokens(core.key, approxTokensFromText(tr.result));
+              }
               break;
+            }
             case EventType.SpecSaved:
               onSpecSavedRef.current?.(event.content.spec);
               break;
@@ -300,7 +321,14 @@ export function useAgentChatStream({
               handleAssistantTurnBoundary(refs, setters);
               const amc = event.content as {
                 stop_reason?: string;
-                usage?: { context_utilization?: number; estimated_context_tokens?: number };
+                usage?: {
+                  context_utilization?: number;
+                  estimated_context_tokens?: number;
+                  // Optional because older harness builds omit it; the
+                  // store treats an undefined or all-zero breakdown as
+                  // "fall back to the legacy used/total view".
+                  context_breakdown?: WireContextBreakdown;
+                };
               };
               if (amc.usage?.context_utilization != null) {
                 useContextUsageStore
@@ -309,6 +337,7 @@ export function useAgentChatStream({
                     core.key,
                     amc.usage.context_utilization,
                     amc.usage.estimated_context_tokens,
+                    mapWireContextBreakdown(amc.usage.context_breakdown),
                   );
               }
               if (amc.stop_reason !== "tool_use") {

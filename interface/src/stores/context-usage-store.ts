@@ -19,6 +19,46 @@ export interface ContextBreakdown {
   conversationTokens: number;
 }
 
+/**
+ * Wire shape of the harness's `usage.context_breakdown` payload on
+ * `AssistantMessageEnd`. Mirrors the snake_case fields in
+ * `crates/aura-protocol/src/server.rs::ContextBreakdown` and
+ * `interface/src/shared/types/harness-protocol.ts::ContextBreakdown`.
+ * Every field is optional because older harness builds omit them
+ * individually and the camelCase mapper below treats missing fields
+ * as 0.
+ */
+export interface WireContextBreakdown {
+  system_prompt_tokens?: number;
+  tools_tokens?: number;
+  skills_tokens?: number;
+  mcp_tokens?: number;
+  subagents_tokens?: number;
+  conversation_tokens?: number;
+}
+
+/**
+ * Map the harness's snake_case `context_breakdown` payload into the
+ * store's camelCase `ContextBreakdown` shape. Returns `undefined`
+ * when the input itself is missing; callers can pass the result
+ * straight to `setContextUtilization`, which additionally drops
+ * all-zero payloads via its internal `isBreakdownEmpty` filter so
+ * older harness builds keep falling back to the legacy popover.
+ */
+export function mapWireContextBreakdown(
+  cb: WireContextBreakdown | undefined,
+): ContextBreakdown | undefined {
+  if (!cb) return undefined;
+  return {
+    systemPromptTokens: cb.system_prompt_tokens ?? 0,
+    toolsTokens: cb.tools_tokens ?? 0,
+    skillsTokens: cb.skills_tokens ?? 0,
+    mcpTokens: cb.mcp_tokens ?? 0,
+    subagentsTokens: cb.subagents_tokens ?? 0,
+    conversationTokens: cb.conversation_tokens ?? 0,
+  };
+}
+
 export interface ContextUsageEntry {
   utilization: number;
   estimatedTokens?: number;
