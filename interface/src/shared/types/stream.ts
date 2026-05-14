@@ -77,6 +77,19 @@ export interface DisplaySessionEvent {
    * server `tracing` span.
    */
   supportId?: string;
+  /**
+   * Server- or client-classified error string (already stripped
+   * of the `(support_id=...)` suffix). Set only on synthesized
+   * error events emitted by `handleStreamError`. Rendered inline
+   * in the Support ID + Report Bug action row in `MessageBubble`,
+   * truncated with the full text exposed via the `title`
+   * tooltip. Kept separate from `content` so the partial
+   * streaming buffer (any text the assistant produced before the
+   * turn errored out) can render through `LLMOutput` while the
+   * synthesized error string lives in the action row instead of
+   * being concatenated into the bubble body.
+   */
+  errorMessage?: string;
 }
 
 export interface ToolCallEntry {

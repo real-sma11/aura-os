@@ -48,7 +48,7 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
   });
 
   describe("handleStreamError", () => {
-    it("adds error message to messages", () => {
+    it("adds error message to messages without the legacy `*Error: ...*` markdown decorator", () => {
       const refs = makeRefs();
       const setters = makeSetters();
 
@@ -56,9 +56,24 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const setEventsCalls = setters.calls.setEvents;
       expect(setEventsCalls).toBeDefined();
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => unknown[];
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
+      // The error string moved to its own field; the bubble's
+      // `content` is now reserved for the (empty here) streaming
+      // prefix only.
+      expect(result[0].errorMessage).toBe("something broke");
+      expect(result[0].errorMessage).not.toMatch(/\*Error: /);
+      expect(result[0].content).toBe("");
+      expect(result[0].displayVariant).toBeUndefined();
     });
 
-    it("includes buffered content as prefix", () => {
+    it("keeps the buffered prefix in `content` and routes the synthesized error string to `errorMessage`", () => {
       const refs = makeRefs();
       refs.streamBuffer.current = "partial response";
       const setters = makeSetters();
@@ -67,9 +82,15 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string }>;
-      expect(result[0].content).toContain("partial response");
-      expect(result[0].content).toContain("connection lost");
+      const result = updater([]) as Array<{ content: string; errorMessage?: string }>;
+      // The streaming buffer captured pre-error stays in `content`
+      // verbatim (no `*Error: ...*` decorator, no extra newlines)
+      // so MessageBubble can render it through LLMOutput unchanged.
+      expect(result[0].content).toBe("partial response");
+      // The synthesized error string lives in the dedicated
+      // `errorMessage` field that MessageBubble surfaces inside
+      // the Support ID + Report Bug action row.
+      expect(result[0].errorMessage).toBe("connection lost");
     });
 
     it("preserves create_spec markdown when the model call times out", () => {
@@ -114,9 +135,14 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
 
-      expect(result[0].content).toBe("You have no credits remaining. Buy more credits to continue.");
+      expect(result[0].errorMessage).toBe("You have no credits remaining. Buy more credits to continue.");
+      expect(result[0].content).toBe("");
       expect(result[0].displayVariant).toBe("insufficientCreditsError");
     });
 
@@ -136,11 +162,15 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
 
       expect(result[0].displayVariant).toBe("streamDropped");
-      expect(result[0].content).not.toMatch(/\*Error: /);
-      expect(result[0].content).toMatch(/recovered from history/i);
+      expect(result[0].content).toBe("");
+      expect(result[0].errorMessage).toMatch(/recovered from history/i);
     });
 
     it("classifies harness_capacity_exhausted errors as a Server is busy banner with the retry hint", () => {
@@ -156,11 +186,15 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
 
       expect(result[0].displayVariant).toBe("harnessCapacityExhaustedError");
-      expect(result[0].content).toBe("Server is busy — try again in 5 seconds.");
-      expect(result[0].content).not.toMatch(/\*Error: /);
+      expect(result[0].errorMessage).toBe("Server is busy — try again in 5 seconds.");
+      expect(result[0].content).toBe("");
       vi.mocked(isHarnessCapacityExhaustedError).mockReturnValue(null);
     });
 
@@ -177,10 +211,15 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
 
       expect(result[0].displayVariant).toBe("streamDropped");
-      expect(result[0].content).not.toMatch(/\*Error: /);
+      expect(result[0].content).toBe("");
+      expect(result[0].errorMessage).toMatch(/recovered from history/i);
     });
 
     it("classifies server-side stream_truncated errors as a streamDropped banner", () => {
@@ -196,10 +235,15 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
 
       const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
       const updater = lastCall as (prev: unknown[]) => unknown[];
-      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+      const result = updater([]) as Array<{
+        content: string;
+        errorMessage?: string;
+        displayVariant?: string;
+      }>;
 
       expect(result[0].displayVariant).toBe("streamDropped");
-      expect(result[0].content).not.toMatch(/\*Error: /);
+      expect(result[0].content).toBe("");
+      expect(result[0].errorMessage).toMatch(/recovered from history/i);
     });
   });
 

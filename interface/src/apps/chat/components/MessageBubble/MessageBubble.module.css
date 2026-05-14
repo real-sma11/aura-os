@@ -186,18 +186,10 @@
   gap: 10px;
 }
 
-.inlineError {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-secondary);
-}
-
-.inlineErrorMessage {
-  color: inherit;
-}
-
+/* "Buy credits" / similar single-action affordances now ride
+   inside `.errorActionsRow` alongside the support_id chip and
+   the Report Bug button. The class lives on as a button-only
+   style so the existing markup stays unchanged. */
 .inlineErrorLink {
   background: none;
   border: none;
@@ -206,14 +198,11 @@
   padding: 0;
   text-decoration: underline;
   text-underline-offset: 2px;
+  flex: 0 0 auto;
 }
 
 .inlineErrorLink:hover {
   opacity: 0.8;
-}
-
-.inlineErrorMeta {
-  flex-basis: 100%;
 }
 
 /* Banner for `displayVariant: "streamDropped"`. Renders as a prominent
@@ -238,26 +227,34 @@
   color: var(--color-text-primary);
 }
 
-.streamDroppedMessage {
-  color: inherit;
-}
-
 .streamDroppedMeta {
   margin-top: 2px;
 }
 
-/* Phase 5: shared row at the bottom of every error variant that
-   carries the support_id chip plus the inline ReportBugButton.
-   Sits inside the bubble (under the LLMOutput meta block) so it
-   reads as part of the error chrome rather than a floating
-   action bar. */
+/* Shared row at the bottom of every error variant. Carries the
+   synthesized error message (truncated), the optional support_id
+   chip, the variant-specific primary action (e.g. "Buy
+   credits"), and the inline ReportBugButton. `nowrap` is
+   intentional so the message actually truncates to a single
+   line; long bodies are still surfaced via the `title` tooltip
+   on the message span. */
 .errorActionsRow {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
   font-size: 12px;
+  min-width: 0;
+}
+
+.errorActionsMessage {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
 }
 
 .supportIdChip {

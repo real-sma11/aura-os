@@ -472,9 +472,19 @@ export function handleStreamError(
   const { savedThinking, savedThinkingDuration } = snapshotThinking(refs);
   const savedToolCalls = snapshotToolCalls(refs);
   const savedTimeline = snapshotTimeline(refs);
-  const prefix = refs.streamBuffer.current
-    ? refs.streamBuffer.current + "\n\n"
-    : "";
+  // Bubble `content` carries ONLY the partial streaming buffer
+  // (text the assistant produced before the turn errored). The
+  // synthesized error string moves to `errorMessage` so
+  // `MessageBubble` can render it inline in the Support ID +
+  // Report Bug action row instead of stacking it above the row
+  // as a duplicate of what's already in the chip.
+  //
+  // Captured into a const here (not read off the ref inside the
+  // setEvents callback) because `resetStreamBuffers` below
+  // clears `refs.streamBuffer.current` before the React batch
+  // flushes -- the lazy read would always observe an empty
+  // buffer.
+  const bufferedPrefix = refs.streamBuffer.current ?? "";
   const errorId = `error-${Date.now()}`;
   setters.setEvents((prev) => [
     ...prev,
@@ -482,9 +492,8 @@ export function handleStreamError(
       id: errorId,
       clientId: errorId,
       role: "assistant",
-      content: displayVariant
-        ? prefix + displayMessage
-        : prefix + `*Error: ${displayMessage}*`,
+      content: bufferedPrefix,
+      errorMessage: displayMessage,
       displayVariant,
       supportId: supportId ?? undefined,
       toolCalls: savedToolCalls,

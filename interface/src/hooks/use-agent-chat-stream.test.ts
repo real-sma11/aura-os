@@ -354,7 +354,13 @@ describe("useAgentChatStream", () => {
     });
 
     const entry = useStreamStore.getState().entries[result.current.streamKey];
-    const errorMsg = entry.events.find((m) => m.content.includes("Error"));
+    // Error string is now routed through the dedicated
+    // `errorMessage` field (rendered inline in the action row by
+    // `MessageBubble`) instead of being concatenated into
+    // `content`, so the lookup matches on the new field.
+    const errorMsg = entry.events.find((m) =>
+      (m.errorMessage ?? "").toLowerCase().includes("connection lost"),
+    );
     expect(errorMsg).toBeTruthy();
   });
 

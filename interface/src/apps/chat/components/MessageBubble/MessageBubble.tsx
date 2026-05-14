@@ -136,13 +136,14 @@ export const MessageBubble = memo(function MessageBubble({
   // A tool-only assistant bubble holds no prose/thinking -- it is just a
   // slice of the agent's tool-use loop. Drop the bubble padding for these
   // so consecutive tool-only bubbles stack as a tight checklist instead of
-  // each row floating in its own 16px padding box. Stream-dropped bubbles
-  // own their own banner chrome and must not be collapsed into the compact
-  // tool-only slot.
+  // each row floating in its own 16px padding box. Stream-dropped and
+  // other error bubbles own their own chrome (banner / action row) and
+  // must not be collapsed into the compact tool-only slot.
+  const hasInlineErrorActionChrome = !!message.errorMessage
+    || !!message.supportId || !!message.displayVariant;
   const isAssistantToolOnly =
     message.role === "assistant"
-    && !isInsufficientCreditsError
-    && !isStreamDropped
+    && !hasInlineErrorActionChrome
     && !hasContent
     && !hasRenderableBlocks
     && !hasThinking
@@ -165,7 +166,17 @@ export const MessageBubble = memo(function MessageBubble({
     return false;
   })();
 
-  if (!hasContent && !hasToolCalls && !hasContentBlocks && !hasThinking && !hasArtifactRefs) return null;
+  // Error events (handleStreamError) carry the synthesized
+  // string in `errorMessage` instead of `content`, so an
+  // otherwise-empty error bubble must still render in order to
+  // surface the action row. `displayVariant` covers the same
+  // case for variants that don't carry a message (none today,
+  // but kept for forward compatibility). Reuses the same
+  // predicate that suppresses the compact tool-only layout.
+  if (
+    !hasContent && !hasToolCalls && !hasContentBlocks
+    && !hasThinking && !hasArtifactRefs && !hasInlineErrorActionChrome
+  ) return null;
 
   const renderUserContent = () => {
     if (hasContentBlocks && message.contentBlocks) {
@@ -189,14 +200,42 @@ export const MessageBubble = memo(function MessageBubble({
     return message.content;
   };
 
-  // Phase 5: shared chrome for the support_id chip + Report Bug
-  // affordance rendered on every error variant (streamDropped,
-  // insufficient credits, default fallback) so the surface is
-  // consistent across the failure modes.
+  // Shared chrome for every error variant: a single row carrying
+  // the synthesized error message (truncated, full text on
+  // hover), the optional support_id chip, the variant-specific
+  // primary action when applicable (e.g. "Buy credits"), and the
+  // inline ReportBugButton. Lives below the optional partial
+  // streaming buffer / meta block instead of being concatenated
+  // into the bubble body so the relationship between the error
+  // text and the support id stays visually obvious on a single
+  // line.
   const renderErrorActions = () => {
-    if (!message.displayVariant && !message.supportId) return null;
+    if (
+      !message.displayVariant
+      && !message.supportId
+      && !message.errorMessage
+    ) {
+      return null;
+    }
     return (
       <div className={styles.errorActionsRow}>
+        {message.errorMessage && (
+          <span
+            className={styles.errorActionsMessage}
+            title={message.errorMessage}
+          >
+            {message.errorMessage}
+          </span>
+        )}
+        {isInsufficientCreditsError && (
+          <button
+            type="button"
+            className={styles.inlineErrorLink}
+            onClick={openBuyCredits}
+          >
+            Buy credits
+          </button>
+        )}
         {message.supportId && (
           <span
             className={styles.supportIdChip}
@@ -223,6 +262,13 @@ export const MessageBubble = memo(function MessageBubble({
   };
 
   const renderAssistantContent = () => {
+    // Partial streaming buffer captured before the turn errored
+    // out (or normal assistant content on success). Skipped when
+    // empty so an error with no prefix doesn't render an empty
+    // markdown frame above the action row.
+    const hasRenderableContent = hasContent || hasToolCalls
+      || hasThinking || hasArtifactRefs || hasTimeline;
+
     if (isStreamDropped) {
       return (
         <div
@@ -233,11 +279,10 @@ export const MessageBubble = memo(function MessageBubble({
           <span className={styles.streamDroppedTitle}>
             Chat stream interrupted
           </span>
-          <span className={styles.streamDroppedMessage}>{message.content}</span>
-          {(hasToolCalls || hasThinking || hasArtifactRefs || hasTimeline) && (
+          {hasRenderableContent && (
             <div className={styles.streamDroppedMeta}>
               <LLMOutput
-                content=""
+                content={message.content}
                 timeline={message.timeline}
                 toolCalls={message.toolCalls}
                 thinkingText={message.thinkingText}
@@ -254,9 +299,9 @@ export const MessageBubble = memo(function MessageBubble({
       );
     }
 
-    if (!isInsufficientCreditsError) {
-      return (
-        <>
+    return (
+      <>
+        {hasRenderableContent && (
           <LLMOutput
             content={message.content}
             timeline={message.timeline}
@@ -268,38 +313,9 @@ export const MessageBubble = memo(function MessageBubble({
             defaultThinkingExpanded={initialThinkingExpanded}
             defaultActivitiesExpanded={initialActivitiesExpanded}
           />
-          {renderErrorActions()}
-        </>
-      );
-    }
-
-    return (
-      <div className={styles.inlineError}>
-        <span className={styles.inlineErrorMessage}>{message.content}</span>
-        <button
-          type="button"
-          className={styles.inlineErrorLink}
-          onClick={openBuyCredits}
-        >
-          Buy credits
-        </button>
-        {(hasToolCalls || hasThinking || hasArtifactRefs || hasTimeline) && (
-          <div className={styles.inlineErrorMeta}>
-            <LLMOutput
-              content=""
-              timeline={message.timeline}
-              toolCalls={message.toolCalls}
-              thinkingText={message.thinkingText}
-              thinkingDurationMs={message.thinkingDurationMs}
-              artifactRefs={message.artifactRefs}
-              isStreaming={isStreaming}
-              defaultThinkingExpanded={initialThinkingExpanded}
-              defaultActivitiesExpanded={initialActivitiesExpanded}
-            />
-          </div>
         )}
         {renderErrorActions()}
-      </div>
+      </>
     );
   };
 

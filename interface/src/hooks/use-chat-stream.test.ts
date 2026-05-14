@@ -442,7 +442,13 @@ describe("useChatStream", () => {
     });
 
     const entry = useStreamStore.getState().entries[result.current.streamKey];
-    const errorMsg = entry.events.find((m) => m.content.includes("Error"));
+    // Error string is now routed through the dedicated
+    // `errorMessage` field (rendered inline in the action row by
+    // `MessageBubble`) instead of being concatenated into
+    // `content`.
+    const errorMsg = entry.events.find((m) =>
+      (m.errorMessage ?? "").toLowerCase().includes("fail"),
+    );
     expect(errorMsg).toBeTruthy();
   });
 
