@@ -44,15 +44,17 @@
   word-wrap: break-word;
 }
 
-/* User message bubble is intentionally pinned dark + white text in BOTH
-   themes. Differentiating sender vs assistant is the whole point of the
-   bubble, and in light mode an off-white bubble against a white page bg
-   loses that contrast — the bubble disappears. Keep this hardcoded
-   rather than routing through --color-bg-secondary (which now flips
-   with the theme) so the visual identity is preserved across modes. */
+/* User message bubble follows the active accent so the user's own
+   turn is visually owned by their chosen theme color. Text uses
+   --color-accent-contrast, which zui declares per accent / theme
+   combination (vendor/zui/src/styles/themes.css) so light accents
+   (e.g. cyan, green dark-mode) get dark text and saturated/dark
+   accents (e.g. blue, purple, rose) get white text. Both tokens are
+   present in every theme/accent permutation — the cyan defaults are
+   declared on :root — so no fallback is needed here. */
 .bubbleUser {
-  background: #1e1e1e;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
   border-radius: 3px 3px 0 3px;
   min-height: var(--control-height-sm, 32px);
   display: flex;
@@ -315,8 +317,8 @@
   .bubbleUser {
     min-height: 0;
     border-radius: 12px;
-    background: #400999;
-    color: #ffffff;
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
     padding: 8px;
   }
 
