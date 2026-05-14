@@ -63,6 +63,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::list_agent_events_paginated),
         )
         .route(
+            "/api/agents/:agent_id/sessions/:session_id/events",
+            get(agents::list_agent_session_events),
+        )
+        .route(
             "/api/agents/:agent_id/runtime/test",
             post(agents::test_agent_runtime),
         )

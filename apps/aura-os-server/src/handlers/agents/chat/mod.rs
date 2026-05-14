@@ -31,7 +31,9 @@ mod tests;
 pub(crate) use agent_route::send_agent_event_stream;
 pub(crate) use discovery::{find_matching_project_agents, storage_session_sort_key};
 pub(crate) use event_bus::{publish_assistant_message_end_event, publish_user_message_event};
-pub(crate) use events::{list_agent_events, list_agent_events_paginated, list_events};
+pub(crate) use events::{
+    list_agent_events, list_agent_events_paginated, list_agent_session_events, list_events,
+};
 pub(crate) use instance_route::{build_project_system_prompt, send_event_stream};
 #[cfg(test)]
 pub(crate) use instance_route::{render_project_context, render_project_context_fallback};

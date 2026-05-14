@@ -25,6 +25,12 @@ interface AgentEventsRequestOptions extends ApiRequestOptions {
   offset?: number;
 }
 
+interface AgentSessionEventsRequestOptions extends ApiRequestOptions {
+  limit?: number;
+  /** RFC 3339 timestamp; only events with `created_at > since` are returned. */
+  since?: string;
+}
+
 export interface PaginatedEventsResponse {
   events: SessionEvent[];
   has_more: boolean;
@@ -126,6 +132,33 @@ export const agentTemplatesApi = {
     return apiFetch<SessionEvent[]>(`/api/agents/${agentId}/events${query}`, {
       signal: options?.signal,
     });
+  },
+  /**
+   * Per-session standalone-agent events read. Sister of
+   * `sessionsApi.listSessionEvents` for the project-scoped surface;
+   * `useStandaloneAgentChat` calls this whenever a `?session=` pin is
+   * in the URL so the chat panel stays scoped to that single session
+   * instead of falling back to the per-agent timeline (which
+   * aggregates across every session of the agent and used to drag
+   * old conversations back into view after the user pressed `+`).
+   */
+  listSessionEvents: (
+    agentId: AgentId,
+    sessionId: string,
+    options?: AgentSessionEventsRequestOptions,
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.limit != null) {
+      params.set("limit", String(options.limit));
+    }
+    if (options?.since) {
+      params.set("since", options.since);
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<SessionEvent[]>(
+      `/api/agents/${agentId}/sessions/${sessionId}/events${query}`,
+      { signal: options?.signal },
+    );
   },
   listEventsPaginated: (
     agentId: AgentId,

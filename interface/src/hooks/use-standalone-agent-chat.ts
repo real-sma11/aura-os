@@ -23,6 +23,7 @@ import { useAgentStore } from "../apps/agents/stores";
 import { useProjectsListStore } from "../stores/projects-list-store";
 import type { AnnotatedSession } from "../components/SessionsList";
 import { useContextUsage, useContextUsageStore } from "../stores/context-usage-store";
+import { useMessageQueueStore } from "../stores/message-queue-store";
 import { useHydrateContextUtilization } from "./use-hydrate-context-utilization";
 import type { ChatPanelProps } from "../apps/chat/components/ChatPanel";
 import type { AgentInstance, Project } from "../shared/types";
@@ -339,18 +340,29 @@ export function useStandaloneAgentChat(
     if (freshCanvasPending) {
       return EMPTY_SESSION_EVENTS_FETCH;
     }
-    // Standalone-agent chats don't expose a per-session events
-    // endpoint yet — the agents-app session branch routes through
-    // `AgentChatPanel` which uses `api.listSessionEvents`. For
-    // the bare `/agents/:agentId` view we hit the per-agent timeline;
-    // when a `pinnedSessionId` is set, the historyKey above gives us
-    // a clean cache slot but the events still come from the same
-    // endpoint until a per-session standalone API ships.
+    // When the URL pins a specific session (`?session=<id>`), scope
+    // the history fetch to that session via the new per-session
+    // endpoint. The per-agent timeline aggregates across every
+    // session the agent has ever had, which is correct for the
+    // bare `/agents/:agentId` view but actively wrong on a pinned
+    // open: pressing `+` and starting a new chat used to clear the
+    // local store but the next history hydrate immediately replayed
+    // every prior session's messages back into the panel, making
+    // "new chat" feel like "no-op". The per-session endpoint
+    // returns only events that belong to the pinned session id, so
+    // the reset actually sticks.
+    if (pinnedSessionId) {
+      const pinned = pinnedSessionId;
+      return () =>
+        api.agents.listSessionEvents(agentId, pinned, {
+          limit: STANDALONE_AGENT_HISTORY_LIMIT,
+        });
+    }
     return () =>
       api.agents.listEvents(agentId, {
         limit: STANDALONE_AGENT_HISTORY_LIMIT,
       });
-  }, [agentId, freshCanvasPending]);
+  }, [agentId, freshCanvasPending, pinnedSessionId]);
 
   const setSelectedAgent = useAgentStore((s) => s.setSelectedAgent);
   const onSwitch = useCallback(() => {
@@ -371,6 +383,12 @@ export function useStandaloneAgentChat(
     }
     setFreshChatNonce((nonce) => nonce + 1);
     resetEvents([], { allowWhileStreaming: true });
+    // Drop any messages still queued against the prior session
+    // (Phase 1 made the chat send pipeline queue-by-default when the
+    // stream is busy). Without this clear a queued message would
+    // survive the reset and dequeue against the freshly-minted
+    // session, defeating the user's "start over" intent.
+    useMessageQueueStore.getState().clear(streamKey);
     const store = useContextUsageStore.getState();
     store.clearContextUtilization(streamKey);
     // Mark a reset sentinel so the hydration hook doesn't resurrect the old
@@ -425,6 +443,12 @@ export function useStandaloneAgentChat(
     }
     setFreshChatNonce((nonce) => nonce + 1);
     resetEvents([], { allowWhileStreaming: true });
+    // Symmetric with `handleNewSession`: a queued message from the
+    // prior session must NOT bleed forward into the fresh canvas.
+    // Without this, the next dequeue would fire as the first send of
+    // the new session and re-inject the user's old prompt, which
+    // looks like the chat ignored the `+` press.
+    useMessageQueueStore.getState().clear(streamKey);
     const ctxStore = useContextUsageStore.getState();
     ctxStore.clearContextUtilization(streamKey);
     ctxStore.markResetPending(streamKey);

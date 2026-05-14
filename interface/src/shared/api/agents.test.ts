@@ -131,6 +131,57 @@ describe("agentTemplatesApi", () => {
     );
   });
 
+  // Phase 4: per-session standalone events endpoint. The hook
+  // `useStandaloneAgentChat` calls this whenever a `?session=` pin is
+  // in the URL so the chat panel stays scoped to that single session
+  // instead of replaying the per-agent timeline (which used to drag
+  // old conversations back into view after the user pressed `+`).
+  it("listSessionEvents fetches /api/agents/:id/sessions/:sid/events", async () => {
+    const events = [{ id: "e1", content: "hi" }];
+    const fetchMock = mockFetch(200, events);
+    globalThis.fetch = fetchMock;
+
+    const result = await agentTemplatesApi.listSessionEvents(
+      "a1" as string,
+      "s1",
+    );
+    expect(result).toEqual(events);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agents/a1/sessions/s1/events",
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+  });
+
+  it("listSessionEvents threads limit and since query params", async () => {
+    const fetchMock = mockFetch(200, []);
+    globalThis.fetch = fetchMock;
+
+    await agentTemplatesApi.listSessionEvents("a1" as string, "s1", {
+      limit: STANDALONE_AGENT_HISTORY_LIMIT,
+      since: "2026-05-01T00:00:00Z",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/agents/a1/sessions/s1/events?limit=${STANDALONE_AGENT_HISTORY_LIMIT}&since=${encodeURIComponent("2026-05-01T00:00:00Z")}`,
+      expect.any(Object),
+    );
+  });
+
+  it("listSessionEvents propagates AbortSignal", async () => {
+    const fetchMock = mockFetch(200, []);
+    globalThis.fetch = fetchMock;
+    const controller = new AbortController();
+
+    await agentTemplatesApi.listSessionEvents("a1" as string, "s1", {
+      signal: controller.signal,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agents/a1/sessions/s1/events",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("propagates ApiClientError on failure", async () => {
     globalThis.fetch = mockFetch(500, { error: "Server error", code: "internal", details: null });
     await expect(agentTemplatesApi.list()).rejects.toThrow(ApiClientError);
