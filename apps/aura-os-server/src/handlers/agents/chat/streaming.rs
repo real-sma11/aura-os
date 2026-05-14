@@ -6,11 +6,12 @@
 use std::convert::Infallible;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use aura_os_core::HarnessMode;
 use aura_os_harness::{
-    HarnessCommandSender, HarnessOutbound, MessageAttachment, SessionBridge, SessionBridgeStarted,
-    SessionBridgeTurn, SessionConfig,
+    ErrorMsg, HarnessCommandSender, HarnessOutbound, MessageAttachment, SessionBridge,
+    SessionBridgeStarted, SessionBridgeTurn, SessionConfig,
 };
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream;
@@ -38,6 +39,108 @@ use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
 };
 
+const LAGGED_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
+
+struct HarnessSseState {
+    rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
+    done: bool,
+    metrics: Option<Arc<StabilityMetrics>>,
+    saw_content: bool,
+    saw_terminal: bool,
+    lagged_throttle: LaggedProgressThrottle,
+}
+
+impl HarnessSseState {
+    fn new(
+        rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
+        metrics: Option<Arc<StabilityMetrics>>,
+    ) -> Self {
+        Self {
+            rx,
+            done: false,
+            metrics,
+            saw_content: false,
+            saw_terminal: false,
+            lagged_throttle: LaggedProgressThrottle::default(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct LaggedProgressThrottle {
+    last_lagged_progress_at: Option<Instant>,
+    pending_lagged_skipped: u64,
+}
+
+impl LaggedProgressThrottle {
+    fn observe(&mut self, skipped: u64, now: Instant) -> Option<u64> {
+        let should_emit = self
+            .last_lagged_progress_at
+            .map(|last| now.duration_since(last) >= LAGGED_PROGRESS_INTERVAL)
+            .unwrap_or(true);
+
+        if should_emit {
+            let total = skipped.saturating_add(self.pending_lagged_skipped);
+            self.pending_lagged_skipped = 0;
+            self.last_lagged_progress_at = Some(now);
+            Some(total)
+        } else {
+            self.pending_lagged_skipped = self.pending_lagged_skipped.saturating_add(skipped);
+            None
+        }
+    }
+}
+
+fn is_terminal_harness_event(evt: &HarnessOutbound) -> bool {
+    matches!(
+        evt,
+        HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
+    )
+}
+
+fn is_content_bearing_harness_event(evt: &HarnessOutbound) -> bool {
+    matches!(
+        evt,
+        HarnessOutbound::AssistantMessageStart(_)
+            | HarnessOutbound::TextDelta(_)
+            | HarnessOutbound::ThinkingDelta(_)
+            | HarnessOutbound::ToolUseStart(_)
+            | HarnessOutbound::ToolResult(_)
+            | HarnessOutbound::ToolCallSnapshot(_)
+            | HarnessOutbound::ToolApprovalPrompt(_)
+            | HarnessOutbound::GenerationStart(_)
+            | HarnessOutbound::GenerationProgress(_)
+            | HarnessOutbound::GenerationPartialImage(_)
+    )
+}
+
+fn stream_truncated_error_event() -> Result<Event, Infallible> {
+    let err = ErrorMsg {
+        code: "stream_truncated".to_string(),
+        message: "Agent stream ended before the turn completed. Retrying will recover the latest saved output from history.".to_string(),
+        recoverable: true,
+    };
+    let normalized = HarnessOutbound::Error(remap_harness_error_to_sse(&err));
+    super::super::super::sse::harness_event_to_sse(&normalized)
+}
+
+fn lagged_progress_event(skipped: u64) -> Result<Event, Infallible> {
+    let payload = serde_json::json!({
+        "type": "progress",
+        "stage": "lagged",
+        "skipped": skipped,
+        "message": "Catching up...",
+    });
+    Ok(Event::default()
+        .event("progress")
+        .json_data(&payload)
+        .unwrap_or_else(|_| {
+            Event::default()
+                .event("progress")
+                .data("{\"type\":\"progress\",\"stage\":\"lagged\"}")
+        }))
+}
+
 /// Bridge a harness broadcast receiver into the SSE wire format.
 ///
 /// `metrics`, when `Some`, is bumped on the non-terminal `Lagged` arm
@@ -51,76 +154,80 @@ pub fn harness_broadcast_to_sse(
     rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
     metrics: Option<Arc<StabilityMetrics>>,
 ) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {
-    stream::unfold((rx, false, metrics), |(mut rx, done, metrics)| async move {
-        if done {
+    stream::unfold(HarnessSseState::new(rx, metrics), |mut state| async move {
+        if state.done {
             return None;
         }
 
-        match rx.recv().await {
-            Ok(evt) => {
-                let should_close = matches!(
-                    evt,
-                    HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
-                );
-                // Phase 3 of agent-stuck-and-reset: every SSE-bound
-                // error goes through `remap_harness_error_to_sse`,
-                // which (a) intercepts the harness "turn already in
-                // progress" error mid-stream and rewrites it to the
-                // structured `agent_busy` code, and (b) stamps every
-                // forwarded error — busy or not — with a fresh
-                // `support_id=<id>` suffix so users can paste the id
-                // back into feedback and support can grep server
-                // logs immediately. The error still closes the SSE
-                // stream — `should_close` above already covers
-                // `Error(_)` regardless of remap outcome.
-                let normalized = match evt {
-                    HarnessOutbound::Error(err) => {
-                        HarnessOutbound::Error(remap_harness_error_to_sse(&err))
-                    }
-                    other => other,
-                };
-                let event = super::super::super::sse::harness_event_to_sse(&normalized);
-                Some((event, (rx, should_close, metrics)))
-            }
-            // The harness broadcast channel evicted `n` events before we
-            // could read them — typically because heavy text-delta + large
-            // tool-result traffic outran the SSE writer.
-            //
-            // Phase 1.2 of the agent-stream reliability plan demotes this
-            // from a terminal SSE `error` (which closed the stream and
-            // showed the user a red banner) to a transient
-            // `progress: lagged` hint. The parallel `chat_persist_task`
-            // already drains through lag, so the post-stream history
-            // refetch will repaint the full assistant turn from storage;
-            // there is no reliability reason to kill the live stream. We
-            // log, emit the synthetic progress event, and keep reading —
-            // termination still happens cleanly on the broadcast's `Closed`
-            // arm below.
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                warn!(
-                    skipped = n,
-                    "harness_broadcast_to_sse: receiver lagged; emitting progress:lagged and continuing"
-                );
-                if let Some(m) = metrics.as_ref() {
-                    m.inc_stream_lagged();
+        loop {
+            match state.rx.recv().await {
+                Ok(evt) => {
+                    let should_close = is_terminal_harness_event(&evt);
+                    state.saw_content |= is_content_bearing_harness_event(&evt);
+                    state.saw_terminal |= should_close;
+                    state.done = should_close;
+                    // Phase 3 of agent-stuck-and-reset: every SSE-bound
+                    // error goes through `remap_harness_error_to_sse`,
+                    // which (a) intercepts the harness "turn already in
+                    // progress" error mid-stream and rewrites it to the
+                    // structured `agent_busy` code, and (b) stamps every
+                    // forwarded error — busy or not — with a fresh
+                    // `support_id=<id>` suffix so users can paste the id
+                    // back into feedback and support can grep server
+                    // logs immediately. The error still closes the SSE
+                    // stream — `should_close` above already covers
+                    // `Error(_)` regardless of remap outcome.
+                    let normalized = match evt {
+                        HarnessOutbound::Error(err) => {
+                            HarnessOutbound::Error(remap_harness_error_to_sse(&err))
+                        }
+                        other => other,
+                    };
+                    let event = super::super::super::sse::harness_event_to_sse(&normalized);
+                    return Some((event, state));
                 }
-                let payload = serde_json::json!({
-                    "type": "progress",
-                    "stage": "lagged",
-                    "skipped": n,
-                    "message": "Catching up...",
-                });
-                let event = Event::default()
-                    .event("progress")
-                    .json_data(&payload)
-                    .unwrap_or_else(|_| {
-                        Event::default()
-                            .event("progress")
-                            .data("{\"type\":\"progress\",\"stage\":\"lagged\"}")
-                    });
-                Some((Ok(event), (rx, false, metrics)))
+                // The harness broadcast channel evicted `n` events before we
+                // could read them — typically because heavy text-delta + large
+                // tool-result traffic outran the SSE writer.
+                //
+                // Phase 1.2 of the agent-stream reliability plan demotes this
+                // from a terminal SSE `error` (which closed the stream and
+                // showed the user a red banner) to a transient
+                // `progress: lagged` hint. The parallel `chat_persist_task`
+                // already drains through lag, so the post-stream history
+                // refetch will repaint the full assistant turn from storage;
+                // there is no reliability reason to kill the live stream.
+                // Phase 4 throttles those hints to avoid adding excessive
+                // writes while the SSE path is already backpressured.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    if let Some(m) = state.metrics.as_ref() {
+                        m.inc_stream_lagged();
+                    }
+                    if let Some(skipped) = state.lagged_throttle.observe(n, Instant::now()) {
+                        warn!(
+                            skipped,
+                            "harness_broadcast_to_sse: receiver lagged; emitting throttled progress:lagged and continuing"
+                        );
+                        return Some((lagged_progress_event(skipped), state));
+                    }
+                    warn!(
+                        skipped = n,
+                        pending_skipped = state.lagged_throttle.pending_lagged_skipped,
+                        "harness_broadcast_to_sse: receiver lagged; suppressing throttled progress:lagged"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    if state.saw_content && !state.saw_terminal {
+                        warn!(
+                            "harness_broadcast_to_sse: broadcast closed after content without terminal event; emitting stream_truncated"
+                        );
+                        state.saw_terminal = true;
+                        state.done = true;
+                        return Some((stream_truncated_error_event(), state));
+                    }
+                    return None;
+                }
             }
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => None,
         }
     })
 }
@@ -418,7 +525,10 @@ fn spawn_session_title_task(
         // Guard 2: only fire on the first user_message for the session.
         // We just persisted the inbound message above, so a count of
         // exactly 1 means this is a fresh chat. >1 ⇒ follow-up turn.
-        let user_message_count = match storage.list_events(&ctx.session_id, &ctx.jwt, None, None).await {
+        let user_message_count = match storage
+            .list_events(&ctx.session_id, &ctx.jwt, None, None)
+            .await
+        {
             Ok(events) => events
                 .iter()
                 .filter(|e| e.event_type.as_deref() == Some("user_message"))
@@ -506,16 +616,15 @@ fn build_sse_stream(
     // ignore the event (the progress dispatcher is a switch on
     // `stage` strings).
     if let Some(fork) = fork_info {
-        if let Ok(forked_event) =
-            Event::default()
-                .event("progress")
-                .json_data(serde_json::json!({
-                    "type": "progress",
-                    "stage": "forked_for_context",
-                    "previous_session_id": fork.previous_session_id,
-                    "new_session_id": fork.new_session_id,
-                    "message": "Continued from previous chat — context was filling up",
-                }))
+        if let Ok(forked_event) = Event::default()
+            .event("progress")
+            .json_data(serde_json::json!({
+                "type": "progress",
+                "stage": "forked_for_context",
+                "previous_session_id": fork.previous_session_id,
+                "new_session_id": fork.new_session_id,
+                "message": "Continued from previous chat — context was filling up",
+            }))
         {
             prefix.push(Ok(forked_event));
         }
@@ -720,7 +829,7 @@ async fn insert_delegated_chat_session(
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use aura_os_harness::{
         AssistantMessageEnd, ErrorMsg, FilesChanged, HarnessOutbound, SessionUsage, TextDelta,
@@ -730,7 +839,10 @@ mod tests {
 
     use super::super::persist::ForkInfo;
     use super::super::turn_slot::acquire_turn_slot;
-    use super::{build_sse_stream, harness_broadcast_to_sse, tool_hints_from_commands};
+    use super::{
+        build_sse_stream, harness_broadcast_to_sse, tool_hints_from_commands,
+        LaggedProgressThrottle, LAGGED_PROGRESS_INTERVAL,
+    };
 
     fn end_event() -> HarnessOutbound {
         HarnessOutbound::AssistantMessageEnd(AssistantMessageEnd {
@@ -796,10 +908,7 @@ mod tests {
         drop(tx);
 
         let stream = build_sse_stream(
-            rx,
-            /* is_new */ false,
-            /* was_queued */ true,
-            /* fork_info */ None,
+            rx, /* is_new */ false, /* was_queued */ true, /* fork_info */ None,
             /* metrics */ None,
         );
         tokio::pin!(stream);
@@ -838,10 +947,7 @@ mod tests {
         drop(tx);
 
         let stream = build_sse_stream(
-            rx,
-            /* is_new */ false,
-            /* was_queued */ false,
-            /* fork_info */ None,
+            rx, /* is_new */ false, /* was_queued */ false, /* fork_info */ None,
             /* metrics */ None,
         );
         tokio::pin!(stream);
@@ -922,10 +1028,7 @@ mod tests {
         drop(tx);
 
         let stream = build_sse_stream(
-            rx,
-            /* is_new */ true,
-            /* was_queued */ true,
-            /* fork_info */ None,
+            rx, /* is_new */ true, /* was_queued */ true, /* fork_info */ None,
             /* metrics */ None,
         );
         tokio::pin!(stream);
@@ -1094,6 +1197,135 @@ mod tests {
         assert!(
             saw_terminal,
             "stream must still reach the terminal assistant_message_end event"
+        );
+    }
+
+    #[tokio::test]
+    async fn harness_broadcast_to_sse_closed_after_content_emits_stream_truncated() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        tx.send(text_delta("partial")).expect("seed text delta");
+        drop(tx);
+
+        let stream = harness_broadcast_to_sse(rx, None);
+        tokio::pin!(stream);
+
+        let first = tokio::time::timeout(Duration::from_millis(200), stream.next())
+            .await
+            .expect("forwarded text in time")
+            .expect("first event")
+            .expect("ok");
+        assert!(
+            dump(&first).contains("partial"),
+            "first event must forward the content before synthetic terminal"
+        );
+
+        let second = tokio::time::timeout(Duration::from_millis(200), stream.next())
+            .await
+            .expect("synthetic error in time")
+            .expect("second event")
+            .expect("ok");
+        let body = dump(&second);
+        assert!(
+            body.contains("event: error"),
+            "closed-after-content must emit an error SSE event, got: {body}"
+        );
+        assert!(
+            body.contains("stream_truncated"),
+            "synthetic error must carry stream_truncated code, got: {body}"
+        );
+        assert!(
+            body.contains("recoverable"),
+            "synthetic error must preserve recoverable payload shape, got: {body}"
+        );
+
+        let next = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
+        assert!(
+            matches!(next, Ok(None)),
+            "stream must close after synthetic stream_truncated event, got: {next:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn harness_broadcast_to_sse_closed_before_content_emits_nothing() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        drop(tx);
+
+        let stream = harness_broadcast_to_sse(rx, None);
+        tokio::pin!(stream);
+
+        let next = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
+        assert!(
+            matches!(next, Ok(None)),
+            "closed before content must remain silent, got: {next:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn harness_broadcast_to_sse_closed_after_terminal_does_not_emit_stream_truncated() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+        tx.send(text_delta("complete")).expect("seed text delta");
+        tx.send(end_event()).expect("seed end");
+        drop(tx);
+
+        let stream = harness_broadcast_to_sse(rx, None);
+        tokio::pin!(stream);
+
+        let first = stream
+            .next()
+            .await
+            .expect("text delta")
+            .expect("first item is Ok");
+        assert!(
+            dump(&first).contains("complete"),
+            "first event must forward content"
+        );
+
+        let second = stream
+            .next()
+            .await
+            .expect("terminal end")
+            .expect("second item is Ok");
+        let terminal = dump(&second);
+        assert!(
+            terminal.contains("assistant_message_end"),
+            "second event must be the real terminal, got: {terminal}"
+        );
+        assert!(
+            !terminal.contains("stream_truncated"),
+            "real terminal must not be replaced by synthetic error, got: {terminal}"
+        );
+
+        let next = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
+        assert!(
+            matches!(next, Ok(None)),
+            "stream must close cleanly after real terminal, got: {next:?}"
+        );
+    }
+
+    #[test]
+    fn lagged_progress_throttle_suppresses_within_interval_and_accumulates() {
+        let mut throttle = LaggedProgressThrottle::default();
+        let start = Instant::now();
+
+        assert_eq!(
+            throttle.observe(2, start),
+            Some(2),
+            "first lagged observation should emit immediately"
+        );
+        assert_eq!(
+            throttle.observe(3, start + Duration::from_millis(250)),
+            None,
+            "second lagged observation inside the throttle interval should suppress"
+        );
+        assert_eq!(
+            throttle.observe(5, start + Duration::from_millis(500)),
+            None,
+            "additional lagged observations inside the interval should suppress"
+        );
+        assert_eq!(
+            throttle.observe(7, start + LAGGED_PROGRESS_INTERVAL),
+            Some(15),
+            "next emitted progress should include accumulated skipped counts"
         );
     }
 

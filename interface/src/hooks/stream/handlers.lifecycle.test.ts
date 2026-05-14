@@ -182,6 +182,25 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
       expect(result[0].displayVariant).toBe("streamDropped");
       expect(result[0].content).not.toMatch(/\*Error: /);
     });
+
+    it("classifies server-side stream_truncated errors as a streamDropped banner", () => {
+      const refs = makeRefs();
+      const setters = makeSetters();
+      vi.mocked(isInsufficientCreditsError).mockReturnValue(false);
+
+      handleStreamError(refs, setters, {
+        message: "Agent stream ended before the turn completed.",
+        code: "stream_truncated",
+        recoverable: true,
+      });
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => unknown[];
+      const result = updater([]) as Array<{ content: string; displayVariant?: string }>;
+
+      expect(result[0].displayVariant).toBe("streamDropped");
+      expect(result[0].content).not.toMatch(/\*Error: /);
+    });
   });
 
   describe("watchdog stream-drop errors", () => {
