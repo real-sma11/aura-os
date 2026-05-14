@@ -29,7 +29,7 @@ import {
   projectQueryKeys,
 } from "../../../../queries/project-queries";
 import { useSidebarSearch } from "../../../../hooks/use-sidebar-search";
-import { useAgents } from "../../../agents/stores";
+import { useAgentStore, useAgents } from "../../../agents/stores";
 import type { Agent, AgentInstance } from "../../../../shared/types";
 import { useChatAppAgent } from "../../hooks/use-chat-app-agent";
 import { useChatAppSessions } from "../../hooks/use-chat-app-sessions";
@@ -170,8 +170,21 @@ export function ChatAppLeftPanel() {
   // the first turn ships the right `body.project_id` instead of falling
   // back to `undefined`. We then route into `/chat?...` rather than
   // `/projects/.../agents/...` so the user stays in the Chat app.
+  //
+  // The "Standard Agent" row in `AgentSelectorModal` creates a brand-new
+  // project-local agent (`build_general_agent` in
+  // `apps/aura-os-server/src/handlers/agents/instances/mod.rs`) whose
+  // `agent_id` is NOT yet in `useAgentStore.agents`. `ChatAppRoute`
+  // resolves `?agent=<id>` against that store and falls back to the CEO
+  // agent on a miss — which is why selecting "Standard Agent" used to
+  // look like a no-op. Fetch the new agent and mirror it into the
+  // store (matching the CEO-side pattern in `use-chat-app-agent.ts`)
+  // before navigating so the destination route mounts the right agent
+  // on its first render. The forced `fetchAgents({ force: true })` is
+  // a background heal so any other surface that reads `useAgents()`
+  // converges without a reload.
   const handleAgentCreated = useCallback(
-    (instance: AgentInstance) => {
+    async (instance: AgentInstance) => {
       const pid = instance.project_id;
       const projectsStore = useProjectsListStore.getState();
       projectsStore.setAgentsByProject((prev) => ({
@@ -183,6 +196,34 @@ export function ChatAppLeftPanel() {
         instance,
       );
       void projectsStore.refreshProjectAgents(pid);
+
+      const agentStore = useAgentStore.getState();
+      const alreadyPresent = agentStore.agents.some(
+        (a) => a.agent_id === instance.agent_id,
+      );
+      if (!alreadyPresent) {
+        try {
+          const newAgent = await api.agents.get(instance.agent_id);
+          const store = useAgentStore.getState();
+          const present = store.agents.some(
+            (a) => a.agent_id === newAgent.agent_id,
+          );
+          if (present) {
+            store.patchAgent(newAgent);
+          } else {
+            useAgentStore.setState((s) => ({
+              agents: [...s.agents, newAgent],
+            }));
+          }
+        } catch (err) {
+          console.warn(
+            "Failed to hydrate newly-created agent into store; route will rely on background fetchAgents",
+            err,
+          );
+        }
+      }
+      void agentStore.fetchAgents({ force: true });
+
       setSelectorOpen(false);
       const params = new URLSearchParams({
         agent: instance.agent_id,
