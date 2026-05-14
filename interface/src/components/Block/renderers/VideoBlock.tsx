@@ -47,7 +47,7 @@ export function VideoBlock({ entry, defaultExpanded }: VideoBlockProps) {
     return (
       <div className={styles.generatedVideoResult}>
         <video
-          src={videoUrl}
+          src={`${videoUrl}#t=0.5`}
           className={styles.generatedVideoPlayer}
           controls
           playsInline
@@ -68,7 +68,7 @@ export function VideoBlock({ entry, defaultExpanded }: VideoBlockProps) {
       <div className={styles.mediaWrap}>
         {videoUrl ? (
           <video
-            src={videoUrl}
+            src={`${videoUrl}#t=0.5`}
             className={styles.mediaImage}
             controls
             playsInline
