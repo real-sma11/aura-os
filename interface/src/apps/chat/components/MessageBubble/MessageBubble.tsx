@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
@@ -21,6 +21,7 @@ import { useGallery, type GalleryItem } from "../../../../components/Gallery";
 import { LLMOutput } from "../LLMOutput";
 import { LargeTextBlock, isLargeText } from "./LargeTextBlock";
 import { ReportBugButton } from "../../../../components/ReportBugButton";
+import { useMarkdownCopy } from "../../../../shared/hooks/use-markdown-copy";
 
 interface Props {
   message: DisplaySessionEvent;
@@ -165,6 +166,32 @@ export const MessageBubble = memo(function MessageBubble({
     if (hasContent && isLargeText(message.content)) return true;
     return false;
   })();
+
+  // Hover-revealed "copy whole assistant message as markdown" affordance.
+  // Only attached when the bubble actually carries prose (skips
+  // tool-only / error-only frames where there's nothing markdown-y to
+  // hand to Obsidian). Bubble ref + `useMarkdownCopy` also intercept
+  // OS-level select+copy *of the entire bubble* so users who hit
+  // Ctrl/Cmd+A inside the bubble get markdown source instead of the
+  // rendered text. Hook calls live above the early `return null` below
+  // to keep call order stable across renders.
+  const assistantBubbleRef = useRef<HTMLDivElement>(null);
+  const showAssistantCopy = !!(
+    message.role === "assistant"
+    && !isStreaming
+    && !isStreamDropped
+    && hasContent
+    && !isAssistantToolOnly
+  );
+  const getAssistantMarkdown = useCallback(
+    () => message.content ?? "",
+    [message.content],
+  );
+  const noopRef = useRef<HTMLElement>(null);
+  useMarkdownCopy(
+    showAssistantCopy ? assistantBubbleRef : noopRef,
+    getAssistantMarkdown,
+  );
 
   // Error events (handleStreamError) carry the synthesized
   // string in `errorMessage` instead of `content`, so an
@@ -366,13 +393,22 @@ export const MessageBubble = memo(function MessageBubble({
       )}
       {renderBubble && (
         <div
+          ref={!isUser ? assistantBubbleRef : undefined}
           className={`${styles.bubble} ${
             isUser ? styles.bubbleUser : styles.bubbleAssistant
           } ${isAssistantToolOnly ? styles.bubbleAssistantCompact : ""} ${
             userBlocksAreAllWidgets ? styles.bubbleUserWidgetOnly : ""
-          }`}
+          } ${showAssistantCopy ? styles.bubbleWithCopy : ""}`}
         >
           {isUser ? renderUserContent() : renderAssistantContent()}
+          {showAssistantCopy && (
+            <CopyButton
+              getMarkdown={getAssistantMarkdown}
+              className={styles.assistantCopyBtn}
+              ariaLabel="Copy message as markdown"
+              iconOnly
+            />
+          )}
         </div>
       )}
     </div>
