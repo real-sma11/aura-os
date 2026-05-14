@@ -26,9 +26,8 @@ type PersistedAgentState = {
   pinnedAgentIds: string[];
   favoriteAgentIds: string[];
   agentOrderIds: string[];
-  /** project_id → ordered agent_id list. null = no per-project overrides. */
+  /** project_id → ordered agent_id list. Shared by Projects and Tasks surfaces. null = no overrides. */
   projectsAgentOrderIds: Record<string, string[]> | null;
-  tasksAgentOrderIds: Record<string, string[]> | null;
 };
 
 const PINNED_KEY = "aura:pinnedAgentIds";
@@ -60,10 +59,8 @@ type AgentState = {
 
   /** Explicit display order for the Agents app sidebar (agent IDs in order). */
   agentOrderIds: string[];
-  /** Per-project overrides for the Projects surface. null = no customisation. */
+  /** Per-project overrides shared by both Projects and Tasks surfaces. null = no customisation. */
   projectsAgentOrderIds: Record<string, string[]> | null;
-  /** Per-project overrides for the Tasks surface. null = no customisation. */
-  tasksAgentOrderIds: Record<string, string[]> | null;
 
   createAgentModalOpen: boolean;
   openCreateAgentModal: () => void;
@@ -80,7 +77,6 @@ type AgentState = {
   toggleFavorite: (agentId: string) => void;
   setAgentOrder: (ids: string[]) => void;
   setProjectsAgentOrder: (projectId: string, ids: string[]) => void;
-  setTasksAgentOrder: (projectId: string, ids: string[]) => void;
 };
 
 const HISTORY_TTL_MS = 30_000;
@@ -141,7 +137,6 @@ async function hydratePersistedAgentState(userId: string): Promise<void> {
     agentOrderIds: cached.agentOrderIds ?? [],
     // Discard old flat-array format from before the per-project migration.
     projectsAgentOrderIds: Array.isArray(cached.projectsAgentOrderIds) ? null : (cached.projectsAgentOrderIds ?? null),
-    tasksAgentOrderIds: Array.isArray(cached.tasksAgentOrderIds) ? null : (cached.tasksAgentOrderIds ?? null),
   });
 }
 
@@ -151,15 +146,10 @@ async function fetchAndApplyServerAgentOrderPrefs(): Promise<void> {
     // Only apply if the server has meaningful data — non-empty agents_app order
     // or a surface-specific override. An empty response (fresh install) is
     // equivalent to "no preference saved" and should not overwrite local state.
-    if (
-      prefs.agents_app.length > 0 ||
-      prefs.projects_app !== null ||
-      prefs.tasks_app !== null
-    ) {
+    if (prefs.agents_app.length > 0 || prefs.projects_app !== null) {
       useAgentStore.setState({
         agentOrderIds: prefs.agents_app,
         projectsAgentOrderIds: prefs.projects_app,
-        tasksAgentOrderIds: prefs.tasks_app,
       });
     }
   } catch {
@@ -183,7 +173,6 @@ export const useAgentStore = create<AgentState>()(
       favoriteAgentIds: readIdSet(FAVORITE_KEY),
       agentOrderIds: [],
       projectsAgentOrderIds: null,
-      tasksAgentOrderIds: null,
 
       createAgentModalOpen: false,
       openCreateAgentModal: () => set({ createAgentModalOpen: true }),
@@ -426,12 +415,11 @@ export const useAgentStore = create<AgentState>()(
 
       setAgentOrder: (ids): void => {
         set({ agentOrderIds: ids });
-        const { projectsAgentOrderIds, tasksAgentOrderIds } = get();
+        const { projectsAgentOrderIds } = get();
         void api.preferences
           .putAgentOrder({
             agents_app: ids,
             projects_app: projectsAgentOrderIds,
-            tasks_app: tasksAgentOrderIds,
           })
           .catch(() => { /* best-effort — IndexedDB subscription persists locally */ });
       },
@@ -440,26 +428,11 @@ export const useAgentStore = create<AgentState>()(
         set((s) => ({
           projectsAgentOrderIds: { ...(s.projectsAgentOrderIds ?? {}), [projectId]: ids },
         }));
-        const { agentOrderIds, projectsAgentOrderIds, tasksAgentOrderIds } = get();
+        const { agentOrderIds, projectsAgentOrderIds } = get();
         void api.preferences
           .putAgentOrder({
             agents_app: agentOrderIds,
             projects_app: projectsAgentOrderIds,
-            tasks_app: tasksAgentOrderIds,
-          })
-          .catch(() => {});
-      },
-
-      setTasksAgentOrder: (projectId, ids): void => {
-        set((s) => ({
-          tasksAgentOrderIds: { ...(s.tasksAgentOrderIds ?? {}), [projectId]: ids },
-        }));
-        const { agentOrderIds, projectsAgentOrderIds, tasksAgentOrderIds } = get();
-        void api.preferences
-          .putAgentOrder({
-            agents_app: agentOrderIds,
-            projects_app: projectsAgentOrderIds,
-            tasks_app: tasksAgentOrderIds,
           })
           .catch(() => {});
       },
@@ -485,7 +458,6 @@ useAuthStore.subscribe((state) => {
       favoriteAgentIds: new Set(),
       agentOrderIds: [],
       projectsAgentOrderIds: null,
-      tasksAgentOrderIds: null,
     });
     return;
   }
@@ -509,6 +481,5 @@ useAgentStore.subscribe((state) => {
     favoriteAgentIds: [...state.favoriteAgentIds],
     agentOrderIds: state.agentOrderIds,
     projectsAgentOrderIds: state.projectsAgentOrderIds,
-    tasksAgentOrderIds: state.tasksAgentOrderIds,
   });
 });

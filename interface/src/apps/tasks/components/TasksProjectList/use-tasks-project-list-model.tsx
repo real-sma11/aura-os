@@ -47,26 +47,26 @@ function useTaskExplorerData(
   const statusMap = useProfileStatusStore((s) => s.statuses);
   const machineTypesMap = useProfileStatusStore((s) => s.machineTypes);
   const agentsAppOrder = useAgentStore((s) => s.agentOrderIds);
-  const tasksOrderMap = useAgentStore((s) => s.tasksAgentOrderIds);
-  const setTasksAgentOrder = useAgentStore((s) => s.setTasksAgentOrder);
+  const projectsOrderMap = useAgentStore((s) => s.projectsAgentOrderIds);
+  const setProjectsAgentOrder = useAgentStore((s) => s.setProjectsAgentOrder);
 
   const getAgentOrder = useCallback(
-    (projectId: string): string[] => tasksOrderMap?.[projectId] ?? agentsAppOrder,
-    [agentsAppOrder, tasksOrderMap],
+    (projectId: string): string[] => projectsOrderMap?.[projectId] ?? agentsAppOrder,
+    [agentsAppOrder, projectsOrderMap],
   );
 
   const onTasksAgentReorder = useCallback(
     (projectId: string, newProjectAgentIds: string[]) => {
-      const { tasksAgentOrderIds, agentOrderIds, agents } = useAgentStore.getState();
-      const currentOrder = tasksAgentOrderIds?.[projectId] ?? agentOrderIds;
+      const { projectsAgentOrderIds, agentOrderIds, agents } = useAgentStore.getState();
+      const currentOrder = projectsAgentOrderIds?.[projectId] ?? agentOrderIds;
       const allAgentIds = agents.map((a) => a.agent_id);
       const partialSet = new Set(newProjectAgentIds);
       const remaining = normalizeAgentOrder(allAgentIds, currentOrder).filter(
         (id) => !partialSet.has(id),
       );
-      setTasksAgentOrder(projectId, [...newProjectAgentIds, ...remaining]);
+      setProjectsAgentOrder(projectId, [...newProjectAgentIds, ...remaining]);
     },
-    [setTasksAgentOrder],
+    [setProjectsAgentOrder],
   );
 
   return useMemo(

@@ -2,9 +2,8 @@ import { apiFetch } from "./core";
 
 export interface AgentOrderPrefs {
   agents_app: string[];
-  /** project_id → ordered agent_id list. null = no per-project customisation (inherit agents_app). */
+  /** project_id → ordered agent_id list. Shared by Projects and Tasks surfaces. null = inherit agents_app. */
   projects_app: Record<string, string[]> | null;
-  tasks_app: Record<string, string[]> | null;
 }
 
 export const preferencesApi = {
