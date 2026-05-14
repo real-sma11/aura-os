@@ -7,7 +7,6 @@ import type { useProjectListData } from "../../../../components/ProjectList/useP
 import { resolveStatus } from "../../../../components/ProjectList/project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../../../lib/zui-compat";
 import { agentDisplayName } from "../../../../lib/derive-project-agent-title";
-import { normalizeAgentOrder } from "../../../../apps/agents/stores";
 
 function buildTaskProjectSuffix(
   projectId: string,
@@ -86,19 +85,20 @@ export function buildTasksExplorerNode(
   statusMap: Record<string, string>,
   machineTypesMap: Record<string, string>,
   explorerStyles: ProjectExplorerNodeStyles,
-  agentOrderIds: string[] = [],
+  getAgentOrder: (projectId: string) => string[] = () => [],
   onTasksAgentReorder?: (projectId: string, orderedAgentIds: string[]) => void,
 ): ExplorerNodeWithSuffix {
   const projectAgents = data.agentsByProject[project.project_id];
+  const orderIds = getAgentOrder(project.project_id);
 
   let children;
   if (projectAgents === undefined) {
     children = [{ id: `_load_${project.project_id}`, label: "Loading...", disabled: true }];
   } else {
-    const sorted = agentOrderIds.length > 0
+    const sorted = orderIds.length > 0
       ? [...projectAgents].sort((a, b) => {
-          const aIdx = agentOrderIds.indexOf(a.agent_id);
-          const bIdx = agentOrderIds.indexOf(b.agent_id);
+          const aIdx = orderIds.indexOf(a.agent_id);
+          const bIdx = orderIds.indexOf(b.agent_id);
           return (aIdx === -1 ? Infinity : aIdx) - (bIdx === -1 ? Infinity : bIdx);
         })
       : projectAgents;

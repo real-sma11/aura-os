@@ -107,26 +107,6 @@ export function normalizeAgentOrder(
 }
 
 
-export type AgentOrderSurface = "agents" | "projects" | "tasks";
-
-/**
- * Returns the resolved agent ID order for a given surface:
- * - "agents": the canonical Agents-app order
- * - "projects" / "tasks": their own override if set, otherwise the Agents-app order
- *
- * Agents listed in the Agents app always appear first; any others are appended.
- * Use normalizeAgentOrder() to apply this to a concrete agent list.
- */
-export function useResolvedAgentOrder(surface: AgentOrderSurface): string[] {
-  const agentsOrder = useAgentStore((s) => s.agentOrderIds);
-  const projectsOrder = useAgentStore((s) => s.projectsAgentOrderIds);
-  const tasksOrder = useAgentStore((s) => s.tasksAgentOrderIds);
-  return useMemo(() => {
-    if (surface === "agents") return agentsOrder;
-    if (surface === "projects") return projectsOrder ?? agentsOrder;
-    return tasksOrder ?? agentsOrder;
-  }, [surface, agentsOrder, projectsOrder, tasksOrder]);
-}
 
 export function useSuperAgent(): Agent | null {
   return useAgentStore((s) => s.agents.find((a) => isSuperAgent(a)) ?? null);

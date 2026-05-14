@@ -26,8 +26,9 @@ type PersistedAgentState = {
   pinnedAgentIds: string[];
   favoriteAgentIds: string[];
   agentOrderIds: string[];
-  projectsAgentOrderIds: string[] | null;
-  tasksAgentOrderIds: string[] | null;
+  /** project_id → ordered agent_id list. null = no per-project overrides. */
+  projectsAgentOrderIds: Record<string, string[]> | null;
+  tasksAgentOrderIds: Record<string, string[]> | null;
 };
 
 const PINNED_KEY = "aura:pinnedAgentIds";
@@ -59,9 +60,10 @@ type AgentState = {
 
   /** Explicit display order for the Agents app sidebar (agent IDs in order). */
   agentOrderIds: string[];
-  /** Per-surface overrides. null = inherit agents_app order. */
-  projectsAgentOrderIds: string[] | null;
-  tasksAgentOrderIds: string[] | null;
+  /** Per-project overrides for the Projects surface. null = no customisation. */
+  projectsAgentOrderIds: Record<string, string[]> | null;
+  /** Per-project overrides for the Tasks surface. null = no customisation. */
+  tasksAgentOrderIds: Record<string, string[]> | null;
 
   createAgentModalOpen: boolean;
   openCreateAgentModal: () => void;
@@ -77,8 +79,8 @@ type AgentState = {
   togglePin: (agentId: string) => void;
   toggleFavorite: (agentId: string) => void;
   setAgentOrder: (ids: string[]) => void;
-  setProjectsAgentOrder: (ids: string[] | null) => void;
-  setTasksAgentOrder: (ids: string[] | null) => void;
+  setProjectsAgentOrder: (projectId: string, ids: string[]) => void;
+  setTasksAgentOrder: (projectId: string, ids: string[]) => void;
 };
 
 const HISTORY_TTL_MS = 30_000;
@@ -137,8 +139,9 @@ async function hydratePersistedAgentState(userId: string): Promise<void> {
     pinnedAgentIds: new Set(cached.pinnedAgentIds),
     favoriteAgentIds: new Set(cached.favoriteAgentIds),
     agentOrderIds: cached.agentOrderIds ?? [],
-    projectsAgentOrderIds: cached.projectsAgentOrderIds ?? null,
-    tasksAgentOrderIds: cached.tasksAgentOrderIds ?? null,
+    // Discard old flat-array format from before the per-project migration.
+    projectsAgentOrderIds: Array.isArray(cached.projectsAgentOrderIds) ? null : (cached.projectsAgentOrderIds ?? null),
+    tasksAgentOrderIds: Array.isArray(cached.tasksAgentOrderIds) ? null : (cached.tasksAgentOrderIds ?? null),
   });
 }
 
@@ -433,26 +436,30 @@ export const useAgentStore = create<AgentState>()(
           .catch(() => { /* best-effort — IndexedDB subscription persists locally */ });
       },
 
-      setProjectsAgentOrder: (ids): void => {
-        set({ projectsAgentOrderIds: ids });
-        const { agentOrderIds, tasksAgentOrderIds } = get();
+      setProjectsAgentOrder: (projectId, ids): void => {
+        set((s) => ({
+          projectsAgentOrderIds: { ...(s.projectsAgentOrderIds ?? {}), [projectId]: ids },
+        }));
+        const { agentOrderIds, projectsAgentOrderIds, tasksAgentOrderIds } = get();
         void api.preferences
           .putAgentOrder({
             agents_app: agentOrderIds,
-            projects_app: ids,
+            projects_app: projectsAgentOrderIds,
             tasks_app: tasksAgentOrderIds,
           })
           .catch(() => {});
       },
 
-      setTasksAgentOrder: (ids): void => {
-        set({ tasksAgentOrderIds: ids });
-        const { agentOrderIds, projectsAgentOrderIds } = get();
+      setTasksAgentOrder: (projectId, ids): void => {
+        set((s) => ({
+          tasksAgentOrderIds: { ...(s.tasksAgentOrderIds ?? {}), [projectId]: ids },
+        }));
+        const { agentOrderIds, projectsAgentOrderIds, tasksAgentOrderIds } = get();
         void api.preferences
           .putAgentOrder({
             agents_app: agentOrderIds,
             projects_app: projectsAgentOrderIds,
-            tasks_app: ids,
+            tasks_app: tasksAgentOrderIds,
           })
           .catch(() => {});
       },

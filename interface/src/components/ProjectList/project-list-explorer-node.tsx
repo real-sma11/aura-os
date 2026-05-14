@@ -38,8 +38,8 @@ export interface ProjectExplorerBuildContext {
    */
   streamingAgentInstanceIds: string[];
   archivingAgentInstanceIds: string[];
-  /** Resolved agent order for the projects surface (agent_id list). */
-  agentOrderIds: string[];
+  /** Returns the resolved agent_id order for a specific project. */
+  getAgentOrder: (projectId: string) => string[];
   /** Called when the user drags to reorder agents within a project. */
   onProjectAgentReorder?: (projectId: string, orderedAgentIds: string[]) => void;
   handleQuickAddAgent: (projectId: string) => void;
@@ -207,10 +207,11 @@ function buildProjectChildren(
     ];
   }
   const rawActiveAgents = projectAgents.filter((agent) => agent.status !== "archived");
-  const activeAgents = context.agentOrderIds.length > 0
+  const orderIds = context.getAgentOrder(projectId);
+  const activeAgents = orderIds.length > 0
     ? [...rawActiveAgents].sort((a, b) => {
-        const aIdx = context.agentOrderIds.indexOf(a.agent_id);
-        const bIdx = context.agentOrderIds.indexOf(b.agent_id);
+        const aIdx = orderIds.indexOf(a.agent_id);
+        const bIdx = orderIds.indexOf(b.agent_id);
         return (aIdx === -1 ? Infinity : aIdx) - (bIdx === -1 ? Infinity : bIdx);
       })
     : rawActiveAgents;

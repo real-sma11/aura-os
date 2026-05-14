@@ -9,7 +9,7 @@ import type { ProjectExplorerNodeStyles } from "../../../../components/ProjectLi
 import { buildTasksExplorerNode } from "./tasks-project-list-explorer-node";
 import { useTasksProjectListEffects } from "./use-tasks-project-list-effects";
 import { useAgentStore } from "../../../../apps/agents/stores/agent-store";
-import { useResolvedAgentOrder, normalizeAgentOrder } from "../../../../apps/agents/stores";
+import { normalizeAgentOrder } from "../../../../apps/agents/stores";
 
 function useTaskAgentRegistration(
   agentsByProject: ReturnType<typeof useProjectListData>["agentsByProject"],
@@ -46,20 +46,25 @@ function useTaskExplorerData(
 ): ExplorerNode[] {
   const statusMap = useProfileStatusStore((s) => s.statuses);
   const machineTypesMap = useProfileStatusStore((s) => s.machineTypes);
-  const agentOrderIds = useResolvedAgentOrder("tasks");
+  const agentsAppOrder = useAgentStore((s) => s.agentOrderIds);
+  const tasksOrderMap = useAgentStore((s) => s.tasksAgentOrderIds);
   const setTasksAgentOrder = useAgentStore((s) => s.setTasksAgentOrder);
 
+  const getAgentOrder = useCallback(
+    (projectId: string): string[] => tasksOrderMap?.[projectId] ?? agentsAppOrder,
+    [agentsAppOrder, tasksOrderMap],
+  );
+
   const onTasksAgentReorder = useCallback(
-    (_projectId: string, newProjectAgentIds: string[]) => {
-      const { tasksAgentOrderIds, agentOrderIds: agentsAppOrder, agents } =
-        useAgentStore.getState();
-      const currentOrder = tasksAgentOrderIds ?? agentsAppOrder;
+    (projectId: string, newProjectAgentIds: string[]) => {
+      const { tasksAgentOrderIds, agentOrderIds, agents } = useAgentStore.getState();
+      const currentOrder = tasksAgentOrderIds?.[projectId] ?? agentOrderIds;
       const allAgentIds = agents.map((a) => a.agent_id);
       const partialSet = new Set(newProjectAgentIds);
       const remaining = normalizeAgentOrder(allAgentIds, currentOrder).filter(
         (id) => !partialSet.has(id),
       );
-      setTasksAgentOrder([...newProjectAgentIds, ...remaining]);
+      setTasksAgentOrder(projectId, [...newProjectAgentIds, ...remaining]);
     },
     [setTasksAgentOrder],
   );
@@ -75,11 +80,11 @@ function useTaskExplorerData(
             statusMap,
             machineTypesMap,
             explorerStyles,
-            agentOrderIds,
+            getAgentOrder,
             onTasksAgentReorder,
           ),
         ),
-    [data, explorerStyles, machineTypesMap, statusMap, agentOrderIds, onTasksAgentReorder],
+    [data, explorerStyles, machineTypesMap, statusMap, getAgentOrder, onTasksAgentReorder],
   );
 }
 
