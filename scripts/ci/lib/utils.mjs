@@ -90,6 +90,22 @@ export function capture(command, args, options = {}) {
   return `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
 }
 
+// Like `capture` but returns null on any failure instead of exiting.
+export function tryCapture(command, args, options = {}) {
+  const result = spawnSync(commandName(command), args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options,
+  });
+
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  return `${result.stdout ?? ""}`.trim();
+}
+
 function parseVersion(raw, label, prefix = label) {
   // Prefer a match anchored to the program name (e.g. `rustc 1.94.1 (...)`)
   // so we don't accidentally pick up an unrelated `X.Y.Z` printed by a
@@ -136,8 +152,38 @@ export function assertNodeMajor(expectedMajor, lane) {
   }
 }
 
+function resolveRustcCommand() {
+  // Prefer `rustup which rustc` so we always invoke the toolchain that
+  // rustup considers active, even when `rustc` on PATH is a non-dispatching
+  // shim. The macos-latest GitHub runner ships Homebrew's `rustup` formula,
+  // which puts `/opt/homebrew/bin/rustc` ahead of `~/.cargo/bin/rustc` on
+  // PATH and points it at `rustup-init`. When `rustup-init` is invoked as
+  // `rustc` it doesn't act as a proxy, it just prints
+  // `rustup-init <its-own-version>`, which used to make the parity gate
+  // fail with `found rustc 1.29.0`.
+  const resolved = tryCapture("rustup", ["which", "rustc"]);
+  if (resolved) {
+    const path = resolved.split(/\r?\n/).pop()?.trim();
+    if (path) {
+      return path;
+    }
+  }
+  return "rustc";
+}
+
 export function assertRustVersionAtLeast(minimumVersion = RUST_VERSION) {
-  const raw = capture("rustc", ["--version"]);
+  const command = resolveRustcCommand();
+  const raw = capture(command, ["--version"]);
+  if (!/^\s*rustc\s+\d+\.\d+\.\d+/m.test(raw)) {
+    fail(
+      `Expected \`${command} --version\` to print a \`rustc X.Y.Z\` banner, ` +
+        `but got: ${JSON.stringify(raw)}. ` +
+        "This usually means PATH is pointing at a non-rustup binary " +
+        "(e.g. Homebrew's `rustup-init` shim). Make sure `~/.cargo/bin` " +
+        "is on PATH ahead of `/opt/homebrew/bin` or install the toolchain " +
+        "via `dtolnay/rust-toolchain`.",
+    );
+  }
   const actual = parseVersion(raw, "rustc");
   const minimum = minimumVersion.split(".").map((part) => Number.parseInt(part, 10));
   if (compareVersions(actual, minimum) < 0) {
