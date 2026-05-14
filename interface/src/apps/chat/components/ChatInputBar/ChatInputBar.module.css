@@ -274,14 +274,23 @@
   font-size: 11px;
 }
 
+/* Trigger metrics deliberately mirror `.projectButton` and
+   `.modelButton` — the three pills sit on the same info row, so any
+   drift in padding / border-radius / gap / vertical alignment makes
+   the bar look misaligned (e.g. the context pill drifting up because
+   it was an inline `<span>` with smaller padding than the
+   flex-centered sibling buttons). Keep these in lockstep. */
 .contextIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--color-text-secondary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
-  border-radius: 3px;
-  padding: 1px 3px;
+  border-radius: 4px;
+  padding: 2px 6px;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
@@ -306,13 +315,12 @@
    label. The track stays a quiet neutral overlay so it remains legible
    against any text color. The SVG rotates `-90deg` so the arc starts at
    12 o'clock and grows clockwise.
-   ------------------------------------------------------------------- */
 
-.contextIndicatorRow {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
+   `.contextIndicator` itself is the flex container — there's no
+   intermediate `.contextIndicatorRow` wrapper anymore so the trigger
+   shares the exact same box-model as the sibling project / model
+   pills.
+   ------------------------------------------------------------------- */
 
 .contextIndicatorRing {
   width: 12px;

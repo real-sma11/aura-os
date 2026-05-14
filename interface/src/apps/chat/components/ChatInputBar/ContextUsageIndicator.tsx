@@ -190,36 +190,34 @@ export function ContextUsageIndicator({
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span className={styles.contextIndicatorRow}>
-          <svg
-            className={styles.contextIndicatorRing}
-            viewBox={`0 0 ${RING_VIEWBOX} ${RING_VIEWBOX}`}
-            role="img"
-            aria-label={`Context: ${percent}% used`}
-            focusable="false"
-          >
-            <circle
-              className={styles.contextIndicatorRingTrack}
-              cx={RING_VIEWBOX / 2}
-              cy={RING_VIEWBOX / 2}
-              r={RING_RADIUS}
-              fill="none"
-              strokeWidth={RING_STROKE}
-            />
-            <circle
-              className={styles.contextIndicatorRingProgress}
-              cx={RING_VIEWBOX / 2}
-              cy={RING_VIEWBOX / 2}
-              r={RING_RADIUS}
-              fill="none"
-              strokeWidth={RING_STROKE}
-              strokeDasharray={RING_CIRCUMFERENCE}
-              strokeDashoffset={ringDashOffset}
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className={styles.contextIndicatorLabel}>{percent}% context</span>
-        </span>
+        <svg
+          className={styles.contextIndicatorRing}
+          viewBox={`0 0 ${RING_VIEWBOX} ${RING_VIEWBOX}`}
+          role="img"
+          aria-label={`Context: ${percent}% used`}
+          focusable="false"
+        >
+          <circle
+            className={styles.contextIndicatorRingTrack}
+            cx={RING_VIEWBOX / 2}
+            cy={RING_VIEWBOX / 2}
+            r={RING_RADIUS}
+            fill="none"
+            strokeWidth={RING_STROKE}
+          />
+          <circle
+            className={styles.contextIndicatorRingProgress}
+            cx={RING_VIEWBOX / 2}
+            cy={RING_VIEWBOX / 2}
+            r={RING_RADIUS}
+            fill="none"
+            strokeWidth={RING_STROKE}
+            strokeDasharray={RING_CIRCUMFERENCE}
+            strokeDashoffset={ringDashOffset}
+            strokeLinecap="round"
+          />
+        </svg>
+        <span className={styles.contextIndicatorLabel}>{percent}% context</span>
       </span>
       {onNewSession ? (
         <button
