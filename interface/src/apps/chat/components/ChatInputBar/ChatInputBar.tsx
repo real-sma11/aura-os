@@ -702,21 +702,27 @@ export const DesktopChatInputBar = memo(
             data-agent-surface="model-picker"
             data-agent-proof="chat-model-picker-visible"
           >
-            {sortedModelsForMode.map((m) => (
+            {sortedModelsForMode.map((m) => {
+              const isComingSoon = m.id.startsWith("dreamina-seedance");
+              return (
               <button
                 key={m.id}
                 type="button"
+                disabled={isComingSoon}
                 className={`${inputBarShellStyles.modelMenuItem} ${m.id === selectedModel ? inputBarShellStyles.modelMenuItemActive : ""}`}
                 data-agent-model-id={m.id}
                 data-agent-model-label={m.label}
+                style={isComingSoon ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                 onClick={() => {
+                  if (isComingSoon) return;
                   onModelChange(m.id);
                   close();
                 }}
               >
-                {m.label}
+                {m.label}{isComingSoon ? " (coming soon)" : ""}
               </button>
-            ))}
+              );
+            })}
           </div>
         );
       },

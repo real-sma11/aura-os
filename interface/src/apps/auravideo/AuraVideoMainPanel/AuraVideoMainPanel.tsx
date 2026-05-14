@@ -276,12 +276,17 @@ export function AuraVideoMainPanel() {
   const renderModelMenu = useCallback(
     (close: () => void) => (
       <div className={inputBarShellStyles.modelMenu}>
-        {VIDEO_MODELS.map((m) => (
+        {VIDEO_MODELS.map((m) => {
+          const isComingSoon = m.id.startsWith("dreamina-seedance");
+          return (
           <button
             key={m.id}
             type="button"
+            disabled={isComingSoon}
             className={`${inputBarShellStyles.modelMenuItem} ${m.id === model ? inputBarShellStyles.modelMenuItemActive : ""}`}
+            style={isComingSoon ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
             onClick={() => {
+              if (isComingSoon) return;
               const switchingToSeedance = m.id.startsWith("dreamina-seedance");
               const switchingFromSeedance = isSeedance;
               const switchingToSeedanceFast = switchingToSeedance && m.id.includes("fast");
@@ -315,9 +320,10 @@ export function AuraVideoMainPanel() {
               close();
             }}
           >
-            {m.label}
+            {m.label}{isComingSoon ? " (coming soon)" : ""}
           </button>
-        ))}
+          );
+        })}
       </div>
     ),
     [model, setModel, resolution, setResolution, aspectRatio, setAspectRatio, durationSeconds, setDurationSeconds, isSeedance],
