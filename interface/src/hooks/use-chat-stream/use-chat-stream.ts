@@ -388,6 +388,9 @@ export function useChatStream({
             },
             controller.signal,
             capturedProjectId,
+            undefined,
+            undefined,
+            capturedInstanceId,
           );
           return;
         }

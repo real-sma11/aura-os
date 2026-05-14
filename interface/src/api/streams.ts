@@ -298,6 +298,8 @@ export function generate3dStream(
   signal?: AbortSignal,
   projectId?: string,
   parentId?: string,
+  agentId?: string,
+  agentInstanceId?: string,
 ) {
   // Keep the legacy positional `string` shape working for existing
   // callers (the AURA 3D app passes an image URL directly).
@@ -310,6 +312,8 @@ export function generate3dStream(
   if (prompt) body.prompt = prompt;
   if (projectId) body.projectId = projectId;
   if (parentId) body.parentId = parentId;
+  if (agentId) body.agentId = agentId;
+  if (agentInstanceId) body.agentInstanceId = agentInstanceId;
   return streamSSE<string>(
     `${BASE_URL}/api/generate/3d/stream`,
     {

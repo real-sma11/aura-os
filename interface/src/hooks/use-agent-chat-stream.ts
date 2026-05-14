@@ -328,6 +328,9 @@ export function useAgentChatStream({
             },
             controller.signal,
             projectId,
+            undefined,
+            agentId,
+            undefined,
           );
           return;
         }
