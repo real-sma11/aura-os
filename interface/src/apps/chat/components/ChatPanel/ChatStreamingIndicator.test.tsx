@@ -121,7 +121,7 @@ describe("ChatStreamingIndicator", () => {
     expect(screen.queryByText("Cooking...")).not.toBeInTheDocument();
   });
 
-  it("forwards Stop / Retry / Report clicks from the pill to the wired callbacks", async () => {
+  it("forwards Stop / Retry clicks from the pill to the wired callbacks (Phase 5: Report is an inline ReportBugButton)", async () => {
     mockStreamEntry.isStreaming = true;
     mockStreamHealth.isStreaming = true;
     mockStreamHealth.lastEventAt = Date.now() - 32_000;
@@ -131,7 +131,6 @@ describe("ChatStreamingIndicator", () => {
 
     const onStop = vi.fn();
     const onRetry = vi.fn();
-    const onReport = vi.fn();
     const user = userEvent.setup();
 
     render(
@@ -139,16 +138,22 @@ describe("ChatStreamingIndicator", () => {
         streamKey="stream-1"
         onStop={onStop}
         onRetry={onRetry}
-        onReport={onReport}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: "Stop" }));
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    await user.click(screen.getByRole("button", { name: "Report" }));
+    // Phase 5: the legacy generic "Report" button has been replaced
+    // by an inline `ReportBugButton` ("Report bug") that opens
+    // `NewFeedbackModal` itself; ChatStreamingIndicator no longer
+    // owns the click handler. We assert the affordance is still
+    // present here and let `ReportBugButton.test.tsx` cover the
+    // modal-pre-fill behaviour end-to-end.
+    expect(
+      screen.getByRole("button", { name: "Report bug" }),
+    ).toBeInTheDocument();
 
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(onReport).toHaveBeenCalledTimes(1);
   });
 });

@@ -224,6 +224,7 @@ export function ChatMessageList({
                 isStreaming={isStreaming && msg.id.startsWith("stream-")}
                 initialThinkingExpanded={msg.id === justFinalizedIdRef.current}
                 initialActivitiesExpanded={msg.id === justFinalizedIdRef.current}
+                streamKey={streamKey}
               />
             </div>
           ))}

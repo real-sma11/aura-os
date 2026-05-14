@@ -20,12 +20,25 @@ import { CopyButton } from "../../../../components/CopyButton";
 import { useGallery, type GalleryItem } from "../../../../components/Gallery";
 import { LLMOutput } from "../LLMOutput";
 import { LargeTextBlock, isLargeText } from "./LargeTextBlock";
+import { ReportBugButton } from "../../../../components/ReportBugButton";
 
 interface Props {
   message: DisplaySessionEvent;
   isStreaming?: boolean;
   initialThinkingExpanded?: boolean;
   initialActivitiesExpanded?: boolean;
+  /**
+   * Phase 5: stream key the message belongs to. Threaded into the
+   * inline `ReportBugButton` rendered on error variants so the
+   * pre-filled bundle filters the breadcrumb ring down to this
+   * stream's recent activity. Optional because not every render
+   * site has it (e.g. the historical-message preview surfaces).
+   */
+  streamKey?: string;
+  /** Phase 5: optional agent id forwarded to the inline `ReportBugButton`. */
+  agentId?: string;
+  /** Phase 5: optional session id forwarded to the inline `ReportBugButton`. */
+  sessionId?: string;
 }
 
 const FILE_PREFIX_RE = /^\[File:\s*(.+?)\]\n\n([\s\S]*)$/;
@@ -72,6 +85,9 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming = false,
   initialThinkingExpanded,
   initialActivitiesExpanded,
+  streamKey,
+  agentId,
+  sessionId,
 }: Props) {
   const openBuyCredits = useUIModalStore((state) => state.openBuyCredits);
   const { openGallery } = useGallery();
@@ -173,6 +189,39 @@ export const MessageBubble = memo(function MessageBubble({
     return message.content;
   };
 
+  // Phase 5: shared chrome for the support_id chip + Report Bug
+  // affordance rendered on every error variant (streamDropped,
+  // insufficient credits, default fallback) so the surface is
+  // consistent across the failure modes.
+  const renderErrorActions = () => {
+    if (!message.displayVariant && !message.supportId) return null;
+    return (
+      <div className={styles.errorActionsRow}>
+        {message.supportId && (
+          <span
+            className={styles.supportIdChip}
+            title="Server-stamped support id — copy and share with support to join this report to the matching server log entry"
+          >
+            <span className={styles.supportIdLabel}>Support ID</span>
+            <code className={styles.supportIdValue}>{message.supportId}</code>
+            <CopyButton
+              getText={() => message.supportId ?? ""}
+              ariaLabel="Copy support id"
+              className={styles.supportIdCopyBtn}
+            />
+          </span>
+        )}
+        <ReportBugButton
+          streamKey={streamKey}
+          supportId={message.supportId}
+          agentId={agentId}
+          sessionId={sessionId}
+          compact
+        />
+      </div>
+    );
+  };
+
   const renderAssistantContent = () => {
     if (isStreamDropped) {
       return (
@@ -200,23 +249,27 @@ export const MessageBubble = memo(function MessageBubble({
               />
             </div>
           )}
+          {renderErrorActions()}
         </div>
       );
     }
 
     if (!isInsufficientCreditsError) {
       return (
-        <LLMOutput
-          content={message.content}
-          timeline={message.timeline}
-          toolCalls={message.toolCalls}
-          thinkingText={message.thinkingText}
-          thinkingDurationMs={message.thinkingDurationMs}
-          artifactRefs={message.artifactRefs}
-          isStreaming={isStreaming}
-          defaultThinkingExpanded={initialThinkingExpanded}
-          defaultActivitiesExpanded={initialActivitiesExpanded}
-        />
+        <>
+          <LLMOutput
+            content={message.content}
+            timeline={message.timeline}
+            toolCalls={message.toolCalls}
+            thinkingText={message.thinkingText}
+            thinkingDurationMs={message.thinkingDurationMs}
+            artifactRefs={message.artifactRefs}
+            isStreaming={isStreaming}
+            defaultThinkingExpanded={initialThinkingExpanded}
+            defaultActivitiesExpanded={initialActivitiesExpanded}
+          />
+          {renderErrorActions()}
+        </>
       );
     }
 
@@ -245,6 +298,7 @@ export const MessageBubble = memo(function MessageBubble({
             />
           </div>
         )}
+        {renderErrorActions()}
       </div>
     );
   };

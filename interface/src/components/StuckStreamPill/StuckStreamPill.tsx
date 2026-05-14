@@ -1,4 +1,6 @@
 import { Button } from "@cypher-asi/zui";
+import { ReportBugButton } from "../ReportBugButton";
+import { getRecentForStream } from "../../stores/stream-breadcrumbs-store";
 import styles from "./StuckStreamPill.module.css";
 
 export interface StuckStreamPillProps {
@@ -12,7 +14,31 @@ export interface StuckStreamPillProps {
   stuckForMs: number | null;
   onStop: () => void;
   onRetry: () => void;
-  onReport: () => void;
+  /**
+   * Phase 5: when set, the pill renders an inline `ReportBugButton`
+   * pre-filled with the most recent `support_id` from the
+   * breadcrumb ring for this stream. Falls back to the legacy
+   * `onReport` callback when omitted (covers the standalone-tests
+   * that don't depend on the breadcrumb store being populated).
+   */
+  streamKey?: string;
+  /**
+   * Optional agent id forwarded to the inline `ReportBugButton`'s
+   * pre-fill bundle. Mirrors the rationale on `MessageBubble`'s
+   * matching prop.
+   */
+  agentId?: string;
+  /** Optional session id for the inline `ReportBugButton` pre-fill. */
+  sessionId?: string;
+  /**
+   * Legacy Phase-2 fallback. Used only when `streamKey` is not
+   * supplied — the modern path renders an inline
+   * `ReportBugButton` whose own click handler opens
+   * `NewFeedbackModal`. Kept on the prop signature so the
+   * pill remains testable in isolation without mocking the
+   * breadcrumb store.
+   */
+  onReport?: () => void;
 }
 
 function formatSeconds(ms: number | null): string {
@@ -35,6 +61,9 @@ export function StuckStreamPill({
   onStop,
   onRetry,
   onReport,
+  streamKey,
+  agentId,
+  sessionId,
 }: StuckStreamPillProps) {
   const stuckLabel = formatSeconds(stuckForMs);
   // The watchdog promotes a stream to "stuck" only after
@@ -43,6 +72,17 @@ export function StuckStreamPill({
   // here so the pill's secondary copy stays self-contained
   // without having to thread `lastEventAgeMs` separately.
   const ageLabel = formatSeconds((stuckForMs ?? 0) + 30_000);
+  // Phase 5: pull the most recent support_id out of the breadcrumb
+  // ring for this stream so the inline `ReportBugButton` can pre-fill
+  // the report title with the failure context the user just hit.
+  // The lookup is read-once at render time (the breadcrumb store
+  // is observed by `ReportBugButton` itself when the modal opens),
+  // so we don't need a Zustand subscription here.
+  const recentBreadcrumbs = streamKey ? getRecentForStream(streamKey, 20) : [];
+  const latestSupportId = recentBreadcrumbs
+    .filter((b) => !!b.support_id)
+    .map((b) => b.support_id!)
+    .at(-1);
 
   return (
     <div
@@ -60,9 +100,20 @@ export function StuckStreamPill({
         <Button variant="ghost" size="sm" onClick={onRetry}>
           Retry
         </Button>
-        <Button variant="ghost" size="sm" onClick={onReport}>
-          Report
-        </Button>
+        {streamKey ? (
+          <ReportBugButton
+            streamKey={streamKey}
+            supportId={latestSupportId}
+            agentId={agentId}
+            sessionId={sessionId}
+            compact
+            titleSuffix="stuck stream"
+          />
+        ) : (
+          <Button variant="ghost" size="sm" onClick={onReport ?? (() => {})}>
+            Report
+          </Button>
+        )}
       </div>
     </div>
   );

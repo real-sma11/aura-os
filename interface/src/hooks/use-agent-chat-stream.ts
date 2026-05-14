@@ -31,6 +31,7 @@ import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
 import { getLastEventAt } from "./stream/store";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
+import type { StreamCloseContext } from "../shared/observability/stream-breadcrumbs";
 
 /**
  * Per-streamKey cache of the most recent `sendMessage` payload plus
@@ -248,6 +249,16 @@ export function useAgentChatStream({
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Phase 5: snapshot the breadcrumb context for this turn so
+      // every error / finalize path inside the handler stamps the
+      // persisted ring entry with the originating stream key +
+      // agent + session ids.
+      const breadcrumbContext: StreamCloseContext = {
+        streamKey: core.key,
+        agentId,
+        sessionId: sessionIdRef.current ?? undefined,
+      };
+
       const handler: StreamEventHandler = {
         onEvent(event: AuraEvent) {
           switch (event.type) {
@@ -347,22 +358,22 @@ export function useAgentChatStream({
               const toolId = `gen-${Date.now()}`;
               handleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
               handleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
-              finalizeStream(refs, setters, abortRef, false, { reason: "completed" });
+              finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
               break;
             }
             case EventType.GenerationError:
-              handleStreamError(refs, setters, event.content.message);
+              handleStreamError(refs, setters, event.content.message, breadcrumbContext);
               break;
             case EventType.Error:
-              handleStreamError(refs, setters, event.content.message);
+              handleStreamError(refs, setters, event.content.message, breadcrumbContext);
               break;
             case EventType.Done:
-              finalizeStream(refs, setters, abortRef, false);
+              finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
               break;
           }
         },
-        onError: (error) => handleStreamError(refs, setters, error),
-        onDone: () => finalizeStream(refs, setters, abortRef, false),
+        onError: (error) => handleStreamError(refs, setters, error, breadcrumbContext),
+        onDone: () => finalizeStream(refs, setters, abortRef, false, { breadcrumbContext }),
       };
 
       try {
@@ -480,7 +491,7 @@ export function useAgentChatStream({
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        handleStreamError(refs, setters, err);
+        handleStreamError(refs, setters, err, breadcrumbContext);
       } finally {
         if (abortRef.current === controller) {
           core.setIsStreaming(false);

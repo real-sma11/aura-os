@@ -9,7 +9,10 @@ import type { ChatAttachment } from "../../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../../constants/generation";
 import { EventType } from "../../shared/types/aura-events";
-import { recordStreamCloseReason } from "../../shared/observability/stream-breadcrumbs";
+import {
+  recordStreamCloseReason,
+  type StreamCloseContext,
+} from "../../shared/observability/stream-breadcrumbs";
 
 import {
   useStreamCore,
@@ -132,6 +135,19 @@ export function useChatStream({
       const partitionRefs = partitionMeta.refs;
       const partitionSetters = createSetters(capturedKey);
       const ctrl = getPartitionSendControl(capturedKey);
+      // Phase 5: snapshot the breadcrumb context for this turn so
+      // every `handleStreamError` / `finalizeStream` call inside
+      // the captured-partition closure stamps the persisted ring
+      // entry with the originating stream key + session id. The
+      // project-chat hook is keyed on `(projectId, agentInstanceId)`
+      // — which IS the stream key — and the session id is read
+      // through the latched ref so a mid-turn URL flip doesn't
+      // strand the breadcrumb against a stale id.
+      const breadcrumbContext: StreamCloseContext = {
+        streamKey: capturedKey,
+        agentId: capturedInstanceId,
+        sessionId: sessionIdRef.current ?? undefined,
+      };
 
       // Per-partition entry latch. The synchronous `inFlight` flip
       // covers the gap between this call and the moment
@@ -281,11 +297,14 @@ export function useChatStream({
         // `X-Aura-Client-Retry`.
         const errorMessage =
           error instanceof Error ? error.message : typeof error === "string" ? error : "stream dropped";
-        recordStreamCloseReason({
-          classified: "streamDropped",
-          message: errorMessage,
-          auto_retry: true,
-        });
+        recordStreamCloseReason(
+          {
+            classified: "streamDropped",
+            message: errorMessage,
+            auto_retry: true,
+          },
+          breadcrumbContext,
+        );
         const delayMs = 1000 * ctrl.autoRetryCount;
         // Discard any partial assistant state from the dropped turn
         // so the retry produces a clean assistant bubble. The user's
@@ -458,7 +477,7 @@ export function useChatStream({
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        handleStreamError(partitionRefs, partitionSetters, err);
+        handleStreamError(partitionRefs, partitionSetters, err, breadcrumbContext);
       } finally {
         // Partition-scoped finalization sentinel. The legacy
         // `abortRef.current === controller` gate re-read

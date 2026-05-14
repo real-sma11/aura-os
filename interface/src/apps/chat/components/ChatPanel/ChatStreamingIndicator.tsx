@@ -25,18 +25,14 @@ interface ChatStreamingIndicatorProps {
    */
   onRetry?: () => void;
   /**
-   * Opens the bug-report flow. Phase 2 ships a `console.warn`
-   * placeholder; Phase 5 will swap in the real `NewFeedbackModal`
-   * pre-fill.
+   * Phase 2 -> Phase 5: when set, falls back to this legacy
+   * callback as the pill's Report action. Phase 5 wiring renders
+   * an inline `ReportBugButton` instead (because `streamKey` is
+   * always present), so this prop is kept only so Phase-2
+   * standalone tests still compile.
    */
   onReport?: () => void;
 }
-
-const noopReport = () => {
-  if (typeof console !== "undefined") {
-    console.warn("[StuckStreamPill] Report bug coming in Phase 5");
-  }
-};
 
 /**
  * Pins the streaming phase indicator ("Cooking...", "Thinking...", etc.)
@@ -82,9 +78,10 @@ export function ChatStreamingIndicator({
         <div className={styles.pinnedStreamingIndicatorInner}>
           <StuckStreamPill
             stuckForMs={health.stuckForMs}
+            streamKey={streamKey}
             onStop={onStop ?? (() => {})}
             onRetry={onRetry ?? (() => {})}
-            onReport={onReport ?? noopReport}
+            onReport={onReport}
           />
         </div>
       </div>

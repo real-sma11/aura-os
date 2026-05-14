@@ -9,7 +9,9 @@ import { SSEIdleTimeoutError } from "../../../shared/api/sse";
 import {
   recordStreamCloseReason,
   type StreamCloseClassification,
+  type StreamCloseContext,
 } from "../../../shared/observability/stream-breadcrumbs";
+import { extractSupportId } from "../../../shared/observability/support-id";
 import type { SessionEvent, ChatContentBlock } from "../../../shared/types";
 import { extractToolCalls, extractArtifactRefs } from "../../../utils/chat-history";
 import type {
@@ -85,6 +87,14 @@ function classifyFinalizeReason(
 interface FinalizeStreamOptions {
   reason?: FinalizeStreamReason;
   message?: string;
+  /**
+   * Phase 5: optional context the chat hooks can thread through so
+   * the persisted breadcrumb carries the stream key / agent id /
+   * session id alongside the close reason. Lifecycle handlers are
+   * agnostic of these ids; the use-site (the chat hook closing
+   * over the captured partition) supplies them when available.
+   */
+  breadcrumbContext?: StreamCloseContext;
 }
 
 function getStreamErrorMessage(error: unknown): string {
@@ -415,22 +425,40 @@ export function handleStreamError(
   refs: StreamRefs,
   setters: StreamSetters,
   error: unknown,
+  breadcrumbContext?: StreamCloseContext,
 ): void {
   const rawMessage = getStreamErrorMessage(error);
   const rawCode = getStreamErrorCode(error);
+  // Phase 5: peel the `(support_id=...)` suffix off the raw server
+  // message before any user-facing copy is built so the bubble
+  // text stays clean and the id surfaces as a copyable chip on
+  // the synthesized event instead.
+  const { supportId, cleanedMessage } = extractSupportId(rawMessage);
   const { message, displayVariant } = normalizeStreamError(error);
-  const displayMessage = rawCode && !displayVariant ? `${message} (${rawCode})` : message;
+  // For the unbucketed default branch `normalizeStreamError`
+  // returns the raw message verbatim; swap in the cleaned copy so
+  // the support_id suffix doesn't leak into the rendered bubble.
+  const messageForDisplay =
+    !displayVariant && message === rawMessage ? cleanedMessage : message;
+  const displayMessage = rawCode && !displayVariant ? `${messageForDisplay} (${rawCode})` : messageForDisplay;
 
   console.error("Chat stream error:", rawCode ? `${rawCode}: ${rawMessage}` : rawMessage);
   // Phase 5 client-side breadcrumb. Fires BEFORE `dispatchInsufficientCredits`
   // and the React state churn below so a future telemetry handler
   // wiring to `aura:stream-close` sees the close reason on the same
-  // tick the consumer first surfaces it.
-  recordStreamCloseReason({
-    classified: classifyStreamErrorVariant(displayVariant),
-    message: rawMessage,
-    code: rawCode,
-  });
+  // tick the consumer first surfaces it. The persisted ring entry
+  // also carries the parsed `support_id` and the optional
+  // breadcrumb context (stream key / agent / session) supplied by
+  // the use-site.
+  recordStreamCloseReason(
+    {
+      classified: classifyStreamErrorVariant(displayVariant),
+      message: cleanedMessage,
+      code: rawCode,
+      support_id: supportId ?? undefined,
+    },
+    breadcrumbContext,
+  );
   if (displayVariant === "insufficientCreditsError") {
     dispatchInsufficientCredits();
   }
@@ -458,6 +486,7 @@ export function handleStreamError(
         ? prefix + displayMessage
         : prefix + `*Error: ${displayMessage}*`,
       displayVariant,
+      supportId: supportId ?? undefined,
       toolCalls: savedToolCalls,
       thinkingText: savedThinking,
       thinkingDurationMs: savedThinkingDuration,
@@ -482,10 +511,13 @@ export function finalizeStream(
   // `aura:stream-close` event. `message` defaults to the
   // classification name when no explicit message is passed so the
   // consumer always has *something* to render.
-  recordStreamCloseReason({
-    classified: classifyFinalizeReason(options?.reason),
-    message: options?.message ?? options?.reason ?? "completed",
-  });
+  recordStreamCloseReason(
+    {
+      classified: classifyFinalizeReason(options?.reason),
+      message: options?.message ?? options?.reason ?? "completed",
+    },
+    options?.breadcrumbContext,
+  );
   if (refs.streamBuffer.current) {
     flushStreamingText(refs, setters);
   } else {

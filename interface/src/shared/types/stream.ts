@@ -67,6 +67,16 @@ export interface DisplaySessionEvent {
    * pending placeholders survive the reload).
    */
   inFlight?: boolean;
+  /**
+   * Phase 5: the server-stamped `support_id` parsed out of an
+   * `ErrorMsg.message` suffix (`(support_id=<12hex>)`). Set only
+   * on synthesized error events emitted by `handleStreamError`;
+   * surfaced as a copyable chip in the error bubble + as the
+   * top-line context line in the `ReportBugButton` pre-fill so
+   * support can join the chat-side report back to the matching
+   * server `tracing` span.
+   */
+  supportId?: string;
 }
 
 export interface ToolCallEntry {

@@ -259,12 +259,6 @@ export function ChatPanel({
     }
   }, [onSend, onStop, streamKey]);
 
-  const handleStuckStreamReport = useCallback(() => {
-    if (typeof console !== "undefined") {
-      console.warn("[StuckStreamPill] Report bug coming in Phase 5");
-    }
-  }, []);
-
   const handleStuckStreamAutoTimeout = useCallback(() => {
     onStop();
     ensureEntry(streamKey);
@@ -662,7 +656,6 @@ export function ChatPanel({
           streamKey={streamKey}
           onStop={onStop}
           onRetry={handleStuckStreamRetry}
-          onReport={handleStuckStreamReport}
         />
 
         {isThreadEmpty && !hasSentFirstMessage && (
