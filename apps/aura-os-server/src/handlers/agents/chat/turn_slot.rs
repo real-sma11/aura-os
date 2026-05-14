@@ -390,6 +390,7 @@ fn timeout_error(code: &str, message: String) -> HarnessOutbound {
         code: code.to_string(),
         message,
         recoverable: true,
+        support_id: None,
     };
     let _ = super::errors::stamp_support_id(&mut err, code);
     HarnessOutbound::Error(err)
@@ -426,6 +427,7 @@ mod tests {
             code: "boom".to_string(),
             message: "boom".to_string(),
             recoverable: false,
+            support_id: None,
         })
     }
 

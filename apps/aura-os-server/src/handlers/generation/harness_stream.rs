@@ -732,6 +732,7 @@ mod tests {
             code: "provider_error".to_string(),
             message: "upstream failed".to_string(),
             recoverable: false,
+            support_id: None,
         });
         assert_eq!(generation_event_name(&upstream_error), Some("error"));
         assert!(generation_event_is_terminal(&upstream_error));

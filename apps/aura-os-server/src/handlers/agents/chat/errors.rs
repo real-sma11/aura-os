@@ -35,9 +35,22 @@ pub(crate) fn fresh_support_id() -> String {
 /// - `tracing::error!` for non-recoverable errors that terminated
 ///   the turn from the server's perspective.
 pub(crate) fn stamp_support_id(err: &mut ErrorMsg, code: &str) -> String {
-    let id = fresh_support_id();
+    // Reuse a pre-populated id (Phase 6 in-process sites such as the
+    // harness `agent_stalled` emitter and the watchdog
+    // `stream_stalled`/`turn_timeout` synth pre-stamp the field) so a
+    // single error never carries two different ids on different
+    // surfaces. Mint fresh only when neither side has done it.
+    let id = err
+        .support_id
+        .clone()
+        .unwrap_or_else(fresh_support_id);
     err.code = code.to_string();
-    err.message = format!("{} (support_id={id})", err.message);
+    // Avoid double-suffixing on retries: if the message already
+    // contains the canonical suffix, leave it alone.
+    if !err.message.contains("(support_id=") {
+        err.message = format!("{} (support_id={id})", err.message);
+    }
+    err.support_id = Some(id.clone());
     if err.recoverable {
         tracing::warn!(
             support_id = %id,
@@ -148,6 +161,13 @@ pub(super) fn remap_harness_error_to_sse(err: &ErrorMsg) -> ErrorMsg {
         code: code.clone(),
         message,
         recoverable: err.recoverable,
+        // Phase 6 promoted `support_id` to a first-class field, but
+        // most pre-Phase-6 emit sites still leave it `None`. Inherit
+        // whatever the upstream sender already stamped (the harness's
+        // agent-loop terminal error path now pre-populates this) and
+        // let `stamp_support_id` mint a fresh id only when neither
+        // side has set one.
+        support_id: err.support_id.clone(),
     };
     let _ = stamp_support_id(&mut new_err, &code);
     new_err
@@ -270,6 +290,7 @@ mod tests {
             code: code.to_string(),
             message: message.to_string(),
             recoverable: false,
+            support_id: None,
         }
     }
 

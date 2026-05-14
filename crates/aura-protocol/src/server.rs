@@ -37,6 +37,17 @@ pub enum OutboundMessage {
     AssistantMessageEnd(AssistantMessageEnd),
     /// An error occurred.
     Error(ErrorMsg),
+    /// Progress heartbeat. Strictly additive: the harness emits these
+    /// during long tool calls (`stage = "tool_running"`, every
+    /// `AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS`) so the aura-os
+    /// sliding-idle watchdog and the client-side stuck-stream
+    /// watchdog see forward motion and don't trip a `turn_timeout` on
+    /// a turn that is actually working. Older clients ignore unknown
+    /// SSE event types (the chat handler already does — see
+    /// `interface/src/hooks/use-chat-stream/build-stream-handler.ts`
+    /// `EventType.Progress` branch) so adding the variant is
+    /// wire-compatible in both directions.
+    Progress(ProgressMsg),
     /// Generation started.
     GenerationStart(GenerationStart),
     /// Generation progress update.
@@ -294,6 +305,61 @@ pub struct ErrorMsg {
     pub code: String,
     pub message: String,
     pub recoverable: bool,
+    /// Short opaque id (12 lowercase hex chars) used to correlate this
+    /// error across server logs, client breadcrumbs, and user-pasted
+    /// support reports. Strictly additive on the wire:
+    ///
+    /// - Older clients that don't know the field deserialize fine
+    ///   (`#[serde(default)]` keeps the field optional inbound), and
+    ///   the sender omits it from the JSON when `None`
+    ///   (`skip_serializing_if = "Option::is_none"`) so older receivers
+    ///   never see an unexpected key.
+    /// - Older harness builds simply leave it `None`. The aura-os SSE
+    ///   remap boundary in `apps/aura-os-server/src/handlers/agents/chat/errors.rs`
+    ///   keeps stamping a `(support_id=<id>)` suffix into `message`
+    ///   for that case so existing clients still get a usable id.
+    /// - Newer harness in-process emit sites (e.g. the watchdog
+    ///   `stream_stalled` / `turn_timeout` synth, the agent loop's
+    ///   `agent_stalled` terminal event) can pre-populate the field so
+    ///   the same id appears on both the structured field and the
+    ///   message suffix; the SSE remap path leaves a prepopulated id
+    ///   untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_id: Option<String>,
+}
+
+/// Payload for `progress` heartbeat / status events.
+///
+/// `stage` is the only required field and carries a free-form short
+/// label (`"tool_running"`, `"lagged"`, `"forked_for_context"`, …).
+/// Unknown stages flow straight through to the client which renders
+/// them as a generic progress label, so we can introduce new stages
+/// without coordinating a wire bump.
+///
+/// Optional fields are omitted from the JSON when `None`
+/// (`skip_serializing_if = "Option::is_none"`) and default to `None`
+/// inbound (`#[serde(default)]`) so older harness/client pairs that
+/// don't know about them deserialize cleanly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS), ts(export))]
+pub struct ProgressMsg {
+    /// Short machine-readable stage tag. The aura-os chat client
+    /// renders unknown values as the literal label, so adding new
+    /// stages does not require a coordinated client release.
+    pub stage: String,
+    /// Tool whose long-running execution is producing this heartbeat.
+    /// Set on `stage = "tool_running"`; left `None` for stages that
+    /// don't refer to a single tool (e.g. `"lagged"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Wall-clock milliseconds since the heartbeat's reference event
+    /// (tool start for `"tool_running"`). Optional — older clients
+    /// ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u64>,
+    /// Optional human-readable label / detail string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 // ============================================================================

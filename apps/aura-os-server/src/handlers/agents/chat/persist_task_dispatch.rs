@@ -63,7 +63,15 @@ pub(super) async fn handle_outbound(
         | HarnessOutbound::GenerationPartialImage(_)
         | HarnessOutbound::GenerationCompleted(_)
         | HarnessOutbound::GenerationError(_)
-        | HarnessOutbound::ToolApprovalPrompt(_) => false,
+        | HarnessOutbound::ToolApprovalPrompt(_)
+        // Progress heartbeats from the harness (Phase 6: `tool_running`
+        // ticks every `AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS`) are
+        // transient liveness signals, not persistable turn progress —
+        // they already flow through to the SSE forwarder so the chat
+        // watchdog sees forward motion. We don't write them to
+        // `SessionEvent`s and don't bump the throttled progress
+        // publish (Progress is itself the progress publish).
+        | HarnessOutbound::Progress(_) => false,
     }
 }
 

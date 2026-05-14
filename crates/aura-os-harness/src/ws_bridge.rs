@@ -224,6 +224,7 @@ fn bridge_error(code: &str, message: impl Into<String>, recoverable: bool) -> Ou
         code: code.to_string(),
         message: message.into(),
         recoverable,
+        support_id: None,
     })
 }
 

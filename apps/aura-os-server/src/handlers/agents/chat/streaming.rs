@@ -119,6 +119,7 @@ fn stream_truncated_error_event() -> Result<Event, Infallible> {
         code: "stream_truncated".to_string(),
         message: "Agent stream ended before the turn completed. Retrying will recover the latest saved output from history.".to_string(),
         recoverable: true,
+        support_id: None,
     };
     let normalized = HarnessOutbound::Error(remap_harness_error_to_sse(&err));
     super::super::super::sse::harness_event_to_sse(&normalized)
@@ -1385,6 +1386,7 @@ mod tests {
             code: "turn_in_progress".into(),
             message: "A turn is currently in progress; send cancel first".into(),
             recoverable: true,
+            support_id: None,
         }))
         .expect("seed turn_in_progress error");
         drop(tx);
