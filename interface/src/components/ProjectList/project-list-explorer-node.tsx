@@ -38,6 +38,10 @@ export interface ProjectExplorerBuildContext {
    */
   streamingAgentInstanceIds: string[];
   archivingAgentInstanceIds: string[];
+  /** Resolved agent order for the projects surface (agent_id list). */
+  agentOrderIds: string[];
+  /** Called when the user drags to reorder agents within a project. */
+  onProjectAgentReorder?: (projectId: string, orderedAgentIds: string[]) => void;
   handleQuickAddAgent: (projectId: string) => void;
   handleArchiveAgent: (agent: ProjectAgentNode) => void;
 }
@@ -202,7 +206,14 @@ function buildProjectChildren(
       },
     ];
   }
-  const activeAgents = projectAgents.filter((agent) => agent.status !== "archived");
+  const rawActiveAgents = projectAgents.filter((agent) => agent.status !== "archived");
+  const activeAgents = context.agentOrderIds.length > 0
+    ? [...rawActiveAgents].sort((a, b) => {
+        const aIdx = context.agentOrderIds.indexOf(a.agent_id);
+        const bIdx = context.agentOrderIds.indexOf(b.agent_id);
+        return (aIdx === -1 ? Infinity : aIdx) - (bIdx === -1 ? Infinity : bIdx);
+      })
+    : rawActiveAgents;
 
   const children: ExplorerNode[] = [
     ...mobileChildren,
@@ -240,6 +251,17 @@ export function buildProjectExplorerNode(
   machineTypesMap: Record<string, string>,
   explorerStyles: ProjectExplorerNodeStyles,
 ): ExplorerNodeWithSuffix {
+  const projectAgents = context.agentsByProject[project.project_id] ?? [];
+  const instanceToAgentId = new Map(projectAgents.map((a) => [a.agent_instance_id, a.agent_id]));
+  const onChildReorder = context.onProjectAgentReorder
+    ? (orderedInstanceIds: string[]) => {
+        const orderedAgentIds = orderedInstanceIds
+          .map((id) => instanceToAgentId.get(id))
+          .filter((id): id is string => Boolean(id));
+        context.onProjectAgentReorder!(project.project_id, orderedAgentIds);
+      }
+    : undefined;
+
   return {
     id: project.project_id,
     label: project.name,
@@ -248,7 +270,7 @@ export function buildProjectExplorerNode(
       context,
       explorerStyles,
     ),
-    metadata: { type: "project" },
+    metadata: { type: "project", childDraggable: Boolean(onChildReorder), onChildReorder },
     children: buildProjectChildren(
       project.project_id,
       context,

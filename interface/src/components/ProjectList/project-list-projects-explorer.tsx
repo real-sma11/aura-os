@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ExplorerNode } from "@cypher-asi/zui";
 import { useProfileStatusStore } from "../../stores/profile-status-store";
+import { useAgentStore } from "../../apps/agents/stores/agent-store";
+import { useResolvedAgentOrder, normalizeAgentOrder } from "../../apps/agents/stores";
 import {
   getMobileProjectDestination,
   projectAgentRoute,
@@ -112,6 +114,24 @@ function useProjectExplorerData(
   explorerData: ExplorerNode[];
   filteredExplorerData: ExplorerNode[];
 } {
+  const agentOrderIds = useResolvedAgentOrder("projects");
+  const setProjectsAgentOrder = useAgentStore((s) => s.setProjectsAgentOrder);
+
+  const onProjectAgentReorder = useCallback(
+    (_projectId: string, newProjectAgentIds: string[]) => {
+      const { projectsAgentOrderIds, agentOrderIds: agentsAppOrder, agents } =
+        useAgentStore.getState();
+      const currentOrder = projectsAgentOrderIds ?? agentsAppOrder;
+      const allAgentIds = agents.map((a) => a.agent_id);
+      const partialSet = new Set(newProjectAgentIds);
+      const remaining = normalizeAgentOrder(allAgentIds, currentOrder).filter(
+        (id) => !partialSet.has(id),
+      );
+      setProjectsAgentOrder([...newProjectAgentIds, ...remaining]);
+    },
+    [setProjectsAgentOrder],
+  );
+
   const nodeBuildContext = useMemo(
     () => ({
       agentsByProject: data.agentsByProject,
@@ -120,10 +140,12 @@ function useProjectExplorerData(
       isMobileLayout: data.isMobileLayout,
       streamingAgentInstanceIds: data.sidekick.streamingAgentInstanceIds,
       archivingAgentInstanceIds: data.actions.archivingAgentInstanceIds,
+      agentOrderIds,
+      onProjectAgentReorder,
       handleQuickAddAgent: data.actions.handleQuickAddAgent,
       handleArchiveAgent: data.actions.handleArchiveAgent,
     }),
-    [data],
+    [data, agentOrderIds, onProjectAgentReorder],
   );
 
   const explorerData = useMemo(

@@ -106,6 +106,30 @@ export function normalizeAgentOrder(
   return [...filtered, ...remaining];
 }
 
+/**
+ * Merges a partial reorder into a full order array. Elements in
+ * newPartialOrder are placed at the positions they formerly occupied in
+ * fullOrder (stable slot replacement); any partials not yet in fullOrder
+ * are appended at the end.
+ */
+export function applyPartialReorder(fullOrder: string[], newPartialOrder: string[]): string[] {
+  if (newPartialOrder.length === 0) return fullOrder;
+  const partialSet = new Set(newPartialOrder);
+  const result = [...fullOrder];
+  const positions: number[] = [];
+  for (let i = 0; i < result.length; i++) {
+    if (partialSet.has(result[i])) positions.push(i);
+  }
+  positions.forEach((pos, i) => {
+    if (i < newPartialOrder.length) result[pos] = newPartialOrder[i];
+  });
+  const fullSet = new Set(fullOrder);
+  for (const id of newPartialOrder) {
+    if (!fullSet.has(id)) result.push(id);
+  }
+  return result;
+}
+
 export type AgentOrderSurface = "agents" | "projects" | "tasks";
 
 /**

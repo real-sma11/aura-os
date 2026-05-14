@@ -8,6 +8,8 @@ import { buildLeftMenuEntries, useLeftMenuExpandedGroups } from "../../../../fea
 import type { ProjectExplorerNodeStyles } from "../../../../components/ProjectList/project-list-explorer-node";
 import { buildTasksExplorerNode } from "./tasks-project-list-explorer-node";
 import { useTasksProjectListEffects } from "./use-tasks-project-list-effects";
+import { useAgentStore } from "../../../../apps/agents/stores/agent-store";
+import { useResolvedAgentOrder, normalizeAgentOrder } from "../../../../apps/agents/stores";
 
 function useTaskAgentRegistration(
   agentsByProject: ReturnType<typeof useProjectListData>["agentsByProject"],
@@ -44,6 +46,23 @@ function useTaskExplorerData(
 ): ExplorerNode[] {
   const statusMap = useProfileStatusStore((s) => s.statuses);
   const machineTypesMap = useProfileStatusStore((s) => s.machineTypes);
+  const agentOrderIds = useResolvedAgentOrder("tasks");
+  const setTasksAgentOrder = useAgentStore((s) => s.setTasksAgentOrder);
+
+  const onTasksAgentReorder = useCallback(
+    (_projectId: string, newProjectAgentIds: string[]) => {
+      const { tasksAgentOrderIds, agentOrderIds: agentsAppOrder, agents } =
+        useAgentStore.getState();
+      const currentOrder = tasksAgentOrderIds ?? agentsAppOrder;
+      const allAgentIds = agents.map((a) => a.agent_id);
+      const partialSet = new Set(newProjectAgentIds);
+      const remaining = normalizeAgentOrder(allAgentIds, currentOrder).filter(
+        (id) => !partialSet.has(id),
+      );
+      setTasksAgentOrder([...newProjectAgentIds, ...remaining]);
+    },
+    [setTasksAgentOrder],
+  );
 
   return useMemo(
     () =>
@@ -56,9 +75,11 @@ function useTaskExplorerData(
             statusMap,
             machineTypesMap,
             explorerStyles,
+            agentOrderIds,
+            onTasksAgentReorder,
           ),
         ),
-    [data, explorerStyles, machineTypesMap, statusMap],
+    [data, explorerStyles, machineTypesMap, statusMap, agentOrderIds, onTasksAgentReorder],
   );
 }
 

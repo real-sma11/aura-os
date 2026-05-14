@@ -7,6 +7,7 @@ import type { useProjectListData } from "../../../../components/ProjectList/useP
 import { resolveStatus } from "../../../../components/ProjectList/project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../../../lib/zui-compat";
 import { agentDisplayName } from "../../../../lib/derive-project-agent-title";
+import { normalizeAgentOrder } from "../../../../apps/agents/stores";
 
 function buildTaskProjectSuffix(
   projectId: string,
@@ -85,21 +86,38 @@ export function buildTasksExplorerNode(
   statusMap: Record<string, string>,
   machineTypesMap: Record<string, string>,
   explorerStyles: ProjectExplorerNodeStyles,
+  agentOrderIds: string[] = [],
+  onTasksAgentReorder?: (projectId: string, orderedAgentIds: string[]) => void,
 ): ExplorerNodeWithSuffix {
   const projectAgents = data.agentsByProject[project.project_id];
-  const children =
-    projectAgents !== undefined
-      ? projectAgents.map((agent) =>
-          buildTaskAgentNode(
-            agent,
-            project.project_id,
-            data,
-            statusMap,
-            machineTypesMap,
-            explorerStyles,
-          ),
-        )
-      : [{ id: `_load_${project.project_id}`, label: "Loading...", disabled: true }];
+
+  let children;
+  if (projectAgents === undefined) {
+    children = [{ id: `_load_${project.project_id}`, label: "Loading...", disabled: true }];
+  } else {
+    const sorted = agentOrderIds.length > 0
+      ? [...projectAgents].sort((a, b) => {
+          const aIdx = agentOrderIds.indexOf(a.agent_id);
+          const bIdx = agentOrderIds.indexOf(b.agent_id);
+          return (aIdx === -1 ? Infinity : aIdx) - (bIdx === -1 ? Infinity : bIdx);
+        })
+      : projectAgents;
+    children = sorted.map((agent) =>
+      buildTaskAgentNode(agent, project.project_id, data, statusMap, machineTypesMap, explorerStyles),
+    );
+  }
+
+  const instanceToAgentId = new Map(
+    (data.agentsByProject[project.project_id] ?? []).map((a) => [a.agent_instance_id, a.agent_id]),
+  );
+  const onChildReorder = onTasksAgentReorder
+    ? (orderedInstanceIds: string[]) => {
+        const orderedAgentIds = orderedInstanceIds
+          .map((id) => instanceToAgentId.get(id))
+          .filter((id): id is string => Boolean(id));
+        onTasksAgentReorder(project.project_id, orderedAgentIds);
+      }
+    : undefined;
 
   return {
     id: project.project_id,
@@ -109,7 +127,7 @@ export function buildTasksExplorerNode(
       data.actions.handleAddAgent,
       explorerStyles,
     ),
-    metadata: { type: "project" },
+    metadata: { type: "project", childDraggable: Boolean(onChildReorder), onChildReorder },
     children,
   };
 }
