@@ -95,11 +95,47 @@ fn is_powershell_shell(shell: &str) -> bool {
     file_name.eq_ignore_ascii_case("powershell.exe") || file_name.eq_ignore_ascii_case("pwsh.exe")
 }
 
+/// Args to pass to PowerShell on spawn.
+///
+/// Beyond `-NoLogo` (suppress the startup banner), we install a
+/// `Clear-Host` override that emits the standard VT reset sequences:
+///
+///  * `ESC[H`  — cursor home
+///  * `ESC[2J` — erase visible viewport
+///  * `ESC[3J` — erase saved lines (xterm.js scrollback)
+///
+/// Why: Windows PowerShell 5.1's built-in `Clear-Host` calls
+/// `[Console]::Clear()`, which routes through Win32 console APIs.
+/// Over a `portable_pty` ConPTY pipe to xterm.js the translation is
+/// imperfect (the visible viewport isn't always fully wiped) and, more
+/// importantly, no `ESC[3J` is ever emitted, so the 100k-line xterm.js
+/// scrollback survives — leaving old output sitting one scroll-up away
+/// from a "cleared" screen. Emitting the sequences directly fixes both
+/// issues, and works identically on PowerShell 7 (`pwsh.exe`).
+///
+/// `[char]27` is used instead of the `` `e `` escape literal because the
+/// latter only exists in PowerShell 6+ and would be a syntax error on
+/// Windows PowerShell 5.1.
+#[cfg(windows)]
+pub(crate) fn powershell_args() -> Vec<&'static str> {
+    vec![
+        "-NoLogo",
+        "-NoExit",
+        "-Command",
+        "function global:Clear-Host { \
+         [Console]::Out.Write([char]27 + '[H' + [char]27 + '[2J' + [char]27 + '[3J') }",
+    ]
+}
+
 fn configure_shell_command(cmd: &mut CommandBuilder, shell: &str) {
     #[cfg(windows)]
     if is_powershell_shell(shell) {
-        cmd.arg("-NoLogo");
+        for arg in powershell_args() {
+            cmd.arg(arg);
+        }
     }
+    #[cfg(not(windows))]
+    let _ = (cmd, shell);
 }
 
 struct PtyComponents {
@@ -339,6 +375,38 @@ mod tests {
             r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
         ));
         assert!(!is_powershell_shell("cmd.exe"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_args_install_clear_host_override() {
+        let args = powershell_args();
+        assert_eq!(args.first().copied(), Some("-NoLogo"));
+        assert!(args.contains(&"-NoExit"), "argv missing -NoExit: {args:?}");
+        let cmd_idx = args
+            .iter()
+            .position(|a| *a == "-Command")
+            .expect("-Command flag missing");
+        let init = args
+            .get(cmd_idx + 1)
+            .expect("-Command must be followed by a script");
+        assert!(
+            init.contains("Clear-Host"),
+            "init script must override Clear-Host: {init}"
+        );
+        // Each VT sequence we rely on must be present, expressed via
+        // `[char]27` (PS 5.1-compatible) rather than the `` `e `` literal
+        // that only exists on PowerShell 6+.
+        assert!(
+            init.contains("[char]27"),
+            "init script must use [char]27 for PS 5.1 compatibility: {init}"
+        );
+        for seq in ["[H", "[2J", "[3J"] {
+            assert!(
+                init.contains(seq),
+                "init script missing VT sequence {seq}: {init}"
+            );
+        }
     }
 
     #[test]

@@ -5,11 +5,15 @@ import { act, render } from "@testing-library/react";
 // implement. Replace it (and its addons) with inert stubs so we can mount
 // XTerminal and assert against the live `options.theme` swap that the
 // component performs in response to `<html data-theme>` flips.
+type CustomKeyHandler = (event: KeyboardEvent) => boolean;
+
 const testState = vi.hoisted(() => ({
   capturedTerminals: [] as Array<{
     options: { theme: unknown };
     cols: number;
     rows: number;
+    clear: ReturnType<typeof vi.fn>;
+    customKeyHandler: ((event: KeyboardEvent) => boolean) | null;
   }>,
   capturedFitAddons: [] as Array<{
     fit: ReturnType<typeof vi.fn>;
@@ -25,6 +29,8 @@ vi.mock("@xterm/xterm", () => {
     options: { theme: unknown };
     cols = 80;
     rows = 24;
+    clear = vi.fn();
+    customKeyHandler: CustomKeyHandler | null = null;
     constructor(opts: { theme: unknown }) {
       this.options = { theme: opts.theme };
       testState.capturedTerminals.push(this);
@@ -39,6 +45,9 @@ vi.mock("@xterm/xterm", () => {
     }
     onData(): { dispose: () => void } {
       return { dispose: () => {} };
+    }
+    attachCustomKeyEventHandler(handler: CustomKeyHandler): void {
+      this.customKeyHandler = handler;
     }
     write(): void {}
     dispose(): void {}
@@ -179,6 +188,48 @@ describe("XTerminal theme syncing", () => {
     });
 
     expect((term!.options.theme as { background: string }).background).toBe("#fafafa");
+  });
+});
+
+describe("XTerminal Ctrl+L handling", () => {
+  it("clears the xterm buffer (and scrollback) when Ctrl+L is pressed", async () => {
+    const { XTerminal } = await import("./XTerminal");
+    const hook = makeHook();
+    render(<XTerminal terminal={hook} visible focused />);
+
+    const term = testState.capturedTerminals.at(-1);
+    expect(term).toBeDefined();
+    expect(term!.customKeyHandler).toBeDefined();
+
+    const event = new KeyboardEvent("keydown", { key: "l", ctrlKey: true });
+    const passthrough = term!.customKeyHandler!(event);
+
+    expect(term!.clear).toHaveBeenCalledTimes(1);
+    // Returning true lets xterm.js forward the keystroke to the PTY so
+    // the shell also redraws its prompt (mirrors native ^L behavior).
+    expect(passthrough).toBe(true);
+  });
+
+  it("does not clear when Ctrl+L is pressed with another modifier", async () => {
+    const { XTerminal } = await import("./XTerminal");
+    const hook = makeHook();
+    render(<XTerminal terminal={hook} visible focused />);
+
+    const term = testState.capturedTerminals.at(-1);
+    expect(term).toBeDefined();
+
+    term!.customKeyHandler!(
+      new KeyboardEvent("keydown", { key: "l", ctrlKey: true, shiftKey: true }),
+    );
+    term!.customKeyHandler!(
+      new KeyboardEvent("keydown", { key: "l", ctrlKey: true, altKey: true }),
+    );
+    // Plain `l` keystroke (no modifier) must also be ignored.
+    term!.customKeyHandler!(new KeyboardEvent("keydown", { key: "l" }));
+    // keyup events for Ctrl+L must not trigger a second clear.
+    term!.customKeyHandler!(new KeyboardEvent("keyup", { key: "l", ctrlKey: true }));
+
+    expect(term!.clear).not.toHaveBeenCalled();
   });
 });
 

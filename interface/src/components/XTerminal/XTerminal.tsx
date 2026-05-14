@@ -130,6 +130,26 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
 
     scheduleFit({ force: true, notifyResize: true });
 
+    // Ctrl+L safety net. We let the keystroke through to the shell so the
+    // prompt repaints, but also call `xterm.clear()` directly so the
+    // 100k-line scrollback is wiped instantly regardless of what the
+    // shell emits. This protects against shells whose `clear`/`cls`
+    // doesn't include `ESC[3J` (notably cmd.exe's `cls` and remote
+    // shells where the server-side override doesn't apply).
+    xterm.attachCustomKeyEventHandler((event) => {
+      if (
+        event.type === "keydown"
+        && event.ctrlKey
+        && !event.shiftKey
+        && !event.altKey
+        && !event.metaKey
+        && event.key.toLowerCase() === "l"
+      ) {
+        xterm.clear();
+      }
+      return true;
+    });
+
     const dataDisposable = xterm.onData((data) => {
       hook.write(data);
     });
