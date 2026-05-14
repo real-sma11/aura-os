@@ -233,8 +233,39 @@
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 28px;
+  /* Match the corner buttons' 24px height + 6px bottom inset so the
+     picker text and the [+] / [↑] glyphs share a single horizontal
+     baseline when the buttons re-anchor to the container in the
+     multi-line state below. */
+  min-height: 24px;
   padding: 0 32px 6px 32px;
+}
+
+/* Multi-line state alignment (desktop only): re-anchor the corner
+   buttons to the rounded container itself so they sit at the bottom
+   edge — flush with the picker in `.containerBottomRow` — instead of
+   clinging to the bottom of the (now tall) input row above it.
+
+   `position: static` on the input row drops it as a positioning
+   context, so the buttons fall back to `.inputContainer` (which is
+   already `position: relative`). The `bottom: 6px` inset matches the
+   bottom row's `padding-bottom: 6px`, putting the 24px buttons in
+   the same vertical band as the picker (centers all align at 18px
+   from the container bottom). The `inputRowEnd` slot is already
+   hidden in multi-line, so it's not affected by this re-anchoring.
+
+   Scoped to >640px so the mobile 44x44 pill buttons keep their
+   `bottom: 0` flush-to-edge layout and don't overlap the picker
+   text in the bottom row. */
+@media (min-width: 641px) {
+  .inputContainer[data-multiline="true"] .inputRow {
+    position: static;
+  }
+
+  .inputContainer[data-multiline="true"] .attachButton,
+  .inputContainer[data-multiline="true"] .sendButton {
+    bottom: 6px;
+  }
 }
 
 /* Attach (`+`) and send (arrow) corner buttons share the same shared
