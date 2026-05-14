@@ -390,7 +390,7 @@
   right: 0;
   left: auto;
   z-index: 100;
-  background: var(--color-elevated);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 10px 12px;
@@ -450,7 +450,7 @@
   right: 0;
   left: auto;
   z-index: 100;
-  background: var(--color-elevated);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -735,7 +735,7 @@
   bottom: calc(100% + 4px);
   right: 0;
   z-index: 100;
-  background: var(--color-elevated);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 0;
@@ -854,7 +854,7 @@
   margin-bottom: 4px;
   max-height: 280px;
   overflow-y: auto;
-  background: var(--color-elevated);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 0;

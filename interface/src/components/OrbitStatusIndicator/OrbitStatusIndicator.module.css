@@ -51,7 +51,7 @@
   bottom: calc(100% + 6px);
   left: 0;
   z-index: 100;
-  background: var(--color-bg-secondary, #1a1a1a);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 10px 12px;

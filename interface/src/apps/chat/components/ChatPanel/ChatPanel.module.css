@@ -286,7 +286,7 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
-  background: var(--color-bg-secondary);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 20px;
   padding: 6px 16px;
