@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use chromiumoxide::cdp::browser_protocol::network::{
-    EventLoadingFailed, EventRequestWillBeSent, ResourceType,
+    EventLoadingFailed, EventRequestWillBeSent, EventResponseReceived, ResourceType,
 };
 use chromiumoxide::cdp::browser_protocol::page::{
     EventFrameNavigated, EventScreencastFrame, GetNavigationHistoryParams,
@@ -209,9 +209,51 @@ pub(super) async fn handle_loading_failed(
                 url: pending.url.clone(),
                 error_text: fail.error_text.clone(),
                 code,
+                http_status: None,
             }))
             .await;
     }
+}
+
+/// Translate a top-level HTTP 4xx/5xx response into a [`NavError`] so the
+/// client can paint our themed overlay instead of Chromium's native error
+/// page (which doesn't honor the app theme and ships its own iconography
+/// + Refresh button).
+///
+/// Subresource and non-main-frame responses are ignored: this only fires
+/// for the pending main-frame document request that
+/// [`update_pending_main_nav`] is tracking. Successful responses (2xx /
+/// 3xx) leave the pending nav untouched so a later `loadingFailed` (e.g.
+/// mid-body abort) still surfaces.
+pub(super) async fn handle_response_received(
+    events: &mpsc::Sender<ServerEvent>,
+    pending_main_nav: &mut Option<PendingMainNav>,
+    resp: &EventResponseReceived,
+) {
+    let resp_id = resp.request_id.inner().as_str();
+    let matched = pending_main_nav
+        .as_ref()
+        .map(|p| p.request_id.as_str() == resp_id)
+        .unwrap_or(false);
+    if !matched {
+        return;
+    }
+    let status = resp.response.status;
+    if status < 400 {
+        return;
+    }
+    let Some(pending) = pending_main_nav.take() else {
+        return;
+    };
+    let http_status = u16::try_from(status).ok();
+    let _ = events
+        .send(ServerEvent::NavError(NavError {
+            url: pending.url.clone(),
+            error_text: "net::ERR_HTTP_RESPONSE_CODE_FAILURE".to_string(),
+            code: net_error_code("ERR_HTTP_RESPONSE_CODE_FAILURE"),
+            http_status,
+        }))
+        .await;
 }
 
 /// Identify a `Network.requestWillBeSent` event as a top-level navigation.

@@ -8,6 +8,13 @@ const DNS_ERROR = {
   code: -105,
 };
 
+const HTTP_404_ERROR = {
+  url: "http://127.0.0.1:8080/",
+  error_text: "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+  code: -379,
+  http_status: 404,
+};
+
 describe("BrowserErrorOverlay", () => {
   it("renders the connect-to-server headline for DNS failures", () => {
     render(<BrowserErrorOverlay error={DNS_ERROR} />);
@@ -16,6 +23,41 @@ describe("BrowserErrorOverlay", () => {
     expect(
       screen.getByText("Could not reach sdsdssaddssda.com. (-105)"),
     ).toBeInTheDocument();
+  });
+
+  it("renders the page-not-found headline and HTTP status for 404s", () => {
+    render(<BrowserErrorOverlay error={HTTP_404_ERROR} />);
+    expect(screen.getByText("This page can't be found")).toBeInTheDocument();
+    // Prefer the HTTP status in the subtitle parenthetical so users see
+    // `(404)` rather than the Chromium net_error numeric `(-379)`.
+    expect(
+      screen.getByText("Could not reach 127.0.0.1:8080. (404)"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders distinct headlines for 4xx vs 5xx HTTP errors", () => {
+    const { rerender } = render(
+      <BrowserErrorOverlay
+        error={{ ...HTTP_404_ERROR, http_status: 418 }}
+      />,
+    );
+    expect(screen.getByText("This page can't be loaded")).toBeInTheDocument();
+
+    rerender(
+      <BrowserErrorOverlay
+        error={{ ...HTTP_404_ERROR, http_status: 503 }}
+      />,
+    );
+    expect(
+      screen.getByText("The server returned an error"),
+    ).toBeInTheDocument();
+  });
+
+  it("surfaces the HTTP row in the details panel when present", () => {
+    render(<BrowserErrorOverlay error={HTTP_404_ERROR} />);
+    fireEvent.click(screen.getByRole("button", { name: /Show Details/i }));
+    expect(screen.getByText("HTTP")).toBeInTheDocument();
+    expect(screen.getByText("404")).toBeInTheDocument();
   });
 
   it("falls back to the raw URL when parsing fails", () => {

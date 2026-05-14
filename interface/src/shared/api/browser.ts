@@ -133,6 +133,13 @@ export interface NavError {
   error_text: string;
   /** Chromium `net_error` numeric code (e.g. `-105`), when known. */
   code?: number | null;
+  /**
+   * HTTP status code (e.g. `404`) when the failure was synthesized from
+   * a 4xx/5xx response on the main-frame document. Kept separate from
+   * {@link NavError.code} so the overlay can render the user-facing HTTP
+   * status without confusing it with a Chromium `net_error` numeric.
+   */
+  http_status?: number | null;
 }
 
 export type BrowserClientMsg =

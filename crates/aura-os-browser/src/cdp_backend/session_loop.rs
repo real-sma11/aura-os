@@ -8,6 +8,7 @@
 //! - `Page.frameNavigated` + history → [`ServerEvent::Nav`]
 //! - `Page.frameStartedLoading` etc. → [`ServerEvent::Nav { loading }`]
 //! - `Network.loadingFailed` (Document) → [`ServerEvent::NavError`]
+//! - `Network.responseReceived` (Document, HTTP 4xx/5xx) → [`ServerEvent::NavError`]
 //! - inbound [`ClientMsg`] → CDP `Input.dispatch*` / `Page.navigate` etc.
 //!
 //! Frame ack is client-driven for backpressure: a CDP frame is not acked
@@ -19,7 +20,9 @@
 
 use std::collections::VecDeque;
 
-use chromiumoxide::cdp::browser_protocol::network::{EventLoadingFailed, EventRequestWillBeSent};
+use chromiumoxide::cdp::browser_protocol::network::{
+    EventLoadingFailed, EventRequestWillBeSent, EventResponseReceived,
+};
 use chromiumoxide::cdp::browser_protocol::page::{
     EnableParams as PageEnableParams, EventFrameNavigated, EventFrameStartedLoading,
     EventFrameStoppedLoading, EventLoadEventFired, EventScreencastFrame, StopScreencastParams,
@@ -36,8 +39,8 @@ use crate::session::SessionId;
 
 use super::command::SessionCommand;
 use super::handlers::{
-    handle_cmd, handle_frame, handle_loading_failed, handle_nav, set_loading,
-    update_pending_main_nav, LoopState, NavTracker,
+    handle_cmd, handle_frame, handle_loading_failed, handle_nav, handle_response_received,
+    set_loading, update_pending_main_nav, LoopState, NavTracker,
 };
 use super::screencast::start_screencast;
 
@@ -68,6 +71,7 @@ struct SessionStreams {
     started: EventStream<EventFrameStartedLoading>,
     stopped: EventStream<EventFrameStoppedLoading>,
     request: EventStream<EventRequestWillBeSent>,
+    response: EventStream<EventResponseReceived>,
     loading_failed: EventStream<EventLoadingFailed>,
 }
 
@@ -242,6 +246,11 @@ async fn run_event_loop(
                     update_pending_main_nav(&mut state.pending_main_nav, &req);
                 }
             }
+            maybe_resp = streams.response.next() => {
+                if let Some(resp) = maybe_resp {
+                    handle_response_received(events, &mut state.pending_main_nav, &resp).await;
+                }
+            }
             maybe_fail = streams.loading_failed.next() => {
                 if let Some(fail) = maybe_fail {
                     handle_loading_failed(events, &mut state.pending_main_nav, &fail).await;
@@ -292,6 +301,7 @@ async fn subscribe_streams(
         started: subscribe_or_exit!(page, events, id, EventFrameStartedLoading, warn, "frameStartedLoading subscribe failed; loading state will be coarse")?,
         stopped: subscribe_or_exit!(page, events, id, EventFrameStoppedLoading, warn, "frameStoppedLoading subscribe failed; loading state will be coarse")?,
         request: subscribe_or_exit!(page, events, id, EventRequestWillBeSent, warn, "requestWillBeSent subscribe failed; nav error overlay disabled")?,
+        response: subscribe_or_exit!(page, events, id, EventResponseReceived, warn, "responseReceived subscribe failed; HTTP-error overlay disabled")?,
         loading_failed: subscribe_or_exit!(page, events, id, EventLoadingFailed, warn, "loadingFailed subscribe failed; nav error overlay disabled")?,
     })
 }
