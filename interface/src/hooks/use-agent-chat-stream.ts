@@ -32,6 +32,77 @@ import { useMessageQueueStore } from "../stores/message-queue-store";
 import { getLastEventAt } from "./stream/store";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 
+/**
+ * Per-streamKey cache of the most recent `sendMessage` payload plus
+ * the live hook callable. Mirrors the `partition-send-control`
+ * pattern in `use-chat-stream/partition-send-control.ts`: the
+ * project-chat branch already captures auto-retry args there, but
+ * `useAgentChatStream` doesn't go through that map. Phase 2's
+ * stuck-stream retry needs a uniform replay surface for both
+ * branches, so we add an analogous Map here keyed by `streamKey`.
+ *
+ * `sendFn` is registered by every active hook instance via `useEffect`
+ * so {@link replayLastSend} can re-fire the cached args without
+ * dragging the hook return through the retry callback chain.
+ */
+interface AgentChatStreamReplayEntry {
+  lastSendArgs: AgentChatLastSendArgs | null;
+  sendFn: ((args: AgentChatLastSendArgs) => Promise<void>) | null;
+}
+
+export interface AgentChatLastSendArgs {
+  content: string;
+  action: string | null;
+  selectedModel?: string | null;
+  attachments?: ChatAttachment[];
+  commands?: string[];
+  projectId?: string;
+  generationMode?: GenerationMode;
+  sourceImageUrl?: string;
+}
+
+const agentChatStreamReplayMap = new Map<string, AgentChatStreamReplayEntry>();
+
+function getOrCreateReplayEntry(key: string): AgentChatStreamReplayEntry {
+  let entry = agentChatStreamReplayMap.get(key);
+  if (!entry) {
+    entry = { lastSendArgs: null, sendFn: null };
+    agentChatStreamReplayMap.set(key, entry);
+  }
+  return entry;
+}
+
+/**
+ * Last captured `sendMessage` payload for the given stream, or `null`
+ * if no send has occurred (or the entry was cleared). Phase 2's
+ * stuck-stream pill consults this through ChatPanel's `handleRetry`
+ * to decide whether a retry is even possible.
+ */
+export function getLastSendArgs(streamKey: string): AgentChatLastSendArgs | null {
+  return agentChatStreamReplayMap.get(streamKey)?.lastSendArgs ?? null;
+}
+
+/**
+ * Re-fire the most recent `sendMessage` for `streamKey` against the
+ * currently mounted hook. No-op if no send has been captured yet or
+ * no hook is registered for the key. Returns a `Promise<void>` so
+ * callers can `await` without branching.
+ *
+ * Caller is responsible for halting the stuck stream first
+ * (`baseStopStreaming` / `onStop`) so the in-flight latch unwinds
+ * before the replay tries to re-enter.
+ */
+export async function replayLastSend(streamKey: string): Promise<void> {
+  const entry = agentChatStreamReplayMap.get(streamKey);
+  if (!entry?.lastSendArgs || !entry.sendFn) return;
+  await entry.sendFn(entry.lastSendArgs);
+}
+
+/** Test-only reset for vitest `beforeEach` setup. */
+export function _resetAgentChatStreamReplayMap(): void {
+  agentChatStreamReplayMap.clear();
+}
+
 interface UseAgentChatStreamOptions {
   agentId: string | undefined;
   onTaskSaved?: (task: Task) => void;
@@ -120,6 +191,21 @@ export function useAgentChatStream({
       const is3DModelStep =
         _generationMode === "3d" && typeof _sourceImageUrl === "string" && _sourceImageUrl.length > 0;
       if (!trimmed && !action && !hasAttachments && !is3DModelStep) return;
+
+      // Phase 2 stuck-stream retry: capture the payload before any
+      // queue/in-flight branching so the most recent user-intended
+      // send is always replayable. Mirrors `lastSendArgs` capture in
+      // `use-chat-stream`'s `performSend`.
+      getOrCreateReplayEntry(core.key).lastSendArgs = {
+        content,
+        action,
+        selectedModel,
+        attachments,
+        commands,
+        projectId,
+        generationMode: _generationMode,
+        sourceImageUrl: _sourceImageUrl,
+      };
 
       // A turn is already in flight on this key. Instead of silently
       // dropping the typed message (the original behavior, which made
@@ -406,6 +492,30 @@ export function useAgentChatStream({
     },
     [agentId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
   );
+
+  // Register the live `sendMessage` callable into the replay map so
+  // the Phase 2 stuck-stream pill can re-fire the cached args
+  // without touching the hook's return surface. The cleanup clears
+  // only this hook's slot so unmounting doesn't strand a stale
+  // closure that captures a torn-down React tree.
+  useEffect(() => {
+    const entry = getOrCreateReplayEntry(core.key);
+    const adapted = (args: AgentChatLastSendArgs): Promise<void> =>
+      sendMessage(
+        args.content,
+        args.action,
+        args.selectedModel,
+        args.attachments,
+        args.commands,
+        args.projectId,
+        args.generationMode,
+        args.sourceImageUrl,
+      );
+    entry.sendFn = adapted;
+    return () => {
+      if (entry.sendFn === adapted) entry.sendFn = null;
+    };
+  }, [core.key, sendMessage]);
 
   // Stable callback identity so callers do not need to wrap it in a
   // `useRef` mirror. See the matching block in `useChatStream`.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStreamStore } from "./store";
 
 /**
@@ -91,4 +91,63 @@ export function useStreamHealth(key: string): StreamHealth {
       : null;
 
   return { isStreaming, lastEventAt, lastEventAgeMs, isStuck, stuckForMs };
+}
+
+/**
+ * One-shot auto-timeout helper for the Phase 2 stuck-stream
+ * watchdog. Invokes `onAutoTimeout` exactly once per stuck episode
+ * once `health.stuckForMs` reaches `FULLY_TIMED_OUT_MS - STUCK_THRESHOLD_MS`
+ * (i.e. the last wire event landed `FULLY_TIMED_OUT_MS` ago).
+ *
+ * The "exactly once per episode" guarantee is keyed on
+ * `lastEventAt`: when a fresh wire event lands, `lastEventAt`
+ * changes and we reset the latch so a subsequent stuck episode on
+ * the same key can fire its own timeout. When `isStuck` flips off
+ * (stream ended cleanly, or fresh event landed), the latch also
+ * resets so reopening a chat that later goes stuck again still
+ * triggers.
+ *
+ * `onAutoTimeout` is read via a ref so consumers do not have to
+ * memoize it — the same pattern the chat panel uses for
+ * `onSessionReady`.
+ */
+export function useStuckStreamAutoTimeout(
+  health: StreamHealth,
+  onAutoTimeout: () => void,
+): void {
+  const onAutoTimeoutRef = useRef(onAutoTimeout);
+  useEffect(() => {
+    onAutoTimeoutRef.current = onAutoTimeout;
+  }, [onAutoTimeout]);
+
+  // The episode is identified by the entry's `lastEventAt` value:
+  // every fresh wire event re-bumps it and starts a new candidate
+  // window. Storing the firing-episode timestamp prevents a single
+  // stuck window from re-firing the callback on every 1s ticker
+  // bump while still allowing a *new* stuck episode (after a fresh
+  // event) to fire once.
+  const firedForLastEventAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!health.isStreaming) {
+      firedForLastEventAtRef.current = null;
+      return;
+    }
+    if (!health.isStuck) {
+      // A fresh event arrived; clear the latch so the next stuck
+      // window can fire its own timeout.
+      firedForLastEventAtRef.current = null;
+      return;
+    }
+    if (health.lastEventAgeMs == null) return;
+    if (health.lastEventAgeMs < FULLY_TIMED_OUT_MS) return;
+    if (firedForLastEventAtRef.current === health.lastEventAt) return;
+    firedForLastEventAtRef.current = health.lastEventAt;
+    onAutoTimeoutRef.current();
+  }, [
+    health.isStreaming,
+    health.isStuck,
+    health.lastEventAgeMs,
+    health.lastEventAt,
+  ]);
 }

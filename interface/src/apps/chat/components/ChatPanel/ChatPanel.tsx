@@ -21,6 +21,19 @@ import { useChatUIStore } from "../../../../stores/chat-ui-store";
 import { useMessageQueueStore } from "../../../../stores/message-queue-store";
 import { useOnboardingStore, selectHasSentFirstMessage } from "../../../../features/onboarding/onboarding-store";
 import { useProgressText } from "../../../../hooks/stream/hooks";
+import {
+  useStreamHealth,
+  useStuckStreamAutoTimeout,
+} from "../../../../hooks/stream/use-stream-health";
+import {
+  createSetters,
+  ensureEntry,
+} from "../../../../hooks/stream/store";
+import {
+  getLastSendArgs as getLastAgentChatSendArgs,
+} from "../../../../hooks/use-agent-chat-stream";
+import { getPartitionSendControl } from "../../../../hooks/use-chat-stream/partition-send-control";
+import { recordStreamCloseReason } from "../../../../shared/observability/stream-breadcrumbs";
 import type { ChatAttachment } from "../../../../api/streams";
 import type { Project } from "../../../../shared/types";
 import type { GenerationMode } from "../../../../constants/models";
@@ -202,6 +215,79 @@ export function ChatPanel({
     llmProjectId,
     agentId,
   });
+
+  // Phase 2 stuck-stream actions. The pill in `ChatStreamingIndicator`
+  // owns the rendering; ChatPanel composes the three callbacks against
+  // the chat hooks already wired through `onStop` / `onSend`.
+  const streamHealth = useStreamHealth(streamKey);
+
+  const handleStuckStreamRetry = useCallback(() => {
+    // The standalone-agent branch caches via the agent-chat-stream
+    // replay map; the project-chat branch caches via
+    // `partition-send-control`. The streamKey uniquely identifies
+    // which map owns the args, so we check both and use whichever is
+    // populated.
+    const agentArgs = getLastAgentChatSendArgs(streamKey);
+    const partitionArgs = agentArgs
+      ? null
+      : getPartitionSendControl(streamKey).lastSendArgs;
+    onStop();
+    if (agentArgs) {
+      onSend(
+        agentArgs.content,
+        agentArgs.action ?? null,
+        agentArgs.selectedModel ?? null,
+        agentArgs.attachments,
+        agentArgs.commands,
+        agentArgs.projectId,
+        agentArgs.generationMode,
+        agentArgs.sourceImageUrl,
+      );
+      return;
+    }
+    if (partitionArgs) {
+      onSend(
+        partitionArgs.content,
+        partitionArgs.action ?? null,
+        partitionArgs.selectedModel ?? null,
+        partitionArgs.attachments,
+        partitionArgs.commands,
+        partitionArgs.projectIdOverride,
+        partitionArgs.generationMode,
+        partitionArgs.sourceImageUrl,
+      );
+    }
+  }, [onSend, onStop, streamKey]);
+
+  const handleStuckStreamReport = useCallback(() => {
+    if (typeof console !== "undefined") {
+      console.warn("[StuckStreamPill] Report bug coming in Phase 5");
+    }
+  }, []);
+
+  const handleStuckStreamAutoTimeout = useCallback(() => {
+    onStop();
+    ensureEntry(streamKey);
+    const setters = createSetters(streamKey);
+    const id = `assistant-stuck-${Date.now()}`;
+    setters.setEvents((prev) => [
+      ...prev,
+      {
+        id,
+        clientId: id,
+        role: "assistant",
+        content:
+          "*Agent stopped responding. Local timeout reached — try sending again or press the Report button to send diagnostics.*",
+        displayVariant: "streamDropped",
+      },
+    ]);
+    recordStreamCloseReason({
+      classified: "disconnected",
+      message: "client_auto_timeout",
+    });
+  }, [onStop, streamKey]);
+
+  useStuckStreamAutoTimeout(streamHealth, handleStuckStreamAutoTimeout);
 
   const handleNewChat = useCallback(() => {
     setInput("");
@@ -572,7 +658,12 @@ export function ChatPanel({
           </div>
         )}
 
-        <ChatStreamingIndicator streamKey={streamKey} />
+        <ChatStreamingIndicator
+          streamKey={streamKey}
+          onStop={onStop}
+          onRetry={handleStuckStreamRetry}
+          onReport={handleStuckStreamReport}
+        />
 
         {isThreadEmpty && !hasSentFirstMessage && (
           <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />

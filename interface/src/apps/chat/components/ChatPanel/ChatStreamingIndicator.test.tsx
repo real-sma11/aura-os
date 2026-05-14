@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
 import type { ToolCallEntry } from "../../../../shared/types/stream";
+import type { StreamHealth } from "../../../../hooks/stream/use-stream-health";
 
 const mockStreamEntry: {
   isStreaming: boolean;
@@ -19,12 +21,28 @@ const mockStreamEntry: {
   progressText: "",
 };
 
+const mockStreamHealth: StreamHealth = {
+  isStreaming: false,
+  lastEventAt: null,
+  lastEventAgeMs: null,
+  isStuck: false,
+  stuckForMs: null,
+};
+
 vi.mock("../../../../hooks/stream/store", () => ({
   useStreamStore: (selector: (state: unknown) => unknown) =>
     selector({ entries: { "stream-1": mockStreamEntry } }),
 }));
 
+vi.mock("../../../../hooks/stream/use-stream-health", () => ({
+  useStreamHealth: () => mockStreamHealth,
+}));
+
 vi.mock("./ChatPanel.module.css", () => ({
+  default: new Proxy({}, { get: (_t, prop) => String(prop) }),
+}));
+
+vi.mock("../../../../components/StuckStreamPill/StuckStreamPill.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
@@ -37,6 +55,13 @@ describe("ChatStreamingIndicator", () => {
       thinkingText: "",
       activeToolCalls: [],
       progressText: "",
+    });
+    Object.assign(mockStreamHealth, {
+      isStreaming: false,
+      lastEventAt: null,
+      lastEventAgeMs: null,
+      isStuck: false,
+      stuckForMs: null,
     });
   });
 
@@ -71,5 +96,59 @@ describe("ChatStreamingIndicator", () => {
 
     expect(screen.queryByText("Cooking...")).not.toBeInTheDocument();
     expect(container.querySelector(".pinnedStreamingIndicator")).not.toBeNull();
+  });
+
+  it("swaps to the StuckStreamPill when the watchdog reports isStuck", () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamHealth.isStreaming = true;
+    mockStreamHealth.lastEventAt = Date.now() - 45_000;
+    mockStreamHealth.lastEventAgeMs = 45_000;
+    mockStreamHealth.isStuck = true;
+    mockStreamHealth.stuckForMs = 15_000;
+
+    render(
+      <ChatStreamingIndicator
+        streamKey="stream-1"
+        onStop={() => {}}
+        onRetry={() => {}}
+        onReport={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText("Agent paused for 15s — last activity was 45s ago"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Cooking...")).not.toBeInTheDocument();
+  });
+
+  it("forwards Stop / Retry / Report clicks from the pill to the wired callbacks", async () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamHealth.isStreaming = true;
+    mockStreamHealth.lastEventAt = Date.now() - 32_000;
+    mockStreamHealth.lastEventAgeMs = 32_000;
+    mockStreamHealth.isStuck = true;
+    mockStreamHealth.stuckForMs = 2_000;
+
+    const onStop = vi.fn();
+    const onRetry = vi.fn();
+    const onReport = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ChatStreamingIndicator
+        streamKey="stream-1"
+        onStop={onStop}
+        onRetry={onRetry}
+        onReport={onReport}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await user.click(screen.getByRole("button", { name: "Report" }));
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onReport).toHaveBeenCalledTimes(1);
   });
 });

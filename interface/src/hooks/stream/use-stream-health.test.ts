@@ -7,7 +7,9 @@ import {
 } from "./store";
 import {
   useStreamHealth,
+  useStuckStreamAutoTimeout,
   STUCK_THRESHOLD_MS,
+  FULLY_TIMED_OUT_MS,
 } from "./use-stream-health";
 
 describe("useStreamHealth", () => {
@@ -141,5 +143,108 @@ describe("useStreamHealth", () => {
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.lastEventAgeMs).toBeNull();
     expect(result.current.isStuck).toBe(false);
+  });
+});
+
+describe("useStuckStreamAutoTimeout", () => {
+  beforeEach(() => {
+    streamMetaMap.clear();
+    useStreamStore.setState({ entries: {} });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("invokes onAutoTimeout exactly once when the stuck window crosses FULLY_TIMED_OUT_MS", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+    setters.setStreamingText("seed");
+
+    const onAutoTimeout = vi.fn();
+    renderHook(() => {
+      const health = useStreamHealth("k1");
+      useStuckStreamAutoTimeout(health, onAutoTimeout);
+    });
+
+    // Below the timeout — no fire yet.
+    act(() => {
+      vi.advanceTimersByTime(STUCK_THRESHOLD_MS + 5_000);
+    });
+    expect(onAutoTimeout).not.toHaveBeenCalled();
+
+    // Cross the 60s wall-clock threshold.
+    act(() => {
+      vi.advanceTimersByTime(FULLY_TIMED_OUT_MS - (STUCK_THRESHOLD_MS + 5_000) + 500);
+    });
+    expect(onAutoTimeout).toHaveBeenCalledTimes(1);
+
+    // Subsequent ticks within the same stuck episode must not re-fire.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(onAutoTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms after a fresh wire event so a second stuck episode also fires", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+    setters.setStreamingText("seed");
+
+    const onAutoTimeout = vi.fn();
+    renderHook(() => {
+      const health = useStreamHealth("k1");
+      useStuckStreamAutoTimeout(health, onAutoTimeout);
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(FULLY_TIMED_OUT_MS + 500);
+    });
+    expect(onAutoTimeout).toHaveBeenCalledTimes(1);
+
+    // Fresh wire event resets the clock, then go silent again past
+    // the 60s threshold.
+    act(() => {
+      setters.setStreamingText("seed-2");
+    });
+    act(() => {
+      vi.advanceTimersByTime(FULLY_TIMED_OUT_MS + 500);
+    });
+    expect(onAutoTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fire when streaming ends before the timeout elapses", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+    setters.setStreamingText("seed");
+
+    const onAutoTimeout = vi.fn();
+    renderHook(() => {
+      const health = useStreamHealth("k1");
+      useStuckStreamAutoTimeout(health, onAutoTimeout);
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(STUCK_THRESHOLD_MS + 5_000);
+    });
+    act(() => {
+      setters.setIsStreaming(false);
+    });
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(onAutoTimeout).not.toHaveBeenCalled();
   });
 });
