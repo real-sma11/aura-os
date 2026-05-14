@@ -55,11 +55,19 @@
 .bubbleUser {
   background: var(--color-accent);
   color: var(--color-accent-contrast);
-  border-radius: 3px 3px 0 3px;
-  min-height: var(--control-height-sm, 32px);
+  /* Three rounded corners + a sharp bottom-right that reads as a
+     "tail" pointing toward the user side. The radius matches the
+     mobile bubble's 12px so the curvature stays consistent across
+     breakpoints. */
+  border-radius: 12px 12px 0 12px;
+  /* Bubble height is driven by vertical padding + line-box; min-height
+     is mostly a floor for short content. Both are scaled to 83% of
+     their default so the user turn reads ~17% shorter than the
+     standard control row without touching the font metrics. */
+  min-height: calc(var(--control-height-sm, 32px) * 0.83);
   display: flex;
   align-items: center;
-  padding: var(--space-2) var(--space-3);
+  padding: calc(var(--space-2) * 0.83) var(--space-3);
 }
 
 /* When the user message is only a document / long-text widget, drop the
@@ -180,6 +188,42 @@
    checklist rather than floating in their own 16px padding boxes. */
 .bubbleAssistantCompact {
   padding: 0;
+}
+
+/* Make room above the bubble so the absolutely-positioned hover copy
+   button never visually overlaps the prose, even when the user is
+   hovered (the button is icon-only and small, but it sits inside the
+   bubble box so we want it living in its own gutter). */
+.bubbleWithCopy {
+  position: relative;
+}
+
+/* Hover-revealed "copy whole assistant message as markdown" button.
+   Hidden by default to keep the assistant prose clean, fades in when
+   the user hovers the bubble (or focuses the button via keyboard) so
+   the affordance is discoverable without adding permanent chrome to
+   every reply. */
+.assistantCopyBtn {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  z-index: 1;
+}
+
+.bubbleWithCopy:hover .assistantCopyBtn,
+.bubbleWithCopy:focus-within .assistantCopyBtn,
+.assistantCopyBtn:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* Touch devices have no hover -- always show so mobile users can
+     reach the affordance. */
+  .assistantCopyBtn {
+    opacity: 1;
+  }
 }
 
 .fallbackStack {
@@ -319,7 +363,7 @@
     border-radius: 12px;
     background: var(--color-accent);
     color: var(--color-accent-contrast);
-    padding: 8px;
+    padding: calc(8px * 0.83) 8px;
   }
 
   .bubbleAssistant {
