@@ -175,6 +175,7 @@ function InputBarShellInner(
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const singleLineHeightRef = useRef<number | null>(null);
+  const isMultiLineRef = useRef(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
 
   useImperativeHandle(ref, () => ({
@@ -191,7 +192,8 @@ function InputBarShellInner(
     // own scrollbar engages for long messages (and native caret-follow on
     // Arrow keys keeps working).
     const cap = Math.min(window.innerHeight * 0.7, 800);
-    el.style.height = Math.min(el.scrollHeight, cap) + "px";
+    const naturalHeight = el.scrollHeight;
+    el.style.height = Math.min(naturalHeight, cap) + "px";
 
     // Capture the single-line baseline lazily from computed styles so
     // the threshold tracks the current font-size / line-height (which
@@ -209,7 +211,36 @@ function InputBarShellInner(
     const baseline = singleLineHeightRef.current ?? 32;
     // 4px tolerance covers sub-pixel rounding on HiDPI screens where
     // scrollHeight can land at e.g. 32.5px for a single-line textarea.
-    const multi = el.scrollHeight > baseline + 4;
+    const naturalMulti = naturalHeight > baseline + 4;
+    let multi = naturalMulti;
+
+    // Anti-oscillation: when the picker drops into the footer row in
+    // multi-line state, the shell releases the textarea's inline-picker
+    // padding-right reserve (~220px → 32px), which makes the same text
+    // fit on a single line at the new wider width. A naive measurement
+    // would then flip multi-line back to false on the very next
+    // keystroke, the picker would slide back inline, the padding would
+    // return, and the text would re-wrap — a per-character oscillation
+    // that destroys backspace UX. Re-measure with the inline padding
+    // simulated to answer "would the prompt still wrap if we showed
+    // the picker inline?", and only collapse to single-line when the
+    // answer is no.
+    if (isMultiLineRef.current && !naturalMulti) {
+      const prevInlinePaddingRight = el.style.paddingRight;
+      // Wrap the `min(...)` in `calc(...)` so JSDOM's CSSOM (which
+      // rejects bare `min()` in inline-style assignments) accepts it
+      // for the test harness; real browsers parse both forms
+      // identically. The expression mirrors the
+      // `.inputRowHasEnd .textarea` rule in InputBarShell.module.css.
+      el.style.paddingRight = "calc(min(220px, 42%))";
+      el.style.height = "auto";
+      const narrowHeight = el.scrollHeight;
+      el.style.paddingRight = prevInlinePaddingRight;
+      el.style.height = Math.min(naturalHeight, cap) + "px";
+      multi = narrowHeight > baseline + 4;
+    }
+
+    isMultiLineRef.current = multi;
     setIsMultiLine((prev) => (prev === multi ? prev : multi));
   }, []);
 
@@ -229,6 +260,32 @@ function InputBarShellInner(
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, [autoResize]);
+
+  // Watch for textarea width changes that aren't viewport-driven —
+  // e.g. when `[data-multiline="true"]` swaps the textarea's
+  // padding-right reserve, or when the inline `inputRowEnd` slot
+  // appears/disappears, the textarea grows/shrinks horizontally and
+  // its wrap state can change. Re-measure so the inline height
+  // assignment and the multi-line flag stay coherent with the
+  // current layout (and so the height we set in the previous pass
+  // doesn't strand empty pixels at the bottom of a now-shorter
+  // textarea).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastWidth = el.clientWidth;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (Math.abs(width - lastWidth) > 0.5) {
+          lastWidth = width;
+          autoResize();
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [autoResize]);
 
   useEffect(() => {

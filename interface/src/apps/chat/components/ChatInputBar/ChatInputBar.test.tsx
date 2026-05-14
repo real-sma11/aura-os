@@ -373,6 +373,77 @@ describe("ChatInputBar", () => {
     }
   });
 
+  it("stays in the multi-line layout while the prompt would still wrap if the picker were inline", () => {
+    // Regression: backspacing a still-wrapping prompt used to flip the
+    // picker back inline because the wider multi-line layout briefly let
+    // the text fit on one line. The shell now re-measures with the
+    // single-line padding-right reserve to confirm the prompt would
+    // truly fit before collapsing — otherwise an entire keystroke loop
+    // pad↔wrap↔unpad happens per character.
+    //
+    // Stub `scrollHeight` to mirror the wrap behavior. JSDOM doesn't run
+    // layout, so we synthesize "would this text wrap?" from two signals
+    // the shell controls during measurement:
+    //   1. The shell applies an inline `padding-right: min(220px, 42%)`
+    //      while doing its anti-oscillation re-measurement → wrap (80px).
+    //   2. Otherwise we mirror what real CSS would do based on whether
+    //      the parent input row has the `.inputRowHasEnd` class (the
+    //      proxied CSS-module name): if it does, the inline-picker
+    //      padding-right is reserved and the prompt wraps (80px); if it
+    //      doesn't (multi-line state hides the inline slot), the prompt
+    //      gets the full width and fits on one line (32px).
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        const inline = this.style.paddingRight ?? "";
+        if (inline.includes("220") || inline.includes("42%")) return 80;
+        if (
+          this.parentElement?.className.includes("inputRowHasEnd")
+        ) {
+          return 80;
+        }
+        return 32;
+      },
+    });
+
+    try {
+      mockSelectedModel = "aura-claude-opus-4-6";
+      const longPrompt =
+        "Create a three page branding guideline and marketing plan for a digital fashion brand";
+      const { container, rerender } = render(
+        <ChatInputBar {...makeProps({ input: longPrompt })} />,
+      );
+      // Initial render lands in multi-line because narrow padding wraps.
+      expect(container.querySelector(".bottomChromeRow")).not.toBeNull();
+
+      // Simulate one backspace. Layout-only scrollHeight at the now-wide
+      // textarea would say single-line, but narrow re-measurement keeps
+      // it multi-line.
+      rerender(
+        <ChatInputBar
+          {...makeProps({ input: longPrompt.slice(0, -1) })}
+        />,
+      );
+      expect(container.querySelector(".bottomChromeRow")).not.toBeNull();
+      expect(container.querySelector(".inputRowEnd")).toBeNull();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "scrollHeight",
+          originalDescriptor,
+        );
+      } else {
+        // @ts-expect-error - delete the custom getter we installed above
+        delete HTMLTextAreaElement.prototype.scrollHeight;
+      }
+    }
+  });
+
   it("keeps the model picker inline near the send button when the textarea fits on one line", () => {
     // Default JSDOM behavior: scrollHeight is 0, well under the 36px multi-line
     // threshold, so the picker stays in the absolutely-positioned `inputRowEnd`
