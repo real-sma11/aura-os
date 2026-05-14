@@ -17,7 +17,9 @@ import {
   handleStreamError,
   getIsStreaming,
 } from "../use-stream-core";
-import { ensureEntry, createSetters } from "../stream/store";
+import { ensureEntry, createSetters, getLastEventAt } from "../stream/store";
+import { STUCK_THRESHOLD_MS } from "../stream/use-stream-health";
+import { useMessageQueueStore } from "../../stores/message-queue-store";
 import { buildUserChatMessage } from "../attachment-helpers";
 import { buildStreamHandler } from "./build-stream-handler";
 import {
@@ -139,7 +141,32 @@ export function useChatStream({
       // otherwise issue parallel POSTs. Per-partition keying is what
       // makes parallel chats work — agent A's in-flight latch never
       // blocks agent B's send.
-      if (ctrl.inFlight || getIsStreaming(capturedKey)) return;
+      if (ctrl.inFlight) return;
+      // Stream is already in flight on this partition. Instead of a
+      // silent drop, enqueue into the per-key message queue so the
+      // existing dequeue-on-completion effect in `useChatPanelState`
+      // re-fires it once the current turn ends. Auto-retry replays
+      // hit this path very rarely (only if a fresh user send raced
+      // with the retry timer); enqueueing them is still preferable
+      // to dropping. Stuck streams (>= STUCK_THRESHOLD_MS without a
+      // wire event) stamp `pendingDueToStuckStream` so the Phase 2
+      // banner can offer "Send anyway".
+      if (getIsStreaming(capturedKey)) {
+        const lastEventAt = getLastEventAt(capturedKey);
+        const isStuck =
+          lastEventAt != null && Date.now() - lastEventAt >= STUCK_THRESHOLD_MS;
+        useMessageQueueStore.getState().enqueue(capturedKey, {
+          content: args.content,
+          action: args.action ?? null,
+          model: args.selectedModel ?? null,
+          attachments: args.attachments,
+          commands: args.commands,
+          generationMode: args.generationMode,
+          sourceImageUrl: args.sourceImageUrl,
+          pendingDueToStuckStream: isStuck,
+        });
+        return;
+      }
 
       // A user-initiated send (not the auto-retry timer firing) resets
       // the Phase 2 retry budget. Otherwise a user that exhausted the

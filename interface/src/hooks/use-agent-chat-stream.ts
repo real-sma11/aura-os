@@ -28,6 +28,9 @@ import {
 import type { DisplaySessionEvent } from "../shared/types/stream";
 import { useContextUsageStore } from "../stores/context-usage-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
+import { useMessageQueueStore } from "../stores/message-queue-store";
+import { getLastEventAt } from "./stream/store";
+import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 
 interface UseAgentChatStreamOptions {
   agentId: string | undefined;
@@ -108,7 +111,7 @@ export function useAgentChatStream({
       _generationMode?: GenerationMode,
       _sourceImageUrl?: string,
     ) => {
-      if (!agentId || inFlightRef.current || getIsStreaming(core.key)) return;
+      if (!agentId || inFlightRef.current) return;
       const trimmed = content.trim();
       const hasAttachments = attachments && attachments.length > 0;
       // 3D model step (`generationMode === "3d"` with a pinned source image)
@@ -117,6 +120,31 @@ export function useAgentChatStream({
       const is3DModelStep =
         _generationMode === "3d" && typeof _sourceImageUrl === "string" && _sourceImageUrl.length > 0;
       if (!trimmed && !action && !hasAttachments && !is3DModelStep) return;
+
+      // A turn is already in flight on this key. Instead of silently
+      // dropping the typed message (the original behavior, which made
+      // the chat feel broken), enqueue into the per-stream queue so
+      // the existing `useChatPanelState` dequeue effect re-fires it
+      // when the current turn finalizes. If the in-flight turn has
+      // gone past `STUCK_THRESHOLD_MS` without a wire event, mark the
+      // entry with `pendingDueToStuckStream` so a Phase 2 banner can
+      // offer "Send anyway" — Phase 1 just preserves the message.
+      if (getIsStreaming(core.key)) {
+        const lastEventAt = getLastEventAt(core.key);
+        const isStuck =
+          lastEventAt != null && Date.now() - lastEventAt >= STUCK_THRESHOLD_MS;
+        useMessageQueueStore.getState().enqueue(core.key, {
+          content,
+          action,
+          model: selectedModel ?? null,
+          attachments,
+          commands,
+          generationMode: _generationMode,
+          sourceImageUrl: _sourceImageUrl,
+          pendingDueToStuckStream: isStuck,
+        });
+        return;
+      }
 
       inFlightRef.current = true;
 

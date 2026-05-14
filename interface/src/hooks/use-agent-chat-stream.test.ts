@@ -2,6 +2,8 @@ import { renderHook, act } from "@testing-library/react";
 import { useAgentChatStream } from "./use-agent-chat-stream";
 import { useStreamStore, streamMetaMap } from "./stream/store";
 import { useChatUIStore } from "../stores/chat-ui-store";
+import { useMessageQueueStore } from "../stores/message-queue-store";
+import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { EventType, type AuraEvent } from "../shared/types/aura-events";
 
@@ -30,6 +32,7 @@ describe("useAgentChatStream", () => {
     streamMetaMap.clear();
     useStreamStore.setState({ entries: {} });
     useChatUIStore.setState({ streams: {} });
+    useMessageQueueStore.setState({ queues: {} });
     vi.mocked(api.agents.sendEventStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generateImageStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generate3dStream).mockReset().mockResolvedValue(undefined);
@@ -440,6 +443,98 @@ describe("useAgentChatStream", () => {
     const userMessages = entry.events.filter((evt) => evt.role === "user");
     expect(userMessages).toHaveLength(1);
     expect(userMessages[0].content).toBe("hello");
+  });
+
+  it("queues a second message into useMessageQueueStore when the entry is already streaming", async () => {
+    // Phase 1 fix: a sendMessage that arrives while
+    // `getIsStreaming(key)` is true must enqueue into
+    // `useMessageQueueStore` rather than vanish silently. The
+    // dequeue-on-completion effect in `useChatPanelState` then
+    // replays the queued message when the live turn finalizes.
+    //
+    // We seed `isStreaming=true` directly on the store entry so the
+    // queue branch is the only one the new send can take. Driving
+    // it through a real first `sendMessage` would also leave
+    // `inFlightRef.current=true` for the same hook instance, and
+    // that synchronous latch fires before the queue branch (it's
+    // there to swallow same-microtask re-entries).
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    const key = result.current.streamKey;
+    act(() => {
+      useStreamStore.setState((s) => ({
+        entries: {
+          ...s.entries,
+          [key]: {
+            isStreaming: true,
+            isWriting: false,
+            events: [],
+            streamingText: "",
+            thinkingText: "",
+            thinkingDurationMs: null,
+            activeToolCalls: [],
+            timeline: [],
+            progressText: "",
+            lastEventAt: Date.now(),
+            stuckSince: null,
+          },
+        },
+      }));
+    });
+
+    await act(async () => {
+      await result.current.sendMessage("queue me");
+    });
+
+    expect(api.agents.sendEventStream).not.toHaveBeenCalled();
+    const queue = useMessageQueueStore.getState().queues[key] ?? [];
+    expect(queue).toHaveLength(1);
+    expect(queue[0].content).toBe("queue me");
+    expect(queue[0].pendingDueToStuckStream).toBe(false);
+  });
+
+  it("marks the queued message as pendingDueToStuckStream when the entry's last wire event is older than STUCK_THRESHOLD_MS", async () => {
+    // Same scenario as above, but the in-flight turn has gone
+    // silent past the stuck threshold. The message still gets
+    // queued (no silent drop), and `pendingDueToStuckStream=true`
+    // so the Phase 2 banner can offer "Send anyway".
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    const key = result.current.streamKey;
+    const stale = Date.now() - (STUCK_THRESHOLD_MS + 5_000);
+    act(() => {
+      useStreamStore.setState((s) => ({
+        entries: {
+          ...s.entries,
+          [key]: {
+            isStreaming: true,
+            isWriting: false,
+            events: [],
+            streamingText: "",
+            thinkingText: "",
+            thinkingDurationMs: null,
+            activeToolCalls: [],
+            timeline: [],
+            progressText: "",
+            lastEventAt: stale,
+            stuckSince: null,
+          },
+        },
+      }));
+    });
+
+    await act(async () => {
+      await result.current.sendMessage("send anyway please");
+    });
+
+    const queue = useMessageQueueStore.getState().queues[key] ?? [];
+    expect(queue).toHaveLength(1);
+    expect(queue[0].content).toBe("send anyway please");
+    expect(queue[0].pendingDueToStuckStream).toBe(true);
   });
 
   it("marks only the next send as a new session", async () => {

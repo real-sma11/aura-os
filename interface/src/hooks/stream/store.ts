@@ -31,6 +31,17 @@ export interface StreamEntryState {
   activeToolCalls: ToolCallEntry[];
   timeline: TimelineItem[];
   progressText: string;
+  // Wall-clock ms of the most recent SSE-driven setter call (any of
+  // text/thinking/tool/event/progress/timeline). `null` when no
+  // wire event has been observed for the entry yet. Drives the
+  // stuck-stream watchdog (`useStreamHealth`).
+  lastEventAt: number | null;
+  // Wall-clock ms when the watchdog first noticed `isStreaming` was
+  // true while `lastEventAt` had aged past `STUCK_THRESHOLD_MS`.
+  // Cleared whenever a fresh wire event lands. Set/cleared by the
+  // watchdog itself via `setStuckSince`; entry setters only clear it
+  // alongside bumping `lastEventAt`.
+  stuckSince: number | null;
 }
 
 export interface StreamMeta {
@@ -54,6 +65,8 @@ const INITIAL_ENTRY: StreamEntryState = {
   activeToolCalls: [],
   timeline: [],
   progressText: "",
+  lastEventAt: null,
+  stuckSince: null,
 };
 
 export const useStreamStore = create<StreamStore>()(() => ({
@@ -284,6 +297,60 @@ export function getThinkingDurationMs(key: string): number | null {
 }
 
 /**
+ * Last wall-clock ms at which an SSE-driven setter ran for `key`.
+ * `null` when no wire event has landed yet (or the entry has been
+ * pruned). Read by `useStreamHealth` and the chat send guards so a
+ * stuck-stream "send anyway" decision can be made without a hook
+ * subscription.
+ */
+export function getLastEventAt(key: string): number | null {
+  return useStreamStore.getState().entries[key]?.lastEventAt ?? null;
+}
+
+/**
+ * Bump the wire-event clock for `key`. Called from every setter that
+ * maps to an SSE event (text / thinking / tool / progress /
+ * timeline / events). Setting `lastEventAt` to "now" and clearing
+ * `stuckSince` happens in a single `setState` so a watchdog tick
+ * never observes a half-updated entry. UI lifecycle setters
+ * (`setIsStreaming`, `setIsWriting`) deliberately do NOT call this:
+ * the streaming-true flip on send is not a wire event, and clearing
+ * it on completion shouldn't pretend a fresh event landed.
+ */
+function markEntryEventReceived(key: string): void {
+  const now = Date.now();
+  useStreamStore.setState((s) => {
+    const existing = s.entries[key];
+    if (!existing) return s;
+    return {
+      entries: {
+        ...s.entries,
+        [key]: { ...existing, lastEventAt: now, stuckSince: null },
+      },
+    };
+  });
+}
+
+/**
+ * Watchdog-side setter for `stuckSince`. Exposed so
+ * `useStreamHealth` can stamp the moment it first observed a stale
+ * entry without piggybacking on a wire-event setter.
+ */
+export function setStuckSince(key: string, value: number | null): void {
+  useStreamStore.setState((s) => {
+    const existing = s.entries[key];
+    if (!existing) return s;
+    if (existing.stuckSince === value) return s;
+    return {
+      entries: {
+        ...s.entries,
+        [key]: { ...existing, stuckSince: value },
+      },
+    };
+  });
+}
+
+/**
  * Create setters that update the Zustand store.
  * Same StreamSetters interface so handlers work unchanged.
  */
@@ -293,26 +360,31 @@ export function createSetters(key: string): StreamSetters {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { streamingText: resolve(v, cur?.streamingText ?? "") });
+      markEntryEventReceived(key);
     },
     setThinkingText(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { thinkingText: resolve(v, cur?.thinkingText ?? "") });
+      markEntryEventReceived(key);
     },
     setThinkingDurationMs(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { thinkingDurationMs: resolve(v, cur?.thinkingDurationMs ?? null) });
+      markEntryEventReceived(key);
     },
     setActiveToolCalls(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { activeToolCalls: resolve(v, cur?.activeToolCalls ?? []) });
+      markEntryEventReceived(key);
     },
     setEvents(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { events: resolve(v, cur?.events ?? []) });
+      markEntryEventReceived(key);
     },
     setIsStreaming(v) {
       touchEntry(key);
@@ -328,11 +400,13 @@ export function createSetters(key: string): StreamSetters {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { progressText: resolve(v, cur?.progressText ?? "") });
+      markEntryEventReceived(key);
     },
     setTimeline(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { timeline: resolve(v, cur?.timeline ?? []) });
+      markEntryEventReceived(key);
     },
   };
 }
