@@ -21,6 +21,20 @@ export interface ContextUsageIndicatorProps {
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
 
+/**
+ * Geometry for the inline progress ring drawn next to the percentage
+ * label. The viewBox is intentionally larger than the rendered size so
+ * the stroke renders crisply at 12px on hi-dpi displays. Track and
+ * progress arcs share the same circle path; the progress arc uses
+ * `stroke-dasharray` / `stroke-dashoffset` to expose the utilization,
+ * and a `-90deg` rotation on the SVG itself moves the arc's start
+ * point from 3 o'clock to 12 o'clock.
+ */
+const RING_VIEWBOX = 16;
+const RING_RADIUS = 6;
+const RING_STROKE = 2.25;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 function formatTokens(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return TOKEN_FORMATTER.format(Math.round(value));
@@ -119,6 +133,8 @@ export function ContextUsageIndicator({
   }, [open]);
 
   const percent = Math.round(utilization * 100);
+  const safeUtilization = Math.max(0, Math.min(1, utilization));
+  const ringDashOffset = RING_CIRCUMFERENCE * (1 - safeUtilization);
   const usedTokens = typeof estimatedTokens === "number" ? estimatedTokens : undefined;
   const totalTokens =
     usedTokens != null && utilization > 0 ? usedTokens / utilization : undefined;
@@ -174,7 +190,36 @@ export function ContextUsageIndicator({
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {percent}%
+        <span className={styles.contextIndicatorRow}>
+          <svg
+            className={styles.contextIndicatorRing}
+            viewBox={`0 0 ${RING_VIEWBOX} ${RING_VIEWBOX}`}
+            role="img"
+            aria-label={`Context: ${percent}% used`}
+            focusable="false"
+          >
+            <circle
+              className={styles.contextIndicatorRingTrack}
+              cx={RING_VIEWBOX / 2}
+              cy={RING_VIEWBOX / 2}
+              r={RING_RADIUS}
+              fill="none"
+              strokeWidth={RING_STROKE}
+            />
+            <circle
+              className={styles.contextIndicatorRingProgress}
+              cx={RING_VIEWBOX / 2}
+              cy={RING_VIEWBOX / 2}
+              r={RING_RADIUS}
+              fill="none"
+              strokeWidth={RING_STROKE}
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={ringDashOffset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className={styles.contextIndicatorLabel}>{percent}% context</span>
+        </span>
       </span>
       {onNewSession ? (
         <button

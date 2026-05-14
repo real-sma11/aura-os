@@ -298,6 +298,46 @@
   color: var(--color-error);
 }
 
+/* ---------- Inline trigger: ring + "NN% context" label --------------
+   The visible trigger inside `.contextIndicator` is now a tiny circular
+   progress ring followed by a lowercase "NN% context" label. The
+   progress arc inherits `currentColor` from `.contextIndicator` so the
+   warning/danger tone classes flow through to both the arc and the
+   label. The track stays a quiet neutral overlay so it remains legible
+   against any text color. The SVG rotates `-90deg` so the arc starts at
+   12 o'clock and grows clockwise.
+   ------------------------------------------------------------------- */
+
+.contextIndicatorRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.contextIndicatorRing {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  display: inline-block;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.contextIndicatorRingTrack {
+  stroke: var(--color-overlay-light);
+  fill: none;
+}
+
+.contextIndicatorRingProgress {
+  stroke: currentColor;
+  fill: none;
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.contextIndicatorLabel {
+  font-variant-numeric: tabular-nums;
+}
+
 .contextUsageWrap {
   position: relative;
   display: inline-flex;

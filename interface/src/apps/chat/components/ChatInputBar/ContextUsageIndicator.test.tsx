@@ -23,7 +23,34 @@ function fixtureBreakdown(): ContextBreakdown {
 describe("ContextUsageIndicator", () => {
   it("renders the rounded percentage as the inline trigger", () => {
     render(<ContextUsageIndicator utilization={0.42} />);
-    expect(screen.getByRole("button", { name: /42%/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /42% context/i }),
+    ).toBeInTheDocument();
+  });
+
+  // The ring is the only piece of the trigger that visually communicates
+  // utilization at a glance, so guarantee it (a) exposes an accessible
+  // label that names the percentage and (b) renders an arc whose
+  // dashoffset reflects the fraction filled rather than the empty
+  // (0%) or full (100%) edge case.
+  it("renders an SVG ring with an accessible label and dashoffset reflecting utilization", () => {
+    const { container } = render(<ContextUsageIndicator utilization={0.45} />);
+
+    const ring = screen.getByRole("img", { name: /Context: 45% used/i });
+    expect(ring.tagName.toLowerCase()).toBe("svg");
+
+    const progress = container.querySelector(".contextIndicatorRingProgress");
+    expect(progress).not.toBeNull();
+    const dashArray = Number(progress?.getAttribute("stroke-dasharray"));
+    const dashOffset = Number(progress?.getAttribute("stroke-dashoffset"));
+    expect(dashArray).toBeGreaterThan(0);
+    expect(dashOffset).toBeGreaterThan(0);
+    expect(dashOffset).toBeLessThan(dashArray);
+
+    // Label must be the lowercase "NN% context" form per the screenshot.
+    const trigger = screen.getByRole("button", { name: /45% context/i });
+    expect(trigger.textContent).toMatch(/\b45% context\b/);
+    expect(trigger.textContent).not.toMatch(/Context\b/);
   });
 
   // Legacy fallback path: when the harness doesn't emit a breakdown
