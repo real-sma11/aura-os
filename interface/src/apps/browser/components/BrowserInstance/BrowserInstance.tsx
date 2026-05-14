@@ -3,6 +3,7 @@ import {
   getProjectBrowserSettings,
   triggerBrowserDetect,
   updateProjectBrowserSettings,
+  type BrowserClientMsg,
   type DetectedUrl,
   type NavError,
   type NavState,
@@ -99,12 +100,13 @@ export function BrowserInstance({
 
   const handleNav = useCallback((state: NavState) => {
     setNav(state);
-    // A successful navigation (loading=true) signals recovery from any
-    // prior failure: clear the overlay so the new page can paint. A
-    // subsequent `NavError` will re-open it.
-    if (state.loading) {
-      setNavError(null);
-    }
+    // Intentionally do NOT clear `navError` here. After a main-frame
+    // failure, Chromium internally commits its own native error page,
+    // which fires `Page.frameStartedLoading` and surfaces here as
+    // another `Nav { loading: true }`. Clearing on that event used to
+    // wipe our overlay just after we set it, leaving the user staring
+    // at Chromium's native page. The overlay is now cleared only on
+    // explicit user actions (see `clearNavErrorAnd`).
   }, []);
 
   const handleNavError = useCallback((err: NavError) => {
@@ -150,11 +152,26 @@ export function BrowserInstance({
     };
   }, [projectId, setProjectSettings]);
 
-  const handleSubmit = useCallback(
-    (url: string) => {
-      browser.send({ type: "navigate", url });
+  /**
+   * Run a user-initiated browser command and dismiss any error overlay
+   * first. This is the single entry point for navigation actions
+   * (URL submit, back/forward, reload) so the overlay never lingers
+   * across a fresh user attempt. A subsequent `NavError` from the
+   * backend re-opens it.
+   */
+  const clearNavErrorAnd = useCallback(
+    (msg: BrowserClientMsg) => {
+      setNavError(null);
+      browser.send(msg);
     },
     [browser],
+  );
+
+  const handleSubmit = useCallback(
+    (url: string) => {
+      clearNavErrorAnd({ type: "navigate", url });
+    },
+    [clearNavErrorAnd],
   );
 
   const handlePin = useCallback(
@@ -178,9 +195,9 @@ export function BrowserInstance({
 
   const handleSelectDetected = useCallback(
     (url: string) => {
-      browser.send({ type: "navigate", url });
+      clearNavErrorAnd({ type: "navigate", url });
     },
-    [browser],
+    [clearNavErrorAnd],
   );
 
   useEffect(() => {
@@ -217,9 +234,9 @@ export function BrowserInstance({
         pinnedUrl={cachedSettings?.pinned_url ?? null}
         detectedUrls={detectedUrls}
         onSubmit={handleSubmit}
-        onBack={() => browser.send({ type: "back" })}
-        onForward={() => browser.send({ type: "forward" })}
-        onReload={() => browser.send({ type: "reload" })}
+        onBack={() => clearNavErrorAnd({ type: "back" })}
+        onForward={() => clearNavErrorAnd({ type: "forward" })}
+        onReload={() => clearNavErrorAnd({ type: "reload" })}
         onPin={handlePin}
         onUnpin={handleUnpin}
         onSelectDetected={handleSelectDetected}
@@ -242,7 +259,7 @@ export function BrowserInstance({
           navError ? (
             <BrowserErrorOverlay
               error={navError}
-              onReload={() => browser.send({ type: "reload" })}
+              onReload={() => clearNavErrorAnd({ type: "reload" })}
             />
           ) : null
         }
