@@ -253,6 +253,9 @@ describe("useAgentChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       "p-1",
+      undefined,
+      "agent-1",
+      undefined,
     );
     const pinned = useChatUIStore
       .getState()
@@ -300,6 +303,9 @@ describe("useAgentChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       "p-1",
+      undefined,
+      "agent-1",
+      undefined,
     );
     const entry = useStreamStore.getState().entries[result.current.streamKey];
     const userMsg = entry.events.find((evt) => evt.role === "user");
