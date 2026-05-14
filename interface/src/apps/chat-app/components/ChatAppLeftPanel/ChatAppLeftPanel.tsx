@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { api } from "../../../../api/client";
@@ -8,11 +8,12 @@ import {
   SessionsList,
 } from "../../../../components/SessionsList";
 import { EmptyState } from "../../../../components/EmptyState";
+import { Avatar } from "../../../../components/Avatar";
 import { ProjectsPlusButton } from "../../../../components/ProjectsPlusButton";
 import {
   agentSessionsSurfaceKey,
+  projectSessionsSurfaceKey,
   useSessionsDeleteError,
-  useSessionsForSurface,
   useSessionsListActions,
   useSessionsListStore,
 } from "../../../../stores/sessions-list-store";
@@ -21,19 +22,31 @@ import {
   useChatHistoryStore,
 } from "../../../../stores/chat-history-store";
 import { useSidebarSearch } from "../../../../hooks/use-sidebar-search";
+import { useAgents } from "../../../agents/stores";
+import type { Agent } from "../../../../shared/types";
 import { useChatAppAgent } from "../../hooks/use-chat-app-agent";
+import { useChatAppSessions } from "../../hooks/use-chat-app-sessions";
 import styles from "./ChatAppLeftPanel.module.css";
 
 /**
- * Date-bucketed sessions list for the Chat app's left panel. Reuses
- * the shared `SessionsList` (the same component the Agents app's
- * `ChatsTab` and the Projects app's `SessionList` mount) keyed on the
- * chat agent's surface key.
+ * Cross-agent, ChatGPT-style session list for the Chat app's left
+ * panel. Fans out `loadAgentSessions(agentId)` across every agent in
+ * `useAgents()` so the panel surfaces conversations with any agent
+ * the user has talked to — not just the canonical CEO chat agent.
  *
- * Click → `/chat?session=<id>` so navigation stays inside the Chat
- * app rather than rerouting into the Agents shell. Hover prefetches
- * the destination's chat-history-store entry so the panel mounts on a
- * `historyResolved=true` first render and skips the cold-load reveal.
+ * Rendering reuses the shared `SessionsList` (same component the
+ * Agents app's `ChatsTab` and the projects app's `SessionList`
+ * mount). Each row's right-side `Avatar` is supplied via
+ * `renderRowSuffix`; we resolve the session's agent through a memoized
+ * `_agentInstanceId -> Agent` map built from each agent's project
+ * bindings (`bindingsByAgent` in the sessions store). Clicking a row
+ * navigates to `/chat?agent&project&instance&session` so
+ * `ChatAppRoute` can wire both the chat panel and the sidekick to that
+ * session's agent before the merged session list has loaded.
+ *
+ * Hover prefetches the destination's chat-history-store entry so the
+ * panel mounts on a `historyResolved=true` first render and skips the
+ * cold-load reveal.
  *
  * Header surfaces a `+` button via `useSidebarSearch("chat").setAction`
  * so it lands in the shared sidebar search header next to the search
@@ -44,28 +57,76 @@ export function ChatAppLeftPanel() {
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get("session");
   const { agent: chatAgent, status: agentStatus } = useChatAppAgent();
-  const chatAgentId = chatAgent?.agent_id;
-  const surfaceKey = chatAgentId
-    ? agentSessionsSurfaceKey(chatAgentId)
-    : undefined;
-  const sessions = useSessionsForSurface(surfaceKey);
+  const { agents } = useAgents();
   const sessionsVersion = useSessionsListStore((s) => s.version);
-  const isLoading = useSessionsListStore((s) =>
-    surfaceKey ? (s.loadingBySurface[surfaceKey] ?? false) : false,
-  );
   const { loadAgentSessions, removeSession, restoreSession, setDeleteError } =
     useSessionsListActions();
-  const deleteError = useSessionsDeleteError(surfaceKey);
   const { query: searchQuery, setAction } = useSidebarSearch("chat");
+  const { sessions, loading } = useChatAppSessions(agents);
 
+  // Fan-out fetch across every agent the user knows about. The store
+  // dedupes concurrent loads per-surface internally, so re-running on
+  // every `agents` shape change is cheap; `sessionsVersion` bumps
+  // (e.g. after `SessionReady`) re-trigger so newly-persisted
+  // conversations show up without a manual refresh.
   useEffect(() => {
-    if (!chatAgentId) return;
-    void loadAgentSessions(chatAgentId);
-  }, [chatAgentId, sessionsVersion, loadAgentSessions]);
+    for (const a of agents) {
+      void loadAgentSessions(a.agent_id);
+    }
+  }, [agents, sessionsVersion, loadAgentSessions]);
+
+  const bindingsByAgent = useSessionsListStore((s) => s.bindingsByAgent);
+
+  // Map every project-agent-instance the user can see back to its
+  // owning `Agent` so we can paint the right avatar on each row. The
+  // map is built from the *server-authoritative* `bindingsByAgent`
+  // populated by `loadAgentSessions`, NOT from
+  // `useProjectsListStore.agentsByProject`, which is scoped to the
+  // active org and misses the auto-created Home project bindings for
+  // remote agents. Memoized so unrelated store updates (other
+  // surfaces' session writes) don't rebuild the map every render.
+  const agentByInstanceId = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const agent of agents) {
+      const bindings = bindingsByAgent[agent.agent_id];
+      if (!bindings) continue;
+      for (const binding of bindings) {
+        map.set(binding.project_agent_id, agent);
+      }
+    }
+    return map;
+  }, [agents, bindingsByAgent]);
+
+  const resolveSessionAgent = useCallback(
+    (target: AnnotatedSession): Agent | null => {
+      return (
+        agentByInstanceId.get(target._agentInstanceId) ?? chatAgent ?? null
+      );
+    },
+    [agentByInstanceId, chatAgent],
+  );
+
+  const renderRowSuffix = useCallback(
+    (target: AnnotatedSession) => {
+      const agent = resolveSessionAgent(target);
+      if (!agent) return null;
+      return (
+        <Avatar
+          avatarUrl={agent.icon ?? undefined}
+          name={agent.name}
+          type="agent"
+          size={20}
+          className={styles.rowAvatar}
+        />
+      );
+    },
+    [resolveSessionAgent],
+  );
 
   const handleNewChat = useCallback(() => {
-    // Navigating to `/chat` (no `?session=`) lands on a fresh canvas.
-    // The route's `useStandaloneAgentChat` wiring handles the empty
+    // Navigating to `/chat` (no params) lands on a fresh canvas
+    // against the canonical CEO chat agent. The route's
+    // `useStandaloneAgentChat` wiring handles the empty
     // `pinnedSessionId` and arms the next send to create a session.
     navigate("/chat");
   }, [navigate]);
@@ -80,9 +141,16 @@ export function ChatAppLeftPanel() {
 
   const handleSessionClick = useCallback(
     (target: AnnotatedSession) => {
-      navigate(`/chat?session=${target.session_id}`);
+      const agent = resolveSessionAgent(target);
+      const params = new URLSearchParams({
+        project: target._projectId,
+        instance: target._agentInstanceId,
+        session: target.session_id,
+      });
+      if (agent) params.set("agent", agent.agent_id);
+      navigate(`/chat?${params.toString()}`);
     },
-    [navigate],
+    [navigate, resolveSessionAgent],
   );
 
   const handleSessionHover = useCallback((target: AnnotatedSession) => {
@@ -101,9 +169,23 @@ export function ChatAppLeftPanel() {
     );
   }, []);
 
+  // Pick the correct surface key for delete error / undo so the inline
+  // banner and `restoreSession` land on the agent's own surface (not
+  // the project's). Optimistic rows from the project sidekick reuse
+  // the same surface keying.
+  const surfaceKeyForSession = useCallback(
+    (target: AnnotatedSession): string => {
+      const agent = resolveSessionAgent(target);
+      return agent
+        ? agentSessionsSurfaceKey(agent.agent_id)
+        : projectSessionsSurfaceKey(target._projectId);
+    },
+    [resolveSessionAgent],
+  );
+
   const handleDelete = useCallback(
     (target: AnnotatedSession) => {
-      if (!surfaceKey) return;
+      const surfaceKey = surfaceKeyForSession(target);
       setDeleteError(surfaceKey, null);
       removeSession(surfaceKey, target.session_id);
       api
@@ -118,13 +200,23 @@ export function ChatAppLeftPanel() {
           setDeleteError(surfaceKey, formatDeleteSessionError(err));
         });
     },
-    [surfaceKey, removeSession, restoreSession, setDeleteError],
+    [removeSession, restoreSession, setDeleteError, surfaceKeyForSession],
   );
 
+  // Surface a single delete-error banner pinned to the chat agent's
+  // surface — that's the dominant target (every CEO chat lands there)
+  // and avoids stacking N banners for N agents.
+  const primarySurfaceKey = useMemo(
+    () =>
+      chatAgent ? agentSessionsSurfaceKey(chatAgent.agent_id) : undefined,
+    [chatAgent],
+  );
+  const deleteError = useSessionsDeleteError(primarySurfaceKey);
+
   const handleDismissError = useCallback(() => {
-    if (!surfaceKey) return;
-    setDeleteError(surfaceKey, null);
-  }, [surfaceKey, setDeleteError]);
+    if (!primarySurfaceKey) return;
+    setDeleteError(primarySurfaceKey, null);
+  }, [primarySurfaceKey, setDeleteError]);
 
   if (!chatAgent) {
     if (agentStatus === "loading") {
@@ -142,7 +234,7 @@ export function ChatAppLeftPanel() {
     <div className={styles.root} data-agent-surface="chat-app-sessions-list">
       <SessionsList
         sessions={sessions}
-        loading={isLoading}
+        loading={loading}
         selectedSessionId={selectedSessionId}
         onSessionClick={handleSessionClick}
         onSessionHover={handleSessionHover}
@@ -150,6 +242,7 @@ export function ChatAppLeftPanel() {
         searchQuery={searchQuery}
         deleteError={deleteError}
         onDismissError={handleDismissError}
+        renderRowSuffix={renderRowSuffix}
       />
     </div>
   );

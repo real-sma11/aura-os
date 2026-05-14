@@ -1,7 +1,8 @@
 /* Sessions tab: ChatGPT-style sectioned list shared between the
-   agents app's "Chats" sidekick and the projects app's "Sessions"
-   sidekick. Lifted from `AgentInfoPanel.module.css` so both shells
-   render the same UI. */
+   agents app's "Chats" sidekick, the projects app's "Sessions"
+   sidekick, and the chat app's left panel. Each row is a plain
+   `<button>` (no ZUI Explorer) so selection state is owned by a
+   single parent-controlled id across every date bucket. */
 
 .chatsList {
   display: flex;
@@ -24,55 +25,74 @@
   color: var(--color-text-muted);
 }
 
-.sessionsExplorer [class*="label"] {
-  text-align: left;
+.chatsBucketRows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Individual session row. Mirrors the ZUI Item visual language
+   (subtle hover / medium selected / heavy selected+hover) while
+   keeping the markup as a single native button so the parent owns the
+   only `selected` flag in the surface. */
+.sessionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: auto;
+  margin: 0 var(--space-2);
+  padding: 0 var(--space-3, 12px);
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: inherit;
   font-size: 12px;
   font-weight: 300;
   line-height: 1.25;
-  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast, 75ms ease-out),
+              color var(--transition-fast, 75ms ease-out);
 }
 
-.sessionsExplorer [class*="iconSpacer"] {
-  display: none;
+.sessionRow:hover {
+  background: var(--color-overlay-subtle);
 }
 
-.sessionsExplorer [class*="leafSpacer"] {
-  display: none;
-}
-
-.sessionsExplorer [class*="itemContent"] {
-  padding-left: var(--space-3, 12px) !important;
-  padding-right: var(--space-3, 12px);
-  width: auto;
-  margin: 1px var(--space-2);
-  border-radius: 6px;
-  height: 30px;
-  min-height: 30px;
-  font-size: 12px;
-  color: var(--color-text-primary);
-}
-
-.sessionsExplorer [class*="itemContent"]:focus-visible,
-.sessionsExplorer [class*="item"]:focus-visible {
+.sessionRow:focus-visible {
   outline: none;
+  background: var(--color-overlay-subtle);
 }
 
-/* Selected and hover must be visually distinct: the underlying ZUI
-   Explorer's `:hover` paints rows with `--color-overlay-subtle`, so
-   if we used the same token for selected, a hovered row in one date
-   bucket would look identical to the selected row in another bucket
-   and the list would appear to multi-select across days. Mirrors the
-   AgentConversationRow pattern (subtle hover / medium selected /
-   heavy selected+hover). */
-.sessionsExplorer [class*="itemSelected"] {
+/* Selected and hover must be visually distinct: the hovered row paints
+   with `--color-overlay-subtle`, so if we used the same token for
+   selected, a hovered row in one date bucket would look identical to
+   the selected row in another bucket and the list would appear to
+   multi-select across days. Mirrors the AgentConversationRow pattern. */
+.sessionRowSelected,
+.sessionRowSelected:hover,
+.sessionRowSelected:focus-visible {
   background: var(--color-overlay-medium);
   color: var(--color-text-primary);
 }
 
-.sessionsExplorer [class*="itemSelected"]:hover,
-.sessionsExplorer [class*="itemContent"][class*="selected"]:hover:not(:disabled) {
-  background: var(--color-overlay-medium);
-  color: var(--color-text-primary);
+.sessionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionSuffix {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .tabEmptyState {

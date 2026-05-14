@@ -10,48 +10,6 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-// The Explorer mock honors *both* the controlled `selectedIds` prop
-// (what `SessionsList` actually uses) and `defaultSelectedIds` for
-// any future callers — and it intentionally does *not* manage its
-// own selection state, so a "click then re-render with the same
-// `selectedIds`" path correctly leaves the row unselected (the
-// real ZUI Explorer's controlled mode behaves the same way).
-vi.mock("@cypher-asi/zui", () => ({
-  Explorer: ({
-    data,
-    selectedIds,
-    defaultSelectedIds = [],
-    onSelect,
-  }: {
-    data: Array<{ id: string; label: string }>;
-    selectedIds?: string[];
-    defaultSelectedIds?: string[];
-    onSelect?: (ids: string[]) => void;
-  }) => {
-    const effectiveSelected = selectedIds ?? defaultSelectedIds;
-    return (
-      <div role="tree">
-        {data.map((node) => {
-          const selected = effectiveSelected.includes(node.id);
-          return (
-            <button
-              key={node.id}
-              type="button"
-              id={node.id}
-              role="treeitem"
-              aria-current={selected ? "page" : undefined}
-              aria-selected={selected}
-              onClick={() => onSelect?.([node.id])}
-            >
-              {node.label}
-            </button>
-          );
-        })}
-      </div>
-    );
-  },
-}));
-
 import { api } from "../../api/client";
 
 vi.mock("./SessionsList.module.css", () => ({
@@ -94,6 +52,7 @@ function makeSession(
   id: string,
   startedAt: string,
   summary: string,
+  overrides: Partial<AnnotatedSession> = {},
 ): AnnotatedSession {
   return {
     session_id: id,
@@ -111,12 +70,14 @@ function makeSession(
     _projectId: "proj-1",
     _projectName: "Project One",
     _agentInstanceId: "agent-inst-1",
+    ...overrides,
   } as Session as AnnotatedSession;
 }
 
 const today = new Date();
 const isoToday = today.toISOString();
 const isoYesterday = new Date(today.getTime() - 86_400_000).toISOString();
+const isoLastWeek = new Date(today.getTime() - 5 * 86_400_000).toISOString();
 
 describe("SessionsList", () => {
   beforeEach(() => {
@@ -224,6 +185,63 @@ describe("SessionsList", () => {
     expect(first).not.toHaveAttribute("aria-current");
   });
 
+  // Regression: a previous implementation rendered one `<Explorer>` per
+  // date bucket. Even with controlled `selectedIds`, each Explorer kept
+  // its own provider/focus state and the visual selection could appear
+  // on rows in multiple sections at once (the "select multiple items
+  // across different time periods" bug). With a single bucketed list
+  // there is exactly one selected row on the page no matter how many
+  // buckets exist.
+  it("only highlights one row at a time across date buckets", () => {
+    const sessions = [
+      makeSession("today-1", isoToday, "Today A"),
+      makeSession("today-2", isoToday, "Today B"),
+      makeSession("yesterday-1", isoYesterday, "Yesterday A"),
+      makeSession("week-1", isoLastWeek, "Earlier"),
+    ];
+
+    const { rerender } = render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="today-1"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    const selectedNow = () =>
+      screen
+        .getAllByRole("treeitem")
+        .filter((el) => el.getAttribute("aria-current") === "page");
+
+    expect(selectedNow()).toHaveLength(1);
+    expect(selectedNow()[0]).toHaveAccessibleName("Today A");
+
+    rerender(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="yesterday-1"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    expect(selectedNow()).toHaveLength(1);
+    expect(selectedNow()[0]).toHaveAccessibleName("Yesterday A");
+
+    rerender(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId="week-1"
+        onSessionClick={vi.fn()}
+      />,
+    );
+
+    expect(selectedNow()).toHaveLength(1);
+    expect(selectedNow()[0]).toHaveAccessibleName("Earlier");
+  });
+
   it("selects the optimistic New chat row when the URL has no real session yet", () => {
     const sessions = [
       makeSession("optimistic:new", isoToday, ""),
@@ -307,48 +325,6 @@ describe("SessionsList", () => {
     expect(screen.getByRole("treeitem", { name: "Greeting" })).not.toHaveAttribute(
       "aria-current",
     );
-  });
-
-  // Regression: clicking another session used to remount the entire
-  // ZUI Explorer subtree (the bucket-keyed `${label}:${id}` hack that
-  // `SessionsList` carried before the controlled-`selectedIds`
-  // refactor), which manifested as a flicker / dropped click in the
-  // sidekick. With controlled selection the row DOM nodes are
-  // referentially stable across selection changes.
-  it("does not remount session rows when the selection changes", () => {
-    const sessions = [
-      makeSession("s1", isoToday, "First"),
-      makeSession("s2", isoToday, "Second"),
-    ];
-
-    const { rerender } = render(
-      <SessionsList
-        sessions={sessions}
-        loading={false}
-        selectedSessionId="s1"
-        onSessionClick={vi.fn()}
-      />,
-    );
-
-    const firstBefore = screen.getByRole("treeitem", { name: "First" });
-    const secondBefore = screen.getByRole("treeitem", { name: "Second" });
-
-    rerender(
-      <SessionsList
-        sessions={sessions}
-        loading={false}
-        selectedSessionId="s2"
-        onSessionClick={vi.fn()}
-      />,
-    );
-
-    const firstAfter = screen.getByRole("treeitem", { name: "First" });
-    const secondAfter = screen.getByRole("treeitem", { name: "Second" });
-
-    expect(firstAfter).toBe(firstBefore);
-    expect(secondAfter).toBe(secondBefore);
-    expect(secondAfter).toHaveAttribute("aria-current", "page");
-    expect(firstAfter).not.toHaveAttribute("aria-current");
   });
 
   it("calls onSessionClick with the clicked session", () => {
@@ -476,5 +452,40 @@ describe("SessionsList", () => {
       "Couldn't delete session (502): aura-storage unreachable",
     );
     expect(screen.getByTestId("empty-state")).toHaveTextContent("No sessions yet");
+  });
+
+  // The chat app passes a per-session `<Avatar>` via this hook so each
+  // row in the cross-agent inbox shows whose conversation it is on the
+  // right side. Anyone NOT passing the prop (agents `ChatsTab`,
+  // projects `SessionList`) keeps the existing project-name suffix
+  // behavior — covered by the multi-project rendering paths above.
+  it("renders renderRowSuffix output on each row when provided", () => {
+    const sessions = [
+      makeSession("s1", isoToday, "Alpha", {
+        _agentInstanceId: "inst-a",
+        agent_instance_id: "inst-a",
+      } as Partial<AnnotatedSession>),
+      makeSession("s2", isoYesterday, "Bravo", {
+        _agentInstanceId: "inst-b",
+        agent_instance_id: "inst-b",
+      } as Partial<AnnotatedSession>),
+    ];
+
+    render(
+      <SessionsList
+        sessions={sessions}
+        loading={false}
+        selectedSessionId={null}
+        onSessionClick={vi.fn()}
+        renderRowSuffix={(session) => (
+          <span data-testid={`suffix-${session.session_id}`}>
+            {session._agentInstanceId}
+          </span>
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId("suffix-s1")).toHaveTextContent("inst-a");
+    expect(screen.getByTestId("suffix-s2")).toHaveTextContent("inst-b");
   });
 });

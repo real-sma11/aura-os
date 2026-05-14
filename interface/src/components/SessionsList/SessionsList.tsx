@@ -1,6 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
-import { Explorer } from "@cypher-asi/zui";
-import type { ExplorerNode } from "@cypher-asi/zui";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { EmptyState } from "../EmptyState";
 import {
   SidekickItemContextMenu,
@@ -45,15 +43,23 @@ interface SessionsListProps {
    */
   deleteError?: string | null;
   onDismissError?: () => void;
+  /**
+   * Optional right-aligned content rendered per row. When provided this
+   * replaces the default project-name suffix (used by the chat-app's
+   * left panel to show the session's agent avatar on the right side of
+   * each row). Returning `null`/`undefined` falls back to the default
+   * behavior for that single row.
+   */
+  renderRowSuffix?: (session: AnnotatedSession) => ReactNode;
 }
 
 /**
  * Date-bucketed session list shared between the agents app's "Chats"
- * sidekick and the projects app's "Sessions" sidekick. Every session
- * the API returns is rendered immediately — sessions that don't have
- * a Haiku summary yet show as `NEW_CHAT_PLACEHOLDER` ("New chat") and
- * upgrade in place once `useSessionSummaries` finishes the
- * Haiku round-trip.
+ * sidekick, the projects app's "Sessions" sidekick, and the chat app's
+ * left panel. Every session the API returns is rendered immediately —
+ * sessions that don't have a Haiku summary yet show as
+ * `NEW_CHAT_PLACEHOLDER` ("New chat") and upgrade in place once
+ * `useSessionSummaries` finishes the Haiku round-trip.
  *
  * The aura-os-server `list_project_sessions` / `list_sessions`
  * handlers filter out sessions with zero persisted events (see
@@ -61,6 +67,14 @@ interface SessionsListProps {
  * `apps/aura-os-server/src/handlers/agents/sessions.rs`), so a row
  * here is always navigable — clicking it always lands in a chat with
  * at least one user message.
+ *
+ * Rendering uses plain `<button>` rows (not the ZUI `Explorer`) so
+ * selection state is owned by a single parent-controlled
+ * `effectiveSelectedSessionId` across every date bucket. Each
+ * per-bucket `Explorer` previously kept its own context / focus state
+ * which made it possible for rows in different time-period sections to
+ * read as simultaneously highlighted; collapsing to one selection
+ * surface eliminates that.
  */
 export function SessionsList({
   sessions,
@@ -72,6 +86,7 @@ export function SessionsList({
   searchQuery,
   deleteError,
   onDismissError,
+  renderRowSuffix,
 }: SessionsListProps) {
   const summaries = useSessionSummaries(sessions);
   const lastHoveredSessionIdRef = useRef<string | null>(null);
@@ -111,21 +126,6 @@ export function SessionsList({
     return projectIds.size > 1;
   }, [sessions]);
 
-  const explorerBuckets = useMemo(
-    () =>
-      buckets.map((bucket) => ({
-        label: bucket.label,
-        data: bucket.rows.map<ExplorerNode>(({ session, label }) => ({
-          id: session.session_id,
-          label,
-          suffix: hasMultipleProjects && session._projectName
-            ? <span className={styles.sessionProject}>{session._projectName}</span>
-            : undefined,
-          metadata: { type: "session" },
-        })),
-      })),
-    [buckets, hasMultipleProjects],
-  );
   // Highlight the row the user is actively in even when the URL hasn't
   // settled yet:
   //
@@ -155,15 +155,6 @@ export function SessionsList({
     if (optimistic) return optimistic.session.session_id;
     return titledRows[0]?.session.session_id ?? null;
   }, [selectedSessionId, titledRows]);
-  // Stable controlled-selection array so the Explorer's `useMemo`s
-  // for `selectedIds` / context value don't see a new identity on
-  // every parent render (which would still be cheap, but this keeps
-  // referential equality for `[effectiveSelectedSessionId]` when it's
-  // unchanged).
-  const explorerSelectedIds = useMemo(
-    () => (effectiveSelectedSessionId ? [effectiveSelectedSessionId] : []),
-    [effectiveSelectedSessionId],
-  );
 
   const resolveMenuTarget = useCallback(
     (nodeId: string): AnnotatedSession | null => sessionById.get(nodeId) ?? null,
@@ -183,26 +174,53 @@ export function SessionsList({
     },
     [menu, closeMenu, onDeleteSession],
   );
-  const handleExplorerSelect = useCallback(
-    (ids: string[]) => {
-      const id = [...ids].reverse().find((candidate) => sessionById.has(candidate));
-      if (!id) return;
-      const session = sessionById.get(id);
-      if (session) onSessionClick(session);
-    },
-    [onSessionClick, sessionById],
-  );
-  const handleSessionHoverTarget = useCallback(
-    (target: EventTarget | null) => {
-      if (!onSessionHover || !(target instanceof HTMLElement)) return;
-      const row = target.closest<HTMLButtonElement>("button[id]");
-      if (!row) return;
-      const session = sessionById.get(row.id);
-      if (!session || lastHoveredSessionIdRef.current === session.session_id) return;
+
+  const handleRowMouseEnter = useCallback(
+    (session: AnnotatedSession) => {
+      if (!onSessionHover) return;
+      if (lastHoveredSessionIdRef.current === session.session_id) return;
       lastHoveredSessionIdRef.current = session.session_id;
       onSessionHover(session);
     },
-    [onSessionHover, sessionById],
+    [onSessionHover],
+  );
+
+  const renderRow = useCallback(
+    ({ session, label }: SessionRow) => {
+      const isSelected =
+        effectiveSelectedSessionId === session.session_id;
+      const customSuffix = renderRowSuffix?.(session) ?? null;
+      const defaultSuffix =
+        hasMultipleProjects && session._projectName ? (
+          <span className={styles.sessionProject}>{session._projectName}</span>
+        ) : null;
+      const suffix = customSuffix !== null ? customSuffix : defaultSuffix;
+
+      return (
+        <button
+          key={session.session_id}
+          id={session.session_id}
+          type="button"
+          role="treeitem"
+          aria-selected={isSelected}
+          aria-current={isSelected ? "page" : undefined}
+          className={`${styles.sessionRow}${isSelected ? ` ${styles.sessionRowSelected}` : ""}`}
+          onClick={() => onSessionClick(session)}
+          onMouseEnter={() => handleRowMouseEnter(session)}
+          onFocus={() => handleRowMouseEnter(session)}
+        >
+          <span className={styles.sessionLabel}>{label}</span>
+          {suffix && <span className={styles.sessionSuffix}>{suffix}</span>}
+        </button>
+      );
+    },
+    [
+      effectiveSelectedSessionId,
+      handleRowMouseEnter,
+      hasMultipleProjects,
+      onSessionClick,
+      renderRowSuffix,
+    ],
   );
 
   const errorBanner = deleteError ? (
@@ -244,22 +262,15 @@ export function SessionsList({
       {errorBanner}
       <div
         className={styles.chatsList}
+        role="tree"
         onContextMenu={handleContextMenu}
-        onMouseEnter={(event) => handleSessionHoverTarget(event.target)}
-        onMouseOver={(event) => handleSessionHoverTarget(event.target)}
-        onFocusCapture={(event) => handleSessionHoverTarget(event.target)}
       >
-        {explorerBuckets.map((bucket) => (
+        {buckets.map((bucket) => (
           <section key={bucket.label} className={styles.chatsBucket}>
             <div className={styles.chatsBucketHeader}>{bucket.label}</div>
-            <Explorer
-              data={bucket.data}
-              className={styles.sessionsExplorer}
-              enableDragDrop={false}
-              enableMultiSelect={false}
-              selectedIds={explorerSelectedIds}
-              onSelect={handleExplorerSelect}
-            />
+            <div className={styles.chatsBucketRows}>
+              {bucket.rows.map((row) => renderRow(row))}
+            </div>
           </section>
         ))}
       </div>

@@ -208,7 +208,9 @@ interface SessionsListStore {
   setDeleteError: (surfaceKey: string, message: string | null) => void;
 }
 
-function sortSessionsDesc(sessions: AnnotatedSession[]): AnnotatedSession[] {
+export function sortSessionsDesc(
+  sessions: AnnotatedSession[],
+): AnnotatedSession[] {
   return [...sessions].sort(
     (a, b) =>
       new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),

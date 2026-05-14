@@ -17,3 +17,10 @@
   font-size: 12px;
   font-weight: 300;
 }
+
+/* Compact agent avatar painted at the right edge of each chat row.
+   Sized to fit inside the 30px session row without forcing extra
+   vertical space — the row's own padding keeps it centered. */
+.rowAvatar {
+  flex-shrink: 0;
+}
