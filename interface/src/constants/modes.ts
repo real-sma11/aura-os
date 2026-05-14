@@ -8,8 +8,8 @@ export const AGENT_MODE_ORDER: readonly AgentMode[] = [
   "code",
   "plan",
   "image",
-  "3d",
   "video",
+  "3d",
 ];
 
 export type HarnessAction = "generate_specs";
