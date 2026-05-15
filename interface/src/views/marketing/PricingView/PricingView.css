@@ -1,0 +1,297 @@
+.pricingPage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: calc(100vh - var(--marketing-navbar-height) - var(--marketing-main-bottom-space));
+  min-height: calc(100dvh - var(--marketing-navbar-height) - var(--marketing-main-bottom-space));
+  padding: clamp(48px, 8vh, 88px) clamp(32px, 5vw, 72px);
+  box-sizing: border-box;
+  background: #000;
+}
+
+.pricingPageContent {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+}
+
+.pricingPageContent::after {
+  content: '';
+  flex: 1;
+}
+
+.pricingPageHeader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.pricingPageTitle {
+  margin: 0;
+  font-size: clamp(44px, 6vw, 66px);
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  color: #f4f3ef;
+}
+
+.pricingToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  user-select: none;
+}
+
+.pricingToggleButton {
+  min-width: 74px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--marketing-transition-fast, 150ms ease),
+    color var(--marketing-transition-fast, 150ms ease);
+}
+
+.pricingToggleButton:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.pricingToggleButtonActive {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f7f5f0;
+}
+
+.pricingPlansSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pricingPlansLabel {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.pricingPlansGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pricingPlanCard {
+  min-height: 292px;
+  padding: 14px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background-color var(--marketing-transition-fast, 150ms ease);
+}
+
+.pricingPlanCard:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pricingPlanCardRecommended {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pricingPlanBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pricingPlanHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pricingPlanTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pricingPlanTitle {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: #f2f0ec;
+}
+
+.pricingPlanBadge {
+  margin-left: auto;
+  color: #ff4fa3;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pricingPlanPrice {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: #f1eeea;
+}
+
+.pricingPlanPriceValue {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pricingPlanPriceCadence {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.pricingPlanPriceNote {
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.pricingPlanDescription {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.pricingPlanFeatureList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pricingPlanFeature {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.pricingPlanFeatureIcon {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pricingPlanButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  min-width: 88px;
+  min-height: 34px;
+  padding: 0 18px;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
+  transition:
+    background-color var(--marketing-transition-fast, 150ms ease),
+    color var(--marketing-transition-fast, 150ms ease);
+}
+
+.pricingPlanButton:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pricingPlanButtonPrimary {
+  background: #f6f3ee;
+  color: #16120f;
+}
+
+.pricingPlanButtonPrimary:hover {
+  background: #ffffff;
+  color: #0e0b08;
+}
+
+@media (max-width: 1180px) {
+  .pricingPlansGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .pricingPage {
+    padding: 40px 64px calc(var(--marketing-taskbar-safe-offset) + 96px);
+  }
+
+  .pricingPageContent {
+    gap: 34px;
+  }
+
+  .pricingPageTitle {
+    font-size: clamp(36px, 12vw, 52px);
+  }
+
+  .pricingPlansGrid {
+    gap: 12px;
+  }
+
+  .pricingPlanCard {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .pricingPlansGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pricingToggleButton {
+    min-width: 84px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pricingPage {
+    padding: 32px 56px calc(var(--marketing-taskbar-safe-offset) + 88px);
+  }
+
+  .pricingPlanCard {
+    padding: 18px 20px 16px;
+  }
+}

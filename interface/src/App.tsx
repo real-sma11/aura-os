@@ -19,6 +19,21 @@ const InviteAcceptView = lazy(() =>
   import("./views/InviteAcceptView").then((m) => ({ default: m.InviteAcceptView })),
 );
 const IdeView = lazy(() => import("./views/IdeView").then((m) => ({ default: m.IdeView })));
+const MarketingShell = lazy(() =>
+  import("./views/marketing/MarketingShell").then((m) => ({ default: m.MarketingShell })),
+);
+const ProductView = lazy(() =>
+  import("./views/marketing/ProductView").then((m) => ({ default: m.ProductView })),
+);
+const ChangelogView = lazy(() =>
+  import("./views/marketing/ChangelogView").then((m) => ({ default: m.ChangelogView })),
+);
+const FeedbackView = lazy(() =>
+  import("./views/marketing/FeedbackView").then((m) => ({ default: m.FeedbackView })),
+);
+const PricingView = lazy(() =>
+  import("./views/marketing/PricingView").then((m) => ({ default: m.PricingView })),
+);
 
 /**
  * Canonical, explicit boot-time auth decision.
@@ -213,7 +228,49 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
           </Route>
         </Route>
       ) : (
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <>
+          <Route
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <MarketingShell />
+              </Suspense>
+            }
+          >
+            <Route
+              path="product"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ProductView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="changelog"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ChangelogView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="feedback"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <FeedbackView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="pricing"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <PricingView />
+                </Suspense>
+              }
+            />
+          </Route>
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </>
       )}
     </Routes>
   );
