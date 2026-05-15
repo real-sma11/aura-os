@@ -5,6 +5,7 @@ use futures_util::StreamExt;
 use reqwest::StatusCode as ReqwestStatus;
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info};
@@ -28,6 +29,21 @@ use crate::handlers::agents::chat::ChatPersistCtx;
 /// drain — partial-image frames from `gpt-image-2` can land in tight
 /// bursts.
 const IMAGE_STREAM_CHANNEL_CAPACITY: usize = 64;
+
+/// Interval between synthetic `generation_progress` heartbeat frames
+/// emitted while the upstream router is silent. Sized comfortably
+/// under the frontend's `STUCK_THRESHOLD_MS = 30s` watchdog
+/// (`interface/src/hooks/stream/use-stream-health.ts`) so even a
+/// dropped tick (network jitter, slow scheduler) won't let the
+/// watchdog trip before the next heartbeat lands.
+///
+/// The watchdog reads `lastEventAt` on the Zustand store; every
+/// `generation_progress` setter in
+/// `interface/src/hooks/use-agent-chat-stream.ts` calls
+/// `setProgressText`, which calls `markStreamProgress` under the
+/// hood. So a heartbeat frame counts as wire activity for the
+/// watchdog without any frontend change.
+pub(crate) const GENERATION_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 
 pub(crate) async fn generate_image_stream(
     State(state): State<AppState>,
@@ -261,11 +277,27 @@ async fn run_image_upstream_task(
             }
         }
 
-        match byte_stream.next().await {
-            Some(Ok(chunk)) => {
+        // Wait for the next chunk or the heartbeat tick — whichever
+        // arrives first. Without the heartbeat, models like
+        // `gpt-image-2` that emit nothing between the upstream
+        // `generation_start` and the final `completed` frame leave
+        // the SSE wire silent for the full render (>30s on cold
+        // tenants), tripping the frontend's stuck-stream watchdog
+        // even though the request is healthy.
+        match tokio::time::timeout(GENERATION_HEARTBEAT_INTERVAL, byte_stream.next()).await {
+            Err(_) => {
+                if tx
+                    .send(Ok(build_generation_progress_heartbeat_event("image")))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(Some(Ok(chunk))) => {
                 buffer.push_str(&String::from_utf8_lossy(&chunk));
             }
-            Some(Err(e)) => {
+            Ok(Some(Err(e))) => {
                 error!(
                     generation_id = %generation_id,
                     error = %e,
@@ -279,7 +311,7 @@ async fn run_image_upstream_task(
                     .await;
                 return;
             }
-            None => {
+            Ok(None) => {
                 if !buffer.trim().is_empty() {
                     let frame = std::mem::take(&mut buffer);
                     if let Some((event, _terminal, completed_payload)) =
@@ -321,6 +353,27 @@ pub(super) fn build_generation_start_event(mode: &str) -> Event {
     Event::default()
         .event("generation_start")
         .json_data(json!({ "mode": mode }))
+        .unwrap_or_else(|_| Event::default().data("{}"))
+}
+
+/// Build a synthetic `generation_progress` SSE heartbeat. Emitted
+/// every [`GENERATION_HEARTBEAT_INTERVAL`] while the upstream router
+/// is silent so the frontend's stuck-stream watchdog clock keeps
+/// resetting. The `message` matches what
+/// `interface/src/hooks/use-agent-chat-stream.ts` already sets via
+/// `GenerationStart` for the same mode, so the user-visible
+/// progress text doesn't flicker when a heartbeat overwrites it
+/// between real progress frames.
+pub(crate) fn build_generation_progress_heartbeat_event(mode: &str) -> Event {
+    let message = match mode {
+        "image" => "Generating image...",
+        "video" => "Generating video...",
+        "3d" => "Generating 3D model...",
+        _ => "Generating...",
+    };
+    Event::default()
+        .event("generation_progress")
+        .json_data(json!({ "message": message }))
         .unwrap_or_else(|_| Event::default().data("{}"))
 }
 
@@ -800,6 +853,77 @@ mod streaming_tests {
         assert_eq!(event_kind(&second), "generation_error");
 
         handle.abort();
+    }
+
+    /// The synthetic `generation_progress` heartbeat fires while
+    /// the upstream router is silent. Without it the wire stays
+    /// quiet for the full upstream render and the frontend's
+    /// `STUCK_THRESHOLD_MS = 30s` watchdog still trips even though
+    /// the synthetic `generation_start` correctly resets it at
+    /// t=0. We use `tokio::time::pause` so we can advance virtual
+    /// time past the 15s heartbeat interval without sleeping in
+    /// the test.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_fires_when_upstream_stays_silent() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{addr}/v1/generate-image/stream");
+
+        // Mock server that accepts the connection, sends the SSE
+        // response headers so reqwest's `send().await` resolves, and
+        // then holds the body open forever — exactly the
+        // `gpt-image-2`-style upstream that triggered the original
+        // "Agent paused" pill.
+        let mock_handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let response = "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/event-stream\r\n\
+                            Transfer-Encoding: chunked\r\n\
+                            \r\n";
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.flush().await;
+            std::future::pending::<()>().await;
+        });
+
+        let (tx, mut rx) = mpsc::channel::<Result<Event, Infallible>>(8);
+        tokio::spawn(run_image_upstream_task(
+            tx,
+            url,
+            "jwt".to_string(),
+            "agent-test".to_string(),
+            mk_identity(),
+            json!({ "prompt": "a cat" }),
+            "gen-test".to_string(),
+            None,
+        ));
+
+        // Receive the initial generation_start frame. This happens
+        // before any time-based await so it lands without needing a
+        // virtual-time advance.
+        let first = rx.recv().await.expect("first").expect("infallible");
+        assert_eq!(event_kind(&first), "generation_start");
+
+        // Drain any progress frames that land before the task is
+        // sitting on its `timeout(...)` for the first byte chunk.
+        // In practice on Tokio's single-threaded paused runtime
+        // there are none, but yielding to the scheduler is enough
+        // to let the task reach the `timeout` await before we
+        // advance virtual time.
+        tokio::task::yield_now().await;
+
+        // Advance past the heartbeat interval. The drain loop's
+        // `timeout(GENERATION_HEARTBEAT_INTERVAL, byte_stream.next())`
+        // expires and the task emits a heartbeat. We push slightly
+        // over the interval so a single advance reliably crosses
+        // the deadline.
+        tokio::time::advance(GENERATION_HEARTBEAT_INTERVAL + Duration::from_secs(1)).await;
+
+        let heartbeat = rx.recv().await.expect("heartbeat").expect("infallible");
+        assert_eq!(event_kind(&heartbeat), "generation_progress");
+
+        mock_handle.abort();
     }
 
     /// Happy path: upstream emits a `completed` frame; the response

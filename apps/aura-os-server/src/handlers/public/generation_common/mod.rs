@@ -56,6 +56,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
 use crate::error::ApiResult;
+use crate::handlers::generation::{
+    build_generation_progress_heartbeat_event, GENERATION_HEARTBEAT_INTERVAL,
+};
 use crate::state::AppState;
 
 use super::demo_agent::SYSTEM_DEMO_USER_ID;
@@ -220,12 +223,33 @@ async fn run_public_generation_task(
     // relay translator, forwarding each canonical event to the
     // channel. The relay also appends the trailing `limit` frame and
     // calls `record_completion(guard)` once the upstream terminates.
+    // We interleave a synthetic `generation_progress` heartbeat every
+    // [`GENERATION_HEARTBEAT_INTERVAL`] so the frontend's
+    // `STUCK_THRESHOLD_MS = 30s` watchdog clock keeps resetting on
+    // long-running renders whose upstream proxy emits nothing
+    // between the initial start and the final completed frame.
     let bytes = response.bytes_stream();
     let inner = build_public_generation_sse(bytes, generation_id, guard, modality);
     let mut inner = std::pin::pin!(inner);
-    while let Some(item) = inner.next().await {
-        if tx.send(item).await.is_err() {
-            return;
+    loop {
+        match tokio::time::timeout(GENERATION_HEARTBEAT_INTERVAL, inner.next()).await {
+            Err(_) => {
+                if tx
+                    .send(Ok(build_generation_progress_heartbeat_event(
+                        modality.as_str(),
+                    )))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(Some(item)) => {
+                if tx.send(item).await.is_err() {
+                    return;
+                }
+            }
+            Ok(None) => return,
         }
     }
 }
@@ -408,6 +432,51 @@ mod streaming_tests {
         assert_eq!(event_kind(&first), "generation_start");
 
         handle.abort();
+    }
+
+    /// Heartbeat fires for the public proxy too. Mirror of the
+    /// auth'd `heartbeat_fires_when_upstream_stays_silent` test in
+    /// `apps/aura-os-server/src/handlers/generation/image.rs`.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_fires_when_upstream_stays_silent() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{addr}/v1/generate-image/stream");
+
+        let mock_handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let response = "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/event-stream\r\n\
+                            Transfer-Encoding: chunked\r\n\
+                            \r\n";
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.flush().await;
+            std::future::pending::<()>().await;
+        });
+
+        let (tx, mut rx) = mpsc::channel::<Result<Event, Infallible>>(8);
+        tokio::spawn(run_public_generation_task(
+            tx,
+            "guest-jwt".to_string(),
+            url,
+            json!({ "prompt": "a cat" }),
+            PublicModality::Image,
+            "gen-test".to_string(),
+            mk_guard(PublicModality::Image),
+        ));
+
+        let first = rx.recv().await.expect("first").expect("infallible");
+        assert_eq!(event_kind(&first), "generation_start");
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(GENERATION_HEARTBEAT_INTERVAL + Duration::from_secs(1)).await;
+
+        let heartbeat = rx.recv().await.expect("heartbeat").expect("infallible");
+        assert_eq!(event_kind(&heartbeat), "generation_progress");
+
+        mock_handle.abort();
     }
 
     #[tokio::test]

@@ -25,7 +25,10 @@ use crate::handlers::agents::session_identity::{
 };
 use crate::state::AppState;
 
-use super::image::build_generation_start_event;
+use super::image::{
+    build_generation_progress_heartbeat_event, build_generation_start_event,
+    GENERATION_HEARTBEAT_INTERVAL,
+};
 use super::persist::{spawn_generation_persist_task, GenerationPersistMeta};
 use super::sse::{SseResponse, SseStream, SSE_NO_BUFFERING_HEADERS};
 
@@ -333,6 +336,7 @@ async fn run_harness_generation_task(
     );
 
     let session_id = session.session_id.clone();
+    let heartbeat_mode = mode.clone();
     let inner = harness_generation_to_sse(
         state,
         harness_mode,
@@ -345,9 +349,31 @@ async fn run_harness_generation_task(
         session.commands_tx.clone(),
     );
     let mut inner = std::pin::pin!(inner);
-    while let Some(item) = inner.next().await {
-        if tx.send(item).await.is_err() {
-            return;
+    loop {
+        // Drain the harness-backed stream, but interleave a
+        // [`GENERATION_HEARTBEAT_INTERVAL`] heartbeat so the
+        // frontend watchdog clock keeps resetting even when the
+        // underlying harness session emits nothing for the entire
+        // upstream render (video models routinely sit idle for >30s
+        // after their first `generation_progress`).
+        match tokio::time::timeout(GENERATION_HEARTBEAT_INTERVAL, inner.next()).await {
+            Err(_) => {
+                if tx
+                    .send(Ok(build_generation_progress_heartbeat_event(
+                        &heartbeat_mode,
+                    )))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(Some(item)) => {
+                if tx.send(item).await.is_err() {
+                    return;
+                }
+            }
+            Ok(None) => return,
         }
     }
 }
