@@ -1,10 +1,10 @@
-import type { ChatAttachment } from "../../../../api/streams";
-import type { GenerationMode } from "../../../../constants/models";
+import type { ChatAttachment } from "../../../api/streams";
+import type { GenerationMode } from "../../../constants/models";
 import {
   AGENT_MODE_DESCRIPTORS,
   type AgentMode,
   type HarnessAction,
-} from "../../../../constants/modes";
+} from "../../../constants/modes";
 
 /**
  * Fully-typed description of one send. Each variant carries ONLY the

@@ -15,40 +15,40 @@ import {
   ChevronDown,
   FolderOpen,
 } from "lucide-react";
-import { track } from "../../../../lib/analytics";
+import { track } from "../../../lib/analytics";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
-import type { ContextUsageEntry } from "../../../../stores/context-usage-store";
-import { useIsStreaming } from "../../../../hooks/stream/hooks";
+import type { ContextUsageEntry } from "../../../stores/context-usage-store";
+import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useFileAttachments } from "./useFileAttachments";
-import type { GenerationMode } from "../../../../constants/models";
+import type { GenerationMode } from "../../../constants/models";
 import {
   availableModelsForAdapter,
   modelLabel,
   getModelsForMode,
   modelProviderGroup,
   sortModelsForMenu,
-} from "../../../../constants/models";
-import { isGenerationCommand } from "../../../../constants/commands";
+} from "../../../constants/models";
+import { isGenerationCommand } from "../../../constants/commands";
 import {
   AGENT_MODE_DESCRIPTORS,
   type AgentMode,
-} from "../../../../constants/modes";
-import { AgentEnvironment } from "../../../agents/components/AgentEnvironment";
-import { OrbitStatusIndicator } from "../../../../components/OrbitStatusIndicator";
+} from "../../../constants/modes";
+import { AgentEnvironment } from "../../../apps/agents/components/AgentEnvironment";
+import { OrbitStatusIndicator } from "../../../components/OrbitStatusIndicator";
 import {
   InputBarShell,
   inputBarShellStyles,
   ModelPicker,
   ModeSelector,
   type InputBarShellHandle,
-} from "../../../../components/InputBarShell";
+} from "../../../components/InputBarShell";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { FileMentionMenu } from "./FileMentionMenu";
 import { useProjectFiles } from "./useProjectFiles";
 import { CommandChips } from "./CommandChips";
-import { useChatUI } from "../../../../stores/chat-ui-store";
-import type { SlashCommand } from "../../../../constants/commands";
-import type { Project } from "../../../../shared/types";
+import { useChatUI } from "../../../stores/chat-ui-store";
+import type { SlashCommand } from "../../../constants/commands";
+import type { Project } from "../../../shared/types";
 import styles from "./ChatInputBar.module.css";
 
 export interface ChatInputBarHandle {

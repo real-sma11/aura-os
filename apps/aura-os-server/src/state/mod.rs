@@ -9,7 +9,7 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::Json;
 use dashmap::DashMap;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, OnceCell};
 
 use aura_os_agents::{AgentInstanceService, AgentService};
 use aura_os_auth::AuthService;
@@ -43,6 +43,8 @@ use crate::sync_state::{TaskSyncCheckpoint, TaskSyncState};
 mod auth_extractors;
 mod caches;
 
+#[allow(unused_imports)]
+pub(crate) use auth_extractors::AuthGuestJwt;
 pub(crate) use auth_extractors::{AuthJwt, AuthSession, AuthZeroProMeta};
 #[cfg(test)]
 pub(crate) use caches::CACHE_ENTRY_MAX_AGE;
@@ -384,6 +386,24 @@ pub struct AppState {
     /// so an operator can see the runtime config the binary is
     /// actually using.
     pub harness_broadcast_capacity: usize,
+    /// Process-wide rate limiter for the public anonymous endpoint
+    /// family (`/api/public/*`). Tracks per-guest turn counts and
+    /// per-IP daily ceilings. Cheap to clone — both internal maps
+    /// sit behind `Arc<DashMap<...>>`. See
+    /// [`crate::handlers::public::RateLimiter`] for the surface and
+    /// [`crate::handlers::public::PUBLIC_TURN_LIMIT`] /
+    /// [`crate::handlers::public::PUBLIC_IP_DAILY_CEILING`] for the
+    /// caps.
+    pub public_rate_limiter: crate::handlers::public::RateLimiter,
+    /// Lazily-provisioned [`AgentId`] of the system-owned demo agent
+    /// every public chat turn targets. The first call to
+    /// [`crate::handlers::public::ensure_public_demo_agent`] runs the
+    /// slow path (build the canonical [`aura_os_core::Agent`] record
+    /// then persist a shadow); every later call is an atomic load.
+    /// The synchronous `app_builder::build_app_state` cannot block on
+    /// async storage I/O at boot, so the cell starts empty and
+    /// initialises on first public-chat hit.
+    pub public_demo_agent_id: Arc<OnceCell<AgentId>>,
 }
 
 impl AppState {

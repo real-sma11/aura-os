@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChatMessageList } from "./ChatMessageList";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
 
 function makeMessage(
   id: string,
@@ -23,18 +23,18 @@ const mockStreamEntry = {
   progressText: "",
 };
 
-vi.mock("../MessageBubble", () => ({
+vi.mock("../../../apps/chat/components/MessageBubble", () => ({
   MessageBubble: (props: { message: { id: string } }) => {
     mockMessageBubble(props);
     return <div data-testid={`bubble-${props.message.id}`} />;
   },
 }));
 
-vi.mock("../StreamingBubble", () => ({
+vi.mock("../../../apps/chat/components/StreamingBubble", () => ({
   StreamingBubble: () => <div data-testid="streaming-bubble" />,
 }));
 
-vi.mock("../../../../hooks/stream/store", () => ({
+vi.mock("../../../hooks/stream/store", () => ({
   useStreamStore: (selector: (state: unknown) => unknown) =>
     selector({
       entries: {

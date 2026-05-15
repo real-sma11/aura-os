@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { X } from "lucide-react";
-import type { SlashCommand } from "../../../../constants/commands";
+import type { SlashCommand } from "../../../constants/commands";
 import styles from "./ChatInputBar.module.css";
 
 interface Props {

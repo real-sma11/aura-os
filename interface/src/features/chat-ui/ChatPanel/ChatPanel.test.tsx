@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { act, useLayoutEffect, type ComponentProps } from "react";
 import { vi } from "vitest";
 import { ChatPanel } from "./ChatPanel";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
-import { useMessageStore } from "../../../../stores/message-store";
-import { useChatViewStore } from "../../../../stores/chat-view-store";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import { useMessageStore } from "../../../stores/message-store";
+import { useChatViewStore } from "../../../stores/chat-view-store";
 
 const mockUseAuraCapabilities = vi.fn();
 const mockClearQueue = vi.hoisted(() => vi.fn());
@@ -18,7 +18,7 @@ vi.mock("@cypher-asi/zui", () => ({
   Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
 }));
 
-vi.mock("../../../../hooks/stream/hooks", () => ({
+vi.mock("../../../hooks/stream/hooks", () => ({
   useIsStreaming: () => false,
   useStreamEvents: () => [],
   useStreamingText: () => "",
@@ -27,7 +27,7 @@ vi.mock("../../../../hooks/stream/hooks", () => ({
   useActiveToolCalls: () => [],
 }));
 
-vi.mock("../../../../hooks/use-aura-capabilities", () => ({
+vi.mock("../../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => mockUseAuraCapabilities(),
 }));
 
@@ -129,7 +129,7 @@ vi.mock("../MessageQueue", () => ({
   MessageQueue: () => null,
 }));
 
-vi.mock("../../../../stores/message-queue-store", () => ({
+vi.mock("../../../stores/message-queue-store", () => ({
   useMessageQueueStore: {
     getState: () => ({
       enqueue: vi.fn(),
@@ -142,7 +142,7 @@ vi.mock("../../../../stores/message-queue-store", () => ({
   useMessageQueue: () => [],
 }));
 
-vi.mock("../../../../constants/models", () => ({
+vi.mock("../../../constants/models", () => ({
   loadPersistedModel: () => "gpt-5.4",
   availableModelsForAdapter: () => [],
   defaultModelForAdapter: () => "gpt-5.4",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type DirEntry } from "../../../../api/client";
+import { api, type DirEntry } from "../../../api/client";
 
 export interface ProjectFile {
   name: string;

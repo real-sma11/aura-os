@@ -1,19 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useScrollAnchorV2 } from "../../../../shared/hooks/use-scroll-anchor-v2";
-import { useIsStreaming } from "../../../../hooks/stream/hooks";
-import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
+import { useScrollAnchorV2 } from "../../../shared/hooks/use-scroll-anchor-v2";
+import { useIsStreaming } from "../../../hooks/stream/hooks";
+import { useAuraCapabilities } from "../../../hooks/use-aura-capabilities";
 import type { ChatInputBarHandle, AttachmentItem } from "../ChatInputBar";
-import { useMessageQueueStore, useMessageQueue } from "../../../../stores/message-queue-store";
-import type { QueuedMessage } from "../../../../stores/message-queue-store";
-import type { ChatAttachment } from "../../../../api/streams";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
-import { isGenerationCommand, type SlashCommand } from "../../../../constants/commands";
-import type { GenerationMode } from "../../../../constants/models";
-import { availableModelsForAdapter } from "../../../../constants/models";
-import { useChatDraft, useChatUI } from "../../../../stores/chat-ui-store";
-import { useConversationSnapshot } from "../../../../hooks/use-conversation-snapshot";
-import { useLoadOlderMessages } from "../../../../hooks/use-load-older-messages";
-import { useChatViewStore, useThreadView } from "../../../../stores/chat-view-store";
+import { useMessageQueueStore, useMessageQueue } from "../../../stores/message-queue-store";
+import type { QueuedMessage } from "../../../stores/message-queue-store";
+import type { ChatAttachment } from "../../../api/streams";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
+import type { GenerationMode } from "../../../constants/models";
+import { availableModelsForAdapter } from "../../../constants/models";
+import { useChatDraft, useChatUI } from "../../../stores/chat-ui-store";
+import { useConversationSnapshot } from "../../../hooks/use-conversation-snapshot";
+import { useLoadOlderMessages } from "../../../hooks/use-load-older-messages";
+import { useChatViewStore, useThreadView } from "../../../stores/chat-view-store";
 import {
   dispatch as dispatchResolvedSend,
   resolveSend,

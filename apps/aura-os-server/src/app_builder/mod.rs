@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, OnceCell};
 use tracing::{info, warn};
 
 use aura_os_agents::{AgentInstanceService, AgentService};
@@ -415,6 +415,8 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         stability_metrics,
         started_at,
         harness_broadcast_capacity,
+        public_rate_limiter: crate::handlers::public::RateLimiter::new(),
+        public_demo_agent_id: Arc::new(OnceCell::new()),
     })
 }
 

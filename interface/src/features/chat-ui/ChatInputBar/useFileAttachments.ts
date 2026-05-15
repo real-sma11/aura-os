@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AttachmentItem } from "./ChatInputBar";
-import { uploadFile } from "../../../../api/upload";
-import { api } from "../../../../api/client";
+import { uploadFile } from "../../../api/upload";
+import { api } from "../../../api/client";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_IMAGE_UPLOAD_BYTES = 1_100_000;
@@ -267,7 +267,7 @@ export function useFileAttachments(
       droppedNull: results.length - valid.length,
     });
     if (valid.length) {
-      void import("../../../../lib/analytics").then(({ track }) =>
+      void import("../../../lib/analytics").then(({ track }) =>
         track("file_attached", { file_count: valid.length }),
       );
       const next = [...attachments, ...valid];
@@ -359,7 +359,7 @@ export function useFileAttachments(
     attachmentsRef.current = next;
     onAttachmentsChange(next);
 
-    void import("../../../../lib/analytics").then(({ track }) =>
+    void import("../../../lib/analytics").then(({ track }) =>
       track("file_attached", { file_count: 1, source: "mention" }),
     );
     const realItem = next.find((a) => a.id === id);

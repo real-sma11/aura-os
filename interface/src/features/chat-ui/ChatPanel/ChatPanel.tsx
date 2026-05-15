@@ -12,32 +12,32 @@ import { Text } from "@cypher-asi/zui";
 import { ChatMessageList } from "../ChatMessageList";
 import { DesktopChatInputBar, type ChatInputBarHandle, type ChatInputBarProps } from "../ChatInputBar";
 import { MessageQueue } from "../MessageQueue";
-import { OverlayScrollbar } from "../../../../components/OverlayScrollbar";
+import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
 import { PromptSuggestions } from "../PromptSuggestions/PromptSuggestions";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
 import { useChatPanelState } from "./useChatPanelState";
 import { findLatestGeneratedImage } from "./latest-generated-image";
-import { useChatUIStore } from "../../../../stores/chat-ui-store";
-import { useMessageQueueStore } from "../../../../stores/message-queue-store";
-import { useOnboardingStore, selectHasSentFirstMessage } from "../../../../features/onboarding/onboarding-store";
+import { useChatUIStore } from "../../../stores/chat-ui-store";
+import { useMessageQueueStore } from "../../../stores/message-queue-store";
+import { useOnboardingStore, selectHasSentFirstMessage } from "../../../features/onboarding/onboarding-store";
 import {
   useStreamHealth,
   useStuckStreamAutoTimeout,
-} from "../../../../hooks/stream/use-stream-health";
+} from "../../../hooks/stream/use-stream-health";
 import {
   createSetters,
   ensureEntry,
-} from "../../../../hooks/stream/store";
+} from "../../../hooks/stream/store";
 import {
   getLastSendArgs as getLastAgentChatSendArgs,
-} from "../../../../hooks/use-agent-chat-stream";
-import { getPartitionSendControl } from "../../../../hooks/use-chat-stream/partition-send-control";
-import { recordStreamCloseReason } from "../../../../shared/observability/stream-breadcrumbs";
-import type { ChatAttachment } from "../../../../api/streams";
-import type { Project } from "../../../../shared/types";
-import type { GenerationMode } from "../../../../constants/models";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
-import type { ContextUsageEntry } from "../../../../stores/context-usage-store";
+} from "../../../hooks/use-agent-chat-stream";
+import { getPartitionSendControl } from "../../../hooks/use-chat-stream/partition-send-control";
+import { recordStreamCloseReason } from "../../../shared/observability/stream-breadcrumbs";
+import type { ChatAttachment } from "../../../api/streams";
+import type { Project } from "../../../shared/types";
+import type { GenerationMode } from "../../../constants/models";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 import styles from "./ChatPanel.module.css";
 
 type ChatPanelHandoffMode = "create-agent";

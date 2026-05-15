@@ -43,11 +43,11 @@ let mockIsStreaming = false;
 let mockStreamMessages: Array<Record<string, unknown>> = [];
 let requestAnimationFrameSpy: ReturnType<typeof vi.spyOn> | null = null;
 
-vi.mock("../../../../shared/hooks/use-scroll-anchor-v2", () => ({
+vi.mock("../../../shared/hooks/use-scroll-anchor-v2", () => ({
   useScrollAnchorV2: scrollAnchorMocks.useScrollAnchorV2,
 }));
 
-vi.mock("../../../../hooks/use-load-older-messages", () => ({
+vi.mock("../../../hooks/use-load-older-messages", () => ({
   useLoadOlderMessages: () => ({
     loadOlder: vi.fn(),
     isLoadingOlder: false,
@@ -55,7 +55,7 @@ vi.mock("../../../../hooks/use-load-older-messages", () => ({
   }),
 }));
 
-vi.mock("../../../../stores/chat-view-store", () => ({
+vi.mock("../../../stores/chat-view-store", () => ({
   useChatViewStore: {
     getState: () => ({
       incrementUnread: vi.fn(),
@@ -71,20 +71,20 @@ vi.mock("../../../../stores/chat-view-store", () => ({
   }),
 }));
 
-vi.mock("../../../../hooks/stream/hooks", () => ({
+vi.mock("../../../hooks/stream/hooks", () => ({
   useIsStreaming: () => mockIsStreaming,
   useStreamEvents: () => mockStreamMessages,
 }));
 
-vi.mock("../../../../hooks/use-aura-capabilities", () => ({
+vi.mock("../../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({ isMobileLayout: false }),
 }));
 
-vi.mock("../../../../constants/models", () => ({
+vi.mock("../../../constants/models", () => ({
   availableModelsForAdapter: () => [],
 }));
 
-vi.mock("../../../../stores/chat-ui-store", async () => {
+vi.mock("../../../stores/chat-ui-store", async () => {
   const { useState } = await import("react");
   return {
     useChatUI: () => mockChatUI,
@@ -95,7 +95,7 @@ vi.mock("../../../../stores/chat-ui-store", async () => {
   };
 });
 
-vi.mock("../../../../stores/message-queue-store", () => ({
+vi.mock("../../../stores/message-queue-store", () => ({
   useMessageQueueStore: {
     getState: () => ({
       enqueue: mockEnqueue,
@@ -107,7 +107,7 @@ vi.mock("../../../../stores/message-queue-store", () => ({
   useMessageQueue: () => [],
 }));
 
-vi.mock("../../../../constants/commands", () => ({
+vi.mock("../../../constants/commands", () => ({
   isGenerationCommand: (id: string) => id === "generate_image" || id === "generate_3d" || id === "generate_video",
 }));
 

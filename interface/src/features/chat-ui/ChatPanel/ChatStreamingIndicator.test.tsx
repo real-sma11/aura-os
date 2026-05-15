@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
-import type { ToolCallEntry } from "../../../../shared/types/stream";
-import type { StreamHealth } from "../../../../hooks/stream/use-stream-health";
+import type { ToolCallEntry } from "../../../shared/types/stream";
+import type { StreamHealth } from "../../../hooks/stream/use-stream-health";
 
 const mockStreamEntry: {
   isStreaming: boolean;
@@ -29,12 +29,12 @@ const mockStreamHealth: StreamHealth = {
   stuckForMs: null,
 };
 
-vi.mock("../../../../hooks/stream/store", () => ({
+vi.mock("../../../hooks/stream/store", () => ({
   useStreamStore: (selector: (state: unknown) => unknown) =>
     selector({ entries: { "stream-1": mockStreamEntry } }),
 }));
 
-vi.mock("../../../../hooks/stream/use-stream-health", () => ({
+vi.mock("../../../hooks/stream/use-stream-health", () => ({
   useStreamHealth: () => mockStreamHealth,
 }));
 
@@ -42,7 +42,7 @@ vi.mock("./ChatPanel.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../../../../components/StuckStreamPill/StuckStreamPill.module.css", () => ({
+vi.mock("../../../components/StuckStreamPill/StuckStreamPill.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 

@@ -1,4 +1,4 @@
-import type { DisplaySessionEvent, ToolCallEntry } from "../../../../shared/types/stream";
+import type { DisplaySessionEvent, ToolCallEntry } from "../../../shared/types/stream";
 
 /**
  * The minimal "source image" shape the chat 3D mode needs to dispatch

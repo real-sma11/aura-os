@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { ChevronDown, Pencil, ArrowUp, Trash2 } from "lucide-react";
-import { useMessageQueue } from "../../../../stores/message-queue-store";
-import type { QueuedMessage } from "../../../../stores/message-queue-store";
+import { useMessageQueue } from "../../../stores/message-queue-store";
+import type { QueuedMessage } from "../../../stores/message-queue-store";
 import styles from "./MessageQueue.module.css";
 
 interface Props {

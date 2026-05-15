@@ -27,6 +27,7 @@ pub(crate) mod project_artifacts;
 pub(crate) mod project_stats;
 pub(crate) mod projects;
 pub(crate) mod projects_helpers;
+pub(crate) mod public;
 pub(crate) mod remote_files;
 pub(crate) mod remote_terminal;
 pub(crate) mod spec_disk;

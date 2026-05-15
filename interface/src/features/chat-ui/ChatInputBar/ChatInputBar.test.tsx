@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 let mockIsStreaming = false;
 let mockIsMobileLayout = false;
-vi.mock("../../../../hooks/stream/hooks", () => ({
+vi.mock("../../../hooks/stream/hooks", () => ({
   useIsStreaming: () => mockIsStreaming,
 }));
 
@@ -11,22 +11,22 @@ vi.mock("./ChatInputBar.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../../../../components/InputBarShell/InputBarShell.module.css", () => ({
+vi.mock("../../../components/InputBarShell/InputBarShell.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../../../../mobile/chat/MobileChatInputBar/MobileChatInputBar.module.css", () => ({
+vi.mock("../../../mobile/chat/MobileChatInputBar/MobileChatInputBar.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../../../../hooks/use-aura-capabilities", () => ({
+vi.mock("../../../hooks/use-aura-capabilities", () => ({
   useAuraCapabilities: () => ({ isMobileLayout: mockIsMobileLayout }),
 }));
 
 // AgentEnvironment now always mounts (it renders an inert placeholder while
 // machineType is undefined to keep the bottom-bar slot stable). Stub out the
 // async hook it depends on so tests don't trigger unwrapped-act warnings.
-vi.mock("../../../../hooks/use-environment-info", () => ({
+vi.mock("../../../hooks/use-environment-info", () => ({
   useEnvironmentInfo: () => ({ data: null, loading: false }),
 }));
 
@@ -42,7 +42,7 @@ const mockSetSelectedMode = vi.fn();
 const mockSetPinnedSourceImage = vi.fn();
 const mockAddFiles = vi.fn();
 const mockHandleRemove = vi.fn();
-vi.mock("../../../../stores/chat-ui-store", () => ({
+vi.mock("../../../stores/chat-ui-store", () => ({
   useChatUI: () => ({
     selectedMode: mockSelectedMode,
     selectedModel: mockSelectedModel,
@@ -66,7 +66,7 @@ vi.mock("./useFileAttachments", () => ({
 }));
 
 import { ChatInputBar } from "../ChatInputBar";
-import { MobileChatInputBar } from "../../../../mobile/chat/MobileChatInputBar";
+import { MobileChatInputBar } from "../../../mobile/chat/MobileChatInputBar";
 import type { AttachmentItem } from "../ChatInputBar";
 
 function makeProps(overrides: Partial<Parameters<typeof ChatInputBar>[0]> = {}) {

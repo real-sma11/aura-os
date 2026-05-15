@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState, memo } from "react";
-import { filterCommands, type SlashCommand } from "../../../../constants/commands";
+import { filterCommands, type SlashCommand } from "../../../constants/commands";
 import styles from "./ChatInputBar.module.css";
 
 interface Props {

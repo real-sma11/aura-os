@@ -27,6 +27,7 @@ pub(crate) mod state;
 pub(crate) mod sync_state;
 
 pub use app_builder::build_app_state;
+pub use handlers::public::RateLimiter as PublicRateLimiter;
 pub use harness_client::{
     bearer_headers, GetHeadResponse, HarnessClient, HarnessClientError, HarnessProbeResult,
     HarnessTxKind, SubmitTxResponse,

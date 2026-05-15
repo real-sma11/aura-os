@@ -5,12 +5,12 @@ import {
   useRef,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { MessageBubble } from "../MessageBubble";
-import { StreamingBubble } from "../StreamingBubble";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
+import { MessageBubble } from "../../../apps/chat/components/MessageBubble";
+import { StreamingBubble } from "../../../apps/chat/components/StreamingBubble";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
 
-import { useStreamStore } from "../../../../hooks/stream/store";
-import { useImageScrollPin } from "../../../../shared/hooks/use-image-scroll-pin";
+import { useStreamStore } from "../../../hooks/stream/store";
+import { useImageScrollPin } from "../../../shared/hooks/use-image-scroll-pin";
 
 interface ChatMessageListProps {
   messages: DisplaySessionEvent[];

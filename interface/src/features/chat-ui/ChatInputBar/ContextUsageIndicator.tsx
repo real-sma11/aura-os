@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import type { ContextBreakdown } from "../../../../stores/context-usage-store";
+import type { ContextBreakdown } from "../../../stores/context-usage-store";
 import styles from "./ChatInputBar.module.css";
 
 export interface ContextUsageIndicatorProps {

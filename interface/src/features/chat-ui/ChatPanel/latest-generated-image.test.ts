@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DisplaySessionEvent } from "../../../../shared/types/stream";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { findLatestGeneratedImage } from "./latest-generated-image";
 
 function evt(

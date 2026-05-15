@@ -7,7 +7,7 @@ vi.mock("./ChatInputBar.module.css", () => ({
 }));
 
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
-import type { ContextBreakdown } from "../../../../stores/context-usage-store";
+import type { ContextBreakdown } from "../../../stores/context-usage-store";
 
 function fixtureBreakdown(): ContextBreakdown {
   return {

@@ -1,10 +1,10 @@
 import { useShallow } from "zustand/react/shallow";
-import { CookingIndicator } from "../../../../components/CookingIndicator";
-import { StuckStreamPill } from "../../../../components/StuckStreamPill";
-import { useStreamStore } from "../../../../hooks/stream/store";
-import { useStreamHealth } from "../../../../hooks/stream/use-stream-health";
-import { getStreamingPhaseLabel } from "../../../../utils/streaming";
-import type { ToolCallEntry } from "../../../../shared/types/stream";
+import { CookingIndicator } from "../../../components/CookingIndicator";
+import { StuckStreamPill } from "../../../components/StuckStreamPill";
+import { useStreamStore } from "../../../hooks/stream/store";
+import { useStreamHealth } from "../../../hooks/stream/use-stream-health";
+import { getStreamingPhaseLabel } from "../../../utils/streaming";
+import type { ToolCallEntry } from "../../../shared/types/stream";
 import styles from "./ChatPanel.module.css";
 
 const EMPTY_TOOL_CALLS: ToolCallEntry[] = [];
