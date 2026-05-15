@@ -363,13 +363,21 @@ export function connectEventSocket() {
     (data: string) => {
       try {
         const raw = JSON.parse(data) as Record<string, unknown>;
+        // Phase 4 wire shape (server commit `83752884b`):
+        //   `user_message` / `assistant_message_end` carry
+        //   `{ session_id, project_id, project_agent_id, agent_id }`
+        //   at the top level. Other event types (e.g.
+        //   `session_summary_updated`, `assistant_turn_progress`) still
+        //   send `agent_instance_id`; the parser handles that fallback
+        //   when `project_agent_id` is missing.
         const event = parseAuraEvent(
           raw.type as string,
           raw,
           {
             session_id: raw.session_id as string | undefined,
             project_id: raw.project_id as string | undefined,
-            agent_id: raw.agent_instance_id as string | undefined,
+            agent_id: raw.agent_id as string | undefined,
+            project_agent_id: raw.project_agent_id as string | undefined,
           },
         );
         handleSocketEngineEvent(event);
