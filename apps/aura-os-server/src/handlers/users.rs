@@ -10,6 +10,8 @@ use crate::capture_auth::is_capture_access_token;
 use crate::error::{map_network_error, ApiResult};
 use crate::state::{persist_zero_auth_session, AppState, AuthJwt};
 
+use super::upload::PresignResponse;
+
 // ---------------------------------------------------------------------------
 // Response types (snake_case for local API)
 // ---------------------------------------------------------------------------
@@ -187,6 +189,160 @@ pub(crate) async fn get_profile(
     Ok(Json(ProfileResponse::from(profile)))
 }
 
+fn zos_api_url() -> String {
+    std::env::var("ZOS_API_URL").unwrap_or_else(|_| "https://zosapi.zero.tech".to_string())
+}
+
+/// Download an mxc:// image from the Matrix homeserver and re-upload it to
+/// AURA's S3 via the presign flow.  Returns the permanent S3 URL.
+///
+/// Flow:  zOS SSO token → Matrix login → authenticated media download → S3.
+/// Returns `None` on any failure (non-fatal).
+async fn rehost_mxc_avatar(
+    state: &AppState,
+    mxc_url: &str,
+    zos_access_token: &str,
+    router_jwt: &str,
+) -> Option<String> {
+    let rest = mxc_url.strip_prefix("mxc://")?;
+    let (server, media_id) = rest.split_once('/')?;
+
+    // 1. Get Matrix SSO token from zOS API
+    let sso_resp = state
+        .http_client
+        .get(format!("{}/accounts/ssoToken", zos_api_url()))
+        .bearer_auth(zos_access_token)
+        .send()
+        .await
+        .ok()?;
+    if !sso_resp.status().is_success() {
+        tracing::warn!(status = %sso_resp.status(), "Failed to get zOS SSO token for avatar download");
+        return None;
+    }
+    let sso_body: serde_json::Value = sso_resp.json().await.ok()?;
+    let sso_token = sso_body.get("token")?.as_str()?;
+
+    // 2. Discover the real Matrix homeserver URL via .well-known
+    let well_known_resp = state
+        .http_client
+        .get(format!("https://{server}/.well-known/matrix/client"))
+        .send()
+        .await
+        .ok()?;
+    let homeserver_url = if well_known_resp.status().is_success() {
+        let wk: serde_json::Value = well_known_resp.json().await.ok()?;
+        wk.get("m.homeserver")?
+            .get("base_url")?
+            .as_str()?
+            .trim_end_matches('/')
+            .to_string()
+    } else {
+        format!("https://{server}")
+    };
+
+    // 3. Login to Matrix with the SSO token to get a Matrix access token
+    let login_resp = state
+        .http_client
+        .post(format!("{homeserver_url}/_matrix/client/v3/login"))
+        .json(&serde_json::json!({
+            "type": "org.matrix.login.jwt",
+            "token": sso_token,
+        }))
+        .send()
+        .await
+        .ok()?;
+    if !login_resp.status().is_success() {
+        tracing::warn!(status = %login_resp.status(), "Failed Matrix login for avatar download");
+        return None;
+    }
+    let login_body: serde_json::Value = login_resp.json().await.ok()?;
+    let matrix_access_token = login_body.get("access_token")?.as_str()?;
+
+    // 4. Download the avatar image from Matrix
+    let download_url = format!(
+        "{homeserver_url}/_matrix/client/v1/media/download/{server}/{media_id}"
+    );
+    let image_resp = state
+        .http_client
+        .get(&download_url)
+        .bearer_auth(matrix_access_token)
+        .send()
+        .await
+        .ok()?;
+    if !image_resp.status().is_success() {
+        tracing::warn!(status = %image_resp.status(), "Failed to download mxc avatar from Matrix");
+        return None;
+    }
+
+    let content_type = image_resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/png")
+        .to_string();
+    let image_bytes = image_resp.bytes().await.ok()?;
+
+    // 5. Presign via aura-router and upload to S3
+    let presign_url = format!("{}/v1/upload/presign", state.router_url);
+    let presign_resp = state
+        .http_client
+        .post(&presign_url)
+        .bearer_auth(router_jwt)
+        .json(&serde_json::json!({
+            "content_type": content_type,
+            "filename": format!("zos-avatar-{media_id}.{ext}",
+                ext = match content_type.as_str() {
+                    "image/jpeg" => "jpg",
+                    "image/gif" => "gif",
+                    "image/webp" => "webp",
+                    _ => "png",
+                }),
+        }))
+        .send()
+        .await
+        .ok()?;
+    if !presign_resp.status().is_success() {
+        tracing::warn!(status = %presign_resp.status(), "Failed to get presigned URL for avatar re-upload");
+        return None;
+    }
+    let presign: PresignResponse = presign_resp.json().await.ok()?;
+
+    let upload_resp = state
+        .http_client
+        .put(&presign.upload_url)
+        .header("content-type", &content_type)
+        .body(image_bytes)
+        .send()
+        .await
+        .ok()?;
+    if !upload_resp.status().is_success() {
+        tracing::warn!(status = %upload_resp.status(), "Failed to upload avatar to S3");
+        return None;
+    }
+
+    // Clean up the Matrix session we created for the download.
+    match state
+        .http_client
+        .post(format!("{homeserver_url}/_matrix/client/v3/logout"))
+        .bearer_auth(matrix_access_token)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            tracing::debug!("Matrix session cleaned up after avatar download");
+        }
+        Ok(resp) => {
+            tracing::warn!(status = %resp.status(), "Matrix logout returned non-success (session may linger)");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Matrix logout request failed (session may linger)");
+        }
+    }
+
+    tracing::info!(file_url = %presign.file_url, "Re-hosted mxc avatar to S3");
+    Some(presign.file_url)
+}
+
 /// Sync user to aura-network: populates `network_user_id` and `profile_id`
 /// on the session and refreshes the server-side auth cache plus
 /// the in-memory validation cache. Best-effort — logs warnings on failure
@@ -227,14 +383,53 @@ pub(crate) async fn sync_user_to_network(state: &AppState, session: &mut ZeroAut
                 let remote_name = user.display_name.as_deref().unwrap_or("");
                 let is_uuid = remote_name.len() == 36
                     && remote_name.chars().filter(|c| *c == '-').count() == 4;
-                let should_push = !local_name.is_empty()
+                let should_push_name = !local_name.is_empty()
                     && local_name != remote_name
                     && (remote_name.is_empty() || is_uuid);
 
-                if should_push {
+                // Seed the zOS profile image into aura-network when the
+                // network user doesn't have one yet (or has a stale mxc://
+                // URL from an earlier sync). Once the user uploads a custom
+                // avatar via the AURA profile editor it will be an https://
+                // URL, so this won't overwrite it.
+                let remote_avatar = user.avatar_url.as_deref().unwrap_or("");
+                let remote_needs_avatar = remote_avatar.is_empty()
+                    || remote_avatar.starts_with("mxc://")
+                    || remote_avatar.contains("/_matrix/");
+                let has_mxc_avatar = session.profile_image.starts_with("mxc://");
+
+                // If the session avatar is an mxc:// URL, download from
+                // Matrix and re-host to S3 so browsers can render it.
+                let mut resolved_avatar: Option<String> = None;
+                if remote_needs_avatar && has_mxc_avatar {
+                    resolved_avatar = rehost_mxc_avatar(
+                        state,
+                        &session.profile_image,
+                        &session.access_token,
+                        &session.access_token,
+                    )
+                    .await;
+                    // Update session so the frontend gets the S3 URL immediately
+                    if let Some(ref s3_url) = resolved_avatar {
+                        session.profile_image = s3_url.clone();
+                    }
+                } else if remote_needs_avatar
+                    && !session.profile_image.is_empty()
+                    && session.profile_image.starts_with("http")
+                {
+                    resolved_avatar = Some(session.profile_image.clone());
+                }
+
+                let should_push_avatar = resolved_avatar.is_some();
+
+                if should_push_name || should_push_avatar {
                     let update = aura_os_network::UpdateUserRequest {
-                        display_name: Some(local_name.clone()),
-                        avatar_url: None,
+                        display_name: if should_push_name {
+                            Some(local_name.clone())
+                        } else {
+                            None
+                        },
+                        avatar_url: resolved_avatar,
                         bio: None,
                         location: None,
                         website: None,
@@ -244,11 +439,24 @@ pub(crate) async fn sync_user_to_network(state: &AppState, session: &mut ZeroAut
                         .await
                     {
                         Ok(_) => tracing::info!(
-                            display_name = %local_name,
-                            "Pushed display name to aura-network"
+                            push_name = should_push_name,
+                            push_avatar = should_push_avatar,
+                            "Pushed user data to aura-network"
                         ),
-                        Err(e) => warn!(error = %e, "Failed to push display name (non-fatal)"),
+                        Err(e) => warn!(error = %e, "Failed to push user data (non-fatal)"),
                     }
+
+                    // Re-flush the session cache so concurrent / subsequent
+                    // requests see the resolved S3 avatar URL immediately.
+                    state.validation_cache.insert(
+                        session.access_token.clone(),
+                        crate::state::CachedSession {
+                            session: session.clone(),
+                            validated_at: std::time::Instant::now(),
+                            zero_pro_refresh_error: None,
+                        },
+                    );
+                    persist_zero_auth_session(&state.store, session);
                 }
 
                 tracing::info!(
