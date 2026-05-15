@@ -152,22 +152,88 @@ export function assertNodeMajor(expectedMajor, lane) {
   }
 }
 
+function looksLikeRustcBanner(output) {
+  return typeof output === "string" && /^\s*rustc\s+\d+\.\d+\.\d+/m.test(output);
+}
+
+function probeRustcCandidate(candidate) {
+  if (!candidate) {
+    return null;
+  }
+  const banner = tryCapture(candidate, ["--version"]);
+  return looksLikeRustcBanner(banner) ? candidate : null;
+}
+
 function resolveRustcCommand() {
-  // Prefer `rustup which rustc` so we always invoke the toolchain that
-  // rustup considers active, even when `rustc` on PATH is a non-dispatching
-  // shim. The macos-latest GitHub runner ships Homebrew's `rustup` formula,
-  // which puts `/opt/homebrew/bin/rustc` ahead of `~/.cargo/bin/rustc` on
-  // PATH and points it at `rustup-init`. When `rustup-init` is invoked as
-  // `rustc` it doesn't act as a proxy, it just prints
-  // `rustup-init <its-own-version>`, which used to make the parity gate
-  // fail with `found rustc 1.29.0`.
+  // The macos-latest GitHub runner ships Homebrew's `rustup` formula, which
+  // puts `/opt/homebrew/bin/rustc` (and `rustup`) ahead of `~/.cargo/bin/`
+  // on PATH and points both at `rustup-init`. When `rustup-init` is invoked
+  // as `rustc` (or as `rustup which rustc`) it doesn't act as a proxy, it
+  // just prints `rustup-init <its-own-version>` and exits, which used to
+  // make the parity gate fail with `found rustc 1.29.0`.
+  //
+  // We walk a series of candidate locations and only accept one whose
+  // `--version` output actually starts with the `rustc X.Y.Z` banner.
+
+  // 1) Probe the rustup-managed toolchain directly under CARGO_HOME. This
+  //    is what `dtolnay/rust-toolchain` installs into and lets us sidestep
+  //    Homebrew's shim entirely without depending on PATH ordering.
+  const cargoHome = process.env.CARGO_HOME
+    ? resolve(process.env.CARGO_HOME)
+    : process.env.HOME
+      ? resolve(process.env.HOME, ".cargo")
+      : process.env.USERPROFILE
+        ? resolve(process.env.USERPROFILE, ".cargo")
+        : null;
+  if (cargoHome) {
+    const cargoRustc = resolve(
+      cargoHome,
+      "bin",
+      process.platform === "win32" ? "rustc.exe" : "rustc",
+    );
+    if (existsSync(cargoRustc)) {
+      const probed = probeRustcCandidate(cargoRustc);
+      if (probed) {
+        return probed;
+      }
+    }
+  }
+
+  // 2) Ask rustup which rustc to use, but only trust the answer if it
+  //    actually points at an existing file whose --version output is a
+  //    valid rustc banner.
   const resolved = tryCapture("rustup", ["which", "rustc"]);
   if (resolved) {
     const path = resolved.split(/\r?\n/).pop()?.trim();
-    if (path) {
-      return path;
+    if (path && existsSync(path)) {
+      const probed = probeRustcCandidate(path);
+      if (probed) {
+        return probed;
+      }
     }
   }
+
+  // 3) As a last resort, walk every `rustc` on PATH and pick the first one
+  //    that actually prints a `rustc X.Y.Z` banner. This skips past any
+  //    `rustup-init` shims masquerading as `rustc`.
+  const lookupCmd = process.platform === "win32" ? "where" : "which";
+  const lookupArgs = process.platform === "win32" ? ["rustc"] : ["-a", "rustc"];
+  const candidates = tryCapture(lookupCmd, lookupArgs);
+  if (candidates) {
+    const seen = new Set();
+    for (const raw of candidates.split(/\r?\n/)) {
+      const candidate = raw.trim();
+      if (!candidate || seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      const probed = probeRustcCandidate(candidate);
+      if (probed) {
+        return probed;
+      }
+    }
+  }
+
   return "rustc";
 }
 
