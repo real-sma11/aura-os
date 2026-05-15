@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 import { Panel, Text } from "@cypher-asi/zui";
 import { X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useLoginForm } from "../LoginView/use-login-form";
 import { LoginForm } from "../LoginView/LoginForm";
 import { ResetPasswordForm } from "../LoginView/ResetPasswordForm";
@@ -23,13 +23,25 @@ import styles from "./LoggedOutShell.module.css";
  */
 export function LoginOverlay() {
   const navigate = useNavigate();
+  const location = useLocation();
   const headingId = useId();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const f = useLoginForm();
 
   const handleClose = useCallback(() => {
-    navigate("/");
-  }, [navigate]);
+    // Preserve the visitor's session id when closing the modal so the
+    // public chat surface they came from stays selected in the
+    // sidebar. Dropping the query (the old `navigate("/")` behaviour)
+    // caused `LoggedOutChatView` to auto-mint a fresh empty chat on
+    // the way back out — turning each open/close round trip into a
+    // new "New chat" row. The `tab` selector is the only param worth
+    // dropping; it belongs to the form's internal Sign in / Create
+    // Account state, not the chat surface.
+    const params = new URLSearchParams(location.search);
+    params.delete("tab");
+    const next = params.toString();
+    navigate({ pathname: "/", search: next ? `?${next}` : "" });
+  }, [navigate, location.search]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {

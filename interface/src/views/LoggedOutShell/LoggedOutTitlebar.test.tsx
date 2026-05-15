@@ -60,9 +60,9 @@ vi.mock("../../hooks/use-aura-capabilities", () => ({
 
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 
-function renderTitlebar() {
+function renderTitlebar(initialPath = "/") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]}>
       <LoggedOutTitlebar />
     </MemoryRouter>,
   );
@@ -87,5 +87,24 @@ describe("LoggedOutTitlebar", () => {
     expect(within(actions).getByLabelText("window-minimize")).toBeInTheDocument();
     expect(within(actions).getByLabelText("window-maximize")).toBeInTheDocument();
     expect(within(actions).getByLabelText("window-close")).toBeInTheDocument();
+  });
+
+  it("preserves the active ?session= query when routing to the login modal", () => {
+    // Regression for the "every Log in click mints a new empty chat"
+    // bug. Stripping the session id on the way into `/login` caused
+    // `LoggedOutChatView` (which renders behind the login overlay
+    // too) to re-enter its auto-create branch and append a stray
+    // session to the sidebar. Both pills must carry the current
+    // session id forward; Sign up additionally appends `tab=register`
+    // so the form opens on the Create Account tab.
+    renderTitlebar("/?session=public-abc");
+    const actions = screen.getByTestId("topbar-actions");
+    const loginLink = within(actions).getByRole("link", { name: "Log in" });
+    const registerLink = within(actions).getByRole("link", { name: "Sign up for free" });
+    expect(loginLink).toHaveAttribute("href", "/login?session=public-abc");
+    expect(registerLink).toHaveAttribute(
+      "href",
+      "/login?session=public-abc&tab=register",
+    );
   });
 });

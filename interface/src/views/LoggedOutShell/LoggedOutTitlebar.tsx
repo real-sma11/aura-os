@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import styles from "./LoggedOutShell.module.css";
@@ -14,6 +14,18 @@ import styles from "./LoggedOutShell.module.css";
  * desktop app.
  */
 export function LoggedOutTitlebar() {
+  const { search } = useLocation();
+  // Preserve the active session id (and any other query the public
+  // chat view writes) across the trip into the login modal. Without
+  // this, clicking "Log in" / "Sign up" strips `?session=...` from
+  // the URL, which causes `LoggedOutChatView` to re-enter its
+  // auto-create branch on the `/login` route and mint a fresh empty
+  // chat row in the sidebar every time the modal is opened.
+  const signinSearch = search || "";
+  const signupParams = new URLSearchParams(search);
+  signupParams.set("tab", "register");
+  const signupSearch = `?${signupParams.toString()}`;
+
   return (
     <ShellTitlebar
       icon={
@@ -34,13 +46,13 @@ export function LoggedOutTitlebar() {
           onDoubleClick={(e) => e.stopPropagation()}
         >
           <Link
-            to="/login"
+            to={{ pathname: "/login", search: signinSearch }}
             className={`${styles.authPill} ${styles.authPillPrimary}`}
           >
             Log in
           </Link>
           <Link
-            to="/login?tab=register"
+            to={{ pathname: "/login", search: signupSearch }}
             className={`${styles.authPill} ${styles.authPillSecondary}`}
           >
             Sign up for free

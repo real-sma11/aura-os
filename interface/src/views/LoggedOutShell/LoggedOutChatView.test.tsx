@@ -23,7 +23,13 @@
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseAuth = vi.fn(() => ({ isAuthenticated: false }));
@@ -172,5 +178,74 @@ describe("LoggedOutChatView inline compose", () => {
     // The next= param round-trips the original location so the
     // visitor lands back on the chat surface after auth.
     expect(screen.getByTestId("location").textContent).toMatch(/^\/login/);
+  });
+
+  it("does not mint extra empty sessions when the visitor round-trips through /login", async () => {
+    // Regression for the "every Log in click stacks another empty
+    // chat in the sidebar" bug. Three things have to hold together
+    // for the fix to be observable end-to-end:
+    //
+    //   1. `LoggedOutChatView` only calls `createSession()` once per
+    //      component instance (the ref-guard around the auto-create
+    //      branch — was a `useMemo` side effect that ran on every
+    //      render where `requestedSessionId` was null).
+    //   2. The titlebar Log in / Sign up Links carry the current
+    //      `?session=` forward into `/login` so the chat view's
+    //      `requestedSessionId` is never null on a re-mount.
+    //   3. The login-overlay close handler likewise preserves the
+    //      session id on its way back to `/`.
+    //
+    // This test stubs out the titlebar/overlay by using a navigation
+    // probe that mirrors the fixed `?session=`-preserving behaviour;
+    // the *combined* contract is what the user sees, so we pin it
+    // here rather than relying on three isolated unit tests to
+    // compose correctly. The route table mounts `LoggedOutChatView`
+    // for BOTH `/` and `/login` to mirror the production routing in
+    // `App.tsx` — the same component is rendered while the login
+    // overlay sits on top.
+    const user = userEvent.setup();
+
+    function NavProbe() {
+      const navigate = useNavigate();
+      const location = useLocation();
+      const targets =
+        location.pathname === "/"
+          ? { label: "go-login", to: "/login" }
+          : { label: "go-home", to: "/" };
+      return (
+        <button
+          data-testid={targets.label}
+          onClick={() =>
+            navigate({ pathname: targets.to, search: location.search })
+          }
+        />
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <NavProbe />
+        <Routes>
+          <Route path="/" element={<LoggedOutChatView />} />
+          <Route path="/login" element={<LoggedOutChatView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Initial mount auto-creates exactly one session and writes its
+    // id back into the URL — this is the eager-create-on-first-mount
+    // contract we explicitly want to preserve.
+    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(1);
+
+    // Hop through the login modal three times. Each round trip
+    // would previously add at least one empty "New chat" row to the
+    // sidebar (sometimes two — once on the `/login` mount, once on
+    // the `/` re-mount when the overlay closed).
+    for (let i = 0; i < 3; i += 1) {
+      await user.click(screen.getByTestId("go-login"));
+      await user.click(screen.getByTestId("go-home"));
+    }
+
+    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(1);
   });
 });

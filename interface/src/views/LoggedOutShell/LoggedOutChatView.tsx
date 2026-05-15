@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DesktopChatInputBar } from "../../features/chat-ui/ChatInputBar";
 import { ChatMessageList } from "../../features/chat-ui/ChatMessageList";
@@ -30,10 +30,24 @@ export function LoggedOutChatView() {
   // lands on `/` we mint one and rewrite the URL so the rest of the
   // tree (input bar `streamKey`, sessions panel highlight) can rely
   // on a non-null `sessionId`.
-  const sessionId = useMemo(() => {
-    if (requestedSessionId) return requestedSessionId;
-    return createSession();
-  }, [requestedSessionId, createSession]);
+  //
+  // The lazy-initialised `useState` below is load-bearing:
+  // `createSession()` writes to `usePublicChatStore`, which is a
+  // side effect that does NOT belong inside `useMemo` (memo factories
+  // must be pure, and Strict Mode invokes them twice in dev — the
+  // previous `useMemo` here minted a duplicate empty chat row on
+  // every commit). `useState`'s initializer runs exactly once per
+  // component instance, so even repeated re-renders triggered by the
+  // login modal opening, closing, or surfacing validation errors
+  // never produce a second `createSession()` call. The companion
+  // `?session=` preservation in `LoggedOutTitlebar` and
+  // `LoginOverlay` keeps `requestedSessionId` populated across the
+  // `/` ↔ `/login` round trip so even a full remount of this view
+  // reuses the same id instead of forging a fresh one.
+  const [autoCreatedId] = useState<string | null>(() =>
+    requestedSessionId ? null : createSession(),
+  );
+  const sessionId = requestedSessionId ?? autoCreatedId!;
 
   useEffect(() => {
     if (!requestedSessionId) {
