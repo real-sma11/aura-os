@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   selectShouldShowGate,
   selectSession,
@@ -29,6 +30,7 @@ import {
 import { createSetters, ensureEntry } from "../../hooks/stream/store";
 import { AGENT_MODE_DESCRIPTORS, type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
+import { useAuth } from "../../stores/auth-store";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
@@ -45,6 +47,11 @@ export interface PublicChatController {
   handleStop: () => void;
   input: string;
   setInput: (next: string) => void;
+  /** True when the visitor is anonymous and any send attempt will be
+   *  routed to `/login` (interim gate while the public chat backend
+   *  is unreliable — the surface still mounts so the visitor can
+   *  browse the shell). */
+  requiresLogin: boolean;
 }
 
 const DEFAULT_PUBLIC_MODEL = "aura-gpt-5-4-mini";
@@ -67,6 +74,10 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const session = usePublicChatStore((s) => selectSession(s, sessionId));
   const shouldShowGate = usePublicChatStore(selectShouldShowGate);
   const turnCount = usePublicChatStore((s) => s.turnCount);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
 
   const chatUI = useChatUI(streamKey);
   const selectedMode = chatUI.selectedMode;
@@ -209,6 +220,17 @@ export function usePublicChat(sessionId: string): PublicChatController {
       const trimmed = content.trim();
       if (!trimmed) return;
       if (shouldShowGate) return;
+      // Interim auth gate (Phase 4): the public-chat backend is
+      // currently flaky for anonymous visitors (silent failures from
+      // the guest token + SSE path). Until the router gets a
+      // dedicated JWT-or-guest fallback, route any unauthenticated
+      // send through the login flow so the visitor lands somewhere
+      // useful instead of seeing a click that does nothing.
+      if (!isAuthenticated) {
+        const next = `${location.pathname}${location.search}`;
+        navigate(`/login?next=${encodeURIComponent(next)}`);
+        return;
+      }
       const behavior = AGENT_MODE_DESCRIPTORS[selectedMode].behavior;
       if (behavior.kind === "generate_3d") {
         // Tripo needs a source image; the input bar's attachment
@@ -245,6 +267,10 @@ export function usePublicChat(sessionId: string): PublicChatController {
       dispatchMedia,
       ensureToken,
       handleStop,
+      isAuthenticated,
+      location.pathname,
+      location.search,
+      navigate,
       selectedMode,
       sessionId,
       shouldShowGate,
@@ -263,6 +289,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
     handleStop,
     input,
     setInput,
+    requiresLogin: !isAuthenticated,
   };
 }
 

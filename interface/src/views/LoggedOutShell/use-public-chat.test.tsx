@@ -19,6 +19,8 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 
 interface MockedStreamPublicChatArgs {
   token: string;
@@ -62,9 +64,25 @@ vi.mock("./dispatch-media", () => ({
   },
 }));
 
+// The interim Phase 4 auth gate routes anonymous sends to `/login`;
+// these tests pin the per-mode dispatch contract that runs once the
+// visitor IS authenticated, so the mock returns isAuthenticated=true
+// to bypass the gate. The gate itself is exercised in
+// `LoggedOutChatView.test.tsx`.
+vi.mock("../../stores/auth-store", () => ({
+  useAuth: () => ({ isAuthenticated: true }),
+}));
+
 import { usePublicChat } from "./use-public-chat";
 import { usePublicChatStore } from "../../stores/public-chat-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
+
+function renderPublicChat(sessionId: string) {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter>{children}</MemoryRouter>
+  );
+  return renderHook(() => usePublicChat(sessionId), { wrapper });
+}
 
 beforeEach(() => {
   streamPublicChatMock.mockClear();
@@ -93,7 +111,7 @@ const SESSION_ID = "test-session";
 
 describe("usePublicChat", () => {
   it("routes `code` mode through streamPublicChat", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     // selectedMode defaults to `code` (DEFAULT_AGENT_MODE)
     await act(async () => {
       await result.current.handleSend("hello world");
@@ -105,7 +123,7 @@ describe("usePublicChat", () => {
   });
 
   it("routes `plan` mode through streamPublicChat with mode=plan", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     act(() => {
       useChatUIStore
         .getState()
@@ -119,7 +137,7 @@ describe("usePublicChat", () => {
   });
 
   it("routes `image` mode through dispatchMediaTurn with mode=image", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     act(() => {
       useChatUIStore
         .getState()
@@ -135,7 +153,7 @@ describe("usePublicChat", () => {
   });
 
   it("routes `video` mode through dispatchMediaTurn with mode=video", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     act(() => {
       useChatUIStore
         .getState()
@@ -150,7 +168,7 @@ describe("usePublicChat", () => {
 
   it("`3d` mode short-circuits (no API call) because Tripo needs a source image", async () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     act(() => {
       useChatUIStore.getState().setSelectedMode(`public:${SESSION_ID}`, "3d");
     });
@@ -164,7 +182,7 @@ describe("usePublicChat", () => {
 
   it("short-circuits send when the gate has tripped (turnCount >= limit)", async () => {
     usePublicChatStore.setState({ turnCount: 3 });
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     await act(async () => {
       await result.current.handleSend("blocked");
     });
@@ -173,7 +191,7 @@ describe("usePublicChat", () => {
   });
 
   it("trims whitespace and bails on an empty message", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     await act(async () => {
       await result.current.handleSend("   ");
     });
@@ -182,7 +200,7 @@ describe("usePublicChat", () => {
   });
 
   it("commits a media message with the right shape on completion", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     act(() => {
       useChatUIStore
         .getState()
@@ -213,7 +231,7 @@ describe("usePublicChat", () => {
   });
 
   it("forwards onLimit from the chat stream into setTurnCount", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     await act(async () => {
       await result.current.handleSend("hello");
     });
@@ -227,12 +245,12 @@ describe("usePublicChat", () => {
 
   it("returns shouldShowGate=true once turnCount has hit the limit", () => {
     usePublicChatStore.setState({ turnCount: 3 });
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     expect(result.current.shouldShowGate).toBe(true);
   });
 
   it("appends the user turn into the public-chat store before streaming", async () => {
-    const { result } = renderHook(() => usePublicChat(SESSION_ID));
+    const { result } = renderPublicChat(SESSION_ID);
     await act(async () => {
       await result.current.handleSend("track me");
     });

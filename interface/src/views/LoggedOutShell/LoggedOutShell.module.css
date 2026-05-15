@@ -43,15 +43,15 @@
   overflow: hidden;
 }
 
-.titleLeading {
-  display: inline-flex;
-  align-items: center;
-  height: 100%;
-  gap: var(--space-1, 4px);
-  padding-left: 8px;
+.titleCenter {
+  user-select: none;
+  pointer-events: none;
 }
 
-.titleCenter {
+.titleLogoRight {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 12px;
   user-select: none;
   pointer-events: none;
 }
@@ -61,13 +61,6 @@
   display: block;
   user-select: none;
   pointer-events: none;
-}
-
-.wordmark {
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  font-size: 12px;
-  color: var(--color-text-primary, inherit);
 }
 
 .titleActions {
@@ -81,7 +74,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 14px;
+  /* Vertical padding intentionally trimmed from 6px → 3px to shrink
+     the pill height by ~20% while keeping the same font-size, hit
+     surface, and horizontal rhythm in the titlebar. */
+  padding: 3px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
@@ -158,18 +154,12 @@
 }
 
 .sessionRow {
-  background: transparent;
-  border: 1px solid transparent;
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--color-text-primary, inherit);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
+  gap: 4px;
+  padding: 0 6px 0 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
   min-width: 0;
 }
 
@@ -181,8 +171,22 @@
   background: var(--color-surface-active, rgba(255, 255, 255, 0.1));
 }
 
-.sessionRowTitle {
+.sessionRowSelect {
   flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 8px 4px 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-text-primary, inherit);
+  font: inherit;
+  font-size: 13px;
+}
+
+.sessionRowTitle {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -199,9 +203,11 @@
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
-.sessionRow:hover .deleteButton {
+.sessionRow:hover .deleteButton,
+.deleteButton:focus-visible {
   visibility: visible;
 }
 
@@ -230,7 +236,7 @@
   display: block;
   text-decoration: none;
   font-size: 12px;
-  color: var(--color-text-muted, #8a8a8e);
+  color: var(--color-text-secondary, #c9c9cf);
   padding: 4px 4px;
   border-radius: 4px;
 }
@@ -238,46 +244,6 @@
 .footerLink:hover {
   color: var(--color-text-primary, inherit);
   background: var(--color-surface-hover, rgba(255, 255, 255, 0.05));
-}
-
-.upsellCard {
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--color-surface-subtle, rgba(255, 255, 255, 0.03));
-}
-
-.upsellHeading {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--color-text-primary, inherit);
-}
-
-.upsellBody {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-text-muted, #8a8a8e);
-}
-
-.upsellPill {
-  align-self: flex-start;
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  background: var(--color-on-surface, #fff);
-  color: var(--color-on-light, #111);
-}
-
-.upsellPill:focus-visible {
-  outline: 2px solid var(--color-focus-ring, #6e8cff);
-  outline-offset: 2px;
 }
 
 /* chat view */
@@ -324,4 +290,106 @@
 .inputBarSlotLocked {
   pointer-events: none;
   opacity: 0.55;
+}
+
+/* compose modal — centered card overlaid on the chat view, with the
+   underlying shell visible-but-dimmed behind it. The card itself
+   inherits the surface tokens so the edge meets the dim wash with the
+   same border treatment as every other AURA panel. */
+.composeOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.composeCard {
+  position: relative;
+  width: min(720px, 100%);
+  background: var(--color-surface, #1a1a1d);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 28px 24px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.composeClose {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted, #8a8a8e);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composeClose:hover {
+  color: var(--color-text-primary, inherit);
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+}
+
+.composeHeading {
+  margin: 0;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary, inherit);
+}
+
+.composeInput {
+  /* The shared `DesktopChatInputBar` brings its own internal padding;
+     the wrapper just gates layout width so the bar tracks the card. */
+  width: 100%;
+}
+
+.composeWidgets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.composeWidget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #c9c9cf);
+  background: transparent;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.composeWidget:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary, inherit);
+}
+
+.composeWidgetActive {
+  background: var(--color-on-surface, #fff);
+  color: var(--color-on-light, #111);
+  border-color: var(--color-on-surface, #fff);
+}
+
+.composeWidgetActive:hover {
+  background: var(--color-on-surface, #fff);
+  color: var(--color-on-light, #111);
 }

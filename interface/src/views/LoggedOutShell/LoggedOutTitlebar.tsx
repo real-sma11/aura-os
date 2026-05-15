@@ -4,33 +4,15 @@ import styles from "./LoggedOutShell.module.css";
 
 /**
  * Logged-out variant of `components/DesktopShell/DesktopTitlebar`. The
- * left slot is intentionally minimal (no `OrgSelector` or `MenuBar` —
- * those affordances only make sense once a session exists), and the
- * actions slot is replaced with two CTA pills that route into
- * `LoginView`. There are no `WindowControls`, `EarnCreditsButton`, or
- * host-settings menus because none of those primitives ship a useful
- * affordance for an anonymous visitor on the web build.
+ * `icon` slot now hosts the Log in / Sign up CTA pills (left), the
+ * `title` slot is intentionally empty (no centered wordmark), and the
+ * `actions` slot carries the AURA wordmark on the far right per the
+ * logged-out layout spec.
  */
 export function LoggedOutTitlebar() {
   return (
     <ShellTitlebar
       icon={
-        <span className={`${styles.titleLeading} titlebar-no-drag`}>
-          <span className={styles.wordmark}>AURA</span>
-        </span>
-      }
-      title={
-        <span className={`titlebar-center ${styles.titleCenter}`}>
-          <img
-            src="/AURA_logo_text_mark.png"
-            alt="AURA"
-            draggable={false}
-            className={styles.titleLogo}
-            data-aura-wordmark
-          />
-        </span>
-      }
-      actions={
         <div
           className={`${styles.titleActions} titlebar-no-drag`}
           onDoubleClick={(e) => e.stopPropagation()}
@@ -48,6 +30,18 @@ export function LoggedOutTitlebar() {
             Sign up for free
           </Link>
         </div>
+      }
+      title={null}
+      actions={
+        <span className={styles.titleLogoRight}>
+          <img
+            src="/AURA_logo_text_mark.png"
+            alt="AURA"
+            draggable={false}
+            className={styles.titleLogo}
+            data-aura-wordmark
+          />
+        </span>
       }
     />
   );

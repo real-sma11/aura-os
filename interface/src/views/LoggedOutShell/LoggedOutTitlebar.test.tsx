@@ -1,8 +1,10 @@
 /**
  * Smoke test for the `LoggedOutTitlebar` shell chrome. Verifies the
- * three intentional affordances ship together:
+ * intentional affordances ship together:
  *
- *  - The wordmark / logo render (so the user has a visual anchor).
+ *  - The AURA wordmark renders in the trailing (right) `actions` slot.
+ *  - The leading (left) slot hosts the Log in / Sign up CTA pills.
+ *  - The `title` slot is empty — there is no centered wordmark.
  *  - Both auth pills route into the canonical `/login` paths
  *    (`/login` and `/login?tab=register`) so the marketing/auth flow
  *    stays consistent across the logged-out shell and `LoginView`.
@@ -13,7 +15,7 @@
  * a transitive integration test for the design system.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -50,17 +52,19 @@ function renderTitlebar() {
 }
 
 describe("LoggedOutTitlebar", () => {
-  it("renders without crashing and shows the AURA wordmark", () => {
+  it("renders the AURA logo in the right-hand actions slot and leaves the title slot empty", () => {
     renderTitlebar();
     expect(screen.getByTestId("zui-topbar-stub")).toBeInTheDocument();
-    expect(screen.getByText("AURA")).toBeInTheDocument();
-    expect(screen.getByAltText("AURA")).toBeInTheDocument();
+    const actions = screen.getByTestId("topbar-actions");
+    expect(within(actions).getByAltText("AURA")).toBeInTheDocument();
+    expect(screen.getByTestId("topbar-title")).toBeEmptyDOMElement();
   });
 
-  it("ships both auth pills and routes them to the canonical /login paths", () => {
+  it("hosts the Log in / Sign up pills in the leading icon slot", () => {
     renderTitlebar();
-    const loginLink = screen.getByRole("link", { name: "Log in" });
-    const registerLink = screen.getByRole("link", { name: "Sign up for free" });
+    const icon = screen.getByTestId("topbar-icon");
+    const loginLink = within(icon).getByRole("link", { name: "Log in" });
+    const registerLink = within(icon).getByRole("link", { name: "Sign up for free" });
     expect(loginLink).toHaveAttribute("href", "/login");
     expect(registerLink).toHaveAttribute("href", "/login?tab=register");
   });
