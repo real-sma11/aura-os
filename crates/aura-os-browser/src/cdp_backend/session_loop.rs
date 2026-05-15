@@ -33,8 +33,9 @@ use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
+use url::Url;
 
-use crate::protocol::ServerEvent;
+use crate::protocol::{ClientMsg, ServerEvent};
 use crate::session::SessionId;
 
 use super::command::SessionCommand;
@@ -42,6 +43,7 @@ use super::handlers::{
     handle_cmd, handle_frame, handle_loading_failed, handle_nav, handle_response_received,
     set_loading, update_pending_main_nav, LoopState, NavTracker,
 };
+use super::input::apply_client_msg;
 use super::screencast::start_screencast;
 
 /// How many un-acked frames a client may have outstanding before the
@@ -60,6 +62,13 @@ pub(super) struct SessionLoopCtx {
     pub quality: i64,
     pub width: u16,
     pub height: u16,
+    /// Real URL to navigate to once the CDP event streams are
+    /// subscribed. Deferring the initial nav into the loop (instead of
+    /// passing it to `browser.new_page`) is what guarantees we observe
+    /// the first hit's `requestWillBeSent` / `responseReceived` /
+    /// `loadingFailed`; missing those was why the themed error overlay
+    /// only appeared on the second attempt.
+    pub initial_url: Option<Url>,
 }
 
 /// Subscribed CDP event streams. Held by [`pump_events`] for the lifetime
@@ -116,6 +125,7 @@ pub(super) async fn run_session_loop(ctx: SessionLoopCtx) {
         quality,
         width,
         height,
+        initial_url,
     } = ctx;
 
     let init = InitArgs {
@@ -130,6 +140,18 @@ pub(super) async fn run_session_loop(ctx: SessionLoopCtx) {
         Ok(s) => s,
         Err(()) => return,
     };
+
+    // Subscriptions are live; now kick off the real navigation. This
+    // is the whole point of deferring it: every CDP event from the
+    // first hit flows through our streams so `handle_response_received`
+    // and `handle_loading_failed` can surface a `NavError` on the
+    // initial attempt instead of waiting for a refresh.
+    if let Some(url) = initial_url {
+        if let Err(err) = apply_client_msg(&page, ClientMsg::Navigate { url }).await {
+            warn!(%id, %err, "initial navigate failed");
+        }
+    }
+
     let state = LoopState {
         seq: 0,
         pending_acks: VecDeque::new(),
