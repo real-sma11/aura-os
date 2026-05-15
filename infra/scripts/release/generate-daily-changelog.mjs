@@ -39,6 +39,13 @@ const anthropicModel = process.env.CHANGELOG_ANTHROPIC_MODEL?.trim() || "claude-
 const anthropicMaxTokens = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_MAX_TOKENS || "", 10) || 8192;
 const anthropicRetryMaxTokens = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_RETRY_MAX_TOKENS || "", 10) || 16384;
 const anthropicFinalMaxTokens = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_FINAL_MAX_TOKENS || "", 10) || 24576;
+const anthropicHttpMaxRetries = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_HTTP_MAX_RETRIES || "", 10);
+const anthropicHttpBaseDelayMs = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_HTTP_BASE_DELAY_MS || "", 10);
+const anthropicHttpMaxDelayMs = Number.parseInt(process.env.CHANGELOG_ANTHROPIC_HTTP_MAX_DELAY_MS || "", 10);
+// Anthropic uses 529 for capacity overload and recommends retry with backoff.
+// 408/425/429 cover client-side timing/rate-limit signals; 5xx covers transient
+// upstream failures. Every other non-2xx is treated as terminal.
+const RETRYABLE_HTTP_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
 const STRICT_TOOL_SUPPORTED_MODELS = [
   "claude-opus-4-7",
   "claude-opus-4-6",
@@ -742,6 +749,118 @@ function preservePublishedEntryMedia(rendered, previousRendered) {
   };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+function parseRetryAfterMs(headers) {
+  if (!headers || typeof headers.get !== "function") {
+    return null;
+  }
+  const retryAfterMs = headers.get("retry-after-ms");
+  if (retryAfterMs) {
+    const parsed = Number.parseFloat(retryAfterMs);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter) {
+    const parsedSeconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
+      return parsedSeconds * 1000;
+    }
+    const parsedDate = Date.parse(retryAfter);
+    if (Number.isFinite(parsedDate)) {
+      return Math.max(0, parsedDate - Date.now());
+    }
+  }
+  return null;
+}
+
+function computeBackoffDelayMs(attempt, baseDelayMs, maxDelayMs, randomFn = Math.random) {
+  // Exponential backoff with full jitter in [0.5x, 1.0x] of the cap.
+  const exponential = baseDelayMs * 2 ** Math.max(0, attempt - 1);
+  const capped = Math.min(maxDelayMs, exponential);
+  const jitterMultiplier = 0.5 + randomFn() * 0.5;
+  return Math.round(capped * jitterMultiplier);
+}
+
+async function fetchAnthropicMessagesWithRetry(requestBody, options = {}) {
+  const {
+    fetchImpl = fetch,
+    apiKey = anthropicApiKey,
+    maxRetries = Number.isFinite(anthropicHttpMaxRetries) && anthropicHttpMaxRetries >= 0
+      ? anthropicHttpMaxRetries
+      : 5,
+    baseDelayMs = Number.isFinite(anthropicHttpBaseDelayMs) && anthropicHttpBaseDelayMs >= 0
+      ? anthropicHttpBaseDelayMs
+      : 2000,
+    maxDelayMs = Number.isFinite(anthropicHttpMaxDelayMs) && anthropicHttpMaxDelayMs >= 0
+      ? anthropicHttpMaxDelayMs
+      : 60000,
+    sleepImpl = sleep,
+    randomFn = Math.random,
+    log = (message) => {
+      console.error(message);
+    },
+  } = options;
+
+  const totalAttempts = maxRetries + 1;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt >= totalAttempts) {
+        throw new Error(`Anthropic request failed after ${attempt} attempts: ${String(error)}`);
+      }
+      const fallbackDelayMs = computeBackoffDelayMs(attempt, baseDelayMs, maxDelayMs, randomFn);
+      log(`Anthropic network error on attempt ${attempt}/${totalAttempts} (${String(error)}); retrying in ${fallbackDelayMs}ms`);
+      await sleepImpl(fallbackDelayMs);
+      continue;
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    const status = response.status;
+    const isRetryable = RETRYABLE_HTTP_STATUSES.has(status);
+    if (!isRetryable || attempt >= totalAttempts) {
+      const body = await response.text().catch(() => "");
+      const suffix = !isRetryable
+        ? ""
+        : ` after ${attempt} attempts`;
+      throw new Error(`Anthropic request failed (${status})${suffix}: ${body}`);
+    }
+
+    // Drain body to free the connection before sleeping.
+    await response.text().catch(() => "");
+    const retryAfterMs = parseRetryAfterMs(response.headers);
+    const backoffMs = computeBackoffDelayMs(attempt, baseDelayMs, maxDelayMs, randomFn);
+    const delayMs = Math.min(maxDelayMs, retryAfterMs != null ? Math.max(retryAfterMs, backoffMs) : backoffMs);
+    log(`Anthropic ${status} on attempt ${attempt}/${totalAttempts}; retrying in ${delayMs}ms`);
+    await sleepImpl(delayMs);
+    lastError = new Error(`Anthropic request failed (${status})`);
+  }
+
+  throw lastError || new Error("Anthropic request failed after retries");
+}
+
 async function generateWithAnthropic(bundle, totalCommitCount) {
   assertStrictToolModelSupport(anthropicModel);
   const toolName = "submit_daily_changelog";
@@ -829,29 +948,16 @@ async function generateWithAnthropic(bundle, totalCommitCount) {
 
   for (let attempt = 1; attempt <= maxTokensByAttempt.length; attempt += 1) {
     const maxTokens = maxTokensByAttempt[attempt - 1];
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": anthropicApiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(
-        buildAnthropicRequestBody({
-          model: anthropicModel,
-          maxTokens,
-          systemPrompt,
-          tool,
-          userPrompt,
-          retryInstruction,
-        }),
-      ),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Anthropic request failed (${response.status}): ${body}`);
-    }
+    const response = await fetchAnthropicMessagesWithRetry(
+      buildAnthropicRequestBody({
+        model: anthropicModel,
+        maxTokens,
+        systemPrompt,
+        tool,
+        userPrompt,
+        retryInstruction,
+      }),
+    );
 
     const json = await response.json();
     const stopReason = String(json?.stop_reason || "unknown");
@@ -1150,6 +1256,9 @@ export {
   assertStrictToolModelSupport,
   batchCommits,
   buildAnthropicRequestBody,
+  computeBackoffDelayMs,
+  fetchAnthropicMessagesWithRetry,
+  parseRetryAfterMs,
   preservePublishedEntryMedia,
   validateRenderedEntry,
 };
