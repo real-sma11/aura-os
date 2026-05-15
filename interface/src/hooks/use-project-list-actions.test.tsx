@@ -3,6 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { api } from "../api/client";
 import { ApiClientError } from "../shared/api/core";
+import { queryClient } from "../shared/lib/query-client";
+import { projectQueryKeys } from "../queries/project-queries";
 import { useProjectListActions } from "./use-project-list-actions";
 import { CREATE_AGENT_CHAT_HANDOFF } from "../utils/chat-handoff";
 
@@ -449,5 +451,41 @@ describe("useProjectListActions", () => {
 
     expect(mockSetProjects).toHaveBeenCalled();
     expect(result.current.settingsTarget).toBeNull();
+  });
+
+  // Regression: editing the project's `local_workspace_path` updates
+  // every child agent instance's server-derived `workspace_path`, but the
+  // env-overlay's "Workspace Folder" row stayed stale until a manual
+  // reload because the agent-instance react-query cache wasn't dropped.
+  // `handleProjectSaved` must refetch the project's agents and invalidate
+  // the per-instance cache so consumers like `useTerminalTarget` resolve
+  // the new path immediately.
+  it("handleProjectSaved refreshes agent caches so the env overlay re-resolves", () => {
+    const invalidateSpy = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+
+    try {
+      const { result } = renderHook(() => useProjectListActions(), { wrapper });
+
+      act(() => {
+        result.current.handleProjectSaved({
+          project_id: "p-1",
+          org_id: "o-1",
+          name: "Updated",
+          description: "",
+          current_status: "active",
+          created_at: "",
+          updated_at: "",
+        });
+      });
+
+      expect(mockRefreshProjectAgents).toHaveBeenCalledWith("p-1");
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: projectQueryKeys.agentInstancesForProject("p-1"),
+      });
+    } finally {
+      invalidateSpy.mockRestore();
+    }
   });
 });

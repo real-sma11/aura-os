@@ -241,6 +241,7 @@ vi.mock("../../../stores/projects-list-store", () => ({
       getState: () => ({
         patchAgentTemplateFields: vi.fn(),
         refreshProjectAgents: vi.fn(async () => []),
+        refreshAgentInstancesForTemplate: vi.fn(),
       }),
     },
   ),

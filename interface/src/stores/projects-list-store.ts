@@ -103,6 +103,22 @@ interface ProjectsListState {
   ) => void;
   refreshProjectAgents: (projectId: string) => Promise<AgentInstance[]>;
   patchAgentTemplateFields: (agent: Agent) => void;
+  /**
+   * Returns the project ids that currently host an instance of the given
+   * agent template. Used after editing an agent template so callers can
+   * refresh every project whose instance `workspace_path` was server-derived
+   * from the template's `local_workspace_path`.
+   */
+  projectIdsForAgent: (agentId: string) => string[];
+  /**
+   * Refetch the agent list (and drop the per-instance cache) for every
+   * project whose instances reference the given agent template. Run this
+   * after saving an agent template whose server-derived projection on
+   * `AgentInstance` (e.g. `workspace_path`) may have changed, so consumers
+   * like `useTerminalTarget` (env overlay's "Workspace Folder" row) pick
+   * up the new value without a manual page reload.
+   */
+  refreshAgentInstancesForTemplate: (agentId: string) => void;
   openNewProjectModal: () => void;
   closeNewProjectModal: () => void;
 }
@@ -346,6 +362,26 @@ export const useProjectsListStore = create<ProjectsListState>()((set, get) => ({
       }
       return {};
     });
+  },
+
+  projectIdsForAgent: (agentId: string) => {
+    const result: string[] = [];
+    for (const [pid, instances] of Object.entries(get().agentsByProject)) {
+      if (instances.some((inst) => inst.agent_id === agentId)) {
+        result.push(pid);
+      }
+    }
+    return result;
+  },
+
+  refreshAgentInstancesForTemplate: (agentId: string) => {
+    const projectIds = get().projectIdsForAgent(agentId);
+    for (const pid of projectIds) {
+      void get().refreshProjectAgents(pid);
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.agentInstancesForProject(pid),
+      });
+    }
   },
 
   openNewProjectModal: () => set({ newProjectModalOpen: true }),

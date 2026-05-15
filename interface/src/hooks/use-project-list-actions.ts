@@ -277,9 +277,20 @@ export function useProjectListActions() {
       setProjects((prev) => prev.map((existing) => (
         existing.project_id === project.project_id ? project : existing
       )));
+      // The server folds `Project.local_workspace_path` into every
+      // child agent instance's `workspace_path` (see
+      // `resolve_workspace_path` in the server). Refetch the project
+      // agents list and drop the per-instance cache so consumers like
+      // `useTerminalTarget` (which feeds the env overlay's "Workspace
+      // Folder" row) re-resolve with the freshly saved path instead of
+      // the stale one cached by react-query.
+      void refreshProjectAgents(project.project_id);
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.agentInstancesForProject(project.project_id),
+      });
       setSettingsTarget(null);
     },
-    [setProjects],
+    [refreshProjectAgents, setProjects],
   );
 
   return {
