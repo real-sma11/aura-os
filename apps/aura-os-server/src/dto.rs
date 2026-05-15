@@ -293,6 +293,15 @@ pub(crate) struct SendChatRequest {
     /// wins and a fresh session is created.
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Set by `send_to_agent` in aura-harness when agent A messages
+    /// agent B. Threaded onto [`crate::handlers::agents::chat::ChatPersistCtx`]
+    /// and read by `persist_task` to post B's reply back into A's
+    /// session as a follow-up `user_message`. Older clients omit the
+    /// field — `#[serde(default)]` keeps wire compat. Cross-repo
+    /// contract documented in
+    /// `c:\code\aura-harness\crates\aura-runtime\src\session\cross_agent_hook.rs::deliver_message`.
+    #[serde(default)]
+    pub originating_agent_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -552,5 +561,42 @@ mod tests {
         let req: TransitionTaskRequest =
             serde_json::from_str(r#"{ "status": "done" }"#).expect("status alias decodes");
         assert_eq!(req.new_status, TaskStatus::Done);
+    }
+
+    /// Phase 2 of the `send_to_agent` cross-agent reply contract.
+    /// aura-harness commit `6a9b33d` (branch
+    /// `fix/agent-stuck-and-reset`) makes
+    /// `cross_agent_hook::deliver_message` POST
+    /// `originating_agent_id` on the JSON body for both
+    /// `POST /api/agents/:agent_id/events/stream` and
+    /// `POST /api/projects/:project_id/agents/:agent_instance_id/events/stream`.
+    /// Phase 3 will read it from `ChatPersistCtx` inside `persist_task`
+    /// and post agent B's reply back into agent A's session as a
+    /// follow-up `user_message`. This test pins the wire shape so a
+    /// rename / drop here can't silently break the harness contract.
+    #[test]
+    fn send_chat_request_accepts_originating_agent_id() {
+        let req: SendChatRequest = serde_json::from_str(
+            r#"{ "content": "hi", "originating_agent_id": "ceo-agent-id" }"#,
+        )
+        .expect("originating_agent_id decodes");
+        assert_eq!(req.content, "hi");
+        assert_eq!(req.originating_agent_id.as_deref(), Some("ceo-agent-id"));
+    }
+
+    /// Forward-compat with older harness builds that don't yet send
+    /// `originating_agent_id`. `#[serde(default)]` must leave the
+    /// field as `None` rather than 422'ing the request — otherwise a
+    /// version skew between aura-os-server and aura-harness would
+    /// brick every chat turn during a partial rollout.
+    #[test]
+    fn send_chat_request_defaults_originating_agent_id_to_none() {
+        let req: SendChatRequest =
+            serde_json::from_str(r#"{ "content": "hi" }"#).expect("legacy body decodes");
+        assert_eq!(req.content, "hi");
+        assert!(
+            req.originating_agent_id.is_none(),
+            "missing field must default to None for wire compat with pre-Phase-1 harness builds"
+        );
     }
 }

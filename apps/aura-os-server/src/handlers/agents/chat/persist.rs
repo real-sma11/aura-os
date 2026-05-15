@@ -58,6 +58,16 @@ pub(crate) struct ChatPersistCtx {
     /// `send_to_agent` deliveries only refresh the sender's view and
     /// the recipient's chat window stays stale until the user hits F5.
     pub(crate) agent_id: Option<String>,
+    /// Set by `send_to_agent` in aura-harness when agent A messages
+    /// agent B (sourced from
+    /// [`crate::dto::SendChatRequest::originating_agent_id`]). Phase 3
+    /// of the cross-agent reply plan will read this from
+    /// `persist_task` on `AssistantMessageEnd` and post B's reply back
+    /// into A's session as a follow-up `user_message`, so the sender's
+    /// chat surfaces the response without a manual refresh. Cross-repo
+    /// contract documented in
+    /// `c:\code\aura-harness\crates\aura-runtime\src\session\cross_agent_hook.rs::deliver_message`.
+    pub(crate) originating_agent_id: Option<String>,
 }
 
 /// Outcome of attempting to validate a caller-supplied

@@ -22,6 +22,7 @@ pub(crate) async fn setup_project_chat_persistence(
     jwt: &str,
     force_new: bool,
     pinned_session_id: Option<&str>,
+    originating_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = state.storage_client.as_ref()?.clone();
     let jwt = jwt.to_string();
@@ -55,6 +56,7 @@ pub(crate) async fn setup_project_chat_persistence(
             // broadcast — the sidebar's standalone-chat view wouldn't key
             // on a project session anyway.
             agent_id: None,
+            originating_agent_id,
         },
         resolved.fork,
     ))
@@ -67,6 +69,7 @@ pub(crate) async fn setup_agent_chat_persistence(
     jwt: &str,
     force_new: bool,
     pinned_session_id: Option<&str>,
+    originating_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = match state.storage_client.as_ref() {
         Some(s) => s.clone(),
@@ -91,6 +94,7 @@ pub(crate) async fn setup_agent_chat_persistence(
         pinned_session_id,
         state.session_service.as_ref(),
         state.chat_auto_fork_threshold,
+        originating_agent_id,
     )
     .await
 }
@@ -154,6 +158,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     pinned_session_id: Option<&str>,
     session_service: &aura_os_sessions::SessionService,
     auto_fork_threshold: f64,
+    originating_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let (pai, pid) = if let Some(pa) = matching.first() {
         let pid = pa.project_id.clone().unwrap_or_default();
@@ -213,6 +218,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             project_agent_id: pai,
             project_id: pid,
             agent_id: Some(agent_id.to_string()),
+            originating_agent_id,
         },
         resolved.fork,
     ))
@@ -277,7 +283,9 @@ pub(crate) async fn reset_agent_session(
 ) -> ApiResult<StatusCode> {
     let session_key = aura_os_core::harness_agent_id(&agent_id, None);
     remove_live_session(&state, &session_key).await;
-    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None).await;
+    // `reset-session` is a destructive admin op, not a cross-agent
+    // turn — there's no upstream sender to thread back into.
+    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None, None).await;
     info!(%agent_id, "Agent chat session reset");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -324,6 +332,8 @@ pub(crate) async fn reset_instance_session(
         &jwt,
         true,
         None,
+        // Reset endpoints aren't cross-agent turns; no sender to record.
+        None,
     )
     .await;
     info!(%agent_instance_id, "Instance chat session reset");
@@ -360,7 +370,7 @@ mod tests {
 
         let svc = test_session_service(storage.clone());
         let ctx = setup_agent_chat_persistence_with_matched(
-            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8,
+            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8, None,
         )
         .await;
 
@@ -411,6 +421,7 @@ mod tests {
             None,
             &svc,
             0.8,
+            None,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -426,6 +437,70 @@ mod tests {
         assert!(
             fork.is_none(),
             "a freshly-created chat session must not surface a fork event"
+        );
+        assert!(
+            ctx.originating_agent_id.is_none(),
+            "default call site passes None for the cross-agent sender"
+        );
+    }
+
+    /// Phase 2 cross-agent reply contract: when the caller threads a
+    /// non-`None` `originating_agent_id` through
+    /// [`setup_agent_chat_persistence_with_matched`], it must land
+    /// verbatim on the returned [`super::ChatPersistCtx`] so the Phase
+    /// 3 `AssistantMessageEnd` callback can post B's reply back into
+    /// A's session. Mirrors the wire field added in
+    /// [`crate::dto::SendChatRequest::originating_agent_id`].
+    #[tokio::test]
+    async fn originating_agent_id_threads_through_to_persist_ctx() {
+        let (url, _db) = start_mock_storage().await;
+        let storage = Arc::new(StorageClient::with_base_url(&url));
+        let agent_id = AgentId::new();
+        let project_id = aura_os_core::ProjectId::new().to_string();
+        let project_agent = StorageProjectAgent {
+            id: "pa-orig".to_string(),
+            project_id: Some(project_id.clone()),
+            org_id: Some("org-1".to_string()),
+            agent_id: Some(agent_id.to_string()),
+            name: Some("agent".to_string()),
+            role: None,
+            personality: None,
+            system_prompt: None,
+            skills: None,
+            icon: None,
+            harness: None,
+            status: Some("active".to_string()),
+            model: None,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            instance_role: None,
+            permissions: None,
+            intent_classifier: None,
+            created_at: None,
+            updated_at: None,
+        };
+
+        let svc = test_session_service(storage.clone());
+        let sender = "ceo-agent-id".to_string();
+        let (ctx, _fork) = setup_agent_chat_persistence_with_matched(
+            &storage,
+            &agent_id,
+            "jwt",
+            false,
+            std::slice::from_ref(&project_agent),
+            None,
+            &svc,
+            0.8,
+            Some(sender.clone()),
+        )
+        .await
+        .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
+
+        assert_eq!(
+            ctx.originating_agent_id.as_deref(),
+            Some(sender.as_str()),
+            "originating_agent_id must round-trip into ChatPersistCtx so Phase 3 \
+             can read it on AssistantMessageEnd"
         );
     }
 

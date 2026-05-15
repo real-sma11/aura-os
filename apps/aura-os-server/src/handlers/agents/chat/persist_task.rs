@@ -8,7 +8,7 @@ use aura_os_harness::HarnessOutbound;
 use aura_os_storage::StorageClient;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::constants::ASSISTANT_TURN_PROGRESS_THROTTLE;
 use super::event_bus::{
@@ -100,6 +100,19 @@ async fn run_persist_loop(
     model: Option<String>,
     extras: ChatPersistTaskExtras,
 ) {
+    // Phase 6 cross-agent observability breadcrumb. Phase 3 will read
+    // `ctx.originating_agent_id` from inside this task to post B's
+    // reply back into A's session on `AssistantMessageEnd`; logging
+    // it on entry gives operators a single grep target
+    // (`target = "aura::cross_agent"`) for tracing a `send_to_agent`
+    // hop end-to-end across the harness ↔ os-server boundary.
+    debug!(
+        target: "aura::cross_agent",
+        session_id = %ctx.session_id,
+        project_agent_id = %ctx.project_agent_id,
+        originating_agent_id = ?ctx.originating_agent_id,
+        "persist_task started"
+    );
     let mut state = PersistTaskState::new();
     // Phase 5 observability: a turn is "completed_ok" only when the
     // persist task observes a clean `AssistantMessageEnd` AND no
@@ -488,6 +501,7 @@ mod tests {
             project_id: "project-test".to_string(),
             project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
             agent_id: None,
+            originating_agent_id: None,
             jwt: "jwt".to_string(),
         };
         let mut end = AssistantMessageEnd {
@@ -529,6 +543,7 @@ mod tests {
             project_id: "project-test".to_string(),
             project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
             agent_id: None,
+            originating_agent_id: None,
             jwt: "jwt".to_string(),
         };
         let mut end = AssistantMessageEnd {

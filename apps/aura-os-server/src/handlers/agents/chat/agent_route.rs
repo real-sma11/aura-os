@@ -129,6 +129,12 @@ pub(crate) async fn send_agent_event_stream(
         force_new,
         live_session,
         pinned_session_id.as_deref(),
+        // Phase 2 of the cross-agent reply plan: thread the harness's
+        // `originating_agent_id` (set by `send_to_agent` in
+        // aura-harness, commit 6a9b33d) onto the persist ctx so the
+        // Phase 3 AssistantMessageEnd callback can post the reply
+        // back into agent A's session.
+        body.originating_agent_id.clone(),
     )
     .await;
 
@@ -312,6 +318,7 @@ async fn resolve_pinned_session_for_agent(
     )))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn load_persistence_and_history(
     state: &AppState,
     agent_id: &AgentId,
@@ -319,6 +326,7 @@ async fn load_persistence_and_history(
     force_new: bool,
     live_session: bool,
     pinned_session_id: Option<&str>,
+    originating_agent_id: Option<String>,
 ) -> (
     Option<ChatPersistCtx>,
     Option<ForkInfo>,
@@ -360,6 +368,7 @@ async fn load_persistence_and_history(
         pinned_session_id,
         state.session_service.as_ref(),
         state.chat_auto_fork_threshold,
+        originating_agent_id,
     );
     let history_fut = build_history_future(
         storage,

@@ -153,6 +153,12 @@ pub(crate) async fn send_event_stream(
         &jwt,
         force_new,
         pinned_session_id.as_deref(),
+        // Phase 2 of the cross-agent reply plan: thread the harness's
+        // `originating_agent_id` (set by `send_to_agent` in
+        // aura-harness, commit 6a9b33d) onto the persist ctx so the
+        // Phase 3 AssistantMessageEnd callback can post the reply
+        // back into agent A's session.
+        body.originating_agent_id.clone(),
     )
     .await;
     let (persist_ctx, fork_info) = match persist_outcome {

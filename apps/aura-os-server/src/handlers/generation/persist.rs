@@ -64,6 +64,9 @@ pub(super) async fn resolve_persist_ctx(
                 jwt,
                 false,
                 None,
+                // Image / 3D generation isn't a cross-agent reply
+                // — no sender to thread through.
+                None,
             )
             .await
             {
@@ -90,7 +93,8 @@ pub(super) async fn resolve_persist_ctx(
     if let Some(agent_id) = agent_id {
         if let Ok(parsed_agent) = agent_id.parse::<AgentId>() {
             if let Some((ctx, _fork)) =
-                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None).await
+                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None, None)
+                    .await
             {
                 // See the project-chat branch above: generation
                 // turns don't surface the auto-fork SSE event so
@@ -386,6 +390,7 @@ mod tests {
             project_agent_id: project_agent_id.clone(),
             project_id: project_id.clone(),
             agent_id: Some("agent-image-mode".to_string()),
+            originating_agent_id: None,
         };
         let (event_bus, _rx) = broadcast::channel::<Value>(8);
         let meta = GenerationPersistMeta {
