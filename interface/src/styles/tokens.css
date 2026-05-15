@@ -134,8 +134,14 @@
   --color-terminal-fg: #cccccc;
   --color-terminal-cursor: #aeafad;
   --color-terminal-cursor-accent: var(--color-bg);
-  --color-terminal-selection-bg: #264f78;
-  --color-terminal-selection-inactive-bg: rgba(38, 79, 120, 0.7);
+  /* Selection follows the active accent (ZUI's --color-accent /
+     --color-accent-contrast pair), so highlighted text reflects the user's
+     accent choice and stays legible across the cyan/blue/purple/green/
+     orange/rose palettes. The inactive variant fades to ~50% via color-mix
+     so an unfocused terminal still shows where the previous selection was. */
+  --color-terminal-selection-bg: var(--color-accent);
+  --color-terminal-selection-fg: var(--color-accent-contrast);
+  --color-terminal-selection-inactive-bg: color-mix(in srgb, var(--color-accent) 50%, transparent);
 
   --color-terminal-ansi-black: #000000;
   --color-terminal-ansi-red: #cd3131;
@@ -262,8 +268,9 @@
   --color-terminal-fg: #1f2937;
   --color-terminal-cursor: #374151;
   --color-terminal-cursor-accent: var(--color-bg);
-  --color-terminal-selection-bg: #bfdbfe;
-  --color-terminal-selection-inactive-bg: rgba(191, 219, 254, 0.7);
+  --color-terminal-selection-bg: var(--color-accent);
+  --color-terminal-selection-fg: var(--color-accent-contrast);
+  --color-terminal-selection-inactive-bg: color-mix(in srgb, var(--color-accent) 50%, transparent);
 
   --color-terminal-ansi-black: #000000;
   --color-terminal-ansi-red: #cd3131;
