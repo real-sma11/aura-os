@@ -103,7 +103,11 @@ fn restart_after_install(state: &UpdateState, update: &Update) -> Result<(), Str
                 record_step_only(
                     state,
                     UpdateStep::RelaunchSpawned,
-                    Some(&format!("pid={} bundle={}", child.id(), bundle_path.display())),
+                    Some(&format!(
+                        "pid={} bundle={}",
+                        child.id(),
+                        bundle_path.display()
+                    )),
                 );
             }
             Err(error) => {
@@ -341,12 +345,8 @@ fn write_windows_handoff_script(
     let aura_exe_path = std::env::current_exe()
         .map_err(|e| format!("failed to resolve current Aura executable path: {e}"))?;
     let script_path = handoff_script_path(data_dir, version);
-    let script = build_windows_handoff_script(
-        installer_path,
-        &aura_exe_path,
-        log_path,
-        sentinel_path,
-    )?;
+    let script =
+        build_windows_handoff_script(installer_path, &aura_exe_path, log_path, sentinel_path)?;
     fs::write(&script_path, script).map_err(|e| {
         format!(
             "failed to write Windows update handoff script {}: {e}",
@@ -642,7 +642,11 @@ fn summarise_for_detail(value: &str) -> String {
     if trimmed.is_empty() {
         return "<empty>".to_string();
     }
-    let last = trimmed.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or(trimmed);
+    let last = trimmed
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or(trimmed);
     let cleaned: String = last
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -684,11 +688,7 @@ fn run_preflight(state: &UpdateState) -> Result<BundleLocation, String> {
     );
 
     if bundle.blocks_in_place_update() {
-        let detail = format!(
-            "reason={} {}",
-            bundle.reason(),
-            bundle.detail()
-        );
+        let detail = format!("reason={} {}", bundle.reason(), bundle.detail());
         record_step_only(state, UpdateStep::PreflightFailed, Some(&detail));
         return Err(format!(
             "Aura is running from a read-only location ({reason}) and cannot install \
@@ -847,8 +847,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
                         sentinel_path.display()
                     )),
                 );
-                let (_, stderr_tail) =
-                    capture_handoff_output(state, &stdout_path, &stderr_path);
+                let (_, stderr_tail) = capture_handoff_output(state, &stdout_path, &stderr_path);
                 let stderr_excerpt = stderr_tail
                     .as_deref()
                     .map(summarise_for_detail)
@@ -877,8 +876,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
                         HANDOFF_SENTINEL_HARD_CEILING.as_millis()
                     )),
                 );
-                let (_, stderr_tail) =
-                    capture_handoff_output(state, &stdout_path, &stderr_path);
+                let (_, stderr_tail) = capture_handoff_output(state, &stdout_path, &stderr_path);
                 let stderr_excerpt = stderr_tail
                     .as_deref()
                     .map(summarise_for_detail)
@@ -907,11 +905,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
         // before we begin tearing the parent down.
         record_step_only(state, UpdateStep::ShutdownTriggered, None);
         request_event_loop_shutdown(state);
-        record_step_only(
-            state,
-            UpdateStep::ProcessExitCalled,
-            Some("graceful=true"),
-        );
+        record_step_only(state, UpdateStep::ProcessExitCalled, Some("graceful=true"));
         // Drop the Child handle without killing the process. The handoff
         // is detached and must outlive Aura so it can run the installer.
         drop(child);
@@ -950,8 +944,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
 pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), String> {
     use std::path::PathBuf;
 
-    let bundle = inspect_bundle()
-        .map_err(|e| format!("failed to inspect running bundle: {e}"))?;
+    let bundle = inspect_bundle().map_err(|e| format!("failed to inspect running bundle: {e}"))?;
     if !bundle.blocks_in_place_update() {
         return Err(format!(
             "refusing to relocate a writable bundle (path={} translocated={} read_only={})",
@@ -1009,7 +1002,11 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         ("dest", dest_str.as_ref()),
         ("staging", staging_str.as_ref()),
     ] {
-        if value.contains('\'') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        if value.contains('\'')
+            || value.contains('"')
+            || value.contains('\n')
+            || value.contains('\r')
+        {
             let message = format!(
                 "refusing to embed {label} path containing quote/CR/LF in osascript command: {value:?}"
             );
@@ -1043,18 +1040,14 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         staging = staging_str,
         dest = dest_str,
     );
-    let apple_script = format!(
-        "do shell script \"{shell}\" with administrator privileges"
-    );
+    let apple_script = format!("do shell script \"{shell}\" with administrator privileges");
 
     let status = Command::new("osascript")
         .arg("-e")
         .arg(&apple_script)
         .status()
         .map_err(|error| {
-            let message = format!(
-                "failed to spawn osascript for /Applications relocate: {error}"
-            );
+            let message = format!("failed to spawn osascript for /Applications relocate: {error}");
             record_step_only(state, UpdateStep::RelocateFailed, Some(&message));
             message
         })?;
@@ -1098,10 +1091,7 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         record_step_only(
             state,
             UpdateStep::RelaunchFailed,
-            Some(&format!(
-                "error={error} dest={}",
-                dest.display()
-            )),
+            Some(&format!("error={error} dest={}", dest.display())),
         );
         // Don't return here — the bundle is in /Applications, the user
         // can open it from Finder. Continue to shutdown.
@@ -1489,9 +1479,7 @@ mod tests {
         assert!(script.contains(
             r#"set "INSTALLER=C:\Users\Test User\AppData\Local\aura\runtime\updater\aura setup.exe""#
         ));
-        assert!(script.contains(
-            r#"set "AURA_EXE=C:\Users\Test User\AppData\Local\Aura\Aura.exe""#
-        ));
+        assert!(script.contains(r#"set "AURA_EXE=C:\Users\Test User\AppData\Local\Aura\Aura.exe""#));
     }
 
     #[test]
@@ -1514,17 +1502,12 @@ mod tests {
     #[test]
     fn write_windows_handoff_script_writes_bat_to_disk() {
         let data_dir = unique_temp_dir("write-script");
-        fs::create_dir_all(data_dir.join(INSTALLER_STAGE_SUBDIR))
-            .expect("create stage dir");
+        fs::create_dir_all(data_dir.join(INSTALLER_STAGE_SUBDIR)).expect("create stage dir");
         let installer = data_dir.join(INSTALLER_STAGE_SUBDIR).join("aura-setup.exe");
         let log = data_dir.join("logs").join("updater.log");
-        let sentinel = data_dir
-            .join(INSTALLER_STAGE_SUBDIR)
-            .join(".sentinel");
-        let path = write_windows_handoff_script(
-            &data_dir, "9.9.9", &installer, &log, &sentinel,
-        )
-        .expect("write script");
+        let sentinel = data_dir.join(INSTALLER_STAGE_SUBDIR).join(".sentinel");
+        let path = write_windows_handoff_script(&data_dir, "9.9.9", &installer, &log, &sentinel)
+            .expect("write script");
         assert!(path.extension().and_then(|s| s.to_str()) == Some("bat"));
         let body = fs::read_to_string(&path).expect("read script");
         assert!(body.contains("@echo off"));
@@ -1621,10 +1604,13 @@ mod tests {
         let stderr = stage.join("smoke.bat.err");
         let log = temp_dir.join("logs").join("updater.log");
         fs::create_dir_all(log.parent().unwrap()).expect("create log dir");
-        let mut child = spawn_windows_handoff(&temp_dir, &script, &stdout, &stderr)
-            .expect("spawn handoff");
+        let mut child =
+            spawn_windows_handoff(&temp_dir, &script, &stdout, &stderr).expect("spawn handoff");
         let _ = child.wait();
-        assert!(sentinel.exists(), "sentinel should have been written by .bat");
+        assert!(
+            sentinel.exists(),
+            "sentinel should have been written by .bat"
+        );
         fs::remove_dir_all(&temp_dir).ok();
     }
 
@@ -1649,10 +1635,7 @@ mod tests {
     fn summarise_for_detail_takes_last_nonempty_line_and_strips_controls() {
         assert_eq!(summarise_for_detail(""), "<empty>");
         assert_eq!(summarise_for_detail("\n   \n"), "<empty>");
-        assert_eq!(
-            summarise_for_detail("first\nsecond\nthird\n"),
-            "\"third\""
-        );
+        assert_eq!(summarise_for_detail("first\nsecond\nthird\n"), "\"third\"");
         assert!(summarise_for_detail("line\twith\tcontrol").contains(' '));
     }
 }

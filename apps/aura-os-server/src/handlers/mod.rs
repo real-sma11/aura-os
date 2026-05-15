@@ -39,7 +39,7 @@ pub(crate) mod task_decompose;
 pub(crate) mod tasks;
 pub(crate) mod terminal;
 pub(crate) mod trusted_mcp;
-pub(crate) mod upload;
 pub(crate) mod trusted_runtime;
+pub(crate) mod upload;
 pub(crate) mod users;
 pub(crate) mod ws;

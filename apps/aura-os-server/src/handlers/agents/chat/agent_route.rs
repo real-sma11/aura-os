@@ -316,8 +316,7 @@ async fn resolve_pinned_session_for_agent(
         // anyway on the persist side.
         return Ok(None);
     };
-    let matching =
-        find_matching_project_agents(state, storage, jwt, &agent_id.to_string()).await;
+    let matching = find_matching_project_agents(state, storage, jwt, &agent_id.to_string()).await;
     for binding in &matching {
         match try_pin_session(storage.as_ref(), jwt, &binding.id, Some(requested)).await {
             PinnedSessionOutcome::Matched(id) => return Ok(Some(id)),

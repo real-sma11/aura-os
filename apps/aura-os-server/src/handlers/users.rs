@@ -259,9 +259,8 @@ async fn rehost_mxc_avatar(
     let matrix_access_token = login_body.get("access_token")?.as_str()?;
 
     // 4. Download the avatar image from Matrix
-    let download_url = format!(
-        "{homeserver_url}/_matrix/client/v1/media/download/{server}/{media_id}"
-    );
+    let download_url =
+        format!("{homeserver_url}/_matrix/client/v1/media/download/{server}/{media_id}");
     let image_resp = state
         .http_client
         .get(&download_url)

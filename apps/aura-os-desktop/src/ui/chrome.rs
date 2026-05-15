@@ -319,24 +319,15 @@ mod tests {
         // Just below the band: the titlebar drag region / standard
         // client area must take over (returning `None` so the caller
         // forwards to DefSubclassProc).
-        assert_eq!(
-            classify_top_resize_hit(640, 10, width, top, border_x),
-            None
-        );
+        assert_eq!(classify_top_resize_hit(640, 10, width, top, border_x), None);
         assert_eq!(
             classify_top_resize_hit(640, 200, width, top, border_x),
             None
         );
         // Negative client coordinates can occur for windows partially
         // off-screen; never claim them.
-        assert_eq!(
-            classify_top_resize_hit(-1, 5, width, top, border_x),
-            None
-        );
-        assert_eq!(
-            classify_top_resize_hit(640, -1, width, top, border_x),
-            None
-        );
+        assert_eq!(classify_top_resize_hit(-1, 5, width, top, border_x), None);
+        assert_eq!(classify_top_resize_hit(640, -1, width, top, border_x), None);
     }
 
     #[test]

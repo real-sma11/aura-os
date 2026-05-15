@@ -135,9 +135,8 @@ impl HarnessLink for LocalHarness {
                     // immediately so the existing capacity mapper in
                     // the server keeps firing.
                     if is_capacity_exhausted_ws_error(&err) {
-                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted).context(
-                            format!("local harness websocket connect rejected: {err}"),
-                        ));
+                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
+                            .context(format!("local harness websocket connect rejected: {err}")));
                     }
                     last_err = Some(
                         anyhow::Error::new(err).context("local harness websocket connect failed"),

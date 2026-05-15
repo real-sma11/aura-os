@@ -35,7 +35,9 @@ fn normalized_for_identity_leaves_non_ceo_empty_bundle_alone() {
     // with empty permissions stays empty so users opt into capabilities
     // explicitly via the Permissions tab.
     let empty = AgentPermissions::empty();
-    let same = empty.clone().normalized_for_identity("Atlas", Some("Engineer"));
+    let same = empty
+        .clone()
+        .normalized_for_identity("Atlas", Some("Engineer"));
     assert_eq!(same, empty);
 }
 

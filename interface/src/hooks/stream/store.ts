@@ -316,8 +316,15 @@ export function getLastEventAt(key: string): number | null {
  * (`setIsStreaming`, `setIsWriting`) deliberately do NOT call this:
  * the streaming-true flip on send is not a wire event, and clearing
  * it on completion shouldn't pretend a fresh event landed.
+ *
+ * Exported for handlers that observe a wire event without driving
+ * any setter — currently the `generation_partial_image` SSE arm in
+ * the chat-stream handlers, which would otherwise let the
+ * `useStuckStreamAutoTimeout` watchdog auto-abort a long
+ * partial-image render (e.g. `gpt-image-2`) that legitimately
+ * exceeds 60s between `progress` frames.
  */
-function markEntryEventReceived(key: string): void {
+export function markStreamProgress(key: string): void {
   const now = Date.now();
   useStreamStore.setState((s) => {
     const existing = s.entries[key];
@@ -360,31 +367,31 @@ export function createSetters(key: string): StreamSetters {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { streamingText: resolve(v, cur?.streamingText ?? "") });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setThinkingText(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { thinkingText: resolve(v, cur?.thinkingText ?? "") });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setThinkingDurationMs(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { thinkingDurationMs: resolve(v, cur?.thinkingDurationMs ?? null) });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setActiveToolCalls(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { activeToolCalls: resolve(v, cur?.activeToolCalls ?? []) });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setEvents(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { events: resolve(v, cur?.events ?? []) });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setIsStreaming(v) {
       touchEntry(key);
@@ -400,13 +407,13 @@ export function createSetters(key: string): StreamSetters {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { progressText: resolve(v, cur?.progressText ?? "") });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
     setTimeline(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { timeline: resolve(v, cur?.timeline ?? []) });
-      markEntryEventReceived(key);
+      markStreamProgress(key);
     },
   };
 }

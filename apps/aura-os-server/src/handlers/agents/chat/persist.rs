@@ -117,9 +117,7 @@ pub(crate) async fn try_pin_session(
             if sessions.iter().any(|s| s.id == pinned) {
                 PinnedSessionOutcome::Matched(pinned)
             } else {
-                PinnedSessionOutcome::Mismatch {
-                    session_id: pinned,
-                }
+                PinnedSessionOutcome::Mismatch { session_id: pinned }
             }
         }
         Err(e) => {
@@ -128,9 +126,7 @@ pub(crate) async fn try_pin_session(
                 error = %e,
                 "Failed to list sessions while validating pinned session_id; treating as mismatch"
             );
-            PinnedSessionOutcome::Mismatch {
-                session_id: pinned,
-            }
+            PinnedSessionOutcome::Mismatch { session_id: pinned }
         }
     }
 }
@@ -567,9 +563,7 @@ mod pin_tests {
     use aura_os_storage::testutil::start_mock_storage;
     use aura_os_storage::{CreateSessionRequest, StorageClient};
 
-    use super::{
-        resolve_chat_session_with_pin, try_pin_session, PinnedSessionOutcome,
-    };
+    use super::{resolve_chat_session_with_pin, try_pin_session, PinnedSessionOutcome};
 
     /// Build a minimal `SessionService` wired to the same mock storage
     /// the rest of these tests use, so `resolve_chat_session_with_pin`
@@ -633,8 +627,13 @@ mod pin_tests {
     #[tokio::test]
     async fn try_pin_session_mismatches_when_session_id_is_unknown() {
         let (storage, _sid) = fixture("agent-c").await;
-        let outcome =
-            try_pin_session(&storage, "jwt", "agent-c", Some("session-from-another-agent")).await;
+        let outcome = try_pin_session(
+            &storage,
+            "jwt",
+            "agent-c",
+            Some("session-from-another-agent"),
+        )
+        .await;
         assert_eq!(
             outcome,
             PinnedSessionOutcome::Mismatch {

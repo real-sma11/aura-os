@@ -162,13 +162,11 @@ pub fn evaluate_partition_busy(
                     && entry.template_agent_id == *template
                     && is_busy(entry)
             })
-            .map(
-                |((entry_project, entry_instance), entry)| BusyMatch {
-                    project_id: *entry_project,
-                    agent_instance_id: *entry_instance,
-                    automaton_id: entry.automaton_id.clone(),
-                },
-            ),
+            .map(|((entry_project, entry_instance), entry)| BusyMatch {
+                project_id: *entry_project,
+                agent_instance_id: *entry_instance,
+                automaton_id: entry.automaton_id.clone(),
+            }),
         BusyScope::Unscoped => None,
     }
 }

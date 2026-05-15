@@ -42,10 +42,7 @@ fn public_generation_enabled() -> bool {
 pub(super) fn public_routes() -> Router<AppState> {
     let mut router = Router::new()
         .route("/api/public/setup", post(public::public_setup))
-        .route(
-            "/api/public/chat/stream",
-            post(public::public_chat_stream),
-        );
+        .route("/api/public/chat/stream", post(public::public_chat_stream));
     if public_generation_enabled() {
         router = router
             .route(

@@ -293,10 +293,7 @@ pub(super) fn record_step_only(
     step: diagnostics::UpdateStep,
     detail: Option<&str>,
 ) {
-    let status = state
-        .status
-        .read()
-        .expect("updater status lock poisoned");
+    let status = state.status.read().expect("updater status lock poisoned");
     let status_str = status.discriminant_str();
     let version = status.version().map(str::to_string);
     let channel = status.channel().map(|c| c.as_str().to_string());

@@ -354,8 +354,14 @@ mod tests {
         assert_eq!(obj["agent_id"], serde_json::Value::Null);
 
         // The non-id fields are still well-formed.
-        assert_eq!(obj["type"], serde_json::Value::String("user_message".into()));
-        assert_eq!(obj["session_id"], serde_json::Value::String("sess-1".into()));
+        assert_eq!(
+            obj["type"],
+            serde_json::Value::String("user_message".into())
+        );
+        assert_eq!(
+            obj["session_id"],
+            serde_json::Value::String("sess-1".into())
+        );
         assert_eq!(obj.len(), 5);
     }
 
@@ -373,9 +379,7 @@ mod tests {
         publish_assistant_message_end_event(&tx, &ctx, "msg-1");
 
         let user_msg = rx.try_recv().expect("user_message must enqueue");
-        let asst_end = rx
-            .try_recv()
-            .expect("assistant_message_end must enqueue");
+        let asst_end = rx.try_recv().expect("assistant_message_end must enqueue");
 
         let mut user_obj = user_msg
             .as_object()
@@ -388,8 +392,12 @@ mod tests {
 
         // Lift out the `type` discriminator so the rest of the
         // structural comparison can be a single equality check.
-        let user_type = user_obj.remove("type").and_then(|v| v.as_str().map(String::from));
-        let asst_type = asst_obj.remove("type").and_then(|v| v.as_str().map(String::from));
+        let user_type = user_obj
+            .remove("type")
+            .and_then(|v| v.as_str().map(String::from));
+        let asst_type = asst_obj
+            .remove("type")
+            .and_then(|v| v.as_str().map(String::from));
         assert_eq!(user_type.as_deref(), Some("user_message"));
         assert_eq!(asst_type.as_deref(), Some("assistant_message_end"));
 

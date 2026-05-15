@@ -576,10 +576,9 @@ mod tests {
     /// rename / drop here can't silently break the harness contract.
     #[test]
     fn send_chat_request_accepts_originating_agent_id() {
-        let req: SendChatRequest = serde_json::from_str(
-            r#"{ "content": "hi", "originating_agent_id": "ceo-agent-id" }"#,
-        )
-        .expect("originating_agent_id decodes");
+        let req: SendChatRequest =
+            serde_json::from_str(r#"{ "content": "hi", "originating_agent_id": "ceo-agent-id" }"#)
+                .expect("originating_agent_id decodes");
         assert_eq!(req.content, "hi");
         assert_eq!(req.originating_agent_id.as_deref(), Some("ceo-agent-id"));
     }

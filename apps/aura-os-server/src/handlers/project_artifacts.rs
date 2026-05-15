@@ -119,9 +119,7 @@ async fn thumbnail_path(
         .await
         .map_err(map_storage_error)?;
     let raw_project_id = artifact.project_id.ok_or_else(|| {
-        ApiError::not_found(format!(
-            "artifact {artifact_id} has no associated project"
-        ))
+        ApiError::not_found(format!("artifact {artifact_id} has no associated project"))
     })?;
     let project_id = ProjectId::from_str(&raw_project_id).map_err(|e| {
         ApiError::internal(format!(

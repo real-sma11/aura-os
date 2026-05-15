@@ -34,7 +34,7 @@ import {
 } from "../stores/context-usage-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
-import { getLastEventAt } from "./stream/store";
+import { getLastEventAt, markStreamProgress } from "./stream/store";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import type { StreamCloseContext } from "../shared/observability/stream-breadcrumbs";
 
@@ -377,6 +377,13 @@ export function useAgentChatStream({
               core.setProgressText(event.content.message || `${event.content.percent}%`);
               break;
             case EventType.GenerationPartialImage:
+              // Partial-image frames carry no text we want to render,
+              // but they ARE wire activity. Without this ack the 60s
+              // stuck-stream watchdog (`useStuckStreamAutoTimeout`)
+              // auto-aborts long partial-image renders like
+              // `gpt-image-2` whose `progress` events are sparser than
+              // the 60s window.
+              markStreamProgress(core.key);
               break;
             case EventType.GenerationCompleted: {
               const gc = event.content;

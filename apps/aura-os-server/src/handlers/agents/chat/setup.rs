@@ -381,7 +381,16 @@ mod tests {
 
         let svc = test_session_service(storage.clone());
         let ctx = setup_agent_chat_persistence_with_matched(
-            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8, None, 0,
+            &storage,
+            &agent_id,
+            "jwt",
+            false,
+            &[],
+            None,
+            &svc,
+            0.8,
+            None,
+            0,
         )
         .await;
 
@@ -527,9 +536,7 @@ mod tests {
     /// auto-fork branch is a no-op for the active sessions these
     /// tests create, so the SettingsStore-backed `JwtProvider` never
     /// needs a real JWT.
-    fn test_session_service(
-        storage: Arc<StorageClient>,
-    ) -> aura_os_sessions::SessionService {
+    fn test_session_service(storage: Arc<StorageClient>) -> aura_os_sessions::SessionService {
         let tmp = tempfile::TempDir::new().expect("temp dir for SettingsStore");
         let store = Arc::new(
             aura_os_store::SettingsStore::open(tmp.path())

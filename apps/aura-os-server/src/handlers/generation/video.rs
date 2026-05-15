@@ -6,7 +6,9 @@ use crate::error::ApiResult;
 use crate::handlers::billing;
 use crate::state::{AppState, AuthJwt, AuthSession};
 
-use super::harness_stream::{open_generation_stream, resolve_generation_identity, GenerationPersistArgs};
+use super::harness_stream::{
+    open_generation_stream, resolve_generation_identity, GenerationPersistArgs,
+};
 use super::persist::{persist_user_prompt, resolve_persist_ctx, GenerationPersistMeta};
 use super::sse::SseResponse;
 

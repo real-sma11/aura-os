@@ -161,8 +161,7 @@ pub(crate) fn spawn_server(
                 )
                 .route(
                     "/api/update-reveal-logs",
-                    axum_post(handlers::post_update_reveal_logs)
-                        .with_state(update_state.clone()),
+                    axum_post(handlers::post_update_reveal_logs).with_state(update_state.clone()),
                 )
                 .route(
                     "/api/update-stage-only",

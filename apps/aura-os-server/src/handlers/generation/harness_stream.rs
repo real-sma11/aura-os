@@ -602,7 +602,15 @@ pub(super) fn normalize_generation_completed_payload(
             if let Some(value) = string_field(
                 obj,
                 nested_payload.as_ref(),
-                &["imageUrl", "image_url", "assetUrl", "asset_url", "videoUrl", "video_url", "url"],
+                &[
+                    "imageUrl",
+                    "image_url",
+                    "assetUrl",
+                    "asset_url",
+                    "videoUrl",
+                    "video_url",
+                    "url",
+                ],
             ) {
                 obj.insert("imageUrl".to_string(), json!(value));
             }

@@ -44,6 +44,7 @@ import {
   type WireContextBreakdown,
 } from "../../stores/context-usage-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
+import { markStreamProgress } from "../stream/store";
 
 export interface DispatchDeps {
   projectId: string;
@@ -403,6 +404,12 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         setProgressText(event.content.message || `${event.content.percent}%`);
         break;
       case EventType.GenerationPartialImage:
+        // Partial-image frames carry no text we want to render, but they
+        // ARE wire activity. Without this ack the 60s stuck-stream
+        // watchdog (`useStuckStreamAutoTimeout`) auto-aborts long
+        // partial-image renders like `gpt-image-2` whose `progress`
+        // events are sparser than the 60s window.
+        markStreamProgress(coreKey);
         break;
       case EventType.GenerationCompleted: {
         const gc = event.content;

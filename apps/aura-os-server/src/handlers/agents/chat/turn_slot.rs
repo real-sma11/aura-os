@@ -408,8 +408,8 @@ mod tests {
     use tokio::sync::{broadcast, Mutex};
 
     use super::{
-        acquire_turn_slot, acquire_turn_slot_with_cap, max_pending_turns,
-        spawn_turn_slot_release, spawn_turn_watchdog_with_timeouts, DEFAULT_MAX_PENDING_TURNS,
+        acquire_turn_slot, acquire_turn_slot_with_cap, max_pending_turns, spawn_turn_slot_release,
+        spawn_turn_watchdog_with_timeouts, DEFAULT_MAX_PENDING_TURNS,
     };
 
     fn assistant_end() -> HarnessOutbound {
@@ -794,7 +794,10 @@ mod tests {
         assert!(saw_timeout, "watchdog must emit turn_timeout");
 
         let snapshot = metrics.snapshot();
-        assert_eq!(snapshot.turn_timeout, 1, "turn_timeout counter must advance");
+        assert_eq!(
+            snapshot.turn_timeout, 1,
+            "turn_timeout counter must advance"
+        );
         assert_eq!(
             snapshot.stream_stalled, 0,
             "stream_stalled must not advance on sliding-idle timeout"

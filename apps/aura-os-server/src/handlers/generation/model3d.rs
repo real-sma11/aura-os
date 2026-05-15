@@ -9,7 +9,9 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::billing;
 use crate::state::{AppState, AuthJwt, AuthSession};
 
-use super::harness_stream::{open_generation_stream, resolve_generation_identity, GenerationPersistArgs};
+use super::harness_stream::{
+    open_generation_stream, resolve_generation_identity, GenerationPersistArgs,
+};
 use super::persist::{persist_user_prompt, resolve_persist_ctx, GenerationPersistMeta};
 use super::router_proxy::router_url;
 use super::sse::SseResponse;
@@ -41,9 +43,7 @@ pub(crate) async fn generate_3d_stream(
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         })
-        .ok_or_else(|| {
-            ApiError::bad_request("either `image_url` or `image_data` is required")
-        })?;
+        .ok_or_else(|| ApiError::bad_request("either `image_url` or `image_data` is required"))?;
 
     let identity =
         resolve_generation_identity(&state, &auth_session, &jwt, body.project_id.as_deref())

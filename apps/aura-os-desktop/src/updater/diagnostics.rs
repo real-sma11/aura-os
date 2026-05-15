@@ -177,9 +177,7 @@ fn iso8601_now() -> String {
     let total_s = total_ms / 1000;
     let ms = total_ms % 1000;
     let (year, month, day, hour, minute, second) = unix_to_ymdhms(total_s);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{ms:03}Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{ms:03}Z")
 }
 
 /// Convert seconds-since-epoch to (Y, M, D, h, m, s) in UTC. Implemented
@@ -290,8 +288,7 @@ pub(crate) fn load_state_snapshot(data_dir: &Path) -> Result<Option<PersistedUpd
     if !path.exists() {
         return Ok(None);
     }
-    let bytes = fs::read(&path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let bytes = fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
     let state: PersistedUpdateState = serde_json::from_slice(&bytes)
         .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
     Ok(Some(state))
@@ -342,7 +339,11 @@ mod tests {
         let log = fs::read_to_string(updater_log_path(&dir)).expect("read log");
         let lines: Vec<&str> = log.lines().collect();
         assert_eq!(lines.len(), 2);
-        assert!(lines[0].ends_with(" first"), "unexpected line: {}", lines[0]);
+        assert!(
+            lines[0].ends_with(" first"),
+            "unexpected line: {}",
+            lines[0]
+        );
         assert!(lines[1].ends_with(" second"));
         fs::remove_dir_all(&dir).ok();
     }
