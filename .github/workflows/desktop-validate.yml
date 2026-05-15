@@ -95,7 +95,7 @@ jobs:
           include-harness: "true"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.94.1
+        uses: ./.github/actions/setup-rust-toolchain
 
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2

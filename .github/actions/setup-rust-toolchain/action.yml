@@ -1,0 +1,76 @@
+name: Setup Rust toolchain
+description: |
+  Installs the pinned Rust toolchain via dtolnay/rust-toolchain and prepends
+  the toolchain's bin directory to $PATH.
+
+  The PATH-pinning step is what keeps macos-latest builds healthy:
+  Homebrew preinstalls a `rustup` (compiled with `--no-self-update`) at
+  `/opt/homebrew/bin/rustup`, with sibling symlinks for `cargo`, `rustc`,
+  `rustdoc`, etc. that all chain to the same `rustup-init` binary. When
+  Homebrew's `rustup-init` is invoked under one of those proxy names it
+  does not act as a proxy at all -- it just prints
+  `rustup-init <version>` and exits non-zero. Because
+  `dtolnay/rust-toolchain` only adds `$CARGO_HOME/bin` to $PATH on the
+  install branch (skipped when rustup is preinstalled), every subsequent
+  `cargo build` / `rustc --version` step on macos-latest used to resolve
+  to the broken Homebrew shim. Prepending the real toolchain's
+  `${RUSTUP_HOME}/toolchains/<toolchain>/bin` directory short-circuits
+  that PATH lookup with the actual `cargo` / `rustc` binaries.
+
+inputs:
+  toolchain:
+    description: Rust toolchain specification (e.g. "1.94.1"). Defaults to the channel pinned in rust-toolchain.toml, falling back to "1.94.1".
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain via dtolnay
+      uses: dtolnay/rust-toolchain@1.94.1
+
+    - name: Pin Rust toolchain bin dir on PATH
+      shell: bash
+      env:
+        SETUP_RUST_TOOLCHAIN_INPUT: ${{ inputs.toolchain }}
+      run: |
+        set -eo pipefail
+
+        rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+        toolchains_dir="$rustup_home/toolchains"
+        if [ ! -d "$toolchains_dir" ]; then
+          echo "::warning::No rustup toolchains dir at $toolchains_dir; skipping PATH pin"
+          exit 0
+        fi
+
+        desired="$SETUP_RUST_TOOLCHAIN_INPUT"
+        if [ -z "$desired" ] && [ -f rust-toolchain.toml ]; then
+          desired="$(grep -E '^[[:space:]]*channel[[:space:]]*=' rust-toolchain.toml \
+            | head -n1 \
+            | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
+        fi
+        if [ -z "$desired" ]; then
+          desired="1.94.1"
+        fi
+
+        bin_dir=""
+        if [ -d "$toolchains_dir/$desired/bin" ]; then
+          bin_dir="$toolchains_dir/$desired/bin"
+        else
+          candidate="$(ls -1 "$toolchains_dir" 2>/dev/null \
+            | grep -E "^${desired}(-|$)" \
+            | head -n1 \
+            || true)"
+          if [ -n "$candidate" ] && [ -d "$toolchains_dir/$candidate/bin" ]; then
+            bin_dir="$toolchains_dir/$candidate/bin"
+          fi
+        fi
+
+        if [ -z "$bin_dir" ]; then
+          echo "::error::Could not locate Rust toolchain bin dir for '$desired' under $toolchains_dir"
+          ls -la "$toolchains_dir" || true
+          exit 1
+        fi
+
+        echo "$bin_dir" >> "$GITHUB_PATH"
+        echo "Prepended $bin_dir to PATH (resolved toolchain: '$desired')"
