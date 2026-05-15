@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import { Input, Button, Tabs, Spinner } from "@cypher-asi/zui";
 import { AUTH_TABS, type AuthTab } from "./use-login-form";
 import styles from "./LoginView.module.css";
@@ -40,6 +40,26 @@ export function LoginForm({
   onSubmit,
   onForgotPassword,
 }: LoginFormProps) {
+  const emailRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus the email input whenever the visitor enters the
+  // form — both on initial mount AND on tab switches (Sign In ↔
+  // Create Account). The mount case matters because the form is
+  // typically reached by pressing Enter in the public-chat
+  // textarea, which navigates straight into the login modal; the
+  // tab-switch case matters because `handleTabChange` clears the
+  // form so the email field becomes the first interactive control
+  // again. `select()` is called alongside `focus()` so any
+  // pre-filled email (e.g. seeded by a future "remember me" flow)
+  // is immediately overwritable instead of requiring the visitor
+  // to triple-click before typing.
+  useEffect(() => {
+    const node = emailRef.current;
+    if (!node) return;
+    node.focus();
+    node.select();
+  }, [activeTab]);
+
   return (
     <>
       <div className={styles.tabs}>
@@ -48,6 +68,7 @@ export function LoginForm({
 
       <form onSubmit={onSubmit} className={styles.form}>
         <Input
+          ref={emailRef}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
