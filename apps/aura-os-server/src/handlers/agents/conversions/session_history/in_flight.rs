@@ -126,6 +126,7 @@ impl AssistantParts {
             thinking_duration_ms: None,
             created_at: parse_dt(created_at),
             in_flight: Some(true),
+            from_agent_id: None,
         }
     }
 }

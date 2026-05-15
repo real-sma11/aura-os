@@ -185,6 +185,23 @@ pub(super) fn spawn_cross_agent_reply_callback(
     let session_id = ctx.session_id.clone();
     let project_agent_id = ctx.project_agent_id.clone();
     let next_depth = depth.saturating_add(1);
+    // Display-side provenance: stamp Barret's *org-level* agent id
+    // (the same handle A originally addressed via `send_to_agent`)
+    // on the outbound POST as `from_agent_id` so when the persist
+    // path on A's side writes the resulting `user_message`, the
+    // chat panel can label the row "↩ from <Barret>" instead of
+    // styling it indistinguishably from a real user prompt
+    // — that mislabeling is exactly what made every async reply
+    // look like a duplicate of A's original input. We deliberately
+    // use `ctx.agent_id` (the org-level handle) rather than
+    // `ctx.project_agent_id` (the project binding) because the
+    // recipient UI's agent-store is keyed by the org-level id —
+    // see `interface/src/apps/agents/stores/agent-store.ts`. When
+    // there's no org-level handle (project chats), we fall back
+    // to `None`, which keeps the field elided on the wire and
+    // renders the row as a regular user prompt — the safe
+    // pre-fix behavior.
+    let from_agent_id = ctx.agent_id.clone();
 
     tokio::spawn(async move {
         run_cross_agent_reply_callback(
@@ -195,6 +212,7 @@ pub(super) fn spawn_cross_agent_reply_callback(
             bearer_jwt,
             truncated,
             next_depth,
+            from_agent_id,
         )
         .await;
     });
@@ -209,6 +227,7 @@ async fn run_cross_agent_reply_callback(
     bearer_jwt: String,
     reply_body: String,
     next_depth: u32,
+    from_agent_id: Option<String>,
 ) {
     let base_url = aura_os_integrations::control_plane_api_base_url();
     if base_url.contains("127.0.0.1") || base_url.contains("localhost") {
@@ -240,6 +259,18 @@ async fn run_cross_agent_reply_callback(
         "attachments": null,
         "new_session": false,
         "originating_agent_id": null,
+        // `from_agent_id` is the *display*-side cross-agent
+        // provenance field. Distinct from `originating_agent_id`
+        // (which exists for routing the next async reply back, and
+        // is intentionally `null` here for the single-hop fall-off
+        // — see the cycle protection comment at the top of this
+        // module): `from_agent_id` exists so A's chat panel can
+        // label the inbound row "↩ from <Barret>" instead of
+        // letting the reply masquerade as a duplicate user prompt.
+        // `Some(id)` serializes to a string, `None` to JSON null,
+        // so the receiver's `parse_user_message_event` can branch
+        // on presence vs. value cleanly.
+        "from_agent_id": from_agent_id,
     });
 
     debug!(
@@ -247,6 +278,7 @@ async fn run_cross_agent_reply_callback(
         originating_agent_id = %originating_agent_id,
         sender_session_id = %sender_session_id,
         sender_project_agent_id = %sender_project_agent_id,
+        from_agent_id = ?from_agent_id,
         next_depth,
         url = %url,
         body_bytes = reply_body.len(),
@@ -311,6 +343,7 @@ mod tests {
             originating_agent_id: originator.map(str::to_string),
             cross_agent_depth: 0,
             jwt: "jwt".to_string(),
+            from_agent_id: None,
         }
     }
 

@@ -21,6 +21,7 @@ fn assistant_event(content: &str, blocks: Option<Vec<ChatContentBlock>>) -> Sess
         thinking_duration_ms: None,
         created_at: parse_dt(&None),
         in_flight: None,
+        from_agent_id: None,
     }
 }
 
@@ -41,6 +42,7 @@ fn conversation_history_renders_tool_only_assistant_turn_to_text() {
         thinking_duration_ms: None,
         created_at: parse_dt(&None),
         in_flight: None,
+        from_agent_id: None,
     };
     let assistant = assistant_event(
         "",
@@ -201,6 +203,7 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
         thinking_duration_ms: None,
         created_at: parse_dt(&None),
         in_flight: None,
+        from_agent_id: None,
     };
     let recent_assistant = assistant_event(
         "",
@@ -228,6 +231,7 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
         thinking_duration_ms: None,
         created_at: parse_dt(&None),
         in_flight: None,
+        from_agent_id: None,
     };
 
     let history =

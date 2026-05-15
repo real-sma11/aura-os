@@ -573,6 +573,7 @@ mod tests {
             originating_agent_id: None,
             cross_agent_depth: 0,
             jwt: "jwt".to_string(),
+            from_agent_id: None,
         };
         let mut end = AssistantMessageEnd {
             message_id: "msg-1".to_string(),
@@ -616,6 +617,7 @@ mod tests {
             originating_agent_id: None,
             cross_agent_depth: 0,
             jwt: "jwt".to_string(),
+            from_agent_id: None,
         };
         let mut end = AssistantMessageEnd {
             message_id: "msg-1".to_string(),

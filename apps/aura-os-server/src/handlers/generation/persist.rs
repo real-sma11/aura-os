@@ -69,6 +69,11 @@ pub(super) async fn resolve_persist_ctx(
                 // depth is irrelevant for this synthetic turn.
                 None,
                 0,
+                // Image generation is always operator-initiated;
+                // the synthetic user_message it produces is never
+                // a cross-agent reply, so the from_agent_id badge
+                // must stay off.
+                None,
             )
             .await
             {
@@ -94,9 +99,18 @@ pub(super) async fn resolve_persist_ctx(
     }
     if let Some(agent_id) = agent_id {
         if let Ok(parsed_agent) = agent_id.parse::<AgentId>() {
-            if let Some((ctx, _fork)) =
-                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None, None, 0)
-                    .await
+            if let Some((ctx, _fork)) = setup_agent_chat_persistence(
+                state,
+                &parsed_agent,
+                "",
+                jwt,
+                false,
+                None,
+                None,
+                0,
+                None,
+            )
+            .await
             {
                 // See the project-chat branch above: generation
                 // turns don't surface the auto-fork SSE event so
@@ -394,6 +408,7 @@ mod tests {
             agent_id: Some("agent-image-mode".to_string()),
             originating_agent_id: None,
             cross_agent_depth: 0,
+            from_agent_id: None,
         };
         let (event_bus, _rx) = broadcast::channel::<Value>(8);
         let meta = GenerationPersistMeta {

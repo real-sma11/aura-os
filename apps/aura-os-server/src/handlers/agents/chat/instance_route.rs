@@ -170,6 +170,15 @@ pub(crate) async fn send_event_stream(
         // back into agent A's session.
         body.originating_agent_id.clone(),
         cross_agent_depth,
+        // Cross-agent provenance for *display*: when this turn was
+        // injected by another agent (either A→B inbound or B→A
+        // reply callback), the inbound `from_agent_id` is the
+        // sending agent's UUID. Threaded onto the persist ctx so
+        // the persisted `user_message` content carries it and the
+        // chat-row renderer can label the bubble "↩ from <agent>"
+        // instead of styling it indistinguishably from a real human
+        // prompt. `None` for direct user typing.
+        body.from_agent_id.clone(),
     )
     .await;
     let (persist_ctx, fork_info) = match persist_outcome {

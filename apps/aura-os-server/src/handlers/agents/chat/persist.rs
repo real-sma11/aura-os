@@ -81,6 +81,24 @@ pub(crate) struct ChatPersistCtx {
     /// [`super::cross_agent_reply::read_cross_agent_depth`] for the
     /// parsing rules.
     pub(crate) cross_agent_depth: u32,
+    /// Org-level `agents.agent_id` UUID of the *agent* that injected
+    /// this turn on behalf of cross-agent communication, when the
+    /// inbound `SendChatRequest` carried `from_agent_id`. Sourced
+    /// from [`crate::dto::SendChatRequest::from_agent_id`] in
+    /// [`super::setup`] and read by [`persist_user_message`] /
+    /// [`build_user_message_payload`] so the persisted
+    /// `user_message` content carries the provenance, plus by
+    /// [`super::event_bus::publish_chat_event`] so the WS event
+    /// the chat panel listens to also carries it. The chat-row
+    /// renderer keys on this to badge cross-agent messages
+    /// "↩ from <agent_name>" instead of styling them
+    /// indistinguishably from a real human prompt — without this
+    /// field, the originating agent's UI silently re-renders
+    /// Barret's reply as a duplicate user message above the real
+    /// prompt. Distinct from `originating_agent_id`, which exists
+    /// for routing the next async reply back; `from_agent_id`
+    /// exists for display-side provenance.
+    pub(crate) from_agent_id: Option<String>,
 }
 
 /// Outcome of attempting to validate a caller-supplied
@@ -467,7 +485,8 @@ pub(crate) async fn persist_user_message(
     content: &str,
     attachments: &Option<Vec<ChatAttachmentDto>>,
 ) -> Result<aura_os_storage::StorageSessionEvent, aura_os_storage::StorageError> {
-    let payload = build_user_message_payload(content, attachments);
+    let payload =
+        build_user_message_payload(content, attachments, ctx.from_agent_id.as_deref());
     let req = aura_os_storage::CreateSessionEventRequest {
         session_id: Some(ctx.session_id.clone()),
         user_id: None,
@@ -494,6 +513,7 @@ pub(crate) async fn persist_user_message(
 fn build_user_message_payload(
     content: &str,
     attachments: &Option<Vec<ChatAttachmentDto>>,
+    from_agent_id: Option<&str>,
 ) -> serde_json::Value {
     let content_blocks: Option<serde_json::Value> = attachments.as_ref().and_then(|atts| {
         let image_blocks: Vec<serde_json::Value> = atts
@@ -527,7 +547,63 @@ fn build_user_message_payload(
     if let Some(blocks) = content_blocks {
         payload["content_blocks"] = blocks;
     }
+    // Cross-agent provenance: when this user_message was injected by
+    // another agent (rather than typed by the human), embed the
+    // sender's UUID into the persisted content so
+    // `parse_user_message_event` can surface it on `SessionEvent`
+    // and the chat panel can label the row "↩ from <agent>"
+    // instead of styling it as a normal user prompt. Blank ids are
+    // dropped so a stray empty string never enables the badge UI.
+    if let Some(from) = from_agent_id.map(str::trim).filter(|s| !s.is_empty()) {
+        payload["from_agent_id"] = serde_json::Value::String(from.to_string());
+    }
     payload
+}
+
+#[cfg(test)]
+mod build_user_message_payload_tests {
+    //! Pin the persisted-content shape for the new
+    //! `from_agent_id` provenance field. The frontend's
+    //! `parse_user_message_event` and the chat-row renderer both
+    //! key on the exact JSON key name, so any rename breaks the
+    //! "↩ from <agent>" badge silently — assert the on-disk
+    //! shape rather than the in-memory `ChatPersistCtx` field.
+    use super::build_user_message_payload;
+
+    #[test]
+    fn build_user_message_payload_omits_from_agent_id_when_none() {
+        let payload = build_user_message_payload("hello", &None, None);
+        assert_eq!(payload["text"], "hello");
+        assert!(
+            payload.get("from_agent_id").is_none(),
+            "regular user prompts must not include from_agent_id; \
+             a stray field would force the badge UI on every typed turn"
+        );
+    }
+
+    #[test]
+    fn build_user_message_payload_omits_from_agent_id_when_blank() {
+        // Whitespace-only ids must be normalized to absent so a buggy
+        // upstream caller cannot accidentally trip the badge UI.
+        let payload = build_user_message_payload("hi", &None, Some("   "));
+        assert!(
+            payload.get("from_agent_id").is_none(),
+            "blank from_agent_id must be elided, not stored as \"\""
+        );
+    }
+
+    #[test]
+    fn build_user_message_payload_emits_from_agent_id_when_set() {
+        let payload =
+            build_user_message_payload("hello back", &None, Some("barret-uuid"));
+        assert_eq!(
+            payload.get("from_agent_id").and_then(|v| v.as_str()),
+            Some("barret-uuid"),
+            "cross-agent injected user_messages must carry the sender's \
+             agent_id so the chat panel can label the row"
+        );
+        assert_eq!(payload["text"], "hello back");
+    }
 }
 
 fn log_user_message_persist_failure(ctx: &ChatPersistCtx, err: &aura_os_storage::StorageError) {

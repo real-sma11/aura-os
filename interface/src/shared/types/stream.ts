@@ -90,6 +90,20 @@ export interface DisplaySessionEvent {
    * being concatenated into the bubble body.
    */
   errorMessage?: string;
+  /**
+   * Org-level `agents.agent_id` UUID of the agent that injected
+   * this `user_message` on behalf of cross-agent communication
+   * (rather than the human user typing into the box). `undefined`
+   * on every regular human-typed turn and on assistant rows.
+   *
+   * Mirrors `SessionEvent.from_agent_id`; threaded through by
+   * `buildDisplayEvents` so `MessageBubble` can render a small
+   * "↩ from <agent name>" badge above user-role bubbles when
+   * set. The agent name is resolved from `useAgentStore` with a
+   * truncated-id fallback when the sender belongs to another org
+   * the local store has never fetched.
+   */
+  fromAgentId?: string;
 }
 
 export interface ToolCallEntry {
@@ -146,6 +160,14 @@ export interface StreamRefs {
   snapshottedToolCallIds: MutableRefObject<Set<string>>;
 }
 
+/**
+ * Kind of generation an entry is currently driving. Used to gate the
+ * cooking-indicator ETA countdown so the timer only renders for the
+ * generation modes we have estimates for. `null` when no generation
+ * is in flight on this entry.
+ */
+export type GenerationKind = "image" | "video" | "3d";
+
 export interface StreamSetters {
   setStreamingText: Dispatch<SetStateAction<string>>;
   setThinkingText: Dispatch<SetStateAction<string>>;
@@ -156,4 +178,32 @@ export interface StreamSetters {
   setIsWriting: Dispatch<SetStateAction<boolean>>;
   setProgressText: Dispatch<SetStateAction<string>>;
   setTimeline: Dispatch<SetStateAction<TimelineItem[]>>;
+  /**
+   * Stamp the generation lifecycle for the entry. Called from
+   * `useAgentChatStream` when an image / 3D / video stream opens so
+   * the cooking-indicator ETA hook can read the start wall-clock and
+   * model id to drive a per-model fallback estimate. `model` may be
+   * null when the caller doesn't know the model id (e.g. the chat
+   * 3D pipeline's source-image step uses the default image model
+   * implicitly).
+   */
+  setGenerationState: Dispatch<{
+    startedAt: number;
+    model: string | null;
+    kind: GenerationKind;
+  }>;
+  /**
+   * Update the latest server-reported `percent` for the active
+   * generation. The ETA hook switches from the per-model fallback
+   * to `elapsed * (100 - percent) / percent` once the first
+   * meaningful value lands.
+   */
+  setGenerationPercent: Dispatch<number | null>;
+  /**
+   * Clear the generation lifecycle for the entry. Called on
+   * `generation_completed` / `generation_error` and from
+   * `finalizeStream` / `handleStreamError` so the countdown disappears
+   * the moment the stream terminates.
+   */
+  clearGeneration: Dispatch<void>;
 }

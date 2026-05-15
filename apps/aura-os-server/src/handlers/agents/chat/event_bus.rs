@@ -27,7 +27,7 @@ use super::persist::ChatPersistCtx;
 ///
 /// Both `publish_user_message_event` and
 /// `publish_assistant_message_end_event` produce **exactly** these
-/// five keys; the structural-equality regression test in this module
+/// keys; the structural-equality regression test in this module
 /// flags any future divergence between the two publishers. The
 /// frontend matcher (Phase 5) and the live-refresh hook
 /// (`useChatHistorySync`) both key on this shape, so adding or
@@ -40,6 +40,13 @@ use super::persist::ChatPersistCtx;
 /// than being elided — the UI matcher checks for the key's presence
 /// before reading its value, and an elided key would look the same
 /// as an unrelated event type.
+///
+/// `from_agent_id` is optional and elided with `skip_serializing_if`
+/// because, unlike the routing keys above, it only appears on
+/// cross-agent injected `user_message` rows (A→B inbound or B→A
+/// reply callback). Keeping the regular-prompt wire shape unchanged
+/// means existing UI matchers don't need to learn the new field
+/// just to keep working.
 #[derive(Serialize)]
 struct ChatEventPayload<'a> {
     #[serde(rename = "type")]
@@ -48,6 +55,8 @@ struct ChatEventPayload<'a> {
     project_id: Option<&'a str>,
     project_agent_id: Option<&'a str>,
     agent_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from_agent_id: Option<&'a str>,
 }
 
 /// Build the canonical chat-event JSON payload as a
@@ -62,6 +71,7 @@ fn build_chat_event_payload(
     project_id: Option<&str>,
     project_agent_id: Option<&str>,
     agent_id: Option<&str>,
+    from_agent_id: Option<&str>,
 ) -> serde_json::Value {
     let payload = ChatEventPayload {
         event_type,
@@ -69,6 +79,7 @@ fn build_chat_event_payload(
         project_id,
         project_agent_id,
         agent_id,
+        from_agent_id,
     };
     // `to_value` on a derived-`Serialize` struct of `&str` /
     // `Option<&str>` cannot fail, but we still avoid `.expect(...)`
@@ -98,6 +109,15 @@ fn publish_chat_event(
     let project_id = Some(ctx.project_id.as_str());
     let project_agent_id = Some(ctx.project_agent_id.as_str());
     let agent_id = ctx.agent_id.as_deref();
+    // Cross-agent provenance: only set on `user_message` rows that
+    // were injected by another agent. The frontend chat-history
+    // invalidator and renderer treat its presence as "this row got
+    // the ↩ from <agent> badge in the persisted history, so the
+    // refetch will surface it" — for `assistant_message_end` we
+    // currently always pass it through as `None` (assistant rows
+    // never carry the badge), but the field is plumbed for
+    // future use without a second wire change.
+    let from_agent_id = ctx.from_agent_id.as_deref();
 
     tracing::debug!(
         target: "aura::ws",
@@ -105,6 +125,7 @@ fn publish_chat_event(
         session_id = %ctx.session_id,
         project_agent_id = %ctx.project_agent_id,
         agent_id = ?ctx.agent_id,
+        from_agent_id = ?ctx.from_agent_id,
         "publishing chat event"
     );
 
@@ -114,6 +135,7 @@ fn publish_chat_event(
         project_id,
         project_agent_id,
         agent_id,
+        from_agent_id,
     );
 
     match bus.send(payload) {
@@ -266,6 +288,7 @@ mod tests {
             agent_id: agent_id.map(str::to_string),
             originating_agent_id: None,
             cross_agent_depth: 0,
+            from_agent_id: None,
         }
     }
 
@@ -308,7 +331,8 @@ mod tests {
         assert_eq!(
             obj.len(),
             5,
-            "canonical chat-event payload must have exactly five keys; got: {:?}",
+            "canonical chat-event payload must have exactly five keys when \
+             from_agent_id is absent (skip_serializing_if elides it); got: {:?}",
             obj.keys().collect::<Vec<_>>()
         );
         // Phase 2 server-side bookkeeping must not leak onto the wire.
@@ -319,6 +343,42 @@ mod tests {
         assert!(
             !obj.contains_key("cross_agent_depth"),
             "cross_agent_depth is server bookkeeping and must not appear on the wire"
+        );
+        assert!(
+            !obj.contains_key("from_agent_id"),
+            "from_agent_id must be elided on regular user prompts so the wire shape \
+             matches the historical 5-key payload existing matchers expect"
+        );
+    }
+
+    /// Cross-agent provenance pin: when the persist ctx carries a
+    /// `from_agent_id` (set by `setup.rs` from the inbound
+    /// `SendChatRequest::from_agent_id`), the canonical wire
+    /// payload MUST include the field as a string. Pairs with
+    /// `parse_user_message_event` reading the same field out of
+    /// the persisted content payload — both sides go through this
+    /// publisher when the chat panel hits a fresh refetch.
+    #[tokio::test]
+    async fn user_message_event_payload_includes_from_agent_id_when_set() {
+        let (tx, mut rx) = broadcast::channel::<serde_json::Value>(64);
+        let mut ctx = test_ctx("sess-2", "project-x", "instance-y", Some("agent-z"));
+        ctx.from_agent_id = Some("barret-uuid".to_string());
+
+        publish_user_message_event(&tx, &ctx, "evt-2");
+
+        let value = rx.try_recv().expect("publish must enqueue exactly one event");
+        let obj = value.as_object().expect("payload must be a JSON object");
+        assert_eq!(
+            obj.get("from_agent_id").and_then(|v| v.as_str()),
+            Some("barret-uuid"),
+            "from_agent_id must round-trip onto the WS event so any future \
+             inline-render path can pick it up without a fetch"
+        );
+        assert_eq!(
+            obj.len(),
+            6,
+            "with from_agent_id set, canonical payload gains exactly one key (=6); got: {:?}",
+            obj.keys().collect::<Vec<_>>()
         );
     }
 
@@ -331,7 +391,7 @@ mod tests {
     /// path is only reachable via the typed-payload constructor.
     #[test]
     fn user_message_event_payload_serializes_missing_ids_as_null() {
-        let value = build_chat_event_payload("user_message", "sess-1", None, None, None);
+        let value = build_chat_event_payload("user_message", "sess-1", None, None, None, None);
         let obj = value.as_object().expect("payload must be a JSON object");
 
         // Keys present...

@@ -302,6 +302,30 @@ pub(crate) struct SendChatRequest {
     /// `c:\code\aura-harness\crates\aura-runtime\src\session\cross_agent_hook.rs::deliver_message`.
     #[serde(default)]
     pub originating_agent_id: Option<String>,
+    /// Org-level `agents.agent_id` UUID of the agent that injected
+    /// this `user_message` on behalf of cross-agent communication
+    /// (rather than a human user typing into the box). Distinct from
+    /// `originating_agent_id`, which exists for *routing* (the
+    /// server uses it to know where to POST the recipient's reply
+    /// back to). `from_agent_id` exists for *display*: the chat
+    /// panel renders the resulting user-row with a "↩ from
+    /// <agent_name>" badge so the operator can tell a real prompt
+    /// apart from a cross-agent reply.
+    ///
+    /// Two paths populate it:
+    /// 1. **A → B inbound** (`send_to_agent`) — the harness's
+    ///    `cross_agent_hook::deliver_message` POSTs `from_agent_id:
+    ///    A's UUID` so B's panel labels the inbound row "from <A>".
+    /// 2. **B → A async reply** — the server-side
+    ///    `spawn_cross_agent_reply_callback` POSTs `from_agent_id:
+    ///    B's UUID` so A's panel labels Barret's reply "from <B>"
+    ///    instead of looking like a duplicate user prompt.
+    ///
+    /// Older clients omit the field — `#[serde(default)]` keeps
+    /// wire compat (a missing value just renders as a normal user
+    /// message, the pre-fix behavior).
+    #[serde(default)]
+    pub from_agent_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

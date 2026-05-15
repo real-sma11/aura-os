@@ -25,6 +25,7 @@ pub(crate) async fn setup_project_chat_persistence(
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
     cross_agent_depth: u32,
+    from_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = state.storage_client.as_ref()?.clone();
     let jwt = jwt.to_string();
@@ -60,6 +61,7 @@ pub(crate) async fn setup_project_chat_persistence(
             agent_id: None,
             originating_agent_id,
             cross_agent_depth,
+            from_agent_id,
         },
         resolved.fork,
     ))
@@ -75,6 +77,7 @@ pub(crate) async fn setup_agent_chat_persistence(
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
     cross_agent_depth: u32,
+    from_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = match state.storage_client.as_ref() {
         Some(s) => s.clone(),
@@ -101,6 +104,7 @@ pub(crate) async fn setup_agent_chat_persistence(
         state.chat_auto_fork_threshold,
         originating_agent_id,
         cross_agent_depth,
+        from_agent_id,
     )
     .await
 }
@@ -166,6 +170,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     auto_fork_threshold: f64,
     originating_agent_id: Option<String>,
     cross_agent_depth: u32,
+    from_agent_id: Option<String>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let (pai, pid) = if let Some(pa) = matching.first() {
         let pid = pa.project_id.clone().unwrap_or_default();
@@ -227,6 +232,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             agent_id: Some(agent_id.to_string()),
             originating_agent_id,
             cross_agent_depth,
+            from_agent_id,
         },
         resolved.fork,
     ))
@@ -294,7 +300,8 @@ pub(crate) async fn reset_agent_session(
     // `reset-session` is a destructive admin op, not a cross-agent
     // turn — there's no upstream sender to thread back into and the
     // chain depth resets to 0.
-    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None, None, 0).await;
+    let _ =
+        setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None, None, 0, None).await;
     info!(%agent_id, "Agent chat session reset");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -345,6 +352,9 @@ pub(crate) async fn reset_instance_session(
         // and the depth counter resets to 0.
         None,
         0,
+        // No cross-agent display provenance either — the reset endpoint
+        // is admin scope, not a chat turn.
+        None,
     )
     .await;
     info!(%agent_instance_id, "Instance chat session reset");
@@ -391,6 +401,7 @@ mod tests {
             0.8,
             None,
             0,
+            None,
         )
         .await;
 
@@ -443,6 +454,7 @@ mod tests {
             0.8,
             None,
             0,
+            None,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -514,6 +526,7 @@ mod tests {
             0.8,
             Some(sender.clone()),
             2,
+            None,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -528,6 +541,72 @@ mod tests {
             ctx.cross_agent_depth, 2,
             "cross_agent_depth must round-trip onto ChatPersistCtx so the \
              persist task can read the inbound chain depth on AssistantMessageEnd"
+        );
+    }
+
+    /// Companion to [`originating_agent_id_threads_through_to_persist_ctx`]:
+    /// the new wire field [`crate::dto::SendChatRequest::from_agent_id`]
+    /// must round-trip the same way through
+    /// `setup_agent_chat_persistence_with_matched` so
+    /// `persist_user_message` writes it into the persisted
+    /// `user_message` content payload, and so the cross-agent
+    /// reply path can later stamp the same field on B→A reply
+    /// callbacks. Distinct from `originating_agent_id`, which
+    /// exists for routing the next async reply back rather than
+    /// for display-side provenance.
+    #[tokio::test]
+    async fn from_agent_id_threads_through_to_persist_ctx() {
+        let (url, _db) = start_mock_storage().await;
+        let storage = Arc::new(StorageClient::with_base_url(&url));
+        let agent_id = AgentId::new();
+        let project_id = aura_os_core::ProjectId::new().to_string();
+        let project_agent = StorageProjectAgent {
+            id: "pa-from".to_string(),
+            project_id: Some(project_id.clone()),
+            org_id: Some("org-1".to_string()),
+            agent_id: Some(agent_id.to_string()),
+            name: Some("agent".to_string()),
+            role: None,
+            personality: None,
+            system_prompt: None,
+            skills: None,
+            icon: None,
+            harness: None,
+            status: Some("active".to_string()),
+            model: None,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            instance_role: None,
+            permissions: None,
+            intent_classifier: None,
+            created_at: None,
+            updated_at: None,
+        };
+
+        let svc = test_session_service(storage.clone());
+        let from_agent = "barret-agent-id".to_string();
+        let (ctx, _fork) = setup_agent_chat_persistence_with_matched(
+            &storage,
+            &agent_id,
+            "jwt",
+            false,
+            std::slice::from_ref(&project_agent),
+            None,
+            &svc,
+            0.8,
+            None,
+            0,
+            Some(from_agent.clone()),
+        )
+        .await
+        .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
+
+        assert_eq!(
+            ctx.from_agent_id.as_deref(),
+            Some(from_agent.as_str()),
+            "from_agent_id must round-trip into ChatPersistCtx so persist_user_message \
+             writes it into the persisted user_message payload (and the chat row gets \
+             the `from <agent>` badge instead of looking like a real human prompt)"
         );
     }
 

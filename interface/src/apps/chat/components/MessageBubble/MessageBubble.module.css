@@ -36,6 +36,46 @@
   max-width: 100%;
 }
 
+/* Cross-agent provenance badge slot. The badge sits *above* the
+   user bubble and inherits the message column's right-alignment so
+   the "↩ from <agent>" label hugs the bubble's leading edge.
+   Defined as a class on the outer `.message` wrapper so the
+   absence of the badge collapses the gap entirely (zero layout
+   impact on regular human-typed user prompts). */
+.messageUserCrossAgent {
+  /* No structural change beyond hosting `.crossAgentBadge`; the
+     badge itself owns its spacing via the `gap` on `.message`. */
+}
+
+.crossAgentBadge {
+  display: inline-flex;
+  align-self: flex-end;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-secondary, #6b6b6b);
+  background: var(--color-surface-2, rgba(0, 0, 0, 0.04));
+  border-radius: 999px;
+  /* Right-align with the user bubble: matching `messageUser` /
+     `messageUserWidgetOnly` keeps the badge above the bubble's
+     trailing edge regardless of message width. */
+  margin-left: auto;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+
+.crossAgentBadgeIcon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.crossAgentBadgeText {
+  font-weight: 500;
+}
+
 .bubble {
   padding: var(--space-2) var(--space-3);
   border-radius: 10px;

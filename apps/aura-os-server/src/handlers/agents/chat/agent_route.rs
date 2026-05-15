@@ -146,6 +146,18 @@ pub(crate) async fn send_agent_event_stream(
         // back into agent A's session.
         body.originating_agent_id.clone(),
         cross_agent_depth,
+        // Cross-agent provenance for *display*: when this turn was
+        // injected by another agent (either the A→B inbound from the
+        // harness `send_to_agent` tool, or the B→A reply callback
+        // posted by `cross_agent_reply.rs` after Barret's turn
+        // finished), the inbound `from_agent_id` is the sending
+        // agent's UUID. Threaded onto the persist ctx so the
+        // persisted `user_message` content carries it and the
+        // chat-row renderer can label the bubble "↩ from <agent>"
+        // instead of styling it indistinguishably from a real human
+        // prompt. `None` for direct user typing — the field is
+        // strictly opt-in on the wire.
+        body.from_agent_id.clone(),
     )
     .await;
 
@@ -338,6 +350,7 @@ async fn load_persistence_and_history(
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
     cross_agent_depth: u32,
+    from_agent_id: Option<String>,
 ) -> (
     Option<ChatPersistCtx>,
     Option<ForkInfo>,
@@ -381,6 +394,7 @@ async fn load_persistence_and_history(
         state.chat_auto_fork_threshold,
         originating_agent_id,
         cross_agent_depth,
+        from_agent_id,
     );
     let history_fut = build_history_future(
         storage,

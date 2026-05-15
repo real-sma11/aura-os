@@ -610,6 +610,29 @@ async fn cross_agent_reply_callback_fires_on_assistant_message_end() {
          (the receiving agent has no upstream to bounce back to). got {:?}",
         capture.body["originating_agent_id"]
     );
+    // Display-side cross-agent provenance: the callback body MUST
+    // carry `from_agent_id: <Barret's org-level agent_id>` so A's
+    // chat panel can label the inbound row "↩ from <Barret>"
+    // instead of letting the reply masquerade as a duplicate of
+    // A's original prompt — that mislabeling is exactly the UX
+    // bug the field was added to fix. Distinct from the routing
+    // field above: `originating_agent_id` is intentionally null
+    // here, but `from_agent_id` carries Barret's identity for
+    // display purposes only.
+    assert!(
+        capture.body.get("from_agent_id").is_some(),
+        "callback body must include `from_agent_id` field so A's chat panel \
+         can render the cross-agent provenance badge"
+    );
+    let from_agent_id = capture
+        .body
+        .get("from_agent_id")
+        .and_then(Value::as_str)
+        .expect("from_agent_id must serialize as a non-null string when set");
+    assert!(
+        !from_agent_id.is_empty(),
+        "from_agent_id must be a non-empty agent UUID; got {from_agent_id:?}"
+    );
     assert_eq!(
         capture.body.get("new_session").and_then(Value::as_bool),
         Some(false),

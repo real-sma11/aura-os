@@ -1,10 +1,11 @@
 import { memo, useCallback, useMemo, useRef } from "react";
-import { FileText } from "lucide-react";
+import { CornerDownLeft, FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
   DisplayImageBlock,
   DisplaySessionEvent,
 } from "../../../../shared/types/stream";
+import { useAgentStore } from "../../../agents/stores/agent-store";
 
 /** Resolve an image block to a renderable src URL. Prefers source_url (S3) over inline base64. */
 function imageBlockSrc(block: DisplayImageBlock): string {
@@ -43,6 +44,22 @@ interface Props {
 }
 
 const FILE_PREFIX_RE = /^\[File:\s*(.+?)\]\n\n([\s\S]*)$/;
+
+/**
+ * Render-friendly fallback when the local `useAgentStore` doesn't
+ * carry a name for the sender (typically because the sending agent
+ * lives in another org the user has never opened). UUID prefix +
+ * ellipsis keeps the badge compact while preserving enough of the
+ * id for an operator to disambiguate by hand. Empty string in →
+ * empty string out so callers can guard with the same `senderLabel`
+ * truthiness check.
+ */
+function truncateAgentId(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= 8) return trimmed;
+  return `${trimmed.slice(0, 8)}…`;
+}
 
 function FileAttachmentBlock({ text }: { text: string }) {
   const match = text.match(FILE_PREFIX_RE);
@@ -356,6 +373,27 @@ export const MessageBubble = memo(function MessageBubble({
     isUser && (!hasContentBlocks || nonImageBlocks.length > 0);
   const renderBubble = isUser ? renderUserBubble : true;
   const isUserImageOnly = isUser && hasUserImages && !renderUserBubble;
+  // Cross-agent provenance badge. When the persisted user_message
+  // carries a `from_agent_id` (set by `parse_user_message_event`
+  // server-side for any row injected by another agent — A→B inbound
+  // or B→A async reply), surface a small "↩ from <agent>" label
+  // above the bubble. Without this, replies posted back into the
+  // sender's chat panel by the cross-agent reply callback look
+  // indistinguishable from the user's own input — exactly the
+  // duplicate-prompt UX bug Fix A was added to close. Resolves the
+  // sender's display name from `useAgentStore` (every agent the
+  // local org knows about is already cached there); falls back to a
+  // truncated id for cross-org senders the local store has never
+  // fetched, so the badge always renders something useful.
+  const isCrossAgentReply = isUser && !!message.fromAgentId;
+  const senderName = useAgentStore((state) =>
+    isCrossAgentReply
+      ? state.agents.find((a) => a.agent_id === message.fromAgentId)?.name
+      : undefined,
+  );
+  const senderLabel = isCrossAgentReply
+    ? senderName?.trim() || truncateAgentId(message.fromAgentId ?? "")
+    : null;
 
   return (
     <div
@@ -363,8 +401,21 @@ export const MessageBubble = memo(function MessageBubble({
         isUser ? styles.messageUser : styles.messageAssistant
       } ${userBlocksAreAllWidgets ? styles.messageUserWidgetOnly : ""} ${
         isUserImageOnly ? styles.messageUserImageOnly : ""
-      }`}
+      } ${isCrossAgentReply ? styles.messageUserCrossAgent : ""}`}
     >
+      {isCrossAgentReply && senderLabel && (
+        <div
+          className={styles.crossAgentBadge}
+          // Full UUID lives in a tooltip so power users can grab
+          // the canonical handle (matches the truncated-id
+          // fallback when the agent isn't in the local store).
+          title={`Cross-agent reply from agent ${message.fromAgentId}`}
+          aria-label={`Cross-agent reply from ${senderLabel}`}
+        >
+          <CornerDownLeft size={12} className={styles.crossAgentBadgeIcon} />
+          <span className={styles.crossAgentBadgeText}>from {senderLabel}</span>
+        </div>
+      )}
       {hasUserImages && (
         <div className={styles.userImageStrip}>
           {imageBlocks.map(({ block, index }) => (
