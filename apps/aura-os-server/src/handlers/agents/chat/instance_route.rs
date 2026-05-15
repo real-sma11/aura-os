@@ -22,6 +22,7 @@ use super::compaction::{
     append_project_state_to_system_prompt, load_project_state_snapshot,
     session_events_to_conversation_history,
 };
+use super::cross_agent_reply::read_cross_agent_depth;
 use super::identity_preamble::build_identity_preamble;
 use super::loaders::{
     load_current_session_events_for_instance, load_pinned_session_events_for_instance,
@@ -146,6 +147,15 @@ pub(crate) async fn send_event_stream(
         remove_live_session(&state, &session_key).await;
     }
 
+    // Phase 3 cycle-depth read. Inbound POSTs from prior cross-agent
+    // reply callbacks carry `X-Aura-Cross-Agent-Depth: <n>`; we
+    // thread it onto `ChatPersistCtx` so `persist_task` can refuse
+    // to spawn another reply once the chain crosses
+    // `MAX_CROSS_AGENT_REPLY_DEPTH`. Missing / malformed headers
+    // default to 0 — direct user chats and legacy harness builds
+    // start at the "fresh chain" depth.
+    let cross_agent_depth = read_cross_agent_depth(&headers);
+
     let persist_outcome = setup_project_chat_persistence(
         &state,
         &project_id,
@@ -159,6 +169,7 @@ pub(crate) async fn send_event_stream(
         // Phase 3 AssistantMessageEnd callback can post the reply
         // back into agent A's session.
         body.originating_agent_id.clone(),
+        cross_agent_depth,
     )
     .await;
     let (persist_ctx, fork_info) = match persist_outcome {

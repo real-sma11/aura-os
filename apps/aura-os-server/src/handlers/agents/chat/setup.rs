@@ -15,6 +15,7 @@ use crate::state::{AppState, AuthJwt};
 use super::discovery::{find_matching_project_agents, invalidate_agent_discovery_cache};
 use super::persist::{resolve_chat_session_with_pin, ChatPersistCtx, ForkInfo};
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn setup_project_chat_persistence(
     state: &AppState,
     project_id: &ProjectId,
@@ -23,6 +24,7 @@ pub(crate) async fn setup_project_chat_persistence(
     force_new: bool,
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
+    cross_agent_depth: u32,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = state.storage_client.as_ref()?.clone();
     let jwt = jwt.to_string();
@@ -57,11 +59,13 @@ pub(crate) async fn setup_project_chat_persistence(
             // on a project session anyway.
             agent_id: None,
             originating_agent_id,
+            cross_agent_depth,
         },
         resolved.fork,
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn setup_agent_chat_persistence(
     state: &AppState,
     agent_id: &AgentId,
@@ -70,6 +74,7 @@ pub(crate) async fn setup_agent_chat_persistence(
     force_new: bool,
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
+    cross_agent_depth: u32,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let storage = match state.storage_client.as_ref() {
         Some(s) => s.clone(),
@@ -95,6 +100,7 @@ pub(crate) async fn setup_agent_chat_persistence(
         state.session_service.as_ref(),
         state.chat_auto_fork_threshold,
         originating_agent_id,
+        cross_agent_depth,
     )
     .await
 }
@@ -159,6 +165,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     session_service: &aura_os_sessions::SessionService,
     auto_fork_threshold: f64,
     originating_agent_id: Option<String>,
+    cross_agent_depth: u32,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
     let (pai, pid) = if let Some(pa) = matching.first() {
         let pid = pa.project_id.clone().unwrap_or_default();
@@ -219,6 +226,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             project_id: pid,
             agent_id: Some(agent_id.to_string()),
             originating_agent_id,
+            cross_agent_depth,
         },
         resolved.fork,
     ))
@@ -284,8 +292,9 @@ pub(crate) async fn reset_agent_session(
     let session_key = aura_os_core::harness_agent_id(&agent_id, None);
     remove_live_session(&state, &session_key).await;
     // `reset-session` is a destructive admin op, not a cross-agent
-    // turn — there's no upstream sender to thread back into.
-    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None, None).await;
+    // turn — there's no upstream sender to thread back into and the
+    // chain depth resets to 0.
+    let _ = setup_agent_chat_persistence(&state, &agent_id, "", &jwt, true, None, None, 0).await;
     info!(%agent_id, "Agent chat session reset");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -332,8 +341,10 @@ pub(crate) async fn reset_instance_session(
         &jwt,
         true,
         None,
-        // Reset endpoints aren't cross-agent turns; no sender to record.
+        // Reset endpoints aren't cross-agent turns; no sender to record
+        // and the depth counter resets to 0.
         None,
+        0,
     )
     .await;
     info!(%agent_instance_id, "Instance chat session reset");
@@ -370,7 +381,7 @@ mod tests {
 
         let svc = test_session_service(storage.clone());
         let ctx = setup_agent_chat_persistence_with_matched(
-            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8, None,
+            &storage, &agent_id, "jwt", false, &[], None, &svc, 0.8, None, 0,
         )
         .await;
 
@@ -422,6 +433,7 @@ mod tests {
             &svc,
             0.8,
             None,
+            0,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -492,6 +504,7 @@ mod tests {
             &svc,
             0.8,
             Some(sender.clone()),
+            2,
         )
         .await
         .expect("non-empty matching with a project_id must yield a ChatPersistCtx");
@@ -501,6 +514,11 @@ mod tests {
             Some(sender.as_str()),
             "originating_agent_id must round-trip into ChatPersistCtx so Phase 3 \
              can read it on AssistantMessageEnd"
+        );
+        assert_eq!(
+            ctx.cross_agent_depth, 2,
+            "cross_agent_depth must round-trip onto ChatPersistCtx so the \
+             persist task can read the inbound chain depth on AssistantMessageEnd"
         );
     }
 

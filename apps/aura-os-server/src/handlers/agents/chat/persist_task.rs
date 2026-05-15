@@ -11,6 +11,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 use super::constants::ASSISTANT_TURN_PROGRESS_THROTTLE;
+use super::cross_agent_reply::spawn_cross_agent_reply_callback;
 use super::event_bus::{
     publish_assistant_message_end_event, publish_assistant_turn_progress_event,
 };
@@ -144,6 +145,34 @@ async fn run_persist_loop(
                     if !saw_error {
                         if let Some(metrics) = extras.stability_metrics.as_ref() {
                             metrics.inc_chat_turns_completed_ok();
+                        }
+                        // Phase 3 cross-agent reply delivery. When this
+                        // turn was opened by another agent's
+                        // `send_to_agent` call (Phase 1: harness sets
+                        // `originating_agent_id`; Phase 2: server
+                        // threads it onto `ChatPersistCtx`), post B's
+                        // accumulated reply back into A's session as
+                        // a fresh `user_message` so A's LLM gets a
+                        // turn to react. Skipped on `saw_error` so
+                        // partial / failed turns don't leak garbage
+                        // back into the originator's history. The
+                        // cycle-depth guard inside the callback fires
+                        // belt-and-suspenders alongside the
+                        // single-hop `originating_agent_id: null`
+                        // body field — see `cross_agent_reply.rs`.
+                        // `state.full_text` is populated by the
+                        // `text_delta` accumulator in
+                        // `persist_task_dispatch::handle_text_delta`
+                        // — by the time we observe
+                        // `AssistantMessageEnd` it holds the full
+                        // assistant reply for this turn.
+                        if ctx.originating_agent_id.is_some() {
+                            spawn_cross_agent_reply_callback(
+                                &ctx,
+                                state.full_text.clone(),
+                                ctx.cross_agent_depth,
+                                extras.http_client.clone(),
+                            );
                         }
                     }
                 }
@@ -502,6 +531,7 @@ mod tests {
             project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
             agent_id: None,
             originating_agent_id: None,
+            cross_agent_depth: 0,
             jwt: "jwt".to_string(),
         };
         let mut end = AssistantMessageEnd {
@@ -544,6 +574,7 @@ mod tests {
             project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
             agent_id: None,
             originating_agent_id: None,
+            cross_agent_depth: 0,
             jwt: "jwt".to_string(),
         };
         let mut end = AssistantMessageEnd {

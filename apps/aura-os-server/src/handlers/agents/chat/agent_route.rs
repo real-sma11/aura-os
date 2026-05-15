@@ -21,6 +21,7 @@ use super::compaction::{
     session_events_to_conversation_history,
 };
 use super::constants::{CONVERSATION_HISTORY_WARN_BYTES, DEFAULT_AGENT_HISTORY_WINDOW_LIMIT};
+use super::cross_agent_reply::read_cross_agent_depth;
 use super::discovery::find_matching_project_agents;
 use super::identity_preamble::build_identity_preamble;
 use super::instance_route::build_project_system_prompt;
@@ -122,6 +123,15 @@ pub(crate) async fn send_agent_event_stream(
     }
     let live_session = has_live_session(&state, &session_key).await;
 
+    // Phase 3 cycle-depth read. Inbound POSTs from prior cross-agent
+    // reply callbacks carry `X-Aura-Cross-Agent-Depth: <n>`; we
+    // thread it onto `ChatPersistCtx` so `persist_task` can refuse
+    // to spawn another reply once the chain crosses
+    // `MAX_CROSS_AGENT_REPLY_DEPTH`. Missing / malformed headers
+    // default to 0 — direct user chats and legacy harness builds
+    // start at the "fresh chain" depth.
+    let cross_agent_depth = read_cross_agent_depth(&headers);
+
     let (persist_ctx, fork_info, conversation_messages) = load_persistence_and_history(
         &state,
         &agent_id,
@@ -135,6 +145,7 @@ pub(crate) async fn send_agent_event_stream(
         // Phase 3 AssistantMessageEnd callback can post the reply
         // back into agent A's session.
         body.originating_agent_id.clone(),
+        cross_agent_depth,
     )
     .await;
 
@@ -327,6 +338,7 @@ async fn load_persistence_and_history(
     live_session: bool,
     pinned_session_id: Option<&str>,
     originating_agent_id: Option<String>,
+    cross_agent_depth: u32,
 ) -> (
     Option<ChatPersistCtx>,
     Option<ForkInfo>,
@@ -369,6 +381,7 @@ async fn load_persistence_and_history(
         state.session_service.as_ref(),
         state.chat_auto_fork_threshold,
         originating_agent_id,
+        cross_agent_depth,
     );
     let history_fut = build_history_future(
         storage,

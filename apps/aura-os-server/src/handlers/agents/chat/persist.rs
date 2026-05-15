@@ -61,13 +61,26 @@ pub(crate) struct ChatPersistCtx {
     /// Set by `send_to_agent` in aura-harness when agent A messages
     /// agent B (sourced from
     /// [`crate::dto::SendChatRequest::originating_agent_id`]). Phase 3
-    /// of the cross-agent reply plan will read this from
-    /// `persist_task` on `AssistantMessageEnd` and post B's reply back
-    /// into A's session as a follow-up `user_message`, so the sender's
-    /// chat surfaces the response without a manual refresh. Cross-repo
+    /// of the cross-agent reply plan reads this from `persist_task`
+    /// on `AssistantMessageEnd` and posts B's reply back into A's
+    /// session as a follow-up `user_message`, so the sender's chat
+    /// surfaces the response without a manual refresh. Cross-repo
     /// contract documented in
     /// `c:\code\aura-harness\crates\aura-runtime\src\session\cross_agent_hook.rs::deliver_message`.
     pub(crate) originating_agent_id: Option<String>,
+    /// Cross-agent reply chain depth. Sourced from the inbound
+    /// `X-Aura-Cross-Agent-Depth` header (Phase 3) by the chat route
+    /// handlers and threaded onto the persist ctx so
+    /// [`super::cross_agent_reply::spawn_cross_agent_reply_callback`]
+    /// can short-circuit once the chain hits
+    /// [`super::cross_agent_reply::MAX_CROSS_AGENT_REPLY_DEPTH`]. Each
+    /// server-issued reply POST stamps `depth + 1` on the outbound
+    /// header so the receiving turn sees the incremented value on its
+    /// `ChatPersistCtx`. Defaults to `0` when the header is missing
+    /// (legacy harness, direct user chat, etc.) — see
+    /// [`super::cross_agent_reply::read_cross_agent_depth`] for the
+    /// parsing rules.
+    pub(crate) cross_agent_depth: u32,
 }
 
 /// Outcome of attempting to validate a caller-supplied

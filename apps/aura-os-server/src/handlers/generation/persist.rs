@@ -65,8 +65,10 @@ pub(super) async fn resolve_persist_ctx(
                 false,
                 None,
                 // Image / 3D generation isn't a cross-agent reply
-                // — no sender to thread through.
+                // — no sender to thread through, and the chain
+                // depth is irrelevant for this synthetic turn.
                 None,
+                0,
             )
             .await
             {
@@ -93,7 +95,7 @@ pub(super) async fn resolve_persist_ctx(
     if let Some(agent_id) = agent_id {
         if let Ok(parsed_agent) = agent_id.parse::<AgentId>() {
             if let Some((ctx, _fork)) =
-                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None, None)
+                setup_agent_chat_persistence(state, &parsed_agent, "", jwt, false, None, None, 0)
                     .await
             {
                 // See the project-chat branch above: generation
@@ -391,6 +393,7 @@ mod tests {
             project_id: project_id.clone(),
             agent_id: Some("agent-image-mode".to_string()),
             originating_agent_id: None,
+            cross_agent_depth: 0,
         };
         let (event_bus, _rx) = broadcast::channel::<Value>(8);
         let meta = GenerationPersistMeta {
