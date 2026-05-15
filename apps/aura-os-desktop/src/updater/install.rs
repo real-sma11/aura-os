@@ -421,26 +421,49 @@ fn spawn_windows_handoff_with_flags(
 }
 
 #[cfg(target_os = "windows")]
+const WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+
+/// Base creation flags for the cmd.exe wrapper that runs the update
+/// handoff `.bat`. We deliberately do NOT include `DETACHED_PROCESS`:
+/// per the Win32 `CreateProcess` docs, `CREATE_NO_WINDOW` is *ignored*
+/// when combined with `DETACHED_PROCESS`, which would leave cmd.exe
+/// without any console at all. The script's `ping` settle delay (a
+/// console application) would then trigger Windows to allocate a fresh
+/// visible console for it, briefly flashing a terminal on screen during
+/// every update. Using `CREATE_NO_WINDOW` alone gives cmd.exe a hidden
+/// console that `ping` (and any other child console process) inherits.
+///
+/// The handoff still survives the parent's exit because:
+///   * stdin is `Stdio::null()` and stdout/stderr are redirected to
+///     files, so no console handles are shared with the parent;
+///   * `CREATE_NEW_PROCESS_GROUP` keeps Ctrl+C / shutdown signals from
+///     propagating from the parent's group; and
+///   * `CREATE_BREAKAWAY_FROM_JOB` (with the fallback retry below) lets
+///     the handoff escape any job object the parent is part of.
+#[cfg(target_os = "windows")]
+const WINDOWS_HANDOFF_BASE_CREATION_FLAGS: u32 = {
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+};
+
+#[cfg(target_os = "windows")]
 fn spawn_windows_handoff(
     data_dir: &Path,
     script_path: &Path,
     stdout_path: &Path,
     stderr_path: &Path,
 ) -> Result<std::process::Child, String> {
-    // Launch a detached cmd.exe wrapper running the .bat. The wrapper
-    // waits for NSIS, records the real installer exit code, and relaunches
-    // Aura after files are free.
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let base_flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW;
+    // Launch a hidden cmd.exe wrapper running the .bat. The wrapper waits
+    // for NSIS, records the real installer exit code, and relaunches Aura
+    // after files are free. See `WINDOWS_HANDOFF_BASE_CREATION_FLAGS` for
+    // why we use `CREATE_NO_WINDOW` instead of `DETACHED_PROCESS` here.
+    let base_flags = WINDOWS_HANDOFF_BASE_CREATION_FLAGS;
     match spawn_windows_handoff_with_flags(
         script_path,
         stdout_path,
         stderr_path,
-        base_flags | CREATE_BREAKAWAY_FROM_JOB,
+        base_flags | WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB,
     ) {
         Ok(child) => Ok(child),
         Err(primary_error) => {
@@ -1297,7 +1320,8 @@ mod tests {
         sanitize_version_for_filename, spawn_windows_handoff, stage_installer_bytes,
         summarise_for_detail, wait_for_handoff_sentinel, windows_nsis_installer_argument_list,
         write_windows_handoff_script, HandoffWaitOutcome, HANDOFF_OUTPUT_TAIL_BYTES,
-        INSTALLER_STAGE_SUBDIR, WINDOWS_UPDATE_RELAUNCH_ENV,
+        INSTALLER_STAGE_SUBDIR, WINDOWS_HANDOFF_BASE_CREATION_FLAGS,
+        WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB, WINDOWS_UPDATE_RELAUNCH_ENV,
     };
     use crate::updater::UpdateState;
     use std::fs;
@@ -1339,6 +1363,40 @@ mod tests {
     #[test]
     fn formats_nsis_arguments_for_cmd_invocation() {
         assert_eq!(windows_nsis_installer_argument_list(), "/P /R");
+    }
+
+    #[test]
+    fn handoff_creation_flags_keep_console_hidden_for_child_processes() {
+        // `CREATE_NO_WINDOW` is documented to be ignored when combined
+        // with `DETACHED_PROCESS`. If that ever happens, cmd.exe runs
+        // with no console at all and the `ping` settle delay inside the
+        // handoff `.bat` causes Windows to allocate a fresh visible
+        // console — which is exactly the regression this test guards
+        // against.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & DETACHED_PROCESS,
+            0,
+            "DETACHED_PROCESS must not be set or CREATE_NO_WINDOW is ignored"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NO_WINDOW,
+            CREATE_NO_WINDOW,
+            "CREATE_NO_WINDOW must be set so child console apps inherit a hidden console"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NEW_PROCESS_GROUP,
+            CREATE_NEW_PROCESS_GROUP,
+            "CREATE_NEW_PROCESS_GROUP must be set so parent shutdown signals don't propagate"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB & DETACHED_PROCESS,
+            0,
+            "the breakaway flag must not silently introduce DETACHED_PROCESS"
+        );
     }
 
     #[test]
