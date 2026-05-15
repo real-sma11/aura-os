@@ -173,4 +173,45 @@ mod tests {
         assert!(claims.is_guest());
         assert_eq!(claims.guest_id().as_str(), "g-abc");
     }
+
+    #[test]
+    fn guest_claims_serde_round_trip_preserves_fields() {
+        let claims = GuestClaims {
+            sub: "g-roundtrip".to_string(),
+            role: GuestClaims::ROLE.to_string(),
+            exp: 1_700_000_000,
+        };
+        let json = serde_json::to_value(&claims).expect("serialize claims");
+        assert_eq!(json["sub"], "g-roundtrip");
+        assert_eq!(json["role"], GuestClaims::ROLE);
+        assert_eq!(json["exp"], 1_700_000_000);
+        let decoded: GuestClaims = serde_json::from_value(json).expect("deserialize claims");
+        assert_eq!(decoded, claims);
+    }
+
+    #[test]
+    fn public_modality_serde_round_trip_uses_snake_case() {
+        for (variant, wire) in [
+            (PublicModality::Chat, "chat"),
+            (PublicModality::Image, "image"),
+            (PublicModality::Video, "video"),
+            (PublicModality::Model3d, "model3d"),
+        ] {
+            let json = serde_json::to_value(variant).expect("serialize modality");
+            assert_eq!(json, serde_json::Value::String(wire.to_string()));
+            let decoded: PublicModality =
+                serde_json::from_value(json).expect("deserialize modality");
+            assert_eq!(decoded, variant);
+            assert_eq!(variant.as_str(), wire);
+        }
+    }
+
+    #[test]
+    fn guest_id_transparent_serde_round_trip() {
+        let id = GuestId("g-transparent".to_string());
+        let json = serde_json::to_value(&id).expect("serialize guest id");
+        assert_eq!(json, serde_json::Value::String("g-transparent".to_string()));
+        let decoded: GuestId = serde_json::from_value(json).expect("deserialize guest id");
+        assert_eq!(decoded, id);
+    }
 }

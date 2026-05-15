@@ -214,9 +214,8 @@ async fn open_public_stream(
 
 /// Concrete SSE stream type fed into [`Sse::new`]. Boxed because the
 /// concrete combinator chain is unnameable.
-pub(crate) type PublicSseStream = std::pin::Pin<
-    Box<dyn futures_core::Stream<Item = Result<Event, Infallible>> + Send + 'static>,
->;
+pub(crate) type PublicSseStream =
+    std::pin::Pin<Box<dyn futures_core::Stream<Item = Result<Event, Infallible>> + Send + 'static>>;
 
 /// Build the SSE response: forward the harness broadcast to the wire,
 /// then append the canonical `{kind:"limit"}` frame so the frontend
@@ -230,9 +229,9 @@ fn build_public_sse_response(
     let limit_frame = emit_limit_frame(turn_count);
     let limit_event = match Event::default().event("limit").json_data(&limit_frame) {
         Ok(evt) => Ok(evt),
-        Err(_) => Ok(Event::default()
-            .event("limit")
-            .data(format!("{{\"kind\":\"limit\",\"turn_count\":{turn_count}}}"))),
+        Err(_) => Ok(Event::default().event("limit").data(format!(
+            "{{\"kind\":\"limit\",\"turn_count\":{turn_count}}}"
+        ))),
     };
     let tail = stream::once(async move {
         record_completion(guard);
@@ -281,7 +280,10 @@ mod tests {
 
     #[test]
     fn action_for_mode_maps_plan_to_generate_specs() {
-        assert_eq!(action_for_mode(PublicChatMode::Plan), Some("generate_specs"));
+        assert_eq!(
+            action_for_mode(PublicChatMode::Plan),
+            Some("generate_specs")
+        );
         assert_eq!(action_for_mode(PublicChatMode::Code), None);
     }
 
@@ -320,7 +322,10 @@ mod tests {
     #[test]
     fn caller_ip_falls_back_to_localhost() {
         let headers = HeaderMap::new();
-        assert_eq!(caller_ip_from_headers(&headers), IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(
+            caller_ip_from_headers(&headers),
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        );
     }
 
     #[test]
