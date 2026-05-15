@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { getImageModelEstimateMs } from "../../constants/models";
 import type { GenerationKind } from "../../shared/types/stream";
@@ -62,12 +62,15 @@ interface LatchedCompletion {
  * frame lands with `percent >= ADAPTIVE_PERCENT_MIN`, the adaptive
  * formula can ratchet the projection downward.
  *
- * The projected completion timestamp is latched in a ref and
+ * The projected completion timestamp is latched in state and
  * monotonically non-increasing for the lifetime of a single run, so
  * the digits only ever count down: noisy early percent values that
  * would project a later completion are ignored, while sooner
- * projections shorten the latch. This matches the user's expectation
- * that an ETA goes down with the clock, not bounces.
+ * projections shorten the latch. The displayed value uses
+ * `min(latched, candidate)` so the very first render is already
+ * stable before the latch-syncing effect runs. This matches the
+ * user's expectation that an ETA goes down with the clock, not
+ * bounces.
  *
  * Re-renders every ~1s while a generation is active so the digits
  * count down smoothly without needing a wire event. The interval is
@@ -96,14 +99,14 @@ export function useGenerationEta(key: string): GenerationEta | null {
     return () => clearInterval(id);
   }, [active]);
 
-  const latchRef = useRef<LatchedCompletion | null>(null);
+  const [latched, setLatched] = useState<LatchedCompletion | null>(null);
 
-  if (!active || startedAt == null || kind == null) {
-    latchRef.current = null;
-    return null;
-  }
-
-  const elapsed = Math.max(0, now - startedAt);
+  // Compute the candidate every render so we always have an
+  // up-to-date floor for the displayed value, even on the very first
+  // render before the latch-sync effect runs. Inputs are stable
+  // (`startedAt`, `model`, `percent` only change on wire events), so
+  // this is cheap.
+  const elapsed = active && startedAt != null ? Math.max(0, now - startedAt) : 0;
   const baseEstimate = getImageModelEstimateMs(model);
   const hasAdaptive =
     typeof percent === "number" &&
@@ -117,30 +120,51 @@ export function useGenerationEta(key: string): GenerationEta | null {
   const candidateTotal = hasAdaptive
     ? Math.min((elapsed * 100) / (percent as number), 24 * 60 * 60 * 1000)
     : baseEstimate;
-  const candidateCompletionAtMs = startedAt + candidateTotal;
+  const candidateCompletionAtMs =
+    startedAt != null ? startedAt + candidateTotal : 0;
 
-  if (
-    latchRef.current === null ||
-    latchRef.current.startedAt !== startedAt
-  ) {
-    // Fresh run: seed the latch from whatever estimate we have right
-    // now (baseline if no percent has landed, adaptive if it has).
-    latchRef.current = {
-      startedAt,
-      completionAtMs: candidateCompletionAtMs,
-    };
-  } else if (candidateCompletionAtMs < latchRef.current.completionAtMs) {
-    // Good news only: ratchet the latch downward when a new estimate
-    // points to a sooner completion. Estimates that would push the
-    // completion further out are deliberately ignored so the
-    // displayed digits never jump upward.
-    latchRef.current = {
-      startedAt,
-      completionAtMs: candidateCompletionAtMs,
-    };
+  // Sync the latch outside of render. Three cases:
+  //   1. Generation cleared -> drop the latch so the next run starts
+  //      fresh and doesn't inherit a stale floor.
+  //   2. New `startedAt` (a second send) -> seed from the current
+  //      candidate.
+  //   3. Same run, sooner candidate -> ratchet down. Later candidates
+  //      are deliberately dropped so the digits never jump upward.
+  useEffect(() => {
+    if (!active || startedAt == null) {
+      setLatched((prev) => (prev === null ? prev : null));
+      return;
+    }
+    setLatched((prev) => {
+      if (prev === null || prev.startedAt !== startedAt) {
+        return { startedAt, completionAtMs: candidateCompletionAtMs };
+      }
+      if (candidateCompletionAtMs < prev.completionAtMs) {
+        return { startedAt, completionAtMs: candidateCompletionAtMs };
+      }
+      return prev;
+    });
+  }, [active, startedAt, candidateCompletionAtMs]);
+
+  if (!active || startedAt == null || kind == null) {
+    return null;
   }
 
-  const remainingMs = latchRef.current.completionAtMs - now;
+  // Effective completion is the lower of the latched floor (if it
+  // belongs to this run) and the current candidate. The min keeps the
+  // first render correct before the effect above has had a chance to
+  // seed `latched`, and keeps subsequent renders monotonically
+  // non-increasing because the latch can only ratchet down.
+  const latchedForThisRun =
+    latched !== null && latched.startedAt === startedAt
+      ? latched.completionAtMs
+      : Number.POSITIVE_INFINITY;
+  const effectiveCompletionAtMs = Math.min(
+    latchedForThisRun,
+    candidateCompletionAtMs,
+  );
+
+  const remainingMs = effectiveCompletionAtMs - now;
   return {
     remainingMs: Math.max(0, remainingMs),
     overrun: remainingMs <= 0,
