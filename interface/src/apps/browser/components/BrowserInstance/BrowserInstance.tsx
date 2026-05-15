@@ -100,13 +100,17 @@ export function BrowserInstance({
 
   const handleNav = useCallback((state: NavState) => {
     setNav(state);
-    // Intentionally do NOT clear `navError` here. After a main-frame
-    // failure, Chromium internally commits its own native error page,
-    // which fires `Page.frameStartedLoading` and surfaces here as
-    // another `Nav { loading: true }`. Clearing on that event used to
-    // wipe our overlay just after we set it, leaving the user staring
-    // at Chromium's native page. The overlay is now cleared only on
-    // explicit user actions (see `clearNavErrorAnd`).
+    // After a main-frame failure Chromium commits its own native error
+    // document at a `chrome-error://...` URL and re-fires `Nav` for it;
+    // clearing the overlay on that event would wipe it just as we set
+    // it, leaving the user staring at Chromium's page. So only clear
+    // when the new URL is a real document — that's the success signal
+    // we want, and it's also what lets the overlay survive across a
+    // user-driven Reload (the URL doesn't change, so we never clear
+    // until the retry actually commits a real page).
+    if (state.url && !state.url.startsWith("chrome-error://")) {
+      setNavError(null);
+    }
   }, []);
 
   const handleNavError = useCallback((err: NavError) => {
@@ -154,10 +158,13 @@ export function BrowserInstance({
 
   /**
    * Run a user-initiated browser command and dismiss any error overlay
-   * first. This is the single entry point for navigation actions
-   * (URL submit, back/forward, reload) so the overlay never lingers
-   * across a fresh user attempt. A subsequent `NavError` from the
-   * backend re-opens it.
+   * first. Used for actions that point at a *different* document
+   * (URL submit, back/forward) so the overlay doesn't linger over the
+   * incoming page; a subsequent `NavError` from the backend re-opens
+   * it.
+   *
+   * Reload is intentionally NOT routed through here — see
+   * `handleReload` below for why.
    */
   const clearNavErrorAnd = useCallback(
     (msg: BrowserClientMsg) => {
@@ -166,6 +173,20 @@ export function BrowserInstance({
     },
     [browser],
   );
+
+  /**
+   * Reload retries the *same* URL, so the screencast still holds
+   * Chromium's just-committed `chrome-error://` document. Eagerly
+   * clearing `navError` here would reveal that native error page until
+   * the retry produces a new event, which is exactly the regression
+   * the user sees as "the old/wrong 404 page flashes through". Keep
+   * the overlay up; `handleNav` clears it once a real (non-
+   * `chrome-error://`) URL commits, and a re-failed retry simply
+   * replaces it via `handleNavError`.
+   */
+  const handleReload = useCallback(() => {
+    browser.send({ type: "reload" });
+  }, [browser]);
 
   const handleSubmit = useCallback(
     (url: string) => {
@@ -236,7 +257,7 @@ export function BrowserInstance({
         onSubmit={handleSubmit}
         onBack={() => clearNavErrorAnd({ type: "back" })}
         onForward={() => clearNavErrorAnd({ type: "forward" })}
-        onReload={() => clearNavErrorAnd({ type: "reload" })}
+        onReload={handleReload}
         onPin={handlePin}
         onUnpin={handleUnpin}
         onSelectDetected={handleSelectDetected}
@@ -257,10 +278,7 @@ export function BrowserInstance({
         }
         overlay={
           navError ? (
-            <BrowserErrorOverlay
-              error={navError}
-              onReload={() => clearNavErrorAnd({ type: "reload" })}
-            />
+            <BrowserErrorOverlay error={navError} onReload={handleReload} />
           ) : null
         }
       />
