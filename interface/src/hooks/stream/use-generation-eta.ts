@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { getImageModelEstimateMs } from "../../constants/models";
 import type { GenerationKind } from "../../shared/types/stream";
@@ -31,6 +31,25 @@ export interface GenerationEta {
   kind: GenerationKind;
 }
 
+interface LatchedCompletion {
+  /**
+   * Wall-clock ms at which we currently project the generation will
+   * finish. Monotonically non-increasing across one run: a new
+   * estimate that points further out is ignored (it would jump the
+   * countdown digits upward), while a sooner estimate ratchets the
+   * latch down so the user sees "we're going to finish earlier than
+   * I told you".
+   */
+  completionAtMs: number;
+  /**
+   * `startedAt` value the latch was bound to. A change here means a
+   * new generation run and the latch resets from scratch — without
+   * this guard, a quick second send would inherit the previous run's
+   * floor and project an immediately-overrun countdown.
+   */
+  startedAt: number;
+}
+
 /**
  * Reactive ETA snapshot for the active generation on `key`. Returns
  * `null` when no generation is in flight on the entry — the
@@ -40,9 +59,15 @@ export interface GenerationEta {
  * The initial estimate comes from {@link getImageModelEstimateMs}
  * (image-mode only; 3D and video fall back to the default until we
  * gather production timing data). Once the first `generation_progress`
- * frame lands with `percent >= ADAPTIVE_PERCENT_MIN`, the estimate
- * switches to the adaptive formula and refines on every subsequent
- * percent update.
+ * frame lands with `percent >= ADAPTIVE_PERCENT_MIN`, the adaptive
+ * formula can ratchet the projection downward.
+ *
+ * The projected completion timestamp is latched in a ref and
+ * monotonically non-increasing for the lifetime of a single run, so
+ * the digits only ever count down: noisy early percent values that
+ * would project a later completion are ignored, while sooner
+ * projections shorten the latch. This matches the user's expectation
+ * that an ETA goes down with the clock, not bounces.
  *
  * Re-renders every ~1s while a generation is active so the digits
  * count down smoothly without needing a wire event. The interval is
@@ -71,7 +96,12 @@ export function useGenerationEta(key: string): GenerationEta | null {
     return () => clearInterval(id);
   }, [active]);
 
-  if (!active || startedAt == null || kind == null) return null;
+  const latchRef = useRef<LatchedCompletion | null>(null);
+
+  if (!active || startedAt == null || kind == null) {
+    latchRef.current = null;
+    return null;
+  }
 
   const elapsed = Math.max(0, now - startedAt);
   const baseEstimate = getImageModelEstimateMs(model);
@@ -81,14 +111,36 @@ export function useGenerationEta(key: string): GenerationEta | null {
     percent >= ADAPTIVE_PERCENT_MIN &&
     percent < 100;
 
-  // Adaptive estimate: total = elapsed * 100 / percent. Capped well
-  // below `Number.MAX_SAFE_INTEGER` (effectively no-op for any
-  // realistic percent) so a rounding edge can never project an
-  // Infinity remaining.
-  const total = hasAdaptive
+  // Candidate total in ms. Cap the adaptive formula well below
+  // `Number.MAX_SAFE_INTEGER` so a rounding edge can never project
+  // an Infinity completion timestamp.
+  const candidateTotal = hasAdaptive
     ? Math.min((elapsed * 100) / (percent as number), 24 * 60 * 60 * 1000)
     : baseEstimate;
-  const remainingMs = total - elapsed;
+  const candidateCompletionAtMs = startedAt + candidateTotal;
+
+  if (
+    latchRef.current === null ||
+    latchRef.current.startedAt !== startedAt
+  ) {
+    // Fresh run: seed the latch from whatever estimate we have right
+    // now (baseline if no percent has landed, adaptive if it has).
+    latchRef.current = {
+      startedAt,
+      completionAtMs: candidateCompletionAtMs,
+    };
+  } else if (candidateCompletionAtMs < latchRef.current.completionAtMs) {
+    // Good news only: ratchet the latch downward when a new estimate
+    // points to a sooner completion. Estimates that would push the
+    // completion further out are deliberately ignored so the
+    // displayed digits never jump upward.
+    latchRef.current = {
+      startedAt,
+      completionAtMs: candidateCompletionAtMs,
+    };
+  }
+
+  const remainingMs = latchRef.current.completionAtMs - now;
   return {
     remainingMs: Math.max(0, remainingMs),
     overrun: remainingMs <= 0,
