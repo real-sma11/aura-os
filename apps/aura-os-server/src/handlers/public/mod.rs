@@ -35,10 +35,14 @@
 pub(crate) mod chat;
 pub(crate) mod demo_agent;
 pub(crate) mod gate;
+pub(crate) mod generation_common;
+pub(crate) mod image;
 pub(crate) mod jwt;
+pub(crate) mod model3d;
 pub(crate) mod rate_limiter;
 pub(crate) mod setup;
 pub(crate) mod types;
+pub(crate) mod video;
 
 // Public-mode surface re-exports. Only the items consumed from
 // outside this module live here; internal helpers stay reachable
@@ -46,7 +50,10 @@ pub(crate) mod types;
 // avoids the warning churn that an over-broad `pub(crate) use`
 // produced in phase 1.
 pub(crate) use chat::public_chat_stream;
+pub(crate) use image::public_image_stream;
 pub(crate) use jwt::{decode_guest_token, extract_bearer_from_headers, is_guest_token};
+pub(crate) use model3d::public_model3d_stream;
 pub use rate_limiter::RateLimiter;
 pub(crate) use setup::public_setup;
 pub(crate) use types::GuestClaims;
+pub(crate) use video::public_video_stream;

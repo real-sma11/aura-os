@@ -2,6 +2,11 @@
  * Orchestration hook for `LoggedOutChatView`. Separates the SSE
  * dispatch / streamStore wiring from the presentational view so the
  * view stays render-focused (rules-react > ARCHITECTURE).
+ *
+ * Phase 3: media modalities (Image / Video / 3D) join Code / Plan
+ * on the dispatch path. The branch lives in `handleSend`; the
+ * media SSE plumbing itself is in `dispatch-media.ts` so this file
+ * stays under the rules-react ~200-line target.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,16 +15,22 @@ import {
   selectSession,
   usePublicChatStore,
 } from "../../stores/public-chat-store";
-import type { PublicMessage, PublicSession } from "../../stores/public-chat-store";
+import type {
+  PublicAssistantMediaMessage,
+  PublicMessage,
+  PublicSession,
+} from "../../stores/public-chat-store";
 import {
   streamPublicChat,
   type PublicChatStreamHandle,
   type PublicChatTurn,
+  type PublicMediaStreamHandle,
 } from "../../api/public-chat";
 import { createSetters, ensureEntry } from "../../hooks/stream/store";
 import { AGENT_MODE_DESCRIPTORS, type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
+import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
 /** Public-mode return shape consumed by `LoggedOutChatView`. */
 export interface PublicChatController {
@@ -30,8 +41,6 @@ export interface PublicChatController {
   messages: DisplaySessionEvent[];
   shouldShowGate: boolean;
   isStreaming: boolean;
-  comingSoonMessage: string | null;
-  dismissComingSoon: () => void;
   handleSend: (content: string) => Promise<void>;
   handleStop: () => void;
   input: string;
@@ -40,15 +49,6 @@ export interface PublicChatController {
 
 const DEFAULT_PUBLIC_MODEL = "aura-gpt-5-4-mini";
 const PUBLIC_AGENT_ID = "public-demo";
-
-const COMING_SOON_COPY: Record<
-  Exclude<AgentMode, "code" | "plan">,
-  string
-> = {
-  image: "Image generation is coming soon — sign up for early access.",
-  video: "Video generation is coming soon — sign up for early access.",
-  "3d": "3D generation is coming soon — sign up for early access.",
-} as const;
 
 /**
  * Drives one public chat session: handles `ensureToken`, sends the
@@ -62,6 +62,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
   const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
   const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
+  const commitMedia = usePublicChatStore((s) => s.commitMedia);
   const setTurnCount = usePublicChatStore((s) => s.setTurnCount);
   const session = usePublicChatStore((s) => selectSession(s, sessionId));
   const shouldShowGate = usePublicChatStore(selectShouldShowGate);
@@ -72,9 +73,9 @@ export function usePublicChat(sessionId: string): PublicChatController {
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [comingSoonMessage, setComingSoonMessage] = useState<string | null>(null);
 
-  const handleRef = useRef<PublicChatStreamHandle | null>(null);
+  const chatHandleRef = useRef<PublicChatStreamHandle | null>(null);
+  const mediaHandleRef = useRef<PublicMediaStreamHandle | null>(null);
   const assistantIdRef = useRef<string | null>(null);
   const accumulatedTextRef = useRef<string>("");
   const settersRef = useRef(createSetters(streamKey));
@@ -86,39 +87,122 @@ export function usePublicChat(sessionId: string): PublicChatController {
 
   useEffect(() => {
     return () => {
-      handleRef.current?.close();
+      chatHandleRef.current?.close();
+      mediaHandleRef.current?.close();
     };
   }, []);
 
-  const finalizeAssistantTurn = useCallback(() => {
-    const text = accumulatedTextRef.current;
-    const assistantId = assistantIdRef.current;
-    if (assistantId && text) {
-      // Push the fully-accumulated assistant turn as a single
-      // entry. This intentionally happens at commit-time (not on
-      // every delta) so the live streaming bubble — sourced from
-      // `streamStore.streamingText` — and the persisted transcript
-      // never both render the same partial text simultaneously.
-      appendAssistantToken(sessionId, assistantId, text);
-      commitAssistant(sessionId, assistantId);
-    }
-    accumulatedTextRef.current = "";
-    assistantIdRef.current = null;
-  }, [appendAssistantToken, commitAssistant, sessionId]);
+  const finalizeAssistantTurn = useCallback(
+    (mode: "code" | "plan") => {
+      const text = accumulatedTextRef.current;
+      const assistantId = assistantIdRef.current;
+      if (assistantId && text) {
+        // Push the fully-accumulated assistant turn as a single
+        // entry. This intentionally happens at commit-time (not on
+        // every delta) so the live streaming bubble — sourced from
+        // `streamStore.streamingText` — and the persisted transcript
+        // never both render the same partial text simultaneously.
+        appendAssistantToken(sessionId, assistantId, text, mode);
+        commitAssistant(sessionId, assistantId);
+      }
+      accumulatedTextRef.current = "";
+      assistantIdRef.current = null;
+    },
+    [appendAssistantToken, commitAssistant, sessionId],
+  );
 
   const messages = useMemo<DisplaySessionEvent[]>(() => {
     if (!session) return [];
     return session.turns.map((turn) => publicMessageToDisplayEvent(turn));
   }, [session]);
 
-  const handleStop = useCallback(() => {
-    handleRef.current?.close();
-    handleRef.current = null;
+  const clearStreamState = useCallback(() => {
     settersRef.current.setIsStreaming(false);
     settersRef.current.setStreamingText("");
+    settersRef.current.setProgressText("");
     setIsStreaming(false);
-    finalizeAssistantTurn();
-  }, [finalizeAssistantTurn]);
+  }, []);
+
+  const handleStop = useCallback(() => {
+    chatHandleRef.current?.close();
+    chatHandleRef.current = null;
+    mediaHandleRef.current?.close();
+    mediaHandleRef.current = null;
+    clearStreamState();
+    // Best-effort: chat dispatch is the only path that buffers
+    // assistant text; media dispatch commits via `commitMedia` and
+    // does not accumulate text.
+    finalizeAssistantTurn("code");
+  }, [clearStreamState, finalizeAssistantTurn]);
+
+  const dispatchChatTurn = useCallback(
+    (mode: "code" | "plan", trimmed: string, token: string, userId: string) => {
+      const assistantId = `assistant-${userId}`;
+      assistantIdRef.current = assistantId;
+      accumulatedTextRef.current = "";
+      const history = buildHistoryFromSession(session, userId);
+      settersRef.current.setIsStreaming(true);
+      settersRef.current.setStreamingText("");
+      setIsStreaming(true);
+      chatHandleRef.current = streamPublicChat({
+        token,
+        sessionId,
+        history,
+        message: trimmed,
+        mode,
+        onDelta: (text) => {
+          accumulatedTextRef.current += text;
+          settersRef.current.setStreamingText(
+            (prev) => (typeof prev === "string" ? prev : "") + text,
+          );
+        },
+        onLimit: (next) => setTurnCount(next),
+        onError: (err) => {
+          console.error("public chat stream error", err);
+          handleStop();
+        },
+        onDone: () => {
+          chatHandleRef.current = null;
+          clearStreamState();
+          finalizeAssistantTurn(mode);
+        },
+      });
+    },
+    [clearStreamState, finalizeAssistantTurn, handleStop, session, sessionId, setTurnCount],
+  );
+
+  const dispatchMedia = useCallback(
+    (mode: MediaDispatchMode, prompt: string, token: string, sourceImage: string | undefined) => {
+      setIsStreaming(true);
+      mediaHandleRef.current = dispatchMediaTurn({
+        mode,
+        token,
+        prompt,
+        sourceImage,
+        setters: settersRef.current,
+        onCompleted: (resolvedMode, url) => {
+          const message: PublicAssistantMediaMessage = {
+            id: `assistant-${resolvedMode}-${Date.now()}`,
+            role: "assistant",
+            mode: resolvedMode,
+            url,
+            prompt,
+          };
+          commitMedia(sessionId, message);
+        },
+        onLimit: (next) => setTurnCount(next),
+        onError: (err) => {
+          console.error("public media stream error", err);
+          handleStop();
+        },
+        onDone: () => {
+          mediaHandleRef.current = null;
+          clearStreamState();
+        },
+      });
+    },
+    [clearStreamState, commitMedia, handleStop, sessionId, setTurnCount],
+  );
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -126,52 +210,30 @@ export function usePublicChat(sessionId: string): PublicChatController {
       if (!trimmed) return;
       if (shouldShowGate) return;
       const behavior = AGENT_MODE_DESCRIPTORS[selectedMode].behavior;
-      if (behavior.kind !== "chat" && behavior.kind !== "chat_with_action") {
-        const key = selectedMode as Exclude<AgentMode, "code" | "plan">;
-        setComingSoonMessage(COMING_SOON_COPY[key] ?? "Coming soon");
+      if (behavior.kind === "generate_3d") {
+        // Tripo needs a source image; the input bar's attachment
+        // pipeline lands base64 data URLs in the message body — for
+        // the public surface that's currently out of scope. Bail
+        // visibly so the user understands instead of silently
+        // swallowing the click.
+        console.warn("public 3D mode requires a source image attachment");
         return;
       }
       try {
-        setComingSoonMessage(null);
         const token = await ensureToken();
         const userId = appendUserTurn(sessionId, trimmed);
         setInput("");
-        const assistantId = `assistant-${userId}`;
-        assistantIdRef.current = assistantId;
-        accumulatedTextRef.current = "";
-
-        const history = buildHistoryFromSession(session, userId);
-        settersRef.current.setIsStreaming(true);
-        settersRef.current.setStreamingText("");
-        setIsStreaming(true);
-
-        handleRef.current = streamPublicChat({
-          token,
-          sessionId,
-          history,
-          message: trimmed,
-          mode: selectedMode === "plan" ? "plan" : "code",
-          onDelta: (text) => {
-            accumulatedTextRef.current += text;
-            settersRef.current.setStreamingText(
-              (prev) => (typeof prev === "string" ? prev : "") + text,
-            );
-          },
-          onLimit: (next) => {
-            setTurnCount(next);
-          },
-          onError: (err) => {
-            console.error("public chat stream error", err);
-            handleStop();
-          },
-          onDone: () => {
-            handleRef.current = null;
-            settersRef.current.setIsStreaming(false);
-            settersRef.current.setStreamingText("");
-            setIsStreaming(false);
-            finalizeAssistantTurn();
-          },
-        });
+        if (behavior.kind === "chat" || behavior.kind === "chat_with_action") {
+          dispatchChatTurn(selectedMode === "plan" ? "plan" : "code", trimmed, token, userId);
+          return;
+        }
+        if (behavior.kind === "generate_image") {
+          dispatchMedia("image", trimmed, token, undefined);
+          return;
+        }
+        if (behavior.kind === "generate_video") {
+          dispatchMedia("video", trimmed, token, undefined);
+        }
       } catch (err) {
         console.error("public chat send failed", err);
         handleStop();
@@ -179,18 +241,15 @@ export function usePublicChat(sessionId: string): PublicChatController {
     },
     [
       appendUserTurn,
+      dispatchChatTurn,
+      dispatchMedia,
       ensureToken,
-      finalizeAssistantTurn,
       handleStop,
       selectedMode,
-      session,
       sessionId,
-      setTurnCount,
       shouldShowGate,
     ],
   );
-
-  const dismissComingSoon = useCallback(() => setComingSoonMessage(null), []);
 
   return {
     streamKey,
@@ -200,8 +259,6 @@ export function usePublicChat(sessionId: string): PublicChatController {
     messages,
     shouldShowGate: shouldShowGate || turnCount >= 3,
     isStreaming,
-    comingSoonMessage,
-    dismissComingSoon,
     handleSend,
     handleStop,
     input,
@@ -213,7 +270,9 @@ export function usePublicChat(sessionId: string): PublicChatController {
  * Build a wire-shaped history payload from the persisted session,
  * excluding the user message we just appended (which is sent as
  * `message` instead). Returns at most the prior turns the backend
- * needs to rebuild context.
+ * needs to rebuild context. Media-mode assistant turns are
+ * intentionally omitted from the history payload — the chat
+ * endpoint only consumes text turns.
  */
 function buildHistoryFromSession(
   session: PublicSession | null,
@@ -225,18 +284,60 @@ function buildHistoryFromSession(
     if (turn.role === "user" && turn.id === excludeUserId) continue;
     if (turn.role === "user") {
       turns.push({ role: "user", content: turn.content });
-    } else if (turn.role === "assistant") {
+      continue;
+    }
+    if (turn.role === "assistant" && (turn.mode === "code" || turn.mode === "plan")) {
       turns.push({ role: "assistant", content: turn.content });
     }
   }
   return turns;
 }
 
+/**
+ * Adapt a [`PublicMessage`] into the [`DisplaySessionEvent`] shape
+ * `ChatMessageList` expects. Image messages produce an inline
+ * `contentBlocks` image so the chat-ui's image-rendering code path
+ * works unchanged; video / model3d messages fall back to a markdown
+ * link because the message bubble has no native video / 3D
+ * renderer (auth'd users get those through synthesised tool turns
+ * the public surface does not produce).
+ */
 function publicMessageToDisplayEvent(turn: PublicMessage): DisplaySessionEvent {
-  return {
-    id: turn.id,
-    clientId: turn.id,
-    role: turn.role,
-    content: turn.content,
-  };
+  if (turn.role === "user") {
+    return { id: turn.id, clientId: turn.id, role: "user", content: turn.content };
+  }
+  switch (turn.mode) {
+    case "code":
+    case "plan":
+      return { id: turn.id, clientId: turn.id, role: "assistant", content: turn.content };
+    case "image":
+      return {
+        id: turn.id,
+        clientId: turn.id,
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "image", media_type: "image/png", data: "", source_url: turn.url },
+        ],
+      };
+    case "video":
+      return {
+        id: turn.id,
+        clientId: turn.id,
+        role: "assistant",
+        content: `**Generated video** — [open in new tab](${turn.url})`,
+      };
+    case "model3d":
+      return {
+        id: turn.id,
+        clientId: turn.id,
+        role: "assistant",
+        content: `**Generated 3D model** — [open in new tab](${turn.url})`,
+      };
+  }
 }
+
+// Re-export AgentMode in this module path so future test files can
+// avoid reaching across to the constants module just to spell the
+// type; harmless and zero-cost.
+export type { AgentMode };

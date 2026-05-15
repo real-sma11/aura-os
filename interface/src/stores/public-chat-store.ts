@@ -14,17 +14,32 @@
 import { create } from "zustand";
 import { setupPublicSession } from "../api/public-chat";
 
-/** Modality. Code + Plan land in Phase 2; the three media modes
- *  arrive in Phase 3 and the discriminated union below is already
- *  open to extension at that point. */
+/** Modality. Code + Plan ship in Phase 2; image / video / model3d
+ *  joined in Phase 3 (this file's current state) so the discriminated
+ *  union below is closed over the full surface. */
 export type PublicMode = "code" | "plan" | "image" | "video" | "model3d";
 
-/** One discriminated-union message in a public transcript. Phase 2
- *  emits only the `user` and chat-mode `assistant` variants; the
- *  media variants are reserved for Phase 3. */
+/** Asset-bearing assistant message produced by the three generation
+ *  modalities. Pulled out as a named alias because `commitMedia()` 's
+ *  signature is the single most copy-pasted public-mode shape. */
+export type PublicAssistantMediaMessage = {
+  id: string;
+  role: "assistant";
+  mode: "image" | "video" | "model3d";
+  url: string;
+  prompt: string;
+};
+
+/** One discriminated-union message in a public transcript. The `user`
+ *  variant carries free-text input from the visitor; `assistant`
+ *  variants split on `mode`: chat modalities (`code`, `plan`) carry
+ *  rendered markdown via `content`, media modalities (`image`,
+ *  `video`, `model3d`) carry a hosted asset `url` plus the original
+ *  prompt for re-display. */
 export type PublicMessage =
   | { id: string; role: "user"; content: string }
-  | { id: string; role: "assistant"; mode: "code" | "plan"; content: string };
+  | { id: string; role: "assistant"; mode: "code" | "plan"; content: string }
+  | PublicAssistantMediaMessage;
 
 /** One client-side public session. */
 export interface PublicSession {
@@ -53,23 +68,34 @@ interface PublicChatActions {
   createSession: () => string;
   deleteSession: (sessionId: string) => void;
   appendUserTurn: (sessionId: string, content: string) => string;
-  appendAssistantToken: (sessionId: string, messageId: string, deltaText: string) => void;
+  appendAssistantToken: (
+    sessionId: string,
+    messageId: string,
+    deltaText: string,
+    mode: "code" | "plan",
+  ) => void;
   commitAssistant: (sessionId: string, messageId: string) => void;
+  commitMedia: (sessionId: string, message: PublicAssistantMediaMessage) => void;
   setTurnCount: (next: number) => void;
 }
 
 type PublicChatStore = PublicChatState & PublicChatActions;
 
 const STORAGE_KEY = "aura-public:state";
-const SCHEMA_VERSION = 1;
+/** Persisted-shape schema version. Phase 2 wrote v1 with chat-only
+ *  assistant messages (no `mode` discriminator). Phase 3 introduces v2,
+ *  whose assistant messages carry an explicit `mode` field. The reader
+ *  forward-migrates v1 → v2 in-memory so existing visitors do not lose
+ *  their transcript across the upgrade. */
+const SCHEMA_VERSION = 2;
 const DEFAULT_LIMIT = 3;
 
-interface PersistedV1 {
-  v: 1;
+interface PersistedShape {
+  v: 1 | 2;
   guestToken: string | null;
   limit: number;
   turnCount: number;
-  sessions: Record<string, PublicSession>;
+  sessions: Record<string, unknown>;
   sessionOrder: string[];
 }
 
@@ -79,13 +105,14 @@ function loadPersisted(): Partial<PublicChatState> {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
-    if (!isPersistedV1(parsed)) return {};
+    if (!isPersistedShape(parsed)) return {};
+    const sessions = migrateSessions(parsed.sessions);
     return {
       guestToken: parsed.guestToken,
       limit: parsed.limit,
       turnCount: parsed.turnCount,
-      sessions: parsed.sessions,
-      sessionOrder: parsed.sessionOrder,
+      sessions,
+      sessionOrder: parsed.sessionOrder.filter((id) => id in sessions),
     };
   } catch {
     return {};
@@ -94,7 +121,7 @@ function loadPersisted(): Partial<PublicChatState> {
 
 function persist(state: PublicChatState): void {
   if (typeof window === "undefined") return;
-  const payload: PersistedV1 = {
+  const payload: PersistedShape = {
     v: SCHEMA_VERSION,
     guestToken: state.guestToken,
     limit: state.limit,
@@ -110,11 +137,11 @@ function persist(state: PublicChatState): void {
   }
 }
 
-function isPersistedV1(value: unknown): value is PersistedV1 {
+function isPersistedShape(value: unknown): value is PersistedShape {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    v.v === SCHEMA_VERSION &&
+    (v.v === 1 || v.v === 2) &&
     (v.guestToken === null || typeof v.guestToken === "string") &&
     typeof v.limit === "number" &&
     typeof v.turnCount === "number" &&
@@ -122,6 +149,65 @@ function isPersistedV1(value: unknown): value is PersistedV1 {
     v.sessions !== null &&
     Array.isArray(v.sessionOrder)
   );
+}
+
+/**
+ * Convert a persisted sessions map (v1 or v2) into the live in-memory
+ * shape. Drops any message that cannot be coerced into a valid
+ * [`PublicMessage`] variant so a corrupt entry never breaks the
+ * transcript view. v1 assistant rows lack a `mode` discriminator —
+ * Phase 2 hardcoded `mode: "code"` per the subagent report — and are
+ * remapped onto the chat variant; assistant rows whose `mode` is
+ * unrecognised are dropped.
+ */
+function migrateSessions(
+  raw: Record<string, unknown>,
+): Record<string, PublicSession> {
+  const out: Record<string, PublicSession> = {};
+  for (const [sessionId, rawSession] of Object.entries(raw)) {
+    if (!isObject(rawSession)) continue;
+    const id = typeof rawSession.id === "string" ? rawSession.id : sessionId;
+    const title = typeof rawSession.title === "string" ? rawSession.title : "New chat";
+    const updatedAt =
+      typeof rawSession.updatedAt === "number" ? rawSession.updatedAt : Date.now();
+    const turns: PublicMessage[] = Array.isArray(rawSession.turns)
+      ? rawSession.turns.flatMap(coerceMessage)
+      : [];
+    out[id] = { id, title, updatedAt, turns };
+  }
+  return out;
+}
+
+function coerceMessage(raw: unknown): PublicMessage[] {
+  if (!isObject(raw)) return [];
+  const id = typeof raw.id === "string" ? raw.id : null;
+  if (!id) return [];
+  if (raw.role === "user" && typeof raw.content === "string") {
+    return [{ id, role: "user", content: raw.content }];
+  }
+  if (raw.role !== "assistant") return [];
+  const mode = raw.mode;
+  if ((mode === "code" || mode === "plan") && typeof raw.content === "string") {
+    return [{ id, role: "assistant", mode, content: raw.content }];
+  }
+  if (
+    (mode === "image" || mode === "video" || mode === "model3d") &&
+    typeof raw.url === "string" &&
+    typeof raw.prompt === "string"
+  ) {
+    return [{ id, role: "assistant", mode, url: raw.url, prompt: raw.prompt }];
+  }
+  // v1 fallthrough: persisted assistant message without a `mode`
+  // discriminator. The Phase 2 store hardcoded the chat variant, so
+  // we forward-migrate to the same shape.
+  if (typeof raw.content === "string" && mode === undefined) {
+    return [{ id, role: "assistant", mode: "code", content: raw.content }];
+  }
+  return [];
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function randomId(prefix: string): string {
@@ -238,19 +324,24 @@ export const usePublicChatStore = create<PublicChatStore>((set, get) => ({
     persistFromGet(get);
     return messageId;
   },
-  appendAssistantToken: (sessionId, messageId, deltaText) => {
+  appendAssistantToken: (sessionId, messageId, deltaText, mode) => {
     set((s) => {
       const existing = s.sessions[sessionId];
       if (!existing) return s;
       const turns: PublicMessage[] = [...existing.turns];
       const last = turns[turns.length - 1];
-      if (last && last.role === "assistant" && last.id === messageId) {
+      if (
+        last &&
+        last.role === "assistant" &&
+        (last.mode === "code" || last.mode === "plan") &&
+        last.id === messageId
+      ) {
         turns[turns.length - 1] = { ...last, content: last.content + deltaText };
       } else {
         turns.push({
           id: messageId,
           role: "assistant",
-          mode: "code",
+          mode,
           content: deltaText,
         });
       }
@@ -271,6 +362,20 @@ export const usePublicChatStore = create<PublicChatStore>((set, get) => ({
         sessions: {
           ...s.sessions,
           [sessionId]: { ...existing, updatedAt: Date.now() },
+        },
+      };
+    });
+    persistFromGet(get);
+  },
+  commitMedia: (sessionId, message) => {
+    set((s) => {
+      const existing = s.sessions[sessionId];
+      if (!existing) return s;
+      const turns: PublicMessage[] = [...existing.turns, message];
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...existing, turns, updatedAt: Date.now() },
         },
       };
     });

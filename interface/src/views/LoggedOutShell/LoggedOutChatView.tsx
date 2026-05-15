@@ -43,7 +43,7 @@ export function LoggedOutChatView() {
         {controller.messages.length === 0 ? (
           <div className={styles.chatEmpty}>
             <div className={styles.chatEmptyHeading}>What can I help with?</div>
-            <div>Pick a mode and start chatting — Code or Plan supported.</div>
+            <div>Pick a mode and start a conversation — chat, image, video, or 3D.</div>
           </div>
         ) : (
           <ChatMessageList
@@ -53,19 +53,6 @@ export function LoggedOutChatView() {
           />
         )}
       </div>
-      {controller.comingSoonMessage && (
-        <div className={styles.comingSoon}>
-          <span>{controller.comingSoonMessage}</span>
-          <button
-            type="button"
-            className={styles.comingSoonDismiss}
-            onClick={controller.dismissComingSoon}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
       <div
         className={`${styles.inputBarSlot} ${
           controller.shouldShowGate ? styles.inputBarSlotLocked : ""

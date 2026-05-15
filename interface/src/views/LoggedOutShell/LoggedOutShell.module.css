@@ -325,26 +325,3 @@
   pointer-events: none;
   opacity: 0.55;
 }
-
-.comingSoon {
-  margin: 0 16px 8px 16px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: var(--color-surface-subtle, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--color-text-primary, inherit);
-}
-
-.comingSoonDismiss {
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted, #8a8a8e);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-}

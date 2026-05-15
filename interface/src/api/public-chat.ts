@@ -1,9 +1,10 @@
 /**
  * Thin client for the `/api/public/*` anonymous endpoint family.
  *
- * Phase 2 (Code + Plan modes only). The three media modes (image,
- * video, model3d) land in phase 3 and will reuse the same SSE
- * primitives + auth header from this module.
+ * Phase 2 wired Code + Plan; Phase 3 extends this module with three
+ * media-mode SSE clients (`streamPublicImage` / `streamPublicVideo`
+ * / `streamPublicModel3d`) sitting on top of the same
+ * [`streamSSE`] primitive and the same bearer-auth header.
  *
  * Every SSE frame is validated at the boundary (rules-typescript >
  * DATA VALIDATION) before being dispatched to the typed reducers.
@@ -190,4 +191,236 @@ function isPublicSetupResponse(value: unknown): value is PublicSetupResponse {
     typeof v.turn_count === "number" &&
     typeof v.limit === "number"
   );
+}
+
+/* ── Phase 3: media-mode SSE clients ──────────────────────────────── */
+
+/** Public-mode media modalities. Mirrors the backend
+ *  `PublicModality::{Image, Video, Model3d}` variants. */
+export type PublicMediaKind = "image" | "video" | "model3d";
+
+/** Progress update fanned out from a media-mode stream. Both fields
+ *  are optional — the upstream router emits `progress` frames with
+ *  either a `percent` number or a free-text `message` (or both). */
+export interface PublicMediaProgress {
+  fraction?: number;
+  message?: string;
+}
+
+/** Shared args for the three media-mode SSE clients. Each client
+ *  applies one additional field on top of this shape (image's
+ *  optional `sourceUrl` is threaded through the body). */
+interface StreamPublicMediaArgsBase {
+  token: string;
+  prompt: string;
+  signal?: AbortSignal;
+  onProgress: (progress: PublicMediaProgress) => void;
+  onCompleted: (url: string) => void;
+  onLimit: (turnCount: number) => void;
+  onError: (err: Error) => void;
+  onDone?: () => void;
+}
+
+export interface StreamPublicImageArgs extends StreamPublicMediaArgsBase {
+  /** Optional source image URL for image-to-image generation. */
+  sourceUrl?: string;
+}
+
+export type StreamPublicVideoArgs = StreamPublicMediaArgsBase;
+
+export interface StreamPublicModel3dArgs extends StreamPublicMediaArgsBase {
+  /** Required source image for the Tripo image-to-3D pipeline. Either
+   *  a fully-resolved URL or a `data:image/...;base64,...` URL — the
+   *  backend accepts both via the `image_data` alias. */
+  sourceImage: string;
+}
+
+/** Handle returned by the three media-mode stream clients. Identical
+ *  to [`PublicChatStreamHandle`] but kept as a distinct name to
+ *  document intent at call sites. */
+export interface PublicMediaStreamHandle {
+  close: () => void;
+}
+
+/** Open the public image-generation SSE stream. */
+export function streamPublicImage(args: StreamPublicImageArgs): PublicMediaStreamHandle {
+  const body: Record<string, unknown> = { prompt: args.prompt };
+  if (args.sourceUrl && args.sourceUrl.trim().length > 0) {
+    body.source_url = args.sourceUrl;
+  }
+  return openMediaStream({
+    args,
+    path: "/api/public/generation/image",
+    body,
+    kind: "image",
+  });
+}
+
+/** Open the public video-generation SSE stream. */
+export function streamPublicVideo(args: StreamPublicVideoArgs): PublicMediaStreamHandle {
+  return openMediaStream({
+    args,
+    path: "/api/public/generation/video",
+    body: { prompt: args.prompt },
+    kind: "video",
+  });
+}
+
+/** Open the public 3D-generation SSE stream. */
+export function streamPublicModel3d(args: StreamPublicModel3dArgs): PublicMediaStreamHandle {
+  const trimmed = args.sourceImage.trim();
+  const body: Record<string, unknown> = { prompt: args.prompt };
+  if (trimmed.startsWith("data:")) {
+    body.image_data = trimmed;
+  } else {
+    body.image_url = trimmed;
+  }
+  return openMediaStream({
+    args,
+    path: "/api/public/generation/model3d",
+    body,
+    kind: "model3d",
+  });
+}
+
+interface OpenMediaStreamArgs {
+  args: StreamPublicMediaArgsBase;
+  path: string;
+  body: Record<string, unknown>;
+  kind: PublicMediaKind;
+}
+
+/** Shared dispatch core. Mirrors [`streamPublicChat`] but routes
+ *  the SSE frames through [`dispatchPublicMediaFrame`]. Kept private
+ *  so the public surface is the three named exports above. */
+function openMediaStream(opts: OpenMediaStreamArgs): PublicMediaStreamHandle {
+  const { args, path, body, kind } = opts;
+  const controller = new AbortController();
+  const externalSignal = args.signal;
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  void streamSSE<string>(
+    path,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${args.token}`,
+      },
+      body: JSON.stringify(body),
+    },
+    {
+      onEvent: (eventType, payload) => {
+        dispatchPublicMediaFrame(eventType, payload, args, kind);
+      },
+      onError: args.onError,
+      onDone: args.onDone,
+    },
+    controller.signal,
+  );
+  return {
+    close: () => controller.abort(),
+  };
+}
+
+/** Validate + route a single SSE frame from one of the media
+ *  endpoints. Anything we cannot validate is dropped at the
+ *  boundary — `args.onCompleted` is only ever called with a real
+ *  string URL. */
+function dispatchPublicMediaFrame(
+  eventType: string,
+  payload: unknown,
+  args: StreamPublicMediaArgsBase,
+  kind: PublicMediaKind,
+): void {
+  if (eventType === "generation_progress" && isProgressFrame(payload)) {
+    args.onProgress(toProgressUpdate(payload));
+    return;
+  }
+  if (eventType === "generation_completed" && isCompletedFrame(payload)) {
+    const url = extractMediaUrl(payload, kind);
+    if (url) args.onCompleted(url);
+    return;
+  }
+  if (eventType === "limit" && isLimitFrame(payload)) {
+    args.onLimit(payload.turn_count);
+    return;
+  }
+  if (eventType === "generation_error" && isErrorFrame(payload)) {
+    args.onError(new Error(payload.message || payload.code || "public generation error"));
+    return;
+  }
+  if (eventType === "error" && isErrorFrame(payload)) {
+    args.onError(new Error(payload.message || payload.code || "public generation error"));
+  }
+}
+
+interface ProgressFrame {
+  percent?: number;
+  fraction?: number;
+  message?: string;
+}
+
+interface CompletedFrame {
+  imageUrl?: string;
+  videoUrl?: string;
+  modelUrl?: string;
+  url?: string;
+  payload?: {
+    imageUrl?: string;
+    videoUrl?: string;
+    modelUrl?: string;
+    url?: string;
+  };
+}
+
+function isProgressFrame(value: unknown): value is ProgressFrame {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (v.percent === undefined || typeof v.percent === "number") &&
+    (v.fraction === undefined || typeof v.fraction === "number") &&
+    (v.message === undefined || typeof v.message === "string")
+  );
+}
+
+function isCompletedFrame(value: unknown): value is CompletedFrame {
+  return typeof value === "object" && value !== null;
+}
+
+function toProgressUpdate(payload: ProgressFrame): PublicMediaProgress {
+  const fraction =
+    typeof payload.fraction === "number"
+      ? payload.fraction
+      : typeof payload.percent === "number"
+        ? payload.percent / 100
+        : undefined;
+  const update: PublicMediaProgress = {};
+  if (fraction !== undefined) update.fraction = fraction;
+  if (payload.message !== undefined) update.message = payload.message;
+  return update;
+}
+
+/** Pull the renderable asset URL from a completed-frame payload.
+ *  The backend normaliser promotes whichever alias the upstream
+ *  used (asset_url / video_url / model_url / url) into `imageUrl`,
+ *  so the happy path is a single field read; the explicit fallbacks
+ *  keep this client resilient if the contract drifts. */
+function extractMediaUrl(payload: CompletedFrame, kind: PublicMediaKind): string | null {
+  const direct =
+    (kind === "video" ? payload.videoUrl : undefined) ??
+    (kind === "model3d" ? payload.modelUrl : undefined) ??
+    payload.imageUrl ??
+    payload.url;
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  const nested = payload.payload;
+  if (!nested) return null;
+  const nestedUrl =
+    (kind === "video" ? nested.videoUrl : undefined) ??
+    (kind === "model3d" ? nested.modelUrl : undefined) ??
+    nested.imageUrl ??
+    nested.url;
+  return typeof nestedUrl === "string" && nestedUrl.length > 0 ? nestedUrl : null;
 }
