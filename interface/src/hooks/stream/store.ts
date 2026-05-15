@@ -6,6 +6,7 @@ import type {
   TimelineItem,
   StreamRefs,
   StreamSetters,
+  GenerationKind,
 } from "../../shared/types/stream";
 import { clearPartitionSendControl } from "../use-chat-stream/partition-send-control";
 
@@ -42,6 +43,20 @@ export interface StreamEntryState {
   // watchdog itself via `setStuckSince`; entry setters only clear it
   // alongside bumping `lastEventAt`.
   stuckSince: number | null;
+  // Generation-lifecycle metadata. Populated when the entry is
+  // driving an image/3D/video stream so the cooking-indicator ETA
+  // countdown (`useGenerationEta`) can read the start wall-clock,
+  // model id, and latest reported percent. All three are cleared
+  // together on terminal events (completion / error) and on stream
+  // reset so the countdown disappears the moment the stream ends.
+  generationStartedAt: number | null;
+  generationModel: string | null;
+  generationKind: GenerationKind | null;
+  // Latest `percent` reported by an upstream `generation_progress`
+  // SSE frame, when present. Used to refine the initial per-model
+  // fallback estimate into `elapsed * (100 - percent) / percent`
+  // once meaningful (>= 5) progress lands.
+  generationPercent: number | null;
 }
 
 export interface StreamMeta {
@@ -67,6 +82,10 @@ const INITIAL_ENTRY: StreamEntryState = {
   progressText: "",
   lastEventAt: null,
   stuckSince: null,
+  generationStartedAt: null,
+  generationModel: null,
+  generationKind: null,
+  generationPercent: null,
 };
 
 export const useStreamStore = create<StreamStore>()(() => ({
@@ -414,6 +433,33 @@ export function createSetters(key: string): StreamSetters {
       const cur = getStreamEntry(key);
       updateStreamEntry(key, { timeline: resolve(v, cur?.timeline ?? []) });
       markStreamProgress(key);
+    },
+    setGenerationState(v) {
+      touchEntry(key);
+      updateStreamEntry(key, {
+        generationStartedAt: v.startedAt,
+        generationModel: v.model,
+        generationKind: v.kind,
+        // A fresh start always resets the percent so a previous turn's
+        // trailing value can't seed the next countdown's adaptive
+        // estimate.
+        generationPercent: null,
+      });
+    },
+    setGenerationPercent(v) {
+      touchEntry(key);
+      updateStreamEntry(key, { generationPercent: v });
+      // Wire activity — keep the stuck-stream watchdog clock fresh.
+      markStreamProgress(key);
+    },
+    clearGeneration() {
+      touchEntry(key);
+      updateStreamEntry(key, {
+        generationStartedAt: null,
+        generationModel: null,
+        generationKind: null,
+        generationPercent: null,
+      });
     },
   };
 }

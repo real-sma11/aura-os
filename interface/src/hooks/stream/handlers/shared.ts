@@ -238,6 +238,11 @@ export function resetStreamBuffers(refs: StreamRefs, setters: StreamSetters): vo
   setters.setTimeline([]);
   setters.setProgressText("");
   setters.setIsWriting(false);
+  // Reset the generation lifecycle in lockstep with the rest of the
+  // stream state so a previous turn's ETA countdown can't outlive the
+  // turn that started it. The image/3D/video send paths re-stamp via
+  // `setGenerationState` after this runs.
+  setters.clearGeneration();
   refs.snapshottedToolCallIds.current = new Set();
 }
 

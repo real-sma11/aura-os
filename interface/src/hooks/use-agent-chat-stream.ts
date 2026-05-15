@@ -34,7 +34,7 @@ import {
 } from "../stores/context-usage-store";
 import { useSessionsListStore } from "../stores/sessions-list-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
-import { getLastEventAt, markStreamProgress } from "./stream/store";
+import { getLastEventAt, getStreamEntry, markStreamProgress } from "./stream/store";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import type { StreamCloseContext } from "../shared/observability/stream-breadcrumbs";
 
@@ -366,15 +366,33 @@ export function useAgentChatStream({
               }
               break;
             }
-            case EventType.GenerationStart:
+            case EventType.GenerationStart: {
+              const mode = event.content.mode;
               core.setProgressText(
-                event.content.mode === "image" ? "Generating image..." :
-                event.content.mode === "video" ? "Generating video..." :
+                mode === "image" ? "Generating image..." :
+                mode === "video" ? "Generating video..." :
                 "Generating 3D model...",
               );
+              // Stamp the lifecycle for the cooking-indicator ETA
+              // countdown when we haven't already (the chat-image
+              // and chat-3D branches below pre-stamp from
+              // `_generationMode`; the public proxy / sub-step
+              // callers reach us only via the SSE event).
+              if (
+                (mode === "image" || mode === "video" || mode === "3d") &&
+                getStreamEntry(core.key)?.generationStartedAt == null
+              ) {
+                setters.setGenerationState({
+                  startedAt: Date.now(),
+                  model: selectedModel ?? null,
+                  kind: mode,
+                });
+              }
               break;
+            }
             case EventType.GenerationProgress:
               core.setProgressText(event.content.message || `${event.content.percent}%`);
+              setters.setGenerationPercent(event.content.percent);
               break;
             case EventType.GenerationPartialImage:
               // Partial-image frames carry no text we want to render,
@@ -394,10 +412,12 @@ export function useAgentChatStream({
               const toolId = `gen-${Date.now()}`;
               handleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
               handleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
+              setters.clearGeneration();
               finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
               break;
             }
             case EventType.GenerationError:
+              setters.clearGeneration();
               handleStreamError(refs, setters, event.content.message, breadcrumbContext);
               break;
             case EventType.Error:
@@ -417,6 +437,15 @@ export function useAgentChatStream({
         nextSendStartsNewSessionRef.current = false;
         if (_generationMode === "image") {
           core.setProgressText("Generating image...");
+          // Stamp the generation lifecycle synchronously so the
+          // cooking-indicator ETA countdown starts the moment the
+          // user hits send rather than waiting for the upstream
+          // `generation_start` SSE frame to arrive.
+          setters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "image",
+          });
           // Forward `agentId` (and `projectId` when present) so the
           // server can resolve the agent's chat session and persist
           // this turn into history — without it the synthesized
@@ -441,6 +470,11 @@ export function useAgentChatStream({
           if (!_sourceImageUrl) {
             const styledPrompt = `${userMsg.content}${STYLE_LOCK_SUFFIX}`;
             core.setProgressText("Generating image...");
+            setters.setGenerationState({
+              startedAt: Date.now(),
+              model: DEFAULT_IMAGE_MODEL_ID,
+              kind: "image",
+            });
             await generateImageStream(
               styledPrompt,
               DEFAULT_IMAGE_MODEL_ID,
@@ -471,6 +505,11 @@ export function useAgentChatStream({
             return;
           }
           core.setProgressText("Generating 3D model...");
+          setters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "3d",
+          });
           await generate3dStream(
             { kind: "url", imageUrl: _sourceImageUrl },
             trimmed || null,
@@ -498,6 +537,11 @@ export function useAgentChatStream({
 
         if (_generationMode === "video") {
           core.setProgressText("Generating video...");
+          setters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "video",
+          });
           await generateVideoStream(
             {
               prompt: userMsg.content,

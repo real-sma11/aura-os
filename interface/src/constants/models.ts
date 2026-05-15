@@ -112,6 +112,41 @@ export const IMAGE_MODELS: ModelOption[] = [
 export const DEFAULT_IMAGE_MODEL_ID: string = IMAGE_MODELS[0]?.id ?? "gpt-image-2";
 
 /**
+ * Per-model fallback estimate (ms) for "how long does this image
+ * generation usually take". Powers the cooking-indicator ETA
+ * countdown (`useGenerationEta`) for the window between the SSE
+ * stream opening and the first `generation_progress.percent` frame
+ * landing. Once a meaningful percent lands we switch to the
+ * adaptive `elapsed * (100 - percent) / percent` estimate, so these
+ * values only need to be in the right ballpark.
+ *
+ * Numbers are intentionally on the generous side so the countdown
+ * doesn't overrun before the first percent refines it — overrun
+ * just swaps the countdown for "Almost done…" so a slightly long
+ * estimate is harmless, but a slightly short one is jarring.
+ */
+export const IMAGE_MODEL_ESTIMATE_MS: Record<string, number> = {
+  "gpt-image-2": 60_000,
+  "gpt-image-1": 30_000,
+  "dall-e-3": 20_000,
+  "dall-e-2": 12_000,
+  "gemini-nano-banana": 25_000,
+};
+
+/** Default fallback when an image model has no entry in {@link IMAGE_MODEL_ESTIMATE_MS}. */
+export const DEFAULT_IMAGE_MODEL_ESTIMATE_MS = 30_000;
+
+/**
+ * Resolves a per-model image-generation estimate in ms. Returns the
+ * {@link DEFAULT_IMAGE_MODEL_ESTIMATE_MS} fallback when `modelId` is
+ * nullish or unknown so callers never have to branch.
+ */
+export function getImageModelEstimateMs(modelId?: string | null): number {
+  if (!modelId) return DEFAULT_IMAGE_MODEL_ESTIMATE_MS;
+  return IMAGE_MODEL_ESTIMATE_MS[modelId] ?? DEFAULT_IMAGE_MODEL_ESTIMATE_MS;
+}
+
+/**
  * 3D model providers usable in chat 3D mode. The 3D generation pipeline
  * is image-input based: the chat caller must include a pasted /
  * uploaded image, which the backend feeds to the selected provider.

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import type { StreamHealth } from "../../../hooks/stream/use-stream-health";
+import type { GenerationEta } from "../../../hooks/stream/use-generation-eta";
 
 const mockStreamEntry: {
   isStreaming: boolean;
@@ -29,6 +30,8 @@ const mockStreamHealth: StreamHealth = {
   stuckForMs: null,
 };
 
+let mockGenerationEta: GenerationEta | null = null;
+
 vi.mock("../../../hooks/stream/store", () => ({
   useStreamStore: (selector: (state: unknown) => unknown) =>
     selector({ entries: { "stream-1": mockStreamEntry } }),
@@ -37,6 +40,16 @@ vi.mock("../../../hooks/stream/store", () => ({
 vi.mock("../../../hooks/stream/use-stream-health", () => ({
   useStreamHealth: () => mockStreamHealth,
 }));
+
+vi.mock("../../../hooks/stream/use-generation-eta", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("../../../hooks/stream/use-generation-eta")
+  >();
+  return {
+    ...actual,
+    useGenerationEta: () => mockGenerationEta,
+  };
+});
 
 vi.mock("./ChatPanel.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
@@ -63,6 +76,7 @@ describe("ChatStreamingIndicator", () => {
       isStuck: false,
       stuckForMs: null,
     });
+    mockGenerationEta = null;
   });
 
   it("renders nothing when the stream is idle", () => {
@@ -164,5 +178,44 @@ describe("ChatStreamingIndicator", () => {
 
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an estimated countdown next to the cooking label while an image is generating", () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamEntry.progressText = "Generating image...";
+    mockGenerationEta = { remainingMs: 42_000, overrun: false, kind: "image" };
+
+    render(<ChatStreamingIndicator streamKey="stream-1" />);
+
+    expect(screen.getByText("Generating image...")).toBeInTheDocument();
+    expect(screen.getByLabelText("Estimated time remaining")).toHaveTextContent(
+      "0:42",
+    );
+  });
+
+  it("swaps to 'Almost done…' and drops the digits once the estimate has overrun", () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamEntry.progressText = "Generating image...";
+    mockGenerationEta = { remainingMs: 0, overrun: true, kind: "image" };
+
+    render(<ChatStreamingIndicator streamKey="stream-1" />);
+
+    expect(screen.getByText("Almost done\u2026")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Estimated time remaining"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Generating image...")).not.toBeInTheDocument();
+  });
+
+  it("does not render a countdown when no generation is in flight", () => {
+    mockStreamEntry.isStreaming = true;
+    mockStreamEntry.streamingText = "hello";
+
+    render(<ChatStreamingIndicator streamKey="stream-1" />);
+
+    expect(screen.getByText("Cooking...")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Estimated time remaining"),
+    ).not.toBeInTheDocument();
   });
 });

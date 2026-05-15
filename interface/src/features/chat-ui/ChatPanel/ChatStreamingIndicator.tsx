@@ -3,6 +3,10 @@ import { CookingIndicator } from "../../../components/CookingIndicator";
 import { StuckStreamPill } from "../../../components/StuckStreamPill";
 import { useStreamStore } from "../../../hooks/stream/store";
 import { useStreamHealth } from "../../../hooks/stream/use-stream-health";
+import {
+  formatCountdown,
+  useGenerationEta,
+} from "../../../hooks/stream/use-generation-eta";
 import { getStreamingPhaseLabel } from "../../../utils/streaming";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import styles from "./ChatPanel.module.css";
@@ -63,6 +67,7 @@ export function ChatStreamingIndicator({
     })),
   );
   const health = useStreamHealth(streamKey);
+  const eta = useGenerationEta(streamKey);
 
   const nowStreaming =
     isStreaming || !!streamingText || !!thinkingText || toolCalls.length > 0;
@@ -87,17 +92,24 @@ export function ChatStreamingIndicator({
     );
   }
 
-  const label = getStreamingPhaseLabel({
+  const baseLabel = getStreamingPhaseLabel({
     streamingText,
     thinkingText,
     toolCalls,
     progressText,
   });
 
+  // Once the per-model estimate has elapsed but the upstream router
+  // hasn't emitted `generation_completed`, swap the digits for an
+  // "Almost done…" label so the user isn't staring at a stale `0:00`.
+  // The shimmer keeps animating on the new label.
+  const label = eta?.overrun ? "Almost done\u2026" : baseLabel ?? "Cooking...";
+  const countdown = eta && !eta.overrun ? formatCountdown(eta.remainingMs) : null;
+
   return (
     <div className={styles.pinnedStreamingIndicator} aria-live="polite">
       <div className={styles.pinnedStreamingIndicatorInner}>
-        <CookingIndicator label={label ?? "Cooking..."} />
+        <CookingIndicator label={label} countdown={countdown} />
       </div>
     </div>
   );

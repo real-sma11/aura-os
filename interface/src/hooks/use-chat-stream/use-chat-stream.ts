@@ -357,6 +357,11 @@ export function useChatStream({
         ctrl.nextSendStartsNewSession = false;
         if (_generationMode === "image") {
           partitionSetters.setProgressText("Generating image...");
+          partitionSetters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "image",
+          });
           // Forward project + agent-instance ids so the server can
           // resolve the project chat session and persist this turn
           // into history — without it the synthesized `generate_image`
@@ -386,6 +391,11 @@ export function useChatStream({
           if (!_sourceImageUrl) {
             const styledPrompt = `${userMsg.content}${STYLE_LOCK_SUFFIX}`;
             partitionSetters.setProgressText("Generating image...");
+            partitionSetters.setGenerationState({
+              startedAt: Date.now(),
+              model: DEFAULT_IMAGE_MODEL_ID,
+              kind: "image",
+            });
             await generateImageStream(
               styledPrompt,
               DEFAULT_IMAGE_MODEL_ID,
@@ -416,6 +426,11 @@ export function useChatStream({
             return;
           }
           partitionSetters.setProgressText("Generating 3D model...");
+          partitionSetters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "3d",
+          });
           await generate3dStream(
             { kind: "url", imageUrl: _sourceImageUrl },
             trimmed || null,
@@ -443,6 +458,11 @@ export function useChatStream({
 
         if (_generationMode === "video") {
           core.setProgressText("Generating video...");
+          partitionSetters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: "video",
+          });
           await generateVideoStream(
             {
               prompt: userMsg.content,

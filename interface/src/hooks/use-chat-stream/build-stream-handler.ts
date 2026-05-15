@@ -44,7 +44,7 @@ import {
   type WireContextBreakdown,
 } from "../../stores/context-usage-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
-import { markStreamProgress } from "../stream/store";
+import { getStreamEntry, markStreamProgress } from "../stream/store";
 
 export interface DispatchDeps {
   projectId: string;
@@ -399,9 +399,25 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           event.content.mode === "video" ? "Generating video..." :
           "Generating 3D model...",
         );
+        // The send path pre-stamps `generationStartedAt` from
+        // `_generationMode`; this is a safety net for public-proxy
+        // streams that reach the handler with no pre-stamp.
+        if (
+          (event.content.mode === "image" ||
+            event.content.mode === "video" ||
+            event.content.mode === "3d") &&
+          getStreamEntry(coreKey)?.generationStartedAt == null
+        ) {
+          setters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: event.content.mode,
+          });
+        }
         break;
       case EventType.GenerationProgress:
         setProgressText(event.content.message || `${event.content.percent}%`);
+        setters.setGenerationPercent(event.content.percent);
         break;
       case EventType.GenerationPartialImage:
         // Partial-image frames carry no text we want to render, but they
@@ -420,6 +436,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         const toolId = `gen-${Date.now()}`;
         coreHandleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
         coreHandleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
+        setters.clearGeneration();
         finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -427,6 +444,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         break;
       }
       case EventType.GenerationError:
+        setters.clearGeneration();
         handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       case EventType.Error: {
