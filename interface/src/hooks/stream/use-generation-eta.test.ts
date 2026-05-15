@@ -23,7 +23,7 @@ describe("useGenerationEta", () => {
     expect(result.current).toBeNull();
   });
 
-  it("seeds the per-model fallback estimate before any percent lands", () => {
+  it("seeds the per-model fallback estimate", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
 
@@ -46,7 +46,7 @@ describe("useGenerationEta", () => {
     expect(result.current?.remainingMs).toBe(120_000);
   });
 
-  it("counts down via the 1s ticker while no percent updates land", () => {
+  it("counts down via the 1s ticker as wall-clock time elapses", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
 
@@ -93,7 +93,12 @@ describe("useGenerationEta", () => {
     expect(result.current?.remainingMs).toBe(30_000);
   });
 
-  it("ratchets the projection down when the adaptive estimate points to a sooner completion", () => {
+  it("ignores generation_progress percent frames so the countdown never snaps", () => {
+    // Regression for "countdown jumps from random numbers to Almost
+    // done…": upstream `gpt-image-2` emits sparse percent frames that
+    // don't track wall-clock progress, so the ETA must stay on the
+    // per-model baseline regardless of what `setGenerationPercent`
+    // pushes into the store.
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
 
@@ -108,83 +113,31 @@ describe("useGenerationEta", () => {
     });
 
     const { result } = renderHook(() => useGenerationEta("k1"));
-
-    // After 10s elapsed, percent=20 -> total = 10s * 100 / 20 = 50s,
-    // sooner than the 120s baseline so the latch ratchets to 50s and
-    // remaining = 40s.
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-      setters.setGenerationPercent(20);
-    });
-    expect(result.current?.remainingMs).toBe(40_000);
-
-    // Sub-threshold percent values can't push the projection back
-    // out — the latch stays at the sooner completion, and the
-    // countdown keeps ticking naturally.
-    act(() => {
-      setters.setGenerationPercent(2);
-    });
-    expect(result.current?.remainingMs).toBe(40_000);
-  });
-
-  it("never lets the countdown jump upward when a later adaptive estimate lands", () => {
-    // Regression for the original "1:13 on a 60s gpt-image-2"
-    // symptom: early `generation_progress.percent` frames can
-    // project a total that exceeds the per-model baseline.
-    // Without the monotonic latch the displayed digits would
-    // bounce upward mid-render. With the latch, a later
-    // projection is ignored and the countdown only ticks
-    // downward.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
-
-    ensureEntry("k1");
-    const setters = createSetters("k1");
-    act(() => {
-      setters.setGenerationState({
-        startedAt: Date.now(),
-        model: "gpt-image-2",
-        kind: "image",
-      });
-    });
-
-    const { result } = renderHook(() => useGenerationEta("k1"));
-    // Baseline seeds the latch at 120s remaining (gpt-image-2).
     expect(result.current?.remainingMs).toBe(120_000);
 
-    // 10s in, a noisy percent=7 would project total ≈ 142.9s,
-    // clearly slower than the 120s baseline. The latch must
-    // reject it and continue counting against the baseline-derived
-    // completion timestamp (110s remaining at t=10s).
-    act(() => {
-      vi.advanceTimersByTime(10_000);
-      setters.setGenerationPercent(7);
-    });
-    expect(result.current?.remainingMs).toBe(110_000);
-
-    // 5s later, percent=10 projects total = 150s, even further
-    // past the latched baseline. Still ignored.
+    // A noisy 50% at t=5s would have projected a 10s total under the
+    // old adaptive formula and snapped the digits from 1:55 to 0:05.
+    // The countdown must keep ticking against the 120s baseline.
     act(() => {
       vi.advanceTimersByTime(5_000);
-      setters.setGenerationPercent(10);
+      setters.setGenerationPercent(50);
     });
-    expect(result.current?.remainingMs).toBe(105_000);
+    expect(result.current?.remainingMs).toBe(115_000);
+    expect(result.current?.overrun).toBe(false);
 
-    // Finally percent=40 lands and projects total = 37.5s, which
-    // beats the latched 120s baseline at t=15s -> 22.5s remaining.
-    // The latch ratchets down and the digits jump (downward, which
-    // is the only direction we allow).
+    // Even a near-completion percent value can't ratchet the projection.
     act(() => {
-      setters.setGenerationPercent(40);
+      setters.setGenerationPercent(95);
     });
-    expect(result.current?.remainingMs).toBe(22_500);
+    expect(result.current?.remainingMs).toBe(115_000);
+    expect(result.current?.overrun).toBe(false);
   });
 
-  it("resets the latch when a new generation run starts on the same entry", () => {
-    // Without resetting on `startedAt` change, a quick second
-    // send (e.g. user retries an image) would inherit the
-    // previous run's latched completion timestamp and read as
-    // overrun the moment the new countdown mounted.
+  it("resets the countdown when a new generation run starts on the same entry", () => {
+    // Without resetting on `startedAt` change, a quick second send
+    // (e.g. user retries an image) would inherit the previous run's
+    // overrun state and read as "Almost done…" the moment the new
+    // countdown mounted.
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
 
@@ -206,9 +159,7 @@ describe("useGenerationEta", () => {
     });
     expect(result.current?.overrun).toBe(true);
 
-    // Start a brand-new run on the same key. The latch must seed
-    // from the new baseline, not stay stuck at the previous
-    // completion timestamp.
+    // Start a brand-new run on the same key.
     act(() => {
       setters.setGenerationState({
         startedAt: Date.now(),
