@@ -198,12 +198,22 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
     );
   }
 
+  // For the web logged-out flow we route `/login` through the
+  // `LoggedOutShell` tree below so the public chat surface stays
+  // mounted behind a `LoginOverlay` modal instead of being replaced
+  // by a full-page route. For native apps and the brief boot window
+  // before auth resolves, `LoginView` keeps owning the entire
+  // surface — there's no underlying public chat to overlay.
+  const useStandaloneLoginRoute = showShell || isNativeApp;
+
   return (
     <Routes>
-      <Route
-        path="login"
-        element={showShell ? <Navigate to="/" replace /> : <LoginView />}
-      />
+      {useStandaloneLoginRoute && (
+        <Route
+          path="login"
+          element={showShell ? <Navigate to="/" replace /> : <LoginView />}
+        />
+      )}
       <Route path="capture-login" element={<CaptureLoginView />} />
       <Route
         path="ide"
@@ -277,6 +287,10 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
           <Route element={<LoggedOutShell />}>
             <Route index element={<LoggedOutChatView />} />
             <Route path="chat" element={<LoggedOutChatView />} />
+            {/* `/login` mounts the same chat view in the outlet so
+                the shell renders normally; `LoggedOutShell` detects
+                the pathname and overlays the login modal on top. */}
+            <Route path="login" element={<LoggedOutChatView />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </>

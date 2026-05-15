@@ -1,7 +1,8 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
+import { LoginOverlay } from "./LoginOverlay";
 import styles from "./LoggedOutShell.module.css";
 
 /**
@@ -14,9 +15,16 @@ import styles from "./LoggedOutShell.module.css";
  *
  * Children render into the `<Outlet />` so the routing tree can swap
  * `LoggedOutChatView` for future logged-out routes without touching
- * this component.
+ * this component. When the active route is `/login`, the
+ * `LoginOverlay` is mounted on top of the shell so authentication
+ * happens as a closable modal over the public chat surface (the
+ * shell stays visible-but-dimmed behind it) instead of a separate
+ * full-page route.
  */
 export function LoggedOutShell() {
+  const location = useLocation();
+  const isLoginRoute = location.pathname === "/login";
+
   return (
     <div className={styles.shell}>
       <BackgroundLayer />
@@ -29,6 +37,7 @@ export function LoggedOutShell() {
           <Outlet />
         </main>
       </div>
+      {isLoginRoute && <LoginOverlay />}
     </div>
   );
 }

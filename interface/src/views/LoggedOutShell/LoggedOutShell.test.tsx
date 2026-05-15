@@ -38,15 +38,23 @@ vi.mock("../../components/DesktopShell/BackgroundLayer", () => ({
   BackgroundLayer: () => <div data-testid="background-layer-stub" />,
 }));
 
+vi.mock("./LoginOverlay", () => ({
+  LoginOverlay: () => <div data-testid="login-overlay-stub" role="dialog" />,
+}));
+
 import { LoggedOutShell } from "./LoggedOutShell";
 
-function renderShell() {
+function renderShell(initialPath = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route element={<LoggedOutShell />}>
           <Route
             path="/"
+            element={<div data-testid="outlet-child">child route</div>}
+          />
+          <Route
+            path="/login"
             element={<div data-testid="outlet-child">child route</div>}
           />
         </Route>
@@ -72,11 +80,30 @@ describe("LoggedOutShell", () => {
     expect(screen.getByTestId("outlet-child")).toBeInTheDocument();
   });
 
-  it("surfaces the marketing footer + upsell card on first paint", () => {
+  it("surfaces the marketing footer links on first paint without an upsell card", () => {
     renderShell();
-    expect(screen.getByText("Get responses tailored to you")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Product" }),
     ).toHaveAttribute("href", "https://aura.ai/product");
+    // The upsell card was removed because the titlebar already
+    // exposes a "Log in" / "Sign up" CTA pair — having a duplicate
+    // affordance at the bottom of the rail crowded the footer.
+    expect(
+      screen.queryByText("Get responses tailored to you"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not mount the LoginOverlay on the public chat route", () => {
+    renderShell("/");
+    expect(screen.queryByTestId("login-overlay-stub")).not.toBeInTheDocument();
+  });
+
+  it("mounts the LoginOverlay on top of the shell when the active route is /login", () => {
+    renderShell("/login");
+    // Shell still mounts (chat surface stays visible behind the
+    // overlay so the visitor can dismiss the modal back to public
+    // mode without losing context).
+    expect(screen.getByTestId("outlet-child")).toBeInTheDocument();
+    expect(screen.getByTestId("login-overlay-stub")).toBeInTheDocument();
   });
 });
