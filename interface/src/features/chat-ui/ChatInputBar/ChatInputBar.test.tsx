@@ -622,16 +622,46 @@ describe("ChatInputBar", () => {
     expect(onCommandsChange).toHaveBeenCalledWith([]);
   });
 
-  it("keeps the environment slot and divider mounted while machineType is loading", () => {
+  it("keeps the environment slot and divider mounted while machineType is loading (with a project)", () => {
     // Simulates the brief window after switching agents, when
     // useAgentChatMeta returns machineType=undefined while the new
-    // projectAgentInstance query is in flight. The slot must remain in the
-    // DOM so the orbit indicator does not shift.
-    const { container } = render(<ChatInputBar {...makeProps({ machineType: undefined })} />);
+    // projectAgentInstance query is in flight. With a project selected,
+    // the orbit indicator on the right of the divider WILL paint, so
+    // the slot must remain in the DOM to keep the orbit indicator from
+    // shifting once machineType resolves.
+    const project = {
+      project_id: "p1",
+      name: "Demo Project",
+    } as unknown as NonNullable<Parameters<typeof ChatInputBar>[0]["projects"]>[number];
+    const { container } = render(
+      <ChatInputBar
+        {...makeProps({
+          machineType: undefined,
+          projects: [project],
+          selectedProjectId: "p1",
+        })}
+      />,
+    );
 
     expect(container.querySelector(".environmentWrap")).not.toBeNull();
     expect(container.querySelector(".infoDivider")).not.toBeNull();
     expect(container.querySelector('[data-loading="true"]')).not.toBeNull();
+  });
+
+  it("hides the info divider when there is no project to anchor the orbit indicator", () => {
+    // The "·" divider previously rendered unconditionally between
+    // AgentEnvironment and OrbitStatusIndicator, leaving a bare dot
+    // floating in the info bar of projectless chats (most visibly on
+    // the logged-out chat surface and the authenticated "General"
+    // chat). The fix gates the divider on a selected project so it
+    // only paints when the orbit indicator actually has content.
+    const { container } = render(
+      <ChatInputBar {...makeProps({ machineType: "local" })} />,
+    );
+
+    expect(container.querySelector(".environmentWrap")).not.toBeNull();
+    expect(container.querySelector(".orbitWrap")).not.toBeNull();
+    expect(container.querySelector(".infoDivider")).toBeNull();
   });
 
   it("opens the mobile model sheet and calls setSelectedModel", async () => {

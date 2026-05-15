@@ -39,11 +39,11 @@ describe("useGenerationEta", () => {
 
     const { result } = renderHook(() => useGenerationEta("k1"));
 
-    // gpt-image-2 -> 60_000ms fallback. At t=0 we expect ~60s remaining.
+    // gpt-image-2 -> 120_000ms fallback. At t=0 we expect ~120s remaining.
     expect(result.current).not.toBeNull();
     expect(result.current?.kind).toBe("image");
     expect(result.current?.overrun).toBe(false);
-    expect(result.current?.remainingMs).toBe(60_000);
+    expect(result.current?.remainingMs).toBe(120_000);
   });
 
   it("counts down via the 1s ticker while no percent updates land", () => {
@@ -110,7 +110,7 @@ describe("useGenerationEta", () => {
     const { result } = renderHook(() => useGenerationEta("k1"));
 
     // After 10s elapsed, percent=20 -> total = 10s * 100 / 20 = 50s,
-    // sooner than the 60s baseline so the latch ratchets to 50s and
+    // sooner than the 120s baseline so the latch ratchets to 50s and
     // remaining = 40s.
     act(() => {
       vi.advanceTimersByTime(10_000);
@@ -128,12 +128,13 @@ describe("useGenerationEta", () => {
   });
 
   it("never lets the countdown jump upward when a later adaptive estimate lands", () => {
-    // Regression for the "1:13 on a 60s gpt-image-2" symptom: early
-    // `generation_progress.percent` frames can project a total that
-    // exceeds the per-model baseline. Without the monotonic latch
-    // the displayed digits would bounce from `0:50` up to `1:13`
-    // mid-render. With the latch, a later projection is ignored and
-    // the countdown only ticks downward.
+    // Regression for the original "1:13 on a 60s gpt-image-2"
+    // symptom: early `generation_progress.percent` frames can
+    // project a total that exceeds the per-model baseline.
+    // Without the monotonic latch the displayed digits would
+    // bounce upward mid-render. With the latch, a later
+    // projection is ignored and the countdown only ticks
+    // downward.
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
 
@@ -148,30 +149,29 @@ describe("useGenerationEta", () => {
     });
 
     const { result } = renderHook(() => useGenerationEta("k1"));
-    // Baseline seeds the latch at 60s remaining.
-    expect(result.current?.remainingMs).toBe(60_000);
+    // Baseline seeds the latch at 120s remaining (gpt-image-2).
+    expect(result.current?.remainingMs).toBe(120_000);
 
-    // 10s in, a noisy percent=8 would project total = 125s,
-    // i.e. 1:55 remaining — clearly slower than the 60s baseline.
-    // The latch must reject it and continue counting against the
-    // baseline-derived completion timestamp (50s remaining at t=10s).
+    // 10s in, a noisy percent=7 would project total ≈ 142.9s,
+    // clearly slower than the 120s baseline. The latch must
+    // reject it and continue counting against the baseline-derived
+    // completion timestamp (110s remaining at t=10s).
     act(() => {
       vi.advanceTimersByTime(10_000);
-      setters.setGenerationPercent(8);
+      setters.setGenerationPercent(7);
     });
-    expect(result.current?.remainingMs).toBe(50_000);
+    expect(result.current?.remainingMs).toBe(110_000);
 
-    // A second tick lands a slightly less noisy percent=15 that
-    // still projects total = 66.7s, pushing completion ~6s past the
-    // latched baseline. Still ignored.
+    // 5s later, percent=10 projects total = 150s, even further
+    // past the latched baseline. Still ignored.
     act(() => {
       vi.advanceTimersByTime(5_000);
-      setters.setGenerationPercent(15);
+      setters.setGenerationPercent(10);
     });
-    expect(result.current?.remainingMs).toBe(45_000);
+    expect(result.current?.remainingMs).toBe(105_000);
 
     // Finally percent=40 lands and projects total = 37.5s, which
-    // beats the latched 60s baseline at t=15s -> 22.5s remaining.
+    // beats the latched 120s baseline at t=15s -> 22.5s remaining.
     // The latch ratchets down and the digits jump (downward, which
     // is the only direction we allow).
     act(() => {

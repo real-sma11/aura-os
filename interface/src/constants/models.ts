@@ -126,7 +126,13 @@ export const DEFAULT_IMAGE_MODEL_ID: string = IMAGE_MODELS[0]?.id ?? "gpt-image-
  * estimate is harmless, but a slightly short one is jarring.
  */
 export const IMAGE_MODEL_ESTIMATE_MS: Record<string, number> = {
-  "gpt-image-2": 60_000,
+  // gpt-image-2 routinely renders well past the original 60s
+  // estimate in production (the cooking countdown sat at "Almost
+  // done…" for the second half of typical runs), so the baseline
+  // is doubled to 120s. The adaptive `percent`-driven refinement
+  // still ratchets the projection downward whenever the upstream
+  // router reports faster progress.
+  "gpt-image-2": 120_000,
   "gpt-image-1": 30_000,
   "dall-e-3": 20_000,
   "dall-e-2": 12_000,

@@ -899,6 +899,14 @@ export const DesktopChatInputBar = memo(
       <div className={styles.bottomChromeRow}>{modelPickerNode}</div>
     ) : null;
 
+    // Only render the "·" divider when the orbit indicator on the
+    // right will actually paint something. `OrbitStatusIndicator`
+    // returns null whenever there is no project, so without this gate
+    // we end up with a hanging dot between two invisible neighbours
+    // (the inert AgentEnvironment placeholder on the left and the
+    // null orbit indicator on the right) — most visibly on the
+    // logged-out chat surface and "General" / projectless chats.
+    const showInfoDivider = selectedProject != null;
     const infoBarStart = (
       <>
         <span className={styles.environmentWrap}>
@@ -908,9 +916,11 @@ export const DesktopChatInputBar = memo(
             workspacePath={workspacePath}
           />
         </span>
-        <span className={styles.infoDivider} aria-hidden="true">
-          ·
-        </span>
+        {showInfoDivider ? (
+          <span className={styles.infoDivider} aria-hidden="true">
+            ·
+          </span>
+        ) : null}
         <span className={styles.orbitWrap}>
           <OrbitStatusIndicator project={selectedProject} />
         </span>
