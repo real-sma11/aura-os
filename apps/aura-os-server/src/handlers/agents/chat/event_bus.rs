@@ -13,8 +13,11 @@
 //! payload.
 //!
 //! Tracing target across all WS-related logs is **`aura::ws`** —
-//! Phase 6 will grep on this single target to diagnose missing live
-//! updates end to end.
+//! Phase 6 grep this single target (alongside `aura::cross_agent`) to
+//! diagnose missing live updates end to end. The full table of log
+//! sites and the `RUST_LOG` invocation that turns them on lives in
+//! [`CROSS_AGENT_TRACING.md`](./CROSS_AGENT_TRACING.md) — keep that
+//! doc in sync when adding or removing log lines under either target.
 
 use serde::Serialize;
 

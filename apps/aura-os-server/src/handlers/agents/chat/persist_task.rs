@@ -126,6 +126,19 @@ async fn run_persist_loop(
         match rx.recv().await {
             Ok(evt) => {
                 state.seq += 1;
+                // Phase 6 cross-agent observability breadcrumb. Pairs with
+                // `aura::ws::publishing chat event` (event_bus.rs) so an
+                // operator filtering on `aura::cross_agent` can see "did
+                // the persist task even observe this harness event" right
+                // alongside "did the WS broadcast fire". Variant kind is
+                // a short string instead of `{:?}` so the log line stays
+                // the same length regardless of payload size.
+                debug!(
+                    target: "aura::cross_agent",
+                    session_id = %ctx.session_id,
+                    event = harness_outbound_kind(&evt),
+                    "persist_task observed harness event"
+                );
                 let produced_progress =
                     handle_outbound(&mut state, &ctx, &event_bus, &evt, model.as_deref()).await;
                 if matches!(evt, HarnessOutbound::Error(_)) {
@@ -307,8 +320,8 @@ async fn mark_storage_session_rolled_over(ctx: &ChatPersistCtx) {
         tasks_worked_count: None,
         ended_at: Some(chrono::Utc::now().to_rfc3339()),
     };
-    if let Err(error) = update_session_with_storage(&ctx.storage, &ctx.session_id, &ctx.jwt, &req)
-        .await
+    if let Err(error) =
+        update_session_with_storage(&ctx.storage, &ctx.session_id, &ctx.jwt, &req).await
     {
         warn!(
             session_id = %ctx.session_id,
@@ -408,6 +421,33 @@ async fn finalize_if_needed(
         content_blocks = state.content_blocks.len(),
         "Synthesized assistant_message_end after broadcast channel closed early"
     );
+}
+
+/// Phase 6 cross-agent tracing helper. Maps a [`HarnessOutbound`]
+/// variant onto a short, stable string so the
+/// `aura::cross_agent::"persist_task observed harness event"` log
+/// line is greppable without dragging the full event body into the
+/// trace output. Keep these strings stable — they are part of the
+/// (informal) operator-facing diagnostic surface.
+fn harness_outbound_kind(evt: &HarnessOutbound) -> &'static str {
+    match evt {
+        HarnessOutbound::SessionReady(_) => "session_ready",
+        HarnessOutbound::AssistantMessageStart(_) => "assistant_message_start",
+        HarnessOutbound::TextDelta(_) => "text_delta",
+        HarnessOutbound::ThinkingDelta(_) => "thinking_delta",
+        HarnessOutbound::ToolUseStart(_) => "tool_use_start",
+        HarnessOutbound::ToolCallSnapshot(_) => "tool_call_snapshot",
+        HarnessOutbound::ToolResult(_) => "tool_result",
+        HarnessOutbound::ToolApprovalPrompt(_) => "tool_approval_prompt",
+        HarnessOutbound::AssistantMessageEnd(_) => "assistant_message_end",
+        HarnessOutbound::Error(_) => "error",
+        HarnessOutbound::Progress(_) => "progress",
+        HarnessOutbound::GenerationStart(_) => "generation_start",
+        HarnessOutbound::GenerationProgress(_) => "generation_progress",
+        HarnessOutbound::GenerationPartialImage(_) => "generation_partial_image",
+        HarnessOutbound::GenerationCompleted(_) => "generation_completed",
+        HarnessOutbound::GenerationError(_) => "generation_error",
+    }
 }
 
 pub(super) fn flush_text_segment(state: &mut PersistTaskState) {

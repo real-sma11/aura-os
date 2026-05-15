@@ -8,7 +8,7 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::state::AppState;
 
@@ -30,6 +30,18 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
                 match result {
                     Ok(value) => {
                         let json = serde_json::to_string(&value).unwrap_or_default();
+                        // Phase 6 per-message trace. Trace level is off
+                        // by default so this stays silent in production
+                        // unless an operator explicitly turns it on with
+                        // `RUST_LOG=aura::ws=trace`. Pairs with the
+                        // `publishing chat event` debug in `event_bus.rs`
+                        // to confirm the broadcast made it all the way
+                        // out the socket.
+                        trace!(
+                            target: "aura::ws",
+                            bytes = json.len(),
+                            "forwarding ws message to client"
+                        );
                         if socket.send(Message::Text(json)).await.is_err() {
                             warn!(target: "aura::ws", "ws send failed; closing connection");
                             break;

@@ -1,3 +1,25 @@
+/**
+ * Cross-agent / WS live-update sync hook.
+ *
+ * Diagnostic toggle (Phase 6): set
+ *
+ *   window.__AURA_DEBUG_CROSS_AGENT__ = true
+ *
+ * from devtools to surface two `console.debug` lines tagged
+ * `[aura.cross-agent]` whenever the WS event store receives a frame
+ * (`ws raw` — wire payload + parsed view) and whenever this hook's
+ * subscription evaluates a chat event against its watch params
+ * (`ws event` — type, ids, watch params, matched). The toggle is
+ * intentionally just a window property — no env var, no build flag —
+ * so a user reporting "my UI didn't live-update" can flip it from the
+ * browser console without re-installing anything. When the property
+ * is undefined / falsy the gate is a single `typeof window` check
+ * plus a property read, so there is no perf impact in production. The
+ * server-side companion targets are `aura::cross_agent` and
+ * `aura::ws`; see
+ * `apps/aura-os-server/src/handlers/agents/chat/CROSS_AGENT_TRACING.md`
+ * for the matching log table and `RUST_LOG` invocation.
+ */
 import { useEffect, useRef, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useChatHistoryStore, useChatHistory } from "../../stores/chat-history-store";
@@ -97,6 +119,41 @@ export interface ChatEventForMatch {
  *  2. `watchAgentInstanceId && event.project_agent_id === watchAgentInstanceId`
  *  3. `watchAgentId && event.agent_id === watchAgentId`
  */
+/**
+ * Phase 6 diagnostic: when the
+ * `window.__AURA_DEBUG_CROSS_AGENT__` flag is truthy, log one
+ * `[aura.cross-agent] ws event` line per evaluated chat event with
+ * the type, the routing ids, the watch params, and whether the
+ * matcher accepted the event. No-op when the flag is undefined /
+ * falsy — the gate is a single `typeof window` check plus a property
+ * read so the unmonitored hot path is effectively free. Exported so
+ * the unit tests can pin both branches without having to drive the
+ * full hook + WS subscription scaffolding.
+ */
+export function maybeLogCrossAgentEvent(
+  event: ChatEventForMatch & { type?: string },
+  watch: ChatEventWatch,
+  matched: boolean,
+): void {
+  if (
+    typeof window === "undefined" ||
+    !(window as unknown as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__
+  ) {
+    return;
+  }
+  const { watchSessionId, watchAgentInstanceId, watchAgentId } = watch;
+  // eslint-disable-next-line no-console -- gated behind window flag, see top-of-file doc
+  console.debug("[aura.cross-agent] ws event", {
+    type: event.type,
+    session_id: event.session_id,
+    project_agent_id: event.project_agent_id,
+    agent_id: event.agent_id,
+    watch: { watchSessionId, watchAgentInstanceId, watchAgentId },
+    matched,
+  });
+}
+
 export function matchesChatEvent(
   event: ChatEventForMatch | undefined,
   watch: ChatEventWatch,
@@ -260,8 +317,10 @@ export function useChatHistorySync({
         .fetchHistory(historyKey, fetchFn, { force: true });
     };
 
-    const onChatEvent = (event: ChatEventForMatch & { content?: Record<string, unknown> }) => {
-      if (!matchesChatEvent(event, watch)) return;
+    const onChatEvent = (event: ChatEventForMatch & { type?: string; content?: Record<string, unknown> }) => {
+      const matched = matchesChatEvent(event, watch);
+      maybeLogCrossAgentEvent(event, watch, matched);
+      if (!matched) return;
       forceFetchHistory("history: WS-triggered refetch (UserMessage/AssistantEnd)", event);
       if (settleRefetchTimer !== undefined) {
         clearTimeout(settleRefetchTimer);

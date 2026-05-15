@@ -17,7 +17,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream;
 use futures_util::StreamExt as FuturesStreamExt;
 use tokio::sync::{broadcast, Mutex};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
@@ -398,6 +398,21 @@ pub(super) async fn open_harness_chat_stream(
     // bus so the UI can live-refresh the target agent's chat panel when
     // another agent (e.g. the CEO) writes into its history. See
     // `useChatHistorySync` for the consumer.
+    //
+    // Phase 6 cross-agent tracing breadcrumb. This is the hand-off
+    // point from "HTTP handler accepted the user turn" to "WS publisher
+    // tells live UIs to refetch". An operator chasing a missing
+    // live-update can grep `aura::cross_agent` to confirm we made it
+    // here, then `aura::ws` to confirm `publish_chat_event` enqueued a
+    // payload — see `event_bus.rs` doc header for the full chain.
+    debug!(
+        target: "aura::cross_agent",
+        session_id = %ctx.session_id,
+        project_agent_id = %ctx.project_agent_id,
+        agent_id = ?ctx.agent_id,
+        originating_agent_id = ?ctx.originating_agent_id,
+        "user_message persisted; publishing ws event"
+    );
     publish_user_message_event(&state.event_broadcast, &ctx, persisted_user_evt.id.as_str());
 
     // Kick off ChatGPT-style title generation in parallel with the

@@ -380,6 +380,22 @@ export function connectEventSocket() {
             project_agent_id: raw.project_agent_id as string | undefined,
           },
         );
+        // Phase 6 cross-agent diagnostic. Gated behind a window flag
+        // (`window.__AURA_DEBUG_CROSS_AGENT__ = true` from devtools)
+        // so production sessions stay quiet. Logging the raw frame
+        // alongside the parsed view makes Bug-A-style parser
+        // regressions (a wire-shape change that the parser silently
+        // drops) immediately visible in the browser console — see
+        // `apps/aura-os-server/src/handlers/agents/chat/CROSS_AGENT_TRACING.md`
+        // for the matching server-side targets.
+        if (
+          typeof window !== "undefined" &&
+          (window as unknown as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+            .__AURA_DEBUG_CROSS_AGENT__
+        ) {
+          // eslint-disable-next-line no-console -- gated behind window flag
+          console.debug("[aura.cross-agent] ws raw", { raw, parsed: event });
+        }
         handleSocketEngineEvent(event);
       } catch (error) {
         if (import.meta.env.DEV) {

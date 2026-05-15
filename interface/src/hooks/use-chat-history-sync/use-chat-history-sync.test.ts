@@ -188,6 +188,7 @@ function emit(
 
 import {
   matchesChatEvent,
+  maybeLogCrossAgentEvent,
   useChatHistorySync,
 } from "./use-chat-history-sync";
 import { parseAuraEvent } from "../../shared/types/aura-events";
@@ -1023,6 +1024,85 @@ describe("matchesChatEvent", () => {
     expect(
       matchesChatEvent(undefined, { watchAgentInstanceId: "pa-1" }),
     ).toBe(false);
+  });
+});
+
+// Phase 6 — gate-behavior pin for the cross-agent diagnostic.
+// `window.__AURA_DEBUG_CROSS_AGENT__` is the single, devtools-flippable
+// toggle that unlocks the `[aura.cross-agent] ws event` console.debug
+// inside the use-chat-history-sync subscription. These tests guard
+// against a future "let's clean up unused debug code" sweep that would
+// silently rip the diagnostic out — without the flag the operator
+// cannot reconstruct B's missing live-update from the browser console.
+describe("maybeLogCrossAgentEvent (Phase 6 gate)", () => {
+  let debugSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+    delete (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__;
+  });
+
+  it("logs an [aura.cross-agent] line when the flag is truthy", () => {
+    (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__ = true;
+    const event = {
+      type: "user_message",
+      session_id: "s-1",
+      project_agent_id: "pa-1",
+      agent_id: "a-1",
+    };
+    const watch = { watchAgentInstanceId: "pa-1" };
+    const matched = matchesChatEvent(event, watch);
+
+    maybeLogCrossAgentEvent(event, watch, matched);
+
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+    const firstArg = debugSpy.mock.calls[0]?.[0];
+    expect(typeof firstArg).toBe("string");
+    expect(firstArg as string).toMatch(/^\[aura\.cross-agent\]/);
+  });
+
+  it("does not log when the flag is undefined", () => {
+    expect(
+      (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+        .__AURA_DEBUG_CROSS_AGENT__,
+    ).toBeUndefined();
+
+    maybeLogCrossAgentEvent(
+      {
+        type: "user_message",
+        session_id: "s-1",
+        project_agent_id: "pa-1",
+        agent_id: "a-1",
+      },
+      { watchAgentInstanceId: "pa-1" },
+      true,
+    );
+
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not log when the flag is explicitly falsy", () => {
+    (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__ = false;
+
+    maybeLogCrossAgentEvent(
+      {
+        type: "user_message",
+        session_id: "s-1",
+        project_agent_id: "pa-1",
+        agent_id: "a-1",
+      },
+      { watchAgentInstanceId: "pa-1" },
+      false,
+    );
+
+    expect(debugSpy).not.toHaveBeenCalled();
   });
 });
 

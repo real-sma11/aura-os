@@ -34,6 +34,14 @@
 //! preserving valid UTF-8 boundaries — long replies are pruned with a
 //! visible suffix so the recipient agent's LLM doesn't choke on a
 //! 200 KiB inbox event.
+//!
+//! ## Diagnostics
+//!
+//! All structured logs in this module use
+//! `target: "aura::cross_agent"`. The full chain of cross-agent + WS
+//! tracing targets, log sites, and the `RUST_LOG` invocation that
+//! turns the whole thing on at debug level is documented in
+//! [`CROSS_AGENT_TRACING.md`](./CROSS_AGENT_TRACING.md).
 
 use std::time::Duration;
 
