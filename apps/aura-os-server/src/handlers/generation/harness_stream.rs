@@ -7,11 +7,12 @@ use aura_os_harness::{
 };
 use aura_protocol::GenerationRequest;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use futures_util::stream;
+use futures_util::{stream, StreamExt};
 use serde_json::json;
 use serde_json::Map;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
 use aura_os_core::ZeroAuthSession;
@@ -24,8 +25,14 @@ use crate::handlers::agents::session_identity::{
 };
 use crate::state::AppState;
 
+use super::image::build_generation_start_event;
 use super::persist::{spawn_generation_persist_task, GenerationPersistMeta};
 use super::sse::{SseResponse, SseStream, SSE_NO_BUFFERING_HEADERS};
+
+/// Capacity of the per-stream channel feeding the SSE response. Sized
+/// generously so the upstream-drain task never blocks on a slow client
+/// drain.
+const GENERATION_STREAM_CHANNEL_CAPACITY: usize = 64;
 
 const DEFAULT_GENERATION_EVENT_IDLE_TIMEOUT_SECS: u64 = 120;
 const DEFAULT_GENERATION_MAX_RUNTIME_SECS: u64 = 600;
@@ -109,6 +116,30 @@ pub(super) struct GenerationPersistArgs {
     pub(super) meta: GenerationPersistMeta,
 }
 
+/// Build the SSE response for a harness-driven generation request
+/// (video / 3D).
+///
+/// Returns immediately with the SSE headers + a `ReceiverStream` fed
+/// by a background task. The task's very first action is to emit a
+/// synthetic `generation_start` event so the client sees a wire event
+/// within milliseconds of the connection opening — before the
+/// harness session has even been opened.
+///
+/// This is the fix for the "Agent paused" stuck-stream pill on
+/// long-running media generations: the frontend watchdog
+/// (`STUCK_THRESHOLD_MS = 30s`) bumps `lastEventAt` on every
+/// SSE-driven setter. Previously the handler awaited
+/// `harness.open_session(...).await` BEFORE constructing the SSE
+/// response, so a slow upstream router (or any media model that
+/// takes >30s to emit its first wire event) would surface the
+/// "Agent paused" pill even though the request was healthy in
+/// flight. Now the watchdog clock resets the moment the SSE
+/// EventSource opens.
+///
+/// Failures that previously surfaced as HTTP `4xx` / `5xx` (session
+/// identity violation, harness session open, command send) are now
+/// translated to in-band `generation_error` SSE frames since the
+/// HTTP 200 has already been committed to the wire.
 pub(super) async fn open_generation_stream(
     state: AppState,
     jwt: String,
@@ -123,11 +154,6 @@ pub(super) async fn open_generation_stream(
     let prompt_len = request.prompt.as_ref().map_or(0, |prompt| prompt.len());
     let image_count = request.images.as_ref().map_or(0, Vec::len);
     let has_project_id = request.project_id.is_some();
-    let GenerationIdentity {
-        aura_org_id,
-        aura_session_id,
-        user_id,
-    } = identity;
     info!(
         generation_id = %generation_id,
         mode = %mode,
@@ -138,6 +164,60 @@ pub(super) async fn open_generation_stream(
         harness_mode = ?harness_mode,
         "generation stream opening harness session"
     );
+
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(GENERATION_STREAM_CHANNEL_CAPACITY);
+    tokio::spawn(run_harness_generation_task(
+        tx,
+        state,
+        jwt,
+        request,
+        identity,
+        persist,
+        generation_id,
+        mode,
+        harness_mode,
+    ));
+
+    let stream: SseStream = Box::pin(ReceiverStream::new(rx));
+    Ok((
+        SSE_NO_BUFFERING_HEADERS,
+        Sse::new(stream).keep_alive(KeepAlive::default()),
+    ))
+}
+
+/// Background task that drives one harness-backed generation SSE
+/// response: emits the synthetic `generation_start`, opens the
+/// harness session, sends the `GenerationRequest`, then drains the
+/// session's broadcast through the shared event translator into the
+/// response channel.
+///
+/// Every send is best-effort: if the client disconnects mid-stream
+/// the receiver is dropped and the task exits cleanly.
+#[allow(clippy::too_many_arguments)]
+async fn run_harness_generation_task(
+    tx: mpsc::Sender<Result<Event, Infallible>>,
+    state: AppState,
+    jwt: String,
+    request: GenerationRequest,
+    identity: GenerationIdentity,
+    persist: Option<GenerationPersistArgs>,
+    generation_id: String,
+    mode: String,
+    harness_mode: HarnessMode,
+) {
+    if tx
+        .send(Ok(build_generation_start_event(&mode)))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    let GenerationIdentity {
+        aura_org_id,
+        aura_session_id,
+        user_id,
+    } = identity;
     let session_config = SessionConfig {
         agent_id: Some(format!("generation-{}", uuid::Uuid::new_v4().as_simple())),
         agent_name: Some("Generation".to_string()),
@@ -158,29 +238,53 @@ pub(super) async fn open_generation_stream(
     // caveat that generation sessions intentionally use a synthetic
     // agent_id (they aren't tied to an agent template) so the
     // requirements skip `template_agent_id` but still require
-    // *some* agent identity via `require_any_agent_identity`.
-    validate_session_identity(
+    // *some* agent identity via `require_any_agent_identity`. The
+    // failure was previously a synchronous 4xx; with the deferred
+    // upstream open the SSE response has already been committed, so
+    // it surfaces as an in-band `generation_error` instead.
+    if let Err(err) = validate_session_identity(
         &session_config,
         SessionIdentityRequirements::GENERATION,
         "generation_session",
-    )?;
-
-    let harness = state.harness_for(harness_mode);
-    let session = harness.open_session(session_config).await.map_err(|err| {
+    ) {
+        let message = err.1 .0.error.clone();
         error!(
             generation_id = %generation_id,
             mode = %mode,
-            error = %err,
-            "generation harness session failed to open"
+            error = %message,
+            "generation session identity validation failed"
         );
-        // Route through the shared mapper so upstream WS-slot
-        // exhaustion + harness-side identity preflight failures
-        // surface as the same structured envelopes the rest of the
-        // server uses, instead of a generic `bad_gateway`.
-        map_harness_error_to_api(&err, state.harness_ws_slots, |e| {
-            ApiError::bad_gateway(format!("opening harness generation session failed: {e}"))
-        })
-    })?;
+        let _ = tx
+            .send(Ok(generation_error_event_with_code(
+                "SESSION_IDENTITY_INVALID",
+                message,
+            )))
+            .await;
+        return;
+    }
+
+    let harness = state.harness_for(harness_mode);
+    let session = match harness.open_session(session_config).await {
+        Ok(session) => session,
+        Err(err) => {
+            error!(
+                generation_id = %generation_id,
+                mode = %mode,
+                error = %err,
+                "generation harness session failed to open"
+            );
+            let api_err = map_harness_error_to_api(&err, state.harness_ws_slots, |e| {
+                ApiError::bad_gateway(format!("opening harness generation session failed: {e}"))
+            });
+            let _ = tx
+                .send(Ok(generation_error_event_with_code(
+                    "SESSION_OPEN_FAILED",
+                    api_err.1 .0.error.clone(),
+                )))
+                .await;
+            return;
+        }
+    };
     info!(
         generation_id = %generation_id,
         session_id = %session.session_id,
@@ -188,7 +292,7 @@ pub(super) async fn open_generation_stream(
         "generation harness session opened"
     );
 
-    let rx = session.events_tx.subscribe();
+    let rx_harness = session.events_tx.subscribe();
     if let Some(persist) = persist {
         // Subscribe a *second* receiver before sending the
         // `GenerationRequest`, so the persist task and SSE adapter
@@ -202,19 +306,25 @@ pub(super) async fn open_generation_stream(
             persist.meta,
         );
     }
-    session
+    if let Err(err) = session
         .commands_tx
         .try_send(HarnessInbound::GenerationRequest(request))
-        .map_err(|err| {
-            error!(
-                generation_id = %generation_id,
-                session_id = %session.session_id,
-                mode = %mode,
-                error = %err,
-                "generation request failed to send to harness"
-            );
-            ApiError::bad_gateway(format!("sending harness generation request failed: {err}"))
-        })?;
+    {
+        error!(
+            generation_id = %generation_id,
+            session_id = %session.session_id,
+            mode = %mode,
+            error = %err,
+            "generation request failed to send to harness"
+        );
+        let _ = tx
+            .send(Ok(generation_error_event_with_code(
+                "REQUEST_SEND_FAILED",
+                format!("sending harness generation request failed: {err}"),
+            )))
+            .await;
+        return;
+    }
     info!(
         generation_id = %generation_id,
         session_id = %session.session_id,
@@ -222,22 +332,40 @@ pub(super) async fn open_generation_stream(
         "generation request sent to harness"
     );
 
-    let stream = harness_generation_to_sse(
+    let session_id = session.session_id.clone();
+    let inner = harness_generation_to_sse(
         state,
         harness_mode,
-        session.session_id,
+        session_id,
         generation_id,
         mode,
         generation_event_idle_timeout(),
         generation_max_runtime(),
-        rx,
+        rx_harness,
         session.commands_tx.clone(),
     );
-    let boxed: SseStream = Box::pin(stream);
-    Ok((
-        SSE_NO_BUFFERING_HEADERS,
-        Sse::new(boxed).keep_alive(KeepAlive::default()),
-    ))
+    let mut inner = std::pin::pin!(inner);
+    while let Some(item) = inner.next().await {
+        if tx.send(item).await.is_err() {
+            return;
+        }
+    }
+}
+
+/// Build an in-band `generation_error` SSE event with the given
+/// upstream-failure code + message. Used for setup-phase failures
+/// (session identity validation, harness session open, command send)
+/// that previously surfaced as synchronous 4xx/5xx HTTP responses
+/// but now have to ride in-band because the HTTP 200 was already
+/// committed when the SSE stream opened.
+fn generation_error_event_with_code(code: &'static str, message: String) -> Event {
+    Event::default()
+        .event("generation_error")
+        .json_data(json!({
+            "code": code,
+            "message": message,
+        }))
+        .unwrap_or_else(|_| Event::default().data("{}"))
 }
 
 fn harness_generation_to_sse(
