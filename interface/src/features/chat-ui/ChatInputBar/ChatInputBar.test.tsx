@@ -506,6 +506,36 @@ describe("ChatInputBar", () => {
     );
   });
 
+  it("focuses the textarea after a mode pill click so the user can keep typing", async () => {
+    // Reproduces the empty-state surface in the screenshot: the user
+    // lands on the centered compose, taps `Image`, then expects the
+    // textarea to be ready for typing without an extra click.
+    const user = userEvent.setup();
+    render(<ChatInputBar {...makeProps()} />);
+
+    const textarea = screen.getByPlaceholderText("/ for commands, @ for context");
+    expect(document.activeElement).not.toBe(textarea);
+
+    await user.click(screen.getByRole("radio", { name: "Image mode" }));
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it("keeps the textarea focused when re-clicking the active mode pill", async () => {
+    // `SlidingPills` no-ops the onChange when the pill is already
+    // active, but the mousedown preventDefault on the button must
+    // still keep the textarea focused so the user does not lose their
+    // typing target on a stray click.
+    const user = userEvent.setup();
+    render(<ChatInputBar {...makeProps()} />);
+
+    const textarea = screen.getByPlaceholderText("/ for commands, @ for context");
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+
+    await user.click(screen.getByRole("radio", { name: "Code mode" }));
+    expect(document.activeElement).toBe(textarea);
+  });
+
   it("renders the visible modes in the segmented selector", () => {
     render(<ChatInputBar {...makeProps()} />);
 

@@ -253,6 +253,14 @@ export const DesktopChatInputBar = memo(
         if (onCommandsChange && selectedCommands.some((c) => isGenerationCommand(c.id))) {
           onCommandsChange(selectedCommands.filter((c) => !isGenerationCommand(c.id)));
         }
+        // Keep focus on the textarea so the user can immediately keep
+        // typing after picking a mode. `SlidingPills` already prevents
+        // the pill button from stealing focus on mousedown, so when the
+        // textarea was already focused this is a no-op; the explicit
+        // focus call covers the (more common) case where the user lands
+        // on the centered empty-state surface and clicks a mode before
+        // ever clicking the textarea.
+        shellRef.current?.focus();
       },
       [
         adapterType,

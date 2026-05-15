@@ -1,6 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Box, Image as ImageIcon, ListChecks, Terminal, Video } from "lucide-react";
-import { DesktopChatInputBar } from "../../features/chat-ui/ChatInputBar";
+import {
+  DesktopChatInputBar,
+  type ChatInputBarHandle,
+} from "../../features/chat-ui/ChatInputBar";
 import {
   AGENT_MODE_DESCRIPTORS,
   AGENT_MODE_ORDER,
@@ -56,10 +59,17 @@ export function ComposePanel({
 }: ComposePanelProps) {
   const chatUI = useChatUI(streamKey);
   const { selectedMode, setSelectedMode } = chatUI;
+  const inputBarRef = useRef<ChatInputBarHandle>(null);
 
   const handleSelectMode = useCallback(
     (mode: AgentMode) => {
       setSelectedMode(streamKey, mode, "chat", agentId);
+      // Move focus into the input so the user can immediately keep
+      // typing after picking a widget. Matches the in-bar mode pill
+      // behavior (`SlidingPills` preventDefaults mousedown and
+      // `ChatInputBar.onModeChange` re-focuses the textarea) so the
+      // two mode-selection surfaces on this view stay consistent.
+      inputBarRef.current?.focus();
     },
     [agentId, setSelectedMode, streamKey],
   );
@@ -81,6 +91,7 @@ export function ComposePanel({
       <h2 className={styles.composeHeading}>What do you want to create?</h2>
       <div className={styles.composeInput}>
         <DesktopChatInputBar
+          ref={inputBarRef}
           input={input}
           onInputChange={onInputChange}
           onSend={(content) => onSend(content)}
@@ -105,6 +116,14 @@ export function ComposePanel({
               className={`${styles.composeWidget} ${
                 isActive ? styles.composeWidgetActive : ""
               }`}
+              onMouseDown={(e) => {
+                // Don't let the button steal focus from the textarea on
+                // mousedown. The subsequent click still fires
+                // `handleSelectMode`, which also explicitly refocuses
+                // the textarea so the widget works regardless of where
+                // focus was before the click.
+                e.preventDefault();
+              }}
               onClick={() => handleSelectMode(mode)}
               aria-pressed={isActive}
               title={descriptor.description}
