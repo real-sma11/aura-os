@@ -47,14 +47,21 @@ export function LoggedOutSessionsPanel() {
   );
 
   const handleDelete = useCallback(
-    (id: string, ev: React.MouseEvent) => {
-      ev.stopPropagation();
+    (id: string) => {
       deleteSession(id);
-      if (id === activeSessionId) {
-        navigate("/");
-      }
+      if (id !== activeSessionId) return;
+      // The deleted row was the active session, so the URL still
+      // points at it. Hop to the most recent remaining session
+      // (sessionOrder is newest-first) instead of falling back to
+      // `/`, which would otherwise re-trigger `LoggedOutChatView`'s
+      // auto-create-on-mount and immediately spawn a fresh "New chat"
+      // row in place of the one the user just removed — making the
+      // delete look like it failed. If nothing remains, hand off to
+      // `/` so the auto-create lands the visitor on a usable surface.
+      const nextActive = sessionOrder.find((existing) => existing !== id);
+      navigate(nextActive ? `/?session=${nextActive}` : "/");
     },
-    [activeSessionId, deleteSession, navigate],
+    [activeSessionId, deleteSession, navigate, sessionOrder],
   );
 
   return (
@@ -76,32 +83,32 @@ export function LoggedOutSessionsPanel() {
           <div className={styles.emptyHint}>No conversations yet</div>
         ) : (
           orderedSessions.map((session) => (
-            <button
+            // Two sibling <button>s in a flex row instead of a delete
+            // button nested inside a select button. Nesting interactive
+            // content inside a <button> is invalid HTML and was the
+            // root cause of unreliable click delivery on the X icon.
+            <div
               key={session.id}
-              type="button"
               className={`${styles.sessionRow} ${
                 session.id === activeSessionId ? styles.sessionRowActive : ""
               }`}
-              onClick={() => handleSelect(session.id)}
             >
-              <span className={styles.sessionRowTitle}>{session.title}</span>
-              <span
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
+                className={styles.sessionRowSelect}
+                onClick={() => handleSelect(session.id)}
+              >
+                <span className={styles.sessionRowTitle}>{session.title}</span>
+              </button>
+              <button
+                type="button"
                 className={styles.deleteButton}
-                onClick={(ev) => handleDelete(session.id, ev)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    deleteSession(session.id);
-                  }
-                }}
+                onClick={() => handleDelete(session.id)}
                 aria-label={`Delete chat "${session.title}"`}
               >
                 <X size={14} />
-              </span>
-            </button>
+              </button>
+            </div>
           ))
         )}
       </div>
