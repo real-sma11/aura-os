@@ -24,24 +24,29 @@
 //! - [`demo_agent`] — lazy provisioning of the system-owned
 //!   [`AgentId`](aura_os_core::AgentId) every public chat turn targets.
 
-// Phase 1 lays the plumbing the phase-2 router-mounted handlers all
-// sit on top of. Until those handlers land the re-exports below have
-// no in-crate consumers, so we relax `dead_code` / `unused_imports`
-// at the module level rather than papering each item with a
-// per-attribute allow that the phase-2 PR would have to scrub.
-#![allow(dead_code, unused_imports)]
+// Phase 2 mounts the chat / setup handlers below. A handful of
+// `TurnGuard` / `RateLimitError` accessors and newtype fields still
+// have no in-crate consumer yet — phase-3 generation handlers
+// (image, video, model3d) and phase-4 tests will exercise them.
+// Narrow `dead_code` allow keeps the warning floor clean without
+// papering over phase-2 imports.
+#![allow(dead_code)]
 
+pub(crate) mod chat;
 pub(crate) mod demo_agent;
 pub(crate) mod gate;
 pub(crate) mod jwt;
 pub(crate) mod rate_limiter;
+pub(crate) mod setup;
 pub(crate) mod types;
 
-pub(crate) use demo_agent::{ensure_public_demo_agent, public_demo_agent_id, SYSTEM_DEMO_USER_ID};
-pub(crate) use gate::{
-    emit_limit_frame, enforce_public_turn, record_completion, PublicGateCtx, TurnGuard,
-};
+// Public-mode surface re-exports. Only the items consumed from
+// outside this module live here; internal helpers stay reachable
+// through their submodule path. Keeping the re-export list tight
+// avoids the warning churn that an over-broad `pub(crate) use`
+// produced in phase 1.
+pub(crate) use chat::public_chat_stream;
 pub(crate) use jwt::{decode_guest_token, extract_bearer_from_headers, is_guest_token};
 pub use rate_limiter::RateLimiter;
-pub(crate) use rate_limiter::{Clock, SystemClock, PUBLIC_IP_DAILY_CEILING, PUBLIC_TURN_LIMIT};
-pub(crate) use types::{GuestClaims, GuestId, IpHash, PublicModality, PublicTurnCount};
+pub(crate) use setup::public_setup;
+pub(crate) use types::GuestClaims;

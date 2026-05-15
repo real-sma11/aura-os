@@ -2,10 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { lazy, Suspense, useEffect } from "react";
 import { useAuthStore } from "./stores/auth-store";
 import { useAppUIStore } from "./stores/app-ui-store";
+import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
+import { LoggedOutShell, LoggedOutChatView } from "./views/LoggedOutShell";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
@@ -186,6 +188,7 @@ export function App() {
 
 function AppRoutes({ showShell }: { showShell: boolean }) {
   const location = useLocation();
+  const { isNativeApp } = useAuraCapabilities();
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -227,6 +230,8 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
             </Route>
           </Route>
         </Route>
+      ) : isNativeApp ? (
+        <Route path="*" element={<Navigate to="/login" replace />} />
       ) : (
         <>
           <Route
@@ -269,7 +274,11 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
               }
             />
           </Route>
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route element={<LoggedOutShell />}>
+            <Route index element={<LoggedOutChatView />} />
+            <Route path="chat" element={<LoggedOutChatView />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
     </Routes>

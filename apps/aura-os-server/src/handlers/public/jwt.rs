@@ -20,9 +20,10 @@
 //! setup handler and the verifier share one source of truth.
 
 use axum::http::HeaderMap;
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use std::time::{SystemTime, SystemTimeError, UNIX_EPOCH};
 
-use super::types::GuestClaims;
+use super::types::{GuestClaims, GuestId};
 
 /// Env var the deploy scripts populate with the guest JWT signing
 /// secret. A missing or blank value falls back to
@@ -98,6 +99,56 @@ pub(crate) fn extract_bearer_from_headers(headers: &HeaderMap) -> Option<String>
 /// for the wrong reason and pollute the auth metrics).
 pub(crate) fn is_guest_token(token: &str) -> bool {
     decode_guest_token(token).is_ok()
+}
+
+/// Lifetime of issued guest tokens, mirroring the rate-limiter's 24h
+/// bucket TTL so the JWT and the per-guest state expire in lock-step.
+pub(crate) const GUEST_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
+
+/// Failure modes for [`encode_guest_token`]. Decoupled from a
+/// generic `anyhow::Error` so the setup handler can map each
+/// variant onto the right HTTP shape without parsing a string.
+#[derive(Debug)]
+pub(crate) enum GuestTokenEncodeError {
+    /// `SystemTime::now()` was before the unix epoch — only happens on
+    /// a profoundly misconfigured system clock.
+    Clock(SystemTimeError),
+    /// `jsonwebtoken::encode` failed (shouldn't happen with HS256 +
+    /// a static-length secret, but we surface it rather than panic).
+    Sign(jsonwebtoken::errors::Error),
+}
+
+impl std::fmt::Display for GuestTokenEncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Clock(e) => write!(f, "system clock before unix epoch: {e}"),
+            Self::Sign(e) => write!(f, "guest jwt signing failed: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for GuestTokenEncodeError {}
+
+/// Sign a guest JWT for `guest_id`. Stamps `role = "guest"` and
+/// `exp = now + GUEST_TOKEN_TTL_SECS` so [`decode_guest_token`]
+/// accepts the token until its rate-limiter bucket evicts.
+pub(crate) fn encode_guest_token(
+    guest_id: &GuestId,
+) -> Result<(String, GuestClaims), GuestTokenEncodeError> {
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(GuestTokenEncodeError::Clock)?
+        .as_secs();
+    let claims = GuestClaims {
+        sub: guest_id.as_str().to_string(),
+        role: GuestClaims::ROLE.to_string(),
+        exp: now_secs + GUEST_TOKEN_TTL_SECS,
+    };
+    let secret = guest_jwt_secret();
+    let key = EncodingKey::from_secret(&secret);
+    let header = Header::new(GUEST_JWT_ALGORITHM);
+    let token = encode(&header, &claims, &key).map_err(GuestTokenEncodeError::Sign)?;
+    Ok((token, claims))
 }
 
 #[cfg(test)]
