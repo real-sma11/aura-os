@@ -98,8 +98,8 @@ fn is_powershell_shell(shell: &str) -> bool {
 /// Args to pass to PowerShell on spawn.
 ///
 /// Beyond `-NoLogo` (suppress the startup banner), the `-Command`
-/// payload installs two compatibility fixes for running PowerShell over
-/// a `portable_pty` ConPTY pipe into xterm.js:
+/// payload installs two compatibility fixes for running PowerShell
+/// over a `portable_pty` ConPTY pipe into xterm.js:
 ///
 /// **1. `Clear-Host` override.** Emits the standard VT reset
 /// sequences directly:
@@ -115,23 +115,24 @@ fn is_powershell_shell(shell: &str) -> bool {
 /// 100k-line xterm.js scrollback survives — leaving old output one
 /// scroll-up away from a "cleared" screen.
 ///
-/// **2. PSReadLine compatibility.** Disables `PredictionSource` and
-/// `BellStyle`. PSReadLine's inline prediction (greyed-out completion
-/// at the end of the line) emits a mix of cursor-save / selective-erase
-/// / cursor-restore VT sequences on every keystroke. When navigating
-/// history with Up/Down those redraws don't clean up cleanly in
-/// xterm.js — fragments of previous predictions and longer history
-/// entries remain on screen on top of the current line, especially
-/// after the line has wrapped. Turning prediction off sidesteps the
-/// entire problematic redraw path while keeping core line editing.
-/// Bell is disabled to avoid the audible/visual ping on every Tab.
+/// **2. PSReadLine removal.** PSReadLine maintains its own model of
+/// the buffer width, prompt position, and wrap state, then redraws the
+/// current line with cursor-save / selective-erase / cursor-restore VT
+/// sequences on every keystroke and history navigation. When that
+/// model disagrees with what xterm.js actually rendered — which it
+/// readily does whenever output has wrapped, the prompt spans more
+/// than one row, or the terminal was resized after spawn — the
+/// redraws land in the wrong place and stack fragments of previous
+/// content on top of the current line. Removing the module forces
+/// PowerShell back to its built-in console-host line editor: no
+/// inline prediction, no greyed completion overlay, and a much
+/// simpler single-line redraw model with no wrap tracking. Up/Down
+/// history and basic editing still work; tab completion / Ctrl+R
+/// search / syntax highlighting are the trade-off.
 ///
-/// The PSReadLine block is wrapped in nested `try/catch` because:
-/// - The module may not be installed (rare).
-/// - PSReadLine 2.0 (the default on Windows PowerShell 5.1) doesn't
-///   know about `-PredictionSource`. Unknown parameters are
-///   *terminating* errors that `-ErrorAction SilentlyContinue` does
-///   not suppress, so each option is tried independently.
+/// `Remove-Module` runs after the user's profile has loaded (profiles
+/// are processed before `-Command`), so any PSReadLine setup the user
+/// did is discarded along with the module.
 ///
 /// `[char]27` is used instead of the `` `e `` escape literal because the
 /// latter only exists in PowerShell 6+ and would be a syntax error on
@@ -144,11 +145,7 @@ pub(crate) fn powershell_args() -> Vec<&'static str> {
         "-Command",
         "function global:Clear-Host { \
          [Console]::Out.Write([char]27 + '[H' + [char]27 + '[2J' + [char]27 + '[3J') }; \
-         try { \
-         Import-Module PSReadLine -ErrorAction Stop; \
-         try { Set-PSReadLineOption -PredictionSource None } catch {}; \
-         try { Set-PSReadLineOption -BellStyle None } catch {} \
-         } catch {}",
+         Remove-Module PSReadLine -Force -ErrorAction SilentlyContinue",
     ]
 }
 
@@ -436,7 +433,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn test_powershell_args_disable_psreadline_prediction() {
+    fn test_powershell_args_remove_psreadline() {
         let args = powershell_args();
         let cmd_idx = args
             .iter()
@@ -446,23 +443,15 @@ mod tests {
             .get(cmd_idx + 1)
             .expect("-Command must be followed by a script");
         assert!(
-            init.contains("Import-Module PSReadLine"),
-            "init script must load PSReadLine: {init}"
+            init.contains("Remove-Module PSReadLine -Force -ErrorAction SilentlyContinue"),
+            "init must remove PSReadLine to avoid history-nav rendering artifacts: {init}"
         );
+        // We deliberately do not Import-Module / configure it — the
+        // whole point is that PowerShell falls back to its built-in
+        // line editor.
         assert!(
-            init.contains("Set-PSReadLineOption -PredictionSource None"),
-            "init script must disable PSReadLine prediction to avoid history-nav rendering artifacts: {init}"
-        );
-        // Each Set-PSReadLineOption call must be wrapped in its own
-        // try/catch because PSReadLine 2.0 (PS 5.1's default) doesn't
-        // recognize -PredictionSource and would crash the init.
-        let predict_pos = init
-            .find("Set-PSReadLineOption -PredictionSource None")
-            .expect("expected PredictionSource line");
-        let prefix = &init[..predict_pos];
-        assert!(
-            prefix.trim_end().ends_with("try {"),
-            "PredictionSource call must be wrapped in its own try/catch: {init}"
+            !init.contains("Set-PSReadLineOption"),
+            "init must not configure PSReadLine after removing it: {init}"
         );
     }
 
