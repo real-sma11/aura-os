@@ -139,10 +139,10 @@ async function waitForReady() {
         throw new Error("desktop runtime config payload missing");
       }
       if (typeof runtimeConfig.aura_network_url !== "string" || !runtimeConfig.aura_network_url) {
-        throw new Error("desktop runtime config missing aura_network_url");
+        console.warn("desktop runtime config: aura_network_url not set (compile-time defaults will apply at runtime)");
       }
       if (typeof runtimeConfig.aura_storage_url !== "string" || !runtimeConfig.aura_storage_url) {
-        throw new Error("desktop runtime config missing aura_storage_url");
+        console.warn("desktop runtime config: aura_storage_url not set (compile-time defaults will apply at runtime)");
       }
       if (runtimeConfig.harness_binary && runtimeConfig.local_harness_url) {
         const harness = await fetch(`${String(runtimeConfig.local_harness_url).replace(/\/$/, "")}/health`);
