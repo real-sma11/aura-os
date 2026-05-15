@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "../../api/client";
 import type { DesktopUpdateStatusResponse } from "../../shared/api/desktop";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
+import { useFocusUpdateCheck } from "./useFocusUpdateCheck";
 
 interface UpdateBannerData {
   data: DesktopUpdateStatusResponse | null;
@@ -39,6 +40,12 @@ export function useUpdateBanner(): UpdateBannerData {
     const id = setInterval(poll, POLL_INTERVAL);
     return () => clearInterval(id);
   }, [enabled, poll]);
+
+  useFocusUpdateCheck({
+    enabled,
+    status: data?.update.status,
+    onChecked: poll,
+  });
 
   useEffect(() => {
     if (data?.update.status !== "available" || data.update.version !== dismissedVersion) {

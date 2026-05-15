@@ -5,6 +5,7 @@ import type {
   DesktopUpdateStatusResponse,
 } from "../../shared/api/desktop";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
+import { useFocusUpdateCheck } from "../UpdateBanner/useFocusUpdateCheck";
 
 const POLL_INTERVAL = 5_000;
 
@@ -136,6 +137,12 @@ export function useUpdateStatus(): UpdateStatusState {
     }, POLL_INTERVAL);
     return () => clearInterval(id);
   }, [features.nativeUpdater, data?.supported, poll]);
+
+  useFocusUpdateCheck({
+    enabled: supported,
+    status: data?.update.status,
+    onChecked: poll,
+  });
 
   const checkForUpdates = useCallback(async () => {
     if (!features.nativeUpdater) return;
