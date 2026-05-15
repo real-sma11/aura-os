@@ -1,12 +1,12 @@
 /**
- * Behavioural test for `LoggedOutChatView` empty-state + compose
- * modal + auth-gated send. Covers the three contracts the new
- * compose surface ships with:
+ * Behavioural test for `LoggedOutChatView` empty-state inline
+ * compose surface + auth-gated send. Pins three contracts:
  *
- *  - The modal renders the "What do you want to create?" heading
- *    and the mode-pill widget row when the transcript is empty.
- *  - Clicking the close (X) button hides the modal so the visitor
- *    can see the rest of the shell ("public mode" with no overlay).
+ *  - The empty state renders the inline compose heading
+ *    ("What do you want to create?") and the mode-pill widget row
+ *    directly in the main panel (no modal overlay).
+ *  - The "Create an image" widget is wired so picking a mode is
+ *    available without opening the input bar's segmented control.
  *  - Sending a message while unauthenticated navigates to
  *    `/login?next=...` instead of attempting the public chat
  *    request (interim auth gate while the public router is flaky).
@@ -99,8 +99,8 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("LoggedOutChatView compose modal", () => {
-  it("renders the compose heading and mode-pill widgets on empty state", () => {
+describe("LoggedOutChatView inline compose", () => {
+  it("renders the compose heading and mode-pill widgets inline (no modal overlay)", () => {
     renderView();
     expect(
       screen.getByRole("heading", { name: "What do you want to create?" }),
@@ -111,19 +111,12 @@ describe("LoggedOutChatView compose modal", () => {
     expect(
       screen.getByRole("button", { name: /Create an image/i }),
     ).toBeInTheDocument();
-  });
-
-  it("hides the modal when the close button is clicked (back to public mode)", async () => {
-    const user = userEvent.setup();
-    renderView();
+    // The compose surface lives inside a `region` (not a `dialog`)
+    // because it's now an inline empty-state, not an overlay.
     expect(
-      screen.getByRole("heading", { name: "What do you want to create?" }),
+      screen.getByRole("region", { name: "Start a new conversation" }),
     ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Close compose" }));
-    expect(
-      screen.queryByRole("heading", { name: "What do you want to create?" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("redirects unauthenticated visitors to /login on first send", async () => {

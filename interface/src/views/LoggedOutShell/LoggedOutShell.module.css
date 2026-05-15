@@ -267,19 +267,11 @@
 
 .chatEmpty {
   flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--color-text-muted, #8a8a8e);
-  font-size: 14px;
-  text-align: center;
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 48px 24px;
-}
-
-.chatEmptyHeading {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text-primary, inherit);
+  min-height: 0;
 }
 
 .inputBarSlot {
@@ -292,54 +284,16 @@
   opacity: 0.55;
 }
 
-/* compose modal — centered card overlaid on the chat view, with the
-   underlying shell visible-but-dimmed behind it. The card itself
-   inherits the surface tokens so the edge meets the dim wash with the
-   same border treatment as every other AURA panel. */
-.composeOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-
-.composeCard {
-  position: relative;
+/* Inline compose surface — sits inside `.chatEmpty` and replaces the
+   old "static heading + bottom input bar" empty state. No overlay,
+   no dim wash; the shared `DesktopChatInputBar` carries its own
+   chrome so the panel only needs to gate width and stack the
+   heading / input / mode pills vertically. */
+.composePanel {
   width: min(720px, 100%);
-  background: var(--color-surface, #1a1a1d);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
-  border-radius: 12px;
-  padding: 28px 24px 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-}
-
-.composeClose {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted, #8a8a8e);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.composeClose:hover {
-  color: var(--color-text-primary, inherit);
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
 }
 
 .composeHeading {
@@ -351,8 +305,6 @@
 }
 
 .composeInput {
-  /* The shared `DesktopChatInputBar` brings its own internal padding;
-     the wrapper just gates layout width so the bar tracks the card. */
   width: 100%;
 }
 
