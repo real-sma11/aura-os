@@ -265,12 +265,29 @@
   flex-direction: column;
 }
 
+/* When the transcript is empty the scroller should host a single
+   centered compose surface, NOT an inline-stacked one. The block
+   below makes the centering bulletproof in three ways:
+     1. `flex: 1` claims the rest of the scroller's height so the
+        cross-axis math has room to work even when the parent's
+        intrinsic height collapses around `min-height: 0`.
+     2. `place-items: center` (grid) is more defect-resistant than
+        flex `align-items / justify-content` — the child only needs
+        to define its own width and the grid centers it on both
+        axes regardless of the child's intrinsic size.
+     3. `min-height: 0` keeps the empty state from forcing the
+        scroller to overflow on short viewports; the compose surface
+        can shrink with the page and the content reflows instead of
+        clipping.
+   The padding is intentionally generous (vs. the prior 48px) to
+   keep the heading well clear of the titlebar on tall viewports and
+   to give the example-prompt row breathing room above the bottom of
+   the panel. */
 .chatEmpty {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
+  display: grid;
+  place-items: center;
+  padding: 64px 24px;
   min-height: 0;
 }
 
@@ -330,20 +347,27 @@
 /* Inline compose surface — sits inside `.chatEmpty` and replaces the
    old "static heading + bottom input bar" empty state. No overlay,
    no dim wash; the shared `DesktopChatInputBar` carries its own
-   chrome so the panel only needs to gate width and stack the
-   heading / input / mode pills vertically. */
+   chrome (including the Code/Plan/Image/Video/3D mode pills) so the
+   panel only needs to gate width and stack the heading / input /
+   example-prompt buttons vertically. */
 .composePanel {
   width: min(720px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
+  /* `align-self: center` is belt-and-suspenders centering: the
+     parent already centers via `place-items: center` (grid), but
+     this also keeps the panel centered if the parent is ever
+     swapped back to a flex container. */
+  align-self: center;
 }
 
 .composeHeading {
   margin: 0;
   text-align: center;
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--color-text-primary, inherit);
 }
 
@@ -351,18 +375,24 @@
   width: 100%;
 }
 
-.composeWidgets {
+/* Example-prompt button row — replaces the previous mode-pill
+   widget row, which was visually redundant with the
+   Code/Plan/Image/Video/3D pills baked into the input bar. Each
+   button below pre-fills the input AND switches to the matching
+   mode, mirroring the empty-state pattern in ChatGPT / Claude /
+   Gemini ("click an example to start"). */
+.composeExamples {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
 }
 
-.composeWidget {
+.composeExample {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 8px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
@@ -370,21 +400,23 @@
   background: transparent;
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
   cursor: pointer;
+  text-align: left;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.composeWidget:hover {
+.composeExample:hover {
   background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
   color: var(--color-text-primary, inherit);
+  border-color: var(--color-border-strong, rgba(255, 255, 255, 0.2));
 }
 
-.composeWidgetActive {
-  background: var(--color-on-surface, #fff);
-  color: var(--color-on-light, #111);
-  border-color: var(--color-on-surface, #fff);
+.composeExample:focus-visible {
+  outline: 2px solid var(--color-focus-ring, #6e8cff);
+  outline-offset: 2px;
 }
 
-.composeWidgetActive:hover {
-  background: var(--color-on-surface, #fff);
-  color: var(--color-on-light, #111);
+.composeExampleIcon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted, #8a8a8e);
 }

@@ -1,12 +1,16 @@
 /**
  * Behavioural test for `LoggedOutChatView` empty-state inline
- * compose surface + auth-gated send. Pins three contracts:
+ * compose surface + auth-gated send. Pins four contracts:
  *
  *  - The empty state renders the inline compose heading
- *    ("What do you want to create?") and the mode-pill widget row
- *    directly in the main panel (no modal overlay).
- *  - The "Create an image" widget is wired so picking a mode is
- *    available without opening the input bar's segmented control.
+ *    ("What do you want to create?") and the example-prompt button
+ *    row directly in the main panel (no modal overlay).
+ *  - The example-prompt row carries one button per agent mode
+ *    (Code / Plan / Image / Video / 3D), labelled with the
+ *    canonical short copy.
+ *  - Clicking an example pre-fills the textarea with the
+ *    representative prompt for that mode (no send fires until the
+ *    user explicitly hits Send).
  *  - Sending a message while unauthenticated navigates to
  *    `/login?next=...` instead of attempting the public chat
  *    request (interim auth gate while the public router is flaky).
@@ -17,7 +21,7 @@
  * focused on the view's own logic.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,28 +31,37 @@ vi.mock("../../stores/auth-store", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-vi.mock("../../features/chat-ui/ChatInputBar", () => ({
-  DesktopChatInputBar: ({
-    input,
-    onInputChange,
-    onSend,
-  }: {
-    input: string;
-    onInputChange: (next: string) => void;
-    onSend: (content: string) => void;
-  }) => (
-    <div data-testid="chat-input-bar-stub">
-      <textarea
-        aria-label="Compose"
-        value={input}
-        onChange={(e) => onInputChange(e.target.value)}
-      />
-      <button type="button" onClick={() => onSend(input)}>
-        Send
-      </button>
-    </div>
-  ),
-}));
+// `forwardRef` matches the real `DesktopChatInputBar` signature so
+// `ComposePanel`'s `inputBarRef.current?.focus()` call doesn't blow
+// up when an example button is clicked. The stub exposes a no-op
+// `focus()` impl (we only assert the *prompt* lands in the
+// textarea, not where focus ends up).
+vi.mock("../../features/chat-ui/ChatInputBar", async () => {
+  const React = await import("react");
+  const Stub = React.forwardRef<
+    { focus: () => void },
+    {
+      input: string;
+      onInputChange: (next: string) => void;
+      onSend: (content: string) => void;
+    }
+  >(({ input, onInputChange, onSend }, ref) => {
+    React.useImperativeHandle(ref, () => ({ focus: () => {} }), []);
+    return (
+      <div data-testid="chat-input-bar-stub">
+        <textarea
+          aria-label="Compose"
+          value={input}
+          onChange={(e) => onInputChange(e.target.value)}
+        />
+        <button type="button" onClick={() => onSend(input)}>
+          Send
+        </button>
+      </div>
+    );
+  });
+  return { DesktopChatInputBar: Stub };
+});
 
 vi.mock("../../features/chat-ui/ChatMessageList", () => ({
   ChatMessageList: () => <div data-testid="chat-message-list-stub" />,
@@ -100,23 +113,50 @@ afterEach(() => {
 });
 
 describe("LoggedOutChatView inline compose", () => {
-  it("renders the compose heading and mode-pill widgets inline (no modal overlay)", () => {
+  it("renders the compose heading and example-prompt buttons inline (no modal overlay)", () => {
     renderView();
     expect(
       screen.getByRole("heading", { name: "What do you want to create?" }),
     ).toBeInTheDocument();
-    // Each mode pill renders as an aria-pressed button labelled with
-    // its display copy. Verify the "Create an image" widget is wired
-    // (proxy for the full pill row mounting).
-    expect(
-      screen.getByRole("button", { name: /Create an image/i }),
-    ).toBeInTheDocument();
+
+    // The example-prompt row exposes one button per agent mode.
+    // Asserting the full set (not just one) pins the row layout so
+    // a regression that drops a mode is caught immediately.
+    const examples = screen.getByRole("group", { name: "Example prompts" });
+    expect(within(examples).getByRole("button", { name: /Build a landing page/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Plan a 7-day Tokyo trip/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Generate an image/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Generate a video/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Generate a 3D model/i })).toBeInTheDocument();
+
     // The compose surface lives inside a `region` (not a `dialog`)
     // because it's now an inline empty-state, not an overlay.
     expect(
       screen.getByRole("region", { name: "Start a new conversation" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("pre-fills the textarea when an example prompt button is clicked", async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    const compose = screen.getByLabelText("Compose") as HTMLTextAreaElement;
+    expect(compose.value).toBe("");
+
+    await user.click(
+      screen.getByRole("button", { name: /Generate an image/i }),
+    );
+
+    // The exact prompt copy is asserted (not just non-empty) so the
+    // example-row contract — "click an example, get the same prompt
+    // the visitor would have typed" — is pinned. Loose match keeps
+    // the test resilient to whitespace tweaks but tight enough to
+    // catch swapping the example for a different mode.
+    expect(compose.value).toMatch(/astronaut riding a horse on Mars/i);
+    // No send fired — the visitor still has to hit Send (or Enter)
+    // to actually dispatch.
+    expect(screen.queryByTestId("login-page")).not.toBeInTheDocument();
   });
 
   it("redirects unauthenticated visitors to /login on first send", async () => {
