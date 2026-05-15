@@ -26,6 +26,47 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Scrub stale rust-src from toolchain dir
+      shell: bash
+      env:
+        SETUP_RUST_TOOLCHAIN_INPUT: ${{ inputs.toolchain }}
+      # Defends against rust-lang/rustup#988 (`error: failed to install
+      # component: 'rust-src', detected conflict: 'lib/rustlib/src/rust/...'`).
+      # The conflict happens when the toolchain dir already contains rust-src
+      # files (from a runner base image, a prior job on a persistent runner,
+      # or an older revision of this workflow that requested
+      # `components: rust-src`) and a parallel `cargo build` later races
+      # multiple rustup proxies into reinstalling rust-src concurrently. We
+      # don't need rust-src anywhere, so just delete the dir up front and
+      # let dtolnay install fresh into an empty target. No-op on fresh
+      # runners.
+      run: |
+        set -eo pipefail
+
+        rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+        toolchains_dir="$rustup_home/toolchains"
+        if [ ! -d "$toolchains_dir" ]; then
+          exit 0
+        fi
+
+        desired="$SETUP_RUST_TOOLCHAIN_INPUT"
+        if [ -z "$desired" ] && [ -f rust-toolchain.toml ]; then
+          desired="$(grep -E '^[[:space:]]*channel[[:space:]]*=' rust-toolchain.toml \
+            | head -n1 \
+            | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
+        fi
+        if [ -z "$desired" ]; then
+          desired="1.94.1"
+        fi
+
+        shopt -s nullglob
+        for tc in "$toolchains_dir/$desired" "$toolchains_dir/$desired"-*; do
+          if [ -d "$tc/lib/rustlib/src" ]; then
+            echo "Removing stale rust-src at $tc/lib/rustlib/src"
+            rm -rf "$tc/lib/rustlib/src"
+          fi
+        done
+
     - name: Install Rust toolchain via dtolnay
       uses: dtolnay/rust-toolchain@1.94.1
 
@@ -74,3 +115,11 @@ runs:
 
         echo "$bin_dir" >> "$GITHUB_PATH"
         echo "Prepended $bin_dir to PATH (resolved toolchain: '$desired')"
+
+        # Disable rustup's auto-install during downstream `cargo` / `rustc`
+        # invocations. The toolchain is already installed by the dtolnay
+        # step above, so the rustup proxy never needs to mutate toolchain
+        # state again -- and disabling auto-install eliminates the parallel
+        # `sccache rustc` race that surfaced as the rust-src conflict
+        # (rust-lang/rustup#988). Supported since rustup 1.27.
+        echo "RUSTUP_AUTO_INSTALL=0" >> "$GITHUB_ENV"
