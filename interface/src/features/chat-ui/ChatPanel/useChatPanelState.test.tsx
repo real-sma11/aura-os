@@ -19,7 +19,6 @@ const mockUseScrollAnchorV2 = scrollAnchorMocks.useScrollAnchorV2;
 const mockEnqueue = vi.fn();
 const mockDequeue = vi.fn();
 const mockRemove = vi.fn();
-const mockMoveUp = vi.fn();
 const mockChatUI: {
   selectedMode: "code" | "plan" | "image" | "3d" | "video";
   selectedModel: string | null;
@@ -103,7 +102,7 @@ vi.mock("../../../stores/message-queue-store", () => ({
       enqueue: mockEnqueue,
       dequeue: mockDequeue,
       remove: mockRemove,
-      moveUp: mockMoveUp,
+      moveUp: vi.fn(),
     }),
   },
   useMessageQueue: () => [],
@@ -126,7 +125,6 @@ describe("useChatPanelState", () => {
     mockEnqueue.mockReset();
     mockDequeue.mockReset();
     mockRemove.mockReset();
-    mockMoveUp.mockReset();
     mockChatUI.init.mockReset();
     mockChatUI.syncAvailableModels.mockReset();
     mockChatUI.setSelectedMode.mockReset();

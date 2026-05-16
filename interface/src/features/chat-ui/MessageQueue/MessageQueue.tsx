@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { ChevronDown, Pencil, ArrowUp, ArrowRight, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, ArrowUp, Trash2 } from "lucide-react";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useMessageQueue } from "../../../stores/message-queue-store";
 import type { QueuedMessage } from "../../../stores/message-queue-store";
@@ -8,7 +8,6 @@ import styles from "./MessageQueue.module.css";
 interface Props {
   streamKey: string;
   onEdit: (item: QueuedMessage) => void;
-  onMoveUp: (id: string) => void;
   onRemove: (id: string) => void;
   /**
    * Cancel the in-flight turn and immediately send this queued
@@ -22,7 +21,6 @@ interface Props {
 export const MessageQueue = memo(function MessageQueue({
   streamKey,
   onEdit,
-  onMoveUp,
   onRemove,
   onSendNow,
 }: Props) {
@@ -49,22 +47,11 @@ export const MessageQueue = memo(function MessageQueue({
 
       {!collapsed && (
         <div className={styles.queueList}>
-          {queue.map((item, idx) => (
+          {queue.map((item) => (
             <div key={item.id} className={styles.queueItem}>
               <span className={styles.queueIndicator} />
               <span className={styles.queueItemText}>{item.content}</span>
               <div className={styles.queueActions}>
-                {onSendNow && isStreaming && (
-                  <button
-                    type="button"
-                    className={`${styles.queueActionBtn} ${styles.queueActionBtnAccent}`}
-                    onClick={() => onSendNow(item)}
-                    aria-label="Send now (cancels current turn)"
-                    title="Send now (cancels current turn)"
-                  >
-                    <ArrowRight size={13} />
-                  </button>
-                )}
                 <button
                   type="button"
                   className={styles.queueActionBtn}
@@ -73,15 +60,17 @@ export const MessageQueue = memo(function MessageQueue({
                 >
                   <Pencil size={13} />
                 </button>
-                <button
-                  type="button"
-                  className={styles.queueActionBtn}
-                  onClick={() => onMoveUp(item.id)}
-                  disabled={idx === 0}
-                  aria-label="Move up"
-                >
-                  <ArrowUp size={13} />
-                </button>
+                {onSendNow && isStreaming && (
+                  <button
+                    type="button"
+                    className={`${styles.queueActionBtn} ${styles.queueActionBtnAccent}`}
+                    onClick={() => onSendNow(item)}
+                    aria-label="Send now (cancels current turn)"
+                    title="Send now (cancels current turn)"
+                  >
+                    <ArrowUp size={13} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.queueActionBtn}

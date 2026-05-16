@@ -194,7 +194,6 @@ export function ChatPanel({
     handleRemoveAttachment,
     handleSend,
     handleQueueEdit,
-    handleQueueMoveUp,
     handleQueueRemove,
     handleQueueSendNow,
     loadOlder,
@@ -644,7 +643,6 @@ export function ChatPanel({
             <MessageQueue
               streamKey={streamKey}
               onEdit={handleQueueEdit}
-              onMoveUp={handleQueueMoveUp}
               onRemove={handleQueueRemove}
               onSendNow={handleQueueSendNow}
             />

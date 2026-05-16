@@ -387,11 +387,6 @@ export function useChatPanelState({
     [streamKey],
   );
 
-  const handleQueueMoveUp = useCallback(
-    (id: string) => useMessageQueueStore.getState().moveUp(streamKey, id),
-    [streamKey],
-  );
-
   const handleQueueRemove = useCallback(
     (id: string) => useMessageQueueStore.getState().remove(streamKey, id),
     [streamKey],
@@ -447,7 +442,6 @@ export function useChatPanelState({
     handleRemoveAttachment,
     handleSend,
     handleQueueEdit,
-    handleQueueMoveUp,
     handleQueueRemove,
     handleQueueSendNow,
     loadOlder,
