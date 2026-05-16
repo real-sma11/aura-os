@@ -41,6 +41,29 @@ use crate::handlers::agents::session_identity::{
 
 const LAGGED_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Interval between synthetic `progress { stage: "heartbeat" }` SSE
+/// frames emitted while the harness broadcast is silent.
+///
+/// Plumbs through to the frontend stuck-stream watchdog: every wire
+/// event bumps `lastEventAt` on the Zustand stream store
+/// (`interface/src/hooks/stream/store.ts`), and the watchdog
+/// (`useStreamHealth`) flips `isStuck` true at `STUCK_THRESHOLD_MS`
+/// (30s) and auto-aborts the turn at `FULLY_TIMED_OUT_MS` (60s).
+/// Without these heartbeats, a tool-heavy chat turn that legitimately
+/// pauses between a batch of `ToolResult` events and the model's
+/// next `TextDelta` / `ThinkingDelta` (e.g. plan-mode translating
+/// five `get_spec` results into a long German answer) leaves the SSE
+/// wire silent for >60s and trips the watchdog even though the
+/// upstream is healthy and progressing.
+///
+/// Sized comfortably under the 30s warn threshold so even a dropped
+/// tick (network jitter, slow scheduler) lands the next heartbeat
+/// before the watchdog flips. Mirrors the
+/// `GENERATION_HEARTBEAT_INTERVAL` used by the image / video / 3D
+/// generation handlers and the same client-side
+/// `markStreamProgress` plumbing handles both.
+pub(crate) const SSE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+
 struct HarnessSseState {
     rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
     done: bool,
@@ -142,6 +165,28 @@ fn lagged_progress_event(skipped: u64) -> Result<Event, Infallible> {
         }))
 }
 
+/// Synthetic `progress { stage: "heartbeat" }` SSE frame emitted when
+/// the harness broadcast stays silent past
+/// [`SSE_HEARTBEAT_INTERVAL`]. The client treats this stage as a
+/// pure watchdog ack — see the `stage === "heartbeat"` branches in
+/// `interface/src/hooks/use-chat-stream/build-stream-handler.ts` and
+/// `interface/src/hooks/use-agent-chat-stream.ts`, which call
+/// `markStreamProgress` without touching the visible progress label.
+fn heartbeat_progress_event() -> Result<Event, Infallible> {
+    let payload = serde_json::json!({
+        "type": "progress",
+        "stage": "heartbeat",
+    });
+    Ok(Event::default()
+        .event("progress")
+        .json_data(&payload)
+        .unwrap_or_else(|_| {
+            Event::default()
+                .event("progress")
+                .data("{\"type\":\"progress\",\"stage\":\"heartbeat\"}")
+        }))
+}
+
 /// Bridge a harness broadcast receiver into the SSE wire format.
 ///
 /// `metrics`, when `Some`, is bumped on the non-terminal `Lagged` arm
@@ -161,8 +206,20 @@ pub fn harness_broadcast_to_sse(
         }
 
         loop {
-            match state.rx.recv().await {
-                Ok(evt) => {
+            match tokio::time::timeout(SSE_HEARTBEAT_INTERVAL, state.rx.recv()).await {
+                // Heartbeat path: no harness event arrived inside the
+                // interval, so emit a synthetic `progress: heartbeat`
+                // frame to keep the client's stuck-stream watchdog
+                // clock from tripping on a turn that is genuinely
+                // working but happens to be quiet on the wire (e.g.
+                // model thinking between a batch of tool results and
+                // the next text-delta). Don't touch `saw_content` /
+                // `saw_terminal` / `done` — heartbeats are neither
+                // content nor terminal events.
+                Err(_elapsed) => {
+                    return Some((heartbeat_progress_event(), state));
+                }
+                Ok(Ok(evt)) => {
                     let should_close = is_terminal_harness_event(&evt);
                     state.saw_content |= is_content_bearing_harness_event(&evt);
                     state.saw_terminal |= should_close;
@@ -200,7 +257,7 @@ pub fn harness_broadcast_to_sse(
                 // there is no reliability reason to kill the live stream.
                 // Phase 4 throttles those hints to avoid adding excessive
                 // writes while the SSE path is already backpressured.
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(n))) => {
                     if let Some(m) = state.metrics.as_ref() {
                         m.inc_stream_lagged();
                     }
@@ -217,7 +274,7 @@ pub fn harness_broadcast_to_sse(
                         "harness_broadcast_to_sse: receiver lagged; suppressing throttled progress:lagged"
                     );
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
                     if state.saw_content && !state.saw_terminal {
                         warn!(
                             "harness_broadcast_to_sse: broadcast closed after content without terminal event; emitting stream_truncated"
@@ -742,13 +799,35 @@ async fn get_or_create_delegated_chat_session(
     let harness = state.harness_for(harness_mode);
     let session_agent_id = session_config.agent_id.clone();
     let session_template_agent_id = session_config.template_agent_id.clone();
-    let started = SessionBridge::open_and_send_user_message(harness, session_config, turn)
-        .await
-        .map_err(map_session_bridge_start_error(
+    let t0 = std::time::Instant::now();
+    tracing::info!(
+        session_key = %key,
+        harness_mode = ?harness_mode,
+        "chat cold-open begin"
+    );
+    let open_fut = SessionBridge::open_and_send_user_message(harness, session_config, turn);
+    let started = match tokio::time::timeout(std::time::Duration::from_secs(60), open_fut).await {
+        Ok(result) => result.map_err(map_session_bridge_start_error(
             key,
             harness_mode,
             state.harness_ws_slots,
-        ))?;
+        ))?,
+        Err(_elapsed) => {
+            tracing::error!(
+                elapsed_ms = t0.elapsed().as_millis() as u64,
+                session_key = %key,
+                "chat cold-open TIMEOUT — open_session hung past 60s"
+            );
+            return Err(ApiError::bad_gateway(
+                "Harness did not open the session within 60s. Please retry or restart the harness.",
+            ));
+        }
+    };
+    tracing::info!(
+        elapsed_ms = t0.elapsed().as_millis() as u64,
+        session_key = %key,
+        "chat cold-open complete"
+    );
     insert_delegated_chat_session(
         state,
         key,
@@ -903,6 +982,7 @@ mod tests {
     use super::{
         build_sse_stream, build_turn_tool_hints, harness_broadcast_to_sse,
         tool_hints_from_commands, LaggedProgressThrottle, LAGGED_PROGRESS_INTERVAL,
+        SSE_HEARTBEAT_INTERVAL,
     };
 
     fn end_event() -> HarnessOutbound {
@@ -1416,6 +1496,126 @@ mod tests {
         assert!(
             matches!(next, Ok(None)),
             "stream must close cleanly after real terminal, got: {next:?}"
+        );
+    }
+
+    /// Stuck-stream fix: while the harness broadcast is silent —
+    /// e.g. a plan-mode chat turn between a batch of `ToolResult`
+    /// events and the model's next `TextDelta` — the SSE bridge
+    /// must synthesize `progress { stage: "heartbeat" }` frames at
+    /// least every [`SSE_HEARTBEAT_INTERVAL`] so the frontend's
+    /// stuck-stream watchdog (`STUCK_THRESHOLD_MS = 30s` /
+    /// `FULLY_TIMED_OUT_MS = 60s` in
+    /// `interface/src/hooks/stream/use-stream-health.ts`) sees
+    /// forward motion. Driven on paused tokio time so the assertion
+    /// is deterministic and the test stays sub-millisecond.
+    #[tokio::test(start_paused = true)]
+    async fn harness_broadcast_to_sse_emits_heartbeat_when_broadcast_is_silent() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(8);
+
+        let stream = harness_broadcast_to_sse(rx, None);
+        tokio::pin!(stream);
+
+        // Cross the heartbeat boundary by advancing virtual time.
+        // tokio::time::advance fires expired timers before yielding,
+        // so the next stream poll sees the timeout already elapsed.
+        tokio::time::advance(SSE_HEARTBEAT_INTERVAL + Duration::from_millis(100)).await;
+
+        let first = stream
+            .next()
+            .await
+            .expect("heartbeat event")
+            .expect("first item is Ok");
+        let body = dump(&first);
+        assert!(
+            body.contains("event: progress"),
+            "first event must be a progress SSE event, got: {body}",
+        );
+        assert!(
+            body.contains("heartbeat"),
+            "first event must carry stage=heartbeat, got: {body}",
+        );
+
+        // After the heartbeat the stream must still be alive and
+        // forward a real event the moment one lands. Send a text
+        // delta on the broadcast and confirm it surfaces without
+        // another heartbeat-interval wait.
+        tx.send(text_delta("after-heartbeat"))
+            .expect("seed text delta");
+        let next = stream
+            .next()
+            .await
+            .expect("forwarded text delta")
+            .expect("ok");
+        assert!(
+            dump(&next).contains("after-heartbeat"),
+            "post-heartbeat broadcast must still reach the SSE stream",
+        );
+
+        // And a terminal event closes the stream cleanly — heartbeats
+        // never mark the unfold state `done`, so the terminal path
+        // still runs unchanged.
+        tx.send(end_event()).expect("seed terminal end");
+        let terminal = stream
+            .next()
+            .await
+            .expect("terminal end")
+            .expect("ok");
+        assert!(
+            dump(&terminal).contains("assistant_message_end"),
+            "terminal event must follow without being shadowed by a heartbeat",
+        );
+
+        let after_terminal = stream.next().await;
+        assert!(
+            after_terminal.is_none(),
+            "stream must close after the terminal event, got: {after_terminal:?}",
+        );
+    }
+
+    /// Heartbeat path must NOT fire when real broadcast events keep
+    /// arriving inside the interval. Drives a steady text-delta
+    /// cadence at half the heartbeat interval for three intervals'
+    /// worth of wall-clock time and asserts every emitted SSE event
+    /// is a real `text_delta` — no heartbeat frames slipped in.
+    #[tokio::test(start_paused = true)]
+    async fn harness_broadcast_to_sse_skips_heartbeat_while_events_flow() {
+        let (tx, rx) = broadcast::channel::<HarnessOutbound>(64);
+
+        let stream = harness_broadcast_to_sse(rx, None);
+        tokio::pin!(stream);
+
+        let cadence = SSE_HEARTBEAT_INTERVAL / 2;
+        let bursts = 3usize;
+        for i in 0..bursts {
+            tx.send(text_delta(&format!("tick-{i}")))
+                .expect("seed delta");
+            let event = stream
+                .next()
+                .await
+                .expect("forwarded delta")
+                .expect("ok");
+            let body = dump(&event);
+            assert!(
+                body.contains(&format!("tick-{i}")),
+                "delta `tick-{i}` must surface as the next event, got: {body}",
+            );
+            assert!(
+                !body.contains("heartbeat"),
+                "no heartbeat must slip in while broadcast traffic flows, got: {body}",
+            );
+            tokio::time::advance(cadence).await;
+        }
+
+        tx.send(end_event()).expect("seed terminal");
+        let terminal = stream
+            .next()
+            .await
+            .expect("terminal")
+            .expect("ok");
+        assert!(
+            dump(&terminal).contains("assistant_message_end"),
+            "terminal event must close out the stream"
         );
     }
 

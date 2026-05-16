@@ -187,6 +187,23 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       }
       case EventType.Progress: {
         const stage = event.content.stage;
+        if (stage === "heartbeat") {
+          // Server-side SSE heartbeat (`SSE_HEARTBEAT_INTERVAL` in
+          // `apps/aura-os-server/src/handlers/agents/chat/streaming.rs`).
+          // Pure stuck-stream-watchdog ack: fired every ~15s whenever
+          // the harness broadcast stays silent (e.g. plan-mode chat
+          // turn between a batch of `ToolResult` events and the
+          // model's next `TextDelta`). We must bump `lastEventAt` so
+          // `useStuckStreamAutoTimeout` doesn't fire on a healthy
+          // turn, but we MUST NOT call `setProgressText` — that would
+          // overwrite the visible "Thinking..."/"Putting it all
+          // together..." label with the raw "heartbeat" string
+          // (see `getStreamingPhaseLabel` in
+          // `interface/src/utils/streaming.ts`, which renders unknown
+          // progress stages verbatim).
+          markStreamProgress(coreKey);
+          break;
+        }
         if (stage === "lagged") {
           setProgressText("Catching up on stream output…");
         } else if (stage === "forked_for_context") {

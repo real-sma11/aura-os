@@ -415,7 +415,17 @@ export function createSetters(key: string): StreamSetters {
     setIsStreaming(v) {
       touchEntry(key);
       const cur = getStreamEntry(key);
-      updateStreamEntry(key, { isStreaming: resolve(v, cur?.isStreaming ?? false) });
+      const wasStreaming = cur?.isStreaming ?? false;
+      const next = resolve(v, wasStreaming);
+      const patch: Partial<StreamEntryState> = { isStreaming: next };
+      // false -> true edge: rebase the stuck-stream watchdog clock so a
+      // follow-up send on a session whose prior turn ended >STUCK_THRESHOLD_MS
+      // ago doesn't render the pill instantly off the stale lastEventAt.
+      if (next && !wasStreaming) {
+        patch.lastEventAt = Date.now();
+        patch.stuckSince = null;
+      }
+      updateStreamEntry(key, patch);
     },
     setIsWriting(v) {
       touchEntry(key);

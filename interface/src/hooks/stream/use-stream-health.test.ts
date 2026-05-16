@@ -145,6 +145,37 @@ describe("useStreamHealth", () => {
     expect(result.current.lastEventAgeMs).toBeNull();
     expect(result.current.isStuck).toBe(false);
   });
+
+  it("does not report isStuck on the first render after a fresh send when prior lastEventAt is stale", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    // Simulate the warm-reopen scenario: a previous turn's last event was
+    // 45 seconds ago (well past STUCK_THRESHOLD_MS), and the entry is not
+    // currently streaming. This mirrors the user-reported "Agent paused
+    // for 2s — last activity was 32s ago" pill that flashed instantly
+    // when sending turn 2 on a warm-reopened session.
+    useStreamStore.setState((s) => ({
+      entries: {
+        ...s.entries,
+        k1: {
+          ...s.entries["k1"],
+          lastEventAt: Date.now() - 45_000,
+          stuckSince: null,
+          isStreaming: false,
+        },
+      },
+    }));
+
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+
+    const { result } = renderHook(() => useStreamHealth("k1"));
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.isStuck).toBe(false);
+    expect(result.current.lastEventAgeMs).toBe(0);
+  });
 });
 
 describe("useStuckStreamAutoTimeout", () => {
