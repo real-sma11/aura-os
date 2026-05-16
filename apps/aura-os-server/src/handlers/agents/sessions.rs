@@ -348,7 +348,13 @@ pub(crate) async fn generate_session_summary(
     let req_body = json!({
         "model": HAIKU_MODEL,
         "max_tokens": SUMMARY_MAX_TOKENS,
-        "system": TITLE_SYSTEM_PROMPT,
+        "system": [
+            {
+                "type": "text",
+                "text": TITLE_SYSTEM_PROMPT,
+                "cache_control": { "type": "ephemeral" }
+            }
+        ],
         "messages": [{"role": "user", "content": transcript}],
     });
 
@@ -360,6 +366,7 @@ pub(crate) async fn generate_session_summary(
     let resp = http
         .post(format!("{router_url}/v1/messages"))
         .bearer_auth(jwt)
+        .header("anthropic-beta", "prompt-caching-2024-07-31")
         .header("x-aura-session-id", session_id)
         .header("x-aura-project-id", project_id)
         .header("x-aura-agent-id", agent_id)
@@ -442,13 +449,20 @@ pub(crate) async fn generate_session_title(
     let req_body = json!({
         "model": HAIKU_MODEL,
         "max_tokens": SUMMARY_MAX_TOKENS,
-        "system": TITLE_SYSTEM_PROMPT,
+        "system": [
+            {
+                "type": "text",
+                "text": TITLE_SYSTEM_PROMPT,
+                "cache_control": { "type": "ephemeral" }
+            }
+        ],
         "messages": [{"role": "user", "content": prompt_input}],
     });
 
     let resp = http
         .post(format!("{router_url}/v1/messages"))
         .bearer_auth(jwt)
+        .header("anthropic-beta", "prompt-caching-2024-07-31")
         .header("x-aura-session-id", session_id)
         .header("x-aura-project-id", project_id)
         .header("x-aura-agent-id", agent_id)

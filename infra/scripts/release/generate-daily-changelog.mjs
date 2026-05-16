@@ -570,8 +570,14 @@ function buildAnthropicRequestBody({ model, maxTokens, systemPrompt, tool, userP
   return {
     model,
     max_tokens: maxTokens,
-    system: systemPrompt,
-    tools: [tool],
+    system: [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: [{ ...tool, cache_control: { type: "ephemeral" } }],
     tool_choice: { type: "any" },
     messages: [
       {
@@ -820,6 +826,7 @@ async function fetchAnthropicMessagesWithRetry(requestBody, options = {}) {
           "content-type": "application/json",
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
         },
         body: JSON.stringify(requestBody),
       });
