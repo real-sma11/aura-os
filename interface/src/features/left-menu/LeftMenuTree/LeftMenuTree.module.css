@@ -121,17 +121,22 @@
 /* Accent stripe for projects with `appearance.accent` set. Rendered
    as a ::before pseudo-element rather than via `inset box-shadow`
    so the line stays straight regardless of the row's 6px border
-   radius — top and bottom inset by the radius amount so the stripe
-   doesn't poke past the curve. Color is piped in via the
-   `--accent-stripe-color` custom property set inline by
-   `buildProjectExplorerNode`; when unset, the rule paints nothing. */
+   radius — the perpendicular axis is inset by the radius amount so
+   the stripe doesn't poke past the curve. Color and geometry are
+   piped in via CSS custom properties set inline by
+   `buildAccentStripeStyle`; defaults paint a 4px-wide stripe on the
+   left edge, and "bottom" callers override to a 4px-tall stripe
+   along the bottom edge. When `--accent-stripe-color` is unset, the
+   rule paints nothing. */
 .projectHeader::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 4px;
+  left: var(--accent-stripe-left, 0);
+  right: var(--accent-stripe-right, auto);
+  top: var(--accent-stripe-top, 6px);
+  bottom: var(--accent-stripe-bottom, 6px);
+  width: var(--accent-stripe-width, 4px);
+  height: var(--accent-stripe-height, auto);
   background: var(--accent-stripe-color, transparent);
   pointer-events: none;
 }

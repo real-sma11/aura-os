@@ -12,6 +12,11 @@ import type { ApiError } from "../types";
 export interface ProjectAppearance {
   /** Hex color like `#7c3aed`. */
   accent?: string;
+  /** Where the accent stripe paints relative to the project header row.
+   *  Defaults to `"left"` when unset (matches the original treatment).
+   *  Only honored when `accent` is set and neither `headerOutline` nor
+   *  `headerBackground` is set — those override the stripe. */
+  accentPosition?: "left" | "bottom";
   /** Lucide icon name, e.g. `"Rocket"`. */
   icon?: string;
   /** Hex color applied to the project's display name in the sidebar

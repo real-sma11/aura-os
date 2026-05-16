@@ -4,6 +4,7 @@ import { Folder } from "lucide-react";
 import { Text } from "@cypher-asi/zui";
 import { useProjectAppearance } from "../../../hooks/use-project-appearance";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
+import { buildAccentStripeStyle } from "../../../features/project-row-appearance";
 import { BackgroundControl } from "./BackgroundControl";
 import { BannerControl } from "./BannerControl";
 import { ColorPicker } from "./ColorPicker";
@@ -81,7 +82,10 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
             ...(appearance.accent &&
             !appearance.headerOutline &&
             !appearance.headerBackground
-              ? { ["--accent-stripe-color" as string]: appearance.accent }
+              ? buildAccentStripeStyle(
+                  appearance.accent,
+                  appearance.accentPosition,
+                )
               : {}),
           } as React.CSSProperties
         }
@@ -121,6 +125,47 @@ export function AppearanceTab({ projectId, projectName }: AppearanceTabProps) {
         value={appearance.accent}
         onChange={(accent) => patch({ accent })}
       />
+      {/* Stripe position toggle. Only meaningful when the accent
+          stripe is actually painted — i.e. an accent is set and
+          neither the header background nor outline is overriding
+          it. Hide it otherwise so users don't think they can tweak
+          something that won't show up. Default ("left") writes
+          undefined to keep the persisted JSON minimal. */}
+      {appearance.accent &&
+        !appearance.headerBackground &&
+        !appearance.headerOutline && (
+          <div className={styles.controlGroup}>
+            <Text variant="muted" size="sm" className={styles.sectionLabel}>
+              Accent line position
+            </Text>
+            <div className={styles.segmentedRow}>
+              {(
+                [
+                  { value: "left" as const, label: "Left" },
+                  { value: "bottom" as const, label: "Bottom" },
+                ]
+              ).map(({ value, label }) => {
+                const active =
+                  (appearance.accentPosition ?? "left") === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`${styles.miniButton} ${active ? styles.miniButtonActive : ""}`}
+                    onClick={() =>
+                      patch({
+                        accentPosition: value === "left" ? undefined : value,
+                      })
+                    }
+                    aria-pressed={active}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       <ColorPicker
         label="Project name color"
         noun="name color"

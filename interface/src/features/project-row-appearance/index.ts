@@ -1,4 +1,5 @@
 export {
+  buildAccentStripeStyle,
   buildProjectRowAppearance,
   type ProjectRowAppearanceFields,
 } from "./build-project-row-appearance";

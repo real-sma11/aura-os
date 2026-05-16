@@ -65,7 +65,10 @@ export function buildProjectRowAppearance(
           ? `1px solid ${appearance!.headerOutline}`
           : undefined,
         ...(showAccentStripe
-          ? { ["--accent-stripe-color" as string]: appearance!.accent! }
+          ? buildAccentStripeStyle(
+              appearance!.accent!,
+              appearance!.accentPosition,
+            )
           : {}),
       } as CSSProperties)
     : undefined;
@@ -79,4 +82,30 @@ export function buildProjectRowAppearance(
     labelStyle,
     headerStyle,
   };
+}
+
+/**
+ * Inline-style CSS custom properties that drive the accent stripe's
+ * color and geometry. The painting is done by the `.projectHeader::before`
+ * and `.preview::before` rules; this helper just sets the variables the
+ * CSS reads. `"bottom"` flips the stripe to a horizontal bar inset from
+ * the rounded corners; anything else (or undefined) leaves the CSS
+ * defaults in place — a vertical bar on the left edge.
+ */
+export function buildAccentStripeStyle(
+  accent: string,
+  position: "left" | "bottom" | undefined,
+): CSSProperties {
+  if (position === "bottom") {
+    return {
+      ["--accent-stripe-color" as string]: accent,
+      ["--accent-stripe-top" as string]: "auto",
+      ["--accent-stripe-bottom" as string]: "0",
+      ["--accent-stripe-left" as string]: "6px",
+      ["--accent-stripe-right" as string]: "6px",
+      ["--accent-stripe-width" as string]: "auto",
+      ["--accent-stripe-height" as string]: "1px",
+    } as CSSProperties;
+  }
+  return { ["--accent-stripe-color" as string]: accent } as CSSProperties;
 }
