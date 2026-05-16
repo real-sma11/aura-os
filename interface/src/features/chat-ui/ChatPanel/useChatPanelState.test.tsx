@@ -424,11 +424,14 @@ describe("useChatPanelState", () => {
     );
   });
 
-  // Phase 1 of the queue fix: force-send aborts the current turn, then
-  // defers the dispatch by one microtask so the upstream chat hook's
-  // `stopStreaming` finally-block has time to clear its in-flight
-  // latch before the new send re-enters.
-  it("handleQueueSendNow removes the item, calls onStop, then dispatches via the deferred microtask", async () => {
+  // Force-send aborts the current turn AND dispatches inline. The
+  // upstream `stopStreaming` clears the in-flight latch synchronously
+  // (see `useAgentChatStream` / `use-chat-stream` `stopStreaming`),
+  // so the chained `onSend` lands without being silently swallowed
+  // by the sync re-entry guard. React 18 batches the
+  // `setIsStreaming(false → true)` toggles, so there's no
+  // `true → false` blip to race with the dequeue effect.
+  it("handleQueueSendNow removes the item, calls onStop, then dispatches inline", () => {
     mockIsStreaming = true;
     const onSend = vi.fn();
     const onStop = vi.fn();
@@ -454,12 +457,6 @@ describe("useChatPanelState", () => {
 
     expect(mockRemove).toHaveBeenCalledWith("stream-1", "q-1");
     expect(onStop).toHaveBeenCalledTimes(1);
-    // The dispatch is deferred via `queueMicrotask`; flush the
-    // microtask queue and verify onSend lands with the queued payload.
-    expect(onSend).not.toHaveBeenCalled();
-    await act(async () => {
-      await Promise.resolve();
-    });
     expect(onSend).toHaveBeenCalledWith(
       "force me",
       null,
@@ -470,9 +467,14 @@ describe("useChatPanelState", () => {
       undefined,
       undefined,
     );
+    // Order matters: stop has to land before the dispatch so the
+    // upstream latch is cleared before `sendMessage` re-enters.
+    const stopOrder = onStop.mock.invocationCallOrder[0];
+    const sendOrder = onSend.mock.invocationCallOrder[0];
+    expect(stopOrder).toBeLessThan(sendOrder);
   });
 
-  it("handleQueueSendNow falls back to the selected model when the item omits one", async () => {
+  it("handleQueueSendNow falls back to the selected model when the item omits one", () => {
     mockChatUI.selectedModel = "claude-fallback";
     const onSend = vi.fn();
     const onStop = vi.fn();
@@ -493,10 +495,6 @@ describe("useChatPanelState", () => {
       }),
     );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
-
     expect(onSend).toHaveBeenCalledWith(
       "no model",
       null,
@@ -509,7 +507,7 @@ describe("useChatPanelState", () => {
     );
   });
 
-  it("handleQueueSendNow no-ops the stop call when onStop is not provided", async () => {
+  it("handleQueueSendNow no-ops the stop call when onStop is not provided", () => {
     const onSend = vi.fn();
     const { result } = renderHook(() =>
       useChatPanelState({
@@ -527,10 +525,6 @@ describe("useChatPanelState", () => {
         }),
       ),
     ).not.toThrow();
-
-    await act(async () => {
-      await Promise.resolve();
-    });
 
     expect(mockRemove).toHaveBeenCalledWith("stream-1", "q-3");
     expect(onSend).toHaveBeenCalledWith(

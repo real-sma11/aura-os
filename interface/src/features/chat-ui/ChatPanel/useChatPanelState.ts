@@ -393,31 +393,34 @@ export function useChatPanelState({
   );
 
   // Force-send a queued prompt past the current turn. The handler
-  // aborts the in-flight stream, then defers the dispatch by one
-  // microtask so the upstream chat hook's `stopStreaming` has time
-  // to fire its `finally` block (clearing the per-partition
-  // in-flight latch). Combined with the lockstep latch clears wired
-  // into `useAgentChatStream` / `build-stream-handler`, the deferred
-  // dispatch lands cleanly instead of being swallowed by the
-  // synchronous re-entry guard.
+  // (1) removes the item from the queue so the regular
+  // dequeue-on-completion effect doesn't replay it from the head
+  // when `isStreaming` flips, (2) calls `onStop` to abort the
+  // in-flight turn — which is wired through `stopStreaming` and
+  // synchronously clears the per-partition in-flight latch
+  // (`inFlightRef` / `ctrl.inFlight`) so the very next dispatch
+  // doesn't get swallowed by the re-entry guard — and (3) dispatches
+  // the chosen prompt inline. React 18 batches the
+  // `setIsStreaming(false)` from `stopStreaming` with the
+  // `setIsStreaming(true)` issued by the new send, so the dequeue
+  // effect never sees a `true → false` transition and there's no
+  // competing replay.
   const handleQueueSendNow = useCallback(
     (item: QueuedMessage) => {
       useMessageQueueStore.getState().remove(streamKey, item.id);
       const stop = onStopRef.current;
       if (stop) stop();
-      queueMicrotask(() => {
-        onSendRef.current(
-          item.content,
-          item.action,
-          item.model ?? selectedModelRef.current,
-          item.attachments,
-          item.commands,
-          selectedProjectIdRef.current,
-          item.generationMode,
-          item.sourceImageUrl,
-        );
-        scrollToBottomRef.current();
-      });
+      onSendRef.current(
+        item.content,
+        item.action,
+        item.model ?? selectedModelRef.current,
+        item.attachments,
+        item.commands,
+        selectedProjectIdRef.current,
+        item.generationMode,
+        item.sourceImageUrl,
+      );
+      scrollToBottomRef.current();
     },
     [streamKey],
   );

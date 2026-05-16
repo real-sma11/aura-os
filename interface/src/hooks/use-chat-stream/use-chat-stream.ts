@@ -5,7 +5,7 @@ import { generate3dStream, generateImageStream, generateVideoStream } from "../.
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
-import type { ChatAttachment } from "../../api/streams";
+import type { ChatAttachment, StreamEventHandler } from "../../api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../../constants/generation";
 import { EventType } from "../../shared/types/aura-events";
@@ -347,7 +347,7 @@ export function useChatStream({
         return true;
       };
 
-      const handler = buildStreamHandler({
+      const innerHandler = buildStreamHandler({
         projectId: capturedProjectId,
         agentInstanceId: capturedInstanceId,
         selectedModel,
@@ -375,6 +375,30 @@ export function useChatStream({
           ctrl.inFlight = false;
         },
       });
+      // Buffered SSE frames can still land in the handler closure
+      // after this controller was aborted (browsers don't flush the
+      // reader's internal queue synchronously with `abort()`). If a
+      // "Send now" force-send has already taken over the partition,
+      // letting those stale events through would clobber the new
+      // turn's `isStreaming`/`ctrl.inFlight`/`streamBuffer` state.
+      // Bail out before any handler work so the new turn owns the
+      // partition uncontested.
+      const handler: StreamEventHandler = {
+        onEvent: (event) => {
+          if (controller.signal.aborted) return;
+          innerHandler.onEvent(event);
+        },
+        onError: (error) => {
+          if (controller.signal.aborted) return;
+          innerHandler.onError(error);
+        },
+        onDone: innerHandler.onDone
+          ? () => {
+              if (controller.signal.aborted) return;
+              innerHandler.onDone?.();
+            }
+          : undefined,
+      };
 
       try {
         const shouldStartNewSession = ctrl.nextSendStartsNewSession;
@@ -539,11 +563,21 @@ export function useChatStream({
         // captured `ctrl.currentController` is per-partition, so the
         // gate now correctly recognizes "this is still my turn"
         // regardless of which partition the panel is rendering.
+        //
+        // `ctrl.inFlight` is gated by the same sentinel: a "Send now"
+        // path aborts THIS controller, calls `stopStreaming` (which
+        // clears `ctrl.inFlight` synchronously), and immediately
+        // dispatches a new `performSend` that flips `ctrl.inFlight`
+        // back to true on its own controller. If we cleared
+        // `ctrl.inFlight` unconditionally here, the aborted turn's
+        // microtask-deferred `finally` would clobber the new send's
+        // latch.
         if (ctrl.currentController === controller) {
           partitionSetters.setIsStreaming(false);
           sidekickRef.current.setAgentStreaming(capturedInstanceId, false);
           controller.abort();
           ctrl.currentController = null;
+          ctrl.inFlight = false;
         }
         // Whatever path we took out (success, error, abort), drop any
         // placeholders that were never promoted. Safe because successful
@@ -556,7 +590,6 @@ export function useChatStream({
           sidekickRef.current.removeTask(id);
         }
         ctrl.pendingTaskIds = [];
-        ctrl.inFlight = false;
       }
     },
     [],
@@ -615,6 +648,16 @@ export function useChatStream({
     // or the SSE reader keeps running after the user presses Stop.
     ctrl.currentController?.abort();
     ctrl.currentController = null;
+    // Clear the sync re-entry latch in the same tick we abort. A
+    // user-initiated "Send now" cancels the current turn and
+    // immediately dispatches the queued prompt; if `ctrl.inFlight`
+    // is still `true` (it only resets from `performSend`'s `finally`
+    // once the SSE close propagates) the follow-up `performSend`
+    // silently returns and the force-sent prompt is lost. Resetting
+    // here is safe because the outer `finally` already gates its
+    // cleanup on `ctrl.currentController === controller` — the prior
+    // turn's tail will not clobber a freshly-issued send.
+    ctrl.inFlight = false;
     core.baseStopStreaming();
     if (agentInstanceId) {
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);

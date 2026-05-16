@@ -594,6 +594,75 @@ describe("useAgentChatStream", () => {
     });
   });
 
+  it("stopStreaming clears the in-flight latch synchronously so a follow-up sendMessage in the same tick lands on the wire", async () => {
+    // Regression for the "Send now" force-send: clicking the queue
+    // affordance calls `stopStreaming` and immediately dispatches
+    // the chosen prompt. Before the fix, `stopStreaming` only
+    // aborted the controller and the in-flight latch was reset
+    // from the outer async fn's `finally` block — which fires in
+    // a microtask AFTER the synchronous follow-up `sendMessage`,
+    // so the force-send was silently dropped by the re-entry guard.
+    let releaseFirstStream: (() => void) | null = null;
+    const firstStreamClosed = new Promise<void>((resolve) => {
+      releaseFirstStream = resolve;
+    });
+    let callIndex = 0;
+
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, _handler, signal) => {
+        const isFirstCall = callIndex === 0;
+        callIndex += 1;
+        if (isFirstCall) {
+          // Park the first send so its `finally` hasn't run by the
+          // time the test triggers stop + send-now.
+          await new Promise<void>((resolve, reject) => {
+            signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+            firstStreamClosed.then(resolve);
+          });
+        }
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    const firstSend = result.current.sendMessage("first");
+    // Let the first send register its in-flight latch + push the
+    // user bubble.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Stop the in-flight turn AND fire a follow-up send in the same
+    // synchronous tick — the exact pattern `handleQueueSendNow`
+    // produces.
+    let secondSend: Promise<void> | undefined;
+    act(() => {
+      result.current.stopStreaming();
+      secondSend = result.current.sendMessage("force-sent");
+    });
+
+    await act(async () => {
+      await secondSend;
+    });
+
+    // The force-sent message must have reached the wire even
+    // though the first turn's `finally` hasn't fired yet.
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(2);
+    const wirePayloads = vi
+      .mocked(api.agents.sendEventStream)
+      .mock.calls.map((call) => call[1]);
+    expect(wirePayloads).toEqual(["first", "force-sent"]);
+
+    releaseFirstStream?.();
+    await act(async () => {
+      await firstSend;
+    });
+  });
+
   it("marks the queued message as pendingDueToStuckStream when the entry's last wire event is older than STUCK_THRESHOLD_MS", async () => {
     // Same scenario as above, but the in-flight turn has gone
     // silent past the stuck threshold. The message still gets

@@ -283,6 +283,16 @@ export function useAgentChatStream({
 
       const handler: StreamEventHandler = {
         onEvent(event: AuraEvent) {
+          // Buffered SSE frames can still land in this handler closure
+          // after the controller was aborted (browsers don't flush the
+          // reader's internal queue synchronously with `abort()`). If a
+          // "Send now" force-send has already taken over the partition,
+          // letting those stale events through would clobber the new
+          // turn's `isStreaming`/`inFlightRef`/`streamBuffer` state
+          // — the symptom the user reported as "stop doesn't stop the
+          // old turn and the new one doesn't render correctly". Bail
+          // out early so the new turn owns the partition uncontested.
+          if (controller.signal.aborted) return;
           switch (event.type) {
             case EventType.Delta:
             case EventType.TextDelta: {
@@ -475,10 +485,12 @@ export function useAgentChatStream({
           }
         },
         onError: (error) => {
+          if (controller.signal.aborted) return;
           inFlightRef.current = false;
           handleStreamError(refs, setters, error, breadcrumbContext);
         },
         onDone: () => {
+          if (controller.signal.aborted) return;
           inFlightRef.current = false;
           finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
         },
@@ -633,12 +645,21 @@ export function useAgentChatStream({
         if (err instanceof DOMException && err.name === "AbortError") return;
         handleStreamError(refs, setters, err, breadcrumbContext);
       } finally {
+        // `inFlightRef` is gated by the same "still my turn" sentinel
+        // as the rest of the cleanup. A "Send now" path calls
+        // `stopStreaming` (which aborts THIS controller, clears the
+        // latch synchronously, and resets `abortRef.current` to null
+        // via `baseStopStreaming`) and immediately dispatches a fresh
+        // `sendMessage` whose own try-block sets `inFlightRef = true`.
+        // The aborted turn's microtask-deferred `finally` would
+        // otherwise clobber that new latch even though `abortRef`
+        // has moved on.
         if (abortRef.current === controller) {
           core.setIsStreaming(false);
           controller.abort();
           abortRef.current = null;
+          inFlightRef.current = false;
         }
-        inFlightRef.current = false;
       }
     },
     [agentId, core.key, refs, setters, abortRef, core.setEvents, core.setIsStreaming, core.setProgressText],
@@ -674,10 +695,22 @@ export function useAgentChatStream({
     nextSendStartsNewSessionRef.current = true;
   }, []);
 
+  // Wrap `baseStopStreaming` so we clear `inFlightRef` in the same
+  // synchronous tick the user (or a "Send now" force-send) cancels
+  // the turn. Without this, a follow-up `sendMessage` invoked right
+  // after `stopStreaming` sees the stale `inFlightRef.current === true`
+  // and silently returns, swallowing the force-sent prompt. The
+  // outer async `sendMessage` only resets the latch from its `finally`
+  // block after the SSE close propagates, which is too late.
+  const stopStreaming = useCallback(() => {
+    inFlightRef.current = false;
+    core.baseStopStreaming();
+  }, [core.baseStopStreaming]);
+
   return {
     streamKey: core.key,
     sendMessage,
-    stopStreaming: core.baseStopStreaming,
+    stopStreaming,
     resetEvents: core.resetEvents,
     markNextSendAsNewSession,
   };
