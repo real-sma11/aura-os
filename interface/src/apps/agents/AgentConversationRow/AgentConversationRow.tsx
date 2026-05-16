@@ -1,18 +1,13 @@
 import { Pin } from "lucide-react";
-import { useShallow } from "zustand/react/shallow";
 import { formatChatTime } from "../../../shared/utils/format";
 import { stripEmojis } from "../../../shared/utils/text-normalize";
 import type { Agent } from "../../../shared/types";
 import { isSuperAgent } from "../../../shared/types/permissions";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
-import { isLoopActivityActive } from "../../../shared/types/aura-events";
 import { Avatar } from "../../../components/Avatar";
 import { LoopProgress } from "../../../components/LoopProgress";
 import { useAvatarState } from "../../../hooks/use-avatar-state";
-import {
-  selectAgentActivity,
-  useLoopActivityStore,
-} from "../../../stores/loop-activity-store";
+import { useIsAgentBusy } from "../../../hooks/use-is-agent-busy";
 import { agentDisplayName } from "../../../lib/derive-project-agent-title";
 import { useAgentStore } from "../stores";
 import styles from "./AgentConversationRow.module.css";
@@ -56,17 +51,10 @@ export function AgentConversationRow({
     ? agentDescription || fallback
     : messagePreview || agentDescription || fallback;
   const { status, isLocal } = useAvatarState(agent.agent_id);
-  // Subscribe to this agent's loop activity so the avatar can show a
-  // rotating ring + pulse the status dot whenever any session for this
-  // agent is actively working. Uses `useShallow` so the row only
-  // re-renders when *this* agent's busy bit flips, not when unrelated
-  // loops upsert into the store.
-  const isAgentBusy = useLoopActivityStore(
-    useShallow((s) => {
-      const activity = selectAgentActivity(s, agent.agent_id);
-      return !!activity && isLoopActivityActive(activity.status);
-    }),
-  );
+  // Combined "this template is actively working" signal across
+  // automation loops, standalone-agent chat streams, and project-agent
+  // chat streams. See `useIsAgentBusy` for why each source is needed.
+  const isAgentBusy = useIsAgentBusy(agent.agent_id);
   const pinnedIds = useAgentStore((s) => s.pinnedAgentIds);
   const isPinned = agent.is_pinned || pinnedIds.has(agent.agent_id);
   const isCeo = isSuperAgent(agent);
