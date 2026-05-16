@@ -320,9 +320,6 @@ fn build_windows_handoff_script(
            exit /b !EXIT_CODE!\r\n\
          )\r\n\
          \r\n\
-         rem Brief settle so the installer's file handles drop before relaunch.\r\n\
-         ping -n 2 127.0.0.1 > nul\r\n\
-         \r\n\
          set \"{relaunch_env}=1\"\r\n\
          start \"\" \"!AURA_EXE!\"\r\n\
          call :log \"step=relaunch_spawned status=installing detail=exe=!AURA_EXE!\"\r\n\
@@ -424,14 +421,24 @@ fn spawn_windows_handoff_with_flags(
 const WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 /// Base creation flags for the cmd.exe wrapper that runs the update
-/// handoff `.bat`. We deliberately do NOT include `DETACHED_PROCESS`:
-/// per the Win32 `CreateProcess` docs, `CREATE_NO_WINDOW` is *ignored*
-/// when combined with `DETACHED_PROCESS`, which would leave cmd.exe
-/// without any console at all. The script's `ping` settle delay (a
-/// console application) would then trigger Windows to allocate a fresh
-/// visible console for it, briefly flashing a terminal on screen during
-/// every update. Using `CREATE_NO_WINDOW` alone gives cmd.exe a hidden
-/// console that `ping` (and any other child console process) inherits.
+/// handoff `.bat`. `CREATE_NO_WINDOW` is what keeps cmd.exe itself from
+/// flashing a visible console window during the handoff.
+///
+/// We deliberately do NOT include `DETACHED_PROCESS`: per the Win32
+/// `CreateProcess` docs, `CREATE_NO_WINDOW` is *ignored* when combined
+/// with `DETACHED_PROCESS`, which would leave cmd.exe without any
+/// console at all.
+///
+/// `CREATE_NO_WINDOW` alone is necessary but not sufficient to keep the
+/// handoff invisible: an earlier attempt relied on it giving cmd.exe a
+/// hidden console that child console apps (e.g. `ping`) would inherit,
+/// but in practice once the parent `aura.exe` has exited that inheritance
+/// is not reliable and a freshly-allocated visible console can still
+/// briefly flash. To make the no-flash guarantee robust the handoff
+/// `.bat` is intentionally free of console subprocesses — pinned by
+/// `handoff_script_has_no_console_subprocesses` below — so there are no
+/// child console apps for Windows to allocate a console for in the
+/// first place.
 ///
 /// The handoff still survives the parent's exit because:
 ///   * stdin is `Stdio::null()` and stdout/stderr are redirected to
@@ -1357,12 +1364,14 @@ mod tests {
 
     #[test]
     fn handoff_creation_flags_keep_console_hidden_for_child_processes() {
-        // `CREATE_NO_WINDOW` is documented to be ignored when combined
-        // with `DETACHED_PROCESS`. If that ever happens, cmd.exe runs
-        // with no console at all and the `ping` settle delay inside the
-        // handoff `.bat` causes Windows to allocate a fresh visible
-        // console — which is exactly the regression this test guards
-        // against.
+        // `CREATE_NO_WINDOW` keeps the spawned cmd.exe from flashing a
+        // visible console window. It is documented to be ignored when
+        // combined with `DETACHED_PROCESS`, which would leave cmd.exe
+        // with no console at all — so we pin DETACHED_PROCESS off here.
+        // The complementary guarantee that no child console subprocess
+        // can flash a fresh visible console after the parent exits is
+        // enforced separately by
+        // `handoff_script_has_no_console_subprocesses`.
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -1375,7 +1384,7 @@ mod tests {
         assert_eq!(
             WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NO_WINDOW,
             CREATE_NO_WINDOW,
-            "CREATE_NO_WINDOW must be set so child console apps inherit a hidden console"
+            "CREATE_NO_WINDOW must be set so cmd.exe itself runs without a visible console"
         );
         assert_eq!(
             WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NEW_PROCESS_GROUP,
@@ -1387,6 +1396,41 @@ mod tests {
             0,
             "the breakaway flag must not silently introduce DETACHED_PROCESS"
         );
+    }
+
+    #[test]
+    fn handoff_script_has_no_console_subprocesses() {
+        let script = build_windows_handoff_script(
+            PathBuf::from(r"C:\stage\aura-setup.exe").as_path(),
+            PathBuf::from(r"C:\install\Aura.exe").as_path(),
+            PathBuf::from(r"C:\logs\updater.log").as_path(),
+            PathBuf::from(r"C:\stage\.sentinel").as_path(),
+        )
+        .expect("script should build");
+
+        // Any console subprocess invoked from the handoff `.bat` risks
+        // flashing a terminal during updates: once the parent aura.exe
+        // has exited, the spawned cmd.exe's `CREATE_NO_WINDOW` console
+        // is not reliably inherited by children, and Windows will
+        // allocate a fresh visible console for the child instead. The
+        // robust guarantee is that the script contains no console
+        // subprocesses in the first place — pin that here.
+        let lower = script.to_ascii_lowercase();
+        for forbidden in [
+            "ping ",
+            "timeout ",
+            "powershell",
+            "pwsh ",
+            "wscript",
+            "cscript",
+            "choice ",
+            "waitfor",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "handoff script must not invoke console subprocess {forbidden:?}; got:\n{script}"
+            );
+        }
     }
 
     #[test]
