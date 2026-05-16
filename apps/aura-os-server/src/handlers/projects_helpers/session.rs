@@ -11,7 +11,7 @@ use crate::handlers::agents::conversions_pub::resolve_workspace_path;
 use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
 };
-use crate::handlers::agents::session_model_overrides;
+use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
 use crate::handlers::agents::workspace_tools::{
     installed_workspace_app_tools, installed_workspace_integrations_for_org_with_token,
@@ -294,7 +294,11 @@ pub(crate) async fn project_tool_session_config(
         agent_template_prompt,
         project_path.as_deref(),
     ));
-    let provider_overrides = session_model_overrides(model.as_deref());
+    let provider_overrides = session_model_overrides_with_cache(
+        model.as_deref(),
+        Some(format!("tool:{project_id}:{tool_agent_name}")),
+        Some("24h"),
+    );
     let aura_org_id = agent_instance
         .as_ref()
         .and_then(|instance| instance.org_id.as_ref())

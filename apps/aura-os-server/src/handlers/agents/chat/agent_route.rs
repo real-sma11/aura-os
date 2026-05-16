@@ -41,7 +41,7 @@ use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
 use super::types::SseResponse;
 
-use super::super::runtime::{effective_model, session_model_overrides};
+use super::super::runtime::{effective_model, session_model_overrides_with_cache};
 use crate::handlers::billing::require_credits_for_auth_source;
 
 pub(crate) async fn send_agent_event_stream(
@@ -266,7 +266,11 @@ pub(crate) async fn send_agent_event_stream(
         project_path,
         aura_org_id: effective_org_id.as_ref().map(ToString::to_string),
         aura_session_id: persist_ctx.as_ref().map(|c| c.session_id.clone()),
-        provider_overrides: session_model_overrides(model.as_deref()),
+        provider_overrides: session_model_overrides_with_cache(
+            model.as_deref(),
+            Some(format!("agent:{agent_id}")),
+            Some("24h"),
+        ),
         installed_tools,
         installed_integrations,
         agent_permissions: (&normalized_perms).into(),

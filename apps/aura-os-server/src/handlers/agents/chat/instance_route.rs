@@ -38,7 +38,7 @@ use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
 use super::types::SseResponse;
 
-use super::super::runtime::session_model_overrides;
+use super::super::runtime::session_model_overrides_with_cache;
 
 /// Inbound header the chat client sets on every Phase 2 auto-retry
 /// POST. Holds the retry attempt number as ASCII digits (1, 2, 3,
@@ -308,7 +308,11 @@ pub(crate) async fn send_event_stream(
         project_path,
         aura_org_id: effective_org_id.as_ref().map(ToString::to_string),
         aura_session_id: persist_ctx.as_ref().map(|c| c.session_id.clone()),
-        provider_overrides: session_model_overrides(model.as_deref()),
+        provider_overrides: session_model_overrides_with_cache(
+            model.as_deref(),
+            Some(format!("instance:{agent_instance_id}")),
+            Some("24h"),
+        ),
         installed_tools,
         installed_integrations,
         agent_permissions: (&normalized_instance_perms).into(),

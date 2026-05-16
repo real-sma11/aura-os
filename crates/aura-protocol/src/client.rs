@@ -187,6 +187,22 @@ pub struct SessionModelOverrides {
     /// should be attached.
     #[serde(default)]
     pub prompt_caching_enabled: Option<bool>,
+    /// Optional stable cache key forwarded to aura-router for OpenAI-family
+    /// prompt caching (`prompt_cache_key` in the OpenAI API). Identical
+    /// values across requests within the same session pin them to the same
+    /// backend partition so the prompt prefix can be cached. aura-os
+    /// derives this from the agent / instance / session identity so two
+    /// turns of the same chat share a key, while two unrelated chats
+    /// don't. Has no effect on Anthropic family (which uses `cache_control`
+    /// blocks rather than a key) — the harness only emits the field on
+    /// outbound requests when the upstream family is OpenAI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    /// Optional retention hint paired with [`Self::prompt_cache_key`].
+    /// Wire values are `"in_memory"` (default, ~5–10 min) or `"24h"`
+    /// (extended retention on newer OpenAI models).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<String>,
 }
 
 /// Payload for `user_message`.

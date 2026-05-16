@@ -233,6 +233,8 @@ async fn run_harness_generation_task(
             default_model: request.model.clone(),
             fallback_model: None,
             prompt_caching_enabled: Some(true),
+            prompt_cache_key: None,
+            prompt_cache_retention: None,
         }),
         ..Default::default()
     };

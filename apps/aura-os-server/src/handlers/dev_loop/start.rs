@@ -11,7 +11,7 @@ use crate::handlers::agents::chat::build_project_system_prompt;
 use crate::handlers::agents::session_identity::{
     validate_automaton_identity, SessionIdentityRequirements,
 };
-use crate::handlers::agents::session_model_overrides;
+use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
 use crate::handlers::agents::workspace_tools::{
     installed_workspace_app_tools, installed_workspace_integrations_for_org_with_token,
@@ -243,7 +243,14 @@ pub(super) async fn build_start_params(
             &ctx.agent_system_prompt,
             Some(&ctx.workspace_root),
         )),
-        provider_overrides: session_model_overrides(ctx.model.as_deref()),
+        provider_overrides: session_model_overrides_with_cache(
+            ctx.model.as_deref(),
+            Some(format!(
+                "devloop:{}:{}",
+                ctx.project_id, agent_instance_id
+            )),
+            Some("24h"),
+        ),
         user_id,
         intent_classifier: ctx.intent_classifier.clone(),
         max_turns: Some(project_tool_max_turns()),
