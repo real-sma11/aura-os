@@ -48,9 +48,12 @@
   pointer-events: none;
 }
 
-.sidekickTabBar button:not(:disabled)[aria-pressed="true"],
 .sidekickTabBar button:not(:disabled):hover {
   color: var(--color-text-primary);
+}
+
+.sidekickTabBar button:not(:disabled)[aria-pressed="true"] {
+  color: var(--color-icon-selected, var(--color-text-primary));
 }
 
 .sidekickTabBar button:focus-visible {

@@ -9,8 +9,9 @@ import {
   type AccentColor,
 } from "@cypher-asi/zui";
 import { Sun, Moon, MonitorSmartphone } from "lucide-react";
-import { CustomTokensPanel } from "./CustomTokensPanel";
+import { CustomTokensPanel, TokenRow } from "./CustomTokensPanel";
 import { PresetsPanel } from "./PresetsPanel";
+import { useThemeOverrides } from "../../../hooks/use-theme-overrides";
 import styles from "./AppearanceSection.module.css";
 
 const THEME_LABELS: Record<Theme, string> = {
@@ -45,6 +46,7 @@ const SWATCH_CLASSES: Record<AccentColor, string> = {
 
 export function AppearanceSection() {
   const { theme, accent, setTheme, setAccent } = useTheme();
+  const { overrides, setToken } = useThemeOverrides();
 
   return (
     <Panel
@@ -111,6 +113,22 @@ export function AppearanceSection() {
       </Text>
 
       <PresetsPanel />
+
+      {/* Tints the *selected* state of icons in the app nav rail / bottom
+          taskbar AND in the right-side Sidekick tab bar. When unset, both
+          surfaces fall back to `--color-text-primary` (the original
+          treatment), so leaving this empty is the same as before. */}
+      <div className={styles.section}>
+        <Text weight="semibold" size="sm">
+          Icon select accent
+        </Text>
+        <TokenRow
+          token="--color-icon-selected"
+          label="Selected icon color"
+          currentValue={overrides["--color-icon-selected"]}
+          onChange={(value) => setToken("--color-icon-selected", value)}
+        />
+      </div>
     </Panel>
   );
 }
