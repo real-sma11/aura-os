@@ -233,48 +233,17 @@ export function useFileAttachments(
   const canAddMore = attachments.length < MAX_ATTACHMENTS;
 
   const addFiles = useCallback(async (files: FileList | null) => {
-    console.log("[attach] addFiles entry", {
-      count: files?.length ?? 0,
-      hasCallback: Boolean(onAttachmentsChange),
-      canAddMore,
-      currentLen: attachments.length,
-    });
-    if (!files?.length) {
-      console.warn("[attach] addFiles short-circuit: no files");
-      return;
-    }
-    if (!onAttachmentsChange) {
-      console.warn("[attach] addFiles short-circuit: no onAttachmentsChange");
-      return;
-    }
-    if (!canAddMore) {
-      console.warn("[attach] addFiles short-circuit: canAddMore=false", {
-        currentLen: attachments.length,
-        max: MAX_ATTACHMENTS,
-      });
-      return;
-    }
+    if (!files?.length) return;
+    if (!onAttachmentsChange) return;
+    if (!canAddMore) return;
     const toAdd = Array.from(files).slice(0, MAX_ATTACHMENTS - attachments.length);
-    console.log("[attach] addFiles processing", {
-      toAddCount: toAdd.length,
-      types: toAdd.map((f) => ({ name: f.name, type: f.type, size: f.size })),
-    });
     const results = await Promise.all(toAdd.map(processFile));
     const valid = results.filter((r): r is AttachmentItem => r !== null);
-    console.log("[attach] addFiles processed", {
-      processed: results.length,
-      valid: valid.length,
-      droppedNull: results.length - valid.length,
-    });
     if (valid.length) {
       void import("../../../lib/analytics").then(({ track }) =>
         track("file_attached", { file_count: valid.length }),
       );
       const next = [...attachments, ...valid];
-      console.log("[attach] addFiles invoking onAttachmentsChange", {
-        from: attachments.length,
-        to: next.length,
-      });
       attachmentsRef.current = next;
       onAttachmentsChange(next);
 
@@ -288,8 +257,6 @@ export function useFileAttachments(
           uploadAbortRefs.current.delete(item.id);
         });
       }
-    } else {
-      console.warn("[attach] addFiles produced zero valid items, no preview will render");
     }
     textareaRef?.current?.focus();
   }, [attachments, canAddMore, onAttachmentsChange, updateAttachment, textareaRef]);

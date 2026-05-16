@@ -170,24 +170,6 @@ export function useChatPanelState({
     [],
   );
 
-  // Logged variant exposed to <ChatInputBar onAttachmentsChange={...}> so we
-  // can see whether the bar's `addFiles` actually reaches the panel-level
-  // setter when paste / drag-drop / + click silently fails to render a
-  // preview. Internal callers above keep the raw setter so the reset and
-  // post-send paths don't spam the console.
-  const setAttachmentsLogged = useCallback(
-    (next: AttachmentItem[]) => {
-      setAttachments((prev) => {
-        console.log("[attach] setAttachments (panel)", {
-          from: prev.length,
-          to: next.length,
-        });
-        return next;
-      });
-    },
-    [],
-  );
-
   const buildApiAttachments = useCallback(
     (atts?: AttachmentItem[]): ChatAttachment[] | undefined => {
       const toSend = atts ?? attachmentsRef.current;
@@ -401,7 +383,7 @@ export function useChatPanelState({
     input,
     setInput,
     attachments,
-    setAttachments: setAttachmentsLogged,
+    setAttachments,
     commands,
     setCommands,
     messageAreaRef,
