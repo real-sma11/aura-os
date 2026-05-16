@@ -283,10 +283,10 @@
   gap: 10px;
 }
 
-/* "Buy credits" / similar single-action affordances now ride
-   inside `.errorActionsRow` alongside the support_id chip and
-   the Report Bug button. The class lives on as a button-only
-   style so the existing markup stays unchanged. */
+/* "Buy credits" / similar single-action affordances ride
+   inside `.errorMetaRow` alongside the support_id chip and the
+   Report Bug button. The class lives on as a button-only style
+   so the existing markup stays unchanged. */
 .inlineErrorLink {
   background: none;
   border: none;
@@ -328,30 +328,55 @@
   margin-top: 2px;
 }
 
-/* Shared row at the bottom of every error variant. Carries the
-   synthesized error message (truncated), the optional support_id
-   chip, the variant-specific primary action (e.g. "Buy
-   credits"), and the inline ReportBugButton. `nowrap` is
-   intentional so the message actually truncates to a single
-   line; long bodies are still surfaced via the `title` tooltip
-   on the message span. */
-.errorActionsRow {
+/* Shared chrome at the bottom of every error variant. Renders
+   as two stacked lines:
+     line 1 (`errorMessageLine`): full, wrapping error message +
+       one-click copy button.
+     line 2 (`errorMetaRow`):     Support ID chip and Report bug
+       button (plus the variant-specific primary action, e.g.
+       "Buy credits", when applicable).
+   The message itself wraps with `overflow-wrap: anywhere` so
+   long contract-blocked diagnostics (`system_bytes=...; messages_text_bytes=...; ...`)
+   stay fully readable inside the bubble instead of being
+   ellipsised behind a `title` tooltip. */
+.errorChrome {
   display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
   margin-top: var(--space-2);
-  font-size: 12px;
   min-width: 0;
 }
 
-.errorActionsMessage {
+.errorMessageLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 0;
+}
+
+.errorMessageText {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.errorCopyBtn {
+  flex: 0 0 auto;
+  /* Nudge the icon to optical-align with the first line of text. */
+  margin-top: 1px;
+}
+
+.errorMetaRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 12px;
+  min-width: 0;
 }
 
 .supportIdChip {

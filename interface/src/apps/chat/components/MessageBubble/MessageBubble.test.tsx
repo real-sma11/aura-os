@@ -91,19 +91,20 @@ describe("MessageBubble", () => {
       />,
     );
 
-    // The error string is now rendered inside the action row,
-    // truncated to a single line, with the full text exposed
-    // through the `title` attribute for hover.
-    const messageSpan = screen.getByTitle(
-      "You have no credits remaining. Buy more credits to continue.",
-    );
-    expect(messageSpan).toBeInTheDocument();
-    expect(messageSpan).toHaveTextContent(
-      "You have no credits remaining. Buy more credits to continue.",
-    );
+    // The error string is rendered verbatim on its own line
+    // inside the error chrome (no truncation / no `title`
+    // tooltip).
+    expect(
+      screen.getByText(
+        "You have no credits remaining. Buy more credits to continue.",
+      ),
+    ).toBeInTheDocument();
+    // Inline one-click copy for the error message is wired up.
+    expect(
+      screen.getByRole("button", { name: "Copy error message" }),
+    ).toBeInTheDocument();
 
-    // Buy credits is now sibling to the message span (same row),
-    // not stacked above it.
+    // Buy credits sits on the meta row below the error message.
     fireEvent.click(screen.getByRole("button", { name: "Buy credits" }));
     expect(useUIModalStore.getState().buyCreditsOpen).toBe(true);
 
@@ -113,7 +114,7 @@ describe("MessageBubble", () => {
     expect(screen.queryByTestId("llm-output")).not.toBeInTheDocument();
   });
 
-  it("renders the error message + Support ID chip + Report Bug on a single row for unbucketed errors", () => {
+  it("renders the full error message on its own line above the Support ID + Report Bug meta row for unbucketed errors", () => {
     render(
       <MessageBubble
         message={{
@@ -126,11 +127,21 @@ describe("MessageBubble", () => {
       />,
     );
 
-    const messageSpan = screen.getByTitle("Model call timed out after 180s");
-    expect(messageSpan).toBeInTheDocument();
-    // Support ID label + value are rendered alongside.
+    // Error message is the visible text on the first line (no
+    // truncation / `title` tooltip).
+    expect(
+      screen.getByText("Model call timed out after 180s"),
+    ).toBeInTheDocument();
+    // One-click copy for the error message itself.
+    expect(
+      screen.getByRole("button", { name: "Copy error message" }),
+    ).toBeInTheDocument();
+    // Support ID label + value are rendered on the meta row.
     expect(screen.getByText("Support ID")).toBeInTheDocument();
     expect(screen.getByText("abc123def456")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy support id" }),
+    ).toBeInTheDocument();
     // Report bug button is wired up.
     expect(screen.getByRole("button", { name: "Report bug" })).toBeInTheDocument();
     // Buy credits should NOT appear for this variant.
@@ -155,9 +166,9 @@ describe("MessageBubble", () => {
     expect(screen.getByTestId("llm-output")).toHaveTextContent(
       "Here is the start of my answer",
     );
-    // The error string lives in the action row, not inside the
-    // prefix.
-    expect(screen.getByTitle("connection lost")).toBeInTheDocument();
+    // The error string lives in the error chrome, not inside
+    // the prefix.
+    expect(screen.getByText("connection lost")).toBeInTheDocument();
     expect(screen.queryByTestId("llm-output")).not.toHaveTextContent(
       "connection lost",
     );

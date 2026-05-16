@@ -244,15 +244,18 @@ export const MessageBubble = memo(function MessageBubble({
     return message.content;
   };
 
-  // Shared chrome for every error variant: a single row carrying
-  // the synthesized error message (truncated, full text on
-  // hover), the optional support_id chip, the variant-specific
-  // primary action when applicable (e.g. "Buy credits"), and the
-  // inline ReportBugButton. Lives below the optional partial
-  // streaming buffer / meta block instead of being concatenated
-  // into the bubble body so the relationship between the error
-  // text and the support id stays visually obvious on a single
-  // line.
+  // Shared chrome for every error variant. Renders as two
+  // stacked lines below the optional partial streaming buffer /
+  // meta block:
+  //   line 1: full (wrapping) error message + one-click copy
+  //   line 2: Support ID chip and Report bug button (plus the
+  //           variant-specific primary action, e.g. "Buy
+  //           credits", when applicable)
+  // Stacking — rather than the previous single ellipsised row —
+  // lets long contract-blocked messages stay fully readable
+  // without forcing the user to hover for a `title` tooltip,
+  // while keeping the support id + bug-report controls grouped
+  // on their own row directly under the message they describe.
   const renderErrorActions = () => {
     if (
       !message.displayVariant
@@ -262,45 +265,53 @@ export const MessageBubble = memo(function MessageBubble({
       return null;
     }
     return (
-      <div className={styles.errorActionsRow}>
+      <div className={styles.errorChrome}>
         {message.errorMessage && (
-          <span
-            className={styles.errorActionsMessage}
-            title={message.errorMessage}
-          >
-            {message.errorMessage}
-          </span>
-        )}
-        {isInsufficientCreditsError && (
-          <button
-            type="button"
-            className={styles.inlineErrorLink}
-            onClick={openBuyCredits}
-          >
-            Buy credits
-          </button>
-        )}
-        {message.supportId && (
-          <span
-            className={styles.supportIdChip}
-            title="Server-stamped support id — copy and share with support to join this report to the matching server log entry"
-          >
-            <span className={styles.supportIdLabel}>Support ID</span>
-            <code className={styles.supportIdValue}>{message.supportId}</code>
+          <div className={styles.errorMessageLine}>
+            <span className={styles.errorMessageText}>
+              {message.errorMessage}
+            </span>
             <CopyButton
-              getText={() => message.supportId ?? ""}
-              ariaLabel="Copy support id"
-              className={styles.supportIdCopyBtn}
+              getText={() => message.errorMessage ?? ""}
+              ariaLabel="Copy error message"
+              iconOnly
+              className={styles.errorCopyBtn}
             />
-          </span>
+          </div>
         )}
-        <ReportBugButton
-          streamKey={streamKey}
-          supportId={message.supportId}
-          agentId={agentId}
-          sessionId={sessionId}
-          compact
-        />
+        <div className={styles.errorMetaRow}>
+          {isInsufficientCreditsError && (
+            <button
+              type="button"
+              className={styles.inlineErrorLink}
+              onClick={openBuyCredits}
+            >
+              Buy credits
+            </button>
+          )}
+          {message.supportId && (
+            <span
+              className={styles.supportIdChip}
+              title="Server-stamped support id — copy and share with support to join this report to the matching server log entry"
+            >
+              <span className={styles.supportIdLabel}>Support ID</span>
+              <code className={styles.supportIdValue}>{message.supportId}</code>
+              <CopyButton
+                getText={() => message.supportId ?? ""}
+                ariaLabel="Copy support id"
+                iconOnly
+                className={styles.supportIdCopyBtn}
+              />
+            </span>
+          )}
+          <ReportBugButton
+            streamKey={streamKey}
+            supportId={message.supportId}
+            agentId={agentId}
+            sessionId={sessionId}
+            compact
+          />
+        </div>
       </div>
     );
   };
