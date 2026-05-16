@@ -637,6 +637,20 @@ async fn update_usage_cache(
         entry.output_tokens = entry.output_tokens.saturating_add(output);
         entry.total_output_tokens = entry.total_output_tokens.saturating_add(output);
     }
+    if let Some(v) = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|value| value.as_u64())
+    {
+        entry.total_cache_creation_input_tokens =
+            entry.total_cache_creation_input_tokens.saturating_add(v);
+    }
+    if let Some(v) = usage
+        .get("cache_read_input_tokens")
+        .and_then(|value| value.as_u64())
+    {
+        entry.total_cache_read_input_tokens =
+            entry.total_cache_read_input_tokens.saturating_add(v);
+    }
 }
 
 /// Drain `assistant_message_end.files_changed` into the per-task cache.
