@@ -91,12 +91,26 @@
  * "running" stays green, "local" stays purple, etc.
  * ------------------------------------------------------------------ */
 
+/* The wrapper is the rotating element (rotating a plain box transforms
+ * more reliably than animating CSS transforms on an `<svg>` element,
+ * where some browsers ignore `transform-origin: center` and pin the
+ * rotation to the SVG coordinate origin). The SVG inside is static.
+ *
+ * We intentionally do NOT gate this on `prefers-reduced-motion`: the
+ * ring is a load-bearing "this agent is working" signal at 42px, on
+ * par with the sibling `LoopProgress` spinner which also ignores the
+ * media query. A static ring with a stationary dash gap reads as a
+ * decorative outline, not as activity.
+ */
 .busyRing {
   position: absolute;
   inset: -3px;
   border-radius: 50%;
   pointer-events: none;
   color: var(--loop-progress-color, #4f8bff);
+  transform-origin: 50% 50%;
+  animation: avatar-busy-spin 1.1s linear infinite;
+  will-change: transform;
 }
 
 .busyRingSvg {
@@ -110,8 +124,6 @@
   /* Total circumference at r=15 is ~94.25; show an arc plus its
    * trailing tail with a transparent gap so rotation is visible. */
   stroke-dasharray: 56 38;
-  transform-origin: center;
-  animation: avatar-busy-spin 1.1s linear infinite;
 }
 
 @keyframes avatar-busy-spin {
@@ -121,17 +133,10 @@
 
 .statusDot[data-busy="true"] {
   animation: avatar-status-pulse 1.4s ease-in-out infinite;
-  transform-origin: center;
+  transform-origin: 50% 50%;
 }
 
 @keyframes avatar-status-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.18); opacity: 0.6; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .busyRingSvg,
-  .statusDot[data-busy="true"] {
-    animation: none;
-  }
 }
