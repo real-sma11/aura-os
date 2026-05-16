@@ -18,6 +18,8 @@ const mockScrollToBottom = scrollAnchorMocks.scrollToBottom;
 const mockUseScrollAnchorV2 = scrollAnchorMocks.useScrollAnchorV2;
 const mockEnqueue = vi.fn();
 const mockDequeue = vi.fn();
+const mockRemove = vi.fn();
+const mockMoveUp = vi.fn();
 const mockChatUI: {
   selectedMode: "code" | "plan" | "image" | "3d" | "video";
   selectedModel: string | null;
@@ -100,8 +102,8 @@ vi.mock("../../../stores/message-queue-store", () => ({
     getState: () => ({
       enqueue: mockEnqueue,
       dequeue: mockDequeue,
-      remove: vi.fn(),
-      moveUp: vi.fn(),
+      remove: mockRemove,
+      moveUp: mockMoveUp,
     }),
   },
   useMessageQueue: () => [],
@@ -123,6 +125,8 @@ describe("useChatPanelState", () => {
     mockUseScrollAnchorV2.mockClear();
     mockEnqueue.mockReset();
     mockDequeue.mockReset();
+    mockRemove.mockReset();
+    mockMoveUp.mockReset();
     mockChatUI.init.mockReset();
     mockChatUI.syncAvailableModels.mockReset();
     mockChatUI.setSelectedMode.mockReset();
@@ -419,6 +423,127 @@ describe("useChatPanelState", () => {
         resetKey: "agent-1",
         scrollToBottomOnReset: false,
       },
+    );
+  });
+
+  // Phase 1 of the queue fix: force-send aborts the current turn, then
+  // defers the dispatch by one microtask so the upstream chat hook's
+  // `stopStreaming` finally-block has time to clear its in-flight
+  // latch before the new send re-enters.
+  it("handleQueueSendNow removes the item, calls onStop, then dispatches via the deferred microtask", async () => {
+    mockIsStreaming = true;
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPanelState({
+        streamKey: "stream-1",
+        onSend,
+        onStop,
+        selectedProjectId: "project-1",
+      }),
+    );
+
+    const queuedItem = {
+      id: "q-1",
+      content: "force me",
+      action: null,
+      model: "gpt-5.4",
+      attachments: undefined,
+      commands: undefined,
+    };
+
+    act(() => result.current.handleQueueSendNow(queuedItem));
+
+    expect(mockRemove).toHaveBeenCalledWith("stream-1", "q-1");
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // The dispatch is deferred via `queueMicrotask`; flush the
+    // microtask queue and verify onSend lands with the queued payload.
+    expect(onSend).not.toHaveBeenCalled();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onSend).toHaveBeenCalledWith(
+      "force me",
+      null,
+      "gpt-5.4",
+      undefined,
+      undefined,
+      "project-1",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("handleQueueSendNow falls back to the selected model when the item omits one", async () => {
+    mockChatUI.selectedModel = "claude-fallback";
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPanelState({
+        streamKey: "stream-1",
+        onSend,
+        onStop,
+        selectedProjectId: "project-1",
+      }),
+    );
+
+    act(() =>
+      result.current.handleQueueSendNow({
+        id: "q-2",
+        content: "no model",
+        action: null,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSend).toHaveBeenCalledWith(
+      "no model",
+      null,
+      "claude-fallback",
+      undefined,
+      undefined,
+      "project-1",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("handleQueueSendNow no-ops the stop call when onStop is not provided", async () => {
+    const onSend = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPanelState({
+        streamKey: "stream-1",
+        onSend,
+      }),
+    );
+
+    expect(() =>
+      act(() =>
+        result.current.handleQueueSendNow({
+          id: "q-3",
+          content: "no stop wired",
+          action: null,
+        }),
+      ),
+    ).not.toThrow();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockRemove).toHaveBeenCalledWith("stream-1", "q-3");
+    expect(onSend).toHaveBeenCalledWith(
+      "no stop wired",
+      null,
+      expect.any(String),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
     );
   });
 });

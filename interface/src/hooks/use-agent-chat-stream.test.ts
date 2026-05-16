@@ -530,6 +530,70 @@ describe("useAgentChatStream", () => {
     expect(queue[0].pendingDueToStuckStream).toBe(false);
   });
 
+  it("clears the in-flight latch in sync with setIsStreaming(false) from AssistantMessageEnd so a queued dequeue can re-enter immediately", async () => {
+    // Regression for the "queued prompts disappear" bug: when the
+    // server emits `AssistantMessageEnd` mid-stream, the handler
+    // flips `isStreaming` to `false` while the outer async
+    // `sendMessage` is still awaiting the SSE close. The dequeue
+    // effect in `useChatPanelState` fires on the `isStreaming`
+    // transition and re-enters `sendMessage`. Before the fix the
+    // synchronous `inFlightRef` latch was still set and the second
+    // call returned silently, dropping the queued message.
+    let releaseFirstStream: (() => void) | null = null;
+    const firstStreamClosed = new Promise<void>((resolve) => {
+      releaseFirstStream = resolve;
+    });
+    let callIndex = 0;
+
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        const isFirstCall = callIndex === 0;
+        callIndex += 1;
+        if (isFirstCall) {
+          // Emit AssistantMessageEnd (which flips isStreaming false
+          // and — with the fix — clears the in-flight latch) but
+          // keep the outer async fn parked on `firstStreamClosed`
+          // so its `finally` block hasn't run yet when we re-enter.
+          handler?.onEvent({
+            type: EventType.AssistantMessageEnd,
+            content: { stop_reason: "stop" },
+          } as AuraEvent);
+          await firstStreamClosed;
+        }
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    const firstSend = result.current.sendMessage("first");
+    // Yield so the mocked handler emits AssistantMessageEnd before
+    // we re-enter `sendMessage`.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage("second");
+    });
+
+    // Both messages should reach the wire: the fix clears
+    // `inFlightRef` from inside the AssistantMessageEnd handler so
+    // the dequeue-style re-entry isn't swallowed by the in-flight
+    // guard at the top of `sendMessage`.
+    expect(api.agents.sendEventStream).toHaveBeenCalledTimes(2);
+    const userBubblesByContent = vi
+      .mocked(api.agents.sendEventStream)
+      .mock.calls.map((call) => call[1]);
+    expect(userBubblesByContent).toEqual(["first", "second"]);
+
+    releaseFirstStream?.();
+    await act(async () => {
+      await firstSend;
+    });
+  });
+
   it("marks the queued message as pendingDueToStuckStream when the entry's last wire event is older than STUCK_THRESHOLD_MS", async () => {
     // Same scenario as above, but the in-flight turn has gone
     // silent past the stuck threshold. The message still gets

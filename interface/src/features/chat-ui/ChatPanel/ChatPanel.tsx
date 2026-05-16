@@ -196,6 +196,7 @@ export function ChatPanel({
     handleQueueEdit,
     handleQueueMoveUp,
     handleQueueRemove,
+    handleQueueSendNow,
     loadOlder,
     isLoadingOlder,
     hasOlderMessages,
@@ -204,6 +205,7 @@ export function ChatPanel({
     streamKey,
     transcriptKey,
     onSend,
+    onStop,
     adapterType,
     defaultModel,
     scrollResetKey,
@@ -644,6 +646,7 @@ export function ChatPanel({
               onEdit={handleQueueEdit}
               onMoveUp={handleQueueMoveUp}
               onRemove={handleQueueRemove}
+              onSendNow={handleQueueSendNow}
             />
           </div>
         )}

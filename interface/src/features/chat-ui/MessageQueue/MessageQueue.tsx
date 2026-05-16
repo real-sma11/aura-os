@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
-import { ChevronDown, Pencil, ArrowUp, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, ArrowUp, Trash2, Zap } from "lucide-react";
+import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useMessageQueue } from "../../../stores/message-queue-store";
 import type { QueuedMessage } from "../../../stores/message-queue-store";
 import styles from "./MessageQueue.module.css";
@@ -9,6 +10,13 @@ interface Props {
   onEdit: (item: QueuedMessage) => void;
   onMoveUp: (id: string) => void;
   onRemove: (id: string) => void;
+  /**
+   * Cancel the in-flight turn and immediately send this queued
+   * prompt. The button is only rendered when a stream is currently
+   * active for `streamKey`; without an active turn the regular
+   * dequeue-on-completion path picks the head item up on its own.
+   */
+  onSendNow?: (item: QueuedMessage) => void;
 }
 
 export const MessageQueue = memo(function MessageQueue({
@@ -16,8 +24,10 @@ export const MessageQueue = memo(function MessageQueue({
   onEdit,
   onMoveUp,
   onRemove,
+  onSendNow,
 }: Props) {
   const queue = useMessageQueue(streamKey);
+  const isStreaming = useIsStreaming(streamKey);
   const [collapsed, setCollapsed] = useState(false);
 
   if (queue.length === 0) return null;
@@ -44,6 +54,17 @@ export const MessageQueue = memo(function MessageQueue({
               <span className={styles.queueIndicator} />
               <span className={styles.queueItemText}>{item.content}</span>
               <div className={styles.queueActions}>
+                {onSendNow && isStreaming && (
+                  <button
+                    type="button"
+                    className={`${styles.queueActionBtn} ${styles.queueActionBtnAccent}`}
+                    onClick={() => onSendNow(item)}
+                    aria-label="Send now (cancels current turn)"
+                    title="Send now (cancels current turn)"
+                  >
+                    <Zap size={13} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.queueActionBtn}

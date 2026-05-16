@@ -42,6 +42,15 @@ export interface UseChatPanelStateOptions {
     generationMode?: GenerationMode,
     sourceImageUrl?: string,
   ) => void;
+  /**
+   * Cancels the in-flight turn. Required by the "Send now" affordance
+   * in `MessageQueue` which short-circuits a queued prompt past the
+   * current turn by aborting it and immediately dispatching the
+   * chosen item. Optional so existing callers that never expose the
+   * force-send button (e.g. the public chat surface) don't need to
+   * thread a no-op through.
+   */
+  onStop?: () => void;
   adapterType?: string;
   defaultModel?: string | null;
   scrollResetKey?: unknown;
@@ -66,6 +75,7 @@ export function useChatPanelState({
   streamKey,
   transcriptKey,
   onSend,
+  onStop,
   adapterType,
   defaultModel,
   scrollResetKey,
@@ -197,6 +207,14 @@ export function useChatPanelState({
   useEffect(() => {
     onSendRef.current = onSend;
   }, [onSend]);
+
+  // Mirror `onStop` so the "Send now" handler has a stable identity
+  // for the queue UI's callback memo. Optional because not every
+  // caller wires a stop handler.
+  const onStopRef = useRef(onStop);
+  useEffect(() => {
+    onStopRef.current = onStop;
+  }, [onStop]);
 
   const selectedModelRef = useRef(selectedModel);
   useEffect(() => {
@@ -379,6 +397,36 @@ export function useChatPanelState({
     [streamKey],
   );
 
+  // Force-send a queued prompt past the current turn. The handler
+  // aborts the in-flight stream, then defers the dispatch by one
+  // microtask so the upstream chat hook's `stopStreaming` has time
+  // to fire its `finally` block (clearing the per-partition
+  // in-flight latch). Combined with the lockstep latch clears wired
+  // into `useAgentChatStream` / `build-stream-handler`, the deferred
+  // dispatch lands cleanly instead of being swallowed by the
+  // synchronous re-entry guard.
+  const handleQueueSendNow = useCallback(
+    (item: QueuedMessage) => {
+      useMessageQueueStore.getState().remove(streamKey, item.id);
+      const stop = onStopRef.current;
+      if (stop) stop();
+      queueMicrotask(() => {
+        onSendRef.current(
+          item.content,
+          item.action,
+          item.model ?? selectedModelRef.current,
+          item.attachments,
+          item.commands,
+          selectedProjectIdRef.current,
+          item.generationMode,
+          item.sourceImageUrl,
+        );
+        scrollToBottomRef.current();
+      });
+    },
+    [streamKey],
+  );
+
   return {
     input,
     setInput,
@@ -401,6 +449,7 @@ export function useChatPanelState({
     handleQueueEdit,
     handleQueueMoveUp,
     handleQueueRemove,
+    handleQueueSendNow,
     loadOlder,
     isLoadingOlder,
     hasOlderMessages,

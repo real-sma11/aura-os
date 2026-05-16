@@ -375,6 +375,15 @@ export function useAgentChatStream({
               }
               if (amc.stop_reason !== "tool_use") {
                 resetStreamBuffers(refs, setters);
+                // Clear the synchronous re-entry latch in lockstep with
+                // `isStreaming` so the `useChatPanelState` dequeue effect,
+                // which fires on the `true -> false` transition, can
+                // re-enter `sendMessage` without being silently swallowed
+                // by the in-flight guard at the top of this function.
+                // Without this sync the outer async fn's `finally` only
+                // resets the latch after the SSE has fully closed, which
+                // races with the dequeue and drops queued prompts.
+                inFlightRef.current = false;
                 core.setIsStreaming(false);
               }
               break;
@@ -446,23 +455,33 @@ export function useAgentChatStream({
               handleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
               handleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
               setters.clearGeneration();
+              inFlightRef.current = false;
               finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
               break;
             }
             case EventType.GenerationError:
               setters.clearGeneration();
+              inFlightRef.current = false;
               handleStreamError(refs, setters, event.content.message, breadcrumbContext);
               break;
             case EventType.Error:
+              inFlightRef.current = false;
               handleStreamError(refs, setters, event.content.message, breadcrumbContext);
               break;
             case EventType.Done:
+              inFlightRef.current = false;
               finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
               break;
           }
         },
-        onError: (error) => handleStreamError(refs, setters, error, breadcrumbContext),
-        onDone: () => finalizeStream(refs, setters, abortRef, false, { breadcrumbContext }),
+        onError: (error) => {
+          inFlightRef.current = false;
+          handleStreamError(refs, setters, error, breadcrumbContext);
+        },
+        onDone: () => {
+          inFlightRef.current = false;
+          finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
+        },
       };
 
       try {

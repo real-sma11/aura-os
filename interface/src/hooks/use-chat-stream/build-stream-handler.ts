@@ -86,6 +86,17 @@ export interface DispatchDeps {
    */
   onMaybeAutoRetry?: (error: unknown) => boolean;
   /**
+   * Fired the moment any code path inside the handler flips
+   * `setIsStreaming(false)` — `AssistantMessageEnd` (non-tool_use),
+   * `finalizeStream`, or error paths. `useChatStream.performSend`
+   * uses this to clear its synchronous `ctrl.inFlight` latch in
+   * lockstep with the Zustand `isStreaming` flag so the
+   * dequeue-on-completion effect in `useChatPanelState` can re-enter
+   * `performSend` without being silently swallowed by the in-flight
+   * guard before the outer async fn's `finally` block has run.
+   */
+  onStreamFinalized?: () => void;
+  /**
    * Phase 5 breadcrumb context. Forwarded to every `handleStreamError`
    * / `finalizeStream` call inside the handler so the persisted
    * breadcrumb ring carries the originating stream key + agent +
@@ -156,7 +167,8 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
     projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
-    onAssistantTurnCompleted, onMaybeAutoRetry, breadcrumbContext,
+    onAssistantTurnCompleted, onMaybeAutoRetry, onStreamFinalized,
+    breadcrumbContext,
   } = deps;
   // Track the last session id we forwarded to `onSessionReady` so a
   // chatty stream that re-emits `SessionReady` (e.g. mid-stream
@@ -373,6 +385,13 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         }
         if (amc.stop_reason !== "tool_use") {
           resetStreamBuffers(refs, setters);
+          // Clear the partition's in-flight latch in lockstep with the
+          // Zustand `isStreaming` flag so the dequeue-on-completion
+          // effect in `useChatPanelState` can re-enter `performSend`
+          // immediately. Without this, the outer async fn's `finally`
+          // resets the latch only after the SSE fully closes, racing
+          // with the dequeue and silently dropping queued prompts.
+          onStreamFinalized?.();
           setters.setIsStreaming(false);
           if (agentInstanceId) {
             sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -454,6 +473,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         coreHandleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
         coreHandleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
         setters.clearGeneration();
+        onStreamFinalized?.();
         finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -462,6 +482,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       }
       case EventType.GenerationError:
         setters.clearGeneration();
+        onStreamFinalized?.();
         handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       case EventType.Error: {
@@ -476,10 +497,12 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         ) {
           break;
         }
+        onStreamFinalized?.();
         handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       }
       case EventType.Done:
+        onStreamFinalized?.();
         finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -505,6 +528,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       if (isStreamDroppedError(error) && onMaybeAutoRetry?.(error)) {
         return;
       }
+      onStreamFinalized?.();
       handleStreamError(refs, setters, error, breadcrumbContext);
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -517,6 +541,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       );
     },
     onDone: () => {
+      onStreamFinalized?.();
       finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);

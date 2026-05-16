@@ -365,6 +365,15 @@ export function useChatStream({
           ctrl.autoRetryCount = 0;
         },
         onMaybeAutoRetry: tryAutoRetry,
+        // Keep `ctrl.inFlight` consistent with `isStreaming` so the
+        // dequeue-on-completion effect in `useChatPanelState` can
+        // re-enter `performSend` the moment the turn ends. The outer
+        // `finally` resets `inFlight` too, but only after the SSE
+        // fully closes — by then the dequeue effect would already
+        // have raced and been silently dropped by the latch.
+        onStreamFinalized: () => {
+          ctrl.inFlight = false;
+        },
       });
 
       try {
