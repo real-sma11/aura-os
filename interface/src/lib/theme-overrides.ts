@@ -24,13 +24,33 @@ export const EDITABLE_TOKENS = [
 
 export type EditableToken = (typeof EDITABLE_TOKENS)[number];
 
+/**
+ * Tokens whose value is meant to be the same in both dark and light
+ * resolved themes — they live in {@link StoredOverrides.global} rather
+ * than the per-mode `dark` / `light` slices, get applied regardless
+ * of the active theme, and beat any value a preset tries to set for
+ * the same token (so a global tint cannot be silently undone by
+ * switching themes or selecting a preset). Used for "personal accent"
+ * settings where a per-mode pair would feel like a bug rather than a
+ * feature.
+ */
+export const GLOBAL_TOKENS: ReadonlySet<EditableToken> = new Set<EditableToken>([
+  "--color-icon-selected",
+]);
+
 /** Per-token override values. Missing keys mean "use default". */
 export type ThemeOverrides = Partial<Record<EditableToken, string>>;
 
-/** Stored shape: independent overrides for dark vs light. */
+/**
+ * Stored shape: independent overrides for dark vs light, plus a
+ * `global` slice for tokens listed in {@link GLOBAL_TOKENS}. Older
+ * payloads without `global` round-trip cleanly through
+ * {@link loadOverrides} — the field defaults to an empty object.
+ */
 export type StoredOverrides = {
   dark: ThemeOverrides;
   light: ThemeOverrides;
+  global: ThemeOverrides;
 };
 
 const STORAGE_KEY = "aura-theme-overrides";
@@ -38,7 +58,7 @@ const STORAGE_KEY = "aura-theme-overrides";
 const EDITABLE_TOKEN_SET: ReadonlySet<string> = new Set(EDITABLE_TOKENS);
 
 function emptyStore(): StoredOverrides {
-  return { dark: {}, light: {} };
+  return { dark: {}, light: {}, global: {} };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,6 +86,7 @@ export function loadOverrides(): StoredOverrides {
     return {
       dark: sanitizeOverrides(parsed.dark),
       light: sanitizeOverrides(parsed.light),
+      global: sanitizeOverrides(parsed.global),
     };
   } catch {
     return emptyStore();

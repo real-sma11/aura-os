@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTheme, type ResolvedTheme } from "@cypher-asi/zui";
 import {
   applyOverridesToDocument,
+  GLOBAL_TOKENS,
   loadOverrides,
   saveOverrides,
   type EditableToken,
@@ -73,7 +74,7 @@ export type UseThemeOverridesResult = {
 };
 
 function emptyStore(): StoredOverrides {
-  return { dark: {}, light: {} };
+  return { dark: {}, light: {}, global: {} };
 }
 
 function initialStore(): StoredOverrides {
@@ -106,9 +107,17 @@ export function useThemeOverrides(): UseThemeOverridesResult {
     );
   }, [activePresetId, presetState.presets, resolvedTheme]);
 
-  const appliedOverrides: ThemeOverrides = activePreset
+  // Base layer comes from the active preset (if any) or the per-theme
+  // working set. Global tokens (e.g. icon-select accent) sit on top and
+  // win unconditionally so switching theme / preset cannot silently
+  // clear a personal accent the user set once.
+  const baseOverrides: ThemeOverrides = activePreset
     ? activePreset.overrides
     : store[resolvedTheme];
+  const appliedOverrides: ThemeOverrides = useMemo(
+    () => ({ ...baseOverrides, ...store.global }),
+    [baseOverrides, store.global],
+  );
 
   useEffect(() => {
     applyOverridesToDocument(resolvedTheme, appliedOverrides);
@@ -120,6 +129,21 @@ export function useThemeOverrides(): UseThemeOverridesResult {
       value: string | null,
       targetTheme?: ResolvedTheme,
     ) => {
+      // Global tokens ignore `targetTheme` and the active preset — they're
+      // theme-independent by definition, so a single write lands in the
+      // `global` slice and gets re-applied on every theme/preset change.
+      if (GLOBAL_TOKENS.has(token)) {
+        setStore((prev) => {
+          const nextGlobal: ThemeOverrides = { ...prev.global };
+          if (value === null) delete nextGlobal[token];
+          else nextGlobal[token] = value;
+          const next: StoredOverrides = { ...prev, global: nextGlobal };
+          saveOverrides(next);
+          return next;
+        });
+        return;
+      }
+
       const effectiveTarget = targetTheme ?? resolvedTheme;
       const targetsActiveTheme = effectiveTarget === resolvedTheme;
 
@@ -192,7 +216,14 @@ export function useThemeOverrides(): UseThemeOverridesResult {
     }
 
     setStore((prev) => {
-      const next: StoredOverrides = { ...prev, [resolvedTheme]: {} };
+      // "Reset all" clears global tokens too — they're cross-theme by
+      // design, so a user who hits reset expects every personal accent
+      // to revert, not just the active-theme ones.
+      const next: StoredOverrides = {
+        ...prev,
+        [resolvedTheme]: {},
+        global: {},
+      };
       saveOverrides(next);
       return next;
     });

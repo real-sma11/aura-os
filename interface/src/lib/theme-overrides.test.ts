@@ -23,13 +23,14 @@ describe("theme-overrides", () => {
 
   describe("loadOverrides / saveOverrides", () => {
     it("returns empty defaults when nothing is stored", () => {
-      expect(loadOverrides()).toEqual({ dark: {}, light: {} });
+      expect(loadOverrides()).toEqual({ dark: {}, light: {}, global: {} });
     });
 
     it("round-trips a saved store", () => {
       const store: StoredOverrides = {
         dark: { "--color-border": "#ff00ff" },
         light: { "--color-sidebar-bg": "#ffffff" },
+        global: {},
       };
       saveOverrides(store);
       expect(loadOverrides()).toEqual(store);
@@ -37,7 +38,7 @@ describe("theme-overrides", () => {
 
     it("falls back to empty defaults when JSON is malformed", () => {
       localStorage.setItem(STORAGE_KEY, "{not json");
-      expect(loadOverrides()).toEqual({ dark: {}, light: {} });
+      expect(loadOverrides()).toEqual({ dark: {}, light: {}, global: {} });
     });
 
     it("drops unknown tokens and non-string values on load", () => {
@@ -55,21 +56,51 @@ describe("theme-overrides", () => {
       expect(loadOverrides()).toEqual({
         dark: { "--color-border": "#123456" },
         light: {},
+        global: {},
       });
     });
 
     it("treats a top-level non-object payload as empty", () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(["not", "a", "store"]));
-      expect(loadOverrides()).toEqual({ dark: {}, light: {} });
+      expect(loadOverrides()).toEqual({ dark: {}, light: {}, global: {} });
     });
 
     it("round-trips --color-modal-bg per mode", () => {
       const store: StoredOverrides = {
         dark: { "--color-modal-bg": "#000000" },
         light: { "--color-modal-bg": "#ffffff" },
+        global: {},
       };
       saveOverrides(store);
       expect(loadOverrides()).toEqual(store);
+    });
+
+    it("round-trips a global token across both modes", () => {
+      const store: StoredOverrides = {
+        dark: {},
+        light: {},
+        global: { "--color-icon-selected": "#ff8800" },
+      };
+      saveOverrides(store);
+      expect(loadOverrides()).toEqual(store);
+    });
+
+    it("forward-compatibly defaults global to empty when missing", () => {
+      // Simulates a payload written by a pre-global-slice version of the
+      // app. The new loader should treat the missing `global` field as
+      // an empty map rather than throwing or losing the dark/light data.
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          dark: { "--color-border": "#aaaaaa" },
+          light: { "--color-border": "#bbbbbb" },
+        }),
+      );
+      expect(loadOverrides()).toEqual({
+        dark: { "--color-border": "#aaaaaa" },
+        light: { "--color-border": "#bbbbbb" },
+        global: {},
+      });
     });
   });
 
