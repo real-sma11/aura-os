@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -98,6 +99,23 @@ export function Block({
     setExpanded((v) => !v);
   }, [forceExpanded]);
 
+  // The header used to be rendered as `<button>`, but renderers like
+  // `SpecBlock` thread interactive controls (e.g. a `CopyButton`) through
+  // the `trailing` slot — nesting a `<button>` inside another `<button>`
+  // is invalid HTML and triggers a React hydration warning. We instead
+  // use a `<div>` with `role="button"` plus keyboard handling so the
+  // trailing slot can safely host other buttons.
+  const handleHeaderKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (forceExpanded) return;
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setExpanded((v) => !v);
+      }
+    },
+    [forceExpanded],
+  );
+
   const internalBodyRef = useRef<HTMLDivElement | null>(null);
   const mergedBodyRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -118,11 +136,14 @@ export function Block({
 
   return (
     <div className={`${styles.block} ${statusClass(status)} ${className ?? ""}`}>
-      <button
-        type="button"
+      <div
         className={styles.blockHeader}
+        role="button"
+        tabIndex={forceExpanded ? -1 : 0}
         aria-expanded={bodyVisible}
+        aria-disabled={forceExpanded || undefined}
         onClick={toggle}
+        onKeyDown={handleHeaderKeyDown}
       >
         <span className={styles.statusDot} />
         {icon ? <span className={styles.blockIcon}>{icon}</span> : null}
@@ -137,7 +158,7 @@ export function Block({
         >
           <ChevronRight size={12} />
         </span>
-      </button>
+      </div>
       <div
         className={`${styles.blockBodyWrap} ${bodyVisible ? styles.blockBodyWrapExpanded : ""}`}
         aria-hidden={!bodyVisible}
