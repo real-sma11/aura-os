@@ -82,3 +82,56 @@
   background: #a855f7;
   box-shadow: 0 0 4px rgba(168, 85, 247, 0.3);
 }
+
+/* ── Busy treatment ──────────────────────────────────────────────────
+ * Driven by the loop-activity store at the call site. When `busy` is
+ * true, a rotating SVG ring sits just outside the avatar circle and
+ * the existing status dot gains a gentle pulse. The dot's per-status
+ * background / box-shadow rules above stay authoritative for color so
+ * "running" stays green, "local" stays purple, etc.
+ * ------------------------------------------------------------------ */
+
+.busyRing {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  pointer-events: none;
+  color: var(--loop-progress-color, #4f8bff);
+}
+
+.busyRingSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  /* Total circumference at r=15 is ~94.25; show an arc plus its
+   * trailing tail with a transparent gap so rotation is visible. */
+  stroke-dasharray: 56 38;
+  transform-origin: center;
+  animation: avatar-busy-spin 1.1s linear infinite;
+}
+
+@keyframes avatar-busy-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.statusDot[data-busy="true"] {
+  animation: avatar-status-pulse 1.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes avatar-status-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.18); opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busyRingSvg,
+  .statusDot[data-busy="true"] {
+    animation: none;
+  }
+}

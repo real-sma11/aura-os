@@ -5,13 +5,20 @@ import {
   fullAccessAgentPermissions,
 } from "../../../shared/types/permissions-wire";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import { useLoopActivityStore } from "../../../stores/loop-activity-store";
+import type {
+  LoopActivityPayload,
+  LoopIdPayload,
+} from "../../../shared/types/aura-events";
 
 vi.mock("../../../hooks/use-avatar-state", () => ({
   useAvatarState: () => ({ status: "offline", isLocal: true }),
 }));
 
 vi.mock("../../../components/Avatar", () => ({
-  Avatar: () => <div data-testid="agent-avatar" />,
+  Avatar: ({ busy }: { busy?: boolean }) => (
+    <div data-testid="agent-avatar" data-busy={busy ? "true" : "false"} />
+  ),
 }));
 
 import { AgentConversationRow } from "./AgentConversationRow";
@@ -38,6 +45,10 @@ const lastMessage: DisplaySessionEvent = {
 } as DisplaySessionEvent;
 
 describe("AgentConversationRow", () => {
+  beforeEach(() => {
+    useLoopActivityStore.setState({ loops: {}, hydrated: false });
+  });
+
   it("shows the latest chat message as the preview by default", () => {
     render(
       <AgentConversationRow
@@ -177,5 +188,92 @@ describe("AgentConversationRow", () => {
 
     expect(screen.getByText("Plans features end to end.")).toBeInTheDocument();
     expect(screen.queryByText("Latest chat reply")).not.toBeInTheDocument();
+  });
+
+  it("marks the avatar as not busy when there is no active loop for the agent", () => {
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        onClick={() => {}}
+        onContextMenu={() => {}}
+        onMouseEnter={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("agent-avatar")).toHaveAttribute("data-busy", "false");
+  });
+
+  it("marks the avatar as busy when an active loop exists for the agent", () => {
+    const loopId: LoopIdPayload = {
+      user_id: "user-1",
+      project_id: null,
+      agent_instance_id: null,
+      agent_id: baseAgent.agent_id,
+      kind: "chat",
+      instance: "loop-1",
+    };
+    const activity: LoopActivityPayload = {
+      status: "running",
+      percent: null,
+      started_at: "2026-05-16T20:00:00Z",
+      last_event_at: "2026-05-16T20:00:05Z",
+      current_task_id: null,
+      current_step: null,
+    };
+    useLoopActivityStore.setState({
+      loops: { [loopId.instance]: { loopId, activity } },
+      hydrated: true,
+    });
+
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        onClick={() => {}}
+        onContextMenu={() => {}}
+        onMouseEnter={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("agent-avatar")).toHaveAttribute("data-busy", "true");
+  });
+
+  it("does not mark the avatar as busy for terminal loop statuses", () => {
+    const loopId: LoopIdPayload = {
+      user_id: "user-1",
+      project_id: null,
+      agent_instance_id: null,
+      agent_id: baseAgent.agent_id,
+      kind: "chat",
+      instance: "loop-1",
+    };
+    const activity: LoopActivityPayload = {
+      status: "completed",
+      percent: 1,
+      started_at: "2026-05-16T20:00:00Z",
+      last_event_at: "2026-05-16T20:00:05Z",
+      current_task_id: null,
+      current_step: null,
+    };
+    useLoopActivityStore.setState({
+      loops: { [loopId.instance]: { loopId, activity } },
+      hydrated: true,
+    });
+
+    render(
+      <AgentConversationRow
+        agent={baseAgent}
+        lastMessage={lastMessage}
+        isSelected={false}
+        onClick={() => {}}
+        onContextMenu={() => {}}
+        onMouseEnter={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("agent-avatar")).toHaveAttribute("data-busy", "false");
   });
 });
