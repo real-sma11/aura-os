@@ -14,9 +14,13 @@ use tokio::sync::broadcast;
 use tracing::info;
 
 use aura_os_core::{AgentInstanceId, HarnessMode, ProjectId, Spec};
-use aura_os_harness::{HarnessInbound, HarnessOutbound, HarnessSession, UserMessage};
+use aura_os_harness::{HarnessInbound, HarnessOutbound, HarnessSession, SessionConfig, UserMessage};
 
 use crate::handlers::agents::chat::errors::map_harness_error_to_api;
+use crate::handlers::plan_mode::{
+    append_plan_mode_suffix, plan_mode_tool_hints, plan_mode_tool_permissions,
+    wrap_user_content_for_plan_mode,
+};
 
 use super::super::projects_helpers::{project_tool_deadline, project_tool_session_config};
 use super::{load_generated_specs, resolve_harness_mode, specs_changed_since, SpecQueryParams};
@@ -26,21 +30,23 @@ use crate::state::{AppState, AuthJwt, AuthSession};
 const SSE_NO_BUFFERING_HEADERS: [(&str, HeaderValue); 1] =
     [("X-Accel-Buffering", HeaderValue::from_static("no"))];
 
-fn spec_generation_tool_hints() -> Vec<String> {
-    [
-        "read_file",
-        "list_files",
-        "find_files",
-        "search_code",
-        "list_specs",
-        "get_spec",
-        "create_spec",
-        "update_spec",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect()
+/// Apply the shared plan-mode policy to a `SessionConfig` built by
+/// [`project_tool_session_config`]: append the plan-mode rules to the
+/// system prompt and stamp the hard-disabled tool list onto
+/// `tool_permissions`. Used by both `generate_specs` and
+/// `generate_specs_summary` so the dedicated `/specs/generate*`
+/// endpoints stay in lock-step with chat plan mode.
+fn apply_plan_mode_policy(mut config: SessionConfig) -> SessionConfig {
+    let base_prompt = config.system_prompt.unwrap_or_default();
+    config.system_prompt = Some(append_plan_mode_suffix(&base_prompt));
+    config.tool_permissions = Some(plan_mode_tool_permissions());
+    config
 }
+
+// Note: the previous `spec_generation_tool_hints()` helper has been
+// inlined into the shared `crate::handlers::plan_mode::plan_mode_tool_hints`
+// so chat plan mode, public-chat plan mode, and the dedicated
+// `/specs/generate*` endpoints all advertise the same tool surface.
 
 pub(crate) async fn generate_specs_summary(
     State(state): State<AppState>,
@@ -63,6 +69,10 @@ pub(crate) async fn generate_specs_summary(
         Some(&session.user_id),
     )
     .await?;
+    // Spec summary regeneration is the same surface as plan mode: reuse
+    // the shared system-prompt + tool-permission policy so a future
+    // change to the plan-mode rules only has to land in one place.
+    let session_config = apply_plan_mode_policy(session_config);
     let session = harness.open_session(session_config).await.map_err(|e| {
         map_harness_error_to_api(&e, state.harness_ws_slots, |err| {
             ApiError::internal(format!("opening spec summary session: {err}"))
@@ -72,8 +82,10 @@ pub(crate) async fn generate_specs_summary(
     session
         .commands_tx
         .try_send(HarnessInbound::UserMessage(UserMessage {
-            content: format!("Generate specs summary for project {project_id}"),
-            tool_hints: Some(spec_generation_tool_hints()),
+            content: wrap_user_content_for_plan_mode(&format!(
+                "Generate specs summary for project {project_id}"
+            )),
+            tool_hints: Some(plan_mode_tool_hints()),
             attachments: None,
         }))
         .map_err(|e| ApiError::internal(format!("sending spec summary command: {e}")))?;
@@ -139,22 +151,29 @@ async fn open_spec_gen_session(
         Some(user_id),
     )
     .await?;
+    // The dedicated `/specs/generate*` endpoints and chat plan mode
+    // share their system-prompt suffix + tool-permission policy via
+    // `apply_plan_mode_policy`. The per-turn user-message content is
+    // still tailored here so the model is told *which* project to
+    // generate specs for and that it must not stop until the specs are
+    // created (an instruction that is too noisy to live in the shared
+    // suffix but is essential for this non-interactive flow).
+    let session_config = apply_plan_mode_policy(session_config);
     let session = harness.open_session(session_config).await.map_err(|e| {
         map_harness_error_to_api(&e, state.harness_ws_slots, |err| {
             ApiError::internal(format!("opening spec gen session: {err}"))
         })
     })?;
 
+    let spec_gen_instruction = format!(
+        "Generate specs for project {project_id}. Inspect the project first, then create one or more concrete specs using the available project spec tools. Do not stop until the specs have been created."
+    );
+
     session
         .commands_tx
         .try_send(HarnessInbound::UserMessage(UserMessage {
-            content: format!(
-                "Generate specs for project {project_id}. Inspect the project first, then create one or more concrete specs using the available project spec tools. \
-                 Every spec MUST end with a `## Definition of Done` section listing the exact build, test, format, and lint commands that must pass before any task derived from the spec can be marked done, plus 3\u{2013}7 observable acceptance criteria. \
-                 If you implement a type that is defined by an external spec or RFC, cite the authoritative source (URL or section number) in the spec itself — do not guess sizes, field layouts, or constants. \
-                 Do not stop until the specs have been created."
-            ),
-            tool_hints: Some(spec_generation_tool_hints()),
+            content: wrap_user_content_for_plan_mode(&spec_gen_instruction),
+            tool_hints: Some(plan_mode_tool_hints()),
             attachments: None,
         }))
         .map_err(|e| ApiError::internal(format!("sending spec gen command: {e}")))?;
@@ -287,16 +306,47 @@ pub(crate) async fn generate_specs_stream(
 
 #[cfg(test)]
 mod tests {
-    use super::spec_generation_tool_hints;
+    use super::apply_plan_mode_policy;
+    use crate::handlers::plan_mode::{plan_mode_tool_hints, PLAN_MODE_SYSTEM_PROMPT_SUFFIX};
+    use aura_os_harness::SessionConfig;
+    use aura_protocol::ToolStateWire;
 
     #[test]
     fn spec_generation_tool_hints_scope_project_spec_surface() {
-        let hints = spec_generation_tool_hints();
+        // The /specs/generate endpoints now route their hints through
+        // the shared `plan_mode_tool_hints` so the wire payload stays
+        // identical to chat plan mode. This regression guard fails if
+        // someone narrows or widens the shared list without touching
+        // the dedicated endpoint at the same time.
+        let hints = plan_mode_tool_hints();
 
         assert!(hints.contains(&"read_file".to_string()));
         assert!(hints.contains(&"create_spec".to_string()));
         assert!(!hints.contains(&"create_task".to_string()));
         assert!(!hints.contains(&"run_command".to_string()));
+    }
+
+    #[test]
+    fn apply_plan_mode_policy_suffixes_prompt_and_stamps_tool_permissions() {
+        let mut config = SessionConfig {
+            system_prompt: Some("base prompt".to_string()),
+            ..Default::default()
+        };
+        config = apply_plan_mode_policy(config);
+        let prompt = config.system_prompt.expect("system prompt set");
+        assert!(prompt.starts_with("base prompt"));
+        assert!(prompt.ends_with(PLAN_MODE_SYSTEM_PROMPT_SUFFIX));
+
+        let perms = config
+            .tool_permissions
+            .expect("plan mode must stamp tool_permissions");
+        for forbidden in ["write_file", "edit_file", "run_command", "git_commit"] {
+            assert_eq!(
+                perms.per_tool.get(forbidden),
+                Some(&ToolStateWire::Off),
+                "spec generation must disable `{forbidden}` via the shared plan-mode policy",
+            );
+        }
     }
 }
 

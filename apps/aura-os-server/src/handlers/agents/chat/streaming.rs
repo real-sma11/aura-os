@@ -274,6 +274,15 @@ pub(super) struct OpenChatStreamArgs {
     /// and surface a one-shot soft banner before the
     /// `connecting` / `queued` prefix.
     pub(super) fork_info: Option<ForkInfo>,
+    /// `true` when this turn is being issued in plan mode
+    /// (`action=generate_specs`). Causes the outbound user message to
+    /// be wrapped with the plan-mode preamble for the harness wire
+    /// payload (persistence still stores the raw `user_content`) and
+    /// the `tool_hints` payload to be filled with the plan-mode tool
+    /// surface so even a warm session that started in code mode sees
+    /// plan-mode steering on this turn. See
+    /// `crate::handlers::plan_mode` for the contract.
+    pub(super) is_plan_mode: bool,
 }
 
 pub(super) fn tool_hints_from_commands(commands: Option<&[String]>) -> Option<Vec<String>> {
@@ -291,6 +300,29 @@ pub(super) fn tool_hints_from_commands(commands: Option<&[String]>) -> Option<Ve
     (!hints.is_empty()).then_some(hints)
 }
 
+/// Build the final `tool_hints` payload for a chat turn. Merges the
+/// command-derived hints with the plan-mode hints (when this is a
+/// plan-mode turn) and dedupes so a caller that asked for a media
+/// command on a plan-mode turn still sees both surfaces. Returns
+/// `None` only when both inputs are empty so the on-wire payload stays
+/// `Option<Vec<_>>` and clients without hints see the same shape as
+/// before.
+pub(super) fn build_turn_tool_hints(
+    commands: Option<&[String]>,
+    is_plan_mode: bool,
+) -> Option<Vec<String>> {
+    let command_hints = tool_hints_from_commands(commands).unwrap_or_default();
+    let mut merged = command_hints;
+    if is_plan_mode {
+        for hint in crate::handlers::plan_mode::plan_mode_tool_hints() {
+            if !merged.iter().any(|existing| existing == &hint) {
+                merged.push(hint);
+            }
+        }
+    }
+    (!merged.is_empty()).then_some(merged)
+}
+
 pub(super) async fn open_harness_chat_stream(
     state: &AppState,
     args: OpenChatStreamArgs,
@@ -305,6 +337,7 @@ pub(super) async fn open_harness_chat_stream(
         attachments,
         commands,
         fork_info,
+        is_plan_mode,
     } = args;
 
     // Guiding invariant: no silent success. If the inbound user message
@@ -366,9 +399,21 @@ pub(super) async fn open_harness_chat_stream(
     // enough to clone unconditionally.
     let title_user_content = user_content.clone();
 
+    // Persist the user's raw content above; the harness, however,
+    // sees a plan-mode-wrapped variant when this is a plan-mode turn
+    // so the model is reminded of the rules even on a warm session
+    // that originally cold-started in code mode. A subsequent
+    // code-mode turn on the same session sends the unwrapped content
+    // and the model has no on-wire reason to assume plan-mode is
+    // still in effect.
+    let harness_content = if is_plan_mode {
+        crate::handlers::plan_mode::wrap_user_content_for_plan_mode(&user_content)
+    } else {
+        user_content
+    };
     let turn = SessionBridgeTurn {
-        content: user_content,
-        tool_hints: tool_hints_from_commands(commands.as_deref()),
+        content: harness_content,
+        tool_hints: build_turn_tool_hints(commands.as_deref(), is_plan_mode),
         attachments: dto_attachments_to_protocol(&attachments),
     };
     let persist_model = requested_model
@@ -856,8 +901,8 @@ mod tests {
     use super::super::persist::ForkInfo;
     use super::super::turn_slot::acquire_turn_slot;
     use super::{
-        build_sse_stream, harness_broadcast_to_sse, tool_hints_from_commands,
-        LaggedProgressThrottle, LAGGED_PROGRESS_INTERVAL,
+        build_sse_stream, build_turn_tool_hints, harness_broadcast_to_sse,
+        tool_hints_from_commands, LaggedProgressThrottle, LAGGED_PROGRESS_INTERVAL,
     };
 
     fn end_event() -> HarnessOutbound {
@@ -914,6 +959,62 @@ mod tests {
             Some(vec!["generate_image".to_string()]),
         );
         assert_eq!(tool_hints_from_commands(None), None);
+    }
+
+    #[test]
+    fn build_turn_tool_hints_code_mode_passes_through_command_hints() {
+        let commands = vec!["generate_image".to_string()];
+        let hints = build_turn_tool_hints(Some(&commands), /* is_plan_mode */ false)
+            .expect("hints derived from command");
+        assert_eq!(hints, vec!["generate_image".to_string()]);
+        assert!(build_turn_tool_hints(None, false).is_none());
+    }
+
+    #[test]
+    fn build_turn_tool_hints_plan_mode_adds_plan_mode_surface() {
+        let hints = build_turn_tool_hints(None, /* is_plan_mode */ true)
+            .expect("plan mode must populate hints even without commands");
+        assert!(
+            hints.iter().any(|h| h == "create_spec"),
+            "plan-mode hints must include `create_spec`, got {hints:?}",
+        );
+        assert!(
+            hints.iter().any(|h| h == "read_file"),
+            "plan-mode hints must include `read_file`, got {hints:?}",
+        );
+        assert!(
+            hints.iter().all(|h| h != "write_file"),
+            "plan-mode hints must NEVER list a code-writing tool, got {hints:?}",
+        );
+    }
+
+    #[test]
+    fn build_turn_tool_hints_plan_mode_merges_and_dedupes_with_commands() {
+        // A user that picks plan mode and ALSO attaches a `/image`
+        // slash command must end up with both surfaces in the
+        // outbound `tool_hints` so the harness sees the user's
+        // explicit intent without losing the plan-mode steering. The
+        // dedupe guard fires on tool names common to both lists
+        // (today only the plan-mode read/spec tools — no overlap
+        // with the media commands, but the test pins the contract).
+        let commands = vec!["generate_image".to_string()];
+        let hints = build_turn_tool_hints(Some(&commands), /* is_plan_mode */ true)
+            .expect("merged hints");
+        assert!(
+            hints.iter().any(|h| h == "generate_image"),
+            "merged hints must keep the command-derived entry, got {hints:?}",
+        );
+        assert!(
+            hints.iter().any(|h| h == "create_spec"),
+            "merged hints must include the plan-mode entries, got {hints:?}",
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for hint in &hints {
+            assert!(
+                seen.insert(hint.clone()),
+                "build_turn_tool_hints must dedupe; saw `{hint}` twice in {hints:?}",
+            );
+        }
     }
 
     #[tokio::test]

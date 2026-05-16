@@ -12,6 +12,9 @@ use tracing::info;
 use crate::dto::SendChatRequest;
 use crate::error::{map_storage_error, ApiError, ApiResult};
 use crate::handlers::billing::require_credits_for_auth_source;
+use crate::handlers::plan_mode::{
+    append_plan_mode_suffix, is_plan_mode_action, plan_mode_tool_permissions,
+};
 use crate::handlers::projects_helpers::{
     is_project_tool_action, project_tool_max_turns, resolve_agent_instance_workspace_path,
 };
@@ -275,6 +278,22 @@ pub(crate) async fn send_event_stream(
     // uncapped.
     let max_turns = is_project_tool_action(body.action.as_deref()).then(project_tool_max_turns);
 
+    // Plan mode (spec-planning prompt unification): when the client
+    // hits this surface with `action=generate_specs`, append the
+    // shared plan-mode rules to the system prompt and hard-disable
+    // the code-writing tools via `tool_permissions`. The cold-start
+    // session sees the strict policy; warm sessions keep their
+    // existing config but still get the per-turn preamble + tool_hints
+    // applied inside `open_harness_chat_stream`. See
+    // `crate::handlers::plan_mode` for the full contract.
+    let is_plan_mode = is_plan_mode_action(body.action.as_deref());
+    let system_prompt = if is_plan_mode {
+        append_plan_mode_suffix(&system_prompt)
+    } else {
+        system_prompt
+    };
+    let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
+
     let config = SessionConfig {
         system_prompt: Some(system_prompt),
         agent_id: Some(partition_agent_id),
@@ -294,6 +313,7 @@ pub(crate) async fn send_event_stream(
         installed_integrations,
         agent_permissions: (&normalized_instance_perms).into(),
         intent_classifier: instance.intent_classifier.clone(),
+        tool_permissions,
         ..Default::default()
     };
 
@@ -309,6 +329,7 @@ pub(crate) async fn send_event_stream(
             attachments: body.attachments,
             commands: body.commands,
             fork_info,
+            is_plan_mode,
         },
     )
     .await

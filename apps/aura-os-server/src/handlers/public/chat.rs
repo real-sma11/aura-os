@@ -36,6 +36,10 @@ use aura_os_harness::{
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::agents::chat::harness_broadcast_to_sse;
+use crate::handlers::plan_mode::{
+    append_plan_mode_suffix, plan_mode_tool_hints, plan_mode_tool_permissions,
+    wrap_user_content_for_plan_mode,
+};
 use crate::state::{AppState, AuthGuestJwt};
 
 use super::demo_agent::{ensure_public_demo_agent, PUBLIC_DEMO_SYSTEM_PROMPT, SYSTEM_DEMO_USER_ID};
@@ -124,8 +128,9 @@ pub(crate) async fn public_chat_stream(
         ApiError::service_unavailable("public demo agent unavailable")
     })?;
     let action = action_for_mode(body.mode);
-    let config = build_public_session_config(agent_id, &body, action);
-    let stream = open_public_stream(&state, config, body.message).await?;
+    let is_plan_mode = matches!(body.mode, PublicChatMode::Plan);
+    let config = build_public_session_config(agent_id, &body, action, is_plan_mode);
+    let stream = open_public_stream(&state, config, body.message, is_plan_mode).await?;
     Ok(build_public_sse_response(stream, guard))
 }
 
@@ -143,22 +148,35 @@ fn action_for_mode(mode: PublicChatMode) -> Option<&'static str> {
 /// installed integrations — the demo agent has full access via
 /// [`aura_os_core::AgentPermissions::full_access`] but the session
 /// scope is intentionally tiny.
+///
+/// When `is_plan_mode` is set, the cold-start system prompt is
+/// suffixed with the shared plan-mode rules and `tool_permissions`
+/// hard-disables the code-writing tools so the public demo agent
+/// can't run shell commands or edit files even if the model tries.
 fn build_public_session_config(
     agent_id: AgentId,
     body: &PublicChatRequest,
     action: Option<&'static str>,
+    is_plan_mode: bool,
 ) -> SessionConfig {
     let partition_agent_id = aura_os_core::harness_agent_id(&agent_id, None);
     let conversation_messages = history_to_conversation(&body.history);
     let max_turns = action.map(|_| 12u32);
+    let system_prompt = if is_plan_mode {
+        append_plan_mode_suffix(PUBLIC_DEMO_SYSTEM_PROMPT)
+    } else {
+        PUBLIC_DEMO_SYSTEM_PROMPT.to_string()
+    };
+    let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
     SessionConfig {
-        system_prompt: Some(PUBLIC_DEMO_SYSTEM_PROMPT.to_string()),
+        system_prompt: Some(system_prompt),
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(agent_id.to_string()),
         user_id: Some(SYSTEM_DEMO_USER_ID.to_string()),
         agent_name: Some("AURA Public Demo".to_string()),
         conversation_messages,
         max_turns,
+        tool_permissions,
         ..Default::default()
     }
 }
@@ -189,11 +207,24 @@ async fn open_public_stream(
     state: &AppState,
     config: SessionConfig,
     user_content: String,
+    is_plan_mode: bool,
 ) -> ApiResult<tokio::sync::broadcast::Receiver<HarnessOutbound>> {
     let harness = state.harness_for(aura_os_core::HarnessMode::Local);
+    // Plan mode wraps the on-wire user content with the shared
+    // preamble and ships the plan-mode tool_hints. Code mode sends
+    // the bare user message so the model has no on-wire reason to
+    // think plan mode is still active on a follow-up code turn.
+    let (turn_content, tool_hints) = if is_plan_mode {
+        (
+            wrap_user_content_for_plan_mode(&user_content),
+            Some(plan_mode_tool_hints()),
+        )
+    } else {
+        (user_content, None)
+    };
     let turn = SessionBridgeTurn {
-        content: user_content,
-        tool_hints: None,
+        content: turn_content,
+        tool_hints,
         attachments: None,
     };
     let opened = tokio::time::timeout(
@@ -325,6 +356,65 @@ mod tests {
         assert_eq!(
             caller_ip_from_headers(&headers),
             IpAddr::V4(Ipv4Addr::LOCALHOST)
+        );
+    }
+
+    #[test]
+    fn plan_mode_session_config_suffixes_prompt_and_disables_code_tools() {
+        let agent_id: AgentId = "00000000-0000-0000-0000-0000000000aa".parse().unwrap();
+        let body = PublicChatRequest {
+            session_id: None,
+            history: vec![],
+            message: "ignored by config builder".to_string(),
+            mode: PublicChatMode::Plan,
+        };
+        let config = build_public_session_config(
+            agent_id,
+            &body,
+            action_for_mode(body.mode),
+            /* is_plan_mode */ true,
+        );
+        let prompt = config.system_prompt.expect("system prompt set");
+        assert!(prompt.starts_with(PUBLIC_DEMO_SYSTEM_PROMPT));
+        assert!(
+            prompt.contains("PLAN MODE"),
+            "plan-mode suffix must be appended, got: {prompt}",
+        );
+        let perms = config
+            .tool_permissions
+            .expect("plan mode must stamp tool_permissions");
+        for forbidden in ["write_file", "edit_file", "run_command", "git_commit"] {
+            assert_eq!(
+                perms.per_tool.get(forbidden),
+                Some(&aura_protocol::ToolStateWire::Off),
+                "plan mode must disable `{forbidden}` for the public demo",
+            );
+        }
+    }
+
+    #[test]
+    fn code_mode_session_config_leaves_prompt_and_tool_permissions_alone() {
+        let agent_id: AgentId = "00000000-0000-0000-0000-0000000000bb".parse().unwrap();
+        let body = PublicChatRequest {
+            session_id: None,
+            history: vec![],
+            message: "ignored".to_string(),
+            mode: PublicChatMode::Code,
+        };
+        let config = build_public_session_config(
+            agent_id,
+            &body,
+            action_for_mode(body.mode),
+            /* is_plan_mode */ false,
+        );
+        assert_eq!(
+            config.system_prompt.as_deref(),
+            Some(PUBLIC_DEMO_SYSTEM_PROMPT),
+            "code mode must leave the prompt untouched",
+        );
+        assert!(
+            config.tool_permissions.is_none(),
+            "code mode must NOT stamp tool_permissions \u{2014} the agent's bundle wins",
         );
     }
 
