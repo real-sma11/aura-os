@@ -110,6 +110,23 @@
   padding: calc(var(--space-2) * 0.83) var(--space-3);
 }
 
+/* Override the app-wide ::selection tint inside the accent-colored user
+   bubble. The global rgba(255,255,255,0.2) / rgba(0,0,0,0.1) overlay
+   disappears against saturated accents (cyan, blue, purple, etc.),
+   making copy-selection invisible. Swap to the bubble's own contrast
+   pair so the highlight inverts the bubble: accent text on contrast
+   background, which zui guarantees is readable for every accent / theme
+   permutation. `:not(.bubbleUserWidgetOnly)` skips the variant that
+   removes the bubble chrome (transparent background), so the global
+   selection style still applies there. Both selectors are needed:
+   `::selection` for direct text nodes in the bubble, ` ::selection`
+   (descendant) for inline markdown children. */
+.bubbleUser:not(.bubbleUserWidgetOnly)::selection,
+.bubbleUser:not(.bubbleUserWidgetOnly) ::selection {
+  background: var(--color-accent-contrast);
+  color: var(--color-accent);
+}
+
 /* When the user message is only a document / long-text widget, drop the
    grey chat-bubble chrome so the widget's own dark card reads as a
    first-class element on the app surface. */
