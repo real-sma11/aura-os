@@ -352,6 +352,19 @@ pub(crate) struct GenerateImageRequest {
     /// project chat session the regular `instance_route` uses.
     #[serde(default, rename = "agentInstanceId")]
     pub agent_instance_id: Option<String>,
+    /// Set by the chat-input "+" affordance via
+    /// `markNextSendAsNewSession`. When true the persistence layer
+    /// closes any active session on the partition and creates a fresh
+    /// chat session for this generation turn — so image / 3D / video
+    /// modes start a new conversation just like regular chat does.
+    /// Mirrors `SendChatRequest.new_session`.
+    #[serde(default)]
+    pub new_session: Option<bool>,
+    /// Pin this generation's persisted user/assistant rows into the
+    /// specified storage session id. Skipped when `new_session` is
+    /// also true (force-new wins). Mirrors `SendChatRequest.session_id`.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// 3D generation request. Exactly one of `image_url` (a real URL,
@@ -375,6 +388,12 @@ pub(crate) struct Generate3dRequest {
     pub agent_id: Option<String>,
     #[serde(default, rename = "agentInstanceId")]
     pub agent_instance_id: Option<String>,
+    /// See [`GenerateImageRequest::new_session`].
+    #[serde(default)]
+    pub new_session: Option<bool>,
+    /// See [`GenerateImageRequest::session_id`].
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

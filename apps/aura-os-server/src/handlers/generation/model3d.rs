@@ -62,6 +62,8 @@ pub(crate) async fn generate_3d_stream(
         body.agent_id.as_deref(),
         body.project_id.as_deref(),
         body.agent_instance_id.as_deref(),
+        body.new_session.unwrap_or(false),
+        body.session_id.as_deref(),
     )
     .await;
     if let Some(ctx) = persist_ctx.as_ref() {

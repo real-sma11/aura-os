@@ -373,6 +373,8 @@ export function useChatStream({
             handler,
             controller.signal,
             { projectId: capturedProjectId, agentInstanceId: capturedInstanceId },
+            shouldStartNewSession,
+            shouldStartNewSession ? null : sessionIdRef.current,
           );
           return;
         }
@@ -422,6 +424,8 @@ export function useChatStream({
               },
               controller.signal,
               { projectId: capturedProjectId, agentInstanceId: capturedInstanceId },
+              shouldStartNewSession,
+              shouldStartNewSession ? null : sessionIdRef.current,
             );
             return;
           }
@@ -452,6 +456,8 @@ export function useChatStream({
             undefined,
             undefined,
             capturedInstanceId,
+            shouldStartNewSession,
+            shouldStartNewSession ? null : sessionIdRef.current,
           );
           return;
         }
@@ -469,6 +475,8 @@ export function useChatStream({
               model: selectedModel ?? undefined,
               projectId,
               agentInstanceId,
+              newSession: shouldStartNewSession,
+              sessionId: shouldStartNewSession ? null : sessionIdRef.current,
             },
             handler,
             controller.signal,

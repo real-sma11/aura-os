@@ -46,12 +46,25 @@ pub(super) struct GenerationPersistMeta {
 /// any chat scope through (legacy clients, non-chat callers like the
 /// AURA 3D app), or when storage / discovery fails — image generation
 /// MUST still succeed in those cases, we just skip durable persistence.
+///
+/// `force_new` and `pinned_session_id` mirror the same flags on
+/// `SendChatRequest`. Threading them through here makes the chat-input
+/// "+" (new-session) affordance behave identically across every mode:
+/// without them, image / 3D / video generations were silently appended
+/// to the latest existing session even when the user explicitly asked
+/// for a fresh chat. The downstream `pick_candidate_session`
+/// (`agents/chat/persist.rs`) already prioritises `force_new` over the
+/// pin, so a stale `?session=` in the URL never wins over an explicit
+/// "+" press.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn resolve_persist_ctx(
     state: &AppState,
     jwt: &str,
     agent_id: Option<&str>,
     project_id: Option<&str>,
     agent_instance_id: Option<&str>,
+    force_new: bool,
+    pinned_session_id: Option<&str>,
 ) -> Option<ChatPersistCtx> {
     if let (Some(project_id), Some(agent_instance_id)) = (project_id, agent_instance_id) {
         let parsed_project = project_id.parse::<ProjectId>().ok();
@@ -62,8 +75,8 @@ pub(super) async fn resolve_persist_ctx(
                 &parsed_project,
                 &parsed_instance,
                 jwt,
-                false,
-                None,
+                force_new,
+                pinned_session_id,
                 // Image / 3D generation isn't a cross-agent reply
                 // — no sender to thread through, and the chain
                 // depth is irrelevant for this synthetic turn.
@@ -104,8 +117,8 @@ pub(super) async fn resolve_persist_ctx(
                 &parsed_agent,
                 "",
                 jwt,
-                false,
-                None,
+                force_new,
+                pinned_session_id,
                 None,
                 0,
                 None,

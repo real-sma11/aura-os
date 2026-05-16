@@ -25,6 +25,17 @@ pub(crate) struct GenerateVideoRequest {
     pub project_id: Option<String>,
     pub agent_id: Option<String>,
     pub agent_instance_id: Option<String>,
+    /// See [`crate::dto::GenerateImageRequest::new_session`]. Accepts
+    /// `new_session` (snake_case) on the wire because the chat-input "+"
+    /// affordance forwards the flag with that exact key — keep the
+    /// rename here so the camelCase struct default doesn't turn it into
+    /// `newSession`.
+    #[serde(default, rename = "new_session")]
+    pub new_session: Option<bool>,
+    /// See [`crate::dto::GenerateImageRequest::session_id`]. Same
+    /// snake_case rename rationale as `new_session`.
+    #[serde(default, rename = "session_id")]
+    pub session_id: Option<String>,
 }
 
 pub(crate) async fn generate_video_stream(
@@ -53,6 +64,8 @@ pub(crate) async fn generate_video_stream(
         body.agent_id.as_deref(),
         body.project_id.as_deref(),
         body.agent_instance_id.as_deref(),
+        body.new_session.unwrap_or(false),
+        body.session_id.as_deref(),
     )
     .await;
     if let Some(ctx) = persist_ctx.as_ref() {

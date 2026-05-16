@@ -125,3 +125,77 @@ async fn run_generate_image_to_completion_errors_when_no_completed_event() {
 
     handle.abort();
 }
+
+/// Pin down the new wire fields the chat-input "+" affordance forwards
+/// for image / 3D / video modes. Without them, `resolve_persist_ctx`
+/// always called `setup_*_chat_persistence` with `force_new=false /
+/// pinned_session_id=None`, so generation turns silently appended to
+/// the latest existing session even when the user explicitly asked
+/// for a fresh chat. The rest of the regression coverage lives in the
+/// `resolve_force_new_overrides_pin` test in
+/// `handlers/agents/chat/persist.rs::pin_tests`, which already proves
+/// that downstream `pick_candidate_session` honours `force_new=true`
+/// over a pin — so threading `body.new_session` through is enough to
+/// fix the user-visible symptom.
+mod request_wire_shape {
+    use crate::dto::{Generate3dRequest, GenerateImageRequest};
+    use crate::handlers::generation::video::GenerateVideoRequest;
+
+    #[test]
+    fn image_request_round_trips_new_session_and_session_id() {
+        let req: GenerateImageRequest = serde_json::from_str(
+            r#"{
+                "prompt": "a cat",
+                "new_session": true,
+                "session_id": "abc-123"
+            }"#,
+        )
+        .expect("should deserialize");
+        assert_eq!(req.prompt, "a cat");
+        assert_eq!(req.new_session, Some(true));
+        assert_eq!(req.session_id.as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn image_request_omits_fields_default_to_none() {
+        let req: GenerateImageRequest =
+            serde_json::from_str(r#"{ "prompt": "a cat" }"#).expect("should deserialize");
+        assert_eq!(req.new_session, None);
+        assert_eq!(req.session_id, None);
+    }
+
+    #[test]
+    fn three_d_request_round_trips_new_session_and_session_id() {
+        let req: Generate3dRequest = serde_json::from_str(
+            r#"{
+                "imageUrl": "https://cdn.example.com/cat.png",
+                "new_session": true,
+                "session_id": "abc-123"
+            }"#,
+        )
+        .expect("should deserialize");
+        assert_eq!(req.new_session, Some(true));
+        assert_eq!(req.session_id.as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn video_request_round_trips_new_session_in_snake_case() {
+        // `GenerateVideoRequest` uses `rename_all = "camelCase"` at the
+        // struct level, so `new_session` and `session_id` carry an
+        // explicit `rename` to keep the snake_case wire shape — the
+        // chat hook posts `new_session: true`, not `newSession: true`,
+        // matching `SendChatRequest` so the same client-side
+        // serialiser can be reused.
+        let req: GenerateVideoRequest = serde_json::from_str(
+            r#"{
+                "prompt": "a bird",
+                "new_session": true,
+                "session_id": "abc-123"
+            }"#,
+        )
+        .expect("should deserialize");
+        assert_eq!(req.prompt, "a bird");
+        assert_eq!(req.new_session, Some(true));
+        assert_eq!(req.session_id.as_deref(), Some("abc-123"));
+    }
+}

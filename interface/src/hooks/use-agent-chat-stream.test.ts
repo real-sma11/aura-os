@@ -23,10 +23,15 @@ vi.mock("../api/client", () => ({
 vi.mock("../api/streams", () => ({
   generateImageStream: vi.fn().mockResolvedValue(undefined),
   generate3dStream: vi.fn().mockResolvedValue(undefined),
+  generateVideoStream: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { api } from "../api/client";
-import { generate3dStream, generateImageStream } from "../api/streams";
+import {
+  generate3dStream,
+  generateImageStream,
+  generateVideoStream,
+} from "../api/streams";
 
 describe("useAgentChatStream", () => {
   beforeEach(() => {
@@ -42,6 +47,7 @@ describe("useAgentChatStream", () => {
     vi.mocked(api.agents.sendEventStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generateImageStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generate3dStream).mockReset().mockResolvedValue(undefined);
+    vi.mocked(generateVideoStream).mockReset().mockResolvedValue(undefined);
   });
 
   it("returns streamKey, sendMessage, stopStreaming, resetEvents", () => {
@@ -111,6 +117,11 @@ describe("useAgentChatStream", () => {
       // history (otherwise it lives only in the in-memory stream store
       // and disappears on hard reload).
       { agentId: "agent-1", projectId: "p-1" },
+      // No `markNextSendAsNewSession` was called and no `?session=`
+      // pin was passed to the hook, so both flags fall through as
+      // their resting "no override" values.
+      false,
+      null,
     );
   });
 
@@ -201,6 +212,8 @@ describe("useAgentChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       { agentId: "agent-1", projectId: "p-1" },
+      false,
+      null,
     );
     const pinned = useChatUIStore
       .getState()
@@ -262,6 +275,8 @@ describe("useAgentChatStream", () => {
       undefined,
       "agent-1",
       undefined,
+      false,
+      null,
     );
     const pinned = useChatUIStore
       .getState()
@@ -312,6 +327,8 @@ describe("useAgentChatStream", () => {
       undefined,
       "agent-1",
       undefined,
+      false,
+      null,
     );
     const entry = useStreamStore.getState().entries[result.current.streamKey];
     const userMsg = entry.events.find((evt) => evt.role === "user");
@@ -694,6 +711,156 @@ describe("useAgentChatStream", () => {
       undefined,
       false,
       null,
+    );
+  });
+
+  // Regression: the chat-input "+" affordance must work in EVERY
+  // mode, not just code/plan. Previously `markNextSendAsNewSession`
+  // only forwarded `new_session: true` on the regular chat
+  // (`api.agents.sendEventStream`) path; image / 3D / video sends
+  // silently appended to the latest existing session.
+  it("forwards new-session flag to image generation", async () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "draw a fox",
+        null,
+        "gpt-image-2",
+        undefined,
+        ["generate_image"],
+        "p-1",
+        "image",
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      "draw a fox",
+      "gpt-image-2",
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { agentId: "agent-1", projectId: "p-1" },
+      true,
+      null,
+    );
+  });
+
+  it("forwards new-session flag to the 3D image step", async () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "an eagle",
+        null,
+        "tripo-v2",
+        undefined,
+        ["generate_3d"],
+        "p-1",
+        "3d",
+        undefined,
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      `an eagle${STYLE_LOCK_SUFFIX}`,
+      expect.any(String),
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { agentId: "agent-1", projectId: "p-1" },
+      true,
+      null,
+    );
+  });
+
+  it("forwards new-session flag to the 3D model step", async () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    act(() => {
+      useChatUIStore.getState().setPinnedSourceImage(result.current.streamKey, {
+        imageUrl: "https://cdn.example.com/owl.png",
+        originalUrl: "https://cdn.example.com/owl-orig.png",
+        prompt: "an owl",
+      });
+    });
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "make it brass",
+        null,
+        "tripo-v2",
+        undefined,
+        ["generate_3d"],
+        "p-1",
+        "3d",
+        "https://cdn.example.com/owl.png",
+      );
+    });
+
+    expect(generate3dStream).toHaveBeenCalledWith(
+      { kind: "url", imageUrl: "https://cdn.example.com/owl.png" },
+      "make it brass",
+      expect.any(Object),
+      expect.any(AbortSignal),
+      "p-1",
+      undefined,
+      "agent-1",
+      undefined,
+      true,
+      null,
+    );
+  });
+
+  it("forwards new-session flag to video generation", async () => {
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "a bird flying",
+        null,
+        "veo-3",
+        undefined,
+        ["generate_video"],
+        "p-1",
+        "video",
+      );
+    });
+
+    expect(generateVideoStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "a bird flying",
+        model: "veo-3",
+        projectId: "p-1",
+        agentId: "agent-1",
+        newSession: true,
+        sessionId: null,
+      }),
+      expect.any(Object),
+      expect.any(AbortSignal),
     );
   });
 });

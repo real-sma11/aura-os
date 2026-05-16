@@ -64,6 +64,7 @@ vi.mock("../../api/streams", async (importOriginal) => {
     ...actual,
     generateImageStream: vi.fn().mockResolvedValue(undefined),
     generate3dStream: vi.fn().mockResolvedValue(undefined),
+    generateVideoStream: vi.fn().mockResolvedValue(undefined),
   };
 });
 
