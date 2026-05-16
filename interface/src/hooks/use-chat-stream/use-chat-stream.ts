@@ -91,7 +91,22 @@ export function useChatStream({
   // the callback identity stable so the chat input bar's
   // `useCallback`s don't re-run on every URL update.
   const sessionIdRef = useRef(sessionId ?? null);
-  useEffect(() => { sessionIdRef.current = sessionId ?? null; }, [sessionId]);
+  useEffect(() => {
+    sessionIdRef.current = sessionId ?? null;
+    // The "+" affordance arms `nextSendStartsNewSession` and drops
+    // `?session=` from the URL via `useFreshCanvas`. If the user
+    // then clicks an existing session row before sending, the URL
+    // re-acquires `?session=` and `sessionId` flips back to a real
+    // value — that's an explicit "extend THIS session" intent, so
+    // the pin must drop or the next send would still POST
+    // `new_session=true` and the harness would mint a brand-new
+    // session id (the symptom: pressing "+", clicking a prior
+    // session, then sending lands the turn in a new chat instead
+    // of the clicked one).
+    if (sessionId) {
+      getPartitionSendControl(core.key).nextSendStartsNewSession = false;
+    }
+  }, [sessionId, core.key]);
   const onSessionReadyRef = useRef(onSessionReady);
   useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
 

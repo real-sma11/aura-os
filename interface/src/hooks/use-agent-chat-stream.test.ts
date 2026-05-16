@@ -865,4 +865,82 @@ describe("useAgentChatStream", () => {
       expect.any(AbortSignal),
     );
   });
+
+  // Regression for the "+ then click an old session then send" bug.
+  // `useStandaloneAgentChat`'s `handleNewChat` arms the pin and drops
+  // `?session=`. If the user then clicks an existing session row,
+  // the URL re-acquires `?session=` and the hook re-renders with
+  // `sessionId="s-old"`. The next send must extend that session or
+  // the harness mints a brand-new session id and the URL flips away
+  // from the clicked row.
+  it("drops the new-session pin when sessionId becomes non-null before sending", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useAgentChatStream({
+          agentId: "agent-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: "s-old" });
+
+    await act(async () => {
+      await result.current.sendMessage("continue please");
+    });
+
+    expect(api.agents.sendEventStream).toHaveBeenCalledWith(
+      "agent-1",
+      "continue please",
+      null,
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      undefined,
+      undefined,
+      false,
+      "s-old",
+    );
+  });
+
+  // Cross-agent variant: in the chat-app shell the same hook stays
+  // mounted as `?agent=` swaps, so a "+" press armed against agent A
+  // must not leak forward into the first send on agent B (which would
+  // start an unwanted new session there instead of extending B's own
+  // most-recent session).
+  it("drops the new-session pin when agentId changes between arm and send", async () => {
+    const { result, rerender } = renderHook(
+      (props: { agentId: string }) => useAgentChatStream({ agentId: props.agentId }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ agentId: "agent-b" });
+
+    await act(async () => {
+      await result.current.sendMessage("hi B");
+    });
+
+    expect(api.agents.sendEventStream).toHaveBeenCalledWith(
+      "agent-b",
+      "hi B",
+      null,
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      undefined,
+      undefined,
+      false,
+      null,
+    );
+  });
 });

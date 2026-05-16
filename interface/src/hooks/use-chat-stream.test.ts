@@ -711,4 +711,90 @@ describe("useChatStream", () => {
       expect.any(AbortSignal),
     );
   });
+
+  // Regression for the "+ then click an old session then send" bug.
+  // `useFreshCanvas` arms `nextSendStartsNewSession` and drops
+  // `?session=` from the URL. If the user then clicks an existing
+  // session row, the URL re-acquires `?session=` and the hook
+  // re-renders with `sessionId="s-old"`. The next send must extend
+  // that session — not silently force a fresh harness session id —
+  // or the turn lands in a brand-new chat and the URL flips away
+  // from the clicked row.
+  it("drops the new-session pin when sessionId becomes non-null before sending", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useChatStream({
+          projectId: "p-1",
+          agentInstanceId: "ai-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: "s-old" });
+
+    await act(async () => {
+      await result.current.sendMessage("continue please");
+    });
+
+    expect(api.sendEventStream).toHaveBeenCalledWith(
+      "p-1",
+      "ai-1",
+      "continue please",
+      null,
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      undefined,
+      false,
+      "s-old",
+      undefined,
+    );
+  });
+
+  it("drops the pin across generation modes when sessionId becomes non-null", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useChatStream({
+          projectId: "p-1",
+          agentInstanceId: "ai-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: "s-old" });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "draw a fox",
+        null,
+        "gpt-image-2",
+        undefined,
+        ["generate_image"],
+        undefined,
+        "image",
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      "draw a fox",
+      "gpt-image-2",
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { projectId: "p-1", agentInstanceId: "ai-1" },
+      false,
+      "s-old",
+    );
+  });
 });

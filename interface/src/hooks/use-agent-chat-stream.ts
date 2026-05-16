@@ -155,7 +155,24 @@ export function useAgentChatStream({
   const { refs, setters, abortRef } = core;
   const nextSendStartsNewSessionRef = useRef(false);
   const sessionIdRef = useRef(sessionId ?? null);
-  useEffect(() => { sessionIdRef.current = sessionId ?? null; }, [sessionId]);
+  useEffect(() => {
+    sessionIdRef.current = sessionId ?? null;
+    // Symmetric clear with `use-chat-stream.ts`: when the user
+    // presses "+" (sets the pin and drops `?session=`) and then
+    // navigates back to a real session row before sending, treat
+    // that as an explicit "extend THIS session" intent and drop the
+    // pin so the next send doesn't force a brand-new session id.
+    if (sessionId) nextSendStartsNewSessionRef.current = false;
+  }, [sessionId]);
+  // Reset the pin whenever the underlying stream partition changes
+  // (agent swap inside the chat-app shell). The ref isn't keyed by
+  // `core.key` the way `partition-send-control` is in
+  // `use-chat-stream.ts`, so a "+" press on agent A would otherwise
+  // bleed forward into agent B's first send and force an unwanted
+  // new session there.
+  useEffect(() => {
+    nextSendStartsNewSessionRef.current = false;
+  }, [core.key]);
   const onSessionReadyRef = useRef(onSessionReady);
   useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
   // Track the last id we pushed to `onSessionReady` so a re-emission
@@ -285,9 +302,25 @@ export function useAgentChatStream({
                 .bumpEstimatedTokens(core.key, approxTokensFromText(text));
               break;
             }
-            case EventType.Progress:
-              core.setProgressText(event.content.stage);
+            case EventType.Progress: {
+              const stage = event.content.stage;
+              if (stage === "heartbeat") {
+                // Pure stuck-stream-watchdog ack from the server-side
+                // SSE heartbeat (`SSE_HEARTBEAT_INTERVAL` in
+                // `apps/aura-os-server/src/handlers/agents/chat/streaming.rs`).
+                // Bumps `lastEventAt` so a healthy but quiet plan-mode
+                // turn (model thinking after a batch of `ToolResult`
+                // events) doesn't trip `useStuckStreamAutoTimeout` —
+                // but must NOT call `setProgressText`, which would
+                // render the literal "heartbeat" string in the
+                // streaming indicator (`getStreamingPhaseLabel`
+                // renders unknown stages verbatim).
+                markStreamProgress(core.key);
+                break;
+              }
+              core.setProgressText(stage);
               break;
+            }
             case EventType.ToolCallStarted:
             case EventType.ToolUseStart:
               handleToolCallStarted(refs, setters, event.content as { id: string; name: string });
