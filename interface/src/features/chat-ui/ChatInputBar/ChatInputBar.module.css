@@ -584,6 +584,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* "Cached this turn" sub-row. Visually distinct from the bucket rows
+   (smaller text + muted token color + thin underline) so it reads as
+   per-turn metadata, not another context bucket. Cache fields are
+   excluded from the stacked bar by design; this row carries them
+   instead. */
+.contextBreakdownCacheRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 4px 0 8px;
+  padding: 4px 0 4px 2px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.contextBreakdownCacheRow .contextBreakdownRowLeft,
+.contextBreakdownCacheRow .contextBreakdownRowValue {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 /* Per-bucket palette. Tied to a `data-context-bucket` attribute on both
    the stacked-bar segment and the swatch in the list so they always
    render the same color. Values are intentionally distinct hues, not

@@ -17,6 +17,8 @@ function fixtureBreakdown(): ContextBreakdown {
     mcpTokens: 0,
     subagentsTokens: 941,
     conversationTokens: 71_800,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
   };
 }
 

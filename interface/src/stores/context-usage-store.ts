@@ -17,6 +17,19 @@ export interface ContextBreakdown {
   mcpTokens: number;
   subagentsTokens: number;
   conversationTokens: number;
+  /**
+   * Tokens that came from the upstream provider's prompt cache during
+   * the most recent turn. Surfaced as "Cached this turn" in the
+   * popover; not a separate context bucket (so excluded from the
+   * stacked bar and from `isBreakdownEmpty`).
+   */
+  cacheReadTokens: number;
+  /**
+   * Tokens written to the upstream provider's prompt cache during the
+   * most recent turn. Paired with `cacheReadTokens` to show
+   * read-vs-write at a glance.
+   */
+  cacheCreationTokens: number;
 }
 
 /**
@@ -35,6 +48,8 @@ export interface WireContextBreakdown {
   mcp_tokens?: number;
   subagents_tokens?: number;
   conversation_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
 }
 
 /**
@@ -56,6 +71,8 @@ export function mapWireContextBreakdown(
     mcpTokens: cb.mcp_tokens ?? 0,
     subagentsTokens: cb.subagents_tokens ?? 0,
     conversationTokens: cb.conversation_tokens ?? 0,
+    cacheReadTokens: cb.cache_read_tokens ?? 0,
+    cacheCreationTokens: cb.cache_creation_tokens ?? 0,
   };
 }
 

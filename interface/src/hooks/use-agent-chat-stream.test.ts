@@ -622,6 +622,8 @@ describe("useAgentChatStream", () => {
       mcpTokens: 0,
       subagentsTokens: 800,
       conversationTokens: 72_700,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
   });
 

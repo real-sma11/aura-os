@@ -249,6 +249,32 @@ export function ContextUsageIndicator({
               ~{formatTokensShort(usedTokens)} / {formatTokensShort(totalTokens)} Tokens
             </span>
           </div>
+          {(breakdown.cacheReadTokens > 0 || breakdown.cacheCreationTokens > 0) && (
+            <div className={styles.contextBreakdownCacheRow} data-cache-row>
+              <span className={styles.contextBreakdownRowLeft}>Cached this turn</span>
+              <span className={styles.contextBreakdownRowValue}>
+                {formatTokensShort(breakdown.cacheReadTokens)} read
+                {breakdown.cacheCreationTokens > 0 ? (
+                  <>
+                    {" "}/ {formatTokensShort(breakdown.cacheCreationTokens)} written
+                  </>
+                ) : null}
+                {(() => {
+                  const total =
+                    breakdown.cacheReadTokens + breakdown.cacheCreationTokens;
+                  if (total === 0) return null;
+                  const hitPct = Math.round(
+                    (breakdown.cacheReadTokens / total) * 100,
+                  );
+                  return (
+                    <>
+                      {" "}<span style={{ opacity: 0.7 }}>({hitPct}% hit)</span>
+                    </>
+                  );
+                })()}
+              </span>
+            </div>
+          )}
           <div
             className={styles.contextBreakdownBar}
             role="img"
