@@ -52,7 +52,7 @@ jobs:
       - name: Restore sidecar Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: desktop-sidecar-${{ runner.os }}-${{ runner.arch }}
+          shared-key: desktop-sidecar-v2-${{ runner.os }}-${{ runner.arch }}
           workspaces: |
             ../aura-harness -> target
 
@@ -167,7 +167,7 @@ jobs:
       - name: Restore desktop Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: desktop-app-${{ runner.os }}-${{ runner.arch }}
+          shared-key: desktop-app-v2-${{ runner.os }}-${{ runner.arch }}
           workspaces: |
             . -> target
 
