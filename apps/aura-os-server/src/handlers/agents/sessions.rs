@@ -571,6 +571,8 @@ fn demo_context_breakdown() -> ContextBreakdown {
         mcp_tokens: 0,
         subagents_tokens: 980,
         conversation_tokens: 19_800,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
     }
 }
 
