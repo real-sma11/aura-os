@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { ChevronDown, Pencil, ArrowUp, Trash2, Zap } from "lucide-react";
+import { ChevronDown, Pencil, ArrowUp, ArrowRight, Trash2 } from "lucide-react";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useMessageQueue } from "../../../stores/message-queue-store";
 import type { QueuedMessage } from "../../../stores/message-queue-store";
@@ -62,7 +62,7 @@ export const MessageQueue = memo(function MessageQueue({
                     aria-label="Send now (cancels current turn)"
                     title="Send now (cancels current turn)"
                   >
-                    <Zap size={13} />
+                    <ArrowRight size={13} />
                   </button>
                 )}
                 <button
