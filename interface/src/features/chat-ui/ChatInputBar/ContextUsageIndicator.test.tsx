@@ -65,7 +65,7 @@ describe("ContextUsageIndicator", () => {
     );
 
     const trigger = screen.getByRole("button", { name: /25%/ });
-    await user.hover(trigger);
+    await user.click(trigger);
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("25% used");
@@ -77,7 +77,7 @@ describe("ContextUsageIndicator", () => {
     const user = userEvent.setup();
     render(<ContextUsageIndicator utilization={0.42} />);
 
-    await user.hover(screen.getByRole("button", { name: /42%/ }));
+    await user.click(screen.getByRole("button", { name: /42%/ }));
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).not.toHaveTextContent("Used");
@@ -87,7 +87,23 @@ describe("ContextUsageIndicator", () => {
     );
   });
 
-  it("pins the popover open after click", async () => {
+  // The indicator sits on the chat input bar; opening on hover would
+  // cover the composer during stray pointer moves, so the panel must
+  // only open in response to a click.
+  it("does not open the popover on hover", async () => {
+    const user = userEvent.setup();
+    render(
+      <ContextUsageIndicator utilization={0.42} estimatedTokens={10_000} />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /42%/ });
+    await user.hover(trigger);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("toggles the popover open and closed on click", async () => {
     const user = userEvent.setup();
     render(
       <ContextUsageIndicator utilization={0.42} estimatedTokens={10_000} />,
@@ -95,9 +111,12 @@ describe("ContextUsageIndicator", () => {
 
     const trigger = screen.getByRole("button", { name: /42%/ });
     await user.click(trigger);
-    await user.unhover(trigger);
-
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(trigger);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
   // Breakdown path mirrors the screenshot exactly: header + percent /
@@ -113,7 +132,7 @@ describe("ContextUsageIndicator", () => {
       />,
     );
 
-    await user.hover(screen.getByRole("button", { name: /39%/ }));
+    await user.click(screen.getByRole("button", { name: /39%/ }));
 
     const dialog = await screen.findByRole("dialog", { name: /context breakdown/i });
     expect(dialog).toHaveTextContent("Context");
@@ -140,8 +159,6 @@ describe("ContextUsageIndicator", () => {
       />,
     );
 
-    // Click pins the popover open (also exercises the click-outside
-    // path indirectly — `unhover` shouldn't dismiss a pinned popover).
     await user.click(screen.getByRole("button", { name: /39%/ }));
     expect(
       screen.getByRole("dialog", { name: /context breakdown/i }),

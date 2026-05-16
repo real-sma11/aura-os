@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import type { ContextBreakdown } from "../../../stores/context-usage-store";
 import styles from "./ChatInputBar.module.css";
@@ -78,11 +78,14 @@ function buildBucketRows(b: ContextBreakdown): BucketRow[] {
 }
 
 /**
- * Hover/pin popover for the bottom-bar context-window indicator. The
- * visible trigger is a tiny progress ring + lowercase "NN% context"
- * label that opens a popover on hover and pins on click. There is no
- * inline reset affordance — to reset the context, start a new
- * session via the chat header's "+" new-chat button.
+ * Click-toggle popover for the bottom-bar context-window indicator.
+ * The visible trigger is a tiny progress ring + lowercase "NN% context"
+ * label; clicking it toggles the popover, and clicks outside dismiss
+ * it. Hover intentionally does NOT open the panel — the indicator sits
+ * on the chat input bar where stray hovers would constantly cover the
+ * composer. There is no inline reset affordance — to reset the
+ * context, start a new session via the chat header's "+" new-chat
+ * button.
  *
  * Two popover variants live here:
  *  - When `breakdown` is populated, render the Cursor-style stacked-bar
@@ -98,26 +101,20 @@ export function ContextUsageIndicator({
   breakdown,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
 
-  const handleMouseEnter = useCallback(() => {
-    if (!pinned) setOpen(true);
-  }, [pinned]);
-  const handleMouseLeave = useCallback(() => {
-    if (!pinned) setOpen(false);
-  }, [pinned]);
   const handleClick = useCallback(() => {
-    if (pinned) {
-      setPinned(false);
+    setOpen((prev) => !prev);
+  }, []);
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLSpanElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setOpen((prev) => !prev);
+    } else if (e.key === "Escape") {
       setOpen(false);
-    } else {
-      setPinned(true);
-      setOpen(true);
     }
-  }, [pinned]);
+  }, []);
   const handleClose = useCallback(() => {
-    setPinned(false);
     setOpen(false);
   }, []);
 
@@ -126,7 +123,6 @@ export function ContextUsageIndicator({
     const onClickOutside = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setPinned(false);
       }
     };
     document.addEventListener("mousedown", onClickOutside);
@@ -177,15 +173,11 @@ export function ContextUsageIndicator({
   }, [bucketRows, breakdown, totalTokens]);
 
   return (
-    <span
-      ref={wrapperRef}
-      className={styles.contextUsageWrap}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <span ref={wrapperRef} className={styles.contextUsageWrap}>
       <span
         className={`${styles.contextIndicator}${toneClass ? ` ${toneClass}` : ""}`}
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         role="button"
         tabIndex={0}
         aria-haspopup="dialog"
