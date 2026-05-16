@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
   type ButtonHTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { ChevronDown } from "lucide-react";
@@ -37,7 +38,12 @@ export interface ModelPickerProps {
   className?: string;
   /** Extra className appended to the trigger button. */
   buttonClassName?: string;
-  /** Called when the menu opens — useful for blurring textarea on touch. */
+  /**
+   * Called when the menu opens. Use for menu-local state resets (e.g.
+   * collapsing a "show all" subview); the picker preserves focus on
+   * whatever element was active before the click, so consumers should
+   * not blur the textarea here.
+   */
   onOpen?: () => void;
 }
 
@@ -90,12 +96,27 @@ export const ModelPicker = memo(function ModelPicker({
   const buttonClass = [styles.modelButton, buttonClassName].filter(Boolean).join(" ");
   const chevron = showChevron ?? isInteractive;
 
+  // Keep the user's prior focus target (typically the chat textarea)
+  // active when interacting with the picker. Buttons grab focus on
+  // mousedown by default; preventDefault on the bubbled mousedown
+  // event suppresses the focus change while still firing the click,
+  // so opening the menu and selecting a model both leave the caret
+  // exactly where the user left it. Mirrors the pattern used by
+  // `SlidingPills` for the mode bar.
+  const handleMouseDownPreserveFocus = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+    },
+    [],
+  );
+
   return (
     <div className={wrapperClass} data-model-menu-root="true">
       <button
         {...triggerProps}
         type="button"
         className={buttonClass}
+        onMouseDown={isInteractive ? handleMouseDownPreserveFocus : undefined}
         onClick={isInteractive ? handleClick : undefined}
         aria-haspopup={isInteractive ? "menu" : undefined}
         aria-expanded={isInteractive ? open : undefined}
@@ -104,7 +125,11 @@ export const ModelPicker = memo(function ModelPicker({
         {selectedLabel}
         {chevron && <ChevronDown size={10} />}
       </button>
-      {open && isInteractive && renderMenu(close)}
+      {open && isInteractive && (
+        <div onMouseDown={handleMouseDownPreserveFocus} style={{ display: "contents" }}>
+          {renderMenu(close)}
+        </div>
+      )}
     </div>
   );
 });

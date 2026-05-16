@@ -750,8 +750,13 @@ export const DesktopChatInputBar = memo(
     );
 
     const isModelPickerInteractive = modelsForMode.length > 1;
+    // Reset the condensed-menu state every time the picker reopens so a
+    // user who clicked "Show all models" last time still lands on the
+    // featured list first. `ModelPicker` itself keeps the caret focused
+    // in the textarea via mousedown preventDefault, so we deliberately
+    // do NOT blur the shell here — switching models should leave the
+    // user's typing position intact.
     const handleModelPickerOpen = useCallback(() => {
-      shellRef.current?.blur();
       setShowAllModels(false);
     }, []);
 
