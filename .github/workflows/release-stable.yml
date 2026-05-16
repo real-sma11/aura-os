@@ -135,6 +135,7 @@ jobs:
       AURA_INTEGRATIONS_URL: ${{ vars.AURA_INTEGRATIONS_URL }}
       AURA_ROUTER_URL: ${{ vars.AURA_ROUTER_URL }}
       Z_BILLING_URL: ${{ vars.Z_BILLING_URL }}
+      Z_BILLING_API_KEY: ${{ secrets.Z_BILLING_API_KEY }}
       ORBIT_BASE_URL: ${{ vars.ORBIT_BASE_URL }}
       SWARM_BASE_URL: ${{ vars.SWARM_BASE_URL }}
       REQUIRE_ZERO_PRO: ${{ vars.REQUIRE_ZERO_PRO }}
