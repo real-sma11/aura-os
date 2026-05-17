@@ -351,6 +351,16 @@ pub(crate) async fn get_session(
     }: AuthZeroProMeta,
 ) -> ApiResult<Json<AuthSessionResponse>> {
     sync_user_to_network(&state, &mut session).await;
+
+    // Best-effort credit grant on session restore so users who update
+    // without logging out still receive their welcome + daily credits.
+    // Idempotent — z-billing only grants once per user.
+    let user_id = session.user_id.clone();
+    let is_zero_pro = session.is_zero_pro;
+    tokio::spawn(async move {
+        grant_signup_credits(&user_id, is_zero_pro, None).await;
+    });
+
     let mut response = AuthSessionResponse::from(session);
     response.zero_pro_refresh_error = zero_pro_refresh_error;
     Ok(Json(response))
