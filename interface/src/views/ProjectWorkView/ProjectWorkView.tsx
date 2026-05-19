@@ -11,7 +11,7 @@ import { useSidekickStore } from "../../stores/sidekick-store";
 import { getLastAgent } from "../../utils/storage";
 import { useMobileSpecs } from "../../mobile/hooks/useMobileSpecs";
 import { useMobileTasks } from "../../mobile/hooks/useMobileTasks";
-import type { Task } from "../../shared/types";
+import { getTaskDisplayStatus } from "../../shared/utils/task-display-status";
 import styles from "./ProjectWorkView.module.css";
 
 const EMPTY_PROJECT_AGENTS: ReadonlyArray<{
@@ -19,14 +19,6 @@ const EMPTY_PROJECT_AGENTS: ReadonlyArray<{
   name: string;
   role?: string | null;
 }> = [];
-
-function getDisplayStatus(task: Task, liveTaskIds: Set<string>, loopActive: boolean) {
-  return task.status === "in_progress" &&
-    !liveTaskIds.has(task.task_id) &&
-    (!loopActive || liveTaskIds.size > 0)
-      ? "ready"
-      : task.status;
-}
 
 function describeActivityStatus(status: string) {
   switch (status) {
@@ -211,8 +203,8 @@ function MobileRecentActivity({ projectId }: { projectId: string }) {
   const visibleTasks = useMemo(() => {
     return [...tasks]
       .sort((left, right) => {
-        const leftStatus = getDisplayStatus(left, liveTaskIds, loopActive);
-        const rightStatus = getDisplayStatus(right, liveTaskIds, loopActive);
+        const leftStatus = getTaskDisplayStatus(left, liveTaskIds, loopActive);
+        const rightStatus = getTaskDisplayStatus(right, liveTaskIds, loopActive);
         const statusRank = (status: string) => {
           if (status === "in_progress") return 0;
           if (status === "ready") return 1;
@@ -240,7 +232,7 @@ function MobileRecentActivity({ projectId }: { projectId: string }) {
   return (
     <div className={styles.activityList}>
       {visibleTasks.map((task) => {
-        const displayStatus = getDisplayStatus(task, liveTaskIds, loopActive);
+        const displayStatus = getTaskDisplayStatus(task, liveTaskIds, loopActive);
         const specTitle = specTitleById.get(task.spec_id);
 
         return (

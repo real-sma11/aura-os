@@ -12,6 +12,7 @@ import { isLoopActivityActive } from "../../shared/types/aura-events";
 import { useDelayedEmpty } from "../../shared/hooks/use-delayed-empty";
 import { titleSortKey } from "../../utils/collections";
 import { filterExplorerNodes } from "../../shared/utils/filterExplorerNodes";
+import { getTaskDisplayStatus } from "../../shared/utils/task-display-status";
 import { Explorer } from "@cypher-asi/zui";
 import { EmptyState } from "../../components/EmptyState";
 import { useSidekickStore } from "../../stores/sidekick-store";
@@ -106,12 +107,7 @@ export function TaskList({ searchQuery }: { searchQuery: string }) {
 
       function toNode(task: Task): ExplorerNodeWithSuffix {
         const subtasks = childrenByParent.get(task.task_id);
-        const displayStatus =
-          task.status === "in_progress" &&
-          !liveTaskIds.has(task.task_id) &&
-          (!loopActive || liveTaskIds.size > 0)
-            ? "ready"
-            : task.status;
+        const displayStatus = getTaskDisplayStatus(task, liveTaskIds, loopActive);
         return {
           id: task.task_id,
           label: task.title,

@@ -199,7 +199,15 @@ impl LoopHandle {
     /// * the coarse [`LoopStatus`] changes (we never drop a status
     ///   transition — the UI spinner depends on it), or
     /// * the new status is terminal (transition is about to become a
-    ///   `LoopEnded` anyway, so emit the final snapshot immediately).
+    ///   `LoopEnded` anyway, so emit the final snapshot immediately), or
+    /// * the bound `current_task_id` changes (the per-task UI spinner
+    ///   in `TaskList` binds via `selectTaskActivity` which filters
+    ///   `row.activity.current_task_id === taskId`; without this
+    ///   bypass the very first `set_current_task` after `open()` —
+    ///   which only mutates the task pointer and leaves `status` at
+    ///   `Starting` — could be suppressed by the 4 Hz cap, leaving the
+    ///   spinner stuck on a hollow circle until the next status-bearing
+    ///   harness event).
     ///
     /// When a publish is suppressed the mutation is still applied to
     /// the stored `LoopActivity` and `last_event_at` is refreshed, so
@@ -216,23 +224,29 @@ impl LoopHandle {
             None => return,
         };
         let _guard = lock.lock().await;
-        let (snapshot, prev_status) = {
+        let (snapshot, prev_status, prev_current_task_id) = {
             let mut entry = match self.registry.inner.entries.get_mut(&self.loop_id) {
                 Some(entry) => entry,
                 None => return,
             };
             let prev_status = entry.value().activity.status;
+            let prev_current_task_id = entry.value().activity.current_task_id;
             mutator(&mut entry.value_mut().activity);
             entry.value_mut().activity.touch(Utc::now());
-            (entry.value().activity.clone(), prev_status)
+            (
+                entry.value().activity.clone(),
+                prev_status,
+                prev_current_task_id,
+            )
         };
 
         let now_ms = Utc::now().timestamp_millis();
         let status_changed = snapshot.status != prev_status;
         let status_is_terminal = snapshot.status.is_terminal();
+        let task_changed = snapshot.current_task_id != prev_current_task_id;
         let last_ms = last_published_ms.load(Ordering::Relaxed);
         let elapsed_ms = now_ms.saturating_sub(last_ms);
-        let bypass = status_changed || status_is_terminal;
+        let bypass = status_changed || status_is_terminal || task_changed;
         if !bypass && elapsed_ms < ACTIVITY_PUBLISH_INTERVAL.as_millis() as i64 {
             return;
         }
