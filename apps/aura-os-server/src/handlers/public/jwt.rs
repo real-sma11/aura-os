@@ -151,6 +151,26 @@ pub(crate) fn encode_guest_token(
     Ok((token, claims))
 }
 
+// ── Router service key for public mode ──────────────────────────────
+//
+// aura-router accepts a dedicated service key (`AURA_PUBLIC_GUEST_KEY`)
+// that short-circuits JWT validation and assigns user_id "public-guest".
+// This avoids sharing AUTH_COOKIE_SECRET with aura-os-server — the
+// service key can only make guest LLM calls, never impersonate a real
+// user.
+
+/// Env var holding the service key shared with aura-router.
+const PUBLIC_GUEST_KEY_ENV: &str = "AURA_PUBLIC_GUEST_KEY";
+
+/// Read the public-guest service key from the environment. Returns
+/// `None` if `AURA_PUBLIC_GUEST_KEY` is not set (public mode is
+/// disabled without it).
+pub(crate) fn public_guest_service_key() -> Option<String> {
+    std::env::var(PUBLIC_GUEST_KEY_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
