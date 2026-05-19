@@ -252,10 +252,15 @@
 
 /* Streaming phase indicator ("Cooking...", "Thinking...", ...).
    Pinned in the empty zone between the bottom of the chat content and
-   the input bar so that phase transitions never reflow the chat. */
+   the input bar so that phase transitions never reflow the chat.
+
+   `bottom` is tuned so the indicator's top edge aligns with the
+   `.messageArea` content stop point (`padding-bottom: 148px`), keeping
+   streaming text from leaking through the indicator's gradient
+   backdrop and appearing between the shimmer and the input bar. */
 .pinnedStreamingIndicator {
   position: absolute;
-  bottom: 120px;
+  bottom: 80px;
   left: 0;
   right: 0;
   z-index: 11;
@@ -337,7 +342,7 @@
   }
 
   .pinnedStreamingIndicator {
-    bottom: calc(160px + var(--aura-mobile-keyboard-inset, 0px));
+    bottom: calc(88px + var(--aura-mobile-keyboard-inset, 0px));
   }
 
   .newMessagesPill {

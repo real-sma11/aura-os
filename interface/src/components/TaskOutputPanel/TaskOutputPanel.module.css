@@ -116,7 +116,18 @@
    `.contentShell` but outside the scrolling `.content` region so it
    paints above the desktop shell's bottom fade gradient
    (`.sidekickPanelSlot::after` at `z-index: 1` in DesktopShell.module.css).
-   `pointer-events: none` keeps it transparent to scroll hit-testing. */
+   `pointer-events: none` keeps it transparent to scroll hit-testing.
+
+   Backdrop matches `ChatPanel.module.css` `.pinnedStreamingIndicator`
+   so the shimmering label reads as a single visual treatment across
+   the chat input, Run pane, and Tasks pane. Without the gradient,
+   trailing rows of the scrolling task output (e.g. a Cargo.toml
+   `[package]` tag) bleed through into the shimmer area. The gradient
+   reaches full opacity earlier (40% from top) than the chat-panel
+   version (60%) because `.pinnedStreamingIndicator > *` below zeros
+   the `CookingIndicator`'s own vertical padding, leaving a shorter
+   indicator that needs the solid backing to start sooner so the
+   shimmering text reads on opaque bg. */
 .pinnedStreamingIndicator {
   position: absolute;
   left: 0;
@@ -125,8 +136,14 @@
   z-index: 2;
   display: flex;
   justify-content: flex-start;
-  padding: 0 var(--space-3, 12px);
+  padding: var(--space-4) var(--space-3, 12px) 0;
   pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--color-bg) 40%,
+    var(--color-bg) 100%
+  );
 }
 
 .pinnedStreamingIndicator > * {

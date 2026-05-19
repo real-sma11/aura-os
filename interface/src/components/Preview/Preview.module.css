@@ -377,13 +377,29 @@
   padding: 0 var(--space-3);
 }
 
+/* Backdrop matches `ChatPanel.module.css` `.pinnedStreamingIndicator`
+   and `TaskOutputPanel.module.css` `.pinnedStreamingIndicator` so the
+   shimmering "Cooking..." label reads as a single visual treatment
+   across the chat input, Run pane, and Tasks pane. Without the
+   gradient, trailing rows of the scrolling Live Output feed bleed
+   through into the shimmer area. The 40% solid stop matches the
+   sibling Run-pane indicator (also a shorter element, since
+   `.previewStreamingIndicator > *` below collapses the
+   `CookingIndicator`'s own vertical padding). */
 .previewStreamingIndicator {
   position: sticky;
   bottom: var(--sidekick-fade-height, 72px);
   z-index: 2;
   display: flex;
   justify-content: flex-start;
+  padding: var(--space-4) 0 0;
   pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--color-bg) 40%,
+    var(--color-bg) 100%
+  );
 }
 
 .previewStreamingIndicator > * {
