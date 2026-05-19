@@ -3,11 +3,11 @@ import { create } from "zustand";
 import {
   availableModelsForAdapter,
   defaultModelForAdapter,
-  DEFAULT_3D_MODEL_ID,
-  DEFAULT_VIDEO_MODEL_ID,
   hasAgentScopedModel,
   loadPersistedImageModel,
   loadPersistedModel,
+  loadPersistedThreeDModel,
+  loadPersistedVideoModel,
   persistModel,
 } from "../constants/models";
 import {
@@ -30,10 +30,13 @@ function modelForMode(
     return loadPersistedImageModel(agentId);
   }
   if (behavior.kind === "generate_3d") {
-    return DEFAULT_3D_MODEL_ID;
+    // Each mode persists under its own namespace, so re-entering 3D
+    // mode (or cold-booting in 3D mode) restores the user's last 3D
+    // pick — symmetric with image / video / chat.
+    return loadPersistedThreeDModel(agentId);
   }
   if (behavior.kind === "generate_video") {
-    return DEFAULT_VIDEO_MODEL_ID;
+    return loadPersistedVideoModel(agentId);
   }
   return loadPersistedModel(adapterType, defaultModel ?? undefined, agentId);
 }
@@ -217,19 +220,19 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           streams: { ...s.streams, [streamKey]: { ...current, selectedMode: mode } },
         };
       }
-      // Re-derive the model when switching modes. For Image we restore
-      // the user's last image-mode pick (or jump to the image default);
-      // for 3D we snap to the default 3D provider so the picker shows a
-      // valid selection; for Code/Plan we restore the persisted chat
-      // model.
+      // Re-derive the model when switching modes. Each mode owns its
+      // own per-agent + global persistence namespace, so re-entering a
+      // mode restores the user's last pick *for that mode* (image,
+      // video, 3D, chat), not whatever happened to be in the chat
+      // input bar last.
       let nextModel = current.selectedModel;
       const behavior = AGENT_MODE_DESCRIPTORS[mode].behavior;
       if (behavior.kind === "generate_image") {
         nextModel = loadPersistedImageModel(agentId);
       } else if (behavior.kind === "generate_3d") {
-        nextModel = DEFAULT_3D_MODEL_ID;
+        nextModel = loadPersistedThreeDModel(agentId);
       } else if (behavior.kind === "generate_video") {
-        nextModel = DEFAULT_VIDEO_MODEL_ID;
+        nextModel = loadPersistedVideoModel(agentId);
       } else if (behavior.kind === "chat" || behavior.kind === "chat_with_action") {
         const restored = loadPersistedModel(adapterType, undefined, agentId);
         nextModel = restored;
@@ -300,36 +303,46 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           },
         };
       }
-      // 3D mode pins to the default 3D provider; the chat-model sync
-      // must not yank it back into Sonnet.
+      // 3D mode restores the per-agent / global last-3D pick (today
+      // there is only one provider, but the read keeps the namespace
+      // honest and shields against a chat-adapter sync yanking the
+      // selection back into Sonnet).
       if (behavior.kind === "generate_3d") {
-        if (current.selectedModel === DEFAULT_3D_MODEL_ID) return s;
+        const persistedThreeD = loadPersistedThreeDModel(agentId);
+        if (current.selectedModel === persistedThreeD) return s;
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: DEFAULT_3D_MODEL_ID },
+            [streamKey]: { ...current, selectedModel: persistedThreeD },
           },
         };
       }
-      // Video mode pins to the default video model; same rationale as 3D.
+      // Video mode restores the per-agent / global last-video pick;
+      // same rationale as image / 3D.
       if (behavior.kind === "generate_video") {
-        if (current.selectedModel === DEFAULT_VIDEO_MODEL_ID) return s;
+        const persistedVideo = loadPersistedVideoModel(agentId);
+        if (current.selectedModel === persistedVideo) return s;
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: DEFAULT_VIDEO_MODEL_ID },
+            [streamKey]: { ...current, selectedModel: persistedVideo },
           },
         };
       }
       const persisted = loadPersistedModel(adapterType, defaultModel, agentId);
-      // Prefer a per-agent persisted value even when the current model is
-      // still technically valid for this adapter. This rescues the cold-
-      // boot case where `init` fired with `adapterType=undefined` before
-      // the agent metadata resolved and installed the adapter default
-      // instead of this agent's remembered model.
+      // Always prefer the persisted value (per-agent first, then the
+      // global "last user pick" fallback inside `loadPersistedModel`)
+      // over whatever happens to be in `current.selectedModel`. This
+      // rescues two cases:
+      //   1. cold boot after a desktop close/reopen where `init` fired
+      //      with `adapterType=undefined` before the agent metadata
+      //      resolved and installed the adapter default instead of the
+      //      agent's remembered model.
+      //   2. brand-new / untouched agents inheriting the user's most
+      //      recent chat-mode pick from anywhere else in the app
+      //      (the `aura-selected-model:default` fallback path) instead
+      //      of getting reset to Sonnet on every meta resolve.
       if (
-        agentId &&
-        hasAgentScopedModel(agentId) &&
         current.selectedModel !== persisted &&
         chatModels.some((m) => m.id === persisted)
       ) {

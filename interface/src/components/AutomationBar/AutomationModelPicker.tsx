@@ -5,7 +5,7 @@ import {
 } from "../InputBarShell";
 import {
   AURA_MANAGED_CHAT_MODELS,
-  defaultModelForAdapter,
+  loadPersistedModel,
   modelLabel,
 } from "../../constants/models";
 import { useAutomationModel } from "../../stores/automation-loop-store";
@@ -44,7 +44,18 @@ export function AutomationModelPicker({
   disabled,
 }: AutomationModelPickerProps) {
   const { model, setModel } = useAutomationModel(projectId);
-  const effectiveModelId = model ?? defaultModelForAdapter();
+  // Fall back to the user's most recent main-LLM chat pick when this
+  // project has never had an automation model explicitly set. Without
+  // this, every project the user hasn't poked the automation picker on
+  // would render the adapter default (Sonnet) on reopen, even when the
+  // user just picked Opus in the chat input bar one second earlier.
+  // `loadPersistedModel()` reads `aura-selected-model:default` and
+  // itself falls back to the adapter default, so the chain is
+  // (per-project automation pick) -> (global main-LLM pick) -> (adapter
+  // default). The per-project key still wins once the user picks here,
+  // preserving the loop-vs-chat decoupling documented in
+  // `automation-loop-store.ts`.
+  const effectiveModelId = model ?? loadPersistedModel();
   const label = modelLabel(effectiveModelId);
 
   const renderMenu = useCallback(

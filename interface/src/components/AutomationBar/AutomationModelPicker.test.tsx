@@ -113,4 +113,47 @@ describe("AutomationModelPicker", () => {
       document.querySelector('[data-agent-model-id]'),
     ).toBeNull();
   });
+
+  describe("fallback chain (per-project automation pick > main-LLM global pick > adapter default)", () => {
+    it("falls back to the adapter default when nothing has been picked anywhere", () => {
+      render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
+      // Sonnet 4.6 is the adapter default (first in AURA_MANAGED_CHAT_MODELS).
+      expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent(
+        "Sonnet 4.6",
+      );
+    });
+
+    it("falls back to the main-LLM global pick when no per-project automation pick exists", () => {
+      // Simulate the user having picked Opus 4.7 in the chat input bar
+      // somewhere (which writes the global key as a side effect of
+      // `persistModel`). The automation picker MUST surface that
+      // instead of the adapter default.
+      localStorage.setItem(
+        "aura-selected-model:default",
+        "aura-claude-opus-4-7",
+      );
+
+      render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
+      expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent(
+        "Opus 4.7",
+      );
+    });
+
+    it("the per-project automation pick still wins over the main-LLM global pick", () => {
+      // Both keys set: project-specific automation pick is GPT-5.5,
+      // global main-LLM pick is Opus 4.7. The project-specific value
+      // must win so loop picks stay decoupled from the chat input bar
+      // once the user has explicitly picked here.
+      localStorage.setItem(
+        "aura-selected-model:default",
+        "aura-claude-opus-4-7",
+      );
+      useAutomationLoopStore.getState().setLoopModel(PROJECT, "aura-gpt-5-5");
+
+      render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
+      expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent(
+        "GPT-5.5",
+      );
+    });
+  });
 });

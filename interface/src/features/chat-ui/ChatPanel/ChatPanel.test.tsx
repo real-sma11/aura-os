@@ -144,8 +144,12 @@ vi.mock("../../../stores/message-queue-store", () => ({
 
 vi.mock("../../../constants/models", () => ({
   loadPersistedModel: () => "gpt-5.4",
+  loadPersistedImageModel: () => "gpt-image-2",
+  loadPersistedVideoModel: () => "veo-3.1-fast-generate-preview",
+  loadPersistedThreeDModel: () => "tripo-v2",
   availableModelsForAdapter: () => [],
   defaultModelForAdapter: () => "gpt-5.4",
+  hasAgentScopedModel: () => false,
   persistModel: vi.fn(),
 }));
 

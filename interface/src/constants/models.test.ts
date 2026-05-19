@@ -3,7 +3,11 @@ import {
   availableModelsForAdapter,
   getModelsForMode,
   hasAgentScopedModel,
+  loadPersistedImageModel,
   loadPersistedModel,
+  loadPersistedModelForMode,
+  loadPersistedThreeDModel,
+  loadPersistedVideoModel,
   persistModel,
 } from "./models";
 
@@ -133,5 +137,99 @@ describe("model persistence", () => {
     expect(loadPersistedModel("default", null, "agent-bogus")).not.toBe(
       "not-a-real-model",
     );
+  });
+
+  describe("per-mode persistence", () => {
+    it("video picks write to the video namespace, not the chat keys", () => {
+      persistModel("dreamina-seedance-2-0-260128", "default", "agent-A");
+      expect(store["aura-selected-model:video:agent:agent-A"]).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+      expect(store["aura-selected-model:video:default"]).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+      // Critical: the chat keys must remain untouched so a subsequent
+      // chat-mode reopen can still restore the user's last chat pick.
+      expect(store["aura-selected-model:agent:agent-A"]).toBeUndefined();
+      expect(store["aura-selected-model:default"]).toBeUndefined();
+    });
+
+    it("3D picks write to the 3D namespace, not the chat keys", () => {
+      persistModel("tripo-v2", "default", "agent-A");
+      expect(store["aura-selected-model:3d:agent:agent-A"]).toBe("tripo-v2");
+      expect(store["aura-selected-model:3d:default"]).toBe("tripo-v2");
+      expect(store["aura-selected-model:agent:agent-A"]).toBeUndefined();
+      expect(store["aura-selected-model:default"]).toBeUndefined();
+    });
+
+    it("image picks write to the image namespace and update the global key", () => {
+      persistModel("dall-e-3", "default", "agent-A");
+      expect(store["aura-selected-model:image:agent:agent-A"]).toBe("dall-e-3");
+      expect(store["aura-selected-model:image:default"]).toBe("dall-e-3");
+      // Chat keys must remain untouched.
+      expect(store["aura-selected-model:agent:agent-A"]).toBeUndefined();
+      expect(store["aura-selected-model:default"]).toBeUndefined();
+    });
+
+    it("a chat pick after a video pick does not lose the video pick", () => {
+      // Pick Seedance in video mode...
+      persistModel("dreamina-seedance-2-0-260128", "default", "agent-A");
+      // ...then switch to chat mode and pick GPT-5.5.
+      persistModel("aura-gpt-5-5", "default", "agent-A");
+
+      // Both buckets remember their own last pick.
+      expect(loadPersistedVideoModel("agent-A")).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+      expect(loadPersistedModel("default", null, "agent-A")).toBe(
+        "aura-gpt-5-5",
+      );
+    });
+
+    it("loadPersistedVideoModel falls back to the global key for untouched agents", () => {
+      persistModel("dreamina-seedance-2-0-260128", "default", "agent-A");
+      // agent-B has no per-agent video key but should still inherit the
+      // global last-video pick.
+      expect(loadPersistedVideoModel("agent-B")).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+    });
+
+    it("loadPersistedThreeDModel falls back to the 3D default when nothing is stored", () => {
+      expect(loadPersistedThreeDModel("agent-A")).toBe("tripo-v2");
+    });
+
+    it("loadPersistedImageModel inherits the global last-image pick on a new agent", () => {
+      // The new global write inside `persistModel` lets a brand-new
+      // agent pick up the user's last image-mode choice instead of
+      // always reverting to the IMAGE_MODELS[0] default.
+      persistModel("dall-e-3", "default", "agent-A");
+      expect(loadPersistedImageModel("agent-B")).toBe("dall-e-3");
+    });
+
+    it("loadPersistedModelForMode dispatches to the right loader", () => {
+      persistModel("aura-gpt-5-5", "default", "agent-A");
+      persistModel("dall-e-3", "default", "agent-A");
+      persistModel("dreamina-seedance-2-0-260128", "default", "agent-A");
+
+      expect(loadPersistedModelForMode("chat", "agent-A", "default")).toBe(
+        "aura-gpt-5-5",
+      );
+      expect(loadPersistedModelForMode("image", "agent-A")).toBe("dall-e-3");
+      expect(loadPersistedModelForMode("video", "agent-A")).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+      expect(loadPersistedModelForMode("3d", "agent-A")).toBe("tripo-v2");
+    });
+
+    it("loadPersistedVideoModel ignores stored ids that aren't valid video models", () => {
+      // Manually write a chat model id under the video key (e.g.
+      // because of pre-fix corruption) and verify the loader falls
+      // through to the default rather than returning a non-video id.
+      store["aura-selected-model:video:agent:agent-A"] = "aura-gpt-5-5";
+      expect(loadPersistedVideoModel("agent-A")).toBe(
+        "veo-3.1-fast-generate-preview",
+      );
+    });
   });
 });
