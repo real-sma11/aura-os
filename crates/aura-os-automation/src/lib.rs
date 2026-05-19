@@ -57,8 +57,8 @@ pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};
 pub use progress::{apply_loop_activity, LoopActivityTransition};
 pub use resilience::{
-    recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker, ToolRetryTracker,
-    ORPHAN_RECOVERY_REASON,
+    recover_failed, recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker,
+    ToolRetryTracker, FAILED_RETRY_REASON, ORPHAN_RECOVERY_REASON,
 };
 pub use task_context::{
     build_task_context, TaskContext, TaskContextCache, TaskContextInputs, TaskContextResolver,
@@ -100,6 +100,8 @@ mod smoke {
         let _tool_tracker = crate::ToolRetryTracker::new();
         let _task_tracker = crate::TaskRetryTracker::new();
         let _: Vec<crate::OrphanRecoveryPlan> = crate::recover_orphans(&[]);
+        let _: Vec<crate::OrphanRecoveryPlan> = crate::recover_failed(&[], &_task_tracker);
+        let _: &str = crate::FAILED_RETRY_REASON;
         // RetryDecision must be reachable through the crate root for
         // the server's pattern matches.
         let _retry = crate::RetryDecision::GiveUp;

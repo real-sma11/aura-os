@@ -30,6 +30,14 @@
 //! — currently every task observed in [`TaskStatus::InProgress`].
 //! Applying the plans is the server's job; the helper itself does
 //! no I/O.
+//!
+//! [`recover_failed`] is the cross-run sibling sweep. It picks every
+//! task left in [`TaskStatus::Failed`] from a previous loop and asks
+//! [`TaskRetryTracker`] whether to retry, gating against the same
+//! [`crate::budget::task_retry::TASK_LEVEL_RETRY_BUDGET`] the in-loop
+//! `task_failed` arm already consults so a permanently-broken task
+//! does not loop forever. Mutates the tracker (each `Failed` task
+//! bumps its counter exactly once); see the function docs for why.
 
 pub mod orphan;
 pub mod task_retry;
@@ -38,6 +46,9 @@ pub mod tool_retry;
 #[cfg(test)]
 mod tests;
 
-pub use orphan::{recover_orphans, OrphanRecoveryPlan, ORPHAN_RECOVERY_REASON};
+pub use orphan::{
+    recover_failed, recover_orphans, OrphanRecoveryPlan, FAILED_RETRY_REASON,
+    ORPHAN_RECOVERY_REASON,
+};
 pub use task_retry::TaskRetryTracker;
 pub use tool_retry::{RetryDecision, ToolRetryTracker};

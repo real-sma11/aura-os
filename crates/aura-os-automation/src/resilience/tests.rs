@@ -8,15 +8,18 @@
 //! cannot silently break when a submodule renames a symbol.
 
 use super::{
-    recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker, ToolRetryTracker,
-    ORPHAN_RECOVERY_REASON,
+    recover_failed, recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker,
+    ToolRetryTracker, FAILED_RETRY_REASON, ORPHAN_RECOVERY_REASON,
 };
 
 #[test]
 fn re_export_surface_compiles_via_module_root() {
     let _ = ToolRetryTracker::new();
-    let _ = TaskRetryTracker::new();
+    let task_tracker = TaskRetryTracker::new();
     let _ = RetryDecision::GiveUp;
     let _: Vec<OrphanRecoveryPlan> = recover_orphans(&[]);
+    let _: Vec<OrphanRecoveryPlan> = recover_failed(&[], &task_tracker);
     assert!(!ORPHAN_RECOVERY_REASON.is_empty());
+    assert!(!FAILED_RETRY_REASON.is_empty());
+    assert_ne!(ORPHAN_RECOVERY_REASON, FAILED_RETRY_REASON);
 }

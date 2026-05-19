@@ -80,7 +80,10 @@ mod orphan_recovery_tests {
     //! the integration shape (the App-layer wrapper feeds the planner
     //! a real `Vec<Task>` and walks the resulting plans).
 
-    use aura_os_automation::recover_orphans;
+    use aura_os_automation::{
+        recover_failed, recover_orphans, OrphanRecoveryPlan, TaskRetryTracker, FAILED_RETRY_REASON,
+        ORPHAN_RECOVERY_REASON, TASK_LEVEL_RETRY_BUDGET,
+    };
     use aura_os_core::{ProjectId, SpecId, Task, TaskId, TaskStatus};
     use chrono::Utc;
 
@@ -148,5 +151,74 @@ mod orphan_recovery_tests {
             task_in(TaskStatus::Failed),
         ];
         assert!(recover_orphans(&tasks).is_empty());
+    }
+
+    /// Sibling of `loop_start_sweep_targets_only_in_progress_tasks`
+    /// covering the cross-run Failed retry path the adapter now runs
+    /// alongside the orphan sweep. Both an InProgress task and a
+    /// fresh-tracker Failed task must end up `Ready` in the combined
+    /// plan vector that the adapter feeds into `safe_transition`.
+    #[test]
+    fn start_loop_re_readies_failed_under_budget() {
+        let in_progress = task_in(TaskStatus::InProgress);
+        let failed = task_in(TaskStatus::Failed);
+        let tasks = vec![
+            task_in(TaskStatus::Ready),
+            in_progress.clone(),
+            task_in(TaskStatus::Done),
+            failed.clone(),
+        ];
+
+        let tracker = TaskRetryTracker::new();
+        let combined: Vec<OrphanRecoveryPlan> = recover_orphans(&tasks)
+            .into_iter()
+            .chain(recover_failed(&tasks, &tracker))
+            .collect();
+        assert_eq!(
+            combined.len(),
+            2,
+            "InProgress + under-budget Failed -> two plans; got {combined:?}",
+        );
+        let in_progress_plan = combined
+            .iter()
+            .find(|p| p.task_id == in_progress.task_id)
+            .expect("InProgress task must be planned");
+        let failed_plan = combined
+            .iter()
+            .find(|p| p.task_id == failed.task_id)
+            .expect("Failed task must be planned");
+        assert_eq!(in_progress_plan.target_status, TaskStatus::Ready);
+        assert_eq!(failed_plan.target_status, TaskStatus::Ready);
+        assert_eq!(in_progress_plan.reason, ORPHAN_RECOVERY_REASON);
+        assert_eq!(failed_plan.reason, FAILED_RETRY_REASON);
+    }
+
+    /// Pre-bumping the tracker to the budget must keep the Failed
+    /// task in `Failed` (no plan emitted) while still letting the
+    /// InProgress task get re-readied. Mirrors the cross-run retry
+    /// gating the adapter applies on every loop start.
+    #[test]
+    fn start_loop_leaves_failed_over_budget_alone() {
+        let in_progress = task_in(TaskStatus::InProgress);
+        let failed = task_in(TaskStatus::Failed);
+        let tasks = vec![in_progress.clone(), failed.clone()];
+
+        let tracker = TaskRetryTracker::new();
+        for _ in 0..TASK_LEVEL_RETRY_BUDGET {
+            let _ = tracker.record_failure(failed.task_id);
+        }
+
+        let combined: Vec<OrphanRecoveryPlan> = recover_orphans(&tasks)
+            .into_iter()
+            .chain(recover_failed(&tasks, &tracker))
+            .collect();
+        assert_eq!(
+            combined.len(),
+            1,
+            "over-budget Failed task must be skipped; only InProgress plan remains",
+        );
+        assert_eq!(combined[0].task_id, in_progress.task_id);
+        assert_eq!(combined[0].current_status, TaskStatus::InProgress);
+        assert_eq!(combined[0].target_status, TaskStatus::Ready);
     }
 }
