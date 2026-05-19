@@ -26,6 +26,65 @@ describe("tool marker parsing", () => {
     );
   });
 
+  it("captures arguments with nested parens (search_code regex bodies)", () => {
+    const segments = splitTextByToolMarkers(
+      "[tool: search_code(pub fn (ack|mark_attempt|next_due|len|is_empty|contains), context=1) → ok]",
+    );
+
+    expect(segments).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        name: "search_code",
+        arg: "pub fn (ack|mark_attempt|next_due|len|is_empty|contains), context=1",
+        status: "ok",
+      }),
+    ]);
+  });
+
+  it("does not bleed a nested-paren arg into a sibling marker on the same line", () => {
+    const segments = splitTextByToolMarkers(
+      "[tool: search_code(pub (struct|fn|enum) , context=2) → ok] then [tool: read(src/db.rs) -> ok]",
+    );
+
+    expect(segments).toMatchObject([
+      {
+        kind: "tool",
+        name: "search_code",
+        arg: "pub (struct|fn|enum) , context=2",
+        status: "ok",
+      },
+      { kind: "text", content: " then " },
+      { kind: "tool", name: "read_file", arg: "src/db.rs", status: "ok" },
+    ]);
+  });
+
+  it("expands a nested-paren search_code marker into a ToolCallEntry", () => {
+    const timeline: TimelineItem[] = [
+      {
+        kind: "text",
+        id: "t1",
+        content:
+          "[tool: search_code(struct SectorEnvelope|impl SectorEnvelope|fn (decode|from_bytes|to_bytes|encode), context=2) → ok]",
+      },
+    ];
+
+    const result = expandToolMarkersInTimeline(timeline);
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toMatchObject({
+      name: "search_code",
+      input: {
+        query:
+          "struct SectorEnvelope|impl SectorEnvelope|fn (decode|from_bytes|to_bytes|encode), context=2",
+      },
+      isError: false,
+      pending: false,
+    });
+    expect(result.timeline).toMatchObject([
+      { kind: "tool", toolCallId: result.toolCalls[0].id },
+    ]);
+  });
+
   it("expands textual markers into timeline tool entries", () => {
     const timeline: TimelineItem[] = [
       {
