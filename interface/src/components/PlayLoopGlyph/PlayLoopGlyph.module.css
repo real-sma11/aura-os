@@ -1,10 +1,15 @@
 /* Wrapping `<g>` for the ring pair so the accent colour applies to
    both the faint background ring and the spinning arc via
-   `stroke="currentColor"`. Pulling colour up to a parent keeps
-   theming centralised — the `--loop-progress-color` variable is the
-   one knob a designer needs to touch. */
+   `stroke="currentColor"`. We bind to `--color-accent` (the
+   theme-driven accent, set per-user in zui themes.css) so the
+   spinner follows the active theme — earlier iterations hardcoded
+   a fixed blue via `--loop-progress-color` and stood out against
+   non-blue accent themes. The `--loop-progress-color` fallback
+   keeps the spinner readable in surfaces that haven't propagated
+   the accent variable yet, and the final `#4f8bff` is a last-ditch
+   default if neither variable resolves. */
 .ringGroup {
-  color: var(--loop-progress-color, #4f8bff);
+  color: var(--color-accent, var(--loop-progress-color, #4f8bff));
 }
 
 /* Spinning accent arc. `transform-box: fill-box` is critical: by
