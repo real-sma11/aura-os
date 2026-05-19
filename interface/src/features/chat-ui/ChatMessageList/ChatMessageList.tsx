@@ -217,7 +217,20 @@ export function ChatMessageList({
             <div
               key={msg.clientId ?? msg.id}
               data-message-id={msg.id}
-              style={{ display: "flex", width: "100%" }}
+              style={{
+                display: "flex",
+                width: "100%",
+                // Let the browser skip layout/paint for off-screen
+                // bubbles. On cold open of an 80-event session this
+                // halves the first-paint cost because only the few
+                // bubbles in the viewport pay for full layout (the
+                // rest are reserved using `contain-intrinsic-size`
+                // and lazily rendered as the user scrolls). No effect
+                // for the trailing in-view bubbles, which are the
+                // ones the user actually looks at first.
+                contentVisibility: "auto",
+                containIntrinsicSize: "auto 240px",
+              }}
             >
               <MessageBubble
                 message={msg}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { api } from "../../../../api/client";
+import { api, STANDALONE_AGENT_HISTORY_LIMIT } from "../../../../api/client";
 import {
   type AnnotatedSession,
   formatDeleteSessionError,
@@ -18,10 +18,7 @@ import {
   useSessionsListActions,
   useSessionsListStore,
 } from "../../../../stores/sessions-list-store";
-import {
-  sessionHistoryKey,
-  useChatHistoryStore,
-} from "../../../../stores/chat-history-store";
+import { useChatHistoryStore } from "../../../../stores/chat-history-store";
 import { keyForAgentSession } from "../../../../hooks/stream/store";
 import { useProjectsListStore } from "../../../../stores/projects-list-store";
 import { queryClient } from "../../../../shared/lib/query-client";
@@ -262,21 +259,40 @@ export function ChatAppLeftPanel() {
     [navigate, resolveSessionAgent],
   );
 
-  const handleSessionHover = useCallback((target: AnnotatedSession) => {
-    void useChatHistoryStore.getState().fetchHistory(
-      sessionHistoryKey(
-        target._projectId,
-        target._agentInstanceId,
-        target.session_id,
-      ),
-      () =>
-        api.listSessionEvents(
-          target._projectId,
-          target._agentInstanceId,
-          target.session_id,
-        ),
-    );
-  }, []);
+  // Hover-warm the chat-history-store entry the destination panel will
+  // actually read on click. The Chat app routes into
+  // `useStandaloneAgentChat` which keys history at
+  // `agent:<agentId>:session:<sessionId>` and fetches via
+  // `/api/agents/<agentId>/sessions/<sessionId>/events` (see
+  // `use-standalone-agent-chat.ts`). The earlier prefetch wrote to the
+  // project-scoped `session:<projectId>:<agentInstanceId>:<sessionId>`
+  // key + `/api/projects/.../events` endpoint — different cache slot,
+  // different shape, so click always cold-loaded the network. Resolve
+  // the row's owning agent through `agentByInstanceId` and key + fetch
+  // exactly as the panel will, then briefly pin the key so the LRU
+  // (`MAX_HISTORY_ENTRIES = 8`) can't drop the warm slot before the
+  // click lands.
+  const handleSessionHover = useCallback(
+    (target: AnnotatedSession) => {
+      const agent = agentByInstanceId.get(target._agentInstanceId);
+      if (!agent) return;
+      const key = `agent:${agent.agent_id}:session:${target.session_id}`;
+      const store = useChatHistoryStore.getState();
+      store.pinKey(key);
+      // Release the pin after a window long enough to bridge typical
+      // hover→click latency without leaking pins on rows the user
+      // never actually opens.
+      setTimeout(() => {
+        useChatHistoryStore.getState().unpinKey(key);
+      }, 30_000);
+      void store.fetchHistory(key, () =>
+        api.agents.listSessionEvents(agent.agent_id, target.session_id, {
+          limit: STANDALONE_AGENT_HISTORY_LIMIT,
+        }),
+      );
+    },
+    [agentByInstanceId],
+  );
 
   // Pick the correct surface key for delete error / undo so the inline
   // banner and `restoreSession` land on the agent's own surface (not

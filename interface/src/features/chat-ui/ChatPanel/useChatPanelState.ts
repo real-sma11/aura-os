@@ -98,7 +98,7 @@ export function useChatPanelState({
   const { isMobileLayout } = useAuraCapabilities();
   const attachmentsRef = useRef(attachments);
   const effectiveTranscriptKey = transcriptKey ?? streamKey;
-  const { messages } = useConversationSnapshot({
+  const { messages, bridgeMessages } = useConversationSnapshot({
     streamKey,
     transcriptKey: effectiveTranscriptKey,
     historyMessages,
@@ -441,6 +441,7 @@ export function useChatPanelState({
     isStreaming,
     queue,
     messages,
+    bridgeMessages,
     scrollToBottom,
     handleRemoveAttachment,
     handleSend,

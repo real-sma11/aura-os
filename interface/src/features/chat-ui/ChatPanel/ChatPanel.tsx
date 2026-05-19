@@ -190,6 +190,7 @@ export function ChatPanel({
     isStreaming,
     queue,
     messages,
+    bridgeMessages,
     scrollToBottom,
     handleRemoveAttachment,
     handleSend,
@@ -348,10 +349,25 @@ export function ChatPanel({
     });
   }, [streamKey, messages, selectedMode]);
 
+  // Bridge frame: a single trailing-message preview surfaced from
+  // `chat-history-store.previewLastMessages` for this transcript key.
+  // Lets cold opens of recently-visited sessions paint a real bubble
+  // immediately while the full history fetch is still in flight,
+  // instead of staring at an overlay + `visibility: hidden` reveal
+  // gate. Empty when there's no preview or history has already
+  // resolved. See `useConversationSnapshot` for the read.
+  const hasBridgeFrame = bridgeMessages.length > 0;
+  const renderedMessages = messages.length > 0 ? messages : bridgeMessages;
+
   const initialHandoffReadyRef = useRef(false);
   const inputFocusReadyRef = useRef(false);
   const hasHandledThreadResetRef = useRef(false);
-  const initialColdLoadRef = useRef(!historyResolved);
+  // Treat a bridge-frame mount as "already warm": skip cold-load
+  // arming entirely so the bubble we just painted doesn't get hidden
+  // by the reveal cycle the moment real history lands. The swap from
+  // bridge → full history happens in-place and the user never sees
+  // the `visibility: hidden` flash.
+  const initialColdLoadRef = useRef(!historyResolved && !hasBridgeFrame);
   // Latches `true` once we've completed the initial reveal for the current
   // chat (warm mount, cold-load anchor-ready, or empty-thread short circuit).
   // Subsequent transient `historyResolved=false` flips MUST NOT re-arm the
@@ -363,11 +379,15 @@ export function ChatPanel({
   // `fetchHistory`, which transitions status `"loading"` → `"ready"`.
   // Reset only on real chat switches via the `[initialHandoff, scrollResetKey]`
   // effect below.
-  const hasInitiallyRevealedRef = useRef(historyResolved);
+  const hasInitiallyRevealedRef = useRef(historyResolved || hasBridgeFrame);
   const revealAnimationFrameRef = useRef<number | null>(null);
   const loadingOverlayTimeoutRef = useRef<number | null>(null);
-  const [isInitialThreadRevealReady, setIsInitialThreadRevealReady] = useState(() => historyResolved);
-  const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(() => !historyResolved);
+  const [isInitialThreadRevealReady, setIsInitialThreadRevealReady] = useState(
+    () => historyResolved || hasBridgeFrame,
+  );
+  const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(
+    () => !historyResolved && !hasBridgeFrame,
+  );
   const [isLoadingOverlayFadingOut, setIsLoadingOverlayFadingOut] = useState(false);
   // Deadline for the image-load auto-pin window. Updated on every
   // thread switch (`scrollResetKey`) and again after the reveal so
@@ -377,8 +397,8 @@ export function ChatPanel({
     () => Date.now() + IMAGE_PIN_AFTER_REVEAL_MS,
   );
 
-  const contentReady = historyResolved && !isLoading;
-  const shouldArmColdLoad = !historyResolved;
+  const contentReady = (historyResolved && !isLoading) || hasBridgeFrame;
+  const shouldArmColdLoad = !historyResolved && !hasBridgeFrame;
   const shouldHideThreadForInitialReveal =
     initialColdLoadRef.current && historyResolved && messages.length > 0 && !isInitialThreadRevealReady;
   const shouldShowColdLoadOverlay =
@@ -606,7 +626,7 @@ export function ChatPanel({
               className={`${styles.messageContent}${shouldHideThreadForInitialReveal ? ` ${styles.messageContentHidden}` : ""}`}
             >
               <ChatMessageList
-                messages={messages}
+                messages={renderedMessages}
                 streamKey={streamKey}
                 scrollRef={messageAreaRef}
                 emptyState={emptyState}
