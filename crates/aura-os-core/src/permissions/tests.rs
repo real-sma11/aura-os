@@ -178,6 +178,69 @@ fn with_project_self_caps_does_not_satisfy_other_projects() {
 }
 
 #[test]
+fn with_dev_loop_execution_caps_splices_invoke_process_into_empty_bundle() {
+    let perms = AgentPermissions::empty().with_dev_loop_execution_caps();
+    assert!(perms.capabilities.contains(&Capability::InvokeProcess));
+    assert_eq!(
+        perms.capabilities.len(),
+        1,
+        "splice must add exactly one capability when the bundle was empty"
+    );
+}
+
+#[test]
+fn with_dev_loop_execution_caps_is_idempotent_when_already_held() {
+    // CEO preset already carries InvokeProcess; a second call must
+    // not duplicate it.
+    let before = AgentPermissions::ceo_preset();
+    let after = before.clone().with_dev_loop_execution_caps();
+    assert_eq!(after, before);
+    let invoke_process_count = after
+        .capabilities
+        .iter()
+        .filter(|c| matches!(c, Capability::InvokeProcess))
+        .count();
+    assert_eq!(invoke_process_count, 1);
+}
+
+#[test]
+fn with_dev_loop_execution_caps_preserves_other_capabilities() {
+    // Splicing must not reorder or drop any pre-existing grants.
+    let before = AgentPermissions {
+        scope: AgentScope::default(),
+        capabilities: vec![
+            Capability::ReadAgent,
+            Capability::ReadProject {
+                id: "proj-42".into(),
+            },
+        ],
+    };
+    let after = before.clone().with_dev_loop_execution_caps();
+    for cap in &before.capabilities {
+        assert!(
+            after.capabilities.contains(cap),
+            "pre-existing capability {cap:?} must survive the splice"
+        );
+    }
+    assert!(after.capabilities.contains(&Capability::InvokeProcess));
+}
+
+#[test]
+fn with_dev_loop_execution_caps_preserves_scope() {
+    let scope = AgentScope {
+        orgs: vec!["org-1".into()],
+        projects: vec!["proj-42".into()],
+        agent_ids: vec![],
+    };
+    let before = AgentPermissions {
+        scope: scope.clone(),
+        capabilities: vec![Capability::ReadAgent],
+    };
+    let after = before.with_dev_loop_execution_caps();
+    assert_eq!(after.scope, scope, "splice must not widen agent scope");
+}
+
+#[test]
 fn capability_serde_is_camel_case_external_tag() {
     let c = Capability::ReadProject { id: "p".into() };
     let v = serde_json::to_value(&c).unwrap();

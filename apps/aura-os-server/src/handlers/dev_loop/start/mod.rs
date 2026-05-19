@@ -64,7 +64,8 @@ pub(super) async fn resolve_start_context(
         .permissions
         .clone()
         .normalized_for_identity(&agent_instance.name, Some(agent_instance.role.as_str()))
-        .with_project_self_caps(&project_id.to_string());
+        .with_project_self_caps(&project_id.to_string())
+        .with_dev_loop_execution_caps();
     Ok(StartContext {
         client,
         project_id,
