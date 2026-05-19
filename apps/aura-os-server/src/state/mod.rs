@@ -50,8 +50,8 @@ pub(crate) use auth_extractors::{AuthJwt, AuthSession, AuthZeroProMeta};
 pub(crate) use caches::CACHE_ENTRY_MAX_AGE;
 pub(crate) use caches::{
     clear_zero_auth_session, persist_zero_auth_session, spawn_cache_eviction, AgentDiscoveryCache,
-    CachedAgentDiscovery, CreditCache, CreditCacheRef, TaskOutputCache, ValidationCache,
-    AGENT_DISCOVERY_TTL,
+    CachedAgentDiscovery, CreditCache, CreditCacheRef, TaskOutputCache, TaskOutputKey,
+    ValidationCache, AGENT_DISCOVERY_TTL,
 };
 pub use caches::{CachedSession, CachedTaskOutput, TestPassEvidence};
 

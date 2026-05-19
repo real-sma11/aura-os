@@ -133,7 +133,14 @@ pub(crate) async fn run_single_task(
         .loop_log
         .on_task_started(project_id, ephemeral_instance_id, task_id, None)
         .await;
-    seed_task_output(&state, project_id, ephemeral_instance_id, &task_id_str).await;
+    seed_task_output(
+        &state,
+        project_id,
+        ephemeral_instance_id,
+        session_id,
+        &task_id_str,
+    )
+    .await;
     emit_domain_event(
         &state,
         "task_started",
