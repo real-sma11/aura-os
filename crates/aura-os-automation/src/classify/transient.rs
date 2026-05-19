@@ -60,6 +60,18 @@ pub fn is_provider_internal(reason: &str) -> bool {
         || reason.contains("connection reset by peer")
 }
 
+/// True when the harness aborted the agent after it stayed in
+/// research mode and never produced file operations or called
+/// `task_done`. The post-hoc gate at
+/// `aura-harness::validate_execution` emits this verdict.
+/// Classifying it as a restartable transient gives the task a
+/// fresh-context retry attempt at the aura-os layer.
+pub fn is_research_loop_abort(reason: &str) -> bool {
+    let reason = reason.to_ascii_lowercase();
+    reason.contains("task completed without any file operations")
+        || reason.contains("completion not verified")
+}
+
 /// True when `reason` *looks* transient but the classifiers above did
 /// not match it — the safety net that drives the `debug.retry_miss`
 /// trigger condition.

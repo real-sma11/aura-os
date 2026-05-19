@@ -27,5 +27,6 @@ pub use restart::{
 };
 pub use transient::{
     is_agent_stuck_terminal_signal, is_git_push_timeout, is_insufficient_credits,
-    is_provider_internal, is_rate_limited, looks_like_unclassified_transient,
+    is_provider_internal, is_rate_limited, is_research_loop_abort,
+    looks_like_unclassified_transient,
 };

@@ -107,11 +107,15 @@ pub(super) async fn maybe_apply_task_level_retry(
     let Ok(task_uuid) = TaskId::from_str(task_id) else {
         return;
     };
-    // Only escalate to a task-level retry once the tool-call budget
-    // has already exhausted itself. Otherwise the per-tool retry is
-    // the right surface and stacking another task-level hop on top
-    // just thrashes storage with `Failed -> Ready` cycles.
-    if retry_state.tool_retry.attempts(task_uuid) < TOOL_CALL_RETRY_BUDGET {
+    // Only block task-level retry when there's an active per-tool
+    // retry already in flight for this task. Per-tool retry is the
+    // right surface IFF there has been at least one failing tool
+    // call — for task-shape failures (research-loop aborts, the
+    // CompletionContract verdict, ...) the per-tool budget is
+    // irrelevant because no tool call ever failed, and the
+    // task-level retry IS the only recovery surface.
+    let tool_attempts = retry_state.tool_retry.attempts(task_uuid);
+    if tool_attempts > 0 && tool_attempts < TOOL_CALL_RETRY_BUDGET {
         return;
     }
     let decision = retry_state.task_retry.record_failure(task_uuid);

@@ -480,3 +480,30 @@ fn reconciler_does_not_override_other_failure_classes_with_test_evidence() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Research-loop abort verdict (aura-harness post-hoc completion gate)
+// ---------------------------------------------------------------------------
+//
+// When the agent stays in research mode and never produces a file
+// operation, the harness's `validate_execution` emits the verbatim
+// reason below. The server classifier must recognise it as a
+// CompletionContract failure so the task-level retry path can route
+// it to a fresh-context attempt instead of marking the task
+// permanently Failed.
+
+#[test]
+fn research_loop_abort_verdict_is_completion_contract_failure() {
+    // Verbatim verdict from aura-harness's post-hoc completion
+    // gate. The em dash is U+2014 — paste verbatim, do not
+    // substitute an ASCII hyphen.
+    let reason = "agent execution error: task completed without any file operations — \
+                  completion not verified";
+    assert!(
+        tsp::is_completion_contract_failure(reason),
+        "research-loop abort verdict must classify as a \
+         CompletionContract failure so the dev-loop retry path \
+         routes it to a fresh-context retry instead of marking \
+         the task permanently Failed",
+    );
+}

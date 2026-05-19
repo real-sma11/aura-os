@@ -51,7 +51,8 @@ pub use budget::{
 pub use classify::{
     classify_push_failure, classify_restart_reason, is_agent_stuck_terminal_signal,
     is_git_push_timeout, is_insufficient_credits, is_provider_internal, is_rate_limited,
-    looks_like_unclassified_transient, should_restart_on_error, tool_call_failed_should_retry,
+    is_research_loop_abort, looks_like_unclassified_transient, should_restart_on_error,
+    tool_call_failed_should_retry,
 };
 pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};

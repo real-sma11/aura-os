@@ -44,8 +44,12 @@ fn is_completion_contract_failure_reason(reason: &str) -> bool {
         || reason.contains("no file edited")
         || reason.contains("no file edits");
     let mentions_no_change_escape_hatch = reason.contains("no_changes_needed");
+    let mentions_research_loop_verdict =
+        reason.contains("task completed without any file operations")
+            || reason.contains("completion not verified");
 
     mentions_task_done && (mentions_missing_edits || mentions_no_change_escape_hatch)
+        || mentions_research_loop_verdict
 }
 
 pub(crate) fn is_rate_limited_failure_for_tests(reason: &str) -> bool {

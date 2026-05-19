@@ -15,7 +15,7 @@
 
 use super::transient::{
     is_agent_stuck_terminal_signal, is_git_push_timeout, is_provider_internal, is_rate_limited,
-    looks_like_unclassified_transient,
+    is_research_loop_abort, looks_like_unclassified_transient,
 };
 use crate::budget::TOOL_CALL_RETRY_BUDGET;
 
@@ -41,6 +41,9 @@ pub fn classify_restart_reason(reason: &str) -> Option<&'static str> {
     }
     if is_git_push_timeout(reason) {
         return Some("git_push_timeout");
+    }
+    if is_research_loop_abort(reason) {
+        return Some("research_loop");
     }
     if looks_like_unclassified_transient(reason) {
         return Some("transient");

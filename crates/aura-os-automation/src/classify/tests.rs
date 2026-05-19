@@ -16,7 +16,8 @@ use super::restart::{
 };
 use super::transient::{
     is_agent_stuck_terminal_signal, is_git_push_timeout, is_insufficient_credits,
-    is_provider_internal, is_rate_limited, looks_like_unclassified_transient,
+    is_provider_internal, is_rate_limited, is_research_loop_abort,
+    looks_like_unclassified_transient,
 };
 use crate::budget::TOOL_CALL_RETRY_BUDGET;
 
@@ -200,6 +201,69 @@ fn tool_call_retry_respects_budget_and_classifier() {
         !tool_call_failed_should_retry(stuck, 0),
         "agent-stuck signals must not retry",
     );
+}
+
+#[test]
+fn research_loop_abort_classified_as_restartable_research_loop() {
+    // Verbatim verdict from aura-harness's post-hoc completion
+    // gate. The em dash is U+2014 — paste verbatim, do not
+    // substitute an ASCII hyphen.
+    let reason = "agent execution error: task completed without any file operations — \
+                  completion not verified";
+    assert_eq!(
+        classify_restart_reason(reason),
+        Some("research_loop"),
+        "research-loop verdict must classify with the stable \
+         `research_loop` label so telemetry stays distinct from \
+         the unclassified-transient bucket",
+    );
+    assert!(
+        should_restart_on_error(reason),
+        "research-loop verdict must drive an automaton restart",
+    );
+}
+
+#[test]
+fn agent_stuck_precedence_beats_research_loop() {
+    // A reason that contains BOTH needles must classify as terminal:
+    // the agent-stuck guard runs first in `classify_restart_reason`,
+    // so a harness that decided to stop on its own anti-waste
+    // verdict must not be restarted just because the same payload
+    // also mentions a research-loop abort.
+    let reason = "agent is stuck after task completed without any file operations";
+    assert!(
+        is_research_loop_abort(reason),
+        "needle must still match in isolation",
+    );
+    assert!(
+        is_agent_stuck_terminal_signal(reason),
+        "needle must still match in isolation",
+    );
+    assert_eq!(
+        classify_restart_reason(reason),
+        None,
+        "agent-stuck precedence must win — restarting a stuck \
+         harness just thrashes the WS reconnect path",
+    );
+}
+
+#[test]
+fn is_research_loop_abort_matches_both_needles_independently() {
+    // The classifier accepts the two phrases independently so a
+    // verdict that gets reformatted by an upstream wrapper still
+    // resolves correctly.
+    assert!(is_research_loop_abort(
+        "task completed without any file operations"
+    ));
+    assert!(is_research_loop_abort("completion not verified"));
+    assert!(
+        is_research_loop_abort("TASK COMPLETED WITHOUT ANY FILE OPERATIONS"),
+        "matcher must be case-insensitive — the classifier lowercases \
+         the reason before comparing",
+    );
+    assert!(!is_research_loop_abort(
+        "task completed with file operations and verified"
+    ));
 }
 
 #[test]
