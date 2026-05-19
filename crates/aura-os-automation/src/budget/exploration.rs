@@ -115,6 +115,57 @@ pub enum ExplorationStatus {
 }
 
 impl ExplorationBudget {
+    /// Classify a `used` count, but route the verdict through the
+    /// `unique` count when the caller is tracking content-hash
+    /// dedupe.
+    ///
+    /// The harness's read tool stamps a `content_hash` onto every
+    /// `read_file` result. Each time the agent loop bumps the
+    /// per-task exploration counter it ALSO inspects the prior
+    /// hashes and increments a separate `unique` counter only when
+    /// the new read returned bytes it hadn't seen for this task
+    /// before. Passing both into [`Self::classify_with_cache`]
+    /// keeps the soft/hard advisory grounded in genuinely-new
+    /// reads, so a tight loop re-reading the same file doesn't
+    /// trip the budget the way it did in the prior zero-crypto
+    /// run.
+    ///
+    /// `used` is still propagated into the message
+    /// ([`Self::advisory_text_with_cache`]) so the operator can see
+    /// the wasted-read count, but the classification itself uses
+    /// `unique` so a cached re-read is effectively free.
+    #[must_use]
+    pub fn classify_with_cache(self, _used: u32, unique: u32) -> ExplorationStatus {
+        self.classify(unique)
+    }
+
+    /// Render the per-turn advisory header text against a
+    /// cache-aware `(used, unique)` pair. Mirrors
+    /// [`Self::advisory_text`] but the message includes both numbers
+    /// so the agent sees how much of its budget is being burned on
+    /// cached re-reads. Returns `None` while `unique` is still under
+    /// the soft floor, matching the no-warning baseline.
+    #[must_use]
+    pub fn advisory_text_with_cache(self, used: u32, unique: u32) -> Option<String> {
+        match self.classify(unique) {
+            ExplorationStatus::WithinBudget => None,
+            ExplorationStatus::WithinSoftAdvisory => Some(format!(
+                "Heads up: {used} reads/searches issued ({unique} unique) against \
+                 a soft ceiling of {soft}. Cached re-reads are free; consider \
+                 proposing an edit or running a verification command before \
+                 issuing more reads of files you've already seen.",
+                soft = self.soft,
+            )),
+            ExplorationStatus::OverHard => Some(format!(
+                "Exploration budget exceeded ({used} reads issued, {unique} unique, \
+                 hard ceiling {hard}). Stop reading and make progress: propose an \
+                 edit, run a build/test command, or hand back to the loop with a \
+                 status update.",
+                hard = self.hard,
+            )),
+        }
+    }
+
     /// Scale a soft / hard pair from the task's
     /// `description_len` (characters) and `dependency_count`
     /// (parent + children). See the module doc for the formula.

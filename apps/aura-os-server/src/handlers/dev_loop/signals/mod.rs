@@ -1,11 +1,16 @@
 //! Legacy server-side signal helpers (classifier shims, failure-context extraction, completion-validation stubs, test-evidence detection, push-failure heuristics, preflight). Behaviour preserved verbatim from the pre-split `signals.rs`; new code should import the underlying primitives from `aura_os_automation` directly.
 
+mod build_preflight;
 mod classifiers;
 mod completion;
 mod failure_context;
 mod preflight;
 mod push_failures;
 mod test_evidence;
+
+pub(crate) use build_preflight::{
+    build_gate_enabled, render_demoted_failure_reason, run_build_preflight, BuildPreflight,
+};
 
 pub(crate) use classifiers::{
     auto_decompose_disabled, classify_push_failure_for_tests,

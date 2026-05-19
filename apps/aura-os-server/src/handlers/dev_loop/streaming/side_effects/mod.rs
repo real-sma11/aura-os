@@ -1,4 +1,4 @@
-//! Side-effects triggered by individual harness events: enriches the payload, broadcasts to live subscribers + the topic-scoped event hub, and dispatches into focused submodules (failure persistence + test-evidence override, retry plumbing, git checkpoints, task-output cache, cross-turn file-change merging).
+﻿//! Side-effects triggered by individual harness events: enriches the payload, broadcasts to live subscribers + the topic-scoped event hub, and dispatches into focused submodules (failure persistence + test-evidence override, retry plumbing, git checkpoints, task-output cache, cross-turn file-change merging).
 
 mod common;
 mod failure;
@@ -14,9 +14,13 @@ use aura_os_events::{DomainEvent, LegacyJsonEvent};
 use aura_os_loops::LoopHandle;
 
 use super::super::session::record_task_worked;
-use super::super::signals::extract_task_failure_context;
+use super::super::signals::{
+    build_gate_enabled, extract_task_failure_context, render_demoted_failure_reason,
+    run_build_preflight, BuildPreflight,
+};
 use super::super::types::LoopRetryState;
 use super::emit_log_line;
+use crate::handlers::projects_helpers::resolve_agent_instance_workspace_path;
 use crate::log_throttle::{self, LogThrottleKey};
 use crate::state::AppState;
 
@@ -105,6 +109,33 @@ pub(super) async fn record_event_side_effects(
             {
                 broadcast_payload = synthetic;
                 effective_event_type = "task_completed";
+            }
+        }
+    }
+
+    // Build-as-truth gate (opt-in via `AURA_BUILD_GATE`). The inverse
+    // of the tests-as-truth override above: when the harness reports
+    // `task_completed` but the workspace doesn't `cargo check` cleanly,
+    // demote the event to `task_failed` BEFORE broadcasting so the
+    // dashboard never briefly shows a successful verdict the server is
+    // about to overwrite. See `signals::build_preflight` for the
+    // verdict shape, the timeout, and the env-var contract.
+    if effective_event_type == "task_completed" && build_gate_enabled() {
+        if let Some(preflight) =
+            maybe_run_build_gate(state, project_id, agent_instance_id).await
+        {
+            if !preflight.ok {
+                broadcast_payload =
+                    synthesize_build_gate_failure(&broadcast_payload, &preflight);
+                effective_event_type = "task_failed";
+                tracing::warn!(
+                    %project_id,
+                    %agent_instance_id,
+                    elapsed_ms = preflight.elapsed.as_millis() as u64,
+                    first_error_code = preflight.first_error_code.as_deref().unwrap_or("unknown"),
+                    timed_out = preflight.timed_out,
+                    "build preflight demoted task_completed to task_failed"
+                );
             }
         }
     }
@@ -454,6 +485,66 @@ fn tool_name_for_log(event: &serde_json::Value) -> &str {
         .unwrap_or("tool")
 }
 
+/// Resolve the workspace path for the run and shell out to
+/// `cargo check` on a blocking task so the async forwarder isn't
+/// stalled by IO. Returns `None` when the gate is enabled but we
+/// couldn't resolve a workspace path — the caller then proceeds with
+/// the harness's verdict unchanged rather than synthesising a
+/// failure against a missing workspace.
+async fn maybe_run_build_gate(
+    state: &AppState,
+    project_id: ProjectId,
+    agent_instance_id: AgentInstanceId,
+) -> Option<BuildPreflight> {
+    let workspace_path =
+        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id))
+            .await?;
+    let preflight =
+        tokio::task::spawn_blocking(move || run_build_preflight(&workspace_path))
+            .await
+            .ok()?;
+    Some(preflight)
+}
+
+/// Build a synthetic `task_failed` payload from the original
+/// `task_completed` enriched event so downstream
+/// `apply_event_side_effect` and the dashboard see a fully-formed
+/// failure even though the harness reported success. Keeps every
+/// original field intact (task_id, session_id, timestamps, ...) and
+/// overlays a structured `reason`, `message`, plus the truncated
+/// `cargo check` stderr tail.
+fn synthesize_build_gate_failure(
+    original: &serde_json::Value,
+    preflight: &BuildPreflight,
+) -> serde_json::Value {
+    let mut payload = original.clone();
+    let reason = render_demoted_failure_reason(preflight);
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("type".into(), serde_json::Value::from("task_failed"));
+        object.insert("event_type".into(), serde_json::Value::from("task_failed"));
+        object.insert("reason".into(), serde_json::Value::from(reason.clone()));
+        object.insert("message".into(), serde_json::Value::from(reason));
+        object.insert(
+            "build_preflight_stderr".into(),
+            serde_json::Value::from(preflight.stderr_tail.clone()),
+        );
+        if let Some(code) = preflight.first_error_code.as_ref() {
+            object.insert(
+                "build_preflight_error_code".into(),
+                serde_json::Value::from(code.clone()),
+            );
+        }
+        object.insert(
+            "build_preflight_elapsed_ms".into(),
+            serde_json::Value::from(u64::try_from(preflight.elapsed.as_millis()).unwrap_or(0)),
+        );
+        if preflight.timed_out {
+            object.insert("build_preflight_timed_out".into(), serde_json::Value::Bool(true));
+        }
+    }
+    payload
+}
+
 /// Extract `(input_tokens, output_tokens)` from an
 /// `assistant_message_end` payload. Looks under both the top-level
 /// fields the legacy harness emits and the nested `usage` object the
@@ -469,4 +560,59 @@ fn assistant_turn_tokens(event: &serde_json::Value) -> (Option<u64>, Option<u64>
     let input = read(&["input_tokens"]).or_else(|| read(&["usage", "input_tokens"]));
     let output = read(&["output_tokens"]).or_else(|| read(&["usage", "output_tokens"]));
     (input, output)
+}
+
+#[cfg(test)]
+mod build_gate_synthesizer_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn synthesize_build_gate_failure_overlays_failure_fields_on_original() {
+        let original = serde_json::json!({
+            "type": "task_completed",
+            "event_type": "task_completed",
+            "task_id": "task-123",
+            "session_id": "ses-456",
+            "timestamp": "2026-05-19T22:00:00Z",
+            "extra": "preserve me"
+        });
+        let preflight = BuildPreflight {
+            ok: false,
+            first_error_code: Some("E0432".to_string()),
+            stderr_tail: "error[E0432]: unresolved import".to_string(),
+            elapsed: Duration::from_millis(1234),
+            timed_out: false,
+        };
+        let synthetic = synthesize_build_gate_failure(&original, &preflight);
+        assert_eq!(synthetic["type"], "task_failed");
+        assert_eq!(synthetic["event_type"], "task_failed");
+        assert_eq!(synthetic["task_id"], "task-123");
+        assert_eq!(synthetic["session_id"], "ses-456");
+        assert_eq!(synthetic["extra"], "preserve me");
+        let reason = synthetic["reason"].as_str().expect("reason set");
+        assert!(reason.starts_with("build_preflight_failed:"));
+        assert!(reason.contains("error[E0432]"));
+        assert_eq!(synthetic["build_preflight_error_code"], "E0432");
+        assert_eq!(synthetic["build_preflight_elapsed_ms"], 1234);
+        assert!(synthetic.get("build_preflight_timed_out").is_none());
+    }
+
+    #[test]
+    fn synthesize_build_gate_failure_marks_timeout_when_relevant() {
+        let original = serde_json::json!({ "task_id": "t" });
+        let preflight = BuildPreflight {
+            ok: false,
+            first_error_code: None,
+            stderr_tail: "killed".to_string(),
+            elapsed: Duration::from_secs(90),
+            timed_out: true,
+        };
+        let synthetic = synthesize_build_gate_failure(&original, &preflight);
+        assert_eq!(synthetic["build_preflight_timed_out"], true);
+        assert!(synthetic["reason"]
+            .as_str()
+            .unwrap()
+            .contains("timeout after 90s"));
+    }
 }

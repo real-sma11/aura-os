@@ -150,3 +150,41 @@ fn default_matches_floor_pair() {
     assert_eq!(default_budget.soft, EXPLORATION_SOFT_FLOOR);
     assert_eq!(default_budget.hard, EXPLORATION_HARD_FLOOR);
 }
+
+#[test]
+fn classify_with_cache_uses_unique_count_not_used() {
+    let budget = ExplorationBudget::for_task(0, 0);
+    // Far over the hard ceiling on raw count, but every read was a
+    // cached re-read so unique stays low → still within budget.
+    assert_eq!(
+        budget.classify_with_cache(budget.hard * 4, 0),
+        ExplorationStatus::WithinBudget,
+        "cache-aware classify must ignore raw `used` when `unique` is low",
+    );
+    // Unique high → escalation fires regardless of how low `used` was.
+    assert_eq!(
+        budget.classify_with_cache(1, budget.hard + 5),
+        ExplorationStatus::OverHard,
+    );
+}
+
+#[test]
+fn advisory_text_with_cache_mentions_both_numbers() {
+    let budget = ExplorationBudget::for_task(0, 0);
+    let text = budget
+        .advisory_text_with_cache(budget.soft * 2, budget.soft)
+        .expect("soft band with cache info must produce advisory text");
+    assert!(text.contains(&format!("{}", budget.soft * 2)), "{text}");
+    assert!(text.contains(&format!("{} unique", budget.soft)), "{text}");
+    assert!(text.contains("Cached re-reads are free"), "{text}");
+}
+
+#[test]
+fn advisory_text_with_cache_silent_when_unique_within_budget() {
+    let budget = ExplorationBudget::for_task(0, 0);
+    // Even if the agent issued many reads, if none added unique bytes
+    // we stay silent — the budget is about novel info acquisition.
+    assert!(budget
+        .advisory_text_with_cache(budget.hard, budget.soft - 1)
+        .is_none());
+}
