@@ -21,6 +21,22 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Pushes the inline model picker to the far right of the Run pane
+   header so the Run/Pause/Stop controls stay flush-left and the
+   picker visually mirrors the "controls on the left, status on the
+   right" pattern used by the SidekickHeader's `AutomationBar`. The
+   `min-width: 0` lets the picker's text truncate via the
+   AutomationModelPicker's own clamp when the sidekick gets narrow. */
+.headerModelSlot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .runBtnGroup {

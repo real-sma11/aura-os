@@ -8,6 +8,7 @@ import {
 } from "../../stores/task-output-panel-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useAutomationStatus } from "../AutomationBar/useAutomationStatus";
+import { AutomationModelPicker } from "../AutomationBar/AutomationModelPicker";
 import { useScrollAnchorV2 } from "../../shared/hooks/use-scroll-anchor-v2";
 import { OverlayScrollbar } from "../OverlayScrollbar";
 import { TerminalPanelBody } from "../TerminalPanelBody";
@@ -155,6 +156,29 @@ function PinnedTaskStreamingIndicator({ taskId }: { taskId: string }) {
   );
 }
 
+/**
+ * Inline model picker for the Run pane header. Wraps the shared
+ * `AutomationModelPicker` so we can lock its trigger while the loop is
+ * starting / preparing / active / paused — the model is captured at
+ * `startLoop` time, so allowing the user to flip it mid-run would lie
+ * about what's actually steering the running loop. Kept as its own
+ * component so `useAutomationStatus` only fires when we have a real
+ * `projectId` to scope the loop status fetch to.
+ *
+ * Shares the same `automation-loop-store` slot as the
+ * `SidekickHeader`/`AutomationBar` picker, so the two surfaces stay
+ * in lockstep and both flow into the next `startLoop` call.
+ */
+function RunPaneModelPicker({ projectId }: { projectId: string }) {
+  const { status } = useAutomationStatus(projectId);
+  const disabled = status !== "idle" && status !== "stopped";
+  return (
+    <div className={styles.headerModelSlot}>
+      <AutomationModelPicker projectId={projectId} disabled={disabled} />
+    </div>
+  );
+}
+
 export function RunSidekickPane() {
   const clearCompleted = useTaskOutputPanelStore((s) => s.clearCompleted);
   const ctx = useProjectActions();
@@ -188,6 +212,7 @@ export function RunSidekickPane() {
       <div className={styles.sidekickPaneHeader}>
         <div className={styles.headerActions}>
           {projectId && <AutomationControls projectId={projectId} />}
+          {projectId && <RunPaneModelPicker projectId={projectId} />}
           {hasCompleted && (
             <button
               type="button"
