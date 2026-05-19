@@ -22,6 +22,7 @@ import { useDesktopBackgroundStore } from "../../stores/desktop-background-store
 import { useShallow } from "zustand/react/shallow";
 import { LeftMenu } from "../../features/left-menu";
 import {
+  DEFAULT_SIDEKICK_WIDTH,
   persistSidekickWidth,
   readStoredSidekickWidth,
   SIDEKICK_MIN_WIDTH,
@@ -134,24 +135,19 @@ export function DesktopShell() {
   const computeSplitTargetWidth = useCallback((): number | null => {
     const mainEl = mainPanelHostRef.current;
     const sidekickEl = sidekickLaneRef.current;
-    const controls = sidekickResizeControlsRef.current;
-    if (!mainEl || !sidekickEl || !controls) return null;
-    // Use rendered `offsetWidth` for both panels so the math reflects the
-    // actual on-screen budget regardless of box-sizing, borders, or the
-    // sidekick's current collapsed state (where its configured "open" width
-    // would otherwise overshoot the available space).
+    if (!mainEl || !sidekickEl) return null;
+    // ZUI's base reset applies `box-sizing: border-box` globally, so the
+    // lane's CSS width equals its rendered `offsetWidth`. The budget for
+    // main + sidekick is just the sum of their current outer widths — this
+    // also handles the collapsed-sidekick case correctly (`sidekickOuter`
+    // is 0 and the main panel already owns the whole budget).
     const mainOuter = mainEl.offsetWidth;
     const sidekickOuter = sidekickEl.offsetWidth;
     const budget = mainOuter + sidekickOuter;
     if (budget <= 0) return null;
-    const targetOuter = Math.floor(budget / 2);
-    // Preserve the current outer-vs-CSS-width delta so we work for any
-    // box-sizing setting (`border-box` makes delta 0; `content-box` makes it
-    // equal to the lane's borders/padding).
-    const delta = sidekickOuter - controls.getSize();
-    const target = targetOuter - delta;
+    const half = Math.floor(budget / 2);
     const maxAllowed = Math.max(SIDEKICK_MIN_WIDTH, budget - SIDEKICK_MIN_WIDTH);
-    return Math.min(Math.max(SIDEKICK_MIN_WIDTH, target), maxAllowed);
+    return Math.min(Math.max(SIDEKICK_MIN_WIDTH, half), maxAllowed);
   }, []);
 
   const applySplitTargetWidth = useCallback(() => {
@@ -171,8 +167,12 @@ export function DesktopShell() {
   const handleToggleSplitScreen = useCallback(() => {
     if (!hasActiveSidekick) return;
     if (splitScreenActive) {
+      // Per UX: toggling off always returns to the default sidekick width,
+      // not whatever the user had drag-resized to previously. Persist the
+      // default so the lane's stored state stays consistent.
       programmaticResizeRef.current = true;
-      sidekickResizeControlsRef.current?.setSize(readStoredSidekickWidth());
+      sidekickResizeControlsRef.current?.setSize(DEFAULT_SIDEKICK_WIDTH);
+      persistSidekickWidth(DEFAULT_SIDEKICK_WIDTH);
       requestAnimationFrame(() => {
         programmaticResizeRef.current = false;
       });
