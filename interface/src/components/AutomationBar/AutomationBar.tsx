@@ -3,6 +3,7 @@ import { Play, Pause, Square, Loader2 } from "lucide-react";
 import { StatusBadge } from "../StatusBadge";
 import type { ProjectId } from "../../shared/types";
 import { useAutomationStatus } from "./useAutomationStatus";
+import { AutomationModelPicker } from "./AutomationModelPicker";
 import styles from "./AutomationBar.module.css";
 
 interface AutomationBarProps {
@@ -17,6 +18,13 @@ export function AutomationBar({ projectId }: AutomationBarProps) {
     stopError, clearStopError,
   } = useAutomationStatus(projectId);
 
+  // Lock the picker once the loop is starting / preparing / active /
+  // paused: the model is captured at `startLoop` time, so flipping it
+  // mid-run would have no effect on the running loop. Keeping the
+  // trigger interactive in that window would lie to the user about
+  // what's actually controlling the run.
+  const modelPickerDisabled = status !== "idle" && status !== "stopped";
+
   return (
     <>
       <div className={styles.automationBar}>
@@ -28,6 +36,12 @@ export function AutomationBar({ projectId }: AutomationBarProps) {
           {agentCount > 1 && (
             <Text size="xs" className={styles.automationAgentCount}>{agentCount} agents</Text>
           )}
+        </div>
+        <div className={styles.automationModelSlot}>
+          <AutomationModelPicker
+            projectId={projectId}
+            disabled={modelPickerDisabled}
+          />
         </div>
         <div className={styles.automationControls}>
           <Button

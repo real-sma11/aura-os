@@ -1,19 +1,20 @@
 .automationBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex: 1;
   min-width: 0;
   height: var(--control-height-sm, 32px);
   min-height: var(--control-height-sm, 32px);
   padding: 0 var(--space-2) 0 var(--space-3);
   box-sizing: border-box;
+  gap: var(--space-2);
 }
 
 .automationLabel {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .automationLabelBold {
@@ -24,10 +25,36 @@
   opacity: 0.7;
 }
 
+/* Middle slot for the model picker. Takes the remaining space between
+   the "Automation [status]" label and the play/pause/stop controls
+   and right-aligns the picker so it sits flush with the controls —
+   keeps the bar tidy when the sidekick is narrow and the picker
+   trigger collapses to a short model name. */
+.automationModelSlot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Trigger override: clamp the model label to the slot width so the
+   bar never overflows when a long model id is selected. The model
+   menu itself is portaled out so this `max-width` only constrains
+   the visible trigger. */
+.automationModelPicker .modelButton,
+.automationModelPicker button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .automationControls {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  flex-shrink: 0;
 }
 
 .automationControls button:disabled {
