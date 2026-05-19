@@ -1,6 +1,44 @@
 import type { Task, TaskStatus } from "../types";
 
 /**
+ * Toggleable runtime debug logger for `getTaskDisplayStatus`. Off by
+ * default; flip on from devtools with
+ * `window.__AURA_DEBUG_TASK_STATUS__ = true` to dump every helper call's
+ * inputs + result. Used to chase the "task spinner doesn't appear during
+ * an active automation run" symptom: read the log, inspect which signal
+ * (`liveTaskIds.has`, `task.status`) actually fired, then walk the
+ * upstream pipeline that *should* have populated it.
+ *
+ * Lives in this module rather than a global utility so the import
+ * doesn't pollute the helper's hot path on the typical (debug-off)
+ * render and so call sites that pull the helper get the diagnostic
+ * for free.
+ */
+function debugLog(
+  task: Task,
+  liveTaskIds: Set<string>,
+  loopActive: boolean,
+  resolved: TaskStatus,
+): void {
+  if (typeof window === "undefined") return;
+  const flag = (window as unknown as { __AURA_DEBUG_TASK_STATUS__?: boolean })
+    .__AURA_DEBUG_TASK_STATUS__;
+  if (!flag) return;
+  console.log(
+    "[getTaskDisplayStatus]",
+    {
+      task_id: task.task_id,
+      title: task.title,
+      stored_status: task.status,
+      live_has: liveTaskIds.has(task.task_id),
+      live_size: liveTaskIds.size,
+      loopActive,
+      resolved,
+    },
+  );
+}
+
+/**
  * Resolve the per-row status the UI should render for `task`,
  * reconciling three sources of truth:
  *
@@ -44,6 +82,7 @@ export function getTaskDisplayStatus(
   liveTaskIds: Set<string>,
   loopActive: boolean,
 ): TaskStatus {
+  let resolved: TaskStatus;
   // Upgrade: server says this task is live and storage hasn't
   // caught up yet. Don't override terminal statuses — they win.
   if (
@@ -51,15 +90,17 @@ export function getTaskDisplayStatus(
     && task.status !== "done"
     && task.status !== "failed"
   ) {
-    return "in_progress";
-  }
-  // Downgrade: storage says in_progress, server says no.
-  if (
+    resolved = "in_progress";
+  } else if (
+    // Downgrade: storage says in_progress, server says no.
     task.status === "in_progress"
     && !liveTaskIds.has(task.task_id)
     && (!loopActive || liveTaskIds.size > 0)
   ) {
-    return "ready";
+    resolved = "ready";
+  } else {
+    resolved = task.status;
   }
-  return task.status;
+  debugLog(task, liveTaskIds, loopActive, resolved);
+  return resolved;
 }

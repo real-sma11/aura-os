@@ -6,7 +6,7 @@ import { useProjectActions } from "../../stores/project-action-store";
 import { useEventStore } from "../../stores/event-store/index";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import {
-  useLiveTaskIdsForProject,
+  useEffectiveLiveTaskIdsForProject,
   useLiveTaskIdsStore,
 } from "../../stores/live-task-ids-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
@@ -80,7 +80,7 @@ export function useTaskListData(): TaskListData {
   const deletedSpecIds = useSidekickStore((s) => s.deletedSpecIds);
   const deletedTaskIds = useSidekickStore((s) => s.deletedTaskIds);
   const loopActive = useLoopActive(projectId);
-  const liveTaskIds = useLiveTaskIdsForProject(projectId);
+  const liveTaskIds = useEffectiveLiveTaskIdsForProject(projectId);
   const [localSpecs, setLocalSpecs] = useState<Spec[]>(() => ctx?.initialSpecs ?? []);
   const [localTasks, setLocalTasks] = useState<Task[]>(() => ctx?.initialTasks ?? []);
   const [loading] = useState(false);

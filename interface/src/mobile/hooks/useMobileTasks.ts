@@ -5,7 +5,7 @@ import { EventType } from "../../shared/types/aura-events";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useEventStore } from "../../stores/event-store/index";
 import {
-  useLiveTaskIdsForProject,
+  useEffectiveLiveTaskIdsForProject,
   useLiveTaskIdsStore,
 } from "../../stores/live-task-ids-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
@@ -26,7 +26,7 @@ export function useMobileTasks(projectId: string): MobileTasksData {
   const subscribe = useEventStore((s) => s.subscribe);
   const loopActive = useLoopActive(projectId);
   const [tasks, setTasks] = useState<Task[]>(() => sortByOrder(ctx?.initialTasks ?? []));
-  const liveTaskIds = useLiveTaskIdsForProject(projectId);
+  const liveTaskIds = useEffectiveLiveTaskIdsForProject(projectId);
 
   const tasksBySpec = useMemo(() => {
     const grouped = new Map<string, Task[]>();

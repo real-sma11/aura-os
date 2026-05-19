@@ -216,6 +216,59 @@ export function selectTaskActivity(
   return aggregateRows(rows);
 }
 
+/**
+ * Set of `task_id`s that any actively-running loop is currently
+ * working on, scoped to one project (or all loops when `projectId`
+ * is omitted).
+ *
+ * This is a complementary signal to `useLiveTaskIdsStore`: both
+ * stores answer "is this task being worked on right now", but they
+ * are populated by different code paths and have different failure
+ * modes:
+ *
+ * - `useLiveTaskIdsStore` is fed by the `task_started` /
+ *   `task_completed` / `task_failed` WS events plus the
+ *   `/loop/status.active_tasks` poll endpoint. It can be empty
+ *   during the window where the harness has fired `task_started`
+ *   but the WS subscription on the consumer (e.g. `useTaskListData`)
+ *   wasn't mounted yet, AND the next `/loop/status` poll hasn't
+ *   fired or returned, AND the response carried an empty
+ *   `active_tasks` because the registry's `current_task_id` hadn't
+ *   been written by the side-effects pipeline at request time.
+ *
+ * - `selectActiveTaskIdsForProject` reads from the
+ *   `LoopActivityChanged` WS broadcasts that the registry now
+ *   publishes immediately on every `current_task_id` change (the
+ *   throttle bypass added in `aura-os-loops::registry::transition`).
+ *   This hits the wire from a different worker (the side-effects
+ *   pipeline → `LoopHandle::set_current_task` →
+ *   `transition::publish`) and lands in a different store
+ *   (`useLoopActivityStore.loops[*].activity.current_task_id`),
+ *   so it survives any race that takes out the live-task-ids
+ *   path.
+ *
+ * Used by `useEffectiveLiveTaskIdsForProject` (in
+ * `live-task-ids-store.ts`) to merge both signals into a single
+ * Set the call sites of `getTaskDisplayStatus` consume — so a row
+ * shows the spinner whenever ANY signal says the task is active,
+ * not only when the legacy live-task-ids path has caught up.
+ */
+export function selectActiveTaskIdsForProject(
+  state: LoopActivityState,
+  projectId: string | null | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const row of Object.values(state.loops)) {
+    if (projectId && row.loopId.project_id !== projectId) continue;
+    if (!isLoopActivityActive(row.activity.status)) continue;
+    const taskId = row.activity.current_task_id;
+    if (typeof taskId === "string" && taskId.length > 0) {
+      out.add(taskId);
+    }
+  }
+  return out;
+}
+
 /* ── Watchdog ──────────────────────────────────────────────────────
  * Starts a lightweight interval that demotes idle loops to `stalled`.
  * Exported so the auth bootstrap can start it exactly once, and stops
