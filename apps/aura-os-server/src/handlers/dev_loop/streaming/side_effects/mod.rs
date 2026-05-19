@@ -11,6 +11,7 @@ use std::str::FromStr;
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
+use aura_os_loops::LoopHandle;
 
 use super::super::session::record_task_worked;
 use super::super::signals::extract_task_failure_context;
@@ -22,18 +23,40 @@ use common::{enrich_event, set_current_task};
 pub(crate) use failure::extract_task_failure_reason;
 pub(crate) use task_output::seed_task_output;
 
-#[allow(clippy::too_many_arguments)]
+/// Bundle of context the side-effects pipeline needs for every
+/// event. Grouped into a struct so [`record_event_side_effects`] and
+/// [`apply_event_side_effect`] stay under the project's
+/// argument-count budget (`rules-rust.md`) without needing
+/// `#[allow(clippy::too_many_arguments)]`.
+///
+/// The `loop_handle` borrow is the bug-fix-bearing addition: the
+/// forwarder owns an `Arc<LoopHandle>` for the run currently being
+/// driven, and we need it here so `task_started` / `task_completed`
+/// / `task_failed` can push the typed `TaskId` onto
+/// `LoopActivity.current_task_id`. Without that update the per-task
+/// UI spinner in `TaskList` cannot bind to a task row and the run
+/// looks idle even while the harness is working.
+pub(super) struct SideEffectCtx<'a> {
+    pub state: &'a AppState,
+    pub project_id: ProjectId,
+    pub agent_instance_id: AgentInstanceId,
+    pub loop_handle: &'a LoopHandle,
+    pub jwt: Option<&'a str>,
+    pub session_id: Option<SessionId>,
+    pub retry_state: &'a LoopRetryState,
+}
+
 pub(super) async fn record_event_side_effects(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
+    ctx: &SideEffectCtx<'_>,
     fallback_task_id: Option<String>,
     event: serde_json::Value,
     event_type: &str,
-    jwt: Option<&str>,
-    session_id: Option<SessionId>,
-    retry_state: &LoopRetryState,
 ) {
+    let state = ctx.state;
+    let project_id = ctx.project_id;
+    let agent_instance_id = ctx.agent_instance_id;
+    let jwt = ctx.jwt;
+    let session_id = ctx.session_id;
     let task_id = event
         .get("task_id")
         .and_then(|value| value.as_str())
@@ -48,10 +71,10 @@ pub(super) async fn record_event_side_effects(
     );
     if event_type == "task_failed" {
         let reason = extract_task_failure_reason(&enriched);
-        let ctx = extract_task_failure_context(&enriched, reason.as_deref());
-        if ctx.has_any() {
+        let failure_ctx = extract_task_failure_context(&enriched, reason.as_deref());
+        if failure_ctx.has_any() {
             if let Some(object) = enriched.as_object_mut() {
-                ctx.merge_into(object);
+                failure_ctx.merge_into(object);
             }
         }
     }
@@ -96,31 +119,27 @@ pub(super) async fn record_event_side_effects(
         }));
 
     apply_event_side_effect(
-        state,
-        project_id,
-        agent_instance_id,
+        ctx,
         effective_event_type,
         task_id.as_deref(),
         &event,
-        jwt,
-        session_id,
-        retry_state,
     )
     .await;
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn apply_event_side_effect(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
+    ctx: &SideEffectCtx<'_>,
     event_type: &str,
     task_id: Option<&str>,
     event: &serde_json::Value,
-    jwt: Option<&str>,
-    session_id: Option<SessionId>,
-    retry_state: &LoopRetryState,
 ) {
+    let state = ctx.state;
+    let project_id = ctx.project_id;
+    let agent_instance_id = ctx.agent_instance_id;
+    let loop_handle = ctx.loop_handle;
+    let jwt = ctx.jwt;
+    let session_id = ctx.session_id;
+    let retry_state = ctx.retry_state;
     match event_type {
         "task_started" => {
             if let Some(task_id) = task_id {
@@ -129,6 +148,7 @@ async fn apply_event_side_effect(
                     state,
                     project_id,
                     agent_instance_id,
+                    loop_handle,
                     Some(task_id.to_string()),
                 )
                 .await;
@@ -147,7 +167,7 @@ async fn apply_event_side_effect(
             }
         }
         "task_completed" => {
-            set_current_task(state, project_id, agent_instance_id, None).await;
+            set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
             // Clear the per-task retry counters now that the task has
             // reached a clean terminal: a subsequent run of the same
             // task (e.g. via the manual rerun path) starts from a
@@ -167,7 +187,7 @@ async fn apply_event_side_effect(
             }
         }
         "task_failed" => {
-            set_current_task(state, project_id, agent_instance_id, None).await;
+            set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
             // Persist the fail reason onto `tasks.execution_notes` so
             // it survives a page reload. The live WebSocket path
             // already carries the reason to `useTaskStatus`, but that

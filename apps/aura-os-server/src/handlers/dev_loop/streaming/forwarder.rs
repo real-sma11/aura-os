@@ -95,16 +95,20 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
                 .await;
                 activity::apply_loop_activity_event(&event_worker_loop_handle, &event_type, &event)
                     .await;
-                side_effects::record_event_side_effects(
-                    &event_worker_state,
+                let ctx = side_effects::SideEffectCtx {
+                    state: &event_worker_state,
                     project_id,
                     agent_instance_id,
+                    loop_handle: &event_worker_loop_handle,
+                    jwt: event_worker_jwt.as_ref().map(|j| j.as_str()),
+                    session_id,
+                    retry_state: &event_worker_retry_state,
+                };
+                side_effects::record_event_side_effects(
+                    &ctx,
                     event_worker_fallback_task_id.clone(),
                     event,
                     &event_type,
-                    event_worker_jwt.as_ref().map(|j| j.as_str()),
-                    session_id,
-                    &event_worker_retry_state,
                 )
                 .await;
             }
