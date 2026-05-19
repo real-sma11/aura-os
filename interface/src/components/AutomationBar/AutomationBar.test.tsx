@@ -406,10 +406,12 @@ describe("AutomationBar", () => {
 
     const startBtn = screen.getByTitle("Start");
     // Play glyph still present (button affordance remains
-    // recognisable, just visually decorated by the ring).
-    expect(startBtn.querySelector("svg.lucide-play")).toBeTruthy();
+    // recognisable, just visually decorated by the ring). The
+    // single-SVG `PlayLoopGlyph` draws the Play polygon itself, so
+    // we look for the polygon path rather than a lucide-play class.
+    expect(startBtn.querySelector("svg polygon")).toBeInTheDocument();
     // Ring overlay is rendered.
-    expect(screen.getByTestId("play-progress-ring")).toBeInTheDocument();
+    expect(screen.getByTestId("play-loop-ring")).toBeInTheDocument();
   });
 
   it("does not render the progress ring while the loop is idle", async () => {
@@ -420,7 +422,7 @@ describe("AutomationBar", () => {
       expect(screen.getByTestId("status")).toHaveTextContent("idle");
     });
 
-    expect(screen.queryByTestId("play-progress-ring")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("play-loop-ring")).not.toBeInTheDocument();
   });
 
   it("hides the progress ring once the loop is paused so Resume reads as a real affordance", async () => {
@@ -434,7 +436,7 @@ describe("AutomationBar", () => {
       expect(screen.getByTitle("Resume")).toBeEnabled();
     });
 
-    expect(screen.queryByTestId("play-progress-ring")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("play-loop-ring")).not.toBeInTheDocument();
   });
 
   it("enables play (Resume) when paused", async () => {

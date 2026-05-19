@@ -122,24 +122,27 @@ describe("SidekickTaskbar", () => {
 
     renderTaskbar();
 
-    // Pin the affordance: the Run tab still renders the Play icon so
-    // users recognise it as the Run/Play button, and the rotating
-    // ring overlay sits on top to communicate "currently working".
+    // Pin the affordance: the Run tab still renders the Play
+    // polygon so users recognise it as the Run/Play button, and the
+    // rotating ring sits in the same SVG to communicate "currently
+    // working". `PlayLoopGlyph` draws both shapes inline, so we
+    // assert on the polygon (not a lucide class name) and on the
+    // ring testid.
     const runTab = screen.getByTestId("tab-run");
-    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
-    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+    expect(runTab.querySelector("svg polygon")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='play-loop-ring']"))
       .toBeInTheDocument();
   });
 
   it("does not render the Run tab's progress ring while the loop is idle", () => {
-    // No loop in the store at all → idle. The Play icon must stay
-    // visible (so the tab is still usable) and the ring must not
-    // render (so the tab does not look perpetually busy).
+    // No loop in the store at all → idle. The Play polygon must
+    // stay visible (so the tab is still usable) and the ring must
+    // not render (so the tab does not look perpetually busy).
     renderTaskbar();
 
     const runTab = screen.getByTestId("tab-run");
-    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
-    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+    expect(runTab.querySelector("svg polygon")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='play-loop-ring']"))
       .not.toBeInTheDocument();
   });
 
@@ -169,11 +172,11 @@ describe("SidekickTaskbar", () => {
 
     renderTaskbar();
 
-    // Terminal status → ring goes away, Play icon stays so the user
-    // can immediately restart the run.
+    // Terminal status → ring goes away, Play polygon stays so the
+    // user can immediately restart the run.
     const runTab = screen.getByTestId("tab-run");
-    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
-    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+    expect(runTab.querySelector("svg polygon")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='play-loop-ring']"))
       .not.toBeInTheDocument();
   });
 });

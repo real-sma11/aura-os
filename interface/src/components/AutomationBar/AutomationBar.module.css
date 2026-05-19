@@ -74,36 +74,12 @@
   pointer-events: none;
 }
 
-@keyframes spinRing {
-  from { transform: rotate(-90deg); }
-  to { transform: rotate(270deg); }
-}
-
-/* Positioning shell for the Play icon + optional progress ring
-   overlay. The Play icon sits inline as before so layout (button
-   padding, flex centering) is unchanged; the ring is absolutely
-   positioned over it. */
-.playIconWrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-}
-
-/* Rotating progress ring around the Play icon. Mirrors the geometry
-   and animation cadence of `<LoopProgress>` (1.1s linear, ~70% arc)
-   so loop activity reads the same wherever it surfaces. `inset:-3px`
-   pushes the 20×20 viewBox out so it surrounds the 14×14 icon with
-   a small gap rather than overlapping the glyph. */
-.playProgressRing {
-  position: absolute;
-  inset: -3px;
-  width: auto;
-  height: auto;
-  color: var(--loop-progress-color, #4f8bff);
-  pointer-events: none;
-  animation: spinRing 1.1s linear infinite;
-  transform-origin: 50% 50%;
+/* The ring drawn by `<PlayLoopGlyph>` extends past the SVG element's
+   own 14×14 box via `overflow: visible`. Give the button itself a
+   matching `overflow: visible` so the ring is not clipped by any
+   ancestor `overflow: hidden` the zui Button may set for ripples or
+   focus shadows. */
+.automationControls button.playButtonActive,
+.automationControls button.playButtonActive > * {
+  overflow: visible;
 }

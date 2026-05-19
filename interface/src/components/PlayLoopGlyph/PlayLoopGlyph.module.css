@@ -1,0 +1,26 @@
+/* Wrapping `<g>` for the ring pair so the accent colour applies to
+   both the faint background ring and the spinning arc via
+   `stroke="currentColor"`. Pulling colour up to a parent keeps
+   theming centralised — the `--loop-progress-color` variable is the
+   one knob a designer needs to touch. */
+.ringGroup {
+  color: var(--loop-progress-color, #4f8bff);
+}
+
+/* Spinning accent arc. `transform-box: fill-box` is critical: by
+   default an SVG element's `transform-origin` is the parent SVG's
+   `(0, 0)` corner, which would rotate the arc around the top-left
+   of the icon instead of around the ring centre. `fill-box` rebinds
+   the origin to the element's own geometry box (centred at `cx,cy`
+   = `(10.67, 12)` for our circle), so `transform-origin: center`
+   resolves to the ring's true centre and the arc spins in place. */
+.ringArc {
+  animation: spinPlayLoopRing 1.1s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes spinPlayLoopRing {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}

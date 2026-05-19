@@ -1,6 +1,7 @@
 import { Button, Text, ModalConfirm } from "@cypher-asi/zui";
-import { Play, Pause, Square } from "lucide-react";
+import { Pause, Square } from "lucide-react";
 import { StatusBadge } from "../StatusBadge";
+import { PlayLoopGlyph } from "../PlayLoopGlyph";
 import type { ProjectId } from "../../shared/types";
 import { useAutomationStatus } from "./useAutomationStatus";
 import { AutomationModelPicker } from "./AutomationModelPicker";
@@ -8,49 +9,6 @@ import styles from "./AutomationBar.module.css";
 
 interface AutomationBarProps {
   projectId: ProjectId;
-}
-
-/**
- * The Play icon decorated with an optional rotating progress ring.
- *
- * We deliberately keep the Play glyph visible at all times — replacing
- * it with a spinner (Loader2) while the loop was active made the
- * button look like an unrelated affordance, and the moment the loop
- * settled into `active` the spinner flicked off entirely, leaving
- * just a Play icon that read as "click me to start" even though the
- * loop was already running. The ring overlay sits on top of the
- * Play icon so the affordance stays recognisable and the spinning
- * outline communicates "the loop is doing work right now".
- *
- * Ring geometry mirrors `<LoopProgress>` for visual consistency: ~70%
- * arc, 1.1s linear infinite spin, accent stroke.
- */
-function PlayWithProgressRing({ active }: { active: boolean }) {
-  return (
-    <span className={styles.playIconWrap}>
-      <Play size={14} />
-      {active && (
-        <svg
-          className={styles.playProgressRing}
-          viewBox="0 0 20 20"
-          aria-hidden="true"
-          data-testid="play-progress-ring"
-        >
-          <circle
-            cx={10}
-            cy={10}
-            r={8}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeDasharray={50.27}
-            strokeDashoffset={35.2}
-          />
-        </svg>
-      )}
-    </span>
-  );
 }
 
 export function AutomationBar({ projectId }: AutomationBarProps) {
@@ -100,7 +58,7 @@ export function AutomationBar({ projectId }: AutomationBarProps) {
             variant="ghost"
             size="sm"
             iconOnly
-            icon={<PlayWithProgressRing active={loopWorking} />}
+            icon={<PlayLoopGlyph active={loopWorking} size={14} />}
             onClick={handleStart}
             disabled={!canPlay}
             title={status === "paused" ? "Resume" : "Start"}
