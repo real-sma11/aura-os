@@ -76,6 +76,7 @@ export function DesktopShell() {
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const desktopContentRef = useRef<HTMLDivElement>(null);
   const mainPanelHostRef = useRef<HTMLDivElement>(null);
+  const sidekickLaneRef = useRef<HTMLDivElement>(null);
   const sidekickResizeControlsRef = useRef<LaneResizeControls | null>(null);
   // Avoid treating the programmatic setSize that drives the split-screen
   // animation as a manual user drag (which would immediately exit split mode).
@@ -132,13 +133,25 @@ export function DesktopShell() {
 
   const computeSplitTargetWidth = useCallback((): number | null => {
     const mainEl = mainPanelHostRef.current;
+    const sidekickEl = sidekickLaneRef.current;
     const controls = sidekickResizeControlsRef.current;
-    if (!mainEl || !controls) return null;
-    const available = mainEl.clientWidth + controls.getSize();
-    if (available <= 0) return null;
-    const half = Math.floor(available / 2);
-    const maxAllowed = Math.max(SIDEKICK_MIN_WIDTH, available - SIDEKICK_MIN_WIDTH);
-    return Math.min(Math.max(SIDEKICK_MIN_WIDTH, half), maxAllowed);
+    if (!mainEl || !sidekickEl || !controls) return null;
+    // Use rendered `offsetWidth` for both panels so the math reflects the
+    // actual on-screen budget regardless of box-sizing, borders, or the
+    // sidekick's current collapsed state (where its configured "open" width
+    // would otherwise overshoot the available space).
+    const mainOuter = mainEl.offsetWidth;
+    const sidekickOuter = sidekickEl.offsetWidth;
+    const budget = mainOuter + sidekickOuter;
+    if (budget <= 0) return null;
+    const targetOuter = Math.floor(budget / 2);
+    // Preserve the current outer-vs-CSS-width delta so we work for any
+    // box-sizing setting (`border-box` makes delta 0; `content-box` makes it
+    // equal to the lane's borders/padding).
+    const delta = sidekickOuter - controls.getSize();
+    const target = targetOuter - delta;
+    const maxAllowed = Math.max(SIDEKICK_MIN_WIDTH, budget - SIDEKICK_MIN_WIDTH);
+    return Math.min(Math.max(SIDEKICK_MIN_WIDTH, target), maxAllowed);
   }, []);
 
   const applySplitTargetWidth = useCallback(() => {
@@ -302,6 +315,7 @@ export function DesktopShell() {
             defaultWidth={sidekickInitialWidth}
             showHeaderSlot={showSidekickHeader}
             maxWidth={splitScreenActive ? Number.POSITIVE_INFINITY : undefined}
+            laneRef={sidekickLaneRef}
             resizeControlsRef={sidekickResizeControlsRef}
             onResize={handleSidekickResize}
             onResizeEnd={handleSidekickResizeEnd}

@@ -1,4 +1,4 @@
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, Ref } from "react";
 import { Lane, type LaneResizeControls } from "../Lane";
 import {
   SIDEKICK_MAX_WIDTH,
@@ -11,6 +11,7 @@ interface PersistentSidekickLaneProps {
   defaultWidth: number;
   showHeaderSlot: boolean;
   maxWidth?: number;
+  laneRef?: Ref<HTMLDivElement>;
   resizeControlsRef?: MutableRefObject<LaneResizeControls | null>;
   onResize?: (size: number) => void;
   onResizeStart?: () => void;
@@ -24,6 +25,7 @@ export function PersistentSidekickLane({
   defaultWidth,
   showHeaderSlot,
   maxWidth = SIDEKICK_MAX_WIDTH,
+  laneRef,
   resizeControlsRef,
   onResize,
   onResizeStart,
@@ -33,6 +35,7 @@ export function PersistentSidekickLane({
 }: PersistentSidekickLaneProps) {
   return (
     <Lane
+      ref={laneRef}
       resizable
       resizePosition="left"
       defaultWidth={defaultWidth}
