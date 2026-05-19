@@ -176,9 +176,15 @@
   overflow-y: auto;
   scrollbar-width: none;
   padding: 8px 16px;
-  padding-bottom: 148px;
+  /* Reserve enough empty space below the last message for the input
+     bar (ModeSelector row + textarea row + info bar + wrapper padding
+     ≈ 103px) PLUS the pinned cooking indicator that floats above it
+     (~65px), so the content stop point sits just above the indicator's
+     top edge and the indicator's solid backdrop never overlaps a
+     message. */
+  padding-bottom: 176px;
   scroll-padding-top: 24px;
-  scroll-padding-bottom: 148px;
+  scroll-padding-bottom: 176px;
   display: flex;
   flex-direction: column;
 }
@@ -242,7 +248,7 @@
 /* Queue section — sits above the input area and the cooking indicator */
 .queueSection {
   position: absolute;
-  bottom: 80px;
+  bottom: 108px;
   left: 0;
   right: 0;
   z-index: 12;
@@ -254,13 +260,18 @@
    Pinned in the empty zone between the bottom of the chat content and
    the input bar so that phase transitions never reflow the chat.
 
-   `bottom` is tuned so the indicator's top edge aligns with the
-   `.messageArea` content stop point (`padding-bottom: 148px`), keeping
-   streaming text from leaking through the indicator's gradient
-   backdrop and appearing between the shimmer and the input bar. */
+   `bottom` is tuned so the indicator's bottom edge sits just above
+   the input bar's top (input bar is ≈103px tall: 12px wrapper
+   padding-bottom + ~24px info bar + 2px container borders + 33px
+   ModeSelector row + 32px textarea row). The small 5px gap exposes
+   the ModeSelector's top border while the input bar's own 40px
+   `::before` fade gradient covers any chat text that scrolls into
+   that strip. The matching `.messageArea` `padding-bottom: 176px`
+   keeps chat content above the indicator's top edge so the indicator
+   itself never overlaps a message. */
 .pinnedStreamingIndicator {
   position: absolute;
-  bottom: 80px;
+  bottom: 108px;
   left: 0;
   right: 0;
   z-index: 11;
@@ -298,7 +309,7 @@
 
 .newMessagesPill {
   position: absolute;
-  bottom: 80px;
+  bottom: 108px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
@@ -325,9 +336,9 @@
   }
 
   .messageArea {
-    padding: 10px 8px calc(154px + var(--aura-mobile-keyboard-inset, 0px));
+    padding: 10px 8px calc(212px + var(--aura-mobile-keyboard-inset, 0px));
     scroll-padding-top: 10px;
-    scroll-padding-bottom: calc(154px + var(--aura-mobile-keyboard-inset, 0px));
+    scroll-padding-bottom: calc(212px + var(--aura-mobile-keyboard-inset, 0px));
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
@@ -337,16 +348,16 @@
   }
 
   .queueSection {
-    bottom: calc(104px + var(--aura-mobile-keyboard-inset, 0px));
+    bottom: calc(144px + var(--aura-mobile-keyboard-inset, 0px));
     padding: 0 10px;
   }
 
   .pinnedStreamingIndicator {
-    bottom: calc(88px + var(--aura-mobile-keyboard-inset, 0px));
+    bottom: calc(144px + var(--aura-mobile-keyboard-inset, 0px));
   }
 
   .newMessagesPill {
-    bottom: calc(116px + var(--aura-mobile-keyboard-inset, 0px));
+    bottom: calc(144px + var(--aura-mobile-keyboard-inset, 0px));
     min-height: 36px;
     border-radius: 999px;
     background: color-mix(in srgb, #111213 92%, transparent);
