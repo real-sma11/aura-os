@@ -12,12 +12,16 @@ import styles from "./DesktopShell.module.css";
 interface DesktopTitlebarProps {
   sidekickCollapsed: boolean;
   onToggleSidekick: () => void;
+  splitScreenActive: boolean;
+  onToggleSplitScreen?: () => void;
   onOpenHostSettings: () => void;
 }
 
 export function DesktopTitlebar({
   sidekickCollapsed,
   onToggleSidekick,
+  splitScreenActive,
+  onToggleSplitScreen,
   onOpenHostSettings,
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
@@ -63,6 +67,8 @@ export function DesktopTitlebar({
           <WindowControls
             sidekickCollapsed={sidekickCollapsed}
             onToggleSidekick={onToggleSidekick}
+            splitScreenActive={splitScreenActive}
+            onToggleSplitScreen={onToggleSplitScreen}
           />
         </div>
       }
