@@ -387,6 +387,56 @@ describe("AutomationBar", () => {
     });
   });
 
+  it("keeps the Play icon visible and overlays a progress ring while the loop is active", async () => {
+    // Regression: an earlier version swapped the Play icon for a
+    // Loader2 spinner during `starting`/`preparing`, then dropped
+    // the spinner once `active` arrived — leaving a bare Play icon
+    // on a still-running loop and making the bar look idle. The
+    // current contract is: Play icon stays put, an SVG ring overlay
+    // spins around it whenever the loop is doing work.
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+
+    const startBtn = screen.getByTitle("Start");
+    // Play glyph still present (button affordance remains
+    // recognisable, just visually decorated by the ring).
+    expect(startBtn.querySelector("svg.lucide-play")).toBeTruthy();
+    // Ring overlay is rendered.
+    expect(screen.getByTestId("play-progress-ring")).toBeInTheDocument();
+  });
+
+  it("does not render the progress ring while the loop is idle", async () => {
+    mockGetLoopStatus.mockResolvedValue({ active_agent_instances: [], paused: false });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("idle");
+    });
+
+    expect(screen.queryByTestId("play-progress-ring")).not.toBeInTheDocument();
+  });
+
+  it("hides the progress ring once the loop is paused so Resume reads as a real affordance", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: true,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Resume")).toBeEnabled();
+    });
+
+    expect(screen.queryByTestId("play-progress-ring")).not.toBeInTheDocument();
+  });
+
   it("enables play (Resume) when paused", async () => {
     mockGetLoopStatus.mockResolvedValue({ active_agent_instances: ["a1"], paused: true });
     renderBar();
