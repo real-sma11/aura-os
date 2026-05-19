@@ -4,7 +4,7 @@ import { TaskStatusIcon } from "../../components/TaskStatusIcon";
 import { Panel, Heading, Item } from "@cypher-asi/zui";
 import { EmptyState } from "../../components/EmptyState";
 import { getTaskDisplayStatus } from "../../shared/utils/task-display-status";
-import { useEffectiveLiveTaskIdsForProject } from "../../stores/live-task-ids-store";
+import { useLiveTaskIdsForProject } from "../../stores/live-task-ids-store";
 import { useTaskFeedData } from "./useTaskFeedData";
 import styles from "../aura.module.css";
 
@@ -15,13 +15,14 @@ interface TaskFeedProps {
 export function TaskFeed({ projectId }: TaskFeedProps) {
   const { tasks, sorted, activeTaskId, loopActive } = useTaskFeedData(projectId);
   const displayed = sorted.slice(0, 50);
-  // Union the feed's own `activeTaskId` with the per-project effective
-  // live-task set so the spinner appears on whichever signal arrives
-  // first (the per-feed `task_started` subscription, the live-ids store
-  // hydrated from `/loop/status`, or the `LoopActivityChanged` →
-  // `loop-activity-store.current_task_id` broadcast). See
-  // `useEffectiveLiveTaskIdsForProject` for the failure-mode rationale.
-  const projectLiveIds = useEffectiveLiveTaskIdsForProject(projectId);
+  // `useLiveTaskIdsForProject` is now a derived view over
+  // `useLoopActivityStore` (single source of truth for "is this task
+  // being worked on right now"). Union it with the feed's own
+  // `activeTaskId` because that signal can be set from a
+  // `task_started` event that this view subscribes to directly,
+  // covering the brief window before the loop-activity store sees
+  // the matching `LoopActivityChanged` broadcast.
+  const projectLiveIds = useLiveTaskIdsForProject(projectId);
   const liveTaskIds = useMemo(() => {
     if (!activeTaskId) return projectLiveIds;
     if (projectLiveIds.has(activeTaskId)) return projectLiveIds;

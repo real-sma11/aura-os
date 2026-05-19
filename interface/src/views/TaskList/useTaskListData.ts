@@ -5,10 +5,7 @@ import { EventType } from "../../shared/types/aura-events";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useEventStore } from "../../stores/event-store/index";
 import { useSidekickStore } from "../../stores/sidekick-store";
-import {
-  useEffectiveLiveTaskIdsForProject,
-  useLiveTaskIdsStore,
-} from "../../stores/live-task-ids-store";
+import { useLiveTaskIdsForProject } from "../../stores/live-task-ids-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
 import { mergeById, compareSpecs } from "../../utils/collections";
 
@@ -80,7 +77,7 @@ export function useTaskListData(): TaskListData {
   const deletedSpecIds = useSidekickStore((s) => s.deletedSpecIds);
   const deletedTaskIds = useSidekickStore((s) => s.deletedTaskIds);
   const loopActive = useLoopActive(projectId);
-  const liveTaskIds = useEffectiveLiveTaskIdsForProject(projectId);
+  const liveTaskIds = useLiveTaskIdsForProject(projectId);
   const [localSpecs, setLocalSpecs] = useState<Spec[]>(() => ctx?.initialSpecs ?? []);
   const [localTasks, setLocalTasks] = useState<Task[]>(() => ctx?.initialTasks ?? []);
   const [loading] = useState(false);
@@ -120,22 +117,18 @@ export function useTaskListData(): TaskListData {
   const prevStreamIdRef = useRef<string | null>(null);
   const prevConnectedRef = useRef(connected);
 
-  // Rehydrate the shared live-task-ids store from the server's in-memory
-  // automaton registry on mount + reconnect. `task_started` WS events
-  // are not replayed, so without this the "live" flag on the Tasks list
-  // goes dark after a page refresh even when the automation is still
-  // executing a task.
-  const hydrateLiveTaskIds = useCallback(async () => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    try {
-      const res = await api.getLoopStatus(pid);
-      useLiveTaskIdsStore.getState().hydrateFromLoopStatus(res, pid);
-    } catch {
-      // `/loop/status` failures should not block normal task rendering;
-      // the live flag will simply stay dark until the next event.
-    }
-  }, []);
+  // The "is this task live" set used to live in a parallel
+  // `useLiveTaskIdsStore` that this hook manually mirrored from
+  // `task_started` / `task_completed` / `task_failed` events plus a
+  // `/loop/status` poll. That parallel cache was the original source
+  // of the per-row spinner regression: the harness
+  // `LoopActivityChanged` pipeline (which we now treat as the single
+  // source of truth) could be ahead of, behind, or out of sync with
+  // the local cache, and a stale cache would render a hollow circle
+  // for an actively-running task. The store is now a pure derived
+  // view over `useLoopActivityStore`, so this hook only owns the
+  // local task-list state (statuses, file ops) — the live signal
+  // takes care of itself.
 
   useEffect(() => {
     const wasStreaming = prevStreamIdRef.current != null;
@@ -148,15 +141,9 @@ export function useTaskListData(): TaskListData {
   useEffect(() => {
     if (connected && !prevConnectedRef.current) {
       refetchTasks();
-      void hydrateLiveTaskIds();
     }
     prevConnectedRef.current = connected;
-  }, [connected, refetchTasks, hydrateLiveTaskIds]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    void hydrateLiveTaskIds();
-  }, [projectId, hydrateLiveTaskIds]);
+  }, [connected, refetchTasks]);
 
   useEffect(() => {
     const unsubs = [
@@ -170,32 +157,22 @@ export function useTaskListData(): TaskListData {
       }),
       subscribe(EventType.TaskStarted, (e) => {
         const { task_id } = e.content;
-        if (task_id) {
-          const pid = projectIdRef.current;
-          if (pid) useLiveTaskIdsStore.getState().addLive(pid, task_id);
-          updateTaskStatus(task_id, "in_progress", {
-            ...(e.session_id ? { session_id: e.session_id } : {}),
-          });
-        }
+        if (!task_id) return;
+        updateTaskStatus(task_id, "in_progress", {
+          ...(e.session_id ? { session_id: e.session_id } : {}),
+        });
       }),
       subscribe(EventType.TaskCompleted, (e) => {
         const { task_id, execution_notes, files } = e.content;
-        if (task_id) {
-          const pid = projectIdRef.current;
-          if (pid) useLiveTaskIdsStore.getState().removeLive(pid, task_id);
-          updateTaskStatus(task_id, "done", {
-            execution_notes,
-            ...(files ? { files_changed: files } : {}),
-          });
-        }
+        if (!task_id) return;
+        updateTaskStatus(task_id, "done", {
+          execution_notes,
+          ...(files ? { files_changed: files } : {}),
+        });
       }),
       subscribe(EventType.TaskFailed, (e) => {
         const { task_id } = e.content;
-        if (task_id) {
-          const pid = projectIdRef.current;
-          if (pid) useLiveTaskIdsStore.getState().removeLive(pid, task_id);
-          updateTaskStatus(task_id, "failed");
-        }
+        if (task_id) updateTaskStatus(task_id, "failed");
       }),
       subscribe(EventType.FileOpsApplied, (e) => {
         const { task_id, files } = e.content;
@@ -220,21 +197,13 @@ export function useTaskListData(): TaskListData {
         });
       }),
       subscribe(EventType.FollowUpTaskCreated, refetchTasks),
-      subscribe(EventType.LoopStopped, () => {
-        const pid = projectIdRef.current;
-        if (pid) useLiveTaskIdsStore.getState().clearProject(pid);
-        refetchTasks();
-      }),
-      subscribe(EventType.LoopPaused, () => {
-        const pid = projectIdRef.current;
-        if (pid) useLiveTaskIdsStore.getState().clearProject(pid);
-        refetchTasks();
-      }),
-      subscribe(EventType.LoopFinished, () => {
-        const pid = projectIdRef.current;
-        if (pid) useLiveTaskIdsStore.getState().clearProject(pid);
-        refetchTasks();
-      }),
+      // LoopStopped / LoopPaused / LoopFinished only need to refetch
+      // task statuses from storage; the live-task-id signal clears
+      // itself the moment `LoopActivityChanged` flips the loop's
+      // `current_task_id` to `None` (or `LoopEnded` removes the row).
+      subscribe(EventType.LoopStopped, refetchTasks),
+      subscribe(EventType.LoopPaused, refetchTasks),
+      subscribe(EventType.LoopFinished, refetchTasks),
     ];
     return () => unsubs.forEach((u) => u());
   }, [projectId, subscribe, updateTaskStatus, refetchTasks]);

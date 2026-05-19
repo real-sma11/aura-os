@@ -4,10 +4,7 @@ import type { Task } from "../../shared/types";
 import { EventType } from "../../shared/types/aura-events";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useEventStore } from "../../stores/event-store/index";
-import {
-  useEffectiveLiveTaskIdsForProject,
-  useLiveTaskIdsStore,
-} from "../../stores/live-task-ids-store";
+import { useLiveTaskIdsForProject } from "../../stores/live-task-ids-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
 
 function sortByOrder<T extends { order_index: number }>(items: T[]): T[] {
@@ -26,7 +23,14 @@ export function useMobileTasks(projectId: string): MobileTasksData {
   const subscribe = useEventStore((s) => s.subscribe);
   const loopActive = useLoopActive(projectId);
   const [tasks, setTasks] = useState<Task[]>(() => sortByOrder(ctx?.initialTasks ?? []));
-  const liveTaskIds = useEffectiveLiveTaskIdsForProject(projectId);
+  // Single source of truth for "is this task live": derived from
+  // `useLoopActivityStore` via `useLiveTaskIdsForProject`. The
+  // previous design kept a parallel cache here that this hook
+  // mirrored from `task_started` etc., which let the cache lag the
+  // `LoopActivityChanged` pipeline and produce a hollow per-row
+  // spinner during an active run. See the doc-comment in
+  // `live-task-ids-store.ts` for the full migration table.
+  const liveTaskIds = useLiveTaskIdsForProject(projectId);
 
   const tasksBySpec = useMemo(() => {
     const grouped = new Map<string, Task[]>();
@@ -65,32 +69,19 @@ export function useMobileTasks(projectId: string): MobileTasksData {
         ));
       }),
       subscribe(EventType.TaskStarted, (e) => {
-        const { task_id } = e.content;
-        if (task_id) {
-          if (projectId) useLiveTaskIdsStore.getState().addLive(projectId, task_id);
-          setStatus(task_id, "in_progress");
-        }
+        if (e.content.task_id) setStatus(e.content.task_id, "in_progress");
       }),
       subscribe(EventType.TaskCompleted, (e) => {
-        const { task_id } = e.content;
-        if (task_id) {
-          if (projectId) useLiveTaskIdsStore.getState().removeLive(projectId, task_id);
-          setStatus(task_id, "done");
-        }
+        if (e.content.task_id) setStatus(e.content.task_id, "done");
       }),
       subscribe(EventType.TaskFailed, (e) => {
-        const { task_id } = e.content;
-        if (task_id) {
-          if (projectId) useLiveTaskIdsStore.getState().removeLive(projectId, task_id);
-          setStatus(task_id, "failed");
-        }
+        if (e.content.task_id) setStatus(e.content.task_id, "failed");
       }),
-      subscribe(EventType.LoopStopped, () => {
-        if (projectId) useLiveTaskIdsStore.getState().clearProject(projectId);
-      }),
-      subscribe(EventType.LoopFinished, () => {
-        if (projectId) useLiveTaskIdsStore.getState().clearProject(projectId);
-      }),
+      // No `LoopStopped` / `LoopFinished` clear-the-cache subscribers
+      // here: the live-task-ids signal now derives from
+      // `useLoopActivityStore`, which clears itself when
+      // `LoopActivityChanged` flips `current_task_id` to `None` or
+      // `LoopEnded` removes the row entirely.
     ];
     return () => unsubs.forEach((u) => u());
   }, [projectId, subscribe]);

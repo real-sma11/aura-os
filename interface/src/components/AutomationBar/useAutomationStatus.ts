@@ -3,7 +3,6 @@ import { api, isInsufficientCreditsError, dispatchInsufficientCredits } from "..
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
 import { useTaskOutputPanelStore } from "../../stores/task-output-panel-store";
-import { useLiveTaskIdsStore } from "../../stores/live-task-ids-store";
 import {
   useAutomationLoopStore,
   useAutomationModel,
@@ -41,20 +40,21 @@ function hydrateActiveTasksFromLoopStatus(
 }
 
 /**
- * Seed every piece of "we're running" UI from the response body of
- * `/loop/start` (or `/loop/resume`) so the Run panel row and the Tasks
- * list "live" dot appear immediately — without waiting for the
- * corresponding `task_started` WebSocket event. The backend already
- * resolves the first or interrupted task id before responding, so this
- * closes the dead window that would otherwise leave the sidekick looking
- * idle on the very first task of a new run.
+ * Seed the Run-panel row store from the response body of
+ * `/loop/start` (or `/loop/resume`) so the panel appears immediately
+ * — without waiting for the corresponding `task_started` WebSocket
+ * event. The Tasks-list per-row spinner is fed by the
+ * `useLoopActivityStore`-derived `useLiveTaskIdsForProject` and does
+ * not need a parallel start-response hydration: the backend's
+ * `loop_opened` + `loop_activity_changed` WS events arrive within a
+ * frame of the HTTP response and write `current_task_id` directly
+ * onto the loop-activity store (now the single source of truth).
  */
 function hydrateUiFromLoopStartResponse(
   res: LoopStatusResponse,
   projectId: ProjectId,
 ): void {
   hydrateActiveTasksFromLoopStatus(res, projectId);
-  useLiveTaskIdsStore.getState().hydrateFromLoopStatus(res, projectId);
 }
 
 type AutomationStatus = "idle" | "starting" | "preparing" | "active" | "paused" | "stopped";

@@ -221,37 +221,27 @@ export function selectTaskActivity(
  * working on, scoped to one project (or all loops when `projectId`
  * is omitted).
  *
- * This is a complementary signal to `useLiveTaskIdsStore`: both
- * stores answer "is this task being worked on right now", but they
- * are populated by different code paths and have different failure
- * modes:
+ * This is the canonical "is this task being worked on right now?"
+ * selector for the entire UI: `useLiveTaskIdsForProject` (in
+ * `live-task-ids-store.ts`) is now a thin derived view over this
+ * function, so every per-row spinner — `TaskList`, `TaskFeed`,
+ * `useMobileTasks`, the Run-pane status etc. — reads from a single
+ * source of truth and cannot diverge.
  *
- * - `useLiveTaskIdsStore` is fed by the `task_started` /
- *   `task_completed` / `task_failed` WS events plus the
- *   `/loop/status.active_tasks` poll endpoint. It can be empty
- *   during the window where the harness has fired `task_started`
- *   but the WS subscription on the consumer (e.g. `useTaskListData`)
- *   wasn't mounted yet, AND the next `/loop/status` poll hasn't
- *   fired or returned, AND the response carried an empty
- *   `active_tasks` because the registry's `current_task_id` hadn't
- *   been written by the side-effects pipeline at request time.
+ * Source of `current_task_id` updates: the registry's
+ * `LoopActivityChanged` broadcasts, published on every
+ * `set_current_task` call (the throttle bypass in
+ * `aura-os-loops::registry::transition` ensures task transitions
+ * never get coalesced with the 4Hz cadence). A `task_started` →
+ * `set_current_task(Some(id))` lights the row; `task_completed` /
+ * `task_failed` → `set_current_task(None)` clears it; `LoopEnded`
+ * removes the loop entirely (e.g. on stop / cancel / panic), at
+ * which point this selector contributes nothing for that loop
+ * regardless of its last `current_task_id`.
  *
- * - `selectActiveTaskIdsForProject` reads from the
- *   `LoopActivityChanged` WS broadcasts that the registry now
- *   publishes immediately on every `current_task_id` change (the
- *   throttle bypass added in `aura-os-loops::registry::transition`).
- *   This hits the wire from a different worker (the side-effects
- *   pipeline → `LoopHandle::set_current_task` →
- *   `transition::publish`) and lands in a different store
- *   (`useLoopActivityStore.loops[*].activity.current_task_id`),
- *   so it survives any race that takes out the live-task-ids
- *   path.
- *
- * Used by `useEffectiveLiveTaskIdsForProject` (in
- * `live-task-ids-store.ts`) to merge both signals into a single
- * Set the call sites of `getTaskDisplayStatus` consume — so a row
- * shows the spinner whenever ANY signal says the task is active,
- * not only when the legacy live-task-ids path has caught up.
+ * The `isLoopActivityActive` filter explicitly excludes paused /
+ * stopped / completed rows, so a paused loop's last task won't show
+ * a spinner even while the row lingers in the store.
  */
 export function selectActiveTaskIdsForProject(
   state: LoopActivityState,
