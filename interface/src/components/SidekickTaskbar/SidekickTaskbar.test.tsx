@@ -67,6 +67,31 @@ function renderTaskbar() {
   );
 }
 
+function setRunningLoop() {
+  useLoopActivityStore.setState({
+    hydrated: true,
+    loops: {
+      "loop-1": {
+        loopId: {
+          user_id: "user-1",
+          project_id: "project-1",
+          agent_instance_id: "agent-1",
+          agent_id: "agent-template-1",
+          kind: "automation",
+          instance: "loop-1",
+        },
+        activity: {
+          status: "running",
+          percent: null,
+          started_at: "2026-04-24T00:00:00.000Z",
+          last_event_at: "2026-04-24T00:00:01.000Z",
+          current_task_id: "task-1",
+        },
+      },
+    },
+  });
+}
+
 describe("SidekickTaskbar", () => {
   beforeEach(() => {
     useSidekickStore.setState({
@@ -80,6 +105,45 @@ describe("SidekickTaskbar", () => {
   });
 
   it("renders active run progress without recursive loop-activity updates", () => {
+    setRunningLoop();
+
+    renderTaskbar();
+
+    expect(screen.getByTestId("sidekick-tabbar")).toHaveAttribute(
+      "data-active-tab",
+      "run",
+    );
+    expect(screen.getAllByLabelText("running").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("tab-files")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Run tab's Play glyph visible and overlays a progress ring while the loop is active", () => {
+    setRunningLoop();
+
+    renderTaskbar();
+
+    // Pin the affordance: the Run tab still renders the Play icon so
+    // users recognise it as the Run/Play button, and the rotating
+    // ring overlay sits on top to communicate "currently working".
+    const runTab = screen.getByTestId("tab-run");
+    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+      .toBeInTheDocument();
+  });
+
+  it("does not render the Run tab's progress ring while the loop is idle", () => {
+    // No loop in the store at all → idle. The Play icon must stay
+    // visible (so the tab is still usable) and the ring must not
+    // render (so the tab does not look perpetually busy).
+    renderTaskbar();
+
+    const runTab = screen.getByTestId("tab-run");
+    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+      .not.toBeInTheDocument();
+  });
+
+  it("does not render the Run tab's progress ring once the loop reaches a terminal status", () => {
     useLoopActivityStore.setState({
       hydrated: true,
       loops: {
@@ -93,11 +157,11 @@ describe("SidekickTaskbar", () => {
             instance: "loop-1",
           },
           activity: {
-            status: "running",
-            percent: null,
+            status: "completed",
+            percent: 1,
             started_at: "2026-04-24T00:00:00.000Z",
-            last_event_at: "2026-04-24T00:00:01.000Z",
-            current_task_id: "task-1",
+            last_event_at: "2026-04-24T00:00:05.000Z",
+            current_task_id: null,
           },
         },
       },
@@ -105,11 +169,11 @@ describe("SidekickTaskbar", () => {
 
     renderTaskbar();
 
-    expect(screen.getByTestId("sidekick-tabbar")).toHaveAttribute(
-      "data-active-tab",
-      "run",
-    );
-    expect(screen.getAllByLabelText("running").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("tab-files")).not.toBeInTheDocument();
+    // Terminal status → ring goes away, Play icon stays so the user
+    // can immediately restart the run.
+    const runTab = screen.getByTestId("tab-run");
+    expect(runTab.querySelector("svg.lucide-play")).toBeInTheDocument();
+    expect(runTab.querySelector("[data-testid='tab-progress-ring']"))
+      .not.toBeInTheDocument();
   });
 });

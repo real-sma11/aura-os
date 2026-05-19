@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import type { MenuItem } from "@cypher-asi/zui";
 import {
@@ -31,6 +31,61 @@ import {
 } from "../../stores/loop-activity-store";
 import { isLoopActivityActive } from "../../shared/types/aura-events";
 import styles from "../Sidekick/Sidekick.module.css";
+
+/**
+ * Tab icon with an optional rotating progress ring overlay.
+ *
+ * Used by the `Run` tab so the Play affordance stays recognisable
+ * while the loop is active. The earlier "swap Play out for a bare
+ * spinner" approach produced a 16px circle that reads as "some
+ * indicator" rather than "the Run button, currently running", and
+ * users repeatedly reported they couldn't see the Run/Play icon
+ * after starting the loop. Mirroring the AutomationBar's
+ * `PlayWithProgressRing` shape (icon stays, ring overlays) fixes
+ * the regression and keeps loop activity legible at tab-strip
+ * scale.
+ *
+ * Geometry mirrors the AutomationBar overlay: 20×20 viewBox, ~70%
+ * arc, 1.1s linear infinite spin, accent stroke. The `aria-label`
+ * defaults to `"running"` so existing tests that locate the
+ * spinner by label continue to work.
+ */
+function TabIconWithProgressRing({
+  icon,
+  active,
+  label = "running",
+}: {
+  icon: ReactNode;
+  active: boolean;
+  label?: string;
+}) {
+  return (
+    <span className={styles.tabIconWithProgressRing}>
+      {icon}
+      {active && (
+        <svg
+          className={styles.tabProgressRing}
+          viewBox="0 0 20 20"
+          role="img"
+          aria-label={label}
+          data-testid="tab-progress-ring"
+        >
+          <circle
+            cx={10}
+            cy={10}
+            r={8}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeDasharray={50.27}
+            strokeDashoffset={35.2}
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
 
 export function SidekickTaskbar() {
   const { activeTab, setActiveTab, showInfo, toggleInfo } = useSidekickStore(
@@ -91,14 +146,15 @@ export function SidekickTaskbar() {
       },
       {
         id: "run",
-        icon: runActive ? (
-          <LoopProgress
-            source={{ activity: runActivity }}
-            size={16}
-            className={styles.automationSpinner}
-          />
-        ) : (
-          <Play size={16} />
+        // Keep the Play glyph visible at all times and overlay a
+        // rotating ring when the loop is active. Swapping Play for a
+        // bare LoopProgress circle made the tab unreadable at 16px —
+        // users couldn't tell the Run/Play tab apart from "some
+        // running indicator" once the loop started. The overlay
+        // preserves the affordance and the ring still communicates
+        // "currently doing work".
+        icon: (
+          <TabIconWithProgressRing icon={<Play size={16} />} active={runActive} />
         ),
         title: "Run",
       },
