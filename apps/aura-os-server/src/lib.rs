@@ -15,6 +15,7 @@ pub mod orbit_guard;
 
 mod loop_events_bridge;
 pub mod loop_log;
+pub(crate) mod log_throttle;
 
 pub(crate) mod orchestration_store;
 #[allow(dead_code)]

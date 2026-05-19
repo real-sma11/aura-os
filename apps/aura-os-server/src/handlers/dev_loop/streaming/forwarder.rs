@@ -19,7 +19,7 @@ use crate::state::AppState;
 use super::super::session::end_session;
 use super::super::signals::is_insufficient_credits_failure_for_tests;
 use super::super::types::ForwarderContext;
-use super::{activity, credits, emit_domain_event_with_session, side_effects};
+use super::{activity, credits, emit_domain_event_with_session, emit_log_line, side_effects};
 
 pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::AbortHandle {
     let handle = tokio::spawn(async move {
@@ -50,7 +50,7 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         // writer / LoopHandle updates below are unchanged. We only
         // attach when we have everything the chat persist contract
         // needs (storage client + JWT + minted session id); on any
-        // missing piece we skip silently — the dev-loop runs to
+        // missing piece we skip silently â€” the dev-loop runs to
         // completion either way and the worst case is "no
         // SessionEvent rows for this run", not a hard failure.
         let _persist_handle = maybe_spawn_dev_loop_persist(DevLoopPersistInputs {
@@ -63,6 +63,24 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         });
         let rx = events_tx.subscribe();
         let fallback_task_id = task_id.clone();
+        let startup_message = match task_id.as_deref() {
+            Some(task_id) => {
+                format!("Listening for harness events (task {})", short_task_id(task_id))
+            }
+            None => "Listening for harness events".to_string(),
+        };
+        let startup_extra = task_id.as_deref().map_or_else(
+            || serde_json::json!({}),
+            |task_id| serde_json::json!({ "task_id": task_id }),
+        );
+        emit_log_line(
+            &state,
+            project_id,
+            agent_instance_id,
+            session_id,
+            startup_message,
+            startup_extra,
+        );
         let (event_task_tx, mut event_task_rx) =
             tokio::sync::mpsc::unbounded_channel::<(serde_json::Value, String)>();
         let event_worker_state = state.clone();
@@ -157,7 +175,7 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
             .filter(|message| is_insufficient_credits_failure_for_tests(message));
         // Terminal methods take `&self` via the shared `Arc<LoopHandle>`
         // so the spawned event handlers can still hold clones without
-        // blocking close. Only one terminal call actually fires — the
+        // blocking close. Only one terminal call actually fires â€” the
         // atomic `closed` flag dedupes.
         let succeeded = insufficient_credits_reason.is_some() || completion.is_success();
         if succeeded {
@@ -197,6 +215,24 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
             )
             .await;
         }
+        let terminal_outcome = if let Some(reason) = insufficient_credits_reason.as_deref() {
+            format!("insufficient credits: {reason}")
+        } else if succeeded {
+            "completed".to_string()
+        } else {
+            completion
+                .failure_message()
+                .map_or_else(|| "failed".to_string(), |reason| format!("failed: {reason}"))
+        };
+        emit_log_line(
+            &state,
+            project_id,
+            agent_instance_id,
+            session_id,
+            format!("Loop ending ({terminal_outcome})"),
+            serde_json::json!({}),
+        );
+
         emit_domain_event_with_session(
             &state,
             "loop_finished",
@@ -226,6 +262,14 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
     handle.abort_handle()
 }
 
+/// Truncate a UUID-shaped task id for log output. Returns the first
+/// 8 chars (or the entire id when shorter) so a log row stays
+/// readable without pasting a full 36-character UUID into every
+/// "Listening for harness events" line.
+fn short_task_id(task_id: &str) -> &str {
+    let len = task_id.len().min(8);
+    &task_id[..len]
+}
 /// Inputs for [`maybe_spawn_dev_loop_persist`]. Bundled so the helper
 /// signature stays inside the 5-parameter limit while still pulling
 /// every field the [`ChatPersistCtx`] needs.
@@ -241,7 +285,7 @@ struct DevLoopPersistInputs<'a> {
 /// Spawn the chat-pipeline persist task subscribed to the dev-loop's
 /// harness event broadcast. Returns `None` when any precondition for
 /// chat persistence is missing (storage client unset, no JWT
-/// captured, or no `SessionId` minted) — the dev-loop runs to
+/// captured, or no `SessionId` minted) â€” the dev-loop runs to
 /// completion either way; we just won't write `SessionEvent` rows
 /// for this run. See module-level doc on
 /// [`crate::handlers::agents::chat::spawn_dev_loop_persist_task`]
