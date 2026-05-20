@@ -240,6 +240,33 @@ function InputBarShellInner(
       multi = narrowHeight > baseline + 4;
     }
 
+    // Symmetric anti-oscillation for the single → multi direction. The
+    // inline padding-right reserve makes a prompt at the wrap boundary
+    // appear to need a second line at single-line layout (~220px reserve
+    // shrinks the content area), but the act of switching to multi-line
+    // releases that reserve and the same prompt now fits on one line —
+    // sub-pixel rounding in the narrow re-measurement above (or in the
+    // ResizeObserver-driven autoResize that runs after the layout swap)
+    // can then flip the state back to single-line, and the cycle
+    // repeats per frame. The centered empty-thread wrapper anchors with
+    // `bottom: 50%; transform: translateY(50%)`, so the ~44px height
+    // delta translates to a visible up-and-down jitter of the entire
+    // bar. Mirror the multi → single check: only flip into multi-line
+    // when the prompt still wraps at the wider multi-line padding-right
+    // of 32px. If the wide layout fits on one line, stay single-line
+    // — the textarea will still autogrow to show the wrapped second
+    // line at the narrow width, but the picker, info bar, and wrapper
+    // height stay stable.
+    if (!isMultiLineRef.current && naturalMulti) {
+      const prevInlinePaddingRight = el.style.paddingRight;
+      el.style.paddingRight = "32px";
+      el.style.height = "auto";
+      const wideHeight = el.scrollHeight;
+      el.style.paddingRight = prevInlinePaddingRight;
+      el.style.height = Math.min(naturalHeight, cap) + "px";
+      multi = wideHeight > baseline + 4;
+    }
+
     isMultiLineRef.current = multi;
     setIsMultiLine((prev) => (prev === multi ? prev : multi));
   }, []);

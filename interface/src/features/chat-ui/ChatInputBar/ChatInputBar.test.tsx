@@ -444,6 +444,70 @@ describe("ChatInputBar", () => {
     }
   });
 
+  it("stays in the single-line layout when the prompt would still fit if the picker dropped to the footer", () => {
+    // Regression: at the wrap boundary, a prompt that wraps at single-line
+    // padding-right (220px reserve) but would fit at multi-line padding
+    // (32px reserve) used to cause the entire input bar to jitter
+    // vertically in the centered empty-thread state. Flipping to multi-line
+    // widened the textarea (dropped the picker reserve), the prompt fit on
+    // one line, the bar collapsed back, the picker re-appeared, the
+    // textarea narrowed, the prompt wrapped — per-frame oscillation. The
+    // centered wrapper's `bottom: 50%; transform: translateY(50%)`
+    // anchoring made the ~44px height delta visible as a fast up/down
+    // shift of the whole bar. The shell now re-measures with the
+    // multi-line padding-right reserve before entering multi-line and
+    // only flips when the prompt would still wrap at the wider width.
+    //
+    // Stub `scrollHeight` to mirror the boundary behavior:
+    //   1. Wide simulation (inline `padding-right: 32px`, the new
+    //      single→multi anti-osc branch) → fits (32px).
+    //   2. Narrow simulation (inline `padding-right: min(220px, 42%)`,
+    //      the existing multi→single anti-osc branch) → wraps (80px).
+    //   3. Otherwise mirror real CSS based on whether the parent input
+    //      row carries `.inputRowHasEnd`: single-line layout reserves
+    //      the inline picker padding → wraps (80px); multi-line layout
+    //      releases it → fits (32px).
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        const inline = this.style.paddingRight ?? "";
+        if (inline === "32px") return 32;
+        if (inline.includes("220") || inline.includes("42%")) return 80;
+        if (this.parentElement?.className.includes("inputRowHasEnd")) {
+          return 80;
+        }
+        return 32;
+      },
+    });
+
+    try {
+      mockSelectedModel = "aura-claude-opus-4-6";
+      const boundaryPrompt =
+        "A prompt right at the wrap boundary that fits when the picker drops";
+      const { container } = render(
+        <ChatInputBar {...makeProps({ input: boundaryPrompt })} />,
+      );
+
+      expect(container.querySelector(".inputRowEnd")).not.toBeNull();
+      expect(container.querySelector(".bottomChromeRow")).toBeNull();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "scrollHeight",
+          originalDescriptor,
+        );
+      } else {
+        // @ts-expect-error - delete the custom getter we installed above
+        delete HTMLTextAreaElement.prototype.scrollHeight;
+      }
+    }
+  });
+
   it("keeps the model picker inline near the send button when the textarea fits on one line", () => {
     // Default JSDOM behavior: scrollHeight is 0, well under the 36px multi-line
     // threshold, so the picker stays in the absolutely-positioned `inputRowEnd`
