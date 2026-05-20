@@ -33,10 +33,7 @@ import { DesktopTitlebar } from "./DesktopTitlebar";
 import { PersistentSidekickLane } from "./PersistentSidekickLane";
 import { SidebarSearchInput } from "./SidebarSearchInput";
 import { SidekickPortalBridge } from "./SidekickPortalBridge";
-import {
-  useLeftPanelWidthCssVar,
-  useSidekickWidthCssVar,
-} from "./desktop-shell-effects";
+import { useLeftPanelWidthCssVar } from "./desktop-shell-effects";
 import styles from "./DesktopShell.module.css";
 
 const DesktopWindowLayer = lazy(() =>
@@ -224,12 +221,6 @@ export function DesktopShell() {
   useLeftPanelWidthCssVar({
     leftPanelRef,
     isDesktop,
-    activeAppId: activeApp.id,
-  });
-
-  useSidekickWidthCssVar({
-    sidekickLaneRef,
-    collapsed: sidekickHostCollapsed,
     activeAppId: activeApp.id,
   });
 
