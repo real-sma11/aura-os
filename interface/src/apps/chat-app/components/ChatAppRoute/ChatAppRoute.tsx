@@ -1,8 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
 import { PageEmptyState } from "@cypher-asi/zui";
-import { ChatPanel } from "../../../chat/components/ChatPanel";
+import { ChatPanel, type ChatPanelProps } from "../../../chat/components/ChatPanel";
 import { MobileChatPanel } from "../../../../mobile/chat/MobileChatPanel";
 import { useAgents, useSelectedAgent } from "../../../agents/stores";
 import { useAuraCapabilities } from "../../../../hooks/use-aura-capabilities";
@@ -111,27 +110,47 @@ export function ChatAppRoute() {
     sessionId,
   );
 
-  if (!effectiveAgent) {
-    if (status === "error") {
-      return (
-        <PageEmptyState
-          title="Couldn't start chat"
-          description={error ?? "Try again in a moment."}
-        />
-      );
-    }
+  // Pre-resolve panel props so the chat surface can mount on the very
+  // first paint, even before `useChatAppAgent()` has finished talking
+  // to `POST /api/agents/harness/setup`. The hook seeds the cached
+  // chat agent from the warm `useAgentStore.agents` slot + persisted
+  // last-resolved id so the typical case here is `effectiveAgent !=
+  // null` immediately. The remaining cold-cache path (very first ever
+  // visit, or a wipe of localStorage + agents-list cache) flows
+  // through the `historyResolved` short-circuit below: we render the
+  // panel chrome with an empty transcript and a "Starting chat…" hint
+  // so the user sees the familiar surface instead of a centered
+  // PageEmptyState that swaps out the entire route.
+  const panelProps: ChatPanelProps = effectiveAgent
+    ? { ...sharedChatProps, scrollToBottomOnReset: false }
+    : {
+        ...sharedChatProps,
+        scrollToBottomOnReset: false,
+        // `useStandaloneAgentChat` returns `historyResolved: false`
+        // when no agentId is set; flip to `true` so the panel skips
+        // the cold-load reveal cycle and the empty-state slot below
+        // takes over instead.
+        historyResolved: true,
+        isLoading: false,
+        emptyMessage: status === "error"
+          ? error ?? "Couldn't start chat. Try again in a moment."
+          : "Starting chat\u2026",
+      };
+
+  // Hard error fallback — shown only when there is genuinely nothing
+  // to chat with (no warm seed AND `setup()` has failed). The hook
+  // surfaces `status === "error"` only after both have struck out; in
+  // every other case the panel chrome stays mounted with the
+  // `emptyMessage` hint above so the user still sees their input bar
+  // / sidekick chrome instead of a centered route swap.
+  if (!effectiveAgent && status === "error") {
     return (
       <PageEmptyState
-        icon={<Loader2 size={32} className="animate-spin" aria-hidden />}
-        title="Starting chat…"
+        title="Couldn't start chat"
+        description={error ?? "Try again in a moment."}
       />
     );
   }
-
-  const panelProps = {
-    ...sharedChatProps,
-    scrollToBottomOnReset: false,
-  };
 
   return isMobileLayout ? (
     <MobileChatPanel {...panelProps} />

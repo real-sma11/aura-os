@@ -142,12 +142,8 @@ async fn per_session_endpoint_returns_only_requested_session_events() {
         .expect("create project");
 
     let agent_id = AgentId::new();
-    let project_agent = seed_project_agent(
-        &storage,
-        &project.project_id.to_string(),
-        &agent_id,
-    )
-    .await;
+    let project_agent =
+        seed_project_agent(&storage, &project.project_id.to_string(), &agent_id).await;
 
     let session_a = seed_session_with_user_text(
         &storage,
@@ -214,18 +210,9 @@ async fn per_session_endpoint_404s_when_session_belongs_to_other_agent() {
     let agent_alpha = AgentId::new();
     let agent_beta = AgentId::new();
 
-    let pa_alpha = seed_project_agent(
-        &storage,
-        &project.project_id.to_string(),
-        &agent_alpha,
-    )
-    .await;
-    let pa_beta = seed_project_agent(
-        &storage,
-        &project.project_id.to_string(),
-        &agent_beta,
-    )
-    .await;
+    let pa_alpha =
+        seed_project_agent(&storage, &project.project_id.to_string(), &agent_alpha).await;
+    let pa_beta = seed_project_agent(&storage, &project.project_id.to_string(), &agent_beta).await;
 
     let session_alpha = seed_session_with_user_text(
         &storage,

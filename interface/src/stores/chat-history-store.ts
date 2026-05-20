@@ -155,19 +155,31 @@ function withBoundedHistoryPreview(
   return next;
 }
 
-function displayEventsEqual(
-  first: DisplaySessionEvent[],
-  second: DisplaySessionEvent[],
+/**
+ * Cheap proxy for "the freshly-fetched snapshot is structurally
+ * identical to what's already cached, so we can skip the rewrite and
+ * preserve the existing entry's object identity". History is
+ * append-only on the server, so matching `(length, lastMessageAt, tail
+ * event id)` is sufficient: if the tail is the same and the count is
+ * the same, every prior row is also the same. The earlier check ran
+ * `JSON.stringify` per event on every resolve, which on cold open of
+ * an 80-event session with multi-100KB tool-output blocks dominated
+ * the main thread for hundreds of milliseconds. False positives only
+ * arise if the server mutates an existing event without bumping
+ * `lastMessageAt`; the next forced refetch picks them up anyway.
+ */
+function historySnapshotMatches(
+  cachedEvents: DisplaySessionEvent[],
+  cachedLastMessageAt: string | null,
+  nextEvents: DisplaySessionEvent[],
+  nextLastMessageAt: string | null,
 ): boolean {
-  if (first.length !== second.length) {
-    return false;
-  }
-  for (let index = 0; index < first.length; index += 1) {
-    if (JSON.stringify(first[index]) !== JSON.stringify(second[index])) {
-      return false;
-    }
-  }
-  return true;
+  if (cachedEvents.length !== nextEvents.length) return false;
+  if (cachedLastMessageAt !== nextLastMessageAt) return false;
+  if (cachedEvents.length === 0) return true;
+  const cachedTail = cachedEvents[cachedEvents.length - 1];
+  const nextTail = nextEvents[nextEvents.length - 1];
+  return cachedTail.id === nextTail.id;
 }
 
 export const useChatHistoryStore = create<ChatHistoryState>()((set, get) => ({
@@ -243,8 +255,12 @@ export const useChatHistoryStore = create<ChatHistoryState>()((set, get) => ({
         if (
           current?.status === "ready" &&
           current.error == null &&
-          current.lastMessageAt === data.lastMessageAt &&
-          displayEventsEqual(current.events, events)
+          historySnapshotMatches(
+            current.events,
+            current.lastMessageAt,
+            events,
+            data.lastMessageAt,
+          )
         ) {
           useMessageStore.getState().setThread(key, events);
           return;

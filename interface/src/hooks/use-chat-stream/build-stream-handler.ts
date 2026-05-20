@@ -44,6 +44,12 @@ import {
   type WireContextBreakdown,
 } from "../../stores/context-usage-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
+import {
+  getStreamEntry,
+  keyForProjectSession,
+  markStreamProgress,
+} from "../stream/store";
+import { migrateChatPartition } from "../stream/migration";
 
 export interface DispatchDeps {
   projectId: string;
@@ -85,6 +91,17 @@ export interface DispatchDeps {
    */
   onMaybeAutoRetry?: (error: unknown) => boolean;
   /**
+   * Fired the moment any code path inside the handler flips
+   * `setIsStreaming(false)` — `AssistantMessageEnd` (non-tool_use),
+   * `finalizeStream`, or error paths. `useChatStream.performSend`
+   * uses this to clear its synchronous `ctrl.inFlight` latch in
+   * lockstep with the Zustand `isStreaming` flag so the
+   * dequeue-on-completion effect in `useChatPanelState` can re-enter
+   * `performSend` without being silently swallowed by the in-flight
+   * guard before the outer async fn's `finally` block has run.
+   */
+  onStreamFinalized?: () => void;
+  /**
    * Phase 5 breadcrumb context. Forwarded to every `handleStreamError`
    * / `finalizeStream` call inside the handler so the persisted
    * breadcrumb ring carries the originating stream key + agent +
@@ -94,6 +111,16 @@ export interface DispatchDeps {
    * is fine — the support workflow targets chat surfaces only).
    */
   breadcrumbContext?: StreamCloseContext;
+  /**
+   * Phase 3 partition migration callback. Fired from the two
+   * session-id flip sites — `SessionReady` (fresh-canvas placeholder
+   * → real session id) and the `auto_fork` progress branch — after
+   * the handler has re-keyed the underlying stream, send-control,
+   * and chat-ui store entries. The chat hook uses it to update the
+   * mutable holder behind its captured `partitionSetters` so any
+   * post-migration setter call lands on the new lane.
+   */
+  onPartitionMigrated?: (newKey: string) => void;
 }
 
 interface SessionReadyPayload {
@@ -155,7 +182,8 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
     projectId, agentInstanceId, selectedModel, refs, setters, abortRef, coreKey,
     setProgressText, sidekickRef, projectCtxRef,
     pendingSpecIdsRef, pendingTaskIdsRef, onSessionReady,
-    onAssistantTurnCompleted, onMaybeAutoRetry, breadcrumbContext,
+    onAssistantTurnCompleted, onMaybeAutoRetry, onStreamFinalized,
+    breadcrumbContext, onPartitionMigrated,
   } = deps;
   // Track the last session id we forwarded to `onSessionReady` so a
   // chatty stream that re-emits `SessionReady` (e.g. mid-stream
@@ -164,15 +192,32 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
   // that pins `useChatStream({ sessionId })`.
   let lastNotifiedSessionId: string | null = null;
 
+  // Phase 3: the partition key flips mid-turn at the two session-id
+  // flip sites below. `activeKey` follows the migration so any
+  // subsequent reads (`markStreamProgress`, `getStreamEntry`,
+  // context-usage bumps, etc.) target the new lane. `useChatStream`
+  // already passes setters built off a key-getter, so the captured
+  // setters automatically follow once `onPartitionMigrated` updates
+  // the holder behind that getter.
+  let activeKey = coreKey;
+  const migrateToSession = (newSessionId: string): void => {
+    if (!agentInstanceId) return;
+    const newKey = keyForProjectSession(projectId, agentInstanceId, newSessionId);
+    if (newKey === activeKey) return;
+    migrateChatPartition(activeKey, newKey);
+    activeKey = newKey;
+    onPartitionMigrated?.(newKey);
+  };
+
   const onEvent = (event: AuraEvent) => {
     switch (event.type) {
       case EventType.Delta:
       case EventType.TextDelta: {
         const text = (event.content as { text: string }).text;
-        handleTextDelta(refs, setters, getThinkingDurationMs(coreKey), text);
+        handleTextDelta(refs, setters, getThinkingDurationMs(activeKey), text);
         useContextUsageStore
           .getState()
-          .bumpEstimatedTokens(coreKey, approxTokensFromText(text));
+          .bumpEstimatedTokens(activeKey, approxTokensFromText(text));
         break;
       }
       case EventType.ThinkingDelta: {
@@ -181,19 +226,39 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         handleThinkingDelta(refs, setters, text);
         useContextUsageStore
           .getState()
-          .bumpEstimatedTokens(coreKey, approxTokensFromText(text));
+          .bumpEstimatedTokens(activeKey, approxTokensFromText(text));
         break;
       }
       case EventType.Progress: {
         const stage = event.content.stage;
+        if (stage === "heartbeat") {
+          // Server-side SSE heartbeat (`SSE_HEARTBEAT_INTERVAL` in
+          // `apps/aura-os-server/src/handlers/agents/chat/streaming.rs`).
+          // Pure stuck-stream-watchdog ack: fired every ~15s whenever
+          // the harness broadcast stays silent (e.g. plan-mode chat
+          // turn between a batch of `ToolResult` events and the
+          // model's next `TextDelta`). We must bump `lastEventAt` so
+          // `useStuckStreamAutoTimeout` doesn't fire on a healthy
+          // turn, but we MUST NOT call `setProgressText` — that would
+          // overwrite the visible "Thinking..."/"Putting it all
+          // together..." label with the raw "heartbeat" string
+          // (see `getStreamingPhaseLabel` in
+          // `interface/src/utils/streaming.ts`, which renders unknown
+          // progress stages verbatim).
+          markStreamProgress(activeKey);
+          break;
+        }
         if (stage === "lagged") {
           setProgressText("Catching up on stream output…");
-        } else if (stage === "forked_for_context") {
+        } else if (stage === "forked_for_context" || stage === "auto_fork") {
           // Phase 3 auto-fork: the server transparently rolled this
           // chat over to a fresh storage session because the prior
           // one's `context_utilization` crossed
           // `AURA_CHAT_AUTO_FORK_THRESHOLD`. The payload carries
-          // `previous_session_id` + `new_session_id`; we surface a
+          // `previous_session_id` + `new_session_id`; we migrate the
+          // in-flight stream lane to the new session key (so the post-
+          // fork deltas continue to render in the active panel and the
+          // SessionsList streaming dot follows the new row), surface a
           // one-shot soft banner, swap `?session=` to the new id via
           // `onSessionReady`, and bump the sessions list so the
           // sidekick reorders the row to the top. Treated as a
@@ -212,6 +277,13 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           );
           if (fork.new_session_id && fork.new_session_id !== lastNotifiedSessionId) {
             lastNotifiedSessionId = fork.new_session_id;
+            // Migrate BEFORE calling onSessionReady — the URL update
+            // it triggers will re-render `useChatStream`, which will
+            // call `useStreamCore` with the new sessionId in its
+            // deps. If we migrated AFTER, `ensureEntry(newKey)` would
+            // mint a fresh empty entry and clobber the in-flight
+            // events we just moved.
+            migrateToSession(fork.new_session_id);
             onSessionReady?.(fork.new_session_id);
             useSessionsListStore.getState().bumpVersion();
           }
@@ -266,7 +338,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         if (typeof c.result === "string" && c.result.length > 0) {
           useContextUsageStore
             .getState()
-            .bumpEstimatedTokens(coreKey, approxTokensFromText(c.result));
+            .bumpEstimatedTokens(activeKey, approxTokensFromText(c.result));
         }
         void bridgeLoopToolResult(c.name, c.is_error, projectId, selectedModel);
         if (c.name === "create_spec") {
@@ -347,7 +419,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           useContextUsageStore
             .getState()
             .setContextUtilization(
-              coreKey,
+              activeKey,
               amc.usage.context_utilization,
               amc.usage.estimated_context_tokens,
               mapWireContextBreakdown(amc.usage.context_breakdown),
@@ -355,6 +427,13 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         }
         if (amc.stop_reason !== "tool_use") {
           resetStreamBuffers(refs, setters);
+          // Clear the partition's in-flight latch in lockstep with the
+          // Zustand `isStreaming` flag so the dequeue-on-completion
+          // effect in `useChatPanelState` can re-enter `performSend`
+          // immediately. Without this, the outer async fn's `finally`
+          // resets the latch only after the SSE fully closes, racing
+          // with the dequeue and silently dropping queued prompts.
+          onStreamFinalized?.();
           setters.setIsStreaming(false);
           if (agentInstanceId) {
             sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -380,10 +459,26 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         // `useSessionsListStore.version` so the sidekick "Chats" tab
         // refreshes the row order (a brand-new session jumps to the
         // top).
+        //
+        // Phase 3: when the previously-active partition was the
+        // fresh-canvas placeholder (`…:fresh`), we additionally
+        // migrate the in-flight stream / send-control / chat-ui slot
+        // to the real-session key so subsequent setter calls (e.g.
+        // the streaming `TextDelta`s arriving immediately after
+        // `SessionReady`) land on the new partition rather than the
+        // about-to-be-evicted placeholder.
         const payload = event.content as SessionReadyPayload;
         const newSessionId = payload?.session_id;
         if (newSessionId && newSessionId !== lastNotifiedSessionId) {
           lastNotifiedSessionId = newSessionId;
+          // Migrate BEFORE forwarding the id to `onSessionReady`. The
+          // URL update it triggers re-renders `useChatStream`, which
+          // runs `useStreamCore` with the new sessionId in its deps.
+          // If we migrated AFTER, `ensureEntry(newKey)` would see no
+          // existing entry and mint a fresh empty one — clobbering
+          // the in-flight events / streamingText / isStreaming we
+          // are mid-stream.
+          migrateToSession(newSessionId);
           onSessionReady?.(newSessionId);
           const sessionsStore = useSessionsListStore.getState();
           sessionsStore.bumpVersion();
@@ -398,11 +493,33 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
           event.content.mode === "video" ? "Generating video..." :
           "Generating 3D model...",
         );
+        // The send path pre-stamps `generationStartedAt` from
+        // `_generationMode`; this is a safety net for public-proxy
+        // streams that reach the handler with no pre-stamp.
+        if (
+          (event.content.mode === "image" ||
+            event.content.mode === "video" ||
+            event.content.mode === "3d") &&
+          getStreamEntry(activeKey)?.generationStartedAt == null
+        ) {
+          setters.setGenerationState({
+            startedAt: Date.now(),
+            model: selectedModel ?? null,
+            kind: event.content.mode,
+          });
+        }
         break;
       case EventType.GenerationProgress:
         setProgressText(event.content.message || `${event.content.percent}%`);
+        setters.setGenerationPercent(event.content.percent);
         break;
       case EventType.GenerationPartialImage:
+        // Partial-image frames carry no text we want to render, but they
+        // ARE wire activity. Without this ack the 60s stuck-stream
+        // watchdog (`useStuckStreamAutoTimeout`) auto-aborts long
+        // partial-image renders like `gpt-image-2` whose `progress`
+        // events are sparser than the 60s window.
+        markStreamProgress(activeKey);
         break;
       case EventType.GenerationCompleted: {
         const gc = event.content;
@@ -413,6 +530,8 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         const toolId = `gen-${Date.now()}`;
         coreHandleToolCall(refs, setters, { id: toolId, name: toolName, input: {} });
         coreHandleToolResult(refs, setters, { id: toolId, name: toolName, result: JSON.stringify(gc), is_error: false });
+        setters.clearGeneration();
+        onStreamFinalized?.();
         finalizeStream(refs, setters, abortRef, false, { reason: "completed", breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -420,6 +539,8 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         break;
       }
       case EventType.GenerationError:
+        setters.clearGeneration();
+        onStreamFinalized?.();
         handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       case EventType.Error: {
@@ -434,10 +555,12 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
         ) {
           break;
         }
+        onStreamFinalized?.();
         handleStreamError(refs, setters, event.content, breadcrumbContext);
         break;
       }
       case EventType.Done:
+        onStreamFinalized?.();
         finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
         if (agentInstanceId) {
           sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -463,6 +586,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       if (isStreamDroppedError(error) && onMaybeAutoRetry?.(error)) {
         return;
       }
+      onStreamFinalized?.();
       handleStreamError(refs, setters, error, breadcrumbContext);
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);
@@ -475,6 +599,7 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       );
     },
     onDone: () => {
+      onStreamFinalized?.();
       finalizeStream(refs, setters, abortRef, false, { breadcrumbContext });
       if (agentInstanceId) {
         sidekickRef.current.setAgentStreaming(agentInstanceId, false);

@@ -138,6 +138,8 @@ describe("useContextUsageStore", () => {
       mcpTokens: 0,
       subagentsTokens: 800,
       conversationTokens: 72_700,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
     const entry = useContextUsageStore.getState().usageByStreamKey.k1;
     expect(entry?.breakdown?.systemPromptTokens).toBe(5_000);
@@ -152,6 +154,8 @@ describe("useContextUsageStore", () => {
       mcpTokens: 0,
       subagentsTokens: 0,
       conversationTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
     const entry = useContextUsageStore.getState().usageByStreamKey.k1;
     expect(entry?.breakdown).toBeUndefined();
@@ -177,6 +181,8 @@ describe("useContextUsageStore", () => {
       mcpTokens: 0,
       subagentsTokens: 800,
       conversationTokens: 72_700,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
   });
 
@@ -188,7 +194,49 @@ describe("useContextUsageStore", () => {
       mcpTokens: 0,
       subagentsTokens: 0,
       conversationTokens: 100,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
+  });
+
+  it("mapWireContextBreakdown carries cache_read/creation_tokens through to camelCase", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 5_000,
+      tools_tokens: 20_000,
+      skills_tokens: 1_500,
+      mcp_tokens: 0,
+      subagents_tokens: 800,
+      conversation_tokens: 72_700,
+      cache_read_tokens: 30_000,
+      cache_creation_tokens: 5_000,
+    });
+    expect(mapped?.cacheReadTokens).toBe(30_000);
+    expect(mapped?.cacheCreationTokens).toBe(5_000);
+  });
+
+  it("mapWireContextBreakdown defaults missing cache fields to zero", () => {
+    const mapped = mapWireContextBreakdown({ conversation_tokens: 100 });
+    expect(mapped?.cacheReadTokens).toBe(0);
+    expect(mapped?.cacheCreationTokens).toBe(0);
+  });
+
+  it("isBreakdownEmpty still treats cache-only payloads as empty", () => {
+    // Cache numbers without any bucket tokens means the harness didn't
+    // emit the per-bucket breakdown -- UI should fall back to the legacy
+    // popover. Adding this test pins down that cache fields do not
+    // change the emptiness verdict.
+    useContextUsageStore.getState().setContextUtilization("k-cache-only", 0.5, 100_000, {
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 0,
+      cacheReadTokens: 1_234,
+      cacheCreationTokens: 567,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey["k-cache-only"];
+    expect(entry?.breakdown).toBeUndefined();
   });
 
   it("mapWireContextBreakdown + setContextUtilization drops an all-zero payload (older harness fallback)", () => {
@@ -215,6 +263,8 @@ describe("useContextUsageStore", () => {
       mcpTokens: 0,
       subagentsTokens: 500,
       conversationTokens: 33_500,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     });
     s.bumpEstimatedTokens("k1", 4_000);
 

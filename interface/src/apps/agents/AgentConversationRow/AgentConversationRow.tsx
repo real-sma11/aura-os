@@ -7,6 +7,7 @@ import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { Avatar } from "../../../components/Avatar";
 import { LoopProgress } from "../../../components/LoopProgress";
 import { useAvatarState } from "../../../hooks/use-avatar-state";
+import { useIsAgentBusy } from "../../../hooks/use-is-agent-busy";
 import { agentDisplayName } from "../../../lib/derive-project-agent-title";
 import { useAgentStore } from "../stores";
 import styles from "./AgentConversationRow.module.css";
@@ -50,6 +51,10 @@ export function AgentConversationRow({
     ? agentDescription || fallback
     : messagePreview || agentDescription || fallback;
   const { status, isLocal } = useAvatarState(agent.agent_id);
+  // Combined "this template is actively working" signal across
+  // automation loops, standalone-agent chat streams, and project-agent
+  // chat streams. See `useIsAgentBusy` for why each source is needed.
+  const isAgentBusy = useIsAgentBusy(agent.agent_id);
   const pinnedIds = useAgentStore((s) => s.pinnedAgentIds);
   const isPinned = agent.is_pinned || pinnedIds.has(agent.agent_id);
   const isCeo = isSuperAgent(agent);
@@ -74,6 +79,7 @@ export function AgentConversationRow({
         size={36}
         status={status}
         isLocal={isLocal}
+        busy={isAgentBusy}
         className={styles.avatar}
       />
 

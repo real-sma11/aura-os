@@ -97,6 +97,7 @@ async fn session_events_to_conversation_history_correct_roles() {
             thinking_duration_ms: None,
             created_at: now,
             in_flight: None,
+            from_agent_id: None,
         },
         SessionEvent {
             event_id: SessionEventId::new(),
@@ -109,6 +110,7 @@ async fn session_events_to_conversation_history_correct_roles() {
             thinking_duration_ms: None,
             created_at: now,
             in_flight: None,
+            from_agent_id: None,
         },
         SessionEvent {
             event_id: SessionEventId::new(),
@@ -121,6 +123,7 @@ async fn session_events_to_conversation_history_correct_roles() {
             thinking_duration_ms: None,
             created_at: now,
             in_flight: None,
+            from_agent_id: None,
         },
         SessionEvent {
             event_id: SessionEventId::new(),
@@ -133,6 +136,7 @@ async fn session_events_to_conversation_history_correct_roles() {
             thinking_duration_ms: None,
             created_at: now,
             in_flight: None,
+            from_agent_id: None,
         },
     ];
 

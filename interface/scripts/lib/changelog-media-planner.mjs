@@ -1226,11 +1226,12 @@ async function planChangelogMediaChunkWithAnthropic({
         "content-type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
       },
       body: JSON.stringify({
         model,
         max_tokens: 4096,
-        tools: [CHANGELOG_MEDIA_PLAN_TOOL],
+        tools: [{ ...CHANGELOG_MEDIA_PLAN_TOOL, cache_control: { type: "ephemeral" } }],
         tool_choice: { type: "tool", name: CHANGELOG_MEDIA_PLAN_TOOL.name },
         messages: [{ role: "user", content: prompt }],
       }),

@@ -209,6 +209,15 @@ export interface AuraEventBase {
   session_id: string;
   user_id: string;
   agent_id: string;
+  /**
+   * Project-binding ("agent instance") id from the new Phase 4 WS wire
+   * shape (`{ session_id, project_id, project_agent_id, agent_id }` for
+   * `user_message` / `assistant_message_end`). For backwards compat the
+   * parser also populates this from the legacy `agent_instance_id` field
+   * on event types that have not yet migrated (e.g.
+   * `session_summary_updated`, `assistant_turn_progress`).
+   */
+  project_agent_id?: string | null;
   sender: Sender;
   project_id: string;
   org_id: string;

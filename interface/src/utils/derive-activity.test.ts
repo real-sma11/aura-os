@@ -53,6 +53,27 @@ describe("deriveActivity", () => {
       expect(result[0].status).toBe("active");
     });
 
+    it("parses a marker whose arg contains nested parens", () => {
+      const buf =
+        "[tool: search_code(pub fn (ack|mark_attempt|len), context=1) → ok]";
+      const result = deriveActivity(buf);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: "tool-0",
+        status: "done",
+        detail: undefined,
+      });
+      expect(result[0].message).toMatch(/^Search: pub fn \(ack\|mark_attempt/);
+    });
+
+    it("accepts the unicode arrow as marker terminator", () => {
+      const buf = "[tool: read_file(src/db.rs) → ok]";
+      const result = deriveActivity(buf);
+      expect(result).toEqual([
+        { id: "tool-0", message: "Read `src/db.rs`", detail: undefined, status: "done" },
+      ]);
+    });
+
     it("handles tool markers without args", () => {
       const buf = "[tool: task_done -> ok]";
       const result = deriveActivity(buf);
@@ -240,6 +261,16 @@ describe("computeIterationStats", () => {
     const stats = computeIterationStats(buf);
     expect(stats.errors).toBe(1);
     expect(stats.total).toBe(2);
+  });
+
+  it("counts a nested-paren search_code marker as a read", () => {
+    const buf =
+      "[tool: search_code(pub (struct|fn|enum), context=2) → ok]";
+    const stats = computeIterationStats(buf);
+    expect(stats.total).toBe(1);
+    expect(stats.reads).toBe(1);
+    expect(stats.errors).toBe(0);
+    expect(stats.dots[0]).toEqual({ category: "read", isError: false });
   });
 
   it("categorizes unknown tools as other", () => {

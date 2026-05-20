@@ -6,8 +6,12 @@ use crate::error::ApiResult;
 use crate::handlers::billing;
 use crate::state::{AppState, AuthJwt, AuthSession};
 
-use super::harness_stream::{open_generation_stream, resolve_generation_identity, GenerationPersistArgs};
-use super::persist::{persist_user_prompt, resolve_persist_ctx, GenerationPersistMeta};
+use super::harness_stream::{
+    open_generation_stream, resolve_generation_identity, GenerationPersistArgs,
+};
+use super::persist::{
+    persist_user_prompt, resolve_persist_ctx, GenerationPersistMeta, GenerationPersistTargets,
+};
 use super::sse::SseResponse;
 
 #[derive(Debug, serde::Deserialize)]
@@ -23,6 +27,17 @@ pub(crate) struct GenerateVideoRequest {
     pub project_id: Option<String>,
     pub agent_id: Option<String>,
     pub agent_instance_id: Option<String>,
+    /// See [`crate::dto::GenerateImageRequest::new_session`]. Accepts
+    /// `new_session` (snake_case) on the wire because the chat-input "+"
+    /// affordance forwards the flag with that exact key — keep the
+    /// rename here so the camelCase struct default doesn't turn it into
+    /// `newSession`.
+    #[serde(default, rename = "new_session")]
+    pub new_session: Option<bool>,
+    /// See [`crate::dto::GenerateImageRequest::session_id`]. Same
+    /// snake_case rename rationale as `new_session`.
+    #[serde(default, rename = "session_id")]
+    pub session_id: Option<String>,
 }
 
 pub(crate) async fn generate_video_stream(
@@ -47,10 +62,14 @@ pub(crate) async fn generate_video_stream(
     // generation streams without durable history.
     let persist_ctx = resolve_persist_ctx(
         &state,
-        &jwt,
-        body.agent_id.as_deref(),
-        body.project_id.as_deref(),
-        body.agent_instance_id.as_deref(),
+        &GenerationPersistTargets {
+            jwt: &jwt,
+            agent_id: body.agent_id.as_deref(),
+            project_id: body.project_id.as_deref(),
+            agent_instance_id: body.agent_instance_id.as_deref(),
+            force_new: body.new_session.unwrap_or(false),
+            pinned_session_id: body.session_id.as_deref(),
+        },
     )
     .await;
     if let Some(ctx) = persist_ctx.as_ref() {

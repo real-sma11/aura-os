@@ -26,8 +26,17 @@ export function deriveActivity(buffer: string): ActivityItem[] {
   return deriveLegacyJsonActivity(buffer);
 }
 
-const TOOL_MARKER_RE = /\[tool:\s*(\S+?)(?:\(([^)]*)\))?\s*->\s*(ok|error)\]/g;
-const TOOL_MARKER_TEST = /\[tool:\s*\S+?(?:\([^)]*\))?\s*->\s*(?:ok|error)\]/;
+// Argument capture uses `[^\]\r\n]*?` (lazy, single-line, marker-bounded)
+// instead of `[^)]*` so nested parens like `search_code(pub fn (a|b),
+// context=2)` are absorbed up to the outermost `)` that is followed by
+// the marker tail. Mirrors the canonical regex in
+// `interface/src/utils/tool-markers.ts`. The arrow alternation accepts
+// both `->` and `→` because the server-emitted form is the unicode
+// arrow (see the sidekick Run pane screenshots).
+const TOOL_MARKER_RE =
+  /\[tool:\s*(\S+?)(?:\(([^\]\r\n]*?)\))?\s*(?:->|→)\s*(ok|error)\]/g;
+const TOOL_MARKER_TEST =
+  /\[tool:\s*\S+?(?:\([^\]\r\n]*?\))?\s*(?:->|→)\s*(?:ok|error)\]/;
 
 function isAgenticFormat(buffer: string): boolean {
   return TOOL_MARKER_TEST.test(buffer) || !buffer.trimStart().startsWith("{");

@@ -32,8 +32,14 @@ export type ToolMarkerSegment =
       raw: string;
     };
 
+// Argument capture uses `[^\]\r\n]*?` (lazy, single-line, marker-bounded)
+// rather than `[^)]*` so nested parens inside the arg — e.g.
+// `search_code(pub fn (a|b), context=2)` — are absorbed up to the
+// outermost `)` that is followed by ` -> ok|error]`. Bounding by `]`
+// and newlines also stops the lazy match from leaking into a
+// downstream marker that happens to share the same line.
 const TOOL_MARKER_RE =
-  /\[tool:\s*([A-Za-z0-9_.:-]+)(?:\(([^)]*)\)|\s+([^\]\r\n]*?))?\s*(?:->|→)\s*(ok|error)\s*\]/g;
+  /\[tool:\s*([A-Za-z0-9_.:-]+)(?:\(([^\]\r\n]*?)\)|\s+([^\]\r\n]*?))?\s*(?:->|→)\s*(ok|error)\s*\]/g;
 
 // Recognized prose markers of the form `[<gate>: <body>]` where `<gate>`
 // is one of the PSEUDO_GATE_LABELS and `<body>` runs to the closing `]`

@@ -244,6 +244,37 @@ impl AgentPermissions {
         }
         self
     }
+
+    /// Splice [`Capability::InvokeProcess`] into this bundle if it
+    /// isn't already present. Idempotent.
+    ///
+    /// # Why
+    ///
+    /// The dev automation loop runs unattended on the local workspace
+    /// and routinely needs to invoke shell commands (`cargo check`,
+    /// `cargo test`, `git status`, etc.) through the harness's
+    /// `run_command` tool. That tool is gated by
+    /// [`Capability::InvokeProcess`]; without it the harness returns
+    /// `permissions: requires capability InvokeProcess` and the
+    /// agent burns turns retrying the same blocked call until it
+    /// stalls.
+    ///
+    /// Most agent records persisted by `aura-network` do not carry
+    /// `InvokeProcess` by default — it's an admin/CEO-grade
+    /// capability — so dev-loop runs against a fresh project agent
+    /// systematically failed to use shell tools. Splicing the
+    /// capability at dev-loop start time is narrower than promoting
+    /// the agent to a full preset: it adds exactly one cap, only on
+    /// the path that needs it, and only for the in-memory bundle
+    /// passed to the harness (the storage row is untouched, so the
+    /// chat surface still respects whatever the user configured).
+    #[must_use]
+    pub fn with_dev_loop_execution_caps(mut self) -> Self {
+        if !self.capabilities.contains(&Capability::InvokeProcess) {
+            self.capabilities.push(Capability::InvokeProcess);
+        }
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------

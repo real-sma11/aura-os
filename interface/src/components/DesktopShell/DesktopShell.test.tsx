@@ -49,7 +49,9 @@ const mockDesktopApp = {
 let currentActiveApp = mockProjectsApp;
 let currentVisitedAppIds = new Set(["projects"]);
 let currentSidekickCollapsed = false;
+let currentSidekickSplitScreen = false;
 const toggleSidekick = vi.fn();
+const setSidekickSplitScreen = vi.fn();
 const laneRenderSpy = vi.fn();
 
 vi.mock("@cypher-asi/zui", () => ({
@@ -89,12 +91,20 @@ vi.mock("../../stores/app-store", () => ({
 
 vi.mock("../../stores/app-ui-store", () => ({
   useAppUIStore: (
-    sel: (s: { visitedAppIds: Set<string>; sidekickCollapsed: boolean; toggleSidekick: typeof toggleSidekick }) => unknown,
+    sel: (s: {
+      visitedAppIds: Set<string>;
+      sidekickCollapsed: boolean;
+      sidekickSplitScreen: boolean;
+      toggleSidekick: typeof toggleSidekick;
+      setSidekickSplitScreen: typeof setSidekickSplitScreen;
+    }) => unknown,
   ) =>
     sel({
       visitedAppIds: currentVisitedAppIds,
       sidekickCollapsed: currentSidekickCollapsed,
+      sidekickSplitScreen: currentSidekickSplitScreen,
       toggleSidekick,
+      setSidekickSplitScreen,
     }),
 }));
 
@@ -277,7 +287,9 @@ beforeEach(() => {
   currentActiveApp = mockProjectsApp;
   currentVisitedAppIds = new Set(["projects"]);
   currentSidekickCollapsed = false;
+  currentSidekickSplitScreen = false;
   toggleSidekick.mockClear();
+  setSidekickSplitScreen.mockClear();
   laneRenderSpy.mockClear();
 });
 

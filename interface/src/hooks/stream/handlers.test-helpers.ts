@@ -34,6 +34,9 @@ export function makeSetters(): StreamSetters & { calls: Record<string, unknown[]
     setIsWriting: track("setIsWriting") as StreamSetters["setIsWriting"],
     setProgressText: track("setProgressText") as StreamSetters["setProgressText"],
     setTimeline: track("setTimeline") as StreamSetters["setTimeline"],
+    setGenerationState: track("setGenerationState") as StreamSetters["setGenerationState"],
+    setGenerationPercent: track("setGenerationPercent") as StreamSetters["setGenerationPercent"],
+    clearGeneration: track("clearGeneration") as StreamSetters["clearGeneration"],
     calls,
   };
 }

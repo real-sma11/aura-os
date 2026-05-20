@@ -252,8 +252,7 @@ pub(crate) async fn post_update_stage_only(
     {
         // Run the staging on the current async worker — staging hits the
         // network and writes to disk but does not exit Aura.
-        let result =
-            tokio::task::spawn_blocking(move || updater::stage_only(&state)).await;
+        let result = tokio::task::spawn_blocking(move || updater::stage_only(&state)).await;
         match result {
             Ok(Ok(path)) => Json(serde_json::json!({
                 "ok": true,

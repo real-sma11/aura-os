@@ -209,8 +209,12 @@ fn is_completion_contract_failure(reason: &str) -> bool {
         || reason.contains("no file edited")
         || reason.contains("no file edits");
     let mentions_no_change_escape_hatch = reason.contains("no_changes_needed");
+    let mentions_research_loop_verdict =
+        reason.contains("task completed without any file operations")
+            || reason.contains("completion not verified");
 
     mentions_task_done && (mentions_missing_edits || mentions_no_change_escape_hatch)
+        || mentions_research_loop_verdict
 }
 
 fn is_push_timeout(reason: &str) -> bool {
@@ -299,6 +303,31 @@ mod tests {
         assert_eq!(
             signal.failure_kind(),
             Some(HarnessFailureKind::CompletionContract)
+        );
+    }
+
+    #[test]
+    fn classifies_research_loop_abort_as_completion_contract() {
+        // Verbatim verdict emitted by aura-harness's post-hoc
+        // `validate_execution` gate when the agent stayed in
+        // research mode and never produced any file operation.
+        // The em dash is U+2014; the classifier must accept it.
+        let reason = "agent execution error: task completed without any file operations — \
+                      completion not verified";
+        let signal = HarnessSignal::from_event(
+            "task_failed",
+            &serde_json::json!({
+                "task_id": "task-1",
+                "reason": reason,
+            }),
+        )
+        .expect("signal");
+
+        assert_eq!(
+            signal.failure_kind(),
+            Some(HarnessFailureKind::CompletionContract),
+            "research-loop abort must classify as CompletionContract \
+             so the server-side retry path recognises it as restartable",
         );
     }
 

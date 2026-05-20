@@ -252,6 +252,20 @@ export function generateImageStream(
   handler: StreamEventHandler = { onEvent: () => {}, onError: () => {} },
   signal?: AbortSignal,
   scope?: GenerateImageChatScope,
+  /**
+   * When true, force the server-side persistence layer to create a brand
+   * new chat session for this turn instead of appending to the latest
+   * existing one. Mirrors the `new_session` flag on `sendEventStream`
+   * so the chat-input "+" affordance behaves identically across every
+   * agent mode.
+   */
+  newSession?: boolean,
+  /**
+   * Pin this generation's persisted user/assistant rows into the
+   * specified storage session id. Skipped when `newSession` is also
+   * true (force-new wins server-side too).
+   */
+  sessionId?: string | null,
 ) {
   const body: Record<string, unknown> = { prompt };
   if (model) body.model = model;
@@ -263,6 +277,8 @@ export function generateImageStream(
       .filter((a) => a.type === "image")
       .map((a) => a.source_url ?? `data:${a.media_type};base64,${a.data}`);
   }
+  if (newSession) body.new_session = true;
+  if (sessionId && !newSession) body.session_id = sessionId;
   return streamSSE<string>(
     `${BASE_URL}/api/generate/image/stream`,
     {
@@ -300,6 +316,10 @@ export function generate3dStream(
   parentId?: string,
   agentId?: string,
   agentInstanceId?: string,
+  /** See {@link generateImageStream} — same semantics. */
+  newSession?: boolean,
+  /** See {@link generateImageStream} — same semantics. */
+  sessionId?: string | null,
 ) {
   // Keep the legacy positional `string` shape working for existing
   // callers (the AURA 3D app passes an image URL directly).
@@ -314,6 +334,8 @@ export function generate3dStream(
   if (parentId) body.parentId = parentId;
   if (agentId) body.agentId = agentId;
   if (agentInstanceId) body.agentInstanceId = agentInstanceId;
+  if (newSession) body.new_session = true;
+  if (sessionId && !newSession) body.session_id = sessionId;
   return streamSSE<string>(
     `${BASE_URL}/api/generate/3d/stream`,
     {
@@ -337,6 +359,10 @@ export interface GenerateVideoOptions {
   name?: string;
   agentId?: string;
   agentInstanceId?: string;
+  /** See {@link generateImageStream} — same semantics. */
+  newSession?: boolean;
+  /** See {@link generateImageStream} — same semantics. */
+  sessionId?: string | null;
 }
 
 export function generateVideoStream(
@@ -354,6 +380,8 @@ export function generateVideoStream(
   if (options.name) body.name = options.name;
   if (options.agentId) body.agentId = options.agentId;
   if (options.agentInstanceId) body.agentInstanceId = options.agentInstanceId;
+  if (options.newSession) body.new_session = true;
+  if (options.sessionId && !options.newSession) body.session_id = options.sessionId;
   return streamSSE<string>(
     `${BASE_URL}/api/generate/video/stream`,
     {

@@ -13,6 +13,7 @@ import {
   type LoopStatus,
   isLoopActivityActive,
 } from "../../shared/types/aura-events";
+import styles from "./LoopProgress.module.css";
 
 /**
  * Single, reusable circular progress indicator for loop activity.
@@ -167,17 +168,8 @@ export function LoopProgress({
         strokeDasharray={geom.circumference}
         strokeDashoffset={dashOffset}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        style={{
-          transformOrigin: `${size / 2}px ${size / 2}px`,
-          animation: "loop-progress-spin 1.1s linear infinite",
-        }}
+        className={styles.arc}
       />
-      <style>{`
-        @keyframes loop-progress-spin {
-          from { transform: rotate(-90deg); }
-          to { transform: rotate(270deg); }
-        }
-      `}</style>
     </svg>
   );
 }

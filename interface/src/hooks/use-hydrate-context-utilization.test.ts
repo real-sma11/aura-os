@@ -169,6 +169,8 @@ describe("useHydrateContextUtilization", () => {
         mcpTokens: 0,
         subagentsTokens: 800,
         conversationTokens: 71_500,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
       });
     });
   });

@@ -10,7 +10,6 @@ import {
   BarChart3,
   MessageSquare,
   FolderClosed,
-  Play,
   Plus,
   SquareTerminal,
   Globe,
@@ -24,6 +23,7 @@ import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
 import { useBrowserPanelStore } from "../../stores/browser-panel-store";
 import { SidekickTabBar, type TabItem } from "../SidekickTabBar";
 import { LoopProgress } from "../LoopProgress";
+import { PlayLoopGlyph } from "../PlayLoopGlyph";
 import {
   selectAgentInstanceActivity,
   selectProjectActivity,
@@ -91,15 +91,14 @@ export function SidekickTaskbar() {
       },
       {
         id: "run",
-        icon: runActive ? (
-          <LoopProgress
-            source={{ activity: runActivity }}
-            size={16}
-            className={styles.automationSpinner}
-          />
-        ) : (
-          <Play size={16} />
-        ),
+        // `PlayLoopGlyph` keeps the Play affordance recognisable AND
+        // shows loop activity in a single SVG, so the Play glyph and
+        // the spinning ring are guaranteed concentric. The earlier
+        // "icon + absolutely-positioned ring overlay" rendered as
+        // two side-by-side glyphs inside the tab button's icon slot
+        // — the overlay wasn't anchoring to its wrap span and users
+        // couldn't tell the Run tab was still the Run tab.
+        icon: <PlayLoopGlyph active={runActive} size={16} />,
         title: "Run",
       },
       { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },

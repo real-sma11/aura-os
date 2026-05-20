@@ -243,3 +243,33 @@ fn dod_followup_prompt_and_retry_budget_are_retired() {
         "aura-os must not retry harness-owned DoD failures"
     );
 }
+
+#[test]
+fn research_loop_abort_verdict_is_restartable_at_classifier_layer() {
+    // Verbatim verdict aura-harness emits from its post-hoc
+    // `validate_execution` gate when the agent stayed in research
+    // mode and never produced a file operation. The em dash is
+    // U+2014 — paste verbatim, do not substitute an ASCII hyphen.
+    //
+    // This pins the *classifier* layer of the two-layer fix:
+    // without this, `maybe_apply_task_level_retry` bails out at
+    // its `should_restart_on_error` guard before even looking at
+    // the budget gate. The companion fix at the budget gate
+    // (`tool_attempts > 0 && tool_attempts < TOOL_CALL_RETRY_BUDGET`)
+    // is exercised by the existing `LoopRetryState` integration
+    // tests; here we only lock in the classifier wiring.
+    let reason = "agent execution error: task completed without any file operations — \
+                  completion not verified";
+    assert!(
+        tsp::should_restart_on_error_event(reason),
+        "research-loop abort verdict must be classified as a \
+         restartable transient so the task-level retry path can \
+         schedule a fresh-context retry instead of leaving the \
+         task permanently Failed",
+    );
+    assert!(
+        tsp::is_completion_contract_failure(reason),
+        "and the same verdict must also classify as \
+         CompletionContract for the reconciler decision table",
+    );
+}

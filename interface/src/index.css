@@ -78,6 +78,18 @@
    */
   --color-border-main-panel: var(--color-border);
   --color-border-chrome: var(--color-border);
+
+  /*
+   * Marketing surface tokens. Used by the logged-out marketing routes
+   * (Product / Changelog / Feedback / Pricing) under MarketingShell and the
+   * components ported from `aura-web`. Namespaced as `--marketing-*` so they
+   * never clash with the app shell's `--navbar-height` / `--transition-fast`
+   * scales.
+   */
+  --marketing-navbar-height: calc(var(--control-height-md, 40px) * 2);
+  --marketing-taskbar-safe-offset: env(safe-area-inset-bottom, 0px);
+  --marketing-main-bottom-space: 24px;
+  --marketing-transition-fast: 150ms ease;
 }
 
 /* Pin `color-scheme` to the app's current theme so OS-native form
@@ -133,6 +145,23 @@ html, body, #root {
 html:has([role="dialog"][aria-modal="true"]),
 body:has([role="dialog"][aria-modal="true"]) {
   overflow: hidden;
+}
+
+/*
+ * Marketing pages (MarketingShell) own a long scrollable column and must
+ * NOT inherit the app-shell `overflow: hidden` lock above. The MarketingShell
+ * component stamps `data-marketing-shell="true"` on `<html>` while mounted;
+ * we revert overflow + height here so the page scrolls naturally on iOS,
+ * Android, and desktop. Modal dialogs still re-lock via the rule above
+ * because that selector is more specific (and runs after this one in the
+ * cascade only when active).
+ */
+html[data-marketing-shell="true"],
+html[data-marketing-shell="true"] body,
+html[data-marketing-shell="true"] #root {
+  overflow: visible;
+  height: auto;
+  min-height: 100%;
 }
 
 @media (pointer: coarse), (max-width: 900px) {

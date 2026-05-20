@@ -74,6 +74,16 @@ runs:
       shell: bash
       env:
         SETUP_RUST_TOOLCHAIN_INPUT: ${{ inputs.toolchain }}
+        SETUP_RUST_TOOLCHAIN_RUNNER_OS: ${{ runner.os }}
+      # The path pin keeps macos-latest healthy (see top-of-file note about
+      # Homebrew shim swallowing cargo). It also blocks the windows-latest
+      # image regression where the runner now preinstalls a newer rustc
+      # alongside our pinned one (e.g. system 1.95.0 next to dtolnay's
+      # 1.94.1). Without this, `Swatinem/rust-cache` picks up both rustcs,
+      # `sccache rustc` can race in via the system toolchain, and Cargo
+      # ends up mixing rmeta files from the two compilers, producing
+      # E0514 ("found crate compiled by an incompatible version of rustc")
+      # against `.aura-shared-target/release/deps/liblazy_static-*.rmeta`.
       run: |
         set -eo pipefail
 
@@ -113,8 +123,48 @@ runs:
           exit 1
         fi
 
-        echo "$bin_dir" >> "$GITHUB_PATH"
-        echo "Prepended $bin_dir to PATH (resolved toolchain: '$desired')"
+        # On Windows we run under Git Bash, so `$bin_dir` looks like
+        # `/c/Users/runneradmin/.rustup/toolchains/<toolchain>/bin`.
+        # `$GITHUB_PATH` is consumed by the runner host (PowerShell on
+        # Windows) and that MSYS-style path is silently ignored by native
+        # Windows PATH lookups -- which is how Cargo / sccache end up
+        # picking the system rustc instead of ours. Convert to a real
+        # Windows path before exporting, and emit both rustc/cargo/rustdoc
+        # as absolute env-var pins so downstream tooling (including
+        # `RUSTC_WRAPPER=sccache`) cannot resolve a different binary off
+        # PATH.
+        exe_suffix=""
+        path_for_github_path="$bin_dir"
+        if [ "$SETUP_RUST_TOOLCHAIN_RUNNER_OS" = "Windows" ]; then
+          exe_suffix=".exe"
+          if command -v cygpath >/dev/null 2>&1; then
+            path_for_github_path="$(cygpath -w "$bin_dir")"
+          fi
+        fi
+
+        echo "$path_for_github_path" >> "$GITHUB_PATH"
+        echo "Prepended $path_for_github_path to PATH (resolved toolchain: '$desired')"
+
+        rustc_bin_native="$bin_dir/rustc$exe_suffix"
+        cargo_bin_native="$bin_dir/cargo$exe_suffix"
+        rustdoc_bin_native="$bin_dir/rustdoc$exe_suffix"
+        if [ "$SETUP_RUST_TOOLCHAIN_RUNNER_OS" = "Windows" ] && command -v cygpath >/dev/null 2>&1; then
+          rustc_bin_native="$(cygpath -w "$rustc_bin_native")"
+          cargo_bin_native="$(cygpath -w "$cargo_bin_native")"
+          rustdoc_bin_native="$(cygpath -w "$rustdoc_bin_native")"
+        fi
+
+        # Cargo passes `$RUSTC` verbatim to `$RUSTC_WRAPPER`, so pinning
+        # RUSTC pins the binary sccache invokes too. RUSTDOC + CARGO match
+        # so doctest/manifest tooling stays on the same toolchain.
+        {
+          echo "RUSTC=$rustc_bin_native"
+          echo "CARGO=$cargo_bin_native"
+          echo "RUSTDOC=$rustdoc_bin_native"
+        } >> "$GITHUB_ENV"
+        echo "Pinned RUSTC=$rustc_bin_native"
+        echo "Pinned CARGO=$cargo_bin_native"
+        echo "Pinned RUSTDOC=$rustdoc_bin_native"
 
         # Disable rustup's auto-install during downstream `cargo` / `rustc`
         # invocations. The toolchain is already installed by the dtolnay

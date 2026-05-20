@@ -1,6 +1,10 @@
 import { renderHook, act } from "@testing-library/react";
 import { useChatStream } from "./use-chat-stream";
-import { useStreamStore, streamMetaMap } from "../stream/store";
+import {
+  useStreamStore,
+  streamMetaMap,
+  keyForProjectSession,
+} from "../stream/store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
 import { useSessionsListStore } from "../../stores/sessions-list-store";
 import { EventType, type AuraEvent } from "../../shared/types/aura-events";
@@ -51,6 +55,7 @@ vi.mock("../../api/client", () => ({
   api: {
     sendEventStream: vi.fn().mockResolvedValue(undefined),
     getAgentInstance: vi.fn().mockResolvedValue({}),
+    cancelInstanceTurn: vi.fn().mockResolvedValue(undefined),
   },
   isInsufficientCreditsError: vi.fn(() => false),
   isAgentBusyError: vi.fn(() => null),
@@ -64,6 +69,7 @@ vi.mock("../../api/streams", async (importOriginal) => {
     ...actual,
     generateImageStream: vi.fn().mockResolvedValue(undefined),
     generate3dStream: vi.fn().mockResolvedValue(undefined),
+    generateVideoStream: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -173,10 +179,13 @@ describe("useChatStream parallel chats", () => {
     expect(capture.calls[1].content).toBe("hi from B");
 
     // Both partitions should be marked streaming on their own slots
-    // (no cross-partition leak).
+    // (no cross-partition leak). Phase 3: keys now embed the
+    // session-id placeholder (`fresh` here equals
+    // `FRESH_SESSION_PLACEHOLDER` from `stream/store.ts`; spelled as
+    // a literal so the test pins the on-the-wire key shape).
     const entries = useStreamStore.getState().entries;
-    expect(entries["p-1:ai-A"]?.isStreaming).toBe(true);
-    expect(entries["p-1:ai-B"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-A:fresh"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-B:fresh"]?.isStreaming).toBe(true);
 
     // Cleanup so unawaited promises don't hang the suite.
     for (const c of capture.calls) c.resolve();
@@ -225,7 +234,7 @@ describe("useChatStream parallel chats", () => {
       await Promise.resolve();
     });
 
-    const aEntry = useStreamStore.getState().entries["p-1:ai-A"];
+    const aEntry = useStreamStore.getState().entries["p-1:ai-A:fresh"];
     expect(aEntry).toBeDefined();
     expect(aEntry.isStreaming).toBe(false);
     // Should contain the user message + the assistant placeholder
@@ -238,7 +247,7 @@ describe("useChatStream parallel chats", () => {
     expect(mockSetAgentStreaming).toHaveBeenCalledWith("ai-A", false);
 
     // Partition send-control for A is no longer in-flight.
-    expect(_peekPartitionSendControl("p-1:ai-A")?.inFlight).toBe(false);
+    expect(_peekPartitionSendControl("p-1:ai-A:fresh")?.inFlight).toBe(false);
   });
 
   it("Mid-stream switch with no second send: A still finalizes on its partition", async () => {
@@ -272,7 +281,7 @@ describe("useChatStream parallel chats", () => {
       await Promise.resolve();
     });
 
-    const aEntry = useStreamStore.getState().entries["p-1:ai-A"];
+    const aEntry = useStreamStore.getState().entries["p-1:ai-A:fresh"];
     expect(aEntry.isStreaming).toBe(false);
     const assistant = aEntry.events.find((e) => e.role === "assistant");
     expect(assistant?.content).toBe("A finishes alone");
@@ -302,8 +311,8 @@ describe("useChatStream parallel chats", () => {
     expect(bCall?.content).toBe("from B");
 
     const entries = useStreamStore.getState().entries;
-    expect(entries["p-1:ai-A"]?.isStreaming).toBe(true);
-    expect(entries["p-1:ai-B"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-A:fresh"]?.isStreaming).toBe(true);
+    expect(entries["p-1:ai-B:fresh"]?.isStreaming).toBe(true);
 
     for (const c of capture.calls) c.resolve();
   });
@@ -389,7 +398,7 @@ describe("useChatStream parallel chats", () => {
     const sentSignal = capture.calls[0].signal;
     expect(sentSignal).toBeDefined();
     expect(sentSignal!.aborted).toBe(false);
-    expect(useStreamStore.getState().entries["p-1:ai-A"]?.isStreaming).toBe(
+    expect(useStreamStore.getState().entries["p-1:ai-A:fresh"]?.isStreaming).toBe(
       true,
     );
 
@@ -399,13 +408,232 @@ describe("useChatStream parallel chats", () => {
     });
 
     expect(sentSignal!.aborted).toBe(true);
-    expect(useStreamStore.getState().entries["p-1:ai-A"]?.isStreaming).toBe(
+    expect(useStreamStore.getState().entries["p-1:ai-A:fresh"]?.isStreaming).toBe(
       false,
     );
-    expect(_peekPartitionSendControl("p-1:ai-A")?.currentController).toBeNull();
+    expect(_peekPartitionSendControl("p-1:ai-A:fresh")?.currentController).toBeNull();
 
     // Resolve the captured promise so the test doesn't leak it; in real
     // code the AbortError from `streamSSE` would reject this for us.
     capture.calls[0].resolve();
+  });
+});
+
+// Phase 4 (parallel-session-chats plan): the lane is keyed by
+// `(projectId, agentInstanceId, sessionId ?? FRESH_SESSION_PLACEHOLDER)`
+// so the same agent instance can carry truly concurrent turns on two
+// different storage sessions. These tests pin the per-session
+// isolation that makes that possible — view-no-leak, concurrent
+// dispatch, and independent completion.
+describe("useChatStream same instance, parallel sessions", () => {
+  beforeEach(() => {
+    streamMetaMap.clear();
+    useStreamStore.setState({ entries: {} });
+    useChatUIStore.setState({ streams: {} });
+    useSessionsListStore.setState({
+      sessionsBySurface: {},
+      loadingBySurface: {},
+      deleteErrorBySurface: {},
+      version: 0,
+    });
+    _resetAllPartitionSendControl();
+    vi.clearAllMocks();
+    vi.mocked(api.sendEventStream).mockReset().mockResolvedValue(undefined);
+  });
+
+  it("view-no-leak: sending on session A leaves session B's lane untouched", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result: rA } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-1",
+      }),
+    );
+    const { result: rB } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-2",
+      }),
+    );
+
+    const keyA = keyForProjectSession("p-1", "ai-X", "s-1");
+    const keyB = keyForProjectSession("p-1", "ai-X", "s-2");
+    expect(keyA).not.toBe(keyB);
+
+    await act(async () => {
+      void rA.current.sendMessage("hi from A");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(1);
+    expect(capture.calls[0].agentInstanceId).toBe("ai-X");
+    expect(capture.calls[0].content).toBe("hi from A");
+
+    const entries = useStreamStore.getState().entries;
+    expect(entries[keyA]?.isStreaming).toBe(true);
+    expect(entries[keyB]?.isStreaming ?? false).toBe(false);
+    // B's transcript / event buffer hasn't been touched.
+    expect(entries[keyB]?.events ?? []).toHaveLength(0);
+    expect(entries[keyB]?.streamingText ?? "").toBe("");
+
+    // No POST went out for B.
+    expect(
+      capture.calls.filter((c) => c.content === "hi from A"),
+    ).toHaveLength(1);
+    expect(capture.calls.some((c) => c.content !== "hi from A")).toBe(false);
+
+    // Per-session send-control entries are independent: A's lane is
+    // in flight, B's lane (lazy-created by the hook's mount effect
+    // because it has a pinned sessionId, see `useChatStream`'s
+    // `getPartitionSendControl(core.key)` call) is still idle.
+    const ctlA = _peekPartitionSendControl(keyA);
+    const ctlB = _peekPartitionSendControl(keyB);
+    expect(ctlA?.inFlight).toBe(true);
+    expect(ctlA?.currentController).not.toBeNull();
+    expect(ctlB?.inFlight ?? false).toBe(false);
+    expect(ctlB?.currentController ?? null).toBeNull();
+    expect(ctlA).not.toBe(ctlB);
+
+    capture.calls[0].resolve();
+  });
+
+  it("concurrent-sends: parallel sendMessage on two sessions take distinct lanes", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result: rA } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-1",
+      }),
+    );
+    const { result: rB } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-2",
+      }),
+    );
+
+    const keyA = keyForProjectSession("p-1", "ai-X", "s-1");
+    const keyB = keyForProjectSession("p-1", "ai-X", "s-2");
+
+    await act(async () => {
+      // Concurrent dispatch via `Promise.all`. The underlying
+      // `api.sendEventStream` mock returns a hanging promise that we
+      // resolve manually at the end of the test, so we can't `await`
+      // the all-promise without deadlocking — `void` it and let the
+      // microtask flush below settle the synchronous send paths.
+      void Promise.all([
+        rA.current.sendMessage("from A"),
+        rB.current.sendMessage("from B"),
+      ]);
+      await Promise.resolve();
+    });
+
+    // Two distinct dispatcher calls — no merging into one POST.
+    expect(capture.calls).toHaveLength(2);
+    const aCall = capture.calls.find((c) => c.content === "from A");
+    const bCall = capture.calls.find((c) => c.content === "from B");
+    expect(aCall).toBeDefined();
+    expect(bCall).toBeDefined();
+    expect(aCall!.agentInstanceId).toBe("ai-X");
+    expect(bCall!.agentInstanceId).toBe("ai-X");
+
+    // Each lane is streaming on its own key.
+    const entries = useStreamStore.getState().entries;
+    expect(entries[keyA]?.isStreaming).toBe(true);
+    expect(entries[keyB]?.isStreaming).toBe(true);
+
+    // Independent abort signals on the wire.
+    expect(aCall!.signal).toBeDefined();
+    expect(bCall!.signal).toBeDefined();
+    expect(aCall!.signal).not.toBe(bCall!.signal);
+    expect(aCall!.signal!.aborted).toBe(false);
+    expect(bCall!.signal!.aborted).toBe(false);
+
+    // Independent per-session send-control entries, each holding their
+    // own (distinct) AbortController.
+    const ctlA = _peekPartitionSendControl(keyA);
+    const ctlB = _peekPartitionSendControl(keyB);
+    expect(ctlA).toBeDefined();
+    expect(ctlB).toBeDefined();
+    expect(ctlA).not.toBe(ctlB);
+    expect(ctlA!.currentController).not.toBeNull();
+    expect(ctlB!.currentController).not.toBeNull();
+    expect(ctlA!.currentController).not.toBe(ctlB!.currentController);
+    expect(ctlA!.inFlight).toBe(true);
+    expect(ctlB!.inFlight).toBe(true);
+
+    for (const c of capture.calls) c.resolve();
+  });
+
+  it("independent-completion: terminating A leaves B streaming", async () => {
+    const capture = setupSendStreamCapture();
+
+    const { result: rA } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-1",
+      }),
+    );
+    const { result: rB } = renderHook(() =>
+      useChatStream({
+        projectId: "p-1",
+        agentInstanceId: "ai-X",
+        sessionId: "s-2",
+      }),
+    );
+
+    const keyA = keyForProjectSession("p-1", "ai-X", "s-1");
+    const keyB = keyForProjectSession("p-1", "ai-X", "s-2");
+
+    await act(async () => {
+      void rA.current.sendMessage("hi A");
+      void rB.current.sendMessage("hi B");
+      await Promise.resolve();
+    });
+
+    expect(capture.calls).toHaveLength(2);
+    const aCall = capture.calls.find((c) => c.content === "hi A")!;
+    const bCall = capture.calls.find((c) => c.content === "hi B")!;
+
+    // Both lanes streaming up front.
+    let entries = useStreamStore.getState().entries;
+    expect(entries[keyA]?.isStreaming).toBe(true);
+    expect(entries[keyB]?.isStreaming).toBe(true);
+
+    // Drive A's stream to a clean assistant end. B is untouched.
+    await act(async () => {
+      aCall.handler.onEvent?.({
+        type: EventType.TextDelta,
+        content: { text: "done A" },
+      } as AuraEvent);
+      aCall.handler.onEvent?.({
+        type: EventType.AssistantMessageEnd,
+        content: { stop_reason: "end_turn" },
+      } as AuraEvent);
+      aCall.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    entries = useStreamStore.getState().entries;
+    expect(entries[keyA]?.isStreaming).toBe(false);
+    // No cross-completion: B's lane is still in flight.
+    expect(entries[keyB]?.isStreaming).toBe(true);
+
+    // B's events buffer did NOT receive A's TextDelta or assistant
+    // turn boundary. It should still hold just B's own user bubble.
+    const bAssistant = (entries[keyB]?.events ?? []).find(
+      (e) => e.role === "assistant",
+    );
+    expect(bAssistant).toBeUndefined();
+
+    bCall.resolve();
   });
 });

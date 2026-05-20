@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useStreamEvents } from "./stream/hooks";
 import { useMessageStore } from "../stores/message-store";
+import { useChatHistoryStore } from "../stores/chat-history-store";
 import { projectConversation } from "../shared/lib/conversation-projector";
 import type { DisplaySessionEvent } from "../shared/types/stream";
 
@@ -9,6 +11,25 @@ interface UseConversationSnapshotOptions {
   transcriptKey: string;
   historyMessages?: DisplaySessionEvent[];
 }
+
+interface UseConversationSnapshotResult {
+  messages: DisplaySessionEvent[];
+  /**
+   * Single-message bridge frame the panel can show *before* history
+   * resolves so cold opens of a recently-visited session paint a real
+   * bubble immediately instead of an empty / spinner panel. Sourced
+   * from `chat-history-store.previewLastMessages`, which retains the
+   * trailing message of every history key the user has opened
+   * (capped at 100). Empty when there's no preview, when history has
+   * already resolved, or when a stream has already started writing.
+   * `ChatPanel` consumes this to bypass the cold-load reveal cycle in
+   * the bridged case — see `shouldArmColdLoad` in
+   * `features/chat-ui/ChatPanel/ChatPanel.tsx`.
+   */
+  bridgeMessages: DisplaySessionEvent[];
+}
+
+const EMPTY_BRIDGE: DisplaySessionEvent[] = [];
 
 /**
  * Single-frame projection of the chat transcript from the persisted
@@ -34,7 +55,7 @@ export function useConversationSnapshot({
   streamKey,
   transcriptKey,
   historyMessages,
-}: UseConversationSnapshotOptions): { messages: DisplaySessionEvent[] } {
+}: UseConversationSnapshotOptions): UseConversationSnapshotResult {
   useEffect(() => {
     if (historyMessages && historyMessages.length > 0) {
       useMessageStore.getState().setThread(transcriptKey, historyMessages);
@@ -48,5 +69,25 @@ export function useConversationSnapshot({
     [historyMessages, streamMessages],
   );
 
-  return { messages };
+  // Read the trailing-message preview the chat-history-store carries
+  // for this key (the cache hits on every navigation back to a
+  // session the user has opened before, even after the LRU evicted
+  // the full transcript entry). `useShallow` keeps re-renders bounded
+  // to actual preview-message identity changes for this one key.
+  const previewBridge = useChatHistoryStore(
+    useShallow((s) => {
+      const preview = s.previewLastMessages[transcriptKey];
+      return preview ? [preview] : EMPTY_BRIDGE;
+    }),
+  );
+
+  const bridgeMessages = useMemo(() => {
+    // The bridge is purely a "show something while we wait" affordance.
+    // The moment we have any real or live data, the panel renders that
+    // instead and the bridge collapses back to empty.
+    if (messages.length > 0) return EMPTY_BRIDGE;
+    return previewBridge;
+  }, [messages, previewBridge]);
+
+  return { messages, bridgeMessages };
 }

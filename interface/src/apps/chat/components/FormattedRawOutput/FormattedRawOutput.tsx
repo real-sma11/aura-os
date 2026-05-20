@@ -10,7 +10,13 @@ type Segment =
   | { kind: "text"; content: string }
   | { kind: "tool"; name: string; arg?: string; status: "ok" | "error" };
 
-const TOOL_MARKER_RE = /\[tool:\s*(\S+?)(?:\(([^)]*)\))?\s*->\s*(ok|error)\]/g;
+// Kept in lockstep with `interface/src/utils/tool-markers.ts`: the lazy
+// `[^\]\r\n]*?` argument capture allows nested parens inside the arg
+// (e.g. `search_code(pub fn (a|b), context=2)`), and the arrow
+// alternation accepts both `->` and the unicode `→` actually emitted
+// by the server.
+const TOOL_MARKER_RE =
+  /\[tool:\s*(\S+?)(?:\(([^\]\r\n]*?)\))?\s*(?:->|→)\s*(ok|error)\]/g;
 
 function parseSegments(buffer: string): Segment[] {
   const segments: Segment[] = [];

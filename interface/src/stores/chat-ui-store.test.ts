@@ -7,6 +7,12 @@ const mockLoadPersistedModel = vi.fn(
 );
 const mockHasAgentScopedModel = vi.fn((_agentId: string) => false);
 const mockLoadPersistedImageModel = vi.fn((_agentId?: string) => "gpt-image-2");
+const mockLoadPersistedVideoModel = vi.fn(
+  (_agentId?: string) => "veo-3.1-fast-generate-preview",
+);
+const mockLoadPersistedThreeDModel = vi.fn(
+  (_agentId?: string) => "tripo-v2",
+);
 
 vi.mock("../constants/models", () => ({
   availableModelsForAdapter: (_adapterType?: string) => [
@@ -21,9 +27,12 @@ vi.mock("../constants/models", () => ({
   ) => mockLoadPersistedModel(adapterType, defaultModel, agentId),
   loadPersistedImageModel: (agentId?: string) =>
     mockLoadPersistedImageModel(agentId),
+  loadPersistedVideoModel: (agentId?: string) =>
+    mockLoadPersistedVideoModel(agentId),
+  loadPersistedThreeDModel: (agentId?: string) =>
+    mockLoadPersistedThreeDModel(agentId),
   persistModel: vi.fn(),
   hasAgentScopedModel: (agentId: string) => mockHasAgentScopedModel(agentId),
-  DEFAULT_3D_MODEL_ID: "tripo-v2",
 }));
 
 function resetStore() {
@@ -44,6 +53,10 @@ describe("chat-ui-store", () => {
     );
     mockHasAgentScopedModel.mockImplementation(() => false);
     mockLoadPersistedImageModel.mockImplementation(() => "gpt-image-2");
+    mockLoadPersistedVideoModel.mockImplementation(
+      () => "veo-3.1-fast-generate-preview",
+    );
+    mockLoadPersistedThreeDModel.mockImplementation(() => "tripo-v2");
   });
 
   it("init populates selectedModel from persisted value", () => {
@@ -94,8 +107,13 @@ describe("chat-ui-store", () => {
     expect(useChatUIStore.getState().streams["stream-1"]?.projectId).toBeNull();
   });
 
-  it("syncAvailableModels keeps current model if still valid", () => {
+  it("syncAvailableModels keeps current model if still valid and matches persisted", () => {
     useChatUIStore.getState().init("stream-1");
+    // Pretend the persisted value matches the user's pick (which is
+    // what `persistModel` would normally arrange via localStorage on a
+    // real run; here both are mocked so we wire the loader to mirror
+    // the pick explicitly).
+    mockLoadPersistedModel.mockImplementation(() => "claude-sonnet-4-6");
     useChatUIStore.getState().setSelectedModel("stream-1", "claude-sonnet-4-6");
     useChatUIStore.getState().syncAvailableModels("stream-1");
     expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe("claude-sonnet-4-6");
@@ -216,6 +234,167 @@ describe("chat-ui-store", () => {
     expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
       "gpt-image-2",
     );
+  });
+
+  it("setSelectedMode switching to video restores the persisted video pick", () => {
+    useChatUIStore.getState().init("stream-1");
+    mockLoadPersistedVideoModel.mockImplementation(
+      () => "dreamina-seedance-2-0-260128",
+    );
+
+    useChatUIStore.getState().setSelectedMode("stream-1", "video");
+
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedMode).toBe(
+      "video",
+    );
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+      "dreamina-seedance-2-0-260128",
+    );
+  });
+
+  it("setSelectedMode switching to 3D restores the persisted 3D pick", () => {
+    useChatUIStore.getState().init("stream-1");
+    mockLoadPersistedThreeDModel.mockImplementation(() => "tripo-v2");
+
+    useChatUIStore.getState().setSelectedMode("stream-1", "3d");
+
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedMode).toBe(
+      "3d",
+    );
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+      "tripo-v2",
+    );
+  });
+
+  it("init in video mode reads from the video-mode loader, not chat", () => {
+    localStorage.setItem("aura-selected-mode:default", "video");
+    mockLoadPersistedVideoModel.mockClear();
+    mockLoadPersistedModel.mockClear();
+    mockLoadPersistedVideoModel.mockImplementation(
+      () => "dreamina-seedance-2-0-fast-260128",
+    );
+
+    useChatUIStore.getState().init("stream-1");
+
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedMode).toBe(
+      "video",
+    );
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+      "dreamina-seedance-2-0-fast-260128",
+    );
+    expect(mockLoadPersistedModel).not.toHaveBeenCalled();
+    expect(mockLoadPersistedVideoModel).toHaveBeenCalled();
+  });
+
+  it("syncAvailableModels in video mode restores the persisted video pick", () => {
+    localStorage.setItem("aura-selected-mode:default", "video");
+    mockLoadPersistedVideoModel.mockImplementation(
+      () => "veo-3.1-fast-generate-preview",
+    );
+    useChatUIStore.getState().init("stream-1");
+
+    // Simulate the video pick changing in localStorage (e.g. user
+    // picked Seedance in another window) and a sync firing.
+    mockLoadPersistedVideoModel.mockImplementation(
+      () => "dreamina-seedance-2-0-260128",
+    );
+    useChatUIStore.getState().syncAvailableModels("stream-1", "default");
+    expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+      "dreamina-seedance-2-0-260128",
+    );
+  });
+
+  describe("cold boot persistence (close/reopen simulation)", () => {
+    it("chat-mode picks survive a fresh in-memory store with only the global key", () => {
+      // User picks Sonnet on agent A. `setSelectedModel` calls
+      // `persistModel` (mocked here, so we manually set the loader's
+      // return value to mirror what a real localStorage round-trip would
+      // give us on the next boot).
+      useChatUIStore
+        .getState()
+        .setSelectedModel("stream-1", "claude-sonnet-4-6", "default", "agent-A");
+
+      // Wipe the in-memory store to simulate the desktop app being
+      // closed and reopened. localStorage survives, so the persisted
+      // loaders still return the user's pick.
+      useChatUIStore.setState({ streams: {}, drafts: {} });
+      mockLoadPersistedModel.mockImplementation(() => "claude-sonnet-4-6");
+      mockHasAgentScopedModel.mockImplementation(() => true);
+
+      // First init pass arrives before the agent meta resolves. Even
+      // with `defaultModel` pointing at the adapter default
+      // (Opus), the persisted lookup must win.
+      useChatUIStore
+        .getState()
+        .init("stream-1", undefined, "claude-opus-4-6", "agent-A");
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+        "claude-sonnet-4-6",
+      );
+
+      // Second init / sync pass after meta resolves keeps the value.
+      useChatUIStore
+        .getState()
+        .init("stream-1", "default", "claude-opus-4-6", "agent-A");
+      useChatUIStore
+        .getState()
+        .syncAvailableModels("stream-1", "default", "claude-opus-4-6", "agent-A");
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+        "claude-sonnet-4-6",
+      );
+    });
+
+    it("syncAvailableModels restores the global last-pick even for an untouched agent", () => {
+      // Untouched agent (no per-agent key), but the global "last user
+      // pick" key has Sonnet from somewhere else in the app. Without
+      // the gate-drop, sync would happily leave the in-memory adapter
+      // default in place.
+      mockHasAgentScopedModel.mockImplementation(() => false);
+      mockLoadPersistedModel.mockImplementation(() => "claude-sonnet-4-6");
+
+      useChatUIStore.getState().init("stream-1");
+      // Force the in-memory model to the adapter default to mimic the
+      // pre-meta first-render install.
+      useChatUIStore.setState((s) => ({
+        streams: {
+          ...s.streams,
+          "stream-1": { ...s.streams["stream-1"]!, selectedModel: "claude-opus-4-6" },
+        },
+      }));
+
+      useChatUIStore
+        .getState()
+        .syncAvailableModels("stream-1", "default", null, "fresh-agent");
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+        "claude-sonnet-4-6",
+      );
+    });
+
+    it("video-mode picks survive a cold boot independently of chat-mode picks", () => {
+      // User picked Sonnet in chat mode, then Seedance in video mode.
+      // Wiping the in-memory store and relaunching in video mode must
+      // restore Seedance (NOT the chat key, NOT the adapter default).
+      mockLoadPersistedModel.mockImplementation(() => "claude-sonnet-4-6");
+      mockLoadPersistedVideoModel.mockImplementation(
+        () => "dreamina-seedance-2-0-260128",
+      );
+
+      useChatUIStore.setState({ streams: {}, drafts: {} });
+      localStorage.setItem("aura-selected-mode:default", "video");
+
+      useChatUIStore.getState().init("stream-1", "default", null, "agent-A");
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedMode).toBe(
+        "video",
+      );
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+        "dreamina-seedance-2-0-260128",
+      );
+
+      // And switching back to chat must restore Sonnet (not Seedance).
+      useChatUIStore.getState().setSelectedMode("stream-1", "code");
+      expect(useChatUIStore.getState().streams["stream-1"]?.selectedModel).toBe(
+        "claude-sonnet-4-6",
+      );
+    });
   });
 
   describe("pinnedSourceImage", () => {

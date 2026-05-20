@@ -36,6 +36,7 @@ import {
 import { purgeLegacyChatHistoryFallback } from "./shared/lib/browser-db";
 import { bootstrapTaskStreamSubscriptions } from "./stores/task-stream-bootstrap";
 import { bootstrapProcessStreamSubscriptions } from "./stores/process-stream-bootstrap";
+import { bootstrapChatHistoryInvalidator } from "./stores/chat-history-invalidator-bootstrap";
 import { initAnalytics, track } from "./lib/analytics";
 
 // Must run before any module that reads the host origin (e.g. host-store,
@@ -75,6 +76,17 @@ bootstrapTaskStreamSubscriptions();
 // stream into localStorage on terminal transitions so a mid-run reload
 // can rehydrate the "Live Output" panel without waiting for WS.
 bootstrapProcessStreamSubscriptions();
+// App-global chat-history cache invalidator. The mounted-panel
+// `useChatHistorySync` hook only force-refetches when the panel is
+// visible, which leaves cross-agent writes (`send_to_agent`) invisible
+// on the recipient's panel until a manual refresh: the WS event fires
+// while the recipient panel is unmounted, the cache stays warm under
+// `HISTORY_TTL_MS = 30s`, and the next navigation re-uses stale data.
+// This bootstrap installs a global subscriber that marks every
+// possibly-affected chat-history key stale on `user_message` /
+// `assistant_message_end`, so the next `fetchHistory` re-hits the
+// server. See `stores/chat-history-invalidator-bootstrap.ts`.
+bootstrapChatHistoryInvalidator();
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root element");

@@ -17,4 +17,4 @@
  *   tool results and assistant turns. This is the same number as
  *   `estimated_context_tokens` minus the static buckets above.
  */
-export type ContextBreakdown = { system_prompt_tokens: bigint, tools_tokens: bigint, skills_tokens: bigint, mcp_tokens: bigint, subagents_tokens: bigint, conversation_tokens: bigint, };
+export type ContextBreakdown = { system_prompt_tokens: bigint, tools_tokens: bigint, skills_tokens: bigint, mcp_tokens: bigint, subagents_tokens: bigint, conversation_tokens: bigint, cache_read_tokens?: bigint, cache_creation_tokens?: bigint, };

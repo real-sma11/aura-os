@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../../api/client";
 import { useAgentStore } from "../../agents/stores";
+import { isSuperAgent } from "../../../shared/types/permissions";
 import type { Agent } from "../../../shared/types";
 
 type ChatAppAgentStatus = "loading" | "ready" | "error";
@@ -19,15 +20,67 @@ interface CachedAgentState {
   inflight: Promise<void> | null;
 }
 
-// Module-scope cache so multiple components mounting `useChatAppAgent`
-// (route + left panel) share a single setup round-trip and the same
-// resolved agent id within an app session.
-const cache: CachedAgentState = {
-  agent: null,
-  status: "loading",
-  error: null,
-  inflight: null,
-};
+const LAST_AGENT_ID_KEY = "aura-chat-app:last-agent-id";
+
+function readLastAgentId(): string | undefined {
+  try {
+    return (
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LAST_AGENT_ID_KEY) ?? undefined
+        : undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function writeLastAgentId(agentId: string): void {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LAST_AGENT_ID_KEY, agentId);
+  } catch {
+    // localStorage may be unavailable / quota-exceeded; the in-memory
+    // cache is still authoritative for the current app session.
+  }
+}
+
+/**
+ * Seed `cache.agent` from already-resolved data so the chat panel can
+ * render on the first paint instead of blocking on the
+ * `superAgent.setup()` round-trip. Order of preference:
+ *
+ *   1. The persisted last-resolved id paired with a matching row in
+ *      `useAgentStore.agents` — survives cold reload, wins in the
+ *      "user has used Chat before, agents list is already warm" case.
+ *   2. The first `isSuperAgent`-shaped row in `useAgentStore.agents` —
+ *      catches the "no persisted id yet, but the agents fan-out
+ *      already landed the CEO" case (typical when the user navigated
+ *      to /chat from another app like Agents/Projects whose mounts
+ *      already triggered `fetchAgents()`).
+ *
+ * Returns the seeded agent or `null` when no warm cache is available;
+ * the caller still kicks off `setup()` to heal in the background.
+ */
+function seedAgentFromWarmStores(): Agent | null {
+  const agents = useAgentStore.getState().agents;
+  if (agents.length === 0) return null;
+  const lastId = readLastAgentId();
+  if (lastId) {
+    const fromLast = agents.find((a) => a.agent_id === lastId);
+    if (fromLast) return fromLast;
+  }
+  return agents.find((a) => isSuperAgent(a)) ?? null;
+}
+
+const cache: CachedAgentState = (() => {
+  const seeded = typeof window !== "undefined" ? seedAgentFromWarmStores() : null;
+  return {
+    agent: seeded,
+    status: seeded ? "ready" : "loading",
+    error: null,
+    inflight: null,
+  };
+})();
 const subscribers = new Set<() => void>();
 
 function notify(): void {
@@ -36,15 +89,31 @@ function notify(): void {
 
 function ensureSetup(): Promise<void> {
   if (cache.inflight) return cache.inflight;
-  if (cache.agent) return Promise.resolve();
 
-  cache.status = "loading";
-  cache.error = null;
-  notify();
+  // If the in-memory cache is empty, take one more pass at the warm
+  // stores in case `fetchAgents()` resolved between module-load and
+  // this call. Cheap: just a `find()` over a few rows.
+  if (!cache.agent) {
+    const seeded = seedAgentFromWarmStores();
+    if (seeded) {
+      cache.agent = seeded;
+      cache.status = "ready";
+      cache.error = null;
+      notify();
+    }
+  }
+
+  const isHealing = cache.agent !== null;
+  if (!isHealing) {
+    cache.status = "loading";
+    cache.error = null;
+    notify();
+  }
 
   cache.inflight = api.superAgent
     .setup()
     .then(({ agent }) => {
+      writeLastAgentId(agent.agent_id);
       cache.agent = agent;
       cache.status = "ready";
       cache.error = null;
@@ -61,9 +130,18 @@ function ensureSetup(): Promise<void> {
       }
     })
     .catch((err: unknown) => {
-      cache.agent = null;
-      cache.status = "error";
-      cache.error = err instanceof Error ? err.message : "Couldn't start chat";
+      // Heal-in-the-background errors must not blank a working seed.
+      // If we already have an agent (warm seed), keep showing it; the
+      // user can still chat. Surface the error only when we have
+      // nothing to show.
+      if (!isHealing) {
+        cache.agent = null;
+        cache.status = "error";
+        cache.error = err instanceof Error ? err.message : "Couldn't start chat";
+      } else {
+        // Stay `ready`; record the warning silently for diagnostics.
+        console.warn("[chat-app] background superAgent.setup() heal failed:", err);
+      }
     })
     .finally(() => {
       cache.inflight = null;
@@ -82,6 +160,13 @@ function ensureSetup(): Promise<void> {
  * matters because users can rename their CEO; the strict check would
  * leave `useSuperAgent()` returning `null` forever and the Chat app
  * stuck on "Starting chat…".
+ *
+ * For cold opens, the cache is pre-seeded from `useAgentStore.agents`
+ * (a CEO match or the persisted last-resolved id) so the panel can
+ * render on the first frame; `setup()` then runs as a background
+ * heal/refresh and reconciles the cache when the server response
+ * lands. This eliminates the serial "blank canvas → Starting chat… →
+ * panel" sequence the route used to walk through on every navigation.
  */
 export function useChatAppAgent(): ChatAppAgentSlice {
   const [, setTick] = useState(0);
@@ -110,4 +195,17 @@ export function useChatAppAgent(): ChatAppAgentSlice {
       }
     },
   };
+}
+
+/**
+ * Test-only: wipe the module-scope cache so a fresh import-time seed
+ * (or full `setup()` round-trip) runs in the next test. Production
+ * code never touches this.
+ */
+export function __resetChatAppAgentCacheForTests(): void {
+  cache.agent = null;
+  cache.status = "loading";
+  cache.error = null;
+  cache.inflight = null;
+  subscribers.clear();
 }

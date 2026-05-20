@@ -166,9 +166,9 @@ async fn auto_recover_after_initial_failure(
         Err((_, err_json)) => {
             let recovery_message = err_json.0.error.clone();
             let final_message = match swarm_reason.as_deref() {
-                Some(initial) => format!(
-                    "{initial}; auto-recovery also failed: {recovery_message}"
-                ),
+                Some(initial) => {
+                    format!("{initial}; auto-recovery also failed: {recovery_message}")
+                }
                 None => format!("auto-recovery failed: {recovery_message}"),
             };
             warn!(

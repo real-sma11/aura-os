@@ -44,6 +44,13 @@ export function buildDisplayEvents(msgs: SessionEvent[]): DisplaySessionEvent[] 
             ? buildTimelineFromBlocks(allBlocks, thinking, m.content)
             : undefined,
         inFlight: m.in_flight ?? undefined,
+        // Cross-agent provenance for the `MessageBubble` "↩ from
+        // <agent>" badge. The server-side `parse_user_message_event`
+        // surfaces this on user-role rows that were injected by
+        // another agent (A→B inbound or B→A async reply); leaving
+        // it `undefined` on every other row keeps the badge off
+        // for regular human-typed prompts and assistant turns.
+        fromAgentId: m.from_agent_id ?? undefined,
       };
     });
 }

@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 
-type EventCallback = (event: { content?: Record<string, unknown> }) => void;
+type EventCallback = (event: Record<string, unknown>) => void;
 
 const mocks = vi.hoisted(() => {
   const historyMessages: DisplaySessionEvent[] = [
@@ -152,15 +152,46 @@ vi.mock("../../lib/screenshot-bridge", () => ({
   isAuraCaptureSessionActive: screenshotBridgeMocks.isAuraCaptureSessionActive,
 }));
 
-function emit(type: string, event: { content: Record<string, unknown> }): void {
+/**
+ * Phase 4 wire shape: WS events for `user_message` /
+ * `assistant_message_end` carry `{ session_id, project_id,
+ * project_agent_id, agent_id }` at the TOP LEVEL of the parsed
+ * `AuraEvent`. The legacy `agent_instance_id` field is gone; the parser
+ * exposes the project binding only via `event.project_agent_id`. The
+ * helper below mirrors what `parseAuraEvent` would hand to the
+ * subscriber so the matcher tests exercise the post-parse shape.
+ */
+function emit(
+  type: string,
+  event: {
+    session_id?: string;
+    project_id?: string | null;
+    project_agent_id?: string | null;
+    agent_id?: string | null;
+    content?: Record<string, unknown>;
+  },
+): void {
   const listeners = mocks.eventListeners.get(type);
   if (!listeners) return;
+  const parsed = {
+    type,
+    session_id: event.session_id ?? "",
+    project_id: event.project_id ?? "",
+    project_agent_id: event.project_agent_id ?? null,
+    agent_id: event.agent_id ?? "",
+    content: event.content ?? {},
+  };
   listeners.forEach((cb: (event: unknown) => void) =>
-    (cb as EventCallback)(event),
+    (cb as EventCallback)(parsed),
   );
 }
 
-import { useChatHistorySync } from "./use-chat-history-sync";
+import {
+  matchesChatEvent,
+  maybeLogCrossAgentEvent,
+  useChatHistorySync,
+} from "./use-chat-history-sync";
+import { parseAuraEvent } from "../../shared/types/aura-events";
 
 describe("useChatHistorySync", () => {
   beforeEach(() => {
@@ -368,11 +399,9 @@ describe("useChatHistorySync", () => {
     mocks.state.fetchHistory.mockClear();
 
     emit("user_message", {
-      content: {
-        project_agent_id: "pa-42",
-        session_id: "s-1",
-        message_id: "m-1",
-      },
+      project_agent_id: "pa-42",
+      session_id: "s-1",
+      content: { message_id: "m-1" },
     });
 
     await waitFor(() => {
@@ -400,10 +429,8 @@ describe("useChatHistorySync", () => {
     mocks.state.fetchHistory.mockClear();
 
     emit("assistant_message_end", {
-      content: {
-        agent_instance_id: "pa-42",
-        session_id: "s-1",
-      },
+      project_agent_id: "pa-42",
+      session_id: "s-1",
     });
 
     await waitFor(() => {
@@ -431,58 +458,20 @@ describe("useChatHistorySync", () => {
     mocks.state.fetchHistory.mockClear();
 
     emit("user_message", {
-      content: {
-        project_agent_id: "pa-other",
-        session_id: "s-1",
-      },
+      project_agent_id: "pa-other",
+      session_id: "s-1",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(mocks.state.fetchHistory).not.toHaveBeenCalled();
   });
 
-  it("filters by session id when watchSessionId is set", async () => {
-    const resetEvents = vi.fn();
-    const fetchFn = vi.fn(async () => []);
-
-    renderHook(() =>
-      useChatHistorySync({
-        historyKey: "agent:agent-1",
-        streamKey: "agent-1",
-        fetchFn,
-        resetEvents,
-        watchAgentInstanceId: "pa-42",
-        watchSessionId: "s-target",
-      }),
-    );
-    mocks.state.fetchHistory.mockClear();
-
-    emit("user_message", {
-      content: {
-        project_agent_id: "pa-42",
-        session_id: "s-other",
-      },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(mocks.state.fetchHistory).not.toHaveBeenCalled();
-
-    emit("user_message", {
-      content: {
-        project_agent_id: "pa-42",
-        session_id: "s-target",
-      },
-    });
-    await waitFor(() => {
-      expect(mocks.state.fetchHistory).toHaveBeenCalled();
-    });
-  });
-
-  it("force-refetches when watchAgentId matches content.agent_id", async () => {
+  it("force-refetches when watchAgentId matches event.agent_id", async () => {
     // Covers the standalone-chat path: the hook keys history by the
     // org-level agent_id, so it must react to `user_message` events
     // published by the server's `publish_user_message_event`, which
-    // carries `agent_id` (and `project_agent_id` that differs from
-    // the key). Without the `watchAgentId` branch a cross-agent
+    // carries `agent_id` at the top level after the Phase 4 wire-shape
+    // change. Without the `watchAgentId` branch a cross-agent
     // `send_to_agent` delivery leaves the target chat panel stale.
     const resetEvents = vi.fn();
     const fetchFn = vi.fn(async () => []);
@@ -499,11 +488,9 @@ describe("useChatHistorySync", () => {
     mocks.state.fetchHistory.mockClear();
 
     emit("assistant_message_end", {
-      content: {
-        project_agent_id: "pa-42",
-        agent_id: "agent-1",
-        session_id: "s-1",
-      },
+      project_agent_id: "pa-42",
+      agent_id: "agent-1",
+      session_id: "s-1",
     });
 
     await waitFor(() => {
@@ -533,11 +520,9 @@ describe("useChatHistorySync", () => {
       mocks.state.fetchHistory.mockClear();
 
       emit("user_message", {
-        content: {
-          project_agent_id: "pa-42",
-          agent_id: "agent-1",
-          session_id: "s-1",
-        },
+        project_agent_id: "pa-42",
+        agent_id: "agent-1",
+        session_id: "s-1",
       });
 
       expect(mocks.state.fetchHistory).toHaveBeenCalledTimes(1);
@@ -583,7 +568,8 @@ describe("useChatHistorySync", () => {
       // should fire after the debounce window elapses.
       for (let i = 0; i < 5; i++) {
         emit("assistant_turn_progress", {
-          content: { project_agent_id: "pa-42", session_id: "s-1" },
+          project_agent_id: "pa-42",
+          session_id: "s-1",
         });
       }
       expect(mocks.state.fetchHistory).not.toHaveBeenCalled();
@@ -624,7 +610,8 @@ describe("useChatHistorySync", () => {
       mocks.state.fetchHistory.mockClear();
 
       emit("assistant_turn_progress", {
-        content: { project_agent_id: "pa-42", session_id: "s-1" },
+        project_agent_id: "pa-42",
+        session_id: "s-1",
       });
       await vi.advanceTimersByTimeAsync(300);
 
@@ -956,5 +943,206 @@ describe("useChatHistorySync", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(resetEvents).not.toHaveBeenCalledWith(stalerLonger, expect.anything());
+  });
+});
+
+// Phase 5 — direct unit tests for the matcher helper. These exercise
+// the contract that powers the cross-agent live-update path documented
+// on `matchesChatEvent`: ANY of session_id / project_agent_id / agent_id
+// matching the watch params is sufficient to fire a refetch.
+describe("matchesChatEvent", () => {
+  it("matcher_fires_for_session_id_match", () => {
+    expect(
+      matchesChatEvent(
+        {
+          session_id: "s-pinned",
+          project_agent_id: "pa-other",
+          agent_id: "agent-other",
+        },
+        {
+          watchSessionId: "s-pinned",
+          watchAgentInstanceId: "pa-self",
+          watchAgentId: "agent-self",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("matcher_fires_for_project_agent_id_match_when_no_session_pin", () => {
+    // Receiver project panel without `?session=` pin: the cross-agent
+    // `user_message` event MUST still trigger a refetch when the event's
+    // `project_agent_id` matches the panel's `watchAgentInstanceId`.
+    expect(
+      matchesChatEvent(
+        {
+          session_id: "s-from-other-agent",
+          project_agent_id: "pa-42",
+          agent_id: "agent-x",
+        },
+        {
+          watchAgentInstanceId: "pa-42",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("matcher_fires_for_agent_id_match_on_standalone_panel", () => {
+    // Receiver standalone panel: `watchAgentId` is the org-level id and
+    // must match the event's `agent_id` from the new Phase 4 wire shape.
+    expect(
+      matchesChatEvent(
+        {
+          session_id: "s-anything",
+          project_agent_id: "pa-anything",
+          agent_id: "agent-1",
+        },
+        {
+          watchAgentId: "agent-1",
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("matcher_does_not_fire_for_unrelated_event", () => {
+    expect(
+      matchesChatEvent(
+        {
+          session_id: "s-unrelated",
+          project_agent_id: "pa-unrelated",
+          agent_id: "agent-unrelated",
+        },
+        {
+          watchSessionId: "s-mine",
+          watchAgentInstanceId: "pa-mine",
+          watchAgentId: "agent-mine",
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false when the event is undefined", () => {
+    expect(
+      matchesChatEvent(undefined, { watchAgentInstanceId: "pa-1" }),
+    ).toBe(false);
+  });
+});
+
+// Phase 6 — gate-behavior pin for the cross-agent diagnostic.
+// `window.__AURA_DEBUG_CROSS_AGENT__` is the single, devtools-flippable
+// toggle that unlocks the `[aura.cross-agent] ws event` console.debug
+// inside the use-chat-history-sync subscription. These tests guard
+// against a future "let's clean up unused debug code" sweep that would
+// silently rip the diagnostic out — without the flag the operator
+// cannot reconstruct B's missing live-update from the browser console.
+describe("maybeLogCrossAgentEvent (Phase 6 gate)", () => {
+  let debugSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+    delete (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__;
+  });
+
+  it("logs an [aura.cross-agent] line when the flag is truthy", () => {
+    (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__ = true;
+    const event = {
+      type: "user_message",
+      session_id: "s-1",
+      project_agent_id: "pa-1",
+      agent_id: "a-1",
+    };
+    const watch = { watchAgentInstanceId: "pa-1" };
+    const matched = matchesChatEvent(event, watch);
+
+    maybeLogCrossAgentEvent(event, watch, matched);
+
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+    const firstArg = debugSpy.mock.calls[0]?.[0];
+    expect(typeof firstArg).toBe("string");
+    expect(firstArg as string).toMatch(/^\[aura\.cross-agent\]/);
+  });
+
+  it("does not log when the flag is undefined", () => {
+    expect(
+      (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+        .__AURA_DEBUG_CROSS_AGENT__,
+    ).toBeUndefined();
+
+    maybeLogCrossAgentEvent(
+      {
+        type: "user_message",
+        session_id: "s-1",
+        project_agent_id: "pa-1",
+        agent_id: "a-1",
+      },
+      { watchAgentInstanceId: "pa-1" },
+      true,
+    );
+
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not log when the flag is explicitly falsy", () => {
+    (globalThis as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__ = false;
+
+    maybeLogCrossAgentEvent(
+      {
+        type: "user_message",
+        session_id: "s-1",
+        project_agent_id: "pa-1",
+        agent_id: "a-1",
+      },
+      { watchAgentInstanceId: "pa-1" },
+      false,
+    );
+
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+});
+
+// Phase 5 — parser unit tests. These pin the post-Phase-4 wire shape
+// for `user_message` / `assistant_message_end` and the legacy fallback
+// for the event types that still emit `agent_instance_id`.
+describe("parseAuraEvent (Phase 5 wire shape)", () => {
+  it("parser_populates_project_agent_id_from_new_wire_shape", () => {
+    const event = parseAuraEvent(
+      "user_message",
+      {
+        type: "user_message",
+        session_id: "s-1",
+        project_id: "p-1",
+        project_agent_id: "pa-1",
+        agent_id: "a-1",
+      },
+      {},
+    );
+    expect(event.project_agent_id).toBe("pa-1");
+    expect(event.agent_id).toBe("a-1");
+    expect(event.session_id).toBe("s-1");
+    expect(event.project_id).toBe("p-1");
+  });
+
+  it("parser_falls_back_to_legacy_agent_instance_id", () => {
+    // `session_summary_updated` still ships `agent_instance_id` after
+    // Phase 4. The parser must surface it through `project_agent_id`
+    // so the matcher (which only looks at the new field name) keeps
+    // working for the legacy event types.
+    const event = parseAuraEvent(
+      "session_summary_updated",
+      {
+        type: "session_summary_updated",
+        session_id: "s-2",
+        agent_instance_id: "pa-2",
+      },
+      {},
+    );
+    expect(event.project_agent_id).toBe("pa-2");
+    expect(event.session_id).toBe("s-2");
   });
 });

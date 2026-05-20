@@ -153,10 +153,7 @@ fn is_read_only(path: &Path) -> Result<bool, String> {
     let rc = unsafe { libc::statfs(c_path.as_ptr(), &mut stat) };
     if rc != 0 {
         let err = std::io::Error::last_os_error();
-        return Err(format!(
-            "statfs({}) failed: {err}",
-            path.display()
-        ));
+        return Err(format!("statfs({}) failed: {err}", path.display()));
     }
     Ok((stat.f_flags & libc::MNT_RDONLY as u32) != 0)
 }
@@ -201,9 +198,7 @@ mod tests {
 
     #[test]
     fn translocation_path_is_flagged() {
-        let path = PathBuf::from(
-            "/private/var/folders/abc/T/AppTranslocation/UUID/d/Aura.app",
-        );
+        let path = PathBuf::from("/private/var/folders/abc/T/AppTranslocation/UUID/d/Aura.app");
         let (translocated, on_dmg) = classify_path(&path);
         assert!(translocated);
         assert!(!on_dmg);

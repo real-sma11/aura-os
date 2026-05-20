@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::StatusCode;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{broadcast, Mutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{info, warn};
 
@@ -14,8 +14,8 @@ use aura_protocol::{InboundMessage, OutboundMessage};
 
 use crate::error::HarnessError;
 use crate::harness::{
-    HarnessLink, HarnessSession, SessionConfig, build_remote_handshake, build_session_init,
-    validate_session_init_identity,
+    build_remote_handshake, build_session_init, validate_session_init_identity, HarnessLink,
+    HarnessSession, SessionConfig,
 };
 use crate::local_harness::{
     CONNECT_ATTEMPTS_ENV, CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_ATTEMPTS,
@@ -59,9 +59,7 @@ fn read_connect_timeout_from_env() -> Duration {
 /// to be slammed with close code 1013 ("Try Again Later"). Mirrors
 /// [`crate::local_harness::is_capacity_exhausted_ws_error`] but
 /// scoped to what the swarm path can observe at the WS layer.
-fn is_capacity_exhausted_ws_handshake_error(
-    err: &tokio_tungstenite::tungstenite::Error,
-) -> bool {
+fn is_capacity_exhausted_ws_handshake_error(err: &tokio_tungstenite::tungstenite::Error) -> bool {
     use tokio_tungstenite::tungstenite::Error as WsError;
     if let WsError::Http(resp) = err {
         if resp.status().as_u16() == 503 {
@@ -330,7 +328,9 @@ impl SwarmHarness {
                 Ok(Err(err)) => {
                     if is_capacity_exhausted_ws_handshake_error(&err) {
                         return Err(anyhow::Error::new(HarnessError::CapacityExhausted).context(
-                            format!("swarm websocket connect rejected as capacity_exhausted: {err}"),
+                            format!(
+                                "swarm websocket connect rejected as capacity_exhausted: {err}"
+                            ),
                         ));
                     }
                     last_err =

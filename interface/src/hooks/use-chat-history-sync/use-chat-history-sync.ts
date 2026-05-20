@@ -1,3 +1,25 @@
+/**
+ * Cross-agent / WS live-update sync hook.
+ *
+ * Diagnostic toggle (Phase 6): set
+ *
+ *   window.__AURA_DEBUG_CROSS_AGENT__ = true
+ *
+ * from devtools to surface two `console.debug` lines tagged
+ * `[aura.cross-agent]` whenever the WS event store receives a frame
+ * (`ws raw` — wire payload + parsed view) and whenever this hook's
+ * subscription evaluates a chat event against its watch params
+ * (`ws event` — type, ids, watch params, matched). The toggle is
+ * intentionally just a window property — no env var, no build flag —
+ * so a user reporting "my UI didn't live-update" can flip it from the
+ * browser console without re-installing anything. When the property
+ * is undefined / falsy the gate is a single `typeof window` check
+ * plus a property read, so there is no perf impact in production. The
+ * server-side companion targets are `aura::cross_agent` and
+ * `aura::ws`; see
+ * `apps/aura-os-server/src/handlers/agents/chat/CROSS_AGENT_TRACING.md`
+ * for the matching log table and `RUST_LOG` invocation.
+ */
 import { useEffect, useRef, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useChatHistoryStore, useChatHistory } from "../../stores/chat-history-store";
@@ -57,6 +79,100 @@ function chatHistorySyncLog(
     ts: Date.now(),
     ...payload,
   });
+}
+
+/**
+ * Watch params for `matchesChatEvent`. A panel typically passes only one
+ * of `watchSessionId` / `watchAgentInstanceId` / `watchAgentId`.
+ */
+export interface ChatEventWatch {
+  watchSessionId?: string;
+  watchAgentInstanceId?: string;
+  watchAgentId?: string;
+}
+
+/**
+ * Minimal shape of a parsed `AuraEvent` that the chat-history matcher
+ * inspects. After Phase 4 the WS wire shape for `user_message` /
+ * `assistant_message_end` is `{ session_id, project_id, project_agent_id,
+ * agent_id }` at the top level — the legacy `agent_instance_id` field
+ * is gone for those types and is now exposed only through
+ * `event.project_agent_id` (populated by `parseAuraEvent`).
+ */
+export interface ChatEventForMatch {
+  session_id?: string | null;
+  project_agent_id?: string | null;
+  agent_id?: string | null;
+}
+
+/**
+ * Returns true when a parsed chat event should fire a history refetch
+ * for the panel described by `watch`. ANY of the three id checks is
+ * sufficient — earlier conditions short-circuit later ones, but a
+ * higher-priority watch param being unset must NOT block lower-tier
+ * matches. This is the explicit fix for the receiver-side regression
+ * after the Phase 4 wire-shape change (`agent_instance_id` is gone for
+ * `user_message` / `assistant_message_end`, so a project panel without
+ * `?session=` pin must match on `project_agent_id` directly):
+ *
+ *  1. `watchSessionId && event.session_id === watchSessionId`
+ *  2. `watchAgentInstanceId && event.project_agent_id === watchAgentInstanceId`
+ *  3. `watchAgentId && event.agent_id === watchAgentId`
+ */
+/**
+ * Phase 6 diagnostic: when the
+ * `window.__AURA_DEBUG_CROSS_AGENT__` flag is truthy, log one
+ * `[aura.cross-agent] ws event` line per evaluated chat event with
+ * the type, the routing ids, the watch params, and whether the
+ * matcher accepted the event. No-op when the flag is undefined /
+ * falsy — the gate is a single `typeof window` check plus a property
+ * read so the unmonitored hot path is effectively free. Exported so
+ * the unit tests can pin both branches without having to drive the
+ * full hook + WS subscription scaffolding.
+ */
+export function maybeLogCrossAgentEvent(
+  event: ChatEventForMatch & { type?: string },
+  watch: ChatEventWatch,
+  matched: boolean,
+): void {
+  if (
+    typeof window === "undefined" ||
+    !(window as unknown as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+      .__AURA_DEBUG_CROSS_AGENT__
+  ) {
+    return;
+  }
+  const { watchSessionId, watchAgentInstanceId, watchAgentId } = watch;
+  // eslint-disable-next-line no-console -- gated behind window flag, see top-of-file doc
+  console.debug("[aura.cross-agent] ws event", {
+    type: event.type,
+    session_id: event.session_id,
+    project_agent_id: event.project_agent_id,
+    agent_id: event.agent_id,
+    watch: { watchSessionId, watchAgentInstanceId, watchAgentId },
+    matched,
+  });
+}
+
+export function matchesChatEvent(
+  event: ChatEventForMatch | undefined,
+  watch: ChatEventWatch,
+): boolean {
+  if (!event) return false;
+  const { watchSessionId, watchAgentInstanceId, watchAgentId } = watch;
+  if (watchSessionId && event.session_id === watchSessionId) {
+    return true;
+  }
+  if (
+    watchAgentInstanceId &&
+    event.project_agent_id === watchAgentInstanceId
+  ) {
+    return true;
+  }
+  if (watchAgentId && event.agent_id === watchAgentId) {
+    return true;
+  }
+  return false;
 }
 
 interface ChatHistorySyncOptions {
@@ -183,38 +299,14 @@ export function useChatHistorySync({
     if (suppressHistoryFetch) return;
     if (!watchAgentInstanceId && !watchAgentId && !watchSessionId) return;
 
-    const matches = (content: Record<string, unknown> | undefined): boolean => {
-      if (!content) return false;
-      const eventAgentInstanceId =
-        (content.project_agent_id as string | undefined) ??
-        (content.agent_instance_id as string | undefined);
-      const eventAgentId = content.agent_id as string | undefined;
-      const eventSessionId = content.session_id as string | undefined;
-
-      // `watchSessionId` is the narrowest scope and is *exclusive*:
-      // when set, only events for that exact session fire a refetch,
-      // regardless of any other watch field. This matches the
-      // original behaviour tested in `use-chat-history-sync.test.ts`.
-      if (watchSessionId) {
-        return eventSessionId === watchSessionId;
-      }
-      // Otherwise fall through to ID-level matching. `watchAgentId`
-      // (org-level) and `watchAgentInstanceId` (project binding)
-      // are both acceptable — a single chat window only passes one.
-      if (watchAgentId && eventAgentId === watchAgentId) {
-        return true;
-      }
-      if (
-        watchAgentInstanceId &&
-        eventAgentInstanceId === watchAgentInstanceId
-      ) {
-        return true;
-      }
-      return false;
+    const watch: ChatEventWatch = {
+      watchSessionId,
+      watchAgentInstanceId,
+      watchAgentId,
     };
 
     let settleRefetchTimer: ReturnType<typeof setTimeout> | undefined;
-    const forceFetchHistory = (tag: string, event?: { content?: Record<string, unknown> }) => {
+    const forceFetchHistory = (tag: string, event?: ChatEventForMatch & { content?: Record<string, unknown> }) => {
       chatHistorySyncLog(tag, {
         historyKey,
         streamKey,
@@ -225,8 +317,10 @@ export function useChatHistorySync({
         .fetchHistory(historyKey, fetchFn, { force: true });
     };
 
-    const onChatEvent = (event: { content?: Record<string, unknown> }) => {
-      if (!matches(event.content)) return;
+    const onChatEvent = (event: ChatEventForMatch & { type?: string; content?: Record<string, unknown> }) => {
+      const matched = matchesChatEvent(event, watch);
+      maybeLogCrossAgentEvent(event, watch, matched);
+      if (!matched) return;
       forceFetchHistory("history: WS-triggered refetch (UserMessage/AssistantEnd)", event);
       if (settleRefetchTimer !== undefined) {
         clearTimeout(settleRefetchTimer);
@@ -244,8 +338,8 @@ export function useChatHistorySync({
     // (powered by `events_to_session_history`) is pulled fresh enough to
     // feel live without thrashing the history endpoint.
     let progressTimer: ReturnType<typeof setTimeout> | undefined;
-    const onProgress = (event: { content?: Record<string, unknown> }) => {
-      if (!matches(event.content)) return;
+    const onProgress = (event: ChatEventForMatch) => {
+      if (!matchesChatEvent(event, watch)) return;
       if (getStreamEntry(streamKey)?.isStreaming) return;
       if (progressTimer !== undefined) return;
       progressTimer = setTimeout(() => {

@@ -156,6 +156,73 @@ describe("stream/store", () => {
       expect(getIsStreaming("k1")).toBe(false);
     });
 
+    it("setIsStreaming(true) on the false->true edge rebases lastEventAt and clears stuckSince", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+      ensureEntry("k1");
+      const setters = createSetters("k1");
+      // Seed an entry whose lastEventAt is well past the stuck threshold and
+      // whose stuckSince was already set — simulating a session that finished
+      // turn 1 a long time ago and then has a turn 2 send arrive.
+      useStreamStore.setState((s) => ({
+        entries: {
+          ...s.entries,
+          k1: {
+            ...s.entries["k1"],
+            lastEventAt: Date.now() - 45_000,
+            stuckSince: Date.now() - 15_000,
+            isStreaming: false,
+          },
+        },
+      }));
+
+      setters.setIsStreaming(true);
+
+      const entry = getStreamEntry("k1");
+      expect(entry?.isStreaming).toBe(true);
+      expect(entry?.lastEventAt).toBe(Date.now());
+      expect(entry?.stuckSince).toBeNull();
+
+      vi.useRealTimers();
+    });
+
+    it("setIsStreaming(true) on an already-streaming entry leaves lastEventAt alone", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+      ensureEntry("k1");
+      const setters = createSetters("k1");
+      setters.setIsStreaming(true);
+      const lastEventAtBefore = getStreamEntry("k1")?.lastEventAt;
+
+      // Advance time without any wire activity, then re-call setIsStreaming(true).
+      // A no-op re-set must NOT reset the clock mid-turn.
+      vi.advanceTimersByTime(10_000);
+      setters.setIsStreaming(true);
+
+      expect(getStreamEntry("k1")?.lastEventAt).toBe(lastEventAtBefore);
+
+      vi.useRealTimers();
+    });
+
+    it("setIsStreaming(false) leaves lastEventAt alone (turn termination is not wire activity)", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+      ensureEntry("k1");
+      const setters = createSetters("k1");
+      setters.setIsStreaming(true);
+      const lastEventAtBefore = getStreamEntry("k1")?.lastEventAt;
+
+      vi.advanceTimersByTime(5_000);
+      setters.setIsStreaming(false);
+
+      expect(getStreamEntry("k1")?.lastEventAt).toBe(lastEventAtBefore);
+
+      vi.useRealTimers();
+    });
+
     it("setEvents updates store", () => {
       ensureEntry("k1");
       const setters = createSetters("k1");

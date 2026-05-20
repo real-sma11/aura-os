@@ -48,6 +48,21 @@ function dropUnreferencedMessages(
   return changed ? next : messages;
 }
 
+/**
+ * Cheap "is the next snapshot structurally identical to what's already
+ * stored?" check used by `setThread` to skip redundant rewrites.
+ *
+ * The earlier implementation ran `JSON.stringify` per message on every
+ * call, which dominated the main thread on cold open of a long thread
+ * (each fetch resolve, every WS-driven force refetch, and every
+ * post-stream re-fetch funneled through this path). History rows are
+ * append-only on the server, so matching the id sequence + the trailing
+ * event's payload is sufficient: if the tail is structurally equal and
+ * the count + ordering match, every prior row is also unchanged. False
+ * positives only arise if the server mutates a non-tail row without
+ * bumping the surrounding window; the next forced refetch sees
+ * `lastMessageAt` move and rewrites anyway.
+ */
 function displayMessagesEqual(
   currentMessages: Record<string, DisplaySessionEvent>,
   currentIds: string[] | undefined,
@@ -57,16 +72,21 @@ function displayMessagesEqual(
     return false;
   }
   for (let index = 0; index < nextMessages.length; index += 1) {
-    const nextMessage = nextMessages[index];
-    if (currentIds[index] !== nextMessage.id) {
-      return false;
-    }
-    const currentMessage = currentMessages[nextMessage.id];
-    if (!currentMessage || JSON.stringify(currentMessage) !== JSON.stringify(nextMessage)) {
+    if (currentIds[index] !== nextMessages[index].id) {
       return false;
     }
   }
-  return true;
+  if (nextMessages.length === 0) return true;
+  const tail = nextMessages[nextMessages.length - 1];
+  const cachedTail = currentMessages[tail.id];
+  if (!cachedTail) return false;
+  if (cachedTail === tail) return true;
+  return (
+    cachedTail.role === tail.role &&
+    cachedTail.content === tail.content &&
+    cachedTail.thinkingText === tail.thinkingText &&
+    cachedTail.inFlight === tail.inFlight
+  );
 }
 
 export const useMessageStore = create<MessageStoreState>()((set, get) => ({

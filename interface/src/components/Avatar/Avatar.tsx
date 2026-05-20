@@ -11,12 +11,18 @@ export interface AvatarProps {
   status?: string;
   /** When true, dot renders purple regardless of status. */
   isLocal?: boolean;
+  /**
+   * When true, render a rotating ring around the avatar and pulse the
+   * status dot. Wired from the loop-activity store at the call site so
+   * the avatar can be a "this entity is actively working" indicator.
+   */
+  busy?: boolean;
   className?: string;
   style?: React.CSSProperties;
   onClick?: (e: React.MouseEvent) => void;
 }
 
-export function Avatar({ avatarUrl, name, type, size, status, isLocal, className, style, onClick }: AvatarProps) {
+export function Avatar({ avatarUrl, name, type, size, status, isLocal, busy, className, style, onClick }: AvatarProps) {
   const iconSize = Math.round(size * 0.5);
   const isAgent = type === "agent";
   const isTeam = type === "team";
@@ -42,11 +48,19 @@ export function Avatar({ avatarUrl, name, type, size, status, isLocal, className
           fallback
         )}
       </div>
+      {busy && (
+        <span className={styles.busyRing} aria-hidden="true" data-testid="avatar-busy-ring">
+          <svg viewBox="0 0 32 32" className={styles.busyRingSvg}>
+            <circle cx="16" cy="16" r="15" />
+          </svg>
+        </span>
+      )}
       {showDot && (
         <span
           className={styles.statusDot}
           data-status={status ?? "idle"}
           data-machine={isLocal ? "local" : undefined}
+          data-busy={busy ? "true" : undefined}
         />
       )}
     </div>

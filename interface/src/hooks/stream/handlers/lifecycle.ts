@@ -504,6 +504,7 @@ export function handleStreamError(
   ]);
   resetStreamBuffers(refs, setters);
   setters.setProgressText("");
+  setters.clearGeneration();
   setters.setIsStreaming(false);
   setters.setIsWriting(false);
 }
@@ -593,6 +594,7 @@ export function finalizeStream(
   }
 
   setters.setProgressText("");
+  setters.clearGeneration();
   setters.setIsStreaming(false);
   setters.setIsWriting(false);
   abortRef.current?.abort();

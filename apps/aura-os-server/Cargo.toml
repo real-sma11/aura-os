@@ -22,6 +22,7 @@ aura-os-orgs = { path = "../../crates/aura-os-orgs" }
 aura-os-projects = { path = "../../crates/aura-os-projects" }
 aura-os-agents = { path = "../../crates/aura-os-agents" }
 aura-os-auth = { path = "../../crates/aura-os-auth" }
+aura-os-automation = { path = "../../crates/aura-os-automation" }
 aura-os-tasks = { path = "../../crates/aura-os-tasks" }
 aura-os-sessions = { path = "../../crates/aura-os-sessions" }
 aura-os-harness = { path = "../../crates/aura-os-harness" }
@@ -57,7 +58,9 @@ dashmap = { workspace = true }
 dotenvy = "0.15"
 hex = { workspace = true }
 hostname = "0.4"
+jsonwebtoken = "9"
 local-ip-address = "0.6"
+sha2 = "0.10"
 uuid = { workspace = true }
 url = { workspace = true }
 

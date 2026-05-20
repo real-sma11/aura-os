@@ -69,9 +69,45 @@ vi.mock("./AutomationBar.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../../stores/chat-ui-store", () => ({
-  useChatUI: vi.fn(() => ({ selectedModel: "aura-gpt-4.1" })),
-}));
+// The picker pulls in InputBarShell CSS through `inputBarShellStyles`
+// — short-circuit it here so the test harness doesn't try to parse a
+// real CSS module. Mock factory is hoisted, so we can't reference
+// top-level imports; pull `useState` in via a relative require so
+// the mocked picker can manage its own open/closed state.
+vi.mock("../InputBarShell", async () => {
+  const React = await import("react");
+  return {
+    ModelPicker: ({
+      selectedLabel,
+      renderMenu,
+      isInteractive,
+      triggerProps,
+    }: {
+      selectedLabel: string;
+      renderMenu: (close: () => void) => React.ReactNode;
+      isInteractive?: boolean;
+      triggerProps?: Record<string, unknown>;
+    }) => {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div data-testid="automation-model-picker">
+          <button
+            type="button"
+            data-testid="automation-model-trigger"
+            disabled={isInteractive === false}
+            aria-expanded={open}
+            {...triggerProps}
+            onClick={() => setOpen((v: boolean) => !v)}
+          >
+            {selectedLabel}
+          </button>
+          {open ? renderMenu(() => setOpen(false)) : null}
+        </div>
+      );
+    },
+    inputBarShellStyles: new Proxy({}, { get: (_t, prop) => String(prop) }),
+  };
+});
 
 import { AutomationBar } from "../AutomationBar";
 import { useAutomationLoopStore } from "../../stores/automation-loop-store";
@@ -93,6 +129,16 @@ function renderBar(projectId: ProjectId = "proj-1" as ProjectId) {
 beforeEach(() => {
   vi.clearAllMocks();
   useAutomationLoopStore.getState().reset();
+  // The automation model selector falls back to localStorage when the
+  // in-memory map is empty, so tests must clear both halves of the
+  // persistence chain to start from a clean slate. Without this, a
+  // model picked in one test leaks into the next via the per-project
+  // localStorage key.
+  try {
+    localStorage.clear();
+  } catch {
+    // jsdom always supports localStorage, but stay defensive.
+  }
   mockGetLoopStatus.mockResolvedValue({ active_agent_instances: [], paused: false });
   // The bar resolves the project's `Loop`-role instance on mount so
   // pause/resume/stop scope to it; default to a mature project that
@@ -139,13 +185,83 @@ describe("AutomationBar", () => {
       active_agent_instances: ["loop-agent-1"],
       agent_instance_id: "loop-agent-1",
     });
+    // Seed an explicit AutomationBar model so we exercise the
+    // thread-through path; without this the store would emit `null`
+    // and the assertion below would fight a fallback path that
+    // belongs in its own test.
+    useAutomationLoopStore
+      .getState()
+      .setLoopModel("proj-1" as ProjectId, "aura-claude-opus-4-7");
     renderBar();
     // Wait for the on-mount listAgentInstances() to settle so the
     // hook has hydrated `boundLoopId` before we click.
     await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
 
     await user.click(screen.getByTitle("Start"));
-    expect(mockStartLoop).toHaveBeenCalledWith("proj-1", undefined, "aura-gpt-4.1");
+    expect(mockStartLoop).toHaveBeenCalledWith(
+      "proj-1",
+      undefined,
+      "aura-claude-opus-4-7",
+    );
+  });
+
+  it("start passes a null model when no AutomationBar pick exists so the backend falls back to the Loop instance default", async () => {
+    const user = userEvent.setup();
+    mockStartLoop.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      agent_instance_id: "loop-agent-1",
+    });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+
+    await user.click(screen.getByTitle("Start"));
+    expect(mockStartLoop).toHaveBeenCalledWith("proj-1", undefined, null);
+  });
+
+  it("model picker writes the selected model into the automation-loop store and the next Start uses it", async () => {
+    const user = userEvent.setup();
+    mockStartLoop.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      agent_instance_id: "loop-agent-1",
+    });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+
+    await user.click(screen.getByTestId("automation-model-trigger"));
+    // Disambiguate from the trigger label (which echoes the active
+    // selection) by querying inside the dropdown via the data-attr we
+    // stamp on each menu item — both elements show "Opus 4.7" text.
+    const opusOption = await waitFor(() => {
+      const el = document.querySelector(
+        '[data-agent-model-id="aura-claude-opus-4-7"]',
+      );
+      if (!el) throw new Error("Opus 4.7 menu item not yet rendered");
+      return el as HTMLElement;
+    });
+    await user.click(opusOption);
+
+    expect(
+      useAutomationLoopStore.getState().getLoopModel("proj-1" as ProjectId),
+    ).toBe("aura-claude-opus-4-7");
+
+    await user.click(screen.getByTitle("Start"));
+    expect(mockStartLoop).toHaveBeenCalledWith(
+      "proj-1",
+      undefined,
+      "aura-claude-opus-4-7",
+    );
+  });
+
+  it("disables the model picker once the loop is running so users can't pretend to swap mid-run", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+    expect(screen.getByTestId("automation-model-trigger")).toBeDisabled();
   });
 
   it("captures the resolved Loop agent id from startLoop and routes pause/stop through it", async () => {
@@ -269,6 +385,58 @@ describe("AutomationBar", () => {
     await waitFor(() => {
       expect(screen.getByTitle("Start")).toBeDisabled();
     });
+  });
+
+  it("keeps the Play icon visible and overlays a progress ring while the loop is active", async () => {
+    // Regression: an earlier version swapped the Play icon for a
+    // Loader2 spinner during `starting`/`preparing`, then dropped
+    // the spinner once `active` arrived — leaving a bare Play icon
+    // on a still-running loop and making the bar look idle. The
+    // current contract is: Play icon stays put, an SVG ring overlay
+    // spins around it whenever the loop is doing work.
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+
+    const startBtn = screen.getByTitle("Start");
+    // Play glyph still present (button affordance remains
+    // recognisable, just visually decorated by the ring). The
+    // single-SVG `PlayLoopGlyph` draws the Play polygon itself, so
+    // we look for the polygon path rather than a lucide-play class.
+    expect(startBtn.querySelector("svg polygon")).toBeInTheDocument();
+    // Ring overlay is rendered.
+    expect(screen.getByTestId("play-loop-ring")).toBeInTheDocument();
+  });
+
+  it("does not render the progress ring while the loop is idle", async () => {
+    mockGetLoopStatus.mockResolvedValue({ active_agent_instances: [], paused: false });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("idle");
+    });
+
+    expect(screen.queryByTestId("play-loop-ring")).not.toBeInTheDocument();
+  });
+
+  it("hides the progress ring once the loop is paused so Resume reads as a real affordance", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: true,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTitle("Resume")).toBeEnabled();
+    });
+
+    expect(screen.queryByTestId("play-loop-ring")).not.toBeInTheDocument();
   });
 
   it("enables play (Resume) when paused", async () => {
