@@ -12,7 +12,8 @@ mod shadow;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 use aura_os_core::{Agent, AgentId, JwtProvider};
 use aura_os_store::SettingsStore;
@@ -22,6 +23,22 @@ use crate::errors::AgentError;
 pub struct AgentService {
     pub(super) store: Arc<SettingsStore>,
     pub(super) network_client: Option<Arc<aura_os_network::NetworkClient>>,
+    /// Per-process dedup set for `reconcile_permissions_with_shadow`'s
+    /// upstream heal flow.
+    ///
+    /// Whenever an aura-network GET returns an empty `permissions`
+    /// bundle and we fall back to the local shadow, we schedule a
+    /// best-effort PUT to push the shadow value back upstream so the
+    /// next GET round-trips cleanly. Without this set we'd issue a
+    /// fresh heal PUT on every list/get refresh (sidebar polling is
+    /// frequent), which (a) spams aura-network with no-op writes when
+    /// the upstream genuinely can't persist the column, and (b)
+    /// generates a wall of WARN logs every poll cycle. The set tracks
+    /// "we already attempted to heal this `agent_id` in this process"
+    /// so the warn-log + PUT pair runs at most once per agent per
+    /// boot. The shadow-adoption itself still runs every time — only
+    /// the noise and the outbound PUT are throttled.
+    pub(super) permission_heal_attempted: Mutex<HashSet<AgentId>>,
 }
 
 impl AgentService {
@@ -46,6 +63,7 @@ impl AgentService {
         Self {
             store,
             network_client,
+            permission_heal_attempted: Mutex::new(HashSet::new()),
         }
     }
 

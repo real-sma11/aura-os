@@ -362,3 +362,61 @@ fn bootstrapped_ceo_agent_id_round_trips() {
     service.remember_ceo_agent_id(&id);
     assert_eq!(service.bootstrapped_ceo_agent_id(), Some(id));
 }
+
+// -----------------------------------------------------------------
+// Per-process heal-PUT throttle. Pins the contract that the
+// shadow-adoption safety net keeps running every reconcile call,
+// while the WARN log + outbound heal PUT are gated by a
+// per-process dedup set so a polling sidebar refresh that hits the
+// same upstream drift on every cycle doesn't spam the logs or the
+// upstream API.
+// -----------------------------------------------------------------
+
+#[test]
+fn reconcile_repeated_calls_still_adopt_shadow() {
+    let (service, _dir) = open_service();
+    let seeded = agent_with_permissions(
+        "Atlas",
+        AgentPermissions {
+            scope: AgentScope::default(),
+            capabilities: vec![Capability::SpawnAgent],
+        },
+    );
+    service.save_agent_shadow(&seeded).unwrap();
+
+    // Simulate two back-to-back list refreshes, each returning an
+    // empty permissions bundle. Both calls must still rescue the
+    // bundle from the shadow — the throttle only suppresses the
+    // log + heal-PUT, never the in-memory repair.
+    for _ in 0..2 {
+        let mut fetched = seeded.clone();
+        fetched.permissions = AgentPermissions::empty();
+        service.reconcile_permissions_with_shadow(&mut fetched);
+        assert!(
+            !fetched.permissions.is_empty(),
+            "shadow adoption must run on every reconcile, not just the first"
+        );
+        assert!(fetched
+            .permissions
+            .capabilities
+            .contains(&Capability::SpawnAgent));
+    }
+}
+
+#[test]
+fn permission_heal_attempt_marks_first_call_only() {
+    let (service, _dir) = open_service();
+    let agent_id = AgentId::new();
+    assert!(
+        service.note_permission_heal_attempt(&agent_id),
+        "first attempt for an agent should signal first-encounter"
+    );
+    assert!(
+        !service.note_permission_heal_attempt(&agent_id),
+        "second attempt for the same agent must be deduped"
+    );
+
+    // A different agent_id stays independent — the dedup is per-id.
+    let other = AgentId::new();
+    assert!(service.note_permission_heal_attempt(&other));
+}

@@ -111,7 +111,7 @@ pub struct CreateAgentRequest {
     pub intent_classifier: Option<IntentClassifierSpec>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

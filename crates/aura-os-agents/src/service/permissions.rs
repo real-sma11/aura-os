@@ -81,11 +81,21 @@ impl AgentService {
             _ => None,
         };
         if let Some(shadow) = shadow_permissions {
-            tracing::warn!(
-                agent_id = %agent.agent_id,
-                shadow_capabilities = shadow.capabilities.len(),
-                "aura-network response did not include a `permissions` bundle; using last-known shadow value"
-            );
+            // First encounter for this agent this process: log + try
+            // to heal upstream. Subsequent encounters still adopt the
+            // shadow (correct behavior — the safety net is the
+            // contract), but skip the WARN and the PUT to avoid log
+            // spam and no-op writes when upstream genuinely cannot
+            // persist the column.
+            let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
+            if first_attempt {
+                tracing::warn!(
+                    agent_id = %agent.agent_id,
+                    shadow_capabilities = shadow.capabilities.len(),
+                    "aura-network response did not include a `permissions` bundle; using last-known shadow value and scheduling one-shot upstream heal"
+                );
+                self.try_heal_permissions_upstream(agent.agent_id, shadow.clone());
+            }
             agent.permissions = shadow;
             return;
         }
@@ -98,12 +108,122 @@ impl AgentService {
         // pre-fix PUT flow.
         if let Some(ceo_id) = self.bootstrapped_ceo_agent_id() {
             if ceo_id == agent.agent_id {
-                tracing::warn!(
-                    agent_id = %agent.agent_id,
-                    "restoring CEO preset from bootstrap-stamped agent_id (both network and shadow had empty permissions)"
-                );
+                let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
+                if first_attempt {
+                    tracing::warn!(
+                        agent_id = %agent.agent_id,
+                        "restoring CEO preset from bootstrap-stamped agent_id (both network and shadow had empty permissions); scheduling one-shot upstream heal"
+                    );
+                    self.try_heal_permissions_upstream(
+                        agent.agent_id,
+                        AgentPermissions::ceo_preset(),
+                    );
+                }
                 agent.permissions = AgentPermissions::ceo_preset();
             }
         }
+    }
+
+    /// Atomically record that we've attempted (or are about to
+    /// attempt) an upstream permissions heal for `agent_id`. Returns
+    /// `true` on the first call for an agent in this process, `false`
+    /// on every subsequent call. Callers use the `true` return as the
+    /// "log + spawn PUT" trigger; the underlying shadow-adoption keeps
+    /// running unconditionally so the in-memory bundle stays correct
+    /// even when we've stopped logging / writing.
+    pub(super) fn note_permission_heal_attempt(&self, agent_id: &AgentId) -> bool {
+        match self.permission_heal_attempted.lock() {
+            Ok(mut guard) => guard.insert(*agent_id),
+            Err(poisoned) => {
+                // Poisoned lock means a prior caller panicked while
+                // holding the set. The data structure is still
+                // structurally valid (poison is advisory), so we
+                // recover and proceed. Treat poison as "first
+                // attempt" so the heal still runs once.
+                let mut guard = poisoned.into_inner();
+                guard.insert(*agent_id)
+            }
+        }
+    }
+
+    /// Best-effort one-shot heal: PUT the supplied `permissions`
+    /// bundle back to aura-network so the upstream record stops
+    /// returning an empty bundle on subsequent GETs.
+    ///
+    /// Why this exists: the read-time safety net keeps the in-memory
+    /// view correct, but every refresh still observes the same
+    /// upstream drift and re-runs the fallback. When aura-network
+    /// genuinely persists the column but its serializer omits it on
+    /// reads, a single PUT teaches the upstream to round-trip cleanly
+    /// from then on. When aura-network doesn't persist the column at
+    /// all, the PUT is harmless — the safety net continues handling
+    /// every future GET unchanged, and the per-process dedup set in
+    /// [`Self::note_permission_heal_attempt`] keeps us from spamming
+    /// no-op writes on every poll cycle.
+    ///
+    /// All paths fail soft: missing network client, missing JWT, or
+    /// no active tokio runtime each short-circuit silently. The PUT
+    /// itself runs on a detached task so callers (which are usually
+    /// already inside a request handler) don't block on it.
+    fn try_heal_permissions_upstream(
+        &self,
+        agent_id: AgentId,
+        permissions: AgentPermissions,
+    ) {
+        let Some(client) = self.network_client.clone() else {
+            return;
+        };
+        let Ok(jwt) = self.get_jwt() else {
+            tracing::debug!(
+                agent_id = %agent_id,
+                "skipping upstream permissions heal: no JWT available"
+            );
+            return;
+        };
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::debug!(
+                agent_id = %agent_id,
+                "skipping upstream permissions heal: no active tokio runtime"
+            );
+            return;
+        };
+        let agent_id_str = agent_id.to_string();
+        let submitted_capabilities = permissions.capabilities.len();
+        handle.spawn(async move {
+            let req = aura_os_network::UpdateAgentRequest {
+                permissions: Some(permissions),
+                ..Default::default()
+            };
+            match client.update_agent(&agent_id_str, &jwt, &req).await {
+                Ok(net_agent) if net_agent.permissions.is_empty() => {
+                    // Upstream accepted the PUT but its response
+                    // didn't echo the bundle. Either the column isn't
+                    // persisted or the serializer drops it on both
+                    // read and write paths. Either way, future GETs
+                    // will keep returning empty and the safety net
+                    // will keep filling in from the shadow — but the
+                    // dedup set will suppress further PUTs.
+                    tracing::warn!(
+                        agent_id = %agent_id_str,
+                        submitted_capabilities,
+                        "upstream permissions heal PUT returned an empty `permissions` bundle; aura-network appears to drop the column on writes too"
+                    );
+                }
+                Ok(_) => {
+                    tracing::info!(
+                        agent_id = %agent_id_str,
+                        submitted_capabilities,
+                        "upstream permissions heal PUT succeeded; aura-network should now round-trip the bundle on subsequent GETs"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        agent_id = %agent_id_str,
+                        error = %err,
+                        "upstream permissions heal PUT failed; local shadow continues serving as the source of truth"
+                    );
+                }
+            }
+        });
     }
 }
