@@ -99,6 +99,31 @@ pub(crate) fn health_snapshot_disabled() -> bool {
         .unwrap_or(false)
 }
 
+/// True when the `AURA_HEALTH_GATE` env var is set to a truthy value
+/// (Phase 4b of `workspace-health-diff-gate`).
+///
+/// Default OFF and opt-in, mirroring [`super::build_preflight::build_gate_enabled`]
+/// verbatim — both gates use the same `1 | true | yes | on`
+/// (case-insensitive) truthy spelling so the operator-facing knob
+/// surface stays consistent. Toggling this flag enables the live
+/// forwarder demotion hook in
+/// [`crate::handlers::dev_loop::streaming::side_effects`] that
+/// intercepts `task_completed`, runs a fresh workspace-health
+/// snapshot, and demotes the event to `task_failed` when the diff
+/// produces a blocking verdict.
+#[must_use]
+pub(crate) fn health_gate_enabled() -> bool {
+    std::env::var("AURA_HEALTH_GATE")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 /// Blocking runner: invoke `cargo check --workspace --message-format=json
 /// --quiet` against `workspace_path` and return the captured stdout
 /// plus the exit-success flag, or `None` if the process couldn't be
@@ -170,6 +195,37 @@ mod tests {
             std::env::set_var(key, value);
         } else {
             std::env::remove_var(key);
+        }
+    }
+
+    /// The `AURA_HEALTH_GATE` knob parser must accept the same
+    /// truthy spellings as `AURA_BUILD_GATE` (and the rest of the
+    /// dev-loop's env-var surface).
+    #[test]
+    fn health_gate_enabled_parses_truthy_values() {
+        let _guard = ENV_GUARD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let key = "AURA_HEALTH_GATE";
+        let original = std::env::var(key).ok();
+        for truthy in ["1", "true", "yes", "on", "TRUE", "Yes", "ON"] {
+            std::env::set_var(key, truthy);
+            assert!(
+                health_gate_enabled(),
+                "expected `{truthy}` to parse as truthy"
+            );
+        }
+        for falsy in ["", "0", "false", "no", "off", "anything-else"] {
+            std::env::set_var(key, falsy);
+            assert!(
+                !health_gate_enabled(),
+                "expected `{falsy}` to parse as falsy"
+            );
+        }
+        std::env::remove_var(key);
+        assert!(!health_gate_enabled(), "missing env var must be falsy");
+        if let Some(value) = original {
+            std::env::set_var(key, value);
         }
     }
 

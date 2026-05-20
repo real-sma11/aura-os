@@ -15,7 +15,7 @@ pub mod tool_retry;
 mod tests;
 
 pub use exploration::{
-    ExplorationBudget, ExplorationStatus, EXPLORATION_DEPENDENCY_BONUS,
+    format_health_summary, ExplorationBudget, ExplorationStatus, EXPLORATION_DEPENDENCY_BONUS,
     EXPLORATION_DESCRIPTION_DIVISOR, EXPLORATION_HARD_FLOOR, EXPLORATION_SOFT_CEILING,
     EXPLORATION_SOFT_FLOOR,
 };

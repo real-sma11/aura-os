@@ -9,6 +9,7 @@ mod task_output;
 
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
@@ -16,8 +17,8 @@ use aura_os_loops::LoopHandle;
 
 use super::super::session::record_task_worked;
 use super::super::signals::{
-    build_gate_enabled, extract_task_failure_context, render_demoted_failure_reason,
-    run_build_preflight, snapshot_workspace_health, BuildPreflight,
+    build_gate_enabled, extract_task_failure_context, health_gate_enabled,
+    render_demoted_failure_reason, run_build_preflight, snapshot_workspace_health, BuildPreflight,
 };
 use super::super::types::LoopRetryState;
 use super::emit_log_line;
@@ -143,6 +144,44 @@ pub(super) async fn record_event_side_effects(
                     first_error_code = preflight.first_error_code.as_deref().unwrap_or("unknown"),
                     timed_out = preflight.timed_out,
                     "build preflight demoted task_completed to task_failed"
+                );
+            }
+        }
+    }
+
+    // Workspace-health diff gate (Phase 4b of
+    // `workspace-health-diff-gate`, opt-in via `AURA_HEALTH_GATE`).
+    // Runs AFTER the build gate so the build gate's more direct
+    // `cargo check` verdict wins when both are enabled — if the build
+    // gate already demoted to `task_failed`, the outer `task_completed`
+    // guard short-circuits this block. Reads the baseline stashed at
+    // `task_started` by Phase 3, snapshots the current workspace, and
+    // classifies the diff via [`aura_os_automation::classify_delta`].
+    // Blocking verdicts produce a `task_failed` payload whose `reason`
+    // embeds the verdict id verbatim so the Phase 4a classifier wires
+    // it through the existing CompletionContract → fresh-context retry
+    // path.
+    if effective_event_type == "task_completed" && health_gate_enabled() {
+        if let Some(task_uuid) = task_id.as_deref().and_then(|s| TaskId::from_str(s).ok()) {
+            if let Some(verdict) = maybe_run_health_gate(
+                state,
+                project_id,
+                agent_instance_id,
+                ctx.retry_state,
+                task_uuid,
+            )
+            .await
+            {
+                broadcast_payload =
+                    synthesize_health_gate_failure(&broadcast_payload, &verdict);
+                effective_event_type = "task_failed";
+                tracing::warn!(
+                    %project_id,
+                    %agent_instance_id,
+                    task_id = task_uuid.to_string(),
+                    reason = verdict.reason,
+                    elapsed_ms = verdict.elapsed_ms,
+                    "workspace-health gate demoted task_completed to task_failed"
                 );
             }
         }
@@ -593,6 +632,157 @@ fn synthesize_build_gate_failure(
     payload
 }
 
+/// Verdict from the workspace-health gate when it decides to demote
+/// a `task_completed` to `task_failed`. Carries everything
+/// [`synthesize_health_gate_failure`] needs to stamp a fully-formed
+/// failure payload (blocking reason id, baseline/current summaries,
+/// elapsed wall-clock) without re-reading any tracker state.
+///
+/// Phase 4b of `workspace-health-diff-gate`. Sibling of
+/// [`BuildPreflight`].
+#[derive(Debug, Clone)]
+struct HealthGateVerdict {
+    /// One of the four `workspace_health_*` blocking reason
+    /// strings exported by [`aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS`].
+    /// Spliced verbatim into the demoted `task_failed` reason text so
+    /// the Phase 4a classifier wiring routes the failure through the
+    /// CompletionContract → fresh-context retry path.
+    reason: &'static str,
+    /// Human-readable summary of the workspace baseline captured at
+    /// `task_started`. Used as the "before" half of the failure
+    /// message. `None` only if [`aura_os_automation::format_health_summary`]
+    /// were ever to return an empty string, which it currently does
+    /// not — kept optional for symmetry with `current_summary` and
+    /// to leave room for future "no useful summary" branches.
+    baseline_summary: Option<String>,
+    /// Human-readable summary of the post-`task_completed` workspace
+    /// snapshot. The "after" half of the failure message.
+    current_summary: Option<String>,
+    /// Wall-clock spent running the gate end-to-end (snapshot +
+    /// classify). Exposed both for the warn-level log line and as a
+    /// telemetry field on the synthesized payload.
+    elapsed_ms: u64,
+}
+
+/// Run the workspace-health diff gate for `task_uuid`, returning
+/// `Some(HealthGateVerdict)` only when the diff produces one of the
+/// four blocking verdicts. Every other path (no baseline, no
+/// workspace path, non-blocking verdict) returns `None` so the
+/// caller emits the harness's original `task_completed`.
+///
+/// Phase 4b of `workspace-health-diff-gate`. The Phase 4b live
+/// integration uses a [`aura_os_automation::TaskScope::default()`] +
+/// [`aura_os_automation::TaskKind::Unknown`] pair: that hits the
+/// "Implementation" branch of [`aura_os_automation::classify_delta`],
+/// which is the strictest reasonable default for tasks whose
+/// description we haven't yet plumbed into this code path.
+async fn maybe_run_health_gate(
+    state: &AppState,
+    project_id: ProjectId,
+    agent_instance_id: AgentInstanceId,
+    retry_state: &Arc<LoopRetryState>,
+    task_uuid: TaskId,
+) -> Option<HealthGateVerdict> {
+    let baseline_entry = retry_state.health_baseline.get(task_uuid)?;
+    let workspace_path =
+        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id))
+            .await?;
+    let start = Instant::now();
+    let current_health = snapshot_workspace_health(workspace_path.clone()).await;
+    // TODO(workspace-health-diff-gate phase 5): fetch task description
+    // from storage to derive richer `TaskScope` / `TaskKind`. For now
+    // `TaskScope::default()` + `TaskKind::Unknown` (= Implementation
+    // default) is the strictest reasonable behavior for live runs;
+    // task-description-driven extraction needs a storage read at gate
+    // time, see
+    // `c:\Users\n3o\.cursor\plans\workspace-health-diff-gate_1121eaf1.plan.md`.
+    let scope = aura_os_automation::TaskScope::default();
+    let kind = aura_os_automation::TaskKind::Unknown;
+    let strict = aura_os_automation::is_strict_mode_enabled();
+    let delta = aura_os_automation::classify_delta(
+        &baseline_entry.health,
+        &current_health,
+        &scope,
+        kind,
+        strict,
+    );
+    if !delta.verdict.blocks_task_done() {
+        return None;
+    }
+    let baseline_summary =
+        aura_os_automation::format_health_summary(&baseline_entry.health, None);
+    let current_summary = aura_os_automation::format_health_summary(&current_health, None);
+    Some(HealthGateVerdict {
+        reason: delta.reason,
+        baseline_summary: Some(baseline_summary),
+        current_summary: Some(current_summary),
+        elapsed_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+    })
+}
+
+/// Build a synthetic `task_failed` payload from the harness's
+/// `task_completed` enriched event when the workspace-health gate
+/// produced a blocking verdict.
+///
+/// The rendered `reason` / `message` text EMBEDS `verdict.reason` as
+/// a literal substring so the cross-crate
+/// [`aura_os_automation::contains_workspace_health_blocking_reason`]
+/// predicate (and the Phase 4a `is_completion_contract_failure_for_tests`
+/// wiring) picks the failure up and routes it through the existing
+/// fresh-context retry path. Original payload fields (task_id,
+/// session_id, timestamps, …) are preserved verbatim; the
+/// health-gate-specific telemetry lands on top-level
+/// `health_gate_*` fields so the dashboard can surface them
+/// alongside the existing `build_preflight_*` fields.
+fn synthesize_health_gate_failure(
+    original: &serde_json::Value,
+    verdict: &HealthGateVerdict,
+) -> serde_json::Value {
+    let mut payload = original.clone();
+    let baseline_fragment = verdict
+        .baseline_summary
+        .as_deref()
+        .unwrap_or("workspace baseline unavailable");
+    let current_fragment = verdict
+        .current_summary
+        .as_deref()
+        .unwrap_or("workspace current snapshot unavailable");
+    let reason = format!(
+        "{verdict_reason}: {baseline_fragment}; current snapshot: {current_fragment}. \
+         Fix the red as part of this task or hand back with a status update.",
+        verdict_reason = verdict.reason,
+        baseline_fragment = baseline_fragment,
+        current_fragment = current_fragment,
+    );
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("type".into(), serde_json::Value::from("task_failed"));
+        object.insert("event_type".into(), serde_json::Value::from("task_failed"));
+        object.insert("reason".into(), serde_json::Value::from(reason.clone()));
+        object.insert("message".into(), serde_json::Value::from(reason));
+        object.insert(
+            "health_gate_reason".into(),
+            serde_json::Value::from(verdict.reason),
+        );
+        object.insert(
+            "health_gate_elapsed_ms".into(),
+            serde_json::Value::from(verdict.elapsed_ms),
+        );
+        if let Some(baseline) = verdict.baseline_summary.as_ref() {
+            object.insert(
+                "health_gate_baseline_summary".into(),
+                serde_json::Value::from(baseline.clone()),
+            );
+        }
+        if let Some(current) = verdict.current_summary.as_ref() {
+            object.insert(
+                "health_gate_current_summary".into(),
+                serde_json::Value::from(current.clone()),
+            );
+        }
+    }
+    payload
+}
+
 /// Extract `(input_tokens, output_tokens)` from an
 /// `assistant_message_end` payload. Looks under both the top-level
 /// fields the legacy harness emits and the nested `usage` object the
@@ -662,5 +852,139 @@ mod build_gate_synthesizer_tests {
             .as_str()
             .unwrap()
             .contains("timeout after 90s"));
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4b of `workspace-health-diff-gate`: workspace-health gate
+    // synthesiser + env-var parser tests. The full state-machine
+    // contract is locked down by the Phase 4a regression suite in
+    // `tests/dev_loop_dod_regression.rs`; the tests below only have
+    // to prove that the demoted payload carries the reason string
+    // verbatim (so the Phase 4a classifier wiring matches) and that
+    // the env-var knob parses the documented truthy/falsy values.
+    // -----------------------------------------------------------------
+
+    /// Sibling of
+    /// `synthesize_build_gate_failure_overlays_failure_fields_on_original`:
+    /// the synthesised payload must preserve every non-overlay field
+    /// from the original and stamp `type` / `event_type` /
+    /// `health_gate_*` on top.
+    #[test]
+    fn synthesize_health_gate_failure_overlays_failure_fields_on_original() {
+        let original = serde_json::json!({
+            "type": "task_completed",
+            "event_type": "task_completed",
+            "task_id": "task-789",
+            "session_id": "ses-456",
+            "timestamp": "2026-05-19T22:00:00Z",
+            "extra": "preserve me"
+        });
+        let verdict = HealthGateVerdict {
+            reason: aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS[2],
+            baseline_summary: Some(
+                "workspace red at task start: 4 errors across 1 files \
+                 (e.g. crates/zero-storage [E0277 \u{00d7}2, E0432, E0425])"
+                    .to_string(),
+            ),
+            current_summary: Some(
+                "workspace red at task start: 4 errors across 1 files \
+                 (e.g. crates/zero-storage [E0277 \u{00d7}2, E0432, E0425])"
+                    .to_string(),
+            ),
+            elapsed_ms: 2_345,
+        };
+        let synthetic = synthesize_health_gate_failure(&original, &verdict);
+        assert_eq!(synthetic["type"], "task_failed");
+        assert_eq!(synthetic["event_type"], "task_failed");
+        assert_eq!(synthetic["task_id"], "task-789");
+        assert_eq!(synthetic["session_id"], "ses-456");
+        assert_eq!(synthetic["extra"], "preserve me");
+        assert_eq!(synthetic["timestamp"], "2026-05-19T22:00:00Z");
+        assert_eq!(
+            synthetic["health_gate_reason"],
+            "workspace_health_red_blocking_implementation",
+        );
+        assert_eq!(synthetic["health_gate_elapsed_ms"], 2_345);
+        assert!(synthetic["health_gate_baseline_summary"]
+            .as_str()
+            .unwrap()
+            .contains("crates/zero-storage"));
+        assert!(synthetic["health_gate_current_summary"]
+            .as_str()
+            .unwrap()
+            .contains("crates/zero-storage"));
+        let reason = synthetic["reason"].as_str().expect("reason set");
+        assert!(reason.contains("workspace_health_red_blocking_implementation"));
+        assert!(reason.contains("crates/zero-storage"));
+        assert_eq!(synthetic["message"], synthetic["reason"]);
+    }
+
+    /// The synthetic reason string must embed exactly one of the
+    /// four blocking constants — that is the contract Phase 4a's
+    /// classifier wiring relies on
+    /// (`contains_workspace_health_blocking_reason` is a substring
+    /// match against the rendered message).
+    #[test]
+    fn synthesize_health_gate_failure_embeds_blocking_reason_so_classifier_matches() {
+        for blocking_reason in aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS {
+            let verdict = HealthGateVerdict {
+                reason: blocking_reason,
+                baseline_summary: Some("baseline".to_string()),
+                current_summary: Some("current".to_string()),
+                elapsed_ms: 100,
+            };
+            let synthetic = synthesize_health_gate_failure(
+                &serde_json::json!({"task_id": "t"}),
+                &verdict,
+            );
+            let reason = synthetic["reason"].as_str().expect("reason set");
+            assert!(
+                aura_os_automation::contains_workspace_health_blocking_reason(reason),
+                "rendered reason {reason:?} must match the cross-crate \
+                 substring predicate for blocking_reason={blocking_reason}",
+            );
+            let found: Vec<&&str> = aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS
+                .iter()
+                .filter(|needle| reason.contains(**needle))
+                .collect();
+            assert_eq!(
+                found.len(),
+                1,
+                "rendered reason {reason:?} must contain exactly ONE blocking \
+                 reason constant, found {found:?}",
+            );
+            assert_eq!(*found[0], *blocking_reason);
+        }
+    }
+
+    /// Pin the `AURA_HEALTH_GATE` env-var parser at the integration
+    /// boundary where the side-effects pipeline consumes it. The
+    /// in-module parsing test inside `signals::health_snapshot`
+    /// covers the truthy / falsy table exhaustively; this test only
+    /// has to assert that the re-export the side-effects pipeline
+    /// imports reflects changes to the underlying env var so a
+    /// future signal-module refactor that breaks the re-export
+    /// blows up here.
+    #[test]
+    fn health_gate_enabled_respects_env_var_parsing() {
+        let key = "AURA_HEALTH_GATE";
+        let original = std::env::var(key).ok();
+        // SAFETY: env mutation is constrained to this test scope and
+        // restored at the end.
+        std::env::set_var(key, "1");
+        assert!(health_gate_enabled());
+        std::env::set_var(key, "yes");
+        assert!(health_gate_enabled());
+        std::env::set_var(key, "ON");
+        assert!(health_gate_enabled());
+        std::env::set_var(key, "false");
+        assert!(!health_gate_enabled());
+        std::env::set_var(key, "");
+        assert!(!health_gate_enabled());
+        std::env::remove_var(key);
+        assert!(!health_gate_enabled());
+        if let Some(value) = original {
+            std::env::set_var(key, value);
+        }
     }
 }

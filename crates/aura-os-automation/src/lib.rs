@@ -45,7 +45,7 @@ pub mod resilience;
 pub mod task_context;
 
 pub use budget::{
-    ExplorationBudget, ExplorationStatus, EXPLORATION_DEPENDENCY_BONUS,
+    format_health_summary, ExplorationBudget, ExplorationStatus, EXPLORATION_DEPENDENCY_BONUS,
     EXPLORATION_DESCRIPTION_DIVISOR, EXPLORATION_HARD_FLOOR, EXPLORATION_SOFT_CEILING,
     EXPLORATION_SOFT_FLOOR, TASK_LEVEL_RETRY_BUDGET, TOOL_CALL_RETRY_BUDGET,
 };
@@ -193,6 +193,12 @@ mod smoke {
         _baseline_tracker.clear(_baseline_task);
         let _age: Option<std::time::Duration> =
             _baseline_tracker.snapshot_age(_baseline_task);
+        // Phase 4b of `workspace-health-diff-gate`: pin
+        // `format_health_summary` at the crate root so the App-layer
+        // health gate can splice the baseline + current summaries
+        // into its demoted `task_failed` reason string.
+        let _summary: String =
+            crate::format_health_summary(&crate::WorkspaceHealth::clean(), None);
     }
 
     fn dummy_task() -> aura_os_core::Task {

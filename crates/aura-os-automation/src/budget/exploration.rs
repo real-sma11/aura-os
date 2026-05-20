@@ -356,7 +356,7 @@ fn scope_prefix(
 ///   surface intentionally ignores it so the summary stays a stable
 ///   deterministic fragment.
 #[must_use]
-pub(crate) fn format_health_summary(
+pub fn format_health_summary(
     health: &crate::health::WorkspaceHealth,
     _scope: Option<&crate::health::TaskScope>,
 ) -> String {

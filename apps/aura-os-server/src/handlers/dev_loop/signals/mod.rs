@@ -12,7 +12,7 @@ mod test_evidence;
 pub(crate) use build_preflight::{
     build_gate_enabled, render_demoted_failure_reason, run_build_preflight, BuildPreflight,
 };
-pub(crate) use health_snapshot::snapshot_workspace_health;
+pub(crate) use health_snapshot::{health_gate_enabled, snapshot_workspace_health};
 
 pub(crate) use classifiers::{
     auto_decompose_disabled, classify_push_failure_for_tests,
