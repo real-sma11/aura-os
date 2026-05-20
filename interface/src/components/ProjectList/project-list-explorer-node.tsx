@@ -4,7 +4,7 @@ import { Archive, Gauge, Loader2 } from "lucide-react";
 import { Avatar } from "../Avatar";
 import { ProjectsPlusButton } from "../ProjectsPlusButton";
 import type { useProjectListData } from "./useProjectListData";
-import { resolveStatus } from "./project-list-shared";
+import { isUserFacingAgentInstance, resolveStatus } from "./project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../lib/zui-compat";
 import { agentDisplayName } from "../../lib/derive-project-agent-title";
 
@@ -202,7 +202,15 @@ function buildProjectChildren(
       },
     ];
   }
-  const activeAgents = projectAgents.filter((agent) => agent.status !== "archived");
+  // Drop both archived rows and infrastructure rows (`Loop`,
+  // `Executor`). `run-once` task runs allocate a fresh ephemeral
+  // `Executor` per call (see `spawn_ephemeral_executor` in
+  // `crates/aura-os-agents/src/instance.rs`); without this filter
+  // each click stacked another duplicate row in the project sidebar
+  // because the ephemeral row clones the template's name verbatim.
+  const activeAgents = projectAgents.filter(
+    (agent) => agent.status !== "archived" && isUserFacingAgentInstance(agent),
+  );
 
   const children: ExplorerNode[] = [
     ...mobileChildren,

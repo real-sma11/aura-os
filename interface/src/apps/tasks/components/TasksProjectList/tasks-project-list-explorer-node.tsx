@@ -4,7 +4,10 @@ import { Avatar } from "../../../../components/Avatar";
 import { ProjectsPlusButton } from "../../../../components/ProjectsPlusButton";
 import type { ProjectExplorerNodeStyles } from "../../../../components/ProjectList/project-list-explorer-node";
 import type { useProjectListData } from "../../../../components/ProjectList/useProjectListData";
-import { resolveStatus } from "../../../../components/ProjectList/project-list-shared";
+import {
+  isUserFacingAgentInstance,
+  resolveStatus,
+} from "../../../../components/ProjectList/project-list-shared";
 import type { ExplorerNodeWithSuffix } from "../../../../lib/zui-compat";
 import { agentDisplayName } from "../../../../lib/derive-project-agent-title";
 
@@ -87,18 +90,23 @@ export function buildTasksExplorerNode(
   explorerStyles: ProjectExplorerNodeStyles,
 ): ExplorerNodeWithSuffix {
   const projectAgents = data.agentsByProject[project.project_id];
+  // Mirror the Projects-app sidebar: hide infrastructure-role rows
+  // (`Loop`, `Executor`) so each `run-once` task click does not stack
+  // another duplicate "Run task" Executor in the Tasks-app sidebar.
   const children =
     projectAgents !== undefined
-      ? projectAgents.map((agent) =>
-          buildTaskAgentNode(
-            agent,
-            project.project_id,
-            data,
-            statusMap,
-            machineTypesMap,
-            explorerStyles,
-          ),
-        )
+      ? projectAgents
+          .filter(isUserFacingAgentInstance)
+          .map((agent) =>
+            buildTaskAgentNode(
+              agent,
+              project.project_id,
+              data,
+              statusMap,
+              machineTypesMap,
+              explorerStyles,
+            ),
+          )
       : [{ id: `_load_${project.project_id}`, label: "Loading...", disabled: true }];
 
   return {

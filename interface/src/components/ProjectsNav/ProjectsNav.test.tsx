@@ -20,6 +20,7 @@ type MockAgent = {
   machine_type: string;
   icon?: string | null;
   updated_at?: string;
+  instance_role?: "chat" | "loop" | "executor";
 };
 
 const project: MockProject = { project_id: "p1", name: "cypher-asi/aura-os" };
@@ -197,6 +198,63 @@ describe("ProjectsNav", () => {
     expect(await screen.findByTestId("node-a1")).toHaveTextContent(
       "Navigation rail and taskbar icons",
     );
+  });
+
+  it("hides ephemeral Executor rows so run-once tasks do not stack duplicates", async () => {
+    // The backend allocates a fresh `Executor`-role row per
+    // `POST /run-once` task click (`spawn_ephemeral_executor` in
+    // `crates/aura-os-agents/src/instance.rs`). Each row clones the
+    // template's `name` verbatim, so without a sidebar filter the
+    // user gets one duplicate entry per click stacked under the
+    // project.
+    mockProjectListData = buildMockData({
+      agentsByProject: {
+        p1: [
+          agent,
+          {
+            ...agent,
+            agent_instance_id: "a-exec-1",
+            instance_role: "executor",
+          },
+          {
+            ...agent,
+            agent_instance_id: "a-exec-2",
+            instance_role: "executor",
+          },
+          {
+            ...agent,
+            agent_instance_id: "a-loop",
+            instance_role: "loop",
+          },
+        ],
+      },
+    });
+
+    render(<ProjectsNav />);
+
+    expect(await screen.findByTestId("node-a1")).toBeInTheDocument();
+    expect(screen.queryByTestId("node-a-exec-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("node-a-exec-2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("node-a-loop")).not.toBeInTheDocument();
+  });
+
+  it("renders the empty state when only infrastructure rows exist", async () => {
+    mockProjectListData = buildMockData({
+      agentsByProject: {
+        p1: [
+          {
+            ...agent,
+            agent_instance_id: "a-exec",
+            instance_role: "executor",
+          },
+        ],
+      },
+    });
+
+    render(<ProjectsNav />);
+
+    const emptyState = await screen.findByTestId("empty-p1");
+    expect(emptyState).toHaveTextContent("No agents yet");
   });
 
   it("renders a global Archived group collapsed by default", async () => {

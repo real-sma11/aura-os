@@ -17,6 +17,7 @@ import {
   filterTree,
   getLastSelectedId,
   getPreferredProjectAgent,
+  isUserFacingAgentInstance,
 } from "./project-list-shared";
 import { useExplorerMenus } from "./useExplorerMenus";
 import {
@@ -67,10 +68,17 @@ function buildArchivedRootNode(
   machineTypesMap: Record<string, string>,
   explorerStyles: ProjectExplorerNodeStyles,
 ): ExplorerNode {
+  // `Executor` rows are deleted (not archived) by the per-run
+  // reaper, but a server crash mid-cleanup could leave one with
+  // `status: "archived"`. Defensively skip non-user-facing roles
+  // so an orphaned ephemeral never resurfaces in "Archived".
   const archivedAgents = Object.entries(context.agentsByProject)
     .flatMap(([projectId, agents]) =>
       (agents ?? [])
-        .filter((agent) => agent.status === "archived")
+        .filter(
+          (agent) =>
+            agent.status === "archived" && isUserFacingAgentInstance(agent),
+        )
         .map((agent) => ({ projectId, agent })),
     )
     .sort((left, right) => compareUpdatedAtDesc(left.agent, right.agent));

@@ -39,11 +39,32 @@ export function resolveStatus(raw: string | undefined): string | undefined {
   return STATUS_MAP[raw.toLowerCase()] ?? raw;
 }
 
+/**
+ * Predicate for "is this `AgentInstance` row meant for user-facing
+ * surfaces like the project sidebar and the project agent chat
+ * route". `Loop` and `Executor` rows are infrastructure: the former
+ * is the persistent automation-loop binding, the latter is the
+ * ephemeral row each `run-once` task allocates. Both must stay out
+ * of the agent list — the bug they cause is one duplicate sidebar
+ * entry per task run, since `spawn_ephemeral_executor` clones the
+ * template's name verbatim.
+ *
+ * Older backends round-trip without `instance_role`; the wire
+ * contract on `AgentInstance.instance_role` says consumers should
+ * treat `undefined` as `"chat"`, so the predicate keeps those rows
+ * visible.
+ */
+export function isUserFacingAgentInstance(agent: AgentInstance): boolean {
+  return (agent.instance_role ?? "chat") === "chat";
+}
+
 export function getPreferredProjectAgent(
   agents: AgentInstance[],
   lastAgentId?: string | null,
 ): AgentInstance | undefined {
-  const activeAgents = agents.filter((agent) => agent.status !== "archived");
+  const activeAgents = agents.filter(
+    (agent) => agent.status !== "archived" && isUserFacingAgentInstance(agent),
+  );
   if (activeAgents.length === 0) {
     return undefined;
   }

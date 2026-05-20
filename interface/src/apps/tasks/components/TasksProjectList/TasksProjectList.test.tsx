@@ -20,6 +20,7 @@ type MockAgent = {
   machine_type: string;
   icon?: string | null;
   updated_at?: string;
+  instance_role?: "chat" | "loop" | "executor";
 };
 
 const project: MockProject = { project_id: "p1", name: "cypher-asi/aura-os" };
@@ -226,6 +227,36 @@ describe("TasksProjectList", () => {
 
     expect(await screen.findByTestId("node-a1")).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("hides ephemeral Executor rows from the Tasks-app sidebar", async () => {
+    // Mirror the Projects-app sidebar fix: each `run-once` task click
+    // allocates a fresh `Executor`-role row that clones the chat
+    // template's `name`. Without the filter the user gets one
+    // duplicate per click stacked under the project here too.
+    mockProjectListData = buildMockData({
+      agentsByProject: {
+        p1: [
+          agent,
+          {
+            ...agent,
+            agent_instance_id: "a-exec",
+            instance_role: "executor",
+          },
+          {
+            ...agent,
+            agent_instance_id: "a-loop",
+            instance_role: "loop",
+          },
+        ],
+      },
+    });
+
+    render(<TasksProjectList />);
+
+    expect(await screen.findByTestId("node-a1")).toBeInTheDocument();
+    expect(screen.queryByTestId("node-a-exec")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("node-a-loop")).not.toBeInTheDocument();
   });
 
   it("reorders projects by drag and drop via the shared LeftMenu hook", async () => {
