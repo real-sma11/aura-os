@@ -169,6 +169,7 @@ pub(super) async fn record_event_side_effects(
                 agent_instance_id,
                 ctx.retry_state,
                 task_uuid,
+                jwt,
             )
             .await
             {
@@ -664,24 +665,75 @@ struct HealthGateVerdict {
     elapsed_ms: u64,
 }
 
+/// Pure derivation of the gate's `(TaskScope, TaskKind)` pair from a
+/// task description. Extracted so the gate's classification step is
+/// unit-testable without standing up an [`AppState`] or a storage
+/// fake, and so the fallback path (no description fetched) shares
+/// the exact same shape as the happy path.
+///
+/// The empty-description fallback yields `TaskScope::default()` +
+/// `TaskKind::Unknown`. `classify_delta` then routes `Unknown` to
+/// the `Implementation` branch — the strictest reasonable default
+/// for tasks whose description we couldn't load. This mirrors the
+/// pre-Phase-5 behavior so a storage-fetch failure never relaxes
+/// the gate.
+fn classify_task_for_gate(
+    description: &str,
+) -> (aura_os_automation::TaskScope, aura_os_automation::TaskKind) {
+    let scope = aura_os_automation::extract_task_scope(description, &[]);
+    let kind = aura_os_automation::classify_task_kind(description, &scope);
+    (scope, kind)
+}
+
+/// Best-effort fetch of `task_uuid`'s description from storage so the
+/// gate can derive a real [`aura_os_automation::TaskScope`] +
+/// [`aura_os_automation::TaskKind`] instead of falling back to the
+/// strictest defaults. Returns `None` when storage isn't configured,
+/// no JWT is available, or the fetch fails — every failure is
+/// treated as "use the safe fallback", never as a hard error.
+async fn fetch_task_description(
+    state: &AppState,
+    jwt: Option<&str>,
+    task_uuid: TaskId,
+) -> Option<String> {
+    let jwt = jwt?;
+    let storage = state.storage_client.as_ref()?;
+    match storage.get_task(&task_uuid.to_string(), jwt).await {
+        Ok(task) => task.description,
+        Err(error) => {
+            tracing::debug!(
+                task_id = %task_uuid,
+                %error,
+                "health gate: fetch_task_description failed; falling back to TaskKind::Unknown"
+            );
+            None
+        }
+    }
+}
+
 /// Run the workspace-health diff gate for `task_uuid`, returning
 /// `Some(HealthGateVerdict)` only when the diff produces one of the
 /// four blocking verdicts. Every other path (no baseline, no
 /// workspace path, non-blocking verdict) returns `None` so the
 /// caller emits the harness's original `task_completed`.
 ///
-/// Phase 4b of `workspace-health-diff-gate`. The Phase 4b live
-/// integration uses a [`aura_os_automation::TaskScope::default()`] +
-/// [`aura_os_automation::TaskKind::Unknown`] pair: that hits the
-/// "Implementation" branch of [`aura_os_automation::classify_delta`],
-/// which is the strictest reasonable default for tasks whose
-/// description we haven't yet plumbed into this code path.
+/// Phase 4b of `workspace-health-diff-gate` with Phase 5a
+/// task-kind extraction wired in: the gate now fetches the task
+/// description from storage and runs it through
+/// [`classify_task_for_gate`] so a documentation task in a red
+/// workspace correctly routes to `UnchangedAdvisory` (permissive)
+/// or `RedBlockedByStrictMode` (strict) instead of the conservative
+/// `RedBlockingImplementation` fallback. Description-fetch failures
+/// (no JWT, no storage client, storage error) silently fall back to
+/// the pre-Phase-5a behavior so the gate never *loosens* on
+/// transient storage issues.
 async fn maybe_run_health_gate(
     state: &AppState,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
     retry_state: &Arc<LoopRetryState>,
     task_uuid: TaskId,
+    jwt: Option<&str>,
 ) -> Option<HealthGateVerdict> {
     let baseline_entry = retry_state.health_baseline.get(task_uuid)?;
     let workspace_path =
@@ -689,15 +741,10 @@ async fn maybe_run_health_gate(
             .await?;
     let start = Instant::now();
     let current_health = snapshot_workspace_health(workspace_path.clone()).await;
-    // TODO(workspace-health-diff-gate phase 5): fetch task description
-    // from storage to derive richer `TaskScope` / `TaskKind`. For now
-    // `TaskScope::default()` + `TaskKind::Unknown` (= Implementation
-    // default) is the strictest reasonable behavior for live runs;
-    // task-description-driven extraction needs a storage read at gate
-    // time, see
-    // `c:\Users\n3o\.cursor\plans\workspace-health-diff-gate_1121eaf1.plan.md`.
-    let scope = aura_os_automation::TaskScope::default();
-    let kind = aura_os_automation::TaskKind::Unknown;
+    let description = fetch_task_description(state, jwt, task_uuid)
+        .await
+        .unwrap_or_default();
+    let (scope, kind) = classify_task_for_gate(&description);
     let strict = aura_os_automation::is_strict_mode_enabled();
     let delta = aura_os_automation::classify_delta(
         &baseline_entry.health,
@@ -986,5 +1033,73 @@ mod build_gate_synthesizer_tests {
         if let Some(value) = original {
             std::env::set_var(key, value);
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 5a of `workspace-health-diff-gate`: task-kind extraction.
+    // The gate now derives `(TaskScope, TaskKind)` from the task
+    // description at gate time so doc/refactor/verify tasks in a red
+    // workspace no longer get force-classified as Implementation by
+    // the pre-Phase-5a `TaskKind::Unknown` fallback. The fixture
+    // tests below pin the four kinds the verdict matrix actually
+    // branches on so a regression in `classify_task_kind` or
+    // `extract_task_scope` would surface here.
+    // -----------------------------------------------------------------
+
+    /// A doc-only description (`docs/...md` or `*.md` only) must
+    /// classify as `Documentation` so the gate routes it to
+    /// `UnchangedAdvisory` in permissive mode (the 3.9 fix).
+    #[test]
+    fn classify_task_for_gate_documentation_routes_via_doc_only_scope() {
+        let (scope, kind) =
+            classify_task_for_gate("Update docs/grid.md and the top-level README.md");
+        assert!(scope.crates.is_empty(), "scope: {scope:?}");
+        assert!(!scope.paths.is_empty(), "scope: {scope:?}");
+        assert!(matches!(kind, aura_os_automation::TaskKind::Documentation));
+    }
+
+    /// A `Refactor` description (verbs `refactor`, `rename`, `move`)
+    /// must classify as `Refactor` so the strict-mode knob can decide
+    /// whether to block or surface an advisory.
+    #[test]
+    fn classify_task_for_gate_refactor_keyword_classifies_as_refactor() {
+        let (_scope, kind) = classify_task_for_gate("Refactor the dev_loop module to share state");
+        assert!(matches!(kind, aura_os_automation::TaskKind::Refactor));
+    }
+
+    /// A `Verification` description (`audit`, `review`, `verify`, or
+    /// the phrase `check that`) must classify as `Verification`.
+    #[test]
+    fn classify_task_for_gate_verification_keyword_classifies_as_verification() {
+        let (_scope, kind) = classify_task_for_gate("Audit the health gate wiring");
+        assert!(matches!(kind, aura_os_automation::TaskKind::Verification));
+    }
+
+    /// A code-touching description with a `crates/<name>` reference
+    /// must classify as `Implementation` and populate `scope.crates`
+    /// so the `UnfixedInScope` branch can fire when the red is in the
+    /// claimed crate.
+    #[test]
+    fn classify_task_for_gate_implementation_keeps_crates_scope_populated() {
+        let (scope, kind) = classify_task_for_gate(
+            "Add the Snapshot type and wire it into crates/aura-os-automation",
+        );
+        assert!(matches!(kind, aura_os_automation::TaskKind::Implementation));
+        assert!(
+            scope.crates.contains("aura-os-automation"),
+            "scope: {scope:?}"
+        );
+    }
+
+    /// An empty description (the storage-fetch-failed fallback path)
+    /// must yield `Unknown`, which `classify_delta` routes to the
+    /// `Implementation` branch. This locks in the contract that a
+    /// transient storage failure NEVER loosens the gate — it just
+    /// reverts to the pre-Phase-5a behavior.
+    #[test]
+    fn classify_task_for_gate_empty_description_falls_back_to_unknown() {
+        let (scope, kind) = classify_task_for_gate("");
+        assert!(scope.is_empty(), "scope: {scope:?}");
+        assert!(matches!(kind, aura_os_automation::TaskKind::Unknown));
     }
 }
