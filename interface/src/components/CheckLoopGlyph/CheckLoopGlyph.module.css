@@ -1,0 +1,31 @@
+/* Wrapping `<g>` for the ring pair so the accent colour applies to
+   both the faint background ring and the spinning arc via
+   `stroke="currentColor"`. We bind to `--color-accent` (the
+   theme-driven accent, set per-user in zui themes.css) so the
+   spinner follows the active theme. The `--loop-progress-color`
+   fallback keeps the spinner readable in surfaces that haven't
+   propagated the accent variable yet, and the final `#4f8bff` is a
+   last-ditch default if neither variable resolves. Matches
+   `PlayLoopGlyph.module.css` so the Run and Tasks tabs render
+   identically-tinted rings. */
+.ringGroup {
+  color: var(--color-accent, var(--loop-progress-color, #4f8bff));
+}
+
+/* Spinning accent arc. `transform-box: fill-box` is critical: by
+   default an SVG element's `transform-origin` is the parent SVG's
+   `(0, 0)` corner, which would rotate the arc around the top-left
+   of the icon instead of around the ring centre. `fill-box` rebinds
+   the origin to the element's own geometry box (centred at `cx,cy`
+   = `(12, 11.5)` for our circle), so `transform-origin: center`
+   resolves to the ring's true centre and the arc spins in place. */
+.ringArc {
+  animation: spinCheckLoopRing 1.1s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes spinCheckLoopRing {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}

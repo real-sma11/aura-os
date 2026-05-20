@@ -146,6 +146,32 @@ describe("SidekickTaskbar", () => {
       .not.toBeInTheDocument();
   });
 
+  it("keeps the Tasks tab's Check glyph visible and overlays a progress ring while the loop is active", () => {
+    setRunningLoop();
+
+    renderTaskbar();
+
+    // Mirror of the Run-tab assertion above: when a task loop is
+    // active the Tasks tab must keep its Check polyline visible (so
+    // users still recognise it) and add the rotating ring in the
+    // same SVG via `CheckLoopGlyph`. The earlier behaviour swapped
+    // the entire icon for a bare `LoopProgress` spinner, which
+    // failed both criteria.
+    const tasksTab = screen.getByTestId("tab-tasks");
+    expect(tasksTab.querySelector("svg polyline")).toBeInTheDocument();
+    expect(tasksTab.querySelector("[data-testid='check-loop-ring']"))
+      .toBeInTheDocument();
+  });
+
+  it("does not render the Tasks tab's progress ring while the loop is idle", () => {
+    renderTaskbar();
+
+    const tasksTab = screen.getByTestId("tab-tasks");
+    expect(tasksTab.querySelector("svg polyline")).toBeInTheDocument();
+    expect(tasksTab.querySelector("[data-testid='check-loop-ring']"))
+      .not.toBeInTheDocument();
+  });
+
   it("does not render the Run tab's progress ring once the loop reaches a terminal status", () => {
     useLoopActivityStore.setState({
       hydrated: true,

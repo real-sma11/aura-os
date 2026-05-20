@@ -5,7 +5,6 @@ import {
   Archive,
   Info,
   File,
-  Check,
   ScrollText,
   BarChart3,
   MessageSquare,
@@ -22,7 +21,7 @@ import { useTerminalTarget } from "../../hooks/use-terminal-target";
 import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
 import { useBrowserPanelStore } from "../../stores/browser-panel-store";
 import { SidekickTabBar, type TabItem } from "../SidekickTabBar";
-import { LoopProgress } from "../LoopProgress";
+import { CheckLoopGlyph } from "../CheckLoopGlyph";
 import { PlayLoopGlyph } from "../PlayLoopGlyph";
 import {
   selectAgentInstanceActivity,
@@ -30,7 +29,6 @@ import {
   useLoopActivityStore,
 } from "../../stores/loop-activity-store";
 import { isLoopActivityActive } from "../../shared/types/aura-events";
-import styles from "../Sidekick/Sidekick.module.css";
 
 export function SidekickTaskbar() {
   const { activeTab, setActiveTab, showInfo, toggleInfo } = useSidekickStore(
@@ -78,15 +76,14 @@ export function SidekickTaskbar() {
       { id: "specs", icon: <File size={16} />, title: "Specs" },
       {
         id: "tasks",
-        icon: tasksActive ? (
-          <LoopProgress
-            source={{ activity: tasksActivity }}
-            size={16}
-            className={styles.automationSpinner}
-          />
-        ) : (
-          <Check size={16} />
-        ),
+        // `CheckLoopGlyph` mirrors `PlayLoopGlyph`: the Check
+        // affordance stays visible at all times and the rotating
+        // accent ring is drawn in the same SVG when a task loop is
+        // active. The earlier behaviour swapped the entire icon out
+        // for a bare `LoopProgress` spinner, which made the tab hard
+        // to recognise while busy and broke visual parity with the
+        // adjacent Run tab.
+        icon: <CheckLoopGlyph active={tasksActive} size={16} />,
         title: "Tasks",
       },
       {
@@ -107,7 +104,7 @@ export function SidekickTaskbar() {
       { id: "new-terminal", icon: <Plus size={16} />, title: "New terminal", kind: "action" },
       { id: "new-browser", icon: <Plus size={16} />, title: "New browser", kind: "action" },
     ],
-    [tasksActive, runActive, tasksActivity, runActivity],
+    [tasksActive, runActive],
   );
   const visibleTabs = canBrowseFiles ? tabs : tabs.filter((tab) => tab.id !== "files");
 
