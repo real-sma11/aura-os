@@ -14,7 +14,8 @@
 //! `.await` would block other shards on the same hash bucket and is
 //! forbidden by the rules-rust async conventions.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use dashmap::DashMap;
@@ -30,6 +31,13 @@ pub(crate) const PUBLIC_TURN_LIMIT: u32 = 3;
 /// value the limiter rejects the same way it rejects a per-guest cap
 /// — a user with infinite localStorage churn still can't farm credits.
 pub(crate) const PUBLIC_IP_DAILY_CEILING: u32 = 30;
+
+/// Hard daily ceiling on total public turns across ALL guests and IPs.
+/// When this trips, public mode drops to 0 turns for everyone until
+/// the 24h window resets. This is the last-resort cost protection — if
+/// a bug or sophisticated attacker bypasses per-guest and per-IP
+/// limits, the global ceiling caps total spend.
+pub(crate) const PUBLIC_GLOBAL_DAILY_CEILING: u32 = 500;
 
 /// Eviction window for both buckets. After 24h with no activity an
 /// entry is dropped on the next lookup. The choice of window matches
@@ -97,10 +105,20 @@ impl Clock for SystemClock {
 /// Marked `pub` (rather than the workspace default `pub(crate)`)
 /// solely because it appears as a field on the `pub` `AppState`
 /// struct — every consumer still lives inside this crate.
+/// Global daily counter — an atomic count + a mutex-guarded window
+/// start time. The mutex only protects the reset check (not every
+/// increment), so contention is minimal.
+#[derive(Debug)]
+struct GlobalBucket {
+    count: AtomicU32,
+    window_start: Mutex<SystemTime>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RateLimiter {
     guests: Arc<DashMap<GuestId, GuestBucket>>,
     ips: Arc<DashMap<IpHash, IpBucket>>,
+    global: Arc<GlobalBucket>,
     clock: Arc<dyn Clock>,
 }
 
@@ -117,9 +135,14 @@ impl RateLimiter {
     /// Build a limiter with a caller-supplied [`Clock`]. Used by phase-4
     /// tests to feed a deterministic clock into the limiter.
     pub(crate) fn with_clock(clock: Arc<dyn Clock>) -> Self {
+        let now = clock.now();
         Self {
             guests: Arc::new(DashMap::new()),
             ips: Arc::new(DashMap::new()),
+            global: Arc::new(GlobalBucket {
+                count: AtomicU32::new(0),
+                window_start: Mutex::new(now),
+            }),
             clock,
         }
     }
@@ -157,8 +180,31 @@ impl RateLimiter {
         ip: IpHash,
     ) -> Result<PublicTurnCount, RateLimitError> {
         let now = self.clock.now();
+        self.check_global_ceiling(now)?;
         self.check_ip_ceiling(ip, now)?;
         self.bump_guest(guest, now)
+    }
+
+    fn check_global_ceiling(&self, now: SystemTime) -> Result<(), RateLimitError> {
+        // Check if the window has expired and reset if needed.
+        {
+            let mut start = self.global.window_start.lock().unwrap_or_else(|e| e.into_inner());
+            if let Ok(elapsed) = now.duration_since(*start) {
+                if elapsed >= BUCKET_TTL {
+                    self.global.count.store(0, Ordering::Relaxed);
+                    *start = now;
+                }
+            }
+        }
+        let count = self.global.count.fetch_add(1, Ordering::Relaxed);
+        if count >= PUBLIC_GLOBAL_DAILY_CEILING {
+            // Undo the increment — we're over the limit.
+            self.global.count.fetch_sub(1, Ordering::Relaxed);
+            return Err(RateLimitError::Global {
+                limit: PUBLIC_GLOBAL_DAILY_CEILING,
+            });
+        }
+        Ok(())
     }
 
     fn bump_guest(
@@ -228,13 +274,15 @@ pub(crate) enum RateLimitError {
     Guest { limit: u32 },
     /// Per-`IpHash` daily ceiling reached.
     Ip { limit: u32 },
+    /// Global daily ceiling reached — all public requests blocked.
+    Global { limit: u32 },
 }
 
 impl RateLimitError {
     /// Numeric limit value for the `429 { limit }` response shape.
     pub(crate) fn limit(self) -> u32 {
         match self {
-            Self::Guest { limit } | Self::Ip { limit } => limit,
+            Self::Guest { limit } | Self::Ip { limit } | Self::Global { limit } => limit,
         }
     }
 }

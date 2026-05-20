@@ -123,6 +123,15 @@ pub(crate) fn enforce_public_turn(ctx: &PublicGateCtx<'_>) -> ApiResult<TurnGuar
             );
             Err(ApiError::public_limit_reached(limit))
         }
+        Err(RateLimitError::Global { limit }) => {
+            warn!(
+                guest_id = %guest_id,
+                modality = ctx.modality.as_str(),
+                limit,
+                "public turn rejected: global daily ceiling reached"
+            );
+            Err(ApiError::public_limit_reached(limit))
+        }
     }
 }
 
