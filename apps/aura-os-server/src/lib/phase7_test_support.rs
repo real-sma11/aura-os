@@ -210,6 +210,47 @@ pub fn task_done_missing_file_changes_reason(
     )
 }
 
+/// Workspace-health diff gate for `task_done` (Phase 4a of
+/// `workspace-health-diff-gate`).
+///
+/// Public shim around the in-crate
+/// `task_done_workspace_health_gate_reason_for_tests` predicate so
+/// the `dev_loop_dod_regression` test suite can exercise the gate's
+/// verdict matrix without reaching into private handler internals.
+///
+/// Returns the blocking
+/// [`aura_os_automation::HealthDelta::reason`] string when the gate
+/// rejects, `None` when it accepts (including the back-compat
+/// "no baseline" path). See the underlying predicate's docstring for
+/// the full semantics — this shim is a thin pass-through.
+#[allow(clippy::too_many_arguments)]
+pub fn task_done_workspace_health_gate_reason(
+    event_type: &str,
+    event: &serde_json::Value,
+    baseline: Option<&aura_os_automation::WorkspaceHealth>,
+    current: Option<&aura_os_automation::WorkspaceHealth>,
+    scope: &aura_os_automation::TaskScope,
+    kind: aura_os_automation::TaskKind,
+    strict_mode: bool,
+) -> Option<&'static str> {
+    crate::handlers::dev_loop::task_done_workspace_health_gate_reason_for_tests(
+        event_type,
+        event,
+        baseline,
+        current,
+        scope,
+        kind,
+        strict_mode,
+    )
+}
+
+/// Re-export of the `aura-os-automation` crate so the
+/// `dev_loop_dod_regression` tests can name [`aura_os_automation::WorkspaceHealth`]
+/// and friends without an extra dev-dependency declaration. The
+/// alias `automation` matches the idiom used in other test-support
+/// re-exports.
+pub use aura_os_automation as automation;
+
 /// Preflight a local workspace directory the way the dev-loop would
 /// when starting a task. Returns `Ok(())` if the workspace is
 /// usable (or eligible for auto-clone via `git_repo_url`), and the

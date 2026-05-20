@@ -47,6 +47,62 @@ pub const REASON_RED_BLOCKED_BY_STRICT: &str = "workspace_health_red_blocked_by_
 /// Reason string for [`HealthVerdict::UnknownBaseline`].
 pub const REASON_UNKNOWN_BASELINE: &str = "workspace_health_unknown_baseline";
 
+/// The four `workspace_health_*` reason strings that block
+/// `task_done` (i.e. the ones for which
+/// [`HealthVerdict::blocks_task_done`] returns `true`).
+///
+/// Kept as a `const` so the App layer and the cross-crate
+/// `aura-os-harness` predicate can iterate the same set without
+/// re-typing the literals. The non-blocking advisory reasons
+/// (`workspace_health_improved`, `_clean`, `_unchanged_advisory`,
+/// `_unknown_baseline`) deliberately do NOT appear here — they
+/// don't gate completion.
+pub const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &[
+    REASON_REGRESSED,
+    REASON_UNFIXED_IN_SCOPE,
+    REASON_RED_BLOCKING_IMPL,
+    REASON_RED_BLOCKED_BY_STRICT,
+];
+
+/// True when `reason` is *exactly* one of the four workspace-health
+/// verdict reason strings that block `task_done`. The non-blocking
+/// advisory reasons (`workspace_health_improved`, `_clean`,
+/// `_unchanged_advisory`, `_unknown_baseline`) deliberately do
+/// NOT match.
+///
+/// Use this when you have the bare reason in hand (e.g. straight off
+/// [`HealthDelta::reason`]). When the reason may be embedded in a
+/// larger error message (e.g. the harness's `task_failed` text),
+/// use [`contains_workspace_health_blocking_reason`] instead.
+#[must_use]
+pub fn is_workspace_health_blocking_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        REASON_REGRESSED
+            | REASON_UNFIXED_IN_SCOPE
+            | REASON_RED_BLOCKING_IMPL
+            | REASON_RED_BLOCKED_BY_STRICT
+    )
+}
+
+/// True when `reason` (case-insensitively) contains any of the four
+/// workspace-health blocking reason substrings.
+///
+/// Used by the cross-layer completion-contract classifier so the
+/// `is_completion_contract_failure` path matches whether the reason
+/// arrives bare (`workspace_health_regressed`) or wrapped in a
+/// larger error message (`"agent execution error:
+/// workspace_health_regressed at task_done"`). The advisory-only
+/// reasons (`_improved`, `_clean`, `_unchanged_advisory`,
+/// `_unknown_baseline`) deliberately do NOT match.
+#[must_use]
+pub fn contains_workspace_health_blocking_reason(reason: &str) -> bool {
+    let lower = reason.to_ascii_lowercase();
+    WORKSPACE_HEALTH_BLOCKING_REASONS
+        .iter()
+        .any(|needle| lower.contains(needle))
+}
+
 impl HealthDelta {
     /// Constructor for the no-baseline fallback path. Lives next to
     /// [`classify_delta`] because the reason string is a private const
@@ -426,5 +482,77 @@ mod tests {
         assert_eq!(delta.verdict, HealthVerdict::UnknownBaseline);
         assert!(!delta.verdict.blocks_task_done());
         assert!(delta.advisory_summary.is_none());
+    }
+
+    // -----------------------------------------------------------------
+    // Phase 4a of `workspace-health-diff-gate`: blocking-reason
+    // predicates that the App layer + the aura-os-harness completion
+    // classifier use to route the four blocking verdicts through the
+    // pre-existing `CompletionContract` retry path.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn is_workspace_health_blocking_reason_matches_each_of_the_four_blocking_variants() {
+        for reason in [
+            REASON_REGRESSED,
+            REASON_UNFIXED_IN_SCOPE,
+            REASON_RED_BLOCKING_IMPL,
+            REASON_RED_BLOCKED_BY_STRICT,
+        ] {
+            assert!(
+                is_workspace_health_blocking_reason(reason),
+                "blocking reason {reason:?} must match",
+            );
+            assert!(
+                contains_workspace_health_blocking_reason(reason),
+                "blocking reason {reason:?} must also match the substring predicate",
+            );
+        }
+    }
+
+    #[test]
+    fn is_workspace_health_blocking_reason_rejects_each_of_the_four_non_blocking_variants() {
+        for reason in [
+            REASON_IMPROVED,
+            REASON_CLEAN,
+            REASON_UNCHANGED_ADVISORY,
+            REASON_UNKNOWN_BASELINE,
+        ] {
+            assert!(
+                !is_workspace_health_blocking_reason(reason),
+                "non-blocking advisory reason {reason:?} must NOT match",
+            );
+            assert!(
+                !contains_workspace_health_blocking_reason(reason),
+                "non-blocking advisory reason {reason:?} must NOT match the substring predicate",
+            );
+        }
+    }
+
+    #[test]
+    fn contains_workspace_health_blocking_reason_matches_embedded_reason_substring() {
+        // The harness wraps blocking reasons in a larger error message
+        // when emitting them via `task_failed`. The substring
+        // predicate must still match so the completion-contract
+        // classifier can route the failure into a fresh-context
+        // retry.
+        let wrapped = "agent execution error: workspace_health_regressed at task_done";
+        assert!(
+            contains_workspace_health_blocking_reason(wrapped),
+            "wrapped blocking reason must match the substring predicate: {wrapped}",
+        );
+        assert!(
+            !is_workspace_health_blocking_reason(wrapped),
+            "wrapped blocking reason must NOT match the exact-equality predicate: {wrapped}",
+        );
+    }
+
+    #[test]
+    fn contains_workspace_health_blocking_reason_is_case_insensitive() {
+        let upper = "AGENT EXECUTION ERROR: WORKSPACE_HEALTH_UNFIXED_IN_SCOPE";
+        assert!(
+            contains_workspace_health_blocking_reason(upper),
+            "uppercase wrapping must still match because the predicate lowercases first",
+        );
     }
 }

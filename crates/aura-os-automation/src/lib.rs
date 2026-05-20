@@ -62,9 +62,11 @@ pub use failure::{synthesize_failure_reason, FailureContext};
 // task-claim snapshot, the `task_done` completion gate, and the
 // `ExplorationBudget` advisory header in Phases 2-4.
 pub use health::{
-    baseline_reuse_max_age_secs, classify_delta, classify_task_kind, extract_task_scope,
-    is_strict_mode_enabled, parse_cargo_check_json_output, BuildStatus, HealthDelta, HealthError,
-    HealthVerdict, TaskKind, TaskScope, TestStatus, WorkspaceHealth,
+    baseline_reuse_max_age_secs, classify_delta, classify_task_kind,
+    contains_workspace_health_blocking_reason, extract_task_scope, is_strict_mode_enabled,
+    is_workspace_health_blocking_reason, parse_cargo_check_json_output, BuildStatus, HealthDelta,
+    HealthError, HealthVerdict, TaskKind, TaskScope, TestStatus, WorkspaceHealth,
+    WORKSPACE_HEALTH_BLOCKING_REASONS,
 };
 pub use progress::{apply_loop_activity, LoopActivityTransition};
 pub use resilience::{
@@ -168,6 +170,14 @@ mod smoke {
         );
         let _verdict: crate::HealthVerdict = _delta.verdict;
         let _blocks: bool = _verdict.blocks_task_done();
+        // Phase 4a: pin the blocking-reason predicates so the App
+        // layer + the cross-crate harness classifier can rely on
+        // their names.
+        let _: bool = crate::is_workspace_health_blocking_reason(_delta.reason);
+        let _: bool = crate::contains_workspace_health_blocking_reason(
+            "agent execution error: workspace_health_regressed at task_done",
+        );
+        let _: &[&str] = crate::WORKSPACE_HEALTH_BLOCKING_REASONS;
         // Also pin the two enums the App layer pattern-matches on.
         let _: crate::BuildStatus = crate::BuildStatus::Passing;
         let _: crate::BuildStatus = crate::BuildStatus::Unknown;

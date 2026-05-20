@@ -47,9 +47,18 @@ fn is_completion_contract_failure_reason(reason: &str) -> bool {
     let mentions_research_loop_verdict =
         reason.contains("task completed without any file operations")
             || reason.contains("completion not verified");
+    // Phase 4a of `workspace-health-diff-gate`: the four
+    // `workspace_health_*` blocking verdicts piggyback on the
+    // existing CompletionContract -> fresh-context retry path. The
+    // automation crate already owns the canonical list of blocking
+    // reasons and lowercases the input for substring matching, so
+    // delegate to it directly here.
+    let mentions_workspace_health_verdict =
+        aura_os_automation::contains_workspace_health_blocking_reason(reason);
 
     mentions_task_done && (mentions_missing_edits || mentions_no_change_escape_hatch)
         || mentions_research_loop_verdict
+        || mentions_workspace_health_verdict
 }
 
 pub(crate) fn is_rate_limited_failure_for_tests(reason: &str) -> bool {

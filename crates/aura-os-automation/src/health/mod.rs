@@ -38,9 +38,11 @@ pub mod task_scope;
 pub mod types;
 
 pub use delta::{
-    classify_delta, REASON_CLEAN, REASON_IMPROVED, REASON_RED_BLOCKED_BY_STRICT,
-    REASON_RED_BLOCKING_IMPL, REASON_REGRESSED, REASON_UNCHANGED_ADVISORY, REASON_UNFIXED_IN_SCOPE,
-    REASON_UNKNOWN_BASELINE,
+    classify_delta, contains_workspace_health_blocking_reason,
+    is_workspace_health_blocking_reason, REASON_CLEAN, REASON_IMPROVED,
+    REASON_RED_BLOCKED_BY_STRICT, REASON_RED_BLOCKING_IMPL, REASON_REGRESSED,
+    REASON_UNCHANGED_ADVISORY, REASON_UNFIXED_IN_SCOPE, REASON_UNKNOWN_BASELINE,
+    WORKSPACE_HEALTH_BLOCKING_REASONS,
 };
 pub use snapshot::{compute_signature, parse_cargo_check_json_output, Snapshot};
 pub use strict_mode::{

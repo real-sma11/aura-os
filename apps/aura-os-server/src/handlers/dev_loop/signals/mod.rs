@@ -30,6 +30,7 @@ pub(crate) use completion::{
     is_empty_path_write_event_for_tests, successful_write_event_path_for_tests,
     task_done_declares_no_changes_needed_for_tests,
     task_done_missing_file_changes_reason_for_tests,
+    task_done_workspace_health_gate_reason_for_tests,
 };
 pub(crate) use failure_context::extract_task_failure_context;
 pub(crate) use preflight::preflight_local_workspace_for_tests;

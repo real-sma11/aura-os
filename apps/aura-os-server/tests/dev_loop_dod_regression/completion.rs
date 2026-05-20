@@ -507,3 +507,435 @@ fn research_loop_abort_verdict_is_completion_contract_failure() {
          the task permanently Failed",
     );
 }
+
+// ---------------------------------------------------------------------------
+// Workspace-health diff gate (Phase 4 of workspace-health-diff-gate)
+//
+// Tests the 8-row verdict matrix from
+// c:\Users\n3o\.cursor\plans\workspace-health-diff-gate_1121eaf1.plan.md.
+// Each test pins one matrix row by constructing a baseline + current
+// WorkspaceHealth, a TaskScope, a TaskKind, and (where relevant) a
+// strict-mode flag, then asserts the gate's verdict.
+// ---------------------------------------------------------------------------
+
+use tsp::automation::{
+    classify_delta, extract_task_scope, HealthError, TaskKind, WorkspaceHealth,
+};
+
+fn health_error(file: &str, code: &str, kind: &str) -> HealthError {
+    HealthError {
+        file: file.to_owned(),
+        code: Some(code.to_owned()),
+        kind: kind.to_owned(),
+    }
+}
+
+/// Reproduces the red baseline from the prior chat's Task 3.7 /
+/// Task 3.9 failure mode (cargo check --workspace --tests red in
+/// crates/zero-storage). Used as both the in-flight nudge replay
+/// baseline and the persistent-red gate replay baseline.
+fn red_baseline_from_prior_chat() -> WorkspaceHealth {
+    WorkspaceHealth::failing(vec![
+        health_error(
+            "crates/zero-storage/src/types.rs",
+            "E0277",
+            "trait bound `[u8; 64]: Serialize` not satisfied",
+        ),
+        health_error(
+            "crates/zero-storage/src/types.rs",
+            "E0277",
+            "trait bound `[u8; 64]: Deserialize<'_>` not satisfied",
+        ),
+        health_error(
+            "crates/zero-storage/src/types.rs",
+            "E0432",
+            "unresolved import `zero_identity`",
+        ),
+        health_error(
+            "crates/zero-storage/src/types.rs",
+            "E0425",
+            "cannot find value `zero_identity` in this scope",
+        ),
+    ])
+}
+
+fn task_done_event() -> serde_json::Value {
+    json!({
+        "name": "task_done",
+        "input": {
+            "notes": "Implementation complete."
+        }
+    })
+}
+
+#[test]
+fn workspace_health_regression_rejects_task_done() {
+    // Baseline is clean; current introduces a brand-new error =>
+    // matrix row 1 (`workspace_health_regressed`, blocks).
+    let baseline = WorkspaceHealth::clean();
+    let current = WorkspaceHealth::failing(vec![health_error(
+        "crates/zero-network/src/lib.rs",
+        "E0277",
+        "trait bound not satisfied",
+    )]);
+    let scope = extract_task_scope(
+        "Tighten the wire-encoding helpers in crates/zero-network/src/lib.rs",
+        &[],
+    );
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &task_done_event(),
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Implementation,
+        /* strict_mode */ false,
+    );
+    assert_eq!(
+        reason,
+        Some("workspace_health_regressed"),
+        "a brand-new error must reject task_done with the regressed verdict",
+    );
+}
+
+#[test]
+fn workspace_health_unfixed_in_scope_rejects_when_task_names_failing_crate() {
+    // Baseline and current both red on the same file. The task
+    // claims to touch the crate that's red => matrix row 2
+    // (`workspace_health_unfixed_in_scope`, blocks).
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    let scope = extract_task_scope(
+        "Fix the failing serde derives in crates/zero-storage so cargo check --workspace --tests \
+         is green again.",
+        &[],
+    );
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &task_done_event(),
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Implementation,
+        false,
+    );
+    assert_eq!(
+        reason,
+        Some("workspace_health_unfixed_in_scope"),
+        "claiming to touch crates/zero-storage but leaving its errors must reject task_done",
+    );
+}
+
+#[test]
+fn workspace_health_red_blocking_implementation_rejects_code_task_in_red_workspace() {
+    // Baseline red in zero-storage; the task is an Implementation
+    // task targeting a different crate => matrix row 3
+    // (`workspace_health_red_blocking_implementation`, blocks).
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    let scope = extract_task_scope(
+        "Add a new public helper to crates/aura-os-automation/src/budget/exploration.rs.",
+        &[],
+    );
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &task_done_event(),
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Implementation,
+        false,
+    );
+    assert_eq!(
+        reason,
+        Some("workspace_health_red_blocking_implementation"),
+        "an Implementation task in a red workspace must block even when scope misses the red",
+    );
+}
+
+#[test]
+fn workspace_health_unchanged_advisory_accepts_doc_task_in_red_workspace_permissive_mode() {
+    // Baseline red in zero-storage; the task is a doc-only README
+    // edit with strict mode OFF => matrix row 4
+    // (`workspace_health_unchanged_advisory`, does NOT block).
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    let scope = extract_task_scope(
+        "Write the new docs/architecture/grid-conformance.md walkthrough; no Rust changes.",
+        &[],
+    );
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &task_done_event(),
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Documentation,
+        /* strict_mode */ false,
+    );
+    assert_eq!(
+        reason, None,
+        "a documentation task whose scope does not intersect the red MUST accept task_done in \
+         permissive mode; the gate surfaces the advisory through a different path",
+    );
+}
+
+#[test]
+fn workspace_health_red_blocked_by_strict_mode_rejects_doc_task_when_knob_on() {
+    // Same inputs as the permissive doc-task test above, but with
+    // strict mode ON => matrix row 5
+    // (`workspace_health_red_blocked_by_strict_mode`, blocks).
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    let scope = extract_task_scope(
+        "Write the new docs/architecture/grid-conformance.md walkthrough; no Rust changes.",
+        &[],
+    );
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &task_done_event(),
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Documentation,
+        /* strict_mode */ true,
+    );
+    assert_eq!(
+        reason,
+        Some("workspace_health_red_blocked_by_strict_mode"),
+        "doc task in red workspace under strict mode must reject task_done; this is the \
+         operator-opt-in policy that catches the prior chat's Task 3.9 failure",
+    );
+}
+
+#[test]
+fn workspace_health_improved_always_accepts() {
+    // Baseline red, current clean => matrix row 6
+    // (`workspace_health_improved`, does NOT block). Pin the
+    // accept regardless of strict mode and task kind.
+    let baseline = red_baseline_from_prior_chat();
+    let current = WorkspaceHealth::clean();
+    let scope = extract_task_scope("Fix the workspace red surface.", &[]);
+    for strict in [false, true] {
+        for kind in [
+            TaskKind::Implementation,
+            TaskKind::Documentation,
+            TaskKind::Refactor,
+            TaskKind::Verification,
+            TaskKind::Unknown,
+        ] {
+            let reason = tsp::task_done_workspace_health_gate_reason(
+                "tool_call_completed",
+                &task_done_event(),
+                Some(&baseline),
+                Some(&current),
+                &scope,
+                kind,
+                strict,
+            );
+            assert_eq!(
+                reason, None,
+                "improved workspace must accept task_done for kind={kind:?} strict={strict}",
+            );
+        }
+    }
+}
+
+#[test]
+fn workspace_health_clean_baseline_clean_current_accepts() {
+    // Both baseline and current clean => matrix row 7
+    // (`workspace_health_clean`, does NOT block) regardless of
+    // task kind / strict mode.
+    let baseline = WorkspaceHealth::clean();
+    let current = WorkspaceHealth::clean();
+    let scope = extract_task_scope("Touch crates/zero-program/src/lib.rs.", &[]);
+    for strict in [false, true] {
+        for kind in [
+            TaskKind::Implementation,
+            TaskKind::Documentation,
+            TaskKind::Refactor,
+            TaskKind::Verification,
+            TaskKind::Unknown,
+        ] {
+            let reason = tsp::task_done_workspace_health_gate_reason(
+                "tool_call_completed",
+                &task_done_event(),
+                Some(&baseline),
+                Some(&current),
+                &scope,
+                kind,
+                strict,
+            );
+            assert_eq!(
+                reason, None,
+                "clean->clean must accept task_done for kind={kind:?} strict={strict}",
+            );
+        }
+    }
+}
+
+#[test]
+fn workspace_health_unknown_baseline_falls_back_to_current_gate() {
+    // No baseline => matrix row 8
+    // (`workspace_health_unknown_baseline`, does NOT block). The
+    // gate returns `None` so the existing
+    // `task_done_missing_file_changes_reason` continues to own the
+    // decision — verified here by also pinning that existing gate's
+    // verdict on the same event.
+    let scope = extract_task_scope(
+        "Add a snapshot helper to crates/aura-os-automation/src/health/snapshot.rs.",
+        &[],
+    );
+    let event = task_done_event();
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &event,
+        /* baseline */ None,
+        /* current */ None,
+        &scope,
+        TaskKind::Implementation,
+        /* strict_mode */ true,
+    );
+    assert_eq!(
+        reason, None,
+        "absent baseline must defer to the pre-existing completion gate (back-compat)",
+    );
+    // Cross-check: the existing file-evidence gate is unaffected by
+    // the new gate's None return, so a no-file-changes task_done
+    // still fails through the legacy path. This proves the new gate
+    // is purely additive on the unknown-baseline path.
+    assert_eq!(
+        tsp::task_done_missing_file_changes_reason("tool_call_completed", &event, &[]),
+        Some("task_done_without_file_changes"),
+        "legacy gate must continue to reject no-file-changes task_done when baseline is absent",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Replay assertions against the prior-chat failure modes
+//
+// These pin the specific failure shapes the prior chat hit (Tasks 3.7,
+// 3.9-strict, 3.9-permissive) so any regression in the gate would
+// reopen the original bugs.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn replay_task_37_subscriber_pump_advisory_targets_storage_crate() {
+    // Prior chat's Task 3.7 ran out of exploration budget without
+    // producing any file ops. The fix (Phase 2 of the plan) is the
+    // health-aware advisory header: when the baseline is red, the
+    // header must name the broken crate so the agent has a
+    // concrete target from turn 1. This test replays the 3.7
+    // baseline shape and pins that the advisory mentions
+    // `zero-storage` somewhere in its text.
+    let baseline = red_baseline_from_prior_chat();
+    let scope = extract_task_scope(
+        "Implement the subscriber pump in crates/zero-network.",
+        &[],
+    );
+    let budget = tsp::automation::ExplorationBudget::for_task(/* description_len */ 0, /* dependency_count */ 0);
+    let advisory = budget.advisory_text_with_health_no_cache(
+        /* used */ 0,
+        Some(&baseline),
+        Some(&scope),
+    );
+    let advisory = advisory.expect("baseline red MUST surface an advisory even on turn 1");
+    assert!(
+        advisory.contains("zero-storage"),
+        "advisory must name the broken crate so the agent has a concrete target; got: {advisory}",
+    );
+}
+
+#[test]
+fn replay_task_39_strict_mode_rejects_doc_task_with_persistent_red() {
+    // Prior chat's Task 3.9: the agent edited a README.md while
+    // `cargo check --workspace --tests` was red in zero-storage,
+    // and the old gate accepted task_done. Under the new strict
+    // policy (operator opt-in via AURA_BLOCK_TASK_DONE_ON_ANY_WORKSPACE_RED),
+    // the same shape must reject with the strict-mode verdict.
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    // The 3.9 task's description was about GRID conformance docs;
+    // its scope deliberately did not intersect zero-storage.
+    let scope = extract_task_scope(
+        "Author the GRID conformance walkthrough in docs/architecture/grid-conformance.md.",
+        &[],
+    );
+    // README-only task_done event.
+    let event = json!({
+        "name": "task_done",
+        "input": {
+            "notes": "Conformance walkthrough written; no Rust changes required."
+        }
+    });
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &event,
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Documentation,
+        /* strict_mode */ true,
+    );
+    assert_eq!(
+        reason,
+        Some("workspace_health_red_blocked_by_strict_mode"),
+        "strict-mode replay of Task 3.9 must reject the doc-only task_done so the dev-loop \
+         routes it through a fresh-context retry that surfaces the red zero-storage area",
+    );
+}
+
+#[test]
+fn replay_task_39_permissive_mode_accepts_doc_task_with_persistent_red_but_surfaces_advisory() {
+    // Same inputs as the strict-mode replay, but with strict OFF.
+    // The gate must accept task_done (back-compat default) AND
+    // classify the underlying delta as `workspace_health_unchanged_advisory`
+    // so the followup-emission path has a hook to spawn a "fix
+    // zero-storage red" task next.
+    let baseline = red_baseline_from_prior_chat();
+    let current = baseline.clone();
+    let scope = extract_task_scope(
+        "Author the GRID conformance walkthrough in docs/architecture/grid-conformance.md.",
+        &[],
+    );
+    let event = json!({
+        "name": "task_done",
+        "input": {
+            "notes": "Conformance walkthrough written; no Rust changes required."
+        }
+    });
+    let reason = tsp::task_done_workspace_health_gate_reason(
+        "tool_call_completed",
+        &event,
+        Some(&baseline),
+        Some(&current),
+        &scope,
+        TaskKind::Documentation,
+        /* strict_mode */ false,
+    );
+    assert_eq!(
+        reason, None,
+        "permissive-mode replay of Task 3.9 must accept the doc-only task_done so the existing \
+         dev-loop behaviour is unchanged by default",
+    );
+    // The followup-emission path keys off the advisory reason; pin
+    // it here so a verdict-matrix change can't silently break the
+    // follow-up task scaffolding (Phase 4b/5).
+    let delta = classify_delta(
+        &baseline,
+        &current,
+        &scope,
+        TaskKind::Documentation,
+        /* strict_mode */ false,
+    );
+    assert_eq!(
+        delta.reason, "workspace_health_unchanged_advisory",
+        "permissive-mode delta must classify as the advisory verdict so the follow-up emission \
+         path can spawn a remediation task without re-running the classifier",
+    );
+    assert!(
+        delta.advisory_summary.is_some(),
+        "advisory verdict must carry a human-readable summary so prompt headers can name the red \
+         area; got: {delta:?}",
+    );
+}

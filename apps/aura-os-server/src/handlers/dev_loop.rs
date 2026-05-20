@@ -27,6 +27,7 @@ pub(crate) use signals::{
     recognized_test_runner_label, recovery_checkpoint_for_tests,
     should_restart_on_error_event_for_tests, should_task_complete_despite_push_failure_for_tests,
     successful_write_event_path_for_tests, task_done_declares_no_changes_needed_for_tests,
-    task_done_missing_file_changes_reason_for_tests, tool_call_failed_should_retry_for_tests,
+    task_done_missing_file_changes_reason_for_tests,
+    task_done_workspace_health_gate_reason_for_tests, tool_call_failed_should_retry_for_tests,
     tool_call_retry_budget_for_tests, CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD,
 };
