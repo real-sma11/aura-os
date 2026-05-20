@@ -42,6 +42,8 @@ export interface PublicChatController {
   messages: DisplaySessionEvent[];
   shouldShowGate: boolean;
   isStreaming: boolean;
+  sourceImage: string | null;
+  setSourceImage: (dataUrl: string | null) => void;
   handleSend: (content: string) => Promise<void>;
   handleStop: () => void;
   input: string;
@@ -74,6 +76,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const shouldShowGate = usePublicChatStore(selectShouldShowGate);
   const turnCount = usePublicChatStore((s) => s.turnCount);
 
+  const [sourceImage, setSourceImage] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
 
   const chatUI = useChatUI(streamKey);
@@ -215,21 +218,21 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const handleSend = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
-      if (shouldShowGate) return;
       const behavior = AGENT_MODE_DESCRIPTORS[selectedMode].behavior;
-      if (behavior.kind === "generate_3d") {
-        // Tripo needs a source image; the input bar's attachment
-        // pipeline lands base64 data URLs in the message body — for
-        // the public surface that's currently out of scope. Bail
-        // visibly so the user understands instead of silently
-        // swallowing the click.
-        console.warn("public 3D mode requires a source image attachment");
+      // In 3D mode, the image is the primary input — prompt is optional.
+      // In all other modes, text is required.
+      const is3d = behavior.kind === "generate_3d";
+      if (!trimmed && !(is3d && sourceImage)) return;
+      if (shouldShowGate) return;
+      if (is3d && !sourceImage) {
+        // Tripo needs a source image — the user must attach one
+        // before sending in 3D mode.
         return;
       }
       try {
         const token = await ensureToken();
-        const userId = appendUserTurn(sessionId, trimmed);
+        const displayText = trimmed || (is3d ? "Generate 3D model" : "");
+        const userId = appendUserTurn(sessionId, displayText);
         setInput("");
         if (behavior.kind === "chat" || behavior.kind === "chat_with_action") {
           dispatchChatTurn(selectedMode === "plan" ? "plan" : "code", trimmed, token, userId);
@@ -241,6 +244,11 @@ export function usePublicChat(sessionId: string): PublicChatController {
         }
         if (behavior.kind === "generate_video") {
           dispatchMedia("video", trimmed, token, undefined);
+          return;
+        }
+        if (is3d) {
+          dispatchMedia("model3d", displayText, token, sourceImage ?? undefined);
+          setSourceImage(null);
         }
       } catch (err) {
         console.error("public chat send failed", err);
@@ -256,6 +264,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
       selectedMode,
       sessionId,
       shouldShowGate,
+      sourceImage,
     ],
   );
 
@@ -267,6 +276,8 @@ export function usePublicChat(sessionId: string): PublicChatController {
     messages,
     shouldShowGate: shouldShowGate || turnCount >= 3,
     isStreaming,
+    sourceImage,
+    setSourceImage,
     handleSend,
     handleStop,
     input,

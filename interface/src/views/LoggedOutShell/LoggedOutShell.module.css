@@ -420,3 +420,77 @@
   align-items: center;
   color: var(--color-text-muted, #8a8a8e);
 }
+
+/* ── 3D image attachment ──────────────────────────────────── */
+
+.imageAttachBar {
+  position: absolute;
+  bottom: 120px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.imageAttachBar > * {
+  pointer-events: auto;
+}
+
+.imageAttachButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px dashed var(--color-border, rgba(255, 255, 255, 0.15));
+  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.imageAttachButton:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  border-color: var(--color-text-muted);
+}
+
+.imageAttachPreview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+}
+
+.imageAttachThumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.imageAttachRemove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.1));
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.imageAttachRemove:hover {
+  background: var(--color-surface-active, rgba(255, 255, 255, 0.15));
+}
+
+.imageAttachLabel {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
