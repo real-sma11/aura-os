@@ -4,6 +4,7 @@ use aura_os_core::{
     parse_dt, AgentInstanceId, ChatContentBlock, ChatRole, ProjectId, SessionEvent, SessionEventId,
 };
 
+mod cancelled_tool_use;
 mod conversation;
 mod dedupe;
 mod invariants;
@@ -67,22 +68,25 @@ pub(super) fn extract_tool_result_blocks(history: &[serde_json::Value]) -> Vec<s
 }
 
 /// Anthropic Messages API invariant checker: panics if the constructed
-/// history would 400 with `each tool_use must have a single result. Found
-/// multiple tool_result blocks with id: …`.
+/// history would 400.
 ///
-/// We check the two conditions that produce that exact error class:
+/// We check the conditions that produce the three error classes we have
+/// historically hit and don't want to regress on:
 ///
 /// 1. No user message may contain two `tool_result` blocks sharing a
-///    `tool_use_id`. (This is the literal 400 message.)
-/// 2. Every `tool_result.tool_use_id` must reference a `tool_use.id` that
-///    appears earlier in the same conversation. A `tool_result` with no
-///    matching `tool_use` 400s with a different — but equally fatal —
-///    `tool_result block(s) provided when previous message does not contain
-///    any tool_use blocks` error.
+///    `tool_use_id` (`each tool_use must have a single result. Found
+///    multiple tool_result blocks with id: …`).
+/// 2. Every `tool_result.tool_use_id` must reference a `tool_use.id`
+///    that appears earlier in the same conversation
+///    (`tool_result block(s) provided when previous message does not
+///    contain any tool_use blocks`).
+/// 3. Every `tool_use.input` must be a JSON object
+///    (`messages.N.content.M.tool_use.input: Input should be an
+///    object`) — the cancel-mid-tool-use bug class.
 ///
 /// The checker walks every assistant message to build the set of valid
-/// `tool_use` ids, then verifies every `tool_result` it sees against
-/// both rules.
+/// `tool_use` ids and validate (3), then verifies every `tool_result`
+/// it sees against (1) and (2).
 pub(super) fn assert_anthropic_messages_valid(history: &[serde_json::Value]) {
     use std::collections::HashSet;
 
@@ -102,12 +106,18 @@ pub(super) fn assert_anthropic_messages_valid(history: &[serde_json::Value]) {
         };
 
         if role == "assistant" {
-            for block in &blocks {
-                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                    if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
-                        known_tool_use_ids.insert(id.to_string());
-                    }
+            for (block_idx, block) in blocks.iter().enumerate() {
+                if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+                    continue;
                 }
+                if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
+                    known_tool_use_ids.insert(id.to_string());
+                }
+                let input = block.get("input").unwrap_or(&serde_json::Value::Null);
+                assert!(
+                    input.is_object(),
+                    "messages.{msg_idx}.content.{block_idx}.tool_use.input must be a JSON object — Anthropic 400 `Input should be an object`. Got: {input}"
+                );
             }
         }
 

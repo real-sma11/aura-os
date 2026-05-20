@@ -19,11 +19,22 @@ pub(super) async fn handle_tool_use_start(
     state.tool_use_count += 1;
     flush_text_segment(state);
     state.last_tool_use_id = id.to_string();
+    // Seed the placeholder as an empty object, not `Null`. Anthropic's
+    // Messages API rejects any persisted history whose `tool_use.input`
+    // is not an object with `messages.N.content.M.tool_use.input: Input
+    // should be an object`. Normally a later `tool_call_snapshot` or
+    // `tool_result` would normalise the placeholder via
+    // `normalize_tool_use_input`, but the cancel-mid-tool-use path
+    // (`finalize_if_needed`) and the no-snapshot-no-result corruption
+    // path can both round-trip this block to the API verbatim. Defaulting
+    // to `{}` makes the placeholder Anthropic-valid up front so the
+    // worst-case replay is a tool call with empty arguments rather than
+    // a hard 400.
     state.content_blocks.push(json!({
         "type": "tool_use",
         "id": id,
         "name": name,
-        "input": Value::Null,
+        "input": json!({}),
     }));
     if persist_event(
         ctx,
@@ -423,6 +434,54 @@ mod tests {
         assert_eq!(
             state.content_blocks[0]["input"],
             json!({"path": "src/lib.rs"})
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_tool_use_start_seeds_empty_object_not_null() {
+        // Regression for the cancel-mid-tool-call 400. Pre-fix, the
+        // placeholder seeded by `handle_tool_use_start` was
+        // `Value::Null`. If the user pressed Stop before the first
+        // `tool_call_snapshot` or `tool_result` arrived, that null
+        // round-tripped through `assistant_message_end` into storage
+        // and the very next replay 400'd Anthropic with
+        // `messages.N.content.M.tool_use.input: Input should be an
+        // object`. Seeding `{}` keeps the worst-case replay valid.
+        let mut state = PersistTaskState::new();
+        state.message_id = "msg-seed".to_string();
+        let ctx = ChatPersistCtx {
+            storage: std::sync::Arc::new(aura_os_storage::StorageClient::with_base_url(
+                "http://127.0.0.1:1",
+            )),
+            session_id: aura_os_core::SessionId::new(),
+            project_id: "project-test".to_string(),
+            project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+            agent_id: None,
+            originating_agent_id: None,
+            cross_agent_depth: 0,
+            jwt: "jwt".to_string(),
+            from_agent_id: None,
+        };
+
+        handle_tool_use_start(&mut state, &ctx, "toolu_seed", "create_spec").await;
+
+        assert_eq!(
+            state.content_blocks.len(),
+            1,
+            "tool_use_start must append exactly one block"
+        );
+        let block = &state.content_blocks[0];
+        assert_eq!(block["type"], "tool_use");
+        assert_eq!(block["id"], "toolu_seed");
+        assert!(
+            block["input"].is_object(),
+            "input placeholder must be a JSON object, not Null. Got: {}",
+            block["input"]
+        );
+        assert_eq!(
+            block["input"],
+            json!({}),
+            "input placeholder must be `{{}}` so worst-case replay is valid"
         );
     }
 

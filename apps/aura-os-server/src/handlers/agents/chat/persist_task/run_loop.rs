@@ -11,13 +11,23 @@ use super::super::event_bus::{
     publish_assistant_message_end_event, publish_assistant_turn_progress_event,
 };
 use super::super::persist::ChatPersistCtx;
-use super::super::persist_task_dispatch::handle_outbound;
+use super::super::persist_task_dispatch::{coerce_tool_use_input_to_object, handle_outbound};
 use super::auto_fork::maybe_spawn_auto_fork_marker;
 use super::persist_event::persist_event;
 use super::state::{
     flush_text_segment, log_stream_summary, message_id_for_synth, message_id_str, PersistTaskState,
 };
 use super::ChatPersistTaskExtras;
+
+/// Synthetic `tool_result` body injected when the user cancels (or the
+/// broadcast closes) before the harness finished a tool call. Anthropic
+/// rejects any `tool_use` without a paired `tool_result`, and a real
+/// result body would be a lie — so we emit a structured marker the model
+/// can recognise as "user stopped this tool call". Kept as a constant so
+/// observability greps and any future model-side handling (e.g.
+/// surfacing this to the UI) can pin on a stable string.
+const CANCELLED_TOOL_RESULT_BODY: &str =
+    "[cancelled by user before tool call completed; no result was produced]";
 
 pub(super) async fn run_persist_loop(
     mut rx: broadcast::Receiver<HarnessOutbound>,
@@ -171,6 +181,15 @@ fn maybe_publish_progress(
 /// disconnected mid-turn, or a provider-side hard error). Synthesize a
 /// terminating event from whatever we have accumulated so the LLM can
 /// see at least a partial record of this turn on the next reopen.
+///
+/// Pre-persist sweep: any `tool_use` block that never paired with a
+/// `tool_result` (the cancel-mid-tool-call shape that produces the
+/// Anthropic 400 `tool_use.input: Input should be an object`) gets
+/// normalised to an object input AND followed by a synthetic
+/// `tool_result` event so the next replay carries a self-consistent
+/// turn. Without this both rules can fail simultaneously: the
+/// in-memory tool_use carries `Null` input AND the persisted history
+/// has a dangling tool_use with no result.
 async fn finalize_if_needed(
     state: &mut PersistTaskState,
     ctx: &ChatPersistCtx,
@@ -187,6 +206,7 @@ async fn finalize_if_needed(
         return;
     }
     flush_text_segment(state);
+    let orphan_tool_uses = normalize_and_collect_orphan_tool_uses(&mut state.content_blocks);
     let end_payload = json!({
         "message_id": message_id_for_synth(state),
         "text": &state.full_text,
@@ -212,12 +232,107 @@ async fn finalize_if_needed(
         publish_assistant_message_end_event(event_bus, ctx, message_id_str(state));
         log_stream_summary(state, ctx, model, "aborted", true, "broadcast_closed");
     }
+    persist_synthetic_tool_results_for_orphans(state, ctx, &orphan_tool_uses).await;
     warn!(
         session_id = %ctx.session_id,
         persisted_events = state.persisted_events,
         content_blocks = state.content_blocks.len(),
+        orphan_tool_uses = orphan_tool_uses.len(),
         "Synthesized assistant_message_end after broadcast channel closed early"
     );
+}
+
+/// Identifier for a `tool_use` block that needs a synthetic
+/// `tool_result` to keep the assistant turn self-consistent on replay.
+/// Carrying the `name` along with the id mirrors what the harness emits
+/// on a real `tool_result`, so observers downstream can't distinguish a
+/// cancelled-call shape by anything other than the body text and the
+/// `cancelled: true` marker.
+struct OrphanToolUse {
+    id: String,
+    name: String,
+}
+
+/// Walk the in-memory content blocks once and (1) coerce every
+/// `tool_use.input` that isn't already an object — defending against
+/// the cancel-mid-stream `Null` placeholder seeded by
+/// `handle_tool_use_start` and any partial-string snapshot that never
+/// completed — and (2) collect the ids of `tool_use` blocks with no
+/// matching `tool_result` so the caller can emit synthetic results.
+fn normalize_and_collect_orphan_tool_uses(content_blocks: &mut [Value]) -> Vec<OrphanToolUse> {
+    use std::collections::HashSet;
+
+    let resulted_ids: HashSet<String> = content_blocks
+        .iter()
+        .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result"))
+        .filter_map(|b| {
+            b.get("tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .collect();
+
+    let mut orphans: Vec<OrphanToolUse> = Vec::new();
+    for block in content_blocks.iter_mut() {
+        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        let id = block
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let name = block
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let current = block.get("input").cloned().unwrap_or(Value::Null);
+        if !current.is_object() {
+            block["input"] = coerce_tool_use_input_to_object(&id, &name, &current);
+        }
+        if !id.is_empty() && !resulted_ids.contains(&id) {
+            orphans.push(OrphanToolUse { id, name });
+        }
+    }
+    orphans
+}
+
+/// Persist a synthetic `tool_result` row for each orphaned tool_use the
+/// finalize sweep collected. We persist these *after*
+/// `assistant_message_end` so they round-trip into the next user-role
+/// message via `compaction.rs::session_events_to_agent_history`'s
+/// pending-tool-results staging — exactly the same path real tool
+/// results take. Using the same persisted shape (`tool_result` event)
+/// means existing dedupe / dangling-strip / API-edge defences also
+/// apply to the synthetic rows for free.
+async fn persist_synthetic_tool_results_for_orphans(
+    state: &mut PersistTaskState,
+    ctx: &ChatPersistCtx,
+    orphans: &[OrphanToolUse],
+) {
+    for orphan in orphans {
+        let payload = json!({
+            "message_id": message_id_for_synth(state),
+            "tool_use_id": &orphan.id,
+            "name": &orphan.name,
+            "result": CANCELLED_TOOL_RESULT_BODY,
+            "is_error": true,
+            "seq": state.seq + 1,
+            "synthesized": true,
+            "cancelled": true,
+        });
+        state.seq += 1;
+        if persist_event(ctx, "tool_result", payload).await {
+            state.persisted_events += 1;
+        }
+        state.content_blocks.push(json!({
+            "type": "tool_result",
+            "tool_use_id": &orphan.id,
+            "content": CANCELLED_TOOL_RESULT_BODY,
+            "is_error": true,
+        }));
+    }
 }
 
 /// Phase 6 cross-agent tracing helper. Maps a [`HarnessOutbound`]
@@ -244,5 +359,117 @@ fn harness_outbound_kind(evt: &HarnessOutbound) -> &'static str {
         HarnessOutbound::GenerationPartialImage(_) => "generation_partial_image",
         HarnessOutbound::GenerationCompleted(_) => "generation_completed",
         HarnessOutbound::GenerationError(_) => "generation_error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_and_collect_orphan_tool_uses_coerces_null_input_and_collects_id() {
+        // Cancel-mid-tool-call shape: tool_use_start arrived (seeded
+        // {} pre-fix would have been Null) but the broadcast closed
+        // before any snapshot or tool_result. Sweep must coerce the
+        // input AND report this id as needing a synthetic tool_result.
+        let mut blocks = vec![json!({
+            "type": "tool_use",
+            "id": "toolu_orphan",
+            "name": "create_spec",
+            "input": Value::Null,
+        })];
+
+        let orphans = normalize_and_collect_orphan_tool_uses(&mut blocks);
+
+        assert_eq!(blocks[0]["input"], json!({}), "null input must be healed");
+        assert_eq!(orphans.len(), 1, "unpaired tool_use must be collected");
+        assert_eq!(orphans[0].id, "toolu_orphan");
+        assert_eq!(orphans[0].name, "create_spec");
+    }
+
+    #[test]
+    fn normalize_and_collect_orphan_tool_uses_skips_paired_blocks() {
+        // tool_use that already has a matching tool_result in the
+        // same content_blocks — no synthetic result needed. Input
+        // normalisation still runs (defense in depth).
+        let mut blocks = vec![
+            json!({
+                "type": "tool_use",
+                "id": "toolu_paired",
+                "name": "list_files",
+                "input": Value::Null,
+            }),
+            json!({
+                "type": "tool_result",
+                "tool_use_id": "toolu_paired",
+                "content": "real result",
+                "is_error": false,
+            }),
+        ];
+
+        let orphans = normalize_and_collect_orphan_tool_uses(&mut blocks);
+
+        assert_eq!(blocks[0]["input"], json!({}));
+        assert!(
+            orphans.is_empty(),
+            "tool_use with matching tool_result must not be flagged as orphan"
+        );
+    }
+
+    #[test]
+    fn normalize_and_collect_orphan_tool_uses_handles_mixed_orphan_and_paired() {
+        // Realistic parallel-tool-call cancel: one of three tool_uses
+        // produced its tool_result before Stop landed; the other two
+        // are orphans. Sweep must collect exactly the unpaired ids
+        // and heal everyone's input.
+        let mut blocks = vec![
+            json!({"type": "tool_use", "id": "A", "name": "create_spec", "input": Value::Null}),
+            json!({"type": "tool_use", "id": "B", "name": "create_spec", "input": Value::Null}),
+            json!({"type": "tool_use", "id": "C", "name": "create_spec", "input": Value::Null}),
+            json!({"type": "tool_result", "tool_use_id": "B", "content": "ok", "is_error": false}),
+        ];
+
+        let orphans = normalize_and_collect_orphan_tool_uses(&mut blocks);
+
+        let orphan_ids: Vec<String> = orphans.iter().map(|o| o.id.clone()).collect();
+        assert_eq!(orphan_ids, vec!["A".to_string(), "C".to_string()]);
+        for block in blocks.iter().take(3) {
+            assert_eq!(block["input"], json!({}));
+        }
+    }
+
+    #[test]
+    fn normalize_and_collect_orphan_tool_uses_leaves_object_input_untouched() {
+        let real_input = json!({"title": "Phase 06"});
+        let mut blocks = vec![json!({
+            "type": "tool_use",
+            "id": "toolu_real",
+            "name": "create_spec",
+            "input": real_input.clone(),
+        })];
+
+        let orphans = normalize_and_collect_orphan_tool_uses(&mut blocks);
+
+        assert_eq!(blocks[0]["input"], real_input);
+        assert_eq!(orphans.len(), 1, "still orphan because no tool_result");
+    }
+
+    #[test]
+    fn normalize_and_collect_orphan_tool_uses_coerces_string_input_to_marker_object() {
+        // Mid-stream string snapshot trapped at finalize time. Sweep
+        // routes through `coerce_tool_use_input_to_object`, which
+        // returns `{}` for partial JSON.
+        let mut blocks = vec![json!({
+            "type": "tool_use",
+            "id": "toolu_partial",
+            "name": "create_spec",
+            "input": Value::String(r#"{"title":"Phas"#.to_string()),
+        })];
+
+        let orphans = normalize_and_collect_orphan_tool_uses(&mut blocks);
+
+        assert!(blocks[0]["input"].is_object(), "string must be coerced");
+        assert_eq!(blocks[0]["input"], json!({}));
+        assert_eq!(orphans.len(), 1);
     }
 }

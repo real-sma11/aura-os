@@ -71,7 +71,14 @@ pub(super) fn coerce_tool_use_input_with_status(
 /// the caller does not branch on `is_streaming` (e.g. the tool_result
 /// path, where streaming should have completed by the time the result
 /// lands).
-pub(super) fn coerce_tool_use_input_to_object(
+///
+/// `pub(in crate::handlers::agents::chat)` so it can be re-exported by
+/// `persist_task_dispatch/mod.rs` to the cancel-finalize sweep in
+/// `persist_task::run_loop::finalize_if_needed`, which needs to normalise
+/// pending `tool_use` blocks before persisting the synthesized
+/// `assistant_message_end` row. The visibility is scoped to the `chat`
+/// module so this remains an internal helper, not a crate-wide one.
+pub(in crate::handlers::agents::chat) fn coerce_tool_use_input_to_object(
     tool_use_id: &str,
     tool_name: &str,
     input: &Value,

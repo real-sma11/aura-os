@@ -20,6 +20,14 @@ use message::{
 };
 use tool::{handle_tool_call_snapshot, handle_tool_result, handle_tool_use_start};
 
+// Re-export so the cancel-finalize sweep in
+// `persist_task::run_loop::finalize_if_needed` can normalise pending
+// `tool_use` blocks before persisting the synthesized
+// `assistant_message_end` row. Keeping the re-export at the
+// `persist_task_dispatch` boundary preserves `normalize` as a private
+// submodule.
+pub(super) use normalize::coerce_tool_use_input_to_object;
+
 /// Dispatch a single harness outbound event. Returns `true` when the
 /// event represents user-visible turn progress (text, thinking, tool
 /// activity) that should fire a throttled progress publish at the end

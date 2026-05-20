@@ -202,10 +202,16 @@ fn apply_tool_use_start(parts: &mut AssistantParts, content: Option<&serde_json:
         return;
     }
     parts.last_tool_use_id = id.clone();
+    // Seed the placeholder as `{}`, not `Null`. Mirrors the persist-task
+    // fix in `handle_tool_use_start`: Anthropic's Messages API rejects
+    // `tool_use.input` that isn't a JSON object with
+    // `messages.N.content.M.tool_use.input: Input should be an object`,
+    // so any in-flight reconstruction that round-trips to the API needs
+    // a valid placeholder up front.
     parts.blocks.push(ChatContentBlock::ToolUse {
         id,
         name,
-        input: serde_json::Value::Null,
+        input: serde_json::json!({}),
     });
 }
 
@@ -229,7 +235,12 @@ fn apply_tool_call_snapshot(parts: &mut AssistantParts, content: Option<&serde_j
     //
     // - `Object` — final snapshot or non-streaming tool. Used as-is.
     // - `Null` — non-streaming tool that never emitted a snapshot.
-    //   Stays `Null` here; `apply_tool_result` backfills to `{}`.
+    //   Coerced to `{}` here (matches the persist-task seed). Previously
+    //   this stayed `Null` and relied on `apply_tool_result` to backfill,
+    //   but a cancel-mid-tool-use turn never emits a `tool_result` and
+    //   the replay would 400. The persist task's
+    //   `finalize_if_needed` sweep also normalises this at write time;
+    //   doing it here too closes the in-flight reconstruction gap.
     // - `String` containing a complete JSON object — the final state of
     //   Anthropic's `input_json_delta` accumulator (see
     //   `persist_task_dispatch::normalize`). Parse it through.
@@ -240,7 +251,8 @@ fn apply_tool_call_snapshot(parts: &mut AssistantParts, content: Option<&serde_j
     //   so forensics are preserved and Anthropic still accepts the
     //   shape on replay.
     let snap_input = match raw_input {
-        serde_json::Value::Object(_) | serde_json::Value::Null => raw_input,
+        serde_json::Value::Object(_) => raw_input,
+        serde_json::Value::Null => serde_json::json!({}),
         serde_json::Value::String(ref s) => match serde_json::from_str::<serde_json::Value>(s) {
             Ok(parsed @ serde_json::Value::Object(_)) => parsed,
             _ => serde_json::json!({

@@ -351,9 +351,10 @@ mod tests {
 
     /// Slimmed copy of the chat-side validator (private to
     /// `compaction_tests.rs`). Walks every assistant message to
-    /// collect known `tool_use` ids, then verifies every
-    /// `tool_result` references a known id with no duplicates per
-    /// user message — the exact two failure modes
+    /// collect known `tool_use` ids, asserts every `tool_use.input`
+    /// is a JSON object (Anthropic 400 `Input should be an object`),
+    /// then verifies every `tool_result` references a known id with
+    /// no duplicates per user message — the three failure modes
     /// `session_events_to_agent_history` is supposed to prevent.
     fn assert_anthropic_messages_valid(history: &[serde_json::Value]) {
         use std::collections::HashSet;
@@ -370,12 +371,18 @@ mod tests {
                 other => panic!("message {msg_idx} has non-string/non-array content: {other}"),
             };
             if role == "assistant" {
-                for block in &blocks {
-                    if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                        if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
-                            known_tool_use_ids.insert(id.to_string());
-                        }
+                for (block_idx, block) in blocks.iter().enumerate() {
+                    if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+                        continue;
                     }
+                    if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
+                        known_tool_use_ids.insert(id.to_string());
+                    }
+                    let input = block.get("input").unwrap_or(&serde_json::Value::Null);
+                    assert!(
+                        input.is_object(),
+                        "messages.{msg_idx}.content.{block_idx}.tool_use.input must be a JSON object — Anthropic 400 `Input should be an object`. Got: {input}",
+                    );
                 }
             }
             if role == "user" {

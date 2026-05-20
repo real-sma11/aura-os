@@ -507,11 +507,31 @@ fn assistant_blocks_to_api(
                     );
                     continue;
                 }
+                // API-edge defense in depth: Anthropic 400s any
+                // history whose `tool_use.input` is not a JSON object
+                // with `messages.N.content.M.tool_use.input: Input
+                // should be an object`. The persist-task seed,
+                // cancel-finalize sweep, and `sanitize_assistant_content_blocks`
+                // heal-on-load all coerce non-object inputs upstream;
+                // this last-line-of-defense catches anything that
+                // slips past those layers (legacy storage that hasn't
+                // been touched, future regressions) and logs loudly so
+                // the upstream gap is visible.
+                let safe_input = if input.is_object() {
+                    input.clone()
+                } else {
+                    warn!(
+                        tool_use_id = %id,
+                        %name,
+                        "tool_use.input is not a JSON object at the Anthropic API edge; coercing to {{}} so replay does not 400. Upstream normalization missed this block — investigate."
+                    );
+                    serde_json::json!({})
+                };
                 api_blocks.push(serde_json::json!({
                     "type": "tool_use",
                     "id": id,
                     "name": name,
-                    "input": input,
+                    "input": safe_input,
                 }));
             }
             ChatContentBlock::ToolResult {

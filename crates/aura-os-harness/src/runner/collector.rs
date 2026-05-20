@@ -212,11 +212,21 @@ impl CollectorState {
 
     fn push_tool_start(&mut self, evt: &serde_json::Value) {
         self.flush_pending_text();
+        // Seed the placeholder as an empty object, not `Null`. Anthropic's
+        // Messages API rejects any persisted history whose
+        // `tool_use.input` is not an object with
+        // `messages.N.content.M.tool_use.input: Input should be an
+        // object`. Normally a later `tool_call_completed` /
+        // `tool_call_snapshot` upserts the real input, but a stream
+        // that ends or is cancelled before the snapshot lands would
+        // round-trip this block to the API verbatim. Defaulting to
+        // `{}` keeps the worst-case replay valid (an empty-arg tool
+        // call) instead of a hard 400.
         self.out.content_blocks.push(serde_json::json!({
             "type": "tool_use",
             "id": first_string(evt, &["id"]).unwrap_or(""),
             "name": first_string(evt, &["name"]).unwrap_or(""),
-            "input": serde_json::Value::Null,
+            "input": serde_json::json!({}),
         }));
     }
 
