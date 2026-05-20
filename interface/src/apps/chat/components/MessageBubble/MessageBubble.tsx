@@ -376,6 +376,7 @@ export const MessageBubble = memo(function MessageBubble({
 
   const isUser = message.role === "user";
   const hasUserImages = isUser && imageBlocks.length > 0;
+  const hasAssistantImages = !isUser && imageBlocks.length > 0;
   // For user messages we suppress the dark text bubble entirely when the
   // message is image-only -- the image strip becomes the message itself.
   // When contentBlocks isn't used (legacy plain-text path) we always show
@@ -447,6 +448,35 @@ export const MessageBubble = memo(function MessageBubble({
                 src={imageBlockSrc(block)}
                 alt=""
                 className={styles.messageImage}
+                loading="lazy"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      {hasAssistantImages && (
+        <div className={styles.generatedImageStrip}>
+          {imageBlocks.map(({ block, index }) => (
+            <button
+              key={index}
+              type="button"
+              className={styles.generatedImageWrapper}
+              onClick={() => {
+                if (galleryImages.length === 0) return;
+                openGallery({
+                  items: galleryImages.map((item) => ({
+                    ...item,
+                    downloadUrl: item.src,
+                  })),
+                  initialId: `${message.id}-img-${index}`,
+                });
+              }}
+              aria-label="Open generated image in gallery"
+            >
+              <img
+                src={imageBlockSrc(block)}
+                alt="Generated image"
+                className={styles.generatedImageInline}
                 loading="lazy"
               />
             </button>
