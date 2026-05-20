@@ -43,7 +43,6 @@ use crate::handlers::plan_mode::{
 use crate::state::{AppState, AuthGuestJwt};
 
 use super::demo_agent::{ensure_public_demo_agent, PUBLIC_DEMO_SYSTEM_PROMPT, SYSTEM_DEMO_USER_ID};
-use super::jwt::public_guest_service_key;
 use super::gate::{
     emit_limit_frame, enforce_public_turn, record_completion, PublicGateCtx, TurnGuard,
 };
@@ -128,13 +127,9 @@ pub(crate) async fn public_chat_stream(
         warn!(error = %err, "public_chat: demo agent provisioning failed");
         ApiError::service_unavailable("public demo agent unavailable")
     })?;
-    let router_token = public_guest_service_key().ok_or_else(|| {
-        warn!("public_chat: AURA_PUBLIC_GUEST_KEY not set, cannot authenticate with router");
-        ApiError::service_unavailable("public chat is not configured")
-    })?;
     let action = action_for_mode(body.mode);
     let is_plan_mode = matches!(body.mode, PublicChatMode::Plan);
-    let config = build_public_session_config(agent_id, &body, action, is_plan_mode, &router_token);
+    let config = build_public_session_config(agent_id, &body, action, is_plan_mode);
     let opened = open_public_stream(&state, config, body.message, is_plan_mode).await?;
     Ok(build_public_sse_response(opened, guard))
 }
@@ -163,7 +158,6 @@ fn build_public_session_config(
     body: &PublicChatRequest,
     action: Option<&'static str>,
     is_plan_mode: bool,
-    router_token: &str,
 ) -> SessionConfig {
     let partition_agent_id = aura_os_core::harness_agent_id(&agent_id, None, None);
     let conversation_messages = history_to_conversation(&body.history);
@@ -183,13 +177,12 @@ fn build_public_session_config(
         conversation_messages,
         max_turns,
         tool_permissions,
-        // The harness identity preflight requires non-blank org, session,
-        // and token. The token is the AURA_PUBLIC_GUEST_KEY service key
-        // that aura-router recognises as a public-guest request without
-        // JWT validation.
+        // The harness identity preflight requires non-blank org and
+        // session. Token is None — the harness sends requests to the
+        // router without Authorization, and the router assigns
+        // user_id "public-guest" with IP-based rate limiting.
         aura_org_id: Some("public".to_string()),
         aura_session_id: body.session_id.clone().or_else(|| Some("public".to_string())),
-        token: Some(router_token.to_string()),
         ..Default::default()
     }
 }
@@ -400,7 +393,6 @@ mod tests {
             &body,
             action_for_mode(body.mode),
             /* is_plan_mode */ true,
-            "test-token",
         );
         let prompt = config.system_prompt.expect("system prompt set");
         assert!(prompt.starts_with(PUBLIC_DEMO_SYSTEM_PROMPT));
@@ -434,7 +426,6 @@ mod tests {
             &body,
             action_for_mode(body.mode),
             /* is_plan_mode */ false,
-            "test-token",
         );
         assert_eq!(
             config.system_prompt.as_deref(),

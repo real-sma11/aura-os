@@ -32,7 +32,7 @@ use crate::state::{AppState, AuthGuestJwt};
 
 use super::gate::{enforce_public_turn, PublicGateCtx};
 use super::generation_common::{
-    bearer_token_from_headers, caller_ip_from_headers, proxy_public_generation_stream,
+    caller_ip_from_headers, proxy_public_generation_stream,
     PublicGenerationCall, PublicGenerationSse,
 };
 use super::types::PublicModality;
@@ -88,7 +88,7 @@ pub(crate) async fn public_video_stream(
         "public_video: turn accepted"
     );
     let payload = build_public_video_payload(&body);
-    let bearer_token = bearer_token_from_headers(&headers).unwrap_or_default();
+    let bearer_token = String::new();
     proxy_public_generation_stream(
         &state,
         &bearer_token,

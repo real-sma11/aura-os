@@ -163,12 +163,9 @@ pub fn validate_session_init_identity(cfg: &SessionConfig) -> Result<(), Harness
             context: "session_init",
         });
     }
-    if is_blank(cfg.token.as_deref()) {
-        return Err(HarnessError::SessionIdentityMissing {
-            field: "auth_token",
-            context: "session_init",
-        });
-    }
+    // Token is optional — public-guest sessions have no auth token.
+    // The harness provider skips the Authorization header when token
+    // is None, and the router assigns user_id "public-guest".
     Ok(())
 }
 
