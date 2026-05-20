@@ -384,6 +384,8 @@ mod tests {
                 stability_metrics: Arc::new(crate::stability_metrics::StabilityMetrics::new()),
                 started_at: std::time::Instant::now(),
                 harness_broadcast_capacity: 16384,
+                public_rate_limiter: crate::handlers::public::RateLimiter::new(),
+                public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
             },
             store_dir,
         )

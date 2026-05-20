@@ -6,35 +6,25 @@
 //!
 //! Sub-modules:
 //!
-//! * [`activity`] — translates harness events into loop status
+//! * [`activity`] â€” translates harness events into loop status
 //!   transitions.
-//! * [`credits`] — credit-exhaustion detection and automaton shutdown.
-//! * [`side_effects`] — task output / usage cache / persisted failure
+//! * [`credits`] â€” credit-exhaustion detection and automaton shutdown.
+//! * [`forwarder`] â€” the harness-event consumer task wiring everything
+//!   together.
+//! * [`side_effects`] â€” task output / usage cache / persisted failure
 //!   reason writes triggered by individual events.
 
 mod activity;
 mod credits;
+mod forwarder;
 mod side_effects;
 
-use std::str::FromStr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-
-use aura_os_core::{AgentInstanceId, ProjectId, SessionId, SessionStatus, TaskId};
+use aura_os_core::{AgentInstanceId, ProjectId, SessionId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
-use aura_os_harness::collect_automaton_events;
-use tracing::warn;
 
-use crate::handlers::live_heuristics::{emit_live_heuristic, LiveAnalyzer};
-use crate::loop_log::RunStatus;
 use crate::state::AppState;
 
-use super::session::end_session;
-use super::signals::is_insufficient_credits_failure_for_tests;
-use super::types::ForwarderContext;
-
+pub(crate) use forwarder::spawn_event_forwarder;
 pub(crate) use side_effects::seed_task_output;
 
 #[cfg(test)]
@@ -99,256 +89,49 @@ pub(crate) fn emit_domain_event_with_session(
         }));
 }
 
-pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::AbortHandle {
-    let handle = tokio::spawn(async move {
-        let ForwarderContext {
-            state,
-            project_id,
-            agent_instance_id,
-            automaton_id,
-            task_id,
-            events_tx,
-            ws_reader_handle: _ws_reader_handle,
-            alive,
-            timeout,
-            loop_handle,
-            jwt,
-            session_id,
-        } = ctx;
-        let loop_handle = Arc::new(loop_handle);
-        let jwt = jwt.map(Arc::new);
-        let rx = events_tx.subscribe();
-        let fallback_task_id = task_id.clone();
-        let (event_task_tx, mut event_task_rx) =
-            tokio::sync::mpsc::unbounded_channel::<(serde_json::Value, String)>();
-        let event_worker_state = state.clone();
-        let event_worker_loop_handle = loop_handle.clone();
-        let event_worker_jwt = jwt.clone();
-        let event_worker_fallback_task_id = fallback_task_id.clone();
-        let event_worker = tokio::spawn(async move {
-            let mut live_analyzer = LiveAnalyzer::new();
-            while let Some((event, event_type)) = event_task_rx.recv().await {
-                event_worker_state
-                    .loop_log
-                    .on_json_event(project_id, agent_instance_id, &event)
-                    .await;
-                record_loop_log_task_lifecycle(
-                    &event_worker_state,
-                    project_id,
-                    agent_instance_id,
-                    &event_type,
-                    &event,
-                )
-                .await;
-                maybe_emit_live_heuristics(
-                    &event_worker_state,
-                    project_id,
-                    agent_instance_id,
-                    &mut live_analyzer,
-                    &event_type,
-                )
-                .await;
-                activity::apply_loop_activity(&event_worker_loop_handle, &event_type, &event).await;
-                side_effects::record_event_side_effects(
-                    &event_worker_state,
-                    project_id,
-                    agent_instance_id,
-                    event_worker_fallback_task_id.clone(),
-                    event,
-                    &event_type,
-                    event_worker_jwt.as_ref().map(|j| j.as_str()),
-                    session_id,
-                )
-                .await;
-            }
-        });
-        let credit_stop_requested = Arc::new(AtomicBool::new(false));
-        let stop_automaton_id = automaton_id.clone();
-        let completion = collect_automaton_events(rx, timeout, |event, event_type| {
-            let state = state.clone();
-            let event = event.clone();
-            let event_type = event_type.to_string();
-            let credit_stop_requested = credit_stop_requested.clone();
-            let stop_automaton_id = stop_automaton_id.clone();
-            if credits::insufficient_credits_event_message(&event_type, &event).is_some()
-                && credit_stop_requested
-                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-            {
-                let state = state.clone();
-                tokio::spawn(async move {
-                    credits::stop_automaton_for_credit_exhaustion(
-                        &state,
-                        project_id,
-                        agent_instance_id,
-                        &stop_automaton_id,
-                    )
-                    .await;
-                });
-            }
-            let _ = event_task_tx.send((event, event_type));
-        })
-        .await;
-        drop(event_task_tx);
-        if let Err(error) = event_worker.await {
-            warn!(%error, "dev-loop forwarder event worker failed");
-        }
-        alive.store(false, Ordering::SeqCst);
-        credits::remove_matching_registry_entry(
-            &state,
-            project_id,
-            agent_instance_id,
-            &automaton_id,
-        )
-        .await;
-        let insufficient_credits_reason = completion
-            .failure_message()
-            .filter(|message| is_insufficient_credits_failure_for_tests(message));
-        // Terminal methods take `&self` via the shared `Arc<LoopHandle>`
-        // so the spawned event handlers can still hold clones without
-        // blocking close. Only one terminal call actually fires — the
-        // atomic `closed` flag dedupes.
-        let succeeded = insufficient_credits_reason.is_some() || completion.is_success();
-        if succeeded {
-            loop_handle.mark_completed().await;
-        } else {
-            loop_handle
-                .mark_failed(completion.failure_message().map(str::to_string))
-                .await;
-        }
-        state
-            .loop_log
-            .on_loop_ended(
-                project_id,
-                agent_instance_id,
-                if succeeded {
-                    RunStatus::Completed
-                } else {
-                    RunStatus::Failed
-                },
-            )
-            .await;
-        // Mirror the harness loop outcome onto the storage `Session`
-        // we minted in `start_loop` / `run_single_task` so the
-        // Sidekick "Sessions" stat reflects automation activity.
-        if let Some(session_id) = session_id {
-            let status = if succeeded {
-                SessionStatus::Completed
-            } else {
-                SessionStatus::Failed
-            };
-            end_session(
-                &state.session_service,
-                project_id,
-                agent_instance_id,
-                session_id,
-                status,
-            )
-            .await;
-        }
-        emit_domain_event_with_session(
-            &state,
-            "loop_finished",
-            project_id,
-            agent_instance_id,
-            session_id,
-            insufficient_credits_reason.map_or_else(
-                || {
-                    if succeeded {
-                        serde_json::json!({"outcome": "completed"})
-                    } else {
-                        serde_json::json!({
-                            "outcome": "failed",
-                            "reason": completion.failure_message(),
-                        })
-                    }
-                },
-                |reason| {
-                    serde_json::json!({
-                        "outcome": "insufficient_credits",
-                        "reason": reason,
-                    })
-                },
-            ),
-        );
-    });
-    handle.abort_handle()
-}
-
-async fn maybe_emit_live_heuristics(
+/// Publish a `log_line` event onto both the legacy `event_broadcast`
+/// firehose and the topic-scoped event hub, so the SidekickLog panel
+/// gets a human-readable row even for activity that does not have
+/// its own typed engine event (per-turn tool calls, streaming
+/// heartbeats, forwarder lifecycle, ...).
+///
+/// `LogLine` is already in the UI subscription set
+/// (`interface/src/hooks/use-log-stream.ts::ALL_ENGINE_EVENT_TYPES`)
+/// and in the server persistence allowlist
+/// (`crate::persistence::LOG_WORTHY_TYPES`), so every line emitted
+/// through this helper lands in the panel live and on history
+/// reload without any further wiring.
+///
+/// `extra` is merged shallowly onto the payload --- pass
+/// `serde_json::json!({})` if you only need the `message` field.
+/// Caller-supplied keys lose to anything already in `payload` (the
+/// `message` field and the routing keys stamped by
+/// [`emit_domain_event_with_session`]) so a malformed `extra` cannot
+/// shadow the wire-critical fields.
+pub(crate) fn emit_log_line(
     state: &AppState,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
-    live_analyzer: &mut LiveAnalyzer,
-    event_type: &str,
+    session_id: Option<SessionId>,
+    message: impl Into<String>,
+    extra: serde_json::Value,
 ) {
-    let Some((run_id, run_dir)) = state
-        .loop_log
-        .active_bundle(project_id, agent_instance_id)
-        .await
-    else {
-        return;
-    };
-
-    live_analyzer.note_event(event_type);
-    if !live_analyzer.should_run() {
-        return;
-    }
-    let findings = live_analyzer.maybe_analyze(&run_dir);
-
-    if let Some(findings) = findings {
-        for finding in findings {
-            emit_live_heuristic(state, &finding, project_id, agent_instance_id, &run_id);
+    let mut payload = serde_json::json!({ "message": message.into() });
+    if let (Some(payload_obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra_obj {
+            payload_obj
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
         }
     }
-}
-
-async fn record_loop_log_task_lifecycle(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    event_type: &str,
-    event: &serde_json::Value,
-) {
-    let Some(task_id) = event_task_id(event) else {
-        return;
-    };
-    let Ok(task_id) = TaskId::from_str(task_id) else {
-        return;
-    };
-
-    match event_type {
-        "task_started" => {
-            state
-                .loop_log
-                .on_task_started(project_id, agent_instance_id, task_id, None)
-                .await;
-        }
-        "task_completed" | "task_failed" => {
-            let output = task_output_snapshot(state, project_id, task_id)
-                .await
-                .unwrap_or_default();
-            state.loop_log.on_task_end(task_id, &output).await;
-        }
-        _ => {}
-    }
-}
-
-fn event_task_id(event: &serde_json::Value) -> Option<&str> {
-    event.get("task_id").and_then(|value| value.as_str())
-}
-
-async fn task_output_snapshot(
-    state: &AppState,
-    project_id: ProjectId,
-    task_id: TaskId,
-) -> Option<String> {
-    state
-        .task_output_cache
-        .lock()
-        .await
-        .get(&(project_id, task_id))
-        .map(|entry| entry.live_output.clone())
+    emit_domain_event_with_session(
+        state,
+        "log_line",
+        project_id,
+        agent_instance_id,
+        session_id,
+        payload,
+    );
 }
 
 #[cfg(test)]
@@ -356,6 +139,84 @@ mod tests {
     use super::extract_task_failure_reason;
     use serde_json::json;
 
+    use super::side_effects::log_line_for_event;
+
+    #[test]
+    fn log_line_for_tool_call_started_includes_name() {
+        let event = json!({ "name": "edit_file", "input": {"path": "foo.rs"} });
+        assert_eq!(
+            log_line_for_event("tool_call_started", &event).as_deref(),
+            Some("Calling tool: edit_file"),
+        );
+    }
+
+    #[test]
+    fn log_line_for_tool_call_started_falls_back_to_alias_then_default() {
+        let aliased = json!({ "tool_name": "run_command" });
+        assert_eq!(
+            log_line_for_event("tool_use_start", &aliased).as_deref(),
+            Some("Calling tool: run_command"),
+        );
+        let nameless = json!({});
+        assert_eq!(
+            log_line_for_event("tool_call_started", &nameless).as_deref(),
+            Some("Calling tool: tool"),
+        );
+    }
+
+    #[test]
+    fn log_line_for_tool_call_completed_marks_errors() {
+        let ok = json!({ "name": "read_file" });
+        assert_eq!(
+            log_line_for_event("tool_call_completed", &ok).as_deref(),
+            Some("Tool completed: read_file"),
+        );
+        let err = json!({ "name": "read_file", "is_error": true });
+        assert_eq!(
+            log_line_for_event("tool_call_completed", &err).as_deref(),
+            Some("Tool completed: read_file (error)"),
+        );
+    }
+
+    #[test]
+    fn log_line_for_text_delta_is_heartbeat_string() {
+        let event = json!({ "text": "hello" });
+        assert_eq!(
+            log_line_for_event("text_delta", &event).as_deref(),
+            Some("Streaming response..."),
+        );
+    }
+
+    #[test]
+    fn log_line_for_assistant_message_end_includes_tokens_when_present() {
+        let nested = json!({
+            "usage": { "input_tokens": 1234, "output_tokens": 567 },
+        });
+        assert_eq!(
+            log_line_for_event("assistant_message_end", &nested).as_deref(),
+            Some("Turn ended (1234 in / 567 out tokens)"),
+        );
+        let flat = json!({ "input_tokens": 10, "output_tokens": 20 });
+        assert_eq!(
+            log_line_for_event("assistant_message_end", &flat).as_deref(),
+            Some("Turn ended (10 in / 20 out tokens)"),
+        );
+        let missing = json!({});
+        assert_eq!(
+            log_line_for_event("assistant_message_end", &missing).as_deref(),
+            Some("Turn ended"),
+        );
+    }
+
+    #[test]
+    fn log_line_returns_none_for_uncovered_event_types() {
+        // task_started already surfaces via the typed Task badge in
+        // the SidekickLog subscription set; we deliberately do NOT
+        // duplicate it as a LOG row.
+        assert!(log_line_for_event("task_started", &json!({})).is_none());
+        assert!(log_line_for_event("file_ops_applied", &json!({})).is_none());
+        assert!(log_line_for_event("token_usage", &json!({})).is_none());
+    }
     #[test]
     fn extracts_reason_preferred_over_other_keys() {
         let event = json!({

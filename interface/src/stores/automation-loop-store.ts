@@ -26,20 +26,76 @@ import type { ProjectId } from "../shared/types";
  * On `LoopStopped` / `LoopFinished` for a bound loop the AutomationBar
  * clears the entry; the Loop-role `project_agents` row itself
  * survives so the next start reuses the same id.
+ *
+ * The `modelByProject` slice tracks the model the user has picked in
+ * the AutomationBar's own `ModelPicker`. It is deliberately *not*
+ * derived from the chat input bar's selection: the loop should run on
+ * whichever model the user picked for the loop, regardless of which
+ * chat thread they happen to be looking at. The value is persisted to
+ * `localStorage` (key: `aura-automation-model:project:<projectId>`)
+ * so the choice survives reloads; lazy hydration on first read keeps
+ * the constructor lean. A `null` entry means "no explicit pick yet —
+ * let the backend fall back to the bound `Loop` agent instance's
+ * stored `default_model`".
  */
 interface AutomationLoopState {
   /** projectId → bound loop `agent_instance_id`, or `null` if the
    *  project does not yet have a Loop instance allocated. */
   loopByProject: Record<string, string | null>;
 
+  /**
+   * projectId → user-picked chat model for this project's automation
+   * loop, or `null` if nothing has been picked yet (in which case the
+   * backend falls back to the bound Loop agent's stored default).
+   *
+   * Entries are lazily hydrated from `localStorage` on first read via
+   * `getLoopModel`; explicit writes through `setLoopModel` persist
+   * back to `localStorage` so refreshes preserve the pick.
+   */
+  modelByProject: Record<string, string | null>;
+
   setLoopAgent: (projectId: ProjectId, agentInstanceId: string | null) => void;
   clearLoopAgent: (projectId: ProjectId) => void;
   getLoopAgent: (projectId: ProjectId) => string | null;
+  setLoopModel: (projectId: ProjectId, modelId: string | null) => void;
+  getLoopModel: (projectId: ProjectId) => string | null;
   reset: () => void;
+}
+
+const MODEL_LS_KEY_PREFIX = "aura-automation-model:project:";
+
+function modelStorageKey(projectId: ProjectId): string {
+  return `${MODEL_LS_KEY_PREFIX}${projectId}`;
+}
+
+function loadPersistedAutomationModel(projectId: ProjectId): string | null {
+  try {
+    const value = localStorage.getItem(modelStorageKey(projectId));
+    if (value && value.length > 0) return value;
+  } catch {
+    // localStorage may be unavailable (private mode, SSR, …)
+  }
+  return null;
+}
+
+function persistAutomationModel(
+  projectId: ProjectId,
+  modelId: string | null,
+): void {
+  try {
+    if (modelId == null) {
+      localStorage.removeItem(modelStorageKey(projectId));
+    } else {
+      localStorage.setItem(modelStorageKey(projectId), modelId);
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
 }
 
 export const useAutomationLoopStore = create<AutomationLoopState>((set, get) => ({
   loopByProject: {},
+  modelByProject: {},
   setLoopAgent: (projectId, agentInstanceId) =>
     set((state) => ({
       loopByProject: { ...state.loopByProject, [projectId]: agentInstanceId },
@@ -52,5 +108,47 @@ export const useAutomationLoopStore = create<AutomationLoopState>((set, get) => 
       return { loopByProject: next };
     }),
   getLoopAgent: (projectId) => get().loopByProject[projectId] ?? null,
-  reset: () => set({ loopByProject: {} }),
+  setLoopModel: (projectId, modelId) => {
+    persistAutomationModel(projectId, modelId);
+    set((state) => ({
+      modelByProject: { ...state.modelByProject, [projectId]: modelId },
+    }));
+  },
+  getLoopModel: (projectId) => {
+    // Read the in-memory map first; fall through to localStorage so
+    // refreshes restore the previous pick without an explicit
+    // hydration pass. Pure read — never mutates the store — so it's
+    // safe to call from selectors during render.
+    const inMemory = get().modelByProject[projectId];
+    if (inMemory !== undefined) return inMemory;
+    return loadPersistedAutomationModel(projectId);
+  },
+  reset: () => set({ loopByProject: {}, modelByProject: {} }),
 }));
+
+/**
+ * Hook-shaped accessor for the automation loop's model selection.
+ *
+ * Returns the currently-selected model id for this project (or `null`
+ * when nothing has been picked yet) plus a stable setter that
+ * persists to `localStorage`. The selector falls back to
+ * `localStorage` when the in-memory map has no entry yet, so the
+ * first render after a refresh shows the persisted pick without any
+ * explicit hydration step — and the read stays free of side
+ * effects, which keeps React 18 strict-mode double-invocation safe.
+ */
+export function useAutomationModel(projectId: ProjectId): {
+  model: string | null;
+  setModel: (modelId: string | null) => void;
+} {
+  const model = useAutomationLoopStore((s) => {
+    const inMemory = s.modelByProject[projectId];
+    if (inMemory !== undefined) return inMemory;
+    return loadPersistedAutomationModel(projectId);
+  });
+  const setLoopModel = useAutomationLoopStore((s) => s.setLoopModel);
+  return {
+    model,
+    setModel: (modelId) => setLoopModel(projectId, modelId),
+  };
+}

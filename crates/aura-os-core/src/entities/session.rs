@@ -83,6 +83,30 @@ pub struct SessionEvent {
     /// rows so existing wire/storage payloads round-trip unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_flight: Option<bool>,
+    /// Set on `user_message` rows that were *injected by another agent*
+    /// rather than typed by the human user. Two paths populate it:
+    ///
+    /// 1. **A → B inbound** — when agent A invokes the harness
+    ///    `send_to_agent` tool against agent B, the harness's
+    ///    `cross_agent_hook::deliver_message` POSTs a `user_message`
+    ///    into B's session carrying `from_agent_id: A's UUID` so B's
+    ///    chat panel can label the inbound row "from <A>" instead of
+    ///    rendering it indistinguishably from a real user prompt.
+    ///
+    /// 2. **B → A async reply** — when B's turn finishes, the
+    ///    server-side `spawn_cross_agent_reply_callback` POSTs B's
+    ///    reply back into A's session as another `user_message` (so
+    ///    A's loop wakes and reacts), this time stamped with
+    ///    `from_agent_id: B's UUID`. Without this field A's UI showed
+    ///    Barret's "Hello back!" reply as a duplicate user message
+    ///    above the real prompt.
+    ///
+    /// `None` on regular human-typed user messages and on every
+    /// assistant / task-output row so the existing wire shape is
+    /// unchanged for the common case (`skip_serializing_if`
+    /// elides the field entirely).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_agent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

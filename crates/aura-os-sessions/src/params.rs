@@ -17,6 +17,16 @@ pub struct UpdateContextUsageParams {
     pub session_id: SessionId,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    /// Tokens that were written into the upstream provider's prompt
+    /// cache during this turn (Anthropic `cache_creation_input_tokens`).
+    /// Counted toward context-window utilization because the model still
+    /// processes them on the way into the cache.
+    pub cache_creation_input_tokens: u64,
+    /// Tokens served from the upstream provider's prompt cache during
+    /// this turn (Anthropic `cache_read_input_tokens` / OpenAI
+    /// `cached_tokens`). Counted toward context-window utilization
+    /// because the model still sees them as part of the prompt.
+    pub cache_read_input_tokens: u64,
     pub total_input_tokens: Option<u64>,
     pub total_output_tokens: Option<u64>,
     pub context_usage_estimate: Option<f64>,

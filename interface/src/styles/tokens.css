@@ -24,6 +24,13 @@
      "secondary text" baseline in dark mode. */
   --color-text-muted: #555;
 
+  /* Brighter "secondary" tier for surfaces that need readable secondary
+     copy in dark mode (e.g. logged-out marketing-link footer). ZUI's
+     default (`#9ca3af`) sits between primary and muted, but app code
+     reaches for this token by name; setting it explicitly here keeps
+     the override tracked in one place. */
+  --color-text-secondary: #c9c9cf;
+
   /* Unify the border token across every surface so tables, blocks, tools,
      sidekick panes, overlays, and modals all render the same subtle outline
      as the main LLM chat bubbles. Previously this value only lived on the

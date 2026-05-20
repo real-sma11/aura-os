@@ -9,15 +9,15 @@ import {
 } from "react";
 import { ArrowUp, ChevronDown, FileText, Plus, X } from "lucide-react";
 import { AgentEnvironment } from "../../../apps/agents/components/AgentEnvironment";
-import { CommandChips } from "../../../apps/chat/components/ChatInputBar/CommandChips";
-import { ContextUsageIndicator } from "../../../apps/chat/components/ChatInputBar/ContextUsageIndicator";
-import { SlashCommandMenu } from "../../../apps/chat/components/ChatInputBar/SlashCommandMenu";
-import { useFileAttachments } from "../../../apps/chat/components/ChatInputBar/useFileAttachments";
+import { CommandChips } from "../../../features/chat-ui/ChatInputBar/CommandChips";
+import { ContextUsageIndicator } from "../../../features/chat-ui/ChatInputBar/ContextUsageIndicator";
+import { SlashCommandMenu } from "../../../features/chat-ui/ChatInputBar/SlashCommandMenu";
+import { useFileAttachments } from "../../../features/chat-ui/ChatInputBar/useFileAttachments";
 import type {
   AttachmentItem,
   ChatInputBarHandle,
   ChatInputBarProps,
-} from "../../../apps/chat/components/ChatInputBar/ChatInputBar";
+} from "../../../features/chat-ui/ChatInputBar/ChatInputBar";
 import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
 import {
   availableModelsForAdapter,

@@ -4,6 +4,7 @@ import {
   streamMetaMap,
   ensureEntry,
   createSetters,
+  markStreamProgress,
 } from "./store";
 import {
   useStreamHealth,
@@ -144,6 +145,37 @@ describe("useStreamHealth", () => {
     expect(result.current.lastEventAgeMs).toBeNull();
     expect(result.current.isStuck).toBe(false);
   });
+
+  it("does not report isStuck on the first render after a fresh send when prior lastEventAt is stale", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    // Simulate the warm-reopen scenario: a previous turn's last event was
+    // 45 seconds ago (well past STUCK_THRESHOLD_MS), and the entry is not
+    // currently streaming. This mirrors the user-reported "Agent paused
+    // for 2s — last activity was 32s ago" pill that flashed instantly
+    // when sending turn 2 on a warm-reopened session.
+    useStreamStore.setState((s) => ({
+      entries: {
+        ...s.entries,
+        k1: {
+          ...s.entries["k1"],
+          lastEventAt: Date.now() - 45_000,
+          stuckSince: null,
+          isStreaming: false,
+        },
+      },
+    }));
+
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+
+    const { result } = renderHook(() => useStreamHealth("k1"));
+    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.isStuck).toBe(false);
+    expect(result.current.lastEventAgeMs).toBe(0);
+  });
 });
 
 describe("useStuckStreamAutoTimeout", () => {
@@ -219,6 +251,52 @@ describe("useStuckStreamAutoTimeout", () => {
       vi.advanceTimersByTime(FULLY_TIMED_OUT_MS + 500);
     });
     expect(onAutoTimeout).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats markStreamProgress as a wire event so partial-image-only streams do not auto-timeout", () => {
+    // Regression guard for the GPT Image 2 watchdog timeout: the
+    // chat-stream handlers no-op'd on `generation_partial_image`,
+    // letting the 60s `useStuckStreamAutoTimeout` auto-abort a long
+    // partial-image render whose `progress` events were sparser than
+    // the 60s window. The handler now calls `markStreamProgress` on
+    // each partial-image frame; this test pins that contract by
+    // asserting the watchdog stays quiet when ONLY `markStreamProgress`
+    // ticks land between the seed event and the would-be timeout.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 0, 1, 0, 0, 0));
+
+    ensureEntry("k1");
+    const setters = createSetters("k1");
+    setters.setIsStreaming(true);
+    setters.setStreamingText("seed");
+
+    const onAutoTimeout = vi.fn();
+    renderHook(() => {
+      const health = useStreamHealth("k1");
+      useStuckStreamAutoTimeout(health, onAutoTimeout);
+    });
+
+    // Walk past the 60s window in 30s slices, acking each slice with
+    // a `markStreamProgress` (i.e. a partial-image SSE event arrived
+    // but no setter ran). Two ticks adds up to 60s of wall-clock —
+    // strictly more than `FULLY_TIMED_OUT_MS` — yet the watchdog must
+    // stay silent because the wire-event clock keeps resetting.
+    for (let slice = 0; slice < 4; slice += 1) {
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+        markStreamProgress("k1");
+      });
+    }
+    expect(onAutoTimeout).not.toHaveBeenCalled();
+
+    // Sanity-check the inverse: stop ticking the wire-event clock and
+    // the watchdog still fires after 60s. This guarantees the test
+    // above didn't pass for some unrelated reason (e.g. the watchdog
+    // being globally disabled).
+    act(() => {
+      vi.advanceTimersByTime(FULLY_TIMED_OUT_MS + 500);
+    });
+    expect(onAutoTimeout).toHaveBeenCalledTimes(1);
   });
 
   it("does not fire when streaming ends before the timeout elapses", () => {

@@ -12,6 +12,16 @@ const MAX_COLLECTED_OUTPUT_TEXT_CHARS: usize = 16_000;
 const MAX_COLLECTED_TEXT_BLOCK_CHARS: usize = 4_000;
 const MAX_COLLECTED_TOOL_RESULT_CHARS: usize = 8_000;
 
+/// Synthetic failure reason used when the deadline expires before a
+/// terminal event arrives.
+pub(crate) const TIMEOUT_FAILURE_MESSAGE: &str =
+    "Automaton run timed out before producing a terminal event";
+
+/// Synthetic failure reason used when the harness event stream closes
+/// without an explicit `task_failed` / `error` / `done`.
+pub(crate) const STREAM_CLOSED_FAILURE_MESSAGE: &str =
+    "Automaton event stream closed before producing a terminal event";
+
 /// Output collected from an automaton event stream.
 #[derive(Debug, Clone, Default)]
 pub struct CollectedOutput {
@@ -55,10 +65,18 @@ impl RunCompletion {
         matches!(self, Self::Done(_))
     }
 
+    /// Return a human-readable reason for non-`Done` completions.
+    ///
+    /// `Timeout` and `StreamClosed` are real failure modes — surfacing
+    /// `None` for them lets upstream code mis-classify a stalled or
+    /// disconnected run as a clean completion. We therefore synthesize
+    /// fixed reason strings for those two variants.
     pub fn failure_message(&self) -> Option<&str> {
         match self {
             Self::Failed { message, .. } => Some(message.as_str()),
-            Self::Done(_) | Self::Timeout(_) | Self::StreamClosed(_) => None,
+            Self::Timeout(_) => Some(TIMEOUT_FAILURE_MESSAGE),
+            Self::StreamClosed(_) => Some(STREAM_CLOSED_FAILURE_MESSAGE),
+            Self::Done(_) => None,
         }
     }
 }
@@ -88,7 +106,7 @@ where
                     return completion;
                 }
             }
-            Ok(Err(broadcast::error::RecvError::Closed)) => return state.finish(),
+            Ok(Err(broadcast::error::RecvError::Closed)) => return state.stream_closed(),
             Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
             Err(_) => return state.timeout(),
         }
@@ -114,14 +132,30 @@ impl CollectorState {
             ty if is_usage_totals_event(ty) => self.capture_usage(evt),
             TASK_COMPLETED => self.flush_pending_text(),
             TASK_FAILED => self.capture_task_failure(evt),
-            DONE => return Some(std::mem::take(self).finish()),
+            DONE => return Some(std::mem::take(self).done()),
             ERROR => return Some(std::mem::take(self).error(evt)),
             _ => {}
         }
         None
     }
 
-    fn finish(mut self) -> RunCompletion {
+    /// Terminate on the harness `done` event: clean unless a `task_failed`
+    /// was observed earlier.
+    fn done(self) -> RunCompletion {
+        self.settle(RunCompletion::Done)
+    }
+
+    /// Terminate on broadcast-channel close (harness disconnect) without a
+    /// preceding `done`. A prior explicit `task_failed` reason wins;
+    /// otherwise this is a `StreamClosed` failure — never a `Done`.
+    fn stream_closed(self) -> RunCompletion {
+        self.settle(RunCompletion::StreamClosed)
+    }
+
+    /// Shared tail for `done` / `stream_closed`: an explicit `task_failed`
+    /// reason always wins; otherwise the caller's fallback variant decides
+    /// whether this counts as success (`Done`) or failure (`StreamClosed`).
+    fn settle(mut self, fallback: impl FnOnce(CollectedOutput) -> RunCompletion) -> RunCompletion {
         self.flush_pending_text();
         if let Some(message) = self.failed_message {
             RunCompletion::Failed {
@@ -129,7 +163,7 @@ impl CollectorState {
                 output: self.out,
             }
         } else {
-            RunCompletion::Done(self.out)
+            fallback(self.out)
         }
     }
 
@@ -178,11 +212,21 @@ impl CollectorState {
 
     fn push_tool_start(&mut self, evt: &serde_json::Value) {
         self.flush_pending_text();
+        // Seed the placeholder as an empty object, not `Null`. Anthropic's
+        // Messages API rejects any persisted history whose
+        // `tool_use.input` is not an object with
+        // `messages.N.content.M.tool_use.input: Input should be an
+        // object`. Normally a later `tool_call_completed` /
+        // `tool_call_snapshot` upserts the real input, but a stream
+        // that ends or is cancelled before the snapshot lands would
+        // round-trip this block to the API verbatim. Defaulting to
+        // `{}` keeps the worst-case replay valid (an empty-arg tool
+        // call) instead of a hard 400.
         self.out.content_blocks.push(serde_json::json!({
             "type": "tool_use",
             "id": first_string(evt, &["id"]).unwrap_or(""),
             "name": first_string(evt, &["name"]).unwrap_or(""),
-            "input": serde_json::Value::Null,
+            "input": serde_json::json!({}),
         }));
     }
 

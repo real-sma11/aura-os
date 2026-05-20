@@ -238,6 +238,39 @@ impl ApiError {
             }),
         )
     }
+
+    /// Public anonymous endpoint family hit either the per-guest turn
+    /// cap ([`crate::handlers::public::PUBLIC_TURN_LIMIT`]) or the
+    /// per-IP daily ceiling
+    /// ([`crate::handlers::public::PUBLIC_IP_DAILY_CEILING`]). Returns
+    /// HTTP 429 with the structured payload the frontend uses to
+    /// mount the non-dismissable upgrade modal:
+    ///
+    /// ```json
+    /// { "error": "limit_reached", "code": "public_limit_reached",
+    ///   "data": { "code": "limit_reached", "limit": 3 } }
+    /// ```
+    ///
+    /// Phase 2 chat / image / video / model3d handlers also append a
+    /// final SSE `{ kind: "limit", turn_count, limit }` frame from
+    /// [`crate::handlers::public::emit_limit_frame`] so the streaming
+    /// surface lights the modal even when the request technically
+    /// returned 200.
+    #[allow(dead_code)]
+    pub(crate) fn public_limit_reached(limit: u32) -> (StatusCode, Json<Self>) {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(Self {
+                error: "limit_reached".to_string(),
+                code: "public_limit_reached".to_string(),
+                details: None,
+                data: Some(serde_json::json!({
+                    "code": "limit_reached",
+                    "limit": limit,
+                })),
+            }),
+        )
+    }
 }
 
 mod chat_persist;

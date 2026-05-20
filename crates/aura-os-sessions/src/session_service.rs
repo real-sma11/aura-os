@@ -130,6 +130,8 @@ impl SessionService {
             session_id,
             input_tokens,
             output_tokens,
+            cache_creation_input_tokens,
+            cache_read_input_tokens,
             total_input_tokens,
             total_output_tokens,
             context_usage_estimate,
@@ -137,7 +139,11 @@ impl SessionService {
         let mut session = self
             .get_session(&project_id, &agent_instance_id, &session_id)
             .await?;
-        let turn_usage = (input_tokens + output_tokens) as f64 / self.model_context_window as f64;
+        let turn_tokens = input_tokens
+            .saturating_add(output_tokens)
+            .saturating_add(cache_creation_input_tokens)
+            .saturating_add(cache_read_input_tokens);
+        let turn_usage = turn_tokens as f64 / self.model_context_window as f64;
         session.context_usage_estimate = context_usage_estimate
             .unwrap_or(session.context_usage_estimate + turn_usage)
             .clamp(0.0, 1.0);

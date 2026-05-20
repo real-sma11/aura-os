@@ -25,3 +25,15 @@
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
+
+/* Estimated-countdown digits rendered next to the shimmer while an
+   image generation is in flight. `font-variant-numeric: tabular-nums`
+   keeps the digit columns width-stable so the indicator doesn't
+   jitter when the seconds tick (`0:09` -> `0:08`). */
+.countdown {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted, #888);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}

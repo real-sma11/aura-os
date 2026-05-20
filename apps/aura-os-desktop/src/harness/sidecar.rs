@@ -18,9 +18,9 @@ pub(crate) fn maybe_spawn_local_harness_sidecar(data_dir: &Path) -> Option<Child
     let explicit_harness_url =
         env_string("LOCAL_HARNESS_URL").map(|value| value.trim_end_matches('/').to_string());
     let harness_binary = resolve_managed_harness_binary(data_dir);
-    let harness_url = explicit_harness_url.clone().unwrap_or_else(|| {
-        format!("http://127.0.0.1:{}", preferred_local_harness_port())
-    });
+    let harness_url = explicit_harness_url
+        .clone()
+        .unwrap_or_else(|| format!("http://127.0.0.1:{}", preferred_local_harness_port()));
 
     if let Some(ref configured_url) = explicit_harness_url {
         if probe_http_ok(configured_url, "/health") {

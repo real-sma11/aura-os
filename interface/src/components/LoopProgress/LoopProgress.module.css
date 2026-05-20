@@ -1,0 +1,20 @@
+/* Spinning accent arc. `transform-box: fill-box` is critical: by
+   default an SVG element's `transform-origin` is the parent SVG's
+   `(0, 0)` corner, which would rotate the arc around the top-left
+   of the icon instead of around the ring centre. `fill-box` rebinds
+   the origin to the element's own geometry box, so
+   `transform-origin: center` resolves to the ring's true centre
+   and the arc spins in place. The same pitfall is documented (and
+   fixed) in `PlayLoopGlyph.module.css`; this file keeps `LoopProgress`
+   self-contained so consumers don't need an outer-SVG `automationSpinner`
+   workaround to get a visibly rotating ring. */
+.arc {
+  animation: loopProgressSpin 1.1s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes loopProgressSpin {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}

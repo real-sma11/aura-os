@@ -281,6 +281,20 @@ fn update_counters(counters: &mut RunCounters, event_type: &str, event: &serde_j
             if let Some(out) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
                 counters.output_tokens = counters.output_tokens.saturating_add(out);
             }
+            if let Some(v) = usage
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
+                counters.cache_creation_input_tokens =
+                    counters.cache_creation_input_tokens.saturating_add(v);
+            }
+            if let Some(v) = usage
+                .get("cache_read_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
+                counters.cache_read_input_tokens =
+                    counters.cache_read_input_tokens.saturating_add(v);
+            }
         }
         _ => {}
     }

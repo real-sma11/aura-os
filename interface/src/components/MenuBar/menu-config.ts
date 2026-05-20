@@ -5,6 +5,7 @@ export type MenuActionKey =
   | "file.newWindow"
   | "file.newProject"
   | "file.settings"
+  | "file.logout"
   | "file.exit"
   | "edit.undo"
   | "edit.redo"
@@ -55,6 +56,8 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
       { type: "item", id: "file.newProject", label: "New Project", shortcut: { key: "p", mod: true, shift: true } },
       DIVIDER,
       { type: "item", id: "file.settings", label: "Settings", shortcut: { key: ",", mod: true } },
+      DIVIDER,
+      { type: "item", id: "file.logout", label: "Logout" },
       DIVIDER,
       { type: "item", id: "file.exit", label: "Exit", shortcut: { key: "w", mod: true } },
     ],

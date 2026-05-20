@@ -112,6 +112,47 @@ export const IMAGE_MODELS: ModelOption[] = [
 export const DEFAULT_IMAGE_MODEL_ID: string = IMAGE_MODELS[0]?.id ?? "gpt-image-2";
 
 /**
+ * Per-model fallback estimate (ms) for "how long does this image
+ * generation usually take". Powers the cooking-indicator ETA
+ * countdown (`useGenerationEta`) for the window between the SSE
+ * stream opening and the first `generation_progress.percent` frame
+ * landing. Once a meaningful percent lands we switch to the
+ * adaptive `elapsed * (100 - percent) / percent` estimate, so these
+ * values only need to be in the right ballpark.
+ *
+ * Numbers are intentionally on the generous side so the countdown
+ * doesn't overrun before the first percent refines it — overrun
+ * just swaps the countdown for "Almost done…" so a slightly long
+ * estimate is harmless, but a slightly short one is jarring.
+ */
+export const IMAGE_MODEL_ESTIMATE_MS: Record<string, number> = {
+  // gpt-image-2 routinely renders well past the original 60s
+  // estimate in production (the cooking countdown sat at "Almost
+  // done…" for the second half of typical runs), so the baseline
+  // is doubled to 120s. The adaptive `percent`-driven refinement
+  // still ratchets the projection downward whenever the upstream
+  // router reports faster progress.
+  "gpt-image-2": 120_000,
+  "gpt-image-1": 30_000,
+  "dall-e-3": 20_000,
+  "dall-e-2": 12_000,
+  "gemini-nano-banana": 25_000,
+};
+
+/** Default fallback when an image model has no entry in {@link IMAGE_MODEL_ESTIMATE_MS}. */
+export const DEFAULT_IMAGE_MODEL_ESTIMATE_MS = 30_000;
+
+/**
+ * Resolves a per-model image-generation estimate in ms. Returns the
+ * {@link DEFAULT_IMAGE_MODEL_ESTIMATE_MS} fallback when `modelId` is
+ * nullish or unknown so callers never have to branch.
+ */
+export function getImageModelEstimateMs(modelId?: string | null): number {
+  if (!modelId) return DEFAULT_IMAGE_MODEL_ESTIMATE_MS;
+  return IMAGE_MODEL_ESTIMATE_MS[modelId] ?? DEFAULT_IMAGE_MODEL_ESTIMATE_MS;
+}
+
+/**
  * 3D model providers usable in chat 3D mode. The 3D generation pipeline
  * is image-input based: the chat caller must include a pasted /
  * uploaded image, which the backend feeds to the selected provider.
@@ -220,6 +261,18 @@ function imageModelStorageKey(agentId?: string): string {
     : `aura-selected-model:image:default`;
 }
 
+function videoModelStorageKey(agentId?: string): string {
+  return agentId
+    ? `aura-selected-model:video:agent:${agentId}`
+    : `aura-selected-model:video:default`;
+}
+
+function threeDModelStorageKey(agentId?: string): string {
+  return agentId
+    ? `aura-selected-model:3d:agent:${agentId}`
+    : `aura-selected-model:3d:default`;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function availableModelsForAdapter(_adapterType?: string): ModelOption[] {
   // The `_adapterType` argument is preserved on the public signature so call
@@ -262,7 +315,8 @@ export function loadPersistedModel(
       ...LEGACY_HIDDEN_CHAT_MODELS,
     ];
     // Agent-scoped key is authoritative so switching agents (or app
-    // restarts) restores each agent's last model independently.
+    // restarts) restores each agent's last model independently when the
+    // user has explicitly picked something for this agent.
     if (agentId) {
       const agentStored = normalizeManagedModelId(
         localStorage.getItem(agentStorageKey(agentId)),
@@ -270,16 +324,12 @@ export function loadPersistedModel(
       if (agentStored && models.some((m) => m.id === agentStored)) {
         return agentStored;
       }
-      // When the caller has an agentId but this agent has never been
-      // touched, don't leak another agent's choice via the adapter-scoped
-      // key. Fall straight through to the adapter default.
-      if (localStorage.getItem(agentStorageKey(agentId)) == null) {
-        return defaultModelForAdapter(adapterType, explicitDefault);
-      }
     }
-    // Legacy adapter-scoped fallback for callers without an agentId (or
-    // when an explicitly-stored agent value has become invalid for the
-    // current adapter).
+    // Adapter-scoped "last user pick" fallback. Used both for callers
+    // without an agentId and for untouched / brand-new agents — opening
+    // a fresh chat should land on whatever the user most recently chose
+    // anywhere in the app, rather than reverting to the adapter default
+    // and forcing them to re-pick.
     const stored = normalizeManagedModelId(
       localStorage.getItem(storageKey(adapterType)),
     );
@@ -296,16 +346,36 @@ export function persistModel(
   agentId?: string,
 ): void {
   try {
-    // Image models persist under a dedicated key so a chat-mode pick
-    // never shadows the user's last image-mode pick (and vice versa).
-    if (IMAGE_MODELS.some((m) => m.id === modelId)) {
-      localStorage.setItem(imageModelStorageKey(agentId), modelId);
+    // Each generation mode persists under its own namespace so a video
+    // pick (Seedance) never shadows the user's last chat pick, an image
+    // pick never overwrites the chat key, etc. Within a mode we always
+    // write BOTH the per-agent slot AND the mode's global "last user
+    // pick" slot so agents the user has never picked on still inherit
+    // the most recent choice anywhere in the app.
+    const mode = getModelMode(modelId);
+    if (mode === "image") {
+      if (agentId) {
+        localStorage.setItem(imageModelStorageKey(agentId), modelId);
+      }
+      localStorage.setItem(imageModelStorageKey(), modelId);
       return;
     }
+    if (mode === "video") {
+      if (agentId) {
+        localStorage.setItem(videoModelStorageKey(agentId), modelId);
+      }
+      localStorage.setItem(videoModelStorageKey(), modelId);
+      return;
+    }
+    if (mode === "3d") {
+      if (agentId) {
+        localStorage.setItem(threeDModelStorageKey(agentId), modelId);
+      }
+      localStorage.setItem(threeDModelStorageKey(), modelId);
+      return;
+    }
+    // chat mode (default).
     if (agentId) localStorage.setItem(agentStorageKey(agentId), modelId);
-    // Keep the adapter-scoped key in sync so agents that haven't saved a
-    // per-agent preference still land on the user's most recent choice
-    // on first open.
     localStorage.setItem(storageKey(adapterType), modelId);
   } catch {
     // localStorage may be unavailable
@@ -332,6 +402,77 @@ export function loadPersistedImageModel(agentId?: string): string {
     // localStorage may be unavailable
   }
   return DEFAULT_IMAGE_MODEL_ID;
+}
+
+/**
+ * Same shape as {@link loadPersistedImageModel} but for video-mode picks.
+ * Video models live in their own namespace
+ * (`aura-selected-model:video:…`) so picking Seedance in video mode
+ * never shadows the user's last chat-mode pick and re-entering video
+ * mode after a reopen restores the actual provider the user chose.
+ */
+export function loadPersistedVideoModel(agentId?: string): string {
+  try {
+    const fromAgent = agentId ? localStorage.getItem(videoModelStorageKey(agentId)) : null;
+    if (fromAgent && VIDEO_MODELS.some((m) => m.id === fromAgent)) {
+      return fromAgent;
+    }
+    const fromDefault = localStorage.getItem(videoModelStorageKey());
+    if (fromDefault && VIDEO_MODELS.some((m) => m.id === fromDefault)) {
+      return fromDefault;
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
+  return DEFAULT_VIDEO_MODEL_ID;
+}
+
+/**
+ * Same shape as {@link loadPersistedImageModel} but for 3D-mode picks.
+ * Today there is only one 3D provider (Tripo), but the dedicated
+ * namespace keeps mode-isolation symmetric with chat/image/video so a
+ * future second provider doesn't reintroduce cross-mode key
+ * clobbering.
+ */
+export function loadPersistedThreeDModel(agentId?: string): string {
+  try {
+    const fromAgent = agentId ? localStorage.getItem(threeDModelStorageKey(agentId)) : null;
+    if (fromAgent && MODEL_3D_MODELS.some((m) => m.id === fromAgent)) {
+      return fromAgent;
+    }
+    const fromDefault = localStorage.getItem(threeDModelStorageKey());
+    if (fromDefault && MODEL_3D_MODELS.some((m) => m.id === fromDefault)) {
+      return fromDefault;
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
+  return DEFAULT_3D_MODEL_ID;
+}
+
+/**
+ * Mode-dispatched convenience: returns the persisted model id for the
+ * given generation mode, falling back to that mode's default.
+ * `adapterType` and `explicitDefault` are only consulted for chat mode
+ * (image/video/3D ignore both because they have a fixed model list
+ * irrespective of adapter).
+ */
+export function loadPersistedModelForMode(
+  mode: GenerationMode,
+  agentId?: string,
+  adapterType?: string,
+  explicitDefault?: string | null,
+): string {
+  switch (mode) {
+    case "image":
+      return loadPersistedImageModel(agentId);
+    case "video":
+      return loadPersistedVideoModel(agentId);
+    case "3d":
+      return loadPersistedThreeDModel(agentId);
+    case "chat":
+      return loadPersistedModel(adapterType, explicitDefault, agentId);
+  }
 }
 
 /** Chat model options formatted for <Select> dropdowns across the app. */

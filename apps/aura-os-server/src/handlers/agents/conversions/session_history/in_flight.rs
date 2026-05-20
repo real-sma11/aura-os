@@ -126,6 +126,7 @@ impl AssistantParts {
             thinking_duration_ms: None,
             created_at: parse_dt(created_at),
             in_flight: Some(true),
+            from_agent_id: None,
         }
     }
 }
@@ -201,10 +202,16 @@ fn apply_tool_use_start(parts: &mut AssistantParts, content: Option<&serde_json:
         return;
     }
     parts.last_tool_use_id = id.clone();
+    // Seed the placeholder as `{}`, not `Null`. Mirrors the persist-task
+    // fix in `handle_tool_use_start`: Anthropic's Messages API rejects
+    // `tool_use.input` that isn't a JSON object with
+    // `messages.N.content.M.tool_use.input: Input should be an object`,
+    // so any in-flight reconstruction that round-trips to the API needs
+    // a valid placeholder up front.
     parts.blocks.push(ChatContentBlock::ToolUse {
         id,
         name,
-        input: serde_json::Value::Null,
+        input: serde_json::json!({}),
     });
 }
 
@@ -214,7 +221,7 @@ fn apply_tool_call_snapshot(parts: &mut AssistantParts, content: Option<&serde_j
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    let snap_input = content
+    let raw_input = content
         .and_then(|c| c.get("input"))
         .cloned()
         .unwrap_or(serde_json::Value::Null);
@@ -223,6 +230,46 @@ fn apply_tool_call_snapshot(parts: &mut AssistantParts, content: Option<&serde_j
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
+    // `tool_use.input` must be a JSON object on replay or Anthropic
+    // returns 400 `Input should be an object`. Four replay shapes:
+    //
+    // - `Object` — final snapshot or non-streaming tool. Used as-is.
+    // - `Null` — non-streaming tool that never emitted a snapshot.
+    //   Coerced to `{}` here (matches the persist-task seed). Previously
+    //   this stayed `Null` and relied on `apply_tool_result` to backfill,
+    //   but a cancel-mid-tool-use turn never emits a `tool_result` and
+    //   the replay would 400. The persist task's
+    //   `finalize_if_needed` sweep also normalises this at write time;
+    //   doing it here too closes the in-flight reconstruction gap.
+    // - `String` containing a complete JSON object — the final state of
+    //   Anthropic's `input_json_delta` accumulator (see
+    //   `persist_task_dispatch::normalize`). Parse it through.
+    // - `String` that doesn't parse, or `Array`/`Number`/`Bool` —
+    //   genuinely corrupt historical data (post-fix, mid-stream
+    //   strings are no longer persisted at all, so this only triggers
+    //   on legacy storage rows). Replace with the `_normalized` marker
+    //   so forensics are preserved and Anthropic still accepts the
+    //   shape on replay.
+    let snap_input = match raw_input {
+        serde_json::Value::Object(_) => raw_input,
+        serde_json::Value::Null => serde_json::json!({}),
+        serde_json::Value::String(ref s) => match serde_json::from_str::<serde_json::Value>(s) {
+            Ok(parsed @ serde_json::Value::Object(_)) => parsed,
+            _ => serde_json::json!({
+                "_normalized": "non_object_input",
+                "original_type": "string",
+            }),
+        },
+        other => serde_json::json!({
+            "_normalized": "non_object_input",
+            "original_type": match &other {
+                serde_json::Value::Array(_) => "array",
+                serde_json::Value::Number(_) => "number",
+                serde_json::Value::Bool(_) => "bool",
+                serde_json::Value::String(_) | serde_json::Value::Null | serde_json::Value::Object(_) => "unknown",
+            },
+        }),
+    };
     let mut patched = false;
     for block in parts.blocks.iter_mut().rev() {
         if let ChatContentBlock::ToolUse { id, input, .. } = block {

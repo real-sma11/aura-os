@@ -135,9 +135,8 @@ impl HarnessLink for LocalHarness {
                     // immediately so the existing capacity mapper in
                     // the server keeps firing.
                     if is_capacity_exhausted_ws_error(&err) {
-                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted).context(
-                            format!("local harness websocket connect rejected: {err}"),
-                        ));
+                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
+                            .context(format!("local harness websocket connect rejected: {err}")));
                     }
                     last_err = Some(
                         anyhow::Error::new(err).context("local harness websocket connect failed"),
@@ -178,27 +177,52 @@ impl HarnessLink for LocalHarness {
 
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
 
+        // Subscribe BEFORE sending SessionInit so any OutboundMessage::Error
+        // emitted by the bridge in the microseconds between the send and the
+        // subscribe is not lost. The recv loop below is the only consumer of
+        // these events, so a missed Error here would mean the loop waits on
+        // a SessionReady that will never arrive.
+        let mut rx = events_tx.subscribe();
+
         commands_tx
             .try_send(InboundMessage::SessionInit(Box::new(build_session_init(
                 &config,
             ))))
             .context("local harness session_init send failed")?;
 
-        let mut rx = events_tx.subscribe();
-        let session_id = loop {
-            match rx.recv().await {
-                Ok(OutboundMessage::SessionReady(ready)) => {
-                    break ready.session_id;
+        // Bound the SessionReady wait with a 30s timeout. Without it, a
+        // harness binary that opens then immediately closes the WS (observed
+        // on warm cold-reopens, ~3.3ms WS lifecycle) causes rx.recv() to
+        // hang forever: the local `events_tx` above keeps the broadcast
+        // channel alive even after the bridge tasks drop their senders, so
+        // the recv never sees Err(Closed). The 30s ceiling sits comfortably
+        // under the server-side 60s outer timeout in
+        // apps/aura-os-server/src/handlers/agents/chat/streaming.rs so this
+        // surfaces first with the more informative error string.
+        let session_id = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            loop {
+                match rx.recv().await {
+                    Ok(OutboundMessage::SessionReady(ready)) => {
+                        break Ok::<String, anyhow::Error>(ready.session_id);
+                    }
+                    Ok(OutboundMessage::Error(err)) => {
+                        break Err(anyhow::anyhow!(
+                            "Harness error during init ({}): {}",
+                            err.code,
+                            err.message
+                        ));
+                    }
+                    Err(_) => {
+                        break Err(anyhow::anyhow!("Connection closed before session_ready"));
+                    }
+                    _ => continue,
                 }
-                Ok(OutboundMessage::Error(err)) => {
-                    anyhow::bail!("Harness error during init ({}): {}", err.code, err.message);
-                }
-                Err(_) => {
-                    anyhow::bail!("Connection closed before session_ready");
-                }
-                _ => continue,
             }
-        };
+        })
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("Timed out waiting for SessionReady from local harness (30s)")
+        })??;
 
         info!(%session_id, "Local harness session ready");
 

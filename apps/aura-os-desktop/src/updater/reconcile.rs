@@ -15,8 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
 use super::diagnostics::{
-    clear_state_snapshot, load_state_snapshot, record_update_step, PersistedUpdateState,
-    UpdateStep,
+    clear_state_snapshot, load_state_snapshot, record_update_step, PersistedUpdateState, UpdateStep,
 };
 use super::{set_status, UpdateState, UpdateStatus};
 

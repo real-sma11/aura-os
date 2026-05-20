@@ -40,10 +40,7 @@ pub(crate) fn stamp_support_id(err: &mut ErrorMsg, code: &str) -> String {
     // `stream_stalled`/`turn_timeout` synth pre-stamp the field) so a
     // single error never carries two different ids on different
     // surfaces. Mint fresh only when neither side has done it.
-    let id = err
-        .support_id
-        .clone()
-        .unwrap_or_else(fresh_support_id);
+    let id = err.support_id.clone().unwrap_or_else(fresh_support_id);
     err.code = code.to_string();
     // Avoid double-suffixing on retries: if the message already
     // contains the canonical suffix, leave it alone.
@@ -328,7 +325,9 @@ mod tests {
         let mapped = remap_harness_error_to_sse(&original);
         assert_eq!(mapped.code, "agent_busy");
         assert!(
-            mapped.message.starts_with(AGENT_BUSY_CONCURRENT_TURN_MESSAGE),
+            mapped
+                .message
+                .starts_with(AGENT_BUSY_CONCURRENT_TURN_MESSAGE),
             "remapped message must keep the canonical wording prefix, got: {}",
             mapped.message
         );
@@ -398,7 +397,8 @@ mod tests {
         let id = fresh_support_id();
         assert_eq!(id.len(), 12, "support_id must be 12 chars, got: {id}");
         assert!(
-            id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            id.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
             "support_id must be lowercase hex only, got: {id}"
         );
     }

@@ -17,6 +17,11 @@ const mockRemoveTask = vi.fn();
 const mockNotifyAgentInstanceUpdate = vi.fn();
 
 const mockSidekickState = {
+  // Default to "terminal" — the projects-app initial tab — so existing
+  // tests exercise the auto-switch branch in `generate_specs`. Tests
+  // that need to verify the Sessions-tab-respecting branch flip this
+  // to "sessions" before calling `sendMessage`.
+  activeTab: "terminal" as string,
   previewItem: null,
   streamingAgentInstanceIds: [] as string[],
   streamingAgentInstanceId: null as string | null,
@@ -47,6 +52,7 @@ vi.mock("../api/client", () => ({
   api: {
     sendEventStream: vi.fn().mockResolvedValue(undefined),
     getAgentInstance: vi.fn().mockResolvedValue({}),
+    cancelInstanceTurn: vi.fn().mockResolvedValue(undefined),
   },
   isInsufficientCreditsError: vi.fn(() => false),
   isAgentBusyError: vi.fn(() => null),
@@ -57,10 +63,15 @@ vi.mock("../api/client", () => ({
 vi.mock("../api/streams", () => ({
   generateImageStream: vi.fn().mockResolvedValue(undefined),
   generate3dStream: vi.fn().mockResolvedValue(undefined),
+  generateVideoStream: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { api } from "../api/client";
-import { generate3dStream, generateImageStream } from "../api/streams";
+import {
+  generate3dStream,
+  generateImageStream,
+  generateVideoStream,
+} from "../api/streams";
 
 describe("useChatStream", () => {
   beforeEach(() => {
@@ -77,6 +88,8 @@ describe("useChatStream", () => {
     vi.mocked(api.sendEventStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generateImageStream).mockReset().mockResolvedValue(undefined);
     vi.mocked(generate3dStream).mockReset().mockResolvedValue(undefined);
+    vi.mocked(generateVideoStream).mockReset().mockResolvedValue(undefined);
+    mockSidekickState.activeTab = "terminal";
   });
 
   it("returns streamKey, sendMessage, stopStreaming, resetEvents", () => {
@@ -88,6 +101,47 @@ describe("useChatStream", () => {
     expect(typeof result.current.sendMessage).toBe("function");
     expect(typeof result.current.stopStreaming).toBe("function");
     expect(typeof result.current.resetEvents).toBe("function");
+  });
+
+  // Phase 7 Stop / refresh cleanup: pressing Stop must POST
+  // `cancel-turn` to the project / instance route so the server
+  // forwards `HarnessInbound::Cancel`, releases the per-partition
+  // turn slot, and evicts the warm chat session. Without this the
+  // turn slot stays held until the 90s SSE idle timeout and the
+  // user's next send appears to "time out" with no error surfaced —
+  // the bug this regression guard pins.
+  it("stopStreaming POSTs cancel-turn for the instance partition", () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    act(() => {
+      result.current.stopStreaming();
+    });
+
+    expect(api.cancelInstanceTurn).toHaveBeenCalledWith("p-1", "ai-1");
+    expect(api.cancelInstanceTurn).toHaveBeenCalledTimes(1);
+  });
+
+  // Companion to the test above: the cancel POST is fire-and-forget,
+  // so a failed network call (offline, server 500, etc.) MUST NOT
+  // throw out of `stopStreaming` — the abort + UI cleanup still
+  // need to run, and the server-side SSE drop guard is the safety
+  // net for the slot release.
+  it("stopStreaming swallows cancel-turn failures", () => {
+    vi.mocked(api.cancelInstanceTurn).mockRejectedValueOnce(
+      new Error("offline"),
+    );
+
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    expect(() => {
+      act(() => {
+        result.current.stopStreaming();
+      });
+    }).not.toThrow();
   });
 
   it("does nothing when projectId is undefined", async () => {
@@ -198,6 +252,11 @@ describe("useChatStream", () => {
       // history (otherwise it's only in the in-memory stream store and
       // disappears on reload).
       { projectId: "p-1", agentInstanceId: "ai-1" },
+      // No `markNextSendAsNewSession` was called and no `?session=`
+      // pin was passed to the hook, so both flags fall through as
+      // their resting "no override" values.
+      false,
+      null,
     );
   });
 
@@ -291,6 +350,8 @@ describe("useChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       { projectId: "p-1", agentInstanceId: "ai-1" },
+      false,
+      null,
     );
 
     const pinned = useChatUIStore
@@ -351,6 +412,11 @@ describe("useChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       "p-1",
+      undefined,
+      undefined,
+      "ai-1",
+      false,
+      null,
     );
     const pinned = useChatUIStore
       .getState()
@@ -387,6 +453,11 @@ describe("useChatStream", () => {
       expect.any(Object),
       expect.any(AbortSignal),
       "p-1",
+      undefined,
+      undefined,
+      "ai-1",
+      false,
+      null,
     );
     const entry = useStreamStore.getState().entries[result.current.streamKey];
     const userMsg = entry.events.find((evt) => evt.role === "user");
@@ -417,7 +488,8 @@ describe("useChatStream", () => {
     expect(mockSetAgentStreaming).toHaveBeenCalledWith("ai-1", true);
   });
 
-  it("handles generate_specs action", async () => {
+  it("handles generate_specs action: clears artifacts and auto-switches to Specs from a non-Sessions tab", async () => {
+    mockSidekickState.activeTab = "terminal";
     const { result } = renderHook(() =>
       useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
     );
@@ -428,6 +500,29 @@ describe("useChatStream", () => {
 
     expect(mockClearGeneratedArtifacts).toHaveBeenCalled();
     expect(mockSetActiveTab).toHaveBeenCalledWith("specs");
+  });
+
+  // Regression for "Plan mode in Projects app flips the sidekick off
+  // Sessions on every send". Picking the Sessions tab is an explicit
+  // "I want to follow the chat" signal — the auto-switch to Specs
+  // must respect that. The matching branch in `useChatStream`
+  // (`activeTab !== "sessions"`) guards this; if it ever regresses,
+  // this assertion fires.
+  it("generate_specs action does NOT switch tabs when the user is already on Sessions", async () => {
+    mockSidekickState.activeTab = "sessions";
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("", "generate_specs");
+    });
+
+    // Stale artifacts are still cleared so the next plan-mode pass
+    // doesn't mix new specs with leftovers from the previous turn —
+    // but the tab itself stays put.
+    expect(mockClearGeneratedArtifacts).toHaveBeenCalled();
+    expect(mockSetActiveTab).not.toHaveBeenCalled();
   });
 
   it("handles stream errors gracefully", async () => {
@@ -533,6 +628,299 @@ describe("useChatStream", () => {
       false,
       null,
       undefined,
+    );
+  });
+
+  // Regression: the chat-input "+" affordance must work in EVERY
+  // mode, not just code/plan. Previously `markNextSendAsNewSession`
+  // only forwarded `new_session: true` on the regular chat
+  // (`api.sendEventStream`) path, so image / 3D / video sends
+  // silently appended to the latest existing session — the user-
+  // facing symptom that motivates this fix.
+  it("forwards new-session flag to image generation when armed via markNextSendAsNewSession", async () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "draw a fox",
+        null,
+        "gpt-image-2",
+        undefined,
+        ["generate_image"],
+        undefined,
+        "image",
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      "draw a fox",
+      "gpt-image-2",
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { projectId: "p-1", agentInstanceId: "ai-1" },
+      true,
+      // `null` because force-new wins over a pin even if `?session=`
+      // were set; here no pin is set either way.
+      null,
+    );
+  });
+
+  it("forwards new-session flag to the 3D image step", async () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "an eagle",
+        null,
+        "tripo-v2",
+        undefined,
+        ["generate_3d"],
+        undefined,
+        "3d",
+        undefined,
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      `an eagle${STYLE_LOCK_SUFFIX}`,
+      expect.any(String),
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { projectId: "p-1", agentInstanceId: "ai-1" },
+      true,
+      null,
+    );
+  });
+
+  it("forwards new-session flag to the 3D model step", async () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    act(() => {
+      useChatUIStore.getState().setPinnedSourceImage(result.current.streamKey, {
+        imageUrl: "https://cdn.example.com/owl.png",
+        originalUrl: "https://cdn.example.com/owl-orig.png",
+        prompt: "an owl",
+      });
+    });
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "make it brass",
+        null,
+        "tripo-v2",
+        undefined,
+        ["generate_3d"],
+        undefined,
+        "3d",
+        "https://cdn.example.com/owl.png",
+      );
+    });
+
+    expect(generate3dStream).toHaveBeenCalledWith(
+      { kind: "url", imageUrl: "https://cdn.example.com/owl.png" },
+      "make it brass",
+      expect.any(Object),
+      expect.any(AbortSignal),
+      "p-1",
+      undefined,
+      undefined,
+      "ai-1",
+      true,
+      null,
+    );
+  });
+
+  it("forwards new-session flag to video generation", async () => {
+    const { result } = renderHook(() =>
+      useChatStream({ projectId: "p-1", agentInstanceId: "ai-1" }),
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "a bird flying",
+        null,
+        "veo-3",
+        undefined,
+        ["generate_video"],
+        undefined,
+        "video",
+      );
+    });
+
+    expect(generateVideoStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "a bird flying",
+        model: "veo-3",
+        projectId: "p-1",
+        agentInstanceId: "ai-1",
+        newSession: true,
+        sessionId: null,
+      }),
+      expect.any(Object),
+      expect.any(AbortSignal),
+    );
+  });
+
+  // Regression for the "+ then click an old session then send" bug.
+  // `useFreshCanvas` arms `nextSendStartsNewSession` and drops
+  // `?session=` from the URL. If the user then clicks an existing
+  // session row, the URL re-acquires `?session=` and the hook
+  // re-renders with `sessionId="s-old"`. The next send must extend
+  // that session — not silently force a fresh harness session id —
+  // or the turn lands in a brand-new chat and the URL flips away
+  // from the clicked row.
+  it("drops the new-session pin when sessionId becomes non-null before sending", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useChatStream({
+          projectId: "p-1",
+          agentInstanceId: "ai-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: "s-old" });
+
+    await act(async () => {
+      await result.current.sendMessage("continue please");
+    });
+
+    expect(api.sendEventStream).toHaveBeenCalledWith(
+      "p-1",
+      "ai-1",
+      "continue please",
+      null,
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      undefined,
+      false,
+      "s-old",
+      undefined,
+    );
+  });
+
+  // Regression for the "+ after sending in a freshly-created chat
+  // reverts to the previous chat" bug. Repro:
+  //   1. Mount on session B (sessionId="s-old").
+  //   2. User clicks "+": `useFreshCanvas.newChat()` calls
+  //      `markNextSendAsNewSession()` BEFORE dropping `?session=`,
+  //      then drops `?session=` (rerender flips sessionId to null).
+  //   3. User sends.
+  // With the partition-keyed bug, the pin was written to the
+  // about-to-be-stale `…:s-old` partition while the send fired on
+  // `…:fresh` — so the wire flag was `new_session=false`, the
+  // server reused session B (`existing_session_for_agent`), and
+  // `SessionReady` snapped the URL back to B. Pin the post-fix
+  // behaviour: the pin must land on the fresh-canvas partition so
+  // the post-rerender send POSTs `new_session=true`.
+  it("arms the new-session pin on the fresh-canvas partition when called before the URL drops the session", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useChatStream({
+          projectId: "p-1",
+          agentInstanceId: "ai-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: "s-old" as string | null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: null });
+
+    await act(async () => {
+      await result.current.sendMessage("start fresh please");
+    });
+
+    expect(api.sendEventStream).toHaveBeenCalledWith(
+      "p-1",
+      "ai-1",
+      "start fresh please",
+      null,
+      undefined,
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      undefined,
+      // The pin must survive the `sessionId="s-old"` → `null` rerender
+      // because it was armed against the fresh-canvas partition, not
+      // the about-to-be-stale real-session partition.
+      true,
+      null,
+      undefined,
+    );
+  });
+
+  it("drops the pin across generation modes when sessionId becomes non-null", async () => {
+    const { result, rerender } = renderHook(
+      (props: { sessionId: string | null }) =>
+        useChatStream({
+          projectId: "p-1",
+          agentInstanceId: "ai-1",
+          sessionId: props.sessionId,
+        }),
+      { initialProps: { sessionId: null } },
+    );
+
+    act(() => {
+      result.current.markNextSendAsNewSession();
+    });
+
+    rerender({ sessionId: "s-old" });
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "draw a fox",
+        null,
+        "gpt-image-2",
+        undefined,
+        ["generate_image"],
+        undefined,
+        "image",
+      );
+    });
+
+    expect(generateImageStream).toHaveBeenCalledWith(
+      "draw a fox",
+      "gpt-image-2",
+      undefined,
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { projectId: "p-1", agentInstanceId: "ai-1" },
+      false,
+      "s-old",
     );
   });
 });

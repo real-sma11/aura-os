@@ -180,15 +180,16 @@ pub(crate) async fn list_agent_session_events(
     let session_id_str = session_id.to_string();
     let agent_id_str = agent_id.to_string();
 
-    let storage_session = storage
-        .get_session(&session_id_str, &jwt)
-        .await
-        .map_err(|e| match &e {
-            aura_os_storage::StorageError::Server { status: 404, .. } => {
-                ApiError::not_found("session not found")
-            }
-            _ => map_storage_error(e),
-        })?;
+    let storage_session =
+        storage
+            .get_session(&session_id_str, &jwt)
+            .await
+            .map_err(|e| match &e {
+                aura_os_storage::StorageError::Server { status: 404, .. } => {
+                    ApiError::not_found("session not found")
+                }
+                _ => map_storage_error(e),
+            })?;
 
     let project_agent_id = storage_session
         .project_agent_id

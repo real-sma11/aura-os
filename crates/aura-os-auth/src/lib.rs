@@ -50,6 +50,8 @@ struct ZosProfileSummary {
     first_name: Option<String>,
     #[serde(rename = "lastName")]
     last_name: Option<String>,
+    #[serde(default, rename = "profileImage")]
+    profile_image: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -304,7 +306,11 @@ impl AuthService {
             network_user_id: None,
             profile_id: None,
             display_name: build_display_name(&user.profile_summary, &user.primary_zid),
-            profile_image: String::new(),
+            profile_image: user
+                .profile_summary
+                .as_ref()
+                .and_then(|ps| ps.profile_image.clone())
+                .unwrap_or_default(),
             primary_zid: user.primary_zid.unwrap_or_default(),
             zero_wallet: user.primary_wallet_address.unwrap_or_default(),
             wallets: user

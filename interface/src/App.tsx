@@ -2,10 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { lazy, Suspense, useEffect } from "react";
 import { useAuthStore } from "./stores/auth-store";
 import { useAppUIStore } from "./stores/app-ui-store";
+import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
+import { LoggedOutShell, LoggedOutChatView } from "./views/LoggedOutShell";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
@@ -19,6 +21,21 @@ const InviteAcceptView = lazy(() =>
   import("./views/InviteAcceptView").then((m) => ({ default: m.InviteAcceptView })),
 );
 const IdeView = lazy(() => import("./views/IdeView").then((m) => ({ default: m.IdeView })));
+const MarketingShell = lazy(() =>
+  import("./views/marketing/MarketingShell").then((m) => ({ default: m.MarketingShell })),
+);
+const ProductView = lazy(() =>
+  import("./views/marketing/ProductView").then((m) => ({ default: m.ProductView })),
+);
+const ChangelogView = lazy(() =>
+  import("./views/marketing/ChangelogView").then((m) => ({ default: m.ChangelogView })),
+);
+const FeedbackView = lazy(() =>
+  import("./views/marketing/FeedbackView").then((m) => ({ default: m.FeedbackView })),
+);
+const PricingView = lazy(() =>
+  import("./views/marketing/PricingView").then((m) => ({ default: m.PricingView })),
+);
 
 /**
  * Canonical, explicit boot-time auth decision.
@@ -171,6 +188,7 @@ export function App() {
 
 function AppRoutes({ showShell }: { showShell: boolean }) {
   const location = useLocation();
+  const { isNativeApp, hasDesktopBridge } = useAuraCapabilities();
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -180,12 +198,22 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
     );
   }
 
+  // For the web logged-out flow we route `/login` through the
+  // `LoggedOutShell` tree below so the public chat surface stays
+  // mounted behind a `LoginOverlay` modal instead of being replaced
+  // by a full-page route. For native apps and the brief boot window
+  // before auth resolves, `LoginView` keeps owning the entire
+  // surface — there's no underlying public chat to overlay.
+  const useStandaloneLoginRoute = showShell || isNativeApp || hasDesktopBridge;
+
   return (
     <Routes>
-      <Route
-        path="login"
-        element={showShell ? <Navigate to="/" replace /> : <LoginView />}
-      />
+      {useStandaloneLoginRoute && (
+        <Route
+          path="login"
+          element={showShell ? <Navigate to="/" replace /> : <LoginView />}
+        />
+      )}
       <Route path="capture-login" element={<CaptureLoginView />} />
       <Route
         path="ide"
@@ -212,8 +240,60 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
             </Route>
           </Route>
         </Route>
-      ) : (
+      ) : isNativeApp || hasDesktopBridge ? (
         <Route path="*" element={<Navigate to="/login" replace />} />
+      ) : (
+        <>
+          <Route
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <MarketingShell />
+              </Suspense>
+            }
+          >
+            <Route
+              path="product"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ProductView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="changelog"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ChangelogView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="feedback"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <FeedbackView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="pricing"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <PricingView />
+                </Suspense>
+              }
+            />
+          </Route>
+          <Route element={<LoggedOutShell />}>
+            <Route index element={<LoggedOutChatView />} />
+            <Route path="chat" element={<LoggedOutChatView />} />
+            {/* `/login` mounts the same chat view in the outlet so
+                the shell renders normally; `LoggedOutShell` detects
+                the pathname and overlays the login modal on top. */}
+            <Route path="login" element={<LoggedOutChatView />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </>
       )}
     </Routes>
   );

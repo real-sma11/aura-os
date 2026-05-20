@@ -91,20 +91,51 @@ pub struct SessionInit {
     /// Organization UUID for X-Aura-Org-Id billing header.
     #[serde(default)]
     pub aura_org_id: Option<String>,
-    /// Harness-level agent ID for per-agent skill lookup.
-    /// Set by the caller (e.g. aura-os) so the harness can resolve which
-    /// skills are installed for this agent.
+    /// Harness-level agent ID for per-agent skill lookup. Set by the
+    /// caller (e.g. aura-os) so the harness can resolve which skills
+    /// are installed for this agent and which `Session.agent_id`
+    /// hashes to take a turn-lock against.
+    ///
+    /// The string is opaque to the harness, but `aura-os` constructs
+    /// it via `aura_os_core::harness_agent_id` in one of three forms:
+    ///
+    /// - `{template}::default` — bare-agent / loop / single-task /
+    ///   public-chat surfaces with no [`AgentInstance`] or storage
+    ///   session axis.
+    /// - `{template}::{agent_instance_id}` — classic per-instance
+    ///   partition used by automaton runs and any chat surface that
+    ///   opts out of session-level partitioning.
+    /// - `{template}::{agent_instance_id}::{session_id}` — full
+    ///   per-(instance, storage_session) partition. Phase 1 of the
+    ///   parallel-session-chats plan threads the resolved storage
+    ///   `session_id` into the third segment from
+    ///   `agent_route.rs` and `instance_route.rs`, so two chat POSTs
+    ///   against the same `(template, instance)` with different
+    ///   `session_id` values get distinct `Session.agent_id` values
+    ///   in the harness, distinct record logs, and distinct
+    ///   turn-locks — i.e. they run concurrently end-to-end.
+    ///
+    /// The harness path treats this field as a hex-or-string fallback:
+    /// `Session.agent_id = AgentId::from_hex(...).unwrap_or_else(|| blake3(...))`.
+    /// Three-segment strings therefore hash through blake3 and two
+    /// strings differing only in the session segment land on
+    /// distinct `AgentId`s. `parse_agent_id` (router/ids.rs) already
+    /// strips at the first `::` so per-agent skill lookup keeps
+    /// matching the template across all three forms.
+    ///
+    /// [`AgentInstance`]: aura_os_core::AgentInstance
     #[serde(default)]
     pub agent_id: Option<String>,
     /// Template agent id for skill / permissions / billing lookup.
     ///
     /// `agent_id` (above) is the partition key the harness uses for
     /// turn-locking, derived from the AgentInstance via
-    /// `aura_os_core::harness_agent_id`. `template_agent_id` is the
-    /// stable Aura template id (the row in `agents`) so the harness
-    /// can resolve installed skills, agent-level permissions, and
-    /// billing aggregation against a single identity per template
-    /// even when multiple partitions exist.
+    /// `aura_os_core::harness_agent_id` (one of the three forms
+    /// listed there). `template_agent_id` is the stable Aura template
+    /// id (the row in `agents`) so the harness can resolve installed
+    /// skills, agent-level permissions, and billing aggregation
+    /// against a single identity per template even when multiple
+    /// partitions (per-instance, per-session) exist.
     ///
     /// Optional during rollout: when `None`, the harness falls back
     /// to `agent_id` for skill lookup (the pre-Phase-1 behavior).
@@ -187,6 +218,22 @@ pub struct SessionModelOverrides {
     /// should be attached.
     #[serde(default)]
     pub prompt_caching_enabled: Option<bool>,
+    /// Optional stable cache key forwarded to aura-router for OpenAI-family
+    /// prompt caching (`prompt_cache_key` in the OpenAI API). Identical
+    /// values across requests within the same session pin them to the same
+    /// backend partition so the prompt prefix can be cached. aura-os
+    /// derives this from the agent / instance / session identity so two
+    /// turns of the same chat share a key, while two unrelated chats
+    /// don't. Has no effect on Anthropic family (which uses `cache_control`
+    /// blocks rather than a key) — the harness only emits the field on
+    /// outbound requests when the upstream family is OpenAI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    /// Optional retention hint paired with [`Self::prompt_cache_key`].
+    /// Wire values are `"in_memory"` (default, ~5–10 min) or `"24h"`
+    /// (extended retention on newer OpenAI models).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<String>,
 }
 
 /// Payload for `user_message`.

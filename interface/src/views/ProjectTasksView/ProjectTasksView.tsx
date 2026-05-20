@@ -7,20 +7,13 @@ import { useProjectsListStore } from "../../stores/projects-list-store";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { TaskStatusIcon } from "../../components/TaskStatusIcon";
 import { useMobileTasks } from "../../mobile/hooks/useMobileTasks";
+import { getTaskDisplayStatus } from "../../shared/utils/task-display-status";
 import type { Task } from "../../shared/types";
 import styles from "./ProjectTasksView.module.css";
 
 type TaskSegmentId = "active" | "ready" | "blocked" | "done";
 
 const SEGMENT_ORDER: TaskSegmentId[] = ["active", "ready", "blocked", "done"];
-
-function getDisplayStatus(task: Task, liveTaskIds: Set<string>, loopActive: boolean) {
-  return task.status === "in_progress" &&
-    !liveTaskIds.has(task.task_id) &&
-    (!loopActive || liveTaskIds.size > 0)
-      ? "ready"
-      : task.status;
-}
 
 function getTaskSegment(status: string): TaskSegmentId {
   if (status === "in_progress") return "active";
@@ -72,7 +65,7 @@ export function ProjectTasksView() {
     };
 
     for (const task of tasks) {
-      const displayStatus = getDisplayStatus(task, liveTaskIds, loopActive);
+      const displayStatus = getTaskDisplayStatus(task, liveTaskIds, loopActive);
       grouped[getTaskSegment(displayStatus)].push(task);
     }
 
@@ -147,7 +140,7 @@ export function ProjectTasksView() {
         ) : (
           <div className={styles.taskList}>
             {visibleTasks.map((task) => {
-              const displayStatus = getDisplayStatus(task, liveTaskIds, loopActive);
+              const displayStatus = getTaskDisplayStatus(task, liveTaskIds, loopActive);
               const assignedAgentName = task.assigned_agent_instance_id
                 ? agentNameById.get(task.assigned_agent_instance_id)
                 : null;

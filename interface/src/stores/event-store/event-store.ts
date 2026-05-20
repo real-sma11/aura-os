@@ -363,15 +363,39 @@ export function connectEventSocket() {
     (data: string) => {
       try {
         const raw = JSON.parse(data) as Record<string, unknown>;
+        // Phase 4 wire shape (server commit `83752884b`):
+        //   `user_message` / `assistant_message_end` carry
+        //   `{ session_id, project_id, project_agent_id, agent_id }`
+        //   at the top level. Other event types (e.g.
+        //   `session_summary_updated`, `assistant_turn_progress`) still
+        //   send `agent_instance_id`; the parser handles that fallback
+        //   when `project_agent_id` is missing.
         const event = parseAuraEvent(
           raw.type as string,
           raw,
           {
             session_id: raw.session_id as string | undefined,
             project_id: raw.project_id as string | undefined,
-            agent_id: raw.agent_instance_id as string | undefined,
+            agent_id: raw.agent_id as string | undefined,
+            project_agent_id: raw.project_agent_id as string | undefined,
           },
         );
+        // Phase 6 cross-agent diagnostic. Gated behind a window flag
+        // (`window.__AURA_DEBUG_CROSS_AGENT__ = true` from devtools)
+        // so production sessions stay quiet. Logging the raw frame
+        // alongside the parsed view makes Bug-A-style parser
+        // regressions (a wire-shape change that the parser silently
+        // drops) immediately visible in the browser console — see
+        // `apps/aura-os-server/src/handlers/agents/chat/CROSS_AGENT_TRACING.md`
+        // for the matching server-side targets.
+        if (
+          typeof window !== "undefined" &&
+          (window as unknown as { __AURA_DEBUG_CROSS_AGENT__?: unknown })
+            .__AURA_DEBUG_CROSS_AGENT__
+        ) {
+          // eslint-disable-next-line no-console -- gated behind window flag
+          console.debug("[aura.cross-agent] ws raw", { raw, parsed: event });
+        }
         handleSocketEngineEvent(event);
       } catch (error) {
         if (import.meta.env.DEV) {

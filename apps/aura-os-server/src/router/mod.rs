@@ -24,6 +24,7 @@ mod notes;
 mod preferences;
 mod process_generation;
 mod projects_files;
+mod public;
 mod runtime;
 mod social;
 mod specs;
@@ -53,6 +54,7 @@ use notes::notes_routes;
 use preferences::preferences_routes;
 use process_generation::{generation_routes, process_routes};
 use projects_files::project_routes;
+use public::public_routes;
 use runtime::system_routes;
 use social::social_routes;
 use specs::spec_routes;
@@ -99,6 +101,12 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
     let api_router = Router::new()
         .route("/health", get(system::health))
         .merge(auth_routes())
+        // Public anonymous endpoints (`/api/public/*`). Merged at this
+        // level, OUTSIDE `protected_api_router`, so the global
+        // `require_verified_session` tower never inspects the request.
+        // The per-handler `AuthGuestJwt` extractor validates the
+        // short-lived guest JWT issued by `/api/public/setup`.
+        .merge(public_routes())
         .merge(protected_api_router)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

@@ -224,6 +224,21 @@ pub struct ContextBreakdown {
     pub mcp_tokens: u64,
     pub subagents_tokens: u64,
     pub conversation_tokens: u64,
+    /// Tokens served from the upstream provider's prompt cache during
+    /// the most recent turn (Anthropic's `cache_read_input_tokens` or
+    /// OpenAI's `prompt_tokens_details.cached_tokens`). Describes what
+    /// fraction of the *conversation* bucket was a cache hit; not a
+    /// separate context bucket, so excluded from [`Self::total`] and
+    /// [`Self::is_empty`].
+    #[serde(default)]
+    pub cache_read_tokens: u64,
+    /// Tokens written to the upstream provider's prompt cache during
+    /// the most recent turn (Anthropic's `cache_creation_input_tokens`,
+    /// or the cache-miss portion of OpenAI's responses). See
+    /// [`Self::cache_read_tokens`] for why this is NOT included in
+    /// [`Self::total`] / [`Self::is_empty`].
+    #[serde(default)]
+    pub cache_creation_tokens: u64,
 }
 
 impl ContextBreakdown {

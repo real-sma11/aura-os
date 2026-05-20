@@ -112,6 +112,16 @@ pub(super) fn render_summary(metadata: &RunMetadata) -> String {
     let _ = writeln!(out, "- task_failed: {}", c.task_failed);
     let _ = writeln!(out, "- input_tokens: {}", c.input_tokens);
     let _ = writeln!(out, "- output_tokens: {}", c.output_tokens);
+    let _ = writeln!(
+        out,
+        "- cache_creation_input_tokens: {}",
+        c.cache_creation_input_tokens
+    );
+    let _ = writeln!(
+        out,
+        "- cache_read_input_tokens: {}",
+        c.cache_read_input_tokens
+    );
     let _ = writeln!(out);
     if !metadata.tasks.is_empty() {
         let _ = writeln!(out, "## Tasks");

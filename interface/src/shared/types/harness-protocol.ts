@@ -153,6 +153,19 @@ export interface ContextBreakdown {
   mcp_tokens: number;
   subagents_tokens: number;
   conversation_tokens: number;
+  /**
+   * Tokens served from the upstream provider's prompt cache during the
+   * most recent turn (Anthropic `cache_read_input_tokens` or OpenAI
+   * `prompt_tokens_details.cached_tokens`). Describes what fraction of
+   * the *conversation* bucket was a cache hit; the popover renders
+   * this as a "Cached this turn" sub-row, not as a separate bucket.
+   */
+  cache_read_tokens?: number;
+  /**
+   * Tokens written to the upstream provider's prompt cache during the
+   * most recent turn (Anthropic `cache_creation_input_tokens`).
+   */
+  cache_creation_tokens?: number;
 }
 
 export interface FileOp {
