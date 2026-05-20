@@ -98,13 +98,11 @@ function ProjectCreationModalHost() {
 }
 
 function ResponsiveShell() {
-  const { isMobileLayout, hasDesktopBridge } = useAuraCapabilities();
+  const { isMobileLayout } = useAuraCapabilities();
   const appMode = useAppModeStore((s) => s.mode);
 
   if (isMobileLayout) return <MobileShell />;
-  // Web users in simple mode get the ChatGPT-style shell.
-  // Desktop app always renders the full shell.
-  if (!hasDesktopBridge && appMode === "simple") return <SimpleShell />;
+  if (appMode === "simple") return <SimpleShell />;
   return <DesktopShell />;
 }
 
