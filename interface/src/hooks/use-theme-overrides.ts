@@ -19,6 +19,74 @@ import {
   type StoredPresets,
   type ThemePreset,
 } from "../lib/theme-presets";
+import { api } from "../api/client";
+import { useAuthStore } from "../stores/auth-store";
+
+/**
+ * Dispatched after the server hydration step writes a fresher
+ * `StoredOverrides` into localStorage so any mounted hook instance can
+ * re-read it without remounting. The detail is intentionally empty —
+ * listeners reload via {@link loadOverrides} so there's one canonical
+ * source of truth (localStorage), regardless of who triggered the event.
+ */
+const HYDRATED_EVENT = "aura-theme-overrides-hydrated";
+
+/** Fire-and-forget PUT — UI already updated locally; failure is logged
+ *  by the network layer and the next change re-pushes the full blob. */
+function pushOverridesToServer(next: StoredOverrides): void {
+  void api.preferences.putThemeOverrides(next).catch(() => {});
+}
+
+/** Single helper that both PRs of this hook agreed to use for every
+ *  durable write: localStorage first (cheap, sync, sets up the next
+ *  page load), then server PUT (cross-install survivability). */
+function persistStore(next: StoredOverrides): void {
+  saveOverrides(next);
+  pushOverridesToServer(next);
+}
+
+let _hydrationUserId: string | null = null;
+
+async function hydrateFromServer(): Promise<void> {
+  let server: Awaited<ReturnType<typeof api.preferences.getThemeOverrides>>;
+  try {
+    server = await api.preferences.getThemeOverrides();
+  } catch {
+    // Server unavailable / 401 / etc. — keep local state as-is.
+    return;
+  }
+  // "Meaningful data" guard mirrors PR 16's agent-order hydration:
+  // a fresh-install server response is `{ dark: {}, light: {}, global: {} }`
+  // and should NOT clobber the local working set the user may have
+  // built up offline before the server got any data.
+  const hasContent =
+    Object.keys(server.global).length > 0 ||
+    Object.keys(server.dark).length > 0 ||
+    Object.keys(server.light).length > 0;
+  if (!hasContent) return;
+  const sanitized: StoredOverrides = {
+    dark: { ...server.dark } as ThemeOverrides,
+    light: { ...server.light } as ThemeOverrides,
+    global: { ...server.global } as ThemeOverrides,
+  };
+  saveOverrides(sanitized);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(HYDRATED_EVENT));
+  }
+}
+
+// Module-level subscription: server-hydrate the theme overrides once the
+// user is identified, then again whenever the user identity changes
+// (login swap, dev tooling). The `ThemeOverridesBridge` mounted in
+// `main.tsx` ensures this module is loaded at app boot, so the
+// subscription is registered before any auth event fires.
+useAuthStore.subscribe((state) => {
+  const userId = state.user?.user_id ?? null;
+  if (userId === _hydrationUserId) return;
+  _hydrationUserId = userId;
+  if (!userId) return;
+  void hydrateFromServer();
+});
 
 export type UseThemeOverridesResult = {
   /**
@@ -123,6 +191,18 @@ export function useThemeOverrides(): UseThemeOverridesResult {
     applyOverridesToDocument(resolvedTheme, appliedOverrides);
   }, [resolvedTheme, appliedOverrides]);
 
+  // Re-read localStorage whenever the module-level server hydration step
+  // refreshes it. This is what makes a logged-in user see their saved
+  // accent on a fresh install — server data lands in localStorage, the
+  // event fires, mounted hook instances pick it up, the `appliedOverrides`
+  // effect above re-runs, and the UI updates without a remount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => setStore(loadOverrides());
+    window.addEventListener(HYDRATED_EVENT, handler);
+    return () => window.removeEventListener(HYDRATED_EVENT, handler);
+  }, []);
+
   const setToken = useCallback(
     (
       token: EditableToken,
@@ -138,7 +218,7 @@ export function useThemeOverrides(): UseThemeOverridesResult {
           if (value === null) delete nextGlobal[token];
           else nextGlobal[token] = value;
           const next: StoredOverrides = { ...prev, global: nextGlobal };
-          saveOverrides(next);
+          persistStore(next);
           return next;
         });
         return;
@@ -161,7 +241,7 @@ export function useThemeOverrides(): UseThemeOverridesResult {
             ...prev,
             [effectiveTarget]: nextSide,
           };
-          saveOverrides(next);
+          persistStore(next);
           return next;
         });
         return;
@@ -192,7 +272,7 @@ export function useThemeOverrides(): UseThemeOverridesResult {
         if (value === null) delete nextSide[token];
         else nextSide[token] = value;
         const next: StoredOverrides = { ...prev, [resolvedTheme]: nextSide };
-        saveOverrides(next);
+        persistStore(next);
         return next;
       });
     },
@@ -224,7 +304,7 @@ export function useThemeOverrides(): UseThemeOverridesResult {
         [resolvedTheme]: {},
         global: {},
       };
-      saveOverrides(next);
+      persistStore(next);
       return next;
     });
   }, [activePreset, resolvedTheme]);
