@@ -15,6 +15,13 @@ repository.workspace = true
 # applied by the App layer at the call site).
 aura-os-core = { path = "../aura-os-core", default-features = false }
 aura-os-events = { path = "../aura-os-events" }
+# Phase 1 of `workspace-health-diff-gate`: `health::snapshot::Snapshot`
+# fingerprints a deduped `(file, code, kind)` triple set with blake3 so
+# the dev-loop's baseline-vs-current diff is stable across transient
+# line-number drift. blake3 is already a workspace dep (used by other
+# crates for content-addressed hashing); we declare it explicitly here
+# so the dependency on the workspace pin is visible to crate readers.
+blake3 = { workspace = true }
 # Phase G4a / Section F2: `task_context::cache` uses `IndexMap` so the
 # bounded eviction order is FIFO by insertion. The workspace already
 # pulls in `indexmap` transitively (e.g. via `aura-protocol`); we

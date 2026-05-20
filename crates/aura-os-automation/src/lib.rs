@@ -39,6 +39,7 @@ pub mod classify;
 pub mod error;
 pub mod event_kinds;
 pub mod failure;
+pub mod health;
 pub mod progress;
 pub mod resilience;
 pub mod task_context;
@@ -56,6 +57,15 @@ pub use classify::{
 };
 pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};
+// Phase 1 of `workspace-health-diff-gate`: re-export the pure
+// types + classification surface the App layer wires into the
+// task-claim snapshot, the `task_done` completion gate, and the
+// `ExplorationBudget` advisory header in Phases 2-4.
+pub use health::{
+    baseline_reuse_max_age_secs, classify_delta, classify_task_kind, extract_task_scope,
+    is_strict_mode_enabled, parse_cargo_check_json_output, BuildStatus, HealthDelta, HealthError,
+    HealthVerdict, TaskKind, TaskScope, TestStatus, WorkspaceHealth,
+};
 pub use progress::{apply_loop_activity, LoopActivityTransition};
 pub use resilience::{
     recover_failed, recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker,
@@ -132,6 +142,28 @@ mod smoke {
         let ctx = crate::build_task_context(&inputs);
         let _: crate::TaskContext = ctx;
         let _ref_type: Option<crate::TaskRef> = None;
+        // Phase 1 of `workspace-health-diff-gate`: pin the health
+        // module public names so accidental renames blow up here
+        // before the App layer (Phases 2-4) wires them up.
+        let _strict: bool = crate::is_strict_mode_enabled();
+        let _max_age: u64 = crate::baseline_reuse_max_age_secs();
+        let _errors: Vec<crate::HealthError> = crate::parse_cargo_check_json_output("");
+        let _scope: crate::TaskScope = crate::extract_task_scope("", &[]);
+        let _kind: crate::TaskKind = crate::classify_task_kind("", &_scope);
+        let _baseline: crate::WorkspaceHealth = crate::WorkspaceHealth::clean();
+        let _current: crate::WorkspaceHealth = crate::WorkspaceHealth::clean();
+        let _delta: crate::HealthDelta = crate::classify_delta(
+            &_baseline,
+            &_current,
+            &_scope,
+            _kind,
+            _strict,
+        );
+        let _verdict: crate::HealthVerdict = _delta.verdict;
+        let _blocks: bool = _verdict.blocks_task_done();
+        // Also pin the two enums the App layer pattern-matches on.
+        let _: crate::BuildStatus = crate::BuildStatus::Passing;
+        let _: crate::TestStatus = crate::TestStatus::Unknown;
     }
 
     fn dummy_task() -> aura_os_core::Task {

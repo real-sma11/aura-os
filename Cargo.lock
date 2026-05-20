@@ -446,6 +446,7 @@ dependencies = [
  "aura-os-core",
  "aura-os-events",
  "aura-os-harness",
+ "blake3",
  "chrono",
  "indexmap",
  "serde",
