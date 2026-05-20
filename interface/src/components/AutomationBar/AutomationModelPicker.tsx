@@ -49,13 +49,23 @@ export function AutomationModelPicker({
   // this, every project the user hasn't poked the automation picker on
   // would render the adapter default (Sonnet) on reopen, even when the
   // user just picked Opus in the chat input bar one second earlier.
-  // `loadPersistedModel()` reads `aura-selected-model:default` and
-  // itself falls back to the adapter default, so the chain is
-  // (per-project automation pick) -> (global main-LLM pick) -> (adapter
-  // default). The per-project key still wins once the user picks here,
-  // preserving the loop-vs-chat decoupling documented in
-  // `automation-loop-store.ts`.
-  const effectiveModelId = model ?? loadPersistedModel();
+  //
+  // The chat input bar's `persistModel` writes the user's pick to
+  // `aura-selected-model:<adapterType>` (in addition to the per-agent
+  // slot). Every project Chat- and Loop-role agent runs on the
+  // `aura_harness` adapter — the server actively rejects anything else
+  // (see `agents/runtime.rs` and `agents/chat/agent_route/mod.rs`) —
+  // so reading the harness-scoped key surfaces the most recent main
+  // chat pick across the whole app. Passing `"aura_harness"` explicitly
+  // (rather than letting `loadPersistedModel()` default to the unused
+  // `:default` key) is what actually wires this fallback up; without it
+  // the picker silently degrades to the adapter default.
+  //
+  // The chain ends up: (per-project automation pick) -> (global
+  // main-LLM chat pick) -> (adapter default). The per-project key
+  // still wins once the user picks here, preserving the loop-vs-chat
+  // decoupling documented in `automation-loop-store.ts`.
+  const effectiveModelId = model ?? loadPersistedModel("aura_harness");
   const label = modelLabel(effectiveModelId);
 
   const renderMenu = useCallback(

@@ -48,6 +48,7 @@ import { useAutomationLoopStore } from "../../stores/automation-loop-store";
 import {
   AURA_MANAGED_CHAT_MODELS,
   AVAILABLE_MODELS,
+  persistModel,
 } from "../../constants/models";
 import type { ProjectId } from "../../shared/types";
 
@@ -123,15 +124,13 @@ describe("AutomationModelPicker", () => {
       );
     });
 
-    it("falls back to the main-LLM global pick when no per-project automation pick exists", () => {
-      // Simulate the user having picked Opus 4.7 in the chat input bar
-      // somewhere (which writes the global key as a side effect of
-      // `persistModel`). The automation picker MUST surface that
-      // instead of the adapter default.
-      localStorage.setItem(
-        "aura-selected-model:default",
-        "aura-claude-opus-4-7",
-      );
+    it("falls back to the main-LLM chat pick when no per-project automation pick exists", () => {
+      // Drive the chat input bar's real persistence path so this test
+      // couples to `persistModel`'s contract, not its internal key
+      // layout. Project chats always run on the `aura_harness`
+      // adapter (enforced server-side), so the picker's fallback must
+      // pick this up even without any per-agent slot present.
+      persistModel("aura-claude-opus-4-7", "aura_harness");
 
       render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
       expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent(
@@ -139,15 +138,31 @@ describe("AutomationModelPicker", () => {
       );
     });
 
-    it("the per-project automation pick still wins over the main-LLM global pick", () => {
-      // Both keys set: project-specific automation pick is GPT-5.5,
-      // global main-LLM pick is Opus 4.7. The project-specific value
-      // must win so loop picks stay decoupled from the chat input bar
-      // once the user has explicitly picked here.
+    it("ignores the unused `:default` LS key (chat never writes there)", () => {
+      // Regression guard: the previous implementation called
+      // `loadPersistedModel()` with no args, which reads
+      // `aura-selected-model:default`. The chat input bar never
+      // writes that key, so a value sitting there must NOT be
+      // surfaced as the fallback — otherwise the picker can show a
+      // stale value that doesn't reflect any real user pick.
       localStorage.setItem(
         "aura-selected-model:default",
         "aura-claude-opus-4-7",
       );
+
+      render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
+      // Expect the adapter default (Sonnet 4.6), not Opus.
+      expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent(
+        "Sonnet 4.6",
+      );
+    });
+
+    it("the per-project automation pick still wins over the main-LLM chat pick", () => {
+      // Both keys set: project-specific automation pick is GPT-5.5,
+      // global main-LLM chat pick is Opus 4.7. The project-specific
+      // value must win so loop picks stay decoupled from the chat
+      // input bar once the user has explicitly picked here.
+      persistModel("aura-claude-opus-4-7", "aura_harness");
       useAutomationLoopStore.getState().setLoopModel(PROJECT, "aura-gpt-5-5");
 
       render(<AutomationModelPicker projectId={PROJECT} disabled={false} />);
