@@ -534,8 +534,12 @@ mod tests {
         );
         let important_count = rendered.matches("IMPORTANT:").count();
         assert!(
-            important_count >= 3,
-            "expected three IMPORTANT reminders, got {important_count}: {rendered}"
+            important_count >= 4,
+            "expected four IMPORTANT reminders, got {important_count}: {rendered}"
+        );
+        assert!(
+            rendered.contains("smallest compatible prerequisite"),
+            "expected implementation recovery reminder: {rendered}"
         );
     }
 
@@ -547,5 +551,9 @@ mod tests {
         assert!(rendered.contains("<project_context>"));
         assert!(rendered.contains(&project_id.to_string()));
         assert!(rendered.contains("IMPORTANT:"));
+        assert!(
+            rendered.contains("smallest compatible prerequisite"),
+            "expected fallback implementation recovery reminder: {rendered}"
+        );
     }
 }

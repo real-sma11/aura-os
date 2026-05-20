@@ -131,5 +131,13 @@ pub fn build_project_system_prompt_for_test(
         "IMPORTANT: When calling tools that accept a project_id parameter, \
          always use the project_id from the project_context above.\n\n",
     );
+    ctx.push_str(
+        "IMPORTANT: When an implementation task depends on a missing internal API, \
+         type, helper, or module, do not stop at discovery. Infer and implement \
+         the smallest compatible prerequisite needed to complete the requested \
+         task, following existing project patterns and adding focused tests. \
+         Stop only when the prerequisite would require external credentials, \
+         unavailable services, destructive changes, or a product decision.\n\n",
+    );
     format!("{}{}", ctx, agent_prompt)
 }

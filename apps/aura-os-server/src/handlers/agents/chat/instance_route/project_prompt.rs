@@ -43,6 +43,7 @@ pub(crate) fn render_project_context(
         "IMPORTANT: When creating or updating specs, put the markdown only in the `markdown_contents` tool argument and keep visible assistant text to a short preview. \
          Create large or multi-phase plans as multiple focused specs, one `create_spec` call at a time, instead of one huge markdown payload.\n\n",
     );
+    ctx.push_str(implementation_recovery_reminder());
     ctx
 }
 
@@ -51,7 +52,14 @@ pub(crate) fn render_project_context_fallback(project_id: &ProjectId) -> String 
         "<project_context>\nproject_id: {}\n</project_context>\n\n\
          IMPORTANT: When calling tools that accept a project_id parameter, always use the project_id above.\n\n\
          IMPORTANT: For filesystem and command tools, treat the project root as `.` and always use relative paths. Never pass `/` or any other absolute host path.\n\n\
-         IMPORTANT: When creating or updating specs, put the markdown only in the `markdown_contents` tool argument and keep visible assistant text to a short preview. Create large or multi-phase plans as multiple focused specs, one `create_spec` call at a time, instead of one huge markdown payload.\n\n",
+         IMPORTANT: When creating or updating specs, put the markdown only in the `markdown_contents` tool argument and keep visible assistant text to a short preview. Create large or multi-phase plans as multiple focused specs, one `create_spec` call at a time, instead of one huge markdown payload.\n\n{}",
         project_id,
+        implementation_recovery_reminder(),
     )
+}
+
+pub(crate) fn implementation_recovery_reminder() -> &'static str {
+    "IMPORTANT: When an implementation task depends on a missing internal API, type, helper, or module, do not stop at discovery. \
+     Infer and implement the smallest compatible prerequisite needed to complete the requested task, following existing project patterns and adding focused tests. \
+     Stop only when the prerequisite would require external credentials, unavailable services, destructive changes, or a product decision.\n\n"
 }
