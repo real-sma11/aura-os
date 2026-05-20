@@ -25,6 +25,27 @@ interface CompletedTaskOutputProps {
    * "finished without terminal" events, …).
    */
   failureContext?: PanelTaskFailureContext;
+  /**
+   * Initial collapsed state. The Run pane keeps its rows collapsed
+   * until clicked; embedding contexts (e.g. the Tasks-tab task
+   * preview) prefer the body expanded by default so the run history
+   * is visible without an extra click.
+   */
+  defaultExpanded?: boolean;
+  /**
+   * When `false`, the dismiss "X" button is hidden. Embedding contexts
+   * outside the Run pane (the task preview) shouldn't expose the
+   * destructive "drop this row from the panel" affordance — that
+   * interaction belongs to the Run pane only.
+   */
+  showDismiss?: boolean;
+  /**
+   * Hide the row's chevron/title header. Used when a parent surface
+   * already labels the section (e.g. the Tasks-tab task preview) so
+   * the embedded body doesn't repeat the task title above the run
+   * history.
+   */
+  showHeader?: boolean;
 }
 
 /**
@@ -50,6 +71,9 @@ export function CompletedTaskOutput({
   status,
   failureReason,
   failureContext,
+  defaultExpanded = false,
+  showDismiss = true,
+  showHeader = true,
 }: CompletedTaskOutputProps) {
   const dismissTask = useTaskOutputPanelStore((s) => s.dismissTask);
   // `CompletedTaskOutput` only renders for non-active rows, so every
@@ -57,9 +81,12 @@ export function CompletedTaskOutput({
   const { events, fallbackText, hasStructuredContent, hasAnyContent } =
     useTaskOutputView(taskId, projectId, true);
 
-  // Default collapsed, but remember once the user expands so re-renders
-  // (e.g. driven by hydration finishing) do not yank the body closed.
-  const [collapsed, setCollapsed] = useState(true);
+  // Default collapsed in the Run pane so a long history doesn't blow
+  // out the panel; the task preview opts in to `defaultExpanded` so
+  // the run output is visible without an extra click. Either way we
+  // remember once the user toggles it so re-renders (e.g. driven by
+  // hydration finishing) do not yank the body closed.
+  const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
   const statusIcon =
     status === "failed" ? <AlertTriangle size={10} />
@@ -78,39 +105,43 @@ export function CompletedTaskOutput({
 
   return (
     <div className={styles.taskSection}>
-      <button
-        type="button"
-        className={styles.taskHeader}
-        onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
-      >
-        <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-          <ChevronRight size={10} />
-        </span>
-        <span className={dotClass}>{statusIcon}</span>
-        <span className={styles.taskTitle}>{title || taskId}</span>
-        <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
-        <span
-          role="button"
-          tabIndex={0}
-          className={styles.dismissBtn}
-          onClick={(e) => {
-            e.stopPropagation();
-            dismissTask(taskId);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              dismissTask(taskId);
-            }
-          }}
-          title="Dismiss"
-          aria-label="Dismiss task output"
+      {showHeader && (
+        <button
+          type="button"
+          className={styles.taskHeader}
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
         >
-          <XIcon size={10} />
-        </span>
-      </button>
+          <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
+            <ChevronRight size={10} />
+          </span>
+          <span className={dotClass}>{statusIcon}</span>
+          <span className={styles.taskTitle}>{title || taskId}</span>
+          <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
+          {showDismiss && (
+            <span
+              role="button"
+              tabIndex={0}
+              className={styles.dismissBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissTask(taskId);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dismissTask(taskId);
+                }
+              }}
+              title="Dismiss"
+              aria-label="Dismiss task output"
+            >
+              <XIcon size={10} />
+            </span>
+          )}
+        </button>
+      )}
       {!collapsed && (
         <>
           {status === "failed" && failureReason && (

@@ -118,8 +118,23 @@ vi.mock("../TaskFilesSection", () => ({
   ),
 }));
 
-vi.mock("../TaskOutputSection", () => ({
-  TaskOutputSection: () => <div data-testid="task-output" />,
+vi.mock("../TaskOutputPanel", () => ({
+  ActiveTaskStream: ({ taskId }: { taskId: string }) => (
+    <div data-testid="active-task-stream" data-task-id={taskId} />
+  ),
+  CompletedTaskOutput: ({
+    taskId,
+    status,
+  }: {
+    taskId: string;
+    status: string;
+  }) => (
+    <div
+      data-testid="completed-task-output"
+      data-task-id={taskId}
+      data-status={status}
+    />
+  ),
 }));
 
 vi.mock("../../shared/utils/format", () => ({ toBullets: (s: string) => s }));
@@ -175,11 +190,48 @@ beforeEach(() => {
 });
 
 describe("TaskPreview", () => {
-  it("renders task meta, files, and output sections", () => {
+  it("renders task meta and files sections", () => {
     renderWithRouter(<TaskPreview task={makeTask()} />);
     expect(screen.getByTestId("task-meta")).toBeInTheDocument();
     expect(screen.getByTestId("task-files")).toBeInTheDocument();
-    expect(screen.getByTestId("task-output")).toBeInTheDocument();
+  });
+
+  it("does not render an output row for tasks that have not run", () => {
+    renderWithRouter(<TaskPreview task={makeTask({ status: "ready" as TaskStatus })} />);
+    expect(screen.queryByTestId("active-task-stream")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("completed-task-output")).not.toBeInTheDocument();
+  });
+
+  it("renders ActiveTaskStream while the task is in progress", () => {
+    mockLiveStatus = "in_progress" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "in_progress" as TaskStatus })} />,
+    );
+    expect(screen.getByTestId("active-task-stream")).toHaveAttribute(
+      "data-task-id",
+      "task-1",
+    );
+    expect(screen.queryByTestId("completed-task-output")).not.toBeInTheDocument();
+  });
+
+  it("renders CompletedTaskOutput for a done task so the run history persists", () => {
+    mockLiveStatus = "done" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "done" as TaskStatus })} />,
+    );
+    const output = screen.getByTestId("completed-task-output");
+    expect(output).toHaveAttribute("data-task-id", "task-1");
+    expect(output).toHaveAttribute("data-status", "completed");
+    expect(screen.queryByTestId("active-task-stream")).not.toBeInTheDocument();
+  });
+
+  it("renders CompletedTaskOutput for a failed task", () => {
+    mockLiveStatus = "failed" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "failed" as TaskStatus })} />,
+    );
+    const output = screen.getByTestId("completed-task-output");
+    expect(output).toHaveAttribute("data-status", "failed");
   });
 
   it("shows effective status as ready", () => {

@@ -1,5 +1,9 @@
 import { renderHook, act } from "@testing-library/react";
-import { useCooldownStatus, cooldownLabel } from "./use-cooldown-status";
+import {
+  useCooldownStatus,
+  cooldownLabel,
+  renderCooldownMessage,
+} from "./use-cooldown-status";
 import { EventType } from "../shared/types/aura-events";
 
 type SubscribeCallback = (event: {
@@ -142,5 +146,25 @@ describe("cooldownLabel", () => {
 
   it("returns a generic label for missing kind", () => {
     expect(cooldownLabel(null)).toBe("Paused");
+  });
+});
+
+describe("renderCooldownMessage", () => {
+  it("includes the remaining seconds when known", () => {
+    expect(
+      renderCooldownMessage({ retryKind: "provider_rate_limited", remainingSeconds: 30 }),
+    ).toBe("Rate limited by provider — resuming in 30s…");
+  });
+
+  it("omits countdown when remainingSeconds is zero", () => {
+    expect(
+      renderCooldownMessage({ retryKind: "provider_rate_limited", remainingSeconds: 0 }),
+    ).toBe("Rate limited by provider — resuming…");
+  });
+
+  it("handles missing retry_kind gracefully", () => {
+    expect(renderCooldownMessage({ retryKind: null, remainingSeconds: null })).toBe(
+      "Paused — resuming…",
+    );
   });
 });

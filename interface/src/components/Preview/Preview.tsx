@@ -196,7 +196,7 @@ export function PreviewContent() {
   }, [resetKey, shouldAutoScroll]);
 
   // Track pin/unpin while a task is showing. Tail-growth pinning (new
-  // tokens, tool rows) is handled inside `TaskOutputSection` via a
+  // tokens, tool rows) is handled inside `ActiveTaskStream` via a
   // useLayoutEffect keyed on the stream store — pairs with CSS
   // `overflow-anchor: auto` on `.previewBody` which covers growth above
   // the anchor natively. Mirrors the main chat's pattern.

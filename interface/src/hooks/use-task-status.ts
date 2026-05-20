@@ -45,10 +45,10 @@ export function useTaskStatus(
    * Persisted `tasks.execution_notes` for this task. When the task is
    * canonically `failed` and no live `task_failed` event has fired
    * (the common case after a page reload), the hook surfaces this
-   * value as `failReason` so the failure banner and the "Copy All
-   * Output" markdown in {@link TaskOutputSection} still render a
-   * reason. A live event always wins because `liveFailReason` is
-   * checked first.
+   * value as `failReason` so the failure banner in `TaskMetaSection`
+   * and the failure banner the embedded `CompletedTaskOutput` row
+   * displays still render a reason. A live event always wins because
+   * `liveFailReason` is checked first.
    *
    * Pass `undefined` or `null` when no server-side reason is
    * available; `failReason` then stays `null`.

@@ -29,11 +29,12 @@ const EMPTY: CooldownState = {
 
 /**
  * Track project/agent cooldown state driven by `loop_paused` /
- * `loop_resumed` domain events. Used by `TaskOutputSection` and friends
- * to distinguish "agent is still working, no output yet" from "agent is
- * rate-limited, backing off for N seconds" — the backend already knows
- * the difference via `retry_after_ms` + `InfraFailureClass`, and emits
- * it on `loop_paused` with `cooldown_ms` and `retry_kind`.
+ * `loop_resumed` domain events. Used by `ActiveTaskStream` and the Run
+ * pane to distinguish "agent is still working, no output yet" from
+ * "agent is rate-limited, backing off for N seconds" — the backend
+ * already knows the difference via `retry_after_ms` +
+ * `InfraFailureClass`, and emits it on `loop_paused` with
+ * `cooldown_ms` and `retry_kind`.
  */
 export function useCooldownStatus(
   agentInstanceId?: string,
@@ -144,4 +145,20 @@ export function cooldownLabel(retryKind: string | null): string {
     default:
       return retryKind;
   }
+}
+
+/**
+ * Render the waiting-for-output status line shown by `ActiveTaskStream`
+ * (in both the Run pane and the embedded task preview) while the loop
+ * is paused for a provider cooldown.
+ */
+export function renderCooldownMessage(cooldown: {
+  retryKind: string | null;
+  remainingSeconds: number | null;
+}): string {
+  const label = cooldownLabel(cooldown.retryKind);
+  if (cooldown.remainingSeconds != null && cooldown.remainingSeconds > 0) {
+    return `${label} — resuming in ${cooldown.remainingSeconds}s…`;
+  }
+  return `${label} — resuming…`;
 }

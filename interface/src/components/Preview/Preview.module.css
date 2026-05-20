@@ -71,7 +71,7 @@
   /* Native CSS scroll anchoring keeps the viewport stable when blocks are
      inserted above the anchor during streaming, eliminating the flash the
      old MutationObserver + rAF + scrollTop pattern caused. Tail-growth
-     pinning happens in TaskOutputSection via a commit-phase useLayoutEffect. */
+     pinning happens in ActiveTaskStream via a commit-phase useLayoutEffect. */
   overflow-anchor: auto;
   /* Bottom padding matches the desktop shell's fade gradient
      (`--sidekick-fade-height` in DesktopShell.module.css) so the trailing

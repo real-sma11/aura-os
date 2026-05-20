@@ -142,8 +142,8 @@ describe("useTaskStatus", () => {
 
   // Reload-safe seeding: emulates the "user refreshed the page after a
   // task already failed" path. No live `task_failed` event will ever
-  // fire, so without this fallback the "Copy All Output" markdown
-  // would have no fail reason (see TaskOutputSection.formatDebugOutput).
+  // fire, so without this fallback the failure banner inside
+  // `TaskMetaSection` would have no reason to render after reload.
   it("derives failReason from canonicalExecutionNotes on failed + no live reason", () => {
     const { result } = renderHook(() =>
       useTaskStatus(

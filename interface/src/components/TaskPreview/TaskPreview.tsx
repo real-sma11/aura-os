@@ -8,7 +8,8 @@ import { VerificationStepItem } from "../VerificationStepItem";
 import { GitStepItem } from "../GitStepItem";
 import { TaskMetaSection } from "../TaskMetaSection";
 import { TaskFilesSection } from "../TaskFilesSection";
-import { TaskOutputSection } from "../TaskOutputSection";
+import { ActiveTaskStream, CompletedTaskOutput } from "../TaskOutputPanel";
+import { useProjectActions } from "../../stores/project-action-store";
 import { toBullets } from "../../shared/utils/format";
 import { useTaskPreviewData, useRunTaskData } from "./useTaskPreviewData";
 import styles from "../Preview/Preview.module.css";
@@ -38,11 +39,27 @@ interface TaskPreviewProps {
 
 export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewProps) {
   const {
-    taskOutput, effectiveStatus, effectiveSessionId, isActive,
+    taskOutput, effectiveStatus, effectiveSessionId, isActive, isTerminal,
     elapsed, failReason, syncWarning, agentInstance, completedByAgent,
     retrying, handleRetry, handleViewSession,
-    fileOps, notes, showNotes, streamKey,
+    fileOps, notes, showNotes,
   } = useTaskPreviewData(task);
+  const ctx = useProjectActions();
+  const projectId = ctx?.project.project_id;
+
+  // For terminal tasks (`done` / `failed`), render the same
+  // `CompletedTaskOutput` row the Run pane uses so the live run
+  // history persists at the bottom of the preview after the task
+  // finishes — matching the data and layout of the Run section.
+  // While the task is still active we render `ActiveTaskStream` so
+  // the streaming output (text, tool cards, thinking) keeps flowing.
+  // Tasks that have never run (no panel entry, ready/pending/...)
+  // skip the section entirely so the preview doesn't render an
+  // empty "Output" placeholder.
+  const panelStatus: "completed" | "failed" | null =
+    effectiveStatus === "done" ? "completed"
+    : effectiveStatus === "failed" ? "failed"
+    : null;
   return (
     <>
       <TaskMetaSection
@@ -119,16 +136,35 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
         </GroupCollapsible>
       )}
 
-      <TaskOutputSection
-        isActive={isActive}
-        streamKey={streamKey}
-        taskId={task.task_id}
-        task={task}
-        taskOutput={taskOutput}
-        failReason={failReason}
-        scrollRef={scrollRef}
-        isAutoFollowing={isAutoFollowing}
-      />
+      {isActive ? (
+        <GroupCollapsible label="Live Output" defaultOpen className={styles.section}>
+          <div className={styles.liveOutputSection}>
+            <ActiveTaskStream
+              taskId={task.task_id}
+              title={task.title}
+              scrollRef={scrollRef}
+              isAutoFollowing={isAutoFollowing}
+              defaultExpanded
+              showHeader={false}
+            />
+          </div>
+        </GroupCollapsible>
+      ) : isTerminal && panelStatus && projectId ? (
+        <GroupCollapsible label="Output" defaultOpen className={styles.section}>
+          <div className={styles.liveOutputSection}>
+            <CompletedTaskOutput
+              taskId={task.task_id}
+              projectId={projectId}
+              title={task.title}
+              status={panelStatus}
+              failureReason={failReason ?? task.execution_notes ?? null}
+              defaultExpanded
+              showDismiss={false}
+              showHeader={false}
+            />
+          </div>
+        </GroupCollapsible>
+      ) : null}
     </>
   );
 }

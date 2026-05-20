@@ -13,6 +13,11 @@ import {
 } from "../../hooks/stream/hooks";
 import { LLMStreamOutput } from "../ChatOutput";
 import { CookingIndicator } from "../CookingIndicator";
+import {
+  useCooldownStatus,
+  renderCooldownMessage,
+} from "../../hooks/use-cooldown-status";
+import { useProjectActions } from "../../stores/project-action-store";
 import styles from "./TaskOutputPanel.module.css";
 
 interface ActiveTaskStreamProps {
@@ -20,6 +25,18 @@ interface ActiveTaskStreamProps {
   title?: string;
   scrollRef?: RefObject<HTMLDivElement | null>;
   isAutoFollowing?: boolean;
+  /**
+   * Initial collapsed state. The Run pane keeps active rows expanded
+   * (so live output is visible immediately); embedding contexts can
+   * pass `false` to start collapsed.
+   */
+  defaultExpanded?: boolean;
+  /**
+   * Hide the row's chevron/title header. Used when a parent surface
+   * already labels the section so the embedded body doesn't repeat
+   * the task title above the stream.
+   */
+  showHeader?: boolean;
 }
 
 export function ActiveTaskStream({
@@ -27,6 +44,8 @@ export function ActiveTaskStream({
   title,
   scrollRef,
   isAutoFollowing = true,
+  defaultExpanded = true,
+  showHeader = true,
 }: ActiveTaskStreamProps) {
   const { streamKey } = useTaskStream(taskId, true);
   const isStreaming = useIsStreaming(streamKey);
@@ -37,8 +56,10 @@ export function ActiveTaskStream({
   const activeToolCalls = useActiveToolCalls(streamKey);
   const timeline = useTimeline(streamKey);
   const progressText = useProgressText(streamKey);
+  const ctx = useProjectActions();
+  const cooldown = useCooldownStatus(undefined, ctx?.project.project_id);
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
   const hasContent = isStreaming || !!streamingText || !!thinkingText || activeToolCalls.length > 0;
 
@@ -65,20 +86,26 @@ export function ActiveTaskStream({
     timeline.length,
   ]);
 
+  const waitingLabel = cooldown.paused
+    ? renderCooldownMessage(cooldown)
+    : "Waiting for output…";
+
   return (
     <div className={styles.taskSection}>
-      <button
-        type="button"
-        className={styles.taskHeader}
-        onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
-      >
-        <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-          <ChevronRight size={10} />
-        </span>
-        <span className={styles.taskDot} />
-        <span className={styles.taskTitle}>{title || taskId}</span>
-      </button>
+      {showHeader && (
+        <button
+          type="button"
+          className={styles.taskHeader}
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+        >
+          <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
+            <ChevronRight size={10} />
+          </span>
+          <span className={styles.taskDot} />
+          <span className={styles.taskTitle}>{title || taskId}</span>
+        </button>
+      )}
       {!collapsed && (
         <div className={styles.taskBody}>
           {hasContent ? (
@@ -94,7 +121,7 @@ export function ActiveTaskStream({
               showPhaseIndicator={false}
             />
           ) : (
-            <CookingIndicator label="Waiting for output…" />
+            <CookingIndicator label={waitingLabel} />
           )}
         </div>
       )}
