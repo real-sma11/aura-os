@@ -106,7 +106,13 @@
   gap: var(--space-1);
   max-width: 480px;
   width: 100%;
-  margin-left: max(0px, calc(50vw - 240px - var(--left-panel-width, 248px) - 1px - var(--space-5)));
+  margin-left: max(
+    0px,
+    calc(
+      50vw - 240px - var(--left-panel-width, 248px) - 1px - var(--space-5) -
+        var(--sidekick-width, 0px) / 2
+    )
+  );
   margin-right: auto;
 }
 
@@ -114,7 +120,13 @@
   max-width: 480px;
   width: 100%;
   height: 100%;
-  margin-left: max(0px, calc(50vw - 240px - var(--left-panel-width, 248px) - 1px - var(--space-5)));
+  margin-left: max(
+    0px,
+    calc(
+      50vw - 240px - var(--left-panel-width, 248px) - 1px - var(--space-5) -
+        var(--sidekick-width, 0px) / 2
+    )
+  );
   margin-right: auto;
 }
 
