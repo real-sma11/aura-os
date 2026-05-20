@@ -1,5 +1,4 @@
 .root {
-  --commit-0: rgba(255, 255, 255, 0.08);
   --commit-1: #0d4a3a;
   --commit-2: #1a7a5a;
   --commit-3: #2db87a;
@@ -32,11 +31,11 @@
   width: 7px;
   height: 7px;
   border-radius: 1px;
-  background: #000;
+  background: var(--color-surface-tint);
 }
 
 .cell[data-level="0"] {
-  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.15) 1.2px, #000 1.2px);
+  background: radial-gradient(circle at center, var(--color-overlay-light) 1.2px, var(--color-surface-tint) 1.2px);
 }
 
 .cell[data-level="1"] {
