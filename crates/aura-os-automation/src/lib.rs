@@ -125,6 +125,12 @@ mod smoke {
         let budget = crate::ExplorationBudget::for_task(0, 0);
         let _ = budget.classify(0);
         let _ = budget.advisory_text(0);
+        // Phase 2 of `workspace-health-diff-gate`: the in-flight
+        // baseline-red nudge methods. Pin the symbols so accidental
+        // renames blow up here before the App layer wires them
+        // through the per-turn prompt header.
+        let _ = budget.advisory_text_with_health(0, 0, None, None);
+        let _ = budget.advisory_text_with_health_no_cache(0, None, None);
         let _: u32 = crate::EXPLORATION_SOFT_FLOOR;
         let _: u32 = crate::EXPLORATION_SOFT_CEILING;
         let _: u32 = crate::EXPLORATION_HARD_FLOOR;
