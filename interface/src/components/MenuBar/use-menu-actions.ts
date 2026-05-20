@@ -5,6 +5,7 @@ import { useAgentStore } from "../../apps/agents/stores/agent-store";
 import { useProjectsListStore } from "../../stores/projects-list-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useOnboardingStore } from "../../features/onboarding/onboarding-store";
+import { useAuth } from "../../stores/auth-store";
 import { windowCommand } from "../../lib/windowCommand";
 import { zoomIn, zoomOut, resetZoom } from "../../lib/zoom";
 import { track } from "../../lib/analytics";
@@ -100,6 +101,7 @@ export function useMenuActions(): {
 } {
   const navigate = useNavigate();
   const agentContext = useAgentNavigationContext();
+  const { isAuthenticated, logout } = useAuth();
 
   const handleNewAgent = useCallback(() => {
     useAgentStore.getState().openCreateAgentModal();
@@ -127,6 +129,10 @@ export function useMenuActions(): {
   const handleExit = useCallback(() => {
     windowCommand("close");
   }, []);
+
+  const handleLogout = useCallback(() => {
+    void logout();
+  }, [logout]);
 
   const handleToggleSidekick = useCallback(() => {
     useAppUIStore.getState().toggleSidekick();
@@ -175,6 +181,7 @@ export function useMenuActions(): {
       "file.newWindow": handleNewWindow,
       "file.newProject": handleNewProject,
       "file.settings": handleSettings,
+      "file.logout": handleLogout,
       "file.exit": handleExit,
       "edit.undo": () => execEditCommand("undo"),
       "edit.redo": () => execEditCommand("redo"),
@@ -202,6 +209,7 @@ export function useMenuActions(): {
     [
       handleExit,
       handleGettingStarted,
+      handleLogout,
       handleNewAgent,
       handleNewProject,
       handleNewWindow,
@@ -219,9 +227,12 @@ export function useMenuActions(): {
       if (key === "view.previousAgent" || key === "view.nextAgent") {
         return !isAgentCyclingAvailable(agentContext);
       }
+      if (key === "file.logout") {
+        return !isAuthenticated;
+      }
       return false;
     },
-    [agentContext],
+    [agentContext, isAuthenticated],
   );
 
   return { actions, agentContext, isItemDisabled };

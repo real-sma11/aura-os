@@ -24,7 +24,7 @@ use tracing::warn;
 
 pub(crate) use endpoint::{endpoint_for_channel, update_base_url, updater_supported};
 
-const CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
+const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const INITIAL_CHECK_DELAY: Duration = Duration::from_secs(5);
 const SETTINGS_FILE_NAME: &str = "desktop-updater.json";
@@ -293,10 +293,7 @@ pub(super) fn record_step_only(
     step: diagnostics::UpdateStep,
     detail: Option<&str>,
 ) {
-    let status = state
-        .status
-        .read()
-        .expect("updater status lock poisoned");
+    let status = state.status.read().expect("updater status lock poisoned");
     let status_str = status.discriminant_str();
     let version = status.version().map(str::to_string);
     let channel = status.channel().map(|c| c.as_str().to_string());

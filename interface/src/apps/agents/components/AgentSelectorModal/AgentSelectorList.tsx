@@ -78,6 +78,17 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
     const listRef = useRef<HTMLDivElement>(null);
     const isCreating = creating !== null;
 
+    // Synchronous guard against rapid double-clicks. `disabled={isCreating}`
+    // on the row buttons isn't enough because (a) the rows fire on
+    // `onMouseDown`, which React's `disabled` attribute does not block,
+    // and (b) `isCreating` is React state that only flips `true` on the
+    // next render — a fast second click can land before the upstream
+    // `setCreating(...)` from `useAgentSelectorData` has been committed,
+    // hit the stale closure, and create a second agent instance. The
+    // ref flips synchronously inside `activate` so the second mousedown
+    // short-circuits before invoking the upstream callbacks.
+    const activatingRef = useRef(false);
+
     // Reset the highlight to the top whenever the visible set of rows
     // changes shape; without this an unrelated keystroke like
     // backspacing the query could leave `activeIndex` pointing past the
@@ -99,9 +110,18 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
       }
     }, [activeIndex]);
 
+    // Release the synchronous guard once the upstream `creating` state
+    // settles back to `null` (success, error, or modal close all hit the
+    // `finally` blocks in `useAgentSelectorData`). Without this the ref
+    // would stay `true` on a subsequent open.
+    useEffect(() => {
+      if (!isCreating) activatingRef.current = false;
+    }, [isCreating]);
+
     const activate = useCallback(
       (row: ItemRow | undefined) => {
-        if (!row || isCreating) return;
+        if (!row || isCreating || activatingRef.current) return;
+        activatingRef.current = true;
         if (row.kind === "standard") {
           onSelectStandard();
           return;
@@ -159,15 +179,24 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
         </div>
 
         <div className={styles.pickerBody}>
-          {loading ? (
-            <div className={styles.loadingWrap}>
-              <Spinner size="sm" />
-            </div>
-          ) : rows.length === 0 ? (
-            <div className={styles.emptyHint}>
-              <Text size="sm" variant="muted">No agents match your search.</Text>
-            </div>
+          {rows.length === 0 ? (
+            loading ? (
+              <div className={styles.loadingWrap}>
+                <Spinner size="sm" />
+              </div>
+            ) : (
+              <div className={styles.emptyHint}>
+                <Text size="sm" variant="muted">No agents match your search.</Text>
+              </div>
+            )
           ) : (
+            // Render the rows immediately. `filterRows` always includes
+            // the synthetic Standard Agent row when the query matches it,
+            // so the user can pick "Standard Agent" without waiting on
+            // `api.agents.list(...)` to finish — that fetch is the
+            // dominant latency on a fresh project. Show the loading
+            // affordance inline below the list so they know more options
+            // are still arriving.
             <div className={styles.list} ref={listRef} role="listbox">
               {rows.map((row, index) => {
                 const active = index === activeIndex;
@@ -195,6 +224,12 @@ export const AgentSelectorList = forwardRef<HTMLInputElement, AgentSelectorListP
                   />
                 );
               })}
+              {loading && (
+                <div className={styles.inlineLoading} aria-live="polite">
+                  <Spinner size="sm" />
+                  <Text size="sm" variant="muted">Loading agents...</Text>
+                </div>
+              )}
             </div>
           )}
         </div>

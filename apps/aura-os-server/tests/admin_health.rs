@@ -56,9 +56,7 @@ async fn admin_health_returns_full_snapshot_shape() {
     // exact value (it depends on test scheduling) but we do check
     // it's a non-negative integer.
     assert!(
-        body.get("uptime_seconds")
-            .and_then(Value::as_u64)
-            .is_some(),
+        body.get("uptime_seconds").and_then(Value::as_u64).is_some(),
         "uptime_seconds must be a non-negative integer, got: {body:?}"
     );
     assert!(

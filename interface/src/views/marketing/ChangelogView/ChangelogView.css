@@ -1,0 +1,359 @@
+.changelogPage {
+  --changelog-timeline-gray: rgba(255, 255, 255, 0.28);
+  min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
+  min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
+  padding: 120px clamp(20px, 5vw, 56px) 80px;
+  background: #000;
+}
+
+.changelogPageShell {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.changelogPageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: baseline;
+  justify-content: center;
+  margin-bottom: 64px;
+}
+
+.changelogPageTitle {
+  margin: 0;
+  font-size: clamp(38px, 6vw, 64px);
+  line-height: 0.96;
+  letter-spacing: -0.06em;
+  font-weight: 400;
+  color: #fff;
+}
+
+.changelogPageVersion {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.changelogEntries {
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
+}
+
+.changelogEntry {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 640px);
+  column-gap: 52px;
+  align-items: start;
+  justify-content: center;
+}
+
+.changelogEntry + .changelogEntry {
+  padding-top: 72px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.changelogEntryDate {
+  position: sticky;
+  top: 104px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.72);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.changelogEntryBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+.changelogEntryHead {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.changelogEntryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.changelogEntryTimeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 38px;
+  padding-left: 28px;
+}
+
+.changelogEntryTimeline::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 6px;
+  left: 3px;
+  width: 1px;
+  background: var(--changelog-timeline-gray);
+}
+
+.changelogTimelineItem {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.changelogTimelineItem::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: -28px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--changelog-timeline-gray);
+}
+
+.changelogSection {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.changelogSectionTime {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.changelogSectionTitle {
+  margin: 0;
+  font-size: clamp(24px, 3.2vw, 31px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  font-weight: 400;
+  color: #fff;
+}
+
+.changelogSectionSummary {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.68;
+}
+
+.changelogSectionMedia {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 6px;
+  width: 100%;
+}
+
+.changelogSectionMediaLink {
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 52%),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.changelogSectionMediaLink:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.36);
+}
+
+.changelogSectionMediaImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #050505;
+}
+
+.changelogSectionList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.changelogSectionItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #e7e9ea;
+  line-height: 1.75;
+}
+
+.changelogSectionItem p {
+  margin: 0;
+}
+
+.changelogSectionSources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.changelogSectionSourcesLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.changelogSectionCommitLink {
+  color: rgba(255, 255, 255, 0.44);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+  letter-spacing: 0.04em;
+}
+
+.changelogSectionCommitLink:hover {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.changelogTldr {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.changelogTldrLabel {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #fff;
+}
+
+.changelogTldrList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.changelogTldrItem {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.changelogTldrItemNumber {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.44);
+  font-variant-numeric: tabular-nums;
+}
+
+.changelogEmptyState {
+  padding: 24px 0 56px;
+}
+
+.changelogEmptyState h2,
+.changelogEmptyState p {
+  margin: 0;
+  color: #fff;
+}
+
+.changelogEmptyState p {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+@media (max-width: 768px) {
+  .changelogPage {
+    padding: 88px 20px 64px;
+  }
+
+  .changelogEntries {
+    gap: 48px;
+  }
+
+  .changelogPageHeader {
+    justify-content: flex-start;
+    margin-bottom: 48px;
+  }
+
+  .changelogEntry {
+    grid-template-columns: 1fr;
+    column-gap: 0;
+    row-gap: 22px;
+    justify-content: stretch;
+  }
+
+  .changelogEntry + .changelogEntry {
+    padding-top: 48px;
+  }
+
+  .changelogEntryDate {
+    position: static;
+  }
+
+  .changelogEntryBody {
+    gap: 28px;
+  }
+
+  .changelogEntryTimeline {
+    gap: 32px;
+    padding-left: 24px;
+  }
+
+  .changelogTimelineItem::before {
+    left: -24px;
+  }
+
+  .changelogSectionTitle {
+    font-size: clamp(23px, 8vw, 29px);
+  }
+
+}
+
+@media (max-width: 480px) {
+  .changelogPage {
+    padding: 76px 16px 56px;
+  }
+}

@@ -48,6 +48,17 @@ pub(crate) async fn require_verified_session(
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
     let token = extract_request_token(&req)
         .ok_or_else(|| ApiError::unauthorized("missing authorization token"))?;
+    // Defense-in-depth: guest tokens are valid only on `/api/public/*`
+    // routes. Reject them up front so the zOS validator never sees a
+    // token it would refuse for the wrong reason (and so the
+    // authenticated metrics aren't polluted with public-mode noise).
+    // The check is local — `is_guest_token` decodes the bearer with
+    // the guest signing secret and verifies `role == "guest"`.
+    if crate::handlers::public::is_guest_token(&token) {
+        return Err(ApiError::unauthorized(
+            "guest tokens cannot be used on authenticated routes",
+        ));
+    }
     // POST /api/auth/validate skips the in-memory TTL cache so explicit refresh always hits zOS once.
     let allow_validation_cache =
         !(req.method() == axum::http::Method::POST && req.uri().path() == "/api/auth/validate");

@@ -1,18 +1,18 @@
 import { useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Text, ModalConfirm } from "@cypher-asi/zui";
-import { Trash2, Play, Pause, Square, Loader2, X } from "lucide-react";
+import { Trash2, Play, Pause, Square, Loader2 } from "lucide-react";
 import {
   useTaskOutputPanelStore,
   useTasksForProject,
 } from "../../stores/task-output-panel-store";
-import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
-import { useShallow } from "zustand/react/shallow";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useAutomationStatus } from "../AutomationBar/useAutomationStatus";
+import { AutomationModelPicker } from "../AutomationBar/AutomationModelPicker";
 import { useScrollAnchorV2 } from "../../shared/hooks/use-scroll-anchor-v2";
 import { OverlayScrollbar } from "../OverlayScrollbar";
 import { TerminalPanelBody } from "../TerminalPanelBody";
+import { TerminalInstanceTabs } from "../TerminalInstanceTabs";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import {
   useIsStreaming,
@@ -119,42 +119,6 @@ function AutomationControls({ projectId }: { projectId: string }) {
   );
 }
 
-function TerminalInstanceTabs() {
-  const { terminals, activeId, setActiveId, removeTerminal } = useTerminalPanelStore(
-    useShallow((s) => ({
-      terminals: s.terminals,
-      activeId: s.activeId,
-      setActiveId: s.setActiveId,
-      removeTerminal: s.removeTerminal,
-    })),
-  );
-
-  if (terminals.length <= 1) return null;
-
-  return (
-    <div className={styles.terminalInstanceTabs}>
-      {terminals.map((t, i) => (
-        <button
-          key={t.id}
-          type="button"
-          className={t.id === activeId ? styles.terminalInstanceTabActive : styles.terminalInstanceTab}
-          onClick={() => setActiveId(t.id)}
-        >
-          {t.title}
-          {i > 0 && (
-            <span
-              className={styles.terminalInstanceTabClose}
-              onClick={(e) => { e.stopPropagation(); removeTerminal(t.id); }}
-            >
-              <X size={9} />
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Pinned cooking indicator for the Run pane's single active task.
  *
@@ -192,6 +156,29 @@ function PinnedTaskStreamingIndicator({ taskId }: { taskId: string }) {
   );
 }
 
+/**
+ * Inline model picker for the Run pane header. Wraps the shared
+ * `AutomationModelPicker` so we can lock its trigger while the loop is
+ * starting / preparing / active / paused — the model is captured at
+ * `startLoop` time, so allowing the user to flip it mid-run would lie
+ * about what's actually steering the running loop. Kept as its own
+ * component so `useAutomationStatus` only fires when we have a real
+ * `projectId` to scope the loop status fetch to.
+ *
+ * Shares the same `automation-loop-store` slot as the
+ * `SidekickHeader`/`AutomationBar` picker, so the two surfaces stay
+ * in lockstep and both flow into the next `startLoop` call.
+ */
+function RunPaneModelPicker({ projectId }: { projectId: string }) {
+  const { status } = useAutomationStatus(projectId);
+  const disabled = status !== "idle" && status !== "stopped";
+  return (
+    <div className={styles.headerModelSlot}>
+      <AutomationModelPicker projectId={projectId} disabled={disabled} />
+    </div>
+  );
+}
+
 export function RunSidekickPane() {
   const clearCompleted = useTaskOutputPanelStore((s) => s.clearCompleted);
   const ctx = useProjectActions();
@@ -225,6 +212,7 @@ export function RunSidekickPane() {
       <div className={styles.sidekickPaneHeader}>
         <div className={styles.headerActions}>
           {projectId && <AutomationControls projectId={projectId} />}
+          {projectId && <RunPaneModelPicker projectId={projectId} />}
           {hasCompleted && (
             <button
               type="button"

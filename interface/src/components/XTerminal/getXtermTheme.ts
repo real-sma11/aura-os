@@ -14,6 +14,7 @@ export interface XtermTheme {
   cursor: string;
   cursorAccent: string;
   selectionBackground: string;
+  selectionForeground: string;
   selectionInactiveBackground: string;
   black: string;
   red: string;
@@ -41,6 +42,7 @@ interface PaletteFallbacks {
   cursor: string;
   cursorAccent: string;
   selectionBackground: string;
+  selectionForeground: string;
   selectionInactiveBackground: string;
   black: string;
   red: string;
@@ -65,8 +67,12 @@ const DARK_FALLBACK: PaletteFallbacks = {
   foreground: "#cccccc",
   cursor: "#aeafad",
   cursorAccent: "#1e1e1e",
-  selectionBackground: "#264f78",
-  selectionInactiveBackground: "rgba(38, 79, 120, 0.7)",
+  // Mirrors ZUI's default dark accent (cyan #01f4cb / contrast #0a0a0a) so
+  // selections still feel "accent-tinted" in the boot window before
+  // tokens.css has been parsed.
+  selectionBackground: "#01f4cb",
+  selectionForeground: "#0a0a0a",
+  selectionInactiveBackground: "rgba(1, 244, 203, 0.5)",
   black: "#000000",
   red: "#cd3131",
   green: "#0dbc79",
@@ -90,8 +96,10 @@ const LIGHT_FALLBACK: PaletteFallbacks = {
   foreground: "#1f2937",
   cursor: "#374151",
   cursorAccent: "#ffffff",
-  selectionBackground: "#bfdbfe",
-  selectionInactiveBackground: "rgba(191, 219, 254, 0.7)",
+  // Mirrors ZUI's default light accent (cyan #0d9488 / contrast #ffffff).
+  selectionBackground: "#0d9488",
+  selectionForeground: "#ffffff",
+  selectionInactiveBackground: "rgba(13, 148, 136, 0.5)",
   black: "#000000",
   red: "#cd3131",
   green: "#00bc00",
@@ -129,6 +137,7 @@ export function getXtermTheme(resolved: ResolvedTheme): XtermTheme {
     cursor: readVar(styles, "--color-terminal-cursor", fallbacks.cursor),
     cursorAccent: readVar(styles, "--color-terminal-cursor-accent", fallbacks.cursorAccent),
     selectionBackground: readVar(styles, "--color-terminal-selection-bg", fallbacks.selectionBackground),
+    selectionForeground: readVar(styles, "--color-terminal-selection-fg", fallbacks.selectionForeground),
     selectionInactiveBackground: readVar(
       styles,
       "--color-terminal-selection-inactive-bg",

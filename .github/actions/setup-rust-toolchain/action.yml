@@ -1,0 +1,175 @@
+name: Setup Rust toolchain
+description: |
+  Installs the pinned Rust toolchain via dtolnay/rust-toolchain and prepends
+  the toolchain's bin directory to $PATH.
+
+  The PATH-pinning step is what keeps macos-latest builds healthy:
+  Homebrew preinstalls a `rustup` (compiled with `--no-self-update`) at
+  `/opt/homebrew/bin/rustup`, with sibling symlinks for `cargo`, `rustc`,
+  `rustdoc`, etc. that all chain to the same `rustup-init` binary. When
+  Homebrew's `rustup-init` is invoked under one of those proxy names it
+  does not act as a proxy at all -- it just prints
+  `rustup-init <version>` and exits non-zero. Because
+  `dtolnay/rust-toolchain` only adds `$CARGO_HOME/bin` to $PATH on the
+  install branch (skipped when rustup is preinstalled), every subsequent
+  `cargo build` / `rustc --version` step on macos-latest used to resolve
+  to the broken Homebrew shim. Prepending the real toolchain's
+  `${RUSTUP_HOME}/toolchains/<toolchain>/bin` directory short-circuits
+  that PATH lookup with the actual `cargo` / `rustc` binaries.
+
+inputs:
+  toolchain:
+    description: Rust toolchain specification (e.g. "1.94.1"). Defaults to the channel pinned in rust-toolchain.toml, falling back to "1.94.1".
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Scrub stale rust-src from toolchain dir
+      shell: bash
+      env:
+        SETUP_RUST_TOOLCHAIN_INPUT: ${{ inputs.toolchain }}
+      # Defends against rust-lang/rustup#988 (`error: failed to install
+      # component: 'rust-src', detected conflict: 'lib/rustlib/src/rust/...'`).
+      # The conflict happens when the toolchain dir already contains rust-src
+      # files (from a runner base image, a prior job on a persistent runner,
+      # or an older revision of this workflow that requested
+      # `components: rust-src`) and a parallel `cargo build` later races
+      # multiple rustup proxies into reinstalling rust-src concurrently. We
+      # don't need rust-src anywhere, so just delete the dir up front and
+      # let dtolnay install fresh into an empty target. No-op on fresh
+      # runners.
+      run: |
+        set -eo pipefail
+
+        rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+        toolchains_dir="$rustup_home/toolchains"
+        if [ ! -d "$toolchains_dir" ]; then
+          exit 0
+        fi
+
+        desired="$SETUP_RUST_TOOLCHAIN_INPUT"
+        if [ -z "$desired" ] && [ -f rust-toolchain.toml ]; then
+          desired="$(grep -E '^[[:space:]]*channel[[:space:]]*=' rust-toolchain.toml \
+            | head -n1 \
+            | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
+        fi
+        if [ -z "$desired" ]; then
+          desired="1.94.1"
+        fi
+
+        shopt -s nullglob
+        for tc in "$toolchains_dir/$desired" "$toolchains_dir/$desired"-*; do
+          if [ -d "$tc/lib/rustlib/src" ]; then
+            echo "Removing stale rust-src at $tc/lib/rustlib/src"
+            rm -rf "$tc/lib/rustlib/src"
+          fi
+        done
+
+    - name: Install Rust toolchain via dtolnay
+      uses: dtolnay/rust-toolchain@1.94.1
+
+    - name: Pin Rust toolchain bin dir on PATH
+      shell: bash
+      env:
+        SETUP_RUST_TOOLCHAIN_INPUT: ${{ inputs.toolchain }}
+        SETUP_RUST_TOOLCHAIN_RUNNER_OS: ${{ runner.os }}
+      # The path pin keeps macos-latest healthy (see top-of-file note about
+      # Homebrew shim swallowing cargo). It also blocks the windows-latest
+      # image regression where the runner now preinstalls a newer rustc
+      # alongside our pinned one (e.g. system 1.95.0 next to dtolnay's
+      # 1.94.1). Without this, `Swatinem/rust-cache` picks up both rustcs,
+      # `sccache rustc` can race in via the system toolchain, and Cargo
+      # ends up mixing rmeta files from the two compilers, producing
+      # E0514 ("found crate compiled by an incompatible version of rustc")
+      # against `.aura-shared-target/release/deps/liblazy_static-*.rmeta`.
+      run: |
+        set -eo pipefail
+
+        rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+        toolchains_dir="$rustup_home/toolchains"
+        if [ ! -d "$toolchains_dir" ]; then
+          echo "::warning::No rustup toolchains dir at $toolchains_dir; skipping PATH pin"
+          exit 0
+        fi
+
+        desired="$SETUP_RUST_TOOLCHAIN_INPUT"
+        if [ -z "$desired" ] && [ -f rust-toolchain.toml ]; then
+          desired="$(grep -E '^[[:space:]]*channel[[:space:]]*=' rust-toolchain.toml \
+            | head -n1 \
+            | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
+        fi
+        if [ -z "$desired" ]; then
+          desired="1.94.1"
+        fi
+
+        bin_dir=""
+        if [ -d "$toolchains_dir/$desired/bin" ]; then
+          bin_dir="$toolchains_dir/$desired/bin"
+        else
+          candidate="$(ls -1 "$toolchains_dir" 2>/dev/null \
+            | grep -E "^${desired}(-|$)" \
+            | head -n1 \
+            || true)"
+          if [ -n "$candidate" ] && [ -d "$toolchains_dir/$candidate/bin" ]; then
+            bin_dir="$toolchains_dir/$candidate/bin"
+          fi
+        fi
+
+        if [ -z "$bin_dir" ]; then
+          echo "::error::Could not locate Rust toolchain bin dir for '$desired' under $toolchains_dir"
+          ls -la "$toolchains_dir" || true
+          exit 1
+        fi
+
+        # On Windows we run under Git Bash, so `$bin_dir` looks like
+        # `/c/Users/runneradmin/.rustup/toolchains/<toolchain>/bin`.
+        # `$GITHUB_PATH` is consumed by the runner host (PowerShell on
+        # Windows) and that MSYS-style path is silently ignored by native
+        # Windows PATH lookups -- which is how Cargo / sccache end up
+        # picking the system rustc instead of ours. Convert to a real
+        # Windows path before exporting, and emit both rustc/cargo/rustdoc
+        # as absolute env-var pins so downstream tooling (including
+        # `RUSTC_WRAPPER=sccache`) cannot resolve a different binary off
+        # PATH.
+        exe_suffix=""
+        path_for_github_path="$bin_dir"
+        if [ "$SETUP_RUST_TOOLCHAIN_RUNNER_OS" = "Windows" ]; then
+          exe_suffix=".exe"
+          if command -v cygpath >/dev/null 2>&1; then
+            path_for_github_path="$(cygpath -w "$bin_dir")"
+          fi
+        fi
+
+        echo "$path_for_github_path" >> "$GITHUB_PATH"
+        echo "Prepended $path_for_github_path to PATH (resolved toolchain: '$desired')"
+
+        rustc_bin_native="$bin_dir/rustc$exe_suffix"
+        cargo_bin_native="$bin_dir/cargo$exe_suffix"
+        rustdoc_bin_native="$bin_dir/rustdoc$exe_suffix"
+        if [ "$SETUP_RUST_TOOLCHAIN_RUNNER_OS" = "Windows" ] && command -v cygpath >/dev/null 2>&1; then
+          rustc_bin_native="$(cygpath -w "$rustc_bin_native")"
+          cargo_bin_native="$(cygpath -w "$cargo_bin_native")"
+          rustdoc_bin_native="$(cygpath -w "$rustdoc_bin_native")"
+        fi
+
+        # Cargo passes `$RUSTC` verbatim to `$RUSTC_WRAPPER`, so pinning
+        # RUSTC pins the binary sccache invokes too. RUSTDOC + CARGO match
+        # so doctest/manifest tooling stays on the same toolchain.
+        {
+          echo "RUSTC=$rustc_bin_native"
+          echo "CARGO=$cargo_bin_native"
+          echo "RUSTDOC=$rustdoc_bin_native"
+        } >> "$GITHUB_ENV"
+        echo "Pinned RUSTC=$rustc_bin_native"
+        echo "Pinned CARGO=$cargo_bin_native"
+        echo "Pinned RUSTDOC=$rustdoc_bin_native"
+
+        # Disable rustup's auto-install during downstream `cargo` / `rustc`
+        # invocations. The toolchain is already installed by the dtolnay
+        # step above, so the rustup proxy never needs to mutate toolchain
+        # state again -- and disabling auto-install eliminates the parallel
+        # `sccache rustc` race that surfaced as the rust-src conflict
+        # (rust-lang/rustup#988). Supported since rustup 1.27.
+        echo "RUSTUP_AUTO_INSTALL=0" >> "$GITHUB_ENV"

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   approxTokensFromText,
+  mapWireContextBreakdown,
   useContextUsageStore,
 } from "./context-usage-store";
 
@@ -127,5 +128,153 @@ describe("useContextUsageStore", () => {
     expect(approxTokensFromText("")).toBe(0);
     expect(approxTokensFromText("abcd")).toBe(1);
     expect(approxTokensFromText("hello world!")).toBe(3);
+  });
+
+  it("stores an authoritative breakdown alongside utilization", () => {
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, {
+      systemPromptTokens: 5_000,
+      toolsTokens: 20_000,
+      skillsTokens: 1_500,
+      mcpTokens: 0,
+      subagentsTokens: 800,
+      conversationTokens: 72_700,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown?.systemPromptTokens).toBe(5_000);
+    expect(entry?.breakdown?.conversationTokens).toBe(72_700);
+  });
+
+  it("ignores an all-zero breakdown so the UI can fall back", () => {
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, {
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown).toBeUndefined();
+  });
+
+  it("mapWireContextBreakdown returns undefined when the payload is missing", () => {
+    expect(mapWireContextBreakdown(undefined)).toBeUndefined();
+  });
+
+  it("mapWireContextBreakdown rewrites snake_case fields into the camelCase store shape", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 5_000,
+      tools_tokens: 20_000,
+      skills_tokens: 1_500,
+      mcp_tokens: 0,
+      subagents_tokens: 800,
+      conversation_tokens: 72_700,
+    });
+    expect(mapped).toEqual({
+      systemPromptTokens: 5_000,
+      toolsTokens: 20_000,
+      skillsTokens: 1_500,
+      mcpTokens: 0,
+      subagentsTokens: 800,
+      conversationTokens: 72_700,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+  });
+
+  it("mapWireContextBreakdown defaults missing snake fields to zero so a partial payload doesn't NaN", () => {
+    expect(mapWireContextBreakdown({ conversation_tokens: 100 })).toEqual({
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 100,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+  });
+
+  it("mapWireContextBreakdown carries cache_read/creation_tokens through to camelCase", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 5_000,
+      tools_tokens: 20_000,
+      skills_tokens: 1_500,
+      mcp_tokens: 0,
+      subagents_tokens: 800,
+      conversation_tokens: 72_700,
+      cache_read_tokens: 30_000,
+      cache_creation_tokens: 5_000,
+    });
+    expect(mapped?.cacheReadTokens).toBe(30_000);
+    expect(mapped?.cacheCreationTokens).toBe(5_000);
+  });
+
+  it("mapWireContextBreakdown defaults missing cache fields to zero", () => {
+    const mapped = mapWireContextBreakdown({ conversation_tokens: 100 });
+    expect(mapped?.cacheReadTokens).toBe(0);
+    expect(mapped?.cacheCreationTokens).toBe(0);
+  });
+
+  it("isBreakdownEmpty still treats cache-only payloads as empty", () => {
+    // Cache numbers without any bucket tokens means the harness didn't
+    // emit the per-bucket breakdown -- UI should fall back to the legacy
+    // popover. Adding this test pins down that cache fields do not
+    // change the emptiness verdict.
+    useContextUsageStore.getState().setContextUtilization("k-cache-only", 0.5, 100_000, {
+      systemPromptTokens: 0,
+      toolsTokens: 0,
+      skillsTokens: 0,
+      mcpTokens: 0,
+      subagentsTokens: 0,
+      conversationTokens: 0,
+      cacheReadTokens: 1_234,
+      cacheCreationTokens: 567,
+    });
+    const entry = useContextUsageStore.getState().usageByStreamKey["k-cache-only"];
+    expect(entry?.breakdown).toBeUndefined();
+  });
+
+  it("mapWireContextBreakdown + setContextUtilization drops an all-zero payload (older harness fallback)", () => {
+    const mapped = mapWireContextBreakdown({
+      system_prompt_tokens: 0,
+      tools_tokens: 0,
+      skills_tokens: 0,
+      mcp_tokens: 0,
+      subagents_tokens: 0,
+      conversation_tokens: 0,
+    });
+    expect(mapped).not.toBeUndefined();
+    useContextUsageStore.getState().setContextUtilization("k1", 0.5, 100_000, mapped);
+    const entry = useContextUsageStore.getState().usageByStreamKey.k1;
+    expect(entry?.breakdown).toBeUndefined();
+  });
+
+  it("bumpEstimatedTokens grows the conversation bucket only", () => {
+    const s = useContextUsageStore.getState();
+    s.setContextUtilization("k1", 0.5, 50_000, {
+      systemPromptTokens: 5_000,
+      toolsTokens: 10_000,
+      skillsTokens: 1_000,
+      mcpTokens: 0,
+      subagentsTokens: 500,
+      conversationTokens: 33_500,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
+    s.bumpEstimatedTokens("k1", 4_000);
+
+    const breakdown = useContextUsageStore.getState().usageByStreamKey.k1?.breakdown;
+    expect(breakdown?.conversationTokens).toBe(37_500);
+    // Static buckets stay frozen — they only change between turns,
+    // not mid-stream.
+    expect(breakdown?.systemPromptTokens).toBe(5_000);
+    expect(breakdown?.toolsTokens).toBe(10_000);
+    expect(breakdown?.skillsTokens).toBe(1_000);
+    expect(breakdown?.subagentsTokens).toBe(500);
   });
 });

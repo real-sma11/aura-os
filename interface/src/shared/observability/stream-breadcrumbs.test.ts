@@ -15,6 +15,10 @@ import {
   STREAM_CLOSE_EVENT,
   type StreamCloseReason,
 } from "./stream-breadcrumbs";
+import {
+  clear as clearBreadcrumbs,
+  getRecent,
+} from "../../stores/stream-breadcrumbs-store";
 
 describe("recordStreamCloseReason", () => {
   let received: StreamCloseReason[] = [];
@@ -27,6 +31,7 @@ describe("recordStreamCloseReason", () => {
       received.push(detail);
     };
     window.addEventListener(STREAM_CLOSE_EVENT, listener);
+    clearBreadcrumbs();
   });
 
   afterEach(() => {
@@ -90,5 +95,43 @@ describe("recordStreamCloseReason", () => {
     ).not.toThrow();
 
     window.dispatchEvent = original;
+  });
+
+  it("Phase 5: persists every dispatched reason into the breadcrumb ring", () => {
+    recordStreamCloseReason({ classified: "completed", message: "ok" });
+    recordStreamCloseReason({
+      classified: "streamDropped",
+      message: "WS dropped",
+      code: "harness_ws_closed",
+      auto_retry: true,
+    });
+
+    const ring = getRecent();
+    expect(ring).toHaveLength(2);
+    expect(ring[0].classified).toBe("completed");
+    expect(ring[0].message).toBe("ok");
+    expect(ring[1].classified).toBe("streamDropped");
+    expect(ring[1].code).toBe("harness_ws_closed");
+    expect(typeof ring[1].ts).toBe("number");
+  });
+
+  it("Phase 5: forwards the optional context onto the ring entry", () => {
+    recordStreamCloseReason(
+      {
+        classified: "failed",
+        message: "boom",
+        support_id: "abc123def456",
+      },
+      {
+        streamKey: "agent:abc",
+        agentId: "agent-1",
+        sessionId: "session-9",
+      },
+    );
+    const [entry] = getRecent();
+    expect(entry.streamKey).toBe("agent:abc");
+    expect(entry.agentId).toBe("agent-1");
+    expect(entry.sessionId).toBe("session-9");
+    expect(entry.support_id).toBe("abc123def456");
   });
 });

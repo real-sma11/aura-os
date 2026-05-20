@@ -3,6 +3,7 @@ import {
   getProjectBrowserSettings,
   triggerBrowserDetect,
   updateProjectBrowserSettings,
+  type BrowserClientMsg,
   type DetectedUrl,
   type NavError,
   type NavState,
@@ -99,10 +100,15 @@ export function BrowserInstance({
 
   const handleNav = useCallback((state: NavState) => {
     setNav(state);
-    // A successful navigation (loading=true) signals recovery from any
-    // prior failure: clear the overlay so the new page can paint. A
-    // subsequent `NavError` will re-open it.
-    if (state.loading) {
+    // After a main-frame failure Chromium commits its own native error
+    // document at a `chrome-error://...` URL and re-fires `Nav` for it;
+    // clearing the overlay on that event would wipe it just as we set
+    // it, leaving the user staring at Chromium's page. So only clear
+    // when the new URL is a real document — that's the success signal
+    // we want, and it's also what lets the overlay survive across a
+    // user-driven Reload (the URL doesn't change, so we never clear
+    // until the retry actually commits a real page).
+    if (state.url && !state.url.startsWith("chrome-error://")) {
       setNavError(null);
     }
   }, []);
@@ -150,11 +156,43 @@ export function BrowserInstance({
     };
   }, [projectId, setProjectSettings]);
 
-  const handleSubmit = useCallback(
-    (url: string) => {
-      browser.send({ type: "navigate", url });
+  /**
+   * Run a user-initiated browser command and dismiss any error overlay
+   * first. Used for actions that point at a *different* document
+   * (URL submit, back/forward) so the overlay doesn't linger over the
+   * incoming page; a subsequent `NavError` from the backend re-opens
+   * it.
+   *
+   * Reload is intentionally NOT routed through here — see
+   * `handleReload` below for why.
+   */
+  const clearNavErrorAnd = useCallback(
+    (msg: BrowserClientMsg) => {
+      setNavError(null);
+      browser.send(msg);
     },
     [browser],
+  );
+
+  /**
+   * Reload retries the *same* URL, so the screencast still holds
+   * Chromium's just-committed `chrome-error://` document. Eagerly
+   * clearing `navError` here would reveal that native error page until
+   * the retry produces a new event, which is exactly the regression
+   * the user sees as "the old/wrong 404 page flashes through". Keep
+   * the overlay up; `handleNav` clears it once a real (non-
+   * `chrome-error://`) URL commits, and a re-failed retry simply
+   * replaces it via `handleNavError`.
+   */
+  const handleReload = useCallback(() => {
+    browser.send({ type: "reload" });
+  }, [browser]);
+
+  const handleSubmit = useCallback(
+    (url: string) => {
+      clearNavErrorAnd({ type: "navigate", url });
+    },
+    [clearNavErrorAnd],
   );
 
   const handlePin = useCallback(
@@ -178,9 +216,9 @@ export function BrowserInstance({
 
   const handleSelectDetected = useCallback(
     (url: string) => {
-      browser.send({ type: "navigate", url });
+      clearNavErrorAnd({ type: "navigate", url });
     },
-    [browser],
+    [clearNavErrorAnd],
   );
 
   useEffect(() => {
@@ -217,9 +255,9 @@ export function BrowserInstance({
         pinnedUrl={cachedSettings?.pinned_url ?? null}
         detectedUrls={detectedUrls}
         onSubmit={handleSubmit}
-        onBack={() => browser.send({ type: "back" })}
-        onForward={() => browser.send({ type: "forward" })}
-        onReload={() => browser.send({ type: "reload" })}
+        onBack={() => clearNavErrorAnd({ type: "back" })}
+        onForward={() => clearNavErrorAnd({ type: "forward" })}
+        onReload={handleReload}
         onPin={handlePin}
         onUnpin={handleUnpin}
         onSelectDetected={handleSelectDetected}
@@ -240,10 +278,7 @@ export function BrowserInstance({
         }
         overlay={
           navError ? (
-            <BrowserErrorOverlay
-              error={navError}
-              onReload={() => browser.send({ type: "reload" })}
-            />
+            <BrowserErrorOverlay error={navError} onReload={handleReload} />
           ) : null
         }
       />

@@ -13,14 +13,14 @@ function tool(overrides: Partial<ToolCallEntry> = {}): ToolCallEntry {
 }
 
 describe("getStreamingPhaseLabel", () => {
-  it("returns null while text is actively writing so the indicator hides", () => {
+  it("keeps the Cooking label while text is actively writing so the shimmer stays visible", () => {
     expect(
       getStreamingPhaseLabel({
         streamingText: "hello",
         toolCalls: [],
         isWriting: true,
       }),
-    ).toBeNull();
+    ).toBe("Cooking...");
   });
 
   it("returns Cooking when streaming with settled text and no other phase", () => {
@@ -31,6 +31,16 @@ describe("getStreamingPhaseLabel", () => {
         isWriting: false,
       }),
     ).toBe("Cooking...");
+  });
+
+  it("returns Queued... when the partition is waiting behind another turn", () => {
+    expect(
+      getStreamingPhaseLabel({
+        streamingText: "",
+        toolCalls: [],
+        progressText: "queued",
+      }),
+    ).toBe("Queued...");
   });
 
   it("returns Thinking when only thinking has content", () => {

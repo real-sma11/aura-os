@@ -160,11 +160,18 @@ export const useTerminalPanelStore = create<TerminalPanelState>()((set, get) => 
       hookRefs.delete(id);
     }
     set((s) => {
-      const next = s.terminals.filter((t) => t.id !== id);
+      const filtered = s.terminals.filter((t) => t.id !== id);
+      // Mirror BrowserPanel's "always >=1 instance" guarantee: when the
+      // last terminal is closed, spin up a fresh one so the sidekick
+      // never shows a blank pane and the inline `+` is the only way back.
+      if (filtered.length === 0) {
+        const replacement = createTerminalInstance();
+        return { terminals: [replacement], activeId: replacement.id };
+      }
       const newActiveId = s.activeId === id
-        ? (next.length > 0 ? next[next.length - 1].id : null)
+        ? filtered[filtered.length - 1].id
         : s.activeId;
-      return { terminals: next, activeId: newActiveId };
+      return { terminals: filtered, activeId: newActiveId };
     });
   },
 

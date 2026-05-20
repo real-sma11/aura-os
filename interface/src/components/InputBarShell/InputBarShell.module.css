@@ -193,19 +193,79 @@
 
 .inputRowEnd {
   position: absolute;
-  /* Sit clear of the send button's hit area (right: 2px, width: 24px,
-     so left edge ~26px from the right) plus enough breathing room so
-     inline chips don't visually crowd the arrow. */
-  right: 40px;
+  /* Sit close to the send button's hit area (right: 2px, width: 24px,
+     so left edge ~26px from the right) with a small visual gap. */
+  right: 32px;
   /* Vertically center inside the input row so chips don't read as
      bottom-anchored relative to the textarea. */
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
   display: flex;
-  max-width: min(170px, calc(100% - 94px));
+  max-width: min(170px, calc(100% - 86px));
   min-width: 0;
   align-items: center;
+}
+
+/* When the textarea has wrapped to a second visual row, the inline
+   `inputRowEnd` slot reads as a floating pill anchored to the middle
+   of a tall block of text — visually messy and it steals horizontal
+   space the user needs for the prompt itself. Consumers that want the
+   adaptive layout (chat) move the picker into the `containerBottom`
+   slot when multi-line; we hide the absolute slot here and restore
+   the textarea's full width by dropping the `padding-right` reservation
+   the single-line layout uses. The corner inset (~32px) still keeps
+   wrapped lines clear of the send-button hit target. */
+.inputContainer[data-multiline="true"] .inputRowEnd {
+  display: none;
+}
+
+.inputContainer[data-multiline="true"] .inputRowHasEnd .textarea {
+  padding-right: 32px;
+}
+
+/* Bottom row inside the rounded container, used by consumers via the
+   `containerBottom` slot. Padding clears the absolutely-positioned
+   attach (`+`, left: 2px, w: 24px) and send (`↑`, right: 2px, w: 24px)
+   corner buttons so footer chrome (e.g. the model picker in
+   multi-line state) sits between them rather than under them. */
+.containerBottomRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  /* Match the corner buttons' 24px height + 6px bottom inset so the
+     picker text and the [+] / [↑] glyphs share a single horizontal
+     baseline when the buttons re-anchor to the container in the
+     multi-line state below. */
+  min-height: 24px;
+  padding: 0 32px 6px 32px;
+}
+
+/* Multi-line state alignment (desktop only): re-anchor the corner
+   buttons to the rounded container itself so they sit at the bottom
+   edge — flush with the picker in `.containerBottomRow` — instead of
+   clinging to the bottom of the (now tall) input row above it.
+
+   `position: static` on the input row drops it as a positioning
+   context, so the buttons fall back to `.inputContainer` (which is
+   already `position: relative`). The `bottom: 6px` inset matches the
+   bottom row's `padding-bottom: 6px`, putting the 24px buttons in
+   the same vertical band as the picker (centers all align at 18px
+   from the container bottom). The `inputRowEnd` slot is already
+   hidden in multi-line, so it's not affected by this re-anchoring.
+
+   Scoped to >640px so the mobile 44x44 pill buttons keep their
+   `bottom: 0` flush-to-edge layout and don't overlap the picker
+   text in the bottom row. */
+@media (min-width: 641px) {
+  .inputContainer[data-multiline="true"] .inputRow {
+    position: static;
+  }
+
+  .inputContainer[data-multiline="true"] .attachButton,
+  .inputContainer[data-multiline="true"] .sendButton {
+    bottom: 6px;
+  }
 }
 
 /* Attach (`+`) and send (arrow) corner buttons share the same shared
@@ -392,12 +452,22 @@
   opacity: 1;
 }
 
+/* Wrapper element rendered by `ModelPicker` into a `document.body`
+   portal. Owns positioning (set inline from the trigger's
+   `getBoundingClientRect()`) and the stacking context that keeps the
+   menu above sibling lanes/panels so ancestor `overflow: hidden` on
+   the chat panel chain (`.lane`, `.laneContent`, `.mainContent`,
+   `.mainPanelHost`, `.chatView`) can never clip the dropdown. The
+   inner `.modelMenu` div carries only visual chrome. */
+.modelMenuPortal {
+  /* Inline `style` provides position/top/right/bottom/zIndex; this
+     rule exists so consumers can target it via `menuClassName` for
+     variant-specific size or padding overrides. */
+  pointer-events: auto;
+}
+
 .modelMenu {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  right: 0;
-  z-index: 100;
-  background: var(--color-elevated);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 0;

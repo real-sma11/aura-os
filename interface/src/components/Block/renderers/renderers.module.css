@@ -396,6 +396,25 @@
   }
 }
 
+/* ── Generated video ── */
+
+.generatedVideoResult {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-width: min(100%, 520px);
+}
+
+.generatedVideoPlayer {
+  width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+
 /* ── Generic (JSON) body ── */
 
 .genericSection + .genericSection {

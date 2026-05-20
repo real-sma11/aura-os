@@ -1,11 +1,22 @@
 import { useEffect } from "react";
-import { useContextUsageStore } from "../stores/context-usage-store";
+import {
+  mapWireContextBreakdown,
+  useContextUsageStore,
+  type WireContextBreakdown,
+} from "../stores/context-usage-store";
 import { useIsStreaming } from "./stream/hooks";
 
 export interface HydrateContextUtilizationFetcher {
   (signal: AbortSignal): Promise<{
     context_utilization: number;
     estimated_context_tokens?: number;
+    /** Optional per-bucket breakdown plumbed by the server's
+     * context-usage endpoint when the latest persisted
+     * `assistant_message_end` event carried one. When present, this
+     * lets the bottom-bar popover render the new stacked-bar view
+     * immediately on chat mount instead of falling back to the legacy
+     * Used/Total card until the next assistant turn arrives. */
+    context_breakdown?: WireContextBreakdown;
   }>;
 }
 
@@ -71,6 +82,12 @@ export function useHydrateContextUtilization(
           streamKey,
           response.context_utilization,
           response.estimated_context_tokens,
+          // The store's `setContextUtilization` already drops all-zero
+          // breakdowns via `isBreakdownEmpty`, so older harness builds
+          // (where this field is missing or every bucket is 0) keep
+          // falling back to the legacy popover branch in
+          // `ContextUsageIndicator` without further guards here.
+          mapWireContextBreakdown(response.context_breakdown),
         );
       })
       .catch((err) => {

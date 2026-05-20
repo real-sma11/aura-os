@@ -81,6 +81,7 @@ export function AuraVideoMainPanel() {
   const model = useAuraVideoStore((s) => s.model);
   const setModel = useAuraVideoStore((s) => s.setModel);
   const aspectRatio = useAuraVideoStore((s) => s.aspectRatio);
+  const setAspectRatio = useAuraVideoStore((s) => s.setAspectRatio);
   const durationSeconds = useAuraVideoStore((s) => s.durationSeconds);
   const setDurationSeconds = useAuraVideoStore((s) => s.setDurationSeconds);
   const resolution = useAuraVideoStore((s) => s.resolution);
@@ -179,15 +180,33 @@ export function AuraVideoMainPanel() {
   const modelLabel =
     VIDEO_MODELS.find((m) => m.id === model)?.label ?? model;
 
-  // Veo API constraints (verified):
-  // - 720p: 4s, 6s, 8s (all models)
-  // - 1080p: 8s only (all models)
-  // - 4k: 8s only (Standard & Fast only, not Lite)
-  const isLite = model.includes("lite");
-  const resolutionOptions = isLite
-    ? ["720p", "1080p"]
-    : ["720p", "1080p", "4k"];
-  const durationOptions = resolution === "720p" ? [4, 6, 8] : [8];
+  // Provider detection
+  const isSeedance = model.startsWith("dreamina-seedance");
+  const isSeedanceFast = isSeedance && model.includes("fast");
+  const isVeoLite = !isSeedance && model.includes("lite");
+
+  // Resolution options (provider-specific, verified from official docs)
+  // Veo: 720p, 1080p, 4k (Lite: 720p, 1080p only)
+  // Seedance 2.0: 480p, 720p, 1080p (Fast: 480p, 720p only)
+  const resolutionOptions = isSeedance
+    ? isSeedanceFast
+      ? ["480p", "720p"]
+      : ["480p", "720p", "1080p"]
+    : isVeoLite
+      ? ["720p", "1080p"]
+      : ["720p", "1080p", "4k"];
+
+  // Duration options (provider-specific, verified from official docs)
+  // Veo: 4/6/8s at 720p, 8s only at 1080p/4k
+  // Seedance: 4-15s at all resolutions
+  const durationOptions = isSeedance
+    ? [4, 5, 6, 8, 10, 12, 15]
+    : resolution === "720p"
+      ? [4, 6, 8]
+      : [8];
+
+  // Aspect ratio options (Seedance only, verified from official docs)
+  const ratioOptions = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 
   const renderResolutionMenu = useCallback(
     (close: () => void) => (
@@ -199,7 +218,8 @@ export function AuraVideoMainPanel() {
             className={`${inputBarShellStyles.modelMenuItem} ${r === resolution ? inputBarShellStyles.modelMenuItemActive : ""}`}
             onClick={() => {
               setResolution(r);
-              if (r !== "720p") setDurationSeconds(8);
+              // Veo: non-720p resolutions only support 8s
+              if (!isSeedance && r !== "720p") setDurationSeconds(8);
               close();
             }}
           >
@@ -208,7 +228,7 @@ export function AuraVideoMainPanel() {
         ))}
       </div>
     ),
-    [resolution, setResolution, setDurationSeconds, resolutionOptions],
+    [resolution, setResolution, setDurationSeconds, resolutionOptions, isSeedance],
   );
 
   const renderDurationMenu = useCallback(
@@ -232,29 +252,81 @@ export function AuraVideoMainPanel() {
     [durationSeconds, setDurationSeconds, durationOptions],
   );
 
-  const renderModelMenu = useCallback(
+  const renderRatioMenu = useCallback(
     (close: () => void) => (
       <div className={inputBarShellStyles.modelMenu}>
-        {VIDEO_MODELS.map((m) => (
+        {ratioOptions.map((r) => (
           <button
-            key={m.id}
+            key={r}
             type="button"
-            className={`${inputBarShellStyles.modelMenuItem} ${m.id === model ? inputBarShellStyles.modelMenuItemActive : ""}`}
+            className={`${inputBarShellStyles.modelMenuItem} ${r === aspectRatio ? inputBarShellStyles.modelMenuItemActive : ""}`}
             onClick={() => {
-              setModel(m.id);
-              // Lite doesn't support 4k — fall back to 720p
-              if (m.id.includes("lite") && resolution === "4k") {
-                setResolution("720p");
-              }
+              setAspectRatio(r);
               close();
             }}
           >
-            {m.label}
+            {r}
           </button>
         ))}
       </div>
     ),
-    [model, setModel, resolution, setResolution],
+    [aspectRatio, setAspectRatio, ratioOptions],
+  );
+
+  const renderModelMenu = useCallback(
+    (close: () => void) => (
+      <div className={inputBarShellStyles.modelMenu}>
+        {VIDEO_MODELS.map((m) => {
+          const isComingSoon = m.id.startsWith("dreamina-seedance");
+          return (
+          <button
+            key={m.id}
+            type="button"
+            disabled={isComingSoon}
+            className={`${inputBarShellStyles.modelMenuItem} ${m.id === model ? inputBarShellStyles.modelMenuItemActive : ""}`}
+            style={isComingSoon ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+            onClick={() => {
+              if (isComingSoon) return;
+              const switchingToSeedance = m.id.startsWith("dreamina-seedance");
+              const switchingFromSeedance = isSeedance;
+              const switchingToSeedanceFast = switchingToSeedance && m.id.includes("fast");
+              const switchingToVeoLite = !switchingToSeedance && m.id.includes("lite");
+
+              setModel(m.id);
+
+              // Resolution adjustments on model switch
+              if (switchingToSeedance && resolution === "4k") {
+                setResolution("720p");
+              } else if (switchingToSeedanceFast && resolution === "1080p") {
+                setResolution("720p");
+              } else if (!switchingToSeedance && switchingFromSeedance && resolution === "480p") {
+                setResolution("720p");
+              } else if (switchingToVeoLite && resolution === "4k") {
+                setResolution("720p");
+              }
+
+              // Reset ratio to 16:9 when switching to Veo (Veo hardcodes 16:9)
+              if (!switchingToSeedance && switchingFromSeedance && aspectRatio !== "16:9") {
+                setAspectRatio("16:9");
+              }
+
+              // Clamp duration when switching providers
+              if (switchingToSeedance && !switchingFromSeedance && durationSeconds > 15) {
+                setDurationSeconds(15);
+              } else if (!switchingToSeedance && switchingFromSeedance && durationSeconds > 8) {
+                setDurationSeconds(8);
+              }
+
+              close();
+            }}
+          >
+            {m.label}{isComingSoon ? " (coming soon)" : ""}
+          </button>
+          );
+        })}
+      </div>
+    ),
+    [model, setModel, resolution, setResolution, aspectRatio, setAspectRatio, durationSeconds, setDurationSeconds, isSeedance],
   );
 
   return (
@@ -278,6 +350,13 @@ export function AuraVideoMainPanel() {
                   <FolderOpen size={10} />
                   {projectName}
                 </span>
+              )}
+              {isSeedance && (
+                <ModelPicker
+                  selectedLabel={aspectRatio}
+                  isInteractive
+                  renderMenu={renderRatioMenu}
+                />
               )}
               <ModelPicker
                 selectedLabel={resolution}

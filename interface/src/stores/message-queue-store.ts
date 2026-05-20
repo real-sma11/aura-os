@@ -18,6 +18,16 @@ export interface QueuedMessage {
    * since.
    */
   sourceImageUrl?: string;
+  /**
+   * True when this message was queued because the chat send pipeline
+   * detected an in-flight stream that had passed
+   * `STUCK_THRESHOLD_MS` without a wire event. Phase 1 only stamps
+   * the flag; Phase 2 surfaces a "Send anyway" affordance keyed on
+   * it. Without the flag a stuck stream would silently swallow the
+   * queued message until (or unless) the watchdog finalizes the
+   * upstream turn.
+   */
+  pendingDueToStuckStream?: boolean;
 }
 
 interface MessageQueueState {

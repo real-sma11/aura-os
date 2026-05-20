@@ -71,6 +71,18 @@ export function useLoginForm() {
     (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/";
 
   const [activeTab, setActiveTab] = useState<AuthTab>("signin");
+  // Seed `activeTab` from `?tab=register` (or `?tab=signin`) on mount
+  // so the "Sign up for free" CTA in the logged-out shell deep-links
+  // straight into the Create Account form. Runs once — subsequent
+  // navigation between tabs uses `handleTabChange`.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get("tab");
+    if (tab === "register" || tab === "signin") {
+      setActiveTab(tab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

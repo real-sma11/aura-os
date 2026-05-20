@@ -103,7 +103,11 @@ fn restart_after_install(state: &UpdateState, update: &Update) -> Result<(), Str
                 record_step_only(
                     state,
                     UpdateStep::RelaunchSpawned,
-                    Some(&format!("pid={} bundle={}", child.id(), bundle_path.display())),
+                    Some(&format!(
+                        "pid={} bundle={}",
+                        child.id(),
+                        bundle_path.display()
+                    )),
                 );
             }
             Err(error) => {
@@ -316,9 +320,6 @@ fn build_windows_handoff_script(
            exit /b !EXIT_CODE!\r\n\
          )\r\n\
          \r\n\
-         rem Brief settle so the installer's file handles drop before relaunch.\r\n\
-         ping -n 2 127.0.0.1 > nul\r\n\
-         \r\n\
          set \"{relaunch_env}=1\"\r\n\
          start \"\" \"!AURA_EXE!\"\r\n\
          call :log \"step=relaunch_spawned status=installing detail=exe=!AURA_EXE!\"\r\n\
@@ -341,12 +342,8 @@ fn write_windows_handoff_script(
     let aura_exe_path = std::env::current_exe()
         .map_err(|e| format!("failed to resolve current Aura executable path: {e}"))?;
     let script_path = handoff_script_path(data_dir, version);
-    let script = build_windows_handoff_script(
-        installer_path,
-        &aura_exe_path,
-        log_path,
-        sentinel_path,
-    )?;
+    let script =
+        build_windows_handoff_script(installer_path, &aura_exe_path, log_path, sentinel_path)?;
     fs::write(&script_path, script).map_err(|e| {
         format!(
             "failed to write Windows update handoff script {}: {e}",
@@ -421,26 +418,59 @@ fn spawn_windows_handoff_with_flags(
 }
 
 #[cfg(target_os = "windows")]
+const WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+
+/// Base creation flags for the cmd.exe wrapper that runs the update
+/// handoff `.bat`. `CREATE_NO_WINDOW` is what keeps cmd.exe itself from
+/// flashing a visible console window during the handoff.
+///
+/// We deliberately do NOT include `DETACHED_PROCESS`: per the Win32
+/// `CreateProcess` docs, `CREATE_NO_WINDOW` is *ignored* when combined
+/// with `DETACHED_PROCESS`, which would leave cmd.exe without any
+/// console at all.
+///
+/// `CREATE_NO_WINDOW` alone is necessary but not sufficient to keep the
+/// handoff invisible: an earlier attempt relied on it giving cmd.exe a
+/// hidden console that child console apps (e.g. `ping`) would inherit,
+/// but in practice once the parent `aura.exe` has exited that inheritance
+/// is not reliable and a freshly-allocated visible console can still
+/// briefly flash. To make the no-flash guarantee robust the handoff
+/// `.bat` is intentionally free of console subprocesses — pinned by
+/// `handoff_script_has_no_console_subprocesses` below — so there are no
+/// child console apps for Windows to allocate a console for in the
+/// first place.
+///
+/// The handoff still survives the parent's exit because:
+///   * stdin is `Stdio::null()` and stdout/stderr are redirected to
+///     files, so no console handles are shared with the parent;
+///   * `CREATE_NEW_PROCESS_GROUP` keeps Ctrl+C / shutdown signals from
+///     propagating from the parent's group; and
+///   * `CREATE_BREAKAWAY_FROM_JOB` (with the fallback retry below) lets
+///     the handoff escape any job object the parent is part of.
+#[cfg(target_os = "windows")]
+const WINDOWS_HANDOFF_BASE_CREATION_FLAGS: u32 = {
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+};
+
+#[cfg(target_os = "windows")]
 fn spawn_windows_handoff(
     data_dir: &Path,
     script_path: &Path,
     stdout_path: &Path,
     stderr_path: &Path,
 ) -> Result<std::process::Child, String> {
-    // Launch a detached cmd.exe wrapper running the .bat. The wrapper
-    // waits for NSIS, records the real installer exit code, and relaunches
-    // Aura after files are free.
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let base_flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW;
+    // Launch a hidden cmd.exe wrapper running the .bat. The wrapper waits
+    // for NSIS, records the real installer exit code, and relaunches Aura
+    // after files are free. See `WINDOWS_HANDOFF_BASE_CREATION_FLAGS` for
+    // why we use `CREATE_NO_WINDOW` instead of `DETACHED_PROCESS` here.
+    let base_flags = WINDOWS_HANDOFF_BASE_CREATION_FLAGS;
     match spawn_windows_handoff_with_flags(
         script_path,
         stdout_path,
         stderr_path,
-        base_flags | CREATE_BREAKAWAY_FROM_JOB,
+        base_flags | WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB,
     ) {
         Ok(child) => Ok(child),
         Err(primary_error) => {
@@ -619,7 +649,11 @@ fn summarise_for_detail(value: &str) -> String {
     if trimmed.is_empty() {
         return "<empty>".to_string();
     }
-    let last = trimmed.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or(trimmed);
+    let last = trimmed
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or(trimmed);
     let cleaned: String = last
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -661,11 +695,7 @@ fn run_preflight(state: &UpdateState) -> Result<BundleLocation, String> {
     );
 
     if bundle.blocks_in_place_update() {
-        let detail = format!(
-            "reason={} {}",
-            bundle.reason(),
-            bundle.detail()
-        );
+        let detail = format!("reason={} {}", bundle.reason(), bundle.detail());
         record_step_only(state, UpdateStep::PreflightFailed, Some(&detail));
         return Err(format!(
             "Aura is running from a read-only location ({reason}) and cannot install \
@@ -824,8 +854,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
                         sentinel_path.display()
                     )),
                 );
-                let (_, stderr_tail) =
-                    capture_handoff_output(state, &stdout_path, &stderr_path);
+                let (_, stderr_tail) = capture_handoff_output(state, &stdout_path, &stderr_path);
                 let stderr_excerpt = stderr_tail
                     .as_deref()
                     .map(summarise_for_detail)
@@ -854,8 +883,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
                         HANDOFF_SENTINEL_HARD_CEILING.as_millis()
                     )),
                 );
-                let (_, stderr_tail) =
-                    capture_handoff_output(state, &stdout_path, &stderr_path);
+                let (_, stderr_tail) = capture_handoff_output(state, &stdout_path, &stderr_path);
                 let stderr_excerpt = stderr_tail
                     .as_deref()
                     .map(summarise_for_detail)
@@ -884,11 +912,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
         // before we begin tearing the parent down.
         record_step_only(state, UpdateStep::ShutdownTriggered, None);
         request_event_loop_shutdown(state);
-        record_step_only(
-            state,
-            UpdateStep::ProcessExitCalled,
-            Some("graceful=true"),
-        );
+        record_step_only(state, UpdateStep::ProcessExitCalled, Some("graceful=true"));
         // Drop the Child handle without killing the process. The handoff
         // is detached and must outlive Aura so it can run the installer.
         drop(child);
@@ -927,8 +951,7 @@ fn perform_update_install(state: &UpdateState) -> Result<Option<String>, String>
 pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), String> {
     use std::path::PathBuf;
 
-    let bundle = inspect_bundle()
-        .map_err(|e| format!("failed to inspect running bundle: {e}"))?;
+    let bundle = inspect_bundle().map_err(|e| format!("failed to inspect running bundle: {e}"))?;
     if !bundle.blocks_in_place_update() {
         return Err(format!(
             "refusing to relocate a writable bundle (path={} translocated={} read_only={})",
@@ -986,7 +1009,11 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         ("dest", dest_str.as_ref()),
         ("staging", staging_str.as_ref()),
     ] {
-        if value.contains('\'') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        if value.contains('\'')
+            || value.contains('"')
+            || value.contains('\n')
+            || value.contains('\r')
+        {
             let message = format!(
                 "refusing to embed {label} path containing quote/CR/LF in osascript command: {value:?}"
             );
@@ -1020,18 +1047,14 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         staging = staging_str,
         dest = dest_str,
     );
-    let apple_script = format!(
-        "do shell script \"{shell}\" with administrator privileges"
-    );
+    let apple_script = format!("do shell script \"{shell}\" with administrator privileges");
 
     let status = Command::new("osascript")
         .arg("-e")
         .arg(&apple_script)
         .status()
         .map_err(|error| {
-            let message = format!(
-                "failed to spawn osascript for /Applications relocate: {error}"
-            );
+            let message = format!("failed to spawn osascript for /Applications relocate: {error}");
             record_step_only(state, UpdateStep::RelocateFailed, Some(&message));
             message
         })?;
@@ -1075,10 +1098,7 @@ pub(crate) fn relocate_and_relaunch_macos(state: &UpdateState) -> Result<(), Str
         record_step_only(
             state,
             UpdateStep::RelaunchFailed,
-            Some(&format!(
-                "error={error} dest={}",
-                dest.display()
-            )),
+            Some(&format!("error={error} dest={}", dest.display())),
         );
         // Don't return here — the bundle is in /Applications, the user
         // can open it from Finder. Continue to shutdown.
@@ -1297,7 +1317,8 @@ mod tests {
         sanitize_version_for_filename, spawn_windows_handoff, stage_installer_bytes,
         summarise_for_detail, wait_for_handoff_sentinel, windows_nsis_installer_argument_list,
         write_windows_handoff_script, HandoffWaitOutcome, HANDOFF_OUTPUT_TAIL_BYTES,
-        INSTALLER_STAGE_SUBDIR, WINDOWS_UPDATE_RELAUNCH_ENV,
+        INSTALLER_STAGE_SUBDIR, WINDOWS_HANDOFF_BASE_CREATION_FLAGS,
+        WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB, WINDOWS_UPDATE_RELAUNCH_ENV,
     };
     use crate::updater::UpdateState;
     use std::fs;
@@ -1339,6 +1360,77 @@ mod tests {
     #[test]
     fn formats_nsis_arguments_for_cmd_invocation() {
         assert_eq!(windows_nsis_installer_argument_list(), "/P /R");
+    }
+
+    #[test]
+    fn handoff_creation_flags_keep_console_hidden_for_child_processes() {
+        // `CREATE_NO_WINDOW` keeps the spawned cmd.exe from flashing a
+        // visible console window. It is documented to be ignored when
+        // combined with `DETACHED_PROCESS`, which would leave cmd.exe
+        // with no console at all — so we pin DETACHED_PROCESS off here.
+        // The complementary guarantee that no child console subprocess
+        // can flash a fresh visible console after the parent exits is
+        // enforced separately by
+        // `handoff_script_has_no_console_subprocesses`.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & DETACHED_PROCESS,
+            0,
+            "DETACHED_PROCESS must not be set or CREATE_NO_WINDOW is ignored"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NO_WINDOW,
+            CREATE_NO_WINDOW,
+            "CREATE_NO_WINDOW must be set so cmd.exe itself runs without a visible console"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_BASE_CREATION_FLAGS & CREATE_NEW_PROCESS_GROUP,
+            CREATE_NEW_PROCESS_GROUP,
+            "CREATE_NEW_PROCESS_GROUP must be set so parent shutdown signals don't propagate"
+        );
+        assert_eq!(
+            WINDOWS_HANDOFF_CREATE_BREAKAWAY_FROM_JOB & DETACHED_PROCESS,
+            0,
+            "the breakaway flag must not silently introduce DETACHED_PROCESS"
+        );
+    }
+
+    #[test]
+    fn handoff_script_has_no_console_subprocesses() {
+        let script = build_windows_handoff_script(
+            PathBuf::from(r"C:\stage\aura-setup.exe").as_path(),
+            PathBuf::from(r"C:\install\Aura.exe").as_path(),
+            PathBuf::from(r"C:\logs\updater.log").as_path(),
+            PathBuf::from(r"C:\stage\.sentinel").as_path(),
+        )
+        .expect("script should build");
+
+        // Any console subprocess invoked from the handoff `.bat` risks
+        // flashing a terminal during updates: once the parent aura.exe
+        // has exited, the spawned cmd.exe's `CREATE_NO_WINDOW` console
+        // is not reliably inherited by children, and Windows will
+        // allocate a fresh visible console for the child instead. The
+        // robust guarantee is that the script contains no console
+        // subprocesses in the first place — pin that here.
+        let lower = script.to_ascii_lowercase();
+        for forbidden in [
+            "ping ",
+            "timeout ",
+            "powershell",
+            "pwsh ",
+            "wscript",
+            "cscript",
+            "choice ",
+            "waitfor",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "handoff script must not invoke console subprocess {forbidden:?}; got:\n{script}"
+            );
+        }
     }
 
     #[test]
@@ -1431,9 +1523,7 @@ mod tests {
         assert!(script.contains(
             r#"set "INSTALLER=C:\Users\Test User\AppData\Local\aura\runtime\updater\aura setup.exe""#
         ));
-        assert!(script.contains(
-            r#"set "AURA_EXE=C:\Users\Test User\AppData\Local\Aura\Aura.exe""#
-        ));
+        assert!(script.contains(r#"set "AURA_EXE=C:\Users\Test User\AppData\Local\Aura\Aura.exe""#));
     }
 
     #[test]
@@ -1456,17 +1546,12 @@ mod tests {
     #[test]
     fn write_windows_handoff_script_writes_bat_to_disk() {
         let data_dir = unique_temp_dir("write-script");
-        fs::create_dir_all(data_dir.join(INSTALLER_STAGE_SUBDIR))
-            .expect("create stage dir");
+        fs::create_dir_all(data_dir.join(INSTALLER_STAGE_SUBDIR)).expect("create stage dir");
         let installer = data_dir.join(INSTALLER_STAGE_SUBDIR).join("aura-setup.exe");
         let log = data_dir.join("logs").join("updater.log");
-        let sentinel = data_dir
-            .join(INSTALLER_STAGE_SUBDIR)
-            .join(".sentinel");
-        let path = write_windows_handoff_script(
-            &data_dir, "9.9.9", &installer, &log, &sentinel,
-        )
-        .expect("write script");
+        let sentinel = data_dir.join(INSTALLER_STAGE_SUBDIR).join(".sentinel");
+        let path = write_windows_handoff_script(&data_dir, "9.9.9", &installer, &log, &sentinel)
+            .expect("write script");
         assert!(path.extension().and_then(|s| s.to_str()) == Some("bat"));
         let body = fs::read_to_string(&path).expect("read script");
         assert!(body.contains("@echo off"));
@@ -1563,10 +1648,13 @@ mod tests {
         let stderr = stage.join("smoke.bat.err");
         let log = temp_dir.join("logs").join("updater.log");
         fs::create_dir_all(log.parent().unwrap()).expect("create log dir");
-        let mut child = spawn_windows_handoff(&temp_dir, &script, &stdout, &stderr)
-            .expect("spawn handoff");
+        let mut child =
+            spawn_windows_handoff(&temp_dir, &script, &stdout, &stderr).expect("spawn handoff");
         let _ = child.wait();
-        assert!(sentinel.exists(), "sentinel should have been written by .bat");
+        assert!(
+            sentinel.exists(),
+            "sentinel should have been written by .bat"
+        );
         fs::remove_dir_all(&temp_dir).ok();
     }
 
@@ -1591,10 +1679,7 @@ mod tests {
     fn summarise_for_detail_takes_last_nonempty_line_and_strips_controls() {
         assert_eq!(summarise_for_detail(""), "<empty>");
         assert_eq!(summarise_for_detail("\n   \n"), "<empty>");
-        assert_eq!(
-            summarise_for_detail("first\nsecond\nthird\n"),
-            "\"third\""
-        );
+        assert_eq!(summarise_for_detail("first\nsecond\nthird\n"), "\"third\"");
         assert!(summarise_for_detail("line\twith\tcontrol").contains(' '));
     }
 }

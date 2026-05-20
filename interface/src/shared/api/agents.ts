@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { apiFetch } from "./core";
 import { sendAgentEventStream, sendEventStream } from "../../api/streams";
+import type { WireContextBreakdown } from "../../stores/context-usage-store";
 
 type ApiRequestOptions = {
   signal?: AbortSignal;
@@ -23,6 +24,12 @@ export const STANDALONE_AGENT_HISTORY_LIMIT = 80;
 interface AgentEventsRequestOptions extends ApiRequestOptions {
   limit?: number;
   offset?: number;
+}
+
+interface AgentSessionEventsRequestOptions extends ApiRequestOptions {
+  limit?: number;
+  /** RFC 3339 timestamp; only events with `created_at > since` are returned. */
+  since?: string;
 }
 
 export interface PaginatedEventsResponse {
@@ -38,6 +45,15 @@ export interface ContextUsageResponse {
    * when only the legacy `context_utilization` ratio is known (e.g.
    * dev-loop fallback). */
   estimated_context_tokens?: number;
+  /** Per-bucket token estimates from the most recent persisted
+   * `assistant_message_end` event for the session. Absent on older
+   * harness builds (or when every bucket was zero); the frontend treats
+   * an absent breakdown as "not available" and falls back to the legacy
+   * two-row Used/Total card in `ContextUsageIndicator`. Plumbed through
+   * `useHydrateContextUtilization` so the new stacked-bar popover
+   * renders immediately on chat mount instead of waiting for the next
+   * assistant turn. */
+  context_breakdown?: WireContextBreakdown;
 }
 
 export const agentTemplatesApi = {
@@ -127,6 +143,33 @@ export const agentTemplatesApi = {
       signal: options?.signal,
     });
   },
+  /**
+   * Per-session standalone-agent events read. Sister of
+   * `sessionsApi.listSessionEvents` for the project-scoped surface;
+   * `useStandaloneAgentChat` calls this whenever a `?session=` pin is
+   * in the URL so the chat panel stays scoped to that single session
+   * instead of falling back to the per-agent timeline (which
+   * aggregates across every session of the agent and used to drag
+   * old conversations back into view after the user pressed `+`).
+   */
+  listSessionEvents: (
+    agentId: AgentId,
+    sessionId: string,
+    options?: AgentSessionEventsRequestOptions,
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.limit != null) {
+      params.set("limit", String(options.limit));
+    }
+    if (options?.since) {
+      params.set("since", options.since);
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return apiFetch<SessionEvent[]>(
+      `/api/agents/${agentId}/sessions/${sessionId}/events${query}`,
+      { signal: options?.signal },
+    );
+  },
   listEventsPaginated: (
     agentId: AgentId,
     options?: {
@@ -149,6 +192,19 @@ export const agentTemplatesApi = {
   sendEventStream: sendAgentEventStream,
   resetSession: (agentId: AgentId) =>
     apiFetch<void>(`/api/agents/${agentId}/reset-session`, { method: "POST" }),
+  /**
+   * Forward `HarnessInbound::Cancel` to every live chat session on the
+   * bare-template partition and evict the warm sessions so the next
+   * user message cold-starts cleanly. Used by `stopStreaming` to
+   * unstick the per-partition turn slot when the user clicks Stop —
+   * without this, a long-running turn (e.g. plan-mode `generate_specs`
+   * full of non-terminal `progress` heartbeats) keeps the slot held
+   * server-side, blocking the next send until the 90s SSE idle
+   * timeout. Idempotent: the server returns 204 even when no live
+   * session exists for the partition.
+   */
+  cancelTurn: (agentId: AgentId) =>
+    apiFetch<void>(`/api/agents/${agentId}/cancel-turn`, { method: "POST" }),
   getContextUsage: (agentId: AgentId, options?: ApiRequestOptions) =>
     apiFetch<ContextUsageResponse>(
       `/api/agents/${agentId}/context-usage`,
@@ -241,6 +297,19 @@ export const agentInstancesApi = {
   resetInstanceSession: (projectId: ProjectId, agentInstanceId: AgentInstanceId) =>
     apiFetch<void>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/reset-session`,
+      { method: "POST" },
+    ),
+  /**
+   * Project-instance counterpart to {@link agentTemplatesApi.cancelTurn}.
+   * Forwards `HarnessInbound::Cancel` to every live chat session on
+   * the `{template}::{instance_id}::*` partition and evicts the warm
+   * sessions. Called fire-and-forget from `stopStreaming` so a Stop
+   * press unsticks the partition immediately rather than relying on
+   * the server-side SSE drop guard alone.
+   */
+  cancelInstanceTurn: (projectId: ProjectId, agentInstanceId: AgentInstanceId) =>
+    apiFetch<void>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/cancel-turn`,
       { method: "POST" },
     ),
   getContextUsage: (

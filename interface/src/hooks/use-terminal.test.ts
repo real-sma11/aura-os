@@ -17,9 +17,11 @@ class MockWS {
 
   constructor(url: string) {
     this.url = url;
-    lastWS = this;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    lastWS = self;
     queueMicrotask(() => {
-      this.onopen?.call(this as unknown as WebSocket, new Event("open"));
+      self.onopen?.call(self as unknown as WebSocket, new Event("open"));
     });
   }
 
@@ -52,6 +54,10 @@ describe("useTerminal", () => {
     origWS = globalThis.WebSocket;
     globalThis.WebSocket = MockWS as unknown as typeof WebSocket;
     lastWS = null;
+    // Spies retain call history across tests; reset before each so
+    // idempotency / call-count assertions see only this test's calls.
+    vi.mocked(spawnTerminal).mockClear();
+    vi.mocked(killTerminal).mockClear();
     vi.mocked(spawnTerminal).mockResolvedValue({ id: "term-1", shell: "bash" });
     vi.mocked(killTerminal).mockResolvedValue(undefined);
   });
@@ -60,14 +66,27 @@ describe("useTerminal", () => {
     globalThis.WebSocket = origWS;
   });
 
-  it("returns null terminalId initially", () => {
+  it("returns null terminalId initially and does not spawn until spawn() is called", async () => {
     const { result } = renderHook(() => useTerminal());
     expect(result.current.terminalId).toBeNull();
     expect(result.current.connected).toBe(false);
+
+    // Give microtasks/promises a chance to run — if the hook were
+    // auto-spawning on mount this would have been called by now.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(spawnTerminal).not.toHaveBeenCalled();
+    expect(lastWS).toBeNull();
   });
 
-  it("spawns a terminal and connects via WebSocket", async () => {
-    const { result } = renderHook(() => useTerminal({ cols: 120, rows: 40 }));
+  it("spawn(cols, rows) spawns the terminal and connects via WebSocket with the given size", async () => {
+    const { result } = renderHook(() => useTerminal({ cwd: "/tmp/proj" }));
+
+    act(() => {
+      result.current.spawn(120, 40);
+    });
 
     await vi.waitFor(() => {
       expect(result.current.terminalId).toBe("term-1");
@@ -80,13 +99,39 @@ describe("useTerminal", () => {
     expect(spawnTerminal).toHaveBeenCalledWith({
       cols: 120,
       rows: 40,
-      cwd: undefined,
+      cwd: "/tmp/proj",
+      projectId: undefined,
     });
   });
 
-  it("write sends JSON input over WebSocket", async () => {
+  it("spawn() is idempotent — second call does not spawn another PTY", async () => {
     const { result } = renderHook(() => useTerminal());
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
+    await vi.waitFor(() => expect(result.current.connected).toBe(true));
+
+    act(() => {
+      result.current.spawn(200, 60);
+    });
+    // Let the second spawn() resolve (it shouldn't, but we wait anyway).
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(spawnTerminal).toHaveBeenCalledTimes(1);
+    expect(spawnTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ cols: 80, rows: 24 }),
+    );
+  });
+
+  it("write sends JSON input over WebSocket once spawned", async () => {
+    const { result } = renderHook(() => useTerminal());
+
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => {
       expect(result.current.connected).toBe(true);
     });
@@ -101,9 +146,12 @@ describe("useTerminal", () => {
     expect(atob(msg.data)).toBe("ls\n");
   });
 
-  it("resize sends JSON resize over WebSocket", async () => {
+  it("resize sends JSON resize over WebSocket once spawned", async () => {
     const { result } = renderHook(() => useTerminal());
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => expect(result.current.connected).toBe(true));
 
     act(() => {
@@ -119,6 +167,9 @@ describe("useTerminal", () => {
   it("onOutput registers listeners that receive decoded data", async () => {
     const { result } = renderHook(() => useTerminal());
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => expect(result.current.connected).toBe(true));
 
     const received: string[] = [];
@@ -140,6 +191,9 @@ describe("useTerminal", () => {
   it("kill closes WS and kills terminal", async () => {
     const { result } = renderHook(() => useTerminal());
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => expect(result.current.connected).toBe(true));
 
     act(() => {
@@ -154,6 +208,9 @@ describe("useTerminal", () => {
   it("emits the remote terminal connection error without indented follow-up text", async () => {
     const { result } = renderHook(() => useTerminal({ remoteAgentId: "agent-1" }));
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => expect(result.current.connected).toBe(true));
 
     const received: string[] = [];
@@ -175,8 +232,11 @@ describe("useTerminal", () => {
   });
 
   it("cleans up on unmount", async () => {
-    const { unmount } = renderHook(() => useTerminal());
+    const { result, unmount } = renderHook(() => useTerminal());
 
+    act(() => {
+      result.current.spawn(80, 24);
+    });
     await vi.waitFor(() => expect(lastWS).toBeTruthy());
     unmount();
 

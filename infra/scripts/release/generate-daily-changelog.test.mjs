@@ -6,6 +6,9 @@ import {
   assertStrictToolModelSupport,
   batchCommits,
   buildAnthropicRequestBody,
+  computeBackoffDelayMs,
+  fetchAnthropicMessagesWithRetry,
+  parseRetryAfterMs,
   preservePublishedEntryMedia,
   validateRenderedEntry,
 } from "./generate-daily-changelog.mjs";
@@ -182,4 +185,192 @@ test("preservePublishedEntryMedia does not carry media to unrelated regenerated 
   const preserved = preservePublishedEntryMedia(regenerated, previousRendered);
 
   assert.equal(preserved.entries[0].media, undefined);
+});
+
+function makeJsonResponse({ status = 200, body = {}, headers = {} } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(headers),
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  };
+}
+
+test("fetchAnthropicMessagesWithRetry retries 529 and returns the eventual success", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    if (calls.length === 1) {
+      return makeJsonResponse({
+        status: 529,
+        body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+      });
+    }
+    return makeJsonResponse({ status: 200, body: { ok: true } });
+  };
+  const sleeps = [];
+
+  const response = await fetchAnthropicMessagesWithRetry(
+    { model: "claude-test", max_tokens: 10, messages: [] },
+    {
+      fetchImpl,
+      apiKey: "test-key",
+      maxRetries: 3,
+      baseDelayMs: 5,
+      maxDelayMs: 20,
+      sleepImpl: async (ms) => { sleeps.push(ms); },
+      randomFn: () => 0.5,
+      log: () => {},
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+  assert.equal(sleeps.length, 1);
+  assert.ok(sleeps[0] >= 1, "should sleep at least one millisecond between attempts");
+  assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
+  assert.equal(calls[0].init.headers["x-api-key"], "test-key");
+});
+
+test("fetchAnthropicMessagesWithRetry exhausts retries on persistent 529", async () => {
+  let callCount = 0;
+  const fetchImpl = async () => {
+    callCount += 1;
+    return makeJsonResponse({
+      status: 529,
+      body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+    });
+  };
+
+  await assert.rejects(
+    () => fetchAnthropicMessagesWithRetry(
+      { model: "claude-test", max_tokens: 10, messages: [] },
+      {
+        fetchImpl,
+        apiKey: "test-key",
+        maxRetries: 2,
+        baseDelayMs: 1,
+        maxDelayMs: 2,
+        sleepImpl: async () => {},
+        randomFn: () => 0.5,
+        log: () => {},
+      },
+    ),
+    /Anthropic request failed \(529\) after 3 attempts/,
+  );
+  assert.equal(callCount, 3);
+});
+
+test("fetchAnthropicMessagesWithRetry does not retry terminal 400 responses", async () => {
+  let callCount = 0;
+  const fetchImpl = async () => {
+    callCount += 1;
+    return makeJsonResponse({
+      status: 400,
+      body: { type: "error", error: { type: "invalid_request_error", message: "bad" } },
+    });
+  };
+
+  await assert.rejects(
+    () => fetchAnthropicMessagesWithRetry(
+      { model: "claude-test", max_tokens: 10, messages: [] },
+      {
+        fetchImpl,
+        apiKey: "test-key",
+        maxRetries: 5,
+        baseDelayMs: 1,
+        maxDelayMs: 2,
+        sleepImpl: async () => {},
+        randomFn: () => 0.5,
+        log: () => {},
+      },
+    ),
+    /Anthropic request failed \(400\)/,
+  );
+  assert.equal(callCount, 1);
+});
+
+test("fetchAnthropicMessagesWithRetry honors retry-after-ms header when larger than backoff", async () => {
+  let callCount = 0;
+  const fetchImpl = async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return makeJsonResponse({
+        status: 429,
+        body: {},
+        headers: { "retry-after-ms": "75" },
+      });
+    }
+    return makeJsonResponse({ status: 200, body: { ok: true } });
+  };
+  const sleeps = [];
+
+  const response = await fetchAnthropicMessagesWithRetry(
+    { model: "claude-test", max_tokens: 10, messages: [] },
+    {
+      fetchImpl,
+      apiKey: "test-key",
+      maxRetries: 2,
+      baseDelayMs: 1,
+      maxDelayMs: 1000,
+      sleepImpl: async (ms) => { sleeps.push(ms); },
+      randomFn: () => 0.5,
+      log: () => {},
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(callCount, 2);
+  assert.equal(sleeps.length, 1);
+  assert.ok(sleeps[0] >= 75, `expected delay >= 75ms, saw ${sleeps[0]}`);
+});
+
+test("fetchAnthropicMessagesWithRetry retries network errors", async () => {
+  let callCount = 0;
+  const fetchImpl = async () => {
+    callCount += 1;
+    if (callCount < 3) {
+      throw new Error("ECONNRESET");
+    }
+    return makeJsonResponse({ status: 200, body: { ok: true } });
+  };
+
+  const response = await fetchAnthropicMessagesWithRetry(
+    { model: "claude-test", max_tokens: 10, messages: [] },
+    {
+      fetchImpl,
+      apiKey: "test-key",
+      maxRetries: 3,
+      baseDelayMs: 1,
+      maxDelayMs: 2,
+      sleepImpl: async () => {},
+      randomFn: () => 0.5,
+      log: () => {},
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(callCount, 3);
+});
+
+test("computeBackoffDelayMs grows exponentially up to the cap with jitter", () => {
+  const values = [1, 2, 3, 4, 5].map((attempt) => computeBackoffDelayMs(attempt, 100, 800, () => 1));
+  // attempt 1: 100, 2: 200, 3: 400, 4: 800, 5: capped at 800
+  assert.deepEqual(values, [100, 200, 400, 800, 800]);
+
+  const halfJitter = computeBackoffDelayMs(3, 100, 10000, () => 0);
+  // 0.5x of 400 = 200
+  assert.equal(halfJitter, 200);
+});
+
+test("parseRetryAfterMs prefers retry-after-ms over retry-after seconds", () => {
+  const headers = new Headers({ "retry-after-ms": "1500", "retry-after": "30" });
+  assert.equal(parseRetryAfterMs(headers), 1500);
+
+  const secondsOnly = new Headers({ "retry-after": "2" });
+  assert.equal(parseRetryAfterMs(secondsOnly), 2000);
+
+  const empty = new Headers();
+  assert.equal(parseRetryAfterMs(empty), null);
 });

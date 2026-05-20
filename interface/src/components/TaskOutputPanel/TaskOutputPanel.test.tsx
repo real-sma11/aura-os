@@ -98,6 +98,22 @@ vi.mock("../AutomationBar/useAutomationStatus", () => ({
   useAutomationStatus: () => automationStatus,
 }));
 
+vi.mock("../AutomationBar/AutomationModelPicker", () => ({
+  AutomationModelPicker: ({
+    projectId,
+    disabled,
+  }: {
+    projectId: string;
+    disabled: boolean;
+  }) => (
+    <div
+      data-testid="automation-model-picker"
+      data-project-id={projectId}
+      data-disabled={disabled ? "true" : "false"}
+    />
+  ),
+}));
+
 vi.mock("../TerminalPanelBody", () => ({
   TerminalPanelBody: () => <div data-testid="terminal-panel-body" />,
 }));

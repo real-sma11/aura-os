@@ -1,0 +1,403 @@
+.feedbackPage {
+  min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
+  min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
+  padding: 120px 32px 0;
+  background: #000;
+}
+
+.feedbackPageShell {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 160px minmax(0, 600px);
+  gap: 48px;
+  align-items: start;
+}
+
+/* Sidebar */
+.feedbackSidebar {
+  position: sticky;
+  top: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.feedbackSidebarBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Mobile filter toggle - hidden on desktop */
+.feedbackMobileToggle {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--marketing-transition-fast), border-color var(--marketing-transition-fast);
+}
+
+.feedbackMobileToggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.feedbackMobileToggleLabel {
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.feedbackMobileToggleSummary {
+  flex: 1;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedbackMobileToggleChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.56);
+  transition: transform var(--marketing-transition-fast);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.feedbackMobileToggleChevronOpen {
+  transform: rotate(180deg);
+}
+
+.feedbackFolder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feedbackFolderHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.feedbackFolderHeader:hover {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.feedbackFolderChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--marketing-transition-fast);
+}
+
+.feedbackFolderChevronOpen {
+  transform: rotate(90deg);
+}
+
+.feedbackFolderLabel {
+  flex: 1;
+}
+
+.feedbackFolderBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 12px;
+}
+
+.feedbackFilterRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  text-align: left;
+  transition: background var(--marketing-transition-fast), color var(--marketing-transition-fast);
+}
+
+.feedbackFilterRow:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.feedbackFilterRowActive,
+.feedbackFilterRowActive:hover {
+  background: #1a1a1d;
+  color: #fff;
+  border-radius: 3px;
+}
+
+.feedbackFilterRowIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.56);
+  flex-shrink: 0;
+}
+
+.feedbackFilterRowActive .feedbackFilterRowIcon {
+  color: #fff;
+}
+
+.feedbackFilterRowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* List */
+.feedbackList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.feedbackCard {
+  display: flex;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.feedbackCardVotes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 32px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.feedbackCardVoteIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedbackCardVoteScore {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.feedbackCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feedbackCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.feedbackCardAuthor {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+}
+
+.feedbackCardDot {
+  opacity: 0.5;
+}
+
+.feedbackCardTime,
+.feedbackCardCategory {
+  color: rgba(255, 255, 255, 0.56);
+  white-space: nowrap;
+}
+
+.feedbackCardCategoryGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedbackCardHeaderSpacer {
+  flex: 1;
+}
+
+.feedbackCardStatus {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.56);
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.feedbackCardStatus[data-status='done'],
+.feedbackCardStatus[data-status='deployed'] {
+  color: #01f4cb;
+  border-color: rgba(1, 244, 203, 0.32);
+}
+
+.feedbackCardStatus[data-status='in_progress'],
+.feedbackCardStatus[data-status='in_review'] {
+  color: #01a4f4;
+  border-color: rgba(1, 164, 244, 0.32);
+}
+
+.feedbackCardTitle {
+  margin: 4px 0 0;
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #fff;
+}
+
+.feedbackCardPreview {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.68);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feedbackCardMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 12px;
+}
+
+.feedbackEmptyState {
+  padding: 48px 0;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.feedbackEmptyState h2 {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.feedbackEmptyState p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .feedbackPageShell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .feedbackSidebar {
+    position: static;
+    top: auto;
+    padding-right: 0;
+    gap: 0;
+  }
+
+  .feedbackMobileToggle {
+    display: flex;
+  }
+
+  .feedbackSidebarBody {
+    display: none;
+    padding: 8px 4px 4px;
+  }
+
+  .feedbackSidebarOpen .feedbackSidebarBody {
+    display: flex;
+  }
+}
+
+@media (max-width: 768px) {
+  .feedbackPage {
+    padding: 88px 20px 0;
+  }
+
+  .feedbackCard {
+    gap: 12px;
+    padding: 14px 0;
+  }
+
+  .feedbackCardVotes {
+    min-width: 28px;
+  }
+
+  .feedbackCardHeader {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .feedbackCardAuthor {
+    font-size: 12px;
+  }
+
+  .feedbackCardTitle {
+    font-size: 15px;
+  }
+
+  .feedbackCardStatus {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .feedbackPage {
+    padding: 76px 14px 0;
+  }
+
+  .feedbackCardCategoryGroup {
+    display: none;
+  }
+}

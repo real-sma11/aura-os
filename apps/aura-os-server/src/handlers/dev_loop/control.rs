@@ -1,5 +1,5 @@
 use axum::Json;
-use tracing::warn;
+use tracing::{error, warn};
 
 use aura_os_core::{AgentInstanceId, ProjectId};
 use aura_os_harness::AutomatonClient;
@@ -55,20 +55,54 @@ async fn control_target(
         ControlAction::Resume => client.resume(&automaton_id).await,
         ControlAction::Stop => client.stop(&automaton_id).await,
     };
-    if let Err(error) = result {
-        warn!(%automaton_id, %error, "harness automaton control request failed");
-    }
+    // Capture the harness error string before we tear down the registry
+    // entry below. Historically this was a `warn!`-only log buried in
+    // the server output, which made "UI says stopped but harness is
+    // still running" effectively invisible (see
+    // `loop_stop_clears_registry_even_when_harness_unreachable` for
+    // why we still clear the registry regardless — that part is
+    // intentional so the UI can recover when the harness is genuinely
+    // dead). For Stop specifically, surface the failure at `error!`
+    // and forward it in the `loop_stopped` event payload so the
+    // streaming debug log (and any UI toast wired to it) makes the
+    // state divergence visible instead of silently lying.
+    let harness_error = match &result {
+        Err(error) => {
+            let message = error.to_string();
+            if matches!(action, ControlAction::Stop) {
+                error!(
+                    %automaton_id,
+                    harness_base_url = %base_url,
+                    error = %message,
+                    "harness automaton stop request failed; clearing local registry but harness may still be running"
+                );
+            } else {
+                warn!(
+                    %automaton_id,
+                    harness_base_url = %base_url,
+                    error = %message,
+                    "harness automaton control request failed"
+                );
+            }
+            Some(message)
+        }
+        Ok(()) => None,
+    };
     match action {
         ControlAction::Pause => set_paused(state, project_id, agent_id, true).await,
         ControlAction::Resume => set_paused(state, project_id, agent_id, false).await,
         ControlAction::Stop => abort_and_remove(state, project_id, agent_id).await,
     }
+    let event_payload = match harness_error {
+        Some(err) => serde_json::json!({"harness_error": err}),
+        None => serde_json::json!({}),
+    };
     emit_domain_event(
         state,
         event_type(action),
         project_id,
         agent_id,
-        serde_json::json!({}),
+        event_payload,
     );
 }
 

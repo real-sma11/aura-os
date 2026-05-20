@@ -44,7 +44,7 @@ use crate::state::{ActiveAutomaton, AppState, AutomatonRegistryKey};
 /// * [`BusyScope::TemplateInProject`] — the bare-agent chat route
 ///   once it has resolved a project context (either via
 ///   `SendChatRequest.project_id` or via the Phase-3 Home-project
-///   self-heal that runs inside `load_persistence_and_history`).
+///   self-heal that runs inside `load_persistence_only`).
 ///   Reject only when some instance of `template` inside `project_id`
 ///   is busy — siblings in OTHER projects can keep automating without
 ///   blocking this chat.
@@ -162,13 +162,11 @@ pub fn evaluate_partition_busy(
                     && entry.template_agent_id == *template
                     && is_busy(entry)
             })
-            .map(
-                |((entry_project, entry_instance), entry)| BusyMatch {
-                    project_id: *entry_project,
-                    agent_instance_id: *entry_instance,
-                    automaton_id: entry.automaton_id.clone(),
-                },
-            ),
+            .map(|((entry_project, entry_instance), entry)| BusyMatch {
+                project_id: *entry_project,
+                agent_instance_id: *entry_instance,
+                automaton_id: entry.automaton_id.clone(),
+            }),
         BusyScope::Unscoped => None,
     }
 }
