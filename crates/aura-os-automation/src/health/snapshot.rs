@@ -98,6 +98,7 @@ pub fn compute_signature(health: &WorkspaceHealth) -> blake3::Hash {
     let build_token: &[u8] = match health.build_status {
         BuildStatus::Passing => b"|build:pass",
         BuildStatus::Failing { .. } => b"|build:fail",
+        BuildStatus::Unknown => b"|build:unknown",
     };
     hasher.update(build_token);
     hasher.finalize()

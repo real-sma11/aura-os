@@ -8,6 +8,7 @@ mod retry;
 mod task_output;
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
@@ -16,7 +17,7 @@ use aura_os_loops::LoopHandle;
 use super::super::session::record_task_worked;
 use super::super::signals::{
     build_gate_enabled, extract_task_failure_context, render_demoted_failure_reason,
-    run_build_preflight, BuildPreflight,
+    run_build_preflight, snapshot_workspace_health, BuildPreflight,
 };
 use super::super::types::LoopRetryState;
 use super::emit_log_line;
@@ -49,7 +50,14 @@ pub(super) struct SideEffectCtx<'a> {
     pub loop_handle: &'a LoopHandle,
     pub jwt: Option<&'a str>,
     pub session_id: Option<SessionId>,
-    pub retry_state: &'a LoopRetryState,
+    /// Per-loop retry state, held as a borrow on the Arc the
+    /// forwarder owns so the side-effects pipeline can both read
+    /// the trackers directly (auto-deref through `Arc`) and clone
+    /// the Arc into a `tokio::spawn`ed task without re-wrapping —
+    /// used by the Phase 3 `task_started` workspace-health snapshot
+    /// to stash the captured baseline back onto
+    /// [`LoopRetryState::health_baseline`].
+    pub retry_state: &'a Arc<LoopRetryState>,
 }
 
 pub(super) async fn record_event_side_effects(
@@ -215,6 +223,30 @@ async fn apply_event_side_effect(
                     )
                     .await;
                 }
+                // Workspace-health baseline (Phase 3 of
+                // workspace-health-diff-gate). Captures the build state
+                // at task start so the Phase 4 completion gate can
+                // compare against task_done. Runs in the background so
+                // it never adds claim latency; if it doesn't finish
+                // before task_done, the gate falls back to "unknown
+                // baseline" (existing behavior).
+                if let Ok(task_uuid) = TaskId::from_str(task_id) {
+                    let retry_state_for_snapshot = retry_state.clone();
+                    if let Some(workspace_path) = resolve_agent_instance_workspace_path(
+                        state,
+                        &project_id,
+                        Some(agent_instance_id),
+                    )
+                    .await
+                    {
+                        tokio::spawn(async move {
+                            let health = snapshot_workspace_health(workspace_path).await;
+                            retry_state_for_snapshot
+                                .health_baseline
+                                .record(task_uuid, health);
+                        });
+                    }
+                }
             }
         }
         "task_completed" => {
@@ -226,6 +258,10 @@ async fn apply_event_side_effect(
             if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
                 retry_state.tool_retry.clear(task_uuid);
                 retry_state.task_retry.clear(task_uuid);
+                // Phase 3 of workspace-health-diff-gate: drop the
+                // baseline so a rerun of the same task starts fresh
+                // rather than diffing against the prior snapshot.
+                retry_state.health_baseline.clear(task_uuid);
             }
             // Drain the in-memory `task_output_cache` (tokens, files-
             // changed, live output, build/test/git steps) into the
@@ -239,6 +275,18 @@ async fn apply_event_side_effect(
         }
         "task_failed" => {
             set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
+            // Phase 3 of workspace-health-diff-gate: drop the
+            // baseline so a rerun of the same task starts fresh.
+            // task_failed terminates the snapshot's owning task
+            // either to a `Failed` terminal or (via
+            // `maybe_apply_task_level_retry` below) back to `Ready`;
+            // in either case the next attempt should observe a fresh
+            // baseline rather than diffing against the stale one. The
+            // per-tool / per-task retry trackers are left alone here
+            // because they're consulted by the retry path below.
+            if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
+                retry_state.health_baseline.clear(task_uuid);
+            }
             // Persist the fail reason onto `tasks.execution_notes` so
             // it survives a page reload. The live WebSocket path
             // already carries the reason to `useTaskStatus`, but that

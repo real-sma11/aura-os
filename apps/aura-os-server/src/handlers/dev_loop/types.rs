@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
-use aura_os_automation::{TaskRetryTracker, ToolRetryTracker};
+use aura_os_automation::{HealthBaselineTracker, TaskRetryTracker, ToolRetryTracker};
 use aura_os_core::{AgentId, AgentInstanceId, AgentPermissions, Project, ProjectId, SessionId};
 use aura_os_harness::{AutomatonClient, WsReaderHandle};
 use aura_os_loops::LoopHandle;
@@ -116,6 +116,15 @@ pub(super) struct LoopRetryState {
     /// `safe_transition(Failed -> Ready)` hop in the `task_failed`
     /// arm of the side-effects worker.
     pub(super) task_retry: TaskRetryTracker,
+    /// Phase 3 of `workspace-health-diff-gate`: per-task
+    /// [`aura_os_automation::WorkspaceHealth`] baseline captured at
+    /// `task_started` by the async snapshot runner in
+    /// [`super::signals::snapshot_workspace_health`]. Phase 4 reads
+    /// it back at `task_done` via
+    /// [`aura_os_automation::HealthBaselineTracker::get`]; missing
+    /// entries fall through to the existing
+    /// `workspace_health_unknown_baseline` path.
+    pub(super) health_baseline: HealthBaselineTracker,
 }
 
 impl LoopRetryState {

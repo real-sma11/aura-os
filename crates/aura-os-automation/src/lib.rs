@@ -68,8 +68,9 @@ pub use health::{
 };
 pub use progress::{apply_loop_activity, LoopActivityTransition};
 pub use resilience::{
-    recover_failed, recover_orphans, OrphanRecoveryPlan, RetryDecision, TaskRetryTracker,
-    ToolRetryTracker, FAILED_RETRY_REASON, ORPHAN_RECOVERY_REASON,
+    recover_failed, recover_orphans, BaselineEntry, HealthBaselineTracker, OrphanRecoveryPlan,
+    RetryDecision, TaskRetryTracker, ToolRetryTracker, FAILED_RETRY_REASON,
+    ORPHAN_RECOVERY_REASON,
 };
 pub use task_context::{
     build_task_context, TaskContext, TaskContextCache, TaskContextInputs, TaskContextResolver,
@@ -169,7 +170,19 @@ mod smoke {
         let _blocks: bool = _verdict.blocks_task_done();
         // Also pin the two enums the App layer pattern-matches on.
         let _: crate::BuildStatus = crate::BuildStatus::Passing;
+        let _: crate::BuildStatus = crate::BuildStatus::Unknown;
         let _: crate::TestStatus = crate::TestStatus::Unknown;
+        // Phase 3 of `workspace-health-diff-gate`: pin the
+        // `WorkspaceHealth::unknown()` constructor + the new
+        // baseline tracker so the App layer can rely on them.
+        let _: crate::WorkspaceHealth = crate::WorkspaceHealth::unknown();
+        let _baseline_tracker = crate::HealthBaselineTracker::new();
+        let _baseline_task = aura_os_core::TaskId::new();
+        _baseline_tracker.record(_baseline_task, crate::WorkspaceHealth::clean());
+        let _entry: Option<crate::BaselineEntry> = _baseline_tracker.get(_baseline_task);
+        _baseline_tracker.clear(_baseline_task);
+        let _age: Option<std::time::Duration> =
+            _baseline_tracker.snapshot_age(_baseline_task);
     }
 
     fn dummy_task() -> aura_os_core::Task {

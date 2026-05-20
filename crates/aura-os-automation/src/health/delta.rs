@@ -180,9 +180,14 @@ fn summarize_new_errors(baseline: &WorkspaceHealth, current: &WorkspaceHealth) -
         .collect();
     if new_errors.is_empty() {
         // Build was clean → failing fully via test regression; lean on
-        // the build status to phrase the summary.
+        // the build status to phrase the summary. `Unknown` shouldn't
+        // reach this branch (regression requires a Passing→Failing
+        // test flip, which means we _did_ observe both subsystems),
+        // but stay defensive and use the same phrasing as `Passing`.
         return match current.build_status {
-            BuildStatus::Passing => "tests regressed in this snapshot window".to_owned(),
+            BuildStatus::Passing | BuildStatus::Unknown => {
+                "tests regressed in this snapshot window".to_owned()
+            }
             BuildStatus::Failing { .. } => "workspace regressed".to_owned(),
         };
     }

@@ -54,6 +54,17 @@ pub enum BuildStatus {
         /// window.
         errors: Vec<HealthError>,
     },
+    /// The snapshot runner could not observe the build (cargo not on
+    /// PATH, snapshot timeout, spawn failure). Distinguished from
+    /// [`BuildStatus::Passing`] so the App layer can route the
+    /// `WorkspaceHealth::unknown` case (Phase 3 snapshot tooling
+    /// errors) into the existing `workspace_health_unknown_baseline`
+    /// fall-through instead of a false-positive "clean" verdict.
+    ///
+    /// Neither [`WorkspaceHealth::is_clean`] nor
+    /// [`WorkspaceHealth::is_failing`] returns true for `Unknown` —
+    /// it is the conservative "we have no evidence either way" state.
+    Unknown,
 }
 
 /// Status of the test subsystem at snapshot time.
@@ -111,9 +122,25 @@ impl WorkspaceHealth {
         }
     }
 
+    /// Construct a `WorkspaceHealth` that couldn't observe either
+    /// subsystem. Used by the Phase 3 snapshot runner when `cargo
+    /// check` couldn't be spawned, timed out, or otherwise produced
+    /// no usable verdict; the Phase 4 completion gate treats this as
+    /// "no baseline" and falls back to the existing gate rather than
+    /// confusing it with a clean / failing baseline.
+    #[must_use]
+    pub fn unknown() -> Self {
+        Self {
+            build_status: BuildStatus::Unknown,
+            test_status: TestStatus::Unknown,
+        }
+    }
+
     /// True when the build is passing and tests are not failing.
     /// `TestStatus::Unknown` does NOT prevent a clean verdict — the
     /// snapshot window may legitimately skip tests for latency.
+    /// [`BuildStatus::Unknown`] DOES prevent a clean verdict — we
+    /// can't claim cleanliness without observing the build.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         matches!(self.build_status, BuildStatus::Passing)
@@ -121,6 +148,9 @@ impl WorkspaceHealth {
     }
 
     /// True when the build is failing OR tests are explicitly failing.
+    /// [`BuildStatus::Unknown`] does NOT count as failing — we don't
+    /// have evidence the workspace is red, just an absence of
+    /// evidence either way.
     #[must_use]
     pub fn is_failing(&self) -> bool {
         matches!(self.build_status, BuildStatus::Failing { .. })
@@ -128,12 +158,13 @@ impl WorkspaceHealth {
     }
 
     /// Borrow the build-error slice. Returns an empty slice for
-    /// `BuildStatus::Passing` so callers don't have to pattern-match.
+    /// [`BuildStatus::Passing`] and [`BuildStatus::Unknown`] so
+    /// callers don't have to pattern-match.
     #[must_use]
     pub fn errors(&self) -> &[HealthError] {
         match &self.build_status {
             BuildStatus::Failing { errors } => errors,
-            BuildStatus::Passing => &[],
+            BuildStatus::Passing | BuildStatus::Unknown => &[],
         }
     }
 }

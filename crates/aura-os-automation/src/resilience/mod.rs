@@ -39,6 +39,7 @@
 //! does not loop forever. Mutates the tracker (each `Failed` task
 //! bumps its counter exactly once); see the function docs for why.
 
+pub mod health_baseline;
 pub mod orphan;
 pub mod task_retry;
 pub mod tool_retry;
@@ -46,6 +47,7 @@ pub mod tool_retry;
 #[cfg(test)]
 mod tests;
 
+pub use health_baseline::{BaselineEntry, HealthBaselineTracker};
 pub use orphan::{
     recover_failed, recover_orphans, OrphanRecoveryPlan, FAILED_RETRY_REASON,
     ORPHAN_RECOVERY_REASON,
