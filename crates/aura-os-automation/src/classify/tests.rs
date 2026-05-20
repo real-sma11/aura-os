@@ -224,6 +224,25 @@ fn research_loop_abort_classified_as_restartable_research_loop() {
 }
 
 #[test]
+fn implementation_phase_no_write_abort_classified_as_restartable_research_loop() {
+    for last_pending in ["search_code", "submit_plan"] {
+        let reason = format!(
+            "task reached implementation phase but no file operations completed — \
+             needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
+        );
+        assert_eq!(
+            classify_restart_reason(&reason),
+            Some("research_loop"),
+            "{last_pending} no-write abort must retry through the research-loop lane",
+        );
+        assert!(
+            should_restart_on_error(&reason),
+            "{last_pending} no-write abort must drive a task restart",
+        );
+    }
+}
+
+#[test]
 fn agent_stuck_precedence_beats_research_loop() {
     // A reason that contains BOTH needles must classify as terminal:
     // the agent-stuck guard runs first in `classify_restart_reason`,
@@ -256,6 +275,10 @@ fn is_research_loop_abort_matches_both_needles_independently() {
         "task completed without any file operations"
     ));
     assert!(is_research_loop_abort("completion not verified"));
+    assert!(is_research_loop_abort(
+        "task reached implementation phase but no file operations completed — \
+         needs decomposition (failed_paths=0, last_pending=Some(\"search_code\"))"
+    ));
     assert!(
         is_research_loop_abort("TASK COMPLETED WITHOUT ANY FILE OPERATIONS"),
         "matcher must be case-insensitive — the classifier lowercases \

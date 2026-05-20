@@ -44,9 +44,12 @@ fn is_completion_contract_failure_reason(reason: &str) -> bool {
         || reason.contains("no file edited")
         || reason.contains("no file edits");
     let mentions_no_change_escape_hatch = reason.contains("no_changes_needed");
-    let mentions_research_loop_verdict =
-        reason.contains("task completed without any file operations")
-            || reason.contains("completion not verified");
+    let mentions_research_loop_verdict = reason
+        .contains("task completed without any file operations")
+        || reason.contains("completion not verified")
+        || (reason.contains("implementation phase")
+            && reason.contains("no file operations completed")
+            && reason.contains("failed_paths=0"));
     // Phase 4a of `workspace-health-diff-gate`: the four
     // `workspace_health_*` blocking verdicts piggyback on the
     // existing CompletionContract -> fresh-context retry path. The

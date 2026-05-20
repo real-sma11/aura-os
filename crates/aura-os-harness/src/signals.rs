@@ -225,9 +225,12 @@ fn is_completion_contract_failure(reason: &str) -> bool {
         || reason.contains("no file edited")
         || reason.contains("no file edits");
     let mentions_no_change_escape_hatch = reason.contains("no_changes_needed");
-    let mentions_research_loop_verdict =
-        reason.contains("task completed without any file operations")
-            || reason.contains("completion not verified");
+    let mentions_research_loop_verdict = reason
+        .contains("task completed without any file operations")
+        || reason.contains("completion not verified")
+        || (reason.contains("implementation phase")
+            && reason.contains("no file operations completed")
+            && reason.contains("failed_paths=0"));
     let mentions_workspace_health_verdict = WORKSPACE_HEALTH_BLOCKING_REASONS
         .iter()
         .any(|needle| reason.contains(needle));
@@ -349,6 +352,30 @@ mod tests {
             "research-loop abort must classify as CompletionContract \
              so the server-side retry path recognises it as restartable",
         );
+    }
+
+    #[test]
+    fn classifies_implementation_phase_no_write_abort_as_completion_contract() {
+        for last_pending in ["search_code", "submit_plan"] {
+            let reason = format!(
+                "task reached implementation phase but no file operations completed — \
+                 needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
+            );
+            let signal = HarnessSignal::from_event(
+                "task_failed",
+                &serde_json::json!({
+                    "task_id": "task-1",
+                    "reason": reason,
+                }),
+            )
+            .expect("signal");
+
+            assert_eq!(
+                signal.failure_kind(),
+                Some(HarnessFailureKind::CompletionContract),
+                "{last_pending} no-write abort must classify as CompletionContract before truncation",
+            );
+        }
     }
 
     #[test]

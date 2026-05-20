@@ -4,7 +4,7 @@ use crate::sync_state::{TaskRecoveryPoint, TaskSyncState, TaskSyncStatus};
 
 mod wire;
 
-pub const DEFAULT_MAX_RETRIES_PER_TASK: u32 = 3;
+pub const DEFAULT_MAX_RETRIES_PER_TASK: u32 = aura_os_automation::TASK_LEVEL_RETRY_BUDGET;
 
 #[derive(Clone, Debug)]
 pub struct ReconcileInputs<'a> {
@@ -130,6 +130,8 @@ pub fn decide_reconcile_action(inputs: &ReconcileInputs<'_>) -> ReconcileAction 
                 ReconcileAction::MarkDone {
                     reason: DoneReason::TestEvidenceAccepted,
                 }
+            } else if inputs.retry_budget_remaining() {
+                ReconcileAction::RetryTask
             } else {
                 ReconcileAction::MarkTerminal {
                     reason: TerminalReason::CompletionContract,

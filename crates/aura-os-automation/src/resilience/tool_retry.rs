@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn respects_tool_call_retry_budget_of_eight() {
+    fn respects_tool_call_retry_budget() {
         let tracker = ToolRetryTracker::new();
         let task = TaskId::new();
         for attempt in 1..=TOOL_CALL_RETRY_BUDGET {

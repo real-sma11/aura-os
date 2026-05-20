@@ -31,31 +31,28 @@ fn tool_call_failures_are_diagnostic_history_not_aura_os_dod_failures() {
 // ---------------------------------------------------------------------------
 //
 // The harness emits `tool_call_failed` once its own streaming-retry
-// budget of 8 is exhausted (harness-retry-streaming, commit 9174501).
-// The server forwarder then routes the event through
-// `attempt_infra_retry` to buy one more fresh streaming request
+// budget is exhausted. The server forwarder then routes the event
+// through `attempt_infra_retry` to buy more fresh streaming requests
 // against the provider, capped per task at TOOL_CALL_RETRY_BUDGET.
 // These tests pin:
 //   1. the classifier wiring (only infra-transient reasons retry),
-//   2. the budget constant (must stay at 8 to mirror the harness),
-//   3. the counter monotonicity (8+1 must NOT retry).
+//   2. the relaxed budget constant,
+//   3. the counter monotonicity (budget+1 must NOT retry).
 //
 // They do not replay the full forwarder — the live retry path needs
 // a running automaton/task service — but they do lock in the gate
 // that the forwarder consults before dispatching.
 
 #[test]
-fn tool_call_retry_budget_is_eight_and_matches_harness_retry_count() {
-    // Harness emits `tool_call_failed` only after its internal
-    // retry-with-backoff loop (default 8 attempts) runs out, so the
-    // server-side budget should match to keep the worst-case
-    // recovery ladder symmetric at 8 × 8 = 64 total provider
-    // attempts. Changing this number is a wire-contract break and
-    // must be coordinated with the harness side.
+fn tool_call_retry_budget_is_relaxed_for_long_running_agents() {
+    // The server-side budget intentionally exceeds the harness's
+    // internal retry-with-backoff loop. A fresh server retry buys the
+    // agent another chance to keep cooking after transient provider
+    // failures instead of terminating large tasks too early.
     assert_eq!(
         tsp::tool_call_retry_budget(),
-        8,
-        "TOOL_CALL_RETRY_BUDGET must stay aligned with aura-harness's streaming-retry budget"
+        16,
+        "TOOL_CALL_RETRY_BUDGET should give long-running tasks extra runway"
     );
 }
 
@@ -70,8 +67,8 @@ fn provider_internal_error_triggers_tool_call_retry_when_under_budget() {
         "first tool_call_failed with ProviderInternalError reason must retry"
     );
     assert!(
-        tsp::tool_call_failed_should_retry(reason, 7),
-        "7th prior retry must still be under budget (budget=8)"
+        tsp::tool_call_failed_should_retry(reason, tsp::tool_call_retry_budget() - 1),
+        "last prior retry below budget must still retry"
     );
 }
 
@@ -216,16 +213,15 @@ fn task_done_no_file_reason_is_completion_contract_not_truncation() {
 }
 
 #[test]
-fn completion_contract_failure_reconciles_to_terminal_reason() {
+fn completion_contract_failure_retries_before_budget_exhaustion() {
     let decision = tsp::reconcile_decision(&[], "completion_contract", 0, 3, false, false);
 
     assert_eq!(
         decision,
         json!({
-            "action": "mark_terminal",
-            "reason": "completion_contract",
+            "action": "retry_task",
         }),
-        "missing file-edit evidence is an agent/tool contract failure, not a decomposition candidate"
+        "missing file-edit evidence should get a fresh task attempt before becoming terminal"
     );
 }
 

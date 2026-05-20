@@ -70,6 +70,9 @@ pub fn is_research_loop_abort(reason: &str) -> bool {
     let reason = reason.to_ascii_lowercase();
     reason.contains("task completed without any file operations")
         || reason.contains("completion not verified")
+        || (reason.contains("implementation phase")
+            && reason.contains("no file operations completed")
+            && reason.contains("failed_paths=0"))
 }
 
 /// True when `reason` *looks* transient but the classifiers above did

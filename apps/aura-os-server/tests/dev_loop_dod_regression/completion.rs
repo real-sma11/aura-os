@@ -416,8 +416,8 @@ fn test_runner_detector_ignores_non_shell_tool_calls() {
 
 #[test]
 fn reconciler_overrides_completion_contract_when_test_evidence_present() {
-    // Harness verdict says CompletionContract; without evidence we mark
-    // the task terminal as "completion_contract".
+    // Harness verdict says CompletionContract; without evidence we retry
+    // while budget remains.
     let without_evidence = tsp::reconcile_decision_with_test_evidence(
         &[],
         "completion_contract",
@@ -430,10 +430,9 @@ fn reconciler_overrides_completion_contract_when_test_evidence_present() {
     assert_eq!(
         without_evidence,
         json!({
-            "action": "mark_terminal",
-            "reason": "completion_contract",
+            "action": "retry_task",
         }),
-        "no test evidence: keep harness verdict as a terminal completion-contract failure"
+        "no test evidence: retry completion-contract failures while budget remains"
     );
 
     // With evidence we override into a successful no-edit completion.
@@ -453,6 +452,28 @@ fn reconciler_overrides_completion_contract_when_test_evidence_present() {
             "reason": "test_evidence_accepted",
         }),
         "test-pass evidence must override CompletionContract into a Done transition"
+    );
+}
+
+#[test]
+fn reconciler_marks_completion_contract_terminal_after_retry_budget_exhaustion() {
+    let exhausted = tsp::reconcile_decision_with_test_evidence(
+        &[],
+        "completion_contract",
+        3,
+        3,
+        false,
+        false,
+        /* has_test_pass_evidence */ false,
+    );
+
+    assert_eq!(
+        exhausted,
+        json!({
+            "action": "mark_terminal",
+            "reason": "completion_contract",
+        }),
+        "completion-contract failures should become terminal only after retry budget is exhausted"
     );
 }
 
@@ -508,6 +529,24 @@ fn research_loop_abort_verdict_is_completion_contract_failure() {
     );
 }
 
+#[test]
+fn implementation_phase_no_write_verdict_is_completion_contract_failure() {
+    for last_pending in ["search_code", "submit_plan"] {
+        let reason = format!(
+            "task reached implementation phase but no file operations completed — \
+             needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
+        );
+        assert!(
+            tsp::is_completion_contract_failure(&reason),
+            "{last_pending} no-write verdict must classify as CompletionContract"
+        );
+        assert!(
+            !tsp::is_truncation_failure(&reason),
+            "{last_pending} no-write verdict must not trigger decomposition"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Workspace-health diff gate (Phase 4 of workspace-health-diff-gate)
 //
@@ -518,9 +557,7 @@ fn research_loop_abort_verdict_is_completion_contract_failure() {
 // strict-mode flag, then asserts the gate's verdict.
 // ---------------------------------------------------------------------------
 
-use tsp::automation::{
-    classify_delta, extract_task_scope, HealthError, TaskKind, WorkspaceHealth,
-};
+use tsp::automation::{classify_delta, extract_task_scope, HealthError, TaskKind, WorkspaceHealth};
 
 fn health_error(file: &str, code: &str, kind: &str) -> HealthError {
     HealthError {
@@ -829,16 +866,12 @@ fn replay_task_37_subscriber_pump_advisory_targets_storage_crate() {
     // baseline shape and pins that the advisory mentions
     // `zero-storage` somewhere in its text.
     let baseline = red_baseline_from_prior_chat();
-    let scope = extract_task_scope(
-        "Implement the subscriber pump in crates/zero-network.",
-        &[],
+    let scope = extract_task_scope("Implement the subscriber pump in crates/zero-network.", &[]);
+    let budget = tsp::automation::ExplorationBudget::for_task(
+        /* description_len */ 0, /* dependency_count */ 0,
     );
-    let budget = tsp::automation::ExplorationBudget::for_task(/* description_len */ 0, /* dependency_count */ 0);
-    let advisory = budget.advisory_text_with_health_no_cache(
-        /* used */ 0,
-        Some(&baseline),
-        Some(&scope),
-    );
+    let advisory =
+        budget.advisory_text_with_health_no_cache(/* used */ 0, Some(&baseline), Some(&scope));
     let advisory = advisory.expect("baseline red MUST surface an advisory even on turn 1");
     assert!(
         advisory.contains("zero-storage"),

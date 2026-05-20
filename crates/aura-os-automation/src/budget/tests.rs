@@ -1,8 +1,8 @@
 //! Unit tests for [`super::exploration`].
 
 use super::exploration::{
-    ExplorationBudget, ExplorationStatus, EXPLORATION_HARD_FLOOR, EXPLORATION_SOFT_CEILING,
-    EXPLORATION_SOFT_FLOOR,
+    ExplorationBudget, ExplorationStatus, EXPLORATION_HARD_FLOOR, EXPLORATION_HARD_MULTIPLIER,
+    EXPLORATION_SOFT_CEILING, EXPLORATION_SOFT_FLOOR,
 };
 
 #[test]
@@ -35,8 +35,8 @@ fn description_length_inflates_soft_budget_linearly() {
     );
     assert_eq!(
         larger.hard,
-        larger.soft * 3,
-        "hard must remain `soft * 3` after scaling",
+        larger.soft * EXPLORATION_HARD_MULTIPLIER,
+        "hard must remain `soft * EXPLORATION_HARD_MULTIPLIER` after scaling",
     );
 }
 
@@ -60,7 +60,7 @@ fn huge_inputs_clamp_at_soft_ceiling() {
     );
     assert_eq!(
         budget.hard,
-        EXPLORATION_SOFT_CEILING * 3,
+        EXPLORATION_SOFT_CEILING * EXPLORATION_HARD_MULTIPLIER,
         "hard must follow the clamped soft value",
     );
 }
@@ -194,9 +194,7 @@ fn advisory_text_with_cache_silent_when_unique_within_budget() {
 // ---------------------------------------------------------------------------
 
 use super::exploration::format_health_summary;
-use crate::health::{
-    extract_task_scope, BuildStatus, HealthError, TaskScope, WorkspaceHealth,
-};
+use crate::health::{extract_task_scope, HealthError, TaskScope, WorkspaceHealth};
 
 fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
     HealthError {
@@ -208,10 +206,26 @@ fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
 
 fn red_workspace() -> WorkspaceHealth {
     WorkspaceHealth::failing(vec![
-        mk_err("crates/zero-storage/src/key.rs", Some("E0277"), "trait bound"),
-        mk_err("crates/zero-storage/src/key.rs", Some("E0277"), "trait bound"),
-        mk_err("crates/zero-storage/src/blob.rs", Some("E0432"), "unresolved import"),
-        mk_err("crates/zero-identity/src/lib.rs", Some("E0425"), "unresolved name"),
+        mk_err(
+            "crates/zero-storage/src/key.rs",
+            Some("E0277"),
+            "trait bound",
+        ),
+        mk_err(
+            "crates/zero-storage/src/key.rs",
+            Some("E0277"),
+            "trait bound",
+        ),
+        mk_err(
+            "crates/zero-storage/src/blob.rs",
+            Some("E0432"),
+            "unresolved import",
+        ),
+        mk_err(
+            "crates/zero-identity/src/lib.rs",
+            Some("E0425"),
+            "unresolved name",
+        ),
     ])
 }
 
@@ -360,7 +374,10 @@ fn format_health_summary_orders_files_lexicographically_and_clamps_to_three() {
     let aaa = summary.find("crates/aaa-first").unwrap();
     let bbb = summary.find("crates/bbb-second").unwrap();
     let ccc = summary.find("crates/ccc-third").unwrap();
-    assert!(aaa < bbb && bbb < ccc, "files must appear in lex order: {summary}");
+    assert!(
+        aaa < bbb && bbb < ccc,
+        "files must appear in lex order: {summary}"
+    );
 }
 
 #[test]

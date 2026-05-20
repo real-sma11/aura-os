@@ -22,44 +22,48 @@
 //!     EXPLORATION_SOFT_FLOOR,
 //!     EXPLORATION_SOFT_CEILING,
 //! );
-//! hard = soft * 3;
+//! hard = soft * EXPLORATION_HARD_MULTIPLIER;
 //! ```
 //!
 //! The constants are deliberate:
 //!
-//! * `EXPLORATION_SOFT_FLOOR = 8` lines up with the harness's
-//!   minimum useful read-budget (a task always needs at least
-//!   `get_task_context` + `read_file` × ~5 to orient).
-//! * `EXPLORATION_SOFT_CEILING = 32` keeps the soft cap from
-//!   blowing past the harness's per-turn token budget on absurd
-//!   inputs (a 10 KiB description with 50 dependencies would
-//!   otherwise mint a 200-call soft cap that the model's context
-//!   window cannot satisfy anyway).
-//! * `hard = soft * 3` matches the empirical 3:1 ratio on healthy
-//!   dev-loop runs (cheap discovery + actual implementation +
-//!   verification reads).
-//! * `EXPLORATION_HARD_FLOOR = 24` (== floor × 3) is the published
+//! * `EXPLORATION_SOFT_FLOOR = 20` gives even small tasks enough
+//!   room to read the task spec, inspect surrounding modules, and
+//!   check tests before the first nudge appears.
+//! * `EXPLORATION_SOFT_CEILING = 96` keeps the cap finite while
+//!   allowing genuinely cross-crate work to gather enough context
+//!   before implementation.
+//! * `hard = soft * 4` keeps the "let it cook" band wide enough for
+//!   discovery, implementation, and verification reads.
+//! * `EXPLORATION_HARD_FLOOR = 80` (== floor × 4) is the published
 //!   minimum hard ceiling. We do not surface a separate
 //!   `for_task` clamp on `hard` because `soft` is already
-//!   clamped, so `hard = soft * 3` is automatically bounded by
-//!   `[EXPLORATION_HARD_FLOOR, EXPLORATION_SOFT_CEILING * 3]`.
+//!   clamped, so `hard = soft * EXPLORATION_HARD_MULTIPLIER` is
+//!   automatically bounded by `[EXPLORATION_HARD_FLOOR,
+//!   EXPLORATION_SOFT_CEILING * EXPLORATION_HARD_MULTIPLIER]`.
 
 /// Minimum soft ceiling. A task with no description and no
 /// dependencies still gets this many "free" exploration calls
 /// before the soft advisory triggers. Sized so the agent can
 /// read the task spec, list the relevant directory, and skim a
-/// few files before being nudged.
-pub const EXPLORATION_SOFT_FLOOR: u32 = 8;
+/// a meaningful slice of the codebase before being nudged.
+pub const EXPLORATION_SOFT_FLOOR: u32 = 20;
 
 /// Maximum soft ceiling. Caps the heuristic so a pathologically
 /// large description / dependency list does not produce a soft
 /// budget that exceeds the harness's per-turn capacity.
-pub const EXPLORATION_SOFT_CEILING: u32 = 32;
+pub const EXPLORATION_SOFT_CEILING: u32 = 96;
 
-/// Minimum hard ceiling. Equals [`EXPLORATION_SOFT_FLOOR`] × 3 so
+/// Hard-ceiling multiplier applied to the scaled soft budget. This is
+/// deliberately generous so warnings stay advisory while agents work
+/// through larger multi-file tasks.
+pub const EXPLORATION_HARD_MULTIPLIER: u32 = 4;
+
+/// Minimum hard ceiling. Equals [`EXPLORATION_SOFT_FLOOR`] times
+/// [`EXPLORATION_HARD_MULTIPLIER`] so
 /// the smallest possible soft budget still has a non-trivial
 /// `hard` band beyond it for genuine multi-file investigations.
-pub const EXPLORATION_HARD_FLOOR: u32 = EXPLORATION_SOFT_FLOOR * 3;
+pub const EXPLORATION_HARD_FLOOR: u32 = EXPLORATION_SOFT_FLOOR * EXPLORATION_HARD_MULTIPLIER;
 
 /// Per-`description_len` characters of "extra" soft budget. Tuned
 /// so a 200-character spec line earns one additional call, a 1 KB
@@ -158,9 +162,8 @@ impl ExplorationBudget {
             )),
             ExplorationStatus::OverHard => Some(format!(
                 "Exploration budget exceeded ({used} reads issued, {unique} unique, \
-                 hard ceiling {hard}). Stop reading and make progress: propose an \
-                 edit, run a build/test command, or hand back to the loop with a \
-                 status update.",
+                 hard ceiling {hard}). Start turning the gathered context into an \
+                 edit, a build/test command, or a concise status update.",
                 hard = self.hard,
             )),
         }
@@ -172,7 +175,8 @@ impl ExplorationBudget {
     ///
     /// Returns ceilings clamped into
     /// `[EXPLORATION_SOFT_FLOOR, EXPLORATION_SOFT_CEILING]` for
-    /// `soft`. `hard` is computed as `soft * 3` — automatically
+    /// `soft`. `hard` is computed as
+    /// `soft * EXPLORATION_HARD_MULTIPLIER` — automatically
     /// bounded by the soft clamp so it never grows without
     /// bound.
     #[must_use]
@@ -192,7 +196,7 @@ impl ExplorationBudget {
         let soft = raw_soft.clamp(EXPLORATION_SOFT_FLOOR, EXPLORATION_SOFT_CEILING);
         Self {
             soft,
-            hard: soft.saturating_mul(3),
+            hard: soft.saturating_mul(EXPLORATION_HARD_MULTIPLIER),
         }
     }
 
@@ -233,8 +237,8 @@ impl ExplorationBudget {
             )),
             ExplorationStatus::OverHard => Some(format!(
                 "Exploration budget exceeded ({used} reads/searches against a \
-                 hard ceiling of {hard}). Make progress toward an edit, or \
-                 hand back to the loop with a status update.",
+                 hard ceiling of {hard}). Start turning the gathered context \
+                 into an edit, a build/test command, or a concise status update.",
                 hard = self.hard,
             )),
         }
@@ -400,9 +404,7 @@ pub fn format_health_summary(
         .collect();
 
     if file_fragments.is_empty() {
-        format!(
-            "workspace red at task start: {total_errors} errors across {total_files} files",
-        )
+        format!("workspace red at task start: {total_errors} errors across {total_files} files",)
     } else {
         format!(
             "workspace red at task start: {total_errors} errors across {total_files} files \

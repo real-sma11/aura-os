@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn respects_task_level_retry_budget_of_three() {
+    fn respects_task_level_retry_budget() {
         let tracker = TaskRetryTracker::new();
         let task = TaskId::new();
         for attempt in 1..=TASK_LEVEL_RETRY_BUDGET {
