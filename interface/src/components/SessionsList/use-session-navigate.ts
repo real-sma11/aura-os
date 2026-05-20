@@ -5,22 +5,32 @@ import type { AnnotatedSession } from "./session-row-utils";
 
 interface UseSessionNavigateOptions {
   /**
-   * When the click happens from inside the agents app and we know the
-   * agent we're viewing, the navigation stays on `/agents/:agentId` so
-   * the agents shell (and its `ChatsTab` sidekick) doesn't unmount.
-   * Pass `null` from the projects app — the projects URL is always
-   * the right destination there.
+   * The agent that owns the sessions in the list. When the click
+   * happens from inside the agents shell, the navigation stays on
+   * `/agents/:agentId` so the shell (and its `ChatsTab` sidekick)
+   * doesn't unmount. From inside the chat shell it is folded into the
+   * `?agent=` query param so `ChatAppRoute` can mount the right agent
+   * before the merged session list has loaded. Pass `null` from the
+   * projects app — the projects URL is always the right destination
+   * there.
    */
   agentId: string | null;
 }
 
 /**
- * Shared session-row click handler used by both the agents `ChatsTab`
- * and the projects sidekick. Mirrors the historical-session URL
- * contract documented in `AgentChatRoute`:
+ * Shared session-row click handler used by the agents `ChatsTab`, the
+ * chat-app sidekick `ChatsTab`, and the projects sidekick. Mirrors the
+ * historical-session URL contract for each shell so clicking a row
+ * keeps the user in the app they're currently in:
  *
- * - Agents shell:  `/agents/:agentId?project=&instance=&session=`
+ * - Agents shell:   `/agents/:agentId?project=&instance=&session=`
+ * - Chat shell:     `/chat?agent=&project=&instance=&session=`
  * - Projects shell: `/projects/:projectId/agents/:instanceId?session=`
+ *
+ * The chat-shell URL shape matches the one written by
+ * `ChatAppLeftPanel.handleSessionClick`, so `ChatAppRoute` resolves the
+ * destination agent identically whether the user clicked a row from
+ * the left panel or the right-side sidekick.
  */
 export function useSessionNavigate({ agentId }: UseSessionNavigateOptions) {
   const navigate = useNavigate();
@@ -35,6 +45,16 @@ export function useSessionNavigate({ agentId }: UseSessionNavigateOptions) {
           session: session.session_id,
         });
         navigate(`/agents/${agentId}?${params.toString()}`);
+        return;
+      }
+      if (activeAppId === "chat") {
+        const params = new URLSearchParams({
+          project: session._projectId,
+          instance: session._agentInstanceId,
+          session: session.session_id,
+        });
+        if (agentId) params.set("agent", agentId);
+        navigate(`/chat?${params.toString()}`);
         return;
       }
       navigate(
