@@ -88,24 +88,7 @@ export interface PersistDesktopRouteResponse {
   error?: string;
 }
 
-export interface DesktopPreferences {
-  logo_color: string | null;
-  pulse_enabled: boolean | null;
-  pulse_mode: "fade" | "sweep" | null;
-  pulse_speed: number | null;
-  pulse_from_color: string | null;
-  sweep_reversed: boolean | null;
-  pulse_pause: number | null;
-}
-
 export const desktopApi = {
-  getDesktopPreferences: () =>
-    apiFetch<DesktopPreferences>("/api/desktop/preferences"),
-  patchDesktopPreferences: (prefs: DesktopPreferences) =>
-    apiFetch<DesktopPreferences>("/api/desktop/preferences", {
-      method: "PATCH",
-      body: JSON.stringify(prefs),
-    }),
   getLogEntries: (limit = 1000) =>
     apiFetch<{ timestamp_ms: number; event: import("../types/aura-events").AuraEvent }[]>(
       `/api/log-entries?limit=${limit}`,

@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { api } from "../api/client";
-import type { DesktopPreferences } from "../shared/api/desktop";
+import { useAuthStore } from "../stores/auth-store";
+import type { DesktopPrefs } from "../shared/api/preferences";
 
 const STORAGE_KEY = "aura-desktop-preferences";
 const LEGACY_COLOR_KEY = "aura-desktop-logo-color";
 
+/**
+ * Dispatched after the post-login server-hydration step writes a fresher
+ * payload into localStorage. Mounted hooks listen for it so they pick up
+ * the new value without remounting.
+ */
+const HYDRATED_EVENT = "aura-desktop-prefs-hydrated";
+
 export type PulseMode = "fade" | "sweep";
 
-interface DesktopPrefs {
+interface DesktopPrefsLocal {
   color: string;
   pulseEnabled: boolean;
   pulseMode: PulseMode;
@@ -17,7 +25,7 @@ interface DesktopPrefs {
   pauseDuration: number;
 }
 
-const DEFAULTS: DesktopPrefs = {
+const DEFAULTS: DesktopPrefsLocal = {
   color: "",
   pulseEnabled: false,
   pulseMode: "fade",
@@ -27,7 +35,7 @@ const DEFAULTS: DesktopPrefs = {
   pauseDuration: 0,
 };
 
-function parseStored(): DesktopPrefs {
+function parseStored(): DesktopPrefsLocal {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
@@ -39,9 +47,9 @@ function parseStored(): DesktopPrefs {
 
 // Module-level stable reference — useSyncExternalStore requires the same
 // object reference to be returned when the data hasn't changed.
-let _prefs: DesktopPrefs = parseStored();
+let _prefs: DesktopPrefsLocal = parseStored();
 
-function getSnapshot(): DesktopPrefs {
+function getSnapshot(): DesktopPrefsLocal {
   return _prefs;
 }
 
@@ -50,7 +58,7 @@ function getSnapshot(): DesktopPrefs {
 // We inject global (non-hashed) names so inline animation: can reference them.
 let _styleEl: HTMLStyleElement | null = null;
 
-function syncPulseStyle(p: DesktopPrefs): void {
+function syncPulseStyle(p: DesktopPrefsLocal): void {
   if (typeof document === "undefined") return;
   if (!_styleEl) {
     _styleEl = document.createElement("style");
@@ -88,7 +96,7 @@ function syncPulseStyle(p: DesktopPrefs): void {
 }`;
 }
 
-function writeLocal(next: DesktopPrefs): void {
+function writeLocal(next: DesktopPrefsLocal): void {
   _prefs = next;
   syncPulseStyle(next);
   try {
@@ -110,10 +118,16 @@ function subscribe(cb: () => void): () => void {
       cb();
     }
   };
+  const handleHydrated = () => {
+    _prefs = parseStored();
+    cb();
+  };
   window.addEventListener("storage", handleStorage);
+  window.addEventListener(HYDRATED_EVENT, handleHydrated);
   return () => {
     listeners.delete(cb);
     window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(HYDRATED_EVENT, handleHydrated);
   };
 }
 
@@ -121,7 +135,7 @@ function notify(): void {
   for (const cb of listeners) cb();
 }
 
-function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
+function toApiPrefs(p: DesktopPrefsLocal): DesktopPrefs {
   return {
     logo_color: p.color || null,
     pulse_enabled: p.pulseEnabled,
@@ -133,7 +147,7 @@ function toApiPrefs(p: DesktopPrefs): DesktopPreferences {
   };
 }
 
-function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
+function fromApiPrefs(p: DesktopPrefs): DesktopPrefsLocal {
   return {
     color: p.logo_color ?? "",
     pulseEnabled: p.pulse_enabled ?? false,
@@ -145,12 +159,68 @@ function fromApiPrefs(p: DesktopPreferences): DesktopPrefs {
   };
 }
 
-function applyPatch(update: Partial<DesktopPrefs>): void {
-  const next = { ..._prefs, ...update };
+/** Fire-and-forget PUT — UI already updated locally; failure is logged
+ *  by the network layer and the next change re-pushes the full blob. */
+function pushToServer(next: DesktopPrefsLocal): void {
+  void api.preferences.putDesktop(toApiPrefs(next)).catch(() => {});
+}
+
+/** Write-through helper: localStorage first (cheap, sync, sets up the
+ *  next page load), then server PUT (cross-install survivability). */
+function persistStore(next: DesktopPrefsLocal): void {
   writeLocal(next);
   notify();
-  api.patchDesktopPreferences(toApiPrefs(next)).catch(() => {});
+  pushToServer(next);
 }
+
+function applyPatch(update: Partial<DesktopPrefsLocal>): void {
+  persistStore({ ..._prefs, ...update });
+}
+
+// "Meaningful data" guard — a fresh-install server response is every
+// field null/false-by-default and should NOT clobber a richer local
+// working set the user may have built up offline before the server got
+// any data.
+function hasContent(remote: DesktopPrefs): boolean {
+  return (
+    remote.logo_color !== null ||
+    remote.pulse_enabled !== null ||
+    remote.pulse_mode !== null ||
+    remote.pulse_speed !== null ||
+    remote.pulse_from_color !== null ||
+    remote.sweep_reversed !== null ||
+    remote.pulse_pause !== null
+  );
+}
+
+let _hydrationUserId: string | null = null;
+
+async function hydrateFromServer(): Promise<void> {
+  let server: DesktopPrefs;
+  try {
+    server = await api.preferences.getDesktop();
+  } catch {
+    return;
+  }
+  if (!hasContent(server)) return;
+  writeLocal(fromApiPrefs(server));
+  notify();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(HYDRATED_EVENT));
+  }
+}
+
+// Module-level subscription: server-hydrate desktop prefs once the user
+// is identified, then again whenever the user identity changes. The
+// `DesktopTitlebar` (which calls `useDesktopLogoColor` for its side
+// effects) ensures this module is loaded at app boot on desktop.
+useAuthStore.subscribe((state) => {
+  const userId = state.user?.user_id ?? null;
+  if (userId === _hydrationUserId) return;
+  _hydrationUserId = userId;
+  if (!userId) return;
+  void hydrateFromServer();
+});
 
 // Eagerly initialize the style element on module load so keyframes exist
 // before the first render.
@@ -163,13 +233,6 @@ export function useDesktopLogoColor() {
 
   useEffect(() => {
     syncPulseStyle(_prefs);
-    api.getDesktopPreferences().then((remote) => {
-      const fromRemote = fromApiPrefs(remote);
-      if (JSON.stringify(fromRemote) !== JSON.stringify(_prefs)) {
-        writeLocal(fromRemote);
-        notify();
-      }
-    }).catch(() => {});
   }, []);
 
   const setColor = useCallback((next: string | undefined) => {
