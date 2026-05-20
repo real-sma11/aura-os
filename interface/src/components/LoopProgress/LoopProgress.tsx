@@ -125,7 +125,7 @@ export function LoopProgress({
 
   const determinate =
     typeof activity.percent === "number" &&
-    activity.percent >= 0 &&
+    activity.percent > 0 &&
     activity.percent <= 1;
   const dashOffset = determinate
     ? geom.circumference * (1 - (activity.percent ?? 0))
@@ -167,7 +167,6 @@ export function LoopProgress({
         strokeLinecap="round"
         strokeDasharray={geom.circumference}
         strokeDashoffset={dashOffset}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
         className={styles.arc}
       />
     </svg>
