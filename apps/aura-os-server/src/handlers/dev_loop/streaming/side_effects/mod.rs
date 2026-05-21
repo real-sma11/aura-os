@@ -765,7 +765,7 @@ async fn maybe_run_health_gate(
 /// The rendered `reason` / `message` text EMBEDS `verdict.reason` as
 /// a literal substring so the cross-crate
 /// [`aura_os_automation::contains_workspace_health_blocking_reason`]
-/// predicate (and the Phase 4a `is_completion_contract_failure_for_tests`
+/// predicate (and the Phase 4a `is_completion_contract_failure`
 /// wiring) picks the failure up and routes it through the existing
 /// fresh-context retry path. Original payload fields (task_id,
 /// session_id, timestamps, …) are preserved verbatim; the

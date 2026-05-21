@@ -167,7 +167,7 @@ pub(crate) fn detect_preflight_decomposition(
 ///
 /// Returns `None` when the inputs don't trigger the preflight
 /// heuristic.
-pub(crate) fn preflight_decomposition_reason_for_tests(
+pub(crate) fn preflight_decomposition_reason(
     title: &str,
     description: &str,
 ) -> Option<(String, Option<String>)> {

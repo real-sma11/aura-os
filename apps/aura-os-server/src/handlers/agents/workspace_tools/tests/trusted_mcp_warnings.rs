@@ -25,7 +25,7 @@ exit 1
         perms.set_mode(0o755);
         std::fs::set_permissions(&script_path, perms).unwrap();
     }
-    crate::handlers::trusted_mcp::set_script_override_for_tests(script_path);
+    crate::handlers::trusted_mcp::set_script_override(script_path);
 
     let store_dir = tempfile::tempdir().unwrap();
     let store_path = store_dir.path().join("store");

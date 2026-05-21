@@ -1,4 +1,6 @@
-//! Legacy server-side signal helpers (classifier shims, failure-context extraction, completion-validation stubs, test-evidence detection, push-failure heuristics, preflight). Behaviour preserved verbatim from the pre-split `signals.rs`; new code should import the underlying primitives from `aura_os_automation` directly.
+//! Server-side signal helpers: classifier wrappers (typed via
+//! `HarnessFailureKind`), failure-context extraction, completion-validation
+//! stubs, test-evidence detection, push-failure heuristics, and preflight.
 
 mod build_preflight;
 mod classifiers;
@@ -15,29 +17,23 @@ pub(crate) use build_preflight::{
 pub(crate) use health_snapshot::{health_gate_enabled, snapshot_workspace_health};
 
 pub(crate) use classifiers::{
-    auto_decompose_disabled, classify_push_failure_for_tests,
-    is_agent_stuck_terminal_signal_for_tests, is_completion_contract_failure_for_tests,
-    is_git_push_timeout_failure_for_tests, is_insufficient_credits_failure_for_tests,
-    is_provider_internal_error_for_tests, is_rate_limited_failure_for_tests,
-    is_truncation_failure_for_tests, looks_like_unclassified_transient_for_tests,
-    should_restart_on_error_event_for_tests, tool_call_failed_should_retry_for_tests,
-    tool_call_retry_budget_for_tests,
+    auto_decompose_disabled, classify_push_failure, is_agent_stuck_terminal_signal,
+    is_completion_contract_failure, is_git_push_timeout_failure,
+    is_insufficient_credits_failure, is_provider_internal_error, is_rate_limited_failure,
+    is_truncation_failure, looks_like_unclassified_transient, should_restart_on_error_event,
+    tool_call_failed_should_retry, tool_call_retry_budget,
 };
 pub(crate) use completion::{
-    completion_validation_failure_reason_for_tests,
-    completion_validation_failure_reason_with_empty_path_writes_for_tests,
-    completion_validation_failure_reason_with_tool_call_failures_for_tests,
-    is_empty_path_write_event_for_tests, successful_write_event_path_for_tests,
-    task_done_declares_no_changes_needed_for_tests,
-    task_done_missing_file_changes_reason_for_tests,
-    task_done_workspace_health_gate_reason_for_tests,
+    completion_validation_failure_reason, completion_validation_failure_reason_with_empty_path_writes,
+    completion_validation_failure_reason_with_tool_call_failures, is_empty_path_write_event,
+    successful_write_event_path, task_done_declares_no_changes_needed,
+    task_done_missing_file_changes_reason, task_done_workspace_health_gate_reason,
 };
 pub(crate) use failure_context::extract_task_failure_context;
-pub(crate) use preflight::preflight_local_workspace_for_tests;
+pub(crate) use preflight::preflight_local_workspace;
 pub(crate) use push_failures::{
-    build_dod_followup_prompt_for_tests, bump_project_push_failures_streak_for_tests,
-    classify_dod_remediation_kind_for_tests, max_dod_retries_per_task_for_tests,
-    push_failure_reset_rearms_stuck_emission_for_tests, recovery_checkpoint_for_tests,
-    should_task_complete_despite_push_failure_for_tests, CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD,
+    build_dod_followup_prompt, bump_project_push_failures_streak, classify_dod_remediation_kind,
+    max_dod_retries_per_task, push_failure_reset_rearms_stuck_emission, recovery_checkpoint,
+    should_task_complete_despite_push_failure, CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD,
 };
 pub(crate) use test_evidence::{is_successful_test_run_event, recognized_test_runner_label};

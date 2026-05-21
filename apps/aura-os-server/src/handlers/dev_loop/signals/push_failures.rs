@@ -3,7 +3,7 @@
 pub(crate) const CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD: u32 = 3;
 const MAX_DOD_RETRIES_PER_TASK: u32 = 0;
 
-pub(crate) fn recovery_checkpoint_for_tests(
+pub(crate) fn recovery_checkpoint(
     live_output: &str,
     files_changed: &[&str],
     git_steps: &[serde_json::Value],
@@ -28,7 +28,7 @@ pub(crate) fn recovery_checkpoint_for_tests(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn should_task_complete_despite_push_failure_for_tests(
+pub(crate) fn should_task_complete_despite_push_failure(
     live_output: &str,
     files_changed: &[&str],
     n_build_steps: usize,
@@ -43,7 +43,7 @@ pub(crate) fn should_task_complete_despite_push_failure_for_tests(
             || step.get("type").and_then(|v| v.as_str()) == Some("git_committed")
     });
     has_commit
-        && super::completion::completion_validation_failure_reason_for_tests(
+        && super::completion::completion_validation_failure_reason(
             live_output,
             files_changed,
             n_build_steps,
@@ -54,12 +54,12 @@ pub(crate) fn should_task_complete_despite_push_failure_for_tests(
         .is_none()
 }
 
-pub(crate) fn classify_dod_remediation_kind_for_tests(reason: &str) -> Option<&'static str> {
+pub(crate) fn classify_dod_remediation_kind(reason: &str) -> Option<&'static str> {
     let _ = reason;
     None
 }
 
-pub(crate) fn build_dod_followup_prompt_for_tests(
+pub(crate) fn build_dod_followup_prompt(
     kind_label: &str,
     attempt: u32,
     previous_reason: &str,
@@ -68,16 +68,16 @@ pub(crate) fn build_dod_followup_prompt_for_tests(
     None
 }
 
-pub(crate) const fn max_dod_retries_per_task_for_tests() -> u32 {
+pub(crate) const fn max_dod_retries_per_task() -> u32 {
     MAX_DOD_RETRIES_PER_TASK
 }
 
-pub(crate) fn bump_project_push_failures_streak_for_tests(n: u32) -> Vec<bool> {
+pub(crate) fn bump_project_push_failures_streak(n: u32) -> Vec<bool> {
     (1..=n)
         .map(|idx| idx == CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD)
         .collect()
 }
 
-pub(crate) fn push_failure_reset_rearms_stuck_emission_for_tests() -> bool {
+pub(crate) fn push_failure_reset_rearms_stuck_emission() -> bool {
     true
 }

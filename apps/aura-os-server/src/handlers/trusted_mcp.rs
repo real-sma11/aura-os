@@ -184,7 +184,7 @@ fn slugify(value: &str) -> String {
 }
 
 #[cfg(test)]
-pub(crate) fn set_script_override_for_tests(path: PathBuf) {
+pub(crate) fn set_script_override(path: PathBuf) {
     if let Ok(mut override_path) = trusted_mcp_script_override().lock() {
         *override_path = Some(path);
     }

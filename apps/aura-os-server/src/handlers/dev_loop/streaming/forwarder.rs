@@ -17,7 +17,7 @@ use crate::loop_log::RunStatus;
 use crate::state::AppState;
 
 use super::super::session::end_session;
-use super::super::signals::is_insufficient_credits_failure_for_tests;
+use super::super::signals::is_insufficient_credits_failure;
 use super::super::types::ForwarderContext;
 use super::{activity, credits, emit_domain_event_with_session, emit_log_line, side_effects};
 
@@ -175,7 +175,7 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         .await;
         let insufficient_credits_reason = completion
             .failure_message()
-            .filter(|message| is_insufficient_credits_failure_for_tests(message));
+            .filter(|message| is_insufficient_credits_failure(message));
         // Terminal methods take `&self` via the shared `Arc<LoopHandle>`
         // so the spawned event handlers can still hold clones without
         // blocking close. Only one terminal call actually fires â€” the

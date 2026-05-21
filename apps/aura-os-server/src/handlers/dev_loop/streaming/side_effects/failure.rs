@@ -6,7 +6,7 @@ use aura_os_automation::{synthesize_failure_reason, FailureContext};
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskStatus};
 use aura_os_storage::UpdateTaskRequest;
 
-use super::super::super::signals::is_completion_contract_failure_for_tests;
+use super::super::super::signals::is_completion_contract_failure;
 use super::common::parse_task_key;
 use crate::state::AppState;
 
@@ -136,7 +136,7 @@ pub(super) async fn maybe_apply_test_evidence_override(
     _session_id: Option<SessionId>,
 ) -> Option<serde_json::Value> {
     let reason = extract_task_failure_reason(event)?;
-    if !is_completion_contract_failure_for_tests(&reason) {
+    if !is_completion_contract_failure(&reason) {
         return None;
     }
 

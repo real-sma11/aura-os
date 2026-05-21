@@ -1,6 +1,6 @@
 //! Completion-validation no-op stubs and `task_done`/file-edit predicates used by the legacy phase7 test surface.
 
-pub(crate) fn completion_validation_failure_reason_for_tests(
+pub(crate) fn completion_validation_failure_reason(
     _live_output: &str,
     _files_changed: &[&str],
     _n_build_steps: usize,
@@ -11,7 +11,7 @@ pub(crate) fn completion_validation_failure_reason_for_tests(
     None
 }
 
-pub(crate) fn completion_validation_failure_reason_with_empty_path_writes_for_tests(
+pub(crate) fn completion_validation_failure_reason_with_empty_path_writes(
     _live_output: &str,
     _files_changed: &[&str],
     _n_build_steps: usize,
@@ -26,7 +26,7 @@ pub(crate) fn completion_validation_failure_reason_with_empty_path_writes_for_te
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn completion_validation_failure_reason_with_tool_call_failures_for_tests(
+pub(crate) fn completion_validation_failure_reason_with_tool_call_failures(
     _live_output: &str,
     _files_changed: &[&str],
     _n_build_steps: usize,
@@ -39,7 +39,7 @@ pub(crate) fn completion_validation_failure_reason_with_tool_call_failures_for_t
     None
 }
 
-pub(crate) fn is_empty_path_write_event_for_tests(
+pub(crate) fn is_empty_path_write_event(
     event_type: &str,
     event: &serde_json::Value,
 ) -> bool {
@@ -53,7 +53,7 @@ pub(crate) fn is_empty_path_write_event_for_tests(
     matches!(name, "write_file" | "edit_file") && path_from_input(event).is_none()
 }
 
-pub(crate) fn successful_write_event_path_for_tests(
+pub(crate) fn successful_write_event_path(
     event_type: &str,
     event: &serde_json::Value,
 ) -> Option<(String, &'static str)> {
@@ -72,7 +72,7 @@ pub(crate) fn successful_write_event_path_for_tests(
     path_from_input(event).map(|path| (path, op))
 }
 
-pub(crate) fn task_done_declares_no_changes_needed_for_tests(
+pub(crate) fn task_done_declares_no_changes_needed(
     event_type: &str,
     event: &serde_json::Value,
 ) -> bool {
@@ -86,7 +86,7 @@ pub(crate) fn task_done_declares_no_changes_needed_for_tests(
             == Some(true)
 }
 
-pub(crate) fn task_done_missing_file_changes_reason_for_tests(
+pub(crate) fn task_done_missing_file_changes_reason(
     event_type: &str,
     event: &serde_json::Value,
     files_changed: &[&str],
@@ -95,7 +95,7 @@ pub(crate) fn task_done_missing_file_changes_reason_for_tests(
         || event.get("is_error").and_then(|v| v.as_bool()) == Some(true)
         || event.get("name").and_then(|value| value.as_str()) != Some("task_done")
         || !files_changed.is_empty()
-        || task_done_declares_no_changes_needed_for_tests(event_type, event)
+        || task_done_declares_no_changes_needed(event_type, event)
     {
         return None;
     }
@@ -109,7 +109,7 @@ pub(crate) fn task_done_missing_file_changes_reason_for_tests(
 /// Returns the blocking verdict reason emitted by
 /// [`aura_os_automation::classify_delta`] when the gate should
 /// reject the completion, or `None` to defer to the existing
-/// `task_done_missing_file_changes_reason_for_tests` gate.
+/// `task_done_missing_file_changes_reason` gate.
 ///
 /// Inputs mirror the wiring the live forwarder will use in
 /// Phase 4b:
@@ -135,7 +135,7 @@ pub(crate) fn task_done_missing_file_changes_reason_for_tests(
 /// [`aura_os_automation::HealthVerdict::blocks_task_done`] is true,
 /// so callers can use a simple `Option`-returning shape.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn task_done_workspace_health_gate_reason_for_tests(
+pub(crate) fn task_done_workspace_health_gate_reason(
     event_type: &str,
     event: &serde_json::Value,
     baseline: Option<&aura_os_automation::WorkspaceHealth>,
@@ -147,7 +147,7 @@ pub(crate) fn task_done_workspace_health_gate_reason_for_tests(
     if event_type != "tool_call_completed"
         || event.get("is_error").and_then(|v| v.as_bool()) == Some(true)
         || event.get("name").and_then(|value| value.as_str()) != Some("task_done")
-        || task_done_declares_no_changes_needed_for_tests(event_type, event)
+        || task_done_declares_no_changes_needed(event_type, event)
     {
         return None;
     }

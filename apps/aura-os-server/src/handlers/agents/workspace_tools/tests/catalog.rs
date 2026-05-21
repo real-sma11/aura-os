@@ -133,7 +133,7 @@ async fn installed_workspace_app_tools_include_discovered_trusted_mcp_tools() {
         ),
     )
     .unwrap();
-    crate::handlers::trusted_mcp::set_script_override_for_tests(script_path);
+    crate::handlers::trusted_mcp::set_script_override(script_path);
 
     let store_dir = tempfile::tempdir().unwrap();
     let store_path = store_dir.path().join("store");

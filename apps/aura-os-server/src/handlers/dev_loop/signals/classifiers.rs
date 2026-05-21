@@ -1,15 +1,11 @@
-//! Thin wrappers that route the legacy `signals::*_for_tests` helpers
-//! through the typed [`HarnessFailureKind`] enum exported by
-//! `aura-os-harness::signals`.
+//! Server-side classifier wrappers that route reason strings through the typed
+//! [`HarnessFailureKind`] enum exported by `aura-os-harness::signals`.
 //!
-//! Phase 1 of `simplify dev-loop / harness automation`: the substring
-//! classifier family in `aura-os-automation::classify::transient` has
-//! been deleted; every server-side gate now parses the reason string
-//! through `HarnessSignal::from_event(...).failure_kind()` so the
-//! typed enum is the single source of truth. The `*_for_tests` shims
-//! preserve their original signatures so downstream `phase7_test_support`
-//! callers (the `dev_loop_dod_regression` + `autonomous_recovery_replay`
-//! suites) keep compiling unchanged.
+//! The substring classifier family in
+//! `aura-os-automation::classify::transient` was retired in Phase 1;
+//! every server-side gate now parses the reason string through
+//! `HarnessSignal::from_event(...).failure_kind()` so the typed enum is
+//! the single source of truth.
 
 use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal};
 
@@ -38,18 +34,16 @@ pub(crate) fn failure_kind_of(reason: &str) -> HarnessFailureKind {
 }
 
 /// True when a transient-looking reason string was *not* picked up
-/// by the typed classifier — the safety net the
-/// `looks_like_unclassified_transient_for_tests` shim continues to
-/// expose so the `debug.retry_miss` trigger condition in
-/// `autonomous_recovery_replay/classifiers.rs` keeps firing.
+/// by the typed classifier — the safety net behind the
+/// `debug.retry_miss` trigger condition in
+/// `autonomous_recovery_replay/classifiers.rs`.
 ///
-/// Kept private to this module: production retry decisions consume
-/// [`HarnessFailureKind`] directly through
-/// [`HarnessFailureKind::is_retryable`]; the safety-net heuristic
-/// only exists to preserve the long-standing `_for_tests` shim
-/// semantics while the wider clean-up (Phase 4 of the plan) is
-/// pending.
-fn looks_like_unclassified_transient(reason: &str) -> bool {
+/// Production retry decisions consume [`HarnessFailureKind`] directly
+/// through [`HarnessFailureKind::is_retryable`]; this safety-net
+/// heuristic only exists to keep the long-standing regression
+/// coverage in place while the wider clean-up (Phase 4 of the plan)
+/// is pending.
+pub(crate) fn looks_like_unclassified_transient(reason: &str) -> bool {
     let reason = reason.to_ascii_lowercase();
     [
         "timeout",
@@ -82,35 +76,31 @@ pub(crate) fn auto_decompose_disabled() -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn is_truncation_failure_for_tests(reason: &str) -> bool {
+pub(crate) fn is_truncation_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::Truncation)
 }
 
-pub(crate) fn is_completion_contract_failure_for_tests(reason: &str) -> bool {
+pub(crate) fn is_completion_contract_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::CompletionContract)
 }
 
-pub(crate) fn is_rate_limited_failure_for_tests(reason: &str) -> bool {
+pub(crate) fn is_rate_limited_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::RateLimited)
 }
 
-pub(crate) fn is_insufficient_credits_failure_for_tests(reason: &str) -> bool {
+pub(crate) fn is_insufficient_credits_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::InsufficientCredits)
 }
 
-pub(crate) fn is_git_push_timeout_failure_for_tests(reason: &str) -> bool {
+pub(crate) fn is_git_push_timeout_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::PushTimeout)
 }
 
-pub(crate) fn is_provider_internal_error_for_tests(reason: &str) -> bool {
+pub(crate) fn is_provider_internal_error(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::ProviderInternal)
 }
 
-pub(crate) fn looks_like_unclassified_transient_for_tests(reason: &str) -> bool {
-    looks_like_unclassified_transient(reason)
-}
-
-pub(crate) fn is_agent_stuck_terminal_signal_for_tests(reason: &str) -> bool {
+pub(crate) fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::AgentStuck)
 }
 
@@ -124,7 +114,7 @@ pub(crate) fn is_agent_stuck_terminal_signal_for_tests(reason: &str) -> bool {
 /// * Falls back to the [`looks_like_unclassified_transient`] safety
 ///   net so the `autonomous_recovery_replay/gates.rs` matrix's
 ///   "tls handshake", "socket hang up" rows still restart.
-pub(crate) fn should_restart_on_error_event_for_tests(reason: &str) -> bool {
+pub(crate) fn should_restart_on_error_event(reason: &str) -> bool {
     let kind = failure_kind_of(reason);
     if matches!(kind, HarnessFailureKind::AgentStuck) {
         return false;
@@ -132,15 +122,15 @@ pub(crate) fn should_restart_on_error_event_for_tests(reason: &str) -> bool {
     kind.is_retryable() || looks_like_unclassified_transient(reason)
 }
 
-pub(crate) fn tool_call_failed_should_retry_for_tests(reason: &str, prior_count: u32) -> bool {
+pub(crate) fn tool_call_failed_should_retry(reason: &str, prior_count: u32) -> bool {
     prior_count < aura_os_automation::TOOL_CALL_RETRY_BUDGET
-        && should_restart_on_error_event_for_tests(reason)
+        && should_restart_on_error_event(reason)
 }
 
-pub(crate) const fn tool_call_retry_budget_for_tests() -> u32 {
+pub(crate) const fn tool_call_retry_budget() -> u32 {
     aura_os_automation::TOOL_CALL_RETRY_BUDGET
 }
 
-pub(crate) fn classify_push_failure_for_tests(reason: &str) -> Option<&'static str> {
+pub(crate) fn classify_push_failure(reason: &str) -> Option<&'static str> {
     aura_os_automation::classify_push_failure(reason)
 }

@@ -2,14 +2,14 @@
 /// by Phase 3's `classify_failure`. Anything else — auth errors,
 /// crashes, rate limits — returns `false`.
 pub fn is_truncation_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_truncation_failure_for_tests(reason)
+    crate::handlers::dev_loop::is_truncation_failure(reason)
 }
 
 /// True when the harness/task tool rejected `task_done` because an
 /// implementation task completed without write/edit/delete evidence and
 /// without the explicit `no_changes_needed` escape hatch.
 pub fn is_completion_contract_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_completion_contract_failure_for_tests(reason)
+    crate::handlers::dev_loop::is_completion_contract_failure(reason)
 }
 
 /// Parse `reason` through the canonical
@@ -29,21 +29,21 @@ pub fn classify_failure(reason: &str) -> aura_os_harness::signals::HarnessFailur
 /// truncation remediation so a provider cooldown isn't wasted on
 /// heuristic follow-up tasks.
 pub fn is_rate_limited_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_rate_limited_failure_for_tests(reason)
+    crate::handlers::dev_loop::is_rate_limited_failure(reason)
 }
 
 /// True when `reason` indicates the provider rejected work because the
 /// account has no remaining credits. This is terminal for dev loops:
 /// retrying or moving to the next task only burns build/setup time.
 pub fn is_insufficient_credits_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_insufficient_credits_failure_for_tests(reason)
+    crate::handlers::dev_loop::is_insufficient_credits_failure(reason)
 }
 
 /// True when `reason` is recognized as a post-commit `git push`
 /// timeout. This is the non-fatal infra path: the task can still be
 /// marked done because the commit already exists locally.
 pub fn is_git_push_timeout_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_git_push_timeout_failure_for_tests(reason)
+    crate::handlers::dev_loop::is_git_push_timeout_failure(reason)
 }
 
 /// True when `reason` is classified as a transient provider
@@ -52,7 +52,7 @@ pub fn is_git_push_timeout_failure(reason: &str) -> bool {
 /// Internal server error` pattern routes through the retry path
 /// instead of being treated as terminal.
 pub fn is_provider_internal_error(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_provider_internal_error_for_tests(reason)
+    crate::handlers::dev_loop::is_provider_internal_error(reason)
 }
 
 /// True when `reason` text *looks* transient but the classifier
@@ -60,7 +60,7 @@ pub fn is_provider_internal_error(reason: &str) -> bool {
 /// Axis 4. Used by integration tests to pin the exact coverage
 /// surface of `looks_like_unclassified_transient`.
 pub fn looks_like_unclassified_transient(reason: &str) -> bool {
-    crate::handlers::dev_loop::looks_like_unclassified_transient_for_tests(reason)
+    crate::handlers::dev_loop::looks_like_unclassified_transient(reason)
 }
 
 /// True when `reason` is a terminal agent-side anti-waste signal
@@ -69,7 +69,7 @@ pub fn looks_like_unclassified_transient(reason: &str) -> bool {
 /// to skip the restart path because restarting a harness that has
 /// already decided to stop just tight-loops on a WS reconnect.
 pub fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_agent_stuck_terminal_signal_for_tests(reason)
+    crate::handlers::dev_loop::is_agent_stuck_terminal_signal(reason)
 }
 
 /// True when an `error`-event reason from the harness should
@@ -77,7 +77,7 @@ pub fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
 /// actually transient (classified or unclassified-transient
 /// heuristic) **and** is not a terminal agent-stuck signal.
 pub fn should_restart_on_error_event(reason: &str) -> bool {
-    crate::handlers::dev_loop::should_restart_on_error_event_for_tests(reason)
+    crate::handlers::dev_loop::should_restart_on_error_event(reason)
 }
 
 /// Compatibility shim for the former server-side Definition-of-Done
@@ -92,7 +92,7 @@ pub fn completion_validation_reason(
     n_format_steps: usize,
     n_lint_steps: usize,
 ) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason_for_tests(
+    crate::handlers::dev_loop::completion_validation_failure_reason(
         live_output,
         files_changed,
         n_build_steps,
@@ -114,7 +114,7 @@ pub fn completion_validation_reason_with_empty_path_writes(
     n_lint_steps: usize,
     n_empty_path_writes: u32,
 ) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason_with_empty_path_writes_for_tests(
+    crate::handlers::dev_loop::completion_validation_failure_reason_with_empty_path_writes(
         live_output,
         files_changed,
         n_build_steps,
@@ -139,7 +139,7 @@ pub fn completion_validation_reason_with_tool_call_failures(
     n_empty_path_writes: u32,
     tool_call_failures: &[(&str, &str)],
 ) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason_with_tool_call_failures_for_tests(
+    crate::handlers::dev_loop::completion_validation_failure_reason_with_tool_call_failures(
         live_output,
         files_changed,
         n_build_steps,
@@ -163,7 +163,7 @@ pub fn completion_validation_reason_with_tool_call_failures(
 ///   (`classify_infra_failure` non-None)
 /// * counter must be strictly below the budget
 pub fn tool_call_failed_should_retry(reason: &str, prior_count: u32) -> bool {
-    crate::handlers::dev_loop::tool_call_failed_should_retry_for_tests(reason, prior_count)
+    crate::handlers::dev_loop::tool_call_failed_should_retry(reason, prior_count)
 }
 
 /// The per-task upper bound on server-side infra-retry attempts
@@ -171,7 +171,7 @@ pub fn tool_call_failed_should_retry(reason: &str, prior_count: u32) -> bool {
 /// so test assertions stay a single comparison.
 #[must_use]
 pub const fn tool_call_retry_budget() -> u32 {
-    crate::handlers::dev_loop::tool_call_retry_budget_for_tests()
+    crate::handlers::dev_loop::tool_call_retry_budget()
 }
 
 /// True when the harness streamed a `write_file` / `edit_file`
@@ -182,7 +182,7 @@ pub const fn tool_call_retry_budget() -> u32 {
 /// Started/snapshot events are intentionally ignored so a single
 /// malformed call is only counted once.
 pub fn is_empty_path_write_event(event_type: &str, event: &serde_json::Value) -> bool {
-    crate::handlers::dev_loop::is_empty_path_write_event_for_tests(event_type, event)
+    crate::handlers::dev_loop::is_empty_path_write_event(event_type, event)
 }
 
 /// Extracts `(path, op)` for a successful
@@ -198,13 +198,13 @@ pub fn successful_write_event_path(
     event_type: &str,
     event: &serde_json::Value,
 ) -> Option<(String, &'static str)> {
-    crate::handlers::dev_loop::successful_write_event_path_for_tests(event_type, event)
+    crate::handlers::dev_loop::successful_write_event_path(event_type, event)
 }
 
 /// True when a successful `task_done` tool completion explicitly declares
 /// that no file edits were required for the task.
 pub fn task_done_declares_no_changes_needed(event_type: &str, event: &serde_json::Value) -> bool {
-    crate::handlers::dev_loop::task_done_declares_no_changes_needed_for_tests(event_type, event)
+    crate::handlers::dev_loop::task_done_declares_no_changes_needed(event_type, event)
 }
 
 /// Returns a stable diagnostic label when a successful `task_done` call
@@ -214,7 +214,7 @@ pub fn task_done_missing_file_changes_reason(
     event: &serde_json::Value,
     files_changed: &[&str],
 ) -> Option<&'static str> {
-    crate::handlers::dev_loop::task_done_missing_file_changes_reason_for_tests(
+    crate::handlers::dev_loop::task_done_missing_file_changes_reason(
         event_type,
         event,
         files_changed,
@@ -225,7 +225,7 @@ pub fn task_done_missing_file_changes_reason(
 /// `workspace-health-diff-gate`).
 ///
 /// Public shim around the in-crate
-/// `task_done_workspace_health_gate_reason_for_tests` predicate so
+/// `task_done_workspace_health_gate_reason` predicate so
 /// the `dev_loop_dod_regression` test suite can exercise the gate's
 /// verdict matrix without reaching into private handler internals.
 ///
@@ -244,7 +244,7 @@ pub fn task_done_workspace_health_gate_reason(
     kind: aura_os_automation::TaskKind,
     strict_mode: bool,
 ) -> Option<&'static str> {
-    crate::handlers::dev_loop::task_done_workspace_health_gate_reason_for_tests(
+    crate::handlers::dev_loop::task_done_workspace_health_gate_reason(
         event_type,
         event,
         baseline,
@@ -270,7 +270,7 @@ pub fn preflight_local_workspace(
     project_path: &str,
     git_repo_url: Option<&str>,
 ) -> Result<(), String> {
-    crate::handlers::dev_loop::preflight_local_workspace_for_tests(project_path, git_repo_url)
+    crate::handlers::dev_loop::preflight_local_workspace(project_path, git_repo_url)
 }
 
 /// Summarize how far a task got in the recovery lifecycle without
@@ -280,7 +280,7 @@ pub fn recovery_checkpoint(
     files_changed: &[&str],
     git_steps: &[serde_json::Value],
 ) -> &'static str {
-    crate::handlers::dev_loop::recovery_checkpoint_for_tests(live_output, files_changed, git_steps)
+    crate::handlers::dev_loop::recovery_checkpoint(live_output, files_changed, git_steps)
 }
 
 /// Run Phase 5's preflight decomposition detector against a
@@ -291,7 +291,7 @@ pub fn preflight_decomposition_reason(
     title: &str,
     description: &str,
 ) -> Option<(String, Option<String>)> {
-    crate::handlers::task_decompose::preflight_decomposition_reason_for_tests(title, description)
+    crate::handlers::task_decompose::preflight_decomposition_reason(title, description)
 }
 
 /// Test-only: run the dev-loop invariant helper that decides
@@ -309,7 +309,7 @@ pub fn should_task_complete_despite_push_failure(
     git_steps: &[serde_json::Value],
     push_class: &str,
 ) -> bool {
-    crate::handlers::dev_loop::should_task_complete_despite_push_failure_for_tests(
+    crate::handlers::dev_loop::should_task_complete_despite_push_failure(
         live_output,
         files_changed,
         n_build_steps,
@@ -325,13 +325,13 @@ pub fn should_task_complete_despite_push_failure(
 /// push-failure classes, or `None` for non-push failures.
 /// Returns one of `"timeout" | "remote_storage_exhausted" | "generic"`.
 pub fn classify_push_failure(reason: &str) -> Option<&'static str> {
-    crate::handlers::dev_loop::classify_push_failure_for_tests(reason)
+    crate::handlers::dev_loop::classify_push_failure(reason)
 }
 
 /// Compatibility shim for the retired aura-os DoD retry classifier.
 /// Always returns `None`; the harness owns retry/remediation policy.
 pub fn classify_dod_remediation_kind(reason: &str) -> Option<&'static str> {
-    crate::handlers::dev_loop::classify_dod_remediation_kind_for_tests(reason)
+    crate::handlers::dev_loop::classify_dod_remediation_kind(reason)
 }
 
 /// Compatibility shim for the retired aura-os DoD retry prompt.
@@ -341,7 +341,7 @@ pub fn build_dod_followup_prompt(
     attempt: u32,
     previous_reason: &str,
 ) -> Option<String> {
-    crate::handlers::dev_loop::build_dod_followup_prompt_for_tests(
+    crate::handlers::dev_loop::build_dod_followup_prompt(
         kind_label,
         attempt,
         previous_reason,
@@ -353,7 +353,7 @@ pub fn build_dod_followup_prompt(
 /// harness.
 #[must_use]
 pub const fn max_dod_retries_per_task() -> u32 {
-    crate::handlers::dev_loop::max_dod_retries_per_task_for_tests()
+    crate::handlers::dev_loop::max_dod_retries_per_task()
 }
 
 /// Test-only: exercise the per-project push-failure counter.
@@ -361,14 +361,14 @@ pub const fn max_dod_retries_per_task() -> u32 {
 /// vector of `project_push_stuck`-emission booleans. Exactly one
 /// entry should be `true` even when `n` exceeds the threshold.
 pub fn bump_project_push_failures_streak(n: u32) -> Vec<bool> {
-    crate::handlers::dev_loop::bump_project_push_failures_streak_for_tests(n)
+    crate::handlers::dev_loop::bump_project_push_failures_streak(n)
 }
 
 /// Test-only: bump once, reset, bump once â proves the streak
 /// restarts cleanly so a subsequent threshold crossing re-emits
 /// `project_push_stuck`.
 pub fn push_failure_reset_rearms_stuck_emission() -> bool {
-    crate::handlers::dev_loop::push_failure_reset_rearms_stuck_emission_for_tests()
+    crate::handlers::dev_loop::push_failure_reset_rearms_stuck_emission()
 }
 
 /// Test-only: the dev-loop's configured push-failure stuck
@@ -541,7 +541,7 @@ pub fn recognized_test_runner_label(command: &str) -> Option<&'static str> {
 /// completion gate for a verdict.
 ///
 /// The harness now owns Definition-of-Done (see
-/// `completion_validation_failure_reason_with_empty_path_writes_for_tests`),
+/// `completion_validation_failure_reason_with_empty_path_writes`),
 /// so this helper always returns `None` for callers that pass through
 /// recovered or fully-evidenced histories — mirroring the deferred
 /// behaviour of the live gate. Kept as a public surface so existing
@@ -576,7 +576,7 @@ pub fn replay_task_completion_gate(
         }
         if event_type == "tool_call_completed" {
             if let Some((_path, _op)) =
-                crate::handlers::dev_loop::successful_write_event_path_for_tests(event_type, event)
+                crate::handlers::dev_loop::successful_write_event_path(event_type, event)
             {
                 had_pathed_write_or_edit = true;
             }

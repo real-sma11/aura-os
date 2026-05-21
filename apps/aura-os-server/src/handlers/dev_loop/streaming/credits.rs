@@ -6,7 +6,7 @@ use tracing::warn;
 use aura_os_core::{AgentInstanceId, ProjectId};
 use aura_os_harness::AutomatonClient;
 
-use crate::handlers::dev_loop::signals::is_insufficient_credits_failure_for_tests;
+use crate::handlers::dev_loop::signals::is_insufficient_credits_failure;
 use crate::state::AppState;
 
 pub(super) async fn stop_automaton_for_credit_exhaustion(
@@ -52,7 +52,7 @@ pub(super) fn insufficient_credits_event_message(
         return None;
     }
     let text = event_failure_text(event);
-    if !is_insufficient_credits_failure_for_tests(&text) {
+    if !is_insufficient_credits_failure(&text) {
         return None;
     }
     Some(event_message(event))

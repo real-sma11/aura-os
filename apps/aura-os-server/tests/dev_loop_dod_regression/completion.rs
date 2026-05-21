@@ -246,7 +246,7 @@ fn task_21_empty_path_misfire_then_retry_passes_the_gate() {
 #[test]
 fn empty_path_misfire_without_recovery_defers_to_harness_dod() {
     // Pre-existing test, updated to reflect the harness-owns-DoD
-    // design (`completion_validation_failure_reason_with_empty_path_writes_for_tests`
+    // design (`completion_validation_failure_reason_with_empty_path_writes`
     // is intentionally inert — see the docstring on that function in
     // `dev_loop/signals.rs`). aura-os keeps empty-path-write history
     // for diagnostic display only; the harness decides whether the

@@ -4,7 +4,7 @@ use aura_os_core::{HarnessMode, ProjectId};
 
 use crate::handlers::projects_helpers::validate_workspace_is_initialised;
 
-pub(crate) fn preflight_local_workspace_for_tests(
+pub(crate) fn preflight_local_workspace(
     project_path: &str,
     git_repo_url: Option<&str>,
 ) -> Result<(), String> {
