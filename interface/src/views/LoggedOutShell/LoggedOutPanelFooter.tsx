@@ -1,36 +1,39 @@
-import { Link } from "react-router-dom";
 import styles from "./LoggedOutShell.module.css";
+
+const AURA_WEBSITE = "https://aura.ai";
 
 interface FooterLink {
   label: string;
-  to: string;
+  href: string;
 }
 
 const FOOTER_LINKS: FooterLink[] = [
-  { label: "Product", to: "/product" },
-  { label: "Changelog", to: "/changelog" },
-  { label: "Feedback", to: "/feedback" },
-  { label: "Pricing", to: "/pricing" },
+  { label: "Product", href: `${AURA_WEBSITE}/product` },
+  { label: "Changelog", href: `${AURA_WEBSITE}/changelog` },
+  { label: "Feedback", href: `${AURA_WEBSITE}/roadmap` },
+  { label: "Pricing", href: `${AURA_WEBSITE}/pricing` },
 ];
 
 /**
  * Sticky footer at the bottom of `LoggedOutSessionsPanel`. Renders
- * four internal marketing-page links. Uses React Router `<Link>` so
- * navigation stays within the SPA (the marketing pages are ported
- * into the aura-code route tree under `MarketingShell`).
+ * four marketing-site links that open in the system browser. External
+ * links are required for desktop app parity (React Router navigation
+ * doesn't work in the native shell for marketing pages).
  */
 export function LoggedOutPanelFooter() {
   return (
     <div className={styles.footer}>
       <nav className={styles.footerLinks} aria-label="AURA marketing">
         {FOOTER_LINKS.map((link) => (
-          <Link
+          <a
             key={link.label}
-            to={link.to}
+            href={link.href}
+            target="_blank"
+            rel="noreferrer"
             className={styles.footerLink}
           >
             {link.label}
-          </Link>
+          </a>
         ))}
       </nav>
     </div>
