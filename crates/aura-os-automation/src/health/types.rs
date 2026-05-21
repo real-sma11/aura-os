@@ -1,19 +1,10 @@
 //! Shared data types for the workspace-health diff gate.
 //!
-//! Phase 1 of `workspace-health-diff-gate`. These types are pure data
-//! containers consumed by [`super::delta::classify_delta`] (the 8-row
-//! verdict matrix), [`super::task_kind::classify_task_kind`], and
-//! [`super::task_scope::extract_task_scope`]. They MUST stay free of
-//! I/O, async machinery, and any dependency on `aura-os-storage` or the
-//! server crate — the App layer constructs them from `cargo check` /
-//! test output and threads them through the dev-loop state machine.
-//!
-//! The eight verdict variants in [`HealthVerdict`] and the matching
-//! `reason` strings exported by [`super::delta`] match the matrix
-//! documented in
-//! `c:\Users\n3o\.cursor\plans\workspace-health-diff-gate_1121eaf1.plan.md`
-//! word-for-word; downstream phases (snapshot at claim, completion gate,
-//! ExplorationBudget advisory) read those reasons verbatim.
+//! Pure data containers consumed by [`super::delta::classify_delta`].
+//! They MUST stay free of I/O, async machinery, and any dependency on
+//! `aura-os-storage` or the server crate — the App layer constructs
+//! them from `cargo check` / test output and threads them through the
+//! dev-loop state machine.
 
 /// One diagnostic from a build/test signal.
 ///
@@ -169,88 +160,40 @@ impl WorkspaceHealth {
     }
 }
 
-/// Coarse task classification driving the strict-mode advisory split.
-///
-/// Only the **kind** matters to the diff gate; the actual task ID /
-/// description live elsewhere. [`TaskKind::Unknown`] is reserved for
-/// empty inputs and forces the safe-default branch (treated as
-/// `Implementation` in the verdict matrix).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskKind {
-    /// Code changes that produce new behavior (default).
-    Implementation,
-    /// Doc-only changes — `*.md`, `docs/**`, etc.
-    Documentation,
-    /// Pure rename / move / structural refactor with no behavioral
-    /// change intended.
-    Refactor,
-    /// Audit, review, "check that X is true" — no expected file ops.
-    Verification,
-    /// Empty description and empty scope. Treated as
-    /// `Implementation` by the verdict matrix (safe default that
-    /// blocks red workspaces) while staying distinguishable from a
-    /// stamped `Implementation` for logging.
-    Unknown,
-}
-
-/// One of the eight verdicts in the diff matrix. The matching
-/// machine-readable `reason` strings live next to
-/// [`super::delta::classify_delta`].
+/// One of the four verdicts emitted by [`super::delta::classify_delta`].
+/// The matching machine-readable `reason` strings live next to
+/// the classifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthVerdict {
-    /// Baseline failing, current improved or clean.
-    Improved,
-    /// Both baseline and current clean.
+    /// Both baseline and current snapshots non-failing.
     Clean,
-    /// Failing → failing, no scope hit, doc/refactor/verification
-    /// task, strict mode OFF. Non-blocking advisory only.
-    UnchangedAdvisory,
-    /// Current has errors not in baseline. Always blocks.
+    /// Baseline was failing, current is no longer failing.
+    Improved,
+    /// Both snapshots failing but `current` is not worse than
+    /// `baseline`. Non-blocking advisory only.
+    Unchanged,
+    /// `current` has errors absent from `baseline`, OR tests went
+    /// from passing to failing. The single blocking verdict.
     Regressed,
-    /// Failing → failing, scope intersects the still-red files.
-    /// Always blocks: the task claimed to touch the broken area but
-    /// didn't fix it.
-    UnfixedInScope,
-    /// Failing → failing, no scope hit, Implementation kind. Blocks
-    /// the task from claiming done while the workspace is red.
-    RedBlockingImplementation,
-    /// Failing → failing, no scope hit, doc/refactor/verification
-    /// task, strict mode ON. Blocks under the operator-opt-in
-    /// strict policy that the previous chat's task 3.9 motivates.
-    RedBlockedByStrictMode,
-    /// Baseline absent — caller should fall back to the existing
-    /// completion gate. Never blocks on its own.
-    UnknownBaseline,
 }
 
 impl HealthVerdict {
     /// True when the verdict should reject a `task_done` call.
-    ///
-    /// Locked down by the matrix from the plan: only the four
-    /// `Regressed` / `UnfixedInScope` / `RedBlockingImplementation` /
-    /// `RedBlockedByStrictMode` variants block. Every other verdict
-    /// (including `UnknownBaseline`) lets `task_done` through and
-    /// defers to the pre-existing gate.
+    /// Only [`HealthVerdict::Regressed`] blocks; every other variant
+    /// lets `task_done` through.
     #[must_use]
     pub fn blocks_task_done(self) -> bool {
-        matches!(
-            self,
-            HealthVerdict::Regressed
-                | HealthVerdict::UnfixedInScope
-                | HealthVerdict::RedBlockingImplementation
-                | HealthVerdict::RedBlockedByStrictMode
-        )
+        matches!(self, HealthVerdict::Regressed)
     }
 }
 
 /// Output of [`super::delta::classify_delta`].
 ///
 /// `reason` is one of the `workspace_health_*` machine-readable
-/// strings defined as `const`s in [`super::delta`]; downstream phases
-/// pattern-match on them verbatim. `advisory_summary` carries a
+/// strings defined as `const`s in [`super::delta`]; downstream code
+/// pattern-matches on them verbatim. `advisory_summary` carries a
 /// short human-readable string for prompt headers / completion
-/// rejection messages — `None` when the verdict has nothing useful to
-/// say (clean ↔ clean, unknown baseline).
+/// rejection messages — `None` for the clean and improved verdicts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthDelta {
     /// Verdict variant (drives `blocks_task_done`).

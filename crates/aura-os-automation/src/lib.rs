@@ -53,16 +53,14 @@ pub use budget::{
 pub use classify::classify_push_failure;
 pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};
-// Phase 1 of `workspace-health-diff-gate`: re-export the pure
-// types + classification surface the App layer wires into the
-// task-claim snapshot, the `task_done` completion gate, and the
-// `ExplorationBudget` advisory header in Phases 2-4.
+// Re-export the pure types + classification surface the App layer
+// wires into the task-claim snapshot and the `task_done` completion
+// gate.
 pub use health::{
-    baseline_reuse_max_age_secs, classify_delta, classify_task_kind,
-    contains_workspace_health_blocking_reason, extract_task_scope, is_strict_mode_enabled,
+    classify_delta, contains_workspace_health_blocking_reason,
     is_workspace_health_blocking_reason, parse_cargo_check_json_output, BuildStatus, HealthDelta,
-    HealthError, HealthVerdict, TaskKind, TaskScope, TestStatus, WorkspaceHealth,
-    WORKSPACE_HEALTH_BLOCKING_REASONS,
+    HealthError, HealthVerdict, TestStatus, WorkspaceHealth, REASON_CLEAN, REASON_IMPROVED,
+    REASON_REGRESSED, REASON_UNCHANGED, WORKSPACE_HEALTH_BLOCKING_REASONS,
 };
 pub use progress::{apply_loop_activity, LoopActivityTransition};
 pub use resilience::{
@@ -114,12 +112,6 @@ mod smoke {
         let budget = crate::ExplorationBudget::for_task(0, 0);
         let _ = budget.classify(0);
         let _ = budget.advisory_text(0);
-        // Phase 2 of `workspace-health-diff-gate`: the in-flight
-        // baseline-red nudge methods. Pin the symbols so accidental
-        // renames blow up here before the App layer wires them
-        // through the per-turn prompt header.
-        let _ = budget.advisory_text_with_health(0, 0, None, None);
-        let _ = budget.advisory_text_with_health_no_cache(0, None, None);
         let _: u32 = crate::EXPLORATION_SOFT_FLOOR;
         let _: u32 = crate::EXPLORATION_SOFT_CEILING;
         let _: u32 = crate::EXPLORATION_HARD_FLOOR;
@@ -137,35 +129,22 @@ mod smoke {
         let ctx = crate::build_task_context(&inputs);
         let _: crate::TaskContext = ctx;
         let _ref_type: Option<crate::TaskRef> = None;
-        // Phase 1 of `workspace-health-diff-gate`: pin the health
-        // module public names so accidental renames blow up here
-        // before the App layer (Phases 2-4) wires them up.
-        let _strict: bool = crate::is_strict_mode_enabled();
-        let _max_age: u64 = crate::baseline_reuse_max_age_secs();
+        // Pin the simplified health-module public names so accidental
+        // renames blow up here before the App layer wires them up.
         let _errors: Vec<crate::HealthError> = crate::parse_cargo_check_json_output("");
-        let _scope: crate::TaskScope = crate::extract_task_scope("", &[]);
-        let _kind: crate::TaskKind = crate::classify_task_kind("", &_scope);
         let _baseline: crate::WorkspaceHealth = crate::WorkspaceHealth::clean();
         let _current: crate::WorkspaceHealth = crate::WorkspaceHealth::clean();
-        let _delta: crate::HealthDelta =
-            crate::classify_delta(&_baseline, &_current, &_scope, _kind, _strict);
+        let _delta: crate::HealthDelta = crate::classify_delta(&_baseline, &_current);
         let _verdict: crate::HealthVerdict = _delta.verdict;
         let _blocks: bool = _verdict.blocks_task_done();
-        // Phase 4a: pin the blocking-reason predicates so the App
-        // layer + the cross-crate harness classifier can rely on
-        // their names.
         let _: bool = crate::is_workspace_health_blocking_reason(_delta.reason);
         let _: bool = crate::contains_workspace_health_blocking_reason(
             "agent execution error: workspace_health_regressed at task_done",
         );
         let _: &[&str] = crate::WORKSPACE_HEALTH_BLOCKING_REASONS;
-        // Also pin the two enums the App layer pattern-matches on.
         let _: crate::BuildStatus = crate::BuildStatus::Passing;
         let _: crate::BuildStatus = crate::BuildStatus::Unknown;
         let _: crate::TestStatus = crate::TestStatus::Unknown;
-        // Phase 3 of `workspace-health-diff-gate`: pin the
-        // `WorkspaceHealth::unknown()` constructor + the new
-        // baseline tracker so the App layer can rely on them.
         let _: crate::WorkspaceHealth = crate::WorkspaceHealth::unknown();
         let _baseline_tracker = crate::HealthBaselineTracker::new();
         let _baseline_task = aura_os_core::TaskId::new();
@@ -173,11 +152,10 @@ mod smoke {
         let _entry: Option<crate::BaselineEntry> = _baseline_tracker.get(_baseline_task);
         _baseline_tracker.clear(_baseline_task);
         let _age: Option<std::time::Duration> = _baseline_tracker.snapshot_age(_baseline_task);
-        // Phase 4b of `workspace-health-diff-gate`: pin
-        // `format_health_summary` at the crate root so the App-layer
-        // health gate can splice the baseline + current summaries
-        // into its demoted `task_failed` reason string.
-        let _summary: String = crate::format_health_summary(&crate::WorkspaceHealth::clean(), None);
+        // Pin `format_health_summary` at the crate root so the
+        // App-layer health gate can splice the baseline + current
+        // summaries into its demoted `task_failed` reason string.
+        let _summary: String = crate::format_health_summary(&crate::WorkspaceHealth::clean());
     }
 
     fn dummy_task() -> aura_os_core::Task {

@@ -28,11 +28,10 @@
 //!   [`super::classifiers::auto_decompose_disabled`]. Empty
 //!   workspace paths short-circuit the same way (the dev-loop has
 //!   no workspace to check).
-//! * The wall-clock cap is [`HEALTH_SNAPSHOT_TIMEOUT`] (120s) —
-//!   larger than [`super::build_preflight::BUILD_GATE_TIMEOUT`] (90s)
-//!   because the baseline snapshot runs at task-start against a
-//!   potentially cold target dir, while `build_preflight` runs at
-//!   task-done against a warm one.
+//! * The wall-clock cap is [`HEALTH_SNAPSHOT_TIMEOUT`] (120s) — sized
+//!   for a cold-cache `task_started` snapshot. The `task_done`
+//!   snapshot (see `side_effects::maybe_run_health_gate`) reuses the
+//!   same runner and inherits the same cap.
 //! * On any tooling failure (timeout, cargo not found, non-UTF-8
 //!   output, …) we return [`aura_os_automation::WorkspaceHealth::unknown`]
 //!   so the Phase 4 gate can distinguish "we couldn't observe" from
@@ -43,10 +42,8 @@ use std::time::Duration;
 
 use aura_os_automation::{parse_cargo_check_json_output, WorkspaceHealth};
 
-/// Hard wall-clock cap for the baseline snapshot. Sized larger than
-/// [`super::build_preflight::BUILD_GATE_TIMEOUT`] because the
-/// baseline runs on a cold-cache `task_started`, not a warm-cache
-/// `task_done`.
+/// Hard wall-clock cap for the workspace-health snapshot, sized for a
+/// cold-cache `task_started` run.
 pub(crate) const HEALTH_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Capture the workspace's build health asynchronously.
@@ -100,17 +97,14 @@ pub(crate) fn health_snapshot_disabled() -> bool {
 }
 
 /// True when the `AURA_HEALTH_GATE` env var is set to a truthy value
-/// (Phase 4b of `workspace-health-diff-gate`).
+/// (`1 | true | yes | on`, case-insensitive).
 ///
-/// Default OFF and opt-in, mirroring [`super::build_preflight::build_gate_enabled`]
-/// verbatim — both gates use the same `1 | true | yes | on`
-/// (case-insensitive) truthy spelling so the operator-facing knob
-/// surface stays consistent. Toggling this flag enables the live
+/// Default OFF and opt-in. Toggling this flag enables the live
 /// forwarder demotion hook in
 /// [`crate::handlers::dev_loop::streaming::side_effects`] that
 /// intercepts `task_completed`, runs a fresh workspace-health
-/// snapshot, and demotes the event to `task_failed` when the diff
-/// produces a blocking verdict.
+/// snapshot, and demotes the event to `task_failed` when the
+/// workspace regressed against the `task_started` baseline.
 #[must_use]
 pub(crate) fn health_gate_enabled() -> bool {
     std::env::var("AURA_HEALTH_GATE")
@@ -199,8 +193,7 @@ mod tests {
     }
 
     /// The `AURA_HEALTH_GATE` knob parser must accept the same
-    /// truthy spellings as `AURA_BUILD_GATE` (and the rest of the
-    /// dev-loop's env-var surface).
+    /// truthy spellings as the rest of the dev-loop's env-var surface.
     #[test]
     fn health_gate_enabled_parses_truthy_values() {
         let _guard = ENV_GUARD

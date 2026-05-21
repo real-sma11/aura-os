@@ -1,13 +1,10 @@
-//! Failure-reason extraction, synthesis, persistence, and the test-evidence override that turns a CompletionContract `task_failed` into a synthetic `task_completed` when prior successful test-runner evidence exists.
+//! Failure-reason extraction, synthesis, and persistence for `task_failed` events.
 
-use tracing::{info, warn};
+use tracing::warn;
 
 use aura_os_automation::{synthesize_failure_reason, FailureContext};
-use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskStatus};
 use aura_os_storage::UpdateTaskRequest;
 
-use super::super::super::signals::is_completion_contract_failure;
-use super::common::parse_task_key;
 use crate::state::AppState;
 
 /// Extract the fail reason from a `task_failed` event. Checks the same
@@ -111,107 +108,6 @@ pub(super) fn build_failure_context_from_event(event: &serde_json::Value) -> Fai
         last_tool_name: read_str(&["last_tool", "last_tool_name", "tool_name", "tool"]),
         last_error_excerpt: read_str(&["last_error", "last_error_excerpt", "error_tail"]),
     }
-}
-
-/// Override path for `task_failed` events whose reason matches the
-/// completion-contract classifier. Returns `Some(synthetic)` when the
-/// task was transitioned to `Done` and the caller should broadcast the
-/// returned `task_completed` payload **instead** of the original
-/// failure event. Returns `None` when no override applied (no
-/// evidence, override already fired, classifier rejected the reason,
-/// storage unavailable, bridge transition failed, ...), in which case
-/// the caller continues with normal failure persistence and broadcast.
-///
-/// `_session_id` is reserved for routing — the caller already plumbs
-/// it through the broadcast envelope, so the synthetic payload only
-/// needs the in-payload `task_id` / `project_id` keys to satisfy the
-/// existing UI handlers.
-pub(super) async fn maybe_apply_test_evidence_override(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    task_id: &str,
-    jwt: &str,
-    event: &serde_json::Value,
-    _session_id: Option<SessionId>,
-) -> Option<serde_json::Value> {
-    let reason = extract_task_failure_reason(event)?;
-    if !is_completion_contract_failure(&reason) {
-        return None;
-    }
-
-    let key = parse_task_key(project_id, task_id)?;
-
-    let evidence = {
-        let mut cache = state.task_output_cache.lock().await;
-        let entry = cache.get_mut(&key)?;
-        if entry.completion_override_applied {
-            return None;
-        }
-        let evidence = entry.test_pass_evidence.clone()?;
-        // Optimistically claim the override slot before issuing the
-        // storage transition so a concurrent re-emit (WS reconnect)
-        // doesn't enter the bridge twice.
-        entry.completion_override_applied = true;
-        evidence
-    };
-
-    let storage = state.storage_client.as_ref()?;
-
-    info!(
-        %task_id,
-        runner = evidence.runner,
-        command = %evidence.command,
-        "overriding harness CompletionContract failure with test-pass evidence"
-    );
-
-    if let Err(error) =
-        aura_os_tasks::safe_transition(storage, jwt, task_id, TaskStatus::Done).await
-    {
-        warn!(
-            %task_id,
-            %error,
-            "failed to bridge task to Done after test-evidence override; \
-             leaving harness verdict in place"
-        );
-        // Re-arm the override flag so a subsequent retry can try again
-        // rather than silently swallowing the failure.
-        let mut cache = state.task_output_cache.lock().await;
-        if let Some(entry) = cache.get_mut(&key) {
-            entry.completion_override_applied = false;
-        }
-        return None;
-    }
-
-    let notes = format!(
-        "Completed via passing tests ({}). Command: `{}`",
-        evidence.runner, evidence.command
-    );
-    let update = UpdateTaskRequest {
-        execution_notes: Some(notes.clone()),
-        ..Default::default()
-    };
-    if let Err(error) = storage.update_task(task_id, jwt, &update).await {
-        warn!(
-            %task_id,
-            %error,
-            "failed to persist test-evidence execution_notes"
-        );
-    }
-
-    Some(serde_json::json!({
-        "type": "task_completed",
-        "task_id": task_id,
-        "project_id": project_id.to_string(),
-        "agent_instance_id": agent_instance_id.to_string(),
-        "outcome": "test_evidence_accepted",
-        "execution_notes": notes,
-        "test_pass_evidence": {
-            "runner": evidence.runner,
-            "command": evidence.command,
-            "recorded_at": evidence.recorded_at,
-        },
-    }))
 }
 
 #[cfg(test)]

@@ -316,21 +316,14 @@ fn classify_tool_result_failure(name: Option<&str>, reason: Option<&str>) -> Har
     classify_failure(reason)
 }
 
-// Phase 4a of `workspace-health-diff-gate`: the four `workspace_health_*`
-// blocking verdict reasons emitted by `aura_os_automation::classify_delta`.
-// Duplicated as `&str` literals (instead of `use`-ing the constants from
-// `aura_os_automation`) because `aura-os-harness` lives BELOW
-// `aura-os-automation` in the dep graph — see `aura-os-harness/Cargo.toml`,
-// which deliberately does not depend on `aura-os-automation`. The exact
-// strings are pinned by the test suite in
+// The workspace-health blocking verdict reason emitted by
+// `aura_os_automation::classify_delta`. Duplicated as a `&str`
+// literal (instead of `use`-ing the constant from `aura_os_automation`)
+// because `aura-os-harness` lives BELOW `aura-os-automation` in the
+// dep graph. The exact string is pinned by the test suite in
 // `aura_os_automation::health::delta::tests` so this duplication will
-// fail loudly if the canonical reasons ever change.
-const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &[
-    "workspace_health_regressed",
-    "workspace_health_unfixed_in_scope",
-    "workspace_health_red_blocking_implementation",
-    "workspace_health_red_blocked_by_strict_mode",
-];
+// fail loudly if the canonical reason ever changes.
+const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &["workspace_health_regressed"];
 
 fn is_completion_contract_failure(reason: &str) -> bool {
     let mentions_task_done =
@@ -649,12 +642,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // Phase 4a of `workspace-health-diff-gate`: the four blocking
-    // workspace-health verdicts must classify as `CompletionContract`
-    // so the server-side restart path routes them through the same
-    // fresh-context retry loop as the existing `task_done`/research-
-    // loop failures. Each test pins one of the four blocking reason
-    // strings emitted by `aura_os_automation::classify_delta`.
+    // The workspace-health blocking verdict must classify as
+    // `CompletionContract` so the server-side restart path routes it
+    // through the same fresh-context retry loop as the existing
+    // `task_done` / research-loop failures.
     // -----------------------------------------------------------------
 
     #[test]
@@ -674,57 +665,6 @@ mod tests {
             "workspace_health_regressed must classify as a \
              CompletionContract failure so the dev-loop restart \
              path treats it as restartable",
-        );
-    }
-
-    #[test]
-    fn classifies_workspace_health_unfixed_in_scope_as_completion_contract() {
-        let signal = HarnessSignal::from_event(
-            "task_failed",
-            &serde_json::json!({
-                "task_id": "task-1",
-                "reason": "workspace_health_unfixed_in_scope: scope still red in crates/zero-storage",
-            }),
-        )
-        .expect("signal");
-
-        assert_eq!(
-            signal.failure_kind(),
-            Some(HarnessFailureKind::CompletionContract),
-        );
-    }
-
-    #[test]
-    fn classifies_workspace_health_red_blocking_implementation_as_completion_contract() {
-        let signal = HarnessSignal::from_event(
-            "task_failed",
-            &serde_json::json!({
-                "task_id": "task-1",
-                "reason": "workspace_health_red_blocking_implementation: workspace red outside scope",
-            }),
-        )
-        .expect("signal");
-
-        assert_eq!(
-            signal.failure_kind(),
-            Some(HarnessFailureKind::CompletionContract),
-        );
-    }
-
-    #[test]
-    fn classifies_workspace_health_red_blocked_by_strict_mode_as_completion_contract() {
-        let signal = HarnessSignal::from_event(
-            "task_failed",
-            &serde_json::json!({
-                "task_id": "task-1",
-                "reason": "workspace_health_red_blocked_by_strict_mode: doc task in red workspace",
-            }),
-        )
-        .expect("signal");
-
-        assert_eq!(
-            signal.failure_kind(),
-            Some(HarnessFailureKind::CompletionContract),
         );
     }
 

@@ -28,9 +28,8 @@ use aura_os_core::TaskId;
 use crate::health::types::WorkspaceHealth;
 
 /// One stashed baseline entry. The `captured_at` timestamp lets the
-/// completion gate (Phase 4) decide whether the baseline is fresh
-/// enough to trust against [`crate::health::baseline_reuse_max_age_secs`]
-/// before reusing it.
+/// completion gate decide whether the baseline is fresh enough to
+/// trust before reusing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaselineEntry {
     /// The captured `WorkspaceHealth` fingerprint at task start.

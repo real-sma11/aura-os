@@ -17,8 +17,7 @@ use aura_os_loops::LoopHandle;
 
 use super::super::session::record_task_worked;
 use super::super::signals::{
-    build_gate_enabled, extract_task_failure_context, health_gate_enabled,
-    render_demoted_failure_reason, run_build_preflight, snapshot_workspace_health, BuildPreflight,
+    extract_task_failure_context, health_gate_enabled, snapshot_workspace_health,
 };
 use super::super::types::LoopRetryState;
 use super::emit_log_line;
@@ -70,7 +69,6 @@ pub(super) async fn record_event_side_effects(
     let state = ctx.state;
     let project_id = ctx.project_id;
     let agent_instance_id = ctx.agent_instance_id;
-    let jwt = ctx.jwt;
     let session_id = ctx.session_id;
     let task_id = event
         .get("task_id")
@@ -94,70 +92,18 @@ pub(super) async fn record_event_side_effects(
         }
     }
 
-    // Tests-as-truth override: if this is a CompletionContract
-    // `task_failed` and we accumulated successful test-runner evidence
-    // earlier in the run, transition the task to Done in storage and
-    // **replace** the broadcast payload with a synthetic
-    // `task_completed`. Doing this before any broadcast avoids
-    // briefly showing the failure to live subscribers when we already
-    // know we're going to override it.
     let mut effective_event_type: &str = event_type;
     let mut broadcast_payload = enriched;
-    if event_type == "task_failed" {
-        if let (Some(task_id_str), Some(jwt)) = (task_id.as_deref(), jwt) {
-            if let Some(synthetic) = failure::maybe_apply_test_evidence_override(
-                state,
-                project_id,
-                agent_instance_id,
-                task_id_str,
-                jwt,
-                &event,
-                session_id,
-            )
-            .await
-            {
-                broadcast_payload = synthetic;
-                effective_event_type = "task_completed";
-            }
-        }
-    }
 
-    // Build-as-truth gate (opt-in via `AURA_BUILD_GATE`). The inverse
-    // of the tests-as-truth override above: when the harness reports
-    // `task_completed` but the workspace doesn't `cargo check` cleanly,
-    // demote the event to `task_failed` BEFORE broadcasting so the
-    // dashboard never briefly shows a successful verdict the server is
-    // about to overwrite. See `signals::build_preflight` for the
-    // verdict shape, the timeout, and the env-var contract.
-    if effective_event_type == "task_completed" && build_gate_enabled() {
-        if let Some(preflight) = maybe_run_build_gate(state, project_id, agent_instance_id).await {
-            if !preflight.ok {
-                broadcast_payload = synthesize_build_gate_failure(&broadcast_payload, &preflight);
-                effective_event_type = "task_failed";
-                tracing::warn!(
-                    %project_id,
-                    %agent_instance_id,
-                    elapsed_ms = preflight.elapsed.as_millis() as u64,
-                    first_error_code = preflight.first_error_code.as_deref().unwrap_or("unknown"),
-                    timed_out = preflight.timed_out,
-                    "build preflight demoted task_completed to task_failed"
-                );
-            }
-        }
-    }
-
-    // Workspace-health diff gate (Phase 4b of
-    // `workspace-health-diff-gate`, opt-in via `AURA_HEALTH_GATE`).
-    // Runs AFTER the build gate so the build gate's more direct
-    // `cargo check` verdict wins when both are enabled — if the build
-    // gate already demoted to `task_failed`, the outer `task_completed`
-    // guard short-circuits this block. Reads the baseline stashed at
-    // `task_started` by Phase 3, snapshots the current workspace, and
-    // classifies the diff via [`aura_os_automation::classify_delta`].
-    // Blocking verdicts produce a `task_failed` payload whose `reason`
-    // embeds the verdict id verbatim so the Phase 4a classifier wires
-    // it through the existing CompletionContract → fresh-context retry
-    // path.
+    // Workspace-health diff gate (opt-in via `AURA_HEALTH_GATE`).
+    // Reads the baseline stashed at `task_started`, snapshots the
+    // current workspace, and demotes `task_completed` to `task_failed`
+    // when the workspace is in a worse state than when the task
+    // started (more errors, or tests regressed from passing to
+    // failing). Blocking verdicts produce a `task_failed` payload
+    // whose `reason` embeds `workspace_health_regressed` verbatim so
+    // the harness classifier routes it through the existing
+    // CompletionContract → fresh-context retry path.
     if effective_event_type == "task_completed" && health_gate_enabled() {
         if let Some(task_uuid) = task_id.as_deref().and_then(|s| TaskId::from_str(s).ok()) {
             if let Some(verdict) = maybe_run_health_gate(
@@ -166,7 +112,6 @@ pub(super) async fn record_event_side_effects(
                 agent_instance_id,
                 ctx.retry_state,
                 task_uuid,
-                jwt,
             )
             .await
             {
@@ -565,195 +510,59 @@ fn tool_name_for_log(event: &serde_json::Value) -> &str {
         .unwrap_or("tool")
 }
 
-/// Resolve the workspace path for the run and shell out to
-/// `cargo check` on a blocking task so the async forwarder isn't
-/// stalled by IO. Returns `None` when the gate is enabled but we
-/// couldn't resolve a workspace path — the caller then proceeds with
-/// the harness's verdict unchanged rather than synthesising a
-/// failure against a missing workspace.
-async fn maybe_run_build_gate(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-) -> Option<BuildPreflight> {
-    let workspace_path =
-        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id)).await?;
-    let preflight = tokio::task::spawn_blocking(move || run_build_preflight(&workspace_path))
-        .await
-        .ok()?;
-    Some(preflight)
-}
-
-/// Build a synthetic `task_failed` payload from the original
-/// `task_completed` enriched event so downstream
-/// `apply_event_side_effect` and the dashboard see a fully-formed
-/// failure even though the harness reported success. Keeps every
-/// original field intact (task_id, session_id, timestamps, ...) and
-/// overlays a structured `reason`, `message`, plus the truncated
-/// `cargo check` stderr tail.
-fn synthesize_build_gate_failure(
-    original: &serde_json::Value,
-    preflight: &BuildPreflight,
-) -> serde_json::Value {
-    let mut payload = original.clone();
-    let reason = render_demoted_failure_reason(preflight);
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("type".into(), serde_json::Value::from("task_failed"));
-        object.insert("event_type".into(), serde_json::Value::from("task_failed"));
-        object.insert("reason".into(), serde_json::Value::from(reason.clone()));
-        object.insert("message".into(), serde_json::Value::from(reason));
-        object.insert(
-            "build_preflight_stderr".into(),
-            serde_json::Value::from(preflight.stderr_tail.clone()),
-        );
-        if let Some(code) = preflight.first_error_code.as_ref() {
-            object.insert(
-                "build_preflight_error_code".into(),
-                serde_json::Value::from(code.clone()),
-            );
-        }
-        object.insert(
-            "build_preflight_elapsed_ms".into(),
-            serde_json::Value::from(u64::try_from(preflight.elapsed.as_millis()).unwrap_or(0)),
-        );
-        if preflight.timed_out {
-            object.insert(
-                "build_preflight_timed_out".into(),
-                serde_json::Value::Bool(true),
-            );
-        }
-    }
-    payload
-}
-
 /// Verdict from the workspace-health gate when it decides to demote
 /// a `task_completed` to `task_failed`. Carries everything
 /// [`synthesize_health_gate_failure`] needs to stamp a fully-formed
-/// failure payload (blocking reason id, baseline/current summaries,
-/// elapsed wall-clock) without re-reading any tracker state.
-///
-/// Phase 4b of `workspace-health-diff-gate`. Sibling of
-/// [`BuildPreflight`].
+/// failure payload (baseline/current summaries, elapsed wall-clock)
+/// without re-reading any tracker state.
 #[derive(Debug, Clone)]
 struct HealthGateVerdict {
-    /// One of the four `workspace_health_*` blocking reason
-    /// strings exported by [`aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS`].
-    /// Spliced verbatim into the demoted `task_failed` reason text so
-    /// the Phase 4a classifier wiring routes the failure through the
-    /// CompletionContract → fresh-context retry path.
+    /// Stable blocking reason string spliced verbatim into the demoted
+    /// `task_failed` reason text so the harness classifier routes the
+    /// failure through the existing CompletionContract → fresh-context
+    /// retry path.
     reason: &'static str,
     /// Human-readable summary of the workspace baseline captured at
     /// `task_started`. Used as the "before" half of the failure
-    /// message. `None` only if [`aura_os_automation::format_health_summary`]
-    /// were ever to return an empty string, which it currently does
-    /// not — kept optional for symmetry with `current_summary` and
-    /// to leave room for future "no useful summary" branches.
-    baseline_summary: Option<String>,
+    /// message.
+    baseline_summary: String,
     /// Human-readable summary of the post-`task_completed` workspace
     /// snapshot. The "after" half of the failure message.
-    current_summary: Option<String>,
+    current_summary: String,
     /// Wall-clock spent running the gate end-to-end (snapshot +
     /// classify). Exposed both for the warn-level log line and as a
     /// telemetry field on the synthesized payload.
     elapsed_ms: u64,
 }
 
-/// Pure derivation of the gate's `(TaskScope, TaskKind)` pair from a
-/// task description. Extracted so the gate's classification step is
-/// unit-testable without standing up an [`AppState`] or a storage
-/// fake, and so the fallback path (no description fetched) shares
-/// the exact same shape as the happy path.
-///
-/// The empty-description fallback yields `TaskScope::default()` +
-/// `TaskKind::Unknown`. `classify_delta` then routes `Unknown` to
-/// the `Implementation` branch — the strictest reasonable default
-/// for tasks whose description we couldn't load. This mirrors the
-/// pre-Phase-5 behavior so a storage-fetch failure never relaxes
-/// the gate.
-fn classify_task_for_gate(
-    description: &str,
-) -> (aura_os_automation::TaskScope, aura_os_automation::TaskKind) {
-    let scope = aura_os_automation::extract_task_scope(description, &[]);
-    let kind = aura_os_automation::classify_task_kind(description, &scope);
-    (scope, kind)
-}
-
-/// Best-effort fetch of `task_uuid`'s description from storage so the
-/// gate can derive a real [`aura_os_automation::TaskScope`] +
-/// [`aura_os_automation::TaskKind`] instead of falling back to the
-/// strictest defaults. Returns `None` when storage isn't configured,
-/// no JWT is available, or the fetch fails — every failure is
-/// treated as "use the safe fallback", never as a hard error.
-async fn fetch_task_description(
-    state: &AppState,
-    jwt: Option<&str>,
-    task_uuid: TaskId,
-) -> Option<String> {
-    let jwt = jwt?;
-    let storage = state.storage_client.as_ref()?;
-    match storage.get_task(&task_uuid.to_string(), jwt).await {
-        Ok(task) => task.description,
-        Err(error) => {
-            tracing::debug!(
-                task_id = %task_uuid,
-                %error,
-                "health gate: fetch_task_description failed; falling back to TaskKind::Unknown"
-            );
-            None
-        }
-    }
-}
-
 /// Run the workspace-health diff gate for `task_uuid`, returning
-/// `Some(HealthGateVerdict)` only when the diff produces one of the
-/// four blocking verdicts. Every other path (no baseline, no
+/// `Some(HealthGateVerdict)` only when the current workspace is in a
+/// worse state than the baseline (more errors, or tests regressed
+/// from passing to failing). Every other path (no baseline, no
 /// workspace path, non-blocking verdict) returns `None` so the
 /// caller emits the harness's original `task_completed`.
-///
-/// Phase 4b of `workspace-health-diff-gate` with Phase 5a
-/// task-kind extraction wired in: the gate now fetches the task
-/// description from storage and runs it through
-/// [`classify_task_for_gate`] so a documentation task in a red
-/// workspace correctly routes to `UnchangedAdvisory` (permissive)
-/// or `RedBlockedByStrictMode` (strict) instead of the conservative
-/// `RedBlockingImplementation` fallback. Description-fetch failures
-/// (no JWT, no storage client, storage error) silently fall back to
-/// the pre-Phase-5a behavior so the gate never *loosens* on
-/// transient storage issues.
 async fn maybe_run_health_gate(
     state: &AppState,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
     retry_state: &Arc<LoopRetryState>,
     task_uuid: TaskId,
-    jwt: Option<&str>,
 ) -> Option<HealthGateVerdict> {
     let baseline_entry = retry_state.health_baseline.get(task_uuid)?;
     let workspace_path =
         resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id)).await?;
     let start = Instant::now();
     let current_health = snapshot_workspace_health(workspace_path.clone()).await;
-    let description = fetch_task_description(state, jwt, task_uuid)
-        .await
-        .unwrap_or_default();
-    let (scope, kind) = classify_task_for_gate(&description);
-    let strict = aura_os_automation::is_strict_mode_enabled();
-    let delta = aura_os_automation::classify_delta(
-        &baseline_entry.health,
-        &current_health,
-        &scope,
-        kind,
-        strict,
-    );
+    let delta = aura_os_automation::classify_delta(&baseline_entry.health, &current_health);
     if !delta.verdict.blocks_task_done() {
         return None;
     }
-    let baseline_summary = aura_os_automation::format_health_summary(&baseline_entry.health, None);
-    let current_summary = aura_os_automation::format_health_summary(&current_health, None);
+    let baseline_summary = aura_os_automation::format_health_summary(&baseline_entry.health);
+    let current_summary = aura_os_automation::format_health_summary(&current_health);
     Some(HealthGateVerdict {
         reason: delta.reason,
-        baseline_summary: Some(baseline_summary),
-        current_summary: Some(current_summary),
+        baseline_summary,
+        current_summary,
         elapsed_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
 }
@@ -763,34 +572,23 @@ async fn maybe_run_health_gate(
 /// produced a blocking verdict.
 ///
 /// The rendered `reason` / `message` text EMBEDS `verdict.reason` as
-/// a literal substring so the cross-crate
-/// [`aura_os_automation::contains_workspace_health_blocking_reason`]
-/// predicate (and the Phase 4a `is_completion_contract_failure`
-/// wiring) picks the failure up and routes it through the existing
-/// fresh-context retry path. Original payload fields (task_id,
-/// session_id, timestamps, …) are preserved verbatim; the
-/// health-gate-specific telemetry lands on top-level
-/// `health_gate_*` fields so the dashboard can surface them
-/// alongside the existing `build_preflight_*` fields.
+/// a literal substring so the cross-crate harness classifier picks
+/// the failure up and routes it through the existing fresh-context
+/// retry path. Original payload fields (task_id, session_id,
+/// timestamps, …) are preserved verbatim; the health-gate-specific
+/// telemetry lands on top-level `health_gate_*` fields so the
+/// dashboard can surface them.
 fn synthesize_health_gate_failure(
     original: &serde_json::Value,
     verdict: &HealthGateVerdict,
 ) -> serde_json::Value {
     let mut payload = original.clone();
-    let baseline_fragment = verdict
-        .baseline_summary
-        .as_deref()
-        .unwrap_or("workspace baseline unavailable");
-    let current_fragment = verdict
-        .current_summary
-        .as_deref()
-        .unwrap_or("workspace current snapshot unavailable");
     let reason = format!(
         "{verdict_reason}: {baseline_fragment}; current snapshot: {current_fragment}. \
          Fix the red as part of this task or hand back with a status update.",
         verdict_reason = verdict.reason,
-        baseline_fragment = baseline_fragment,
-        current_fragment = current_fragment,
+        baseline_fragment = verdict.baseline_summary,
+        current_fragment = verdict.current_summary,
     );
     if let Some(object) = payload.as_object_mut() {
         object.insert("type".into(), serde_json::Value::from("task_failed"));
@@ -805,18 +603,14 @@ fn synthesize_health_gate_failure(
             "health_gate_elapsed_ms".into(),
             serde_json::Value::from(verdict.elapsed_ms),
         );
-        if let Some(baseline) = verdict.baseline_summary.as_ref() {
-            object.insert(
-                "health_gate_baseline_summary".into(),
-                serde_json::Value::from(baseline.clone()),
-            );
-        }
-        if let Some(current) = verdict.current_summary.as_ref() {
-            object.insert(
-                "health_gate_current_summary".into(),
-                serde_json::Value::from(current.clone()),
-            );
-        }
+        object.insert(
+            "health_gate_baseline_summary".into(),
+            serde_json::Value::from(verdict.baseline_summary.clone()),
+        );
+        object.insert(
+            "health_gate_current_summary".into(),
+            serde_json::Value::from(verdict.current_summary.clone()),
+        );
     }
     payload
 }
@@ -839,72 +633,10 @@ fn assistant_turn_tokens(event: &serde_json::Value) -> (Option<u64>, Option<u64>
 }
 
 #[cfg(test)]
-mod build_gate_synthesizer_tests {
+mod health_gate_synthesizer_tests {
     use super::*;
-    use std::time::Duration;
 
-    #[test]
-    fn synthesize_build_gate_failure_overlays_failure_fields_on_original() {
-        let original = serde_json::json!({
-            "type": "task_completed",
-            "event_type": "task_completed",
-            "task_id": "task-123",
-            "session_id": "ses-456",
-            "timestamp": "2026-05-19T22:00:00Z",
-            "extra": "preserve me"
-        });
-        let preflight = BuildPreflight {
-            ok: false,
-            first_error_code: Some("E0432".to_string()),
-            stderr_tail: "error[E0432]: unresolved import".to_string(),
-            elapsed: Duration::from_millis(1234),
-            timed_out: false,
-        };
-        let synthetic = synthesize_build_gate_failure(&original, &preflight);
-        assert_eq!(synthetic["type"], "task_failed");
-        assert_eq!(synthetic["event_type"], "task_failed");
-        assert_eq!(synthetic["task_id"], "task-123");
-        assert_eq!(synthetic["session_id"], "ses-456");
-        assert_eq!(synthetic["extra"], "preserve me");
-        let reason = synthetic["reason"].as_str().expect("reason set");
-        assert!(reason.starts_with("build_preflight_failed:"));
-        assert!(reason.contains("error[E0432]"));
-        assert_eq!(synthetic["build_preflight_error_code"], "E0432");
-        assert_eq!(synthetic["build_preflight_elapsed_ms"], 1234);
-        assert!(synthetic.get("build_preflight_timed_out").is_none());
-    }
-
-    #[test]
-    fn synthesize_build_gate_failure_marks_timeout_when_relevant() {
-        let original = serde_json::json!({ "task_id": "t" });
-        let preflight = BuildPreflight {
-            ok: false,
-            first_error_code: None,
-            stderr_tail: "killed".to_string(),
-            elapsed: Duration::from_secs(90),
-            timed_out: true,
-        };
-        let synthetic = synthesize_build_gate_failure(&original, &preflight);
-        assert_eq!(synthetic["build_preflight_timed_out"], true);
-        assert!(synthetic["reason"]
-            .as_str()
-            .unwrap()
-            .contains("timeout after 90s"));
-    }
-
-    // -----------------------------------------------------------------
-    // Phase 4b of `workspace-health-diff-gate`: workspace-health gate
-    // synthesiser + env-var parser tests. The full state-machine
-    // contract is locked down by the Phase 4a regression suite in
-    // `tests/dev_loop_dod_regression.rs`; the tests below only have
-    // to prove that the demoted payload carries the reason string
-    // verbatim (so the Phase 4a classifier wiring matches) and that
-    // the env-var knob parses the documented truthy/falsy values.
-    // -----------------------------------------------------------------
-
-    /// Sibling of
-    /// `synthesize_build_gate_failure_overlays_failure_fields_on_original`:
-    /// the synthesised payload must preserve every non-overlay field
+    /// The synthesised payload must preserve every non-overlay field
     /// from the original and stamp `type` / `event_type` /
     /// `health_gate_*` on top.
     #[test]
@@ -918,17 +650,13 @@ mod build_gate_synthesizer_tests {
             "extra": "preserve me"
         });
         let verdict = HealthGateVerdict {
-            reason: aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS[2],
-            baseline_summary: Some(
-                "workspace red at task start: 4 errors across 1 files \
+            reason: aura_os_automation::REASON_REGRESSED,
+            baseline_summary: "workspace red at task start: 1 errors across 1 files \
+                 (e.g. crates/zero-storage [E0277])"
+                .to_string(),
+            current_summary: "workspace red at task start: 4 errors across 1 files \
                  (e.g. crates/zero-storage [E0277 \u{00d7}2, E0432, E0425])"
-                    .to_string(),
-            ),
-            current_summary: Some(
-                "workspace red at task start: 4 errors across 1 files \
-                 (e.g. crates/zero-storage [E0277 \u{00d7}2, E0432, E0425])"
-                    .to_string(),
-            ),
+                .to_string(),
             elapsed_ms: 2_345,
         };
         let synthetic = synthesize_health_gate_failure(&original, &verdict);
@@ -938,10 +666,7 @@ mod build_gate_synthesizer_tests {
         assert_eq!(synthetic["session_id"], "ses-456");
         assert_eq!(synthetic["extra"], "preserve me");
         assert_eq!(synthetic["timestamp"], "2026-05-19T22:00:00Z");
-        assert_eq!(
-            synthetic["health_gate_reason"],
-            "workspace_health_red_blocking_implementation",
-        );
+        assert_eq!(synthetic["health_gate_reason"], "workspace_health_regressed");
         assert_eq!(synthetic["health_gate_elapsed_ms"], 2_345);
         assert!(synthetic["health_gate_baseline_summary"]
             .as_str()
@@ -952,14 +677,13 @@ mod build_gate_synthesizer_tests {
             .unwrap()
             .contains("crates/zero-storage"));
         let reason = synthetic["reason"].as_str().expect("reason set");
-        assert!(reason.contains("workspace_health_red_blocking_implementation"));
+        assert!(reason.contains("workspace_health_regressed"));
         assert!(reason.contains("crates/zero-storage"));
         assert_eq!(synthetic["message"], synthetic["reason"]);
     }
 
-    /// The synthetic reason string must embed exactly one of the
-    /// four blocking constants — that is the contract Phase 4a's
-    /// classifier wiring relies on
+    /// The synthetic reason string must embed each blocking constant
+    /// — that is the contract the harness classifier relies on
     /// (`contains_workspace_health_blocking_reason` is a substring
     /// match against the rendered message).
     #[test]
@@ -967,8 +691,8 @@ mod build_gate_synthesizer_tests {
         for blocking_reason in aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS {
             let verdict = HealthGateVerdict {
                 reason: blocking_reason,
-                baseline_summary: Some("baseline".to_string()),
-                current_summary: Some("current".to_string()),
+                baseline_summary: "baseline".to_string(),
+                current_summary: "current".to_string(),
                 elapsed_ms: 100,
             };
             let synthetic =
@@ -979,17 +703,6 @@ mod build_gate_synthesizer_tests {
                 "rendered reason {reason:?} must match the cross-crate \
                  substring predicate for blocking_reason={blocking_reason}",
             );
-            let found: Vec<&&str> = aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS
-                .iter()
-                .filter(|needle| reason.contains(**needle))
-                .collect();
-            assert_eq!(
-                found.len(),
-                1,
-                "rendered reason {reason:?} must contain exactly ONE blocking \
-                 reason constant, found {found:?}",
-            );
-            assert_eq!(*found[0], *blocking_reason);
         }
     }
 
@@ -1023,72 +736,5 @@ mod build_gate_synthesizer_tests {
             std::env::set_var(key, value);
         }
     }
-
-    // -----------------------------------------------------------------
-    // Phase 5a of `workspace-health-diff-gate`: task-kind extraction.
-    // The gate now derives `(TaskScope, TaskKind)` from the task
-    // description at gate time so doc/refactor/verify tasks in a red
-    // workspace no longer get force-classified as Implementation by
-    // the pre-Phase-5a `TaskKind::Unknown` fallback. The fixture
-    // tests below pin the four kinds the verdict matrix actually
-    // branches on so a regression in `classify_task_kind` or
-    // `extract_task_scope` would surface here.
-    // -----------------------------------------------------------------
-
-    /// A doc-only description (`docs/...md` or `*.md` only) must
-    /// classify as `Documentation` so the gate routes it to
-    /// `UnchangedAdvisory` in permissive mode (the 3.9 fix).
-    #[test]
-    fn classify_task_for_gate_documentation_routes_via_doc_only_scope() {
-        let (scope, kind) =
-            classify_task_for_gate("Update docs/grid.md and the top-level README.md");
-        assert!(scope.crates.is_empty(), "scope: {scope:?}");
-        assert!(!scope.paths.is_empty(), "scope: {scope:?}");
-        assert!(matches!(kind, aura_os_automation::TaskKind::Documentation));
-    }
-
-    /// A `Refactor` description (verbs `refactor`, `rename`, `move`)
-    /// must classify as `Refactor` so the strict-mode knob can decide
-    /// whether to block or surface an advisory.
-    #[test]
-    fn classify_task_for_gate_refactor_keyword_classifies_as_refactor() {
-        let (_scope, kind) = classify_task_for_gate("Refactor the dev_loop module to share state");
-        assert!(matches!(kind, aura_os_automation::TaskKind::Refactor));
-    }
-
-    /// A `Verification` description (`audit`, `review`, `verify`, or
-    /// the phrase `check that`) must classify as `Verification`.
-    #[test]
-    fn classify_task_for_gate_verification_keyword_classifies_as_verification() {
-        let (_scope, kind) = classify_task_for_gate("Audit the health gate wiring");
-        assert!(matches!(kind, aura_os_automation::TaskKind::Verification));
-    }
-
-    /// A code-touching description with a `crates/<name>` reference
-    /// must classify as `Implementation` and populate `scope.crates`
-    /// so the `UnfixedInScope` branch can fire when the red is in the
-    /// claimed crate.
-    #[test]
-    fn classify_task_for_gate_implementation_keeps_crates_scope_populated() {
-        let (scope, kind) = classify_task_for_gate(
-            "Add the Snapshot type and wire it into crates/aura-os-automation",
-        );
-        assert!(matches!(kind, aura_os_automation::TaskKind::Implementation));
-        assert!(
-            scope.crates.contains("aura-os-automation"),
-            "scope: {scope:?}"
-        );
-    }
-
-    /// An empty description (the storage-fetch-failed fallback path)
-    /// must yield `Unknown`, which `classify_delta` routes to the
-    /// `Implementation` branch. This locks in the contract that a
-    /// transient storage failure NEVER loosens the gate — it just
-    /// reverts to the pre-Phase-5a behavior.
-    #[test]
-    fn classify_task_for_gate_empty_description_falls_back_to_unknown() {
-        let (scope, kind) = classify_task_for_gate("");
-        assert!(scope.is_empty(), "scope: {scope:?}");
-        assert!(matches!(kind, aura_os_automation::TaskKind::Unknown));
-    }
 }
+

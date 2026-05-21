@@ -190,11 +190,11 @@ fn advisory_text_with_cache_silent_when_unique_within_budget() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2 of `workspace-health-diff-gate`: advisory_text_with_health{,_no_cache}
+// format_health_summary deterministic-output regression
 // ---------------------------------------------------------------------------
 
 use super::exploration::format_health_summary;
-use crate::health::{extract_task_scope, HealthError, TaskScope, WorkspaceHealth};
+use crate::health::{HealthError, WorkspaceHealth};
 
 fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
     HealthError {
@@ -202,146 +202,6 @@ fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
         code: code.map(str::to_owned),
         kind: kind.to_owned(),
     }
-}
-
-fn red_workspace() -> WorkspaceHealth {
-    WorkspaceHealth::failing(vec![
-        mk_err(
-            "crates/zero-storage/src/key.rs",
-            Some("E0277"),
-            "trait bound",
-        ),
-        mk_err(
-            "crates/zero-storage/src/key.rs",
-            Some("E0277"),
-            "trait bound",
-        ),
-        mk_err(
-            "crates/zero-storage/src/blob.rs",
-            Some("E0432"),
-            "unresolved import",
-        ),
-        mk_err(
-            "crates/zero-identity/src/lib.rs",
-            Some("E0425"),
-            "unresolved name",
-        ),
-    ])
-}
-
-#[test]
-fn advisory_text_with_health_returns_none_when_baseline_clean_and_within_budget() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = WorkspaceHealth::clean();
-    assert!(budget
-        .advisory_text_with_health(0, 0, Some(&baseline), None)
-        .is_none());
-}
-
-#[test]
-fn advisory_text_with_health_delegates_to_cache_aware_when_baseline_none() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    // Sample several points across the cache-aware classification
-    // bands; each must round-trip verbatim through the health-aware
-    // wrapper when no baseline is supplied.
-    let cases = [
-        (0u32, 0u32),
-        (budget.soft, budget.soft),
-        (budget.soft * 2, budget.soft),
-        (budget.hard + 5, budget.hard + 5),
-    ];
-    for (used, unique) in cases {
-        assert_eq!(
-            budget.advisory_text_with_health(used, unique, None, None),
-            budget.advisory_text_with_cache(used, unique),
-            "(used={used}, unique={unique}) must delegate verbatim when baseline is absent",
-        );
-    }
-}
-
-#[test]
-fn advisory_text_with_health_emits_health_summary_within_budget_when_baseline_red() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = red_workspace();
-    let header = budget
-        .advisory_text_with_health(0, 0, Some(&baseline), None)
-        .expect("baseline red must surface a header even on turn 1");
-    assert!(
-        header.contains("workspace red at task start"),
-        "header must lead with the workspace-red framing: {header}",
-    );
-    assert!(
-        header.contains("crates/zero-storage"),
-        "header must name the broken crate so the agent has a concrete target: {header}",
-    );
-    assert!(
-        !header.contains(" || "),
-        "within-budget header must NOT carry the exploration-advisory suffix: {header}",
-    );
-    assert!(
-        !header.starts_with("Heads up:") && !header.contains("Exploration budget exceeded"),
-        "within-budget header must omit the soft / over-hard framing entirely: {header}",
-    );
-}
-
-#[test]
-fn advisory_text_with_health_prefixes_scope_intersects_message_when_scope_hits_red_file() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = red_workspace();
-    let scope = extract_task_scope("Fix crates/zero-storage red surface.", &[]);
-    let header = budget
-        .advisory_text_with_health(0, 0, Some(&baseline), Some(&scope))
-        .expect("scope-intersecting red must produce a header");
-    assert!(
-        header.starts_with(
-            "your task scope intersects the broken area \u{2014} fix as part of this task;"
-        ),
-        "intersecting-scope header must lead with the fix-as-part-of-this-task framing: {header}",
-    );
-}
-
-#[test]
-fn advisory_text_with_health_prefixes_outside_scope_message_when_scope_misses_red() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = red_workspace();
-    let scope = extract_task_scope("Update README.md only.", &[]);
-    let header = budget
-        .advisory_text_with_health(0, 0, Some(&baseline), Some(&scope))
-        .expect("non-intersecting scope still produces a header for the agent");
-    assert!(
-        header.starts_with("workspace is broken outside your task scope;"),
-        "outside-scope header must lead with the outside-scope framing: {header}",
-    );
-    assert!(
-        header.contains("surface this red at task_done"),
-        "outside-scope header must remind the agent that task_done will surface the red: {header}",
-    );
-}
-
-#[test]
-fn advisory_text_with_health_appends_existing_exploration_advisory_after_soft_threshold() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = red_workspace();
-    let used = budget.soft;
-    let header = budget
-        .advisory_text_with_health(used, used, Some(&baseline), None)
-        .expect("soft-band crossing with red baseline must produce a header");
-    assert!(
-        header.contains("workspace red at task start"),
-        "header must still lead with the health summary: {header}",
-    );
-    let exploration = budget
-        .advisory_text_with_cache(used, used)
-        .expect("exploration advisory should fire at the soft floor");
-    assert!(
-        header.contains(" || "),
-        "soft-band header must separate health + exploration via ` || `: {header}",
-    );
-    assert!(
-        header.ends_with(&exploration),
-        "soft-band header must end with the verbatim cache-aware exploration advisory: \
-         header={header} exploration={exploration}",
-    );
 }
 
 #[test]
@@ -353,8 +213,7 @@ fn format_health_summary_orders_files_lexicographically_and_clamps_to_three() {
         mk_err("crates/ddd-fourth/src/lib.rs", Some("E0004"), "k"),
         mk_err("crates/ccc-third/src/lib.rs", Some("E0005"), "k"),
     ]);
-    let summary = format_health_summary(&health, None);
-    // Lex-first three crates must appear; the two later ones must not.
+    let summary = format_health_summary(&health);
     assert!(summary.contains("crates/aaa-first"), "{summary}");
     assert!(summary.contains("crates/bbb-second"), "{summary}");
     assert!(summary.contains("crates/ccc-third"), "{summary}");
@@ -370,7 +229,6 @@ fn format_health_summary_orders_files_lexicographically_and_clamps_to_three() {
         summary.contains("5 errors across 5 files"),
         "totals must reflect the full error/file count, not the clamped 3: {summary}",
     );
-    // Lex ordering must be reflected in the listing order.
     let aaa = summary.find("crates/aaa-first").unwrap();
     let bbb = summary.find("crates/bbb-second").unwrap();
     let ccc = summary.find("crates/ccc-third").unwrap();
@@ -387,7 +245,7 @@ fn format_health_summary_uses_unicode_multiplication_sign_for_repeated_error_cod
         mk_err("crates/zero-storage/src/key.rs", Some("E0277"), "k"),
         mk_err("crates/zero-storage/src/key.rs", Some("E0432"), "k"),
     ]);
-    let summary = format_health_summary(&health, None);
+    let summary = format_health_summary(&health);
     assert!(
         summary.contains("E0277 \u{00d7}2"),
         "repeated code must be rendered with the ×N suffix: {summary}",
@@ -400,27 +258,4 @@ fn format_health_summary_uses_unicode_multiplication_sign_for_repeated_error_cod
         !summary.contains("E0432 \u{00d7}"),
         "singleton code must NOT carry a ×N suffix: {summary}",
     );
-}
-
-#[test]
-fn advisory_text_with_health_no_cache_matches_with_cache_when_used_equals_unique() {
-    let budget = ExplorationBudget::for_task(0, 0);
-    let baseline = red_workspace();
-    let scope: Option<&TaskScope> = None;
-    let samples = [0u32, budget.soft, budget.soft * 2, budget.hard + 3];
-    for used in samples {
-        assert_eq!(
-            budget.advisory_text_with_health_no_cache(used, Some(&baseline), scope),
-            budget.advisory_text_with_health(used, used, Some(&baseline), scope),
-            "no_cache must collapse to with_cache(used, used) at used={used}",
-        );
-    }
-    // And it must also match for the baseline=None delegation path.
-    for used in samples {
-        assert_eq!(
-            budget.advisory_text_with_health_no_cache(used, None, None),
-            budget.advisory_text_with_cache(used, used),
-            "no_cache + baseline=None must delegate to advisory_text_with_cache at used={used}",
-        );
-    }
 }

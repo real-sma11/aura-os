@@ -103,46 +103,30 @@ pub(crate) fn task_done_missing_file_changes_reason(
     Some("task_done_without_file_changes")
 }
 
-/// Workspace-health diff gate for `task_done` (Phase 4a of
-/// `workspace-health-diff-gate`).
+/// Workspace-health diff gate for `task_done`.
 ///
 /// Returns the blocking verdict reason emitted by
 /// [`aura_os_automation::classify_delta`] when the gate should
 /// reject the completion, or `None` to defer to the existing
 /// `task_done_missing_file_changes_reason` gate.
 ///
-/// Inputs mirror the wiring the live forwarder will use in
-/// Phase 4b:
-///
 /// * `event_type` + `event` — the `tool_call_completed` payload for
 ///   the `task_done` call. Errored, non-`task_done`, and
 ///   `no_changes_needed: true` events return `None` so the existing
 ///   gates own those paths.
 /// * `baseline` — the [`aura_os_automation::WorkspaceHealth`] snapshot
-///   captured at task claim (Phase 3). `None` means "no baseline",
-///   which always returns `None` (defers to the existing gate via the
-///   `workspace_health_unknown_baseline` row of the matrix).
+///   captured at task claim. `None` means "no baseline", which
+///   always returns `None` (defers to the existing gate).
 /// * `current` — the post-task snapshot. When `Some(baseline)` is
 ///   present but `current` is `None` (e.g. the post-task snapshot
 ///   was skipped for latency), the gate treats `current` as a clone
-///   of `baseline` so the diff classifies as `Unchanged` — the
-///   cleanest fallback that still routes through the same matrix
-///   instead of silently accepting.
-/// * `scope`, `kind`, `strict_mode` — passed through to
-///   `classify_delta` verbatim.
-///
-/// Only returns a blocking reason when
-/// [`aura_os_automation::HealthVerdict::blocks_task_done`] is true,
-/// so callers can use a simple `Option`-returning shape.
-#[allow(clippy::too_many_arguments)]
+///   of `baseline` so the diff classifies as `Unchanged` and the
+///   gate does not block.
 pub(crate) fn task_done_workspace_health_gate_reason(
     event_type: &str,
     event: &serde_json::Value,
     baseline: Option<&aura_os_automation::WorkspaceHealth>,
     current: Option<&aura_os_automation::WorkspaceHealth>,
-    scope: &aura_os_automation::TaskScope,
-    kind: aura_os_automation::TaskKind,
-    strict_mode: bool,
 ) -> Option<&'static str> {
     if event_type != "tool_call_completed"
         || event.get("is_error").and_then(|v| v.as_bool()) == Some(true)
@@ -162,7 +146,7 @@ pub(crate) fn task_done_workspace_health_gate_reason(
         }
     };
 
-    let delta = aura_os_automation::classify_delta(baseline, current, scope, kind, strict_mode);
+    let delta = aura_os_automation::classify_delta(baseline, current);
     if delta.verdict.blocks_task_done() {
         Some(delta.reason)
     } else {

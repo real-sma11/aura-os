@@ -221,37 +221,24 @@ pub fn task_done_missing_file_changes_reason(
     )
 }
 
-/// Workspace-health diff gate for `task_done` (Phase 4a of
-/// `workspace-health-diff-gate`).
+/// Workspace-health diff gate for `task_done`.
 ///
 /// Public shim around the in-crate
-/// `task_done_workspace_health_gate_reason` predicate so
-/// the `dev_loop_dod_regression` test suite can exercise the gate's
-/// verdict matrix without reaching into private handler internals.
+/// `task_done_workspace_health_gate_reason` predicate so the
+/// `dev_loop_dod_regression` test suite can exercise the gate
+/// without reaching into private handler internals.
 ///
-/// Returns the blocking
-/// [`aura_os_automation::HealthDelta::reason`] string when the gate
-/// rejects, `None` when it accepts (including the back-compat
-/// "no baseline" path). See the underlying predicate's docstring for
-/// the full semantics — this shim is a thin pass-through.
-#[allow(clippy::too_many_arguments)]
+/// Returns the blocking [`aura_os_automation::HealthDelta::reason`]
+/// string when the gate rejects, `None` when it accepts (including
+/// the no-baseline back-compat path).
 pub fn task_done_workspace_health_gate_reason(
     event_type: &str,
     event: &serde_json::Value,
     baseline: Option<&aura_os_automation::WorkspaceHealth>,
     current: Option<&aura_os_automation::WorkspaceHealth>,
-    scope: &aura_os_automation::TaskScope,
-    kind: aura_os_automation::TaskKind,
-    strict_mode: bool,
 ) -> Option<&'static str> {
     crate::handlers::dev_loop::task_done_workspace_health_gate_reason(
-        event_type,
-        event,
-        baseline,
-        current,
-        scope,
-        kind,
-        strict_mode,
+        event_type, event, baseline, current,
     )
 }
 

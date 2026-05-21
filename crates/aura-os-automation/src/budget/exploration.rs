@@ -243,104 +243,11 @@ impl ExplorationBudget {
             )),
         }
     }
-
-    /// Render the per-turn advisory header text with awareness of the
-    /// task's baseline [`WorkspaceHealth`].
-    ///
-    /// Phase 2 of `workspace-health-diff-gate`. The pre-existing
-    /// [`Self::advisory_text_with_cache`] only fires after the agent
-    /// crosses the soft floor and frames the nudge in terms of
-    /// exploration count. That's too late and too generic for the
-    /// Task-3.7 abort shape: the agent burned its whole budget
-    /// exploring without ever being told the workspace was already
-    /// red in `crates/zero-storage`. This method threads the baseline
-    /// health snapshot through so the per-turn header names the
-    /// broken crate from turn 1, even when `used` is still well
-    /// inside the soft budget.
-    ///
-    /// Behaviour:
-    ///
-    /// * `health` is `None` or `Passing`: delegate verbatim to
-    ///   [`Self::advisory_text_with_cache`], so the existing
-    ///   baseline-clean behaviour is preserved.
-    /// * `health` is `Failing`:
-    ///   * Build a scope-aware health summary via
-    ///     [`format_health_summary`], prefixed with the
-    ///     intersects-scope or outside-scope framing depending on
-    ///     whether the supplied `scope` hits any baseline error
-    ///     file/crate.
-    ///   * When the exploration count is still
-    ///     [`ExplorationStatus::WithinBudget`], the header is just
-    ///     the health summary — the agent needs to know about the
-    ///     red on turn 1.
-    ///   * When in the soft or over-hard band, the existing
-    ///     exploration advisory text is appended after a ` || `
-    ///     separator so both nudges land in the same header.
-    #[must_use]
-    pub fn advisory_text_with_health(
-        self,
-        used: u32,
-        unique: u32,
-        health: Option<&crate::health::WorkspaceHealth>,
-        scope: Option<&crate::health::TaskScope>,
-    ) -> Option<String> {
-        let Some(health) = health else {
-            return self.advisory_text_with_cache(used, unique);
-        };
-        if !matches!(
-            health.build_status,
-            crate::health::BuildStatus::Failing { .. }
-        ) {
-            return self.advisory_text_with_cache(used, unique);
-        }
-
-        let prefix = scope_prefix(health, scope);
-        let summary = format_health_summary(health, scope);
-        let header = format!("{prefix}{summary}");
-
-        match self.classify_with_cache(used, unique) {
-            ExplorationStatus::WithinBudget => Some(header),
-            ExplorationStatus::WithinSoftAdvisory | ExplorationStatus::OverHard => {
-                let exploration = self
-                    .advisory_text_with_cache(used, unique)
-                    .unwrap_or_default();
-                Some(format!("{header} || {exploration}"))
-            }
-        }
-    }
-
-    /// Sibling of [`Self::advisory_text_with_health`] for callers
-    /// that don't separately track unique-read counts. Simply
-    /// forwards `used` as both `used` and `unique`.
-    #[must_use]
-    pub fn advisory_text_with_health_no_cache(
-        self,
-        used: u32,
-        health: Option<&crate::health::WorkspaceHealth>,
-        scope: Option<&crate::health::TaskScope>,
-    ) -> Option<String> {
-        self.advisory_text_with_health(used, used, health, scope)
-    }
 }
 
-/// Build the scope-aware preamble that precedes a health summary
-/// when the baseline workspace is failing.
-fn scope_prefix(
-    health: &crate::health::WorkspaceHealth,
-    scope: Option<&crate::health::TaskScope>,
-) -> &'static str {
-    if let Some(scope) = scope {
-        if !scope.is_empty() && scope.intersects_errors(health.errors()) {
-            return "your task scope intersects the broken area \u{2014} fix as part of this task; ";
-        }
-    }
-    "workspace is broken outside your task scope; if your task description targets unrelated \
-     files you may continue, but the loop will surface this red at task_done; "
-}
-
-/// Build a short, deterministic summary of the baseline error set.
+/// Build a short, deterministic summary of the workspace error set.
 ///
-/// Format (verbatim from the plan):
+/// Format:
 ///
 /// ```text
 /// workspace red at task start: N errors across M files (e.g. \
@@ -355,15 +262,8 @@ fn scope_prefix(
 ///   used as a count suffix (`E0277 ×2`) when a code repeats.
 ///   Errors with no code (`HealthError::code == None`) are still
 ///   counted in `N` but omitted from the per-file bracket.
-/// * `scope` is accepted for symmetry with the wrapper and to keep
-///   the door open for scope-prioritized ordering later; the Phase 2
-///   surface intentionally ignores it so the summary stays a stable
-///   deterministic fragment.
 #[must_use]
-pub fn format_health_summary(
-    health: &crate::health::WorkspaceHealth,
-    _scope: Option<&crate::health::TaskScope>,
-) -> String {
+pub fn format_health_summary(health: &crate::health::WorkspaceHealth) -> String {
     use std::collections::BTreeMap;
 
     let errors = health.errors();

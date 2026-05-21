@@ -2,7 +2,6 @@
 //! `HarnessFailureKind`), failure-context extraction, completion-validation
 //! stubs, test-evidence detection, push-failure heuristics, and preflight.
 
-mod build_preflight;
 mod classifiers;
 mod completion;
 mod failure_context;
@@ -11,9 +10,6 @@ mod preflight;
 mod push_failures;
 mod test_evidence;
 
-pub(crate) use build_preflight::{
-    build_gate_enabled, render_demoted_failure_reason, run_build_preflight, BuildPreflight,
-};
 pub(crate) use health_snapshot::{health_gate_enabled, snapshot_workspace_health};
 
 pub(crate) use classifiers::{
