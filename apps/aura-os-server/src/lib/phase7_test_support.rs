@@ -205,26 +205,31 @@ pub fn task_done_missing_file_changes_reason(
 /// `dev_loop_dod_regression` test suite can exercise the gate
 /// without reaching into private handler internals.
 ///
-/// Returns the blocking [`aura_os_automation::HealthDelta::reason`]
-/// string when the gate rejects, `None` when it accepts (including
-/// the no-baseline back-compat path).
+/// Returns the blocking `HealthDelta::reason` string when the gate
+/// rejects, `None` when it accepts (including the no-baseline
+/// back-compat path).
 pub fn task_done_workspace_health_gate_reason(
     event_type: &str,
     event: &serde_json::Value,
-    baseline: Option<&aura_os_automation::WorkspaceHealth>,
-    current: Option<&aura_os_automation::WorkspaceHealth>,
+    baseline: Option<&crate::handlers::dev_loop::health::WorkspaceHealth>,
+    current: Option<&crate::handlers::dev_loop::health::WorkspaceHealth>,
 ) -> Option<&'static str> {
     crate::handlers::dev_loop::task_done_workspace_health_gate_reason(
         event_type, event, baseline, current,
     )
 }
 
-/// Re-export of the `aura-os-automation` crate so the
-/// `dev_loop_dod_regression` tests can name [`aura_os_automation::WorkspaceHealth`]
-/// and friends without an extra dev-dependency declaration. The
-/// alias `automation` matches the idiom used in other test-support
+/// Re-export of the moved-in workspace-health module so the
+/// `dev_loop_dod_regression` tests can name `WorkspaceHealth` and
+/// friends without an extra dev-dependency declaration. The alias
+/// `automation` matches the idiom used in other test-support
 /// re-exports.
-pub use aura_os_automation as automation;
+pub mod automation {
+    pub use crate::handlers::dev_loop::health::{
+        classify_delta, BuildStatus, HealthDelta, HealthError, HealthVerdict, TestStatus,
+        WorkspaceHealth,
+    };
+}
 
 /// Preflight a local workspace directory the way the dev-loop would
 /// when starting a task. Returns `Ok(())` if the workspace is

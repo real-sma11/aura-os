@@ -53,7 +53,9 @@ pub use runner::{
     RunCompletion, RunStartError,
 };
 pub use session::{SessionBridge, SessionBridgeError, SessionBridgeStarted, SessionBridgeTurn};
-pub use signals::{HarnessFailureKind, HarnessSignal};
+pub use signals::{
+    synthesize_failure_reason, FailureContext, HarnessFailureKind, HarnessSignal,
+};
 pub use swarm_harness::{CreateAgentResponse, SwarmHarness};
 
 pub use aura_protocol::{

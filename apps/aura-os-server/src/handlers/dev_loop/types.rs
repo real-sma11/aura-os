@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
-use aura_os_automation::HealthBaselineTracker;
+use super::health::HealthBaselineTracker;
 use aura_os_core::{AgentId, AgentInstanceId, AgentPermissions, Project, ProjectId, SessionId};
 use aura_os_harness::{AutomatonClient, WsReaderHandle};
 use aura_os_loops::LoopHandle;
@@ -103,14 +103,12 @@ pub(super) struct ForwarderContext {
 /// kept for diff minimality.
 #[derive(Debug, Default)]
 pub(super) struct LoopRetryState {
-    /// Phase 3 of `workspace-health-diff-gate`: per-task
-    /// [`aura_os_automation::WorkspaceHealth`] baseline captured at
+    /// Per-task `WorkspaceHealth` baseline captured at
     /// `task_started` by the async snapshot runner in
     /// [`super::signals::snapshot_workspace_health`]. The completion
     /// gate reads it back at `task_done` via
-    /// [`aura_os_automation::HealthBaselineTracker::get`]; missing
-    /// entries fall through to the existing
-    /// `workspace_health_unknown_baseline` path.
+    /// [`HealthBaselineTracker::get`]; missing entries fall through
+    /// to the existing `workspace_health_unknown_baseline` path.
     pub(super) health_baseline: HealthBaselineTracker,
 }
 

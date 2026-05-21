@@ -1,22 +1,19 @@
 //! Workspace-health snapshot fingerprint + pure `cargo check` parser.
 //!
-//! Phase 1 of `workspace-health-diff-gate`. This module owns:
-//!
 //! * [`Snapshot`] — newtype around [`super::types::WorkspaceHealth`]
 //!   plus a content-hash signature computed by [`compute_signature`].
-//!   Downstream phases stash this on `LoopRetryState` and compare two
-//!   signatures to short-circuit the diff classifier.
+//!   The completion gate stashes this on `LoopRetryState` and
+//!   compares two signatures to short-circuit the diff classifier.
 //! * [`parse_cargo_check_json_output`] — pure parser for the
-//!   `cargo check --message-format=json` JSON-lines shape. NO `cargo`
-//!   invocation lives here; the App layer runs the command and feeds
-//!   the captured stdout in.
+//!   `cargo check --message-format=json` JSON-lines shape. NO
+//!   `cargo` invocation lives here; the snapshot runner under
+//!   `signals::health_snapshot` runs the command and feeds the
+//!   captured stdout in.
 //!
-//! `blake3` is the workspace-pinned content-hash used elsewhere in the
-//! tree (see `Cargo.toml`'s `[workspace.dependencies]` `blake3 = "1.5"`).
-//! Using it here keeps signatures interoperable with future tooling
-//! (e.g. dumping a baseline to disk) without inventing a new hash flavor.
+//! `blake3` is the workspace-pinned content-hash used elsewhere in
+//! the tree.
 
-use crate::health::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth};
+use super::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth};
 
 /// `WorkspaceHealth` plus a stable content-hash signature.
 ///
@@ -26,7 +23,7 @@ use crate::health::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth
 /// edits ahead of a stable error would otherwise look like a brand-new
 /// diagnostic and trip a spurious `workspace_health_regressed`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Snapshot {
+pub(crate) struct Snapshot {
     /// The underlying health verdict.
     pub health: WorkspaceHealth,
     /// blake3 hash of the dedup-sorted `(file, code, kind)` triples
@@ -65,7 +62,7 @@ impl Snapshot {
 /// * Changes to the file path, error code, or first-line message.
 /// * Test status transitions (passing → failing flips the signature).
 #[must_use]
-pub fn compute_signature(health: &WorkspaceHealth) -> blake3::Hash {
+pub(crate) fn compute_signature(health: &WorkspaceHealth) -> blake3::Hash {
     let mut triples: Vec<(&str, &str, &str)> = health
         .errors()
         .iter()
@@ -121,7 +118,7 @@ pub fn compute_signature(health: &WorkspaceHealth) -> blake3::Hash {
 /// absolute paths by default; the App layer typically strips the
 /// workspace root prefix before storing.
 #[must_use]
-pub fn parse_cargo_check_json_output(stdout: &str) -> Vec<HealthError> {
+pub(crate) fn parse_cargo_check_json_output(stdout: &str) -> Vec<HealthError> {
     let mut errors = Vec::new();
     for raw_line in stdout.lines() {
         let line = raw_line.trim();

@@ -2,7 +2,7 @@
 //! harness wire events.
 //!
 //! The pure mapping lives in
-//! [`aura_os_automation::progress::apply_loop_activity`]. This module
+//! [`super::super::progress::apply_loop_activity`]. This module
 //! is the App-layer adapter: it snapshots the live `LoopHandle`,
 //! delegates to the pure mapper, and forwards the resulting
 //! [`LoopActivityTransition`] into `LoopHandle::transition` so the
@@ -15,11 +15,11 @@
 //! `tool_call_started` events fired no transition and the UI spinner
 //! got stuck on the initial `Starting / "connecting"` snapshot. The
 //! pure mapper matches against
-//! [`aura_os_automation::event_kinds`] constants which mirror the
+//! [`super::super::event_kinds`] constants which mirror the
 //! harness module byte-for-byte (pinned by an invariant test in the
 //! automation crate).
 
-use aura_os_automation::progress::{apply_loop_activity, LoopActivityTransition};
+use super::super::progress::{apply_loop_activity, LoopActivityTransition};
 use aura_os_loops::LoopHandle;
 
 #[cfg(test)]

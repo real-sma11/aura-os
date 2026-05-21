@@ -12,18 +12,18 @@
 
 use std::collections::BTreeMap;
 
-use crate::health::types::{
+use super::types::{
     BuildStatus, HealthDelta, HealthError, HealthVerdict, TestStatus, WorkspaceHealth,
 };
 
 /// Reason string for [`HealthVerdict::Improved`].
-pub const REASON_IMPROVED: &str = "workspace_health_improved";
+pub(crate) const REASON_IMPROVED: &str = "workspace_health_improved";
 /// Reason string for [`HealthVerdict::Clean`].
-pub const REASON_CLEAN: &str = "workspace_health_clean";
+pub(crate) const REASON_CLEAN: &str = "workspace_health_clean";
 /// Reason string for [`HealthVerdict::Unchanged`].
-pub const REASON_UNCHANGED: &str = "workspace_health_unchanged";
+pub(crate) const REASON_UNCHANGED: &str = "workspace_health_unchanged";
 /// Reason string for [`HealthVerdict::Regressed`].
-pub const REASON_REGRESSED: &str = "workspace_health_regressed";
+pub(crate) const REASON_REGRESSED: &str = "workspace_health_regressed";
 
 /// The single `workspace_health_*` reason string that blocks
 /// `task_done` (i.e. the one for which
@@ -32,14 +32,14 @@ pub const REASON_REGRESSED: &str = "workspace_health_regressed";
 /// Kept as a `const` slice so the App layer and the cross-crate
 /// `aura-os-harness` predicate can iterate the same set without
 /// re-typing the literal.
-pub const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &[REASON_REGRESSED];
+pub(crate) const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &[REASON_REGRESSED];
 
 /// True when `reason` is the workspace-health reason string that
 /// blocks `task_done`. The non-blocking advisory reasons
 /// (`workspace_health_improved`, `_clean`, `_unchanged`)
 /// deliberately do NOT match.
 #[must_use]
-pub fn is_workspace_health_blocking_reason(reason: &str) -> bool {
+pub(crate) fn is_workspace_health_blocking_reason(reason: &str) -> bool {
     reason == REASON_REGRESSED
 }
 
@@ -52,7 +52,7 @@ pub fn is_workspace_health_blocking_reason(reason: &str) -> bool {
 /// larger error message (`"agent execution error:
 /// workspace_health_regressed at task_done"`).
 #[must_use]
-pub fn contains_workspace_health_blocking_reason(reason: &str) -> bool {
+pub(crate) fn contains_workspace_health_blocking_reason(reason: &str) -> bool {
     let lower = reason.to_ascii_lowercase();
     lower.contains(REASON_REGRESSED)
 }
@@ -209,7 +209,7 @@ fn format_grouped_summary(errors: &[&HealthError]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::health::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth};
+    use super::super::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth};
 
     fn err(file: &str, code: &str, kind: &str) -> HealthError {
         HealthError {

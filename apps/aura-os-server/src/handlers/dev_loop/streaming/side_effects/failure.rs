@@ -2,7 +2,7 @@
 
 use tracing::warn;
 
-use aura_os_automation::{synthesize_failure_reason, FailureContext};
+use aura_os_harness::signals::{synthesize_failure_reason, FailureContext};
 use aura_os_storage::UpdateTaskRequest;
 
 use crate::state::AppState;
@@ -38,7 +38,7 @@ pub(crate) fn extract_task_failure_reason(event: &serde_json::Value) -> Option<S
 /// Section B: when the event lacks a usable reason
 /// ([`extract_task_failure_reason`] returns `None`), we synthesize a
 /// descriptive fallback via
-/// [`aura_os_automation::synthesize_failure_reason`] so the
+/// [`synthesize_failure_reason`] so the
 /// persisted `execution_notes` is always non-empty for a failed
 /// task. The fallback is built from whatever context the event
 /// itself carries (`terminal_state`, last tool name, error excerpt)
@@ -71,7 +71,7 @@ pub(super) async fn persist_task_failure_reason(
 ///
 /// Pure helper: returns the trimmed extracted reason when the event
 /// carries one, otherwise synthesizes a fallback via
-/// [`aura_os_automation::synthesize_failure_reason`]. Never returns
+/// [`synthesize_failure_reason`]. Never returns
 /// an empty string — Section B regression: a silent `task_failed`
 /// must still leave actionable text on the row.
 pub(crate) fn resolve_failure_reason_for_persistence(event: &serde_json::Value) -> String {
@@ -121,7 +121,7 @@ mod tests {
     // `message` / `error` / `code` field is present on the event. The
     // test pins `resolve_failure_reason_for_persistence` (the helper
     // that the `task_failed` arm's persist call now feeds) — the
-    // synthesis itself is unit-tested in `aura_os_automation::failure`.
+    // synthesis itself is unit-tested in `aura_os_harness::signals`.
     // ====================================================================
 
     #[test]

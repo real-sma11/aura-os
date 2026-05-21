@@ -1,4 +1,19 @@
+//! Typed harness wire-event signals.
+//!
+//! This module owns the classifier that turns the harness's prose
+//! `reason` strings into the typed [`HarnessFailureKind`] enum.
+//! Downstream server code consumes the enum directly; substring
+//! matching of harness prose lives only here.
+//!
+//! The sibling [`synthesize`] module owns the failure-reason
+//! fallback synthesizer the dev-loop forwarder uses when a
+//! `task_failed` event lands without a usable reason field.
+
+mod synthesize;
+
 use serde::{Deserialize, Serialize};
+
+pub use synthesize::{synthesize_failure_reason, FailureContext, MAX_ERROR_EXCERPT_LEN};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,8 +55,7 @@ impl HarnessFailureKind {
     /// Exhaustive `match` so adding a new variant forces an
     /// explicit retry-policy decision at the compiler.
     ///
-    /// Phase 4 makes this the SINGLE retry-decision function for the
-    /// server-side dev-loop. Policy:
+    /// Policy:
     ///
     /// * Infra-transient — `RateLimited`, `ProviderInternal`,
     ///   `PushTimeout` — retry; the next attempt typically succeeds
@@ -340,13 +354,13 @@ fn classify_tool_result_failure(name: Option<&str>, reason: Option<&str>) -> Har
     classify_failure(reason)
 }
 
-// The workspace-health blocking verdict reason emitted by
-// `aura_os_automation::classify_delta`. Duplicated as a `&str`
-// literal (instead of `use`-ing the constant from `aura_os_automation`)
-// because `aura-os-harness` lives BELOW `aura-os-automation` in the
-// dep graph. The exact string is pinned by the test suite in
-// `aura_os_automation::health::delta::tests` so this duplication will
-// fail loudly if the canonical reason ever changes.
+// The workspace-health blocking verdict reason emitted by the
+// server-side `classify_delta`. Duplicated as a `&str` literal
+// (instead of `use`-ing the constant from the server) because
+// `aura-os-harness` lives BELOW `aura-os-server` in the dep graph.
+// The exact string is pinned by the test suite in the server's
+// `handlers::dev_loop::health::delta::tests` module so this
+// duplication will fail loudly if the canonical reason ever changes.
 const WORKSPACE_HEALTH_BLOCKING_REASONS: &[&str] = &["workspace_health_regressed"];
 
 fn is_completion_contract_failure(reason: &str) -> bool {
@@ -609,9 +623,6 @@ mod tests {
     fn is_retryable_pinned_by_kind() {
         // Pin the typed retry-policy table so adding a new variant
         // forces an explicit decision via the exhaustive `match`.
-        // Phase 4: Truncation, CompletionContract, and ResearchLoopAbort
-        // all need a fresh-context re-run to recover (see the
-        // reconciler's `match` over `HarnessFailureKind`).
         assert!(HarnessFailureKind::RateLimited.is_retryable());
         assert!(HarnessFailureKind::PushTimeout.is_retryable());
         assert!(HarnessFailureKind::ResearchLoopAbort.is_retryable());

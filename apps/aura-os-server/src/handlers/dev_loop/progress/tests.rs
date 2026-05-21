@@ -1,9 +1,9 @@
-//! Table-driven tests for [`crate::progress::apply_loop_activity`].
+//! Table-driven tests for [`super::apply_loop_activity`].
 //!
 //! Each test row pins one canonical event-kind constant from
-//! [`crate::event_kinds`] to its expected transition. The tables stay
-//! flat and short so adding a new harness event-kind is a one-line
-//! change.
+//! [`super::super::event_kinds`] to its expected transition. The
+//! tables stay flat and short so adding a new harness event-kind is
+//! a one-line change.
 //!
 //! These tests also pin the **OLD stale event-type strings** (the
 //! ones the original `apps/aura-os-server/src/handlers/dev_loop/streaming/activity.rs`
@@ -15,10 +15,8 @@
 use aura_os_events::{LoopActivity, LoopStatus};
 use chrono::Utc;
 
-use crate::event_kinds as ek;
-use crate::progress::activity::{
-    apply_loop_activity, LoopActivityTransition, STEP_PROCESSING, STEP_THINKING,
-};
+use super::super::event_kinds as ek;
+use super::activity::{apply_loop_activity, LoopActivityTransition, STEP_PROCESSING, STEP_THINKING};
 
 fn starting_activity() -> LoopActivity {
     LoopActivity::starting(Utc::now())

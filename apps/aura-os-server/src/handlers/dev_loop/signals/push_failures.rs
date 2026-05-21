@@ -1,6 +1,58 @@
 //! Push-failure heuristics, DoD-followup stubs, and the recovery-checkpoint coarse classifier used by the legacy phase7 test surface.
 
 pub(crate) const CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD: u32 = 3;
+
+/// Classify a `task_failed` reason into one of the dev-loop's
+/// push-failure subclasses, or `None` for non-push failures.
+///
+/// Returns one of:
+///
+/// * `Some("push_timeout")` — push timed out at the network layer.
+/// * `Some("remote_storage_exhausted")` — remote ran out of space /
+///   storage quota.
+/// * `Some("push_failed")` — push-related but not one of the above
+///   (rejected by a hook, remote refused, ...).
+/// * `None` — not push-related.
+pub(crate) fn classify_push_failure(reason: &str) -> Option<&'static str> {
+    let reason = reason.to_ascii_lowercase();
+    if !(reason.contains("push") || reason.contains("remote")) {
+        return None;
+    }
+    if reason.contains("timeout") || reason.contains("timed out") {
+        Some("push_timeout")
+    } else if reason.contains("no space") || reason.contains("storage") || reason.contains("quota")
+    {
+        Some("remote_storage_exhausted")
+    } else {
+        Some("push_failed")
+    }
+}
+
+#[cfg(test)]
+mod push_failure_tests {
+    use super::classify_push_failure;
+
+    #[test]
+    fn classify_push_failure_returns_subclass_labels() {
+        assert_eq!(
+            classify_push_failure("git push orbit HEAD:main: timed out after 60s"),
+            Some("push_timeout"),
+        );
+        assert_eq!(
+            classify_push_failure("remote: error: No space left on device"),
+            Some("remote_storage_exhausted"),
+        );
+        assert_eq!(
+            classify_push_failure("git_push_failed: remote rejected (pre-receive hook declined)"),
+            Some("push_failed"),
+        );
+        assert_eq!(
+            classify_push_failure("syntax error in generated code"),
+            None,
+            "non-push reasons must not classify",
+        );
+    }
+}
 const MAX_DOD_RETRIES_PER_TASK: u32 = 0;
 
 pub(crate) fn recovery_checkpoint(

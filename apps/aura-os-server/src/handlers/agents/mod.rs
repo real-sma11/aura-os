@@ -9,6 +9,8 @@ mod marketplace_fields;
 mod runtime;
 pub(crate) mod session_identity;
 mod sessions;
+#[allow(dead_code)]
+mod task_context;
 pub(crate) mod tool_dedupe;
 pub(crate) mod workspace_tools;
 

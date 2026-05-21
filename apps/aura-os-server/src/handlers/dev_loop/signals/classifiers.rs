@@ -1,9 +1,7 @@
 //! Server-side classifier wrappers that route reason strings through the typed
 //! [`HarnessFailureKind`] enum exported by `aura-os-harness::signals`.
 //!
-//! The substring classifier family in
-//! `aura-os-automation::classify::transient` was retired in Phase 1;
-//! every server-side gate now parses the reason string through
+//! Every server-side gate parses the reason string through
 //! `HarnessSignal::from_event(...).failure_kind()` so the typed enum is
 //! the single source of truth.
 
@@ -135,8 +133,4 @@ pub(crate) fn should_restart_on_error_event(reason: &str) -> bool {
             | HarnessFailureKind::ResearchLoopAbort,
     );
     restart_eligible || looks_like_unclassified_transient(reason)
-}
-
-pub(crate) fn classify_push_failure(reason: &str) -> Option<&'static str> {
-    aura_os_automation::classify_push_failure(reason)
 }

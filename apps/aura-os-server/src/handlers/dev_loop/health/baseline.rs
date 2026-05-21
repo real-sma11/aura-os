@@ -1,24 +1,15 @@
-//! Per-task workspace-health baseline tracker (Phase 3 of the
-//! workspace-health diff gate).
+//! Per-task workspace-health baseline tracker.
 //!
 //! Stashes the [`WorkspaceHealth`] fingerprint captured at
 //! `task_started` so the completion gate can re-read it at
-//! `task_done` and call [`crate::health::classify_delta`] against
-//! it.
+//! `task_done` and call [`super::classify_delta`] against it.
 //!
 //! The tracker is intentionally a passive store: it does not invoke
 //! `cargo check`, schedule snapshots, or know about timeouts. The
-//! App-layer snapshot runner (`apps/aura-os-server/src/handlers/
-//! dev_loop/signals/health_snapshot.rs`) owns the shell-out and calls
-//! [`HealthBaselineTracker::record`] with whatever
+//! App-layer snapshot runner (`signals::health_snapshot`) owns the
+//! shell-out and calls [`HealthBaselineTracker::record`] with whatever
 //! [`WorkspaceHealth`] it produced — including
 //! [`WorkspaceHealth::unknown`] when the snapshot bailed.
-//!
-//! Phase 4 of the dev-loop simplification deleted the sibling
-//! retry tracker and orphan-recovery planner helpers that used to
-//! live next door. The per-task retry budget now lives on the
-//! persisted `tasks.attempts` column; this tracker is the only
-//! in-memory state that survived.
 //!
 //! Internal poison-recovery: on a poisoned mutex we take the inner
 //! state and keep going. The worst case for a missed baseline is
@@ -32,17 +23,16 @@ use std::time::{Duration, SystemTime};
 
 use aura_os_core::TaskId;
 
-use crate::health::types::WorkspaceHealth;
+use super::types::WorkspaceHealth;
 
 /// One stashed baseline entry. The `captured_at` timestamp lets the
 /// completion gate decide whether the baseline is fresh enough to
 /// trust before reusing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BaselineEntry {
+pub(crate) struct BaselineEntry {
     /// The captured `WorkspaceHealth` fingerprint at task start.
     pub health: WorkspaceHealth,
-    /// Wall-clock instant the baseline was recorded. Used by Phase 4
-    /// to decide whether to reuse vs. re-snapshot at `task_done`.
+    /// Wall-clock instant the baseline was recorded.
     pub captured_at: SystemTime,
 }
 
@@ -50,7 +40,7 @@ pub struct BaselineEntry {
 /// [`TaskId`]. `Default` + `Send` + `Sync` so the server can wrap it
 /// in an `Arc` and pass it through the per-loop `LoopRetryState`.
 #[derive(Debug, Default)]
-pub struct HealthBaselineTracker {
+pub(crate) struct HealthBaselineTracker {
     baselines: Mutex<HashMap<TaskId, BaselineEntry>>,
 }
 
@@ -103,6 +93,7 @@ impl HealthBaselineTracker {
     /// instant, which is rare enough to treat as "untracked" without
     /// surfacing the error).
     #[must_use]
+    #[allow(dead_code)]
     pub fn snapshot_age(&self, task_id: TaskId) -> Option<Duration> {
         let baselines = self.locked_baselines();
         let entry = baselines.get(&task_id)?;
@@ -120,7 +111,7 @@ impl HealthBaselineTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::health::types::{BuildStatus, HealthError, TestStatus};
+    use super::super::types::{BuildStatus, HealthError, TestStatus};
 
     fn failing_health() -> WorkspaceHealth {
         WorkspaceHealth {

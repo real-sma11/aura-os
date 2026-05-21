@@ -26,7 +26,7 @@ use super::resolver::TaskContext;
 /// dev-loop run (per-task + dependencies + recently-completed
 /// neighbours) without growing indefinitely on a server that has
 /// served thousands of distinct tasks since boot.
-pub const MAX_CACHE_ENTRIES: usize = 128;
+pub(crate) const MAX_CACHE_ENTRIES: usize = 128;
 
 /// Composite key the cache uses to invalidate stale entries when a
 /// task's `updated_at` (or any monotone-per-task counter) bumps.
@@ -44,7 +44,7 @@ type CacheMap = IndexMap<CacheKey, Arc<TaskContext>>;
 /// inner [`Arc`]). Suitable for stashing on `AppState` as a
 /// per-process singleton.
 #[derive(Debug, Clone, Default)]
-pub struct TaskContextCache {
+pub(crate) struct TaskContextCache {
     inner: Arc<Mutex<CacheMap>>,
 }
 
@@ -89,6 +89,7 @@ impl TaskContextCache {
     /// Number of resident entries. Lock-protected; intended for
     /// tests and metrics, not hot-path usage.
     #[must_use]
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         match self.inner.lock() {
             Ok(guard) => guard.len(),
@@ -98,6 +99,7 @@ impl TaskContextCache {
 
     /// `true` when no entries are resident. See [`Self::len`].
     #[must_use]
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

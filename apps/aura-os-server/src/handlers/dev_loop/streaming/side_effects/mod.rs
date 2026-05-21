@@ -15,6 +15,7 @@ use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
 use aura_os_loops::LoopHandle;
 
+use super::super::health::{classify_delta, format_health_summary};
 use super::super::session::record_task_worked;
 use super::super::signals::{
     extract_task_failure_context, health_gate_enabled, snapshot_workspace_health,
@@ -472,12 +473,12 @@ async fn maybe_run_health_gate(
         resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id)).await?;
     let start = Instant::now();
     let current_health = snapshot_workspace_health(workspace_path.clone()).await;
-    let delta = aura_os_automation::classify_delta(&baseline_entry.health, &current_health);
+    let delta = classify_delta(&baseline_entry.health, &current_health);
     if !delta.verdict.blocks_task_done() {
         return None;
     }
-    let baseline_summary = aura_os_automation::format_health_summary(&baseline_entry.health);
-    let current_summary = aura_os_automation::format_health_summary(&current_health);
+    let baseline_summary = format_health_summary(&baseline_entry.health);
+    let current_summary = format_health_summary(&current_health);
     Some(HealthGateVerdict {
         reason: delta.reason,
         baseline_summary,
@@ -569,7 +570,7 @@ mod health_gate_synthesizer_tests {
             "extra": "preserve me"
         });
         let verdict = HealthGateVerdict {
-            reason: aura_os_automation::REASON_REGRESSED,
+            reason: super::super::super::health::REASON_REGRESSED,
             baseline_summary: "workspace red at task start: 1 errors across 1 files \
                  (e.g. crates/zero-storage [E0277])"
                 .to_string(),
@@ -607,7 +608,7 @@ mod health_gate_synthesizer_tests {
     /// match against the rendered message).
     #[test]
     fn synthesize_health_gate_failure_embeds_blocking_reason_so_classifier_matches() {
-        for blocking_reason in aura_os_automation::WORKSPACE_HEALTH_BLOCKING_REASONS {
+        for blocking_reason in super::super::super::health::WORKSPACE_HEALTH_BLOCKING_REASONS {
             let verdict = HealthGateVerdict {
                 reason: blocking_reason,
                 baseline_summary: "baseline".to_string(),
@@ -618,7 +619,7 @@ mod health_gate_synthesizer_tests {
                 synthesize_health_gate_failure(&serde_json::json!({"task_id": "t"}), &verdict);
             let reason = synthetic["reason"].as_str().expect("reason set");
             assert!(
-                aura_os_automation::contains_workspace_health_blocking_reason(reason),
+                super::super::super::health::contains_workspace_health_blocking_reason(reason),
                 "rendered reason {reason:?} must match the cross-crate \
                  substring predicate for blocking_reason={blocking_reason}",
             );

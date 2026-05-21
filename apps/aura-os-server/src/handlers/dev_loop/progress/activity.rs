@@ -3,16 +3,16 @@
 
 use aura_os_events::{LoopActivity, LoopStatus};
 
-use crate::event_kinds as ek;
+use super::super::event_kinds as ek;
 
 /// Hint string the mapper writes into `LoopActivity::current_step` when
 /// the loop becomes [`LoopStatus::Running`] on a text/thinking delta.
 /// Static so the mapper can stay allocation-free.
-pub const STEP_THINKING: &str = "thinking";
+pub(crate) const STEP_THINKING: &str = "thinking";
 
 /// Hint string the mapper writes into `LoopActivity::current_step` when
 /// the loop returns to [`LoopStatus::Running`] after a tool result.
-pub const STEP_PROCESSING: &str = "processing";
+pub(crate) const STEP_PROCESSING: &str = "processing";
 
 /// Computed activity transition for a single harness event.
 ///
@@ -22,7 +22,7 @@ pub const STEP_PROCESSING: &str = "processing";
 /// pulling the tool name out of the event payload before formatting
 /// the `current_step` hint.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LoopActivityTransition {
+pub(crate) enum LoopActivityTransition {
     /// Move to [`LoopStatus::Running`] with the given step hint.
     Running {
         /// Short human-readable hint stored in
@@ -47,12 +47,12 @@ pub enum LoopActivityTransition {
 /// `text_delta` arriving while we are already in
 /// [`LoopStatus::Running`] with the `"thinking"` step).
 ///
-/// Match arms compare against [`crate::event_kinds`] constants — never
-/// raw strings. The constants mirror the harness's
+/// Match arms compare against [`super::super::event_kinds`] constants
+/// — never raw strings. The constants mirror the harness's
 /// `automaton_event_kinds` module and are pinned by the
 /// `event_kinds_match_harness_constants` invariant test.
 #[must_use]
-pub fn apply_loop_activity(
+pub(crate) fn apply_loop_activity(
     current: &LoopActivity,
     event_kind: &str,
 ) -> Option<LoopActivityTransition> {

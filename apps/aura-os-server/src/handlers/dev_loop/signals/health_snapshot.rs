@@ -1,12 +1,12 @@
-//! Phase 3 of `workspace-health-diff-gate`: async runner that
-//! captures the workspace's build health at `task_started` so the
-//! Phase 4 completion gate can diff against it at `task_done`.
+//! Async runner that captures the workspace's build health at
+//! `task_started` so the completion gate can diff against it at
+//! `task_done`.
 //!
 //! This module is the App-side complement to
-//! [`aura_os_automation::health::parse_cargo_check_json_output`]: the
-//! pure-Rust parser lives in the automation crate (no I/O), and the
-//! actual shell-out to `cargo check` lives here so the dev-loop's
-//! tokio runtime owns the spawn-blocking boundary.
+//! [`super::super::health::parse_cargo_check_json_output`]: the
+//! pure-Rust parser lives in the `dev_loop::health` module (no I/O),
+//! and the actual shell-out to `cargo check` lives here so the
+//! dev-loop's tokio runtime owns the spawn-blocking boundary.
 //!
 //! Design notes:
 //!
@@ -15,32 +15,29 @@
 //!   [`crate::handlers::dev_loop::streaming::side_effects`])
 //!   `tokio::spawn`s it so claim latency stays unchanged. If the
 //!   snapshot doesn't finish before `task_done`, the completion gate
-//!   reads back `None` from
-//!   [`aura_os_automation::HealthBaselineTracker::get`] and falls
+//!   reads back `None` from the `HealthBaselineTracker` and falls
 //!   through to the existing `workspace_health_unknown_baseline`
 //!   path.
-//! * Test status stays [`aura_os_automation::TestStatus::Unknown`].
-//!   Running tests at baseline is cost-prohibitive (cold-cache
-//!   `cargo test --workspace` on the prior chat's tree was ~5min).
-//!   Phase 4 can refine if needed.
+//! * Test status stays `TestStatus::Unknown` at baseline; running
+//!   tests there is cost-prohibitive.
 //! * `AURA_HEALTH_SNAPSHOT_DISABLED` short-circuits the spawn
 //!   entirely, mirroring the parsing in
 //!   [`super::classifiers::auto_decompose_disabled`]. Empty
 //!   workspace paths short-circuit the same way (the dev-loop has
 //!   no workspace to check).
-//! * The wall-clock cap is [`HEALTH_SNAPSHOT_TIMEOUT`] (120s) — sized
-//!   for a cold-cache `task_started` snapshot. The `task_done`
-//!   snapshot (see `side_effects::maybe_run_health_gate`) reuses the
-//!   same runner and inherits the same cap.
+//! * The wall-clock cap is [`HEALTH_SNAPSHOT_TIMEOUT`] (120s) —
+//!   sized for a cold-cache `task_started` snapshot. The
+//!   `task_done` snapshot (see `side_effects::maybe_run_health_gate`)
+//!   reuses the same runner and inherits the same cap.
 //! * On any tooling failure (timeout, cargo not found, non-UTF-8
-//!   output, …) we return [`aura_os_automation::WorkspaceHealth::unknown`]
-//!   so the Phase 4 gate can distinguish "we couldn't observe" from
-//!   "workspace was clean".
+//!   output, …) we return `WorkspaceHealth::unknown` so the gate
+//!   can distinguish "we couldn't observe" from "workspace was
+//!   clean".
 
 use std::process::Command;
 use std::time::Duration;
 
-use aura_os_automation::{parse_cargo_check_json_output, WorkspaceHealth};
+use super::super::health::{parse_cargo_check_json_output, WorkspaceHealth};
 
 /// Hard wall-clock cap for the workspace-health snapshot, sized for a
 /// cold-cache `task_started` run.
@@ -51,7 +48,7 @@ pub(crate) const HEALTH_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(120);
 /// Always returns a [`WorkspaceHealth`] — tooling errors are mapped
 /// to [`WorkspaceHealth::unknown`] so the App layer can stash a
 /// value either way and Phase 4 can branch on the
-/// [`aura_os_automation::BuildStatus::Unknown`] discriminator.
+/// `BuildStatus::Unknown` discriminator.
 ///
 /// The function shells out to `cargo check --workspace
 /// --message-format=json --quiet` on `tokio::task::spawn_blocking` so

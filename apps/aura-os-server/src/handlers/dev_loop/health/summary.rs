@@ -1,10 +1,5 @@
 //! Deterministic `WorkspaceHealth` rendering for the dev-loop
 //! completion gate.
-//!
-//! Phase 4 moved this helper out of the deleted `budget/exploration`
-//! module into the health module proper, since the health gate is the
-//! only caller and the function is part of the health-rendering
-//! surface.
 
 use std::collections::BTreeMap;
 
@@ -28,7 +23,7 @@ use super::types::{HealthError, WorkspaceHealth};
 ///   Errors with no code (`HealthError::code == None`) are still
 ///   counted in `N` but omitted from the per-file bracket.
 #[must_use]
-pub fn format_health_summary(health: &WorkspaceHealth) -> String {
+pub(crate) fn format_health_summary(health: &WorkspaceHealth) -> String {
     let errors = health.errors();
     let total_errors = errors.len();
 
@@ -79,12 +74,10 @@ pub fn format_health_summary(health: &WorkspaceHealth) -> String {
 
 #[cfg(test)]
 mod tests {
-    //! `format_health_summary` deterministic-output regression. Moved
-    //! verbatim from the deleted `budget/tests.rs` so the rendering
-    //! contract still has direct coverage.
+    //! `format_health_summary` deterministic-output regression.
 
     use super::*;
-    use crate::health::types::WorkspaceHealth;
+    use super::super::types::WorkspaceHealth;
 
     fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
         HealthError {

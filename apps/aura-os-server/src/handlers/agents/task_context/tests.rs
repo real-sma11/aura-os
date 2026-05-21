@@ -7,11 +7,11 @@ use aura_os_core::{ProjectId, SpecId, Task, TaskId, TaskStatus};
 use chrono::Utc;
 
 use super::cache::{TaskContextCache, MAX_CACHE_ENTRIES};
+use super::error::TaskContextError;
 use super::resolver::{
     build_task_context, FetchedTask, TaskContextInputs, TaskContextResolver,
     MAX_EXECUTION_NOTES_LEN,
 };
-use crate::error::AutomationError;
 
 fn task_with(title: &str, description: &str, status: TaskStatus) -> Task {
     let now = Utc::now();
@@ -170,7 +170,7 @@ fn cache_hit_avoids_second_fetch() {
     let fetcher = {
         let task = task.clone();
         let calls = calls.clone();
-        move |_id: TaskId| -> Result<FetchedTask, AutomationError> {
+        move |_id: TaskId| -> Result<FetchedTask, TaskContextError> {
             calls.fetch_add(1, Ordering::SeqCst);
             Ok(FetchedTask {
                 task: task.clone(),
@@ -207,7 +207,7 @@ fn version_bump_invalidates_cache() {
     let fetcher = {
         let task = task.clone();
         let calls = calls.clone();
-        move |_id: TaskId| -> Result<FetchedTask, AutomationError> {
+        move |_id: TaskId| -> Result<FetchedTask, TaskContextError> {
             calls.fetch_add(1, Ordering::SeqCst);
             Ok(FetchedTask {
                 task: task.clone(),
@@ -238,9 +238,9 @@ fn fetcher_error_propagates_and_does_not_cache() {
     let task_id = TaskId::new();
     let fetcher = {
         let calls = calls.clone();
-        move |_id: TaskId| -> Result<FetchedTask, AutomationError> {
+        move |_id: TaskId| -> Result<FetchedTask, TaskContextError> {
             calls.fetch_add(1, Ordering::SeqCst);
-            Err(AutomationError::InvalidHarnessEvent {
+            Err(TaskContextError::InvalidHarnessEvent {
                 detail: "stub failure".to_string(),
             })
         }

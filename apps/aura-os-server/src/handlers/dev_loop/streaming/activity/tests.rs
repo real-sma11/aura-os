@@ -13,7 +13,7 @@ use aura_os_events::{EventHub, LoopId, LoopKind, LoopStatus};
 use aura_os_loops::{LoopHandle, LoopRegistry};
 
 use super::apply_loop_activity_event;
-use aura_os_automation::event_kinds as ek;
+use super::super::super::event_kinds as ek;
 
 fn make_handle() -> (LoopRegistry, LoopHandle) {
     let registry = LoopRegistry::new(EventHub::new());

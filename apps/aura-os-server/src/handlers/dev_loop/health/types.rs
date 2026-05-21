@@ -1,10 +1,10 @@
 //! Shared data types for the workspace-health diff gate.
 //!
 //! Pure data containers consumed by [`super::delta::classify_delta`].
-//! They MUST stay free of I/O, async machinery, and any dependency on
-//! `aura-os-storage` or the server crate — the App layer constructs
-//! them from `cargo check` / test output and threads them through the
-//! dev-loop state machine.
+//! They MUST stay free of I/O and async machinery — the server's
+//! `signals::health_snapshot` runner constructs them from
+//! `cargo check` / test output and threads them through the dev-loop
+//! state machine.
 
 /// One diagnostic from a build/test signal.
 ///
@@ -47,10 +47,10 @@ pub enum BuildStatus {
     },
     /// The snapshot runner could not observe the build (cargo not on
     /// PATH, snapshot timeout, spawn failure). Distinguished from
-    /// [`BuildStatus::Passing`] so the App layer can route the
-    /// `WorkspaceHealth::unknown` case (Phase 3 snapshot tooling
-    /// errors) into the existing `workspace_health_unknown_baseline`
-    /// fall-through instead of a false-positive "clean" verdict.
+    /// [`BuildStatus::Passing`] so the server can route the
+    /// `WorkspaceHealth::unknown` case (snapshot tooling errors) into
+    /// the existing `workspace_health_unknown_baseline` fall-through
+    /// instead of a false-positive "clean" verdict.
     ///
     /// Neither [`WorkspaceHealth::is_clean`] nor
     /// [`WorkspaceHealth::is_failing`] returns true for `Unknown` —
@@ -77,11 +77,6 @@ pub enum TestStatus {
 
 /// Cheap "is the workspace red?" fingerprint computed at task claim and
 /// at `task_done`.
-///
-/// Phase 1 stays pure: the App layer (Phase 2/3) is responsible for
-/// invoking `cargo check`, `cargo test`, etc. and constructing the
-/// value from their output via [`super::snapshot::parse_cargo_check_json_output`]
-/// and friends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceHealth {
     /// Build subsystem verdict.
@@ -114,10 +109,10 @@ impl WorkspaceHealth {
     }
 
     /// Construct a `WorkspaceHealth` that couldn't observe either
-    /// subsystem. Used by the Phase 3 snapshot runner when `cargo
-    /// check` couldn't be spawned, timed out, or otherwise produced
-    /// no usable verdict; the Phase 4 completion gate treats this as
-    /// "no baseline" and falls back to the existing gate rather than
+    /// subsystem. Used by the snapshot runner when `cargo check`
+    /// couldn't be spawned, timed out, or otherwise produced no
+    /// usable verdict; the completion gate treats this as "no
+    /// baseline" and falls back to the existing gate rather than
     /// confusing it with a clean / failing baseline.
     #[must_use]
     pub fn unknown() -> Self {

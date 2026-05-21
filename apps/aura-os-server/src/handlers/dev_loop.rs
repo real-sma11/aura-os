@@ -1,5 +1,10 @@
 ﻿mod adapter;
 mod control;
+#[allow(dead_code)]
+mod event_kinds;
+#[allow(dead_code)]
+pub(crate) mod health;
+mod progress;
 mod registry;
 mod session;
 mod signals;

@@ -5,21 +5,20 @@ use std::sync::Arc;
 use aura_os_core::{Task, TaskId, TaskStatus};
 use serde::{Deserialize, Serialize};
 
-use crate::error::AutomationError;
-
 use super::cache::TaskContextCache;
+use super::error::TaskContextError;
 
 /// Maximum number of characters preserved from the task's recent
 /// `execution_notes` body before truncation. 1 KiB comfortably fits
 /// the most recent fail reason / synthesized note while keeping the
 /// tool-result payload well inside the harness's `~4–8 KB` budget.
-pub const MAX_EXECUTION_NOTES_LEN: usize = 1024;
+pub(crate) const MAX_EXECUTION_NOTES_LEN: usize = 1024;
 
 /// Wire-shape returned to the agent. `serde::Serialize` so the
 /// server's tool wiring can hand it straight to
 /// `serde_json::to_value` without an intermediate struct.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaskContext {
+pub(crate) struct TaskContext {
     /// The task whose context is being returned.
     pub task_id: TaskId,
     /// Short human-readable title.
@@ -50,7 +49,7 @@ pub struct TaskContext {
 /// edge so a task with many neighbours stays inside the harness's
 /// tool-result budget.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaskRef {
+pub(crate) struct TaskRef {
     /// Identifier of the referenced task.
     pub task_id: TaskId,
     /// Human-readable title of the referenced task.
@@ -60,11 +59,11 @@ pub struct TaskRef {
 }
 
 /// Inputs to [`build_task_context`]. Bundling them as a struct keeps
-/// the builder's signature inside the 5-parameter ceiling from
-/// `.cursor/rules-rust.md` while still letting the caller pass each
-/// field by reference / value as natural for the call site.
+/// the builder's signature inside the 5-parameter ceiling while
+/// still letting the caller pass each field by reference / value as
+/// natural for the call site.
 #[derive(Debug, Clone)]
-pub struct TaskContextInputs<'a> {
+pub(crate) struct TaskContextInputs<'a> {
     /// Task the agent asked for.
     pub task: &'a Task,
     /// Pre-fetched parent task, if `task.parent_task_id` was set.
@@ -90,7 +89,7 @@ pub struct TaskContextInputs<'a> {
 /// model's context). Only `recent_execution_notes` is truncated
 /// here because it can grow without bound across retries.
 #[must_use]
-pub fn build_task_context(inputs: &TaskContextInputs<'_>) -> TaskContext {
+pub(crate) fn build_task_context(inputs: &TaskContextInputs<'_>) -> TaskContext {
     let TaskContextInputs {
         task,
         parent,
@@ -154,7 +153,7 @@ fn trim_execution_notes(notes: &str) -> Option<String> {
 /// `Resolver` is `Clone` (cheap: bumps the inner `Arc`) so the
 /// server can stash it on `AppState` and clone for every request.
 #[derive(Debug, Clone, Default)]
-pub struct TaskContextResolver {
+pub(crate) struct TaskContextResolver {
     cache: TaskContextCache,
 }
 
@@ -167,7 +166,8 @@ pub struct TaskContextResolver {
 /// values so the cache can hold the resulting [`TaskContext`]
 /// independently of the storage client's lifetime.
 #[derive(Debug, Clone)]
-pub struct FetchedTask {
+#[allow(dead_code)]
+pub(crate) struct FetchedTask {
     /// Primary task fetched.
     pub task: Task,
     /// Immediate parent task, if any.
@@ -183,17 +183,17 @@ pub struct FetchedTask {
 /// implementations typically discard the hint and trust whatever
 /// the storage row currently shows. Tests can inject a stub that
 /// counts invocations to verify cache hits.
-pub trait TaskFetcher {
+pub(crate) trait TaskFetcher {
     /// Resolve `task_id` to a [`FetchedTask`] bundle, or surface
-    /// an [`AutomationError`] when the lookup fails.
-    fn fetch(&self, task_id: TaskId) -> Result<FetchedTask, AutomationError>;
+    /// a [`TaskContextError`] when the lookup fails.
+    fn fetch(&self, task_id: TaskId) -> Result<FetchedTask, TaskContextError>;
 }
 
 impl<F> TaskFetcher for F
 where
-    F: Fn(TaskId) -> Result<FetchedTask, AutomationError>,
+    F: Fn(TaskId) -> Result<FetchedTask, TaskContextError>,
 {
-    fn fetch(&self, task_id: TaskId) -> Result<FetchedTask, AutomationError> {
+    fn fetch(&self, task_id: TaskId) -> Result<FetchedTask, TaskContextError> {
         (self)(task_id)
     }
 }
@@ -201,6 +201,7 @@ where
 impl TaskContextResolver {
     /// Construct a fresh resolver with an empty cache.
     #[must_use]
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -216,12 +217,13 @@ impl TaskContextResolver {
     /// than requested (race against a concurrent update), the
     /// resolver caches under the *resolved* version so the next
     /// caller using the new version short-circuits.
+    #[allow(dead_code)]
     pub fn resolve<F>(
         &self,
         task_id: TaskId,
         version: u64,
         fetcher: F,
-    ) -> Result<Arc<TaskContext>, AutomationError>
+    ) -> Result<Arc<TaskContext>, TaskContextError>
     where
         F: TaskFetcher,
     {
@@ -246,6 +248,7 @@ impl TaskContextResolver {
     /// to inspect cache size for metrics / tests do not have to
     /// hold a separate handle.
     #[must_use]
+    #[allow(dead_code)]
     pub fn cache(&self) -> &TaskContextCache {
         &self.cache
     }
