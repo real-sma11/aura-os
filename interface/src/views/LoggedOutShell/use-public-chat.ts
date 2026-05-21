@@ -29,7 +29,6 @@ import {
 import { createSetters, ensureEntry } from "../../hooks/stream/store";
 import { AGENT_MODE_DESCRIPTORS, type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
-import { useAuth } from "../../stores/auth-store";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
@@ -48,11 +47,6 @@ export interface PublicChatController {
   handleStop: () => void;
   input: string;
   setInput: (next: string) => void;
-  /** True when the visitor is anonymous and any send attempt will be
-   *  routed to `/login` (interim gate while the public chat backend
-   *  is unreliable — the surface still mounts so the visitor can
-   *  browse the shell). */
-  requiresLogin: boolean;
 }
 
 const DEFAULT_PUBLIC_MODEL = "aura-gpt-5-4-mini";
@@ -79,8 +73,6 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const limit = usePublicChatStore((s) => s.limit);
 
   const [sourceImage, setSourceImage] = useState<string | null>(null);
-  const { isAuthenticated } = useAuth();
-
   const chatUI = useChatUI(streamKey);
   const selectedMode = chatUI.selectedMode;
 
@@ -202,7 +194,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, finalizeAssistantTurn, session, sessionId, setTurnCount],
+    [clearStreamState, finalizeAssistantTurn, invalidateToken, limit, session, sessionId, setTurnCount],
   );
 
   const dispatchMedia = useCallback(
@@ -250,7 +242,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, commitMedia, sessionId, setTurnCount],
+    [clearStreamState, commitMedia, invalidateToken, limit, sessionId, setTurnCount],
   );
 
   const handleSend = useCallback(
@@ -328,7 +320,6 @@ export function usePublicChat(sessionId: string): PublicChatController {
     handleStop,
     input,
     setInput,
-    requiresLogin: !isAuthenticated,
   };
 }
 

@@ -87,7 +87,7 @@ export function LoggedOutChatView() {
       // Reset the input so the same file can be re-selected.
       e.target.value = "";
     },
-    [controller.setSourceImage],
+    [controller.input, controller.setInput, controller.setSourceImage],
   );
 
   const isEmpty = controller.messages.length === 0;
