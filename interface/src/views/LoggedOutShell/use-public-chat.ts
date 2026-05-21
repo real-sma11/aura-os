@@ -67,6 +67,7 @@ const PUBLIC_AGENT_ID = "public-demo";
 export function usePublicChat(sessionId: string): PublicChatController {
   const streamKey = useMemo(() => `public:${sessionId}`, [sessionId]);
   const ensureToken = usePublicChatStore((s) => s.ensureToken);
+  const invalidateToken = usePublicChatStore((s) => s.invalidateToken);
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
   const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
   const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
@@ -75,6 +76,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const session = usePublicChatStore((s) => selectSession(s, sessionId));
   const shouldShowGate = usePublicChatStore(selectShouldShowGate);
   const turnCount = usePublicChatStore((s) => s.turnCount);
+  const limit = usePublicChatStore((s) => s.limit);
 
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
@@ -175,16 +177,23 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public chat stream error", err);
+          const msg = err.message?.toLowerCase() ?? "";
+          if (msg.includes("invalid guest token")) invalidateToken();
+          if (msg.includes("limit_reached") || msg.includes("rate")) {
+            setTurnCount(limit);
+          }
           chatHandleRef.current = null;
           clearStreamState();
           finalizeAssistantTurn(mode);
-          setErrorEvent({
-            id: `error-${Date.now()}`,
-            role: "assistant",
-            content: "",
-            errorMessage: err.message || "Something went wrong. Please try again.",
-            displayVariant: "streamDropped",
-          });
+          if (!msg.includes("limit_reached")) {
+            setErrorEvent({
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              errorMessage: err.message || "Something went wrong. Please try again.",
+              displayVariant: "streamDropped",
+            });
+          }
         },
         onDone: () => {
           chatHandleRef.current = null;
@@ -218,15 +227,22 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public media stream error", err);
+          const msg = err.message?.toLowerCase() ?? "";
+          if (msg.includes("invalid guest token")) invalidateToken();
+          if (msg.includes("limit_reached") || msg.includes("rate")) {
+            setTurnCount(limit);
+          }
           mediaHandleRef.current = null;
           clearStreamState();
-          setErrorEvent({
-            id: `error-${Date.now()}`,
-            role: "assistant",
-            content: "",
-            errorMessage: err.message || "Generation failed. Please try again.",
-            displayVariant: "streamDropped",
-          });
+          if (!msg.includes("limit_reached")) {
+            setErrorEvent({
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              errorMessage: err.message || "Generation failed. Please try again.",
+              displayVariant: "streamDropped",
+            });
+          }
         },
         onDone: () => {
           mediaHandleRef.current = null;
