@@ -398,7 +398,18 @@ export const MessageBubble = memo(function MessageBubble({
   // the bubble. Assistant rendering is unaffected.
   const renderUserBubble =
     isUser && (!hasContentBlocks || nonImageBlocks.length > 0);
-  const renderBubble = isUser ? renderUserBubble : true;
+  // Suppress the assistant text bubble when the message is media-only
+  // (image/video/3D with empty text content). The media strips render
+  // above the bubble, so an empty bubble just adds dead padding.
+  const hasAssistantMediaOnly =
+    !isUser &&
+    !hasContent &&
+    !hasToolCalls &&
+    !hasThinking &&
+    !hasArtifactRefs &&
+    !hasInlineErrorActionChrome &&
+    (imageBlocks.length > 0 || videoBlocks.length > 0 || model3dBlocks.length > 0);
+  const renderBubble = isUser ? renderUserBubble : !hasAssistantMediaOnly;
   const isUserImageOnly = isUser && hasUserImages && !renderUserBubble;
   // Cross-agent provenance badge. When the persisted user_message
   // carries a `from_agent_id` (set by `parse_user_message_event`

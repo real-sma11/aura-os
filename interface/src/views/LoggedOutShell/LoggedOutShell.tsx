@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
@@ -24,13 +25,25 @@ import styles from "./LoggedOutShell.module.css";
 export function LoggedOutShell() {
   const location = useLocation();
   const isLoginRoute = location.pathname === "/login";
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   return (
     <div className={styles.shell}>
       <BackgroundLayer />
-      <LoggedOutTitlebar />
+      <LoggedOutTitlebar onMenuToggle={toggleSidebar} />
       <div className={styles.body}>
-        <aside className={styles.sidebar}>
+        {sidebarOpen && (
+          <div
+            className={styles.sidebarBackdrop}
+            onClick={closeSidebar}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
+        >
           <LoggedOutSessionsPanel />
         </aside>
         <main className={styles.mainPanel}>

@@ -80,17 +80,21 @@
 
 @media (max-width: 640px) {
   .root {
-    /* Mobile attach button is anchored at `left: 0` and is a 44px hit
-       target with a 16px icon centred inside it, so the visible `+`
-       glyph sits ~14px from the container's left edge. Match that on
-       the pill chip (12px here + the pills wrapper's 2px = 14px). */
-    padding: 0 10px 0 12px;
-    gap: 8px;
+    padding: 0 8px 0 8px;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .root::-webkit-scrollbar {
+    display: none;
   }
 
   .modeSegment {
-    min-width: 68px;
-    padding: 4px 12px;
-    font-size: 12px;
+    min-width: 48px;
+    padding: 4px 10px;
+    font-size: 11px;
+    flex-shrink: 0;
   }
 }

@@ -12,9 +12,9 @@
  * `"simple"` and the platform is web (no desktop bridge).
  */
 
-import { Suspense, lazy, useCallback, useEffect } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
@@ -64,6 +64,9 @@ export function SimpleShell() {
   }, [initProfile]);
 
   const initial = user?.display_name?.charAt(0)?.toUpperCase() ?? "?";
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   const [, setSearchParams] = useSearchParams();
   const handleNewChat = useCallback(() => {
@@ -83,6 +86,14 @@ export function SimpleShell() {
       <ShellTitlebar
         icon={
           <span className={styles.titleLogoLeft}>
+            <button
+              type="button"
+              className={styles.menuToggle}
+              onClick={toggleSidebar}
+              aria-label="Toggle menu"
+            >
+              <Menu size={18} />
+            </button>
             <img
               src="/AURA_logo_text_mark.png"
               alt="AURA"
@@ -129,7 +140,16 @@ export function SimpleShell() {
         }
       />
       <div className={styles.body}>
-        <aside className={styles.sidebar}>
+        {sidebarOpen && (
+          <div
+            className={styles.sidebarBackdrop}
+            onClick={closeSidebar}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
+        >
           <div className={styles.sidebarHeader}>
             <span className={styles.sidebarTitle}>CHATS</span>
             <button

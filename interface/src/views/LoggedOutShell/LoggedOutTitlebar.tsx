@@ -1,7 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
+import { Menu } from "lucide-react";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import styles from "./LoggedOutShell.module.css";
+
+interface LoggedOutTitlebarProps {
+  onMenuToggle?: () => void;
+}
 
 /**
  * Logged-out variant of `components/DesktopShell/DesktopTitlebar`. The
@@ -13,7 +18,7 @@ import styles from "./LoggedOutShell.module.css";
  * authenticated `DesktopTitlebar` window chrome when running inside the
  * desktop app.
  */
-export function LoggedOutTitlebar() {
+export function LoggedOutTitlebar({ onMenuToggle }: LoggedOutTitlebarProps) {
   const { search } = useLocation();
   // Preserve the active session id (and any other query the public
   // chat view writes) across the trip into the login modal. Without
@@ -30,6 +35,16 @@ export function LoggedOutTitlebar() {
     <ShellTitlebar
       icon={
         <span className={styles.titleLogoLeft}>
+          {onMenuToggle && (
+            <button
+              type="button"
+              className={styles.menuToggle}
+              onClick={onMenuToggle}
+              aria-label="Toggle menu"
+            >
+              <Menu size={18} />
+            </button>
+          )}
           <img
             src="/AURA_logo_text_mark.png"
             alt="AURA"
