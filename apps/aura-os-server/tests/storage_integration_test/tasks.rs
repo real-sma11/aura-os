@@ -155,6 +155,7 @@ async fn task_crud_and_transition_lifecycle() {
             total_output_tokens: Some(8000),
             session_id: Some("session-1".into()),
             assigned_project_agent_id: Some("agent-1".into()),
+            attempts: None,
         },
     )
     .await
