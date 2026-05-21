@@ -19,6 +19,13 @@ for (const scenario of scenarios) {
       `Scenario ${scenario.id} does not target ${testInfo.project.name}`,
     );
 
+    // Smoke tests that navigate to project routes require the full
+    // DesktopShell (advanced mode). Set the preference before any
+    // navigation so SimpleShell doesn't redirect to /chat.
+    await page.addInitScript(() => {
+      localStorage.setItem("aura-app-mode", "advanced");
+    });
+
     await bootstrapScenarioPage(page, scenario);
     const steps = await runBrowserScenario(page, scenario);
 
