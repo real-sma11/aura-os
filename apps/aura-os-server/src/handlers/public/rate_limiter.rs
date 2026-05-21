@@ -180,9 +180,14 @@ impl RateLimiter {
         ip: IpHash,
     ) -> Result<PublicTurnCount, RateLimitError> {
         let now = self.clock.now();
-        self.check_global_ceiling(now)?;
+        // Check per-guest and per-IP limits first. Only increment the
+        // global counter after both pass — otherwise rejected requests
+        // (e.g. a guest already at 3/3) would silently consume global
+        // budget on every retry attempt.
         self.check_ip_ceiling(ip, now)?;
-        self.bump_guest(guest, now)
+        let count = self.bump_guest(guest, now)?;
+        self.check_global_ceiling(now)?;
+        Ok(count)
     }
 
     fn check_global_ceiling(&self, now: SystemTime) -> Result<(), RateLimitError> {
