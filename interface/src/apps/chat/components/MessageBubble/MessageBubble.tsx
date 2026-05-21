@@ -2,7 +2,6 @@ import { Suspense, lazy, memo, useCallback, useMemo, useRef } from "react";
 import { CornerDownLeft, FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
-  DisplayContentBlockUnion,
   DisplayImageBlock,
   DisplayModel3DBlock,
   DisplaySessionEvent,
