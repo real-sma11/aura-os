@@ -222,16 +222,16 @@ mod tests {
 
     #[test]
     fn file_only_scope_extracts_named_files() {
-        let scope = extract_task_scope(
-            "Update README.md and docs/architecture.md only.",
-            &[],
-        );
+        let scope = extract_task_scope("Update README.md and docs/architecture.md only.", &[]);
         assert!(scope.paths.contains("README.md"), "scope: {scope:?}");
         assert!(
             scope.paths.contains("docs/architecture.md"),
             "scope: {scope:?}"
         );
-        assert!(scope.crates.is_empty(), "no crate tokens expected: {scope:?}");
+        assert!(
+            scope.crates.is_empty(),
+            "no crate tokens expected: {scope:?}"
+        );
         assert!(scope.intersects_errors(&[mk_error("README.md")]));
         assert!(scope.intersects_errors(&[mk_error("docs/architecture.md")]));
         assert!(!scope.intersects_errors(&[mk_error("crates/foo/src/lib.rs")]));
@@ -253,7 +253,9 @@ mod tests {
         );
         assert!(scope.paths.contains("docs/notes.md"), "scope: {scope:?}");
         // Crate prefix match works for files inside the named crate.
-        assert!(scope.intersects_errors(&[mk_error("crates/aura-os-automation/src/health/delta.rs")]));
+        assert!(
+            scope.intersects_errors(&[mk_error("crates/aura-os-automation/src/health/delta.rs")])
+        );
         // Explicit file path match works.
         assert!(scope.intersects_errors(&[mk_error("apps/aura-os-server/src/lib.rs")]));
         // Files outside both scopes do NOT intersect.

@@ -65,7 +65,10 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         let fallback_task_id = task_id.clone();
         let startup_message = match task_id.as_deref() {
             Some(task_id) => {
-                format!("Listening for harness events (task {})", short_task_id(task_id))
+                format!(
+                    "Listening for harness events (task {})",
+                    short_task_id(task_id)
+                )
             }
             None => "Listening for harness events".to_string(),
         };
@@ -220,9 +223,10 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         } else if succeeded {
             "completed".to_string()
         } else {
-            completion
-                .failure_message()
-                .map_or_else(|| "failed".to_string(), |reason| format!("failed: {reason}"))
+            completion.failure_message().map_or_else(
+                || "failed".to_string(),
+                |reason| format!("failed: {reason}"),
+            )
         };
         emit_log_line(
             &state,

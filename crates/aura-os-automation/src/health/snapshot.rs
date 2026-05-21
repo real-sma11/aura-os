@@ -281,6 +281,9 @@ not-json-at-all
         if let BuildStatus::Failing { errors } = &mut other.build_status {
             errors[0].kind = "different message".into();
         }
-        assert_ne!(Snapshot::new(base).signature, Snapshot::new(other).signature);
+        assert_ne!(
+            Snapshot::new(base).signature,
+            Snapshot::new(other).signature
+        );
     }
 }

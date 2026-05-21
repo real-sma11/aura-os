@@ -87,7 +87,15 @@ function statusColor(status: LoopStatus): string {
     case "stalled":
       return "var(--loop-progress-stalled-color, #9ca3af)";
     default:
-      return "var(--loop-progress-color, #4f8bff)";
+      // Bind the running / starting tip to the active theme accent
+      // (zui's `--color-accent`) so the spinner matches the user's
+      // accent in the sidekick tasks tab, task rows, and agent list.
+      // Earlier this was a fixed blue via `--loop-progress-color`,
+      // which clashed with non-blue accent themes. The
+      // `--loop-progress-color` fallback keeps the spinner readable
+      // in any surface that hasn't propagated `--color-accent` yet,
+      // and `#4f8bff` is a last-ditch default if neither resolves.
+      return "var(--color-accent, var(--loop-progress-color, #4f8bff))";
   }
 }
 

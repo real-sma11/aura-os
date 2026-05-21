@@ -165,11 +165,7 @@ impl AgentService {
     /// no active tokio runtime each short-circuit silently. The PUT
     /// itself runs on a detached task so callers (which are usually
     /// already inside a request handler) don't block on it.
-    fn try_heal_permissions_upstream(
-        &self,
-        agent_id: AgentId,
-        permissions: AgentPermissions,
-    ) {
+    fn try_heal_permissions_upstream(&self, agent_id: AgentId, permissions: AgentPermissions) {
         let Some(client) = self.network_client.clone() else {
             return;
         };

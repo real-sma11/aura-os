@@ -84,7 +84,11 @@ mod tests {
     fn second_emit_within_window_blocks() {
         let key = fresh_key("within_window");
         let now = Instant::now();
-        assert!(should_emit_at(key.clone(), now, Duration::from_millis(1500)));
+        assert!(should_emit_at(
+            key.clone(),
+            now,
+            Duration::from_millis(1500)
+        ));
         assert!(!should_emit_at(
             key,
             now + Duration::from_millis(500),
@@ -96,7 +100,11 @@ mod tests {
     fn emit_after_window_passes_again() {
         let key = fresh_key("after_window");
         let now = Instant::now();
-        assert!(should_emit_at(key.clone(), now, Duration::from_millis(1500)));
+        assert!(should_emit_at(
+            key.clone(),
+            now,
+            Duration::from_millis(1500)
+        ));
         assert!(should_emit_at(
             key,
             now + Duration::from_millis(1500),

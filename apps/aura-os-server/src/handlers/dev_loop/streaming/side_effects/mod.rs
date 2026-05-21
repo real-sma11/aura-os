@@ -1,4 +1,4 @@
-﻿//! Side-effects triggered by individual harness events: enriches the payload, broadcasts to live subscribers + the topic-scoped event hub, and dispatches into focused submodules (failure persistence + test-evidence override, retry plumbing, git checkpoints, task-output cache, cross-turn file-change merging).
+//! Side-effects triggered by individual harness events: enriches the payload, broadcasts to live subscribers + the topic-scoped event hub, and dispatches into focused submodules (failure persistence + test-evidence override, retry plumbing, git checkpoints, task-output cache, cross-turn file-change merging).
 
 mod common;
 mod failure;
@@ -130,12 +130,9 @@ pub(super) async fn record_event_side_effects(
     // about to overwrite. See `signals::build_preflight` for the
     // verdict shape, the timeout, and the env-var contract.
     if effective_event_type == "task_completed" && build_gate_enabled() {
-        if let Some(preflight) =
-            maybe_run_build_gate(state, project_id, agent_instance_id).await
-        {
+        if let Some(preflight) = maybe_run_build_gate(state, project_id, agent_instance_id).await {
             if !preflight.ok {
-                broadcast_payload =
-                    synthesize_build_gate_failure(&broadcast_payload, &preflight);
+                broadcast_payload = synthesize_build_gate_failure(&broadcast_payload, &preflight);
                 effective_event_type = "task_failed";
                 tracing::warn!(
                     %project_id,
@@ -173,8 +170,7 @@ pub(super) async fn record_event_side_effects(
             )
             .await
             {
-                broadcast_payload =
-                    synthesize_health_gate_failure(&broadcast_payload, &verdict);
+                broadcast_payload = synthesize_health_gate_failure(&broadcast_payload, &verdict);
                 effective_event_type = "task_failed";
                 tracing::warn!(
                     %project_id,
@@ -455,7 +451,6 @@ async fn stamp_task_session_id_in_storage(
     }
 }
 
-
 /// Surface free-text `log_line` rows for engine events that the
 /// SidekickLog panel's subscription set (`ALL_ENGINE_EVENT_TYPES` in
 /// `interface/src/hooks/use-log-stream.ts`) does not otherwise
@@ -515,10 +510,7 @@ fn surface_log_lines_for_event(
 /// row. Split out from [`surface_log_lines_for_event`] so the
 /// per-event rendering can be exercised in a unit test without
 /// standing up an [`AppState`].
-pub(super) fn log_line_for_event(
-    event_type: &str,
-    event: &serde_json::Value,
-) -> Option<String> {
+pub(super) fn log_line_for_event(event_type: &str, event: &serde_json::Value) -> Option<String> {
     match event_type {
         "tool_call_started" | "tool_use_start" => {
             Some(format!("Calling tool: {}", tool_name_for_log(event)))
@@ -585,12 +577,10 @@ async fn maybe_run_build_gate(
     agent_instance_id: AgentInstanceId,
 ) -> Option<BuildPreflight> {
     let workspace_path =
-        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id))
-            .await?;
-    let preflight =
-        tokio::task::spawn_blocking(move || run_build_preflight(&workspace_path))
-            .await
-            .ok()?;
+        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id)).await?;
+    let preflight = tokio::task::spawn_blocking(move || run_build_preflight(&workspace_path))
+        .await
+        .ok()?;
     Some(preflight)
 }
 
@@ -627,7 +617,10 @@ fn synthesize_build_gate_failure(
             serde_json::Value::from(u64::try_from(preflight.elapsed.as_millis()).unwrap_or(0)),
         );
         if preflight.timed_out {
-            object.insert("build_preflight_timed_out".into(), serde_json::Value::Bool(true));
+            object.insert(
+                "build_preflight_timed_out".into(),
+                serde_json::Value::Bool(true),
+            );
         }
     }
     payload
@@ -737,8 +730,7 @@ async fn maybe_run_health_gate(
 ) -> Option<HealthGateVerdict> {
     let baseline_entry = retry_state.health_baseline.get(task_uuid)?;
     let workspace_path =
-        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id))
-            .await?;
+        resolve_agent_instance_workspace_path(state, &project_id, Some(agent_instance_id)).await?;
     let start = Instant::now();
     let current_health = snapshot_workspace_health(workspace_path.clone()).await;
     let description = fetch_task_description(state, jwt, task_uuid)
@@ -756,8 +748,7 @@ async fn maybe_run_health_gate(
     if !delta.verdict.blocks_task_done() {
         return None;
     }
-    let baseline_summary =
-        aura_os_automation::format_health_summary(&baseline_entry.health, None);
+    let baseline_summary = aura_os_automation::format_health_summary(&baseline_entry.health, None);
     let current_summary = aura_os_automation::format_health_summary(&current_health, None);
     Some(HealthGateVerdict {
         reason: delta.reason,
@@ -980,10 +971,8 @@ mod build_gate_synthesizer_tests {
                 current_summary: Some("current".to_string()),
                 elapsed_ms: 100,
             };
-            let synthetic = synthesize_health_gate_failure(
-                &serde_json::json!({"task_id": "t"}),
-                &verdict,
-            );
+            let synthetic =
+                synthesize_health_gate_failure(&serde_json::json!({"task_id": "t"}), &verdict);
             let reason = synthetic["reason"].as_str().expect("reason set");
             assert!(
                 aura_os_automation::contains_workspace_health_blocking_reason(reason),

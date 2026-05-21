@@ -142,10 +142,9 @@ pub(crate) fn run_build_preflight(workspace_path: &str) -> BuildPreflight {
         return BuildPreflight {
             ok: false,
             first_error_code: None,
-            stderr_tail:
-                "build preflight: failed to spawn `cargo check` (cargo not on PATH?). \
+            stderr_tail: "build preflight: failed to spawn `cargo check` (cargo not on PATH?). \
                  Disable AURA_BUILD_GATE or install Rust to silence this verdict."
-                    .to_string(),
+                .to_string(),
             elapsed: start.elapsed(),
             timed_out: false,
         };
@@ -290,10 +289,7 @@ mod tests {
         let combined = "warning: unused\n\
                         error[E0432]: unresolved import\n  --> src/lib.rs:1:5\n\
                         error[E0277]: trait bound\n";
-        assert_eq!(
-            extract_first_error_code(combined).as_deref(),
-            Some("E0432")
-        );
+        assert_eq!(extract_first_error_code(combined).as_deref(), Some("E0432"));
     }
 
     #[test]

@@ -92,10 +92,7 @@ pub(super) async fn set_current_task(
 /// `LoopProgress` component never matches `selectTaskActivity`
 /// against those ids anyway, and a stale wrong pointer would be
 /// worse than an unset one.
-pub(super) async fn push_loop_activity_task(
-    loop_handle: &LoopHandle,
-    task_id: Option<&str>,
-) {
+pub(super) async fn push_loop_activity_task(loop_handle: &LoopHandle, task_id: Option<&str>) {
     let parsed = task_id.and_then(|raw| TaskId::from_str(raw).ok());
     loop_handle.set_current_task(parsed).await;
 }

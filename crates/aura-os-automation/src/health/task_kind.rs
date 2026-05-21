@@ -53,9 +53,7 @@ pub fn classify_task_kind(description: &str, scope: &TaskScope) -> TaskKind {
         return TaskKind::Verification;
     }
 
-    if has_token(&tokens, "refactor")
-        || has_token(&tokens, "rename")
-        || has_token(&tokens, "move")
+    if has_token(&tokens, "refactor") || has_token(&tokens, "rename") || has_token(&tokens, "move")
     {
         return TaskKind::Refactor;
     }
@@ -182,11 +180,17 @@ mod tests {
         // count as `move`. If the heuristic regressed to a substring
         // match these would incorrectly produce `Refactor`.
         assert_eq!(
-            classify_task_kind("Improve the docs once we have evidence", &TaskScope::default()),
+            classify_task_kind(
+                "Improve the docs once we have evidence",
+                &TaskScope::default()
+            ),
             TaskKind::Implementation,
         );
         assert_eq!(
-            classify_task_kind("Remove the legacy gate after migration", &TaskScope::default()),
+            classify_task_kind(
+                "Remove the legacy gate after migration",
+                &TaskScope::default()
+            ),
             TaskKind::Implementation,
         );
     }

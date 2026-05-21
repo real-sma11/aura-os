@@ -376,13 +376,7 @@ mod tests {
         let baseline = failing(errors.clone());
         let current = failing(errors);
         let scope = extract_task_scope("Fix the crates/zero-storage red", &[]);
-        let delta = classify_delta(
-            &baseline,
-            &current,
-            &scope,
-            TaskKind::Implementation,
-            false,
-        );
+        let delta = classify_delta(&baseline, &current, &scope, TaskKind::Implementation, false);
         assert_eq!(delta.reason, "workspace_health_unfixed_in_scope");
         assert_eq!(delta.verdict, HealthVerdict::UnfixedInScope);
         assert!(delta.verdict.blocks_task_done());
@@ -391,16 +385,13 @@ mod tests {
     /// Row 3: failing → unchanged, no scope hit, Implementation kind
     /// → `workspace_health_red_blocking_implementation`, blocks.
     #[test]
-    fn row_red_blocking_implementation_blocks_with_reason_workspace_health_red_blocking_implementation()
-    {
+    fn row_red_blocking_implementation_blocks_with_reason_workspace_health_red_blocking_implementation(
+    ) {
         let errors = vec![err("crates/zero-storage/src/key.rs", "E0277", "trait")];
         let baseline = failing(errors.clone());
         let current = failing(errors);
         // Scope names a different crate so it doesn't intersect the red.
-        let scope = extract_task_scope(
-            "Add a snapshot helper to crates/aura-os-automation",
-            &[],
-        );
+        let scope = extract_task_scope("Add a snapshot helper to crates/aura-os-automation", &[]);
         let delta = classify_delta(&baseline, &current, &scope, TaskKind::Implementation, false);
         assert_eq!(delta.reason, "workspace_health_red_blocking_implementation");
         assert_eq!(delta.verdict, HealthVerdict::RedBlockingImplementation);
