@@ -138,7 +138,23 @@ pub fn decide_reconcile_action(inputs: &ReconcileInputs<'_>) -> ReconcileAction 
                 }
             }
         }
-        HarnessFailureKind::PushTimeout | HarnessFailureKind::Other => {
+        HarnessFailureKind::ResearchLoopAbort => {
+            if inputs.retry_budget_remaining() {
+                ReconcileAction::RetryTask
+            } else {
+                ReconcileAction::MarkTerminal {
+                    reason: TerminalReason::CompletionContract,
+                }
+            }
+        }
+        HarnessFailureKind::AgentStuck | HarnessFailureKind::InsufficientCredits => {
+            ReconcileAction::MarkTerminal {
+                reason: TerminalReason::RetryBudgetExhausted,
+            }
+        }
+        HarnessFailureKind::ProviderInternal
+        | HarnessFailureKind::PushTimeout
+        | HarnessFailureKind::Other => {
             if inputs.retry_budget_remaining() {
                 ReconcileAction::RetryTask
             } else {

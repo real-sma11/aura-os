@@ -263,9 +263,13 @@ fn research_loop_abort_verdict_is_restartable_at_classifier_layer() {
          schedule a fresh-context retry instead of leaving the \
          task permanently Failed",
     );
-    assert!(
-        tsp::is_completion_contract_failure(reason),
-        "and the same verdict must also classify as \
-         CompletionContract for the reconciler decision table",
+    assert_eq!(
+        tsp::classify_failure(reason),
+        aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
+        "and the same verdict must classify as the typed \
+         ResearchLoopAbort variant — Phase 1 of the dev-loop \
+         simplification split this out of the CompletionContract \
+         lane so the reconciler decision table can branch on it \
+         directly",
     );
 }

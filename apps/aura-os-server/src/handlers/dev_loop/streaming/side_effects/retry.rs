@@ -4,15 +4,25 @@ use std::str::FromStr;
 
 use tracing::{info, warn};
 
-use aura_os_automation::{
-    should_restart_on_error, RetryDecision, TASK_LEVEL_RETRY_BUDGET, TOOL_CALL_RETRY_BUDGET,
-};
+use aura_os_automation::{RetryDecision, TASK_LEVEL_RETRY_BUDGET, TOOL_CALL_RETRY_BUDGET};
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId, TaskStatus};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
+use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal};
 
 use super::super::super::types::LoopRetryState;
 use super::failure::resolve_failure_reason_for_persistence;
 use crate::state::AppState;
+
+/// Parse a failure reason string into a typed
+/// [`HarnessFailureKind`], using the canonical
+/// `aura-os-harness::signals::classify_failure` router so the
+/// server-side retry decision can never drift from the harness's
+/// own classifier ordering.
+fn classify_reason(reason: &str) -> HarnessFailureKind {
+    HarnessSignal::from_event("task_failed", &serde_json::json!({ "reason": reason }))
+        .and_then(|signal| signal.failure_kind())
+        .unwrap_or(HarnessFailureKind::Other)
+}
 
 /// Section D: when a `tool_result` arrives with `is_error: true`
 /// and the reason is classified as restartable, increment the
@@ -39,11 +49,11 @@ pub(super) async fn maybe_track_tool_call_failure(
     let Some(reason) = tool_result_error_reason(event) else {
         return;
     };
-    if !should_restart_on_error(&reason) {
+    if !classify_reason(&reason).is_retryable() {
         // Terminal classifier verdict (agent-stuck signal, syntax
-        // error, ...): not a retryable infra failure. Leave the
-        // budget untouched and let the existing failure path take
-        // over.
+        // error, insufficient credits, ...): not a retryable infra
+        // failure. Leave the budget untouched and let the existing
+        // failure path take over.
         return;
     }
     let Ok(task_uuid) = TaskId::from_str(task_id) else {
@@ -79,9 +89,10 @@ pub(super) async fn maybe_track_tool_call_failure(
 /// `safe_transition` so the scheduler can pick it up again.
 ///
 /// Gated by both:
-/// * the transient classifier ([`should_restart_on_error`]) accepting
-///   the reason — terminal failures (agent-stuck, syntax errors,
-///   non-transient provider errors) are not auto-retried; and
+/// * [`HarnessFailureKind::is_retryable`] accepting the reason
+///   string's classified kind — terminal failures (agent-stuck,
+///   completion-contract, insufficient credits, syntax errors,
+///   ...) are not auto-retried; and
 /// * the tool-call budget already being exhausted on this task —
 ///   otherwise the per-tool retry path is still the right recovery
 ///   surface and a coarser task-level retry would just compound
@@ -101,7 +112,7 @@ pub(super) async fn maybe_apply_task_level_retry(
         return;
     };
     let reason = resolve_failure_reason_for_persistence(event);
-    if !should_restart_on_error(&reason) {
+    if !classify_reason(&reason).is_retryable() {
         return;
     }
     let Ok(task_uuid) = TaskId::from_str(task_id) else {

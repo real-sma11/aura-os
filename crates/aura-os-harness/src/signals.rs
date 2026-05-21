@@ -7,7 +7,52 @@ pub enum HarnessFailureKind {
     RateLimited,
     PushTimeout,
     CompletionContract,
+    /// Harness aborted the agent after it stayed in research mode
+    /// and never produced any file operation. Emitted verbatim by
+    /// `aura-harness::validate_execution`'s post-hoc gate (the
+    /// `task completed without any file operations — completion
+    /// not verified` verdict, plus the `implementation phase / no
+    /// file operations completed / failed_paths=0` decomposition
+    /// hint). Retryable: the server-side dev loop schedules a
+    /// fresh-context retry.
+    ResearchLoopAbort,
+    /// Terminal agent-side anti-waste signal: the harness has
+    /// decided to stop on its own consecutive-error guard
+    /// ("appears stuck", "stopping to prevent waste", ...).
+    /// Restarting just tight-loops on the WS reconnect path, so
+    /// the dev loop must not retry.
+    AgentStuck,
+    /// Provider rejected work because the account has no remaining
+    /// credits (HTTP 402, "insufficient credits", "payment_required").
+    /// Terminal — retrying or moving to the next task only burns
+    /// build/setup time.
+    InsufficientCredits,
+    /// Transient provider internal error (5xx, stream aborted,
+    /// connection reset). Retryable.
+    ProviderInternal,
     Other,
+}
+
+impl HarnessFailureKind {
+    /// True when the dev-loop should attempt another fresh run for
+    /// a task that ended with this failure kind.
+    ///
+    /// Exhaustive `match` so adding a new variant forces an
+    /// explicit retry-policy decision at the compiler.
+    #[must_use]
+    pub const fn is_retryable(self) -> bool {
+        match self {
+            HarnessFailureKind::RateLimited
+            | HarnessFailureKind::PushTimeout
+            | HarnessFailureKind::ResearchLoopAbort
+            | HarnessFailureKind::ProviderInternal => true,
+            HarnessFailureKind::Truncation
+            | HarnessFailureKind::CompletionContract
+            | HarnessFailureKind::AgentStuck
+            | HarnessFailureKind::InsufficientCredits
+            | HarnessFailureKind::Other => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -163,8 +208,17 @@ pub fn classify_failure(reason: Option<&str>) -> HarnessFailureKind {
         return HarnessFailureKind::Other;
     };
     let reason = reason.to_ascii_lowercase();
-    if is_completion_contract_failure(&reason) {
+    // Terminal anti-waste signals win first: a harness that decided to
+    // stop on its own must not be restarted, even if the same payload
+    // also mentions a research-loop abort.
+    if is_agent_stuck(&reason) {
+        HarnessFailureKind::AgentStuck
+    } else if is_insufficient_credits(&reason) {
+        HarnessFailureKind::InsufficientCredits
+    } else if is_completion_contract_failure(&reason) {
         HarnessFailureKind::CompletionContract
+    } else if is_research_loop_abort(&reason) {
+        HarnessFailureKind::ResearchLoopAbort
     } else if reason.contains("truncat")
         || reason.contains("max_tokens")
         || reason.contains("maximum tokens")
@@ -172,18 +226,80 @@ pub fn classify_failure(reason: Option<&str>) -> HarnessFailureKind {
         || reason.contains("needs decomposition")
     {
         HarnessFailureKind::Truncation
-    } else if reason.contains("rate limit")
-        || reason.contains("rate_limited")
-        || reason.contains("429")
-        || reason.contains("529")
-        || reason.contains("overloaded")
-    {
+    } else if is_rate_limited(&reason) {
         HarnessFailureKind::RateLimited
+    } else if is_provider_internal(&reason) {
+        HarnessFailureKind::ProviderInternal
     } else if is_push_timeout(&reason) {
         HarnessFailureKind::PushTimeout
     } else {
         HarnessFailureKind::Other
     }
+}
+
+/// Substring matcher for [`HarnessFailureKind::RateLimited`].
+///
+/// Matches provider rate-limit / overload responses (HTTP 429 / 529,
+/// "overloaded", "rate_limited"). Caller must lowercase the input.
+fn is_rate_limited(reason: &str) -> bool {
+    reason.contains("rate limit")
+        || reason.contains("rate_limited")
+        || reason.contains("429")
+        || reason.contains("529")
+        || reason.contains("overloaded")
+}
+
+/// Substring matcher for [`HarnessFailureKind::InsufficientCredits`].
+///
+/// Caller must lowercase the input.
+fn is_insufficient_credits(reason: &str) -> bool {
+    reason.contains("insufficient credits")
+        || reason.contains("insufficient_credits")
+        || reason.contains("payment_required")
+        || reason.contains("402 payment required")
+        || (reason.contains("402") && reason.contains("payment required"))
+}
+
+/// Substring matcher for [`HarnessFailureKind::ProviderInternal`].
+///
+/// 5xx responses, "stream terminated", and "connection reset by peer"
+/// are all classified as transient provider internal errors. Caller
+/// must lowercase the input.
+fn is_provider_internal(reason: &str) -> bool {
+    reason.contains("internal server error")
+        || reason.contains(" 500")
+        || reason.contains(" 502")
+        || reason.contains(" 503")
+        || reason.contains(" 504")
+        || reason.contains("stream terminated")
+        || reason.contains("connection reset by peer")
+}
+
+/// Substring matcher for [`HarnessFailureKind::ResearchLoopAbort`].
+///
+/// Caller must lowercase the input. The third needle requires all of
+/// "implementation phase", "no file operations completed", and
+/// "failed_paths=0" so an unrelated "implementation phase" mention
+/// in a longer reason string doesn't false-positive.
+fn is_research_loop_abort(reason: &str) -> bool {
+    reason.contains("task completed without any file operations")
+        || reason.contains("completion not verified")
+        || (reason.contains("implementation phase")
+            && reason.contains("no file operations completed")
+            && reason.contains("failed_paths=0"))
+}
+
+/// Substring matcher for [`HarnessFailureKind::AgentStuck`].
+///
+/// Caller must lowercase the input.
+fn is_agent_stuck(reason: &str) -> bool {
+    reason.contains("appears stuck")
+        || reason.contains("agent is stuck")
+        || reason.contains("consecutive error")
+        || reason.contains("consecutive failure")
+        || reason.contains("all tool calls have returned errors")
+        || reason.contains("prevent waste")
+        || reason.contains("conserve budget")
 }
 
 fn classify_tool_result_failure(name: Option<&str>, reason: Option<&str>) -> HarnessFailureKind {
@@ -225,18 +341,11 @@ fn is_completion_contract_failure(reason: &str) -> bool {
         || reason.contains("no file edited")
         || reason.contains("no file edits");
     let mentions_no_change_escape_hatch = reason.contains("no_changes_needed");
-    let mentions_research_loop_verdict = reason
-        .contains("task completed without any file operations")
-        || reason.contains("completion not verified")
-        || (reason.contains("implementation phase")
-            && reason.contains("no file operations completed")
-            && reason.contains("failed_paths=0"));
     let mentions_workspace_health_verdict = WORKSPACE_HEALTH_BLOCKING_REASONS
         .iter()
         .any(|needle| reason.contains(needle));
 
     mentions_task_done && (mentions_missing_edits || mentions_no_change_escape_hatch)
-        || mentions_research_loop_verdict
         || mentions_workspace_health_verdict
 }
 
@@ -330,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn classifies_research_loop_abort_as_completion_contract() {
+    fn classifies_research_loop_abort_as_research_loop_abort() {
         // Verbatim verdict emitted by aura-harness's post-hoc
         // `validate_execution` gate when the agent stayed in
         // research mode and never produced any file operation.
@@ -348,14 +457,14 @@ mod tests {
 
         assert_eq!(
             signal.failure_kind(),
-            Some(HarnessFailureKind::CompletionContract),
-            "research-loop abort must classify as CompletionContract \
-             so the server-side retry path recognises it as restartable",
+            Some(HarnessFailureKind::ResearchLoopAbort),
+            "research-loop abort must classify as its own typed variant \
+             so the server-side retry path can route it to a fresh-context retry",
         );
     }
 
     #[test]
-    fn classifies_implementation_phase_no_write_abort_as_completion_contract() {
+    fn classifies_implementation_phase_no_write_abort_as_research_loop_abort() {
         for last_pending in ["search_code", "submit_plan"] {
             let reason = format!(
                 "task reached implementation phase but no file operations completed — \
@@ -372,10 +481,126 @@ mod tests {
 
             assert_eq!(
                 signal.failure_kind(),
-                Some(HarnessFailureKind::CompletionContract),
-                "{last_pending} no-write abort must classify as CompletionContract before truncation",
+                Some(HarnessFailureKind::ResearchLoopAbort),
+                "{last_pending} no-write abort must classify as ResearchLoopAbort",
             );
         }
+    }
+
+    #[test]
+    fn research_loop_abort_matches_lowercased_input() {
+        // The classifier lowercases the reason before comparing, so an
+        // upper-case verdict from a different code path still resolves.
+        assert_eq!(
+            classify_failure(Some("TASK COMPLETED WITHOUT ANY FILE OPERATIONS")),
+            HarnessFailureKind::ResearchLoopAbort,
+        );
+    }
+
+    #[test]
+    fn agent_stuck_precedence_beats_research_loop_abort() {
+        // A reason that contains BOTH needles must classify as terminal:
+        // the agent-stuck guard runs first, so a harness that decided
+        // to stop on its own anti-waste verdict must not be classified
+        // as a retryable research-loop abort just because the same
+        // payload also mentions the research-loop phrasing.
+        let reason = "agent is stuck after task completed without any file operations";
+        assert_eq!(
+            classify_failure(Some(reason)),
+            HarnessFailureKind::AgentStuck,
+            "agent-stuck precedence must win — restarting a stuck harness \
+             just thrashes the WS reconnect path",
+        );
+    }
+
+    #[test]
+    fn classifies_agent_stuck_anti_waste_signals() {
+        let stuck = [
+            "agent appears stuck — no progress",
+            "agent is stuck after consecutive errors",
+            "10 consecutive errors observed",
+            "stopping to prevent waste",
+            "halting to conserve budget",
+            "all tool calls have returned errors",
+        ];
+        for reason in stuck {
+            assert_eq!(
+                classify_failure(Some(reason)),
+                HarnessFailureKind::AgentStuck,
+                "expected agent_stuck: {reason}",
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_insufficient_credits_provider_phrasings() {
+        let positives = [
+            "Insufficient credits",
+            "insufficient_credits",
+            "payment_required",
+            "402 payment required",
+            "Anthropic 402 Payment Required - balance=0",
+        ];
+        for reason in positives {
+            assert_eq!(
+                classify_failure(Some(reason)),
+                HarnessFailureKind::InsufficientCredits,
+                "expected insufficient_credits: {reason}",
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_provider_internal_5xx_and_stream_aborts() {
+        let positives = [
+            "Internal server error",
+            "upstream returned 500",
+            "got 502 bad gateway",
+            "upstream 503 service unavailable",
+            "upstream 504 gateway timeout",
+            "stream terminated unexpectedly",
+            "connection reset by peer",
+        ];
+        for reason in positives {
+            assert_eq!(
+                classify_failure(Some(reason)),
+                HarnessFailureKind::ProviderInternal,
+                "expected provider_internal: {reason}",
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_rate_limited_provider_phrasings() {
+        let positives = [
+            "rate limit exceeded",
+            "rate_limited",
+            "overloaded_error",
+            "HTTP 429 Too Many Requests",
+            "got 529 from upstream",
+        ];
+        for reason in positives {
+            assert_eq!(
+                classify_failure(Some(reason)),
+                HarnessFailureKind::RateLimited,
+                "expected rate_limited: {reason}",
+            );
+        }
+    }
+
+    #[test]
+    fn is_retryable_pinned_by_kind() {
+        // Pin the typed retry-policy table so adding a new variant
+        // forces an explicit decision via the exhaustive `match`.
+        assert!(HarnessFailureKind::RateLimited.is_retryable());
+        assert!(HarnessFailureKind::PushTimeout.is_retryable());
+        assert!(HarnessFailureKind::ResearchLoopAbort.is_retryable());
+        assert!(HarnessFailureKind::ProviderInternal.is_retryable());
+        assert!(!HarnessFailureKind::Truncation.is_retryable());
+        assert!(!HarnessFailureKind::CompletionContract.is_retryable());
+        assert!(!HarnessFailureKind::AgentStuck.is_retryable());
+        assert!(!HarnessFailureKind::InsufficientCredits.is_retryable());
+        assert!(!HarnessFailureKind::Other.is_retryable());
     }
 
     #[test]

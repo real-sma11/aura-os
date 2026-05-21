@@ -50,12 +50,7 @@ pub use budget::{
     EXPLORATION_SOFT_CEILING, EXPLORATION_SOFT_FLOOR, TASK_LEVEL_RETRY_BUDGET,
     TOOL_CALL_RETRY_BUDGET,
 };
-pub use classify::{
-    classify_push_failure, classify_restart_reason, is_agent_stuck_terminal_signal,
-    is_git_push_timeout, is_insufficient_credits, is_provider_internal, is_rate_limited,
-    is_research_loop_abort, looks_like_unclassified_transient, should_restart_on_error,
-    tool_call_failed_should_retry,
-};
+pub use classify::classify_push_failure;
 pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};
 // Phase 1 of `workspace-health-diff-gate`: re-export the pure
@@ -89,15 +84,6 @@ mod smoke {
     fn public_reexports_resolve() {
         let _ = crate::TOOL_CALL_RETRY_BUDGET;
         let _ = crate::TASK_LEVEL_RETRY_BUDGET;
-        let _ = crate::is_rate_limited("rate limit");
-        let _ = crate::is_provider_internal("internal server error");
-        let _ = crate::is_insufficient_credits("payment_required");
-        let _ = crate::is_git_push_timeout("git push timed out");
-        let _ = crate::looks_like_unclassified_transient("dns lookup failed");
-        let _ = crate::is_agent_stuck_terminal_signal("agent is stuck");
-        let _ = crate::should_restart_on_error("rate limit");
-        let _ = crate::tool_call_failed_should_retry("rate limit", 0);
-        let _ = crate::classify_restart_reason("rate limit");
         let _ = crate::classify_push_failure("git push timed out");
         let _: &str = crate::event_kinds::TEXT_DELTA;
         // Compile-time check that `apply_loop_activity` is reachable

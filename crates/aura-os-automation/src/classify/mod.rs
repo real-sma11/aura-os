@@ -1,32 +1,27 @@
 //! Failure-reason classifiers shared by dev-loop and chat agents.
 //!
-//! Each submodule owns one slice of the classification surface:
+//! Phase 1 of `simplify dev-loop / harness automation`: the substring
+//! classifier family that used to live in [`transient`] has been
+//! deleted and the restart-decision gates that composed on top of it
+//! ([`should_restart_on_error`], [`tool_call_failed_should_retry`],
+//! [`classify_restart_reason`]) have moved to
+//! `apps/aura-os-server/src/handlers/dev_loop/signals/classifiers.rs`
+//! where they can drive off the typed
+//! [`aura_os_harness::signals::HarnessFailureKind`] enum directly.
 //!
-//! * [`transient`] — string heuristics that decide whether a
-//!   `task_failed` / `error` reason looks transient (rate limit,
-//!   5xx, connection reset, ...) or terminal (agent-stuck signals).
-//! * [`restart`] — composed gates that drive automaton restarts and
-//!   per-tool-call retry decisions.
+//! What remains:
+//!
 //! * [`push`] — git-push-failure subclassification used by the
-//!   reconciler and DoD evidence helpers.
+//!   reconciler and DoD evidence helpers. Self-contained (no
+//!   dependency on the deleted substring matchers).
 //!
-//! The public re-exports below are the single import surface every
-//! caller should use. Submodules stay `pub` so test modules can reach
-//! into the implementation for white-box checks.
+//! [`should_restart_on_error`]: deleted
+//! [`tool_call_failed_should_retry`]: deleted
+//! [`classify_restart_reason`]: deleted
 
 pub mod push;
-pub mod restart;
-pub mod transient;
 
 #[cfg(test)]
 mod tests;
 
 pub use push::classify_push_failure;
-pub use restart::{
-    classify_restart_reason, should_restart_on_error, tool_call_failed_should_retry,
-};
-pub use transient::{
-    is_agent_stuck_terminal_signal, is_git_push_timeout, is_insufficient_credits,
-    is_provider_internal, is_rate_limited, is_research_loop_abort,
-    looks_like_unclassified_transient,
-};

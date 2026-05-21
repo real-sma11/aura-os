@@ -508,37 +508,39 @@ fn reconciler_does_not_override_other_failure_classes_with_test_evidence() {
 //
 // When the agent stays in research mode and never produces a file
 // operation, the harness's `validate_execution` emits the verbatim
-// reason below. The server classifier must recognise it as a
-// CompletionContract failure so the task-level retry path can route
+// reason below. The server classifier must recognise it as a typed
+// `ResearchLoopAbort` failure so the task-level retry path can route
 // it to a fresh-context attempt instead of marking the task
 // permanently Failed.
 
 #[test]
-fn research_loop_abort_verdict_is_completion_contract_failure() {
+fn research_loop_abort_verdict_classifies_as_research_loop_abort_kind() {
     // Verbatim verdict from aura-harness's post-hoc completion
     // gate. The em dash is U+2014 — paste verbatim, do not
     // substitute an ASCII hyphen.
     let reason = "agent execution error: task completed without any file operations — \
                   completion not verified";
-    assert!(
-        tsp::is_completion_contract_failure(reason),
-        "research-loop abort verdict must classify as a \
-         CompletionContract failure so the dev-loop retry path \
-         routes it to a fresh-context retry instead of marking \
-         the task permanently Failed",
+    assert_eq!(
+        tsp::classify_failure(reason),
+        aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
+        "research-loop abort verdict must classify as the typed \
+         ResearchLoopAbort variant so the dev-loop retry path routes \
+         it to a fresh-context retry instead of marking the task \
+         permanently Failed",
     );
 }
 
 #[test]
-fn implementation_phase_no_write_verdict_is_completion_contract_failure() {
+fn implementation_phase_no_write_verdict_classifies_as_research_loop_abort_kind() {
     for last_pending in ["search_code", "submit_plan"] {
         let reason = format!(
             "task reached implementation phase but no file operations completed — \
              needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
         );
-        assert!(
-            tsp::is_completion_contract_failure(&reason),
-            "{last_pending} no-write verdict must classify as CompletionContract"
+        assert_eq!(
+            tsp::classify_failure(&reason),
+            aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
+            "{last_pending} no-write verdict must classify as ResearchLoopAbort"
         );
         assert!(
             !tsp::is_truncation_failure(&reason),

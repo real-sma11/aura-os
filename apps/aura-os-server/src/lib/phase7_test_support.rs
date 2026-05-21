@@ -12,6 +12,17 @@ pub fn is_completion_contract_failure(reason: &str) -> bool {
     crate::handlers::dev_loop::is_completion_contract_failure_for_tests(reason)
 }
 
+/// Parse `reason` through the canonical
+/// [`aura_os_harness::signals::classify_failure`] router and return
+/// the typed [`aura_os_harness::signals::HarnessFailureKind`].
+///
+/// Exposed for the Phase 1 cutover so the `dev_loop_dod_regression`
+/// suite can assert directly against the typed enum instead of the
+/// substring-matching `is_*_failure` shims.
+pub fn classify_failure(reason: &str) -> aura_os_harness::signals::HarnessFailureKind {
+    aura_os_harness::signals::classify_failure(Some(reason))
+}
+
 /// True when `reason` looks like a provider rate-limit or overload
 /// (HTTP 429 / 529 / `overloaded_error`). The orchestrator routes
 /// these through the infra-retry path rather than Phase 3's
