@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { ImagePlus, X } from "lucide-react";
 import { DesktopChatInputBar } from "../../features/chat-ui/ChatInputBar";
 import { ChatMessageList } from "../../features/chat-ui/ChatMessageList";
+import { ChatStreamingIndicator } from "../../features/chat-ui/ChatPanel/ChatStreamingIndicator";
 import { KeepChattingModal } from "../../components/KeepChattingModal";
 import { ComposePanel } from "./ComposePanel";
 import { usePublicChatStore } from "../../stores/public-chat-store";
@@ -148,6 +149,12 @@ export function LoggedOutChatView() {
           />
         )}
       </div>
+      {!isEmpty && (
+        <ChatStreamingIndicator
+          streamKey={controller.streamKey}
+          onStop={controller.handleStop}
+        />
+      )}
       {imageAttachBar}
       {!isEmpty && (
         <div

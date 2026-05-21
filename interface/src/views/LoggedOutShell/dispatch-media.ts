@@ -29,8 +29,8 @@ import type { StreamSetters } from "../../shared/types/stream";
 
 /** Stream-store setters this dispatcher writes into. Kept as a
  *  subset of [`StreamSetters`] so the hook can hand in the exact
- *  three setters needed without exposing the wider stream-store
- *  surface to this module. */
+ *  setters needed without exposing the wider stream-store surface
+ *  to this module. */
 export interface MediaStreamSetters {
   setIsStreaming: StreamSetters["setIsStreaming"];
   setStreamingText: StreamSetters["setStreamingText"];

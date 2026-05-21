@@ -84,6 +84,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [errorEvent, setErrorEvent] = useState<DisplaySessionEvent | null>(null);
 
   const chatHandleRef = useRef<PublicChatStreamHandle | null>(null);
   const mediaHandleRef = useRef<PublicMediaStreamHandle | null>(null);
@@ -123,14 +124,18 @@ export function usePublicChat(sessionId: string): PublicChatController {
   );
 
   const messages = useMemo<DisplaySessionEvent[]>(() => {
-    if (!session) return [];
-    return session.turns.map((turn) => publicMessageToDisplayEvent(turn));
-  }, [session]);
+    const turns = session
+      ? session.turns.map((turn) => publicMessageToDisplayEvent(turn))
+      : [];
+    if (errorEvent) turns.push(errorEvent);
+    return turns;
+  }, [session, errorEvent]);
 
   const clearStreamState = useCallback(() => {
     settersRef.current.setIsStreaming(false);
     settersRef.current.setStreamingText("");
     settersRef.current.setProgressText("");
+    settersRef.current.clearGeneration();
     setIsStreaming(false);
   }, []);
 
@@ -170,7 +175,16 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public chat stream error", err);
-          handleStop();
+          chatHandleRef.current = null;
+          clearStreamState();
+          finalizeAssistantTurn(mode);
+          setErrorEvent({
+            id: `error-${Date.now()}`,
+            role: "assistant",
+            content: "",
+            errorMessage: err.message || "Something went wrong. Please try again.",
+            displayVariant: "streamDropped",
+          });
         },
         onDone: () => {
           chatHandleRef.current = null;
@@ -179,7 +193,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, finalizeAssistantTurn, handleStop, session, sessionId, setTurnCount],
+    [clearStreamState, finalizeAssistantTurn, session, sessionId, setTurnCount],
   );
 
   const dispatchMedia = useCallback(
@@ -204,7 +218,15 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public media stream error", err);
-          handleStop();
+          mediaHandleRef.current = null;
+          clearStreamState();
+          setErrorEvent({
+            id: `error-${Date.now()}`,
+            role: "assistant",
+            content: "",
+            errorMessage: err.message || "Generation failed. Please try again.",
+            displayVariant: "streamDropped",
+          });
         },
         onDone: () => {
           mediaHandleRef.current = null;
@@ -212,7 +234,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, commitMedia, handleStop, sessionId, setTurnCount],
+    [clearStreamState, commitMedia, sessionId, setTurnCount],
   );
 
   const handleSend = useCallback(
@@ -229,6 +251,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         // before sending in 3D mode.
         return;
       }
+      setErrorEvent(null);
       try {
         const token = await ensureToken();
         const displayText = trimmed || (is3d ? "Generate 3D model" : "");
@@ -252,15 +275,22 @@ export function usePublicChat(sessionId: string): PublicChatController {
         }
       } catch (err) {
         console.error("public chat send failed", err);
-        handleStop();
+        clearStreamState();
+        setErrorEvent({
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          errorMessage: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+          displayVariant: "streamDropped",
+        });
       }
     },
     [
       appendUserTurn,
+      clearStreamState,
       dispatchChatTurn,
       dispatchMedia,
       ensureToken,
-      handleStop,
       selectedMode,
       sessionId,
       shouldShowGate,
