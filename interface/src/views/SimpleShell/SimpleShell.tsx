@@ -39,17 +39,13 @@ export function SimpleShell() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Simple mode only shows the Chat app. If the URL points to a
-  // feature that requires the full DesktopShell (projects, agents,
-  // etc.), auto-switch to advanced mode so the user lands on the
-  // correct surface rather than being silently redirected to /chat
-  // (which would break bookmarks and deep links).
-  const setMode = useAppModeStore((s) => s.setMode);
+  // Simple mode only shows the Chat app. If the current route is a
+  // non-chat path, redirect to /chat.
   useEffect(() => {
     if (!location.pathname.startsWith("/chat") && location.pathname !== "/") {
-      setMode("advanced");
+      navigate("/chat", { replace: true });
     }
-  }, [location.pathname, setMode]);
+  }, [location.pathname, navigate]);
 
   // Hydrate the agent store so the ChatAppLeftPanel has agents to
   // fan out session loads against. In DesktopShell this happens when
