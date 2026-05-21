@@ -367,11 +367,13 @@ interface CompletedFrame {
   imageUrl?: string;
   videoUrl?: string;
   modelUrl?: string;
+  glbUrl?: string;
   url?: string;
   payload?: {
     imageUrl?: string;
     videoUrl?: string;
     modelUrl?: string;
+    glbUrl?: string;
     url?: string;
   };
 }
@@ -411,7 +413,7 @@ function toProgressUpdate(payload: ProgressFrame): PublicMediaProgress {
 function extractMediaUrl(payload: CompletedFrame, kind: PublicMediaKind): string | null {
   const direct =
     (kind === "video" ? payload.videoUrl : undefined) ??
-    (kind === "model3d" ? payload.modelUrl : undefined) ??
+    (kind === "model3d" ? (payload.modelUrl ?? payload.glbUrl) : undefined) ??
     payload.imageUrl ??
     payload.url;
   if (typeof direct === "string" && direct.length > 0) return direct;
@@ -419,7 +421,7 @@ function extractMediaUrl(payload: CompletedFrame, kind: PublicMediaKind): string
   if (!nested) return null;
   const nestedUrl =
     (kind === "video" ? nested.videoUrl : undefined) ??
-    (kind === "model3d" ? nested.modelUrl : undefined) ??
+    (kind === "model3d" ? (nested.modelUrl ?? nested.glbUrl) : undefined) ??
     nested.imageUrl ??
     nested.url;
   return typeof nestedUrl === "string" && nestedUrl.length > 0 ? nestedUrl : null;

@@ -315,12 +315,9 @@ function buildHistoryFromSession(
 
 /**
  * Adapt a [`PublicMessage`] into the [`DisplaySessionEvent`] shape
- * `ChatMessageList` expects. Image messages produce an inline
- * `contentBlocks` image so the chat-ui's image-rendering code path
- * works unchanged; video / model3d messages fall back to a markdown
- * link because the message bubble has no native video / 3D
- * renderer (auth'd users get those through synthesised tool turns
- * the public surface does not produce).
+ * `ChatMessageList` expects. All media modes (image, video, model3d)
+ * produce `contentBlocks` entries so the shared `MessageBubble`
+ * renders them inline (image gallery, `<video>` player, WebGLViewer).
  */
 function publicMessageToDisplayEvent(turn: PublicMessage): DisplaySessionEvent {
   if (turn.role === "user") {
@@ -345,14 +342,20 @@ function publicMessageToDisplayEvent(turn: PublicMessage): DisplaySessionEvent {
         id: turn.id,
         clientId: turn.id,
         role: "assistant",
-        content: `**Generated video** — [open in new tab](${turn.url})`,
+        content: "",
+        contentBlocks: [
+          { type: "video", url: turn.url },
+        ],
       };
     case "model3d":
       return {
         id: turn.id,
         clientId: turn.id,
         role: "assistant",
-        content: `**Generated 3D model** — [open in new tab](${turn.url})`,
+        content: "",
+        contentBlocks: [
+          { type: "model3d", url: turn.url },
+        ],
       };
   }
 }
