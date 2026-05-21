@@ -5,8 +5,6 @@ use std::str::FromStr;
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId};
 use aura_os_loops::LoopHandle;
 
-use crate::state::AppState;
-
 #[cfg(test)]
 mod tests;
 
@@ -45,37 +43,18 @@ pub(super) fn enrich_event(
 /// Bind (or clear) the currently-active task pointer for this dev-loop
 /// run.
 ///
-/// Updates two distinct stores so every downstream observer sees the
-/// same task pointer:
-///
-/// 1. The legacy `automaton_registry.current_task_id` (a `String`)
-///    feeds `LoopStatusResponse::active_tasks` returned by the
-///    `/api/loops/status` poll endpoint.
-/// 2. `LoopHandle::set_current_task` writes the typed `TaskId` onto
-///    `LoopActivity.current_task_id`, which is what the WS
-///    `LoopActivityChanged` payload carries. The frontend's
-///    `selectTaskActivity` filter
-///    (`row.activity.current_task_id === taskId`) drives the
-///    per-task spinner in `TaskList`; without this update the
-///    activity broadcast carried `current_task_id: None` for the
-///    entire dev-loop run, so the spinner could never bind to a
-///    task row and the loop appeared idle in the UI even while the
-///    harness was actively working.
-pub(super) async fn set_current_task(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    loop_handle: &LoopHandle,
-    task_id: Option<String>,
-) {
-    if let Some(entry) = state
-        .automaton_registry
-        .lock()
-        .await
-        .get_mut(&(project_id, agent_instance_id))
-    {
-        entry.current_task_id = task_id.clone();
-    }
+/// `LoopHandle` is the single authoritative source of truth for the
+/// current task pointer: `set_current_task` writes the typed `TaskId`
+/// onto `LoopActivity.current_task_id`, which is what the WS
+/// `LoopActivityChanged` payload carries and what
+/// `LoopStatusResponse::active_tasks` (served by `/api/loops/status`)
+/// reads back. The frontend's `selectTaskActivity` filter
+/// (`row.activity.current_task_id === taskId`) drives the per-task
+/// spinner in `TaskList`; without this update the activity broadcast
+/// would carry `current_task_id: None` for the entire dev-loop run,
+/// so the spinner could never bind to a task row and the loop would
+/// appear idle in the UI even while the harness was actively working.
+pub(super) async fn set_current_task(loop_handle: &LoopHandle, task_id: Option<String>) {
     push_loop_activity_task(loop_handle, task_id.as_deref()).await;
 }
 

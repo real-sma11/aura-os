@@ -103,12 +103,13 @@ pub(crate) struct LoopStatusResponse {
     pub cooldown_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cooldown_kind: Option<String>,
-    /// Per-agent tasks currently streaming output. Set from the
-    /// automaton registry's `current_task_id` so clients can rehydrate
-    /// the Run panel and per-task "live" indicators after a page
-    /// refresh (WS `task_started` events are not replayed, so this is
-    /// the only HTTP path that exposes "what task is running right
-    /// now"). Empty / absent when no automatons are working a task.
+    /// Per-agent tasks currently streaming output. Read from
+    /// `LoopActivity.current_task_id` on every Automation / TaskRun
+    /// loop registered for the project so clients can rehydrate the
+    /// Run panel and per-task "live" indicators after a page refresh
+    /// (WS `task_started` events are not replayed, so this is the
+    /// only HTTP path that exposes "what task is running right now").
+    /// Empty / absent when no automatons are working a task.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_tasks: Option<Vec<ActiveLoopTask>>,
 }

@@ -1,16 +1,15 @@
 //! Regression tests for the LoopActivity-side task-pointer update.
 //!
-//! Bug background: the dev-loop forwarder's `task_started` handler
-//! used to only write `automaton_registry.current_task_id` (which
-//! powers the legacy `/api/loops/status` poll endpoint) and never
-//! pushed the task id onto `LoopActivity.current_task_id`. The
-//! frontend's per-task spinner in `TaskList` binds to the activity
-//! payload via `selectTaskActivity(state, taskId)` — which filters
-//! `row.activity.current_task_id === taskId` — so the spinner stayed
-//! dark for the entire dev-loop run and the UI looked idle even
-//! while the harness was actively working. The user reported "the
-//! spinner is broken if run is still going (i thought it was turned
-//! off when it wasn't)" — that's this bug.
+//! `LoopHandle` is the single authoritative source of truth for the
+//! current task pointer: `task_started` pushes the typed `TaskId`
+//! onto `LoopActivity.current_task_id`, and the `/api/loops/status`
+//! poll endpoint reads it back from the same place via
+//! `LoopRegistry::snapshot_where`. The frontend's per-task spinner
+//! in `TaskList` binds to the activity payload via
+//! `selectTaskActivity(state, taskId)` — which filters
+//! `row.activity.current_task_id === taskId` — so without this
+//! update the spinner cannot bind and the UI looks idle even while
+//! the harness is actively working.
 //!
 //! These tests pin the LoopHandle-side contract through the live
 //! `LoopRegistry` so the regression cannot return.

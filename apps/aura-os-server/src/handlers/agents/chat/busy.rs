@@ -192,7 +192,6 @@ mod tests {
             paused,
             alive: Arc::new(AtomicBool::new(alive)),
             forwarder: None,
-            current_task_id: None,
             session_id: None,
         }
     }

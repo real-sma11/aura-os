@@ -190,7 +190,6 @@ pub(crate) async fn run_single_task(
             paused: false,
             alive,
             forwarder: Some(forwarder),
-            current_task_id: Some(task_id_str),
             session_id,
         },
     );

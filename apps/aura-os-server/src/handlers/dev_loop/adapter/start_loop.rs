@@ -168,7 +168,6 @@ pub(crate) async fn start_loop(
             paused: false,
             alive,
             forwarder: Some(forwarder),
-            current_task_id: None,
             session_id,
         },
     );

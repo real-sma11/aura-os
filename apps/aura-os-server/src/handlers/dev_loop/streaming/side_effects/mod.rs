@@ -177,33 +177,15 @@ async fn apply_event_side_effect(
         "task_started" => {
             if let Some(task_id) = task_id {
                 seed_task_output(state, project_id, agent_instance_id, session_id, task_id).await;
-                set_current_task(
-                    state,
-                    project_id,
-                    agent_instance_id,
-                    loop_handle,
-                    Some(task_id.to_string()),
-                )
-                .await;
-                // Mirror the forwarder's session_id onto the storage
-                // `tasks.session_id` column so the cold-read path in
-                // `persist_task_output` (and `fetch_task_output_from_storage`)
-                // can resolve it after the in-memory cache is evicted.
-                // The harness owns task transitions in production, so
-                // `TaskService::assign_task` â€” the only other writer of
-                // this field â€” is never reached for automation /
-                // `run_single_task` runs. Best-effort and idempotent: any
-                // storage failure is logged at warn level, the live run
-                // continues, and the in-memory cache stamp above still
-                // covers the warm completion path.
-                if let (Some(session_id), Some(jwt)) = (session_id, jwt) {
-                    stamp_task_session_id_in_storage(state, jwt, task_id, session_id).await;
-                }
-                // Increment `tasks_worked_count` on the storage session
-                // so per-session stats reflect automation activity too.
+                set_current_task(loop_handle, Some(task_id.to_string())).await;
+                // Bump `tasks_worked_count` on the storage session and
+                // stamp `tasks.session_id` on the task row in one shot
+                // (Phase 5: single writer of session_id from the
+                // task_started arm).
                 if let Some(session_id) = session_id {
                     record_task_worked(
-                        &state.session_service,
+                        state,
+                        jwt,
                         project_id,
                         agent_instance_id,
                         session_id,
@@ -238,7 +220,7 @@ async fn apply_event_side_effect(
             }
         }
         "task_completed" => {
-            set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
+            set_current_task(loop_handle, None).await;
             // Drop the workspace-health baseline so a rerun of the
             // same task starts fresh rather than diffing against the
             // prior snapshot. Per-task retry counters used to be
@@ -259,7 +241,7 @@ async fn apply_event_side_effect(
             }
         }
         "task_failed" => {
-            set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
+            set_current_task(loop_handle, None).await;
             // Drop the workspace-health baseline so the next attempt
             // (either a fresh task_started after a retry hop below
             // or a future manual rerun) observes a fresh baseline
@@ -330,46 +312,6 @@ async fn apply_event_side_effect(
             }
         }
         _ => {}
-    }
-}
-
-/// Best-effort mirror of the forwarder's `session_id` onto the
-/// storage `tasks.session_id` column.
-///
-/// Runs from the `task_started` arm of `apply_event_side_effect` and
-/// keeps the persisted task row in lockstep with the in-memory cache
-/// stamp, so the cold-read fallback inside
-/// `crate::persistence::persist_task_output` (and the
-/// `fetch_task_output_from_storage` reader) finds the session id even
-/// if the in-memory cache was evicted before the task completed.
-///
-/// The harness is authoritative for task transitions in production:
-/// `TaskService::assign_task` (the only other writer of this column)
-/// is only reached from tests via `claim_next_task`. Without this
-/// stamp the column stays `NULL` for every automation /
-/// `run_single_task` run, which is exactly the state that produced
-/// the `session_id missing from both cache and task document`
-/// warnings on terminal events.
-async fn stamp_task_session_id_in_storage(
-    state: &AppState,
-    jwt: &str,
-    task_id: &str,
-    session_id: SessionId,
-) {
-    let Some(storage) = state.storage_client.as_ref() else {
-        return;
-    };
-    let update = aura_os_storage::UpdateTaskRequest {
-        session_id: Some(session_id.to_string()),
-        ..Default::default()
-    };
-    if let Err(error) = storage.update_task(task_id, jwt, &update).await {
-        tracing::warn!(
-            task_id,
-            %session_id,
-            %error,
-            "failed to stamp session_id on task row at task_started; cold-read fallback may miss"
-        );
     }
 }
 

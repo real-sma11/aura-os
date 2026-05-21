@@ -1,6 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use aura_os_core::{AgentInstanceId, ProjectId};
+use aura_os_events::LoopKind;
 
 use crate::dto::{ActiveLoopTask, LoopStatusResponse};
 use crate::state::AppState;
@@ -76,17 +77,25 @@ pub(super) async fn status_response(
     let paused = reg
         .iter()
         .any(|((pid, _), entry)| *pid == project_id && entry.paused);
-    let active_tasks = reg
-        .iter()
-        .filter(|((pid, _), _)| *pid == project_id)
-        .filter_map(|((_, agent_id), entry)| {
-            entry
-                .current_task_id
-                .as_ref()
-                .map(|task_id| ActiveLoopTask {
-                    task_id: task_id.clone(),
-                    agent_instance_id: *agent_id,
-                })
+    drop(reg);
+    // `current_task_id` lives on `LoopActivity` (Phase 5: LoopHandle is
+    // the single authoritative source). Walk the loop registry for
+    // every Automation / TaskRun loop bound to this project and pull
+    // the typed `TaskId` straight off the activity payload.
+    let active_tasks = state
+        .loop_registry
+        .snapshot_where(|loop_id| {
+            loop_id.project_id == Some(project_id)
+                && matches!(loop_id.kind, LoopKind::Automation | LoopKind::TaskRun)
+        })
+        .into_iter()
+        .filter_map(|snapshot| {
+            let agent_id = snapshot.loop_id.agent_instance_id?;
+            let task_id = snapshot.activity.current_task_id?;
+            Some(ActiveLoopTask {
+                task_id: task_id.to_string(),
+                agent_instance_id: agent_id,
+            })
         })
         .collect::<Vec<_>>();
     let running = !active.is_empty();

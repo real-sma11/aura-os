@@ -68,25 +68,43 @@ pub(super) async fn begin_session(
     }
 }
 
-/// Increment `tasks_worked_count` for the in-flight session whenever
-/// the harness reports a `task_started` event with a parseable
-/// `task_id`. Failures are logged and swallowed so a transient storage
-/// blip never aborts the live run.
+/// Record per-`task_started` storage side-effects for an automation
+/// run: increment `tasks_worked_count` on the session row AND stamp
+/// the forwarder's `session_id` onto the storage `tasks.session_id`
+/// column.
+///
+/// The session-row increment keeps per-session
+/// `tasks_worked_count` aligned with the harness's `task_started`
+/// stream so the Sessions stat reflects automation activity. The
+/// task-row stamp keeps the persisted task in lockstep with the
+/// in-memory `task_output_cache` stamp seeded by `seed_task_output`,
+/// so the cold-read fallback inside `crate::persistence::persist_task_output`
+/// (and the `fetch_task_output_from_storage` reader) finds the
+/// session id even if the in-memory cache is evicted before the
+/// task completes. The harness owns task transitions in production:
+/// `TaskService::assign_task` (the only other writer of
+/// `tasks.session_id`) is only reached from tests via
+/// `claim_next_task`, so without this stamp the column would stay
+/// `NULL` for every automation / `run_single_task` run.
+///
+/// Best-effort and idempotent: any storage failure is logged at
+/// `warn` and the live run continues. Non-UUID task ids (legacy
+/// synthetic `runner-N` payloads) are deliberately skipped at the
+/// boundary so the typed storage column never sees an unparseable
+/// id.
 pub(super) async fn record_task_worked(
-    service: &SessionService,
+    state: &AppState,
+    jwt: Option<&str>,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
     session_id: SessionId,
     task_id_str: &str,
 ) {
     let Ok(task_id) = TaskId::from_str(task_id_str) else {
-        // Non-UUID task ids (e.g. legacy synthetic `runner-N` payloads)
-        // are deliberately skipped: the storage column is typed and
-        // rejecting them at the boundary keeps the rest of the run
-        // healthy.
         return;
     };
-    if let Err(error) = service
+    if let Err(error) = state
+        .session_service
         .record_task_worked(&project_id, &agent_instance_id, &session_id, task_id)
         .await
     {
@@ -98,6 +116,23 @@ pub(super) async fn record_task_worked(
             %error,
             "failed to record task_worked on automation session"
         );
+    }
+    if let (Some(storage), Some(jwt)) = (state.storage_client.as_ref(), jwt) {
+        let update = aura_os_storage::UpdateTaskRequest {
+            session_id: Some(session_id.to_string()),
+            ..Default::default()
+        };
+        if let Err(error) = storage.update_task(task_id_str, jwt, &update).await {
+            warn!(
+                %project_id,
+                %agent_instance_id,
+                %session_id,
+                %task_id,
+                %error,
+                "failed to stamp session_id on task row at task_started; \
+                 cold-read fallback may miss"
+            );
+        }
     }
 }
 

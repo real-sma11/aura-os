@@ -103,7 +103,6 @@ pub fn build_active_automaton_for_test(
         paused: false,
         alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         forwarder: None,
-        current_task_id: None,
         session_id: None,
     }
 }
