@@ -1,40 +1,31 @@
 //! Domain logic for dev-loop and chat agent automation.
 //!
 //! This crate owns the pure logic that the dev-loop, the chat agent,
-//! and (later) other automation surfaces share: transient/restart
-//! classifiers, push-failure classification, the retry budget
-//! constants, and (Phase G4a) the task-context resolver +
-//! exploration-budget scaling helper. It has no Axum, no
+//! and (later) other automation surfaces share. It has no Axum, no
 //! [`aura_os_server`] state, no [`aura_os_storage`] dependency, and
 //! no [`anyhow`] in its library surface — failures travel through
 //! the [`AutomationError`] enum.
 //!
-//! The current surface covers Phases G1 + G2 + G3a + G4a:
+//! After Phase 4 of the dev-loop simplification the surface is:
 //!
-//! * `progress/` — spinner/activity mapping (Section A, Phase G2).
-//! * `failure/` — fallback `task_failed` reason synthesis (Section B,
-//!   Phase G3a).
-//! * `resilience/` — tool-call + task-level retry trackers and the
-//!   loop-start orphan-recovery planner (Sections D / E, Phase G3a).
+//! * `progress/` — spinner/activity mapping.
+//! * `failure/` — fallback `task_failed` reason synthesis.
+//! * `resilience/health_baseline` — per-task `WorkspaceHealth`
+//!   baseline tracker for the surviving workspace-health completion
+//!   gate. The retry trackers and orphan-recovery planner that used
+//!   to live next door were deleted in Phase 4 — the persisted
+//!   `tasks.attempts` column plus a single startup `Running ->
+//!   Ready` sweep replace them.
 //! * `task_context/` — cached resolver + pure builder for the
-//!   `get_task_context` tool's wire payload (Section F2,
-//!   Phase G4a). Storage I/O stays in the App layer; this crate
-//!   only owns the shaping + cache.
-//! * `budget/exploration` — soft/hard exploration ceiling that
-//!   scales with task complexity, replacing the harness's fixed
-//!   "STRONG WARNING" block with advisory framing (Section F5,
-//!   Phase G4a).
-//!
-//! Phase G4b will add `permissions/`, `dispatch/`, `stream/` for
-//! the auto-build forwarder and allowlisted run_command (Sections
-//! F3 / F4).
-//!
-//! See `c:\Users\n3o\.cursor\plans\fix_dev-loop_progress_signal_*.plan.md`
-//! Sections G.0–G.6 for the full migration plan.
+//!   `get_task_context` tool's wire payload.
+//! * `classify/` — `classify_push_failure` shim (everything else
+//!   in the classify family was deleted in Phase 1).
+//! * `health/` — workspace-health diff gate; owns
+//!   `format_health_summary` since Phase 4 (moved from the deleted
+//!   `budget/exploration` module).
 
 #![warn(missing_docs)]
 
-pub mod budget;
 pub mod classify;
 pub mod error;
 pub mod event_kinds;
@@ -44,12 +35,6 @@ pub mod progress;
 pub mod resilience;
 pub mod task_context;
 
-pub use budget::{
-    format_health_summary, ExplorationBudget, ExplorationStatus, EXPLORATION_DEPENDENCY_BONUS,
-    EXPLORATION_DESCRIPTION_DIVISOR, EXPLORATION_HARD_FLOOR, EXPLORATION_HARD_MULTIPLIER,
-    EXPLORATION_SOFT_CEILING, EXPLORATION_SOFT_FLOOR, TASK_LEVEL_RETRY_BUDGET,
-    TOOL_CALL_RETRY_BUDGET,
-};
 pub use classify::classify_push_failure;
 pub use error::AutomationError;
 pub use failure::{synthesize_failure_reason, FailureContext};
@@ -57,16 +42,13 @@ pub use failure::{synthesize_failure_reason, FailureContext};
 // wires into the task-claim snapshot and the `task_done` completion
 // gate.
 pub use health::{
-    classify_delta, contains_workspace_health_blocking_reason,
+    classify_delta, contains_workspace_health_blocking_reason, format_health_summary,
     is_workspace_health_blocking_reason, parse_cargo_check_json_output, BuildStatus, HealthDelta,
     HealthError, HealthVerdict, TestStatus, WorkspaceHealth, REASON_CLEAN, REASON_IMPROVED,
     REASON_REGRESSED, REASON_UNCHANGED, WORKSPACE_HEALTH_BLOCKING_REASONS,
 };
 pub use progress::{apply_loop_activity, LoopActivityTransition};
-pub use resilience::{
-    recover_failed, recover_orphans, BaselineEntry, HealthBaselineTracker, OrphanRecoveryPlan,
-    RetryDecision, TaskRetryTracker, ToolRetryTracker, FAILED_RETRY_REASON, ORPHAN_RECOVERY_REASON,
-};
+pub use resilience::{BaselineEntry, HealthBaselineTracker};
 pub use task_context::{
     build_task_context, TaskContext, TaskContextCache, TaskContextInputs, TaskContextResolver,
     TaskRef, MAX_CACHE_ENTRIES, MAX_EXECUTION_NOTES_LEN,
@@ -80,8 +62,6 @@ mod smoke {
 
     #[test]
     fn public_reexports_resolve() {
-        let _ = crate::TOOL_CALL_RETRY_BUDGET;
-        let _ = crate::TASK_LEVEL_RETRY_BUDGET;
         let _ = crate::classify_push_failure("git push timed out");
         let _: &str = crate::event_kinds::TEXT_DELTA;
         // Compile-time check that `apply_loop_activity` is reachable
@@ -93,30 +73,11 @@ mod smoke {
         ) -> Option<crate::LoopActivityTransition> {
             crate::apply_loop_activity(activity, crate::event_kinds::TEXT_DELTA)
         }
-        // Phase G3a: pin the failure + resilience public surface.
         let _ = crate::synthesize_failure_reason(&crate::FailureContext::default());
-        let _tool_tracker = crate::ToolRetryTracker::new();
-        let _task_tracker = crate::TaskRetryTracker::new();
-        let _: Vec<crate::OrphanRecoveryPlan> = crate::recover_orphans(&[]);
-        let _: Vec<crate::OrphanRecoveryPlan> = crate::recover_failed(&[], &_task_tracker);
-        let _: &str = crate::FAILED_RETRY_REASON;
-        // RetryDecision must be reachable through the crate root for
-        // the server's pattern matches.
-        let _retry = crate::RetryDecision::GiveUp;
-        // Phase G4a: pin the task-context + exploration-budget
-        // public surface.
         let _resolver = crate::TaskContextResolver::new();
         let _cache = crate::TaskContextCache::new();
         let _ref_cap: usize = crate::MAX_CACHE_ENTRIES;
         let _notes_cap: usize = crate::MAX_EXECUTION_NOTES_LEN;
-        let budget = crate::ExplorationBudget::for_task(0, 0);
-        let _ = budget.classify(0);
-        let _ = budget.advisory_text(0);
-        let _: u32 = crate::EXPLORATION_SOFT_FLOOR;
-        let _: u32 = crate::EXPLORATION_SOFT_CEILING;
-        let _: u32 = crate::EXPLORATION_HARD_FLOOR;
-        let _: usize = crate::EXPLORATION_DESCRIPTION_DIVISOR;
-        let _: u32 = crate::EXPLORATION_DEPENDENCY_BONUS;
         // Make sure the wire types compose into the tool-result JSON.
         let task = dummy_task();
         let inputs = crate::TaskContextInputs {
@@ -152,9 +113,8 @@ mod smoke {
         let _entry: Option<crate::BaselineEntry> = _baseline_tracker.get(_baseline_task);
         _baseline_tracker.clear(_baseline_task);
         let _age: Option<std::time::Duration> = _baseline_tracker.snapshot_age(_baseline_task);
-        // Pin `format_health_summary` at the crate root so the
-        // App-layer health gate can splice the baseline + current
-        // summaries into its demoted `task_failed` reason string.
+        // `format_health_summary` survived Phase 4 (moved from the
+        // deleted budget/exploration module into the health module).
         let _summary: String = crate::format_health_summary(&crate::WorkspaceHealth::clean());
     }
 
@@ -183,6 +143,7 @@ mod smoke {
             model: None,
             total_input_tokens: 0,
             total_output_tokens: 0,
+            attempts: 0,
             created_at: now,
             updated_at: now,
         }

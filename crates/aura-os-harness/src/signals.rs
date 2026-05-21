@@ -39,16 +39,40 @@ impl HarnessFailureKind {
     ///
     /// Exhaustive `match` so adding a new variant forces an
     /// explicit retry-policy decision at the compiler.
+    ///
+    /// Phase 4 makes this the SINGLE retry-decision function for the
+    /// server-side dev-loop. Policy:
+    ///
+    /// * Infra-transient — `RateLimited`, `ProviderInternal`,
+    ///   `PushTimeout` — retry; the next attempt typically succeeds
+    ///   once the upstream condition clears.
+    /// * Task-shape — `Truncation`, `CompletionContract`,
+    ///   `ResearchLoopAbort` — retry; a fresh-context attempt is the
+    ///   right recovery (the reconciler may route truncation through
+    ///   decomposition rather than a straight re-run, but it still
+    ///   needs the typed `true` here to enter the retry branch).
+    /// * Terminal — `AgentStuck`, `InsufficientCredits` — do not
+    ///   retry; the harness has decided to stop on its own anti-waste
+    ///   guard, or the account is out of credits. Either way the
+    ///   loop just wastes budget on a guaranteed-failing rerun.
+    /// * `Other` — do not retry. Policy choice: empty / unclassified
+    ///   reasons are most often deterministic agent errors (syntax
+    ///   errors, kernel-policy denials, write-permission failures)
+    ///   that the dev-loop unit tests explicitly want to surface
+    ///   without burning the budget. Callers that want a permissive
+    ///   default can OR with a separate transient-heuristic guard
+    ///   (see `looks_like_unclassified_transient` on the server
+    ///   side).
     #[must_use]
     pub const fn is_retryable(self) -> bool {
         match self {
             HarnessFailureKind::RateLimited
             | HarnessFailureKind::PushTimeout
             | HarnessFailureKind::ResearchLoopAbort
-            | HarnessFailureKind::ProviderInternal => true,
-            HarnessFailureKind::Truncation
-            | HarnessFailureKind::CompletionContract
-            | HarnessFailureKind::AgentStuck
+            | HarnessFailureKind::ProviderInternal
+            | HarnessFailureKind::Truncation
+            | HarnessFailureKind::CompletionContract => true,
+            HarnessFailureKind::AgentStuck
             | HarnessFailureKind::InsufficientCredits
             | HarnessFailureKind::Other => false,
         }
@@ -585,12 +609,15 @@ mod tests {
     fn is_retryable_pinned_by_kind() {
         // Pin the typed retry-policy table so adding a new variant
         // forces an explicit decision via the exhaustive `match`.
+        // Phase 4: Truncation, CompletionContract, and ResearchLoopAbort
+        // all need a fresh-context re-run to recover (see the
+        // reconciler's `match` over `HarnessFailureKind`).
         assert!(HarnessFailureKind::RateLimited.is_retryable());
         assert!(HarnessFailureKind::PushTimeout.is_retryable());
         assert!(HarnessFailureKind::ResearchLoopAbort.is_retryable());
         assert!(HarnessFailureKind::ProviderInternal.is_retryable());
-        assert!(!HarnessFailureKind::Truncation.is_retryable());
-        assert!(!HarnessFailureKind::CompletionContract.is_retryable());
+        assert!(HarnessFailureKind::Truncation.is_retryable());
+        assert!(HarnessFailureKind::CompletionContract.is_retryable());
         assert!(!HarnessFailureKind::AgentStuck.is_retryable());
         assert!(!HarnessFailureKind::InsufficientCredits.is_retryable());
         assert!(!HarnessFailureKind::Other.is_retryable());

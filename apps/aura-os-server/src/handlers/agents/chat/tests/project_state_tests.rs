@@ -42,6 +42,7 @@ fn task(title: &str, spec_id: aura_os_core::SpecId) -> Task {
         model: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
+        attempts: 0,
         created_at: parse_dt(&None),
         updated_at: parse_dt(&None),
     }

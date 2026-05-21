@@ -31,6 +31,7 @@ mod tests {
             total_output_tokens: None,
             assigned_project_agent_id: None,
             session_id: None,
+            attempts: Some(0),
             created_at: Some(chrono::Utc::now().to_rfc3339()),
             updated_at: Some(chrono::Utc::now().to_rfc3339()),
         }

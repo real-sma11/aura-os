@@ -15,9 +15,6 @@ use std::str::FromStr;
 
 use tracing::{info, warn};
 
-use aura_os_automation::{
-    recover_failed, recover_orphans, OrphanRecoveryPlan, TaskRetryTracker, FAILED_RETRY_REASON,
-};
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, SessionStatus, TaskId, TaskStatus};
 use aura_os_sessions::{CreateSessionParams, SessionService};
 use aura_os_storage::StorageClient;
@@ -150,37 +147,38 @@ pub(super) async fn existing_session_id(
         .and_then(|entry| entry.session_id)
 }
 
-/// Section E (orphan recovery): sweep the project for tasks left in
-/// [`TaskStatus::InProgress`] from a previous server invocation and
-/// push them back to [`TaskStatus::Ready`] so the dev-loop's
-/// scheduler picks them up again on the next tick. Also runs the
-/// cross-run [`recover_failed`] sweep so tasks that ended a prior
-/// run in [`TaskStatus::Failed`] get auto-readied (gated by the
-/// per-task retry budget on `task_retry`).
+/// Single startup-time orphan sweep.
 ///
-/// Pure planning lives in [`aura_os_automation::recover_orphans`]
-/// and [`aura_os_automation::recover_failed`]; this helper is the
-/// App-layer side-effect bridge that fetches the task list,
-/// materialises both plan vectors, and applies each hop via
-/// [`aura_os_tasks::safe_transition`]. Best-effort: every per-task
-/// failure is logged and swallowed so a transient storage blip
-/// never blocks the loop from starting.
+/// Lists the project's tasks via the storage HTTP API and issues
+/// `safe_transition(InProgress -> Ready)` for every task observed in
+/// `InProgress`. The criterion is "no in-memory automaton owns this
+/// task right now", which is necessarily true at server startup — no
+/// forwarder has come online yet — so a plain status filter
+/// suffices.
 ///
-/// `task_retry` MUST be the same tracker the loop's forwarder will
-/// use during the live run — this keeps the cross-run retry budget
-/// aligned with the in-run one (a task that already burned all its
-/// budget cross-run will not be re-readied a fourth time during the
-/// live loop).
+/// Phase 4 of the dev-loop simplification (see
+/// `~/.cursor/plans/simplify_dev-loop_harness_d6af7a5d.plan.md`)
+/// replaced the previous two-pass orphan-recovery planner with
+/// this single sweep:
 ///
-/// Returns the number of plans actually transitioned across both
-/// sweeps. `0` when storage is not configured, the task list is
-/// empty, no candidates are observed, or every individual transition
-/// failed.
+/// * `InProgress -> Ready` is still the mid-run orphan path. The
+///   per-task retry budget that used to gate the cross-run `Failed`
+///   sweep moved onto the persisted `tasks.attempts` column, which
+///   the in-loop `task_failed` arm bumps directly — so a previously-
+///   Failed task is re-readied by the live retry path, not by this
+///   startup sweep.
+/// * `Failed` tasks are deliberately left alone. They either need
+///   manual intervention (operator clicks "Retry") or get re-readied
+///   by the next `task_failed` event on the same task; either way,
+///   the startup sweep no longer needs to mutate them.
+///
+/// Best-effort: storage / JWT failures are logged and swallowed so a
+/// transient blip never blocks the loop from starting. Returns the
+/// number of `InProgress` rows successfully bridged back to `Ready`.
 pub(super) async fn recover_orphan_tasks(
     state: &AppState,
     project_id: ProjectId,
     jwt: &str,
-    task_retry: &TaskRetryTracker,
 ) -> usize {
     let Some(storage) = state.storage_client.as_ref() else {
         return 0;
@@ -196,34 +194,25 @@ pub(super) async fn recover_orphan_tasks(
             return 0;
         }
     };
-    let orphan_plans = recover_orphans(&tasks);
-    let failed_plans = recover_failed(&tasks, task_retry);
-    if orphan_plans.is_empty() && failed_plans.is_empty() {
+    let orphans: Vec<&aura_os_core::Task> = tasks
+        .iter()
+        .filter(|task| task.status == TaskStatus::InProgress)
+        .collect();
+    if orphans.is_empty() {
         return 0;
     }
-    if !orphan_plans.is_empty() {
-        info!(
-            %project_id,
-            orphan_count = orphan_plans.len(),
-            "orphan recovery: bridging InProgress tasks back to Ready"
-        );
-    }
-    if !failed_plans.is_empty() {
-        info!(
-            %project_id,
-            failed_count = failed_plans.len(),
-            "failed-task retry: bridging recently-Failed tasks back to Ready"
-        );
-    }
-    let combined: Vec<OrphanRecoveryPlan> = orphan_plans.into_iter().chain(failed_plans).collect();
-    apply_orphan_recovery_plans(storage, jwt, &combined).await
+    info!(
+        %project_id,
+        orphan_count = orphans.len(),
+        "orphan recovery: bridging InProgress tasks back to Ready"
+    );
+    apply_orphan_recovery(storage, jwt, &orphans).await
 }
 
-/// Load and convert the full task list for `project_id` so it can
-/// be fed into [`recover_orphans`]. Conversion failures on a single
-/// row are skipped with a `warn!` rather than aborting the sweep —
-/// recovering the other orphans is still better than leaving them
-/// all stuck.
+/// Load and convert the full task list for `project_id`. Conversion
+/// failures on a single row are skipped with a `warn!` rather than
+/// aborting the sweep — recovering the other orphans is still better
+/// than leaving them all stuck.
 async fn load_project_tasks(
     storage: &StorageClient,
     project_id: ProjectId,
@@ -245,45 +234,34 @@ async fn load_project_tasks(
     Ok(tasks)
 }
 
-/// Apply each [`OrphanRecoveryPlan`] via
-/// [`aura_os_tasks::safe_transition`]. Returns the number of plans
-/// that succeeded; per-plan failures are logged and skipped.
-///
-/// The plan's `reason` field decides which sweep label is logged —
-/// [`aura_os_automation::ORPHAN_RECOVERY_REASON`] for
-/// `InProgress -> Ready` (mid-run orphan) and [`FAILED_RETRY_REASON`]
-/// for `Failed -> Ready` (cross-run retry).
-async fn apply_orphan_recovery_plans(
+/// Apply the orphan sweep: `safe_transition(InProgress -> Ready)` for
+/// each task in `orphans`. Per-task failures are logged and skipped
+/// so a single 4xx does not block the sweep from recovering the rest.
+/// Returns the number of transitions that succeeded.
+async fn apply_orphan_recovery(
     storage: &StorageClient,
     jwt: &str,
-    plans: &[OrphanRecoveryPlan],
+    orphans: &[&aura_os_core::Task],
 ) -> usize {
     let mut applied = 0;
-    for plan in plans {
-        let task_id_string = plan.task_id.to_string();
-        let sweep = if plan.reason == FAILED_RETRY_REASON {
-            "failed-task retry"
-        } else {
-            "orphan recovery"
-        };
+    for task in orphans {
+        let task_id_string = task.task_id.to_string();
         match aura_os_tasks::safe_transition(storage, jwt, &task_id_string, TaskStatus::Ready).await
         {
             Ok(_) => {
                 applied += 1;
                 info!(
-                    task_id = %plan.task_id,
-                    from = ?plan.current_status,
-                    to = ?plan.target_status,
-                    reason = plan.reason,
-                    "{sweep}: transitioned task back to Ready"
+                    task_id = %task.task_id,
+                    from = ?task.status,
+                    to = ?TaskStatus::Ready,
+                    "orphan recovery: transitioned task back to Ready"
                 );
             }
             Err(error) => warn!(
-                task_id = %plan.task_id,
+                task_id = %task.task_id,
                 %error,
-                reason = plan.reason,
-                "{sweep}: safe_transition failed; leaving task in {:?}",
-                plan.current_status,
+                "orphan recovery: safe_transition failed; leaving task in {:?}",
+                task.status,
             ),
         }
     }

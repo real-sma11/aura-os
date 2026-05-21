@@ -31,6 +31,7 @@ pub(super) async fn create_task(
         total_output_tokens: None,
         assigned_project_agent_id: req.assigned_project_agent_id,
         session_id: None,
+        attempts: Some(0),
         created_at: Some(now.clone()),
         updated_at: Some(now),
     };
@@ -105,6 +106,9 @@ pub(super) async fn update_task(
         }
         if let Some(v) = req.assigned_project_agent_id {
             task.assigned_project_agent_id = Some(v);
+        }
+        if let Some(v) = req.attempts {
+            task.attempts = Some(v);
         }
         task.updated_at = Some(Utc::now().to_rfc3339());
         axum::http::StatusCode::OK

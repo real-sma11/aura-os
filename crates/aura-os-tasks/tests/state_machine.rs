@@ -131,6 +131,7 @@ fn cycle_detection_catches_circular_deps() {
         model: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
+        attempts: 0,
         created_at: now,
         updated_at: now,
     };

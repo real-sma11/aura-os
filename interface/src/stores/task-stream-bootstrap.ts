@@ -196,10 +196,11 @@ function handleToolCallRetryingEvent(
 
 /**
  * Route a terminal `ToolCallFailed` event into the reducers. Reaching
- * the UI means both the harness-side streaming retry budget and the
- * server-side `TOOL_CALL_RETRY_BUDGET` gave up; the reducer marks the
- * card red and latches `retryExhausted` so the renderer can surface
- * "retried N/max — <reason>" instead of just "retrying…".
+ * the UI means the harness-side streaming retry budget was exhausted;
+ * the server no longer runs a parallel tool-call retry budget. The
+ * reducer marks the card red and latches `retryExhausted` so the
+ * renderer can surface "retried N/max — <reason>" instead of just
+ * "retrying…".
  */
 function handleToolCallFailedEvent(
   e: AuraEventOfType<typeof EventType.ToolCallFailed>,

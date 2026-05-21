@@ -45,12 +45,12 @@ export const EventType = {
   /**
    * Emitted by aura-harness (see `AgentLoopEvent::ToolCallFailed`)
    * once the streaming-retry budget is exhausted and the tool call
-   * is terminally failed from the harness's perspective. The server
-   * routes the same event through its per-task
-   * `TOOL_CALL_RETRY_BUDGET` (apps/aura-os-server/src/handlers/dev_loop.rs)
-   * before it reaches the UI, so seeing this event in the UI means
-   * both retry ladders gave up. Renders as a red failure badge with
-   * the classified reason inline.
+   * is terminally failed from the harness's perspective. Tool-level
+   * retries are entirely the harness's responsibility now (the
+   * server no longer runs a parallel retry ladder for tool calls),
+   * so a single emission marks the call as terminally failed.
+   * Renders as a red failure badge with the classified reason
+   * inline.
    */
   ToolCallFailed:        "tool_call_failed",
   TokenUsage:            "token_usage",

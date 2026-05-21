@@ -1,16 +1,35 @@
-//! Section D / E retry plumbing: classify `tool_result` failures against the per-task tool-call budget, escalate to a task-level `safe_transition(Failed -> Ready)` once the tool budget is exhausted, and emit `task_retrying` signals to live subscribers.
-
-use std::str::FromStr;
+//! Task-level retry plumbing for the dev-loop forwarder.
+//!
+//! Phase 4 of the dev-loop simplification (see
+//! `~/.cursor/plans/simplify_dev-loop_harness_d6af7a5d.plan.md`)
+//! collapsed the parallel server-side retry state machine into a
+//! single decision:
+//!
+//! ```text
+//! on task_failed:
+//!     kind = HarnessFailureKind from event.reason
+//!     if kind.is_retryable() && task.attempts < MAX_TASK_ATTEMPTS:
+//!         storage.update_task(attempts = task.attempts + 1)
+//!         safe_transition(Failed -> Ready)
+//!         emit task_retrying
+//!     else:
+//!         leave task in Failed
+//! ```
+//!
+//! The persisted `tasks.attempts` counter (added in the same phase,
+//! see `docs/migrations/2026-05-21-task-attempts-column.md`) replaces
+//! the previous in-memory task-retry tracker. Tool-level retries are
+//! now the harness's responsibility — it sees every tool result; the
+//! server does not need a parallel tool-retry tracker.
 
 use tracing::{info, warn};
 
-use aura_os_automation::{RetryDecision, TASK_LEVEL_RETRY_BUDGET, TOOL_CALL_RETRY_BUDGET};
-use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskId, TaskStatus};
+use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskStatus};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
 use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal};
 
-use super::super::super::types::LoopRetryState;
 use super::failure::resolve_failure_reason_for_persistence;
+use super::MAX_TASK_ATTEMPTS;
 use crate::state::AppState;
 
 /// Parse a failure reason string into a typed
@@ -24,86 +43,25 @@ fn classify_reason(reason: &str) -> HarnessFailureKind {
         .unwrap_or(HarnessFailureKind::Other)
 }
 
-/// Section D: when a `tool_result` arrives with `is_error: true`
-/// and the reason is classified as restartable, increment the
-/// per-task tool-call retry tracker and emit a `task_retrying`
-/// signal while we are still under
-/// [`TOOL_CALL_RETRY_BUDGET`].
+/// Decide whether to push the failed task back to `Ready` and emit
+/// the `task_retrying` UI signal. Gated by:
 ///
-/// Non-retryable reasons (terminal classifier verdicts like "agent
-/// is stuck") are deliberately not tracked here — they fall through
-/// to the existing `task_failed` flow without burning the budget.
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn maybe_track_tool_call_failure(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    task_id: &str,
-    event: &serde_json::Value,
-    retry_state: &LoopRetryState,
-    session_id: Option<SessionId>,
-) {
-    if event.get("is_error").and_then(|v| v.as_bool()) != Some(true) {
-        return;
-    }
-    let Some(reason) = tool_result_error_reason(event) else {
-        return;
-    };
-    if !classify_reason(&reason).is_retryable() {
-        // Terminal classifier verdict (agent-stuck signal, syntax
-        // error, insufficient credits, ...): not a retryable infra
-        // failure. Leave the budget untouched and let the existing
-        // failure path take over.
-        return;
-    }
-    let Ok(task_uuid) = TaskId::from_str(task_id) else {
-        return;
-    };
-    let decision = retry_state.tool_retry.record_failure(task_uuid);
-    match decision {
-        RetryDecision::Retry { attempt } => {
-            emit_task_retrying_signal(
-                state,
-                project_id,
-                agent_instance_id,
-                task_id,
-                attempt,
-                TOOL_CALL_RETRY_BUDGET,
-                "tool_call",
-                &reason,
-                session_id,
-            );
-        }
-        RetryDecision::GiveUp => {
-            warn!(
-                %task_id,
-                budget = TOOL_CALL_RETRY_BUDGET,
-                "tool-call retry budget exhausted; falling through to task_failed path"
-            );
-        }
-    }
-}
-
-/// Section E: after persisting the failure reason, decide whether
-/// the task itself should be pushed back to `Ready` via
-/// `safe_transition` so the scheduler can pick it up again.
+/// * [`HarnessFailureKind::is_retryable`] — terminal failures
+///   (agent-stuck, insufficient credits) stay in `Failed`.
+/// * The persisted `tasks.attempts` counter being strictly below
+///   [`MAX_TASK_ATTEMPTS`] — a permanently-broken task does not
+///   loop forever, and the count survives server restarts.
 ///
-/// Gated by both:
-/// * [`HarnessFailureKind::is_retryable`] accepting the reason
-///   string's classified kind — terminal failures (agent-stuck,
-///   completion-contract, insufficient credits, syntax errors,
-///   ...) are not auto-retried; and
-/// * the tool-call budget already being exhausted on this task —
-///   otherwise the per-tool retry path is still the right recovery
-///   surface and a coarser task-level retry would just compound
-///   wasted work.
+/// On a successful retry hop we bump `attempts` and transition the
+/// task back to `Ready` in a single `update_task` call before the
+/// `safe_transition` so the next attempt observes the incremented
+/// counter even if the transition itself races with another reader.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn maybe_apply_task_level_retry(
     state: &AppState,
     jwt: &str,
     task_id: &str,
     event: &serde_json::Value,
-    retry_state: &LoopRetryState,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
     session_id: Option<SessionId>,
@@ -112,42 +70,63 @@ pub(super) async fn maybe_apply_task_level_retry(
         return;
     };
     let reason = resolve_failure_reason_for_persistence(event);
-    if !classify_reason(&reason).is_retryable() {
+    let kind = classify_reason(&reason);
+    if !kind.is_retryable() {
         return;
     }
-    let Ok(task_uuid) = TaskId::from_str(task_id) else {
-        return;
+    // Read the persisted attempt count. If the storage call fails
+    // we conservatively leave the task in `Failed` rather than
+    // double-spending the budget on a count we can't verify.
+    let task = match storage.get_task(task_id, jwt).await {
+        Ok(storage_task) => storage_task,
+        Err(error) => {
+            warn!(
+                %task_id,
+                %error,
+                "task-level retry: get_task failed; leaving task in Failed"
+            );
+            return;
+        }
     };
-    // Only block task-level retry when there's an active per-tool
-    // retry already in flight for this task. Per-tool retry is the
-    // right surface IFF there has been at least one failing tool
-    // call — for task-shape failures (research-loop aborts, the
-    // CompletionContract verdict, ...) the per-tool budget is
-    // irrelevant because no tool call ever failed, and the
-    // task-level retry IS the only recovery surface.
-    let tool_attempts = retry_state.tool_retry.attempts(task_uuid);
-    if tool_attempts > 0 && tool_attempts < TOOL_CALL_RETRY_BUDGET {
+    let prior_attempts = task.attempts.unwrap_or(0);
+    if prior_attempts >= MAX_TASK_ATTEMPTS {
+        info!(
+            %task_id,
+            prior_attempts,
+            budget = MAX_TASK_ATTEMPTS,
+            "task-level retry: attempt budget exhausted; leaving task in Failed"
+        );
         return;
     }
-    let decision = retry_state.task_retry.record_failure(task_uuid);
-    let RetryDecision::Retry { attempt } = decision else {
-        return;
+    let next_attempts = prior_attempts.saturating_add(1);
+    let update = aura_os_storage::UpdateTaskRequest {
+        attempts: Some(next_attempts),
+        ..Default::default()
     };
+    if let Err(error) = storage.update_task(task_id, jwt, &update).await {
+        warn!(
+            %task_id,
+            %error,
+            "task-level retry: update_task(attempts) failed; leaving task in Failed"
+        );
+        return;
+    }
     if let Err(error) =
         aura_os_tasks::safe_transition(storage, jwt, task_id, TaskStatus::Ready).await
     {
         warn!(
             %task_id,
             %error,
-            "task-level retry: safe_transition(Failed -> Ready) failed; \
+            "task-level retry: safe_transition(Failed -> Ready) failed after bumping attempts; \
              leaving task in Failed"
         );
         return;
     }
     info!(
         %task_id,
-        attempt,
-        budget = TASK_LEVEL_RETRY_BUDGET,
+        attempt = next_attempts,
+        budget = MAX_TASK_ATTEMPTS,
+        ?kind,
         "task-level retry: pushed task from Failed back to Ready"
     );
     emit_task_retrying_signal(
@@ -155,31 +134,11 @@ pub(super) async fn maybe_apply_task_level_retry(
         project_id,
         agent_instance_id,
         task_id,
-        attempt,
-        TASK_LEVEL_RETRY_BUDGET,
-        "task_level",
+        next_attempts,
+        MAX_TASK_ATTEMPTS,
         &reason,
         session_id,
     );
-}
-
-/// Pull a usable error reason out of a `tool_result` payload.
-///
-/// Mirrors `super::common::event_reason` but checks the keys the
-/// harness most commonly puts on `tool_result` error blocks
-/// (`result`, `error`, `message`, `text`, ...). Returns `None` when
-/// no string-typed field is populated; the caller skips the retry
-/// path in that case because there is nothing to classify.
-fn tool_result_error_reason(event: &serde_json::Value) -> Option<String> {
-    for key in ["error", "message", "result", "result_preview", "text"] {
-        if let Some(value) = event.get(key).and_then(|v| v.as_str()) {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Emit a `task_retrying` event onto both the legacy
@@ -196,7 +155,6 @@ fn emit_task_retrying_signal(
     task_id: &str,
     attempt: u32,
     budget: u32,
-    scope: &'static str,
     reason: &str,
     session_id: Option<SessionId>,
 ) {
@@ -207,7 +165,7 @@ fn emit_task_retrying_signal(
         "agent_instance_id": agent_instance_id.to_string(),
         "attempt": attempt,
         "budget": budget,
-        "scope": scope,
+        "scope": "task_level",
         "reason": reason,
     });
     if let Some(session_id) = session_id {

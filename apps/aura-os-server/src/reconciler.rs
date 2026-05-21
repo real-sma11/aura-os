@@ -4,7 +4,12 @@ use crate::sync_state::{TaskRecoveryPoint, TaskSyncState, TaskSyncStatus};
 
 mod wire;
 
-pub const DEFAULT_MAX_RETRIES_PER_TASK: u32 = aura_os_automation::TASK_LEVEL_RETRY_BUDGET;
+/// Default per-task retry budget consulted by the reconciler's pure
+/// decision table. Mirrors `MAX_TASK_ATTEMPTS` in the dev-loop
+/// side-effects retry path; kept as a separate constant here because
+/// the reconciler is invoked from chat-style supervised paths that
+/// don't yet read the persisted `tasks.attempts` column.
+pub const DEFAULT_MAX_RETRIES_PER_TASK: u32 = 3;
 
 #[derive(Clone, Debug)]
 pub struct ReconcileInputs<'a> {

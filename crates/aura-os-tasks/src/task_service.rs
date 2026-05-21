@@ -166,17 +166,9 @@ impl TaskService {
         if let Ok(storage) = self.require_storage() {
             if let Ok(jwt) = self.get_jwt() {
                 let update = aura_os_storage::UpdateTaskRequest {
-                    title: None,
-                    description: None,
-                    order_index: None,
-                    dependency_ids: None,
-                    execution_notes: None,
-                    files_changed: None,
-                    model: None,
-                    total_input_tokens: None,
-                    total_output_tokens: None,
                     session_id: session_id.map(|s| s.to_string()),
                     assigned_project_agent_id: Some(agent_instance_id.to_string()),
+                    ..Default::default()
                 };
                 if let Err(e) = storage
                     .update_task(&task_id.to_string(), &jwt, &update)

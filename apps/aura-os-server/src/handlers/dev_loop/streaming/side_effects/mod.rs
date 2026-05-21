@@ -30,6 +30,13 @@ use common::{enrich_event, set_current_task};
 pub(crate) use failure::extract_task_failure_reason;
 pub(crate) use task_output::seed_task_output;
 
+/// Per-task ceiling on auto-retry hops the dev-loop will issue from
+/// the `task_failed` arm before leaving the task in `Failed` for
+/// good. Mirrored against the persisted `tasks.attempts` column
+/// (Phase 4 of `simplify_dev-loop_harness_d6af7a5d.plan.md`) so the
+/// budget survives server restarts.
+pub(crate) const MAX_TASK_ATTEMPTS: u32 = 3;
+
 /// Bundle of context the side-effects pipeline needs for every
 /// event. Grouped into a struct so [`record_event_side_effects`] and
 /// [`apply_event_side_effect`] stay under the project's
@@ -232,16 +239,13 @@ async fn apply_event_side_effect(
         }
         "task_completed" => {
             set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
-            // Clear the per-task retry counters now that the task has
-            // reached a clean terminal: a subsequent run of the same
-            // task (e.g. via the manual rerun path) starts from a
-            // fresh budget rather than inheriting stale failures.
+            // Drop the workspace-health baseline so a rerun of the
+            // same task starts fresh rather than diffing against the
+            // prior snapshot. Per-task retry counters used to be
+            // cleared here too; Phase 4 moved that state onto the
+            // persisted `tasks.attempts` column where it doesn't
+            // need an in-memory companion.
             if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
-                retry_state.tool_retry.clear(task_uuid);
-                retry_state.task_retry.clear(task_uuid);
-                // Phase 3 of workspace-health-diff-gate: drop the
-                // baseline so a rerun of the same task starts fresh
-                // rather than diffing against the prior snapshot.
                 retry_state.health_baseline.clear(task_uuid);
             }
             // Drain the in-memory `task_output_cache` (tokens, files-
@@ -256,15 +260,10 @@ async fn apply_event_side_effect(
         }
         "task_failed" => {
             set_current_task(state, project_id, agent_instance_id, loop_handle, None).await;
-            // Phase 3 of workspace-health-diff-gate: drop the
-            // baseline so a rerun of the same task starts fresh.
-            // task_failed terminates the snapshot's owning task
-            // either to a `Failed` terminal or (via
-            // `maybe_apply_task_level_retry` below) back to `Ready`;
-            // in either case the next attempt should observe a fresh
-            // baseline rather than diffing against the stale one. The
-            // per-tool / per-task retry trackers are left alone here
-            // because they're consulted by the retry path below.
+            // Drop the workspace-health baseline so the next attempt
+            // (either a fresh task_started after a retry hop below
+            // or a future manual rerun) observes a fresh baseline
+            // rather than diffing against the stale one.
             if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
                 retry_state.health_baseline.clear(task_uuid);
             }
@@ -285,18 +284,17 @@ async fn apply_event_side_effect(
                 // Same accumulator drain as task_completed: failed tasks
                 // also have token usage that should appear in stats.
                 task_output::persist_cached_task_output(state, project_id, jwt, task_id).await;
-                // Section E: task-level auto-retry. We only push the
+                // Phase 4: task-level auto-retry. We only push the
                 // task back to `Ready` when the failure reason is
-                // retryable (transient classifier accepted it) and
-                // the per-task task-level budget has not been
-                // exhausted. On `GiveUp` the task stays `Failed` and
-                // the existing surfaces handle it.
+                // retryable (`HarnessFailureKind::is_retryable`) and
+                // the persisted `tasks.attempts` is strictly below
+                // `MAX_TASK_ATTEMPTS`. Otherwise the task stays
+                // `Failed` and the existing surfaces handle it.
                 retry::maybe_apply_task_level_retry(
                     state,
                     jwt,
                     task_id,
                     event,
-                    retry_state,
                     project_id,
                     agent_instance_id,
                     session_id,
@@ -308,27 +306,6 @@ async fn apply_event_side_effect(
             if let Some(task_id) = task_id {
                 task_output::record_test_pass_evidence(state, project_id, task_id, event).await;
                 git::record_git_commit_push_timeout(state, project_id, task_id, event).await;
-            }
-        }
-        "tool_result" => {
-            // Section D: track tool-call failures against
-            // `TOOL_CALL_RETRY_BUDGET`. On `Retry`, emit a
-            // `task_retrying` UI signal carrying the current attempt
-            // count so the surface can render the recovery state.
-            // On `GiveUp`, fall through silently â€” the
-            // `task_failed` arm (above) will fire next and handle
-            // the terminal path.
-            if let Some(task_id) = task_id {
-                retry::maybe_track_tool_call_failure(
-                    state,
-                    project_id,
-                    agent_instance_id,
-                    task_id,
-                    event,
-                    retry_state,
-                    session_id,
-                )
-                .await;
             }
         }
         "git_committed" | "commit_created" | "git_commit_failed" | "git_pushed"

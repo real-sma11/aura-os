@@ -19,6 +19,7 @@
 
 pub mod delta;
 pub mod snapshot;
+pub mod summary;
 pub mod types;
 
 pub use delta::{
@@ -27,6 +28,7 @@ pub use delta::{
     WORKSPACE_HEALTH_BLOCKING_REASONS,
 };
 pub use snapshot::{compute_signature, parse_cargo_check_json_output, Snapshot};
+pub use summary::format_health_summary;
 pub use types::{
     BuildStatus, HealthDelta, HealthError, HealthVerdict, TestStatus, WorkspaceHealth,
 };

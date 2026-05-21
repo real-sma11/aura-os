@@ -1,5 +1,15 @@
-//! Tool-call infra-retry budget, harness-owned DoD, and retired
-//! aura-os DoD remediation surface regressions.
+//! Harness-owned DoD and retired aura-os DoD remediation surface
+//! regressions.
+//!
+//! Phase 4 of the dev-loop simplification deleted the parallel
+//! server-side tool-call retry budget and tracker. Tool-level
+//! retries are now the harness's job (it sees every tool result
+//! and owns the retry policy), so the old
+//! `tool_call_retry_budget` / `tool_call_failed_should_retry`
+//! tests are gone with their helpers. The remaining tests in this
+//! file pin behaviours that survived Phase 4: the harness-owned
+//! DoD surface, the typed `HarnessFailureKind` classifier, and the
+//! reconciler decision table.
 
 use aura_os_server::phase7_test_support as tsp;
 use serde_json::json;
@@ -26,82 +36,20 @@ fn tool_call_failures_are_diagnostic_history_not_aura_os_dod_failures() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Per-tool-call infra-retry budget (server-retry-budget)
-// ---------------------------------------------------------------------------
-//
-// The harness emits `tool_call_failed` once its own streaming-retry
-// budget is exhausted. The server forwarder then routes the event
-// through `attempt_infra_retry` to buy more fresh streaming requests
-// against the provider, capped per task at TOOL_CALL_RETRY_BUDGET.
-// These tests pin:
-//   1. the classifier wiring (only infra-transient reasons retry),
-//   2. the relaxed budget constant,
-//   3. the counter monotonicity (budget+1 must NOT retry).
-//
-// They do not replay the full forwarder — the live retry path needs
-// a running automaton/task service — but they do lock in the gate
-// that the forwarder consults before dispatching.
-
 #[test]
-fn tool_call_retry_budget_is_relaxed_for_long_running_agents() {
-    // The server-side budget intentionally exceeds the harness's
-    // internal retry-with-backoff loop. A fresh server retry buys the
-    // agent another chance to keep cooking after transient provider
-    // failures instead of terminating large tasks too early.
-    assert_eq!(
-        tsp::tool_call_retry_budget(),
-        16,
-        "TOOL_CALL_RETRY_BUDGET should give long-running tasks extra runway"
-    );
-}
-
-#[test]
-fn provider_internal_error_triggers_tool_call_retry_when_under_budget() {
-    // This is the exact reason string the reasoner emits when
-    // Anthropic sends `stream terminated with error: Internal server
-    // error` mid-`tool_use` — the motivating 4.6-class failure.
-    let reason = "LLM error: stream terminated with error: Internal server error";
-    assert!(
-        tsp::tool_call_failed_should_retry(reason, 0),
-        "first tool_call_failed with ProviderInternalError reason must retry"
-    );
-    assert!(
-        tsp::tool_call_failed_should_retry(reason, tsp::tool_call_retry_budget() - 1),
-        "last prior retry below budget must still retry"
-    );
-}
-
-#[test]
-fn rate_limit_reason_triggers_tool_call_retry() {
-    // HTTP 429 and 529 both classify as `ProviderRateLimited`; the
-    // forwarder must route both through the retry gate so a
-    // temporary cooldown doesn't terminate the task.
-    for reason in [
-        "Anthropic 429 Too Many Requests",
-        "upstream provider returned 529 overloaded",
-    ] {
-        assert!(
-            tsp::tool_call_failed_should_retry(reason, 0),
-            "rate-limit reason '{reason}' must retry"
-        );
-    }
-}
-
-#[test]
-fn insufficient_credits_reason_is_terminal_not_retryable() {
+fn insufficient_credits_reason_is_terminal_at_classifier_layer() {
     let reason = "agent execution error: LLM error: kernel reason_streaming error: reasoner error: Insufficient credits: Anthropic API error: 402 Payment Required - {\"error\":{\"code\":\"INSUFFICIENT_CREDITS\",\"message\":\"Insufficient credits: balance=4, required=5\"}}";
     assert!(
         tsp::is_insufficient_credits_failure(reason),
         "exact provider 402 insufficient-credits reason must be classified"
     );
     assert!(
-        !tsp::tool_call_failed_should_retry(reason, 0),
-        "credits exhaustion must stop the loop instead of entering infra retry"
-    );
-    assert!(
         !tsp::should_restart_on_error_event(reason),
         "credits exhaustion must not restart the automaton"
+    );
+    assert!(
+        !tsp::classify_failure(reason).is_retryable(),
+        "credits exhaustion must classify as a non-retryable HarnessFailureKind"
     );
 }
 
@@ -118,59 +66,6 @@ fn insufficient_credits_classifier_covers_api_code_forms() {
             "credits classifier missed '{reason}'"
         );
     }
-}
-
-#[test]
-fn budget_exhaustion_stops_tool_call_retry_even_for_transient_reason() {
-    // Once the per-task counter hits the budget the forwarder must
-    // let the event fall through to the normal task_failed path,
-    // even if the reason is classifier-positive — otherwise a
-    // permanently-broken upstream would loop the task forever.
-    let reason = "LLM error: stream terminated with error: Internal server error";
-    let budget = tsp::tool_call_retry_budget();
-    assert!(
-        !tsp::tool_call_failed_should_retry(reason, budget),
-        "prior_count == budget must NOT retry"
-    );
-    assert!(
-        !tsp::tool_call_failed_should_retry(reason, budget + 1),
-        "prior_count > budget must NOT retry"
-    );
-    assert!(
-        !tsp::tool_call_failed_should_retry(reason, u32::MAX),
-        "saturated counter must NOT retry"
-    );
-}
-
-#[test]
-fn non_transient_reason_never_triggers_tool_call_retry() {
-    // Compile errors / syntax errors / kernel-policy denials are
-    // deterministic; retrying them just wastes a provider call and
-    // delays the task_failed surface.
-    for reason in [
-        "syntax error in generated code",
-        "run_command tool is not allowed by kernel policy",
-        "write_file: Permission denied (os error 13)",
-        "",
-    ] {
-        assert!(
-            !tsp::tool_call_failed_should_retry(reason, 0),
-            "non-transient reason '{reason}' must NOT retry"
-        );
-    }
-}
-
-#[test]
-fn push_timeout_reason_is_eligible_for_tool_call_retry() {
-    // `git push` timeouts are classified as infra (see
-    // `InfraFailureClass::GitPushTimeout`) and retried by the
-    // error/task_failed paths; tool_call_failed for the same class
-    // must line up so a push-during-tool-call is not treated
-    // differently.
-    assert!(
-        tsp::tool_call_failed_should_retry("git push orbit HEAD:main: timed out after 60s", 0),
-        "git push timeout reason must retry"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -246,14 +141,6 @@ fn research_loop_abort_verdict_is_restartable_at_classifier_layer() {
     // `validate_execution` gate when the agent stayed in research
     // mode and never produced a file operation. The em dash is
     // U+2014 — paste verbatim, do not substitute an ASCII hyphen.
-    //
-    // This pins the *classifier* layer of the two-layer fix:
-    // without this, `maybe_apply_task_level_retry` bails out at
-    // its `should_restart_on_error` guard before even looking at
-    // the budget gate. The companion fix at the budget gate
-    // (`tool_attempts > 0 && tool_attempts < TOOL_CALL_RETRY_BUDGET`)
-    // is exercised by the existing `LoopRetryState` integration
-    // tests; here we only lock in the classifier wiring.
     let reason = "agent execution error: task completed without any file operations — \
                   completion not verified";
     assert!(

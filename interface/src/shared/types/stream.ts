@@ -133,9 +133,10 @@ export interface ToolCallEntry {
   retryReason?: string;
   /**
    * Set to `true` when aura-harness emits `ToolCallFailed` for this
-   * `tool_use_id` *and* the server-side
-   * `TOOL_CALL_RETRY_BUDGET` has also been exhausted — i.e. both
-   * retry ladders gave up. Used by renderers to prefix the failure
+   * `tool_use_id`. Tool-level retries are entirely the harness's
+   * responsibility now (the server no longer runs a parallel retry
+   * ladder for tool calls), so a single emission marks the call as
+   * terminally failed. Used by renderers to prefix the failure
    * title with "retried N/max — " so users understand the full
    * recovery history, not just the last stream abort.
    */

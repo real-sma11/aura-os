@@ -17,7 +17,6 @@ pub(crate) use classifiers::{
     is_completion_contract_failure, is_git_push_timeout_failure,
     is_insufficient_credits_failure, is_provider_internal_error, is_rate_limited_failure,
     is_truncation_failure, looks_like_unclassified_transient, should_restart_on_error_event,
-    tool_call_failed_should_retry, tool_call_retry_budget,
 };
 pub(crate) use completion::{
     completion_validation_failure_reason, completion_validation_failure_reason_with_empty_path_writes,

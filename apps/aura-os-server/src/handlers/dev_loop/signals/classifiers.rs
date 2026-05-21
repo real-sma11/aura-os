@@ -119,16 +119,22 @@ pub(crate) fn should_restart_on_error_event(reason: &str) -> bool {
     if matches!(kind, HarnessFailureKind::AgentStuck) {
         return false;
     }
-    kind.is_retryable() || looks_like_unclassified_transient(reason)
-}
-
-pub(crate) fn tool_call_failed_should_retry(reason: &str, prior_count: u32) -> bool {
-    prior_count < aura_os_automation::TOOL_CALL_RETRY_BUDGET
-        && should_restart_on_error_event(reason)
-}
-
-pub(crate) const fn tool_call_retry_budget() -> u32 {
-    aura_os_automation::TOOL_CALL_RETRY_BUDGET
+    // Treat `Truncation` / `CompletionContract` as "task-shape" rather
+    // than restartable error events here: the harness has already
+    // emitted a structured `task_failed` for those and the
+    // task-level retry path handles them, so restarting the entire
+    // automaton would just double-spend the budget. The other
+    // retryable kinds (`RateLimited`, `ProviderInternal`,
+    // `PushTimeout`, `ResearchLoopAbort`) are infra-transient and
+    // benefit from a fresh streaming attempt.
+    let restart_eligible = matches!(
+        kind,
+        HarnessFailureKind::RateLimited
+            | HarnessFailureKind::ProviderInternal
+            | HarnessFailureKind::PushTimeout
+            | HarnessFailureKind::ResearchLoopAbort,
+    );
+    restart_eligible || looks_like_unclassified_transient(reason)
 }
 
 pub(crate) fn classify_push_failure(reason: &str) -> Option<&'static str> {

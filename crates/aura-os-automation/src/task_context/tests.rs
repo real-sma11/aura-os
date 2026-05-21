@@ -38,6 +38,7 @@ fn task_with(title: &str, description: &str, status: TaskStatus) -> Task {
         model: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
+        attempts: 0,
         created_at: now,
         updated_at: now,
     }

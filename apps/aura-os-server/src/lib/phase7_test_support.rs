@@ -151,29 +151,6 @@ pub fn completion_validation_reason_with_tool_call_failures(
     )
 }
 
-/// True when a harness-emitted `tool_call_failed` with this
-/// `reason` should trigger another server-side infra retry given
-/// the number of retries already consumed for the task.
-///
-/// Mirrors the gate used inside the forwarder's per-tool-call
-/// retry dispatch so a regression in the classifier wiring or
-/// the [`tool_call_retry_budget`] cap is caught without having
-/// to stand up a real automaton. Two axes tested here:
-/// * classifier must recognise the reason as infra-transient
-///   (`classify_infra_failure` non-None)
-/// * counter must be strictly below the budget
-pub fn tool_call_failed_should_retry(reason: &str, prior_count: u32) -> bool {
-    crate::handlers::dev_loop::tool_call_failed_should_retry(reason, prior_count)
-}
-
-/// The per-task upper bound on server-side infra-retry attempts
-/// driven by `tool_call_failed` events. Returned as a plain `u32`
-/// so test assertions stay a single comparison.
-#[must_use]
-pub const fn tool_call_retry_budget() -> u32 {
-    crate::handlers::dev_loop::tool_call_retry_budget()
-}
-
 /// True when the harness streamed a `write_file` / `edit_file`
 /// `tool_call_completed` event with a missing or empty `path`.
 /// Those events cannot land on disk and are retained as diagnostic

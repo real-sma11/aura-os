@@ -24,5 +24,5 @@ pub(crate) use signals::{
     should_restart_on_error_event, should_task_complete_despite_push_failure,
     successful_write_event_path, task_done_declares_no_changes_needed,
     task_done_missing_file_changes_reason, task_done_workspace_health_gate_reason,
-    tool_call_failed_should_retry, tool_call_retry_budget, CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD,
+    CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD,
 };

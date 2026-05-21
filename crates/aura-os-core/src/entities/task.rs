@@ -93,6 +93,12 @@ pub struct Task {
     pub total_input_tokens: u64,
     #[serde(default)]
     pub total_output_tokens: u64,
+    /// Persisted retry counter. Bumped by the dev-loop forwarder on every
+    /// retryable `task_failed` (see
+    /// `apps/aura-os-server/src/handlers/dev_loop/streaming/side_effects/retry.rs`).
+    /// `MAX_TASK_ATTEMPTS` in that module is the per-task ceiling.
+    #[serde(default)]
+    pub attempts: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

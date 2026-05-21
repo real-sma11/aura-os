@@ -1,11 +1,10 @@
-//! Per-task workspace-health baseline tracker (Phase 3).
+//! Per-task workspace-health baseline tracker (Phase 3 of the
+//! workspace-health diff gate).
 //!
-//! Sibling of [`super::tool_retry::ToolRetryTracker`] and
-//! [`super::task_retry::TaskRetryTracker`]. Where those count
-//! transient failures, this one stashes the [`WorkspaceHealth`]
-//! fingerprint captured at `task_started` so the Phase 4 completion
-//! gate can re-read it at `task_done` and call
-//! [`crate::health::classify_delta`] against it.
+//! Stashes the [`WorkspaceHealth`] fingerprint captured at
+//! `task_started` so the completion gate can re-read it at
+//! `task_done` and call [`crate::health::classify_delta`] against
+//! it.
 //!
 //! The tracker is intentionally a passive store: it does not invoke
 //! `cargo check`, schedule snapshots, or know about timeouts. The
@@ -15,9 +14,17 @@
 //! [`WorkspaceHealth`] it produced — including
 //! [`WorkspaceHealth::unknown`] when the snapshot bailed.
 //!
-//! State model and poison-recovery rules match the existing trackers
-//! verbatim; see [`super::tool_retry::ToolRetryTracker`] for the
-//! rationale.
+//! Phase 4 of the dev-loop simplification deleted the sibling
+//! retry tracker and orphan-recovery planner helpers that used to
+//! live next door. The per-task retry budget now lives on the
+//! persisted `tasks.attempts` column; this tracker is the only
+//! in-memory state that survived.
+//!
+//! Internal poison-recovery: on a poisoned mutex we take the inner
+//! state and keep going. The worst case for a missed baseline is
+//! "the completion gate sees no baseline and falls through to the
+//! existing path", which is strictly safer than panicking through
+//! the forwarder.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -41,15 +48,7 @@ pub struct BaselineEntry {
 
 /// In-memory store of per-task baseline snapshots keyed by
 /// [`TaskId`]. `Default` + `Send` + `Sync` so the server can wrap it
-/// in an `Arc` and pass it through the per-loop `LoopRetryState`
-/// alongside the existing retry trackers.
-///
-/// Internal poison recovery is the same defensive pattern used by
-/// [`super::tool_retry::ToolRetryTracker`]: on a poisoned mutex we
-/// take the inner state and keep going. The worst case for a missed
-/// baseline is "Phase 4 sees no baseline and falls through to the
-/// existing completion gate", which is strictly safer than panicking
-/// through the forwarder.
+/// in an `Arc` and pass it through the per-loop `LoopRetryState`.
 #[derive(Debug, Default)]
 pub struct HealthBaselineTracker {
     baselines: Mutex<HashMap<TaskId, BaselineEntry>>,

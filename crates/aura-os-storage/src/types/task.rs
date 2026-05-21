@@ -47,6 +47,12 @@ pub struct StorageTask {
     pub assigned_project_agent_id: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Persisted retry counter. Mirrors `tasks.attempts` on the aura-network
+    /// schema; see `docs/migrations/2026-05-21-task-attempts-column.md`.
+    /// Optional so an aura-network instance that hasn't deployed the column
+    /// yet still round-trips through the converter.
+    #[serde(default)]
+    pub attempts: Option<u32>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -97,6 +103,11 @@ pub struct UpdateTaskRequest {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assigned_project_agent_id: Option<String>,
+    /// New persisted retry counter (Phase 4 of dev-loop simplification).
+    /// `Some(n)` REPLACES the row's `attempts` column; `None` leaves it
+    /// untouched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempts: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

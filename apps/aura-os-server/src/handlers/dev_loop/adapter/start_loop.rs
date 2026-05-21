@@ -5,11 +5,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use tracing::{info, warn};
 
-use aura_os_automation::{
-    recover_failed, recover_orphans, OrphanRecoveryPlan, FAILED_RETRY_REASON,
-};
 use aura_os_core::ProjectId;
 use aura_os_events::{LoopId, LoopKind};
 use aura_os_harness::connect_with_retries;
@@ -98,30 +94,21 @@ pub(crate) async fn start_loop(
     };
 
     replace_registry_entry(&state, project_id, agent_instance_id).await;
-    // Pre-allocate the per-loop retry state BEFORE the orphan-recovery
-    // sweeps run so the cross-run `recover_failed` sweep mutates the
-    // SAME tracker the forwarder will use during the live run. Without
-    // this, attempts recorded by the boot-time sweep would be
-    // overwritten by a fresh tracker when `spawn_event_forwarder` ran,
-    // double-spending the retry budget.
     let retry_state = Arc::new(LoopRetryState::new());
     // Section E (orphan recovery): sweep tasks left in `InProgress`
     // from a previous server invocation back to `Ready` BEFORE the
     // forwarder + scheduler come online, so the next scheduler tick
-    // actually sees them as candidates. Also runs the cross-run
-    // `recover_failed` sweep so tasks left `Failed` from a prior
-    // run get re-readied (gated by `TASK_LEVEL_RETRY_BUDGET` via
-    // the shared `task_retry` tracker). Best-effort: any storage
-    // failure is logged and we continue — the worst case is "stuck
-    // orphans stay stuck until the next start_loop", which is
-    // strictly no worse than today's behaviour.
-    let recovered =
-        recover_orphan_tasks(&state, project_id, &forwarder_jwt, &retry_state.task_retry).await;
+    // actually sees them as candidates. Phase 4 dropped the parallel
+    // cross-run `Failed -> Ready` sweep — the per-task retry budget
+    // now lives on the persisted `tasks.attempts` column, which the
+    // live `task_failed` arm bumps directly. Best-effort: any storage
+    // failure is logged and we continue.
+    let recovered = recover_orphan_tasks(&state, project_id, &forwarder_jwt).await;
     if recovered > 0 {
         tracing::info!(
             %project_id,
             recovered,
-            "orphan + failed-task recovery: pushed {} task(s) back to Ready before scheduler start",
+            "orphan recovery: pushed {} task(s) back to Ready before scheduler start",
             recovered,
         );
     }
@@ -143,18 +130,6 @@ pub(crate) async fn start_loop(
             ApiError::bad_gateway(format!("connecting automaton stream: {err}"))
         })
     })?;
-
-    // Section E: orphan-recovery sweep before the loop's task
-    // scheduler picks the first task. Tasks left in `InProgress`
-    // after a previous loop was killed mid-run (server crash, deploy)
-    // are silently bridged back to `Ready` so the scheduler doesn't
-    // skip them on the assumption another runner already owns them.
-    // Tasks left `Failed` from a prior run are also re-readied here,
-    // gated by the per-task retry budget on the shared tracker.
-    // Best-effort: storage / JWT failures here are logged and the
-    // loop still starts — the worst case is the orphan stays
-    // `InProgress` until the next start_loop sweep retries.
-    apply_orphan_recovery(&state, project_id, &forwarder_jwt, &retry_state).await;
 
     let alive = Arc::new(AtomicBool::new(true));
     let loop_handle = state.loop_registry.open(LoopId::new(
@@ -210,88 +185,3 @@ pub(crate) async fn start_loop(
     ))
 }
 
-/// Orphan-recovery sweep at loop start.
-///
-/// Lists the project's tasks via the storage-backed `TaskService`,
-/// hands the snapshot to [`recover_orphans`] (mid-run orphans) and
-/// [`recover_failed`] (cross-run Failed retries) for the pure
-/// planning step, and applies each [`OrphanRecoveryPlan`] via
-/// [`aura_os_tasks::safe_transition`] so any task left
-/// `InProgress` or `Failed` by a previously-killed loop returns to
-/// `Ready` for the scheduler. The Failed sweep is gated by
-/// [`aura_os_automation::TASK_LEVEL_RETRY_BUDGET`] via the supplied
-/// `retry_state.task_retry` so a permanently-broken task does not
-/// loop on every server restart.
-///
-/// Best-effort by design:
-///
-/// * If the project list call fails (auth blip, storage down) we
-///   warn and return — the loop still starts; the next loop start
-///   will retry the sweep against the same orphans.
-/// * Per-plan transition failures are logged but do not abort the
-///   sweep: a single 4xx on one task should not block recovering
-///   the others.
-async fn apply_orphan_recovery(
-    state: &AppState,
-    project_id: ProjectId,
-    jwt: &str,
-    retry_state: &LoopRetryState,
-) {
-    let Some(storage) = state.storage_client.as_ref() else {
-        return;
-    };
-    let tasks = match state.task_service.list_tasks(&project_id).await {
-        Ok(tasks) => tasks,
-        Err(error) => {
-            warn!(
-                %project_id,
-                %error,
-                "orphan recovery: failed to list tasks; skipping sweep for this loop start"
-            );
-            return;
-        }
-    };
-    let orphan_plans = recover_orphans(&tasks);
-    let failed_plans = recover_failed(&tasks, &retry_state.task_retry);
-    if orphan_plans.is_empty() && failed_plans.is_empty() {
-        return;
-    }
-    if !orphan_plans.is_empty() {
-        info!(
-            %project_id,
-            orphan_count = orphan_plans.len(),
-            "orphan recovery: bridging InProgress tasks back to Ready"
-        );
-    }
-    if !failed_plans.is_empty() {
-        info!(
-            %project_id,
-            failed_count = failed_plans.len(),
-            "failed-task retry: bridging recently-Failed tasks back to Ready"
-        );
-    }
-    for OrphanRecoveryPlan {
-        task_id,
-        current_status,
-        target_status,
-        reason,
-    } in orphan_plans.into_iter().chain(failed_plans)
-    {
-        if let Err(error) =
-            aura_os_tasks::safe_transition(storage, jwt, &task_id.to_string(), target_status).await
-        {
-            let sweep = if reason == FAILED_RETRY_REASON {
-                "failed-task retry"
-            } else {
-                "orphan recovery"
-            };
-            warn!(
-                %task_id,
-                %error,
-                reason,
-                "{sweep}: safe_transition failed; leaving task in {:?}",
-                current_status,
-            );
-        }
-    }
-}

@@ -115,6 +115,7 @@ impl TryFrom<StorageTask> for Task {
             model: val.model,
             total_input_tokens: val.total_input_tokens.unwrap_or(0),
             total_output_tokens: val.total_output_tokens.unwrap_or(0),
+            attempts: val.attempts.unwrap_or(0),
             created_at: parse_dt(&val.created_at),
             updated_at: parse_dt(&val.updated_at),
         })

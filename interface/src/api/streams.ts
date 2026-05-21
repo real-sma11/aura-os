@@ -72,11 +72,11 @@ export interface ToolCallRetryingInfo {
 
 /**
  * Terminal harness-side failure for a tool call. Emitted after the
- * harness exhausted its internal streaming-retry budget and the
- * server's per-task `TOOL_CALL_RETRY_BUDGET` also gave up on
- * restarting the run; see
- * `apps/aura-os-server/src/handlers/dev_loop.rs`. The UI uses this
- * to flip the card into a terminal failed state with a red header.
+ * harness exhausted its internal streaming-retry budget; tool-level
+ * retries are entirely the harness's responsibility now (the server
+ * no longer maintains a parallel tool-call retry budget). The UI
+ * uses this to flip the card into a terminal failed state with a
+ * red header.
  */
 export interface ToolCallFailedInfo {
   id: string;
