@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
+import { track } from "../../lib/analytics";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
 import { LoginOverlay } from "./LoginOverlay";
@@ -25,6 +26,7 @@ import styles from "./LoggedOutShell.module.css";
 export function LoggedOutShell() {
   const location = useLocation();
   const isLoginRoute = location.pathname === "/login";
+  useEffect(() => { track("public_page_viewed"); }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
