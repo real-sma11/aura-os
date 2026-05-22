@@ -280,21 +280,18 @@
    still). */
 .chatBackgroundVideo {
   position: absolute;
-  /* Show the full visual loop uncropped (`object-fit: contain`) at
-     full brightness, sized small enough that the natural letterbox
-     gutters around the video disappear into the dark shell — no
-     hard rectangular boundary because the empty space simply blends
-     with the background. Centered on both axes via top/left + the
-     symmetric translate. */
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  /* 2.5x the previous 640px / 70% sizing. `max-height` raised in
-     lockstep so the natural aspect ratio drives final size; with
-     `object-fit: contain` the painted video is bound by whichever
-     of width-or-height runs out first. */
-  width: min(1600px, 175%);
-  max-height: 200%;
+  /* Stretch the video element to fill the entire chat column on
+     both axes (`inset: 0; width/height: 100%`) and let
+     `object-fit: contain` paint the loop as large as possible
+     while preserving its aspect ratio. Whichever axis is the
+     binding constraint, the loop reaches the edge there; the
+     other axis gets transparent letterbox padding that simply
+     blends into the dark shell behind it (the input bar's static
+     wrapper is now transparent too, so the loop visually flows
+     past it without a hard rectangle). */
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   pointer-events: none;
   z-index: 0;
