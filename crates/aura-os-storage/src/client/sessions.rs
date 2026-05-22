@@ -58,6 +58,37 @@ impl StorageClient {
         .await
     }
 
+    /// User-scoped cross-agent session list. Backed by the indexed
+    /// `idx_sessions_user_recent` partial index in aura-storage
+    /// (migration 0015). Powers the chat-app left panel which used
+    /// to fan out one `list_sessions(agent)` call per (agent,
+    /// project_binding) pair on first paint -- collapsing
+    /// `A x (1 + B)` HTTP calls (A agents, B avg bindings) into 1.
+    ///
+    /// In production aura-storage derives the user_id from the JWT.
+    /// Tests run against the in-memory mock which has no auth, so
+    /// we honour `AURA_STORAGE_TEST_USER_ID`: when set, the value
+    /// is appended as a `?user=<id>` query param and the mock
+    /// scopes its response to that user. Production has no such env
+    /// var set, so the param is omitted and aura-storage's JWT
+    /// extractor is the sole authority on which user_id we list.
+    pub async fn list_my_sessions(
+        &self,
+        jwt: &str,
+    ) -> Result<Vec<StorageEnrichedSession>, StorageError> {
+        // user_id round-trips as a UUID (hex digits + dashes) so URL
+        // encoding is a no-op. Validate it to block any chance of an
+        // env var smuggling reserved query characters into the URL.
+        let url = match std::env::var("AURA_STORAGE_TEST_USER_ID") {
+            Ok(uid) if !uid.is_empty() => {
+                validate_url_id(&uid, "AURA_STORAGE_TEST_USER_ID")?;
+                format!("{}/api/me/sessions?user={}", self.base_url, uid)
+            }
+            _ => format!("{}/api/me/sessions", self.base_url),
+        };
+        self.get_authed(&url, jwt).await
+    }
+
     pub async fn get_session(
         &self,
         session_id: &str,

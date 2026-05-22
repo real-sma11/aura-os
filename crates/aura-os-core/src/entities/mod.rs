@@ -22,5 +22,5 @@ pub use process::{
     ProcessRun,
 };
 pub use project::{Project, Spec};
-pub use session::{ChatContentBlock, Session, SessionEvent};
+pub use session::{ChatContentBlock, EnrichedSession, Session, SessionEvent};
 pub use task::{BuildStepRecord, FileChangeSummary, IndividualTestResult, Task, TestStepRecord};

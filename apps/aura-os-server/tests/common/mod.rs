@@ -49,7 +49,24 @@ pub fn store_zero_auth_session(store: &SettingsStore) {
 #[allow(dead_code)]
 pub async fn build_test_app_with_storage(
 ) -> (Router, AppState, Arc<StorageClient>, tempfile::TempDir) {
-    let (storage_url, _db) = aura_os_storage::testutil::start_mock_storage().await;
+    let (app, state, storage, _db, dir) = build_test_app_with_storage_db().await;
+    (app, state, storage, dir)
+}
+
+/// Variant of `build_test_app_with_storage` that also surfaces the
+/// in-memory mock-storage `SharedDb` so tests can poke shared state
+/// directly -- e.g. stamp `session_users` ownership entries before
+/// hitting `/api/me/sessions` (the mock has no auth, so ownership
+/// can't be derived from the JWT the way real aura-storage does it).
+#[allow(dead_code)]
+pub async fn build_test_app_with_storage_db() -> (
+    Router,
+    AppState,
+    Arc<StorageClient>,
+    aura_os_storage::testutil::SharedDb,
+    tempfile::TempDir,
+) {
+    let (storage_url, db) = aura_os_storage::testutil::start_mock_storage().await;
     let storage = Arc::new(StorageClient::with_base_url(&storage_url));
 
     let store_dir = tempfile::tempdir().unwrap();
@@ -64,7 +81,7 @@ pub async fn build_test_app_with_storage(
         None,
         None,
     );
-    (app, state, storage, store_dir)
+    (app, state, storage, db, store_dir)
 }
 
 #[allow(dead_code)]

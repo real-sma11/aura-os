@@ -8,4 +8,6 @@ mod tests;
 pub use aura_os_core::parse_dt;
 pub use error::SessionError;
 pub use params::{CreateSessionParams, RolloverSessionParams, UpdateContextUsageParams};
-pub use session_service::{storage_session_to_session, SessionService};
+pub use session_service::{
+    storage_enriched_session_to_enriched_session, storage_session_to_session, SessionService,
+};

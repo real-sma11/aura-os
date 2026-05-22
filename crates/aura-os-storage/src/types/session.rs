@@ -2,6 +2,32 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Wire shape for the user-scoped session list endpoint
+/// (`/api/me/sessions`). Wraps `StorageSession` with the agent
+/// metadata aura-os-server needs to render rows in the chat-app
+/// left panel without a follow-up `listProjectBindings` fan-out
+/// per agent.
+///
+/// Mirrors `aura_storage_sessions::models::EnrichedSession` on the
+/// aura-storage side (see migration 0015). Deliberately omits an
+/// `agent_name` field: there is no `name` column on
+/// `project_agents` in aura-storage (see migrations 0001 + 0009),
+/// so the FE resolves agent names from its existing per-agent
+/// cache rather than from a column that would always be `NULL` on
+/// the wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageEnrichedSession {
+    #[serde(flatten)]
+    pub session: StorageSession,
+    /// `project_agents.agent_id` -- the agent identifier the FE
+    /// keys avatars and stream lanes by. Distinct from
+    /// `StorageSession.project_agent_id` (the per-project instance
+    /// binding row id, not the agent definition).
+    #[serde(default)]
+    pub agent_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageSession {

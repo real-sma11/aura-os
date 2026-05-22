@@ -2,7 +2,38 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::enums::{ChatRole, SessionStatus};
-use crate::ids::{AgentInstanceId, ProjectId, SessionEventId, SessionId, TaskId};
+use crate::ids::{AgentId, AgentInstanceId, ProjectId, SessionEventId, SessionId, TaskId};
+
+/// `Session` enriched with cross-binding agent metadata.
+///
+/// Returned by the user-scoped session list endpoint
+/// (`/api/me/sessions`) which the chat-app left panel uses to
+/// render rows for every session the current user owns -- across
+/// every agent + project -- in a single HTTP call. The previous
+/// implementation in `apps/chat-app/components/ChatAppLeftPanel/ChatAppLeftPanel.tsx`
+/// fanned out one `loadAgentSessions` call per agent (each of
+/// which fanned out further per project binding), so the panel's
+/// first paint cost `A x (1 + B)` HTTP calls for `A` agents and
+/// `B` average bindings. With this shape it's `1`.
+///
+/// We deliberately do NOT include an `agent_name` field here:
+/// `project_agents` in aura-storage has no `name` column, and
+/// agent definitions live in aura-os (not aura-storage). The FE
+/// resolves the name from its existing per-agent cache keyed by
+/// `agent_id` rather than from a column that would always be
+/// `NULL` on the wire.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnrichedSession {
+    #[serde(flatten)]
+    pub session: Session,
+    /// `project_agents.agent_id` from aura-storage. Distinct from
+    /// `Session.agent_instance_id` (which is the per-project
+    /// instance binding row id). May be `None` if the binding row
+    /// was deleted or migrated away from underneath the session,
+    /// matching the LEFT JOIN tolerance on the storage side.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<AgentId>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {

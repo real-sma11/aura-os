@@ -33,8 +33,8 @@ pub(crate) use instances::{
 pub(crate) use runtime::{session_model_overrides_with_cache, test_agent_runtime};
 pub(crate) use sessions::{
     delete_session, get_agent_context_usage, get_instance_context_usage, get_session,
-    list_project_sessions, list_session_events, list_session_tasks, list_sessions,
-    summarize_session,
+    list_my_sessions, list_project_sessions, list_session_events, list_session_tasks,
+    list_sessions, summarize_session,
 };
 
 pub mod conversions_pub {

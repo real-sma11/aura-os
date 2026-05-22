@@ -4,8 +4,12 @@ use serde::Serialize;
 use serde_json::json;
 use tracing::{info, warn};
 
-use aura_os_core::{AgentId, AgentInstanceId, ProjectId, Session, SessionEvent, SessionId, Task};
-use aura_os_sessions::storage_session_to_session;
+use aura_os_core::{
+    AgentId, AgentInstanceId, EnrichedSession, ProjectId, Session, SessionEvent, SessionId, Task,
+};
+use aura_os_sessions::{
+    storage_enriched_session_to_enriched_session, storage_session_to_session,
+};
 use aura_os_storage::StorageClient;
 use aura_protocol::ContextBreakdown;
 
@@ -93,6 +97,42 @@ pub(crate) async fn list_project_sessions(
         })
         .collect();
 
+    Ok(Json(sessions))
+}
+
+/// User-scoped cross-agent session list. Powers the chat-app left
+/// panel (`apps/chat-app/components/ChatAppLeftPanel/ChatAppLeftPanel.tsx`)
+/// which used to fan out one `/api/projects/:p/agents/:a/sessions`
+/// call per (agent, project_binding) pair on first paint -- for a
+/// user with `A` agents and `B` average bindings each, that was
+/// `A x (1 + B)` HTTP calls before any rows could render. With
+/// this endpoint the panel makes a single request and aura-storage
+/// answers it with one indexed query against
+/// `idx_sessions_user_recent` (migration 0015).
+///
+/// The response carries `EnrichedSession` rows (Session +
+/// `agent_id`) so the FE can key avatars and stream lanes off the
+/// row directly without a follow-up `listProjectBindings` to map
+/// `agent_instance_id -> agent_id`. aura-storage performs the
+/// `LEFT JOIN project_agents` server-side; aura-os-server is a
+/// straight pass-through.
+pub(crate) async fn list_my_sessions(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+) -> ApiResult<Json<Vec<EnrichedSession>>> {
+    let storage = state.require_storage_client()?;
+    let storage_sessions = storage
+        .list_my_sessions(&jwt)
+        .await
+        .map_err(map_storage_error)?;
+    let sessions: Vec<EnrichedSession> = storage_sessions
+        .into_iter()
+        .filter_map(|s| {
+            storage_enriched_session_to_enriched_session(s, None)
+                .map_err(|e| warn!(error = %e, "skipping malformed enriched session"))
+                .ok()
+        })
+        .collect();
     Ok(Json(sessions))
 }
 

@@ -34,6 +34,7 @@ pub use types::{
     StorageProcessNode,
     StorageProcessNodeConnection,
     StorageProcessRun,
+    StorageEnrichedSession,
     StorageProjectAgent,
     StorageProjectArtifact,
     StorageSession,

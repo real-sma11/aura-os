@@ -343,9 +343,33 @@ export const superAgentApi = {
   getOrchestration: (id: string) => apiFetch<AgentOrchestration>(`/api/agent-orchestrations/${id}`),
 };
 
+/**
+ * `Session` enriched with cross-binding agent metadata. Returned by
+ * `/api/me/sessions` so the chat-app left panel can render rows for
+ * every session the current user owns -- across every agent and
+ * project -- in a single HTTP call. Mirrors `aura_os_core::EnrichedSession`.
+ *
+ * `agent_id` is the agent identifier the FE keys avatars and stream
+ * lanes by (distinct from `Session.agent_instance_id`, which is the
+ * per-project instance binding row id). May be absent when the
+ * binding was deleted/migrated under the session, in which case the
+ * row still surfaces (no avatar lookup) rather than vanishing.
+ */
+export interface EnrichedSession extends Session {
+  agent_id?: AgentId;
+}
+
 export const sessionsApi = {
   listProjectSessions: (projectId: ProjectId) =>
     apiFetch<Session[]>(`/api/projects/${projectId}/sessions`),
+  /**
+   * User-scoped cross-agent session list. Powers the chat-app left
+   * panel which used to fan out one `listSessions(project, agent)`
+   * call per (agent, project_binding) pair on first paint. Now it's
+   * a single indexed query into aura-storage (migration 0015's
+   * `idx_sessions_user_recent` partial index).
+   */
+  listMySessions: () => apiFetch<EnrichedSession[]>(`/api/me/sessions`),
   listSessions: (projectId: ProjectId, agentInstanceId: AgentInstanceId) =>
     apiFetch<Session[]>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/sessions`,

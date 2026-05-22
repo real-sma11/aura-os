@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
+import { sessionsApi } from "../shared/api/agents";
+import { useProjectsListStore } from "./projects-list-store";
 import type { AnnotatedSession } from "../components/SessionsList";
 import type { Session } from "../shared/types";
 
@@ -122,6 +124,22 @@ export function projectSessionsSurfaceKey(projectId: string): string {
   return `project:${projectId}`;
 }
 
+/**
+ * Singleton surface key for the current user's cross-agent session
+ * list. Backed by `loadUserSessions` against the
+ * `/api/me/sessions` endpoint (aura-storage migration 0015's
+ * `idx_sessions_user_recent` partial index). Used exclusively by
+ * the chat-app left panel; per-agent and per-project surfaces
+ * continue to key off `agentSessionsSurfaceKey` /
+ * `projectSessionsSurfaceKey` because those are already 1 HTTP
+ * call each post-`perf/instant-session-list`.
+ */
+export const USER_SESSIONS_SURFACE_KEY = "user:me";
+
+export function userSessionsSurfaceKey(): string {
+  return USER_SESSIONS_SURFACE_KEY;
+}
+
 interface SessionsListStore {
   /** Newest-first AnnotatedSession arrays keyed by surface. */
   sessionsBySurface: Record<string, AnnotatedSession[]>;
@@ -167,6 +185,34 @@ interface SessionsListStore {
   bumpVersion: () => void;
   /** Fan-out fetch across every project the agent is bound to. */
   loadAgentSessions: (agentId: string) => Promise<void>;
+  /**
+   * Bindings-only refresh for an agent. Populates `bindingsByAgent`
+   * without the per-binding session fan-out `loadAgentSessions`
+   * does. Used by the chat-app left panel for the "+" button's
+   * `ceoHomeProjectId` lookup, which needs the chat agent's project
+   * binding list but no longer needs to fan out session calls (the
+   * panel reads sessions from `loadUserSessions` instead).
+   */
+  loadAgentBindings: (agentId: string) => Promise<void>;
+  /**
+   * User-scoped cross-agent session fetch. Single HTTP call that
+   * collapses the chat-app left panel's previous `A x (1 + B)` fan-out
+   * (one `listProjectBindings` per agent + one `listSessions` per
+   * binding) into one indexed query against aura-storage's
+   * `idx_sessions_user_recent` partial index (migration 0015).
+   *
+   * Annotates each row with `_agentId`, `_projectId`,
+   * `_agentInstanceId`, `_projectName` so the left panel can
+   * render avatars and project labels off the row directly. Project
+   * name comes from `useProjectsListStore.projects` (the wire shape
+   * deliberately omits it -- aura-storage has no `projects` table,
+   * and pre-fetched names live in the FE cache); rows whose
+   * project is missing from the cache fall back to an empty
+   * `_projectName`, matching the
+   * `hasMultipleProjects && session._projectName` render guard in
+   * `SessionsList`.
+   */
+  loadUserSessions: () => Promise<void>;
   /** Single project-wide fetch annotating rows with project metadata. */
   loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   /** Optimistic delete; pair with `restoreSession` to undo on error. */
@@ -450,6 +496,104 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       });
     } catch (err) {
       console.error("Failed to load agent sessions", err);
+    } finally {
+      if (surfaceRequestIds[surfaceKey] === requestId) {
+        set((state) => ({
+          loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: false },
+        }));
+      }
+    }
+  },
+
+  loadAgentBindings: async (agentId) => {
+    set((state) => ({
+      bindingsLoadStatusByAgent: {
+        ...state.bindingsLoadStatusByAgent,
+        [agentId]: "loading",
+      },
+    }));
+    try {
+      const bindings = await api.agents.listProjectBindings(agentId);
+      set((state) => ({
+        bindingsByAgent: { ...state.bindingsByAgent, [agentId]: bindings },
+        bindingsLoadStatusByAgent: {
+          ...state.bindingsLoadStatusByAgent,
+          [agentId]: "loaded",
+        },
+      }));
+    } catch (err) {
+      console.error("Failed to load agent project bindings", err);
+      set((state) => ({
+        bindingsLoadStatusByAgent: {
+          ...state.bindingsLoadStatusByAgent,
+          [agentId]: "error",
+        },
+      }));
+    }
+  },
+
+  loadUserSessions: async () => {
+    const surfaceKey = userSessionsSurfaceKey();
+    const requestId = (surfaceRequestIds[surfaceKey] ?? 0) + 1;
+    surfaceRequestIds[surfaceKey] = requestId;
+
+    set((state) => ({
+      loadingBySurface: { ...state.loadingBySurface, [surfaceKey]: true },
+    }));
+
+    try {
+      const list = await sessionsApi.listMySessions();
+      if (surfaceRequestIds[surfaceKey] !== requestId) return;
+
+      // Resolve project names from the projects-list-store cache.
+      // The wire shape from `/api/me/sessions` deliberately omits
+      // `project_name` (aura-storage has no `projects` table -- the
+      // canonical name lives in aura-os, mirrored client-side in
+      // `useProjectsListStore.projects`). Reading the snapshot
+      // here is a one-shot lookup, not a subscription, so a later
+      // projects refresh won't auto-rename rows; the next
+      // `loadUserSessions` call (e.g. on `bumpVersion`) picks up
+      // the updated names.
+      const projectsById = new Map(
+        useProjectsListStore
+          .getState()
+          .projects.map((p) => [p.project_id, p.name]),
+      );
+
+      const annotated = sortSessionsDesc(
+        list.map<AnnotatedSession>((s) => ({
+          ...s,
+          _projectName: projectsById.get(s.project_id) ?? "",
+          _projectId: s.project_id,
+          _agentInstanceId: s.agent_instance_id,
+          _agentId: s.agent_id,
+        })),
+      );
+      set((state) => {
+        const withCachedTitles = applyPendingSummariesToList(
+          annotated,
+          state.pendingSummariesById,
+        );
+        const finalList = preservePendingRows(
+          state.sessionsBySurface[surfaceKey],
+          withCachedTitles,
+        );
+        const nextPending = dropAppliedEntries(
+          state.pendingSummariesById,
+          finalList,
+        );
+        return {
+          sessionsBySurface: {
+            ...state.sessionsBySurface,
+            [surfaceKey]: finalList,
+          },
+          ...(nextPending !== state.pendingSummariesById
+            ? { pendingSummariesById: nextPending }
+            : {}),
+        };
+      });
+    } catch (err) {
+      console.error("Failed to load user sessions", err);
     } finally {
       if (surfaceRequestIds[surfaceKey] === requestId) {
         set((state) => ({
@@ -753,6 +897,8 @@ export function useAgentBindingsLoadStatus(
 
 interface SessionsListActions {
   loadAgentSessions: (agentId: string) => Promise<void>;
+  loadAgentBindings: (agentId: string) => Promise<void>;
+  loadUserSessions: () => Promise<void>;
   loadProjectSessions: (projectId: string, projectName: string) => Promise<void>;
   removeSession: (surfaceKey: string, sessionId: string) => void;
   restoreSession: (surfaceKey: string, session: AnnotatedSession) => void;
@@ -775,6 +921,8 @@ export function useSessionsListActions(): SessionsListActions {
   return useSessionsListStore(
     useShallow((s) => ({
       loadAgentSessions: s.loadAgentSessions,
+      loadAgentBindings: s.loadAgentBindings,
+      loadUserSessions: s.loadUserSessions,
       loadProjectSessions: s.loadProjectSessions,
       removeSession: s.removeSession,
       restoreSession: s.restoreSession,

@@ -173,3 +173,59 @@ async fn list_sessions_filters_sessions_with_no_events() {
 // list endpoint itself errors, the entire list call propagates the
 // upstream error to the UI, which is the correct behavior: the
 // sidekick should refuse to render rather than render half-truth.
+
+/// Stamp ownership of `session_id` on `user_id` directly in the mock
+/// db. Real aura-storage stores `created_by` on the `sessions` row
+/// and derives the user_id from the JWT in `/api/me/sessions`; the
+/// mock has no auth, so the StorageClient appends a `?user=<id>`
+/// query param when `AURA_STORAGE_TEST_USER_ID` is set and the mock
+/// reads ownership from this side map.
+async fn stamp_session_owner(db: &aura_os_storage::testutil::SharedDb, session_id: &str, user_id: &str) {
+    db.lock()
+        .await
+        .session_users
+        .insert(session_id.to_string(), user_id.to_string());
+}
+
+#[tokio::test]
+async fn list_my_sessions_returns_only_users_sessions() {
+    let (app, _state, storage, db, _store_dir) = build_test_app_with_storage_db().await;
+
+    let project_id = uuid::Uuid::new_v4().to_string();
+    let pa = seed_project_agent(&storage, &project_id).await;
+
+    let user_a = uuid::Uuid::new_v4().to_string();
+    let user_b = uuid::Uuid::new_v4().to_string();
+
+    let mine_with_events = seed_session(&storage, &project_id, &pa.id).await;
+    let mine_empty = seed_session(&storage, &project_id, &pa.id).await;
+    let other_user_with_events = seed_session(&storage, &project_id, &pa.id).await;
+    seed_user_event(&storage, &mine_with_events.id).await;
+    seed_user_event(&storage, &other_user_with_events.id).await;
+
+    stamp_session_owner(&db, &mine_with_events.id, &user_a).await;
+    stamp_session_owner(&db, &mine_empty.id, &user_a).await;
+    stamp_session_owner(&db, &other_user_with_events.id, &user_b).await;
+
+    // The mock filters by `?user=<id>` (matching the env var the
+    // StorageClient sets); set it for the duration of this test so
+    // the cross-agent fetch scopes to user A. No-op against real
+    // aura-storage in production -- the JWT is the sole authority
+    // there.
+    std::env::set_var("AURA_STORAGE_TEST_USER_ID", &user_a);
+    let ids = fetch_session_ids(&app, "/api/me/sessions").await;
+    std::env::remove_var("AURA_STORAGE_TEST_USER_ID");
+
+    assert!(
+        ids.contains(&mine_with_events.id),
+        "user A's non-empty session present, got {ids:?}",
+    );
+    assert!(
+        !ids.contains(&mine_empty.id),
+        "user A's empty session filtered (event_count > 0 only by default), got {ids:?}",
+    );
+    assert!(
+        !ids.contains(&other_user_with_events.id),
+        "user B's session must not surface in user A's request, got {ids:?}",
+    );
+}

@@ -16,6 +16,16 @@ export type AnnotatedSession = Session & {
   _projectName: string;
   _projectId: string;
   _agentInstanceId: string;
+  /**
+   * Template `agent_id` (distinct from `_agentInstanceId`, which is
+   * the per-project binding row id). Populated by `loadUserSessions`
+   * from the `/api/me/sessions` enriched response so the chat-app
+   * left panel can resolve avatars + stream lanes off the row
+   * directly without a per-agent `listProjectBindings` fan-out. The
+   * older per-agent / per-project surfaces leave it `undefined` and
+   * fall through to their existing instance-id-keyed lookups.
+   */
+  _agentId?: string;
 };
 
 /**

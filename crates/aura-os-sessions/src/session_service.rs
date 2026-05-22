@@ -37,6 +37,31 @@ pub fn storage_session_to_session(
     Ok(session)
 }
 
+/// Convert a `StorageEnrichedSession` (the wire shape returned by
+/// `/api/me/sessions`) into the domain `EnrichedSession`. Calls
+/// through to `storage_session_to_session` for the inner `Session`
+/// and parses the joined `agent_id` (a UUID string from
+/// `project_agents.agent_id`) into an `AgentId`.
+///
+/// Malformed `agent_id` strings are silently dropped to `None`
+/// rather than poisoning the entire row -- the chat-app left
+/// panel can still render a session whose binding has been
+/// migrated to a deleted agent, the row just won't carry an
+/// avatar lookup key. This matches `EnrichedSession`'s
+/// already-tolerant `Option<AgentId>` shape.
+pub fn storage_enriched_session_to_enriched_session(
+    s: aura_os_storage::StorageEnrichedSession,
+    local_overrides: Option<&Session>,
+) -> Result<EnrichedSession, String> {
+    let agent_id = s
+        .agent_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .and_then(|id| id.parse::<AgentId>().ok());
+    let session = storage_session_to_session(s.session, local_overrides)?;
+    Ok(EnrichedSession { session, agent_id })
+}
+
 impl SessionService {
     pub fn new(
         jwt_provider: Arc<dyn JwtProvider>,

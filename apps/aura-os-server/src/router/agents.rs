@@ -151,4 +151,5 @@ pub(super) fn agent_routes() -> Router<AppState> {
             "/api/projects/:project_id/sessions",
             get(agents::list_project_sessions),
         )
+        .route("/api/me/sessions", get(agents::list_my_sessions))
 }

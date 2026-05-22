@@ -15,6 +15,19 @@ pub(super) struct SessionListQuery {
     include_empty: bool,
 }
 
+/// Query string for the user-scoped mock list. `user` is required:
+/// the mock has no auth and no JWT to derive a user_id from, so the
+/// StorageClient appends `?user=<id>` when `AURA_STORAGE_TEST_USER_ID`
+/// is set. Real aura-storage ignores any `user` query param and
+/// always uses the JWT's user_id.
+#[derive(Debug, Deserialize, Default)]
+pub(super) struct UserSessionListQuery {
+    #[serde(default)]
+    include_empty: bool,
+    #[serde(default)]
+    user: Option<String>,
+}
+
 /// Mock parity with aura-storage migration 0014: a session is
 /// "non-empty" iff it has at least one row in `session_events`. Real
 /// aura-storage maintains `event_count` via an AFTER INSERT trigger;
@@ -176,6 +189,66 @@ pub(super) async fn list_project_sessions(
                     .clone()
                     .unwrap_or_default()
                     .cmp(&a.started_at.clone().unwrap_or_default())
+            })
+    });
+    Json(out)
+}
+
+/// User-scoped mock listing. Mirrors aura-storage's
+/// `repo::list_by_user` (migration 0015) but with two differences:
+///
+/// 1. user_id comes from the `?user=` query param (set by the
+///    StorageClient when `AURA_STORAGE_TEST_USER_ID` is in the env)
+///    rather than from a JWT. Real aura-storage gets it from the
+///    AuthUser extractor.
+/// 2. Ownership lives in `db.session_users` (a side map populated
+///    by tests) instead of a `sessions.created_by` column. Tests
+///    that exercise this endpoint must stamp the map after seeding
+///    sessions; without an entry the session is invisible to
+///    `list_my_sessions`.
+///
+/// Joins `project_agents` from the in-memory db so each row carries
+/// `agent_id` -- the same shape `EnrichedSession` returns from real
+/// aura-storage. Unknown bindings (deleted/migrated under a
+/// session) surface as `agent_id = None`, matching the LEFT JOIN on
+/// the SQL side.
+pub(super) async fn list_my_sessions(
+    Query(query): Query<UserSessionListQuery>,
+    State(db): State<SharedDb>,
+) -> Json<Vec<StorageEnrichedSession>> {
+    let db = db.lock().await;
+    let Some(user_id) = query.user.as_deref().filter(|u| !u.is_empty()) else {
+        return Json(Vec::new());
+    };
+
+    let mut out: Vec<StorageEnrichedSession> = db
+        .sessions
+        .iter()
+        .filter(|s| db.session_users.get(&s.id).map(String::as_str) == Some(user_id))
+        .map(|s| {
+            let session = project_event_stats(s, &db);
+            let agent_id = s.project_agent_id.as_deref().and_then(|pa_id| {
+                db.project_agents
+                    .iter()
+                    .find(|pa| pa.id == pa_id)
+                    .and_then(|pa| pa.agent_id.clone())
+            });
+            StorageEnrichedSession { session, agent_id }
+        })
+        .filter(|e| query.include_empty || e.session.event_count.unwrap_or(0) > 0)
+        .collect();
+    out.sort_by(|a, b| {
+        b.session
+            .last_event_at
+            .clone()
+            .unwrap_or_default()
+            .cmp(&a.session.last_event_at.clone().unwrap_or_default())
+            .then_with(|| {
+                b.session
+                    .started_at
+                    .clone()
+                    .unwrap_or_default()
+                    .cmp(&a.session.started_at.clone().unwrap_or_default())
             })
     });
     Json(out)

@@ -35,6 +35,7 @@ pub fn mock_storage_router(db: SharedDb) -> Router {
             "/api/projects/:project_id/sessions",
             get(session::list_project_sessions),
         )
+        .route("/api/me/sessions", get(session::list_my_sessions))
         .route(
             "/api/sessions/:session_id",
             get(session::get_session)

@@ -23,11 +23,11 @@ pub use channel::Channel;
 pub use entities::{
     effective_auth_source, Agent, AgentInstance, AgentOrchestration, AgentOrchestrationStep,
     AgentRuntimeConfig, BillingAccount, BuildStepRecord, ChatContentBlock, CheckoutSessionResponse,
-    CreditBalance, CreditTransaction, FileChangeSummary, Follow, IndividualTestResult,
-    IntegrationConfig, ObsidianConfig, Org, OrgBilling, OrgIntegration, OrgIntegrationKind,
-    Process, ProcessArtifact, ProcessEvent, ProcessFolder, ProcessNode, ProcessNodeConnection,
-    ProcessRun, Project, RuntimeAgentState, Session, SessionEvent, Spec, Task, TestStepRecord,
-    TransactionsResponse, WebSearchConfig, ZeroAuthSession,
+    CreditBalance, CreditTransaction, EnrichedSession, FileChangeSummary, Follow,
+    IndividualTestResult, IntegrationConfig, ObsidianConfig, Org, OrgBilling, OrgIntegration,
+    OrgIntegrationKind, Process, ProcessArtifact, ProcessEvent, ProcessFolder, ProcessNode,
+    ProcessNodeConnection, ProcessRun, Project, RuntimeAgentState, Session, SessionEvent, Spec,
+    Task, TestStepRecord, TransactionsResponse, WebSearchConfig, ZeroAuthSession,
 };
 pub use enums::{
     AgentInstanceRole, AgentStatus, ArtifactType, ChatRole, HarnessMode, OrchestrationStatus,
