@@ -484,11 +484,11 @@
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
-  /* Final spacing between the input section and the helper tab
-     row is exactly 20px. Parent `.composePanel` flex gap is 22px,
-     so a -2px margin-top trims the effective spacing to 20px
-     without changing the banner -> input gap above. */
-  margin-top: -2px;
+  /* Tight 8px gap between the input section and the helper tab
+     row. Parent `.composePanel` flex gap is 22px, so the -14px
+     margin-top trims the effective spacing without changing the
+     banner -> input gap above. */
+  margin-top: -14px;
   overflow-x: auto;
   scrollbar-width: none;
 }
