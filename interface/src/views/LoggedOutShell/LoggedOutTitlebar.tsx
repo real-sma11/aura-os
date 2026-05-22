@@ -1,5 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Menu, Sun, Moon } from "lucide-react";
+import { useTheme } from "@cypher-asi/zui";
+import { track } from "../../lib/analytics";
+import { cycleTheme, getThemeToggleIconKind, getThemeToggleAriaLabel } from "../../lib/theme-toggle";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import styles from "./LoggedOutShell.module.css";
@@ -22,8 +25,12 @@ interface LoggedOutTitlebarProps {
  * native `WindowControls` strip (minimize / maximize / close) on the
  * trailing (right) edge.
  */
+const THEME_ICON = { sun: Sun, moon: Moon } as const;
+
 export function LoggedOutTitlebar({ onMenuToggle }: LoggedOutTitlebarProps) {
   const { search } = useLocation();
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const ThemeIcon = THEME_ICON[getThemeToggleIconKind(theme, resolvedTheme)];
   // Preserve the active session id (and any other query the public
   // chat view writes) across the trip into the login modal. Without
   // this, clicking "Log in" / "Sign up" strips `?session=...` from
@@ -65,15 +72,25 @@ export function LoggedOutTitlebar({ onMenuToggle }: LoggedOutTitlebarProps) {
           className={`${styles.titleActions} titlebar-no-drag`}
           onDoubleClick={(e) => e.stopPropagation()}
         >
+          <button
+            type="button"
+            className={styles.themeToggle}
+            onClick={() => setTheme(cycleTheme(theme, resolvedTheme))}
+            aria-label={getThemeToggleAriaLabel(theme, resolvedTheme)}
+          >
+            <ThemeIcon size={16} />
+          </button>
           <Link
             to={{ pathname: "/login", search: signinSearch }}
             className={`${styles.authPill} ${styles.authPillSecondary}`}
+            onClick={() => track("public_login_clicked", { source: "titlebar" })}
           >
             Log in
           </Link>
           <Link
             to={{ pathname: "/login", search: signupSearch }}
             className={`${styles.authPill} ${styles.authPillPrimary}`}
+            onClick={() => track("public_signup_clicked", { source: "titlebar" })}
           >
             Sign up for free
           </Link>

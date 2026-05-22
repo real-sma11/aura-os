@@ -101,6 +101,12 @@ function ResponsiveShell() {
   const { isMobileLayout } = useAuraCapabilities();
   const appMode = useAppModeStore((s) => s.mode);
 
+  useEffect(() => {
+    import("../../lib/analytics").then(({ registerProperty }) => {
+      registerProperty("app_mode", isMobileLayout ? "mobile" : appMode);
+    });
+  }, [appMode, isMobileLayout]);
+
   if (isMobileLayout) return <MobileShell />;
   if (appMode === "simple") return <SimpleShell />;
   return <DesktopShell />;

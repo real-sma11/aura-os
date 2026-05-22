@@ -13,6 +13,7 @@
 
 import { create } from "zustand";
 import { setupPublicSession } from "../api/public-chat";
+import { track } from "../lib/analytics";
 
 /** Modality. Code + Plan ship in Phase 2; image / video / model3d
  *  joined in Phase 3 (this file's current state) so the discriminated
@@ -263,6 +264,7 @@ export const usePublicChatStore = create<PublicChatStore>((set, get) => ({
         limit: response.limit,
       });
       persistFromGet(get);
+      track("public_session_started");
       return response.token;
     } finally {
       set({ setupInFlight: false });

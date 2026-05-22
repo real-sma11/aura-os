@@ -14,8 +14,10 @@
 
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Menu, Plus } from "lucide-react";
+import { Menu, Moon, Plus, Sun } from "lucide-react";
+import { useTheme } from "@cypher-asi/zui";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
+import { cycleTheme, getThemeToggleAriaLabel } from "../../lib/theme-toggle";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import { useAuth } from "../../stores/auth-store";
@@ -63,6 +65,8 @@ export function SimpleShell() {
   }, [initProfile]);
 
   const initial = user?.display_name?.charAt(0)?.toUpperCase() ?? "?";
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const ThemeIcon = resolvedTheme === "light" ? Sun : Moon;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
@@ -120,6 +124,14 @@ export function SimpleShell() {
               )}
               {user?.display_name}
             </span>
+            <button
+              type="button"
+              className={styles.themeToggle}
+              onClick={() => setTheme(cycleTheme(theme, resolvedTheme))}
+              aria-label={getThemeToggleAriaLabel(theme, resolvedTheme)}
+            >
+              <ThemeIcon size={16} />
+            </button>
             <button
               type="button"
               className={styles.advancedToggle}

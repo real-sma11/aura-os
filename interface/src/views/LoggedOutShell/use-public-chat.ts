@@ -30,6 +30,7 @@ import { createSetters, ensureEntry } from "../../hooks/stream/store";
 import { AGENT_MODE_DESCRIPTORS, type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
+import { track } from "../../lib/analytics";
 import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
 /** Public-mode return shape consumed by `LoggedOutChatView`. */
@@ -284,6 +285,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         return;
       }
       setErrorEvent(null);
+      track("public_message_sent", { mode: selectedMode });
       try {
         const token = await ensureToken();
         const displayText = trimmed || (is3d ? "Generate 3D model" : "");

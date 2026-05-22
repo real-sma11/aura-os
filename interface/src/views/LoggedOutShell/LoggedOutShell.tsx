@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
 import { ModeToggle } from "../../components/ModeToggle";
 import { PanelSearch } from "../../components/PanelSearch";
+import { track } from "../../lib/analytics";
 import { usePublicChatStore } from "../../stores/public-chat-store";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
@@ -37,6 +38,7 @@ export function LoggedOutShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const isLoginRoute = location.pathname === "/login";
+  useEffect(() => { track("public_page_viewed"); }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
