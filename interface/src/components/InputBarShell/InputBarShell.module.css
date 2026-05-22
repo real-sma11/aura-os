@@ -88,10 +88,12 @@
    bar participates in the parent's flex/grid layout instead. The
    `var(--color-bg)` mask the floating mode paints to hide the
    transcript behind the bar is also unnecessary here — there is
-   nothing scrolling underneath — so we drop it to `transparent`.
-   This lets the parent (e.g. an empty-state with a centered video
-   background) show through the input section instead of being
-   hidden by an opaque rectangle. */
+   nothing scrolling underneath — so we drop it to `transparent` on
+   the wrapper. The inner `.inputContainer` picks the bg up below
+   so the rounded mode + textarea surface still reads as solid
+   chrome (and decorations behind the parent — e.g. the public
+   chat's centered visual loop — only show in the gutter around
+   the rounded box, not through the input itself). */
 .inputWrapperStatic {
   position: relative;
   right: 0;
@@ -105,6 +107,14 @@
 
 :global([data-desktop-mode]) .inputWrapperStatic {
   background: transparent;
+}
+
+.inputWrapperStatic .inputContainer {
+  background: var(--color-bg);
+}
+
+:global([data-desktop-mode]) .inputWrapperStatic .inputContainer {
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
 }
 
 .inputContainer {
