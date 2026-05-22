@@ -385,6 +385,133 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
       expect(saved?.result).toBe("Harness timed out");
     });
 
+    it("always emits a synthetic failure event with errorMessage when reason=failed and the buffer is empty", () => {
+      // Regression for "Task failed without producing output." showing
+      // in the Run pane: a `task_failed` arriving before any
+      // text_delta / tool result used to leave `events.length === 0`,
+      // `snapshotTaskTurns` would bail on its empty-events guard, and
+      // the row collapsed to the generic empty-state copy. The
+      // failed-terminal path must always persist an event carrying the
+      // failure message so the turn cache (and therefore the post-
+      // completion view) has something to render.
+      const refs = makeRefs();
+      const setters = makeSetters();
+      const abortRef = { current: null as AbortController | null };
+
+      finalizeStream(refs, setters, abortRef, true, {
+        reason: "failed",
+        message: "upstream returned 503 Service Unavailable",
+      });
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => Array<{
+        id: string;
+        role: string;
+        content: string;
+        errorMessage?: string;
+      }>;
+      const result = updater([]);
+      expect(result).toHaveLength(1);
+      expect(result[0].role).toBe("assistant");
+      expect(result[0].content).toBe("");
+      expect(result[0].errorMessage).toBe(
+        "upstream returned 503 Service Unavailable",
+      );
+      expect(result[0].id.startsWith("stream-")).toBe(true);
+    });
+
+    it("synthesises a fallback errorMessage when reason=failed and message is empty", () => {
+      // Some `task_failed` payloads arrive without any reason / error /
+      // message field. The synthetic failure event still needs a
+      // non-empty errorMessage so the post-completion MessageBubble
+      // surfaces something actionable instead of an empty row.
+      const refs = makeRefs();
+      const setters = makeSetters();
+      const abortRef = { current: null as AbortController | null };
+
+      finalizeStream(refs, setters, abortRef, true, { reason: "failed" });
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => Array<{
+        errorMessage?: string;
+      }>;
+      const result = updater([]);
+      expect(result[0].errorMessage).toBe(
+        "task failed without a reason from the harness",
+      );
+    });
+
+    it("folds the live progress label into the failure event when there is no buffered text", () => {
+      // When the task fails before any text_delta has landed, the
+      // cooking-indicator label ("Submitting plan…", "Cooking…") is
+      // the only signal the user had of what phase the loop was in.
+      // The bootstrap captures it from the live `progressText` slot
+      // before finalize resets it; finalize folds it into the
+      // bubble's content so the post-completion view shows where the
+      // run was stuck.
+      const refs = makeRefs();
+      const setters = makeSetters();
+      const abortRef = { current: null as AbortController | null };
+
+      finalizeStream(refs, setters, abortRef, true, {
+        reason: "failed",
+        message: "stream terminated",
+        progressText: "Submitting plan…",
+      });
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => Array<{
+        content: string;
+        errorMessage?: string;
+      }>;
+      const result = updater([]);
+      expect(result[0].content).toBe("_was: Submitting plan…_");
+      expect(result[0].errorMessage).toBe("stream terminated");
+    });
+
+    it("keeps the buffered text intact and does not overwrite it with the progress hint", () => {
+      // When the task fails AFTER streaming some text, the buffered
+      // content wins — the progress hint is a fallback for the empty
+      // case only, otherwise it would smudge the LLM's last partial
+      // response with cooking-indicator chrome.
+      const refs = makeRefs();
+      refs.streamBuffer.current = "partial reply";
+      const setters = makeSetters();
+      const abortRef = { current: null as AbortController | null };
+
+      finalizeStream(refs, setters, abortRef, true, {
+        reason: "failed",
+        message: "stream terminated",
+        progressText: "Submitting plan…",
+      });
+
+      const lastCall = setters.calls.setEvents[setters.calls.setEvents.length - 1];
+      const updater = lastCall as (prev: unknown[]) => Array<{
+        content: string;
+        errorMessage?: string;
+      }>;
+      const result = updater([]);
+      expect(result[0].content).toBe("partial reply");
+      expect(result[0].errorMessage).toBe("stream terminated");
+    });
+
+    it("does not emit a synthetic event for reason=completed when nothing was buffered", () => {
+      // Sanity: the failed-terminal forcing must not bleed into the
+      // completed-terminal path. A clean no-op completion should
+      // still leave `events` untouched so the row renders as a bare
+      // header rather than an empty assistant bubble.
+      const refs = makeRefs();
+      const setters = makeSetters();
+      const abortRef = { current: null as AbortController | null };
+
+      finalizeStream(refs, setters, abortRef, true, { reason: "completed" });
+
+      const eventCalls =
+        (setters.calls.setEvents as Array<(prev: unknown[]) => unknown[]> | undefined) ?? [];
+      const mostRecent = eventCalls[eventCalls.length - 1]?.([]) ?? [];
+      expect(mostRecent).toEqual([]);
+    });
+
     it("saves the full buffered content even when only part of it was revealed", () => {
       const refs = makeRefs();
       const setters = makeSetters();

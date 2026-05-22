@@ -387,9 +387,17 @@ function handleTaskFailed(e: AuraEventOfType<typeof EventType.TaskFailed>): void
     sseErrorType: pickStr("sse_error_type") ?? pickStr("error_type"),
     messageId: pickStr("message_id") ?? pickStr("msg_id"),
   };
+  // Capture the live cooking-indicator label BEFORE finalize resets
+  // it. When the task fails before any text_delta / tool result has
+  // landed, this hint ("Submitting plan…", "Cooking…") is the only
+  // signal the user had of what the loop was doing — without
+  // forwarding it through to `finalizeStream`, the synthetic failure
+  // event below would lose it on the `setProgressText("")` reset.
+  const progressText = getStreamEntry(taskStreamKey(taskId))?.progressText;
   finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
     reason: "failed",
     message: reason ?? undefined,
+    progressText,
   });
   isStreamingByTask.delete(taskId);
   useTaskOutputPanelStore.getState().failTask(taskId, reason, failureContext);

@@ -88,6 +88,16 @@ interface FinalizeStreamOptions {
   reason?: FinalizeStreamReason;
   message?: string;
   /**
+   * Snapshot of the live `progressText` slot (the "Submitting plan…"
+   * / "Cooking…" cooking-indicator label) at the moment the caller
+   * decided to finalize. Forwarded by `task-stream-bootstrap` so a
+   * `task_failed` arriving before any `text_delta` / tool result has
+   * landed still leaves the Run pane row with some signal of what
+   * phase the loop was in. Ignored for `completed` / `disconnected`
+   * reasons because the live progressText is otherwise reset to "".
+   */
+  progressText?: string;
+  /**
    * Phase 5: optional context the chat hooks can thread through so
    * the persisted breadcrumb carries the stream key / agent id /
    * session id alongside the close reason. Lifecycle handlers are
@@ -96,6 +106,15 @@ interface FinalizeStreamOptions {
    */
   breadcrumbContext?: StreamCloseContext;
 }
+
+/**
+ * Fallback `errorMessage` for synthetic failed-turn events when the
+ * caller has nothing better. Pinned to a constant so the
+ * task-stream-bootstrap can defer to `finalizeStream` for the canonical
+ * wording without duplicating the string at the call site.
+ */
+export const FINALIZE_FAILED_DEFAULT_MESSAGE =
+  "task failed without a reason from the harness";
 
 function getStreamErrorMessage(error: unknown): string {
   if (typeof error === "string") return error;
@@ -545,10 +564,19 @@ export function finalizeStream(
     (tc) => !refs.snapshottedToolCallIds.current.has(tc.id),
   );
   const hasUnsnapshottedTools = unsnapshottedToolCalls.length > 0;
-  const isTerminalReason =
-    options?.reason === "completed" || options?.reason === "failed";
+  const isFailed = options?.reason === "failed";
+  const isTerminalReason = options?.reason === "completed" || isFailed;
+  // Failed terminals always persist a synthetic event row, even when
+  // there's no buffered text and no fresh tool calls. Without this
+  // forced emit, an early `task_failed` (API timeout, completion-gate
+  // rejection, etc.) leaves `events.length === 0`, `snapshotTaskTurns`
+  // bails on its own empty-events guard, and `CompletedTaskOutput`
+  // collapses to the generic "Task failed without producing output."
+  // empty state — losing both the failure reason and whatever progress
+  // label the user was watching in the live cooking indicator.
   const shouldPersistTurn =
-    (hasBuffer || hasUnsnapshottedTools) && (!closureIsStreaming || isTerminalReason);
+    isFailed ||
+    ((hasBuffer || hasUnsnapshottedTools) && (!closureIsStreaming || isTerminalReason));
 
   if (shouldPersistTurn) {
     const { savedThinking, savedThinkingDuration } = snapshotThinking(refs);
@@ -561,17 +589,36 @@ export function finalizeStream(
       refs.snapshottedToolCallIds.current.add(tc.id);
     }
     const finalizeId = `stream-${Date.now()}`;
+    // Failure-only fields. Synthesize a stable fallback when the
+    // caller's `message` is empty so the persisted event always
+    // carries actionable text (mirrors the server-side
+    // `synthesize_failure_reason` behaviour for
+    // `tasks.execution_notes`). The progress-label hint folds in
+    // whatever cooking-indicator text was visible at the moment of
+    // failure when the bubble would otherwise have empty content.
+    const errorMessage = isFailed
+      ? (options?.message?.trim() || FINALIZE_FAILED_DEFAULT_MESSAGE)
+      : undefined;
+    const progressHint =
+      isFailed && options?.progressText?.trim()
+        ? options.progressText.trim()
+        : undefined;
+    const eventContent =
+      !bufferedContent && progressHint
+        ? `_was: ${progressHint}_`
+        : bufferedContent;
     setters.setEvents((prev) => [
       ...prev,
       {
         id: finalizeId,
         clientId: finalizeId,
         role: "assistant",
-        content: bufferedContent,
+        content: eventContent,
         toolCalls: hasUnsnapshottedTools ? [...unsnapshottedToolCalls] : undefined,
         thinkingText: savedThinking,
         thinkingDurationMs: savedThinkingDuration,
         timeline: bufferedTimeline.length > 0 ? [...bufferedTimeline] : undefined,
+        ...(errorMessage ? { errorMessage } : {}),
       },
     ]);
     setters.setStreamingText("");

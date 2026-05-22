@@ -42,8 +42,17 @@ vi.mock("../../hooks/stream/hooks", () => ({
 }));
 
 vi.mock("../ChatOutput", () => ({
-  MessageBubble: ({ message }: { message: { id: string; content: string } }) => (
-    <div data-testid="message-bubble">{message.content}</div>
+  MessageBubble: ({
+    message,
+  }: {
+    message: { id: string; content: string; errorMessage?: string };
+  }) => (
+    <div data-testid="message-bubble" data-error={message.errorMessage ?? ""}>
+      {message.content}
+      {message.errorMessage ? (
+        <span data-testid="message-bubble-error">{message.errorMessage}</span>
+      ) : null}
+    </div>
   ),
   LLMOutput: ({ content }: { content: string }) => (
     <div data-testid="llm-output">{content}</div>
@@ -126,6 +135,41 @@ describe("CompletedTaskOutput", () => {
     expandRow();
 
     expect(screen.getByText("Task failed without producing output.")).toBeInTheDocument();
+  });
+
+  it("renders the synthetic failure event in place of the empty-state copy when finalize emitted one", () => {
+    // After the lifecycle fix, every `task_failed` produces a
+    // synthetic assistant-message event carrying the failure reason
+    // in `errorMessage` (and, when text never streamed, the live
+    // progress label as content). The Run pane row must surface that
+    // structured event via MessageBubble instead of collapsing to
+    // the generic "Task failed without producing output." copy.
+    streamEventsState = [
+      {
+        id: "stream-fail-1",
+        content: "_was: Submitting plan…_",
+        // The synthetic event lives alongside other DisplaySessionEvent
+        // fields; the mock above pulls `errorMessage` through.
+        errorMessage: "upstream returned 503",
+      } as never,
+    ];
+
+    render(
+      <CompletedTaskOutput
+        taskId="task-1"
+        projectId="proj-1"
+        title="My task"
+        status="failed"
+      />,
+    );
+    expandRow();
+
+    expect(screen.queryByText("Task failed without producing output.")).not.toBeInTheDocument();
+    const bubble = screen.getByTestId("message-bubble");
+    expect(bubble).toHaveTextContent("_was: Submitting plan…_");
+    expect(screen.getByTestId("message-bubble-error")).toHaveTextContent(
+      "upstream returned 503",
+    );
   });
 
   it("renders the failure reason banner when one is available", () => {
