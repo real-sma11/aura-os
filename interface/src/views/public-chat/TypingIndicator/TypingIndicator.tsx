@@ -15,9 +15,11 @@ import styles from "./TypingIndicator.module.css";
  * lift into a non-decorative surface later without bleeding into the
  * accessibility tree.
  *
- * `prefers-reduced-motion: reduce` pins the dots to a static row at
- * a higher rest opacity (so reduced-motion users still get the "the
- * agent is doing something" signal without the bounce).
+ * `prefers-reduced-motion: reduce` does NOT silence the dot bounce
+ * here — see the CSS module for the rationale (decorative homepage
+ * hero whose surrounding timeline already always plays). A future
+ * non-decorative consumer should re-introduce the override at its
+ * own scope.
  */
 interface TypingIndicatorProps {
   /** Agent accent color applied to all three dots. */

@@ -29,7 +29,21 @@
        for the back 30% of the cycle, which gives the wave a
        breathing pulse rather than a continuous swarm — the peak is
        sharp (35% of the cycle) and the trough is wide, matching the
-       feel of native iOS typing dots. */
+       feel of native iOS typing dots.
+
+   `prefers-reduced-motion` handling: the dot animation ALWAYS
+   plays. The indicator only renders inside `AgentDemoBanner`, whose
+   own comment already justifies overriding reduced-motion for the
+   decorative homepage hero ("the demo is the entire point of the
+   hero, so freezing it would just leave a static empty rectangle").
+   Killing the per-dot bounce under that media query made the dots
+   sit motionless on a system with reduced motion enabled (the
+   default on many Windows installs), which matched user reports of
+   "the three dots in the typing indicator do not animate" even when
+   the banner timeline was visibly advancing. If we ever lift this
+   indicator into a non-decorative surface (e.g. real agent chat),
+   that consumer should re-introduce a reduced-motion override at
+   its own scope rather than relying on this one. */
 .typingDots {
   display: inline-flex;
   align-items: center;
@@ -69,14 +83,5 @@
     transform: translateY(-8px) scale(1.15);
     opacity: 1;
     filter: brightness(1.25) saturate(1.2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .typingDot {
-    animation: none;
-    opacity: 0.7;
-    transform: none;
-    filter: none;
   }
 }

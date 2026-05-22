@@ -44,12 +44,9 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .caret {
-    /* `TypewriterText` also short-circuits the per-character reveal
-       under this media query (the full text mounts in one shot), so
-       hiding the caret here leaves the resolved bubble looking like
-       a regular static message. */
-    display: none;
-  }
-}
+/* `prefers-reduced-motion: reduce` is intentionally NOT honoured
+   here — the typewriter only runs inside the decorative
+   `AgentDemoBanner`, whose comment justifies playing every part of
+   the demo regardless of the media query (otherwise the homepage
+   hero reads as broken). The caret keeps blinking with the stream
+   so the bubble stays consistent with the rest of the loop. */

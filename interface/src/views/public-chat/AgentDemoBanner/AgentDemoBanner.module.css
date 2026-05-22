@@ -129,12 +129,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .demoRow {
-    animation: none;
-  }
-}
-
 .demoBubblePhase {
   animation: demoBubblePhaseEnter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: 0 50%;
@@ -151,11 +145,17 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .demoBubblePhase {
-    animation: none;
-  }
-}
+/* Per-row animations (.demoRow enter, .demoBubblePhase pop, the
+   .demoMessageBubble padding transition, and the .demoBubbleSlot
+   fade) all intentionally ignore `prefers-reduced-motion: reduce`.
+   This banner is the decorative homepage hero whose surrounding
+   timeline already always plays (see the file-level comment on
+   `AgentDemoBanner.tsx`); silencing the per-row motion under that
+   media query made the dots sit still and the message text appear
+   in one chunk, so the loop read as "broken" even though frames
+   were advancing. The whole banner is hidden from assistive tech
+   already, so reduced-motion users lose nothing meaningful by
+   seeing the same loop everyone else sees. */
 
 .demoAvatar {
   flex-shrink: 0;
@@ -222,12 +222,6 @@
   transition: padding 280ms ease-out;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .demoMessageBubble {
-    transition: none;
-  }
-}
-
 /* Inner slot that swaps between `<TypingIndicator />` and
    `<TypewriterText />` inside the persistent message bubble. The
    slot is keyed by phase in the consumer so React unmounts the old
@@ -252,12 +246,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .demoBubbleSlot {
-    animation: none;
   }
 }
 

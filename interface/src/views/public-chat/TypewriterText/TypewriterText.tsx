@@ -30,12 +30,16 @@ interface TypewriterTextProps {
  * until the prior state update is committed, which would force every
  * test that touches a message bubble to loop one-tick-at-a-time.
  *
- * `prefers-reduced-motion: reduce` short-circuits the per-character
- * reveal and renders the full text immediately at mount; the CSS
- * layer then hides the caret under the same media query so the
- * resolved bubble looks like a static message. This keeps the
- * informational content identical for reduced-motion users while
- * dropping the streaming animation entirely.
+ * `prefers-reduced-motion: reduce` does NOT short-circuit the
+ * stream. The only current consumer is `AgentDemoBanner`, which is
+ * an entirely decorative homepage hero whose surrounding timeline
+ * is explicitly designed to play even under reduced motion (see the
+ * banner comment); pinning the message text to "appear instantly"
+ * for reduced-motion users made the demo read as broken — the
+ * typing dots would vanish and the full message would already be
+ * sitting in the bubble, with no sense of "the agent just replied".
+ * A future non-decorative consumer should add its own reduced-motion
+ * gate at the callsite rather than relying on this one.
  */
 export function TypewriterText({
   text,
@@ -44,12 +48,8 @@ export function TypewriterText({
   const [shown, setShown] = useState<number>(0);
 
   useEffect(() => {
-    const reduceMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
-    if (reduceMotion || text.length === 0) {
-      setShown(text.length);
+    if (text.length === 0) {
+      setShown(0);
       return;
     }
 

@@ -50,14 +50,16 @@ import styles from "./AgentDemoBanner.module.css";
  * The chat input below the banner remains the keyboard-reachable
  * surface for visitors.
  *
- * `prefers-reduced-motion` handling: the timeline ALWAYS plays —
- * the demo is the entire point of the hero, so freezing it for
- * reduced-motion users would just leave a static empty rectangle
- * with no information value. The CSS layer instead disables the
- * per-row slide-in, the bubble cross-fade, and the typing-dot
- * bounce under that media query, so reduced-motion users still see
- * frames advance through the panel, just without any per-row motion
- * side effects.
+ * `prefers-reduced-motion` handling: the entire banner — script
+ * timeline, row enter, bubble pop, typing-dot bounce, and message
+ * typewriter — ALWAYS plays. The demo is the whole point of the
+ * hero, so freezing parts of it leaves the loop visibly broken
+ * (dots sit motionless, message text appears in one chunk). The
+ * banner is hidden from assistive tech via `aria-hidden`, so
+ * reduced-motion users lose nothing meaningful by seeing the same
+ * animation everyone else sees. If a non-decorative consumer ever
+ * adopts `TypingIndicator` or `TypewriterText`, that consumer
+ * should add its own reduced-motion gate at the callsite.
  */
 
 const MAX_VISIBLE = 4;
