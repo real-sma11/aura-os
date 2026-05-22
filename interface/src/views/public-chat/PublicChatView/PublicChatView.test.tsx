@@ -2,8 +2,8 @@
  * Behavioural test for `PublicChatView` empty-state inline compose
  * surface + auth-gated send. Pins four contracts:
  *
- *  - The empty state renders the looping multi-agent demo banner
- *    (`AgentDemoBanner`) and the example-prompt button row directly
+ *  - The empty state renders the windowed mock-Aura-app hero
+ *    (`MockAuraApp`) and the example-prompt button row directly
  *    in the main panel (no modal overlay).
  *  - The example-prompt row carries the four canonical short-copy
  *    buttons.
@@ -31,7 +31,7 @@ vi.mock("../../../stores/auth-store", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-vi.mock("../../../features/chat-ui/ChatInputBar", async () => {
+vi.mock("../PublicComposeInput", async () => {
   const React = await import("react");
   const Stub = React.forwardRef<
     { focus: () => void },
@@ -43,7 +43,7 @@ vi.mock("../../../features/chat-ui/ChatInputBar", async () => {
   >(({ input, onInputChange, onSend }, ref) => {
     React.useImperativeHandle(ref, () => ({ focus: () => {} }), []);
     return (
-      <div data-testid="chat-input-bar-stub">
+      <div data-testid="public-compose-input-stub">
         <textarea
           aria-label="Compose"
           value={input}
@@ -55,7 +55,7 @@ vi.mock("../../../features/chat-ui/ChatInputBar", async () => {
       </div>
     );
   });
-  return { DesktopChatInputBar: Stub };
+  return { PublicComposeInput: Stub };
 });
 
 vi.mock("../../../features/chat-ui/ChatMessageList", () => ({
@@ -66,8 +66,12 @@ vi.mock("../../../components/KeepChattingModal", () => ({
   KeepChattingModal: () => <div data-testid="keep-chatting-modal-stub" />,
 }));
 
-vi.mock("../AgentDemoBanner", () => ({
-  AgentDemoBanner: () => <div data-testid="agent-demo-banner-stub" />,
+vi.mock("../MockAuraApp", () => ({
+  MockAuraApp: ({
+    inputDock,
+  }: {
+    inputDock: import("react").ReactNode;
+  }) => <div data-testid="mock-aura-app-stub">{inputDock}</div>,
 }));
 
 import { PublicChatView } from "./PublicChatView";
@@ -112,10 +116,10 @@ afterEach(() => {
 });
 
 describe("PublicChatView inline compose", () => {
-  it("renders the agent demo banner and example-prompt buttons inline (no modal overlay)", () => {
+  it("renders the mock-Aura-app hero and example-prompt buttons inline (no modal overlay)", () => {
     renderView();
     expect(
-      screen.getByTestId("agent-demo-banner-stub"),
+      screen.getByTestId("mock-aura-app-stub"),
     ).toBeInTheDocument();
 
     const examples = screen.getByRole("group", { name: "Example prompts" });

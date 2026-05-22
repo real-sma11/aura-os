@@ -55,15 +55,16 @@ export function PublicChatView(): React.ReactElement {
   }, [requestedSessionId, sessionId, setSearchParams]);
 
   const controller = usePublicChat(sessionId);
+  const { setInput } = controller;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputBarRef = useRef<PublicComposeInputHandle>(null);
 
   const handleSelectExample = useCallback(
     (prompt: string) => {
-      controller.setInput(prompt);
+      setInput(prompt);
       inputBarRef.current?.focus();
     },
-    [controller.setInput],
+    [setInput],
   );
 
   const isEmpty = controller.messages.length === 0;

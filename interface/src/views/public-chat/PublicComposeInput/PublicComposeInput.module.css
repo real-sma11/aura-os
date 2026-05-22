@@ -1,0 +1,193 @@
+/*
+ * PublicComposeInput — pill-shaped, minimal compose input for the
+ * logged-out public chat surface. Mirrors the reference visual: a
+ * single rounded row with a `+` affordance on the left, an
+ * auto-growing textarea in the middle, and a circular send button
+ * on the right.
+ *
+ * The corner-button hover treatment reuses the shared `--icon-hover-*`
+ * tokens already used by `InputBarShell`'s attach / send buttons so
+ * the public input still feels visually consistent with the rest of
+ * the app even though it's a fully separate component.
+ */
+
+.composeForm {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.composeContainer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 680px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+  border: 1px solid var(--color-border);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.composeContainer:focus-within {
+  border-color: var(--color-overlay-focus, var(--color-border-strong));
+}
+
+.composeContainer[data-disabled="true"] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* `+` button on the left. Visual placeholder for now (no click handler);
+   sized to match the existing `InputBarShell` attach button so the
+   public surface stays consistent with the rest of the app's chrome. */
+.attachButton {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  line-height: 0;
+  transition: color 160ms ease;
+}
+
+.attachButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset, 2px);
+  border-radius: 50%;
+  background: transparent;
+  transition: background var(--transition-fast, 120ms) ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.attachButton > * {
+  position: relative;
+  z-index: 1;
+}
+
+.attachButton:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.attachButton:hover:not(:disabled)::before {
+  background: var(--icon-hover-bg, color-mix(in srgb, var(--color-text-primary) 8%, transparent));
+}
+
+.attachButton:disabled {
+  cursor: not-allowed;
+}
+
+/* Textarea fills the middle. Auto-grow is driven by JS in the
+   component (see `useEffect` measuring `scrollHeight`); CSS only
+   establishes the single-row baseline so the form starts at pill
+   height and grows from there. */
+.textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 8px 8px 8px 8px;
+  margin: 0;
+  height: auto;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.textarea:disabled {
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.textarea:focus,
+.textarea:focus-visible {
+  outline: none;
+}
+
+/* Circular send button on the right. Light surface, dark glyph —
+   matches the reference visual where the send affordance reads as a
+   secondary chip rather than a saturated primary CTA. */
+.sendButton {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.sendButton > svg {
+  display: block;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stopButton {
+  background: var(--color-text-primary);
+  color: var(--color-bg);
+  opacity: 1;
+}
+
+.stopButton:hover:not(:disabled) {
+  background: var(--color-text-primary);
+}
+
+.stopGlyph {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+@media (max-width: 540px) {
+  .composeContainer {
+    padding: 5px 5px 5px 10px;
+  }
+
+  .textarea {
+    font-size: 16px;
+  }
+
+  .sendButton {
+    width: 30px;
+    height: 30px;
+  }
+}
