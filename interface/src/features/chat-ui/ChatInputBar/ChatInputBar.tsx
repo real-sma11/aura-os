@@ -1030,7 +1030,7 @@ export const DesktopChatInputBar = memo(
       ? has3DSource
         ? "Refine your 3D model (optional)"
         : "Describe an image to generate\u2026"
-      : selectedMode === "code"
+      : selectedMode === "code" && !isStatic
         ? "/ for commands, @ for context"
         : "What do you want to create?";
 
