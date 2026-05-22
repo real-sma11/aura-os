@@ -49,6 +49,16 @@
   flex: 1;
   min-width: 0;
   /*
+   * Stretch each segment to fill the pill's full inner height. The
+   * shared `SlidingPills` `.root` sets `align-items: center` on the
+   * flex container, which would otherwise collapse the segment to
+   * just its content height (font-size + line-height) — and since
+   * the sliding indicator is sized from the active segment's
+   * bounding rect, that would leave a tiny pill floating inside a
+   * much taller chrome strip.
+   */
+  align-self: stretch;
+  /*
    * Restate flex centering + collapse line-height to 1 so the labels
    * stay glyph-centered inside the now-taller pill regardless of
    * Inter's default line-height. The base `.segment` in
