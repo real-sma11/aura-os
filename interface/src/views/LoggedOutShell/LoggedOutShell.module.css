@@ -416,11 +416,27 @@
    button below pre-fills the input AND switches to the matching
    mode, mirroring the empty-state pattern in ChatGPT / Claude /
    Gemini ("click an example to start"). */
+/* Single-line row: with four trimmed labels (Code an app, Build a
+   website, Plan a trip, Research a topic), the natural row width is
+   well under the 680px input column at desktop sizes, so we forbid
+   wrapping and let the row scroll horizontally on viewports too
+   narrow to fit all four. `flex-shrink: 0` on each button below
+   keeps every label intact rather than squishing buttons asymmetrically. */
 .composeExamples {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   gap: 8px;
+  width: 100%;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.composeExamples::-webkit-scrollbar {
+  display: none;
 }
 
 .composeExample {
@@ -436,6 +452,8 @@
   border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 

@@ -102,12 +102,12 @@ describe("ComposePanel mode widgets", () => {
     expect(document.activeElement).not.toBe(textarea);
 
     await user.click(
-      screen.getByRole("button", { name: /Generate an image/i }),
+      screen.getByRole("button", { name: /Plan a trip/i }),
     );
 
     expect(mockSetSelectedMode).toHaveBeenCalledWith(
       "test-stream",
-      "image",
+      "plan",
       "chat",
       "agent-1",
     );
@@ -126,7 +126,7 @@ describe("ComposePanel mode widgets", () => {
     expect(document.activeElement).toBe(textarea);
 
     await user.click(
-      screen.getByRole("button", { name: /Generate a video/i }),
+      screen.getByRole("button", { name: /Research a topic/i }),
     );
     expect(document.activeElement).toBe(textarea);
   });

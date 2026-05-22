@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { Box, Image as ImageIcon, ListChecks, Terminal, Video } from "lucide-react";
+import { BookOpen, Globe, MapPin, Terminal } from "lucide-react";
 import {
   DesktopChatInputBar,
   type ChatInputBarHandle,
@@ -52,44 +52,40 @@ interface ExamplePrompt {
 }
 
 /**
- * One example per mode so the row doubles as an at-a-glance tour of
- * what the surface can do. Order matches `AGENT_MODE_ORDER` so the
- * row reads identically to the in-bar mode pills above it.
+ * Curated quick-start prompts shown below the input. Two map to
+ * `code` and two to `plan`; the in-bar mode pills above still
+ * surface `image`, `video`, and `3d` for visitors who want to start
+ * directly in those modes. Trimmed to four entries so the row fits
+ * on a single line within the 680px input column.
  */
 const EXAMPLE_PROMPTS: ReadonlyArray<ExamplePrompt> = [
   {
     mode: "code",
-    label: "Build a landing page",
+    label: "Code an app",
     prompt:
-      "Build a modern landing page for a SaaS startup using React and Tailwind, with a hero, feature grid, and pricing section.",
+      "Build a polished React + Tailwind to-do app with auth, persistence, and a clean responsive UI.",
     Icon: Terminal,
   },
   {
+    mode: "code",
+    label: "Build a website",
+    prompt:
+      "Build a modern marketing website for a SaaS product with a hero, feature grid, pricing, and FAQ.",
+    Icon: Globe,
+  },
+  {
     mode: "plan",
-    label: "Plan a 7-day Tokyo trip",
+    label: "Plan a trip",
     prompt:
       "Plan a 7-day Tokyo itinerary covering food, sights, day trips, and transit tips for first-time visitors.",
-    Icon: ListChecks,
+    Icon: MapPin,
   },
   {
-    mode: "image",
-    label: "Generate an image",
+    mode: "plan",
+    label: "Research a topic",
     prompt:
-      "An astronaut riding a horse on Mars, cinematic lighting, photorealistic.",
-    Icon: ImageIcon,
-  },
-  {
-    mode: "video",
-    label: "Generate a video",
-    prompt:
-      "A timelapse of clouds rolling over a coastal city at sunset, slow zoom, cinematic.",
-    Icon: Video,
-  },
-  {
-    mode: "3d",
-    label: "Generate a 3D model",
-    prompt: "A low-poly castle on a misty hill, soft pastel palette.",
-    Icon: Box,
+      "Research the current state of solid-state batteries for EVs, including key players and a 5-year outlook.",
+    Icon: BookOpen,
   },
 ];
 
@@ -154,7 +150,7 @@ export function ComposePanel({
       >
         {EXAMPLE_PROMPTS.map(({ mode, label, prompt, Icon }) => (
           <button
-            key={mode}
+            key={label}
             type="button"
             className={styles.composeExample}
             onMouseDown={(e) => {

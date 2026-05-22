@@ -125,15 +125,15 @@ describe("LoggedOutChatView inline compose", () => {
       screen.getByRole("heading", { name: "What do you want to create?" }),
     ).toBeInTheDocument();
 
-    // The example-prompt row exposes one button per agent mode.
-    // Asserting the full set (not just one) pins the row layout so
-    // a regression that drops a mode is caught immediately.
+    // The example-prompt row is a curated single-line list of
+    // quick-start tabs. Asserting the full set (not just one) pins
+    // both the copy and the layout so a regression that drops or
+    // renames an entry is caught immediately.
     const examples = screen.getByRole("group", { name: "Example prompts" });
-    expect(within(examples).getByRole("button", { name: /Build a landing page/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Plan a 7-day Tokyo trip/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Generate an image/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Generate a video/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Generate a 3D model/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Code an app/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Build a website/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Plan a trip/i })).toBeInTheDocument();
+    expect(within(examples).getByRole("button", { name: /Research a topic/i })).toBeInTheDocument();
 
     // The compose surface lives inside a `region` (not a `dialog`)
     // because it's now an inline empty-state, not an overlay.
@@ -151,7 +151,7 @@ describe("LoggedOutChatView inline compose", () => {
     expect(compose.value).toBe("");
 
     await user.click(
-      screen.getByRole("button", { name: /Generate an image/i }),
+      screen.getByRole("button", { name: /Plan a trip/i }),
     );
 
     // The exact prompt copy is asserted (not just non-empty) so the
@@ -159,7 +159,7 @@ describe("LoggedOutChatView inline compose", () => {
     // the visitor would have typed" — is pinned. Loose match keeps
     // the test resilient to whitespace tweaks but tight enough to
     // catch swapping the example for a different mode.
-    expect(compose.value).toMatch(/astronaut riding a horse on Mars/i);
+    expect(compose.value).toMatch(/7-day Tokyo itinerary/i);
     // No send fired — the visitor still has to hit Send (or Enter)
     // to actually dispatch.
     expect(screen.queryByTestId("login-page")).not.toBeInTheDocument();
