@@ -1,0 +1,22 @@
+/*
+ * AuraSidebar internal styles — extends AuraShell.module.css with
+ * any sidebar-body-specific layout. The `aside` wrapper and
+ * `.sidebarHeader` rules live in AuraShell.module.css since they're
+ * referenced by the public-only fallback layout too.
+ */
+
+.publicSessionsBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.advancedSidebarBody {
+  display: contents;
+}
+
+.simpleSidebarBody {
+  display: contents;
+}

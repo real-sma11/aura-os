@@ -1,18 +1,18 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { useAuthStore } from "./stores/auth-store";
-import { useAppUIStore } from "./stores/app-ui-store";
-import { useUIModeStore } from "./stores/ui-mode-store";
 import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
-import { LoggedOutShell, LoggedOutChatView } from "./views/LoggedOutShell";
+import { LoggedOutChatView } from "./views/LoggedOutShell";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
 import { getLastApp } from "./utils/storage";
+import { useEffectiveMode } from "./stores/use-effective-mode";
+import { ChatAppRoute } from "./apps/chat-app/components/ChatAppRoute";
 import { bootstrapNativeTestAuth } from "./lib/native-test-auth";
 import { hydrateStoredAuth, isLoggedInSync } from "./shared/lib/auth-token";
 import { preloadInitialShellApp } from "./lib/boot-shell";
@@ -38,49 +38,18 @@ const PricingView = lazy(() =>
   import("./views/marketing/PricingView").then((m) => ({ default: m.PricingView })),
 );
 
-/**
- * Canonical, explicit boot-time auth decision.
- *
- * Computed once at module load via `isLoggedInSync()`. On desktop, that call
- * reads `window.__AURA_BOOT_AUTH__`, a frozen global that the Rust layer
- * defines in the webview initialization script directly from the on-disk
- * `SettingsStore` (see
- * `apps/aura-os-desktop/src/main.rs::build_initialization_script`). Because
- * the global is set before any page scripts run, this boolean is available
- * and correct on the very first React render — no dependence on webview
- * localStorage being populated in time.
- *
- * On web/mobile (no injected global), the same primitive falls back to the
- * localStorage session mirror. The Zustand store's initial seed (in
- * `auth-store.ts`) shares this primitive so the two can never disagree on
- * the first render.
- *
- * If `true`, we mount the authenticated shell routes immediately and never
- * construct `LoginView` at boot. If `false`, `LoginView` is the only thing
- * rendered and `AppShell` is never constructed until the user signs in.
- */
 const initiallyLoggedIn = isLoggedInSync();
 
-// Eagerly kick off the lazy-import of the initial shell app's module BEFORE
-// React commits its first render. Without this, the first paint lands the shell
-// chrome but the initial route's `Suspense` boundary is still rendering
-// `fallback={null}` — producing a visible "empty shell, then content fills in"
-// blink the moment the desktop window becomes visible. `main.tsx` gates
-// `signalDesktopReady()` on this Promise (see `awaitInitialShellAppReady`), so
-// the first on-screen frame already contains real content.
-// Skipped when we're rendering `LoginView` at boot: the login view is
-// statically imported and there's no shell code to warm.
 if (initiallyLoggedIn) {
   void preloadInitialShellApp();
 }
 
-function LastAppRedirect() {
-  const previousPath = useAppUIStore((s) => s.previousPath);
+function LastAppRedirect(): React.ReactElement {
   const lastAppId = getLastApp();
-  return <Navigate to={getInitialShellPath(lastAppId, previousPath)} replace />;
+  return <Navigate to={getInitialShellPath(lastAppId, null)} replace />;
 }
 
-function RouteFallback() {
+function RouteFallback(): React.ReactElement {
   return (
     <div
       aria-busy="true"
@@ -98,7 +67,7 @@ function RouteFallback() {
 }
 
 /** Keeps AppShell chrome visible while lazy shell routes load (avoids full-app Suspense fallback). */
-function ShellOutletSuspense() {
+function ShellOutletSuspense(): React.ReactElement {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Outlet />
@@ -107,9 +76,53 @@ function ShellOutletSuspense() {
 }
 
 /**
- * Flattened list of app-owned routes. Each `AuraApp.routes[]` entry becomes a
- * `<Route>` under the shared `ShellOutletSuspense` layout, so the app module
- * is the single source of truth for the pathnames it handles.
+ * Phase 3 `/chat` route element. Picks the public chat surface
+ * (compose banner + agent demo + sessions sidebar) when the
+ * effective mode is `public`, otherwise renders the authenticated
+ * Chat app's route component so the auth chat panel mounts inside
+ * `AuraShell`'s `<main>` slot.
+ *
+ * Both branches render into the SAME `<Outlet />` slot inside
+ * `AuraShell`, so flipping public <-> authed is a content swap, not
+ * a shell remount.
+ */
+function ChatRouteSwitch(): React.ReactElement {
+  const effectiveMode = useEffectiveMode();
+  if (effectiveMode === "public") {
+    return <LoggedOutChatView />;
+  }
+  return <ChatAppRoute />;
+}
+
+/**
+ * Phase 3 landing (`/`) route element. Public users see the public
+ * chat surface (matching the previous `LoggedOutChatView` route);
+ * authenticated users are redirected into their last-visited app.
+ */
+function LandingRoute(): React.ReactElement {
+  const effectiveMode = useEffectiveMode();
+  if (effectiveMode === "public") {
+    return <LoggedOutChatView />;
+  }
+  return <LastAppRedirect />;
+}
+
+function UnknownRouteRedirect(): React.ReactElement {
+  const effectiveMode = useEffectiveMode();
+  if (effectiveMode === "public") {
+    return <Navigate to="/chat" replace />;
+  }
+  return <Navigate to="/" replace />;
+}
+
+/**
+ * Flattened list of app-owned routes. Each `AuraApp.routes[]` entry
+ * becomes a `<Route>` under the shared `ShellOutletSuspense` layout
+ * so the app module is the single source of truth for the pathnames
+ * it handles. The Chat app's `/chat` index is filtered out below
+ * because we mount it via `<ChatRouteSwitch>` so the public-mode
+ * fallback can render in the same `<main>` slot without route
+ * remount.
  */
 const shellAppRoutes = apps.flatMap((app) => app.routes);
 
@@ -124,6 +137,11 @@ function isCaptureLoginRoute(location: { pathname: string; search: string }): bo
 function renderRoutes(routes: typeof shellAppRoutes): React.ReactNode {
   return routes.map((route, index) => {
     const key = route.path ?? (route.index ? `index-${index}` : String(index));
+    // Skip the chat app's `/chat` route here; it's mounted at the
+    // parent level as `<ChatRouteSwitch>` so the public-vs-authed
+    // picker can swap content without remounting the `<AuraShell>`
+    // outlet host.
+    if (route.path === "chat") return null;
     if (route.index) {
       return <Route key={key} index element={route.element} />;
     }
@@ -135,22 +153,7 @@ function renderRoutes(routes: typeof shellAppRoutes): React.ReactNode {
   });
 }
 
-export function App() {
-  // `initiallyLoggedIn` is the synchronous boot-time decision — a frozen
-  // snapshot from module load. It exists ONLY to keep returning users on the
-  // shell during the very first render (no login flash). Once the auth store
-  // has resolved its initial session (login succeeded, logout fired, 401
-  // cleared the cache, or `restoreSession` returned), live state is the only
-  // truth. If we kept OR-ing `initiallyLoggedIn` forever, a logout would
-  // leave `showShell === true` with `user === null` — `RequireAuth`
-  // redirects to `/login`, the `/login` route sees `showShell === true` and
-  // `<Navigate to="/" replace />`s back to `/`, producing a black-screen
-  // redirect loop until the user manually purges the on-disk SettingsStore.
-  const isAuthenticated = useAuthStore((s) => s.user !== null);
-  const hasResolvedInitialSession = useAuthStore((s) => s.hasResolvedInitialSession);
-  const showShell =
-    isAuthenticated || (initiallyLoggedIn && !hasResolvedInitialSession);
-
+export function App(): React.ReactElement {
   const restoreSession = useAuthStore((s) => s.restoreSession);
 
   useEffect(() => {
@@ -182,23 +185,14 @@ export function App() {
   return (
     <BrowserRouter>
       <NativeContextMenuOverride />
-      <AppRoutes showShell={showShell} />
+      <AppRoutes />
     </BrowserRouter>
   );
 }
 
-function AppRoutes({ showShell }: { showShell: boolean }) {
+function AppRoutes(): React.ReactElement {
   const location = useLocation();
   const { isNativeApp } = useAuraCapabilities();
-  // The Simple/Advanced toggle (left sidebar) controls which shell an
-  // authenticated user sees. In `simple` mode we mount the same
-  // `LoggedOutShell` chat-only surface guests see so the public-mode
-  // experience is reachable without signing out. `advanced` keeps the
-  // full `AppShell`/`DesktopShell` tree. (Phase 3 will collapse this
-  // branch into a single mounted shell.)
-  const uiMode = useUIModeStore((s) => s.mode);
-  const inAdvancedShell = showShell && uiMode === "advanced";
-  const inSimpleShell = showShell && uiMode === "simple";
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -208,22 +202,52 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
     );
   }
 
-  // For the logged-out flow we route `/login` through the
-  // `LoggedOutShell` tree below so the public chat surface stays
-  // mounted behind a `LoginOverlay` modal instead of being replaced
-  // by a full-page route. For native mobile apps and the brief boot
-  // window before auth resolves, `LoginView` keeps owning the entire
-  // surface — there's no underlying public chat to overlay.
-  const useStandaloneLoginRoute = showShell || isNativeApp;
+  // Native mobile apps continue to mount `LoginView` as a full-page
+  // route at `/login` (no underlying public chat surface to overlay).
+  if (isNativeApp) {
+    return (
+      <Routes>
+        <Route path="login" element={<LoginView />} />
+        <Route path="capture-login" element={<CaptureLoginView />} />
+        <Route
+          path="ide"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <IdeView />
+            </Suspense>
+          }
+        />
+        <Route element={<AppShell />}>
+          <Route element={<RequireAuth />}>
+            <Route element={<ShellOutletSuspense />}>
+              <Route index element={<LastAppRedirect />} />
+              {renderRoutes(shellAppRoutes)}
+              <Route path="chat" element={<ChatRouteSwitch />} />
+            </Route>
+            <Route
+              path="invite/:token"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <InviteAcceptView />
+                </Suspense>
+              }
+            />
+          </Route>
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
 
+  // Phase 3 desktop/web routing: a single `<AppShell>` parent
+  // wraps every route. AppShell provides the provider tree (auth
+  // boot, modals, CaptureBridge) and renders `<AuraShell>` for
+  // desktop (or `<MobileShell>` on mobile layouts). AuraShell uses
+  // `<Outlet />` to mount per-route content in its `<main>` slot
+  // and renders `LoginOverlay` internally when `pathname ===
+  // "/login"`. Marketing routes stay on their own tree above.
   return (
     <Routes>
-      {useStandaloneLoginRoute && (
-        <Route
-          path="login"
-          element={showShell ? <Navigate to="/" replace /> : <LoginView />}
-        />
-      )}
       <Route path="capture-login" element={<CaptureLoginView />} />
       <Route
         path="ide"
@@ -233,99 +257,67 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
           </Suspense>
         }
       />
-      {inAdvancedShell ? (
-        <Route element={<RequireAuth />}>
-          <Route
-            path="invite/:token"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <InviteAcceptView />
-              </Suspense>
-            }
-          />
-          <Route element={<AppShell />}>
-            <Route element={<ShellOutletSuspense />}>
-              <Route index element={<LastAppRedirect />} />
-              {renderRoutes(shellAppRoutes)}
-            </Route>
+      <Route
+        element={
+          <Suspense fallback={<RouteFallback />}>
+            <MarketingShell />
+          </Suspense>
+        }
+      >
+        <Route
+          path="product"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ProductView />
+            </Suspense>
+          }
+        />
+        <Route
+          path="changelog"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ChangelogView />
+            </Suspense>
+          }
+        />
+        <Route
+          path="feedback"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <FeedbackView />
+            </Suspense>
+          }
+        />
+        <Route
+          path="pricing"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <PricingView />
+            </Suspense>
+          }
+        />
+      </Route>
+
+      <Route element={<AppShell />}>
+        <Route element={<ShellOutletSuspense />}>
+          <Route index element={<LandingRoute />} />
+          <Route path="chat" element={<ChatRouteSwitch />} />
+          <Route path="login" element={<LoggedOutChatView />} />
+          <Route element={<RequireAuth />}>
+            {renderRoutes(shellAppRoutes)}
+            <Route
+              path="invite/:token"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <InviteAcceptView />
+                </Suspense>
+              }
+            />
           </Route>
+          <Route path="*" element={<UnknownRouteRedirect />} />
         </Route>
-      ) : inSimpleShell ? (
-        // Authenticated user with the global UI mode toggled to
-        // `simple`: serve the same `LoggedOutShell` chat-only surface
-        // guests see today. `RequireAuth` is intentionally omitted —
-        // showShell already implies an authenticated user, and the
-        // public chat view is guest-token-driven so there's no
-        // privileged data to gate.
-        //
-        // The `*` catch-all is load-bearing: flipping the UI toggle
-        // does not change the URL, so a user sitting on an advanced
-        // route like `/projects/:id/agents/:id` and then toggling to
-        // simple would land on a URL that matches none of the
-        // simple-shell routes. Without the catch-all React Router
-        // emits a `No routes matched location` warning and renders
-        // nothing. Redirect to `/` so the toggle always lands on a
-        // valid view.
-        <Route element={<LoggedOutShell />}>
-          <Route index element={<LoggedOutChatView />} />
-          <Route path="chat" element={<LoggedOutChatView />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      ) : isNativeApp ? (
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      ) : (
-        <>
-          <Route
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <MarketingShell />
-              </Suspense>
-            }
-          >
-            <Route
-              path="product"
-              element={
-                <Suspense fallback={<RouteFallback />}>
-                  <ProductView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="changelog"
-              element={
-                <Suspense fallback={<RouteFallback />}>
-                  <ChangelogView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="feedback"
-              element={
-                <Suspense fallback={<RouteFallback />}>
-                  <FeedbackView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="pricing"
-              element={
-                <Suspense fallback={<RouteFallback />}>
-                  <PricingView />
-                </Suspense>
-              }
-            />
-          </Route>
-          <Route element={<LoggedOutShell />}>
-            <Route index element={<LoggedOutChatView />} />
-            <Route path="chat" element={<LoggedOutChatView />} />
-            {/* `/login` mounts the same chat view in the outlet so
-                the shell renders normally; `LoggedOutShell` detects
-                the pathname and overlays the login modal on top. */}
-            <Route path="login" element={<LoggedOutChatView />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </>
-      )}
+      </Route>
     </Routes>
   );
 }
+

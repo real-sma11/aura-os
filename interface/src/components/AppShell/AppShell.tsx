@@ -16,7 +16,7 @@ import { DEFAULT_IMAGE_MODEL_ID } from "../../constants/models";
 import { useOnboardingStore } from "../../features/onboarding/onboarding-store";
 import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardingTaskWatcher";
 import { useShallow } from "zustand/react/shallow";
-import { DesktopShell } from "../DesktopShell";
+import { AuraShell } from "../AuraShell";
 import { MobileShell } from "../../mobile/shell";
 import { useUIModeStore } from "../../stores/ui-mode-store";
 import { markShellVisible } from "../../lib/perf/startup-perf";
@@ -107,7 +107,7 @@ function ResponsiveShell() {
   }, [uiMode, isMobileLayout]);
 
   if (isMobileLayout) return <MobileShell />;
-  return <DesktopShell />;
+  return <AuraShell />;
 }
 
 function LazyModalBoundary({ children }: { children: React.ReactNode }) {

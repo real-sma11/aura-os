@@ -303,10 +303,15 @@
   z-index: 0;
   /* Match the page-centering offset on `.composePanel` below so the
      AURA visual loop's centered orb stays visually aligned with the
-     compose surface — the body grid puts the chat column at
-     column-center = page-center + 143px, so the same negative
-     translate lands the orb at page center too. */
-  transform: translateX(calc((-280px - 6px) / 2));
+     compose surface — the body has the chat column right of the
+     sidebar, so the same negative translate lands the orb at page
+     center too. `--aura-sidebar-width` is published by
+     `AuraSidebar` as the live width of the resizable sidebar Lane;
+     the `-2px` accounts for the inter-panel gutter (sidebar
+     `margin-right: 2px`). Falls back to the previous 280px when
+     the variable is unset (e.g. unit tests rendering the panel in
+     isolation). */
+  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
 }
 
 /* Radial vignette around the AURA visual loop, mirroring
@@ -332,8 +337,9 @@
   pointer-events: none;
   /* Travel with `.chatBackgroundVideo` and `.composePanel` so the
      radial vignette's center stays under the orb at page-center
-     rather than the column-center. */
-  transform: translateX(calc((-280px - 6px) / 2));
+     rather than the column-center. Follows the live
+     `--aura-sidebar-width` published by `AuraSidebar`. */
+  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
   /* `farthest-side` anchors the gradient's 100% to the nearest
      panel edge midpoint (rather than the far corner used by
      aura-web's `VideoBackground`), so the falloff stays tight in
@@ -470,14 +476,16 @@
      this also keeps the panel centered if the parent is ever
      swapped back to a flex container. */
   align-self: center;
-  /* Page-center the empty-state compose: the body grid reserves a
-     280px left rail + 6px gap, which pushes the column-centered
-     panel ~143px right of viewport center. Shift it back so the
-     LLM section lands at the actual horizontal middle of the page,
-     ignoring the sidebar. `transform` (not margin) keeps the grid
-     layout math intact and the body's existing `overflow: hidden`
-     clips any sliver of bleed on very narrow viewports. */
-  transform: translateX(calc((-280px - 6px) / 2));
+  /* Page-center the empty-state compose: the AuraSidebar reserves
+     its current width on the left, which pushes the column-
+     centered panel right of viewport center by half that width.
+     Shift it back via `--aura-sidebar-width` (published by
+     `AuraSidebar`) so the LLM section lands at the actual
+     horizontal middle of the page, ignoring the sidebar.
+     `transform` (not margin) keeps the layout math intact and
+     the body's existing `overflow: hidden` clips any sliver of
+     bleed on very narrow viewports. */
+  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
 }
 
 /* Hero banner that hosts the looping `AgentDemoBanner` (a scripted

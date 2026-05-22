@@ -6,10 +6,13 @@ import { ModeToggle } from "../../components/ModeToggle";
 import { PanelSearch } from "../../components/PanelSearch";
 import { track } from "../../lib/analytics";
 import { usePublicChatStore } from "../../stores/public-chat-store";
+import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
 import { LoginOverlay } from "./LoginOverlay";
 import styles from "./LoggedOutShell.module.css";
+
+const PUBLIC_SEARCH_KEY = "public";
 
 /**
  * Top-level layout shell for the anonymous (logged-out) web
@@ -42,7 +45,20 @@ export function LoggedOutShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
-  const [searchQuery, setSearchQuery] = useState("");
+  // Phase 3: lift the public sidebar search query out of local
+  // `useState` into a global store so the typed value persists
+  // across mode flips (Simple <-> Advanced <-> Public). With
+  // `AuraShell` mounted once, the `LoggedOutShell` wrapper itself
+  // is no longer the canonical mount in Phase 3 — but during the
+  // transition window it still renders for legacy routes / tests,
+  // so we keep its search wired to the same store the new shell
+  // reads from.
+  const searchQuery = useSidebarSearchStore((s) => s.queries[PUBLIC_SEARCH_KEY] ?? "");
+  const setSearchQueryStore = useSidebarSearchStore((s) => s.setQuery);
+  const setSearchQuery = useCallback(
+    (value: string): void => setSearchQueryStore(PUBLIC_SEARCH_KEY, value),
+    [setSearchQueryStore],
+  );
   const createSession = usePublicChatStore((s) => s.createSession);
   // The "+" button is supposed to land the user on a "New chat"
   // canvas — the same surface they'd see on a brand-new visit.

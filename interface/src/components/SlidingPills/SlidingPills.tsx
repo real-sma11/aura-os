@@ -45,6 +45,12 @@ export interface SlidingPillsProps<T extends string> {
   readonly segmentClassName?: string;
   /** Optional className appended to the sliding indicator pill. */
   readonly indicatorClassName?: string;
+  /**
+   * Optional `data-testid` attribute applied to the sliding indicator
+   * span. Used by Phase 3's `ModeToggle` slide-not-snap regression so
+   * tests can capture the same DOM node before and after a mode flip.
+   */
+  readonly indicatorTestId?: string;
 }
 
 const NAVIGATION_KEYS: ReadonlySet<string> = new Set([
@@ -88,6 +94,7 @@ export function SlidingPills<T extends string>({
   className,
   segmentClassName,
   indicatorClassName,
+  indicatorTestId,
 }: SlidingPillsProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
@@ -195,6 +202,7 @@ export function SlidingPills<T extends string>({
         className={indicatorClass}
         data-sliding-pills-indicator=""
         data-active-id={value}
+        data-testid={indicatorTestId}
       />
       {items.map((item) => {
         const isSelected = item.id === value;

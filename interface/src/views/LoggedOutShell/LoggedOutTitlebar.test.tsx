@@ -50,6 +50,15 @@ vi.mock("@cypher-asi/zui", () => ({
   ButtonWindow: ({ action }: { action: string }) => (
     <button aria-label={`window-${action}`} data-window-action={action} />
   ),
+  // Phase 3: `LoggedOutTitlebar` now reads `useTheme()` to drive the
+  // adjacent theme-toggle button (sun/moon). The stub mirrors the zui
+  // surface enough to keep this smoke test focused on slot
+  // composition without dragging in the full theme runtime.
+  useTheme: () => ({
+    theme: "dark",
+    resolvedTheme: "dark",
+    setTheme: vi.fn(),
+  }),
 }));
 
 vi.mock("../../lib/windowCommand", () => ({

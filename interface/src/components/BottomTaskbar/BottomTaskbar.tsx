@@ -11,6 +11,7 @@ import {
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
+import type { UIMode } from "../../stores/ui-mode-store";
 import {
   getTaskbarAppsCollapsed,
   getTaskbarRightCollapsed,
@@ -26,7 +27,7 @@ import styles from "./BottomTaskbar.module.css";
 
 const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
 
-function useClock() {
+function useClock(): string {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -35,7 +36,71 @@ function useClock() {
   return now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-export function BottomTaskbar() {
+export interface BottomTaskbarProps {
+  /**
+   * Effective UI mode (public / simple / advanced). Drives child
+   * content: public mode renders only the `ThemeToggleButton` in the
+   * right slot, suppressing the left (Desktop + favorites) and
+   * center (apps rail) columns. The outer `.bar` element is always
+   * rendered so `--shell-chrome-outer-height` reserves the same row
+   * of vertical space in every mode — flipping modes does not move
+   * the main panel's bottom edge.
+   */
+  mode: UIMode;
+}
+
+/**
+ * Bottom chrome strip rendered by `AuraShell` in every effective
+ * mode. Phase 3 added the `mode` prop so the same DOM-identity outer
+ * `.bar` element survives login / logout / Simple <-> Advanced flips
+ * while its inner content swaps. The full taskbar (left favorites
+ * strip, center app rail, right credits/settings/profile cluster)
+ * mounts in `simple` and `advanced`; public renders a minimal
+ * theme-toggle-only right slot. The full-mode branch holds the
+ * existing auth-required hook calls and stays untouched so logged-in
+ * users keep the same affordances.
+ */
+export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement {
+  if (mode === "public") {
+    return <PublicBottomTaskbar />;
+  }
+  return <FullBottomTaskbar mode={mode} />;
+}
+
+/**
+ * Public-mode taskbar render path: outer `.bar` (preserves the
+ * `--shell-chrome-outer-height` row in every mode) wrapping only a
+ * theme toggle in the right cluster. Deliberately does NOT call any
+ * auth-required hooks (`useUIModalStore`, `useActiveApp`,
+ * `useAppUIStore`, `useDesktopContextMenu`, `useNavigate`-driven
+ * navigation handlers, etc.) — those stores either don't apply or
+ * would noisily report missing context for unauthenticated visitors.
+ */
+function PublicBottomTaskbar(): React.ReactElement {
+  return (
+    <div
+      className={styles.bar}
+      data-agent-surface="desktop-shell-bottom-taskbar"
+      data-agent-proof="desktop-shell-bottom-taskbar"
+      data-agent-context-anchor="desktop-shell-bottom-taskbar"
+      data-ui-mode="public"
+    >
+      <div className={styles.right}>
+        <div className={styles.rightPrimary}>
+          <ThemeToggleButton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Authenticated (Simple / Advanced) taskbar render path. Mirrors the
+ * pre-Phase-3 component verbatim so logged-in users keep the same
+ * Desktop / FavoriteAgentsStrip / AppNavRail / Apps / Credits /
+ * Settings / Theme / Help / Profile / Clock arrangement.
+ */
+function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
   const openBuyCredits = useUIModalStore((s) => s.openBuyCredits);
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
@@ -47,7 +112,7 @@ export function BottomTaskbar() {
   const [rightCollapsed, setRightCollapsed] = useState(() => getTaskbarRightCollapsed());
   const { handleContextMenu, menuElement } = useDesktopContextMenu();
 
-  const toggleAppsCollapsed = () => {
+  const toggleAppsCollapsed = (): void => {
     setCollapsed((current) => {
       const next = !current;
       setTaskbarAppsCollapsed(next);
@@ -55,7 +120,7 @@ export function BottomTaskbar() {
     });
   };
 
-  const toggleRightCollapsed = () => {
+  const toggleRightCollapsed = (): void => {
     setRightCollapsed((current) => {
       const next = !current;
       setTaskbarRightCollapsed(next);
@@ -66,7 +131,7 @@ export function BottomTaskbar() {
   // Only open the desktop context menu when the right-click lands on empty
   // taskbar chrome — clicks on icons/buttons keep their own behavior (or the
   // browser default for items without a custom handler).
-  const onContextMenu = (event: React.MouseEvent) => {
+  const onContextMenu = (event: React.MouseEvent): void => {
     const target = event.target as HTMLElement | null;
     if (target?.closest('button, a, input, [role="menuitem"], [role="menu"]')) {
       return;
@@ -80,6 +145,7 @@ export function BottomTaskbar() {
       data-agent-surface="desktop-shell-bottom-taskbar"
       data-agent-proof="desktop-shell-bottom-taskbar"
       data-agent-context-anchor="desktop-shell-bottom-taskbar"
+      data-ui-mode={mode}
       onContextMenu={onContextMenu}
     >
       <div className={styles.left}>

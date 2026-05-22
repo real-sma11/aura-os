@@ -230,7 +230,7 @@ describe("BottomTaskbar", () => {
   it("opens a favorite agent without navigating to desktop when outside desktop mode", async () => {
     const user = userEvent.setup();
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -245,7 +245,7 @@ describe("BottomTaskbar", () => {
       "agent-1": { agentId: "agent-1" },
     };
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -261,7 +261,7 @@ describe("BottomTaskbar", () => {
       "agent-1": { agentId: "agent-1" },
     };
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -271,7 +271,7 @@ describe("BottomTaskbar", () => {
   });
 
   it("renders the taskbar apps collapsed by default", () => {
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Expand apps" })).toBeInTheDocument();
     expect(screen.getAllByTestId("chevron-right").length).toBeGreaterThan(0);
@@ -290,7 +290,7 @@ describe("BottomTaskbar", () => {
   it("restores the expanded state from storage", () => {
     getTaskbarAppsCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Collapse apps" })).toBeInTheDocument();
 
@@ -300,7 +300,7 @@ describe("BottomTaskbar", () => {
   });
 
   it("hides everything except profile when the right cluster is collapsed by default", () => {
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
@@ -314,7 +314,7 @@ describe("BottomTaskbar", () => {
 
   it("expands the right cluster and persists the state when the chevron is clicked", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
 
@@ -326,7 +326,7 @@ describe("BottomTaskbar", () => {
 
   it("re-collapses the right cluster on a second chevron click", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
     await user.click(screen.getByRole("button", { name: "Collapse taskbar" }));
@@ -341,7 +341,7 @@ describe("BottomTaskbar", () => {
   it("restores the expanded right cluster state from storage", () => {
     getTaskbarRightCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Collapse taskbar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Credits" })).toBeInTheDocument();
@@ -352,7 +352,7 @@ describe("BottomTaskbar", () => {
     const user = userEvent.setup();
     getTaskbarRightCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
@@ -361,7 +361,7 @@ describe("BottomTaskbar", () => {
 
   it("expands to all apps when the chevron is clicked", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     await user.click(screen.getByRole("button", { name: "Expand apps" }));
 
@@ -375,7 +375,7 @@ describe("BottomTaskbar", () => {
 
   it("collapses back to agents and projects on a second chevron click", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     const chevron = screen.getByRole("button", { name: "Expand apps" });
     await user.click(chevron);
@@ -403,7 +403,7 @@ describe("BottomTaskbar", () => {
     }
 
     it("opens the desktop context menu when right-clicking empty taskbar space", () => {
-      const { container } = render(<BottomTaskbar />);
+      const { container } = render(<BottomTaskbar mode="advanced" />);
 
       expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
 
@@ -415,7 +415,7 @@ describe("BottomTaskbar", () => {
     });
 
     it("does not open the desktop context menu when right-clicking a taskbar button", () => {
-      render(<BottomTaskbar />);
+      render(<BottomTaskbar mode="advanced" />);
 
       fireEvent.contextMenu(screen.getByRole("button", { name: "Apps" }));
 
@@ -424,7 +424,7 @@ describe("BottomTaskbar", () => {
 
     it("opens org settings when selecting Settings from the context menu", async () => {
       const user = userEvent.setup();
-      const { container } = render(<BottomTaskbar />);
+      const { container } = render(<BottomTaskbar mode="advanced" />);
 
       fireEvent.contextMenu(getBar(container));
       await user.click(screen.getByRole("menuitem", { name: "Settings" }));
@@ -435,7 +435,7 @@ describe("BottomTaskbar", () => {
 
     it("opens the background modal when selecting Background", async () => {
       const user = userEvent.setup();
-      const { container } = render(<BottomTaskbar />);
+      const { container } = render(<BottomTaskbar mode="advanced" />);
 
       fireEvent.contextMenu(getBar(container));
       await user.click(screen.getByRole("menuitem", { name: "Background" }));
@@ -456,7 +456,7 @@ describe("BottomTaskbar", () => {
       });
 
       try {
-        const { container } = render(<BottomTaskbar />);
+        const { container } = render(<BottomTaskbar mode="advanced" />);
 
         fireEvent.contextMenu(getBar(container), {
           clientX: 200,

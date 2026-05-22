@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useUIModeStore, type UIMode } from "../../stores/ui-mode-store";
+import { useEffectiveMode } from "../../stores/use-effective-mode";
 import { SlidingPills, type SlidingPillItem } from "../SlidingPills";
 import styles from "./ModeToggle.module.css";
 
@@ -26,10 +27,23 @@ const ITEMS: ReadonlyArray<SlidingPillItem<ToggleMode>> = [
  * navigation all match the agent input's `ModeSelector` (Code / Plan
  * / Image / Video / 3D), making the two controls feel like one
  * family.
+ *
+ * In **public** (logged-out) mode the toggle stays mounted at the
+ * same DOM identity but is rendered inert: the wrapper carries
+ * `aria-disabled` and `pointer-events: none`, and writes are
+ * suppressed at the change handler. The same `SlidingPills` instance
+ * is reused across every mode flip — Phase 3's load-bearing
+ * invariant is that the `lastAppliedValueRef` inside `SlidingPills`
+ * survives across flips so the indicator *slides* (rather than
+ * snaps) on every Simple <-> Advanced toggle. Wrapping with
+ * `key={mode}` would remount and reset that ref; we deliberately
+ * don't.
  */
-export function ModeToggle() {
+export function ModeToggle(): React.ReactElement {
   const mode = useUIModeStore((s) => s.mode);
   const setMode = useUIModeStore((s) => s.setMode);
+  const effectiveMode = useEffectiveMode();
+  const isInert = effectiveMode === "public";
 
   const items = useMemo(() => ITEMS, []);
   // The store's `mode` carries the full `UIMode` union (including
@@ -40,16 +54,31 @@ export function ModeToggle() {
   // squash for logged-in `"public"`.
   const value: ToggleMode = mode === "advanced" ? "advanced" : "simple";
 
+  const handleChange = useCallback(
+    (next: ToggleMode): void => {
+      if (isInert) return;
+      setMode(next);
+    },
+    [isInert, setMode],
+  );
+
   return (
-    <div className={styles.root} data-agent-surface="ui-mode-toggle">
+    <div
+      className={styles.root}
+      data-agent-surface="ui-mode-toggle"
+      data-inert={isInert || undefined}
+      aria-disabled={isInert || undefined}
+      style={isInert ? { pointerEvents: "none", opacity: 0.6 } : undefined}
+    >
       <SlidingPills
         items={items}
         value={value}
-        onChange={setMode}
+        onChange={handleChange}
         ariaLabel="Interface mode"
         className={styles.pills}
         segmentClassName={styles.segment}
         indicatorClassName={styles.indicator}
+        indicatorTestId="ui-mode-indicator"
       />
     </div>
   );

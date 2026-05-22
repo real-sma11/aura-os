@@ -164,7 +164,7 @@ describe("BottomTaskbar render churn", () => {
   });
 
   it("does not rerender unrelated taskbar chrome on window store updates", () => {
-    render(<BottomTaskbar />);
+    render(<BottomTaskbar mode="advanced" />);
 
     expect(appNavRailRenderCount).toBe(2);
     expect(screen.getByRole("button", { name: "Desk Helper" })).toBeInTheDocument();
