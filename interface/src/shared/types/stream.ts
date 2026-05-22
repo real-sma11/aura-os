@@ -17,7 +17,17 @@ export interface DisplayImageBlock {
   source_url?: string;
 }
 
-export type DisplayContentBlockUnion = DisplayContentBlock | DisplayImageBlock;
+export interface DisplayVideoBlock {
+  type: "video";
+  url: string;
+}
+
+export interface DisplayModel3DBlock {
+  type: "model3d";
+  url: string;
+}
+
+export type DisplayContentBlockUnion = DisplayContentBlock | DisplayImageBlock | DisplayVideoBlock | DisplayModel3DBlock;
 
 export interface ArtifactRef {
   kind: "task" | "spec";

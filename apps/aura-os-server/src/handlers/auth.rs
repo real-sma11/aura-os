@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use axum::extract::{Path, State};
+use dashmap::DashSet;
 use axum::http::StatusCode;
 use axum::Json;
 use base64::Engine;
@@ -343,6 +344,13 @@ pub(crate) async fn request_password_reset(
 
 /// GET /api/auth/session — return the middleware-resolved session and best-effort aura-network sync.
 /// zOS validation runs only in the auth middleware (no second `validate_token` here).
+/// In-memory set of user IDs that have already had the signup grant
+/// attempted this process lifetime. Prevents the fire-and-forget
+/// `grant_signup_credits` call from hitting z-billing on every 20s
+/// session keepalive — it only fires once per user per server restart.
+static GRANT_ATTEMPTED: std::sync::LazyLock<dashmap::DashSet<String>> =
+    std::sync::LazyLock::new(DashSet::new);
+
 pub(crate) async fn get_session(
     State(state): State<AppState>,
     AuthSession(mut session): AuthSession,
@@ -351,6 +359,19 @@ pub(crate) async fn get_session(
     }: AuthZeroProMeta,
 ) -> ApiResult<Json<AuthSessionResponse>> {
     sync_user_to_network(&state, &mut session).await;
+
+    // Best-effort retry of signup grant for users whose initial grant
+    // failed (z-billing was unreachable at login time). Deduped per
+    // process lifetime so this doesn't hit z-billing on every keepalive.
+    if !GRANT_ATTEMPTED.contains(&session.user_id) {
+        GRANT_ATTEMPTED.insert(session.user_id.clone());
+        let user_id = session.user_id.clone();
+        let is_zero_pro = session.is_zero_pro;
+        tokio::spawn(async move {
+            grant_signup_credits(&user_id, is_zero_pro, None).await;
+        });
+    }
+
     let mut response = AuthSessionResponse::from(session);
     response.zero_pro_refresh_error = zero_pro_refresh_error;
     Ok(Json(response))
@@ -378,6 +399,14 @@ pub(crate) async fn validate(
     );
 
     persist_zero_auth_session(&state.store, &session);
+
+    // Retry signup grant on validate in case it failed on the
+    // original login (fire-and-forget, z-billing is idempotent).
+    let user_id = session.user_id.clone();
+    let is_zero_pro = session.is_zero_pro;
+    tokio::spawn(async move {
+        grant_signup_credits(&user_id, is_zero_pro, None).await;
+    });
 
     let mut response = AuthSessionResponse::from(session);
     response.zero_pro_refresh_error = zero_pro_refresh_error;

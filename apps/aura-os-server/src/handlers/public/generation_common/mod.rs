@@ -42,7 +42,7 @@ mod relay;
 mod request;
 
 pub(crate) use request::{
-    bearer_token_from_headers, caller_ip_from_headers, PublicGenerationCall, PublicGenerationSse,
+    caller_ip_from_headers, PublicGenerationCall, PublicGenerationSse,
 };
 
 use std::convert::Infallible;
@@ -155,18 +155,19 @@ async fn run_public_generation_task(
 
     // Phase 2: open the upstream proxy.
     let client = reqwest::Client::new();
-    let response_result = timeout(
-        PUBLIC_GENERATION_OPEN_TIMEOUT,
-        client
-            .post(&url)
-            .bearer_auth(&bearer_token)
-            .header("X-Aura-Agent-Id", format!("public-{}", &generation_id))
-            .header("X-Aura-User-Id", SYSTEM_DEMO_USER_ID)
-            .header("X-Aura-Session-Id", &generation_id)
-            .json(&payload)
-            .send(),
-    )
-    .await;
+    let mut req = client
+        .post(&url)
+        .header("X-Aura-Agent-Id", format!("public-{}", &generation_id))
+        .header("X-Aura-User-Id", SYSTEM_DEMO_USER_ID)
+        .header("X-Aura-Session-Id", &generation_id)
+        .json(&payload);
+    // Only send Authorization when a token is present. Public-guest
+    // requests omit the header — the router assigns "public-guest"
+    // for unauthenticated requests with IP-based rate limiting.
+    if !bearer_token.is_empty() {
+        req = req.bearer_auth(&bearer_token);
+    }
+    let response_result = timeout(PUBLIC_GENERATION_OPEN_TIMEOUT, req.send()).await;
 
     let response = match response_result {
         Err(_) => {

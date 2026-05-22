@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ImagePlus, X } from "lucide-react";
 import { DesktopChatInputBar } from "../../features/chat-ui/ChatInputBar";
 import { ChatMessageList } from "../../features/chat-ui/ChatMessageList";
+import { ChatStreamingIndicator } from "../../features/chat-ui/ChatPanel/ChatStreamingIndicator";
 import { KeepChattingModal } from "../../components/KeepChattingModal";
 import { ComposePanel } from "./ComposePanel";
 import { usePublicChatStore } from "../../stores/public-chat-store";
+import { useChatUI } from "../../stores/chat-ui-store";
 import { usePublicChat } from "./use-public-chat";
 import styles from "./LoggedOutShell.module.css";
 
@@ -57,8 +60,69 @@ export function LoggedOutChatView() {
 
   const controller = usePublicChat(sessionId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const streamKey = controller.streamKey;
+  const selectedMode = useChatUI(streamKey).selectedMode;
+  const is3dMode = selectedMode === "3d";
+
+  const handleImagePick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        controller.setSourceImage(reader.result as string);
+        // Auto-fill the input so the send button enables (the shared
+        // InputBarShell disables send when the textarea is empty).
+        if (!controller.input.trim()) {
+          controller.setInput("Generate 3D model");
+        }
+      };
+      reader.readAsDataURL(file);
+      // Reset the input so the same file can be re-selected.
+      e.target.value = "";
+    },
+    [controller.input, controller.setInput, controller.setSourceImage],
+  );
 
   const isEmpty = controller.messages.length === 0;
+
+  const imageAttachBar = is3dMode && !controller.shouldShowGate ? (
+    <div className={styles.imageAttachBar}>
+      {controller.sourceImage ? (
+        <div className={styles.imageAttachPreview}>
+          <img
+            src={controller.sourceImage}
+            alt="Source for 3D"
+            className={styles.imageAttachThumb}
+          />
+          <button
+            type="button"
+            className={styles.imageAttachRemove}
+            onClick={() => controller.setSourceImage(null)}
+            aria-label="Remove image"
+          >
+            <X size={12} />
+          </button>
+          <span className={styles.imageAttachLabel}>Source image attached</span>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={styles.imageAttachButton}
+          onClick={handleImagePick}
+        >
+          <ImagePlus size={14} />
+          <span>Attach source image for 3D</span>
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className={styles.chatView}>
@@ -103,6 +167,13 @@ export function LoggedOutChatView() {
         )}
       </div>
       {!isEmpty && (
+        <ChatStreamingIndicator
+          streamKey={controller.streamKey}
+          onStop={controller.handleStop}
+        />
+      )}
+      {imageAttachBar}
+      {!isEmpty && (
         <div
           className={`${styles.inputBarSlot} ${
             controller.shouldShowGate ? styles.inputBarSlotLocked : ""
@@ -122,6 +193,15 @@ export function LoggedOutChatView() {
           />
         </div>
       )}
+      {/* Hidden file input for 3D source image */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+        aria-hidden="true"
+      />
       {controller.shouldShowGate && <KeepChattingModal />}
     </div>
   );

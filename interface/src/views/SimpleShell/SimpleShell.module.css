@@ -1,0 +1,268 @@
+.shell {
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  overflow: hidden;
+  background: transparent;
+  margin: 0 5px 5px 5px;
+  gap: 6px;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mainPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sidebarSessions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Sidebar header ───────────────────────────────────────── */
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 4px;
+}
+
+.sidebarTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.newChatButton {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.newChatButton:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary);
+}
+
+.newChatRow {
+  display: flex;
+  align-items: center;
+  width: calc(100% - 16px);
+  margin: 2px 8px 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.newChatRow:hover {
+  background: var(--color-surface-active, rgba(255, 255, 255, 0.1));
+}
+
+/* ── Titlebar actions ─────────────────────────────────────── */
+
+.titleLogoLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.titleLogo {
+  height: 16px;
+  width: auto;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.userAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.userAvatarFallback {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.1));
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.advancedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  user-select: none;
+}
+
+.advancedToggle:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary);
+}
+
+/* ── Hamburger menu toggle (hidden on desktop, visible on mobile) ─ */
+
+.menuToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary, #c9c9cf);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.menuToggle:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary, inherit);
+}
+
+/* ── Mobile sidebar drawer backdrop ──────────────────────── */
+
+.sidebarBackdrop {
+  display: none;
+}
+
+/* ── Mobile (max-width: 640px) ───────────────────────────── */
+
+@media (max-width: 640px) {
+  .body {
+    grid-template-columns: 1fr;
+    margin: 0;
+    gap: 0;
+  }
+
+  .sidebar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 60;
+    border-radius: 0;
+    border-right: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+  }
+
+  .sidebarOpen {
+    display: flex;
+  }
+
+  .sidebarBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .menuToggle {
+    display: inline-flex;
+    pointer-events: auto;
+  }
+
+  .titleLogoLeft {
+    gap: 8px;
+  }
+
+  .mainPanel {
+    border: none;
+    border-radius: 0;
+  }
+
+  .titleActions {
+    gap: 4px;
+    padding-right: 12px;
+  }
+
+  .advancedToggle {
+    display: none;
+  }
+
+  .userInfo {
+    gap: 4px;
+  }
+}

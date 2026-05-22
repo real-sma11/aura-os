@@ -65,6 +65,10 @@ interface PublicChatState {
 
 interface PublicChatActions {
   ensureToken: () => Promise<string>;
+  /** Clear the cached guest token so the next `ensureToken()` call
+   *  mints a fresh one. Called when the server rejects a token
+   *  ("invalid guest token") so the user isn't permanently stuck. */
+  invalidateToken: () => void;
   createSession: () => string;
   deleteSession: (sessionId: string) => void;
   appendUserTurn: (sessionId: string, content: string) => string;
@@ -263,6 +267,10 @@ export const usePublicChatStore = create<PublicChatStore>((set, get) => ({
     } finally {
       set({ setupInFlight: false });
     }
+  },
+  invalidateToken: () => {
+    set({ guestToken: null });
+    persistFromGet(get);
   },
   createSession: () => {
     const id = randomId("public");
