@@ -1,28 +1,33 @@
 /**
  * Behavioural test for the public-empty-state hero (`MockAuraApp` +
- * `DMWindowManager`). Pins five contracts that protect both the
+ * `DMWindowManager`). Pins the contracts that protect both the
  * windowed visual frame and the looping DM-driven animation:
  *
- *   1. The mock app frame mounts with its decorative chrome —
- *      titlebar (with the AURA wordmark), wallpaper `<video>`, and
- *      decorative taskbar — even before any DM frame has fired.
- *   2. The `inputDock` children prop renders inside the frame and
- *      its content is reachable via standard queries (i.e. the
- *      parent's helper pills / chat input bar are not lost behind
- *      the mock chrome's z-index stack).
- *   3. The DM window manager starts empty — no script frame is
+ *   1. The mock app frame mounts with its full decorative chrome —
+ *      the real `ShellTitlebar` pill (with the AURA wordmark `<img>`
+ *      in its title slot) overlaid via `.topChrome`, the wallpaper
+ *      `<video>`, and the three bottom dock pills overlaid via
+ *      `.bottomChrome` — even before any DM frame has fired. The
+ *      top/bottom overlays are pinned via dedicated `data-testid`
+ *      hooks so the assertion does not depend on internal class
+ *      names.
+ *   2. The DM window manager starts empty — no script frame is
  *      rendered eagerly. The first window pops open only after the
  *      `setTimeout` chain advances past the initial 250ms warm-up.
- *   4. Two distinct threads' frames land in two distinct DM
+ *   3. Two distinct threads' frames land in two distinct DM
  *      windows: the architect_frontend thread's first frame
  *      streams into one window while the architect_backend
  *      thread's first frame streams into a separate window —
  *      proving the manager routes by `thread` id rather than
  *      stacking every frame into one window.
- *   5. The decorative window manager is `aria-hidden` so the
+ *   4. The decorative window manager is `aria-hidden` so the
  *      looping content never bleeds into the assistive-tech tree.
- *      The mock app's outer titlebar/taskbar are also `aria-hidden`
- *      because they're chrome with no semantic value.
+ *      The top/bottom chrome overlays are also `aria-hidden`
+ *      because they're decorative with no semantic value.
+ *
+ * `MockAuraApp` is now parameterless — the previous `inputDock`
+ * slot was removed when the public-chat input bar was moved into
+ * `PublicChatView`'s own bottom-anchored slot in phase 0.
  */
 
 import { act, render, screen } from "@testing-library/react";
@@ -62,11 +67,22 @@ afterEach(() => {
 });
 
 describe("MockAuraApp", () => {
-  it("mounts the windowed chrome with titlebar, wallpaper video, and taskbar", () => {
+  it("mounts the windowed chrome with titlebar pill, wallpaper video, and bottom dock pills", () => {
     render(<MockAuraApp />);
 
     expect(screen.getByTestId("mock-aura-app")).toBeInTheDocument();
-    expect(screen.getByText("AURA")).toBeInTheDocument();
+
+    // The AURA wordmark is now an <img alt="AURA"> rendered by
+    // `ShellTitlebar`'s title slot rather than visible text.
+    expect(screen.getByAltText("AURA")).toBeInTheDocument();
+
+    const topChrome = screen.getByTestId("mock-aura-top-chrome");
+    expect(topChrome).toBeInTheDocument();
+    expect(topChrome).toHaveAttribute("aria-hidden", "true");
+
+    const bottomChrome = screen.getByTestId("mock-aura-bottom-chrome");
+    expect(bottomChrome).toBeInTheDocument();
+    expect(bottomChrome).toHaveAttribute("aria-hidden", "true");
 
     const wallpaperVideo = document.querySelector("video");
     expect(wallpaperVideo).not.toBeNull();

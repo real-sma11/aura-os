@@ -69,7 +69,11 @@ export function MockAuraApp(): ReactNode {
       />
       <div className={styles.wallpaperVignette} aria-hidden="true" />
       <DMWindowManager />
-      <div className={styles.topChrome} aria-hidden="true">
+      <div
+        className={styles.topChrome}
+        data-testid="mock-aura-top-chrome"
+        aria-hidden="true"
+      >
         <ShellTitlebar
           icon={
             <span className="titlebar-no-drag">
@@ -101,7 +105,11 @@ export function MockAuraApp(): ReactNode {
           onDoubleClick={() => undefined}
         />
       </div>
-      <div className={styles.bottomChrome} aria-hidden="true">
+      <div
+        className={styles.bottomChrome}
+        data-testid="mock-aura-bottom-chrome"
+        aria-hidden="true"
+      >
         <div className={`${styles.pill} ${styles.bottomLeft}`}>
           <span className={styles.taskbarIconButton}>
             <Circle size={14} strokeWidth={2} />

@@ -1,21 +1,20 @@
 /**
  * Behavioural test for `PublicChatView` empty-state inline compose
- * surface + auth-gated send. Pins four contracts:
+ * surface + session lifecycle. Pins the contracts:
  *
  *  - The empty state renders the windowed mock-Aura-app hero
- *    (`MockAuraApp`) and the example-prompt button row directly
- *    in the main panel (no modal overlay).
- *  - The example-prompt row carries the four canonical short-copy
- *    buttons.
- *  - Clicking an example pre-fills the textarea with the
- *    representative prompt for that mode (no send fires until the
- *    user explicitly hits Send).
- *  - Sending a message while unauthenticated navigates to
- *    `/login?next=...` instead of attempting the public chat
- *    request (interim auth gate while the public router is flaky).
+ *    (`MockAuraApp`, mounted via `ComposePanel`) directly in the
+ *    main panel with no modal overlay.
+ *  - Round-tripping through `/login` does not mint extra empty
+ *    sessions in the public-chat store.
+ *
+ * Note: the example-prompt pre-fill case was removed in phase 0
+ * along with the helper pills — there are no example-prompt
+ * buttons in the empty state anymore, so the parent no longer
+ * needs to forward representative prompts into the textarea.
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MemoryRouter,
@@ -67,11 +66,7 @@ vi.mock("../../../components/KeepChattingModal", () => ({
 }));
 
 vi.mock("../MockAuraApp", () => ({
-  MockAuraApp: ({
-    inputDock,
-  }: {
-    inputDock: import("react").ReactNode;
-  }) => <div data-testid="mock-aura-app-stub">{inputDock}</div>,
+  MockAuraApp: () => <div data-testid="mock-aura-app-stub" />,
 }));
 
 import { PublicChatView } from "./PublicChatView";
@@ -116,37 +111,19 @@ afterEach(() => {
 });
 
 describe("PublicChatView inline compose", () => {
-  it("renders the mock-Aura-app hero and example-prompt buttons inline (no modal overlay)", () => {
+  it("renders the mock-Aura-app hero in the empty state (no modal overlay)", () => {
     renderView();
     expect(
       screen.getByTestId("mock-aura-app-stub"),
     ).toBeInTheDocument();
 
-    const examples = screen.getByRole("group", { name: "Example prompts" });
-    expect(within(examples).getByRole("button", { name: /Code an app/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Build a website/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Plan a trip/i })).toBeInTheDocument();
-    expect(within(examples).getByRole("button", { name: /Research a topic/i })).toBeInTheDocument();
-
     expect(
       screen.getByRole("region", { name: "Start a new conversation" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("pre-fills the textarea when an example prompt button is clicked", async () => {
-    const user = userEvent.setup();
-    renderView();
-
-    const compose = screen.getByLabelText("Compose") as HTMLTextAreaElement;
-    expect(compose.value).toBe("");
-
-    await user.click(
-      screen.getByRole("button", { name: /Plan a trip/i }),
-    );
-
-    expect(compose.value).toMatch(/7-day Tokyo itinerary/i);
-    expect(screen.queryByTestId("login-page")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("keep-chatting-modal-stub"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not mint extra empty sessions when the visitor round-trips through /login", async () => {
