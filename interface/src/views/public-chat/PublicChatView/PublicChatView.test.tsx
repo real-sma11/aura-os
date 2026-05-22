@@ -8,7 +8,7 @@
  * the removed chat chrome accidentally reappearing.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -69,5 +69,25 @@ describe("PublicChatView landing", () => {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.getByTestId("persona-tick-rail")).toBeInTheDocument();
+  });
+
+  it("marks the first persona tick active by default and shifts active on hover", () => {
+    renderView();
+    const vibecoder = screen.getByRole("button", { name: "Vibecoder" });
+    const researcher = screen.getByRole("button", { name: "Researcher" });
+
+    // First tick paints active on mount, every other tick paints idle.
+    expect(vibecoder).toHaveAttribute("aria-current", "true");
+    expect(vibecoder).toHaveAttribute("data-active", "true");
+    expect(researcher).not.toHaveAttribute("aria-current");
+    expect(researcher).toHaveAttribute("data-active", "false");
+
+    // Hovering a different tick promotes it to active and demotes the
+    // previously-active row — the panel renders this same flag.
+    fireEvent.mouseEnter(researcher);
+    expect(researcher).toHaveAttribute("aria-current", "true");
+    expect(researcher).toHaveAttribute("data-active", "true");
+    expect(vibecoder).not.toHaveAttribute("aria-current");
+    expect(vibecoder).toHaveAttribute("data-active", "false");
   });
 });

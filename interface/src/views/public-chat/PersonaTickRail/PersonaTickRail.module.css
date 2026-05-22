@@ -1,25 +1,40 @@
 /*
- * PersonaTickRail — vertical column of six small horizontal ticks
- * pinned to the far-right edge of `PublicChatView`. Each row pairs
- * a tick (a short horizontal bar) with a label pill that stays
- * hidden until the row is hovered or its hosting button receives
- * keyboard focus.
+ * PersonaTickRail — vertical column of six fixed-size horizontal
+ * ticks pinned to the far-right edge of `PublicChatView`. One tick
+ * is "active" at any time (defaulting to the first) and paints with
+ * `--color-text-primary`; the rest paint with
+ * `--color-text-secondary`. Hovering (or keyboard-focusing) any
+ * tick promotes it to active AND unfurls the `.panel` to the left
+ * of the rail, listing all six persona names with the active row
+ * highlighted.
  *
- * The rail is purely presentational so we lean on existing color
- * tokens (`--color-text-primary`, `--color-text-secondary`,
- * `--color-bg`, `--color-border-strong`, `--color-overlay-focus`)
- * and stay clear of any new design variables. The ticks brighten
- * and widen on hover/focus to make the affordance feel responsive
- * even though no click handler is wired up.
+ * Sizes never change on hover — only colors do. The ticks stay
+ * 18×2 px (14 px on small screens) regardless of state, so the
+ * column reads as a calm scrollbar-style indicator rather than a
+ * springy animation.
+ *
+ * The rail relies on existing color tokens
+ * (`--color-text-primary`, `--color-text-secondary`,
+ * `--color-bg-elevated`, `--color-border-strong`,
+ * `--color-overlay-focus`) so it stays theme-aware: in dark mode
+ * the active tick reads white against gray; in light mode the
+ * colors invert via the token definitions in `tokens.css`.
  */
 
 .rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   align-items: flex-end;
 }
 
@@ -28,22 +43,14 @@
   justify-content: flex-end;
 }
 
-/*
- * `flex-direction: row-reverse` keeps the tick visually pinned to
- * the right edge while still letting the label render to its left
- * (the label is the first child in the DOM). That ordering also
- * means the focus ring lands around the whole row — tick + label —
- * which reads correctly when a keyboard user tabs through.
- */
 .tickButton {
   display: inline-flex;
-  flex-direction: row-reverse;
   align-items: center;
-  gap: 10px;
-  padding: 4px 2px 4px 8px;
+  justify-content: flex-end;
+  padding: 4px 0;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: default;
   font: inherit;
   color: inherit;
@@ -54,46 +61,91 @@
   outline-offset: 2px;
 }
 
+/*
+ * Fixed-size tick. Width and height never change with state — only
+ * the `background` color flips between
+ * `--color-text-secondary` (idle) and `--color-text-primary`
+ * (active). The 160ms color transition matches the cadence of the
+ * CTA hover transition in `PublicChatView.module.css`.
+ */
 .tick {
   display: block;
   width: 18px;
   height: 2px;
   background: var(--color-text-secondary);
   border-radius: 2px;
-  transition: width 160ms ease, background 160ms ease;
+  transition: background 160ms ease;
 }
 
-.tickButton:hover .tick,
-.tickButton:focus-visible .tick {
-  width: 26px;
+.tickButton[data-active="true"] .tick {
   background: var(--color-text-primary);
 }
 
-.label {
-  display: inline-block;
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--color-text-primary);
-  background: var(--color-bg);
+/*
+ * Floating per-rail panel. Lives in the DOM all the time so screen
+ * readers and keyboard users can reach it without state changes,
+ * but stays visually hidden until the rail is hovered or one of
+ * its tick buttons receives focus. Anchored to the right of the
+ * rail and slid 12px further right so the open animation looks
+ * like the panel is sliding out from under the ticks.
+ */
+.panel {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 14px);
+  transform: translate(8px, -50%);
+  min-width: 168px;
+  padding: 8px;
+  background: var(--color-bg-elevated, var(--color-bg));
   border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
-  padding: 4px 8px;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.55),
+    0 4px 10px -6px rgba(0, 0, 0, 0.4);
   opacity: 0;
-  transform: translateX(4px);
-  transition: opacity 160ms ease, transform 160ms ease;
   pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
-.tickButton:hover .label,
-.tickButton:focus-visible .label {
+.rail:hover .panel,
+.rail:focus-within .panel {
   opacity: 1;
-  transform: translateX(0);
+  transform: translate(0, -50%);
+}
+
+.panelList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/*
+ * Panel rows track the same `data-active` flag as the ticks so a
+ * single React state change paints both surfaces in lockstep. Idle
+ * rows take `--color-text-secondary`; the active row jumps to
+ * `--color-text-primary` and picks up a faint surface tint so it
+ * pops out of the list without needing a separate accent token.
+ */
+.panelItem {
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.panelItem[data-active="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-tint, rgba(127, 127, 127, 0.08));
 }
 
 @media (max-width: 640px) {
-  .rail {
+  .list {
     gap: 10px;
   }
 
@@ -101,8 +153,8 @@
     width: 14px;
   }
 
-  .tickButton:hover .tick,
-  .tickButton:focus-visible .tick {
-    width: 20px;
+  .panel {
+    min-width: 148px;
+    right: calc(100% + 10px);
   }
 }
