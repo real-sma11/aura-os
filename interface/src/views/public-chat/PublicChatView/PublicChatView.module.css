@@ -74,12 +74,11 @@
   display: flex;
   align-items: center;
   /*
-   * 5px gutter to the viewport edge — anchors both the resting
-   * tick column AND the open menu hard against the right side of
-   * the page so the menu reads as part of the chrome rather than
-   * something floating in from the wallpaper.
+   * Zero gutter — the resting tick column AND the open menu both
+   * sit flush against the right viewport edge so the rail reads
+   * as the page chrome itself rather than a floating panel.
    */
-  padding-right: 5px;
+  padding-right: 0;
   z-index: 1;
   pointer-events: none;
 }
