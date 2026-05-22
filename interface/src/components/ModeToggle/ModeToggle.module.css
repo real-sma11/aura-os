@@ -1,52 +1,75 @@
-/* Pill container holding two equal-width segments. The outer pill
-   uses the same chrome tokens as the search row above it
-   (`PanelSearch`'s `.chrome`) so the two stack as one consistent
-   surface family. */
+/* ============================================================
+ * ModeToggle — sidebar-chrome wrapper around `SlidingPills` so the
+ * two-segment Normie/Advanced control inherits the exact same
+ * sliding-indicator animation as the chat input's mode selector
+ * (Code / Plan / Image / Video / 3D).
+ *
+ * Visual chrome here matches the sibling `PanelSearch` row above
+ * the toggle: same `--shell-chrome-*` background / blur / border
+ * tokens, same height, same horizontal inset. The ModeSelector
+ * accent-fill treatment is intentionally NOT inherited — sidebar
+ * chrome reads as neutral surface (search row + tab strip) and a
+ * full accent pill would compete with the active app highlight in
+ * the navigation rail just below.
+ * ============================================================ */
+
 .root {
+  width: 100%;
+}
+
+/*
+ * Stretch the SlidingPills root from `inline-flex` (its default,
+ * sized to its segments) to a full-width segmented control: each
+ * segment claims an equal half of the row, and the indicator
+ * tracks whichever half is active. The `--shell-chrome-*` tokens
+ * are the same surface family used by `PanelSearch`'s `.chrome`
+ * pill above, so the two stack as one consistent chrome strip.
+ */
+.pills {
   display: flex;
-  align-items: stretch;
   width: 100%;
   height: var(--shell-chrome-height, var(--control-height-sm, 28px));
   padding: 2px;
-  border-radius: var(--shell-chrome-radius, 20px);
+  gap: 2px;
   background: var(--shell-chrome-background);
   backdrop-filter: var(--shell-chrome-backdrop-filter);
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
   border: 1px solid color-mix(in srgb, var(--color-border-chrome) 30%, transparent);
   box-sizing: border-box;
-  gap: 2px;
 }
 
 .segment {
   flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text-muted);
+  min-width: 0;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
-  padding: 0 8px;
-  transition: background-color 120ms ease, color 120ms ease;
-  font-family: inherit;
-  line-height: 1;
+  letter-spacing: 0;
+  /*
+   * The shared `.segment` class on `SlidingPills` colors inactive
+   * segments with `--color-text-secondary`. We bump that to the
+   * muted token here so the rest state matches the search-row
+   * placeholder color and the toggle reads as truly neutral until
+   * the active segment fills in.
+   */
+  color: var(--color-text-muted);
 }
 
-.segment:hover {
-  color: var(--color-text-primary);
-}
-
-.segment:focus-visible {
-  outline: 2px solid var(--color-focus-ring, #6e8cff);
-  outline-offset: 2px;
-}
-
-.segmentActive,
-.segmentActive:hover {
-  background: var(--color-overlay-medium, rgba(255, 255, 255, 0.12));
-  color: var(--color-text-primary);
+.segment[aria-checked="true"] {
   font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/*
+ * Replace the SlidingPills default (elevated surface + accent
+ * border + drop shadow) with a flat overlay tile: the sidebar
+ * chrome has no shadows of its own and the accent border would
+ * compete with the search row above. `--color-overlay-medium`
+ * gives a soft tinted highlight that reads against both light and
+ * dark themes without needing per-theme overrides.
+ */
+.indicator {
+  background: var(--color-overlay-medium, rgba(255, 255, 255, 0.12));
+  border: none;
+  box-shadow: none;
 }
