@@ -73,7 +73,13 @@
   right: 0;
   display: flex;
   align-items: center;
-  padding-right: 16px;
+  /*
+   * 5px gutter to the viewport edge — anchors both the resting
+   * tick column AND the open menu hard against the right side of
+   * the page so the menu reads as part of the chrome rather than
+   * something floating in from the wallpaper.
+   */
+  padding-right: 5px;
   z-index: 1;
   pointer-events: none;
 }
@@ -137,9 +143,5 @@
   .ctaSlot {
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     padding: 0 8px;
-  }
-
-  .tickRailSlot {
-    padding-right: 8px;
   }
 }
