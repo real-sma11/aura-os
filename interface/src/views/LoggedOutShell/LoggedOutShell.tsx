@@ -42,8 +42,23 @@ export function LoggedOutShell() {
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const [searchQuery, setSearchQuery] = useState("");
   const createSession = usePublicChatStore((s) => s.createSession);
+  // The "+" button is supposed to land the user on a "New chat"
+  // canvas — the same surface they'd see on a brand-new visit.
+  // Without dedupe, every press mints a fresh session and the sidebar
+  // accumulates orphan "New chat" rows that all point at empty
+  // canvases. Worse, when the user is already sitting on an empty
+  // session, the press visibly does nothing different (every empty
+  // session renders the same `ComposePanel`), which reads as "the +
+  // button didn't take me to a new chat screen". Reuse the most
+  // recent zero-turn session if one already exists; only mint a new
+  // id when every existing session has at least one turn.
   const handleNewChat = useCallback(() => {
-    const id = createSession();
+    const { sessions, sessionOrder } = usePublicChatStore.getState();
+    const existingEmptyId = sessionOrder.find((id) => {
+      const session = sessions[id];
+      return session != null && session.turns.length === 0;
+    });
+    const id = existingEmptyId ?? createSession();
     navigate(`/?session=${id}`);
   }, [createSession, navigate]);
 

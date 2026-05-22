@@ -86,9 +86,33 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const accumulatedTextRef = useRef<string>("");
   const settersRef = useRef(createSetters(streamKey));
 
+  // Reset per-session state whenever the active session flips (the
+  // sidebar's "+" button mints a fresh session and navigates, and
+  // clicking another row also flips `sessionId`). Without this, the
+  // input draft, in-flight SSE handles, streaming flag, and error
+  // banner from the prior session leak forward — making the
+  // destination look like the same chat the user just left, which
+  // reads as "the + button didn't take me to a new chat screen". We
+  // deliberately skip the very first run (initial mount, `sessionId`
+  // already matches the streamKey) so the controller doesn't clobber
+  // an in-progress send mid-mount.
+  const previousStreamKeyRef = useRef<string | null>(null);
   useEffect(() => {
     ensureEntry(streamKey);
     settersRef.current = createSetters(streamKey);
+    if (previousStreamKeyRef.current !== null && previousStreamKeyRef.current !== streamKey) {
+      chatHandleRef.current?.close();
+      chatHandleRef.current = null;
+      mediaHandleRef.current?.close();
+      mediaHandleRef.current = null;
+      assistantIdRef.current = null;
+      accumulatedTextRef.current = "";
+      setInput("");
+      setIsStreaming(false);
+      setErrorEvent(null);
+      setSourceImage(null);
+    }
+    previousStreamKeyRef.current = streamKey;
   }, [streamKey]);
 
   useEffect(() => {

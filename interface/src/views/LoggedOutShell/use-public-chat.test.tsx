@@ -261,4 +261,59 @@ describe("usePublicChat", () => {
       expect(session.turns[0].content).toBe("track me");
     }
   });
+
+  it("resets per-session state when the active session flips (no leak across +/row clicks)", async () => {
+    // The sidebar `+` button (LoggedOutShell) and the row clicks
+    // (LoggedOutSessionsPanel) both navigate by changing `?session=`,
+    // which re-runs `usePublicChat(sessionId)` against a different
+    // streamKey. This test pins the contract that local state owned
+    // by the controller — input draft, isStreaming flag, sourceImage,
+    // any error banner — is wiped on the flip. Without this reset,
+    // those values bleed forward and the destination "looks like the
+    // same chat the user just left", which the visitor reads as "the
+    // + button didn't take me to a new chat screen."
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    );
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => usePublicChat(id),
+      { wrapper, initialProps: { id: "session-A" } },
+    );
+
+    // Drive the first session into a "dirty" controller state: an
+    // unsent draft, a pinned source image, an in-flight chat handle
+    // (faked via `handleSend`), and an isStreaming flag.
+    act(() => {
+      result.current.setInput("draft for A");
+      result.current.setSourceImage("data:image/png;base64,AAA");
+    });
+    await act(async () => {
+      await result.current.handleSend("hello A");
+    });
+    expect(streamPublicChatMock).toHaveBeenCalledTimes(1);
+    expect(result.current.isStreaming).toBe(true);
+    // `handleSend` clears the draft after persisting the user turn
+    // (the production input bar mirrors that contract). Re-stamp it
+    // so the post-flip assertion below has a non-empty value to
+    // distinguish "leaked into B" from "controller reset cleared it".
+    act(() => {
+      result.current.setInput("draft for A");
+    });
+    expect(result.current.input).toBe("draft for A");
+    expect(result.current.sourceImage).toBe("data:image/png;base64,AAA");
+
+    // Flip to a different session id. With the reset wired up, the
+    // controller drops the prior input, source image, and streaming
+    // flag; without it, all three leak forward into session B. The
+    // `act()` wrap is load-bearing: the controller resets state from
+    // inside a `useEffect` keyed on the new streamKey, so we have to
+    // flush passive effects before reading `result.current`.
+    act(() => {
+      rerender({ id: "session-B" });
+    });
+
+    expect(result.current.input).toBe("");
+    expect(result.current.sourceImage).toBe(null);
+    expect(result.current.isStreaming).toBe(false);
+  });
 });

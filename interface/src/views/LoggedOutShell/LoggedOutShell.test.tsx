@@ -7,9 +7,17 @@
  * own composition contract instead of transitive setup.
  */
 
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { usePublicChatStore } from "../../stores/public-chat-store";
 
 vi.mock("@cypher-asi/zui", () => ({
   Topbar: ({
@@ -69,9 +77,17 @@ vi.mock("./LoginOverlay", () => ({
 
 import { LoggedOutShell } from "./LoggedOutShell";
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+  );
+}
+
 function renderShell(initialPath = "/") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
+      <LocationProbe />
       <Routes>
         <Route element={<LoggedOutShell />}>
           <Route
@@ -87,6 +103,23 @@ function renderShell(initialPath = "/") {
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  window.localStorage.clear();
+  // The store module is shared across the suite so reset to a known
+  // empty state between tests; otherwise sessions seeded by one test
+  // bleed into the next and the "+" reuse behaviour reads as flaky.
+  usePublicChatStore.setState({
+    sessions: {},
+    sessionOrder: [],
+    turnCount: 0,
+    guestToken: null,
+  });
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+});
 
 describe("LoggedOutShell", () => {
   it("mounts the titlebar, sidebar, and outlet without crashing", () => {
@@ -143,5 +176,84 @@ describe("LoggedOutShell", () => {
     // mode without losing context).
     expect(screen.getByTestId("outlet-child")).toBeInTheDocument();
     expect(screen.getByTestId("login-overlay-stub")).toBeInTheDocument();
+  });
+
+  it("reuses an existing empty session when '+' is clicked instead of accumulating orphan rows", async () => {
+    const user = userEvent.setup();
+    let emptyId = "";
+    let titledId = "";
+    act(() => {
+      // sessionOrder is newest-first. Seed a titled session first
+      // (older), then an empty session (newer, "New chat" placeholder)
+      // so the empty row sits at the head of the list — the
+      // configuration the visitor sees right after sending a first
+      // message in their previous chat.
+      titledId = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(titledId, "first chat");
+      emptyId = usePublicChatStore.getState().createSession();
+    });
+
+    renderShell(`/?session=${titledId}`);
+
+    expect(usePublicChatStore.getState().sessionOrder).toEqual([
+      emptyId,
+      titledId,
+    ]);
+
+    // The accessible name "New chat" matches both the search-row "+"
+    // button (aria-label) AND any session row whose title is still
+    // the default placeholder, so we filter by `title=` to land on
+    // the search-header affordance specifically.
+    const plusBtn = screen
+      .getAllByRole("button", { name: "New chat" })
+      .find((b) => b.getAttribute("title") === "New chat");
+    expect(plusBtn).toBeDefined();
+    await user.click(plusBtn!);
+
+    // Pressing "+" should reuse the existing empty session — no new
+    // row in the store, and the URL flips to that session id so the
+    // chat view re-renders against an empty canvas. Without this
+    // dedupe, every press accumulates another orphan "New chat" row
+    // pointing at an empty canvas, and a visitor sitting on a
+    // populated chat sees the press as "the + button didn't take me
+    // to a new chat screen" because the destination canvas already
+    // existed but was hidden behind the previous session.
+    expect(usePublicChatStore.getState().sessionOrder).toEqual([
+      emptyId,
+      titledId,
+    ]);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/?session=${emptyId}`,
+    );
+  });
+
+  it("mints a fresh session for '+' when every existing session has at least one turn", async () => {
+    const user = userEvent.setup();
+    let firstId = "";
+    let secondId = "";
+    act(() => {
+      firstId = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(firstId, "first chat");
+      secondId = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(secondId, "second chat");
+    });
+
+    renderShell(`/?session=${secondId}`);
+    const beforeOrder = [...usePublicChatStore.getState().sessionOrder];
+
+    await user.click(
+      screen.getByRole("button", { name: "New chat" }),
+    );
+
+    const afterOrder = usePublicChatStore.getState().sessionOrder;
+    // Exactly one new id appended at the head — the dedupe falls
+    // through to `createSession()` because no zero-turn session
+    // existed to reuse.
+    expect(afterOrder).toHaveLength(beforeOrder.length + 1);
+    const newId = afterOrder[0];
+    expect(beforeOrder).not.toContain(newId);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      `/?session=${newId}`,
+    );
   });
 });
