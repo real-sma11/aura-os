@@ -256,9 +256,19 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
         // showShell already implies an authenticated user, and the
         // public chat view is guest-token-driven so there's no
         // privileged data to gate.
+        //
+        // The `*` catch-all is load-bearing: flipping the UI toggle
+        // does not change the URL, so a user sitting on an advanced
+        // route like `/projects/:id/agents/:id` and then toggling to
+        // normie would land on a URL that matches none of the
+        // normie-shell routes. Without the catch-all React Router
+        // emits a `No routes matched location` warning and renders
+        // nothing. Redirect to `/` so the toggle always lands on a
+        // valid view.
         <Route element={<LoggedOutShell />}>
           <Route index element={<LoggedOutChatView />} />
           <Route path="chat" element={<LoggedOutChatView />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       ) : isNativeApp ? (
         <Route path="*" element={<Navigate to="/login" replace />} />
