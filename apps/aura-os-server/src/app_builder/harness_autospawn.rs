@@ -167,7 +167,112 @@ pub(super) fn maybe_spawn_local_harness() {
 }
 
 pub(crate) fn ensure_local_harness_running() {
+    if let LocalHarnessPreflight::Misconfigured(message) =
+        preflight_local_harness_config(env_var_or_none)
+    {
+        tracing::error!("{message}");
+    }
     maybe_spawn_local_harness();
+}
+
+/// Outcome of [`preflight_local_harness_config`].
+///
+/// `Ok` covers the "autospawn will run, OR a non-loopback
+/// `LOCAL_HARNESS_URL` is set" cases. `Misconfigured` is the specific
+/// combination that previously silently broke production chat — the
+/// server boots fine, every non-harness API works, and only a user
+/// sending a chat message surfaces `local harness websocket connect
+/// failed`. Stringly-typed payload because the message is operator-
+/// readable and the test asserts on substrings, not enum shape.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum LocalHarnessPreflight {
+    Ok,
+    Misconfigured(String),
+}
+
+/// Detect the "autospawn disabled + no remote harness" combo that
+/// produced the production chat outage. When autospawn is on, the
+/// existing `maybe_spawn_local_harness` path either succeeds or
+/// loudly logs "aura-harness directory not found" / "Failed to
+/// spawn", so this preflight stays silent and lets that flow run.
+///
+/// When autospawn is off (the production default — autospawn is a
+/// developer-only convenience that requires a sibling source
+/// checkout), `LOCAL_HARNESS_URL` is the only remaining way for the
+/// server to reach a harness. If it's unset or pointing at loopback,
+/// every `LocalHarness::open_session` call will fail at the WS
+/// connect step with the same generic error, and the operator has
+/// to read source to know what to fix. Stamping a single
+/// `error!` line at boot makes the misconfiguration loud, joins
+/// cleanly to log shippers, and references the env var by name.
+///
+/// `read` is parameterised so the unit test can stub the env
+/// without touching `std::env::set_var`, matching the same pattern
+/// `derive_harness_url_overrides` already uses.
+pub(super) fn preflight_local_harness_config<F>(read: F) -> LocalHarnessPreflight
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let autospawn_disabled = read("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if !autospawn_disabled {
+        return LocalHarnessPreflight::Ok;
+    }
+    let raw = read("LOCAL_HARNESS_URL").unwrap_or_default();
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return LocalHarnessPreflight::Misconfigured(
+            "production misconfiguration: autospawn is disabled \
+             (AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN=true) and \
+             LOCAL_HARNESS_URL is unset — chat will fail with \
+             `local harness websocket connect failed`. Set \
+             LOCAL_HARNESS_URL to the deployed aura-node URL on \
+             the Render dashboard (typically the same value as \
+             SWARM_BASE_URL)."
+                .to_string(),
+        );
+    }
+    if is_loopback_url(trimmed) {
+        return LocalHarnessPreflight::Misconfigured(format!(
+            "production misconfiguration: autospawn is disabled \
+             (AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN=true) and \
+             LOCAL_HARNESS_URL points at loopback (resolved=`{trimmed}`) \
+             — chat will fail with `local harness websocket connect \
+             failed`. Set LOCAL_HARNESS_URL to the deployed aura-node \
+             URL on the Render dashboard (typically the same value as \
+             SWARM_BASE_URL)."
+        ));
+    }
+    LocalHarnessPreflight::Ok
+}
+
+/// True when `url`'s host component is a loopback or unroutable
+/// address (`127.0.0.1`, `::1`, `0.0.0.0`, `localhost`). Used by
+/// the preflight to decide whether `LOCAL_HARNESS_URL` is a real
+/// remote harness or a development default that leaked into a
+/// production env. `0.0.0.0` is included because it's a common
+/// "bind on all interfaces" value that's never reachable as a
+/// client target.
+fn is_loopback_url(url: &str) -> bool {
+    let after_scheme = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .or_else(|| url.strip_prefix("ws://"))
+        .or_else(|| url.strip_prefix("wss://"))
+        .unwrap_or(url);
+    let host = after_scheme
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .rsplit_once(':')
+        .map(|(host, _)| host)
+        .unwrap_or(after_scheme);
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    matches!(
+        host.to_ascii_lowercase().as_str(),
+        "localhost" | "127.0.0.1" | "0.0.0.0" | "::1"
+    )
 }
 
 /// Parse a dotenv-style file body into `(key, value)` pairs.
@@ -365,6 +470,99 @@ NO_EQUALS_LINE
         assert!(
             lookup.contains_key("AURA_OS_SERVER_URL"),
             "AURA_OS_SERVER_URL must remain in the override set even when other URLs are also set"
+        );
+    }
+
+    #[test]
+    fn preflight_ok_when_autospawn_enabled_regardless_of_url() {
+        // Autospawn-on is the developer path: `maybe_spawn_local_harness`
+        // either succeeds or logs its own "directory not found" /
+        // "spawn failed" line. The preflight must defer in that case
+        // so we don't double-log a confusing "production
+        // misconfiguration" message in dev shells.
+        let read_unset = reader_from(&[]);
+        assert_eq!(preflight_local_harness_config(read_unset), LocalHarnessPreflight::Ok);
+
+        let read_explicit_off = reader_from(&[("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN", "false")]);
+        assert_eq!(
+            preflight_local_harness_config(read_explicit_off),
+            LocalHarnessPreflight::Ok,
+        );
+
+        // Even with a loopback URL set, autospawn-on means the server
+        // can recover. The preflight only fires when autospawn is the
+        // explicit no-op it is on Render.
+        let read_dev_default = reader_from(&[("LOCAL_HARNESS_URL", "http://localhost:8080")]);
+        assert_eq!(
+            preflight_local_harness_config(read_dev_default),
+            LocalHarnessPreflight::Ok,
+        );
+    }
+
+    #[test]
+    fn preflight_misconfigured_when_autospawn_off_and_url_unset() {
+        let read = reader_from(&[("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN", "true")]);
+        let outcome = preflight_local_harness_config(read);
+        let LocalHarnessPreflight::Misconfigured(message) = outcome else {
+            panic!("expected misconfigured outcome, got {outcome:?}");
+        };
+        assert!(
+            message.contains("LOCAL_HARNESS_URL is unset"),
+            "preflight message must call out the unset env var, got: {message}"
+        );
+        assert!(
+            message.contains("SWARM_BASE_URL"),
+            "preflight message must point operators at the same-as-SWARM_BASE_URL fix, got: {message}"
+        );
+    }
+
+    #[test]
+    fn preflight_misconfigured_for_loopback_urls() {
+        // The dev-default `local_harness_base_url()` returns
+        // http://localhost:<port> when LOCAL_HARNESS_URL is unset.
+        // A prod operator that sets the env var to that same default
+        // by accident reaches the same broken state — make sure the
+        // preflight catches both shapes (host-by-name and host-by-IP).
+        for url in [
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://0.0.0.0:8080",
+            "https://LOCALHOST:8080",
+            "ws://localhost:8081/stream",
+            "wss://[::1]:8080/stream",
+        ] {
+            // Bind the slice to a local so it outlives the closure
+            // returned by `reader_from`. Inline `&[...]` works in the
+            // adjacent string-literal tests but not here because `url`
+            // is a loop variable whose borrow lifetime collides with
+            // the temporary slice's drop point.
+            let pairs = [
+                ("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN", "1"),
+                ("LOCAL_HARNESS_URL", url),
+            ];
+            let read = reader_from(&pairs);
+            let outcome = preflight_local_harness_config(read);
+            let LocalHarnessPreflight::Misconfigured(message) = outcome else {
+                panic!("expected misconfigured outcome for {url}, got {outcome:?}");
+            };
+            assert!(
+                message.contains(url),
+                "preflight must echo the offending URL `{url}`, got: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn preflight_ok_when_autospawn_off_but_remote_url_set() {
+        // The intended production state: autospawn off, LOCAL_HARNESS_URL
+        // pointing at the deployed aura-node Render service.
+        let read = reader_from(&[
+            ("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN", "true"),
+            ("LOCAL_HARNESS_URL", "https://aura-node-prod.onrender.com"),
+        ]);
+        assert_eq!(
+            preflight_local_harness_config(read),
+            LocalHarnessPreflight::Ok,
         );
     }
 

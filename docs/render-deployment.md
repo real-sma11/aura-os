@@ -24,8 +24,13 @@ Single Web Service that builds both frontend and backend. The backend serves the
 | `VITE_API_URL` | `https://YOUR-SERVICE.onrender.com` |
 | `AURA_ROUTER_URL` | `https://aura-router.onrender.com` |
 | `Z_BILLING_URL` | `https://z-billing.onrender.com` |
+| `LOCAL_HARNESS_URL` | URL of the deployed `aura-node` service (typically the same value as `SWARM_BASE_URL`) |
+| `SWARM_BASE_URL` | URL of the deployed `aura-node` service (used by remote/swarm-mode agents) |
+| `AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN` | `true` (autospawn is dev-only; production never autospawns) |
 
 `VITE_API_URL` is consumed twice from the same Render env: the Vite build bakes it into the frontend bundle so the UI knows where to call, and the `aura-os-server` process reads it at runtime to stamp cross-agent tool callback URLs (so remote harness agents can reach back into the service over its public URL instead of loopback). One env var, two jobs — no duplication.
+
+`LOCAL_HARNESS_URL` and `SWARM_BASE_URL` typically point at the **same** deployed `aura-node` service. The aura-node binary serves two protocols on a single port: a WebSocket `/stream` endpoint that `LocalHarness` uses (chat, public chat, generations) and an HTTP agents/sessions API that `SwarmHarness` uses (per-agent VM provisioning for remote-mode agents). Setting one but not the other only enables one feature surface — chat will fail with `local harness websocket connect failed` when `LOCAL_HARNESS_URL` is missing even though swarm-mode features still work. The server boot logs an `error!` line at startup when this is misconfigured (`production misconfiguration: autospawn is disabled and LOCAL_HARNESS_URL is not pointing at a remote harness …`), so `journalctl`/Render logs will surface the issue immediately on deploy instead of waiting for the first user-clicked chat turn.
 
 ### Optional overrides
 
@@ -47,8 +52,6 @@ Single Web Service that builds both frontend and backend. The backend serves the
 | Variable | Value |
 |----------|-------|
 | `REQUIRE_ZERO_PRO` | `true` (default) or `false` |
-| `SWARM_BASE_URL` | Swarm gateway URL if using remote agents |
-| `LOCAL_HARNESS_URL` | Harness URL (not needed on Render — no local harness) |
 
 ## Prerequisites
 
@@ -78,11 +81,12 @@ open https://YOUR-SERVICE.onrender.com
 - `VITE_API_URL` (or the explicit `AURA_SERVER_BASE_URL` override) is the server's own public URL. It's stamped into cross-agent tool endpoints (`send_to_agent`, `spawn_agent`, etc.) so the remote harness / `aura-swarm` can call back in. Without it the server falls back to `http://<AURA_SERVER_HOST>:<AURA_SERVER_PORT>`, and `0.0.0.0` is normalized to `127.0.0.1` — which is unreachable from any other host.
 - Render instances still have ephemeral local disk. Browser-owned persisted state remains in the browser, server auth uses the in-memory validation cache, and any local backend compatibility state should be treated as rebuildable.
 - The build takes ~2-3 minutes (Node frontend + Rust backend).
-- `LOCAL_HARNESS_URL` should NOT be set on Render unless a harness service is deployed alongside.
+- `LOCAL_HARNESS_URL` and `SWARM_BASE_URL` MUST be set in production and typically point at the same deployed `aura-node` service. See the Required env-var section above for why.
 
 ## Troubleshooting
 
 - `external tool callback unreachable: http://127.0.0.1:<port>/...` — the server is handing remote harnesses a loopback URL because neither `VITE_API_URL` nor the optional `AURA_SERVER_BASE_URL` override is set. Set `VITE_API_URL` to the service's public https URL (e.g. `https://YOUR-SERVICE.onrender.com`) and redeploy; this also fixes the frontend bundle in the same build.
+- `local harness websocket connect failed` (chat returns 503 / SSE closes immediately) — `LOCAL_HARNESS_URL` is unset, empty, or pointing at loopback (`127.0.0.1`/`localhost`). The startup logs will also have `production misconfiguration: autospawn is disabled and LOCAL_HARNESS_URL is not pointing at a remote harness`. Fix: set `LOCAL_HARNESS_URL` on the Render dashboard to the deployed `aura-node` service URL (the same value as `SWARM_BASE_URL`), then restart. Verify by hitting that URL's `/health` from a Render shell before debugging further.
 
 ## Orbit ENOSPC runbook
 

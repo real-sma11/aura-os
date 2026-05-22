@@ -41,4 +41,23 @@ fn maps_local_harness_connect_errors_to_service_unavailable() {
 
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body.0.code, "service_unavailable");
+    // The body must keep the upstream wording so external log
+    // scrapers / dashboards keyed on the original substring still
+    // match. Asserting both ends of the format keeps the upstream
+    // contract pinned alongside the new operator hint.
+    assert!(
+        body.0.error.contains("local harness is unavailable"),
+        "must keep the upstream-friendly prefix, got: {}",
+        body.0.error
+    );
+    assert!(
+        body.0.error.contains("LOCAL_HARNESS_URL"),
+        "must point on-call at the env var that fixes this 503 on Render, got: {}",
+        body.0.error
+    );
+    assert!(
+        body.0.error.contains("aura-node"),
+        "must name the deployed service the env var should target, got: {}",
+        body.0.error
+    );
 }

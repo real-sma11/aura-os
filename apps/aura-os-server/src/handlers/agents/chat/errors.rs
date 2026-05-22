@@ -264,7 +264,22 @@ pub(super) fn map_harness_session_startup_error(message: &str) -> (StatusCode, J
     }
 
     if normalized.contains("local harness websocket connect failed") {
-        return ApiError::service_unavailable(format!("local harness is unavailable: {message}"));
+        // Stamp the operator hint into the user-facing error body so
+        // on-call doesn't have to grep the source on a 503. The
+        // production failure mode this maps from is almost always
+        // `LOCAL_HARNESS_URL` being unset / pointing at loopback on
+        // the Render dashboard — same root cause the boot-time
+        // preflight in `harness_autospawn::preflight_local_harness_config`
+        // shouts about. Keep the original `message` substring intact
+        // so the existing test in
+        // `apps/aura-os-server/src/handlers/agents/chat/tests/errors_tests.rs`
+        // (and any external log scraper looking for the verbatim
+        // upstream wording) still matches.
+        return ApiError::service_unavailable(format!(
+            "local harness is unavailable: {message} \
+             (operator: verify LOCAL_HARNESS_URL points at the deployed aura-node service \
+             and that service is reachable from aura-os-server)"
+        ));
     }
 
     if normalized.contains("local harness session_init send failed")
