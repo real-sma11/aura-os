@@ -21,7 +21,7 @@ import styles from "./DMWindow.module.css";
 /**
  * One floating DM window mounted by `DMWindowManager`. Renders the
  * MSN/ICQ-style chrome (titlebar with both participants' names +
- * fake window controls, status strip, message body) and projects
+ * fake window controls, message body) and projects
  * the script's frames into the body — message frames render as
  * bubbles aligned left/right based on the speaking agent, tool
  * frames render as compact mono-font cards reusing `TerminalStream`.
@@ -65,7 +65,6 @@ export interface DMWindowPosition {
 interface DMWindowProps {
   readonly threadId: ThreadId;
   readonly participants: readonly [AgentId, AgentId];
-  readonly title: string;
   readonly frames: ReadonlyArray<DMWindowFrame>;
   readonly zIndex: number;
   readonly position: DMWindowPosition;
@@ -82,7 +81,6 @@ interface DMWindowProps {
 export function DMWindow({
   threadId,
   participants,
-  title,
   frames,
   zIndex,
   position,
@@ -183,11 +181,6 @@ export function DMWindow({
             <X size={12} strokeWidth={2} />
           </span>
         </div>
-      </div>
-
-      <div className={styles.dmStatus} title={title}>
-        <span className={styles.dmStatusDot} />
-        <span className={styles.dmStatusText}>{title}</span>
       </div>
 
       <div className={styles.dmBody} ref={bodyRef} aria-hidden="true">

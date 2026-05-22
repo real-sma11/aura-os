@@ -266,7 +266,6 @@ export function DMWindowManager(): ReactNode {
             key={win.threadId}
             threadId={win.threadId}
             participants={meta.participants}
-            title={meta.title}
             frames={frames}
             zIndex={z}
             position={position}
