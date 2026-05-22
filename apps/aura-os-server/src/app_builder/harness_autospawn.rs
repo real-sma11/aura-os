@@ -1,5 +1,18 @@
 use super::*;
 
+/// Platform-specific filename of the bundled `aura-node` sidecar
+/// binary that this crate's autospawn looks for. Mirrors
+/// [`crate::harness::binary::harness_binary_name`] in
+/// `apps/aura-os-desktop` so a single Render build artefact can be
+/// dropped into either tree.
+pub(super) fn harness_binary_filename() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "aura-node.exe"
+    } else {
+        "aura-node"
+    }
+}
+
 /// Resolve the directory containing the aura-harness source.
 ///
 /// Checks `AURA_HARNESS_DIR` env var first, then common sibling paths
@@ -21,6 +34,60 @@ pub(super) fn find_harness_dir() -> Option<PathBuf> {
         .find(|p| p.join("Cargo.toml").exists())
 }
 
+/// Locate the precompiled `aura-node` sidecar binary that the Render
+/// build is expected to drop alongside `aura-os-server`.
+///
+/// Resolution order, first hit wins:
+///
+/// 1. `AURA_HARNESS_BIN` env var pointing at an explicit absolute or
+///    relative path. This is the supported override for operators who
+///    stage the binary outside the conventional locations.
+/// 2. A sibling `aura-harness` checkout's release artefact at
+///    `<sibling>/target/release/aura-node`. This matches the Render
+///    build command, which clones `aura-harness` next to the
+///    `aura-os` workspace and runs `cargo build --release` inside it.
+/// 3. Common in-tree fallbacks (`./target/release/aura-node`,
+///    `./aura-node` next to the running binary). These exist so a
+///    developer can drop a hand-built binary into the workspace and
+///    exercise the production-shape spawn path locally without
+///    setting any env vars.
+///
+/// Returns `None` when no candidate exists. The caller falls through
+/// to [`spawn_local_harness_from_source`] (the dev-only `cargo run`
+/// path) so behaviour on a fresh dev box stays unchanged.
+pub(super) fn resolve_harness_binary_path() -> Option<PathBuf> {
+    let binary_name = harness_binary_filename();
+
+    if let Some(explicit) = env_opt("AURA_HARNESS_BIN") {
+        let p = PathBuf::from(&explicit);
+        if p.is_file() {
+            return Some(p);
+        }
+        warn!(
+            path = %p.display(),
+            "AURA_HARNESS_BIN configured but the file does not exist"
+        );
+    }
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Some(sibling) = find_harness_dir() {
+        candidates.push(sibling.join("target/release").join(binary_name));
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            candidates.push(exe_dir.join(binary_name));
+            candidates.push(exe_dir.join("sidecar").join(binary_name));
+        }
+    }
+
+    candidates.push(PathBuf::from("target/release").join(binary_name));
+    candidates.push(PathBuf::from("./").join(binary_name));
+
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 /// Parse host:port from a URL like `http://127.0.0.1:8080`.
 pub(super) fn parse_host_port(url: &str) -> Option<String> {
     url.strip_prefix("http://")
@@ -28,10 +95,44 @@ pub(super) fn parse_host_port(url: &str) -> Option<String> {
         .map(|s| s.trim_end_matches('/').to_string())
 }
 
+/// Bind URL the autospawned sidecar should listen on.
+///
+/// Operators can override with `LOCAL_HARNESS_URL` (only honoured when
+/// the host resolves to a local bind); otherwise the channel-specific
+/// sidecar port from [`aura_os_core::Channel::preferred_sidecar_port`]
+/// is used so the sidecar lands on the same port the desktop sidecar
+/// uses, and `aura-node` instances belonging to different channels can
+/// coexist on a shared host.
+fn sidecar_bind_url() -> String {
+    if let Some(explicit) = env_opt("LOCAL_HARNESS_URL") {
+        return explicit.trim_end_matches('/').to_string();
+    }
+    format!(
+        "http://127.0.0.1:{}",
+        aura_os_core::Channel::current().preferred_sidecar_port()
+    )
+}
+
 /// Try to auto-spawn the local aura-harness process if nothing is listening.
 ///
-/// Spawns the child process and polls for readiness in a background thread
-/// so it never blocks the caller.
+/// Two paths are attempted in order:
+///
+/// 1. **Bundled-binary spawn** ([`try_spawn_harness_binary`]). Mirrors
+///    `apps/aura-os-desktop/src/harness/sidecar.rs` — locate a
+///    precompiled `aura-node` artefact (via `AURA_HARNESS_BIN` or the
+///    standard candidate paths), spawn it as a child process, and
+///    stamp `LOCAL_HARNESS_URL` so the rest of the server connects to
+///    it. This is the production path on Render: the build command
+///    clones `aura-harness` and `cargo build --release`s `aura-node`
+///    so [`resolve_harness_binary_path`] finds it.
+///
+/// 2. **Source-build spawn** ([`spawn_local_harness_from_source`]). The
+///    legacy developer-only flow: find a sibling `aura-harness`
+///    checkout and `cargo run --release` it. Slow and depends on a
+///    Rust toolchain at runtime, so it never runs in production.
+///
+/// Both paths poll for readiness in a background thread so this
+/// function never blocks the caller.
 pub(super) fn maybe_spawn_local_harness() {
     if std::env::var("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -41,6 +142,138 @@ pub(super) fn maybe_spawn_local_harness() {
         return;
     }
 
+    if try_spawn_harness_binary() {
+        return;
+    }
+
+    spawn_local_harness_from_source();
+}
+
+/// Production-shape spawn path: launch a precompiled `aura-node`
+/// child process and stamp `LOCAL_HARNESS_URL` to its bound URL.
+///
+/// Returns `true` when this function decided to "handle" the
+/// autospawn — either because a sidecar is already listening at the
+/// chosen URL or because we successfully launched a new child.
+/// Returns `false` to mean "no binary was found, fall through to the
+/// developer source-build path"; warnings about a misconfigured
+/// `AURA_HARNESS_BIN` are logged inside [`resolve_harness_binary_path`]
+/// so the caller doesn't have to reason about the failure modes.
+fn try_spawn_harness_binary() -> bool {
+    let Some(binary_path) = resolve_harness_binary_path() else {
+        return false;
+    };
+
+    let harness_url = sidecar_bind_url();
+    let Some(host_port) = parse_host_port(&harness_url) else {
+        warn!(url = %harness_url, "invalid LOCAL_HARNESS_URL for sidecar launch");
+        return false;
+    };
+    let Ok(addr) = host_port.parse::<std::net::SocketAddr>() else {
+        warn!(
+            host_port = %host_port,
+            "non-numeric host:port for sidecar launch; skipping bundled-binary path"
+        );
+        return false;
+    };
+
+    // Probe first: a previous invocation in the same dyno may have
+    // already started the sidecar, or an external operator may be
+    // running aura-node by hand for debugging. Don't double-spawn.
+    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok() {
+        info!(url = %harness_url, "Local harness sidecar already running");
+        std::env::set_var("LOCAL_HARNESS_URL", &harness_url);
+        return true;
+    }
+
+    info!(
+        binary = %binary_path.display(),
+        url = %harness_url,
+        "Spawning local harness sidecar from precompiled binary"
+    );
+
+    let mut cmd = std::process::Command::new(&binary_path);
+    cmd.args(["run", "--ui", "none"])
+        .env("BIND_ADDR", &host_port)
+        .env("BIND_PORT", addr.port().to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    if let Ok(slots) = std::env::var(super::HARNESS_WS_SLOTS_ENV) {
+        if !slots.trim().is_empty() {
+            cmd.env(super::HARNESS_WS_SLOTS_ENV, slots);
+        }
+    }
+
+    // Apply the same callback-URL overrides the source-build path
+    // uses so the sidecar `HttpDomainApi` posts spec / task / project
+    // writes back to THIS server, not whatever `:3100` default the
+    // harness's bundled `.env` ships with.
+    for (key, value) in derive_harness_url_overrides(env_var_or_none) {
+        cmd.env(key, value);
+    }
+
+    match cmd.spawn() {
+        Ok(mut child) => {
+            info!(
+                pid = child.id(),
+                "aura-harness sidecar process spawned"
+            );
+
+            // Stamp LOCAL_HARNESS_URL so the LocalHarness::from_env()
+            // call inside `init_domain_services` (which runs after
+            // ensure_local_harness_running) connects to the sidecar
+            // rather than to a remote SWARM_BASE_URL fallback or the
+            // localhost default.
+            std::env::set_var("LOCAL_HARNESS_URL", &harness_url);
+
+            let url_for_log = harness_url.clone();
+            std::thread::spawn(move || {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    if let Ok(Some(status)) = child.try_wait() {
+                        let _ = status;
+                        break;
+                    }
+                    if std::time::Instant::now() > deadline {
+                        tracing::warn!(
+                            "Timed out waiting for aura-harness sidecar to become ready"
+                        );
+                        break;
+                    }
+                    if std::net::TcpStream::connect_timeout(
+                        &addr,
+                        std::time::Duration::from_millis(200),
+                    )
+                    .is_ok()
+                    {
+                        tracing::info!("Local harness sidecar ready at {url_for_log}");
+                        break;
+                    }
+                }
+            });
+            true
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                binary = %binary_path.display(),
+                "Failed to spawn aura-harness sidecar; falling through to source-build autospawn"
+            );
+            false
+        }
+    }
+}
+
+/// Developer-only spawn path: locate a sibling `aura-harness` checkout
+/// and `cargo run --release` it. Never used in production because it
+/// requires a Rust toolchain at runtime. Behaviour is unchanged from
+/// the original autospawn — only its trigger is new (it now runs
+/// only when [`try_spawn_harness_binary`] declined to handle the
+/// spawn).
+fn spawn_local_harness_from_source() {
     let harness_url = local_harness_base_url();
 
     let Some(host_port) = parse_host_port(&harness_url) else {
@@ -59,7 +292,7 @@ pub(super) fn maybe_spawn_local_harness() {
     let Some(harness_dir) = find_harness_dir() else {
         warn!(
             "Local harness not running at {harness_url} and aura-harness directory not found. \
-             Set AURA_HARNESS_DIR or start the harness manually."
+             Set AURA_HARNESS_DIR, AURA_HARNESS_BIN, or start the harness manually."
         );
         return;
     };
@@ -227,14 +460,15 @@ pub(super) enum LocalHarnessPreflight {
 
 /// Detect the "autospawn disabled + no remote harness reachable"
 /// combo that produced the production chat outage. When autospawn
-/// is on, the existing `maybe_spawn_local_harness` path either
-/// succeeds or loudly logs "aura-harness directory not found" /
-/// "Failed to spawn", so this preflight stays in the `Ok` arm and
-/// lets that flow run.
+/// is on, the existing `maybe_spawn_local_harness` path tries the
+/// bundled-binary spawn (production shape, mirrors the desktop
+/// sidecar) and falls back to the dev-only source-build path; both
+/// outcomes either succeed or log their own warnings, so this
+/// preflight stays in the `Ok` arm and lets that flow run.
 ///
-/// When autospawn is off (the production default — autospawn is a
-/// developer-only convenience that requires a sibling source
-/// checkout), the resolved URL is the only thing standing between
+/// When autospawn is off (the operator has explicitly opted out, or
+/// the deployment relies on a remote harness instead of a local
+/// sidecar), the resolved URL is the only thing standing between
 /// the server and a wedged chat surface. `LOCAL_HARNESS_URL` and
 /// `SWARM_BASE_URL` resolve through
 /// [`resolve_local_harness_base_url`] in `aura-os-harness` (single
@@ -265,9 +499,11 @@ where
              (AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN=true) and the \
              resolved harness URL is loopback / unset \
              (resolved=`{}`, source={}) — chat will fail with \
-             `local harness websocket connect failed`. Set \
-             SWARM_BASE_URL or LOCAL_HARNESS_URL on the Render \
-             dashboard to the deployed aura-node service URL.",
+             `local harness websocket connect failed`. Either drop \
+             AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN so the bundled \
+             aura-node sidecar can launch, or set SWARM_BASE_URL / \
+             LOCAL_HARNESS_URL on the Render dashboard to a \
+             deployed aura-node service URL.",
             resolved.url,
             resolved.source.as_str()
         );
@@ -592,6 +828,10 @@ NO_EQUALS_LINE
             message.contains("LOCAL_HARNESS_URL"),
             "preflight message must also name LOCAL_HARNESS_URL, got: {message}"
         );
+        assert!(
+            message.contains("AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN"),
+            "preflight message must mention the autospawn-disable env var as a remediation lever, got: {message}"
+        );
     }
 
     #[test]
@@ -692,6 +932,59 @@ NO_EQUALS_LINE
         assert!(
             !lookup.contains_key("ORBIT_URL"),
             "must not forward ORBIT_URL when parent has ORBIT_BASE_URL unset",
+        );
+    }
+
+    #[test]
+    fn harness_binary_filename_matches_platform_convention() {
+        let name = harness_binary_filename();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "aura-node.exe");
+        } else {
+            assert_eq!(name, "aura-node");
+        }
+    }
+
+    /// `resolve_harness_binary_path` must honour an explicit
+    /// `AURA_HARNESS_BIN` env var when it points at a real file. This
+    /// is the production-deploy contract: the Render build command
+    /// drops the binary at a known path and exports the env var so
+    /// resolution doesn't have to fight directory layout heuristics.
+    #[test]
+    fn resolve_harness_binary_path_respects_aura_harness_bin_when_file_exists() {
+        // Use a temp dir so this test stays hermetic and never picks
+        // up a stale binary from a previous workspace build.
+        let temp = std::env::temp_dir().join(format!(
+            "aura-os-server-harness-bin-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&temp).unwrap();
+        let staged = temp.join(harness_binary_filename());
+        std::fs::write(&staged, b"fake-aura-node").unwrap();
+
+        // Save and restore process env so this test doesn't leak into
+        // sibling tests via global state. Cargo runs unit tests on a
+        // shared process, so any env var we set here would otherwise
+        // bleed into `derive_harness_url_overrides_*` and friends.
+        let prior = std::env::var("AURA_HARNESS_BIN").ok();
+        std::env::set_var("AURA_HARNESS_BIN", &staged);
+
+        let resolved = resolve_harness_binary_path();
+
+        match prior {
+            Some(value) => std::env::set_var("AURA_HARNESS_BIN", value),
+            None => std::env::remove_var("AURA_HARNESS_BIN"),
+        }
+        let _ = std::fs::remove_dir_all(&temp);
+
+        assert_eq!(
+            resolved.as_deref(),
+            Some(staged.as_path()),
+            "AURA_HARNESS_BIN must win over candidate-path scanning when the configured file exists"
         );
     }
 }
