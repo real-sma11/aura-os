@@ -1,0 +1,55 @@
+/* Scoped styles for the streaming text + trailing block caret.
+   Lives next to `TypewriterText.tsx` so the component is fully
+   self-contained: the consumer drops `<TypewriterText text={...} />`
+   inside any bubble and gets the LLM-style reveal without any
+   adjacent CSS plumbing.
+
+   Caret design notes:
+     - 0.5em width × 1em height: a "block cursor" sized relative to
+       the bubble's font so the caret scales with the surrounding
+       text (works for 11px tool labels and 13px message copy alike
+       without a per-callsite tweak).
+     - `vertical-align: text-bottom`: sits the caret on the text
+       baseline rather than on the line box, which matches how
+       ChatGPT and Claude render their streaming cursor.
+     - `currentColor` background: the caret inherits the bubble's
+       text color so it stays legible on every agent's bubble and on
+       the dark inner panel behind the banner.
+     - 900ms blink via `steps(2, start)`: a hard on/off blink (not a
+       smooth opacity fade) so the caret reads as a cursor rather
+       than a glowing accent — the smooth fade reads as decorative
+       and weakens the "is being written" signal. */
+.typewriter {
+  display: inline;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  vertical-align: text-bottom;
+  background: currentColor;
+  margin-left: 2px;
+  border-radius: 1px;
+  opacity: 0.85;
+  animation: typewriterCaretBlink 900ms steps(2, start) infinite;
+}
+
+@keyframes typewriterCaretBlink {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    /* `TypewriterText` also short-circuits the per-character reveal
+       under this media query (the full text mounts in one shot), so
+       hiding the caret here leaves the resolved bubble looking like
+       a regular static message. */
+    display: none;
+  }
+}

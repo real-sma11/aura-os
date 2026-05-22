@@ -12,6 +12,7 @@ import {
   type DemoFrame,
 } from "./agent-demo-script";
 import { TypingIndicator } from "./TypingIndicator";
+import { TypewriterText } from "./TypewriterText";
 import styles from "./LoggedOutShell.module.css";
 
 /**
@@ -27,7 +28,11 @@ import styles from "./LoggedOutShell.module.css";
  * Each frame is one row. When a frame declares `typingMs`, the row
  * first renders a `TypingIndicator` and then cross-fades the bubble
  * into the resolved content (message text or tool card) — typing
- * and message are NOT two separate stacked entries.
+ * and message are NOT two separate stacked entries. Message bubbles
+ * render their text through `TypewriterText`, which streams the
+ * copy character-by-character with a trailing block caret so the
+ * resolved bubble feels like a live LLM response being written
+ * (rather than a wholesale "text appears" pop).
  *
  * The whole banner is `aria-hidden`: it's atmosphere, not content.
  * The chat input below the banner remains the keyboard-reachable
@@ -234,7 +239,7 @@ function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
             key="content"
             className={`${styles.demoBubble} ${styles.demoBubblePhase}`}
           >
-            {frame.text}
+            <TypewriterText text={frame.text} />
           </div>
         ) : (
           <div
