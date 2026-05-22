@@ -79,7 +79,14 @@ vi.mock("@cypher-asi/zui", async () => {
       title?: React.ReactNode;
       actions?: React.ReactNode;
     } & Record<string, unknown>) => (
-      <div data-testid={(rest["data-testid"] as string) ?? "zui-topbar-stub"}>
+      // Spreading `rest` keeps the production `onDoubleClick`
+      // (which dispatches `windowCommand("maximize")`) attached to
+      // the stub root so propagation tests for in-titlebar buttons
+      // can assert real bubbling behaviour.
+      <div
+        data-testid={(rest["data-testid"] as string) ?? "zui-topbar-stub"}
+        {...(rest as Record<string, unknown>)}
+      >
         <div>{icon}</div>
         <div>{title}</div>
         <div>{actions}</div>
@@ -622,5 +629,25 @@ describe("AuraShell — public left drawer", () => {
     // Open: aria-pressed="true" — same boolean contract as the right
     // sidekick toggle in `WindowControls.tsx`.
     expect(leftToggle).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("double-clicking the left drawer toggle does not bubble to the titlebar's window-maximize handler", async () => {
+    // `ShellTitlebar` installs a default double-click handler that
+    // calls `windowCommand("maximize")`. Without an explicit
+    // `stopPropagation` on the leading slot, fast double-taps on
+    // the drawer button maximize the OS window — a regression worth
+    // pinning here so the next refactor that touches `PublicLeading`
+    // notices the constraint. The shared `lib/windowCommand` mock at
+    // the top of this file lets us assert the no-call invariant.
+    setLoggedOut();
+    const user = userEvent.setup();
+    const { windowCommand } = await import("../../lib/windowCommand");
+    vi.mocked(windowCommand).mockClear();
+    renderAuraShell("/");
+
+    const leftToggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    await user.dblClick(leftToggle);
+
+    expect(windowCommand).not.toHaveBeenCalledWith("maximize");
   });
 });

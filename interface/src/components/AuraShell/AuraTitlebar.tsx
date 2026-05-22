@@ -128,7 +128,16 @@ function PublicLeading({
 }): React.ReactElement | null {
   if (!onToggle) return null;
   return (
-    <span className={`${styles.titleLeading} titlebar-no-drag`}>
+    <span
+      className={`${styles.titleLeading} titlebar-no-drag`}
+      // The titlebar treats unhandled double-clicks as a window-
+      // maximize gesture (see `ShellTitlebar`'s default
+      // `onDoubleClick`). Without this stop, a fast double-tap on
+      // the drawer toggle ends up maximizing the OS window — the
+      // exact same fix `AuthedActions` applies to its trailing
+      // cluster, mirrored here for the public leading slot.
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
       <Button
         variant="ghost"
         size="sm"
