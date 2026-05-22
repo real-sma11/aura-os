@@ -155,6 +155,26 @@
   color: var(--color-text-primary);
 }
 
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary, #c9c9cf);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.themeToggle:hover {
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  color: var(--color-text-primary, inherit);
+}
+
 .advancedToggle {
   display: inline-flex;
   align-items: center;
@@ -236,7 +256,7 @@
     position: fixed;
     inset: 0;
     z-index: 55;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--color-backdrop-medium, rgba(0, 0, 0, 0.5));
   }
 
   .menuToggle {
