@@ -289,8 +289,12 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(640px, 70%);
-  max-height: 80%;
+  /* 2.5x the previous 640px / 70% sizing. `max-height` raised in
+     lockstep so the natural aspect ratio drives final size; with
+     `object-fit: contain` the painted video is bound by whichever
+     of width-or-height runs out first. */
+  width: min(1600px, 175%);
+  max-height: 200%;
   object-fit: contain;
   pointer-events: none;
   z-index: 0;
