@@ -1,0 +1,59 @@
+/* Scoped styles for the three-dot typing indicator. Lives next to
+   `TypingIndicator.tsx` so the component is self-contained and can
+   be lifted into other surfaces without dragging the parent shell's
+   CSS module along.
+
+   Bounce timing notes:
+     - 1100ms total period — slow enough that the up/down motion
+       reads as deliberate "thinking" rather than nervous flicker,
+       fast enough that the demo banner's short typing beats
+       (500-700ms) get at least one visible up/down cycle per dot.
+     - 160ms stagger between dots — large enough to read as a wave
+       (left -> middle -> right), small enough that all three dots
+       are in motion simultaneously most of the time.
+     - 4px vertical lift — twice the previous 2px so the up/down is
+       clearly visible at the demo banner's small dot size (5px),
+       which was the user-reported gap behind this component. */
+.typingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typingDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  opacity: 0.35;
+  /* `background` is set inline per-agent in the consumer. */
+  animation: typingDotBounce 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.typingDot:nth-child(2) {
+  animation-delay: 160ms;
+}
+
+.typingDot:nth-child(3) {
+  animation-delay: 320ms;
+}
+
+@keyframes typingDotBounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typingDot {
+    animation: none;
+    opacity: 0.7;
+  }
+}

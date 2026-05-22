@@ -1,10 +1,17 @@
-import { useEffect, useReducer, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   AGENTS,
   SCRIPT,
   type AgentId,
   type DemoFrame,
 } from "./agent-demo-script";
+import { TypingIndicator } from "./TypingIndicator";
 import styles from "./LoggedOutShell.module.css";
 
 /**
@@ -17,6 +24,11 @@ import styles from "./LoggedOutShell.module.css";
  * above the latest one but the visible window is capped to
  * `MAX_VISIBLE` so the banner never overflows its fixed height.
  *
+ * Each frame is one row. When a frame declares `typingMs`, the row
+ * first renders a `TypingIndicator` and then cross-fades the bubble
+ * into the resolved content (message text or tool card) — typing
+ * and message are NOT two separate stacked entries.
+ *
  * The whole banner is `aria-hidden`: it's atmosphere, not content.
  * The chat input below the banner remains the keyboard-reachable
  * surface for visitors.
@@ -25,9 +37,10 @@ import styles from "./LoggedOutShell.module.css";
  * the demo is the entire point of the hero, so freezing it for
  * reduced-motion users would just leave a static empty rectangle
  * with no information value. The CSS layer instead disables the
- * per-row slide-in and the typing-dot pulse under that media
- * query, so reduced-motion users still see frames advance through
- * the panel, just without any per-row motion side effects.
+ * per-row slide-in, the bubble cross-fade, and the typing-dot
+ * bounce under that media query, so reduced-motion users still see
+ * frames advance through the panel, just without any per-row motion
+ * side effects.
  */
 
 /**
@@ -93,6 +106,15 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
   }
 }
 
+/** Wall-clock dwell time for a frame on screen as the latest entry,
+ *  combining its optional typing pre-roll with its resolved-content
+ *  duration. Centralised here so the reducer's advance scheduling
+ *  and the per-row swap timing stay in lock-step (the row swaps to
+ *  content at `typingMs`, the reducer advances at this sum). */
+function frameDwellMs(frame: DemoFrame): number {
+  return (frame.typingMs ?? 0) + frame.durationMs;
+}
+
 export function AgentDemoBanner(): ReactNode {
   const [state, dispatch] = useReducer(demoReducer, INITIAL_STATE);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,12 +138,15 @@ export function AgentDemoBanner(): ReactNode {
     }
 
     // The cursor's *previous* frame controls how long the latest
-    // entry sits as the latest before we advance. On the first tick
-    // (cursor === 0) we kick off immediately with a tiny delay so
-    // the entry animation has a frame to mount.
+    // entry sits before we advance. On the first tick (cursor === 0)
+    // we kick off immediately with a tiny delay so the entry
+    // animation has a frame to mount. For a frame with a typing
+    // pre-roll, the wait spans `typingMs + durationMs` so the row
+    // gets its full typing beat AND its full resolved-content beat
+    // before the next row stacks on top.
     const previousFrame =
       state.cursor === 0 ? null : SCRIPT[state.cursor - 1];
-    const wait = previousFrame ? previousFrame.durationMs : 250;
+    const wait = previousFrame ? frameDwellMs(previousFrame) : 250;
 
     timerRef.current = setTimeout(() => {
       dispatch({ type: "advance" });
@@ -157,90 +182,87 @@ interface DemoFrameRowProps {
   readonly frame: DemoFrame;
 }
 
+/**
+ * A single row in the demo. When `frame.typingMs` is set, the row
+ * starts in `phase: "typing"` and a row-local `setTimeout` flips it
+ * to `phase: "content"` after `typingMs`. The bubble is keyed per
+ * phase so the unmount/mount triggers the `demoBubblePhase` fade-in
+ * animation defined in CSS — the visual effect is the typing dots
+ * cross-fading into the resolved bubble within the same row, rather
+ * than the typing landing as a separate stacked entry.
+ *
+ * Frames without `typingMs` skip the typing phase entirely and start
+ * directly in `content`, so the architect's closing "Shipped..." line
+ * (and any other instant frame) lands without an unnecessary pre-roll.
+ */
 function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
   const agent = AGENTS[frame.agent];
-  switch (frame.kind) {
-    case "message":
-      return (
-        <div className={styles.demoRow}>
-          <AgentAvatar agentId={agent.id} />
-          <div className={styles.demoBubbleWrap}>
-            <span
-              className={styles.demoAgentName}
-              style={{ color: agent.color }}
-            >
-              {agent.name}
-            </span>
-            <div className={styles.demoBubble}>{frame.text}</div>
+  const hasTyping = (frame.typingMs ?? 0) > 0;
+  const [phase, setPhase] = useState<"typing" | "content">(
+    hasTyping ? "typing" : "content",
+  );
+
+  useEffect(() => {
+    if (phase !== "typing" || !frame.typingMs) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      setPhase("content");
+    }, frame.typingMs);
+    return () => clearTimeout(handle);
+  }, [phase, frame.typingMs]);
+
+  return (
+    <div className={styles.demoRow}>
+      <AgentAvatar agentId={agent.id} />
+      <div className={styles.demoBubbleWrap}>
+        <span
+          className={styles.demoAgentName}
+          style={{ color: agent.color }}
+        >
+          {agent.name}
+        </span>
+        {phase === "typing" ? (
+          <div
+            key="typing"
+            className={`${styles.demoBubble} ${styles.demoTypingBubble} ${styles.demoBubblePhase}`}
+          >
+            <TypingIndicator color={agent.color} />
           </div>
-        </div>
-      );
-    case "typing":
-      return (
-        <div className={styles.demoRow}>
-          <AgentAvatar agentId={agent.id} />
-          <div className={styles.demoBubbleWrap}>
-            <span
-              className={styles.demoAgentName}
-              style={{ color: agent.color }}
-            >
-              {agent.name}
-            </span>
-            <div
-              className={`${styles.demoBubble} ${styles.demoTypingBubble}`}
-            >
-              <span
-                className={styles.demoTypingDot}
-                style={{ background: agent.color }}
-              />
-              <span
-                className={styles.demoTypingDot}
-                style={{ background: agent.color }}
-              />
-              <span
-                className={styles.demoTypingDot}
-                style={{ background: agent.color }}
-              />
-            </div>
+        ) : frame.kind === "message" ? (
+          <div
+            key="content"
+            className={`${styles.demoBubble} ${styles.demoBubblePhase}`}
+          >
+            {frame.text}
           </div>
-        </div>
-      );
-    case "tool":
-      return (
-        <div className={styles.demoRow}>
-          <AgentAvatar agentId={agent.id} />
-          <div className={styles.demoBubbleWrap}>
-            <span
-              className={styles.demoAgentName}
-              style={{ color: agent.color }}
-            >
-              {agent.name}
-            </span>
-            <div
-              className={styles.demoToolCard}
-              style={{ borderColor: `${agent.color}66` }}
-            >
-              <div className={styles.demoToolHeader}>
-                <span
-                  className={styles.demoToolName}
-                  style={{ color: agent.color }}
-                >
-                  {frame.toolName}
+        ) : (
+          <div
+            key="content"
+            className={`${styles.demoToolCard} ${styles.demoBubblePhase}`}
+            style={{ borderColor: `${agent.color}66` }}
+          >
+            <div className={styles.demoToolHeader}>
+              <span
+                className={styles.demoToolName}
+                style={{ color: agent.color }}
+              >
+                {frame.toolName}
+              </span>
+              {frame.target ? (
+                <span className={styles.demoToolTarget}>
+                  {frame.target}
                 </span>
-                {frame.target ? (
-                  <span className={styles.demoToolTarget}>
-                    {frame.target}
-                  </span>
-                ) : null}
-              </div>
-              <pre className={styles.demoToolPreview}>
-                {frame.preview.join("\n")}
-              </pre>
+              ) : null}
             </div>
+            <pre className={styles.demoToolPreview}>
+              {frame.preview.join("\n")}
+            </pre>
           </div>
-        </div>
-      );
-  }
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface AgentAvatarProps {
