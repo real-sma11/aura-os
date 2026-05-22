@@ -57,10 +57,13 @@ export interface MockAuraAppProps {
   /**
    * Optional static wallpaper override. When provided, the
    * default `/AURA_visual_loop.mp4` video is replaced with an
-   * `<img>` painted across the same 16:10 frame. Drives the
-   * per-persona theme swap from `PublicChatView` —
-   * `personas.ts` supplies the URL, the parent passes it down,
-   * and a `null` here keeps the orb video loop in place.
+   * `<img>` painted across the same 16:10 frame AND the dark
+   * radial vignette is suppressed (the vignette was tuned for the
+   * bright AURA orb in the default video; layering it over a
+   * curated persona image just muddies the colors). Drives the
+   * per-persona theme swap from `PublicChatView` — `personas.ts`
+   * supplies the URL, the parent passes it down, and a `null`
+   * here keeps the orb video loop and its vignette in place.
    */
   readonly desktopBackgroundUrl?: string | null;
 }
@@ -69,13 +72,14 @@ export function MockAuraApp({
   desktopBackgroundUrl = null,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
+  const hasCustomWallpaper = Boolean(desktopBackgroundUrl);
 
   return (
     <div className={styles.appFrame} data-testid="mock-aura-app">
-      {desktopBackgroundUrl ? (
+      {hasCustomWallpaper ? (
         <img
           className={styles.wallpaper}
-          src={desktopBackgroundUrl}
+          src={desktopBackgroundUrl ?? undefined}
           alt=""
           aria-hidden="true"
           draggable={false}
@@ -93,7 +97,21 @@ export function MockAuraApp({
           data-testid="mock-aura-wallpaper-video"
         />
       )}
-      <div className={styles.wallpaperVignette} aria-hidden="true" />
+      {/*
+       * The vignette was tuned for the bright AURA orb in the
+       * default video — layered over a curated persona wallpaper
+       * it reads as a heavy dark overlay that mutes the chosen
+       * colors. Skip it whenever a static `desktopBackgroundUrl`
+       * is in play; if a future persona theme needs its own
+       * vignette, expose a `vignette` flag on `PersonaTheme`.
+       */}
+      {!hasCustomWallpaper && (
+        <div
+          className={styles.wallpaperVignette}
+          aria-hidden="true"
+          data-testid="mock-aura-wallpaper-vignette"
+        />
+      )}
       <DMWindowManager />
       <div
         className={styles.topChrome}

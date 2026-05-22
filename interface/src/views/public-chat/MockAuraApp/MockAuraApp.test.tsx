@@ -87,6 +87,33 @@ describe("MockAuraApp", () => {
     const wallpaperVideo = document.querySelector("video");
     expect(wallpaperVideo).not.toBeNull();
     expect(wallpaperVideo?.getAttribute("src")).toBe("/AURA_visual_loop.mp4");
+
+    // The vignette ships with the default video loop so the DM
+    // windows have contrast at their edges against the bright orb.
+    expect(
+      screen.getByTestId("mock-aura-wallpaper-vignette"),
+    ).toBeInTheDocument();
+  });
+
+  it("swaps the wallpaper to an <img> and suppresses the vignette when a custom desktopBackgroundUrl is provided", () => {
+    render(
+      <MockAuraApp desktopBackgroundUrl="/personas/solo-builder/desktop.png" />,
+    );
+
+    const wallpaperImage = screen.getByTestId("mock-aura-wallpaper-image");
+    expect(wallpaperImage).toBeInTheDocument();
+    expect(wallpaperImage).toHaveAttribute(
+      "src",
+      "/personas/solo-builder/desktop.png",
+    );
+    expect(document.querySelector("video")).toBeNull();
+
+    // Vignette is suppressed for persona wallpapers — layering the
+    // tuned-for-video dark gradient over a curated image just
+    // muddies the colors.
+    expect(
+      screen.queryByTestId("mock-aura-wallpaper-vignette"),
+    ).not.toBeInTheDocument();
   });
 
   it("starts with no DM windows and reveals them as scripted timers advance", () => {
