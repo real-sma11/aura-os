@@ -28,6 +28,21 @@
   background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
   border-radius: 6px;
   overflow: hidden;
+  /* Pull the sidebar above the chat panel's decorative
+     `.chatBackgroundVideo` (z-index: 0), which is absolutely
+     positioned inside `.mainPanel` and shifted ~143px to the left
+     via `translateX(calc((-280px - 6px) / 2))` so the AURA visual
+     loop lands at page center. That negative translate physically
+     overlaps the sidebar column, and because `.mainPanel` is
+     `position: relative` (a positioned ancestor) while `.sidebar`
+     is a non-positioned block, the painting order would otherwise
+     stack `.mainPanel`'s positioned descendants on top of the
+     sidebar. Promoting the sidebar with `position: relative` +
+     `z-index: 2` puts it above the video (and also above the chat
+     content at z-index: 1) so the left rail stays opaque and
+     readable on the public surface. */
+  position: relative;
+  z-index: 2;
 }
 
 .mainPanel {
@@ -463,48 +478,248 @@
   transform: translateX(calc((-280px - 6px) / 2));
 }
 
-/* Pink/purple gradient banner that hosts the compose heading on the
-   public empty state. Visually matches the input section's actual
-   width: the `InputBarShell .inputContainer` caps at `max-width:
-   680px` and centers via `margin: auto`, so we mirror those rules
-   here (the surrounding `.composePanel` is min(720px, 100%), 40px
-   wider than the input box, so an unconstrained `width: 100%`
-   banner would overhang the input). The 5:1 aspect ratio plus the
-   160px height clamp keep it a bold landscape rectangle that still
-   leaves room for the input + helper tabs on shorter viewports.
-   The flex centering renders the heading vertically and
-   horizontally inside the gradient. */
+/* Hero banner that hosts the looping `AgentDemoBanner` (a scripted
+   3-agent collaboration loop) on the public empty state. Visually
+   matches the input section's actual width: the `InputBarShell
+   .inputContainer` caps at `max-width: 680px` and centers via
+   `margin: auto`, so we mirror those rules here (the surrounding
+   `.composePanel` is min(720px, 100%), 40px wider than the input
+   box, so an unconstrained `width: 100%` banner would overhang the
+   input). Sized as a fixed 360px-tall hero so the multi-agent demo
+   has room to render 3-4 chat bubbles + the occasional tool-call
+   card without reflowing the layout when the script advances.
+
+   The visual frame uses the standard "double background, two clip
+   regions" trick: the solid dark interior (`#0d0d12`) is painted
+   into the padding-box while the pink/purple gradient fills the
+   border-box, so the visible result is a 1.5px gradient edge
+   wrapping an opaque dark surface. Solid (not translucent) interior
+   keeps message text legible regardless of what's painted behind
+   the banner — the parent `.chatView` has the AURA visual loop
+   running and we don't want it bleeding through the conversation. */
 .composeBanner {
   width: 100%;
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
-  aspect-ratio: 5 / 1;
-  max-height: 160px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px 24px;
-  background: linear-gradient(
-    135deg,
-    #ff6fb5 0%,
-    #c084fc 50%,
-    #7c3aed 100%
-  );
+  height: 360px;
+  border-radius: 16px;
+  position: relative;
+  background:
+    linear-gradient(#0d0d12, #0d0d12) padding-box,
+    linear-gradient(135deg, #ff6fb5 0%, #c084fc 50%, #7c3aed 100%) border-box;
+  border: 1.5px solid transparent;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(192, 132, 252, 0.15);
 }
 
-.composeHeading {
-  margin: 0;
-  text-align: center;
-  font-size: 26px;
+@media (max-width: 540px) {
+  .composeBanner {
+    height: 320px;
+  }
+}
+
+/* Inner panel that holds the chat-style demo. Flex column anchored
+   to the bottom so the latest frame sits at the input edge of the
+   banner and older frames stack upward. The `::before` pseudo
+   provides a soft top fade so older rows scroll out of view rather
+   than getting hard-clipped — we use an overlay here instead of
+   `mask-image` (which broke the inner panel's background fill on
+   Chrome/Edge in v1). */
+.demoInner {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.demoInner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, #0d0d12 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@media (max-width: 540px) {
+  .demoInner {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+}
+
+/* Single row inside the demo: avatar on the left, name + bubble
+   stack on the right. The whole row enters from below with a small
+   translate + fade so successive frames feel like real chat
+   activity rather than abrupt content swaps. The key on the React
+   side rotates per frame so React doesn't reuse the previous DOM
+   node and skip the entry animation. */
+.demoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: demoRowEnter 260ms ease-out both;
+}
+
+@keyframes demoRowEnter {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoRow {
+    animation: none;
+  }
+}
+
+/* Circular avatar with the agent's accent color. Background /
+   border-color / color are set inline per-agent (see `AGENTS` in
+   agent-demo-script.ts) so each agent's row is visually distinct
+   without a class explosion. */
+.demoAvatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+  margin-top: 16px;
+}
+
+.demoBubbleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.demoAgentName {
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  /* Heading now sits on top of the gradient banner, so force white
-     for contrast instead of inheriting the theme primary color
-     (which on dark themes is also near-white but is locale-defined,
-     and on a hypothetical light theme would be unreadable). */
-  color: #ffffff;
+  letter-spacing: 0.01em;
+  /* `color` is set inline per-agent. */
+}
+
+.demoBubble {
+  align-self: flex-start;
+  max-width: 520px;
+  padding: 9px 13px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f5f5f7;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.demoTypingBubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 11px 13px;
+}
+
+.demoTypingDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  opacity: 0.45;
+  animation: demoTypingPulse 900ms ease-in-out infinite;
+}
+
+.demoTypingDot:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.demoTypingDot:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes demoTypingPulse {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoTypingDot {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* Tool-call card — used for code diffs, todo lists, bash output,
+   etc. Border color is set inline from the agent's accent (with an
+   alpha suffix) so the card visually belongs to the agent that ran
+   the tool. Solid black-ish surface (not translucent) so monospace
+   content stays readable against any background. */
+.demoToolCard {
+  align-self: flex-start;
+  max-width: 520px;
+  border-radius: 10px;
+  background: #050507;
+  border: 1px solid;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.demoToolHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.demoToolName {
+  font-weight: 600;
+  /* `color` set inline per-agent. */
+}
+
+.demoToolTarget {
+  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
+    monospace);
+  font-size: 11px;
+}
+
+.demoToolPreview {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
+    monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(245, 245, 247, 0.88);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composeInput {
