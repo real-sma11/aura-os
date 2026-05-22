@@ -223,8 +223,16 @@
      smooth` then glides each pin instead of snapping — for
      per-character typewriter growth the actual `scrollHeight`
      delta is zero until a char causes a line wrap, so the cadence
-     stays calm rather than jittering every 28ms. */
-  scroll-behavior: smooth;
+     stays calm rather than jittering every 28ms.
+
+     Update: removed the CSS-level smooth behavior because every
+     line wrap during streaming re-targeted the in-flight smooth
+     scroll, and once growth stopped the still-in-flight animation
+     kept gliding to its last target - visible as the whole body
+     sliding ~10-17px the instant a message resolved. Both pins now
+     snap instantly via scrollTop = scrollHeight; the row's own
+     dmRowEnter keyframe still gives the "new message pops in at
+     the bottom" feel for the once-per-frame append. */
 }
 
 .dmBody::-webkit-scrollbar {
