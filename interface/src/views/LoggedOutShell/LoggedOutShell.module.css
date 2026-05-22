@@ -363,14 +363,21 @@
 }
 
 /* Pink/purple gradient banner that hosts the compose heading on the
-   public empty state. Width-matches the input column underneath
-   (`.composePanel` widths to `min(720px, 100%)`), and the 5:1 aspect
-   ratio plus 160px height clamp keep it a bold landscape rectangle
-   that still leaves room for the input + helper tabs on shorter
-   viewports. The flex centering renders the heading vertically and
+   public empty state. Visually matches the input section's actual
+   width: the `InputBarShell .inputContainer` caps at `max-width:
+   680px` and centers via `margin: auto`, so we mirror those rules
+   here (the surrounding `.composePanel` is min(720px, 100%), 40px
+   wider than the input box, so an unconstrained `width: 100%`
+   banner would overhang the input). The 5:1 aspect ratio plus the
+   160px height clamp keep it a bold landscape rectangle that still
+   leaves room for the input + helper tabs on shorter viewports.
+   The flex centering renders the heading vertically and
    horizontally inside the gradient. */
 .composeBanner {
   width: 100%;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
   aspect-ratio: 5 / 1;
   max-height: 160px;
   border-radius: 14px;
