@@ -114,6 +114,14 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  /* Visually match the gap on the right of the bottom-right pill's clock.
+     The clock has 4px own padding-right + 8px (var(--space-2)) pill
+     padding-right = 12px from text to pill edge. The trailing X here sits
+     in a 28x28 box that already supplies 7px of empty space to the right
+     of the size-14 glyph; add the remaining 5px so the X-to-pill-edge gap
+     is also 12px. ShellTitlebar's .alignRail zeroes the zui Topbar's
+     padding-right, so without this the X sits flush with the pill border. */
+  padding-right: 5px;
   color: var(--color-text-secondary);
 }
 
