@@ -136,12 +136,15 @@ export function AgentDemoBanner(): ReactNode {
   }, [state.cursor]);
 
   return (
-    <div
-      className={styles.composeBanner}
-      data-testid="agent-demo-banner"
-      aria-hidden="true"
-    >
-      <div className={styles.demoInner}>
+    <div className={styles.composeBanner} data-testid="agent-demo-banner">
+      <div className={styles.composeBannerTitle}>
+        Coordinate agents while you sleep
+      </div>
+      <div
+        className={styles.demoInner}
+        data-testid="agent-demo-loop"
+        aria-hidden="true"
+      >
         {state.visible.map(({ key, frame }) => (
           <DemoFrameRow key={key} frame={frame} />
         ))}

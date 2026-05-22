@@ -11,9 +11,11 @@
  *      simulated time, demonstrating that the script playback is
  *      wired to a cancellable `setTimeout` chain rather than a
  *      non-cancellable interval.
- *   3. The banner is `aria-hidden` so screen readers ignore the
- *      decorative loop and the chat input below stays the keyboard-
- *      reachable surface.
+ *   3. The decorative agent loop inside the banner is `aria-hidden`
+ *      so screen readers ignore the looping animation and the chat
+ *      input below stays the keyboard-reachable surface. The
+ *      marketing title at the top of the banner is intentionally
+ *      NOT `aria-hidden` so the tagline reaches assistive tech.
  *
  * `prefers-reduced-motion` is intentionally NOT short-circuited at
  * the JS layer (the demo is the entire point of the hero, so freezing
@@ -88,10 +90,25 @@ describe("AgentDemoBanner", () => {
     expect(screen.getByText(firstMessage.text)).toBeInTheDocument();
   });
 
-  it("hides the decorative banner from assistive tech via aria-hidden", () => {
+  it("hides the decorative agent loop from assistive tech via aria-hidden", () => {
     render(<AgentDemoBanner />);
 
+    // Only the looping demo frames are decorative — the marketing
+    // title at the top of the banner is content and must remain
+    // reachable by assistive tech, so `aria-hidden` lives on the
+    // inner loop element rather than the outer banner.
+    const decorativeLoop = screen.getByTestId("agent-demo-loop");
+    expect(decorativeLoop).toHaveAttribute("aria-hidden", "true");
+
     const banner = screen.getByTestId("agent-demo-banner");
-    expect(banner).toHaveAttribute("aria-hidden", "true");
+    expect(banner).not.toHaveAttribute("aria-hidden");
+  });
+
+  it("renders the marketing tagline above the agent loop", () => {
+    render(<AgentDemoBanner />);
+
+    expect(
+      screen.getByText("Coordinate agents while you sleep"),
+    ).toBeInTheDocument();
   });
 });
