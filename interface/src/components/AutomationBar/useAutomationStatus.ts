@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api, isInsufficientCreditsError, dispatchInsufficientCredits } from "../../api/client";
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
+import { useLoopActivityStore } from "../../stores/loop-activity-store";
 import { useTaskOutputPanelStore } from "../../stores/task-output-panel-store";
 import {
   useAutomationLoopStore,
@@ -55,6 +56,30 @@ function hydrateUiFromLoopStartResponse(
   projectId: ProjectId,
 ): void {
   hydrateActiveTasksFromLoopStatus(res, projectId);
+}
+
+/**
+ * Project-scoped safety-net rehydrate of `loop-activity-store` after a
+ * Start / Resume / Stop completes. The unified spinner (the
+ * `LoopProgress` ring around the AutomationBar play button, per-task
+ * row spinners, etc.) is normally driven by the
+ * `loop_opened` / `loop_activity_changed` / `loop_ended` WS events,
+ * but rapid Stop+Start cycles can race those events: the server may
+ * have emitted `loop_started` (the legacy event the AutomationBar
+ * listens to) and inserted a fresh `loop_registry` entry, but the
+ * client hasn't received the matching `loop_opened` yet — or worse,
+ * inherited a stale activity row from a now-cancelled loop instance.
+ *
+ * Calling `hydrate({ project_id })` on every Start / Stop click
+ * collapses the window to a single HTTP round-trip, so the spinner
+ * snaps to authoritative server state without waiting on WS reconnect
+ * or the per-client stall watchdog. Scoped to the project so
+ * concurrent loops in other projects are untouched (matches the
+ * `replaceSnapshot` merge-by-filter semantics in
+ * [`loop-activity-store.ts`]).
+ */
+function rehydrateLoopActivityForProject(projectId: ProjectId): void {
+  void useLoopActivityStore.getState().hydrate({ project_id: projectId });
 }
 
 type AutomationStatus = "idle" | "starting" | "preparing" | "active" | "paused" | "stopped";

@@ -35,6 +35,7 @@ const mockPauseLoop = vi.fn();
 const mockStopLoop = vi.fn();
 const mockResumeLoop = vi.fn();
 const mockListAgentInstances = vi.fn();
+const mockListLoops = vi.fn();
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -44,6 +45,7 @@ vi.mock("../../api/client", () => ({
     stopLoop: (...args: unknown[]) => mockStopLoop(...args),
     resumeLoop: (...args: unknown[]) => mockResumeLoop(...args),
     listAgentInstances: (...args: unknown[]) => mockListAgentInstances(...args),
+    listLoops: (...args: unknown[]) => mockListLoops(...args),
   },
   isInsufficientCreditsError: () => false,
   dispatchInsufficientCredits: vi.fn(),
@@ -147,6 +149,12 @@ beforeEach(() => {
     { agent_instance_id: "agent-1", instance_role: "chat" },
     { agent_instance_id: "loop-agent-1", instance_role: "loop" },
   ]);
+  // Project-scoped rehydrate of the unified spinner store fires on
+  // every Start / Stop click as a safety net against rapid Stop+Start
+  // racing the `loop_opened` / `loop_ended` WS events. The hydrate
+  // path calls `api.listLoops` under the hood, so every test needs a
+  // benign default to keep the safety-net dormant.
+  mockListLoops.mockResolvedValue({ loops: [] });
 });
 
 describe("AutomationBar", () => {
@@ -346,6 +354,64 @@ describe("AutomationBar", () => {
 
     await waitFor(() => {
       expect(mockStopLoop).toHaveBeenCalledWith("proj-1", "loop-agent-1");
+    });
+  });
+
+  it("rehydrates the unified loop-activity store with a project filter on Stop", async () => {
+    // Regression: rapid Stop+Start cycles could leave the
+    // `LoopProgress` ring around the play button spinning forever,
+    // because the client was waiting on a `loop_ended` WS event that
+    // the server had already raced past. The safety net is a
+    // project-scoped `loop-activity-store.hydrate({ project_id })`
+    // call after every successful Stop — it collapses the race
+    // window to a single HTTP round-trip and forces the spinner
+    // store to reconcile with authoritative server state.
+    const user = userEvent.setup();
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    mockStopLoop.mockResolvedValue({ active_agent_instances: [] });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+    await waitFor(() => {
+      expect(screen.getByTitle("Stop")).toBeEnabled();
+    });
+
+    await user.click(screen.getByTitle("Stop"));
+    const confirmBtn = screen.getByTestId("modal-confirm").querySelector("button:last-child")!;
+    await user.click(confirmBtn);
+
+    await waitFor(() => expect(mockStopLoop).toHaveBeenCalled());
+    // Project-scoped filter is required — an unfiltered hydrate
+    // would wipe live loops in other projects via
+    // `replaceSnapshot`. The filter shape mirrors
+    // `LoopsFilter` from `shared/api/loop.ts`.
+    await waitFor(() => {
+      expect(mockListLoops).toHaveBeenCalledWith({ project_id: "proj-1" });
+    });
+  });
+
+  it("rehydrates loop-activity on Start so the spinner snaps to server truth", async () => {
+    // Symmetric Start-side safety net. Without it, a Start that
+    // races a slow `loop_opened` WS event would leave the ring
+    // empty until the per-client stall watchdog fires.
+    const user = userEvent.setup();
+    mockStartLoop.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+      active_tasks: [],
+    });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+    await waitFor(() => {
+      expect(screen.getByTitle("Start")).toBeEnabled();
+    });
+
+    await user.click(screen.getByTitle("Start"));
+    await waitFor(() => expect(mockStartLoop).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(mockListLoops).toHaveBeenCalledWith({ project_id: "proj-1" });
     });
   });
 
