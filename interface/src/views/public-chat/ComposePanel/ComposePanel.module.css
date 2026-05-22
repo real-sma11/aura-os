@@ -13,7 +13,17 @@
  * message yet.
  */
 
+/*
+ * `container-type: size` turns this element into a query container for
+ * both inline and block axes, so `MockAuraApp.module.css` can size the
+ * mock window with `cqw`/`cqh` units. We want the wallpaper rectangle
+ * to occupy ~60% of the empty-state area in both dimensions, with a
+ * healthy gutter of the page background showing on every side; cqw/cqh
+ * scoped to this panel give us that clamp without leaking into the
+ * sidebar or input-bar reservations the way `vw`/`vh` would.
+ */
 .composePanel {
+  container-type: size;
   width: 100%;
   height: 100%;
   min-height: 0;
