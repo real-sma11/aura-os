@@ -1,22 +1,20 @@
 /*
- * PublicChatView — Phase 4 split-out from
- * `the legacy `LoggedOutShell.module.css``. Owns the public chat
- * panel: scroller + input bar slot + 3D image attachment chrome.
+ * PublicChatView — public (logged-out) landing surface.
  *
- * The AURA visual loop video and its radial vignette previously
- * lived here as an always-on decorative background; both have been
- * moved into `MockAuraApp` (mounted by `ComposePanel` in the empty
- * state) so the orb only plays when the windowed mock-app hero is
- * visible. Once the visitor sends their first message, the
- * populated transcript renders against the host theme background
- * with no decorative video behind it.
+ * The chat input pill and transcript layout were removed in the
+ * landing-CTA refactor. The view is now a two-slot composition:
+ *
+ *   .heroSlot — fills the available area and hosts the decorative
+ *               `MockAuraApp` (mounted via `ComposePanel`).
+ *   .ctaSlot  — floats at `bottom: 5vh` (the same vertical anchor the
+ *               old input pill used) and holds a single horizontally-
+ *               centered "Create your agent" CTA button.
  *
  * Centering model: in public mode the `<aside>` left sidebar is an
- * absolute overlay over `.body` (see `AuraShell.module.css`), so
- * the `<main>` chat panel always spans the full body width. The
- * compose surface therefore centers on the viewport via plain
- * `align-self: center` rules — no `translateX` offsets compensating
- * for sidebar width.
+ * absolute overlay over `.body` (see `AuraShell.module.css`), so the
+ * `<main>` chat panel always spans the full body width. The CTA
+ * therefore centers on the viewport via plain flexbox — no
+ * `translateX` offsets compensating for sidebar width.
  */
 .chatView {
   position: relative;
@@ -24,120 +22,79 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /*
-   * The shared `ChatStreamingIndicator` (rendered as a sibling of
-   * `.inputBarSlot`) positions itself via `bottom: var(--streaming-
-   * indicator-bottom, 108px)` from `ChatPanel.module.css`. Because the
-   * public input bar now floats `5vh` above the viewport bottom (see
-   * `.inputBarSlot` below) the default 108px anchor would sit behind
-   * the input pill on tall viewports, so push the indicator up to
-   * clear the pill at every viewport height the public surface
-   * supports.
-   */
-  --streaming-indicator-bottom: calc(5vh + 64px);
 }
 
-.chatScroller {
-  position: relative;
-  z-index: 1;
+.heroSlot {
+  /*
+   * `container-type: size` lets `MockAuraApp.module.css` size the
+   * wallpaper rectangle with `cqw`/`cqh` units scoped to this slot.
+   */
+  container-type: size;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  /*
-   * Bottom padding reserves space below the transcript so the latest
-   * message clears the floating `.inputBarSlot` (which is now
-   * absolutely positioned `5vh` above the viewport bottom, with the
-   * pill itself adding ~52px of height). The empty-state override
-   * below collapses this back to a symmetric 24px because the mock
-   * desktop hero is centered in the available area and has no need to
-   * reserve space for the floating input.
-   */
-  padding: 24px 16px calc(5vh + 80px);
-  display: flex;
-  flex-direction: column;
-}
-
-/*
- * In the empty state the chatScroller's asymmetric padding
- * (24px top / `calc(5vh + 80px)` bottom — the bottom reserves space
- * below scrolled transcripts so the latest message clears the
- * floating input bar) would shift the centered mock app upward off
- * the scroller's geometric midpoint. There's no scrolled transcript
- * to protect when the hero is mounted, so neutralize the bottom
- * reservation to a symmetric 24px and let the mock app land on the
- * panel's true visual centre. The mock app's bottom edge then leaves
- * roughly equal slack above and below the floating input pill, which
- * is what makes the pill read as vertically centered in the gap
- * between the desktop hero and the viewport bottom.
- */
-.chatScroller:has(> .chatEmpty) {
-  padding-bottom: 24px;
-}
-
-/* When the transcript is empty the scroller hosts the `ComposePanel`
-   hero (which mounts `MockAuraApp` — a flat 16:10 wallpaper
-   rectangle with the AURA visual loop as wallpaper and MSN/ICQ-style
-   DM windows popping up between agents). The mock app centers
-   inside the empty area via its own 16:10 aspect-ratio rule; the
-   chat input bar is rendered separately by `PublicChatView` in the
-   bottom-anchored `.inputBarSlot` regardless of empty/populated
-   state, so the rounded input box never moves on first send. */
-.chatEmpty {
-  flex: 1;
   display: grid;
   place-items: center;
-  min-height: 0;
+  padding: 24px 16px;
 }
 
-/*
- * The input pill is taken out of the `.chatView` flex flow and
- * anchored to the viewport bottom by a viewport-relative offset, so
- * it floats vertically centered in the gap between the bottom of the
- * empty-state `MockAuraApp` desktop section and the bottom of the
- * window. Removing it from the flex flow also means the
- * `.chatScroller` keeps its full height (and therefore the mock
- * desktop, sized via `cqh` inside `.composePanel`, keeps its current
- * geometry). The same offset is used in the populated state so the
- * pill never visibly jumps when the visitor sends their first
- * message — `.chatScroller`'s `padding-bottom` (above) reserves the
- * matching strip so transcripts don't slide under the pill.
- */
-.inputBarSlot {
+.ctaSlot {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 5vh;
+  display: flex;
+  justify-content: center;
   padding: 0 12px;
   z-index: 1;
+  pointer-events: none;
 }
 
-.inputBarSlotLocked {
-  pointer-events: none;
-  opacity: 0.55;
+.ctaButton {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease, box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.ctaButton:hover {
+  background: color-mix(in srgb, var(--color-bg) 92%, var(--color-text-primary) 8%);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.ctaButton:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.ctaButton:focus-visible {
+  outline: 2px solid var(--color-overlay-focus, var(--color-border-strong));
+  outline-offset: 2px;
+}
+
+.ctaButton > svg {
+  display: block;
 }
 
 @media (max-width: 640px) {
-  .chatView {
-    /* Mobile public input sits at `8px + safe-area-inset-bottom` with
-       a ~52px pill, so anchor the streaming indicator above that. */
-    --streaming-indicator-bottom-mobile: calc(
-      env(safe-area-inset-bottom, 0px) + 72px +
-        var(--aura-mobile-keyboard-inset, 0px)
-    );
+  .heroSlot {
+    padding: 16px 8px;
   }
 
-  .chatScroller {
-    padding: 16px 8px calc(env(safe-area-inset-bottom, 0px) + 96px);
-  }
-
-  /* On mobile the floating `.inputBarSlot` owns the safe-area inset
-     directly via `bottom: calc(... + env(...))` so it never gets
-     clipped by the iOS home indicator. The empty-state mock app
-     still stretches to fill the available area without any extra
-     `.chatEmpty` padding (its own internal chrome owns the inset). */
-
-  .inputBarSlot {
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  .ctaSlot {
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     padding: 0 8px;
   }
 }

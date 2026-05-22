@@ -1,106 +1,38 @@
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { ChatMessageList } from "../../../features/chat-ui/ChatMessageList";
-import { ChatStreamingIndicator } from "../../../features/chat-ui/ChatPanel/ChatStreamingIndicator";
-import { KeepChattingModal } from "../../../components/KeepChattingModal";
+import { ArrowRight } from "lucide-react";
 import { ComposePanel } from "../ComposePanel";
-import { PublicComposeInput } from "../PublicComposeInput";
-import { usePublicChatStore } from "../../../stores/public-chat-store";
-import { usePublicChat } from "../use-public-chat";
 import styles from "./PublicChatView.module.css";
 
 /**
- * Right-side chat surface for the public (logged-out) shell. Mounts
- * the dedicated `PublicComposeInput` (a stripped-down pill-shaped
- * compose input) and the shared `ChatMessageList`. Everything stateful
- * is delegated to `usePublicChat`; this file is the presentational
- * shell.
+ * Right-side surface for the public (logged-out) shell. As of the
+ * landing-CTA refactor this is a pure marketing landing — there is no
+ * chat input, transcript, gate modal, or per-session state anymore.
  *
- * Empty-state UX: the `PublicComposeInput` is mounted in the
- * bottom-anchored `.inputBarSlot` in BOTH empty and populated
- * states, so the rounded input pill never moves vertically when the
- * visitor sends their first message. The empty-state `ComposePanel`
- * mounts the decorative `MockAuraApp` hero (a flat 16:10 wallpaper
- * rectangle with scripted DM windows floating inside it) above that
- * fixed input bar. Once the first message lands the view swaps the
- * empty-state hero for the transcript and leaves the input bar
- * exactly where it was.
- *
- * Phase 5 (this file's split from the legacy authenticated input):
- * the public input is now a separate, much simpler component than
- * the authenticated `DesktopChatInputBar`. The public dispatch path
- * does not consume mode pickers, model pickers, slash commands,
- * project chips, or attachments today, so dragging that chrome onto
- * the logged-out surface only added visual weight. The stripped
- * input here owns just `+`, textarea, and send/stop affordances.
+ * Layout:
+ *   - `.heroSlot` fills the available area and mounts `ComposePanel`,
+ *     which centers the decorative `MockAuraApp` (a flat 16:10 wallpaper
+ *     rectangle with scripted DM windows floating inside).
+ *   - `.ctaSlot` floats at the same `bottom: 5vh` anchor the old input
+ *     pill used to occupy and mounts a single horizontally-centered
+ *     "Create your agent" pill button. The button is a placeholder
+ *     today (no onClick / no route); wiring it to a real signup
+ *     destination is a follow-up.
  */
 export function PublicChatView(): React.ReactElement {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedSessionId = searchParams.get("session");
-  const createSession = usePublicChatStore((s) => s.createSession);
-
-  const [autoCreatedId] = useState<string | null>(() =>
-    requestedSessionId ? null : createSession(),
-  );
-  const sessionId = requestedSessionId ?? autoCreatedId!;
-
-  useEffect(() => {
-    if (!requestedSessionId) {
-      setSearchParams({ session: sessionId }, { replace: true });
-    }
-  }, [requestedSessionId, sessionId, setSearchParams]);
-
-  const controller = usePublicChat(sessionId);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  const isEmpty = controller.messages.length === 0;
-
   return (
     <div className={styles.chatView}>
-      <div className={styles.chatScroller} ref={scrollRef}>
-        {isEmpty ? (
-          <div className={styles.chatEmpty}>
-            <ComposePanel />
-          </div>
-        ) : (
-          <ChatMessageList
-            messages={controller.messages}
-            streamKey={controller.streamKey}
-            scrollRef={scrollRef}
-          />
-        )}
+      <div className={styles.heroSlot}>
+        <ComposePanel />
       </div>
-      {!isEmpty && (
-        <ChatStreamingIndicator
-          streamKey={controller.streamKey}
-          onStop={controller.handleStop}
-        />
-      )}
-      {/*
-        The compose input lives in the floating `.inputBarSlot` in
-        both empty and populated states so the rounded input pill
-        stays pinned to the bottom of the screen at the same
-        position regardless of whether the visitor has sent a
-        message yet.
-      */}
-      <div
-        className={`${styles.inputBarSlot} ${
-          controller.shouldShowGate ? styles.inputBarSlotLocked : ""
-        }`}
-        aria-disabled={controller.shouldShowGate ? "true" : undefined}
-      >
-        <PublicComposeInput
-          input={controller.input}
-          onInputChange={controller.setInput}
-          onSend={(content) => {
-            void controller.handleSend(content);
-          }}
-          onStop={controller.handleStop}
-          isStreaming={controller.isStreaming}
-          disabled={controller.shouldShowGate}
-        />
+      <div className={styles.ctaSlot}>
+        <button
+          type="button"
+          className={styles.ctaButton}
+          data-agent-surface="public-landing-cta"
+        >
+          <span>Create your agent</span>
+          <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
+        </button>
       </div>
-      {controller.shouldShowGate && <KeepChattingModal />}
     </div>
   );
 }

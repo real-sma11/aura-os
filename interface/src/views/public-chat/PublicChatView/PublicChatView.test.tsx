@@ -1,168 +1,57 @@
 /**
- * Behavioural test for `PublicChatView` empty-state inline compose
- * surface + session lifecycle. Pins the contracts:
+ * Behavioural test for `PublicChatView`'s landing layout.
  *
- *  - The empty state renders the windowed mock-Aura-app hero
- *    (`MockAuraApp`, mounted via `ComposePanel`) directly in the
- *    main panel with no modal overlay.
- *  - Round-tripping through `/login` does not mint extra empty
- *    sessions in the public-chat store.
- *
- * Note: the example-prompt pre-fill case was removed in phase 0
- * along with the helper pills — there are no example-prompt
- * buttons in the empty state anymore, so the parent no longer
- * needs to forward representative prompts into the textarea.
+ * The public surface no longer renders a chat input, transcript, or
+ * gate modal — it is a pure marketing landing with the decorative
+ * `MockAuraApp` hero and a single bottom-anchored "Create your agent"
+ * CTA button. These tests pin that contract and guard against any of
+ * the removed chat chrome accidentally reappearing.
  */
 
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mockUseAuth = vi.fn(() => ({ isAuthenticated: false }));
-vi.mock("../../../stores/auth-store", () => ({
-  useAuth: () => mockUseAuth(),
-}));
-
-vi.mock("../PublicComposeInput", async () => {
-  const React = await import("react");
-  const Stub = React.forwardRef<
-    { focus: () => void },
-    {
-      input: string;
-      onInputChange: (next: string) => void;
-      onSend: (content: string) => void;
-    }
-  >(({ input, onInputChange, onSend }, ref) => {
-    React.useImperativeHandle(ref, () => ({ focus: () => {} }), []);
-    return (
-      <div data-testid="public-compose-input-stub">
-        <textarea
-          aria-label="Compose"
-          value={input}
-          onChange={(e) => onInputChange(e.target.value)}
-        />
-        <button type="button" onClick={() => onSend(input)}>
-          Send
-        </button>
-      </div>
-    );
-  });
-  return { PublicComposeInput: Stub };
-});
-
-vi.mock("../../../features/chat-ui/ChatMessageList", () => ({
-  ChatMessageList: () => <div data-testid="chat-message-list-stub" />,
-}));
-
-vi.mock("../../../components/KeepChattingModal", () => ({
-  KeepChattingModal: () => <div data-testid="keep-chatting-modal-stub" />,
-}));
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../MockAuraApp", () => ({
   MockAuraApp: () => <div data-testid="mock-aura-app-stub" />,
 }));
 
 import { PublicChatView } from "./PublicChatView";
-import { usePublicChatStore } from "../../../stores/public-chat-store";
 
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
-  );
-}
-
-function renderView(initialPath = "/") {
+function renderView() {
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <LocationProbe />
-      <Routes>
-        <Route path="/" element={<PublicChatView />} />
-        <Route
-          path="/login"
-          element={<div data-testid="login-page">login</div>}
-        />
-      </Routes>
+    <MemoryRouter initialEntries={["/"]}>
+      <PublicChatView />
     </MemoryRouter>,
   );
 }
 
-beforeEach(() => {
-  window.localStorage.clear();
-  usePublicChatStore.setState({
-    sessions: {},
-    sessionOrder: [],
-    turnCount: 0,
-    guestToken: null,
-  });
-  mockUseAuth.mockReset();
-  mockUseAuth.mockReturnValue({ isAuthenticated: false });
-});
-
-afterEach(() => {
-  window.localStorage.clear();
-});
-
-describe("PublicChatView inline compose", () => {
-  it("renders the mock-Aura-app hero in the empty state (no modal overlay)", () => {
+describe("PublicChatView landing", () => {
+  it("renders the MockAuraApp hero inside the empty-state region", () => {
     renderView();
-    expect(
-      screen.getByTestId("mock-aura-app-stub"),
-    ).toBeInTheDocument();
-
+    expect(screen.getByTestId("mock-aura-app-stub")).toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: "Start a new conversation" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders the single 'Create your agent' CTA button", () => {
+    renderView();
+    const buttons = screen.getAllByRole("button", { name: /create your agent/i });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute(
+      "data-agent-surface",
+      "public-landing-cta",
+    );
+  });
+
+  it("does not render any chat input, transcript, or gate modal", () => {
+    renderView();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Compose")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("keep-chatting-modal-stub"),
     ).not.toBeInTheDocument();
-  });
-
-  it("does not mint extra empty sessions when the visitor round-trips through /login", async () => {
-    const user = userEvent.setup();
-
-    function NavProbe() {
-      const navigate = useNavigate();
-      const location = useLocation();
-      const targets =
-        location.pathname === "/"
-          ? { label: "go-login", to: "/login" }
-          : { label: "go-home", to: "/" };
-      return (
-        <button
-          data-testid={targets.label}
-          onClick={() =>
-            navigate({ pathname: targets.to, search: location.search })
-          }
-        />
-      );
-    }
-
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <NavProbe />
-        <Routes>
-          <Route path="/" element={<PublicChatView />} />
-          <Route path="/login" element={<PublicChatView />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(1);
-
-    for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByTestId("go-login"));
-      await user.click(screen.getByTestId("go-home"));
-    }
-
-    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(1);
   });
 });
