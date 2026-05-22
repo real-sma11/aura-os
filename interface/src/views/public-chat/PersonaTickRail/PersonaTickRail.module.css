@@ -1,24 +1,33 @@
 /*
- * PersonaTickRail — vertical column of six fixed-size horizontal
- * ticks pinned to the far-right edge of `PublicChatView`. One tick
- * is "active" at any time (defaulting to the first) and paints with
- * `--color-text-primary`; the rest paint with
- * `--color-text-secondary`. Hovering (or keyboard-focusing) any
- * tick promotes it to active AND unfurls the `.panel` to the left
- * of the rail, listing all six persona names with the active row
- * highlighted.
+ * PersonaTickRail — vertical column of fixed-size horizontal
+ * ticks pinned to the far-right edge of `PublicChatView`. The
+ * rail has two states:
  *
- * Sizes never change on hover — only colors do. The ticks stay
- * 18×2 px (14 px on small screens) regardless of state, so the
- * column reads as a calm scrollbar-style indicator rather than a
- * springy animation.
+ *   Closed (default)
+ *     `.list` is visible, each tick paints
+ *     `--color-text-secondary` and the active tick paints
+ *     `--color-text-primary` so the column reads as a calm
+ *     scrollbar-style indicator. The `.panel` is hidden
+ *     (opacity 0, pointer-events: none) and stacked behind the
+ *     ticks so it never intercepts pointer events.
  *
- * The rail relies on existing color tokens
- * (`--color-text-primary`, `--color-text-secondary`,
+ *   Open (data-panel-open="true")
+ *     The ticks fade to opacity 0 with pointer-events disabled,
+ *     and `.panel` cross-fades into the exact same right-anchored
+ *     slot — covering where the ticks were — so the visitor
+ *     sees only the menu, not the column. Each row inside is a
+ *     real `<button>` that commits the selection on click and
+ *     simultaneously closes the menu, dropping the visitor back
+ *     into the minimal closed state with their new selection
+ *     painted as active.
+ *
+ * Theme tokens: ticks and panel rows lean on
+ * `--color-text-primary`, `--color-text-secondary`,
  * `--color-bg-elevated`, `--color-border-strong`,
- * `--color-overlay-focus`) so it stays theme-aware: in dark mode
- * the active tick reads white against gray; in light mode the
- * colors invert via the token definitions in `tokens.css`.
+ * `--color-overlay-focus`, and `--color-surface-tint` so the
+ * whole rail tracks the active site theme — white-on-gray in
+ * dark mode, inverted in light mode, no per-theme overrides
+ * needed.
  */
 
 .rail {
@@ -36,6 +45,12 @@
   flex-direction: column;
   gap: 12px;
   align-items: flex-end;
+  transition: opacity 160ms ease;
+}
+
+.rail[data-panel-open="true"] .list {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .row {
@@ -51,7 +66,7 @@
   background: transparent;
   border: 0;
   border-radius: 4px;
-  cursor: default;
+  cursor: pointer;
   font: inherit;
   color: inherit;
 }
@@ -62,11 +77,11 @@
 }
 
 /*
- * Fixed-size tick. Width and height never change with state — only
- * the `background` color flips between
- * `--color-text-secondary` (idle) and `--color-text-primary`
- * (active). The 160ms color transition matches the cadence of the
- * CTA hover transition in `PublicChatView.module.css`.
+ * Fixed-size tick. Width and height never change with state —
+ * only `background` flips between `--color-text-secondary`
+ * (idle) and `--color-text-primary` (active). The 160ms
+ * transition matches the CTA hover transition in
+ * `PublicChatView.module.css`.
  */
 .tick {
   display: block;
@@ -82,34 +97,34 @@
 }
 
 /*
- * Floating per-rail panel. Lives in the DOM all the time so screen
- * readers and keyboard users can reach it without state changes,
- * but stays visually hidden until the rail is hovered or one of
- * its tick buttons receives focus. Anchored to the right of the
- * rail and slid 12px further right so the open animation looks
- * like the panel is sliding out from under the ticks.
+ * Floating menu that COVERS the tick column when the rail is
+ * open. Anchored to the right edge of the rail wrapper
+ * (`right: 0`) so its trailing edge lines up with where the
+ * ticks were, and it extends leftward by its own width — i.e.
+ * the panel grows into the wallpaper area while the column
+ * footprint stays right-pinned on the page.
  */
 .panel {
   position: absolute;
   top: 50%;
-  right: calc(100% + 14px);
+  right: 0;
   transform: translate(8px, -50%);
-  min-width: 168px;
-  padding: 8px;
+  min-width: 188px;
+  padding: 6px;
   background: var(--color-bg-elevated, var(--color-bg));
   border: 1px solid var(--color-border-strong);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.55),
-    0 4px 10px -6px rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.55),
+    0 6px 14px -8px rgba(0, 0, 0, 0.4);
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
-.rail:hover .panel,
-.rail:focus-within .panel {
+.rail[data-panel-open="true"] .panel {
   opacity: 1;
   transform: translate(0, -50%);
+  pointer-events: auto;
 }
 
 .panelList {
@@ -121,27 +136,47 @@
   gap: 2px;
 }
 
+.panelRow {
+  display: block;
+}
+
 /*
- * Panel rows track the same `data-active` flag as the ticks so a
- * single React state change paints both surfaces in lockstep. Idle
- * rows take `--color-text-secondary`; the active row jumps to
- * `--color-text-primary` and picks up a faint surface tint so it
- * pops out of the list without needing a separate accent token.
+ * Panel rows are real `<button>`s — clicking commits the
+ * selection AND closes the menu. Idle rows take
+ * `--color-text-secondary`; the active row, the row currently
+ * being hovered, and the keyboard-focused row all jump to
+ * `--color-text-primary` plus a faint surface tint so the
+ * about-to-commit affordance is unambiguous regardless of input
+ * modality.
  */
 .panelItem {
-  font-size: 12px;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
   line-height: 1.2;
   font-weight: 500;
   color: var(--color-text-secondary);
-  padding: 6px 10px;
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
   white-space: nowrap;
   transition: color 160ms ease, background 160ms ease;
 }
 
+.panelItem:hover,
+.panelItem:focus-visible,
 .panelItem[data-active="true"] {
   color: var(--color-text-primary);
   background: var(--color-surface-tint, rgba(127, 127, 127, 0.08));
+}
+
+.panelItem:focus-visible {
+  outline: 2px solid var(--color-overlay-focus, var(--color-border-strong));
+  outline-offset: 2px;
 }
 
 @media (max-width: 640px) {
@@ -154,7 +189,11 @@
   }
 
   .panel {
-    min-width: 148px;
-    right: calc(100% + 10px);
+    min-width: 164px;
+  }
+
+  .panelItem {
+    font-size: 12px;
+    padding: 7px 10px;
   }
 }

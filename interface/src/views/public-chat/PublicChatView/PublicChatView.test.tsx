@@ -2,14 +2,14 @@
  * Behavioural test for `PublicChatView`'s landing layout.
  *
  * The public surface is a pure marketing landing with the
- * decorative `MockAuraApp` hero, a right-edge `PersonaTickRail`,
- * and a single bottom-anchored "Create your agent" CTA button.
- * These tests pin that contract, the persona-theme swap wiring,
- * and guard against any of the removed chat chrome accidentally
- * reappearing.
+ * decorative `MockAuraApp` hero, a right-edge `PersonaTickRail`
+ * (state-driven open/close menu), and a single bottom-anchored
+ * "Create your agent" CTA button. These tests pin that contract,
+ * the persona-theme swap wiring, and guard against any of the
+ * removed chat chrome accidentally reappearing.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,23 @@ function renderView() {
   );
 }
 
+/** Tick buttons live inside the `<ul aria-label="Agent personas">`. */
+function tickFor(name: string): HTMLElement {
+  const list = screen.getByLabelText("Agent personas");
+  return within(list).getByRole("button", { name });
+}
+
+/**
+ * Panel rows live inside the open/close menu panel. The panel
+ * carries `aria-hidden="true"` while closed (screen readers reach
+ * personas via the tick buttons instead), so the query opts into
+ * hidden elements to keep the helper usable in both states.
+ */
+function panelFor(name: string): HTMLElement {
+  const panel = screen.getByTestId("persona-tick-rail-panel");
+  return within(panel).getByRole("button", { name, hidden: true });
+}
+
 describe("PublicChatView landing", () => {
   it("renders the MockAuraApp hero inside the empty-state region", () => {
     renderView();
@@ -70,7 +87,7 @@ describe("PublicChatView landing", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the 6 persona ticks on the right rail with the Solo Builder slot", () => {
+  it("renders 6 persona ticks AND 6 panel rows including the Solo Builder slot", () => {
     renderView();
     const personas = [
       "Vibecoder",
@@ -80,36 +97,48 @@ describe("PublicChatView landing", () => {
       "Researcher",
       "Cypher Punk",
     ];
+    // Each persona is represented twice: once as a tick button in
+    // the rail column, once as a row button inside the panel.
     for (const name of personas) {
-      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(tickFor(name)).toBeInTheDocument();
+      expect(panelFor(name)).toBeInTheDocument();
     }
     expect(screen.getByTestId("persona-tick-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("persona-tick-rail-panel")).toBeInTheDocument();
   });
 
-  it("marks the first persona tick active by default and shifts active on hover", () => {
+  it("starts closed with Vibecoder marked active and opens the menu on rail hover", () => {
     renderView();
-    const vibecoder = screen.getByRole("button", { name: "Vibecoder" });
-    const researcher = screen.getByRole("button", { name: "Researcher" });
+    const rail = screen.getByTestId("persona-tick-rail");
+    expect(rail).toHaveAttribute("data-panel-open", "false");
 
-    // First tick paints active on mount, every other tick paints idle.
-    expect(vibecoder).toHaveAttribute("aria-current", "true");
-    expect(vibecoder).toHaveAttribute("data-active", "true");
-    expect(researcher).not.toHaveAttribute("aria-current");
-    expect(researcher).toHaveAttribute("data-active", "false");
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+    expect(tickFor("Researcher")).not.toHaveAttribute("aria-current");
 
-    // Hovering a different tick promotes it to active and demotes
-    // the previously-active row. The panel and parent theme both
-    // observe this via the shared `data-active` flag.
-    fireEvent.mouseEnter(researcher);
-    expect(researcher).toHaveAttribute("aria-current", "true");
-    expect(researcher).toHaveAttribute("data-active", "true");
-    expect(vibecoder).not.toHaveAttribute("aria-current");
-    expect(vibecoder).toHaveAttribute("data-active", "false");
+    fireEvent.mouseEnter(rail);
+    expect(rail).toHaveAttribute("data-panel-open", "true");
   });
 
-  it("swaps the desktop wallpaper and site background when the Solo Builder tick activates", () => {
+  it("commits the persona selection AND closes the menu when a panel row is clicked", () => {
     renderView();
-    const soloBuilderTick = screen.getByRole("button", { name: "Solo Builder" });
+    const rail = screen.getByTestId("persona-tick-rail");
+    fireEvent.mouseEnter(rail);
+    expect(rail).toHaveAttribute("data-panel-open", "true");
+
+    fireEvent.click(panelFor("Researcher"));
+
+    // The selection promoted Researcher to active and the menu
+    // immediately closed, dropping the visitor back to the
+    // minimal tick column with the new selection painted.
+    expect(rail).toHaveAttribute("data-panel-open", "false");
+    expect(tickFor("Researcher")).toHaveAttribute("aria-current", "true");
+    expect(tickFor("Vibecoder")).not.toHaveAttribute("aria-current");
+    expect(panelFor("Researcher")).toHaveAttribute("data-active", "true");
+  });
+
+  it("swaps the desktop wallpaper and site background when Solo Builder is selected from the menu", () => {
+    renderView();
+    const rail = screen.getByTestId("persona-tick-rail");
     const heroStub = screen.getByTestId("mock-aura-app-stub");
 
     // Vibecoder is the default and has no theme overrides: the
@@ -117,7 +146,8 @@ describe("PublicChatView landing", () => {
     // the stub) and the `.chatView` carries no inline background.
     expect(heroStub).toHaveAttribute("data-desktop-bg", "");
 
-    fireEvent.mouseEnter(soloBuilderTick);
+    fireEvent.mouseEnter(rail);
+    fireEvent.click(panelFor("Solo Builder"));
 
     expect(heroStub).toHaveAttribute(
       "data-desktop-bg",
