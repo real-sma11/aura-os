@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { lazy, Suspense, useEffect } from "react";
 import { useAuthStore } from "./stores/auth-store";
 import { useAppUIStore } from "./stores/app-ui-store";
+import { useUIModeStore } from "./stores/ui-mode-store";
 import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
@@ -189,6 +190,14 @@ export function App() {
 function AppRoutes({ showShell }: { showShell: boolean }) {
   const location = useLocation();
   const { isNativeApp } = useAuraCapabilities();
+  // The Normie/Advanced toggle (left sidebar) controls which shell an
+  // authenticated user sees. In `normie` mode we mount the same
+  // `LoggedOutShell` chat-only surface guests see so the public-mode
+  // experience is reachable without signing out. `advanced` keeps the
+  // full `AppShell`/`DesktopShell` tree.
+  const uiMode = useUIModeStore((s) => s.mode);
+  const inAdvancedShell = showShell && uiMode === "advanced";
+  const inNormieShell = showShell && uiMode === "normie";
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -223,7 +232,7 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
           </Suspense>
         }
       />
-      {showShell ? (
+      {inAdvancedShell ? (
         <Route element={<RequireAuth />}>
           <Route
             path="invite/:token"
@@ -239,6 +248,17 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
               {renderRoutes(shellAppRoutes)}
             </Route>
           </Route>
+        </Route>
+      ) : inNormieShell ? (
+        // Authenticated user with the global UI mode toggled to
+        // `normie`: serve the same `LoggedOutShell` chat-only surface
+        // guests see today. `RequireAuth` is intentionally omitted —
+        // showShell already implies an authenticated user, and the
+        // public chat view is guest-token-driven so there's no
+        // privileged data to gate.
+        <Route element={<LoggedOutShell />}>
+          <Route index element={<LoggedOutChatView />} />
+          <Route path="chat" element={<LoggedOutChatView />} />
         </Route>
       ) : isNativeApp ? (
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -86,6 +86,22 @@
   overflow: hidden;
 }
 
+/* Stacks `SidebarSearchInput` over `ModeToggle` inside the Lane's
+   header slot so the toggle always sits directly underneath the
+   search and inherits the same horizontal inset that PanelSearch's
+   own `.root` padding establishes. PanelSearch (the first child)
+   already provides its own padding via its inner `.root`; the
+   ModeToggle (second child) needs an explicit inset so its left/right
+   edges line up with the search row above it. */
+.sidebarHeader {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebarHeader > :nth-child(2) {
+  padding: 0 var(--shell-chrome-inset, 5px) var(--shell-chrome-inset, 5px);
+}
+
 .panelActive {
   display: contents;
 }

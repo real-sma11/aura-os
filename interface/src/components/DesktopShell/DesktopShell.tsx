@@ -34,6 +34,7 @@ import { PersistentSidekickLane } from "./PersistentSidekickLane";
 import { SidebarSearchInput } from "./SidebarSearchInput";
 import { SidekickPortalBridge } from "./SidekickPortalBridge";
 import { useLeftPanelWidthCssVar } from "./desktop-shell-effects";
+import { ModeToggle } from "../ModeToggle";
 import styles from "./DesktopShell.module.css";
 
 const DesktopWindowLayer = lazy(() =>
@@ -252,7 +253,12 @@ export function DesktopShell() {
                 collapsible
                 collapsed={isDesktop}
                 animateCollapse={false}
-                header={<SidebarSearchInput />}
+                header={
+                  <div className={styles.sidebarHeader}>
+                    <SidebarSearchInput />
+                    <ModeToggle />
+                  </div>
+                }
               >
                 {usesSharedDesktopLeftMenu(activeApp.id) ? (
                   <LeftMenu

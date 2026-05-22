@@ -1,6 +1,10 @@
 import { useCallback, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
+import { ModeToggle } from "../../components/ModeToggle";
+import { PanelSearch } from "../../components/PanelSearch";
+import { usePublicChatStore } from "../../stores/public-chat-store";
 import { LoggedOutTitlebar } from "./LoggedOutTitlebar";
 import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
 import { LoginOverlay } from "./LoginOverlay";
@@ -21,13 +25,27 @@ import styles from "./LoggedOutShell.module.css";
  * happens as a closable modal over the public chat surface (the
  * shell stays visible-but-dimmed behind it) instead of a separate
  * full-page route.
+ *
+ * The sidebar header owns the always-visible search input + the
+ * Normie/Advanced mode toggle. Search filters the sessions list
+ * (lifted to this component so the input + filter live in the same
+ * place); the toggle's "always under search" placement matches the
+ * Advanced shell's sidebar so the surface stays consistent across
+ * mode flips.
  */
 export function LoggedOutShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isLoginRoute = location.pathname === "/login";
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const [searchQuery, setSearchQuery] = useState("");
+  const createSession = usePublicChatStore((s) => s.createSession);
+  const handleNewChat = useCallback(() => {
+    const id = createSession();
+    navigate(`/?session=${id}`);
+  }, [createSession, navigate]);
 
   return (
     <div className={styles.shell}>
@@ -44,7 +62,26 @@ export function LoggedOutShell() {
         <aside
           className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}
         >
-          <LoggedOutSessionsPanel />
+          <div className={styles.sidebarHeader}>
+            <PanelSearch
+              placeholder="Search"
+              value={searchQuery}
+              onChange={setSearchQuery}
+              action={
+                <button
+                  type="button"
+                  className={styles.newChatButton}
+                  onClick={handleNewChat}
+                  aria-label="New chat"
+                  title="New chat"
+                >
+                  <Plus size={14} />
+                </button>
+              }
+            />
+            <ModeToggle />
+          </div>
+          <LoggedOutSessionsPanel searchQuery={searchQuery} />
         </aside>
         <main className={styles.mainPanel}>
           <Outlet />

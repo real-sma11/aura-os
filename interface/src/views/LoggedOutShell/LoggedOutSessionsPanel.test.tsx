@@ -25,12 +25,15 @@ function LocationProbe() {
   );
 }
 
-function renderPanel(initialPath = "/") {
+function renderPanel(initialPath = "/", searchQuery = "") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <LocationProbe />
       <Routes>
-        <Route path="/" element={<LoggedOutSessionsPanel />} />
+        <Route
+          path="/"
+          element={<LoggedOutSessionsPanel searchQuery={searchQuery} />}
+        />
       </Routes>
     </MemoryRouter>,
   );
@@ -169,5 +172,34 @@ describe("LoggedOutSessionsPanel", () => {
     // The delete button must not live inside another <button> — that's
     // invalid HTML and was the source of unreliable click delivery.
     expect(deleteBtn.closest("button")).toBe(deleteBtn);
+  });
+
+  it("filters the rendered rows by the searchQuery prop (case-insensitive)", () => {
+    act(() => {
+      const a = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(a, "Trip planning");
+      const b = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(b, "Recipe ideas");
+      const c = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(c, "trip itinerary");
+    });
+
+    renderPanel("/", "trip");
+
+    expect(screen.getByText("Trip planning")).toBeInTheDocument();
+    expect(screen.getByText("trip itinerary")).toBeInTheDocument();
+    expect(screen.queryByText("Recipe ideas")).not.toBeInTheDocument();
+  });
+
+  it("shows a 'no matching chats' empty state when the filter excludes every row", () => {
+    act(() => {
+      const id = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(id, "Recipe ideas");
+    });
+
+    renderPanel("/", "spaceships");
+
+    expect(screen.getByText("No matching chats")).toBeInTheDocument();
+    expect(screen.queryByText("Recipe ideas")).not.toBeInTheDocument();
   });
 });

@@ -590,17 +590,25 @@
    translate + fade so successive frames feel like real chat
    activity rather than abrupt content swaps. The key on the React
    side rotates per frame so React doesn't reuse the previous DOM
-   node and skip the entry animation. */
+   node and skip the entry animation.
+
+   Easing notes: `cubic-bezier(0.16, 1, 0.3, 1)` is a soft "ease-out
+   expo" curve — it lands the row gently into place with a longer
+   tail than `ease-out`, which is what the user-reported "more
+   seamless / fluid" feedback was after. 380ms is the same family
+   of timings as the bubble phase fade below so the row entry and
+   any same-tick bubble fade compose into a single smooth motion
+   rather than two competing curves. */
 .demoRow {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  animation: demoRowEnter 260ms ease-out both;
+  animation: demoRowEnter 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes demoRowEnter {
   from {
-    transform: translateY(8px);
+    transform: translateY(6px);
     opacity: 0;
   }
   to {
@@ -611,6 +619,37 @@
 
 @media (prefers-reduced-motion: reduce) {
   .demoRow {
+    animation: none;
+  }
+}
+
+/* Bubble phase fade — runs whenever a fresh bubble element mounts
+   inside a row, including the row's initial typing-dots bubble AND
+   the resolved content bubble that replaces it after `typingMs`.
+   The `key` swap on the bubble in `AgentDemoBanner.tsx` forces a
+   remount on phase change, which re-triggers this animation and
+   produces the typing-to-content cross-fade. The slight 0.97 -> 1
+   scale gives the new bubble a soft "settle in" feel that bridges
+   the small width change between dots and text without an obvious
+   pop. */
+.demoBubblePhase {
+  animation: demoBubblePhaseEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 0 50%;
+}
+
+@keyframes demoBubblePhaseEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoBubblePhase {
     animation: none;
   }
 }
@@ -661,46 +700,17 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Bubble shape used during a row's typing phase. The dots themselves
+   (and their bounce animation) live in `TypingIndicator.module.css`
+   so the indicator is reusable outside this banner — this class is
+   only here to give the bubble the right padding for the smaller
+   "dots only" payload. The resolved-content bubble uses the plain
+   `.demoBubble` padding instead. */
 .demoTypingBubble {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 11px 13px;
-}
-
-.demoTypingDot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  opacity: 0.45;
-  animation: demoTypingPulse 900ms ease-in-out infinite;
-}
-
-.demoTypingDot:nth-child(2) {
-  animation-delay: 150ms;
-}
-
-.demoTypingDot:nth-child(3) {
-  animation-delay: 300ms;
-}
-
-@keyframes demoTypingPulse {
-  0%, 100% {
-    transform: translateY(0);
-    opacity: 0.35;
-  }
-  50% {
-    transform: translateY(-2px);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .demoTypingDot {
-    animation: none;
-    opacity: 0.7;
-  }
 }
 
 /* Tool-call card — used for code diffs, todo lists, bash output,

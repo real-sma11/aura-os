@@ -27,6 +27,31 @@ vi.mock("@cypher-asi/zui", () => ({
       <div>{actions}</div>
     </div>
   ),
+  // PanelSearch (used by the new sidebar search row) imports `Input`
+  // from zui. The lightweight stub below preserves placeholder /
+  // value / onChange behaviour so test queries against the search
+  // box continue to work without booting the full zui package.
+  Input: ({
+    placeholder,
+    value,
+    onChange,
+    className,
+    ...rest
+  }: {
+    placeholder?: string;
+    value?: string;
+    onChange?: (event: { target: { value: string } }) => void;
+    className?: string;
+    size?: string;
+  } & Record<string, unknown>) => (
+    <input
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      className={className}
+      {...(rest as Record<string, unknown>)}
+    />
+  ),
   useTheme: () => ({ resolvedTheme: "dark" }),
 }));
 
@@ -70,9 +95,20 @@ describe("LoggedOutShell", () => {
     expect(screen.getByTestId("zui-topbar-stub")).toBeInTheDocument();
     // Background layer rendered (stubbed away from theme + wallpaper).
     expect(screen.getByTestId("background-layer-stub")).toBeInTheDocument();
-    // Sessions sidebar header — proves the sidebar mounted.
-    expect(screen.getByText("Chats")).toBeInTheDocument();
-    // The "+" button on the sidebar is reachable (a11y-labelled).
+    // Sidebar search input — proves the sidebar header mounted.
+    expect(
+      screen.getByPlaceholderText("Search"),
+    ).toBeInTheDocument();
+    // Normie/Advanced toggle is rendered under the search.
+    expect(
+      screen.getByRole("button", { name: "Normie" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Advanced" }),
+    ).toBeInTheDocument();
+    // The "+" button on the sidebar is reachable (a11y-labelled). It
+    // now lives in the search row's action slot rather than a
+    // dedicated `Chats` header.
     expect(
       screen.getByRole("button", { name: "New chat" }),
     ).toBeInTheDocument();
