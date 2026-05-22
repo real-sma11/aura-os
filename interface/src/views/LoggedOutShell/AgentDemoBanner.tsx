@@ -246,16 +246,17 @@ interface AgentAvatarProps {
 
 function AgentAvatar({ agentId }: AgentAvatarProps): ReactNode {
   const agent = AGENTS[agentId];
+  const { Icon } = agent;
   return (
     <div
       className={styles.demoAvatar}
       style={{
-        background: `${agent.color}33`,
-        color: agent.color,
-        borderColor: `${agent.color}66`,
+        background: `linear-gradient(135deg, ${agent.gradient.from} 0%, ${agent.gradient.to} 100%)`,
+        borderColor: `${agent.color}88`,
+        boxShadow: `0 0 0 1px ${agent.color}22, 0 4px 10px ${agent.color}33`,
       }}
     >
-      {agent.initial}
+      <Icon size={14} strokeWidth={2.4} color="#ffffff" aria-hidden="true" />
     </div>
   );
 }

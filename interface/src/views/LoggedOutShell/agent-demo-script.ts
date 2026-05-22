@@ -18,36 +18,61 @@
  * windowing logic.
  */
 
+import {
+  BadgeCheck,
+  Code2,
+  Compass,
+  type LucideIcon,
+} from "lucide-react";
+
 export type AgentId = "architect" | "frontend" | "reviewer";
 
 export interface AgentMeta {
   readonly id: AgentId;
   /** Short label rendered next to messages and tool cards. */
   readonly name: string;
-  /** Single-letter avatar fallback. */
-  readonly initial: string;
-  /** Hex used for the avatar fill, message accent, and tool border. */
+  /**
+   * Role-evocative icon rendered inside the avatar circle. Picked
+   * from `lucide-react` so the asset travels with the rest of the
+   * UI's icon set (no extra image fetches, scales cleanly with the
+   * avatar size, inherits `currentColor`).
+   */
+  readonly Icon: LucideIcon;
+  /** Primary accent color used for the agent name + tool border. */
   readonly color: string;
+  /**
+   * Two stops used by the avatar's diagonal gradient. `from` lands at
+   * the top-left and `to` at the bottom-right so each agent reads as
+   * a small jewel rather than a flat color disc, while still keeping
+   * the agent's primary `color` recognizable as the dominant hue.
+   */
+  readonly gradient: {
+    readonly from: string;
+    readonly to: string;
+  };
 }
 
 export const AGENTS: Readonly<Record<AgentId, AgentMeta>> = {
   architect: {
     id: "architect",
     name: "Architect",
-    initial: "A",
+    Icon: Compass,
     color: "#c084fc",
+    gradient: { from: "#d8b4fe", to: "#7c3aed" },
   },
   frontend: {
     id: "frontend",
     name: "Frontend",
-    initial: "F",
+    Icon: Code2,
     color: "#ff6fb5",
+    gradient: { from: "#ffa3cf", to: "#db2777" },
   },
   reviewer: {
     id: "reviewer",
     name: "Reviewer",
-    initial: "R",
+    Icon: BadgeCheck,
     color: "#6ee7d7",
+    gradient: { from: "#a7f3d0", to: "#0d9488" },
   },
 };
 

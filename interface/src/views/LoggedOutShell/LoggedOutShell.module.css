@@ -587,22 +587,24 @@
   }
 }
 
-/* Circular avatar with the agent's accent color. Background /
-   border-color / color are set inline per-agent (see `AGENTS` in
-   agent-demo-script.ts) so each agent's row is visually distinct
-   without a class explosion. */
+/* Circular avatar holding a role-evocative `lucide-react` icon. The
+   diagonal `background` gradient, `borderColor`, and `boxShadow`
+   glow are set inline per-agent (see `AGENTS` in
+   agent-demo-script.ts) so each agent reads as a distinct jewel
+   without a class explosion. The icon itself (`<Icon />` rendered
+   by `AgentAvatar` in AgentDemoBanner.tsx) is sized to `14px` and
+   forced to `#fff` so the gradient stays the dominant signal. */
 .demoAvatar {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
   border: 1px solid;
   margin-top: 16px;
+  color: #fff;
 }
 
 .demoBubbleWrap {
@@ -790,14 +792,15 @@
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
-  /* Tight 4px gap between the input section and the helper tab
-     row. Parent `.composePanel` flex gap is 22px, so the -18px
-     margin-top trims the effective spacing without changing the
-     banner -> input gap above. Combined with the two `.composeInput`
-     overrides above (zeroing the input wrapper's bottom padding and
-     hiding the empty info-bar row), this halves the previously
-     ~30px visible distance to ~15px without further restructuring. */
-  margin-top: -18px;
+  /* ~12px gap between the input section and the helper tab row
+     (roughly 3x the previous ~4px). Parent `.composePanel` flex gap
+     is 22px, so the -10px margin-top trims the effective spacing
+     without changing the banner -> input gap above. Combined with
+     the two `.composeInput` overrides above (zeroing the input
+     wrapper's bottom padding and hiding the empty info-bar row),
+     this leaves a comfortable breathing room between the textarea
+     and the helper pills without restructuring the parent gap. */
+  margin-top: -10px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -809,13 +812,14 @@
 .composeExample {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  /* Tighter pill: vertical padding 3px, horizontal 10px, font 11px
-     so the helper-tab row reads as compact secondary chrome below
-     the input rather than competing with it visually. */
-  padding: 3px 10px;
+  gap: 8px;
+  /* Slightly larger pill: vertical padding 6px, horizontal 14px,
+     font 13px so the helper-tab row is comfortably tappable and
+     readable below the input while still reading as secondary
+     chrome rather than competing with the textarea. */
+  padding: 6px 14px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--color-text-secondary, #c9c9cf);
   /* Dark translucent surface so the labels stay readable against
