@@ -158,12 +158,11 @@ pub(super) fn remap_harness_error_to_sse(err: &ErrorMsg) -> ErrorMsg {
         code: code.clone(),
         message,
         recoverable: err.recoverable,
-        // Phase 6 promoted `support_id` to a first-class field, but
-        // most pre-Phase-6 emit sites still leave it `None`. Inherit
-        // whatever the upstream sender already stamped (the harness's
-        // agent-loop terminal error path now pre-populates this) and
-        // let `stamp_support_id` mint a fresh id only when neither
-        // side has set one.
+        // `support_id` is a first-class field, but many emit sites
+        // still leave it `None`. Inherit whatever the upstream sender
+        // already stamped (the harness's agent-loop terminal error
+        // path pre-populates this) and let `stamp_support_id` mint a
+        // fresh id only when neither side has set one.
         support_id: err.support_id.clone(),
     };
     let _ = stamp_support_id(&mut new_err, &code);

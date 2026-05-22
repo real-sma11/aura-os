@@ -191,21 +191,17 @@ pub(super) async fn existing_session_id(
 /// forwarder has come online yet — so a plain status filter
 /// suffices.
 ///
-/// Phase 4 of the dev-loop simplification (see
-/// `~/.cursor/plans/simplify_dev-loop_harness_d6af7a5d.plan.md`)
-/// replaced the previous two-pass orphan-recovery planner with
-/// this single sweep:
+/// The sweep covers exactly one transition:
 ///
-/// * `InProgress -> Ready` is still the mid-run orphan path. The
-///   per-task retry budget that used to gate the cross-run `Failed`
-///   sweep moved onto the persisted `tasks.attempts` column, which
-///   the in-loop `task_failed` arm bumps directly — so a previously-
-///   Failed task is re-readied by the live retry path, not by this
-///   startup sweep.
+/// * `InProgress -> Ready` is the mid-run orphan path. The per-task
+///   retry budget lives on the persisted `tasks.attempts` column,
+///   which the in-loop `task_failed` arm bumps directly — so a
+///   previously-Failed task is re-readied by the live retry path,
+///   not by this startup sweep.
 /// * `Failed` tasks are deliberately left alone. They either need
 ///   manual intervention (operator clicks "Retry") or get re-readied
 ///   by the next `task_failed` event on the same task; either way,
-///   the startup sweep no longer needs to mutate them.
+///   the startup sweep does not mutate them.
 ///
 /// Best-effort: storage / JWT failures are logged and swallowed so a
 /// transient blip never blocks the loop from starting. Returns the

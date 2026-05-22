@@ -9,15 +9,9 @@
 //! registry's 4 Hz publish throttle and terminal-status bypass rules
 //! still apply (see `crates/aura-os-loops/src/registry.rs`).
 //!
-//! Section A regression: the previous shim hard-coded match arms
-//! against stale event-type strings (`tool_call_start`,
-//! `tool_invocation`, ...) so the harness's real `tool_use_start` /
-//! `tool_call_started` events fired no transition and the UI spinner
-//! got stuck on the initial `Starting / "connecting"` snapshot. The
-//! pure mapper matches against
-//! [`super::super::event_kinds`] constants which mirror the
-//! harness module byte-for-byte (pinned by an invariant test in the
-//! automation crate).
+//! The pure mapper matches against [`super::super::event_kinds`]
+//! constants which mirror the harness module byte-for-byte (pinned
+//! by an invariant test in the automation crate).
 
 use super::super::progress::{apply_loop_activity, LoopActivityTransition};
 use aura_os_loops::LoopHandle;

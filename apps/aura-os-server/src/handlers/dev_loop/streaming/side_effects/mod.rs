@@ -33,9 +33,8 @@ pub(crate) use task_output::seed_task_output;
 
 /// Per-task ceiling on auto-retry hops the dev-loop will issue from
 /// the `task_failed` arm before leaving the task in `Failed` for
-/// good. Mirrored against the persisted `tasks.attempts` column
-/// (Phase 4 of `simplify_dev-loop_harness_d6af7a5d.plan.md`) so the
-/// budget survives server restarts.
+/// good. Mirrored against the persisted `tasks.attempts` column so
+/// the budget survives server restarts.
 pub(crate) const MAX_TASK_ATTEMPTS: u32 = 3;
 
 /// Bundle of context the side-effects pipeline needs for every
@@ -62,8 +61,8 @@ pub(super) struct SideEffectCtx<'a> {
     /// forwarder owns so the side-effects pipeline can both read
     /// the trackers directly (auto-deref through `Arc`) and clone
     /// the Arc into a `tokio::spawn`ed task without re-wrapping —
-    /// used by the Phase 3 `task_started` workspace-health snapshot
-    /// to stash the captured baseline back onto
+    /// used by the `task_started` workspace-health snapshot to stash
+    /// the captured baseline back onto
     /// [`LoopRetryState::health_baseline`].
     pub retry_state: &'a Arc<LoopRetryState>,
 }
@@ -180,9 +179,8 @@ async fn apply_event_side_effect(
                 seed_task_output(state, project_id, agent_instance_id, session_id, task_id).await;
                 set_current_task(loop_handle, Some(task_id.to_string())).await;
                 // Bump `tasks_worked_count` on the storage session and
-                // stamp `tasks.session_id` on the task row in one shot
-                // (Phase 5: single writer of session_id from the
-                // task_started arm).
+                // stamp `tasks.session_id` on the task row in one shot.
+                // This arm is the single writer of `tasks.session_id`.
                 if let Some(session_id) = session_id {
                     record_task_worked(
                         state,
@@ -194,13 +192,12 @@ async fn apply_event_side_effect(
                     )
                     .await;
                 }
-                // Workspace-health baseline (Phase 3 of
-                // workspace-health-diff-gate). Captures the build state
-                // at task start so the Phase 4 completion gate can
-                // compare against task_done. Runs in the background so
-                // it never adds claim latency; if it doesn't finish
+                // Workspace-health baseline. Captures the build state
+                // at task start so the completion gate can compare
+                // against task_done. Runs in the background so it
+                // never adds claim latency; if it doesn't finish
                 // before task_done, the gate falls back to "unknown
-                // baseline" (existing behavior).
+                // baseline".
                 if let Ok(task_uuid) = TaskId::from_str(task_id) {
                     let retry_state_for_snapshot = retry_state.clone();
                     if let Some(workspace_path) = resolve_agent_instance_workspace_path(
@@ -224,10 +221,9 @@ async fn apply_event_side_effect(
             set_current_task(loop_handle, None).await;
             // Drop the workspace-health baseline so a rerun of the
             // same task starts fresh rather than diffing against the
-            // prior snapshot. Per-task retry counters used to be
-            // cleared here too; Phase 4 moved that state onto the
-            // persisted `tasks.attempts` column where it doesn't
-            // need an in-memory companion.
+            // prior snapshot. Per-task retry counters live on the
+            // persisted `tasks.attempts` column and don't need an
+            // in-memory companion here.
             if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
                 retry_state.health_baseline.clear(task_uuid);
             }
@@ -257,20 +253,20 @@ async fn apply_event_side_effect(
             // "Copy All Output" on a reloaded failed task has no
             // reason to render (the hook has nothing to seed from).
             //
-            // Section B: when the harness emits `task_failed` without
-            // a usable reason field, the persistence helper falls
-            // back to `synthesize_failure_reason` so the row never
-            // shows the silent "Task failed without producing
-            // output" state on reload.
+            // When the harness emits `task_failed` without a usable
+            // reason field, the persistence helper falls back to
+            // `synthesize_failure_reason` so the row never shows the
+            // silent "Task failed without producing output" state on
+            // reload.
             if let (Some(task_id), Some(jwt)) = (task_id, jwt) {
                 failure::persist_task_failure_reason(state, jwt, task_id, event).await;
                 // Same accumulator drain as task_completed: failed tasks
                 // also have token usage that should appear in stats.
                 task_output::persist_cached_task_output(state, project_id, jwt, task_id).await;
-                // Phase 4: task-level auto-retry. We only push the
-                // task back to `Ready` when the failure reason is
-                // retryable (`HarnessFailureKind::is_retryable`) and
-                // the persisted `tasks.attempts` is strictly below
+                // Task-level auto-retry: only push the task back to
+                // `Ready` when the failure reason is retryable
+                // (`HarnessFailureKind::is_retryable`) and the
+                // persisted `tasks.attempts` is strictly below
                 // `MAX_TASK_ATTEMPTS`. Otherwise the task stays
                 // `Failed` and the existing surfaces handle it.
                 retry::maybe_apply_task_level_retry(
@@ -538,7 +534,7 @@ fn synthesize_health_gate_failure(
 /// Extract `(input_tokens, output_tokens)` from an
 /// `assistant_message_end` payload. Looks under both the top-level
 /// fields the legacy harness emits and the nested `usage` object the
-/// post-Phase 4 harness uses.
+/// current harness uses.
 fn assistant_turn_tokens(event: &serde_json::Value) -> (Option<u64>, Option<u64>) {
     let read = |path: &[&str]| -> Option<u64> {
         let mut node = event;

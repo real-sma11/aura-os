@@ -1,12 +1,10 @@
 //! Server-side regression tests for the dev-loop activity shim.
 //!
-//! Section A regression: the previous shim matched harness events
-//! against stale type strings (`tool_call_start`, `tool_invocation`,
-//! `tool_call_end`, ...). Real `tool_use_start` / `tool_call_started`
-//! events fired no transition and the UI spinner stayed pinned to the
-//! initial `Starting / "connecting"` snapshot. These tests pin the
-//! end-to-end behaviour through the live `LoopRegistry` so the stall
-//! cannot return.
+//! These tests pin the end-to-end behaviour through the live
+//! `LoopRegistry`: real `tool_use_start` / `tool_call_started` events
+//! must drive a transition (an older shim that matched stale type
+//! strings like `tool_call_start` left the UI spinner pinned to the
+//! initial `Starting / "connecting"` snapshot).
 
 use aura_os_core::{AgentId, AgentInstanceId, ProjectId, UserId};
 use aura_os_events::{EventHub, LoopId, LoopKind, LoopStatus};

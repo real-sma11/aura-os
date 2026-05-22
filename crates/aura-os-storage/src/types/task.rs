@@ -103,9 +103,8 @@ pub struct UpdateTaskRequest {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assigned_project_agent_id: Option<String>,
-    /// New persisted retry counter (Phase 4 of dev-loop simplification).
-    /// `Some(n)` REPLACES the row's `attempts` column; `None` leaves it
-    /// untouched.
+    /// Persisted retry counter. `Some(n)` REPLACES the row's
+    /// `attempts` column; `None` leaves it untouched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempts: Option<u32>,
 }

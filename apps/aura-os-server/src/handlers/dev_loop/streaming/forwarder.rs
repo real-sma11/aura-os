@@ -1,4 +1,4 @@
-//! Spawns the harness-event consumer task that drives `LoopHandle` activity, persists side-effects, surfaces live heuristics, and shadows the broadcast into the chat persist pipeline (G0b / F1).
+//! Spawns the harness-event consumer task that drives `LoopHandle` activity, persists side-effects, surfaces live heuristics, and shadows the broadcast into the chat persist pipeline.
 
 use std::str::FromStr;
 use std::sync::{
@@ -40,9 +40,9 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         } = ctx;
         let loop_handle = Arc::new(loop_handle);
         let jwt = jwt.map(Arc::new);
-        // Phase G0b (plan F1): subscribe the chat persist pipeline to
-        // this same harness broadcast so every dev-loop harness event
-        // lands as a `SessionEvent` row. Any future replay through
+        // Subscribe the chat persist pipeline to this same harness
+        // broadcast so every dev-loop harness event lands as a
+        // `SessionEvent` row. Any future replay through
         // `session_events_to_agent_history` then goes through the
         // same dangling-`tool_use` strip, recent-window cap, tool-blob
         // truncation, and parallel-`tool_result` dedupe chat already
@@ -50,7 +50,7 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         // writer / LoopHandle updates below are unchanged. We only
         // attach when we have everything the chat persist contract
         // needs (storage client + JWT + minted session id); on any
-        // missing piece we skip silently â€” the dev-loop runs to
+        // missing piece we skip silently — the dev-loop runs to
         // completion either way and the worst case is "no
         // SessionEvent rows for this run", not a hard failure.
         let _persist_handle = maybe_spawn_dev_loop_persist(DevLoopPersistInputs {

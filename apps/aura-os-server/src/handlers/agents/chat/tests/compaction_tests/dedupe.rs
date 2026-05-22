@@ -1,6 +1,6 @@
 //! Parallel-tool-result dedupe regression tests, including the
 //! live-trace `dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace`
-//! introduced in G0a and the multi-turn corruption-recovery loop.
+//! and the multi-turn corruption-recovery loop.
 
 use aura_os_core::ChatContentBlock;
 

@@ -243,16 +243,16 @@ fn entry_for(template: AgentId, project_id: ProjectId, automaton_id: &str) -> Ac
     build_active_automaton_for_test(template, project_id, automaton_id)
 }
 
-/// Phase-5 1c: the chat-vs-automation guard
+/// The chat-vs-automation guard
 /// (`chat::busy::reject_if_partition_busy` /
 /// `evaluate_partition_busy`) refuses ONLY chat sends that target the
 /// same `(project_id, agent_instance_id)` pair as a live automaton —
 /// chat on a sibling instance of the same template is allowed.
 ///
-/// This pins the post-Phase-1 partitioning behavior: the guard
-/// matches by `(project_id, agent_instance_id)`, NOT just by
-/// template, so two instances of one template coexist as
-/// "automating" + "chatting" without any cross-partition collision.
+/// This pins the partitioning behavior: the guard matches by
+/// `(project_id, agent_instance_id)`, NOT just by template, so two
+/// instances of one template coexist as "automating" + "chatting"
+/// without any cross-partition collision.
 #[tokio::test]
 async fn chat_during_automation_isolated_instance() {
     let template = AgentId::new();

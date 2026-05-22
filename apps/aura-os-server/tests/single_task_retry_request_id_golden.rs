@@ -1,15 +1,14 @@
-//! End-to-end golden regression for the Phase 8 "harden LLM stream
-//! retry observability" plan.
+//! End-to-end golden regression for LLM-stream retry observability.
 //!
-//! The plan (c:\\Users\\n3o\\.cursor\\plans\\harden-llm-stream-retry-observability_9a4b1e2f.plan.md)
-//! plumbs the HTTP `x-request-id` captured by aura-harness
-//! (`StreamEvent::HttpMeta`) all the way onto the `task_failed` event
-//! emitted by the dev loop, and — on the server side — onto the JSON
-//! payload the UI's Run sidekick decodes. This integration test pins
-//! the wire shape at the *single seam* the UI and the operator
-//! tooling depend on, so a future refactor of the harness, of
-//! `extract_task_failure_context`, or of `synthesize_task_failed`
-//! cannot silently drop any of the four fields without failing CI.
+//! The HTTP `x-request-id` captured by aura-harness
+//! (`StreamEvent::HttpMeta`) is plumbed all the way onto the
+//! `task_failed` event emitted by the dev loop, and — on the server
+//! side — onto the JSON payload the UI's Run sidekick decodes. This
+//! integration test pins the wire shape at the *single seam* the UI
+//! and the operator tooling depend on, so a future refactor of the
+//! harness, of `extract_task_failure_context`, or of
+//! `synthesize_task_failed` cannot silently drop any of the four
+//! fields without failing CI.
 //!
 //! Scope — what this test exercises:
 //!
@@ -41,8 +40,7 @@
 //!   behaves.
 //! * On-disk run-bundle artifacts (`llm_calls.jsonl` / `retries.jsonl`).
 //!   Those are produced by the harness, not the server, and are
-//!   already covered by the aura-harness side of the Phase 8 plan
-//!   (Commits A/B).
+//!   already covered by the aura-harness side of the contract.
 
 use aura_os_server::phase7_test_support::{
     is_provider_internal_error, task_failed_payload_with_context,
@@ -146,11 +144,11 @@ fn task_failed_payload_prefers_structured_event_fields_over_reason_parsing() {
 
 #[test]
 fn task_failed_payload_accepts_legacy_sibling_aliases() {
-    // Older harness builds (and the pre-Phase-8 automaton) emit
-    // `request_id` / `error_type` / `msg_id` directly as siblings.
-    // The extractor must accept those aliases and surface them under
-    // the canonical field names, otherwise a half-upgraded fleet
-    // silently loses the context label.
+    // Older harness builds emit `request_id` / `error_type` /
+    // `msg_id` directly as siblings. The extractor must accept those
+    // aliases and surface them under the canonical field names,
+    // otherwise a half-upgraded fleet silently loses the context
+    // label.
     let mut legacy = Map::new();
     legacy.insert("request_id".into(), Value::String("req_legacy".into()));
     legacy.insert("error_type".into(), Value::String("api_error".into()));

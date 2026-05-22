@@ -106,9 +106,8 @@ pub struct SessionInit {
     ///   partition used by automaton runs and any chat surface that
     ///   opts out of session-level partitioning.
     /// - `{template}::{agent_instance_id}::{session_id}` — full
-    ///   per-(instance, storage_session) partition. Phase 1 of the
-    ///   parallel-session-chats plan threads the resolved storage
-    ///   `session_id` into the third segment from
+    ///   per-(instance, storage_session) partition. The resolved
+    ///   storage `session_id` is threaded into the third segment from
     ///   `agent_route.rs` and `instance_route.rs`, so two chat POSTs
     ///   against the same `(template, instance)` with different
     ///   `session_id` values get distinct `Session.agent_id` values
@@ -137,8 +136,8 @@ pub struct SessionInit {
     /// against a single identity per template even when multiple
     /// partitions (per-instance, per-session) exist.
     ///
-    /// Optional during rollout: when `None`, the harness falls back
-    /// to `agent_id` for skill lookup (the pre-Phase-1 behavior).
+    /// Optional: when `None`, the harness falls back to `agent_id`
+    /// for skill lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template_agent_id: Option<String>,
     /// Originating end-user id for resolving and persisting tool defaults.

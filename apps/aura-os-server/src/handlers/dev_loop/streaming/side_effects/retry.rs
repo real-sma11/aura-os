@@ -1,9 +1,6 @@
 //! Task-level retry plumbing for the dev-loop forwarder.
 //!
-//! Phase 4 of the dev-loop simplification (see
-//! `~/.cursor/plans/simplify_dev-loop_harness_d6af7a5d.plan.md`)
-//! collapsed the parallel server-side retry state machine into a
-//! single decision:
+//! Collapses the `task_failed` arm into a single decision:
 //!
 //! ```text
 //! on task_failed:
@@ -16,11 +13,11 @@
 //!         leave task in Failed
 //! ```
 //!
-//! The persisted `tasks.attempts` counter (added in the same phase,
-//! see `docs/migrations/2026-05-21-task-attempts-column.md`) replaces
-//! the previous in-memory task-retry tracker. Tool-level retries are
-//! now the harness's responsibility — it sees every tool result; the
-//! server does not need a parallel tool-retry tracker.
+//! The persisted `tasks.attempts` counter (see
+//! `docs/migrations/2026-05-21-task-attempts-column.md`) holds the
+//! per-task budget. Tool-level retries are the harness's
+//! responsibility — it sees every tool result; the server does not
+//! need a parallel tool-retry tracker.
 
 use tracing::{info, warn};
 

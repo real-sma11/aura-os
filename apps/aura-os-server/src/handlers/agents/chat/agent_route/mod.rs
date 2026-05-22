@@ -148,12 +148,10 @@ pub(crate) async fn send_agent_event_stream(
     // build the per-session partition string via `build_chat_partition`,
     // then check `has_live_session` against the real `session_key` so
     // the cold-vs-warm decision uses the same key the registry stores
-    // under. This loses the cold-start `tokio::join` between persist
-    // and history-load that the pre-Phase-1 code had — same tradeoff
-    // `instance_route::load_history_and_project_state` already
-    // accepts — but in exchange we restore the warm-session
-    // history-rebuild skip that Phase 1's `live_session = false`
-    // workaround disabled.
+    // under. We accept the same cold-start serialisation between
+    // persist and history-load that
+    // `instance_route::load_history_and_project_state` accepts in
+    // exchange for the warm-session history-rebuild skip.
     let (persist_ctx, fork_info, matching) =
         load_persistence_only(&state, &agent_id, &persist_request).await;
 

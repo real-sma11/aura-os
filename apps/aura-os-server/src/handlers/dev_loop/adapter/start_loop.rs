@@ -95,14 +95,14 @@ pub(crate) async fn start_loop(
 
     replace_registry_entry(&state, project_id, agent_instance_id).await;
     let retry_state = Arc::new(LoopRetryState::new());
-    // Section E (orphan recovery): sweep tasks left in `InProgress`
-    // from a previous server invocation back to `Ready` BEFORE the
-    // forwarder + scheduler come online, so the next scheduler tick
-    // actually sees them as candidates. Phase 4 dropped the parallel
-    // cross-run `Failed -> Ready` sweep — the per-task retry budget
-    // now lives on the persisted `tasks.attempts` column, which the
-    // live `task_failed` arm bumps directly. Best-effort: any storage
-    // failure is logged and we continue.
+    // Orphan recovery: sweep tasks left in `InProgress` from a
+    // previous server invocation back to `Ready` BEFORE the forwarder
+    // + scheduler come online, so the next scheduler tick actually
+    // sees them as candidates. The per-task retry budget lives on the
+    // persisted `tasks.attempts` column, which the live `task_failed`
+    // arm bumps directly — no cross-run `Failed -> Ready` sweep is
+    // needed here. Best-effort: any storage failure is logged and we
+    // continue.
     let recovered = recover_orphan_tasks(&state, project_id, &forwarder_jwt).await;
     if recovered > 0 {
         tracing::info!(

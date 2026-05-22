@@ -46,8 +46,8 @@ pub(crate) fn spawn_turn_slot_release(
             tokio::select! {
                 // Bias toward the terminal-event arm so the happy
                 // path (harness completed normally before any drop
-                // signal could race in) is observably indistinguishable
-                // from the pre-Phase-7 behaviour.
+                // signal could race in) releases the slot via the
+                // same arm regardless of drop-signal timing.
                 biased;
                 evt = events_rx.recv() => match evt {
                     Ok(HarnessOutbound::AssistantMessageEnd(_)) | Ok(HarnessOutbound::Error(_)) => {

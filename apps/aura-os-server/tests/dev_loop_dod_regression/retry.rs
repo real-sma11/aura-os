@@ -1,15 +1,12 @@
 //! Harness-owned DoD and retired aura-os DoD remediation surface
 //! regressions.
 //!
-//! Phase 4 of the dev-loop simplification deleted the parallel
-//! server-side tool-call retry budget and tracker. Tool-level
-//! retries are now the harness's job (it sees every tool result
-//! and owns the retry policy), so the old
-//! `tool_call_retry_budget` / `tool_call_failed_should_retry`
-//! tests are gone with their helpers. The remaining tests in this
-//! file pin behaviours that survived Phase 4: the harness-owned
-//! DoD surface, the typed `HarnessFailureKind` classifier, and the
-//! reconciler decision table.
+//! Tool-level retries are the harness's job (it sees every tool
+//! result and owns the retry policy); the server does not carry a
+//! parallel tool-call retry budget or tracker. The tests in this
+//! file pin the harness-owned DoD surface, the typed
+//! `HarnessFailureKind` classifier, and the reconciler decision
+//! table.
 
 use aura_os_server::phase7_test_support as tsp;
 use serde_json::json;
@@ -154,9 +151,7 @@ fn research_loop_abort_verdict_is_restartable_at_classifier_layer() {
         tsp::classify_failure(reason),
         aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
         "and the same verdict must classify as the typed \
-         ResearchLoopAbort variant — Phase 1 of the dev-loop \
-         simplification split this out of the CompletionContract \
-         lane so the reconciler decision table can branch on it \
-         directly",
+         ResearchLoopAbort variant so the reconciler decision \
+         table can branch on it directly",
     );
 }

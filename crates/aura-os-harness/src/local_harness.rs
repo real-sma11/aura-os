@@ -28,15 +28,15 @@ pub const CONNECT_TIMEOUT_ENV: &str = "AURA_HARNESS_CONNECT_TIMEOUT_SECS";
 /// [`DEFAULT_CONNECT_ATTEMPTS`] when unset, blank, or non-numeric.
 pub const CONNECT_ATTEMPTS_ENV: &str = "AURA_HARNESS_CONNECT_ATTEMPTS";
 
-/// Default per-attempt WS connect timeout, matching the pre-Phase 2
-/// behavior so the operational ceiling is unchanged when the retry
-/// loop short-circuits after a single attempt.
+/// Default per-attempt WS connect timeout. Keeps the operational
+/// ceiling unchanged when the retry loop short-circuits after a
+/// single attempt.
 pub const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 8;
 
 /// Default number of WS connect attempts. Three attempts with
-/// 500ms/1000ms/2000ms backoff covers the brief network blips
-/// observed in the Phase 2 capture without materially extending
-/// failure latency for genuinely-down upstreams.
+/// 500ms/1000ms/2000ms backoff covers brief network blips without
+/// materially extending failure latency for genuinely-down
+/// upstreams.
 pub const DEFAULT_CONNECT_ATTEMPTS: u32 = 3;
 
 /// Hard upper bound on retry attempts to prevent a misconfigured
@@ -60,10 +60,10 @@ fn read_connect_timeout_from_env() -> Duration {
     Duration::from_secs(secs)
 }
 
-/// Backoff schedule between WS connect attempts. Hand-tuned to the
-/// 500ms/1s/2s ramp called out in the Phase 2 plan; attempts beyond
-/// the third cap at 4s so a misconfigured `AURA_HARNESS_CONNECT_ATTEMPTS=10`
-/// stays under a 30s budget.
+/// Backoff schedule between WS connect attempts. Hand-tuned 500ms /
+/// 1s / 2s ramp; attempts beyond the third cap at 4s so a
+/// misconfigured `AURA_HARNESS_CONNECT_ATTEMPTS=10` stays under a
+/// 30s budget.
 ///
 /// `attempt` is 1-indexed; the returned duration is the gap *before*
 /// the next attempt, so `next_backoff(1)` is the gap between attempt

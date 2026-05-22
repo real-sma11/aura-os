@@ -86,8 +86,8 @@ agent_id: string | null,
  * billing aggregation against a single identity per template
  * even when multiple partitions exist.
  *
- * Optional during rollout: when `None`, the harness falls back
- * to `agent_id` for skill lookup (the pre-Phase-1 behavior).
+ * Optional: when `None`, the harness falls back to `agent_id`
+ * for skill lookup.
  */
 template_agent_id: string | null, 
 /**

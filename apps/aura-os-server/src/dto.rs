@@ -639,7 +639,7 @@ mod tests {
         assert_eq!(req.content, "hi");
         assert!(
             req.originating_agent_id.is_none(),
-            "missing field must default to None for wire compat with pre-Phase-1 harness builds"
+            "missing field must default to None for wire compat with older harness builds"
         );
     }
 }

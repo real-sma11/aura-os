@@ -35,10 +35,9 @@ pub(crate) fn extract_task_failure_reason(event: &serde_json::Value) -> Option<S
 /// reload-visible state is strictly better-off than before regardless
 /// of outcome.
 ///
-/// Section B: when the event lacks a usable reason
+/// When the event lacks a usable reason
 /// ([`extract_task_failure_reason`] returns `None`), we synthesize a
-/// descriptive fallback via
-/// [`synthesize_failure_reason`] so the
+/// descriptive fallback via [`synthesize_failure_reason`] so the
 /// persisted `execution_notes` is always non-empty for a failed
 /// task. The fallback is built from whatever context the event
 /// itself carries (`terminal_state`, last tool name, error excerpt)
@@ -71,9 +70,8 @@ pub(super) async fn persist_task_failure_reason(
 ///
 /// Pure helper: returns the trimmed extracted reason when the event
 /// carries one, otherwise synthesizes a fallback via
-/// [`synthesize_failure_reason`]. Never returns
-/// an empty string — Section B regression: a silent `task_failed`
-/// must still leave actionable text on the row.
+/// [`synthesize_failure_reason`]. Never returns an empty string — a
+/// silent `task_failed` must still leave actionable text on the row.
 pub(crate) fn resolve_failure_reason_for_persistence(event: &serde_json::Value) -> String {
     if let Some(reason) = extract_task_failure_reason(event) {
         return reason;
@@ -116,12 +114,12 @@ mod tests {
     use serde_json::json;
 
     // ====================================================================
-    // Section B regression: silent `task_failed` events synthesise a
-    // descriptive `execution_notes` body even when no `reason` /
-    // `message` / `error` / `code` field is present on the event. The
-    // test pins `resolve_failure_reason_for_persistence` (the helper
-    // that the `task_failed` arm's persist call now feeds) — the
-    // synthesis itself is unit-tested in `aura_os_harness::signals`.
+    // Silent `task_failed` events synthesise a descriptive
+    // `execution_notes` body even when no `reason` / `message` /
+    // `error` / `code` field is present on the event. The test pins
+    // `resolve_failure_reason_for_persistence` (the helper that the
+    // `task_failed` arm's persist call feeds) — the synthesis itself
+    // is unit-tested in `aura_os_harness::signals`.
     // ====================================================================
 
     #[test]
@@ -136,7 +134,7 @@ mod tests {
         let reason = resolve_failure_reason_for_persistence(&event);
         assert!(
             !reason.is_empty(),
-            "Section B regression: silent task_failed must persist a non-empty reason"
+            "silent task_failed must persist a non-empty reason"
         );
         assert!(
             reason.starts_with("task failed: stream_closed"),
@@ -191,7 +189,7 @@ mod tests {
     fn fully_silent_task_failed_yields_unknown_sentinel_not_empty_string() {
         // The pathological case: harness drops the connection before
         // populating any reason field. The persisted row must still
-        // carry actionable text instead of the pre-G3a empty
+        // carry actionable text rather than an empty
         // `execution_notes`.
         let event = json!({
             "type": "task_failed",

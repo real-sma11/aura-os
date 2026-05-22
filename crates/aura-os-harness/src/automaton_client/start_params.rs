@@ -10,13 +10,12 @@ pub struct AutomatonStartParams {
     pub project_id: String,
     /// Upstream harness `agent_id` for this automaton run.
     ///
-    /// After Phase 1c this is the partitioned
-    /// `{template}::{agent_instance_id}` key produced by
-    /// [`aura_os_core::harness_agent_id`], not the bare template id.
-    /// The harness uses this string as the turn-lock key, so two
-    /// concurrent dev-loop / single-task runs of the same template
-    /// no longer collide once they sit on different partitions.
-    /// Skipped on the wire when `None` so pre-Phase-1c harnesses
+    /// This is the partitioned `{template}::{agent_instance_id}` key
+    /// produced by [`aura_os_core::harness_agent_id`], not the bare
+    /// template id. The harness uses this string as the turn-lock
+    /// key, so two concurrent dev-loop / single-task runs of the
+    /// same template no longer collide once they sit on different
+    /// partitions. Skipped on the wire when `None` so older harnesses
     /// (which derive `agent_id` from the URL path) keep accepting
     /// the payload.
     #[serde(skip_serializing_if = "Option::is_none")]

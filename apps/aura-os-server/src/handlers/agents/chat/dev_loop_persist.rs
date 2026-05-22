@@ -4,11 +4,11 @@
 //! `SessionEvent` row. Any future replay through
 //! [`super::compaction::session_events_to_agent_history`] then goes
 //! through the same dangling-`tool_use` strip, recent-window cap,
-//! tool-blob truncation, and (post-G0a) parallel-`tool_result`
-//! dedupe that chat already enjoys.
+//! tool-blob truncation, and parallel-`tool_result` dedupe that chat
+//! already enjoys.
 //!
-//! This is the "Phase G0b" half of plan F1: the dev-loop forwarder
-//! spawns this task alongside its existing side-effects worker (see
+//! The dev-loop forwarder spawns this task alongside its existing
+//! side-effects worker (see
 //! `apps/aura-os-server/src/handlers/dev_loop/streaming/mod.rs`). Both
 //! consumers see every harness event; neither blocks the other. The
 //! existing `loop_log` writer, `LoopHandle` progress updates, and
@@ -44,11 +44,10 @@
 //!   are silently skipped here — those are already persisted /
 //!   handled by the dev-loop's existing side-effects worker.
 //!
-//! See plan section G.0a for the architectural constraint:
-//! `dedupe_tool_results_by_id`, `session_events_to_agent_history`,
-//! and `persist_event` all stay in `agents::chat`. The dev-loop
-//! reaches them through this thin subscriber, not by re-implementing
-//! them in a parallel module.
+//! Architectural constraint: `dedupe_tool_results_by_id`,
+//! `session_events_to_agent_history`, and `persist_event` all stay
+//! in `agents::chat`. The dev-loop reaches them through this thin
+//! subscriber, not by re-implementing them in a parallel module.
 
 use aura_os_harness::HarnessOutbound;
 use serde_json::Value;
@@ -164,7 +163,7 @@ fn reset_per_turn_state(state: &mut PersistTaskState) {
 
 #[cfg(test)]
 mod tests {
-    //! G0b smoke test: drive a tool_use_start → tool_result sequence
+    //! Smoke test: drive a tool_use_start → tool_result sequence
     //! through the dev-loop persist task and assert the persisted
     //! events round-trip through `events_to_session_history` and
     //! `session_events_to_agent_history` into a valid Anthropic
@@ -172,7 +171,7 @@ mod tests {
     //!
     //! Deeper compaction coverage (dangling-tool_use strip,
     //! recent-window cap, parallel-tool-result dedupe) lives in
-    //! `chat::tests::compaction_tests` (G0a). This test pins the
+    //! `chat::tests::compaction_tests`. This test pins the
     //! persistence half of the pipeline: dev-loop broadcast →
     //! `SessionEvent` rows that the compaction module can read.
     use std::sync::Arc;
@@ -245,8 +244,7 @@ mod tests {
         //   1. assistant_message_start so the persisted rows carry
         //      a message id.
         //   2. tool_use_start to seed the pending tool_use block.
-        //   3. tool_result paired by wire `tool_use_id` (post-G0a
-        //      shape).
+        //   3. tool_result paired by wire `tool_use_id`.
         //   4. assistant_message_end with the snapshotted
         //      content_blocks so `events_to_session_history` can
         //      reconstruct the full turn.
@@ -333,7 +331,7 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(
             persisted_tool_use_id, tool_use_id,
-            "persisted tool_result must carry the wire tool_use_id (G0a contract)",
+            "persisted tool_result must carry the wire tool_use_id",
         );
 
         // Round-trip through the chat-side compaction pipeline. This

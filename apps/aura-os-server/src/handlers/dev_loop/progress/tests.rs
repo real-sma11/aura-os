@@ -5,12 +5,11 @@
 //! tables stay flat and short so adding a new harness event-kind is
 //! a one-line change.
 //!
-//! These tests also pin the **OLD stale event-type strings** (the
-//! ones the original `apps/aura-os-server/src/handlers/dev_loop/streaming/activity.rs`
-//! was matching against — e.g. `"tool_call_start"` and
-//! `"tool_invocation"`) to `None`, guarding against the original
-//! Section A regression where the mapper silently dropped every tool
-//! transition because the harness no longer emitted those names.
+//! These tests also pin the **OLD stale event-type strings** (e.g.
+//! `"tool_call_start"` and `"tool_invocation"`) to `None`, guarding
+//! against the regression where the mapper silently dropped every
+//! tool transition because the harness no longer emitted those
+//! names.
 
 use aura_os_events::{LoopActivity, LoopStatus};
 use chrono::Utc;
@@ -123,10 +122,10 @@ fn redundant_running_processing_returns_none() {
 
 #[test]
 fn legacy_stale_event_kinds_do_not_transition() {
-    // Section A regression guard. These are the literal strings the
-    // pre-G2 server-side mapper matched against. The harness has not
-    // emitted them in a long time; matching them caused the spinner
-    // to stall (no transition fired for a real `tool_use_start` /
+    // Regression guard. These are the literal strings an older
+    // server-side mapper matched against. The harness has not emitted
+    // them in a long time; matching them caused the spinner to stall
+    // (no transition fired for a real `tool_use_start` /
     // `tool_call_started`). If a future refactor accidentally
     // resurrects any of these literals, this test fails loud.
     let current = starting_activity();
