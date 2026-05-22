@@ -182,14 +182,14 @@ describe("PublicChatView landing", () => {
     fireEvent.mouseEnter(rail);
     fireEvent.click(panelFor("Solo Builder"));
 
-    // Solo Builder ships with a hard dark pair so the marketing
+    // Solo Builder ships with a near-black pair so the marketing
     // footer + idle ticks stay legible over its light dusty-blue
     // site background.
     expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
-      "#1a1a1a",
+      "#0a0a0a",
     );
     expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
-      "#4a4a4a",
+      "#1a1a1a",
     );
 
     // Switching back to a NO_THEME persona clears both properties so
@@ -206,7 +206,7 @@ describe("PublicChatView landing", () => {
     fireEvent.mouseEnter(rail);
     fireEvent.click(panelFor("Solo Builder"));
     expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
-      "#1a1a1a",
+      "#0a0a0a",
     );
 
     unmount();

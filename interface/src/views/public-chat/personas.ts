@@ -114,12 +114,14 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // there is no dark flash before the image finishes loading.
       siteBackgroundColor: "#b3c4d2",
       // The dusty-blue site is light enough that the default
-      // near-white nav/tick tokens wash out. Override with a hard
-      // dark pair so the marketing footer links and the right-edge
+      // near-white nav/tick tokens wash out. Override with a near-
+      // black pair so the marketing footer links and the right-edge
       // tick column stay legible — strong for active/hover, muted
-      // for idle, preserving the two-level hierarchy.
-      siteForegroundColor: "#1a1a1a",
-      siteForegroundColorMuted: "#4a4a4a",
+      // for idle. Both are intentionally close to pure black; the
+      // 16-point gap is just enough hierarchy for the hover state
+      // to read without sacrificing idle legibility on the bg.
+      siteForegroundColor: "#0a0a0a",
+      siteForegroundColorMuted: "#1a1a1a",
     },
   },
   { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },
