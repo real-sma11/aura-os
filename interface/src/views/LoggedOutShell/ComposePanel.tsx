@@ -166,7 +166,7 @@ export function ComposePanel({
             title={prompt}
           >
             <span className={styles.composeExampleIcon} aria-hidden="true">
-              <Icon size={14} />
+              <Icon size={12} />
             </span>
             <span>{label}</span>
           </button>

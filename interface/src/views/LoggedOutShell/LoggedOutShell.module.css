@@ -401,6 +401,12 @@
   width: min(720px, 100%);
   display: flex;
   flex-direction: column;
+  /* Per-row gap between banner -> input and a tighter gap between
+     input -> helper tabs. The helper-tab row is decorative
+     quick-start chrome, so it can sit closer to the input than the
+     banner does (mirrors the visual hierarchy: hero banner reads
+     as a separate section, helper tabs read as an extension of
+     the input). */
   gap: 22px;
   /* `align-self: center` is belt-and-suspenders centering: the
      parent already centers via `place-items: center` (grid), but
@@ -473,11 +479,15 @@
   display: flex;
   flex-wrap: nowrap;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
+  /* Pull the row closer to the input above by negating most of the
+     parent flex gap (parent gap: 22px). The helper-tab row now sits
+     ~8px below the input section instead of the full 22px. */
+  margin-top: -14px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -489,14 +499,13 @@
 .composeExample {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  /* Vertical padding trimmed from 8px to 5px (~20% shorter pill
-     height) per the requested compact look. Horizontal padding +
-     font-size unchanged so text rhythm and tap targets stay
-     readable. */
-  padding: 5px 14px;
+  gap: 6px;
+  /* Tighter pill: vertical padding 3px, horizontal 10px, font 11px
+     so the helper-tab row reads as compact secondary chrome below
+     the input rather than competing with it visually. */
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--color-text-secondary, #c9c9cf);
   /* Dark translucent surface so the labels stay readable against
