@@ -55,7 +55,9 @@ function blurActiveElement(): void {
 /**
  * AuraShell — the single mounted-once desktop shell for every
  * effective UI mode (`public` / `simple` / `advanced`). Mounts:
- *   - `<BackgroundLayer />` (theme wallpaper)
+ *   - `<BackgroundLayer />` (theme wallpaper; authed modes only —
+ *     suppressed in `public` so the persisted desktop wallpaper
+ *     never bleeds onto logged-out surfaces)
  *   - `<AuraTitlebar />` (one instance, slot composition by mode)
  *   - `<div className={styles.body}>` containing sidebar / main /
  *     conditional sidekick
@@ -231,7 +233,7 @@ export function AuraShell(): React.ReactElement {
         data-testid="aura-shell"
         data-agent-context={isPublic ? "logged-out-shell" : "desktop-shell"}
       >
-        <BackgroundLayer />
+        {!isPublic && <BackgroundLayer />}
         <AuraTitlebar
           mode={mode}
           sidekickCollapsed={sidekickCollapsed}
