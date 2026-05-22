@@ -926,47 +926,58 @@ export const DesktopChatInputBar = memo(
       </>
     );
 
+    // Hide the project chip entirely when there is nothing to scope
+    // to AND no projects to switch into. On the public (logged-out)
+    // chat surface neither `projects` nor `onProjectChange` are
+    // wired, so `usePublicChat` previously rendered a static
+    // "General" pill that was both inert and slightly misleading
+    // ("General" is an authenticated-shell concept). Authenticated
+    // chats keep the chip even with no current selection so the
+    // visitor can still choose a project from the dropdown.
+    const showProjectChip = projects.length > 0 || selectedProject != null;
     const infoBarEnd = (
       <>
-        <div className={styles.projectMenuWrap} ref={projectMenuRef}>
-          <button
-            type="button"
-            className={styles.projectButton}
-            onClick={
-              projects.length > 0 && onProjectChange
-                ? () => setProjectMenuOpen((v) => !v)
-                : undefined
-            }
-            style={
-              projects.length > 0 && onProjectChange
-                ? undefined
-                : { cursor: "default" }
-            }
-          >
-            <FolderOpen size={10} />
-            {selectedProjectName ?? "General"}
-            {projects.length > 0 && onProjectChange && (
-              <ChevronDown size={10} />
+        {showProjectChip ? (
+          <div className={styles.projectMenuWrap} ref={projectMenuRef}>
+            <button
+              type="button"
+              className={styles.projectButton}
+              onClick={
+                projects.length > 0 && onProjectChange
+                  ? () => setProjectMenuOpen((v) => !v)
+                  : undefined
+              }
+              style={
+                projects.length > 0 && onProjectChange
+                  ? undefined
+                  : { cursor: "default" }
+              }
+            >
+              <FolderOpen size={10} />
+              {selectedProjectName ?? "General"}
+              {projects.length > 0 && onProjectChange && (
+                <ChevronDown size={10} />
+              )}
+            </button>
+            {projectMenuOpen && projects.length > 0 && onProjectChange && (
+              <div className={styles.projectMenu}>
+                {projects.map((p) => (
+                  <button
+                    key={p.project_id}
+                    type="button"
+                    className={`${styles.projectMenuItem} ${p.project_id === selectedProjectId ? styles.projectMenuItemActive : ""}`}
+                    onClick={() => {
+                      onProjectChange(p.project_id);
+                      setProjectMenuOpen(false);
+                    }}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
             )}
-          </button>
-          {projectMenuOpen && projects.length > 0 && onProjectChange && (
-            <div className={styles.projectMenu}>
-              {projects.map((p) => (
-                <button
-                  key={p.project_id}
-                  type="button"
-                  className={`${styles.projectMenuItem} ${p.project_id === selectedProjectId ? styles.projectMenuItemActive : ""}`}
-                  onClick={() => {
-                    onProjectChange(p.project_id);
-                    setProjectMenuOpen(false);
-                  }}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
+        ) : null}
         {contextUsage != null && contextUsage.utilization > 0 ? (
           <ContextUsageIndicator
             utilization={contextUsage.utilization}
