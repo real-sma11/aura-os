@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useReducer,
   useRef,
   useState,
@@ -114,9 +116,99 @@ function frameDwellMs(frame: DemoFrame): number {
   return (frame.typingMs ?? 0) + frame.durationMs;
 }
 
+/**
+ * FLIP (First-Last-Invert-Play) row animator. Without this, a new
+ * row appended at the bottom of `.demoInner` (which uses
+ * `flex-direction: column; justify-content: flex-end`) causes every
+ * existing row to shift up by `(newRowHeight + gap)` in a single
+ * frame — the new row's own `demoRowEnter` keyframe glides it in
+ * elegantly, but the rest of the rows jump abruptly, breaking the
+ * "one coordinated motion" feel of the loop.
+ *
+ * For each visible row keyed by the stable `nextKey` from the
+ * reducer, this hook captures the row's top via `useLayoutEffect`
+ * on every render, compares to the previous frame's position, and
+ * for any row whose position changed it applies an inverse
+ * `translateY(<delta>)` synchronously (so the row paints in its
+ * OLD spot first), then on the next animation frame transitions
+ * back to `transform: ''` over the same easing as the row enter
+ * keyframe. The result: when a new row is appended, the existing
+ * rows slide up smoothly alongside the new row's slide-in instead
+ * of snapping to their new positions.
+ *
+ * The row enter animation is set to `animation: none` before the
+ * inverse transform so the keyframe's `fill: both` final value
+ * can't shadow the inline transform — this is safe because the
+ * enter animation only runs once on initial mount of each row, and
+ * after that the row should sit at its untransformed pose anyway.
+ *
+ * Map sweep at the end of the effect drops refs / positions for
+ * keys that have scrolled off the top of the window so neither
+ * map grows unbounded across the loop's many resets.
+ *
+ * Returns a `(key) => (el) => void` factory the consumer wires into
+ * each rendered row via a ref callback prop.
+ */
+function useFlipRows(
+  visibleKeys: ReadonlyArray<number>,
+): (key: number) => (el: HTMLDivElement | null) => void {
+  const positions = useRef<Map<number, number>>(new Map());
+  const refs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  useLayoutEffect(() => {
+    const next = new Map<number, number>();
+    refs.current.forEach((el, key) => {
+      next.set(key, el.getBoundingClientRect().top);
+    });
+
+    next.forEach((newTop, key) => {
+      const oldTop = positions.current.get(key);
+      if (oldTop === undefined || oldTop === newTop) {
+        return;
+      }
+      const el = refs.current.get(key);
+      if (!el) return;
+      const delta = oldTop - newTop;
+      el.style.animation = "none";
+      el.style.transition = "none";
+      el.style.transform = `translateY(${delta}px)`;
+      // Force a reflow so the inverse transform actually paints
+      // before we hand control back to the browser; without this
+      // the browser can coalesce the two style writes and the
+      // transition fires from `translateY(0)` -> `translateY(0)`
+      // with no visible motion.
+      void el.offsetHeight;
+      requestAnimationFrame(() => {
+        el.style.transition =
+          "transform 540ms cubic-bezier(0.165, 0.84, 0.44, 1)";
+        el.style.transform = "";
+      });
+    });
+
+    positions.current = next;
+    for (const key of Array.from(refs.current.keys())) {
+      if (!next.has(key)) refs.current.delete(key);
+    }
+    // `visibleKeys` is the dep — the effect re-runs every time the
+    // SCRIPT advances (the array identity changes because we
+    // recreate it on every render). We use the array only as a
+    // change-detection signal; the actual measurement comes off
+    // the refs map populated by the row callback.
+  }, [visibleKeys]);
+
+  return useCallback(
+    (key: number) => (el: HTMLDivElement | null) => {
+      if (el) refs.current.set(key, el);
+      else refs.current.delete(key);
+    },
+    [],
+  );
+}
+
 export function AgentDemoBanner(): ReactNode {
   const [state, dispatch] = useReducer(demoReducer, INITIAL_STATE);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const registerRow = useFlipRows(state.visible.map((v) => v.key));
 
   useEffect(() => {
     if (state.cursor >= SCRIPT.length) {
@@ -158,7 +250,7 @@ export function AgentDemoBanner(): ReactNode {
         aria-hidden="true"
       >
         {state.visible.map(({ key, frame }) => (
-          <DemoFrameRow key={key} frame={frame} />
+          <DemoFrameRow key={key} frame={frame} rowRef={registerRow(key)} />
         ))}
       </div>
     </div>
@@ -167,9 +259,17 @@ export function AgentDemoBanner(): ReactNode {
 
 interface DemoFrameRowProps {
   readonly frame: DemoFrame;
+  /**
+   * Ref callback wired in by `useFlipRows` so the parent can
+   * measure the row's bounding rect across renders and apply
+   * inverse transforms when the row's position shifts. Optional so
+   * the component can be unit-tested in isolation without the FLIP
+   * hook on the parent.
+   */
+  readonly rowRef?: (el: HTMLDivElement | null) => void;
 }
 
-function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
+function DemoFrameRow({ frame, rowRef }: DemoFrameRowProps): ReactNode {
   const agent = AGENTS[frame.agent];
   const hasTyping = (frame.typingMs ?? 0) > 0;
   const [phase, setPhase] = useState<"typing" | "content">(
@@ -187,7 +287,7 @@ function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
   }, [phase, frame.typingMs]);
 
   return (
-    <div className={styles.demoRow}>
+    <div className={styles.demoRow} ref={rowRef}>
       <AgentAvatar agentId={agent.id} />
       <div className={styles.demoBubbleWrap}>
         <span
@@ -244,7 +344,7 @@ function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
                 </span>
               ) : null}
             </div>
-            <TerminalStream lines={frame.preview} />
+            <TerminalStream lines={frame.preview} language={frame.language} />
           </div>
         )}
       </div>

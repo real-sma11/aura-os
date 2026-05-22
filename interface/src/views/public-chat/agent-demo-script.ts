@@ -4,12 +4,13 @@
  * so it's trivially unit-testable and the banner component can stay
  * a thin renderer over `SCRIPT`.
  *
- * The scenario walks three agents through the smallest believable
- * end-to-end "ship a feature" loop: an Architect plans the work, a
- * Frontend agent writes the JSX, and a Reviewer rubber-stamps the
- * green build. Total wall-clock for one pass is ~22 seconds; the
- * banner restarts from the top once `SCRIPT` is exhausted so visitors
- * who linger see a continuous demo instead of a frozen final frame.
+ * The scenario walks four agents through a "ship a feature" loop:
+ * an Architect plans the work, a Frontend agent writes the JSX, a
+ * Backend agent wires the matching API endpoint + SQL migration +
+ * test run, and a Reviewer rubber-stamps the green build. Total
+ * wall-clock for one pass is ~40 seconds; the banner restarts from
+ * the top once `SCRIPT` is exhausted so visitors who linger see a
+ * continuous demo instead of a frozen final frame.
  *
  * Frame durations are the *time the resolved frame is the latest
  * entry on screen* (not the typing duration of the message it
@@ -20,6 +21,14 @@
  * stacked rows. The script-level wall-clock for a frame with typing
  * is therefore `typingMs + durationMs`.
  *
+ * Tool frames may declare a `language` (any `highlight.js/lib/common`
+ * language id, e.g. `typescript`, `sql`, `bash`) which makes
+ * `TerminalStream` syntax-highlight the preview lines with the theme
+ * stylesheet (github / github-dark, swapped by `HighlightThemeBridge`
+ * on theme change). Frames that aren't really code (e.g. the
+ * Architect's plan checklist) leave `language` omitted and render as
+ * plain text.
+ *
  * Older frames keep rendering above the latest one until they scroll
  * out of the visible window — see `AgentDemoBanner.tsx` for the
  * windowing logic.
@@ -29,10 +38,11 @@ import {
   BadgeCheck,
   Code2,
   Compass,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 
-export type AgentId = "architect" | "frontend" | "reviewer";
+export type AgentId = "architect" | "frontend" | "backend" | "reviewer";
 
 export interface AgentMeta {
   readonly id: AgentId;
@@ -74,6 +84,18 @@ export const AGENTS: Readonly<Record<AgentId, AgentMeta>> = {
     color: "#ff6fb5",
     gradient: { from: "#ffa3cf", to: "#db2777" },
   },
+  // Backend uses an amber accent so it reads distinctly against the
+  // existing purple (architect) / pink (frontend) / teal (reviewer)
+  // trio — none of the other agents share its warm hue, so the eye
+  // can quickly tell which agent is currently typing without
+  // reading the name label.
+  backend: {
+    id: "backend",
+    name: "Backend",
+    Icon: Database,
+    color: "#fbbf24",
+    gradient: { from: "#fde68a", to: "#d97706" },
+  },
   reviewer: {
     id: "reviewer",
     name: "Reviewer",
@@ -102,6 +124,15 @@ interface BaseFrame {
    * Milliseconds the *resolved* content stays as the latest frame
    * before the script advances to the next entry. Wall-clock dwell
    * for the frame as a whole is `(typingMs ?? 0) + durationMs`.
+   *
+   * For tool frames whose preview is rendered through
+   * `TerminalStream`, `durationMs` should be sized to cover the
+   * per-character streaming time of the preview plus a brief dwell
+   * at the end so the user can read the resolved output — the
+   * defaults in `TerminalStream` (~14ms/char + 90ms inter-line
+   * pause) stream ~70 chars/second, so a 6-line snippet of ~135
+   * chars finishes streaming in ~2.4s and a 3200ms `durationMs`
+   * leaves ~800ms of post-stream dwell.
    */
   readonly durationMs: number;
 }
@@ -119,6 +150,18 @@ export interface ToolFrame extends BaseFrame {
   readonly target?: string;
   /** Mono-font multi-line body. Each entry renders on its own line. */
   readonly preview: ReadonlyArray<string>;
+  /**
+   * Optional `highlight.js` language id (e.g. `"typescript"`,
+   * `"sql"`, `"bash"`). When set, `TerminalStream` pre-highlights
+   * each preview line via `hljs.highlight(line, { language })` and
+   * reveals the resulting tokens char-by-char so the theme
+   * stylesheet (github / github-dark, swapped automatically by
+   * `HighlightThemeBridge`) colors keywords / strings / types
+   * matching whichever theme is active. Omit for non-code previews
+   * (e.g. plan checklists, merge summaries) where highlighting
+   * would mis-classify the text and look noisy.
+   */
+  readonly language?: string;
 }
 
 export type DemoFrame = MessageFrame | ToolFrame;
@@ -126,14 +169,12 @@ export type DemoFrame = MessageFrame | ToolFrame;
 /**
  * The curated timeline. Keep individual frames short (< 90 chars for
  * messages, ≤ 6 lines for tool previews) so they render cleanly inside
- * the 680 × 360 banner without wrapping into ugly multi-line bubbles.
+ * the 680 × 408 banner without wrapping into ugly multi-line bubbles.
  *
  * Beats that previously stood alone as `kind: "typing"` entries are
  * now folded into the following message/tool via `typingMs` — the row
  * shows the typing indicator first, then morphs in place into its
- * resolved content. The wall-clock of one full loop matches the prior
- * version because `typingMs + durationMs` reproduces the old
- * "typing.durationMs + message.durationMs" sum.
+ * resolved content.
  */
 export const SCRIPT: ReadonlyArray<DemoFrame> = [
   {
@@ -158,10 +199,14 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
     preview: [
       "1. Hero + tagline",
       "2. Tier cards (3)",
-      "3. FAQ section",
-      "4. Wire CTA -> /signup",
+      "3. Pricing API + migration",
+      "4. FAQ section",
+      "5. Wire CTA -> /signup",
     ],
-    durationMs: 2400,
+    // No `language` — the plan is a checklist, not code, and
+    // routing it through highlight.js would just colour the leading
+    // numbers as numeric literals (noisy + wrong semantically).
+    durationMs: 2600,
   },
   {
     kind: "message",
@@ -175,12 +220,81 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
     agent: "frontend",
     toolName: "edit_file",
     target: "PricingTiers.tsx",
+    // Typed TSX so highlight.js paints `interface`, `string`,
+    // `number`, JSX tags, and string literals with their full
+    // github-dark / github theme. The `+` diff prefix is gone now
+    // that the colour is doing the heavy lifting visually.
     preview: [
-      "+ <Tier name=\"Starter\" price={0} />",
-      "+ <Tier name=\"Pro\" price={20} highlight />",
-      "+ <Tier name=\"Team\" price={99} />",
+      "interface TierProps {",
+      "  name: string;",
+      "  price: number;",
+      "  highlight?: boolean;",
+      "}",
+      "const Tier = ({ name, price }: TierProps) =>",
+      "  <Card>{name} — ${price}/mo</Card>;",
     ],
-    durationMs: 2800,
+    language: "typescript",
+    // Streaming budget: ~180 chars / 14ms = ~2520ms + 6 line gaps
+    // * 90ms = ~3060ms total stream, so a 3400ms dwell leaves a
+    // beat of post-stream pause before the next frame appears.
+    durationMs: 3400,
+  },
+  {
+    kind: "message",
+    agent: "backend",
+    text: "Wiring the pricing endpoint and migration in parallel.",
+    typingMs: 1300,
+    durationMs: 1900,
+  },
+  {
+    kind: "tool",
+    agent: "backend",
+    toolName: "edit_file",
+    target: "api/pricing.ts",
+    preview: [
+      "const Pricing = z.object({",
+      "  name: z.string(),",
+      "  price: z.number().int(),",
+      "});",
+      "app.get(\"/pricing\", async (_, res) =>",
+      "  res.json(await db.tier.findMany()));",
+    ],
+    language: "typescript",
+    durationMs: 3200,
+  },
+  {
+    kind: "tool",
+    agent: "backend",
+    toolName: "edit_file",
+    target: "migrations/0001_pricing.sql",
+    preview: [
+      "CREATE TABLE pricing_tier (",
+      "  id SERIAL PRIMARY KEY,",
+      "  name TEXT NOT NULL,",
+      "  price INTEGER NOT NULL,",
+      "  highlight BOOLEAN DEFAULT false",
+      ");",
+    ],
+    language: "sql",
+    durationMs: 3200,
+  },
+  {
+    kind: "tool",
+    agent: "backend",
+    toolName: "bash",
+    target: "pytest tests/test_pricing.py",
+    preview: [
+      "collected 8 items",
+      "tests/test_pricing.py ........ [100%]",
+      "============== 8 passed in 0.42s ===============",
+    ],
+    // `bash` is the closest match in `highlight.js/lib/common` for
+    // shell output — it'll leave most of the line as plain text
+    // but colour the status markers (`100%`, `passed`, numerics)
+    // enough to register as terminal output rather than prose.
+    language: "bash",
+    typingMs: 900,
+    durationMs: 2200,
   },
   {
     kind: "tool",
@@ -193,6 +307,7 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "dist/index.html  1.2 kB | gzip: 0.6 kB",
       "build succeeded in 4.8s",
     ],
+    language: "bash",
     typingMs: 1100,
     durationMs: 2600,
   },
@@ -208,7 +323,9 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
     agent: "reviewer",
     toolName: "merge",
     target: "feat/pricing-page",
-    preview: ["+ 3 files changed, 84 insertions(+)", "merged to main."],
+    preview: ["3 files changed, 84 insertions(+)", "merged to main."],
+    // No `language` — the merge summary isn't code and a `bash`
+    // tag would just colour "merged" as a builtin, which mis-reads.
     durationMs: 2200,
   },
   {

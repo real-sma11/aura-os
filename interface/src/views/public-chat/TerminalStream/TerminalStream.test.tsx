@@ -81,4 +81,53 @@ describe("TerminalStream", () => {
     });
     expect(container.querySelector("pre > span > span")).toBeNull();
   });
+
+  it("emits hljs-classed tokens when a language is provided", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <TerminalStream
+        lines={["const x = 1;"]}
+        language="typescript"
+        charSpeedMs={5}
+        lineDelayMs={20}
+      />,
+    );
+    // Drain the entire stream so the line settles into the
+    // completed-lines list with its full token set rendered.
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    // `const` is the standout `hljs-keyword` token in this snippet —
+    // its presence proves the highlight path is wired through (the
+    // plain-text fallback would never emit any `hljs-*` classes).
+    const keywords = container.querySelectorAll("span.hljs-keyword");
+    expect(keywords.length).toBeGreaterThan(0);
+    expect(
+      Array.from(keywords).some((el) => el.textContent === "const"),
+    ).toBe(true);
+  });
+
+  it("preserves token classification while streaming a partial line", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <TerminalStream
+        lines={["const x = 1;"]}
+        language="typescript"
+        charSpeedMs={20}
+        lineDelayMs={50}
+      />,
+    );
+    // Stream exactly 3 chars of "const" — enough to land mid-
+    // keyword but well short of completion.
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+    // The visible prefix should already be wrapped in `hljs-keyword`
+    // (proves we're clipping a pre-highlighted token tree rather
+    // than re-highlighting the raw prefix each tick, which would
+    // produce an incorrectly-classified `con` substring).
+    const keyword = container.querySelector("span.hljs-keyword");
+    expect(keyword).not.toBeNull();
+    expect(keyword?.textContent).toBe("con");
+  });
 });
