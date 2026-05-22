@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 let mockIsStreaming = false;
@@ -504,6 +504,126 @@ describe("ChatInputBar", () => {
       } else {
         // @ts-expect-error - delete the custom getter we installed above
         delete HTMLTextAreaElement.prototype.scrollHeight;
+      }
+    }
+  });
+
+  it("does not flap the model picker when the ResizeObserver fires after a multi-line toggle", () => {
+    // Regression for the per-frame picker bounce that the centered
+    // empty-thread state surfaces as a fast vertical jitter of the
+    // entire input bar. At specific prompt lengths (e.g. the
+    // 100-character "Build a modern marketing website..." prompt) the
+    // anti-oscillation prediction in `autoResize` can disagree with
+    // the actual layout by a sub-pixel: the narrow simulation says
+    // "would fit single-line" while the actual narrow CSS layout
+    // wraps (or vice-versa for the wide simulation). Pre-fix, the
+    // `data-multiline` swap fired `ResizeObserver`, autoResize re-ran
+    // at the new layout, the disagreement flipped the state back, the
+    // CSS swapped again, `ResizeObserver` fired again — picker bounces
+    // inline↔footer forever. Post-fix, the transition lockout
+    // consumes exactly one `ResizeObserver` fire after every state
+    // toggle so the self-induced reflow cannot undo the toggle.
+    //
+    // We can't reproduce the sub-pixel disagreement directly in
+    // JSDOM (no real layout), so we install a `ResizeObserver` mock
+    // that captures the callback + asymmetric `scrollHeight` stubs
+    // where the simulation values are intentionally inconsistent
+    // with the "actual" values for the same padding-right. Without
+    // the lockout, the manual `ResizeObserver` fire below would flip
+    // the picker back to the inline slot; with the lockout, the
+    // picker stays in the bottom chrome row.
+    let capturedCallback: ResizeObserverCallback | null = null;
+    let observedTarget: HTMLTextAreaElement | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        capturedCallback = cb;
+      }
+      observe(target: Element) {
+        observedTarget = target as HTMLTextAreaElement;
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    const originalRO = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLTextAreaElement) {
+        const inline = this.style.paddingRight ?? "";
+        // Wide simulation (anti-osc single→multi branch) says wraps,
+        // so the initial render enters multi-line.
+        if (inline === "32px") return 80;
+        // Narrow simulation (anti-osc multi→single branch) says FITS.
+        // This is the asymmetry that pre-fix triggers the loop: at the
+        // multi-line layout, naturalMulti=false and the narrow sim
+        // agrees → state flips back to single → cycle repeats.
+        if (inline.includes("220") || inline.includes("42%")) return 32;
+        // Actual single-line layout (inputRow has .inputRowHasEnd
+        // because the picker is inline) → wraps. Drives the initial
+        // single→multi transition.
+        if (this.parentElement?.className.includes("inputRowHasEnd")) {
+          return 80;
+        }
+        // Actual multi-line layout (no .inputRowHasEnd because the
+        // picker dropped to the footer) → fits. This is what the
+        // `ResizeObserver` callback measures after the state swap.
+        return 32;
+      },
+    });
+
+    try {
+      mockSelectedModel = "aura-claude-opus-4-6";
+      const longPrompt =
+        "Build a modern marketing website for a SaaS product with a hero, feature grid, pricing, and FAQ. jjjj";
+      const { container } = render(
+        <ChatInputBar {...makeProps({ input: longPrompt })} />,
+      );
+
+      // The initial render lands in multi-line because both the actual
+      // narrow layout and the wide simulation say "wraps".
+      expect(container.querySelector(".bottomChromeRow")).not.toBeNull();
+      expect(container.querySelector(".inputRowEnd")).toBeNull();
+
+      // Simulate the `ResizeObserver` fire that the `data-multiline`
+      // CSS swap would trigger in a real browser. Pre-fix this fire
+      // would re-run autoResize, see naturalMulti=false at the wide
+      // actual layout, narrow-sim would (incorrectly) say "fits", and
+      // the picker would slide back to the inline slot. Post-fix the
+      // transition lockout swallows the fire.
+      expect(capturedCallback).not.toBeNull();
+      expect(observedTarget).not.toBeNull();
+      const entry = {
+        target: observedTarget,
+        contentRect: { width: 600, height: 32 } as DOMRectReadOnly,
+      } as unknown as ResizeObserverEntry;
+      act(() => {
+        capturedCallback!([entry], {} as ResizeObserver);
+      });
+
+      // The picker stays in the bottom chrome row — no flap back to
+      // the inline slot.
+      expect(container.querySelector(".bottomChromeRow")).not.toBeNull();
+      expect(container.querySelector(".inputRowEnd")).toBeNull();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "scrollHeight",
+          originalDescriptor,
+        );
+      } else {
+        // @ts-expect-error - delete the custom getter we installed above
+        delete HTMLTextAreaElement.prototype.scrollHeight;
+      }
+      if (originalRO) {
+        (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = originalRO;
+      } else {
+        delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
       }
     }
   });

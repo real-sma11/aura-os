@@ -177,12 +177,36 @@ function InputBarShellInner(
   const singleLineHeightRef = useRef<number | null>(null);
   const isMultiLineRef = useRef(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
+  // Counter that suppresses the next N `ResizeObserver`-driven multi-line
+  // re-evaluations. Armed every time `autoResize` actually toggles
+  // `isMultiLine`, because the resulting `data-multiline` CSS swap is
+  // what changes the textarea's content width — that width change is
+  // about to fire `ResizeObserver`, and if our anti-osc prediction was
+  // off by a sub-pixel at the wrap boundary the new measurement would
+  // reverse the toggle on the next frame and the picker would bounce
+  // inline↔footer forever. Real layout-driven width changes (window
+  // resize, sidebar collapse, panel resize) come through the `window`
+  // `resize` handler or a subsequent `ResizeObserver` fire after the
+  // lockout disarms, so they still get a full evaluation.
+  const transitionLockoutRef = useRef(0);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
     blur: () => textareaRef.current?.blur(),
     getTextarea: () => textareaRef.current,
   }));
+
+  // Just keeps the inline `height` in sync with the textarea's current
+  // `scrollHeight` (capped). Used by the `ResizeObserver` callback while
+  // the transition lockout is active so the textarea still grows/shrinks
+  // to fit the new layout, but the multi-line decision is preserved.
+  const applyHeightOnly = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const cap = Math.min(window.innerHeight * 0.7, 800);
+    el.style.height = Math.min(el.scrollHeight, cap) + "px";
+  }, []);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -267,6 +291,13 @@ function InputBarShellInner(
       multi = wideHeight > baseline + 4;
     }
 
+    if (isMultiLineRef.current !== multi) {
+      // Arm the lockout BEFORE flipping the ref so the upcoming
+      // `data-multiline` swap's `ResizeObserver` fire treats itself as
+      // a self-induced reflow and skips re-evaluating the multi-line
+      // decision.
+      transitionLockoutRef.current = 1;
+    }
     isMultiLineRef.current = multi;
     setIsMultiLine((prev) => (prev === multi ? prev : multi));
   }, []);
@@ -307,13 +338,25 @@ function InputBarShellInner(
         const width = entry.contentRect.width;
         if (Math.abs(width - lastWidth) > 0.5) {
           lastWidth = width;
-          autoResize();
+          if (transitionLockoutRef.current > 0) {
+            // This fire is the consequence of our own `data-multiline`
+            // swap toggling the textarea's `padding-right`. Re-running
+            // the full `autoResize` here is what causes the per-frame
+            // picker bounce at the wrap boundary, because the new
+            // measurement at the just-swapped layout can disagree with
+            // the anti-osc prediction by a sub-pixel. Consume the
+            // lockout and only update the inline height.
+            transitionLockoutRef.current--;
+            applyHeightOnly();
+          } else {
+            autoResize();
+          }
         }
       }
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [autoResize]);
+  }, [autoResize, applyHeightOnly]);
 
   useEffect(() => {
     onMultiLineChange?.(isMultiLine);
