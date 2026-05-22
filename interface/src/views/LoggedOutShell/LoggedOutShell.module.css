@@ -490,7 +490,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  /* Vertical padding trimmed from 8px to 5px (~20% shorter pill
+     height) per the requested compact look. Horizontal padding +
+     font-size unchanged so text rhythm and tap targets stay
+     readable. */
+  padding: 5px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
