@@ -212,22 +212,36 @@
   min-height: 0;
   overflow-y: auto;
   padding: 8px 10px 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   background: transparent;
   scrollbar-width: none;
-  /* When `DMWindow`'s auto-scroll `useEffect` sets `scrollTop =
-     scrollHeight` after a new frame lands, let the browser animate
-     the scroll instead of snapping. This replaces the deleted FLIP
-     helper's intent (smooth slide as new content is appended) with
-     a single, layout-independent CSS rule that never re-fires on
-     unrelated re-renders. */
+  /* Auto-scroll is driven by two cooperating mechanisms in
+     `DMWindow.tsx`: a sync `useEffect` on `frames.length` pins to
+     the bottom the moment a new row commits, and a `ResizeObserver`
+     on `.dmBodyInner` re-pins whenever the rows' aggregate height
+     grows BETWEEN frame appends (typewriter line-wraps, terminal
+     stream flushes, typing→content phase swaps). `scroll-behavior:
+     smooth` then glides each pin instead of snapping — for
+     per-character typewriter growth the actual `scrollHeight`
+     delta is zero until a char causes a line wrap, so the cadence
+     stays calm rather than jittering every 28ms. */
   scroll-behavior: smooth;
 }
 
 .dmBody::-webkit-scrollbar {
   display: none;
+}
+
+/* Inner content wrapper. Lives between `.dmBody` (the scroll
+   container) and the message/tool rows so that `DMWindow.tsx`'s
+   `ResizeObserver` has a real layout box to observe — a wrapper with
+   `display: contents` has no box and never fires RO callbacks, so
+   the flex layout had to move off `.dmBody` and onto this element.
+   Visually the result is identical: a vertically stacked column of
+   rows with 8px gaps. */
+.dmBodyInner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ── Message rows ─────────────────────────────────────────── */

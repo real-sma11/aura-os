@@ -90,6 +90,7 @@ export function DMWindow({
   onFocus,
 }: DMWindowProps): ReactNode {
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const bodyInnerRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-scroll to the bottom whenever a new frame lands so the
   // most recent message is always visible inside the window. We
@@ -104,6 +105,35 @@ export function DMWindow({
     if (!node) return;
     node.scrollTop = node.scrollHeight;
   }, [frames.length]);
+
+  // Re-pin the body to the bottom whenever the rows' aggregate height
+  // grows BETWEEN frame appends. Three independent sources expand the
+  // body's `scrollHeight` without changing `frames.length`:
+  //   • `TypewriterText` reveals one char every 28ms — long messages
+  //     eventually line-wrap and add a row of height.
+  //   • `TerminalStream` flushes terminal lines one at a time inside
+  //     tool-card frames, growing the card vertically.
+  //   • The bubble phase swap (`typing` → `content`) replaces the
+  //     typing dots with the typewriter and changes the bubble's
+  //     natural height.
+  // A single `ResizeObserver` on the inner content wrapper catches
+  // all three without needing per-component callbacks. Observing
+  // `.dmBody` directly wouldn't work — its layout size is clamped by
+  // `flex: 1` + `max-height`, so its border-box never changes when
+  // descendants grow (only `scrollHeight` does, which RO doesn't
+  // report). The inner wrapper is a real flex container (see
+  // `.dmBodyInner` in the stylesheet) so it has a layout box that
+  // grows with its children, which is what RO fires on.
+  useEffect(() => {
+    const body = bodyRef.current;
+    const inner = bodyInnerRef.current;
+    if (!body || !inner) return;
+    const ro = new ResizeObserver(() => {
+      body.scrollTop = body.scrollHeight;
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, []);
 
   const handleFocus = useCallback(() => {
     onFocus(threadId);
@@ -161,13 +191,15 @@ export function DMWindow({
       </div>
 
       <div className={styles.dmBody} ref={bodyRef} aria-hidden="true">
-        {frames.map(({ key, frame }) => (
-          <DMFrameRow
-            key={key}
-            frame={frame}
-            participants={participants}
-          />
-        ))}
+        <div className={styles.dmBodyInner} ref={bodyInnerRef}>
+          {frames.map(({ key, frame }) => (
+            <DMFrameRow
+              key={key}
+              frame={frame}
+              participants={participants}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
