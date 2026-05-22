@@ -139,10 +139,18 @@ export function MockAuraApp({
           actions={
             <span className="titlebar-no-drag">
               <span className={styles.titlebarActions}>
-                <PanelRight size={14} strokeWidth={2} />
-                <Minus size={12} strokeWidth={2} />
-                <Square size={12} strokeWidth={2} />
-                <X size={14} strokeWidth={2} />
+                <span className={styles.taskbarIconButton}>
+                  <PanelRight size={14} strokeWidth={2} />
+                </span>
+                <span className={styles.taskbarIconButton}>
+                  <Minus size={12} strokeWidth={2} />
+                </span>
+                <span className={styles.taskbarIconButton}>
+                  <Square size={12} strokeWidth={2} />
+                </span>
+                <span className={styles.taskbarIconButton}>
+                  <X size={14} strokeWidth={2} />
+                </span>
               </span>
             </span>
           }
