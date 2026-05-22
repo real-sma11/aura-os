@@ -62,6 +62,23 @@ export function LoggedOutChatView() {
 
   return (
     <div className={styles.chatView}>
+      {/*
+        Decorative AURA visual loop pinned to the center of the
+        chat panel as ambient atmosphere. Lives at z-index 0 with
+        `pointer-events: none` so it cannot intercept clicks or
+        steal accessibility focus from the chat content above; the
+        scroller and input slot both bump to z-index 1 in CSS.
+        `aria-hidden` keeps assistive tech out of the loop.
+      */}
+      <video
+        className={styles.chatBackgroundVideo}
+        src="/AURA_visual_loop.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        aria-hidden="true"
+      />
       <div className={styles.chatScroller} ref={scrollRef}>
         {isEmpty ? (
           <div className={styles.chatEmpty}>

@@ -256,7 +256,32 @@
   overflow: hidden;
 }
 
+/* Decorative AURA visual loop pinned to the center of the chat
+   panel and dropped to z-index 0 so the actual chat content
+   (scroller, banner, input, helper tabs) renders on top. The video
+   is sized to a soft hero footprint and capped to the panel
+   dimensions via `min(...)` so it never dictates layout, only
+   atmosphere. Opacity keeps it from overpowering the gradient
+   banner above; `pointer-events: none` keeps it from intercepting
+   text selection or click targets in the chat. The reduced-motion
+   block below disables autoplay (we keep the first frame as a
+   still). */
+.chatBackgroundVideo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(880px, 90%);
+  max-height: 80%;
+  object-fit: contain;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .chatScroller {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -294,6 +319,10 @@
 .inputBarSlot {
   padding: 8px 12px 16px 12px;
   position: relative;
+  /* Stack above `.chatBackgroundVideo` (z-index 0) so the video
+     never bleeds in front of the docked input bar in the
+     non-empty / transcript layout. */
+  z-index: 1;
 }
 
 .inputBarSlotLocked {
