@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   ChevronRight,
   Circle,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ShellTitlebar } from "../../../components/ShellTitlebar";
 import { DMWindowManager } from "./DMWindowManager";
+import { paletteToCssVars, type ChatPalette } from "./derive-chat-palette";
 import styles from "./MockAuraApp.module.css";
 
 /**
@@ -66,16 +67,44 @@ export interface MockAuraAppProps {
    * here keeps the orb video loop and its vignette in place.
    */
   readonly desktopBackgroundUrl?: string | null;
+  /**
+   * Optional per-persona text/syntax palette derived by
+   * `deriveChatPalette` from the active persona's
+   * `siteBackgroundColor`. When supplied, every piece of text
+   * inside the frame (DM bubbles, agent name labels, tool target
+   * paths, terminal stream prose, and the global `hljs-*` syntax
+   * tokens) re-tints to a palette that coordinates with the
+   * wallpaper hue family. The fields land as
+   * `--mock-text`/`--mock-text-secondary`/`--mock-text-muted` and
+   * `--mock-hljs-*` custom properties on `.appFrame`; the
+   * matching `[data-persona-themed="true"]` block in
+   * `MockAuraApp.module.css` re-binds `--color-text*` (cascading
+   * into every descendant) and overrides each `hljs-*` selector
+   * scoped to this frame so the global highlight.js theme
+   * stylesheet keeps painting unchanged everywhere else. A
+   * `null` value (the `NO_THEME` personas) collapses the inline
+   * style and keeps the existing shell tokens.
+   */
+  readonly chatPalette?: ChatPalette | null;
 }
 
 export function MockAuraApp({
   desktopBackgroundUrl = null,
+  chatPalette = null,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
   const hasCustomWallpaper = Boolean(desktopBackgroundUrl);
+  const frameStyle: CSSProperties | undefined = chatPalette
+    ? (paletteToCssVars(chatPalette) as CSSProperties)
+    : undefined;
 
   return (
-    <div className={styles.appFrame} data-testid="mock-aura-app">
+    <div
+      className={styles.appFrame}
+      data-testid="mock-aura-app"
+      data-persona-themed={chatPalette ? "true" : undefined}
+      style={frameStyle}
+    >
       {hasCustomWallpaper ? (
         <img
           className={styles.wallpaper}

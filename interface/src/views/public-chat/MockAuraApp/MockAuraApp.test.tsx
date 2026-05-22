@@ -40,6 +40,7 @@ import {
   vi,
 } from "vitest";
 import { MockAuraApp } from "./MockAuraApp";
+import { deriveChatPalette } from "./derive-chat-palette";
 import {
   SCRIPT,
   type MessageFrame,
@@ -193,5 +194,42 @@ describe("MockAuraApp", () => {
 
     const manager = screen.getByTestId("dm-window-manager");
     expect(manager).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("leaves the frame un-themed (no data attribute, no inline mock vars) when no chatPalette is supplied", () => {
+    render(<MockAuraApp />);
+    const frame = screen.getByTestId("mock-aura-app");
+    // NO_THEME personas (and the default landing surface) reach
+    // here with `chatPalette = null` — the persona override block
+    // in MockAuraApp.module.css is keyed on this attribute and
+    // must NOT fire so the existing shell tokens keep painting.
+    expect(frame).not.toHaveAttribute("data-persona-themed");
+    expect(frame.style.getPropertyValue("--mock-text")).toBe("");
+  });
+
+  it("applies data-persona-themed and the --mock-* custom properties when a chatPalette is supplied", () => {
+    const palette = deriveChatPalette("#b3c4d2", "dark");
+    if (!palette) {
+      throw new Error("expected deriveChatPalette to return a palette");
+    }
+    render(<MockAuraApp chatPalette={palette} />);
+    const frame = screen.getByTestId("mock-aura-app");
+    expect(frame).toHaveAttribute("data-persona-themed", "true");
+    expect(frame.style.getPropertyValue("--mock-text")).toBe(palette.text);
+    expect(frame.style.getPropertyValue("--mock-text-secondary")).toBe(
+      palette.textSecondary,
+    );
+    expect(frame.style.getPropertyValue("--mock-text-muted")).toBe(
+      palette.textMuted,
+    );
+    expect(frame.style.getPropertyValue("--mock-hljs-keyword")).toBe(
+      palette.hljsKeyword,
+    );
+    expect(frame.style.getPropertyValue("--mock-hljs-string")).toBe(
+      palette.hljsString,
+    );
+    expect(frame.style.getPropertyValue("--mock-hljs-comment")).toBe(
+      palette.hljsComment,
+    );
   });
 });

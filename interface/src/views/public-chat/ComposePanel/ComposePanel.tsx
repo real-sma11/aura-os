@@ -1,4 +1,5 @@
 import { MockAuraApp } from "../MockAuraApp";
+import type { ChatPalette } from "../MockAuraApp/derive-chat-palette";
 import styles from "./ComposePanel.module.css";
 
 export interface ComposePanelProps {
@@ -9,6 +10,14 @@ export interface ComposePanelProps {
    * without `ComposePanel` having to know about persona state.
    */
   readonly desktopBackgroundUrl?: string | null;
+  /**
+   * Forwarded straight through to `MockAuraApp`. The parent
+   * (`PublicChatView`) derives this from the active persona's
+   * `siteBackgroundColor` via `deriveChatPalette`; this layer
+   * stays palette-agnostic so a future host can drop in its own
+   * persona swap without touching the panel.
+   */
+  readonly chatPalette?: ChatPalette | null;
 }
 
 /**
@@ -32,6 +41,7 @@ export interface ComposePanelProps {
  */
 export function ComposePanel({
   desktopBackgroundUrl = null,
+  chatPalette = null,
 }: ComposePanelProps = {}): React.ReactElement {
   return (
     <div
@@ -39,7 +49,10 @@ export function ComposePanel({
       role="region"
       aria-label="Start a new conversation"
     >
-      <MockAuraApp desktopBackgroundUrl={desktopBackgroundUrl} />
+      <MockAuraApp
+        desktopBackgroundUrl={desktopBackgroundUrl}
+        chatPalette={chatPalette}
+      />
     </div>
   );
 }

@@ -204,3 +204,82 @@
   padding: 0 4px;
   user-select: none;
 }
+
+/*
+ * Per-persona text + syntax palette. `PublicChatView` derives a
+ * `ChatPalette` from the active persona's `siteBackgroundColor`
+ * via `deriveChatPalette` (theme-aware: contrast direction comes
+ * from `resolvedTheme`, hue comes from the wallpaper), passes it
+ * through `ComposePanel` into `MockAuraApp`, and the component
+ * spreads the result onto `.appFrame` as `--mock-*` custom
+ * properties plus the `data-persona-themed="true"` attribute we
+ * key on here.
+ *
+ * Two layered overrides:
+ *   1. Re-bind `--color-text`, `--color-text-secondary`, and
+ *      `--color-text-muted` at the frame boundary so every
+ *      descendant that reads those tokens (DM bubbles, titlebar
+ *      names, agent labels, tool target/preview, terminal stream
+ *      prose, the top + bottom dock chrome) picks up the persona-
+ *      tinted hue automatically.
+ *   2. Override each `hljs-*` selector inside the frame so the
+ *      global `github` / `github-dark` highlight.js stylesheet
+ *      (swapped by `HighlightThemeBridge` on theme change) is
+ *      replaced by the persona palette ONLY inside this surface
+ *      — everywhere else in the app the global stylesheet still
+ *      paints unchanged. `:global(...)` escapes the CSS module's
+ *      class hashing so the `.hljs-*` names match the literal
+ *      classes hljs emits.
+ *
+ * `NO_THEME` personas leave `chatPalette` null in
+ * `MockAuraApp.tsx`, the `data-persona-themed` attribute is
+ * absent, and this block is a no-op — the existing shell tokens
+ * and the global hljs stylesheet keep painting as before.
+ */
+.appFrame[data-persona-themed="true"] {
+  --color-text: var(--mock-text);
+  --color-text-secondary: var(--mock-text-secondary);
+  --color-text-muted: var(--mock-text-muted);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs) {
+  color: var(--mock-text);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-keyword),
+.appFrame[data-persona-themed="true"] :global(.hljs-built_in),
+.appFrame[data-persona-themed="true"] :global(.hljs-symbol),
+.appFrame[data-persona-themed="true"] :global(.hljs-selector-tag) {
+  color: var(--mock-hljs-keyword);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-string),
+.appFrame[data-persona-themed="true"] :global(.hljs-doctag),
+.appFrame[data-persona-themed="true"] :global(.hljs-regexp) {
+  color: var(--mock-hljs-string);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-number),
+.appFrame[data-persona-themed="true"] :global(.hljs-literal) {
+  color: var(--mock-hljs-number);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-comment),
+.appFrame[data-persona-themed="true"] :global(.hljs-quote) {
+  color: var(--mock-hljs-comment);
+  font-style: italic;
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-type),
+.appFrame[data-persona-themed="true"] :global(.hljs-class_),
+.appFrame[data-persona-themed="true"] :global(.hljs-title.class_),
+.appFrame[data-persona-themed="true"] :global(.hljs-attr) {
+  color: var(--mock-hljs-type);
+}
+
+.appFrame[data-persona-themed="true"] :global(.hljs-title),
+.appFrame[data-persona-themed="true"] :global(.hljs-title.function_),
+.appFrame[data-persona-themed="true"] :global(.hljs-name),
+.appFrame[data-persona-themed="true"] :global(.hljs-tag) {
+  color: var(--mock-hljs-function);
+}

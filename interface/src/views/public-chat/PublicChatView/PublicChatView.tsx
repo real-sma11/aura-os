@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useTheme } from "@cypher-asi/zui";
 import { ArrowRight } from "lucide-react";
 import { ComposePanel } from "../ComposePanel";
 import { PersonaTickRail } from "../PersonaTickRail";
@@ -74,6 +75,32 @@ export function PublicChatView(): React.ReactElement {
     };
   }, [activePersona]);
 
+  // Derive the per-persona text + syntax palette consumed by every
+  // piece of text inside the `MockAuraApp` frame (bubble bodies,
+  // agent labels, tool target/preview, terminal stream prose, and
+  // the global `hljs-*` tokens). Pure helper, runs synchronously on
+  // every persona swap; returns `null` for `NO_THEME` personas so
+  // the shell's default tokens keep painting. The result is passed
+  // through `ComposePanel` to `MockAuraApp`, which spreads it onto
+  // `.appFrame` as `--mock-*` custom properties — see
+  // `derive-chat-palette.ts` and `MockAuraApp.module.css`'s
+  // `[data-persona-themed="true"]` block.
+  //
+  // `resolvedTheme` decides the contrast direction (the DM bubbles
+  // fill from `--color-surface` which tracks the theme, not the
+  // wallpaper). Recomputing on theme change keeps the chat readable
+  // when the user flips light/dark while a persona is active —
+  // mirrors how `HighlightThemeBridge` reacts to the same hook.
+  const { resolvedTheme } = useTheme();
+  const chatPalette = useMemo(
+    () =>
+      deriveChatPalette(
+        activePersona.theme.siteBackgroundColor,
+        resolvedTheme,
+      ),
+    [activePersona, resolvedTheme],
+  );
+
   const chatViewStyle = useMemo<CSSProperties | undefined>(() => {
     const { siteBackgroundColor, siteBackgroundUrl } = activePersona.theme;
     if (!siteBackgroundColor && !siteBackgroundUrl) {
@@ -101,6 +128,7 @@ export function PublicChatView(): React.ReactElement {
       <div className={styles.heroSlot}>
         <ComposePanel
           desktopBackgroundUrl={activePersona.theme.desktopBackgroundUrl}
+          chatPalette={chatPalette}
         />
       </div>
       <div className={styles.tickRailSlot}>
