@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { ComposePanel } from "../ComposePanel";
+import { PersonaTickRail } from "../PersonaTickRail";
 import styles from "./PublicChatView.module.css";
 
 /**
@@ -22,6 +23,9 @@ export function PublicChatView(): React.ReactElement {
     <div className={styles.chatView}>
       <div className={styles.heroSlot}>
         <ComposePanel />
+      </div>
+      <div className={styles.tickRailSlot}>
+        <PersonaTickRail />
       </div>
       <div className={styles.ctaSlot}>
         <button

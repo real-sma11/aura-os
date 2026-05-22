@@ -54,4 +54,20 @@ describe("PublicChatView landing", () => {
       screen.queryByTestId("keep-chatting-modal-stub"),
     ).not.toBeInTheDocument();
   });
+
+  it("renders the 6 persona ticks on the right rail", () => {
+    renderView();
+    const personas = [
+      "Vibecoder",
+      "Indie Hacker",
+      "Giga Brain",
+      "Coordinator",
+      "Researcher",
+      "Cypher Punk",
+    ];
+    for (const name of personas) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("persona-tick-rail")).toBeInTheDocument();
+  });
 });

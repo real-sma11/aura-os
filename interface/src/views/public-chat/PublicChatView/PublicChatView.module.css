@@ -50,6 +50,31 @@
 }
 
 /*
+ * `.tickRailSlot` pins the decorative `PersonaTickRail` to the far
+ * right edge of the public landing surface and centers it
+ * vertically alongside the `MockAuraApp` hero. The slot itself
+ * disables pointer events so the rail never blocks clicks against
+ * the wallpaper behind it; the rail's tick buttons re-enable
+ * pointer events via the descendant override below so hover/focus
+ * still work on the ticks themselves.
+ */
+.tickRailSlot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 16px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.tickRailSlot > * {
+  pointer-events: auto;
+}
+
+/*
  * Inverted CTA: background uses `--color-text-primary` and the
  * foreground uses `--color-bg`, so the pill always reads as the
  * opposite of the surrounding page. In dark mode this lands as a
@@ -104,5 +129,9 @@
   .ctaSlot {
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     padding: 0 8px;
+  }
+
+  .tickRailSlot {
+    padding-right: 8px;
   }
 }
