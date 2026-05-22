@@ -83,16 +83,28 @@
 }
 
 /* When the wrapper isn't floating over content (e.g. used as a docked
-   bottom bar inside a tab panel), opt out of the absolute positioning
-   so the bar participates in the parent's flex/grid layout instead. */
+   bottom bar inside a tab panel, or as the inline empty-state input
+   on the public chat), opt out of the absolute positioning so the
+   bar participates in the parent's flex/grid layout instead. The
+   `var(--color-bg)` mask the floating mode paints to hide the
+   transcript behind the bar is also unnecessary here — there is
+   nothing scrolling underneath — so we drop it to `transparent`.
+   This lets the parent (e.g. an empty-state with a centered video
+   background) show through the input section instead of being
+   hidden by an opaque rectangle. */
 .inputWrapperStatic {
   position: relative;
   right: 0;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .inputWrapperStatic::before {
   display: none;
+}
+
+:global([data-desktop-mode]) .inputWrapperStatic {
+  background: transparent;
 }
 
 .inputContainer {
