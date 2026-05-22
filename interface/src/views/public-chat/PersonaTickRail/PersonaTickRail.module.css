@@ -98,16 +98,19 @@
 
 /*
  * Floating menu that COVERS the tick column when the rail is
- * open. Anchored to the right edge of the rail wrapper
- * (`right: 0`) so its trailing edge lines up with where the
- * ticks were, and it extends leftward by its own width — i.e.
- * the panel grows into the wallpaper area while the column
- * footprint stays right-pinned on the page.
+ * open. Anchored to the right edge of the rail wrapper and then
+ * pulled further right by `--persona-tick-rail-gutter` so the
+ * panel overhangs the rail's right-edge inset and lands flush
+ * against the viewport while the resting tick column stays
+ * slightly inset from the edge. The custom property is published
+ * by the rail's hosting slot (`.tickRailSlot` in
+ * `PublicChatView.module.css`); falling back to `0` keeps the
+ * panel right-anchored to the rail wrapper in any other host.
  */
 .panel {
   position: absolute;
   top: 50%;
-  right: 0;
+  right: calc(-1 * var(--persona-tick-rail-gutter, 0px));
   transform: translate(8px, -50%);
   min-width: 188px;
   padding: 6px;

@@ -74,11 +74,16 @@
   display: flex;
   align-items: center;
   /*
-   * Zero gutter — the resting tick column AND the open menu both
-   * sit flush against the right viewport edge so the rail reads
-   * as the page chrome itself rather than a floating panel.
+   * 5px gutter to the viewport edge for the resting tick column.
+   * The open mouseover menu inside the rail overhangs this gutter
+   * via a negative `right` offset (see `.panel` in
+   * `PersonaTickRail.module.css`) which pulls from the
+   * `--persona-tick-rail-gutter` custom property published below,
+   * so the menu lands flush against the viewport while the ticks
+   * stay slightly inset.
    */
-  padding-right: 0;
+  padding-right: 5px;
+  --persona-tick-rail-gutter: 5px;
   z-index: 1;
   pointer-events: none;
 }
