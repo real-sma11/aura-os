@@ -17,17 +17,12 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+  /* In public mode the `<aside>` left sidebar is an absolute
+     overlay over `.body` (see `AuraShell.module.css`), so `<main>`
+     spans the full body width. `align-self: center` therefore
+     lands the compose stack at the viewport's horizontal centre
+     without any `translateX` compensating for the sidebar. */
   align-self: center;
-  /* Page-center the empty-state compose: the AuraSidebar reserves
-     its current width on the left, which pushes the column-
-     centered panel right of viewport center by half that width.
-     Shift it back via `--aura-sidebar-width` (published by
-     `AuraSidebar`) so the LLM section lands at the actual
-     horizontal middle of the page, ignoring the sidebar.
-     `transform` (not margin) keeps the layout math intact and
-     the body's existing `overflow: hidden` clips any sliver of
-     bleed on very narrow viewports. */
-  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
 }
 
 .composeInput {

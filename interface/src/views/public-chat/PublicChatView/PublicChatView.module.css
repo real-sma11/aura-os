@@ -4,9 +4,13 @@
  * chat panel: scroller + decorative AURA visual loop video +
  * radial vignette + input bar slot + 3D image attachment chrome.
  *
- * The `--aura-sidebar-width` CSS variable is published by
- * `AuraSidebar` so the centered AURA visual loop and compose panel
- * stay aligned regardless of the user-resized sidebar Lane width.
+ * Centering model: in public mode the `<aside>` left sidebar is an
+ * absolute overlay over `.body` (see `AuraShell.module.css`), so
+ * the `<main>` chat panel always spans the full body width. The
+ * AURA visual loop, banner, and compose surface therefore center
+ * on the viewport via plain `inset: 0` / `align-self: center`
+ * rules — no `translateX` offsets compensating for sidebar width,
+ * and no resizing the orb between sidebar open/collapsed states.
  *
  * The radial vignette references `--color-bg-rgb`, defined per
  * theme in `interface/src/styles/tokens.css`, so the falloff blends
@@ -19,23 +23,16 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* No `overflow: hidden`: the absolute-positioned
-     `.chatBackgroundVideo` below uses negative margins / `min(...)`
-     widths that intentionally exceed the chat column so the video
-     can bleed sideways past the panel boundary into the body's
-     gutter. The body's own `overflow: hidden` is the final clip.
-     Internal vertical scrolling still belongs to `.chatScroller`,
-     which keeps its own `overflow-y: auto`. */
 }
 
 /* Decorative AURA visual loop pinned to the center of the chat
    panel and dropped to z-index 0 so the actual chat content
    (scroller, banner, input, helper tabs) renders on top. The video
-   is sized to a soft hero footprint and capped to the panel
-   dimensions via `min(...)` so it never dictates layout, only
-   atmosphere. Opacity keeps it from overpowering the gradient
-   banner above; `pointer-events: none` keeps it from intercepting
-   text selection or click targets in the chat. */
+   spans the full chat panel (which itself spans the full body
+   width in public mode), so `object-fit: contain` lands the orb at
+   the panel's geometric center — i.e. viewport center.
+   `pointer-events: none` keeps the video from intercepting text
+   selection or click targets in the chat. */
 .chatBackgroundVideo {
   position: absolute;
   inset: 0;
@@ -44,17 +41,6 @@
   object-fit: contain;
   pointer-events: none;
   z-index: 0;
-  /* Match the page-centering offset on `.composePanel` so the AURA
-     visual loop's centered orb stays visually aligned with the
-     compose surface — the body has the chat column right of the
-     sidebar, so the same negative translate lands the orb at page
-     center too. `--aura-sidebar-width` is published by
-     `AuraSidebar` as the live width of the resizable sidebar Lane;
-     the `-2px` accounts for the inter-panel gutter (sidebar
-     `margin-right: 2px`). Falls back to the previous 280px when
-     the variable is unset (e.g. unit tests rendering the panel in
-     isolation). */
-  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
 }
 
 /* Radial vignette around the AURA visual loop, mirroring
@@ -68,7 +54,6 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transform: translateX(calc((var(--aura-sidebar-width, 280px) * -1 - 2px) / 2));
   background: radial-gradient(
     circle farthest-side at 50% 50%,
     rgba(var(--color-bg-rgb), 0) 0%,
@@ -90,13 +75,21 @@
   flex-direction: column;
 }
 
-/* When the transcript is empty the scroller should host a single
-   centered compose surface, NOT an inline-stacked one. */
+/* When the transcript is empty the scroller hosts the `ComposePanel`
+   hero stack (marketing banner + example-prompt pills only — the
+   chat input bar is rendered separately by `PublicChatView` in the
+   bottom-anchored `.inputBarSlot` regardless of empty/populated
+   state, so the rounded input box never moves on first send).
+   Bottom-anchor the hero stack so the example pills sit just above
+   the floating input bar's top edge; the scroller's 140px bottom
+   padding already reserves the input bar's vertical footprint, so
+   `padding-bottom: 8px` here provides the small breathing gap
+   between the pills and the input box. */
 .chatEmpty {
   flex: 1;
   display: grid;
-  place-items: center;
-  padding: 64px 24px;
+  place-items: end center;
+  padding: 24px 24px 8px;
   min-height: 0;
 }
 
@@ -190,8 +183,11 @@
     padding: 16px 8px 160px;
   }
 
+  /* Tight bottom padding on mobile too: the floating `.inputBarSlot`
+     below the scroller already owns the safe-area inset, so the
+     hero stack only needs a small visual gap to the input box. */
   .chatEmpty {
-    padding: 32px 16px;
+    padding: 16px 16px 8px;
   }
 
   .inputBarSlot {

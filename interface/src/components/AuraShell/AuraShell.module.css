@@ -55,17 +55,39 @@
 }
 
 /*
- * Public mode drops the sidebar's chrome rectangle entirely so the
- * collapsed surface reads as part of the page rather than a panel
- * pinned to the left edge. Same intent as `.mainPanel`'s public
- * override above: no internal border separating sidebar from main,
- * no rounded inset eating into the AURA visual loop's bleed area.
+ * Public mode promotes the sidebar to an absolutely-positioned
+ * overlay that floats over `.body` (which already establishes a
+ * positioning context via `position: relative`). The `<main>` chat
+ * panel is then the only flex child of `.body`, so it spans the
+ * full body width regardless of sidebar state — the AURA visual
+ * loop, banner, and input bar inside `PublicChatView` center
+ * naturally on the viewport without any `translateX` offsets
+ * compensating for the sidebar's width.
+ *
+ * `pointer-events: none` lets clicks pass through the empty
+ * vertical strip when the Lane is collapsed; the children
+ * (Lane + marketing footer) re-enable pointer events on
+ * themselves via the sibling rule below.
+ *
+ * Visual chrome (border, rounded corners, internal margin) is
+ * stripped so the floating sidebar reads as part of the page
+ * rather than a docked panel.
  */
 .shell[data-ui-mode="public"] .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
   background: transparent;
   border: none;
   border-radius: 0;
   margin-right: 0;
+  pointer-events: none;
+}
+
+.shell[data-ui-mode="public"] .sidebar > * {
+  pointer-events: auto;
 }
 
 .sidebarBody {
