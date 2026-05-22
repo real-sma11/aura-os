@@ -54,6 +54,20 @@
   border-color: transparent;
 }
 
+/*
+ * Public mode drops the sidebar's chrome rectangle entirely so the
+ * collapsed surface reads as part of the page rather than a panel
+ * pinned to the left edge. Same intent as `.mainPanel`'s public
+ * override above: no internal border separating sidebar from main,
+ * no rounded inset eating into the AURA visual loop's bleed area.
+ */
+.shell[data-ui-mode="public"] .sidebar {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin-right: 0;
+}
+
 .sidebarBody {
   flex: 1;
   min-height: 0;

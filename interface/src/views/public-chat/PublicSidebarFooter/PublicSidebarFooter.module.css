@@ -7,7 +7,13 @@
  * runtime gate.
  */
 .footer {
-  border-top: 1px solid var(--color-border);
+  /*
+   * No `border-top`: the marketing nav strip should read as part of
+   * the same flat sidebar surface as the sessions list above it.
+   * The previous separator made the footer look like a docked
+   * second pane stacked on top of the sidebar; flush spacing keeps
+   * it as a quiet bottom-left footer instead.
+   */
   padding: 12px;
   display: flex;
   flex-direction: column;
