@@ -9,10 +9,7 @@ use tracing::{info, warn};
 use aura_os_agents::{AgentInstanceService, AgentService};
 use aura_os_auth::AuthService;
 use aura_os_billing::BillingClient;
-use aura_os_harness::{
-    local_harness_base_url, resolve_local_harness_base_url, HarnessLink, HarnessUrlSource,
-    LocalHarness, SwarmHarness,
-};
+use aura_os_harness::{local_harness_base_url, HarnessLink, LocalHarness, SwarmHarness};
 use aura_os_integrations::IntegrationsClient;
 
 use crate::agent_events::AgentEventListener;

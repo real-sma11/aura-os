@@ -43,10 +43,7 @@ pub use harness::{
     build_remote_handshake, build_session_init, validate_session_init_identity,
     HarnessCommandSender, HarnessLink, HarnessSession, SessionConfig,
 };
-pub use harness_url::{
-    local_harness_base_url, resolve_local_harness_base_url, resolved_local_harness_base_url,
-    HarnessUrlSource, ResolvedHarnessUrl, HARNESS_URL_SWARM_FALLBACK_ENV, LOCAL_HARNESS_URL_ENV,
-};
+pub use harness_url::local_harness_base_url;
 pub use local_harness::LocalHarness;
 pub use runner::automaton_event_kinds;
 pub use runner::{
