@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
+import { FadeInImage } from "../FadeInImage";
 import styles from "./Gallery.module.css";
 
 export interface GalleryItem {
@@ -127,7 +128,7 @@ export function Gallery({ items, initialId, onClose }: GalleryProps): React.Reac
       ) : null}
 
       <figure className={styles.figure} onClick={(e) => e.stopPropagation()}>
-        <img
+        <FadeInImage
           key={current.id}
           src={current.src}
           alt={current.alt ?? ""}

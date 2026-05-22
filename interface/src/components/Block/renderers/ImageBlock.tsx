@@ -1,7 +1,8 @@
 import { Image as ImageIcon } from "lucide-react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { Block } from "../Block";
-import { useGallery } from "../../Gallery";
+import { useGallery, useSessionGalleryItems } from "../../Gallery";
+import { FadeInImage } from "../../FadeInImage";
 import styles from "./renderers.module.css";
 
 function parseResult(result: string | null | undefined): Record<string, unknown> | null {
@@ -21,6 +22,13 @@ interface ImageBlockProps {
 
 export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
   const { openGallery } = useGallery();
+  // Session-wide gallery list (when this block lives inside the
+  // chat transcript). Lets a click on a generated image open the
+  // shared lightbox with every image in the conversation so the user
+  // can flip forward/back across messages instead of being locked to
+  // the single tool call. Falls back to a one-item list outside the
+  // chat (e.g. standalone block previews, isolated tests).
+  const sessionGalleryItems = useSessionGalleryItems();
   const data = parseResult(entry.result);
   const payload = data?.payload && typeof data.payload === "object"
     ? data.payload as Record<string, unknown>
@@ -53,16 +61,21 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
 
   const openInGallery = (): void => {
     if (!imageUrl) return;
+    const fallback = [
+      {
+        id: entry.id,
+        src: imageUrl,
+        alt: prompt ?? "Generated image",
+        downloadUrl: originalUrl || imageUrl,
+        caption: prompt,
+      },
+    ];
+    const items =
+      sessionGalleryItems && sessionGalleryItems.some((item) => item.id === entry.id)
+        ? sessionGalleryItems
+        : fallback;
     openGallery({
-      items: [
-        {
-          id: entry.id,
-          src: imageUrl,
-          alt: prompt ?? "Generated image",
-          downloadUrl: originalUrl || imageUrl,
-          caption: prompt,
-        },
-      ],
+      items,
       initialId: entry.id,
     });
   };
@@ -76,7 +89,7 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
           onClick={openInGallery}
           aria-label="Open generated image in gallery"
         >
-          <img
+          <FadeInImage
             src={imageUrl}
             alt={prompt ?? "Generated image"}
             className={styles.generatedImage}
@@ -102,7 +115,7 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
             onClick={openInGallery}
             aria-label="Open generated image in gallery"
           >
-            <img src={imageUrl} alt={prompt ?? "Generated"} className={styles.mediaImage} />
+            <FadeInImage src={imageUrl} alt={prompt ?? "Generated"} className={styles.mediaImage} />
           </button>
         ) : entry.pending ? (
           <div className={styles.listEmpty}>Generating…</div>

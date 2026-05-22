@@ -26,7 +26,12 @@ import { useUIModalStore } from "../../../../stores/ui-modal-store";
 import styles from "./MessageBubble.module.css";
 import { ResponseBlock } from "../../../../components/ResponseBlock";
 import { CopyButton } from "../../../../components/CopyButton";
-import { useGallery, type GalleryItem } from "../../../../components/Gallery";
+import { FadeInImage } from "../../../../components/FadeInImage";
+import {
+  useGallery,
+  useSessionGalleryItems,
+  type GalleryItem,
+} from "../../../../components/Gallery";
 import { LLMOutput } from "../LLMOutput";
 import { LargeTextBlock, isLargeText } from "./LargeTextBlock";
 import { ReportBugButton } from "../../../../components/ReportBugButton";
@@ -117,6 +122,11 @@ export const MessageBubble = memo(function MessageBubble({
 }: Props) {
   const openBuyCredits = useUIModalStore((state) => state.openBuyCredits);
   const { openGallery } = useGallery();
+  // Session-wide list published by `ChatMessageList`. When present we
+  // open the lightbox with every image in the conversation so the user
+  // can page forward/back across messages; when absent (isolated
+  // tests, non-chat surfaces) we degrade to the per-bubble list.
+  const sessionGalleryItems = useSessionGalleryItems();
   const hasContent = message.content && message.content.trim().length > 0;
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
   const hasArtifactRefs = message.artifactRefs && message.artifactRefs.length > 0;
@@ -462,14 +472,18 @@ export const MessageBubble = memo(function MessageBubble({
               className={styles.messageImageWrapper}
               onClick={() => {
                 if (galleryImages.length === 0) return;
+                const items =
+                  sessionGalleryItems && sessionGalleryItems.length > 0
+                    ? sessionGalleryItems
+                    : galleryImages;
                 openGallery({
-                  items: galleryImages,
+                  items,
                   initialId: `${message.id}-img-${index}`,
                 });
               }}
               aria-label="Open image in gallery"
             >
-              <img
+              <FadeInImage
                 src={imageBlockSrc(block)}
                 alt=""
                 className={styles.messageImage}
@@ -498,7 +512,7 @@ export const MessageBubble = memo(function MessageBubble({
               }}
               aria-label="Open generated image in gallery"
             >
-              <img
+              <FadeInImage
                 src={imageBlockSrc(block)}
                 alt="Generated image"
                 className={styles.generatedImageInline}

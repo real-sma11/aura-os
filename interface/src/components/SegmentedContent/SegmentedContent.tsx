@@ -1,7 +1,8 @@
-import type { AnchorHTMLAttributes } from "react";
+import type { AnchorHTMLAttributes, ImgHTMLAttributes } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { FadeInImage } from "../FadeInImage";
 import { useStreamSafeContent } from "../../hooks/use-stream-safe-content";
 
 /**
@@ -24,7 +25,11 @@ function ExternalLink(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
   return <a {...props} target="_blank" rel="noopener noreferrer" />;
 }
 
-const MD_COMPONENTS = { a: ExternalLink };
+function MarkdownImage(props: ImgHTMLAttributes<HTMLImageElement>) {
+  return <FadeInImage {...props} />;
+}
+
+const MD_COMPONENTS = { a: ExternalLink, img: MarkdownImage };
 
 interface SegmentedContentProps {
   content: string;
