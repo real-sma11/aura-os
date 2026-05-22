@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { EmptyState } from "../EmptyState";
 import {
   SidekickItemContextMenu,
@@ -82,6 +89,15 @@ interface SessionRowButtonProps {
   suffix: ReactNode;
   onClick: (session: AnnotatedSession) => void;
   onHover: (session: AnnotatedSession) => void;
+  /**
+   * Visibility callback for the IntersectionObserver wired up in
+   * `SessionsList`. Fires once per intersection-state change and is
+   * the gate the lazy `/summarize` backfill in `useSessionSummaries`
+   * uses to decide whether to fetch a Haiku title for an untitled
+   * row. Off-screen rows never trigger an LLM call until they
+   * scroll in.
+   */
+  onVisibilityChange?: (sessionId: string, visible: boolean) => void;
   streamKeyForSession?: (session: AnnotatedSession) => string;
 }
 
@@ -100,12 +116,48 @@ function SessionRowButton({
   suffix,
   onClick,
   onHover,
+  onVisibilityChange,
   streamKeyForSession,
 }: SessionRowButtonProps) {
   const isStreaming = useIsSessionStreaming(session, streamKeyForSession);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Visibility tracking for lazy summary backfill. We notify the
+  // parent on intersection-state changes so `useSessionSummaries`
+  // only fires `/summarize` for rows the user actually sees. The
+  // observer is created per-row (not shared) because the parent
+  // doesn't render a stable scroll container ref through here, and
+  // the cost of N tiny observers is negligible compared to the N
+  // Haiku LLM calls we're avoiding. Skip entirely in environments
+  // without `IntersectionObserver` (very old browsers, jsdom test
+  // shims) — the gate is a perf optimization, not correctness, so
+  // falling back to "summarize on mount" matches legacy behavior.
+  useEffect(() => {
+    if (!onVisibilityChange) return;
+    if (typeof IntersectionObserver === "undefined") {
+      onVisibilityChange(session.session_id, true);
+      return;
+    }
+    const target = buttonRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          onVisibilityChange(session.session_id, entry.isIntersecting);
+        }
+      },
+      { rootMargin: "200px 0px" },
+    );
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [onVisibilityChange, session.session_id]);
+
   return (
     <button
       id={session.session_id}
+      ref={buttonRef}
       type="button"
       role="treeitem"
       aria-selected={isSelected}
@@ -136,12 +188,12 @@ function SessionRowButton({
  * `NEW_CHAT_PLACEHOLDER` ("New chat") and upgrade in place once
  * `useSessionSummaries` finishes the Haiku round-trip.
  *
- * The aura-os-server `list_project_sessions` / `list_sessions`
- * handlers filter out sessions with zero persisted events (see
- * `filter_nonempty_sessions` in
- * `apps/aura-os-server/src/handlers/agents/sessions.rs`), so a row
- * here is always navigable — clicking it always lands in a chat with
- * at least one user message.
+ * Empty zero-event sessions are filtered out by aura-storage itself
+ * (the `idx_sessions_pa_recent` / `idx_sessions_project_recent`
+ * partial indexes from migration 0014, both keyed on
+ * `event_count > 0`). aura-os-server is a straight pass-through, so
+ * a row here is always navigable — clicking it always lands in a
+ * chat with at least one user message.
  *
  * Rendering uses plain `<button>` rows (not the ZUI `Explorer`) so
  * selection state is owned by a single parent-controlled
@@ -164,7 +216,36 @@ export function SessionsList({
   renderRowSuffix,
   streamKeyForSession,
 }: SessionsListProps) {
-  const summaries = useSessionSummaries(sessions);
+  // Track which rows are currently scrolled into view so the lazy
+  // /summarize backfill in `useSessionSummaries` only fires for rows
+  // the user can actually see. Without this gate, opening the
+  // sidekick on an account with many legacy untitled sessions would
+  // synchronously fire one Haiku LLM call per session — each loading
+  // the full event transcript — even for rows the user never scrolls
+  // to. Single shared `Set` flipped via the `onVisibilityChange`
+  // callback wired into each `SessionRowButton`.
+  const [visibleSessionIds, setVisibleSessionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const handleVisibilityChange = useCallback(
+    (sessionId: string, visible: boolean) => {
+      setVisibleSessionIds((prev) => {
+        if (visible) {
+          if (prev.has(sessionId)) return prev;
+          const next = new Set(prev);
+          next.add(sessionId);
+          return next;
+        }
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const summaries = useSessionSummaries(sessions, visibleSessionIds);
   const lastHoveredSessionIdRef = useRef<string | null>(null);
 
   // Live-update of the row label when the backend's on-send title
@@ -281,6 +362,7 @@ export function SessionsList({
           suffix={suffix}
           onClick={onSessionClick}
           onHover={handleRowMouseEnter}
+          onVisibilityChange={handleVisibilityChange}
           streamKeyForSession={streamKeyForSession}
         />
       );
@@ -288,6 +370,7 @@ export function SessionsList({
     [
       effectiveSelectedSessionId,
       handleRowMouseEnter,
+      handleVisibilityChange,
       hasMultipleProjects,
       onSessionClick,
       renderRowSuffix,

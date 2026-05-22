@@ -11,9 +11,26 @@ const SUMMARY_RETRY_DELAY_MS = 1500;
  * sessions that don't have one yet, exactly like the original Chats
  * tab implementation. Lifted into the shared component so the project
  * sidekick gets the same Haiku-summarize behavior for free.
+ *
+ * Visibility gating: when `visibleSessionIds` is provided, only
+ * sessions whose row is currently scrolled into view trigger a
+ * `/sessions/:id/summarize` round-trip. This matters on first load of
+ * an account with many untitled legacy sessions — without gating, the
+ * hook fires one Haiku LLM call (each loading the full transcript)
+ * per untitled session simultaneously and the user never even sees
+ * the rows below the fold. Pass `null` or `undefined` to fall back
+ * to the legacy "summarize everything in the list" behavior; pass an
+ * empty set to suppress summarization entirely.
+ *
+ * The on-send title path
+ * (`apps/aura-os-server/src/handlers/agents/sessions.rs::generate_session_title`)
+ * still persists titles for new sessions before they ever reach the
+ * sidekick, so visibility gating only affects pre-existing untitled
+ * sessions; new chats keep their instant-title behavior.
  */
 export function useSessionSummaries(
   sessions: AnnotatedSession[],
+  visibleSessionIds?: ReadonlySet<string> | null,
 ): Record<string, string> {
   const persistedSummaries = useMemo(() => {
     const out: Record<string, string> = {};
@@ -65,6 +82,16 @@ export function useSessionSummaries(
       if ((attemptsRef.current[session.session_id] ?? 0) >= MAX_SUMMARY_ATTEMPTS) {
         continue;
       }
+      // Visibility gate: skip rows that haven't been scrolled into
+      // view. `undefined`/`null` (legacy callers) bypasses the gate;
+      // an empty set suppresses everything.
+      if (
+        visibleSessionIds !== undefined &&
+        visibleSessionIds !== null &&
+        !visibleSessionIds.has(session.session_id)
+      ) {
+        continue;
+      }
 
       // SessionReady can reach the client before the transcript is fully
       // queryable by the summarize endpoint. Keep dedupe scoped to the
@@ -91,7 +118,7 @@ export function useSessionSummaries(
           summarizingRef.current.delete(session.session_id);
         });
     }
-  }, [sessions, fetchedSummaries, retryTick]);
+  }, [sessions, fetchedSummaries, retryTick, visibleSessionIds]);
 
   return useMemo(
     () => ({ ...fetchedSummaries, ...persistedSummaries }),
