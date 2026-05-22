@@ -1,6 +1,16 @@
 import { MockAuraApp } from "../MockAuraApp";
 import styles from "./ComposePanel.module.css";
 
+export interface ComposePanelProps {
+  /**
+   * Forwarded straight through to `MockAuraApp`. Lets the parent
+   * (`PublicChatView`) swap the wallpaper inside the hero frame
+   * when the active persona theme supplies a static image,
+   * without `ComposePanel` having to know about persona state.
+   */
+  readonly desktopBackgroundUrl?: string | null;
+}
+
 /**
  * Empty-state hero stack for the public chat view. Phase 0 reduces
  * this to a thin layout shell that centers the decorative
@@ -20,14 +30,16 @@ import styles from "./ComposePanel.module.css";
  * that previously sat above a fake taskbar were removed in phase 0
  * along with the rest of the mock chrome.
  */
-export function ComposePanel(): React.ReactElement {
+export function ComposePanel({
+  desktopBackgroundUrl = null,
+}: ComposePanelProps = {}): React.ReactElement {
   return (
     <div
       className={styles.composePanel}
       role="region"
       aria-label="Start a new conversation"
     >
-      <MockAuraApp />
+      <MockAuraApp desktopBackgroundUrl={desktopBackgroundUrl} />
     </div>
   );
 }

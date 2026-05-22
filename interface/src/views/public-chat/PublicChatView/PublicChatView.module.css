@@ -22,6 +22,14 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /*
+   * Smoothly fade between persona site backgrounds when the active
+   * tick changes. `background-image` itself can't tween, so the
+   * fade reads as a quick color/opacity swap of the underlying
+   * fallback color — good enough that swapping personas in the
+   * rail never feels like a hard cut.
+   */
+  transition: background-color 220ms ease;
 }
 
 .heroSlot {

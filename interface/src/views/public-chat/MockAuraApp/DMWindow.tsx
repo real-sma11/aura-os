@@ -37,7 +37,7 @@ export const WINDOW_CLOSE_MS = 360;
 
 /**
  * One floating DM window mounted by `DMWindowManager`. Renders the
- * MSN/ICQ-style chrome (titlebar with both participants' names +
+ * MSN/ICQ-style chrome (titlebar with the recipient's name +
  * fake window controls, message body) and projects
  * the script's frames into the body — message frames render as
  * bubbles aligned left/right based on the speaking agent, tool
@@ -517,9 +517,8 @@ export function DMWindow({
     ? { ...baseStyle, animationDelay: `${closeDelayMs}ms` }
     : baseStyle;
 
-  const [leftAgent, rightAgent] = participants;
-  const leftMeta = AGENTS[leftAgent];
-  const rightMeta = AGENTS[rightAgent];
+  const [, titleAgent] = participants;
+  const titleMeta = AGENTS[titleAgent];
 
   const windowClass = `${styles.dmWindow} ${isFocused ? styles.dmWindowFocused : ""}`;
 
@@ -553,11 +552,8 @@ export function DMWindow({
         onPointerDown={handleTitleBarPointerDown}
       >
         <div className={styles.dmTitleParticipants}>
-          <ParticipantDot agentId={leftAgent} />
-          <span className={styles.dmTitleName}>{leftMeta.name}</span>
-          <span className={styles.dmTitleSep}>·</span>
-          <ParticipantDot agentId={rightAgent} />
-          <span className={styles.dmTitleName}>{rightMeta.name}</span>
+          <ParticipantDot agentId={titleAgent} />
+          <span className={styles.dmTitleName}>{titleMeta.name}</span>
         </div>
         <div className={styles.dmControls}>
           <span className={styles.dmControl}>
@@ -659,7 +655,6 @@ function DMFrameRow({
           className={`${styles.dmBubble} ${styles.dmBubblePhase} ${
             isRightSide ? styles.dmBubbleRight : styles.dmBubbleLeft
           }`}
-          style={isRightSide ? { borderColor: `${agent.color}55` } : undefined}
         >
           <span key={phase} className={styles.dmBubbleSlot}>
             {phase === "typing" ? (
@@ -684,7 +679,6 @@ function DMFrameRow({
           className={`${styles.dmToolCard} ${styles.dmBubblePhase} ${
             isRightSide ? styles.dmBubbleRight : styles.dmBubbleLeft
           }`}
-          style={{ borderColor: `${agent.color}66` }}
         >
           <div className={styles.dmToolHeader}>
             <span

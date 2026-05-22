@@ -53,20 +53,46 @@ function formatClock(date: Date): string {
   return `${hours12}:${minutesPadded} ${period}`;
 }
 
-export function MockAuraApp(): ReactNode {
+export interface MockAuraAppProps {
+  /**
+   * Optional static wallpaper override. When provided, the
+   * default `/AURA_visual_loop.mp4` video is replaced with an
+   * `<img>` painted across the same 16:10 frame. Drives the
+   * per-persona theme swap from `PublicChatView` —
+   * `personas.ts` supplies the URL, the parent passes it down,
+   * and a `null` here keeps the orb video loop in place.
+   */
+  readonly desktopBackgroundUrl?: string | null;
+}
+
+export function MockAuraApp({
+  desktopBackgroundUrl = null,
+}: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
 
   return (
     <div className={styles.appFrame} data-testid="mock-aura-app">
-      <video
-        className={styles.wallpaper}
-        src="/AURA_visual_loop.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        aria-hidden="true"
-      />
+      {desktopBackgroundUrl ? (
+        <img
+          className={styles.wallpaper}
+          src={desktopBackgroundUrl}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          data-testid="mock-aura-wallpaper-image"
+        />
+      ) : (
+        <video
+          className={styles.wallpaper}
+          src="/AURA_visual_loop.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+          data-testid="mock-aura-wallpaper-video"
+        />
+      )}
       <div className={styles.wallpaperVignette} aria-hidden="true" />
       <DMWindowManager />
       <div

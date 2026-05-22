@@ -30,7 +30,7 @@
  * `PublicChatView`'s own bottom-anchored slot in phase 0.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import {
   afterEach,
   beforeAll,
@@ -143,6 +143,22 @@ describe("MockAuraApp", () => {
     expect(
       screen.getByTestId("dm-window-architect_backend"),
     ).toBeInTheDocument();
+  });
+
+  it("renders a single participant name in each DM window titlebar", () => {
+    vi.useFakeTimers();
+
+    render(<MockAuraApp />);
+
+    for (let i = 0; i < 6; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+    }
+
+    const titlebar = screen.getByTestId("dm-window-architect_frontend-titlebar");
+    expect(within(titlebar).getByText("Frontend")).toBeInTheDocument();
+    expect(within(titlebar).queryByText("Architect")).not.toBeInTheDocument();
   });
 
   it("hides the decorative DM window manager from assistive tech via aria-hidden", () => {
