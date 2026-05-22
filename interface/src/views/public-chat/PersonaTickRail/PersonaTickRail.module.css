@@ -43,7 +43,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   align-items: flex-end;
   transition: opacity 160ms ease;
 }
@@ -62,7 +62,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 4px 0;
+  padding: 2px 0;
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -87,13 +87,22 @@
   display: block;
   width: 18px;
   height: 2px;
-  background: var(--color-text-secondary);
+  /*
+   * The rail paints directly over the active persona's site
+   * background. `--public-nav-fg-color-muted` is published on `<html>`
+   * by `PublicChatView` when the active persona declares a
+   * `siteForegroundColorMuted`, so light-bg themes (e.g. Solo Builder)
+   * render dark idle ticks instead of the default near-white token
+   * washing into the bg image. Default token fallback keeps every
+   * `NO_THEME` persona pixel-identical to today.
+   */
+  background: var(--public-nav-fg-color-muted, var(--color-text-secondary));
   border-radius: 2px;
   transition: background 160ms ease;
 }
 
 .tickButton[data-active="true"] .tick {
-  background: var(--color-text-primary);
+  background: var(--public-nav-fg-color, var(--color-text-primary));
 }
 
 /*
@@ -184,7 +193,7 @@
 
 @media (max-width: 640px) {
   .list {
-    gap: 10px;
+    gap: 4px;
   }
 
   .tick {

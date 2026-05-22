@@ -1,7 +1,8 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { ComposePanel } from "../ComposePanel";
 import { PersonaTickRail } from "../PersonaTickRail";
+import { deriveChatPalette } from "../MockAuraApp/derive-chat-palette";
 import { PERSONAS, getPersonaAt } from "../personas";
 import styles from "./PublicChatView.module.css";
 
@@ -45,6 +46,33 @@ export function PublicChatView(): React.ReactElement {
   const [activeIndex, setActiveIndex] = useState<number>(0);
 
   const activePersona = useMemo(() => getPersonaAt(activeIndex), [activeIndex]);
+
+  // The marketing footer in `PublicSidebarFooter` lives inside
+  // `AuraSidebar` — a sibling of `PublicChatView`, not a descendant
+  // — so the active persona's foreground colors are bridged through
+  // `document.documentElement` as CSS custom properties. The right-
+  // edge `PersonaTickRail` (a child of this view) also reads the
+  // same properties so the rail and the marketing footer stay in
+  // visual sync across persona swaps. Cleanup on unmount/persona
+  // change keeps the variables from leaking into authed shells where
+  // neither surface mounts.
+  useEffect(() => {
+    const root = document.documentElement;
+    const { siteForegroundColor, siteForegroundColorMuted } = activePersona.theme;
+    const apply = (name: string, value: string | null): void => {
+      if (value) {
+        root.style.setProperty(name, value);
+      } else {
+        root.style.removeProperty(name);
+      }
+    };
+    apply("--public-nav-fg-color", siteForegroundColor);
+    apply("--public-nav-fg-color-muted", siteForegroundColorMuted);
+    return () => {
+      root.style.removeProperty("--public-nav-fg-color");
+      root.style.removeProperty("--public-nav-fg-color-muted");
+    };
+  }, [activePersona]);
 
   const chatViewStyle = useMemo<CSSProperties | undefined>(() => {
     const { siteBackgroundColor, siteBackgroundUrl } = activePersona.theme;

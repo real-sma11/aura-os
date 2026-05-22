@@ -51,6 +51,33 @@ export interface PersonaTheme {
    * background when `siteBackgroundUrl` is `null`.
    */
   readonly siteBackgroundColor: string | null;
+  /**
+   * Strong foreground color (active / hover) for chrome that floats
+   * over the persona's site background — currently the active tick
+   * in `PersonaTickRail` and the hovered link in
+   * `PublicSidebarFooter`. When `null` the default
+   * `--color-text-primary` paints, which is correct for dark / video
+   * backgrounds. Set to a hard contrast value (e.g. `#1a1a1a`) for
+   * personas whose `siteBackgroundUrl` is light enough that the
+   * default near-white token washes out.
+   *
+   * Published as the `--public-nav-fg-color` custom property on
+   * `document.documentElement` while the persona is active so the
+   * marketing footer (a sibling outside `PublicChatView`'s subtree)
+   * can read the same value.
+   */
+  readonly siteForegroundColor: string | null;
+  /**
+   * Muted foreground color (idle) paired with `siteForegroundColor`.
+   * Used by idle ticks and idle marketing links so the existing two-
+   * level hierarchy (secondary -> primary on hover/active) survives a
+   * persona contrast override. When `null` the default
+   * `--color-text-secondary` paints.
+   *
+   * Published as `--public-nav-fg-color-muted` on
+   * `document.documentElement` while the persona is active.
+   */
+  readonly siteForegroundColorMuted: string | null;
 }
 
 export interface Persona {
@@ -70,6 +97,8 @@ const NO_THEME: PersonaTheme = {
   desktopBackgroundUrl: null,
   siteBackgroundUrl: null,
   siteBackgroundColor: null,
+  siteForegroundColor: null,
+  siteForegroundColorMuted: null,
 };
 
 export const PERSONAS: ReadonlyArray<Persona> = [
@@ -84,6 +113,13 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // paints a matching dusty-blue immediately on first paint and
       // there is no dark flash before the image finishes loading.
       siteBackgroundColor: "#b3c4d2",
+      // The dusty-blue site is light enough that the default
+      // near-white nav/tick tokens wash out. Override with a hard
+      // dark pair so the marketing footer links and the right-edge
+      // tick column stay legible — strong for active/hover, muted
+      // for idle, preserving the two-level hierarchy.
+      siteForegroundColor: "#1a1a1a",
+      siteForegroundColorMuted: "#4a4a4a",
     },
   },
   { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },

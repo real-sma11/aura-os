@@ -167,4 +167,55 @@ describe("PublicChatView landing", () => {
       "/personas/solo-builder/site.png",
     );
   });
+
+  it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {
+    const { unmount } = renderView();
+    const root = document.documentElement;
+
+    // Vibecoder is the default (NO_THEME): neither variable is set.
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
+    expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
+      "",
+    );
+
+    const rail = screen.getByTestId("persona-tick-rail");
+    fireEvent.mouseEnter(rail);
+    fireEvent.click(panelFor("Solo Builder"));
+
+    // Solo Builder ships with a hard dark pair so the marketing
+    // footer + idle ticks stay legible over its light dusty-blue
+    // site background.
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
+      "#1a1a1a",
+    );
+    expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
+      "#4a4a4a",
+    );
+
+    // Switching back to a NO_THEME persona clears both properties so
+    // the default tokens take over on the next paint.
+    fireEvent.mouseEnter(rail);
+    fireEvent.click(panelFor("Vibecoder"));
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
+    expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
+      "",
+    );
+
+    // Re-select Solo Builder so the cleanup path on unmount has
+    // something to clear (otherwise the assertion below is a no-op).
+    fireEvent.mouseEnter(rail);
+    fireEvent.click(panelFor("Solo Builder"));
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
+      "#1a1a1a",
+    );
+
+    unmount();
+    // Leaving public mode (e.g. login -> authed shell) must not leak
+    // contrast overrides into surfaces that don't mount the marketing
+    // footer or tick rail.
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
+    expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
+      "",
+    );
+  });
 });
