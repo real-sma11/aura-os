@@ -60,6 +60,16 @@ export function initAnalytics(): void {
   }
 }
 
+/** Update a super property (attached to all future events). */
+export function registerProperty(key: string, value: unknown): void {
+  if (!initialized) return;
+  try {
+    mixpanel.register({ [key]: value });
+  } catch {
+    // Silent fail.
+  }
+}
+
 /** Track an event. Safe no-op if not initialized or opted out. */
 export function track(event: string, properties?: Record<string, unknown>): void {
   if (!initialized) return;
