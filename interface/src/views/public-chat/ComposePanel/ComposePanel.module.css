@@ -1,75 +1,40 @@
 /*
- * ComposePanel — Phase 4 split-out from
- * `the legacy `LoggedOutShell.module.css``. Owns the
- * empty-state inline compose surface (banner -> input -> example
- * pills) shown in the public chat view's main panel.
+ * ComposePanel — empty-state hero wrapper for the public chat. The
+ * panel itself is a thin layout container; everything visual
+ * (titlebar, wallpaper, DM windows, taskbar) lives inside the
+ * mounted `MockAuraApp`. The helper-prompt pills are passed into
+ * the mock app as its `inputDock` slot so they sit just above the
+ * decorative taskbar and read as part of the windowed Aura app's
+ * chrome.
+ *
+ * The chat input bar is NOT mounted here — it lives in
+ * `PublicChatView`'s bottom-anchored `.inputBarSlot` so the
+ * rounded input box stays pinned to the bottom of the screen at
+ * the same position regardless of whether the visitor has sent a
+ * message yet.
  */
 
-/* Inline compose surface — sits inside `.chatEmpty` in the chat
-   view and replaces the old "static heading + bottom input bar"
-   empty state. No overlay, no dim wash; the shared
-   `DesktopChatInputBar` carries its own chrome (including the
-   Code/Plan/Image/Video/3D mode pills) so the panel only needs to
-   gate width and stack the heading / input / example-prompt buttons
-   vertically. */
 .composePanel {
-  width: min(720px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  /* In public mode the `<aside>` left sidebar is an absolute
-     overlay over `.body` (see `AuraShell.module.css`), so `<main>`
-     spans the full body width. `align-self: center` therefore
-     lands the compose stack at the viewport's horizontal centre
-     without any `translateX` compensating for the sidebar. */
-  align-self: center;
-}
-
-.composeInput {
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  /* `MockAuraApp` is the only child and stretches to fill the
+     panel — its own internal layout owns the titlebar / body /
+     inputDock / taskbar split. */
 }
 
-/* Public page only: halve the vertical distance between the bottom
-   of the rounded input rectangle and the top of the helper-tab row
-   ("Code an app" / "Build a website" / "Plan a trip" / "Research a
-   topic"). Three sources stack to produce the ~30px gap on the
-   shared `DesktopChatInputBar`:
-     1. `.inputWrapper` in `InputBarShell.module.css` carries
-        `padding-bottom: var(--space-3)` (12px) to keep the floating
-        bar clear of the panel edge — irrelevant on the public
-        compose surface where the bar is statically stacked, not
-        floating.
-     2. `.inputInfoBar` in the same module renders a row below the
-        rounded container for the agent environment / orbit /
-        project / context-usage chrome. None of that chrome applies
-        on the public page (no project, no context usage,
-        AgentEnvironment is invisible without a machine type), so
-        the row is effectively decorative dead space.
-     3. `.composePanel`'s 22px flex gap minus `.composeExamples`'s
-        `margin-top` (handled in `.composeExamples` below) controls
-        the residual gap between the input section and the helper
-        tabs.
-   The two overrides below collapse sources (1) and (2); the
-   `margin-top` change on `.composeExamples` below trims source (3).
-   All three are scoped under `.composeInput` so the authenticated
-   shell — which shares the same `DesktopChatInputBar` — is
-   unaffected. */
-.composeInput [data-agent-surface="chat-input-bar"] {
-  padding-bottom: 0;
+.composePanel > * {
+  flex: 1;
+  min-height: 0;
 }
 
-.composeInput
-  [data-agent-surface="chat-input-bar"]
-  > div:not([class*="inputContainer"]) {
-  display: none;
-}
-
-/* Single-line row: with four trimmed labels (Code an app, Build a
-   website, Plan a trip, Research a topic), the natural row width is
-   well under the 680px input column at desktop sizes, so we forbid
-   wrapping and let the row scroll horizontally on viewports too
-   narrow to fit all four. `flex-shrink: 0` on each button below
-   keeps every label intact rather than squishing buttons asymmetrically. */
+/* Helper prompt pills row, sitting just above the decorative
+   taskbar inside the mock app's input dock. Single-line: with the
+   four trimmed labels (Code an app, Build a website, Plan a trip,
+   Research a topic), the natural row width fits inside the input
+   column at desktop sizes; on narrower viewports the row scrolls
+   horizontally without wrapping. */
 .composeExamples {
   display: flex;
   flex-wrap: nowrap;
@@ -79,7 +44,6 @@
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
-  margin-top: -10px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -92,13 +56,13 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--color-text-secondary, #c9c9cf);
-  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
-  border: 1px solid var(--color-border);
+  color: rgba(232, 233, 240, 0.85);
+  background: rgba(26, 27, 36, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -107,9 +71,9 @@
 }
 
 .composeExample:hover {
-  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
-  color: var(--color-text-primary, inherit);
-  border-color: var(--color-border-strong);
+  background: rgba(40, 42, 56, 0.85);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .composeExample:focus-visible {
@@ -120,20 +84,16 @@
 .composeExampleIcon {
   display: inline-flex;
   align-items: center;
-  color: var(--color-text-secondary, #c9c9cf);
+  color: inherit;
 }
 
 @media (max-width: 540px) {
-  .composePanel {
-    gap: 16px;
-  }
-
   .composeExamples {
     gap: 6px;
   }
 
   .composeExample {
-    padding: 6px 10px;
+    padding: 5px 9px;
     font-size: 11px;
   }
 }

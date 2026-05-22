@@ -1,21 +1,22 @@
 /*
  * PublicChatView — Phase 4 split-out from
- * `the legacy `LoggedOutShell.module.css``. Owns the public
- * chat panel: scroller + decorative AURA visual loop video +
- * radial vignette + input bar slot + 3D image attachment chrome.
+ * `the legacy `LoggedOutShell.module.css``. Owns the public chat
+ * panel: scroller + input bar slot + 3D image attachment chrome.
+ *
+ * The AURA visual loop video and its radial vignette previously
+ * lived here as an always-on decorative background; both have been
+ * moved into `MockAuraApp` (mounted by `ComposePanel` in the empty
+ * state) so the orb only plays when the windowed mock-app hero is
+ * visible. Once the visitor sends their first message, the
+ * populated transcript renders against the host theme background
+ * with no decorative video behind it.
  *
  * Centering model: in public mode the `<aside>` left sidebar is an
  * absolute overlay over `.body` (see `AuraShell.module.css`), so
  * the `<main>` chat panel always spans the full body width. The
- * AURA visual loop, banner, and compose surface therefore center
- * on the viewport via plain `inset: 0` / `align-self: center`
- * rules — no `translateX` offsets compensating for sidebar width,
- * and no resizing the orb between sidebar open/collapsed states.
- *
- * The radial vignette references `--color-bg-rgb`, defined per
- * theme in `interface/src/styles/tokens.css`, so the falloff blends
- * into whatever surface sits behind the chat panel in either light
- * or dark theme.
+ * compose surface therefore centers on the viewport via plain
+ * `align-self: center` rules — no `translateX` offsets compensating
+ * for sidebar width.
  */
 .chatView {
   position: relative;
@@ -23,45 +24,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* Decorative AURA visual loop pinned to the center of the chat
-   panel and dropped to z-index 0 so the actual chat content
-   (scroller, banner, input, helper tabs) renders on top. The video
-   spans the full chat panel (which itself spans the full body
-   width in public mode), so `object-fit: contain` lands the orb at
-   the panel's geometric center — i.e. viewport center.
-   `pointer-events: none` keeps the video from intercepting text
-   selection or click targets in the chat. */
-.chatBackgroundVideo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Radial vignette around the AURA visual loop, mirroring
-   aura-web's `VideoBackground.css` so the orb's edges feather into
-   the panel background instead of butting against a hard rectangle
-   when the video would otherwise be clipped by the chat column.
-   Outer stops fade to `--color-bg` via `--color-bg-rgb` (defined
-   per theme in `tokens.css`). */
-.chatView::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    circle farthest-side at 50% 50%,
-    rgba(var(--color-bg-rgb), 0) 0%,
-    rgba(var(--color-bg-rgb), 0) 18%,
-    rgba(var(--color-bg-rgb), 0.55) 32%,
-    rgba(var(--color-bg-rgb), 0.9) 46%,
-    rgba(var(--color-bg-rgb), 1) 58%
-  );
 }
 
 .chatScroller {
@@ -76,20 +38,21 @@
 }
 
 /* When the transcript is empty the scroller hosts the `ComposePanel`
-   hero stack (marketing banner + example-prompt pills only — the
-   chat input bar is rendered separately by `PublicChatView` in the
-   bottom-anchored `.inputBarSlot` regardless of empty/populated
-   state, so the rounded input box never moves on first send).
-   Bottom-anchor the hero stack so the example pills sit just above
-   the floating input bar's top edge; the scroller's 140px bottom
-   padding already reserves the input bar's vertical footprint, so
-   `padding-bottom: 8px` here provides the small breathing gap
-   between the pills and the input box. */
+   hero (which mounts `MockAuraApp` — a windowed mock of the Aura
+   desktop with the AURA visual loop as wallpaper, MSN/ICQ-style DM
+   windows popping up between agents, and the example-prompt pills
+   docked above a decorative taskbar). The mock app stretches to
+   fill the whole empty area; the chat input bar is rendered
+   separately by `PublicChatView` in the bottom-anchored
+   `.inputBarSlot` regardless of empty/populated state, so the
+   rounded input box never moves on first send. The scroller's
+   140px bottom padding already reserves the input bar's vertical
+   footprint, so the mock app sits flush above that reservation
+   with no extra `.chatEmpty` padding needed. */
 .chatEmpty {
   flex: 1;
   display: grid;
-  place-items: end center;
-  padding: 24px 24px 8px;
+  place-items: stretch;
   min-height: 0;
 }
 
@@ -104,97 +67,17 @@
   opacity: 0.55;
 }
 
-/* ── 3D image attachment ──────────────────────────────────── */
-
-.imageAttachBar {
-  position: absolute;
-  bottom: 120px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  z-index: 5;
-  pointer-events: none;
-}
-
-.imageAttachBar > * {
-  pointer-events: auto;
-}
-
-.imageAttachButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px dashed var(--color-border);
-  background: var(--color-sidebar-bg);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.imageAttachButton:hover {
-  background: var(--color-surface-hover);
-  border-color: var(--color-text-muted);
-}
-
-.imageAttachPreview {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--color-sidebar-bg);
-  border: 1px solid var(--color-border);
-}
-
-.imageAttachThumb {
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
-  object-fit: cover;
-}
-
-.imageAttachRemove {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.imageAttachRemove:hover {
-  background: var(--color-surface-active);
-}
-
-.imageAttachLabel {
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-
 @media (max-width: 640px) {
   .chatScroller {
     padding: 16px 8px 160px;
   }
 
-  /* Tight bottom padding on mobile too: the floating `.inputBarSlot`
-     below the scroller already owns the safe-area inset, so the
-     hero stack only needs a small visual gap to the input box. */
-  .chatEmpty {
-    padding: 16px 16px 8px;
-  }
+  /* On mobile the floating `.inputBarSlot` below the scroller
+     already owns the safe-area inset, so the empty-state mock
+     app stretches to fill the available area without any extra
+     `.chatEmpty` padding (its own internal chrome owns the inset). */
 
   .inputBarSlot {
     padding: 4px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px;
-  }
-
-  .imageAttachBar {
-    bottom: 140px;
   }
 }

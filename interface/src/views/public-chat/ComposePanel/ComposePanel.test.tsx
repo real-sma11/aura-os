@@ -1,129 +1,80 @@
 /**
- * Focus-handoff tests for the public compose surface. The bottom
- * mode-pill widgets (Chat / Plan / Create an image / etc.) must keep
- * the chat textarea focused after a click so the visitor can start
- * typing immediately. Plain `<button>`s steal focus on mousedown by
- * default, so the widget needs both a `preventDefault` on mousedown
- * AND an explicit `inputBarRef.focus()` call on click — the test
- * exercises both code paths.
+ * Behavioural test for the public empty-state hero stack
+ * (`ComposePanel`). The compose input bar is NOT mounted inside
+ * this component — it lives in `PublicChatView`'s
+ * bottom-anchored `.inputBarSlot` so the rounded input pill stays
+ * pinned to the bottom of the screen in both empty and populated
+ * states. This test pins one contract that survives that split:
+ *
+ *  - Clicking an example-prompt pill forwards the representative
+ *    prompt up to the parent via `onSelectExample` so the parent
+ *    can pre-fill the floating input bar AND focus it (focus is
+ *    the parent's responsibility now that the input bar lives one
+ *    level up).
+ *
+ *  Mousedown's default focus-steal is also prevented at the
+ *  callsite (so a click on the pill while the input bar is focused
+ *  doesn't blur it mid-typing); we exercise that path implicitly
+ *  by routing every assertion through `userEvent.click`, which
+ *  fires mousedown before click.
+ *
+ *  Phase 5 dropped the mode-switching side effect from these pills:
+ *  the public input no longer carries a mode selector, so the pills
+ *  only pre-fill the textarea now.
  */
 
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const mockSetSelectedMode = vi.fn();
-let mockSelectedMode: "code" | "plan" | "image" | "3d" | "video" = "code";
-
-vi.mock("../../../stores/chat-ui-store", () => ({
-  useChatUI: () => ({
-    selectedMode: mockSelectedMode,
-    setSelectedMode: mockSetSelectedMode,
-  }),
-}));
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./ComposePanel.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-vi.mock("../AgentDemoBanner", () => ({
-  AgentDemoBanner: () => <div data-testid="agent-demo-banner-stub" />,
+vi.mock("../MockAuraApp", () => ({
+  MockAuraApp: ({ inputDock }: { inputDock: ReactNode }) => (
+    <div data-testid="mock-aura-app-stub">{inputDock}</div>
+  ),
 }));
-
-vi.mock("../../../features/chat-ui/ChatInputBar", () => {
-  interface StubProps {
-    input: string;
-    onInputChange: (next: string) => void;
-    onSend: (content: string) => void;
-  }
-  interface StubHandle {
-    focus: () => void;
-    isFocused?: () => boolean;
-  }
-  const DesktopChatInputBar = forwardRef<StubHandle, StubProps>(
-    function StubInputBar({ input, onInputChange, onSend }, ref) {
-      const textareaRef = useRef<HTMLTextAreaElement>(null);
-      useImperativeHandle(ref, () => ({
-        focus: () => textareaRef.current?.focus(),
-        isFocused: () =>
-          document.activeElement === textareaRef.current,
-      }));
-      return (
-        <div data-testid="chat-input-bar-stub">
-          <textarea
-            ref={textareaRef}
-            aria-label="Compose"
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-          />
-          <button type="button" onClick={() => onSend(input)}>
-            Send
-          </button>
-        </div>
-      );
-    },
-  );
-  return { DesktopChatInputBar };
-});
 
 import { ComposePanel } from "./ComposePanel";
 
-function renderPanel() {
-  return render(
-    <ComposePanel
-      input=""
-      onInputChange={vi.fn()}
-      onSend={vi.fn()}
-      onStop={vi.fn()}
-      streamKey="test-stream"
-      agentId="agent-1"
-      defaultModel="aura-claude-sonnet-4-6"
-    />,
-  );
+function renderPanel(onSelectExample: (prompt: string) => void = vi.fn()) {
+  return render(<ComposePanel onSelectExample={onSelectExample} />);
 }
-
-beforeEach(() => {
-  mockSetSelectedMode.mockClear();
-  mockSelectedMode = "code";
-});
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("ComposePanel mode widgets", () => {
-  it("focuses the compose textarea after a mode-widget click", async () => {
+describe("ComposePanel example pills", () => {
+  it("forwards the example's representative prompt to the parent via onSelectExample", async () => {
     const user = userEvent.setup();
-    renderPanel();
-
-    const textarea = screen.getByLabelText("Compose");
-    expect(document.activeElement).not.toBe(textarea);
-
-    await user.click(
-      screen.getByRole("button", { name: /Plan a trip/i }),
-    );
-
-    expect(mockSetSelectedMode).toHaveBeenCalledWith(
-      "test-stream",
-      "plan",
-      "chat",
-      "agent-1",
-    );
-    expect(document.activeElement).toBe(textarea);
-  });
-
-  it("keeps the textarea focused when the widget is clicked while typing", async () => {
-    const user = userEvent.setup();
-    renderPanel();
-
-    const textarea = screen.getByLabelText("Compose");
-    textarea.focus();
-    expect(document.activeElement).toBe(textarea);
+    const onSelectExample = vi.fn();
+    renderPanel(onSelectExample);
 
     await user.click(
       screen.getByRole("button", { name: /Research a topic/i }),
     );
-    expect(document.activeElement).toBe(textarea);
+
+    expect(onSelectExample).toHaveBeenCalledTimes(1);
+    expect(onSelectExample.mock.calls[0][0]).toMatch(
+      /solid-state batteries/i,
+    );
+  });
+
+  it("renders all four canonical example pills", () => {
+    renderPanel();
+    const examples = screen.getByRole("group", { name: "Example prompts" });
+    expect(examples).toBeInTheDocument();
+    for (const label of [
+      /Code an app/i,
+      /Build a website/i,
+      /Plan a trip/i,
+      /Research a topic/i,
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
   });
 });

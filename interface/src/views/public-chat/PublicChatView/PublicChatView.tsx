@@ -1,34 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ImagePlus, X } from "lucide-react";
-import { DesktopChatInputBar } from "../../../features/chat-ui/ChatInputBar";
 import { ChatMessageList } from "../../../features/chat-ui/ChatMessageList";
 import { ChatStreamingIndicator } from "../../../features/chat-ui/ChatPanel/ChatStreamingIndicator";
 import { KeepChattingModal } from "../../../components/KeepChattingModal";
 import { ComposePanel } from "../ComposePanel";
+import {
+  PublicComposeInput,
+  type PublicComposeInputHandle,
+} from "../PublicComposeInput";
 import { usePublicChatStore } from "../../../stores/public-chat-store";
-import { useChatUI } from "../../../stores/chat-ui-store";
 import { usePublicChat } from "../use-public-chat";
 import styles from "./PublicChatView.module.css";
 
 /**
  * Right-side chat surface for the public (logged-out) shell. Mounts
- * the promoted `features/chat-ui/ChatInputBar` (so logged-out and
- * authenticated visitors see an identical compose experience) and
- * `features/chat-ui/ChatMessageList`. Everything stateful is
- * delegated to `usePublicChat`; this file is the presentational shell.
+ * the dedicated `PublicComposeInput` (a stripped-down pill-shaped
+ * compose input) and the shared `ChatMessageList`. Everything stateful
+ * is delegated to `usePublicChat`; this file is the presentational
+ * shell.
  *
- * Empty-state UX: instead of a passive heading + bottom input bar,
- * the empty transcript renders a centered `ComposePanel` inline in
- * the main panel (heading + input bar + mode-pill widgets). Once the
- * first message lands, the view flips to the standard inline-
- * transcript layout with the input bar anchored at the bottom.
+ * Empty-state UX: the `PublicComposeInput` is mounted in the
+ * bottom-anchored `.inputBarSlot` in BOTH empty and populated
+ * states, so the rounded input pill never moves vertically when the
+ * visitor sends their first message. The empty-state `ComposePanel`
+ * mounts the windowed `MockAuraApp` hero (which carries its own
+ * wallpaper video, scripted DM windows, and the example-prompt
+ * pills inside the mock app's `inputDock` slot) above that fixed
+ * input bar. Once the first message lands the view swaps the
+ * empty-state hero for the transcript and leaves the input bar
+ * exactly where it was.
  *
- * Phase 4 product rule: this component (and the `AgentDemoBanner` /
- * `ComposePanel` / `LoginOverlay` it transitively mounts) is the
- * **public-only** chat surface. It is NOT reachable from any authed
- * render path — the `ChatRouteSwitch` in `App.tsx` only mounts it
- * when `effectiveMode === "public"`.
+ * Phase 5 (this file's split from the legacy authenticated input):
+ * the public input is now a separate, much simpler component than
+ * the authenticated `DesktopChatInputBar`. The public dispatch path
+ * does not consume mode pickers, model pickers, slash commands,
+ * project chips, or attachments today, so dragging that chrome onto
+ * the logged-out surface only added visual weight. The stripped
+ * input here owns just `+`, textarea, and send/stop affordances.
  */
 export function PublicChatView(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,100 +56,24 @@ export function PublicChatView(): React.ReactElement {
 
   const controller = usePublicChat(sessionId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputBarRef = useRef<PublicComposeInputHandle>(null);
 
-  const streamKey = controller.streamKey;
-  const selectedMode = useChatUI(streamKey).selectedMode;
-  const is3dMode = selectedMode === "3d";
-
-  const handleImagePick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        controller.setSourceImage(reader.result as string);
-        if (!controller.input.trim()) {
-          controller.setInput("Generate 3D model");
-        }
-      };
-      reader.readAsDataURL(file);
-      e.target.value = "";
+  const handleSelectExample = useCallback(
+    (prompt: string) => {
+      controller.setInput(prompt);
+      inputBarRef.current?.focus();
     },
-    [controller.input, controller.setInput, controller.setSourceImage],
+    [controller.setInput],
   );
 
   const isEmpty = controller.messages.length === 0;
 
-  const imageAttachBar = is3dMode && !controller.shouldShowGate ? (
-    <div className={styles.imageAttachBar}>
-      {controller.sourceImage ? (
-        <div className={styles.imageAttachPreview}>
-          <img
-            src={controller.sourceImage}
-            alt="Source for 3D"
-            className={styles.imageAttachThumb}
-          />
-          <button
-            type="button"
-            className={styles.imageAttachRemove}
-            onClick={() => controller.setSourceImage(null)}
-            aria-label="Remove image"
-          >
-            <X size={12} />
-          </button>
-          <span className={styles.imageAttachLabel}>Source image attached</span>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className={styles.imageAttachButton}
-          onClick={handleImagePick}
-        >
-          <ImagePlus size={14} />
-          <span>Attach source image for 3D</span>
-        </button>
-      )}
-    </div>
-  ) : null;
-
   return (
     <div className={styles.chatView}>
-      {/*
-        Decorative AURA visual loop pinned to the center of the
-        chat panel as ambient atmosphere. Lives at z-index 0 with
-        `pointer-events: none` so it cannot intercept clicks or
-        steal accessibility focus from the chat content above; the
-        scroller and input slot both bump to z-index 1 in CSS.
-        `aria-hidden` keeps assistive tech out of the loop.
-      */}
-      <video
-        className={styles.chatBackgroundVideo}
-        src="/AURA_visual_loop.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        aria-hidden="true"
-      />
       <div className={styles.chatScroller} ref={scrollRef}>
         {isEmpty ? (
           <div className={styles.chatEmpty}>
-            <ComposePanel
-              input={controller.input}
-              onInputChange={controller.setInput}
-              onSend={(content) => {
-                void controller.handleSend(content);
-              }}
-              onStop={controller.handleStop}
-              streamKey={controller.streamKey}
-              agentId={controller.agentId}
-              defaultModel={controller.defaultModel}
-            />
+            <ComposePanel onSelectExample={handleSelectExample} />
           </div>
         ) : (
           <ChatMessageList
@@ -157,36 +89,31 @@ export function PublicChatView(): React.ReactElement {
           onStop={controller.handleStop}
         />
       )}
-      {imageAttachBar}
-      {!isEmpty && (
-        <div
-          className={`${styles.inputBarSlot} ${
-            controller.shouldShowGate ? styles.inputBarSlotLocked : ""
-          }`}
-          aria-disabled={controller.shouldShowGate ? "true" : undefined}
-        >
-          <DesktopChatInputBar
-            input={controller.input}
-            onInputChange={controller.setInput}
-            onSend={(content) => {
-              void controller.handleSend(content);
-            }}
-            onStop={controller.handleStop}
-            streamKey={controller.streamKey}
-            agentId={controller.agentId}
-            defaultModel={controller.defaultModel}
-          />
-        </div>
-      )}
-      {/* Hidden file input for 3D source image */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        style={{ display: "none" }}
-        aria-hidden="true"
-      />
+      {/*
+        The compose input lives in the floating `.inputBarSlot` in
+        both empty and populated states so the rounded input pill
+        stays pinned to the bottom of the screen at the same
+        position regardless of whether the visitor has sent a
+        message yet.
+      */}
+      <div
+        className={`${styles.inputBarSlot} ${
+          controller.shouldShowGate ? styles.inputBarSlotLocked : ""
+        }`}
+        aria-disabled={controller.shouldShowGate ? "true" : undefined}
+      >
+        <PublicComposeInput
+          ref={inputBarRef}
+          input={controller.input}
+          onInputChange={controller.setInput}
+          onSend={(content) => {
+            void controller.handleSend(content);
+          }}
+          onStop={controller.handleStop}
+          isStreaming={controller.isStreaming}
+          disabled={controller.shouldShowGate}
+        />
+      </div>
       {controller.shouldShowGate && <KeepChattingModal />}
     </div>
   );
