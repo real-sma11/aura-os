@@ -37,6 +37,20 @@
   flex-direction: column;
 }
 
+/*
+ * In the empty state the chatScroller's asymmetric padding
+ * (24px top / 140px bottom — the bottom reserves space below
+ * scrolled transcripts so the latest message clears the floating
+ * input bar) would shift the centered mock app ~58px above the
+ * scroller's geometric midpoint. There's no scrolled transcript to
+ * protect when the hero is mounted, so neutralize the bottom
+ * reservation to a symmetric 24px and let the mock app land on the
+ * panel's true visual centre.
+ */
+.chatScroller:has(> .chatEmpty) {
+  padding-bottom: 24px;
+}
+
 /* When the transcript is empty the scroller hosts the `ComposePanel`
    hero (which mounts `MockAuraApp` — a flat 16:10 wallpaper
    rectangle with the AURA visual loop as wallpaper and MSN/ICQ-style
@@ -44,10 +58,7 @@
    inside the empty area via its own 16:10 aspect-ratio rule; the
    chat input bar is rendered separately by `PublicChatView` in the
    bottom-anchored `.inputBarSlot` regardless of empty/populated
-   state, so the rounded input box never moves on first send. The
-   scroller's 140px bottom padding already reserves the input bar's
-   vertical footprint, so the mock app sits flush above that
-   reservation with no extra `.chatEmpty` padding needed. */
+   state, so the rounded input box never moves on first send. */
 .chatEmpty {
   flex: 1;
   display: grid;

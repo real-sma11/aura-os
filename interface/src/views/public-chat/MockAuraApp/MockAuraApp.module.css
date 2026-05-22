@@ -10,22 +10,22 @@
  */
 
 /*
- * The wallpaper rectangle is sized to ~60% of the empty-state panel in
+ * The wallpaper rectangle is sized to ~75% of the empty-state panel in
  * both dimensions, centered by the parent `.composePanel`'s grid (see
- * `ComposePanel.module.css`). The `min(60cqw, 60cqh * 16 / 10)` clamp
+ * `ComposePanel.module.css`). The `min(75cqw, 75cqh * 16 / 10)` clamp
  * picks whichever axis is the binding constraint so the 16:10 frame
- * always fits inside both 60% width AND 60% height — leaving a healthy
+ * always fits inside both 75% width AND 75% height — leaving a healthy
  * gutter of the page background visible on every side regardless of
- * the panel's aspect ratio. `60cqw`/`60cqh` resolve against the
+ * the panel's aspect ratio. `75cqw`/`75cqh` resolve against the
  * `.composePanel` query container so the sidebar / input-bar area
  * never bleed into the percentage.
  */
 .appFrame {
   position: relative;
   aspect-ratio: 16 / 10;
-  width: min(60cqw, calc(60cqh * 16 / 10));
-  max-width: 60cqw;
-  max-height: 60cqh;
+  width: min(75cqw, calc(75cqh * 16 / 10));
+  max-width: 75cqw;
+  max-height: 75cqh;
   background: #0b0c10;
   box-shadow:
     0 30px 60px -20px rgba(0, 0, 0, 0.55),
