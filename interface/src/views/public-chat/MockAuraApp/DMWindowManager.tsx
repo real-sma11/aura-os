@@ -12,8 +12,32 @@ import {
   type DemoFrame,
   type ThreadId,
 } from "../agent-demo-script";
-import { DMWindow, type DMWindowFrame } from "./DMWindow";
+import {
+  DMWindow,
+  WINDOW_CLOSE_MS,
+  type DMWindowFrame,
+} from "./DMWindow";
 import styles from "./DMWindowManager.module.css";
+
+/**
+ * Stagger between successive window closes, in ms. Together with
+ * `WINDOW_CLOSE_MS` this drives the cascade tear-down at the end of
+ * the script loop: windows are sorted in descending z-order and
+ * each one's `animation-delay` is `index * WINDOW_CLOSE_STAGGER_MS`,
+ * so the most-recently focused window collapses first and the
+ * cascade unwinds in reverse focus order. The total close phase
+ * lasts `WINDOW_CLOSE_MS + (windowCount - 1) * STAGGER`.
+ */
+const WINDOW_CLOSE_STAGGER_MS = 120;
+
+/**
+ * Wall-clock the script holds at its final frame before triggering
+ * the close animation. Preserves the prior "2400ms dwell at the
+ * end of the loop" behaviour so visitors who linger see the final
+ * Reviewer / Architect exchange resolved before the cascade tears
+ * down and the loop restarts.
+ */
+const END_DWELL_MS = 2400;
 
 /**
  * Walks `SCRIPT` on a `setTimeout` chain, the same way the previous
@@ -50,20 +74,40 @@ interface ThreadWindowState {
   readonly lastTouchedAt: number;
 }
 
+/**
+ * Lifecycle phases for the manager.
+ *
+ *   - `running`: the script is mid-loop. `advance` ticks add frames
+ *     to existing windows or mount new ones.
+ *   - `closing`: the script reached its final frame, `END_DWELL_MS`
+ *     of dwell has elapsed, and every window is now playing its
+ *     `dmWindowCollapse` animation. New `advance` actions are
+ *     ignored. After the longest close (`WINDOW_CLOSE_MS +
+ *     (windows.length - 1) * STAGGER`) the manager dispatches
+ *     `reset`, the loop restarts, and the phase flips back to
+ *     `running`.
+ */
+type ManagerPhase = "running" | "closing";
+
 type ManagerState = {
   readonly windows: ReadonlyArray<ThreadWindowState>;
   readonly cursor: number;
   readonly nextKey: number;
   readonly tick: number;
+  readonly phase: ManagerPhase;
 };
 
-type ManagerAction = { type: "advance" } | { type: "reset" };
+type ManagerAction =
+  | { type: "advance" }
+  | { type: "beginClose" }
+  | { type: "reset" };
 
 const INITIAL_STATE: ManagerState = {
   windows: [],
   cursor: 0,
   nextKey: 0,
   tick: 0,
+  phase: "running",
 };
 
 function managerReducer(
@@ -72,7 +116,13 @@ function managerReducer(
 ): ManagerState {
   switch (action.type) {
     case "advance": {
-      if (state.cursor >= SCRIPT.length) {
+      // Ignore advances after the script ended or while the close
+      // animation is in flight — the dwell + close timers in the
+      // effect below own the lifecycle from `closing` onward and
+      // anything that fired in flight (e.g. a stale `setTimeout`
+      // racing with the unmount) would otherwise mutate the
+      // collapsing cascade.
+      if (state.cursor >= SCRIPT.length || state.phase !== "running") {
         return state;
       }
       const frame = SCRIPT[state.cursor];
@@ -104,11 +154,18 @@ function managerReducer(
             );
 
       return {
+        ...state,
         windows: nextWindows,
         cursor: state.cursor + 1,
         nextKey: state.nextKey + 1,
         tick,
       };
+    }
+    case "beginClose": {
+      // Idempotent: a `beginClose` while already closing is a no-op
+      // so cleanup tears down safely if a stray timer fires twice.
+      if (state.phase === "closing") return state;
+      return { ...state, phase: "closing" };
     }
     case "reset":
       return {
@@ -116,6 +173,7 @@ function managerReducer(
         cursor: 0,
         nextKey: state.nextKey + 1,
         tick: 0,
+        phase: "running",
       };
   }
 }
@@ -176,11 +234,43 @@ export function DMWindowManager(): ReactNode {
   const [state, dispatch] = useReducer(managerReducer, INITIAL_STATE);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The lifecycle effect now drives a three-step chain rather than
+  // the old two-step (advance → reset). When the script ends:
+  //   1. While `phase === "running"` and `cursor >= SCRIPT.length`,
+  //      hold for `END_DWELL_MS` so the final frame lingers, then
+  //      dispatch `beginClose`.
+  //   2. While `phase === "closing"`, wait for the longest
+  //      per-window close animation (`WINDOW_CLOSE_MS + (n - 1) *
+  //      STAGGER`) to finish, then dispatch `reset` — the cascade
+  //      tears down in reverse z-order via the inline animation-
+  //      delay on each window and the loop restarts cleanly.
+  // Until `cursor >= SCRIPT.length` the effect still schedules the
+  // next `advance` after the prior frame's dwell, just like before.
+  // The window count `state.windows.length` is read inside the
+  // effect (NOT as a dep) because by the time we land in the
+  // closing branch the manager has already settled on its final
+  // window set, so re-running this effect on every per-window
+  // append would add no value.
   useEffect(() => {
-    if (state.cursor >= SCRIPT.length) {
+    if (state.phase === "closing") {
+      const totalClose =
+        WINDOW_CLOSE_MS +
+        Math.max(0, state.windows.length - 1) * WINDOW_CLOSE_STAGGER_MS;
       timerRef.current = setTimeout(() => {
         dispatch({ type: "reset" });
-      }, 2400);
+      }, totalClose);
+      return () => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+    }
+
+    if (state.cursor >= SCRIPT.length) {
+      timerRef.current = setTimeout(() => {
+        dispatch({ type: "beginClose" });
+      }, END_DWELL_MS);
       return () => {
         if (timerRef.current) {
           clearTimeout(timerRef.current);
@@ -203,7 +293,7 @@ export function DMWindowManager(): ReactNode {
         timerRef.current = null;
       }
     };
-  }, [state.cursor]);
+  }, [state.cursor, state.phase, state.windows.length]);
 
   // Stable callback the child windows use to nudge their thread to
   // the top of the z-index stack. Currently the manager only bumps
@@ -248,6 +338,27 @@ export function DMWindowManager(): ReactNode {
     return best.threadId;
   }, [state.windows]);
 
+  // Per-thread close stagger. Only computed once the manager flips
+  // to `closing`. Sort threads by descending z-index so the
+  // most-recently-focused window (top of the cascade) closes first
+  // and the bottom-most window closes last — feels like a tidy
+  // tear-down of the stack rather than every window snapping shut
+  // in sync. We assign delays in this order so each window's
+  // `animation-delay` becomes `index * STAGGER`.
+  const closeDelayByThread = useMemo<ReadonlyMap<ThreadId, number>>(() => {
+    if (state.phase !== "closing") return new Map();
+    const sortedByZDesc = [...state.windows].sort(
+      (a, b) => b.lastTouchedAt - a.lastTouchedAt,
+    );
+    const map = new Map<ThreadId, number>();
+    sortedByZDesc.forEach((w, i) => {
+      map.set(w.threadId, i * WINDOW_CLOSE_STAGGER_MS);
+    });
+    return map;
+  }, [state.phase, state.windows]);
+
+  const isClosing = state.phase === "closing";
+
   return (
     <div
       className={styles.windowManager}
@@ -271,6 +382,8 @@ export function DMWindowManager(): ReactNode {
             position={position}
             isFocused={win.threadId === focusedThreadId}
             onFocus={focusThread}
+            isClosing={isClosing}
+            closeDelayMs={closeDelayByThread.get(win.threadId) ?? 0}
           />
         );
       })}
