@@ -3,56 +3,72 @@
    be lifted into other surfaces without dragging the parent shell's
    CSS module along.
 
-   Bounce timing notes:
-     - 800ms total period — chosen against the script's longest
-       typing beat (1500ms): one full cycle plus a clear partial
-       second cycle is visible before the row swaps to its resolved
-       content, so the bouncing actually reads as continuous motion
-       rather than a half-flash. Faster than the previous 1100ms
-       value, which under the shorter pre-rolls completed less than
-       one cycle and looked frozen.
-     - 140ms stagger between dots — gives a left-to-right wave with
-       all three dots in motion at any given moment (no dot is ever
-       sitting still while its neighbours bounce).
-     - 5px vertical lift on 6px dots — close to a full-radius lift
-       so each dot visibly leaves its rest line, which the previous
-       4px-on-5px combination was too subtle to convey on dark bg.
-     - Symmetric 0/50/100% keyframes — no plateau at rest, so the
-       motion is continuous up-down-up-down without a "sitting
-       still" beat that obscured the animation in v1. */
+   Animation design — iMessage-style wave:
+     - 1200ms cycle with a 400ms stagger between dots (= 1/3 of the
+       cycle). That spacing makes the peaks land at a steady 400ms
+       cadence — dot1 peaks, then dot2, then dot3, then dot1 again
+       with no visible gap — so the motion reads as a single wave
+       travelling left -> right instead of three dots randomly
+       wobbling on their own clocks.
+     - Vertical lift of 8px on a 7px dot (>1× the dot's radius) so
+       each dot clearly leaves its rest line. The earlier 5px-on-6px
+       value was too subtle against the dark elevated bg of the demo
+       banner and read as "no animation" — which is the user-reported
+       gap.
+     - Combined scale (0.85 at rest -> 1.15 at peak) sharpens the
+       up-down motion: each dot visibly grows as it lifts and shrinks
+       as it settles, giving the wave a "popping" feel like iMessage.
+     - `filter: brightness/saturate` on the dot rides the same
+       keyframe — the dot at rest is dimmer + desaturated (so it
+       almost fades into the bubble surface), while the dot at peak
+       is brighter + more saturated than its base agent color. The
+       result is a color wave: the agent's accent hue visibly flows
+       through the three circles in sync with the bounce, rather
+       than three statically-coloured dots that happen to translate.
+     - `0/70/100%` keyframe split keeps each dot at its rest pose
+       for the back 30% of the cycle, which gives the wave a
+       breathing pulse rather than a continuous swarm — the peak is
+       sharp (35% of the cycle) and the trough is wide, matching the
+       feel of native iOS typing dots. */
 .typingDots {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .typingDot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   opacity: 0.3;
+  transform: translateY(0) scale(0.85);
+  filter: brightness(0.85) saturate(0.75);
   /* `background` is set inline per-agent in the consumer. */
-  animation: typingDotBounce 800ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: typingDotBounce 1200ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform, opacity, filter;
 }
 
 .typingDot:nth-child(2) {
-  animation-delay: 140ms;
+  animation-delay: 400ms;
 }
 
 .typingDot:nth-child(3) {
-  animation-delay: 280ms;
+  animation-delay: 800ms;
 }
 
 @keyframes typingDotBounce {
   0%,
+  70%,
   100% {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.85);
     opacity: 0.3;
+    filter: brightness(0.85) saturate(0.75);
   }
-  50% {
-    transform: translateY(-5px);
+  35% {
+    transform: translateY(-8px) scale(1.15);
     opacity: 1;
+    filter: brightness(1.25) saturate(1.2);
   }
 }
 
@@ -60,5 +76,7 @@
   .typingDot {
     animation: none;
     opacity: 0.7;
+    transform: none;
+    filter: none;
   }
 }

@@ -203,6 +203,64 @@
   padding: 11px 13px;
 }
 
+/* Message bubbles use a single persistent container that morphs
+   typing dots -> streamed text inside the *same* rounded box (see
+   `DemoFrameRow` in `AgentDemoBanner.tsx`). Pinning a min-height
+   that fits one line of message text keeps the bubble the same
+   physical size during the typing phase, so when the dots swap out
+   and the typewriter caret swaps in there is no jump-on-swap — the
+   bubble looks like it's been holding the agent's reply the whole
+   time. The min-height is `padding (top+bottom) + 1.45em line-box`
+   so single-line replies (the common case in `SCRIPT`) don't push
+   the bubble taller as text streams in; multi-line replies grow
+   naturally past the min-height. `padding` is transitioned for
+   parity with the row's open animation — the typing pose is 2px
+   taller padding (so the dots breathe), so the swap softly settles
+   into the message pose rather than snapping. */
+.demoMessageBubble {
+  min-height: calc(18px + 1.45em);
+  transition: padding 280ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoMessageBubble {
+    transition: none;
+  }
+}
+
+/* Inner slot that swaps between `<TypingIndicator />` and
+   `<TypewriterText />` inside the persistent message bubble. The
+   slot is keyed by phase in the consumer so React unmounts the old
+   slot and mounts a fresh one on the typing -> content swap; this
+   fade-in animation rides every mount so the dots disappear and
+   the typewriter caret + first chars softly fade in over ~220ms
+   inside the unchanged bubble, rather than popping in raw. Block
+   display lets the streamed text wrap naturally inside the bubble
+   when it eventually does; for the typing pose the parent bubble
+   becomes `inline-flex` (via `.demoTypingBubble`) so this block
+   slot is laid out as a flex item that simply wraps the dots. */
+.demoBubbleSlot {
+  display: block;
+  animation: demoBubbleSlotFadeIn 220ms ease-out both;
+}
+
+@keyframes demoBubbleSlotFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoBubbleSlot {
+    animation: none;
+  }
+}
+
 .demoToolCard {
   align-self: flex-start;
   max-width: 520px;

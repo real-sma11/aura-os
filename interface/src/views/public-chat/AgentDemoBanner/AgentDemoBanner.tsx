@@ -26,13 +26,25 @@ import styles from "./AgentDemoBanner.module.css";
  * `MAX_VISIBLE` so the banner never overflows its fixed height.
  *
  * Each frame is one row. When a frame declares `typingMs`, the row
- * first renders a `TypingIndicator` and then cross-fades the bubble
- * into the resolved content (message text or tool card) — typing
- * and message are NOT two separate stacked entries. Message bubbles
- * render their text through `TypewriterText`, which streams the
- * copy character-by-character with a trailing block caret so the
- * resolved bubble feels like a live LLM response being written
- * (rather than a wholesale "text appears" pop).
+ * first renders a `TypingIndicator` and then morphs in place into
+ * the resolved content — typing and message are NOT two separate
+ * stacked entries.
+ *
+ * For message frames the bubble container is mounted ONCE (animating
+ * open with the row's pop-in) and persists across the typing ->
+ * content swap; only the inner slot (dots vs typewriter) remounts,
+ * so the user sees "the same open bubble" continuing to hold the
+ * agent's reply rather than a fresh bubble appearing where the dots
+ * used to be. Message bubbles render their text through
+ * `TypewriterText`, which streams the copy character-by-character
+ * with a trailing block caret so the resolved bubble feels like a
+ * live LLM response being written (rather than a wholesale "text
+ * appears" pop).
+ *
+ * Tool frames keep the swap-shape behavior (small typing bubble ->
+ * wider tool card) because their visual shapes differ too much to
+ * share a single morphing container — the typing bubble exits and
+ * the tool card enters with its own pop-in.
  *
  * The whole banner is `aria-hidden`: it's atmosphere, not content.
  * The chat input below the banner remains the keyboard-reachable
@@ -181,19 +193,34 @@ function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
         >
           {agent.name}
         </span>
-        {phase === "typing" ? (
+        {frame.kind === "message" ? (
+          // Single bubble container that persists across the
+          // typing -> content swap. The bubble's pop-open animation
+          // runs once at mount (no `key` change), so it stays the
+          // *same open container* while the inner slot remounts to
+          // swap dots for the streaming typewriter — matching the
+          // user-reported "morph in place" feel rather than the
+          // earlier behavior of unmounting the typing bubble and
+          // mounting a fresh message bubble in its place.
+          <div
+            className={`${styles.demoBubble} ${styles.demoMessageBubble} ${
+              styles.demoBubblePhase
+            } ${phase === "typing" ? styles.demoTypingBubble : ""}`}
+          >
+            <span key={phase} className={styles.demoBubbleSlot}>
+              {phase === "typing" ? (
+                <TypingIndicator color={agent.color} />
+              ) : (
+                <TypewriterText text={frame.text} />
+              )}
+            </span>
+          </div>
+        ) : phase === "typing" ? (
           <div
             key="typing"
             className={`${styles.demoBubble} ${styles.demoTypingBubble} ${styles.demoBubblePhase}`}
           >
             <TypingIndicator color={agent.color} />
-          </div>
-        ) : frame.kind === "message" ? (
-          <div
-            key="content"
-            className={`${styles.demoBubble} ${styles.demoBubblePhase}`}
-          >
-            <TypewriterText text={frame.text} />
           </div>
         ) : (
           <div
