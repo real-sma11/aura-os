@@ -217,6 +217,13 @@
   gap: 8px;
   background: transparent;
   scrollbar-width: none;
+  /* When `DMWindow`'s auto-scroll `useEffect` sets `scrollTop =
+     scrollHeight` after a new frame lands, let the browser animate
+     the scroll instead of snapping. This replaces the deleted FLIP
+     helper's intent (smooth slide as new content is appended) with
+     a single, layout-independent CSS rule that never re-fires on
+     unrelated re-renders. */
+  scroll-behavior: smooth;
 }
 
 .dmBody::-webkit-scrollbar {

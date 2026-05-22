@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -91,13 +90,15 @@ export function DMWindow({
   onFocus,
 }: DMWindowProps): ReactNode {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const registerRow = useFlipRows(frames.map((f) => f.key));
 
   // Auto-scroll to the bottom whenever a new frame lands so the
   // most recent message is always visible inside the window. We
   // scroll the actual body container (not the page) and only run
   // when the frame count changes; React batches updates inside the
-  // reducer so this fires once per appended frame.
+  // reducer so this fires once per appended frame. The body uses
+  // `scroll-behavior: smooth` in CSS, so this `scrollTop` assignment
+  // glides the body up rather than snapping — which is the visual
+  // effect the old FLIP helper was trying (and failing) to provide.
   useEffect(() => {
     const node = bodyRef.current;
     if (!node) return;
@@ -165,7 +166,6 @@ export function DMWindow({
             key={key}
             frame={frame}
             participants={participants}
-            rowRef={registerRow(key)}
           />
         ))}
       </div>
@@ -193,13 +193,11 @@ function ParticipantDot({ agentId }: ParticipantDotProps): ReactNode {
 interface DMFrameRowProps {
   readonly frame: DemoFrame;
   readonly participants: readonly [AgentId, AgentId];
-  readonly rowRef?: (el: HTMLDivElement | null) => void;
 }
 
 function DMFrameRow({
   frame,
   participants,
-  rowRef,
 }: DMFrameRowProps): ReactNode {
   const agent = AGENTS[frame.agent];
   const isRightSide = frame.agent === participants[1];
@@ -223,7 +221,6 @@ function DMFrameRow({
       className={`${styles.dmRow} ${
         isRightSide ? styles.dmRowRight : styles.dmRowLeft
       }`}
-      ref={rowRef}
     >
       <span className={styles.dmRowSender} style={{ color: agent.color }}>
         {agent.name}
@@ -282,69 +279,40 @@ function DMFrameRow({
   );
 }
 
-/**
- * FLIP (First-Last-Invert-Play) row animator scoped to a single DM
- * window's body. Identical motion to the previous banner's helper:
- * when a new row is appended at the bottom of the body, every
- * existing row's position shifts up by `(newRowHeight + gap)`. This
- * hook captures each row's top via `useLayoutEffect`, applies an
- * inverse `translateY(<delta>)` synchronously, and on the next
- * animation frame transitions back to `transform: ''` so the
- * existing rows glide up smoothly alongside the new row's
- * `dmRowEnter` keyframe.
+/*
+ * Earlier revisions of this file shipped a `useFlipRows` (First-Last-
+ * Invert-Play) helper that captured each row's `getBoundingClientRect`
+ * on every render and applied a 480ms inverse-translate transition to
+ * any row whose position had changed. The intent was to smoothly slide
+ * existing rows up while a new row entered at the bottom — but in
+ * practice it false-positived on every script advance and re-animated
+ * already-settled rows, producing the visible "messages jump after a
+ * message loads" jitter:
  *
- * Lives next to `DMWindow` (rather than being shared with the old
- * banner) so each DM window measures its own body and the
- * positions map can drop refs as windows are torn down on script
- * reset without leaking entries from the previous run.
+ *   1. The deps array (`[visibleKeys]`) was a fresh `frames.map(f =>
+ *      f.key)` array reference on every render, so React's `Object.is`
+ *      deps comparison always saw it as changed and the FLIP effect
+ *      ran on every `DMWindow` re-render — not only when frames were
+ *      appended.
+ *   2. `DMWindowManager` rebuilds `state.windows` on every `advance`,
+ *      so every `DMWindow` (including ones not receiving the new
+ *      frame) re-rendered on every script step and re-measured.
+ *   3. `.dmWindow` carries a continuous `dmIdleDrift` 9s translateY
+ *      animation, so the parent transform had drifted by 1–3px between
+ *      renders — measurements taken via `getBoundingClientRect()` (a
+ *      viewport-relative read that includes ancestor transforms) saw
+ *      the rows in a new place even though the row's own layout was
+ *      unchanged.
+ *   4. The body auto-scroll-to-bottom lives in `useEffect`, which runs
+ *      AFTER the FLIP's `useLayoutEffect`. So FLIP captured pre-scroll
+ *      positions on render N, then on render N+1 measured POST the
+ *      previous render's scroll and computed a ~rowHeight delta — and
+ *      animated every existing row by that delta.
+ *
+ * The cleanest fix is to delete the helper. Rows are only ever
+ * appended at the bottom, so their document-layout positions don't
+ * actually shift when a new sibling lands; the only motion that should
+ * happen is the body's scroll-to-bottom, which we now let the browser
+ * animate via `scroll-behavior: smooth` on `.dmBody`. The new row
+ * still gets its `dmRowEnter` keyframe; existing rows just stay put.
  */
-function useFlipRows(
-  visibleKeys: ReadonlyArray<number>,
-): (key: number) => (el: HTMLDivElement | null) => void {
-  const positions = useRef<Map<number, number>>(new Map());
-  const refs = useRef<Map<number, HTMLDivElement>>(new Map());
-
-  useLayoutEffect(() => {
-    const next = new Map<number, number>();
-    refs.current.forEach((el, key) => {
-      next.set(key, el.getBoundingClientRect().top);
-    });
-
-    next.forEach((newTop, key) => {
-      const oldTop = positions.current.get(key);
-      if (oldTop === undefined || oldTop === newTop) {
-        return;
-      }
-      const el = refs.current.get(key);
-      if (!el) return;
-      const delta = oldTop - newTop;
-      el.style.animation = "none";
-      el.style.transition = "none";
-      el.style.transform = `translateY(${delta}px)`;
-      // Force a reflow so the inverse transform actually paints
-      // before we hand control back to the browser; without this
-      // the browser can coalesce the two style writes and the
-      // transition fires from `translateY(0)` -> `translateY(0)`
-      // with no visible motion.
-      void el.offsetHeight;
-      requestAnimationFrame(() => {
-        el.style.transition =
-          "transform 480ms cubic-bezier(0.165, 0.84, 0.44, 1)";
-        el.style.transform = "";
-      });
-    });
-
-    positions.current = next;
-    for (const key of Array.from(refs.current.keys())) {
-      if (!next.has(key)) refs.current.delete(key);
-    }
-  }, [visibleKeys]);
-
-  return useCallback(
-    (key: number) => (el: HTMLDivElement | null) => {
-      if (el) refs.current.set(key, el);
-      else refs.current.delete(key);
-    },
-    [],
-  );
-}
