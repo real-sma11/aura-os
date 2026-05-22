@@ -6,8 +6,8 @@
  * same radius / border / glass / shadow recipe, same titlebar
  * structure, same min-max-close control buttons. The only
  * differences are decorative — a body that hosts left/right-aligned
- * message bubbles + tool cards, and per-window pop / idle-drift
- * animations.
+ * message bubbles + tool cards, and a one-shot per-window pop
+ * animation on mount.
  *
  * Each window is absolutely positioned inside `DMWindowManager`
  * with its `top/left/right/bottom/width/maxHeight` driven by an
@@ -32,15 +32,49 @@
     0 2px 8px rgba(0, 0, 0, 0.2);
   overflow: hidden;
   contain: layout;
-  /* Two animations layered: `dmWindowPop` plays once on mount when
-     the window first appears, and `dmIdleDrift` runs continuously so
-     the window has a subtle floaty motion the rest of the time. The
-     pop animation uses `forwards` so its final pose lands on the
-     idle-drift baseline. */
-  animation:
-    dmWindowPop 420ms cubic-bezier(0.16, 1, 0.3, 1) both,
-    dmIdleDrift 9s ease-in-out 600ms infinite alternate;
-  transform-origin: 50% 0%;
+  /* One-shot expand animation on mount, then the window sits
+     pixel-stable. A previous revision layered a continuous
+     `dmIdleDrift 9s infinite alternate` keyframe on top of the
+     pop so the window had a subtle "floaty" motion - but that
+     keyframe was a 3px `translateY` and `infinite alternate`
+     meant every window (and every line of text inside it) glided
+     3px up/down forever. With four windows fanned across the
+     wallpaper on staggered start times, something was always
+     mid-drift, which read as "the text inside the mock windows
+     keeps shifting on an interval" jitter the hero shipped with.
+     Dropping the idle drift kills the periodic shift; the
+     one-shot `dmWindowExpand` (scale 0.4 -> 1 + small upward
+     translate, 500ms) still gives the window its entrance feel,
+     and once it lands the chrome is stationary so the streamed
+     text stays put.
+
+     Body rows are gated in `DMWindow.tsx` behind an `isOpen`
+     state that flips after `WINDOW_OPEN_MS` (= the expand
+     duration), so the chrome here animates against an empty
+     body and the first `DMFrameRow` only mounts after the
+     chrome settles. This stops the typewriter / typing-indicator
+     timers from ticking against a scaling container, which used
+     to chew through the first few hundred ms of the message
+     while the window was still settling into place. */
+  animation: dmWindowExpand 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 50% 50%;
+}
+
+/*
+ * Closing state - the manager flips `data-state="closing"` on
+ * every window once the script has reached the end and the
+ * cascade is tearing down. We replace the layered expand
+ * animation with a single `dmWindowCollapse` (the inverse of
+ * `dmWindowExpand`, ease-in so the window snaps shut rather
+ * than glides). Per-window `animation-delay` is supplied
+ * inline by `DMWindow.tsx` so the windows tear down in reverse
+ * z-order (most-recently focused first) with a small stagger
+ * between each. `forwards` keeps the collapsed pose pinned
+ * until the manager finally unmounts the window via the
+ * `reset` action.
+ */
+.dmWindow[data-state="closing"] {
+  animation: dmWindowCollapse 360ms cubic-bezier(0.4, 0, 0.84, 0) forwards;
 }
 
 /*
@@ -55,10 +89,10 @@
     0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-@keyframes dmWindowPop {
+@keyframes dmWindowExpand {
   0% {
     opacity: 0;
-    transform: translateY(-12px) scale(0.92);
+    transform: translateY(8px) scale(0.4);
   }
   60% {
     opacity: 1;
@@ -69,12 +103,14 @@
   }
 }
 
-@keyframes dmIdleDrift {
-  from {
-    transform: translateY(0);
+@keyframes dmWindowCollapse {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
-  to {
-    transform: translateY(3px);
+  100% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.4);
   }
 }
 
