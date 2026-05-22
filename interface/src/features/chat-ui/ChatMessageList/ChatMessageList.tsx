@@ -2,6 +2,7 @@ import {
   type ReactNode,
   type RefObject,
   useLayoutEffect,
+  useMemo,
   useRef,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -11,6 +12,8 @@ import type { DisplaySessionEvent } from "../../../shared/types/stream";
 
 import { useStreamStore } from "../../../hooks/stream/store";
 import { useImageScrollPin } from "../../../shared/hooks/use-image-scroll-pin";
+import { SessionGalleryContext } from "../../../components/Gallery";
+import { collectSessionImages } from "./collect-session-images";
 
 interface ChatMessageListProps {
   messages: DisplaySessionEvent[];
@@ -103,6 +106,14 @@ export function ChatMessageList({
     messages[messages.length - 1].role === "assistant"
       ? messages.slice(0, -1)
       : messages;
+  // Session-wide gallery list. Recomputed only when the visible
+  // message slice changes (not on every streaming token), then
+  // published via context so any image click inside a bubble can open
+  // the shared overlay with the full set + forward/back navigation.
+  const sessionGalleryImages = useMemo(
+    () => collectSessionImages(visibleMessages),
+    [visibleMessages],
+  );
   const prevStreamingRef = useRef(nowStreaming);
   const justFinalizedIdRef = useRef<string | null>(null);
 
@@ -204,44 +215,46 @@ export function ChatMessageList({
         </div>
       )}
       {visibleMessages.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: density === "mobile" ? 6 : 8,
-            flexShrink: 0,
-          }}
-        >
-          {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
-          {visibleMessages.map((msg) => (
-            <div
-              key={msg.clientId ?? msg.id}
-              data-message-id={msg.id}
-              style={{
-                display: "flex",
-                width: "100%",
-                // Let the browser skip layout/paint for off-screen
-                // bubbles. On cold open of an 80-event session this
-                // halves the first-paint cost because only the few
-                // bubbles in the viewport pay for full layout (the
-                // rest are reserved using `contain-intrinsic-size`
-                // and lazily rendered as the user scrolls). No effect
-                // for the trailing in-view bubbles, which are the
-                // ones the user actually looks at first.
-                contentVisibility: "auto",
-                containIntrinsicSize: "auto 240px",
-              }}
-            >
-              <MessageBubble
-                message={msg}
-                isStreaming={isStreaming && msg.id.startsWith("stream-")}
-                initialThinkingExpanded={msg.id === justFinalizedIdRef.current}
-                initialActivitiesExpanded={msg.id === justFinalizedIdRef.current}
-                streamKey={streamKey}
-              />
-            </div>
-          ))}
-        </div>
+        <SessionGalleryContext.Provider value={sessionGalleryImages}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: density === "mobile" ? 6 : 8,
+              flexShrink: 0,
+            }}
+          >
+            {/* eslint-disable-next-line react-hooks/refs -- reading justFinalizedIdRef.current here is part of the intentional render-phase pattern documented above the transition detection */}
+            {visibleMessages.map((msg) => (
+              <div
+                key={msg.clientId ?? msg.id}
+                data-message-id={msg.id}
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  // Let the browser skip layout/paint for off-screen
+                  // bubbles. On cold open of an 80-event session this
+                  // halves the first-paint cost because only the few
+                  // bubbles in the viewport pay for full layout (the
+                  // rest are reserved using `contain-intrinsic-size`
+                  // and lazily rendered as the user scrolls). No effect
+                  // for the trailing in-view bubbles, which are the
+                  // ones the user actually looks at first.
+                  contentVisibility: "auto",
+                  containIntrinsicSize: "auto 240px",
+                }}
+              >
+                <MessageBubble
+                  message={msg}
+                  isStreaming={isStreaming && msg.id.startsWith("stream-")}
+                  initialThinkingExpanded={msg.id === justFinalizedIdRef.current}
+                  initialActivitiesExpanded={msg.id === justFinalizedIdRef.current}
+                  streamKey={streamKey}
+                />
+              </div>
+            ))}
+          </div>
+        </SessionGalleryContext.Provider>
       )}
       {nowStreaming && (
         <div>

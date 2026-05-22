@@ -3,6 +3,24 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageBubble } from "./MessageBubble";
 import { useUIModalStore } from "../../../../stores/ui-modal-store";
+import {
+  GalleryProvider,
+  SessionGalleryContext,
+  type GalleryItem,
+} from "../../../../components/Gallery";
+
+const mockOpenGallery = vi.fn();
+
+vi.mock("../../../../components/Gallery/use-gallery", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    useGallery: () => ({
+      openGallery: mockOpenGallery,
+      closeGallery: vi.fn(),
+    }),
+  };
+});
 
 // Stub the icon library wholesale so MessageBubble (and its
 // transitive imports — `agent-store` -> `permissions.ts` pulls in
@@ -76,6 +94,7 @@ describe("MessageBubble", () => {
   afterEach(() => {
     useUIModalStore.setState({ buyCreditsOpen: false });
     clearAgentStore();
+    mockOpenGallery.mockReset();
   });
 
   it("renders the error message inline with the Buy credits button for insufficient credits errors", () => {
@@ -303,5 +322,90 @@ describe("MessageBubble", () => {
       />,
     );
     expect(screen.queryByText(/^from /)).not.toBeInTheDocument();
+  });
+
+  // ----------------------------------------------------------------
+  // Session-wide gallery navigation. Clicking any user-attached
+  // image must open the shared lightbox with EVERY image the
+  // transcript has published via `SessionGalleryContext`, not just
+  // the current message's images. The provider is mounted at the
+  // chat-list level so the click handler here only needs to read
+  // the context and forward the aggregated list to `openGallery`.
+  // ----------------------------------------------------------------
+
+  it("opens the gallery with the session-wide list when the context is populated", () => {
+    const sessionItems: GalleryItem[] = [
+      { id: "older-img", src: "https://cdn/older.png", alt: "older" },
+      { id: "msg-1-img-0", src: "https://cdn/now.png", alt: "now" },
+      { id: "newer-img", src: "https://cdn/newer.png", alt: "newer" },
+    ];
+    render(
+      <GalleryProvider>
+        <SessionGalleryContext.Provider value={sessionItems}>
+          <MessageBubble
+            message={{
+              id: "msg-1",
+              role: "user",
+              content: "",
+              contentBlocks: [
+                {
+                  type: "image",
+                  media_type: "image/png",
+                  data: "AAAA",
+                  source_url: "https://cdn/now.png",
+                },
+              ],
+            }}
+          />
+        </SessionGalleryContext.Provider>
+      </GalleryProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open image in gallery/i }));
+    expect(mockOpenGallery).toHaveBeenCalledTimes(1);
+    expect(mockOpenGallery).toHaveBeenCalledWith({
+      items: sessionItems,
+      initialId: "msg-1-img-0",
+    });
+  });
+
+  it("falls back to the per-message list when no session context is mounted", () => {
+    // Outside the chat transcript (isolated tests, standalone
+    // bubble previews) there is no `SessionGalleryContext`
+    // provider — the bubble must still open the lightbox with
+    // its own attached images so legacy callers keep working.
+    render(
+      <MessageBubble
+        message={{
+          id: "msg-2",
+          role: "user",
+          content: "",
+          contentBlocks: [
+            {
+              type: "image",
+              media_type: "image/png",
+              data: "AAAA",
+              source_url: "https://cdn/a.png",
+            },
+            {
+              type: "image",
+              media_type: "image/png",
+              data: "BBBB",
+              source_url: "https://cdn/b.png",
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /open image in gallery/i })[1]);
+    expect(mockOpenGallery).toHaveBeenCalledTimes(1);
+    const callArg = mockOpenGallery.mock.calls[0][0];
+    expect(callArg.initialId).toBe("msg-2-img-1");
+    expect(callArg.items).toHaveLength(2);
+    expect(callArg.items.map((i: GalleryItem) => i.src)).toEqual([
+      "https://cdn/a.png",
+      "https://cdn/b.png",
+    ]);
   });
 });

@@ -1,4 +1,5 @@
-import type { DisplaySessionEvent, ToolCallEntry } from "../../../shared/types/stream";
+import type { DisplaySessionEvent } from "../../../shared/types/stream";
+import { extractToolImage, type ToolImage } from "../../../shared/utils/extract-tool-image";
 
 /**
  * The minimal "source image" shape the chat 3D mode needs to dispatch
@@ -8,67 +9,7 @@ import type { DisplaySessionEvent, ToolCallEntry } from "../../../shared/types/s
  * so the same JSON payload feeds both the gallery render and the 3D
  * source thumb.
  */
-export interface LatestGeneratedImage {
-  /** Tool-call id; used as a stable React key for thumb re-renders. */
-  id: string;
-  imageUrl: string;
-  originalUrl?: string;
-  artifactId?: string;
-  prompt?: string;
-}
-
-function parseToolResult(result: string | null | undefined): Record<string, unknown> | null {
-  if (!result) return null;
-  try {
-    const parsed = JSON.parse(result);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function extractImage(entry: ToolCallEntry): LatestGeneratedImage | null {
-  if (entry.pending || entry.isError) return null;
-  const data = parseToolResult(entry.result);
-  if (!data) return null;
-  const payload =
-    data.payload && typeof data.payload === "object"
-      ? (data.payload as Record<string, unknown>)
-      : null;
-  const imageUrl = (
-    data.imageUrl ??
-    data.url ??
-    data.image_url ??
-    data.assetUrl ??
-    data.asset_url ??
-    payload?.imageUrl ??
-    payload?.url ??
-    payload?.image_url ??
-    payload?.assetUrl ??
-    payload?.asset_url
-  ) as string | undefined;
-  if (!imageUrl || typeof imageUrl !== "string") return null;
-  const originalUrl = (
-    data.originalUrl ??
-    data.original_url ??
-    payload?.originalUrl ??
-    payload?.original_url
-  ) as string | undefined;
-  const artifactId = (data.artifactId ?? payload?.artifactId) as string | undefined;
-  const prompt =
-    (data.prompt as string | undefined) ??
-    ((data as { meta?: { prompt?: string } } | null)?.meta?.prompt) ??
-    (entry.input?.prompt as string | undefined);
-  return {
-    id: entry.id,
-    imageUrl,
-    originalUrl: typeof originalUrl === "string" ? originalUrl : undefined,
-    artifactId: typeof artifactId === "string" ? artifactId : undefined,
-    prompt: typeof prompt === "string" ? prompt : undefined,
-  };
-}
+export type LatestGeneratedImage = ToolImage;
 
 /**
  * Walk a chat event list newest -> oldest looking for the most recent
@@ -95,7 +36,7 @@ export function findLatestGeneratedImage(
     for (let j = tools.length - 1; j >= 0; j -= 1) {
       const tool = tools[j];
       if (tool.name !== "generate_image") continue;
-      const image = extractImage(tool);
+      const image = extractToolImage(tool);
       if (image) return image;
     }
   }
