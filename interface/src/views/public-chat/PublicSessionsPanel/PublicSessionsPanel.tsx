@@ -1,37 +1,38 @@
 import { useCallback, useMemo } from "react";
 import { X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { usePublicChatStore } from "../../stores/public-chat-store";
-import { LoggedOutPanelFooter } from "./LoggedOutPanelFooter";
-import styles from "./LoggedOutShell.module.css";
+import { usePublicChatStore } from "../../../stores/public-chat-store";
+import { PublicSidebarFooter } from "../PublicSidebarFooter";
+import styles from "./PublicSessionsPanel.module.css";
 
-interface LoggedOutSessionsPanelProps {
+interface PublicSessionsPanelProps {
   /**
-   * Free-text filter applied to the rendered sessions. Owned by
-   * `LoggedOutShell` (the search input lives in the shared sidebar
-   * header above this panel) so the filter follows the same input
-   * the user types into.
+   * Free-text filter applied to the rendered sessions. Owned by the
+   * shared `AuraSidebar` header so the filter follows the same
+   * input the user types into.
    */
   searchQuery?: string;
 }
 
 /**
- * Left rail of the logged-out shell. Lists public sessions (read from
- * `usePublicChatStore`) and renders the marketing footer at the
- * bottom. Intentionally does NOT reuse `components/SessionsList` —
- * that component is shaped around server-fetched `AnnotatedSession`
- * rows (project info, summaries, date bucketing) and adapting it to
- * a purely client-side public store would force a bag of fake fields.
- * A lightweight row list is the right tool for ≤ N sessions here.
+ * Left rail body for the public (logged-out) chat shell. Lists
+ * public sessions (read from `usePublicChatStore`) and renders the
+ * marketing footer (`PublicSidebarFooter`) at the bottom.
  *
- * The "+" new-chat affordance and the inline "Chats" header used to
- * live here, but both moved up to `LoggedOutShell` so the shared
- * sidebar search row hosts the action and the search bar itself
- * stands in for the section title.
+ * Intentionally does NOT reuse `components/SessionsList` — that
+ * component is shaped around server-fetched `AnnotatedSession` rows
+ * (project info, summaries, date bucketing) and adapting it to a
+ * purely client-side public store would force a bag of fake fields.
+ * A lightweight row list is the right tool for the small N of
+ * public sessions.
+ *
+ * The "+" new-chat affordance and the search input live in the
+ * shared `AuraSidebar` header; this component owns only the row
+ * list + marketing footer.
  */
-export function LoggedOutSessionsPanel({
+export function PublicSessionsPanel({
   searchQuery = "",
-}: LoggedOutSessionsPanelProps) {
+}: PublicSessionsPanelProps): React.ReactElement {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const activeSessionId = searchParams.get("session");
@@ -70,7 +71,7 @@ export function LoggedOutSessionsPanel({
       // The deleted row was the active session, so the URL still
       // points at it. Hop to the most recent remaining session
       // (sessionOrder is newest-first) instead of falling back to
-      // `/`, which would otherwise re-trigger `LoggedOutChatView`'s
+      // `/`, which would otherwise re-trigger `PublicChatView`'s
       // auto-create-on-mount and immediately spawn a fresh "New chat"
       // row in place of the one the user just removed — making the
       // delete look like it failed. If nothing remains, hand off to
@@ -122,7 +123,7 @@ export function LoggedOutSessionsPanel({
           ))
         )}
       </div>
-      <LoggedOutPanelFooter />
+      <PublicSidebarFooter />
     </>
   );
 }

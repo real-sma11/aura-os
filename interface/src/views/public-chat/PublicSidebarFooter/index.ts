@@ -1,0 +1,1 @@
+export { PublicSidebarFooter } from "./PublicSidebarFooter";

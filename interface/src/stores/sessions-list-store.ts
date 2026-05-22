@@ -1,16 +1,19 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
-import { api } from "../api/client";
+import { api, ApiClientError } from "../api/client";
 import { sessionsApi } from "../shared/api/agents";
-// `useProjectsListStore` is loaded dynamically inside `loadUserSessions`
-// (the sole consumer in this file) to break a static circular dep that
-// would otherwise put `useAuthStore` in TDZ at boot:
+// `useProjectsListStore` and `useAgentStore` are both loaded
+// dynamically inside the loader bodies (the sole consumers in this
+// file) to break a static circular dep that would otherwise put
+// `useAuthStore` in TDZ at boot:
 //   auth-store -> event-store -> engine-event-handlers ->
 //   sessions-list-store -> projects-list-store -> useAuthStore.subscribe(...)
-// projects-list-store calls `useAuthStore.subscribe(...)` at module top
-// level, and any static import here would force its evaluation while
-// auth-store's own top-level `const useAuthStore = create(...)` is still
-// running, throwing "Cannot access 'useAuthStore' before initialization".
+//   (and the same chain through apps/agents/stores/agent-store)
+// Both projects-list-store and agent-store call
+// `useAuthStore.subscribe(...)` at module top level, and any static
+// import here would force their evaluation while auth-store's own
+// top-level `const useAuthStore = create(...)` is still running,
+// throwing "Cannot access 'useAuthStore' before initialization".
 import type { AnnotatedSession } from "../components/SessionsList";
 import type { Session } from "../shared/types";
 
@@ -401,6 +404,75 @@ function dropAppliedEntries(
 // previous load is still in flight.
 const surfaceRequestIds: Record<string, number> = {};
 
+/**
+ * Pre-migration-0015 cross-agent fan-out used as a fallback when
+ * `/api/me/sessions` 404s (aura-storage Render deploy hasn't picked
+ * up the new endpoint yet -- see the call site in
+ * [`loadUserSessions`] for the full story). Walks the user's agent
+ * list, fetches every agent's `listProjectBindings`, then fans
+ * `listSessions` per binding, mirroring the per-agent path
+ * [`loadAgentSessions`] takes. Each call is wrapped in `.catch`
+ * fail-open so one bad agent / binding can't poison the entire panel
+ * -- matches the server-side fallback's resilience guarantee in
+ * `list_project_sessions_legacy`.
+ *
+ * Returns rows already annotated with `_agentId`, `_agentInstanceId`,
+ * `_projectId`, `_projectName` so the caller's fast-path annotation
+ * step can be skipped. Project names come straight from the binding
+ * (`listProjectBindings` already carries `project_name`), which is
+ * strictly more accurate than the fast path's
+ * `useProjectsListStore`-cache lookup for projects that live outside
+ * the active org (e.g. the auto-Home project of a remote agent
+ * bound on creation).
+ *
+ * `useAgentStore` is loaded dynamically to keep the auth-store TDZ
+ * boundary intact -- see the import block at the top of this file.
+ */
+async function loadUserSessionsLegacy(): Promise<AnnotatedSession[]> {
+  const { useAgentStore } = await import("../apps/agents/stores/agent-store");
+  // Idempotent: `fetchAgents` short-circuits on a recent ready state
+  // and dedupes concurrent callers via its in-flight promise. We
+  // await unconditionally so the fan-out always sees a populated
+  // list on cold mount; the no-op branch is cheap.
+  await useAgentStore.getState().fetchAgents();
+  const agents = useAgentStore.getState().agents;
+  if (agents.length === 0) return [];
+
+  const perAgent = await Promise.all(
+    agents.map(async (agent): Promise<AnnotatedSession[]> => {
+      let bindings: AgentProjectBinding[];
+      try {
+        bindings = await api.agents.listProjectBindings(agent.agent_id);
+      } catch (err) {
+        console.warn(
+          "loadUserSessionsLegacy: listProjectBindings failed; skipping agent",
+          { agentId: agent.agent_id, err },
+        );
+        return [];
+      }
+      const perBinding = await Promise.all(
+        bindings.map((b) =>
+          api
+            .listSessions(b.project_id, b.project_agent_id)
+            .then((list) =>
+              list.map<AnnotatedSession>((s) => ({
+                ...s,
+                _projectName: b.project_name,
+                _projectId: b.project_id,
+                _agentInstanceId: b.project_agent_id,
+                _agentId: agent.agent_id,
+              })),
+            )
+            .catch(() => [] as AnnotatedSession[]),
+        ),
+      );
+      return perBinding.flat();
+    }),
+  );
+
+  return sortSessionsDesc(perAgent.flat());
+}
+
 export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
   sessionsBySurface: {},
   loadingBySurface: {},
@@ -550,36 +622,63 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
     }));
 
     try {
-      const list = await sessionsApi.listMySessions();
+      // Fast path: single indexed query into aura-storage's
+      // `idx_sessions_user_recent` partial index (migration 0015).
+      // Returns `null` instead of throwing on a 404 so the legacy
+      // fan-out can step in -- aura-storage's Render deploy can lag
+      // the aura-os-server deploy by a deploy cycle, during which
+      // `/api/me/sessions` 404s. This is the FE companion of the
+      // server-side fallback in `list_project_sessions` (commit
+      // fb9a45...); the chat-app left panel surface couldn't be
+      // fixed server-side because the server can't enumerate a
+      // user's agents without going through aura-network.
+      //
+      // ONLY a 404 trips the fallback; 5xx / network / other 4xx
+      // errors still bubble up so genuine outages keep surfacing as
+      // a console.error and don't silently mask themselves as an
+      // empty list.
+      const fastList = await sessionsApi.listMySessions().catch((err) => {
+        if (err instanceof ApiClientError && err.status === 404) {
+          return null;
+        }
+        throw err;
+      });
       if (surfaceRequestIds[surfaceKey] !== requestId) return;
 
-      // Resolve project names from the projects-list-store cache.
-      // The wire shape from `/api/me/sessions` deliberately omits
-      // `project_name` (aura-storage has no `projects` table -- the
-      // canonical name lives in aura-os, mirrored client-side in
-      // `useProjectsListStore.projects`). Reading the snapshot
-      // here is a one-shot lookup, not a subscription, so a later
-      // projects refresh won't auto-rename rows; the next
-      // `loadUserSessions` call (e.g. on `bumpVersion`) picks up
-      // the updated names. Dynamic import (vs. static at the top of
-      // this file) is load-bearing: see the comment on the import
-      // block at the top for the auth-store TDZ cycle it breaks.
-      const { useProjectsListStore } = await import("./projects-list-store");
-      const projectsById = new Map(
-        useProjectsListStore
-          .getState()
-          .projects.map((p) => [p.project_id, p.name]),
-      );
+      let annotated: AnnotatedSession[];
+      if (fastList !== null) {
+        // Resolve project names from the projects-list-store cache.
+        // The wire shape from `/api/me/sessions` deliberately omits
+        // `project_name` (aura-storage has no `projects` table -- the
+        // canonical name lives in aura-os, mirrored client-side in
+        // `useProjectsListStore.projects`). Reading the snapshot
+        // here is a one-shot lookup, not a subscription, so a later
+        // projects refresh won't auto-rename rows; the next
+        // `loadUserSessions` call (e.g. on `bumpVersion`) picks up
+        // the updated names. Dynamic import (vs. static at the top of
+        // this file) is load-bearing: see the comment on the import
+        // block at the top for the auth-store TDZ cycle it breaks.
+        const { useProjectsListStore } = await import("./projects-list-store");
+        const projectsById = new Map(
+          useProjectsListStore
+            .getState()
+            .projects.map((p) => [p.project_id, p.name]),
+        );
 
-      const annotated = sortSessionsDesc(
-        list.map<AnnotatedSession>((s) => ({
-          ...s,
-          _projectName: projectsById.get(s.project_id) ?? "",
-          _projectId: s.project_id,
-          _agentInstanceId: s.agent_instance_id,
-          _agentId: s.agent_id,
-        })),
-      );
+        annotated = sortSessionsDesc(
+          fastList.map<AnnotatedSession>((s) => ({
+            ...s,
+            _projectName: projectsById.get(s.project_id) ?? "",
+            _projectId: s.project_id,
+            _agentInstanceId: s.agent_instance_id,
+            _agentId: s.agent_id,
+          })),
+        );
+      } else {
+        annotated = await loadUserSessionsLegacy();
+        if (surfaceRequestIds[surfaceKey] !== requestId) return;
+      }
+
       set((state) => {
         const withCachedTitles = applyPendingSummariesToList(
           annotated,

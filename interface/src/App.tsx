@@ -4,9 +4,10 @@ import { useAuthStore } from "./stores/auth-store";
 import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
+import { ChatRedirectGuard } from "./components/ChatRedirectGuard";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
-import { LoggedOutChatView } from "./views/LoggedOutShell";
+import { PublicChatView } from "./views/public-chat/PublicChatView";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
@@ -45,6 +46,15 @@ if (initiallyLoggedIn) {
 }
 
 function LastAppRedirect(): React.ReactElement {
+  const effectiveMode = useEffectiveMode();
+  // Phase 4 `p4_simple_pin_chat`: in Simple mode the only valid
+  // landing surface is `/chat` — short-circuit before consulting the
+  // last-visited app so a logged-out -> Simple sign-in lands on the
+  // chat surface even if the user previously persisted a different
+  // app id (e.g. `notes`).
+  if (effectiveMode === "simple") {
+    return <Navigate to="/chat" replace />;
+  }
   const lastAppId = getLastApp();
   return <Navigate to={getInitialShellPath(lastAppId, null)} replace />;
 }
@@ -89,7 +99,7 @@ function ShellOutletSuspense(): React.ReactElement {
 function ChatRouteSwitch(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
   if (effectiveMode === "public") {
-    return <LoggedOutChatView />;
+    return <PublicChatView />;
   }
   return <ChatAppRoute />;
 }
@@ -97,12 +107,14 @@ function ChatRouteSwitch(): React.ReactElement {
 /**
  * Phase 3 landing (`/`) route element. Public users see the public
  * chat surface (matching the previous `LoggedOutChatView` route);
- * authenticated users are redirected into their last-visited app.
+ * authenticated users are redirected into their last-visited app
+ * (or `/chat` when pinned to Simple mode — see `LastAppRedirect`
+ * for the simple-mode short-circuit).
  */
 function LandingRoute(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
   if (effectiveMode === "public") {
-    return <LoggedOutChatView />;
+    return <PublicChatView />;
   }
   return <LastAppRedirect />;
 }
@@ -302,22 +314,39 @@ function AppRoutes(): React.ReactElement {
         <Route element={<ShellOutletSuspense />}>
           <Route index element={<LandingRoute />} />
           <Route path="chat" element={<ChatRouteSwitch />} />
-          <Route path="login" element={<LoggedOutChatView />} />
+          <Route path="login" element={<PublicChatView />} />
           <Route element={<RequireAuth />}>
-            {renderRoutes(shellAppRoutes)}
-            <Route
-              path="invite/:token"
-              element={
-                <Suspense fallback={<RouteFallback />}>
-                  <InviteAcceptView />
-                </Suspense>
-              }
-            />
+            <Route element={<SimpleModeChatRedirectLayout />}>
+              {renderRoutes(shellAppRoutes)}
+              <Route
+                path="invite/:token"
+                element={
+                  <Suspense fallback={<RouteFallback />}>
+                    <InviteAcceptView />
+                  </Suspense>
+                }
+              />
+            </Route>
           </Route>
           <Route path="*" element={<UnknownRouteRedirect />} />
         </Route>
       </Route>
     </Routes>
+  );
+}
+
+/**
+ * Phase 4 layout route that wraps every authed leaf route except
+ * `/chat` with the simple-mode redirect guard. Wrapping at the
+ * layout layer (rather than per-route) keeps the route table small
+ * and ensures every new app route inherits the pin without a
+ * per-app code change.
+ */
+function SimpleModeChatRedirectLayout(): React.ReactElement {
+  return (
+    <ChatRedirectGuard>
+      <Outlet />
+    </ChatRedirectGuard>
   );
 }
 

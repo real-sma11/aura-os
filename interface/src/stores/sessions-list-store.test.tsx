@@ -11,6 +11,7 @@ import {
   useAgentBindingsKey,
   useAgentBindingsLoadStatus,
   useMostRecentSession,
+  USER_SESSIONS_SURFACE_KEY,
   useSessionsForSurface,
   useSessionsListStore,
 } from "./sessions-list-store";
@@ -19,15 +20,58 @@ import { useProjectsListStore } from "./projects-list-store";
 const listProjectSessions = vi.fn();
 const listSessions = vi.fn();
 const listProjectBindings = vi.fn();
+const listMySessions = vi.fn();
+const fetchAgents = vi.fn();
+// Module-level so the `useAgentStore` mock can read the latest value
+// each time the loader's lazy import hits `.getState().agents`.
+let mockAgentsState: Array<{ agent_id: string }> = [];
 
-vi.mock("../api/client", () => ({
-  api: {
-    listProjectSessions: (...args: unknown[]) => listProjectSessions(...args),
-    listSessions: (...args: unknown[]) => listSessions(...args),
-    agents: {
-      listProjectBindings: (...args: unknown[]) =>
-        listProjectBindings(...args),
+// `ApiClientError` (class) must round-trip through the real module so
+// `instanceof ApiClientError` checks inside `loadUserSessions` match
+// the instances the tests throw. `vi.importActual` preserves the
+// real class while letting us swap out `api` for spy functions.
+vi.mock("../api/client", async () => {
+  const actual =
+    await vi.importActual<typeof import("../api/client")>("../api/client");
+  return {
+    ...actual,
+    api: {
+      listProjectSessions: (...args: unknown[]) => listProjectSessions(...args),
+      listSessions: (...args: unknown[]) => listSessions(...args),
+      agents: {
+        listProjectBindings: (...args: unknown[]) =>
+          listProjectBindings(...args),
+      },
     },
+  };
+});
+
+vi.mock("../shared/api/agents", async () => {
+  const actual =
+    await vi.importActual<typeof import("../shared/api/agents")>(
+      "../shared/api/agents",
+    );
+  return {
+    ...actual,
+    sessionsApi: {
+      ...actual.sessionsApi,
+      listMySessions: (...args: unknown[]) => listMySessions(...args),
+    },
+  };
+});
+
+// `useAgentStore` is dynamically imported by the legacy fan-out path
+// in `loadUserSessions`. The fan-out only needs `getState().agents`
+// and `getState().fetchAgents()` so we stub a minimal Zustand-shaped
+// `getState`. Static-importing the real store here would pull
+// `useAuthStore` onto the boot path and re-introduce the TDZ cycle
+// the dynamic import is there to avoid.
+vi.mock("../apps/agents/stores/agent-store", () => ({
+  useAgentStore: {
+    getState: () => ({
+      agents: mockAgentsState,
+      fetchAgents: (...args: unknown[]) => fetchAgents(...args),
+    }),
   },
 }));
 
@@ -68,6 +112,10 @@ describe("sessions-list-store", () => {
     listProjectSessions.mockReset();
     listSessions.mockReset();
     listProjectBindings.mockReset();
+    listMySessions.mockReset();
+    fetchAgents.mockReset();
+    fetchAgents.mockResolvedValue(undefined);
+    mockAgentsState = [];
     resetStores();
   });
 
@@ -390,6 +438,198 @@ describe("sessions-list-store", () => {
           agentSessionsSurfaceKey("agent-x")
         ];
       expect(sessions?.map((s) => s.session_id)).toEqual(["v2"]);
+    });
+  });
+
+  describe("loadUserSessions", () => {
+    it("fast path: annotates rows from /api/me/sessions with cached project names", async () => {
+      useProjectsListStore.setState({
+        projects: [
+          { project_id: "p1", name: "Project One" } as never,
+          { project_id: "p2", name: "Project Two" } as never,
+        ],
+        agentsByProject: {},
+      });
+      listMySessions.mockResolvedValue([
+        {
+          ...makeSession("s-newer", "2026-04-16T05:00:00Z", "i1", "p1"),
+          agent_id: "agent-a",
+        },
+        {
+          ...makeSession("s-older", "2026-04-16T01:00:00Z", "i2", "p2"),
+          agent_id: "agent-b",
+        },
+      ]);
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadUserSessions();
+      });
+
+      // Fast path means NO legacy fan-out. If we accidentally tripped
+      // the fallback we'd see listProjectBindings + listSessions
+      // calls fan out per agent; assert they were never invoked.
+      expect(listMySessions).toHaveBeenCalledTimes(1);
+      expect(listProjectBindings).not.toHaveBeenCalled();
+      expect(listSessions).not.toHaveBeenCalled();
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[
+          USER_SESSIONS_SURFACE_KEY
+        ];
+      expect(rows?.map((r) => r.session_id)).toEqual(["s-newer", "s-older"]);
+      expect(rows?.[0]._projectName).toBe("Project One");
+      expect(rows?.[0]._agentId).toBe("agent-a");
+      expect(rows?.[1]._projectName).toBe("Project Two");
+      expect(rows?.[1]._agentId).toBe("agent-b");
+    });
+
+    it("falls back to per-agent fan-out when /api/me/sessions returns 404 (storage migration not yet live)", async () => {
+      // Reproduces the post-19f5203ad / pre-aura-storage-deploy window
+      // where `/api/me/sessions` 404s. Without the FE fallback the
+      // chat-app left panel goes empty and the only signal is a
+      // `Failed to load user sessions` console.error -- same break
+      // mode the project sessions surface had before commit fb9a45...
+      const { ApiClientError } = await vi.importActual<
+        typeof import("../api/client")
+      >("../api/client");
+      listMySessions.mockRejectedValue(
+        new ApiClientError(404, {
+          error: "not found",
+          code: "storage_error",
+          details: null,
+        }),
+      );
+
+      mockAgentsState = [
+        { agent_id: "agent-a" },
+        { agent_id: "agent-b" },
+      ];
+
+      listProjectBindings.mockImplementation(async (agentId: string) => {
+        if (agentId === "agent-a") {
+          return [
+            { project_agent_id: "ia1", project_id: "p1", project_name: "P1" },
+          ];
+        }
+        return [
+          { project_agent_id: "ib1", project_id: "p-home", project_name: "Home" },
+        ];
+      });
+      listSessions.mockImplementation(
+        async (projectId: string, projectAgentId: string) => [
+          makeSession(
+            `${projectId}-${projectAgentId}`,
+            "2026-04-16T00:00:00Z",
+            projectAgentId,
+            projectId,
+          ),
+        ],
+      );
+
+      const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadUserSessions();
+      });
+
+      // The fast path was tried once, then the fallback fanned out
+      // per agent. fetchAgents is called to prime the lazy-imported
+      // agent store before we read its `.agents` snapshot.
+      expect(listMySessions).toHaveBeenCalledTimes(1);
+      expect(fetchAgents).toHaveBeenCalledTimes(1);
+      expect(listProjectBindings).toHaveBeenCalledWith("agent-a");
+      expect(listProjectBindings).toHaveBeenCalledWith("agent-b");
+      expect(listSessions).toHaveBeenCalledWith("p1", "ia1");
+      expect(listSessions).toHaveBeenCalledWith("p-home", "ib1");
+
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[
+          USER_SESSIONS_SURFACE_KEY
+        ];
+      expect(rows?.map((r) => r.session_id).sort()).toEqual([
+        "p-home-ib1",
+        "p1-ia1",
+      ]);
+      // Project name comes straight from the binding, not the
+      // projects-list-store cache -- the "Home" project deliberately
+      // isn't seeded in `useProjectsListStore` here to prove this.
+      const home = rows?.find((r) => r._projectId === "p-home");
+      expect(home?._projectName).toBe("Home");
+      expect(home?._agentId).toBe("agent-b");
+      expect(home?._agentInstanceId).toBe("ib1");
+
+      // 404 is the *expected* trigger for the fallback; the loader
+      // must NOT escalate it to the `Failed to load user sessions`
+      // console.error path (the catch at the bottom of the loader).
+      expect(consoleErr).not.toHaveBeenCalledWith(
+        "Failed to load user sessions",
+        expect.anything(),
+      );
+      consoleErr.mockRestore();
+    });
+
+    it("bubbles non-404 errors instead of silently masking them as an empty list", async () => {
+      const { ApiClientError } = await vi.importActual<
+        typeof import("../api/client")
+      >("../api/client");
+      listMySessions.mockRejectedValue(
+        new ApiClientError(500, {
+          error: "boom",
+          code: "storage_error",
+          details: null,
+        }),
+      );
+      const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadUserSessions();
+      });
+
+      // 5xx errors must NOT trip the fallback -- a real outage should
+      // surface as the documented `Failed to load user sessions`
+      // console.error, not silently degrade to a per-agent fan-out
+      // that masks the upstream failure.
+      expect(fetchAgents).not.toHaveBeenCalled();
+      expect(listProjectBindings).not.toHaveBeenCalled();
+      expect(consoleErr).toHaveBeenCalledWith(
+        "Failed to load user sessions",
+        expect.any(ApiClientError),
+      );
+      consoleErr.mockRestore();
+    });
+
+    it("falls-back-empty when the user has no agents (legacy fan-out has nothing to walk)", async () => {
+      const { ApiClientError } = await vi.importActual<
+        typeof import("../api/client")
+      >("../api/client");
+      listMySessions.mockRejectedValue(
+        new ApiClientError(404, {
+          error: "not found",
+          code: "storage_error",
+          details: null,
+        }),
+      );
+      mockAgentsState = [];
+
+      await act(async () => {
+        await useSessionsListStore.getState().loadUserSessions();
+      });
+
+      // No agents to fan out across -- the loader still flips the
+      // loading flag off and writes an empty row list rather than
+      // leaving the surface stuck in `loading:true`.
+      expect(listProjectBindings).not.toHaveBeenCalled();
+      expect(listSessions).not.toHaveBeenCalled();
+      const rows =
+        useSessionsListStore.getState().sessionsBySurface[
+          USER_SESSIONS_SURFACE_KEY
+        ];
+      expect(rows ?? []).toEqual([]);
+      expect(
+        useSessionsListStore.getState().loadingBySurface[
+          USER_SESSIONS_SURFACE_KEY
+        ],
+      ).toBe(false);
     });
   });
 

@@ -3,14 +3,14 @@ import { BookOpen, Globe, MapPin, Terminal } from "lucide-react";
 import {
   DesktopChatInputBar,
   type ChatInputBarHandle,
-} from "../../features/chat-ui/ChatInputBar";
-import { type AgentMode } from "../../constants/modes";
-import { useChatUI } from "../../stores/chat-ui-store";
-import { AgentDemoBanner } from "./AgentDemoBanner";
-import styles from "./LoggedOutShell.module.css";
+} from "../../../features/chat-ui/ChatInputBar";
+import { type AgentMode } from "../../../constants/modes";
+import { useChatUI } from "../../../stores/chat-ui-store";
+import { AgentDemoBanner } from "../AgentDemoBanner";
+import styles from "./ComposePanel.module.css";
 
 /**
- * Inline empty-state compose surface for the logged-out chat view.
+ * Inline empty-state compose surface for the public chat view.
  * Renders, top-to-bottom:
  *   1. A pink/purple gradient hero (`AgentDemoBanner`) that loops a
  *      scripted multi-agent collaboration — three agents trading
@@ -30,7 +30,7 @@ import styles from "./LoggedOutShell.module.css";
  * The whole stack is centered (vertically + horizontally) by the
  * parent `.chatEmpty` grid container — this component only owns the
  * stack itself and its width gate. Once the visitor sends a message,
- * the parent (`LoggedOutChatView`) flips to the inline-transcript
+ * the parent (`PublicChatView`) flips to the inline-transcript
  * layout and stops mounting this surface, so the bottom-anchored
  * input bar takes over.
  */
@@ -54,13 +54,6 @@ interface ExamplePrompt {
   Icon: typeof Terminal;
 }
 
-/**
- * Curated quick-start prompts shown below the input. Two map to
- * `code` and two to `plan`; the in-bar mode pills above still
- * surface `image`, `video`, and `3d` for visitors who want to start
- * directly in those modes. Trimmed to four entries so the row fits
- * on a single line within the 680px input column.
- */
 const EXAMPLE_PROMPTS: ReadonlyArray<ExamplePrompt> = [
   {
     mode: "code",
@@ -100,25 +93,15 @@ export function ComposePanel({
   streamKey,
   agentId,
   defaultModel,
-}: ComposePanelProps) {
+}: ComposePanelProps): React.ReactElement {
   const chatUI = useChatUI(streamKey);
   const { setSelectedMode } = chatUI;
   const inputBarRef = useRef<ChatInputBarHandle>(null);
 
   const handleSelectExample = useCallback(
     (example: ExamplePrompt) => {
-      // Switch to the example's mode first so the input bar's
-      // segmented control reflects the new selection on the same
-      // render that the textarea fills. The third arg ("chat") and
-      // fourth (`agentId`) match the `setSelectedMode` signature in
-      // the chat-ui store; passing them here keeps the public
-      // surface consistent with the authenticated mode-pill
-      // behaviour.
       setSelectedMode(streamKey, example.mode, "chat", agentId);
       onInputChange(example.prompt);
-      // Move focus into the textarea so the visitor can immediately
-      // tweak the prompt (or hit Enter to send) without an extra
-      // click. Mirrors the in-bar mode-pill behaviour.
       inputBarRef.current?.focus();
     },
     [agentId, onInputChange, setSelectedMode, streamKey],
@@ -155,10 +138,6 @@ export function ComposePanel({
             type="button"
             className={styles.composeExample}
             onMouseDown={(e) => {
-              // Don't let the button steal focus from the textarea
-              // on mousedown; the click handler below explicitly
-              // refocuses, so the user's caret lands in the
-              // textarea right after the prompt is filled.
               e.preventDefault();
             }}
             onClick={() =>

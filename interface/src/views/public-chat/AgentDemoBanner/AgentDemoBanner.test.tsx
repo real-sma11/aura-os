@@ -26,22 +26,12 @@
  *      input below stays the keyboard-reachable surface. The
  *      marketing title at the top of the banner is intentionally
  *      NOT `aria-hidden` so the tagline reaches assistive tech.
- *
- * `prefers-reduced-motion` is intentionally NOT short-circuited at
- * the timeline layer (the demo is the entire point of the hero, so
- * freezing it leaves no information value). The CSS layer disables
- * the per-row slide-in, the bubble cross-fade, the typing-dot
- * bounce, and the caret blink under that media query, and
- * `TypewriterText` itself reads the media query at mount and skips
- * the per-character reveal — unit-testing CSS media queries is out
- * of scope for vitest, so we stub `matchMedia` to a non-matching
- * default and let CSS / the component handle the rest in production.
  */
 
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AgentDemoBanner } from "./AgentDemoBanner";
-import { SCRIPT, type MessageFrame } from "./agent-demo-script";
+import { SCRIPT, type MessageFrame } from "../agent-demo-script";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -70,10 +60,6 @@ describe("AgentDemoBanner", () => {
 
     render(<AgentDemoBanner />);
 
-    // First message in SCRIPT is the architect's "Let's ship the new
-    // pricing page..." line. Asserting it appears (rather than just
-    // "any frame") pins the very first beat of the demo so a
-    // regression that swaps the opening agent or copy is caught.
     const firstMessage = SCRIPT.find(
       (frame): frame is MessageFrame => frame.kind === "message",
     );
@@ -82,12 +68,6 @@ describe("AgentDemoBanner", () => {
     }
     expect(screen.queryByText(firstMessage.text)).not.toBeInTheDocument();
 
-    // The component schedules each frame's `setTimeout` from inside
-    // a `useEffect` that re-runs after the previous advance, so a
-    // single `advanceTimersByTime` only fires one timer before
-    // returning to act. Stepping through several short slices lets
-    // the effect chain re-arm and resolve enough frames for the
-    // first message to land on screen.
     for (let i = 0; i < 6; i += 1) {
       act(() => {
         vi.advanceTimersByTime(1500);
@@ -102,26 +82,12 @@ describe("AgentDemoBanner", () => {
 
     render(<AgentDemoBanner />);
 
-    // Each scripted state change is driven by a `setTimeout` that
-    // only re-arms after React has flushed the prior state update,
-    // so reaching the typewriter stream requires three separate
-    // `act()` flushes: the reducer advance (warm-up), the typing
-    // pre-roll, and the typewriter's own interval ticks.
-    //
-    // act 1: 250ms reducer warm-up dispatches the first advance and
-    // mounts frame 0 in its `typing` phase.
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    // act 2: step past the 1500ms typing window (frame 0's
-    // `typingMs`) so the row's phase flips to `content`; the bubble
-    // remounts and the typewriter schedules its interval but hasn't
-    // fired a tick yet.
     act(() => {
       vi.advanceTimersByTime(1600);
     });
-    // act 3: roll the typewriter for ~300ms (~10 ticks at 28ms each)
-    // so a strict prefix of the message is on screen.
     act(() => {
       vi.advanceTimersByTime(300);
     });
@@ -129,9 +95,6 @@ describe("AgentDemoBanner", () => {
     const fullText =
       "Let's ship the new pricing page. I'll break it into tasks.";
     expect(screen.queryByText(fullText)).not.toBeInTheDocument();
-    // A short prefix is visible — proves characters are actively
-    // rolling in rather than the bubble being empty or the whole
-    // message being dumped at once.
     expect(screen.getByText(/Let's/)).toBeInTheDocument();
   });
 
@@ -140,10 +103,6 @@ describe("AgentDemoBanner", () => {
 
     render(<AgentDemoBanner />);
 
-    // act 1: the reducer's 250ms warm-up mounts frame 0 in its
-    // typing phase. The architect's name label is visible exactly
-    // once (one row, not two) and the resolved message text has
-    // NOT yet replaced the typing dots in the bubble.
     act(() => {
       vi.advanceTimersByTime(300);
     });
@@ -152,20 +111,10 @@ describe("AgentDemoBanner", () => {
       screen.queryByText(/Let's ship the new pricing page/),
     ).not.toBeInTheDocument();
 
-    // act 2: step past the 1500ms typing window so the row's bubble
-    // swaps from typing dots to the streaming-message variant. The
-    // typewriter mounts inside the same row.
     act(() => {
       vi.advanceTimersByTime(1600);
     });
 
-    // act 3: let the per-character typewriter complete (~1.6s for
-    // the 58-char first line at 28ms/char). Total elapsed (3600ms)
-    // is still below the frame's full dwell of 3700ms (typingMs
-    // 1500 + durationMs 2200), so the script has not yet advanced
-    // to the second frame and the architect label must still
-    // appear exactly once — proving the typing beat lived *inside*
-    // the row rather than as a separate stacked entry above it.
     act(() => {
       vi.advanceTimersByTime(1700);
     });
@@ -179,10 +128,6 @@ describe("AgentDemoBanner", () => {
   it("hides the decorative agent loop from assistive tech via aria-hidden", () => {
     render(<AgentDemoBanner />);
 
-    // Only the looping demo frames are decorative — the marketing
-    // title at the top of the banner is content and must remain
-    // reachable by assistive tech, so `aria-hidden` lives on the
-    // inner loop element rather than the outer banner.
     const decorativeLoop = screen.getByTestId("agent-demo-loop");
     expect(decorativeLoop).toHaveAttribute("aria-hidden", "true");
 

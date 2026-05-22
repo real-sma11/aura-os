@@ -5,7 +5,7 @@ import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
 import { ModeToggle } from "../ModeToggle";
 import { LeftMenu } from "../../features/left-menu";
-import { LoggedOutSessionsPanel } from "../../views/LoggedOutShell/LoggedOutSessionsPanel";
+import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
@@ -148,7 +148,7 @@ function PublicSidebarBody(): React.ReactElement {
   const [searchQuery] = useSidebarSearchQueryForKey(PUBLIC_SEARCH_KEY);
   return (
     <div className={styles.publicSessionsBody}>
-      <LoggedOutSessionsPanel searchQuery={searchQuery} />
+      <PublicSessionsPanel searchQuery={searchQuery} />
     </div>
   );
 }

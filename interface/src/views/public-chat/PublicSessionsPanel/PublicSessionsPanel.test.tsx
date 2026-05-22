@@ -1,11 +1,11 @@
 /**
- * Behavioural test for `LoggedOutSessionsPanel` focused on the
+ * Behavioural test for `PublicSessionsPanel` focused on the
  * delete-chat affordance. The previous implementation nested an
  * interactive delete element inside a row `<button>` and, when the
  * deleted row was the active session, navigated to `/` — which
- * caused `LoggedOutChatView` to immediately auto-create a fresh
- * "New chat" entry, making the X look like it did nothing. These
- * tests pin both the markup invariant (no nested interactive content)
+ * caused `PublicChatView` to immediately auto-create a fresh "New
+ * chat" entry, making the X look like it did nothing. These tests
+ * pin both the markup invariant (no nested interactive content)
  * and the navigation contract (hop to the next remaining session
  * instead of `/` when the active row is deleted).
  */
@@ -15,8 +15,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { LoggedOutSessionsPanel } from "./LoggedOutSessionsPanel";
-import { usePublicChatStore } from "../../stores/public-chat-store";
+import { PublicSessionsPanel } from "./PublicSessionsPanel";
+import { usePublicChatStore } from "../../../stores/public-chat-store";
 
 function LocationProbe() {
   const location = useLocation();
@@ -32,7 +32,7 @@ function renderPanel(initialPath = "/", searchQuery = "") {
       <Routes>
         <Route
           path="/"
-          element={<LoggedOutSessionsPanel searchQuery={searchQuery} />}
+          element={<PublicSessionsPanel searchQuery={searchQuery} />}
         />
       </Routes>
     </MemoryRouter>,
@@ -41,8 +41,6 @@ function renderPanel(initialPath = "/", searchQuery = "") {
 
 beforeEach(() => {
   window.localStorage.clear();
-  // Reset the live store between tests; the module is shared across
-  // the suite so we have to clear sessions explicitly.
   usePublicChatStore.setState({
     sessions: {},
     sessionOrder: [],
@@ -55,7 +53,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("LoggedOutSessionsPanel", () => {
+describe("PublicSessionsPanel", () => {
   it("removes the row from the list when the X is clicked", async () => {
     const user = userEvent.setup();
     let createdId = "";
@@ -84,9 +82,6 @@ describe("LoggedOutSessionsPanel", () => {
     let firstId = "";
     let secondId = "";
     act(() => {
-      // sessionOrder is newest-first, so create `first` then `second`
-      // and delete `second` (the active one); the next active should
-      // be `first`.
       firstId = usePublicChatStore.getState().createSession();
       usePublicChatStore.getState().appendUserTurn(firstId, "first chat");
       secondId = usePublicChatStore.getState().createSession();
@@ -101,8 +96,6 @@ describe("LoggedOutSessionsPanel", () => {
     await user.click(deleteBtn);
 
     expect(usePublicChatStore.getState().sessions[secondId]).toBeUndefined();
-    // The remaining session is preserved — we did NOT navigate to `/`
-    // and trigger an auto-created replacement.
     expect(
       Object.keys(usePublicChatStore.getState().sessions),
     ).toEqual([firstId]);
@@ -150,7 +143,6 @@ describe("LoggedOutSessionsPanel", () => {
     await user.click(deleteBtn);
 
     expect(usePublicChatStore.getState().sessions[otherId]).toBeUndefined();
-    // URL is unchanged because the active session was untouched.
     expect(screen.getByTestId("location")).toHaveTextContent(
       `/?session=${activeId}`,
     );
@@ -169,8 +161,6 @@ describe("LoggedOutSessionsPanel", () => {
       name: /Delete chat "row text"/,
     });
     expect(deleteBtn.tagName).toBe("BUTTON");
-    // The delete button must not live inside another <button> — that's
-    // invalid HTML and was the source of unreliable click delivery.
     expect(deleteBtn.closest("button")).toBe(deleteBtn);
   });
 

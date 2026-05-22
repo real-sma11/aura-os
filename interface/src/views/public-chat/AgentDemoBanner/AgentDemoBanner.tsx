@@ -10,16 +10,16 @@ import {
   SCRIPT,
   type AgentId,
   type DemoFrame,
-} from "./agent-demo-script";
-import { TypingIndicator } from "./TypingIndicator";
-import { TypewriterText } from "./TypewriterText";
-import styles from "./LoggedOutShell.module.css";
+} from "../agent-demo-script";
+import { TypingIndicator } from "../TypingIndicator";
+import { TypewriterText } from "../TypewriterText";
+import styles from "./AgentDemoBanner.module.css";
 
 /**
  * Decorative looping multi-agent demo that replaces the static
  * "What do you want to create?" hero on the logged-out homepage.
  *
- * The component walks `SCRIPT` (see `./agent-demo-script.ts`) on a
+ * The component walks `SCRIPT` (see `../agent-demo-script.ts`) on a
  * `setTimeout` chain, appending one frame at a time, then resets to
  * the start when the script is exhausted. Older frames stay rendered
  * above the latest one but the visible window is capped to
@@ -48,22 +48,8 @@ import styles from "./LoggedOutShell.module.css";
  * side effects.
  */
 
-/**
- * Maximum number of frames rendered inside the banner at once. Tuned
- * against the banner's 360px height + ~70-110px per frame so the
- * tallest combination (two messages + a 4-line tool card) still fits
- * without forcing the inner panel to scroll. The mask-image fade on
- * the inner container softens the top edge regardless of how many
- * frames are visible.
- */
 const MAX_VISIBLE = 4;
 
-/**
- * Visible window state: we keep frames keyed by a monotonically
- * increasing id so the same script frame can re-appear after a loop
- * reset without React reusing the old DOM node (which would skip the
- * entry animation).
- */
 interface KeyedFrame {
   readonly key: number;
   readonly frame: DemoFrame;
@@ -71,9 +57,7 @@ interface KeyedFrame {
 
 type DemoState = {
   readonly visible: ReadonlyArray<KeyedFrame>;
-  /** Index of the next frame in `SCRIPT` to play. */
   readonly cursor: number;
-  /** Monotonic counter for `KeyedFrame.key`. */
   readonly nextKey: number;
 };
 
@@ -111,11 +95,6 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
   }
 }
 
-/** Wall-clock dwell time for a frame on screen as the latest entry,
- *  combining its optional typing pre-roll with its resolved-content
- *  duration. Centralised here so the reducer's advance scheduling
- *  and the per-row swap timing stay in lock-step (the row swaps to
- *  content at `typingMs`, the reducer advances at this sum). */
 function frameDwellMs(frame: DemoFrame): number {
   return (frame.typingMs ?? 0) + frame.durationMs;
 }
@@ -126,11 +105,6 @@ export function AgentDemoBanner(): ReactNode {
 
   useEffect(() => {
     if (state.cursor >= SCRIPT.length) {
-      // Loop reset: brief breather, then start the script again so
-      // visitors who linger see a continuous demo. The breather
-      // doubles as a beat between the architect's final "Shipped..."
-      // line and the architect's next opening "Let's ship..." line —
-      // makes the loop feel intentional rather than abrupt.
       timerRef.current = setTimeout(() => {
         dispatch({ type: "reset" });
       }, 2400);
@@ -142,13 +116,6 @@ export function AgentDemoBanner(): ReactNode {
       };
     }
 
-    // The cursor's *previous* frame controls how long the latest
-    // entry sits before we advance. On the first tick (cursor === 0)
-    // we kick off immediately with a tiny delay so the entry
-    // animation has a frame to mount. For a frame with a typing
-    // pre-roll, the wait spans `typingMs + durationMs` so the row
-    // gets its full typing beat AND its full resolved-content beat
-    // before the next row stacks on top.
     const previousFrame =
       state.cursor === 0 ? null : SCRIPT[state.cursor - 1];
     const wait = previousFrame ? frameDwellMs(previousFrame) : 250;
@@ -187,19 +154,6 @@ interface DemoFrameRowProps {
   readonly frame: DemoFrame;
 }
 
-/**
- * A single row in the demo. When `frame.typingMs` is set, the row
- * starts in `phase: "typing"` and a row-local `setTimeout` flips it
- * to `phase: "content"` after `typingMs`. The bubble is keyed per
- * phase so the unmount/mount triggers the `demoBubblePhase` fade-in
- * animation defined in CSS — the visual effect is the typing dots
- * cross-fading into the resolved bubble within the same row, rather
- * than the typing landing as a separate stacked entry.
- *
- * Frames without `typingMs` skip the typing phase entirely and start
- * directly in `content`, so the architect's closing "Shipped..." line
- * (and any other instant frame) lands without an unnecessary pre-roll.
- */
 function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
   const agent = AGENTS[frame.agent];
   const hasTyping = (frame.typingMs ?? 0) > 0;

@@ -1,5 +1,5 @@
 /**
- * Orchestration hook for `LoggedOutChatView`. Separates the SSE
+ * Orchestration hook for `PublicChatView`. Separates the SSE
  * dispatch / streamStore wiring from the presentational view so the
  * view stays render-focused (rules-react > ARCHITECTURE).
  *
@@ -33,7 +33,7 @@ import type { DisplaySessionEvent } from "../../shared/types/stream";
 import { track } from "../../lib/analytics";
 import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
-/** Public-mode return shape consumed by `LoggedOutChatView`. */
+/** Public-mode return shape consumed by `PublicChatView`. */
 export interface PublicChatController {
   streamKey: string;
   agentId: string;

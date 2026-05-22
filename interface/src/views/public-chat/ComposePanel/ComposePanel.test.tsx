@@ -1,16 +1,11 @@
 /**
- * Focus-handoff tests for the logged-out compose surface. The bottom
+ * Focus-handoff tests for the public compose surface. The bottom
  * mode-pill widgets (Chat / Plan / Create an image / etc.) must keep
  * the chat textarea focused after a click so the visitor can start
  * typing immediately. Plain `<button>`s steal focus on mousedown by
  * default, so the widget needs both a `preventDefault` on mousedown
  * AND an explicit `inputBarRef.focus()` call on click — the test
  * exercises both code paths.
- *
- * `DesktopChatInputBar` is replaced with a minimal forwardRef stub
- * that exposes a real `focus()` handle backed by a real textarea, so
- * the assertion can read `document.activeElement` against the same
- * DOM node `ComposePanel` would target in production.
  */
 
 import { forwardRef, useImperativeHandle, useRef } from "react";
@@ -21,26 +16,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockSetSelectedMode = vi.fn();
 let mockSelectedMode: "code" | "plan" | "image" | "3d" | "video" = "code";
 
-vi.mock("../../stores/chat-ui-store", () => ({
+vi.mock("../../../stores/chat-ui-store", () => ({
   useChatUI: () => ({
     selectedMode: mockSelectedMode,
     setSelectedMode: mockSetSelectedMode,
   }),
 }));
 
-vi.mock("./LoggedOutShell.module.css", () => ({
+vi.mock("./ComposePanel.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
-// The hero banner runs a `setTimeout` chain to play its scripted
-// agent timeline. These focus-handoff tests don't care about that
-// motion, so we stub the banner to a static marker — keeps the test
-// deterministic without `vi.useFakeTimers()` plumbing.
-vi.mock("./AgentDemoBanner", () => ({
+vi.mock("../AgentDemoBanner", () => ({
   AgentDemoBanner: () => <div data-testid="agent-demo-banner-stub" />,
 }));
 
-vi.mock("../../features/chat-ui/ChatInputBar", () => {
+vi.mock("../../../features/chat-ui/ChatInputBar", () => {
   interface StubProps {
     input: string;
     onInputChange: (next: string) => void;
@@ -123,9 +114,6 @@ describe("ComposePanel mode widgets", () => {
   });
 
   it("keeps the textarea focused when the widget is clicked while typing", async () => {
-    // The button is a `<button>`, which steals focus on mousedown by
-    // default. The widget's `onMouseDown` preventDefault keeps the
-    // textarea focused across the click.
     const user = userEvent.setup();
     renderPanel();
 

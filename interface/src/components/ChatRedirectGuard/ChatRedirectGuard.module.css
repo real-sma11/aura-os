@@ -1,0 +1,10 @@
+/*
+ * Intentionally empty.
+ *
+ * `ChatRedirectGuard` is a route-level guard that renders either
+ * `<Navigate />` or its children — it never produces visual chrome
+ * itself. The empty module exists to satisfy the React component
+ * folder rule (`Component.tsx` + `Component.module.css` +
+ * `Component.test.tsx` + `index.ts`) without inventing styles
+ * that would never apply.
+ */

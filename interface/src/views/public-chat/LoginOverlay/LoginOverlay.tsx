@@ -2,11 +2,11 @@ import { useCallback, useEffect, useId, useRef } from "react";
 import { Panel, Text } from "@cypher-asi/zui";
 import { X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useLoginForm } from "../LoginView/use-login-form";
-import { LoginForm } from "../LoginView/LoginForm";
-import { ResetPasswordForm } from "../LoginView/ResetPasswordForm";
-import loginStyles from "../LoginView/LoginView.module.css";
-import styles from "./LoggedOutShell.module.css";
+import { useLoginForm } from "../../LoginView/use-login-form";
+import { LoginForm } from "../../LoginView/LoginForm";
+import { ResetPasswordForm } from "../../LoginView/ResetPasswordForm";
+import loginStyles from "../../LoginView/LoginView.module.css";
+import styles from "./LoginOverlay.module.css";
 
 /**
  * Logged-out variant of `LoginView`: same auth form chrome (Sign in /
@@ -18,8 +18,8 @@ import styles from "./LoggedOutShell.module.css";
  *
  * Reuses `useLoginForm`, `LoginForm`, and `ResetPasswordForm` from
  * `views/LoginView` verbatim — only the framing chrome (titlebar +
- * full-bleed video background) is dropped, since `LoggedOutShell`
- * already owns those layers.
+ * full-bleed video background) is dropped, since the public chat
+ * shell already owns those layers.
  */
 export function LoginOverlay() {
   const navigate = useNavigate();
@@ -32,9 +32,9 @@ export function LoginOverlay() {
     // Preserve the visitor's session id when closing the modal so the
     // public chat surface they came from stays selected in the
     // sidebar. Dropping the query (the old `navigate("/")` behaviour)
-    // caused `LoggedOutChatView` to auto-mint a fresh empty chat on
-    // the way back out — turning each open/close round trip into a
-    // new "New chat" row. The `tab` selector is the only param worth
+    // caused `PublicChatView` to auto-mint a fresh empty chat on the
+    // way back out — turning each open/close round trip into a new
+    // "New chat" row. The `tab` selector is the only param worth
     // dropping; it belongs to the form's internal Sign in / Create
     // Account state, not the chat surface.
     const params = new URLSearchParams(location.search);
@@ -56,7 +56,6 @@ export function LoginOverlay() {
 
   const handleOverlayMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      // Click on the dim backdrop (not the panel) closes the overlay.
       if (event.target === overlayRef.current) handleClose();
     },
     [handleClose],

@@ -1,0 +1,248 @@
+/*
+ * AgentDemoBanner — Phase 4 split-out from
+ * `the legacy `LoggedOutShell.module.css``. Owns every rule
+ * that paints the looping multi-agent demo (banner frame, title bar,
+ * inner stack, demo rows, bubbles, tool cards, avatar). All color
+ * literals stay theme-aware via tokens; the marketing pink/purple
+ * gradient on `.composeBanner` is the only literal kept (it's the
+ * brand element and reads on both themes).
+ */
+
+/* Hero banner that hosts the looping `AgentDemoBanner` (a scripted
+   3-agent collaboration loop) on the public empty state. Visually
+   matches the input section's actual width: the `InputBarShell
+   .inputContainer` caps at `max-width: 680px` and centers via
+   `margin: auto`, so we mirror those rules here (the surrounding
+   `.composePanel` is min(720px, 100%), 40px wider than the input
+   box, so an unconstrained `width: 100%` banner would overhang the
+   input). Sized as a fixed 360px-tall hero so the multi-agent demo
+   has room to render 3-4 chat bubbles + the occasional tool-call
+   card without reflowing the layout when the script advances.
+
+   The visual frame uses the standard "double background, two clip
+   regions" trick: the solid theme-aware interior is painted into
+   the padding-box (`--color-bg-elevated`, which resolves to a near-
+   black in dark mode and white in light) while the pink/purple
+   gradient fills the border-box, so the visible result is a 1.5px
+   gradient edge wrapping an opaque elevated surface. The pink ->
+   purple -> deep-purple gradient is the marketing brand element
+   and stays literal regardless of theme — it reads on both light
+   and dark surrounds. Solid (not translucent) interior keeps
+   message text legible regardless of what's painted behind the
+   banner — the parent `.chatView` has the AURA visual loop running
+   and we don't want it bleeding through the conversation. */
+.composeBanner {
+  width: 100%;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  height: 408px;
+  border-radius: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background:
+    linear-gradient(var(--color-bg-elevated), var(--color-bg-elevated)) padding-box,
+    linear-gradient(135deg, #ff6fb5 0%, #c084fc 50%, #7c3aed 100%) border-box;
+  border: 1.5px solid transparent;
+  overflow: hidden;
+  /* Purple glow tint kept literal so the marketing brand halo reads
+     on both themes — its alpha is low enough that the soft purple
+     tint does not muddy the surrounding bg in light mode. */
+  box-shadow: 0 0 40px rgba(192, 132, 252, 0.15);
+}
+
+@media (max-width: 540px) {
+  .composeBanner {
+    height: 364px;
+  }
+}
+
+/* Marketing title bar at the top of the demo banner. */
+.composeBannerTitle {
+  flex-shrink: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(192, 132, 252, 0.18);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-primary);
+  position: relative;
+  z-index: 3;
+}
+
+@media (max-width: 540px) {
+  .composeBannerTitle {
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+}
+
+/* Inner panel that holds the chat-style demo. */
+.demoInner {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.demoInner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, var(--color-bg-elevated) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@media (max-width: 540px) {
+  .demoInner {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+}
+
+.demoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: demoRowEnter 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes demoRowEnter {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoRow {
+    animation: none;
+  }
+}
+
+.demoBubblePhase {
+  animation: demoBubblePhaseEnter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 0 50%;
+}
+
+@keyframes demoBubblePhaseEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demoBubblePhase {
+    animation: none;
+  }
+}
+
+.demoAvatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+  margin-top: 16px;
+  color: #fff;
+}
+
+.demoBubbleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.demoAgentName {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  /* `color` is set inline per-agent. */
+}
+
+.demoBubble {
+  align-self: flex-start;
+  max-width: 520px;
+  padding: 9px 13px;
+  border-radius: 12px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid var(--color-border);
+}
+
+.demoTypingBubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 11px 13px;
+}
+
+.demoToolCard {
+  align-self: flex-start;
+  max-width: 520px;
+  border-radius: 10px;
+  background: var(--color-bg);
+  border: 1px solid;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.demoToolHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.demoToolName {
+  font-weight: 600;
+  /* `color` set inline per-agent. */
+}
+
+.demoToolTarget {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
+    monospace);
+  font-size: 11px;
+}
+
+.demoToolPreview {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
+    monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

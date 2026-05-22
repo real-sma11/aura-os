@@ -53,15 +53,8 @@ export function TypewriterText({
       return;
     }
 
-    // Reset so swapping `text` (e.g. via a parent re-render) restarts
-    // the stream from the first character instead of resuming
-    // mid-string against the previous message's length.
     setShown(0);
 
-    // Local counter held in closure so the interval can be cleared
-    // the moment the last character lands — relying on React state
-    // would race the batched flush and let the interval fire one
-    // extra "no-op" tick after the stream completes.
     let i = 0;
     const handle = setInterval(() => {
       i += 1;

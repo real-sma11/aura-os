@@ -1,0 +1,1 @@
+export { PublicChatView } from "./PublicChatView";

@@ -120,7 +120,7 @@ vi.mock("../DesktopShell/BackgroundLayer", () => ({
   BackgroundLayer: () => <div data-testid="background-layer-stub" />,
 }));
 
-vi.mock("../../views/LoggedOutShell/LoginOverlay", () => ({
+vi.mock("../../views/public-chat/LoginOverlay", () => ({
   LoginOverlay: () => <div data-testid="login-overlay-stub" role="dialog" />,
 }));
 
@@ -161,6 +161,14 @@ function renderAuraShell(initialPath = "/"): ReturnType<typeof render> {
           />
           <Route
             path="/login"
+            element={<div data-testid="outlet-child">child route</div>}
+          />
+          <Route
+            path="/chat"
+            element={<div data-testid="outlet-child">child route</div>}
+          />
+          <Route
+            path="/projects/:id"
             element={<div data-testid="outlet-child">child route</div>}
           />
         </Route>
@@ -274,7 +282,12 @@ describe("AuraShell — Phase 3 unified shell", () => {
     useUIModeStore.setState({ mode: "simple" });
 
     const user = userEvent.setup();
-    renderAuraShell();
+    // Render at `/chat` so path-based resolution returns the same
+    // ChatApp the simple-mode pin returns. The per-app
+    // `useAppUIStore.sidebarQueries` map is keyed by active app id;
+    // mismatched ids across the flip would wipe the input value
+    // and shadow the slide-not-snap continuity check.
+    renderAuraShell("/chat");
 
     const input = screen.getByPlaceholderText("Search") as HTMLInputElement;
     await user.type(input, "hello");
@@ -326,5 +339,112 @@ describe("AuraShell — Phase 3 unified shell", () => {
     setLoggedOut();
     renderAuraShell("/");
     expect(screen.queryByTestId("login-overlay-stub")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Phase 4 `p4_simple_pin_chat` regression coverage.
+ *
+ * The shell's authoritative source of the "current app" is
+ * `useActiveApp()`. Phase 4 pins it to ChatApp whenever the
+ * effective mode is `simple`, regardless of the pathname. AuraSidebar
+ * stamps `data-agent-active-app-id` on the LeftPanel host, so we
+ * assert against that attribute as a structural proxy for "ChatApp's
+ * MainPanel + LeftPanel are the things that render right now".
+ */
+describe("AuraShell — Phase 4 simple-mode pin", () => {
+  /**
+   * Resolves the currently active app id by inspecting the sidebar
+   * subtree. Two probes are needed because the sidebar renders one
+   * of two structures:
+   *
+   *   1. Apps in `sharedDesktopLeftMenuPanes` (e.g. `projects`,
+   *      `tasks`) render via `<LeftMenu>`, which stamps
+   *      `data-active="true"` on the active pane and exposes its app
+   *      id via `data-testid="desktop-left-menu-pane-<id>"`.
+   *
+   *   2. Apps without a `DesktopLeftMenuPane` (e.g. `chat`) render
+   *      their own LeftPanel inside `AuthedSidebarBody`, which stamps
+   *      `data-agent-active-app-id` directly on the host div.
+   */
+  function getActiveAppId(container: HTMLElement): string | null {
+    const directHost = container.querySelector("[data-agent-active-app-id]");
+    if (directHost) {
+      return directHost.getAttribute("data-agent-active-app-id");
+    }
+    const sharedActivePane = container.querySelector(
+      "[data-testid='desktop-left-menu'] [data-active='true']",
+    );
+    const testId = sharedActivePane?.getAttribute("data-testid");
+    if (testId?.startsWith("desktop-left-menu-pane-")) {
+      return testId.slice("desktop-left-menu-pane-".length);
+    }
+    return null;
+  }
+
+  it("pins ChatApp as the active app in Simple mode regardless of the URL", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    // Render at a non-`/chat` path that maps to a different app
+    // (`/projects/:id` -> `projects`). The pin must still resolve
+    // ChatApp because effective mode is `simple`.
+    const { container } = renderAuraShell("/projects/abc");
+
+    expect(getActiveAppId(container)).toBe("chat");
+  });
+
+  it("falls back to path-based resolution in Advanced mode (no pin)", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    const { container } = renderAuraShell("/projects/abc");
+
+    expect(getActiveAppId(container)).toBe("projects");
+  });
+
+  it("flipping Simple -> Advanced at /projects/abc swaps the active app from chat to projects without remounting the sidebar", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    const { container } = renderAuraShell("/projects/abc");
+    const sidebarBefore = screen.getByTestId("aura-sidebar");
+    expect(getActiveAppId(container)).toBe("chat");
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "advanced" });
+    });
+
+    expect(screen.getByTestId("aura-sidebar")).toBe(sidebarBefore);
+    expect(getActiveAppId(container)).toBe("projects");
+  });
+
+  it("public mode still renders the public chat surface (PublicSidebarFooter pricing link present)", () => {
+    setLoggedOut();
+    renderAuraShell("/");
+
+    // `PublicSidebarFooter` (formerly `LoggedOutPanelFooter`) is the
+    // public-only marketing footer. In public mode it must mount
+    // alongside the public sidebar body — its absence would mean
+    // the shell mistakenly resolved to an authed surface.
+    expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+  });
+
+  it("sign-in transition (public -> simple) tears down the public footer and mounts ChatAppLeftPanel", async () => {
+    setLoggedOut();
+    const { container } = renderAuraShell("/");
+
+    expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+    expect(getActiveAppId(container)).toBeNull();
+
+    await act(async () => {
+      setLoggedIn();
+      useUIModeStore.setState({ mode: "simple" });
+    });
+
+    expect(
+      screen.queryByRole("link", { name: "Pricing" }),
+    ).not.toBeInTheDocument();
+    expect(getActiveAppId(container)).toBe("chat");
   });
 });
