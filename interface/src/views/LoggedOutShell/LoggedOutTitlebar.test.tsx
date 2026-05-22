@@ -2,11 +2,15 @@
  * Smoke test for the `LoggedOutTitlebar` shell chrome. Verifies the
  * intentional affordances ship together:
  *
- *  - The AURA wordmark renders in the leading (left) `icon` slot.
+ *  - The AURA wordmark renders in the centered `title` slot via the
+ *    global `.titlebar-center` helper, matching the authenticated
+ *    `DesktopTitlebar` so the wordmark sits at the same visual X
+ *    coordinate across logged-out and logged-in surfaces.
+ *  - The leading (left) `icon` slot is empty — anonymous visitors have
+ *    no leading affordance.
  *  - The trailing (right) `actions` slot hosts the Log in / Sign up
  *    CTA pills alongside the native `WindowControls` strip so the
  *    anonymous shell keeps parity with the authenticated chrome.
- *  - The `title` slot is empty — there is no centered wordmark.
  *  - Both auth pills route into the canonical `/login` paths
  *    (`/login` and `/login?tab=register`) so the marketing/auth flow
  *    stays consistent across the logged-out shell and `LoginView`.
@@ -69,12 +73,12 @@ function renderTitlebar(initialPath = "/") {
 }
 
 describe("LoggedOutTitlebar", () => {
-  it("renders the AURA logo in the leading icon slot and leaves the title slot empty", () => {
+  it("renders the AURA logo in the centered title slot and leaves the icon slot empty", () => {
     renderTitlebar();
     expect(screen.getByTestId("zui-topbar-stub")).toBeInTheDocument();
-    const icon = screen.getByTestId("topbar-icon");
-    expect(within(icon).getByAltText("AURA")).toBeInTheDocument();
-    expect(screen.getByTestId("topbar-title")).toBeEmptyDOMElement();
+    const title = screen.getByTestId("topbar-title");
+    expect(within(title).getByAltText("AURA")).toBeInTheDocument();
+    expect(screen.getByTestId("topbar-icon")).toBeEmptyDOMElement();
   });
 
   it("hosts the Log in / Sign up pills and window controls in the trailing actions slot", () => {

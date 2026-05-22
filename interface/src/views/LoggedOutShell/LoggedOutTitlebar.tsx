@@ -5,13 +5,14 @@ import styles from "./LoggedOutShell.module.css";
 
 /**
  * Logged-out variant of `components/DesktopShell/DesktopTitlebar`. The
- * `icon` slot carries the AURA wordmark on the leading (left) edge, the
- * `title` slot is intentionally empty (no centered wordmark), and the
- * `actions` slot bundles the Log in / Sign up CTA pills with the native
- * `WindowControls` strip (minimize / maximize / close) on the trailing
- * (right) edge so the anonymous shell keeps parity with the
- * authenticated `DesktopTitlebar` window chrome when running inside the
- * desktop app.
+ * `title` slot carries the AURA wordmark via the global
+ * `.titlebar-center` helper so the wordmark lands at the same visual X
+ * coordinate as the authenticated `DesktopTitlebar`, regardless of
+ * what sits in the leading / trailing slots. The `icon` slot is left
+ * empty (no leading affordance for anonymous visitors), and the
+ * `actions` slot bundles the Log in / Sign up CTA pills with the
+ * native `WindowControls` strip (minimize / maximize / close) on the
+ * trailing (right) edge.
  */
 export function LoggedOutTitlebar() {
   const { search } = useLocation();
@@ -28,8 +29,8 @@ export function LoggedOutTitlebar() {
 
   return (
     <ShellTitlebar
-      icon={
-        <span className={styles.titleLogoLeft}>
+      title={
+        <span className={`titlebar-center ${styles.titleCenter}`}>
           <img
             src="/AURA_logo_text_mark.png"
             alt="AURA"
@@ -39,7 +40,6 @@ export function LoggedOutTitlebar() {
           />
         </span>
       }
-      title={null}
       actions={
         <div
           className={`${styles.titleActions} titlebar-no-drag`}

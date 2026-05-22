@@ -71,6 +71,14 @@
 }
 
 .logoLink {
+  /* Absolute-center the AURA wordmark on the navbar so it lands at the
+     same visual X coordinate as the authenticated shell's centered
+     wordmark (see `.titlebar-center` in `index.css`). The nav-links row
+     and the auth pills become the leading / trailing flex children of
+     `.navbarInner` and visually flank the centered logo. */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   transition: opacity var(--marketing-transition-fast, 150ms ease);
@@ -92,15 +100,16 @@
 }
 
 .navLinks {
+  /* Static flex child on the leading edge of `.navbarInner`. The
+     wordmark above is the new absolute-centered element, so the nav
+     links sit at the natural left position courtesy of the parent's
+     `justify-content: space-between`. */
   display: flex;
   align-items: center;
   gap: 32px;
   list-style: none;
   margin: 0;
   padding: 0;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .navLink {

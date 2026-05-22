@@ -54,14 +54,6 @@
   pointer-events: none;
 }
 
-.titleLogoLeft {
-  display: inline-flex;
-  align-items: center;
-  padding-left: 12px;
-  user-select: none;
-  pointer-events: none;
-}
-
 .titleLogo {
   height: 11px;
   display: block;
