@@ -6,11 +6,12 @@
  * for the border, glass, shadow, titlebar structure and min-max-close
  * control buttons, but the public mock diverges deliberately on two
  * surface values so the hero reads more like a marketing screenshot:
- * a hardcoded 6px corner radius (decoupled from `--radius-lg`, which
- * is `0` globally) and a slightly more translucent 90% surface tint
- * over the same backdrop blur. The remaining decorative differences
- * are a body that hosts left/right-aligned message bubbles + tool
- * cards, and a one-shot per-window pop animation on mount.
+ * a hardcoded 3px corner radius (decoupled from `--radius-lg`, which
+ * is `0` globally) and a much more translucent 60% surface tint over
+ * the same backdrop blur so the wallpaper shows through the chrome.
+ * The remaining decorative differences are a body that hosts left/
+ * right-aligned message bubbles + tool cards, and a one-shot per-
+ * window pop animation on mount.
  *
  * Each window is absolutely positioned inside `DMWindowManager`
  * with its `top/left/right/bottom/width/maxHeight` driven by an
@@ -26,8 +27,8 @@
   min-width: 200px;
   pointer-events: auto;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-bg) 60%, transparent);
   backdrop-filter: blur(64px) saturate(1.2);
   -webkit-backdrop-filter: blur(64px) saturate(1.2);
   box-shadow:
