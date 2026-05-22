@@ -63,7 +63,7 @@ afterEach(() => {
 
 describe("MockAuraApp", () => {
   it("mounts the windowed chrome with titlebar, wallpaper video, and taskbar", () => {
-    render(<MockAuraApp inputDock={null} />);
+    render(<MockAuraApp />);
 
     expect(screen.getByTestId("mock-aura-app")).toBeInTheDocument();
     expect(screen.getByText("AURA")).toBeInTheDocument();
@@ -73,22 +73,10 @@ describe("MockAuraApp", () => {
     expect(wallpaperVideo?.getAttribute("src")).toBe("/AURA_visual_loop.mp4");
   });
 
-  it("renders the inputDock children slot inside the frame", () => {
-    render(
-      <MockAuraApp
-        inputDock={<button type="button">Helper pill stub</button>}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "Helper pill stub" }),
-    ).toBeInTheDocument();
-  });
-
   it("starts with no DM windows and reveals them as scripted timers advance", () => {
     vi.useFakeTimers();
 
-    render(<MockAuraApp inputDock={null} />);
+    render(<MockAuraApp />);
 
     const manager = screen.getByTestId("dm-window-manager");
     expect(manager.children.length).toBe(0);
@@ -122,7 +110,7 @@ describe("MockAuraApp", () => {
   it("routes frames into distinct DM windows by thread id", () => {
     vi.useFakeTimers();
 
-    render(<MockAuraApp inputDock={null} />);
+    render(<MockAuraApp />);
 
     // The script's first two frames land in two different threads
     // (architect_frontend, then architect_backend). After ~10s of
@@ -142,7 +130,7 @@ describe("MockAuraApp", () => {
   });
 
   it("hides the decorative DM window manager from assistive tech via aria-hidden", () => {
-    render(<MockAuraApp inputDock={null} />);
+    render(<MockAuraApp />);
 
     const manager = screen.getByTestId("dm-window-manager");
     expect(manager).toHaveAttribute("aria-hidden", "true");

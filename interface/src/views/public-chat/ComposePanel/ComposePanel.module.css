@@ -1,11 +1,10 @@
 /*
- * ComposePanel — empty-state hero wrapper for the public chat. The
- * panel itself is a thin layout container; everything visual
- * (titlebar, wallpaper, DM windows, taskbar) lives inside the
- * mounted `MockAuraApp`. The helper-prompt pills are passed into
- * the mock app as its `inputDock` slot so they sit just above the
- * decorative taskbar and read as part of the windowed Aura app's
- * chrome.
+ * ComposePanel — empty-state hero wrapper for the public chat.
+ * Phase 0 keeps this as a thin layout container that centers the
+ * mounted `MockAuraApp` (a flat 16:10 wallpaper rectangle) inside
+ * the available empty-state area. All visual content (wallpaper,
+ * DM windows) lives inside `MockAuraApp`; phases 1 and 2 will
+ * layer mock chrome on top of it.
  *
  * The chat input bar is NOT mounted here — it lives in
  * `PublicChatView`'s bottom-anchored `.inputBarSlot` so the
@@ -18,82 +17,7 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  display: flex;
-  /* `MockAuraApp` is the only child and stretches to fill the
-     panel — its own internal layout owns the titlebar / body /
-     inputDock / taskbar split. */
-}
-
-.composePanel > * {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Helper prompt pills row, sitting just above the decorative
-   taskbar inside the mock app's input dock. Single-line: with the
-   four trimmed labels (Code an app, Build a website, Plan a trip,
-   Research a topic), the natural row width fits inside the input
-   column at desktop sizes; on narrower viewports the row scrolls
-   horizontally without wrapping. */
-.composeExamples {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  max-width: 680px;
-  margin-left: auto;
-  margin-right: auto;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.composeExamples::-webkit-scrollbar {
-  display: none;
-}
-
-.composeExample {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(232, 233, 240, 0.85);
-  background: rgba(26, 27, 36, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-.composeExample:hover {
-  background: rgba(40, 42, 56, 0.85);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-.composeExample:focus-visible {
-  outline: 2px solid var(--color-focus-ring, #6e8cff);
-  outline-offset: 2px;
-}
-
-.composeExampleIcon {
-  display: inline-flex;
-  align-items: center;
-  color: inherit;
-}
-
-@media (max-width: 540px) {
-  .composeExamples {
-    gap: 6px;
-  }
-
-  .composeExample {
-    padding: 5px 9px;
-    font-size: 11px;
-  }
+  display: grid;
+  place-items: center;
+  padding: 16px;
 }

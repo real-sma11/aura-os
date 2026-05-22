@@ -38,21 +38,20 @@
 }
 
 /* When the transcript is empty the scroller hosts the `ComposePanel`
-   hero (which mounts `MockAuraApp` — a windowed mock of the Aura
-   desktop with the AURA visual loop as wallpaper, MSN/ICQ-style DM
-   windows popping up between agents, and the example-prompt pills
-   docked above a decorative taskbar). The mock app stretches to
-   fill the whole empty area; the chat input bar is rendered
-   separately by `PublicChatView` in the bottom-anchored
-   `.inputBarSlot` regardless of empty/populated state, so the
-   rounded input box never moves on first send. The scroller's
-   140px bottom padding already reserves the input bar's vertical
-   footprint, so the mock app sits flush above that reservation
-   with no extra `.chatEmpty` padding needed. */
+   hero (which mounts `MockAuraApp` — a flat 16:10 wallpaper
+   rectangle with the AURA visual loop as wallpaper and MSN/ICQ-style
+   DM windows popping up between agents). The mock app centers
+   inside the empty area via its own 16:10 aspect-ratio rule; the
+   chat input bar is rendered separately by `PublicChatView` in the
+   bottom-anchored `.inputBarSlot` regardless of empty/populated
+   state, so the rounded input box never moves on first send. The
+   scroller's 140px bottom padding already reserves the input bar's
+   vertical footprint, so the mock app sits flush above that
+   reservation with no extra `.chatEmpty` padding needed. */
 .chatEmpty {
   flex: 1;
   display: grid;
-  place-items: stretch;
+  place-items: center;
   min-height: 0;
 }
 

@@ -23,7 +23,6 @@
  *  only pre-fill the textarea now.
  */
 
-import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,15 +32,14 @@ vi.mock("./ComposePanel.module.css", () => ({
 }));
 
 vi.mock("../MockAuraApp", () => ({
-  MockAuraApp: ({ inputDock }: { inputDock: ReactNode }) => (
-    <div data-testid="mock-aura-app-stub">{inputDock}</div>
-  ),
+  MockAuraApp: () => <div data-testid="mock-aura-app-stub" />,
 }));
 
 import { ComposePanel } from "./ComposePanel";
 
-function renderPanel(onSelectExample: (prompt: string) => void = vi.fn()) {
-  return render(<ComposePanel onSelectExample={onSelectExample} />);
+function renderPanel(_onSelectExample?: (prompt: string) => void) {
+  void _onSelectExample;
+  return render(<ComposePanel />);
 }
 
 afterEach(() => {
