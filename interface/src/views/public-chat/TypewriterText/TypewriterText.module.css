@@ -18,7 +18,17 @@
      - 900ms blink via `steps(2, start)`: a hard on/off blink (not a
        smooth opacity fade) so the caret reads as a cursor rather
        than a glowing accent — the smooth fade reads as decorative
-       and weakens the "is being written" signal. */
+       and weakens the "is being written" signal.
+
+   Completion handling: the consumer keeps the caret span mounted
+   after the stream finishes and toggles `.caretHidden` instead of
+   unmounting it. Removing an empty `inline-block` with
+   `vertical-align: text-bottom` from a line forces the browser to
+   recompute the line box's baseline strut without the inline-block
+   contribution; the resulting subpixel rounding shifts the inline
+   text by ~1px the instant the message finishes streaming. Keeping
+   the box in the line (just suppressing paint + the blink) holds
+   the line metrics stable across the transition. */
 .typewriter {
   display: inline;
 }
@@ -33,6 +43,13 @@
   border-radius: 1px;
   opacity: 0.85;
   animation: typewriterCaretBlink 900ms steps(2, start) infinite;
+}
+
+/* Hide the caret without removing its box from layout — see the
+   block comment above for why we don't unmount the element. */
+.caretHidden {
+  visibility: hidden;
+  animation: none;
 }
 
 @keyframes typewriterCaretBlink {

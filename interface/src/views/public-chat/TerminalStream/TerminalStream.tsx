@@ -287,11 +287,28 @@ export function TerminalStream({
   }, [lines, charSpeedMs, lineDelayMs]);
 
   const { lineIdx, chars } = snapshot;
-  const isComplete = lineIdx >= lines.length;
+  const totalLines = lines.length;
+  const isComplete = lineIdx >= totalLines;
+
+  // Once the stream completes we keep the final line in the "active"
+  // wrapper (with its caret pinned but hidden) instead of moving it
+  // into the completed-lines list. Unmounting the inline-block caret
+  // would force the line box's baseline strut to recompute without
+  // the inline-block contribution, subpixel-shifting the trailing
+  // line's text by ~1px the instant the stream resolves. Holding
+  // the wrapper mounted across the transition keeps the line stable
+  // — see the parallel fix in `TypewriterText` for the same fix on
+  // the message-bubble side.
+  const completedCount = isComplete
+    ? Math.max(totalLines - 1, 0)
+    : Math.min(lineIdx, totalLines);
+  const activeIdx = isComplete ? totalLines - 1 : lineIdx;
+  const activeChars = isComplete ? lines[totalLines - 1]?.length ?? 0 : chars;
+  const hasActive = totalLines > 0;
 
   return (
     <pre className={styles.terminalStream}>
-      {lines.slice(0, lineIdx).map((line, i) => {
+      {lines.slice(0, completedCount).map((line, i) => {
         const lineTokens = tokenLines ? tokenLines[i] : null;
         return (
           <span key={`done-${i}`}>
@@ -300,12 +317,18 @@ export function TerminalStream({
           </span>
         );
       })}
-      {!isComplete ? (
-        <span key={`active-${lineIdx}`}>
+      {hasActive ? (
+        <span key={`active-${activeIdx}`}>
           {tokenLines
-            ? renderTokens(clipTokens(tokenLines[lineIdx], chars))
-            : lines[lineIdx].slice(0, chars)}
-          <span className={styles.caret} aria-hidden="true" />
+            ? renderTokens(clipTokens(tokenLines[activeIdx], activeChars))
+            : lines[activeIdx].slice(0, activeChars)}
+          <span
+            className={`${styles.caret} ${
+              isComplete ? styles.caretHidden : ""
+            }`}
+            data-state={isComplete ? "hidden" : "blinking"}
+            aria-hidden="true"
+          />
         </span>
       ) : null}
     </pre>

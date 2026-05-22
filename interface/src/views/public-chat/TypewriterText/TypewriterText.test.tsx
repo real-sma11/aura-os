@@ -5,7 +5,13 @@
  * stream contract lives next to its component.
  *
  *  - The caret is rendered while the stream is in progress and
- *    disappears once the last character has rolled in.
+ *    is visually hidden (but kept mounted) once the last character
+ *    has rolled in. Keeping the inline-block caret in the line at
+ *    completion preserves the line box's baseline strut, which
+ *    avoids a ~1px vertical jump of the message text in the
+ *    surrounding DM bubble. The `data-state` attribute lets this
+ *    test pin "blinking" vs "hidden" without depending on the
+ *    hashed CSS module class names.
  *  - `prefers-reduced-motion: reduce` does NOT short-circuit the
  *    stream. The only current consumer is the decorative
  *    `MockAuraApp` (via its DM windows), which is explicitly
@@ -25,16 +31,23 @@ afterEach(() => {
 });
 
 describe("TypewriterText", () => {
-  it("streams characters and removes the caret at completion", () => {
+  it("streams characters and hides (but keeps) the caret at completion", () => {
     vi.useFakeTimers();
     render(<TypewriterText text="hi" speedMs={10} />);
-    // Caret visible at start (no characters streamed yet).
-    expect(document.querySelector("span > span")).not.toBeNull();
+    // Caret rendered + blinking at start (no characters streamed yet).
+    const initialCaret = document.querySelector("span > span");
+    expect(initialCaret).not.toBeNull();
+    expect(initialCaret?.getAttribute("data-state")).toBe("blinking");
     act(() => {
       vi.advanceTimersByTime(40);
     });
-    // After the stream completes the caret span unmounts.
     expect(screen.getByText("hi")).toBeInTheDocument();
+    // After the stream completes the caret stays mounted (so the
+    // inline-block keeps contributing to the line box and the text
+    // doesn't subpixel-jump ~1px) but is flagged hidden.
+    const settledCaret = document.querySelector("span > span");
+    expect(settledCaret).not.toBeNull();
+    expect(settledCaret?.getAttribute("data-state")).toBe("hidden");
   });
 
   it("streams characters even when prefers-reduced-motion matches", () => {

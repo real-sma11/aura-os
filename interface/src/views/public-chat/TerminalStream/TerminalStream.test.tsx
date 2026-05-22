@@ -12,8 +12,12 @@
  *      complete.
  *   3. While the stream is still progressing a blinking caret is
  *      rendered after the last typed character; once the final line
- *      finishes, the caret unmounts so the resolved preview reads
- *      as a static, settled snapshot.
+ *      finishes, the caret stays mounted but is flagged
+ *      `data-state="hidden"` so the inline-block keeps contributing
+ *      to the line box (unmounting it would subpixel-shift the
+ *      trailing line's text by ~1px the moment the stream
+ *      resolves — see the caret comment in TerminalStream.module.css
+ *      and the parallel fix in `TypewriterText`).
  */
 
 import { act, render, screen } from "@testing-library/react";
@@ -63,7 +67,7 @@ describe("TerminalStream", () => {
     expect(screen.getByText(/de/)).toBeInTheDocument();
   });
 
-  it("renders a caret while streaming and removes it on completion", () => {
+  it("renders a blinking caret while streaming and hides it on completion", () => {
     vi.useFakeTimers();
     const { container } = render(
       <TerminalStream
@@ -72,14 +76,23 @@ describe("TerminalStream", () => {
         lineDelayMs={50}
       />,
     );
-    // Mid-stream — active-line wrapper holds the caret span.
-    expect(container.querySelector("pre > span > span")).not.toBeNull();
+    // Mid-stream — active-line wrapper holds the caret span, which
+    // exposes `data-state="blinking"` to make the on/off assertion
+    // resilient to hashed CSS module class names.
+    const streamingCaret = container.querySelector("pre > span > span");
+    expect(streamingCaret).not.toBeNull();
+    expect(streamingCaret?.getAttribute("data-state")).toBe("blinking");
     // Drain the single-char line plus the inter-line pause so the
-    // active-line wrapper unmounts.
+    // stream resolves.
     act(() => {
       vi.advanceTimersByTime(200);
     });
-    expect(container.querySelector("pre > span > span")).toBeNull();
+    // The caret stays mounted — its inline-block keeps contributing
+    // to the line box so the trailing line of text doesn't subpixel-
+    // shift ~1px — but flips to `data-state="hidden"`.
+    const settledCaret = container.querySelector("pre > span > span");
+    expect(settledCaret).not.toBeNull();
+    expect(settledCaret?.getAttribute("data-state")).toBe("hidden");
   });
 
   it("emits hljs-classed tokens when a language is provided", () => {

@@ -27,7 +27,18 @@
        text color (which is theme-aware via --color-text-secondary).
      - 900ms hard blink via `steps(2, start)` — same cadence as the
        message caret so the two streams pulse in unison rather than
-       fighting each other for attention. */
+       fighting each other for attention.
+
+   Completion handling: the consumer keeps the caret span mounted
+   after the stream finishes (and keeps the final line in the
+   "active" wrapper) so the inline-block caret stays in the line
+   box; `.caretHidden` flips it to `visibility: hidden` so it stops
+   painting + blinking. Unmounting the inline-block instead would
+   force the browser to recompute the line's baseline strut without
+   the inline-block contribution and subpixel-rounding would shift
+   the final line of the preview ~1px the moment the stream
+   resolves. The matching `TypewriterText` caret carries the same
+   `caretHidden` recipe for the message bubbles. */
 .terminalStream {
   margin: 0;
   padding: 0;
@@ -51,6 +62,13 @@
   border-radius: 1px;
   opacity: 0.85;
   animation: terminalStreamCaretBlink 900ms steps(2, start) infinite;
+}
+
+/* Hide the caret without removing its box from layout — see the
+   block comment above for why we don't unmount the element. */
+.caretHidden {
+  visibility: hidden;
+  animation: none;
 }
 
 @keyframes terminalStreamCaretBlink {

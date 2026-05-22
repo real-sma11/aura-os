@@ -69,12 +69,23 @@ export function TypewriterText({
 
   const isComplete = shown >= text.length;
 
+  // The caret is intentionally kept mounted at completion (just
+  // toggled to `visibility: hidden` via `caretHidden`). Unmounting
+  // an empty `inline-block` caret with `vertical-align: text-bottom`
+  // forces the surrounding line box to recompute its baseline
+  // strut without the inline-block contribution, which subpixel-
+  // rounds the inline text ~1px vertically — visible as a subtle
+  // jump in the DM bubble the instant a message finishes streaming.
+  // Keeping the box in the line preserves the metrics across the
+  // transition. See also the parallel fix in `TerminalStream`.
   return (
     <span className={styles.typewriter}>
       {text.slice(0, shown)}
-      {!isComplete ? (
-        <span className={styles.caret} aria-hidden="true" />
-      ) : null}
+      <span
+        className={`${styles.caret} ${isComplete ? styles.caretHidden : ""}`}
+        data-state={isComplete ? "hidden" : "blinking"}
+        aria-hidden="true"
+      />
     </span>
   );
 }
