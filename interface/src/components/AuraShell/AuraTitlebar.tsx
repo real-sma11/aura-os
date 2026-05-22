@@ -63,11 +63,11 @@ export interface AuraTitlebarProps {
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `EarnCreditsButton` + `WindowControls` (with the sidekick /
  *     split-screen toggles plumbed through props).
- *   - Public: Log in / Sign up pills + `WindowControls`. The day/
+ *   - Public: Log In / Sign Up pills + `WindowControls`. The day/
  *     night theme toggle is intentionally not in the public titlebar —
  *     it lives only in the bottom-right `BottomTaskbar` cluster so
  *     unauthenticated visitors aren't given two redundant affordances
- *     for the same control. The "Sign up for free" pill is the
+ *     for the same control. The "Sign Up" pill is the
  *     primary CTA and inverts with theme via `.authPillPrimary`.
  */
 export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
@@ -228,14 +228,14 @@ function PublicActions(): React.ReactElement {
         className={`${styles.authPill} ${styles.authPillSecondary}`}
         onClick={() => track("public_login_clicked", { source: "titlebar" })}
       >
-        Log in
+        Log In
       </Link>
       <Link
         to={{ pathname: "/login", search: signupSearch }}
         className={`${styles.authPill} ${styles.authPillPrimary}`}
         onClick={() => track("public_signup_clicked", { source: "titlebar" })}
       >
-        Sign up for free
+        Sign Up
       </Link>
       <WindowControls />
     </div>

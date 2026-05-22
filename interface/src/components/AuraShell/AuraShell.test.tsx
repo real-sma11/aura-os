@@ -376,13 +376,13 @@ describe("AuraShell — Phase 3 unified shell", () => {
       within(titlebar).queryByRole("button", { name: /switch theme/i }),
     ).not.toBeInTheDocument();
 
-    // The Log in / Sign up pills are the load-bearing public-mode
+    // The Log In / Sign Up pills are the load-bearing public-mode
     // CTAs and must remain in the trailing slot.
     expect(
-      within(titlebar).getByRole("link", { name: "Log in" }),
+      within(titlebar).getByRole("link", { name: "Log In" }),
     ).toBeInTheDocument();
     expect(
-      within(titlebar).getByRole("link", { name: "Sign up for free" }),
+      within(titlebar).getByRole("link", { name: "Sign Up" }),
     ).toBeInTheDocument();
   });
 

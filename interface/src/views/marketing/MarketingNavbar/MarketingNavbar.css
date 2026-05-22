@@ -142,8 +142,8 @@
   gap: 12px;
 }
 
-/* `Log in` / `Sign up for free` pill pair — replaces the Download CTA
-   from aura-web. Outlined `Log in` + filled `Sign up for free`, both
+/* `Log In` / `Sign Up` pill pair — replaces the Download CTA
+   from aura-web. Outlined `Log In` + filled `Sign Up`, both
    styled as compact pills consistent with the marketing surface. */
 .navAuthLink {
   display: inline-flex;
@@ -226,7 +226,7 @@ body.mobileMenuOpen {
     font-size: 13px;
   }
 
-  /* Hide the outlined "Log in" pill on mobile to keep the primary CTA visible
+  /* Hide the outlined "Log In" pill on mobile to keep the primary CTA visible
      beside the burger menu without crowding. Mobile users still get the
      drawer's full link list. */
   .navAuthLinkSecondary {

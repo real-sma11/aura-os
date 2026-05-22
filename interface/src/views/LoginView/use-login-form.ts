@@ -72,7 +72,7 @@ export function useLoginForm() {
 
   const [activeTab, setActiveTab] = useState<AuthTab>("signin");
   // Seed `activeTab` from `?tab=register` (or `?tab=signin`) on mount
-  // so the "Sign up for free" CTA in the logged-out shell deep-links
+  // so the "Sign Up" CTA in the logged-out shell deep-links
   // straight into the Create Account form. Runs once — subsequent
   // navigation between tabs uses `handleTabChange`.
   useEffect(() => {

@@ -215,7 +215,7 @@
  * and `--color-bg` is its inverse. Dark theme reads as a near-white
  * pill on the dark titlebar (visually identical to the previous
  * `--color-on-surface` painting); light theme flips to a near-black
- * pill with white text so the "Sign up for free" CTA pops against
+ * pill with white text so the "Sign Up" CTA pops against
  * the light titlebar.
  */
 .authPillPrimary {

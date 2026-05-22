@@ -19,8 +19,8 @@ const MOBILE_NAV_ID = "site-mobile-nav";
  *   - `usePathname()` -> `useLocation().pathname` so this renders inside a
  *     React Router 7 tree without a Next.js shim.
  *   - `next/link` -> `react-router-dom` `Link` for client-side nav.
- *   - The single Download CTA is replaced with the `Log in` / `Sign up for
- *     free` pill pair routed to `/login`. SocialLinks is intentionally
+ *   - The single Download CTA is replaced with the `Log In` / `Sign Up`
+ *     pill pair routed to `/login`. SocialLinks is intentionally
  *     dropped here — only the footer carries the X/GitHub icons.
  *
  * The scroll-state class, body `mobileMenuOpen` toggle, and Escape-key
@@ -152,13 +152,13 @@ export function MarketingNavbar(): React.ReactNode {
         </ul>
         <div className="navActions">
           <Link to="/login" className="navAuthLink navAuthLinkSecondary">
-            Log in
+            Log In
           </Link>
           <Link
             to="/login?tab=register"
             className="navAuthLink navAuthLinkPrimary"
           >
-            Sign up for free
+            Sign Up
           </Link>
           <button
             type="button"
@@ -199,14 +199,14 @@ export function MarketingNavbar(): React.ReactNode {
             className="mobileNavLink"
             onClick={() => closeMobileMenuAfterNavigation("/login")}
           >
-            Log in
+            Log In
           </Link>
           <Link
             to="/login?tab=register"
             className="mobileNavLink"
             onClick={() => closeMobileMenuAfterNavigation("/login")}
           >
-            Sign up for free
+            Sign Up
           </Link>
           {NAV_LINKS.map(({ label, href }) => {
             const isActive = isLinkActive(href);

@@ -46,13 +46,13 @@ describe("MarketingShell", () => {
     ).toBeNull();
   });
 
-  it("renders the Log in and Sign up for free CTAs in the navbar", () => {
+  it("renders the Log In and Sign Up CTAs in the navbar", () => {
     renderShell();
 
     // Two each: one in the desktop action row and one in the mobile drawer.
-    expect(screen.getAllByRole("link", { name: "Log in" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("link", { name: "Log In" }).length).toBeGreaterThanOrEqual(1);
     expect(
-      screen.getAllByRole("link", { name: "Sign up for free" }).length,
+      screen.getAllByRole("link", { name: "Sign Up" }).length,
     ).toBeGreaterThanOrEqual(1);
   });
 });
