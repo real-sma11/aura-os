@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
+import { track } from "../../lib/analytics";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import styles from "./LoggedOutShell.module.css";
@@ -63,12 +64,14 @@ export function LoggedOutTitlebar({ onMenuToggle }: LoggedOutTitlebarProps) {
           <Link
             to={{ pathname: "/login", search: signinSearch }}
             className={`${styles.authPill} ${styles.authPillPrimary}`}
+            onClick={() => track("public_login_clicked", { source: "titlebar" })}
           >
             Log in
           </Link>
           <Link
             to={{ pathname: "/login", search: signupSearch }}
             className={`${styles.authPill} ${styles.authPillSecondary}`}
+            onClick={() => track("public_signup_clicked", { source: "titlebar" })}
           >
             Sign up for free
           </Link>

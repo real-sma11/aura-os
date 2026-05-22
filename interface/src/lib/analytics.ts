@@ -51,6 +51,7 @@ export function initAnalytics(): void {
     mixpanel.register({
       platform: detectPlatform(),
       app_version: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "unknown",
+      is_authenticated: false,
     });
 
     initialized = true;
@@ -74,6 +75,7 @@ export function identifyUser(userId: string): void {
   if (!initialized) return;
   try {
     mixpanel.identify(userId);
+    mixpanel.register({ is_authenticated: true });
   } catch {
     // Silent fail.
   }
@@ -84,6 +86,7 @@ export function resetUser(): void {
   if (!initialized) return;
   try {
     mixpanel.reset();
+    mixpanel.register({ is_authenticated: false });
   } catch {
     // Silent fail.
   }

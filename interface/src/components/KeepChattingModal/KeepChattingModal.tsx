@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import { Link } from "react-router-dom";
+import { track } from "../../lib/analytics";
 import styles from "./KeepChattingModal.module.css";
 
 /**
@@ -20,6 +21,7 @@ export function KeepChattingModal() {
   const primaryButtonRef = useRef<HTMLAnchorElement | null>(null);
 
   useEffect(() => {
+    track("public_gate_shown");
     primaryButtonRef.current?.focus();
   }, []);
 
@@ -42,12 +44,14 @@ export function KeepChattingModal() {
             ref={primaryButtonRef}
             to="/login"
             className={`${styles.pill} ${styles.pillPrimary}`}
+            onClick={() => track("public_login_clicked")}
           >
             Log in
           </Link>
           <Link
             to="/login?tab=register"
             className={`${styles.pill} ${styles.pillSecondary}`}
+            onClick={() => track("public_signup_clicked")}
           >
             Sign up for free
           </Link>
