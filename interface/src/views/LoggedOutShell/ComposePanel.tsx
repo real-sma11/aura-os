@@ -11,14 +11,18 @@ import styles from "./LoggedOutShell.module.css";
 /**
  * Inline empty-state compose surface for the logged-out chat view.
  * Renders, top-to-bottom:
- *   1. The compose heading ("What do you want to create?").
- *   2. The shared `DesktopChatInputBar` (which already exposes the
- *      Code/Plan/Image/Video/3D mode pills as part of its own
- *      chrome).
- *   3. A row of example-prompt buttons. Clicking a button pre-fills
- *      the textarea with a representative prompt AND switches the
- *      stream to the matching mode, mirroring the empty-state
- *      pattern in ChatGPT / Claude / Gemini.
+ *   1. A pink/purple gradient banner that hosts the compose heading
+ *      ("What do you want to create?"), so the heading reads as a
+ *      bold landscape rectangle anchoring the stack.
+ *   2. The shared `DesktopChatInputBar`, rendered inline via the
+ *      `isStatic` prop so it joins the centered stack instead of
+ *      floating absolutely at the bottom of the scroll lane. The
+ *      input bar still owns the Code/Plan/Image/Video/3D mode pills
+ *      as part of its own chrome.
+ *   3. A row of example-prompt helper buttons. Clicking a button
+ *      pre-fills the textarea with a representative prompt AND
+ *      switches the stream to the matching mode, mirroring the
+ *      empty-state pattern in ChatGPT / Claude / Gemini.
  *
  * The whole stack is centered (vertically + horizontally) by the
  * parent `.chatEmpty` grid container — this component only owns the
@@ -127,7 +131,9 @@ export function ComposePanel({
       role="region"
       aria-label="Start a new conversation"
     >
-      <h2 className={styles.composeHeading}>What do you want to create?</h2>
+      <div className={styles.composeBanner}>
+        <h2 className={styles.composeHeading}>What do you want to create?</h2>
+      </div>
       <div className={styles.composeInput}>
         <DesktopChatInputBar
           ref={inputBarRef}
@@ -138,6 +144,7 @@ export function ComposePanel({
           streamKey={streamKey}
           agentId={agentId}
           defaultModel={defaultModel}
+          isStatic
         />
       </div>
       <div

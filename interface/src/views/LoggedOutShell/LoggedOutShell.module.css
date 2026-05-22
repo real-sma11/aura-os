@@ -362,13 +362,41 @@
   align-self: center;
 }
 
+/* Pink/purple gradient banner that hosts the compose heading on the
+   public empty state. Width-matches the input column underneath
+   (`.composePanel` widths to `min(720px, 100%)`), and the 5:1 aspect
+   ratio plus 160px height clamp keep it a bold landscape rectangle
+   that still leaves room for the input + helper tabs on shorter
+   viewports. The flex centering renders the heading vertically and
+   horizontally inside the gradient. */
+.composeBanner {
+  width: 100%;
+  aspect-ratio: 5 / 1;
+  max-height: 160px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 24px;
+  background: linear-gradient(
+    135deg,
+    #ff6fb5 0%,
+    #c084fc 50%,
+    #7c3aed 100%
+  );
+}
+
 .composeHeading {
   margin: 0;
   text-align: center;
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--color-text-primary, inherit);
+  /* Heading now sits on top of the gradient banner, so force white
+     for contrast instead of inheriting the theme primary color
+     (which on dark themes is also near-white but is locale-defined,
+     and on a hypothetical light theme would be unreadable). */
+  color: #ffffff;
 }
 
 .composeInput {

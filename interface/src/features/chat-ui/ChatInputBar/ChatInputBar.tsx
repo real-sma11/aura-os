@@ -147,6 +147,15 @@ export interface ChatInputBarProps {
   isVisible?: boolean;
   isCentered?: boolean;
   /**
+   * Opt the underlying `InputBarShell` out of its default
+   * `position: absolute; bottom: 0` floating wrapper so the bar
+   * participates in a normal flex/grid stack instead of docking to
+   * the bottom of its scroll lane. Used by the public empty-state
+   * compose surface so the heading + input + helper-tab stack can
+   * vertically center as a single unit.
+   */
+  isStatic?: boolean;
+  /**
    * Reserved for compact-layout tweaks (e.g. floating desktop agent
    * windows where the chat surface can be very narrow). Currently a
    * no-op now that the info-bar slash hint has been removed; kept on
@@ -228,6 +237,7 @@ export const DesktopChatInputBar = memo(
       remoteAgentId,
       isVisible = true,
       isCentered = false,
+      isStatic = false,
       contextUsage,
       onNewChat,
     },
@@ -1027,6 +1037,7 @@ export const DesktopChatInputBar = memo(
         isSendEnabled={isSendEnabled}
         isVisible={isVisible}
         isCentered={isCentered}
+        isStatic={isStatic}
         isPulsing={isCentered}
         isDropZone={isDragOver}
         placeholder={placeholder}
