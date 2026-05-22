@@ -265,7 +265,7 @@ function DMFrameRow({
         <div
           className={`${styles.dmBubble} ${styles.dmBubblePhase} ${
             isRightSide ? styles.dmBubbleRight : styles.dmBubbleLeft
-          } ${phase === "typing" ? styles.dmTypingBubble : ""}`}
+          }`}
           style={isRightSide ? { borderColor: `${agent.color}55` } : undefined}
         >
           <span key={phase} className={styles.dmBubbleSlot}>
@@ -279,7 +279,7 @@ function DMFrameRow({
       ) : phase === "typing" ? (
         <div
           key="typing"
-          className={`${styles.dmBubble} ${styles.dmTypingBubble} ${styles.dmBubblePhase} ${
+          className={`${styles.dmBubble} ${styles.dmBubblePhase} ${
             isRightSide ? styles.dmBubbleRight : styles.dmBubbleLeft
           }`}
         >

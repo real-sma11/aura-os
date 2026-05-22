@@ -291,6 +291,19 @@
 /* ── Bubbles ──────────────────────────────────────────────── */
 
 .dmBubble {
+  /* `display: inline-flex` + `align-items: center` is used in BOTH
+     phases (typing dots and resolved content) so the bubble's layout
+     model never changes when `.dmTypingBubble` is added or removed.
+     Earlier the typing phase carried these rules via `.dmTypingBubble`
+     and the content phase fell back to `display: block`; with the
+     same `min-height` of `calc(12px + 1.4em)` (~28.1px subpixel) each
+     layout model rounded the bubble to a slightly different integer
+     pixel height, producing a ~1px shift on the typing -> content
+     swap that read as a visible jump on the bottom-anchored
+     `frontend_reviewer` window. Pinning the display here keeps the
+     box pixel-stable across the swap. */
+  display: inline-flex;
+  align-items: center;
   max-width: 88%;
   padding: 6px 10px;
   border-radius: 9px;
@@ -299,13 +312,9 @@
   color: var(--color-text);
   word-wrap: break-word;
   /* Pin a min-height so the typing -> message swap doesn't jolt the
-     bubble taller. Both phases now share the same padding (see
-     `.dmTypingBubble` below), so the natural height of each phase
-     clamps to this same floor and the box stays stable through the
-     swap — previously the typing phase used 8px vertical padding and
-     the content phase used 6px, which animated through a ~4px height
-     shrink and caused a visible "jitter" on the bottom-anchored
-     `frontend_reviewer` window after each row settled. */
+     bubble taller. Both phases share the same padding AND display
+     (see above), so the natural height of each phase clamps to this
+     same floor and the box stays stable through the swap. */
   min-height: calc(12px + 1.4em);
 }
 
@@ -344,17 +353,15 @@
   }
 }
 
-/* Typing-phase modifier. Only flips `display` so the dots center
-   vertically inside the bubble — padding intentionally stays at the
-   `.dmBubble` default (6px 10px) so the box doesn't change size
-   when the phase swaps from typing -> content. The `min-height`
-   floor on `.dmBubble` keeps the typing bubble visually balanced
-   even though the dots themselves are only 7px tall. */
-.dmTypingBubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
+/* The earlier `.dmTypingBubble` modifier (which carried
+   `display: inline-flex; align-items: center; padding: 8px 10px;`)
+   has been removed entirely — display/centering/padding now all live
+   on the base `.dmBubble` so the layout model is identical between
+   the typing and resolved phases. Previously, the typing phase's
+   `display: inline-flex` and the content phase's default `display:
+   block` resolved the bubble's `min-height: calc(12px + 1.4em)`
+   (~28.1px) to slightly different integer pixel heights, producing a
+   visible ~1px shift on the typing -> content swap. */
 
 .dmBubbleSlot {
   display: block;
