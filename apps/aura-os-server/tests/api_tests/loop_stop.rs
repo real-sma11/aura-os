@@ -55,6 +55,11 @@ async fn loop_stop_clears_registry_even_when_harness_unreachable() {
                 paused: false,
                 alive: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 forwarder: None,
+                ws_reader_handle: None,
+                loop_handle: None,
+                last_forwarder_event_at: std::sync::Arc::new(
+                    std::sync::atomic::AtomicI64::new(0),
+                ),
                 session_id: None,
             },
         );
@@ -86,4 +91,105 @@ async fn loop_stop_clears_registry_even_when_harness_unreachable() {
     assert_eq!(event["type"], "loop_stopped");
     assert_eq!(event["project_id"], pid.to_string());
     assert_eq!(event["agent_instance_id"], aiid.to_string());
+}
+
+/// Regression: a Stop must publish `LoopEnded` synchronously on the
+/// calling task (via the registry entry's `Arc<LoopHandle>`) before
+/// the forwarder finishes unwinding. Previously the only path to
+/// `LoopEnded` was the `Drop` impl on the forwarder's clone, which
+/// fires after the forwarder task unwinds — under a rapid Stop+Start
+/// cycle that race let the new `LoopOpened` land on the client ahead
+/// of the late `LoopEnded` for the previous loop instance, leaving
+/// the UI anchored to a stale activity row and the AutomationBar
+/// play-button ring spinning forever.
+#[tokio::test]
+async fn loop_stop_publishes_loop_ended_synchronously() {
+    use aura_os_core::{AgentInstanceId, UserId};
+    use aura_os_events::{DomainEvent, LoopId, LoopKind, SubscriptionFilter, Topic};
+    use aura_os_server::ActiveAutomaton;
+
+    let (app, state, _db) = build_test_app();
+
+    let pid = ProjectId::new();
+    let aiid = AgentInstanceId::new();
+    let template_agent_id = AgentId::new();
+
+    // Subscribe to the typed event hub BEFORE we open the LoopHandle
+    // so we observe both the `LoopOpened` and the post-Stop
+    // `LoopEnded`.
+    let (_guard, mut rx) = state
+        .event_hub
+        .subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(pid)));
+
+    // Open a real registry entry; the LoopHandle is the field
+    // `abort_and_remove` must consume for the synchronous
+    // `mark_cancelled` to fire.
+    let loop_handle = std::sync::Arc::new(state.loop_registry.open(LoopId::new(
+        UserId::new(),
+        Some(pid),
+        Some(aiid),
+        template_agent_id,
+        LoopKind::Automation,
+    )));
+
+    // Drain the `LoopOpened` that fires inline from `open()` above so
+    // the next event we observe is unambiguously the one Stop emits.
+    let opened = tokio::time::timeout(std::time::Duration::from_millis(250), rx.recv())
+        .await
+        .expect("LoopOpened should land within 250ms")
+        .expect("event hub subscription should yield an event");
+    assert!(
+        matches!(opened.as_ref(), DomainEvent::LoopOpened(_)),
+        "expected LoopOpened from registry.open(), got: {:?}",
+        opened.as_ref()
+    );
+
+    let unreachable_harness = "http://127.0.0.1:1".to_string();
+    {
+        let mut reg = state.automaton_registry.lock().await;
+        reg.insert(
+            (pid, aiid),
+            ActiveAutomaton {
+                automaton_id: "auto-1".into(),
+                project_id: pid,
+                template_agent_id,
+                harness_base_url: unreachable_harness,
+                paused: false,
+                alive: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                forwarder: None,
+                ws_reader_handle: None,
+                loop_handle: Some(loop_handle.clone()),
+                last_forwarder_event_at: std::sync::Arc::new(
+                    std::sync::atomic::AtomicI64::new(0),
+                ),
+                session_id: None,
+            },
+        );
+    }
+
+    let req = json_request("POST", &format!("/api/projects/{pid}/loop/stop"), None);
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // `LoopEnded` must arrive promptly — it is published by
+    // `abort_and_remove` on the calling task, NOT on the (absent in
+    // this test) forwarder's drop path. A timeout means the fix
+    // regressed back to relying on `Drop`.
+    let event = tokio::time::timeout(std::time::Duration::from_millis(250), rx.recv())
+        .await
+        .expect("LoopEnded must be emitted within 250ms of Stop")
+        .expect("event hub subscription should yield an event");
+    match event.as_ref() {
+        DomainEvent::LoopEnded(payload) => {
+            assert_eq!(payload.loop_id.project_id, Some(pid));
+            assert_eq!(payload.loop_id.agent_instance_id, Some(aiid));
+        }
+        other => panic!("expected LoopEnded, got: {other:?}"),
+    }
+
+    // And the registry entry must be gone (existing invariant).
+    {
+        let reg = state.automaton_registry.lock().await;
+        assert!(reg.is_empty(), "registry should be cleared after stop");
+    }
 }

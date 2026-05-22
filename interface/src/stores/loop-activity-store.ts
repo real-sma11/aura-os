@@ -44,7 +44,17 @@ interface LoopActivityState {
 
   upsert: (loopId: LoopIdPayload, activity: LoopActivityPayload) => void;
   remove: (instance: string) => void;
-  replaceSnapshot: (rows: LoopRow[]) => void;
+  /**
+   * Replace the snapshot for the loops covered by `filter`. When
+   * `filter` is omitted (the boot / unfiltered reconnect rehydrate),
+   * the entire `loops` map is replaced — matches legacy behaviour.
+   * When `filter` is supplied (e.g. the per-project Start/Stop safety
+   * net rehydrate in `useAutomationStatus`), only the entries whose
+   * `loopId` matches the filter are evicted before merging in the
+   * fresh rows, so concurrent `loop_opened` upserts for unrelated
+   * projects are not wiped out by an in-flight project-scoped fetch.
+   */
+  replaceSnapshot: (rows: LoopRow[], filter?: LoopsFilter) => void;
   hydrate: (filter?: LoopsFilter) => Promise<void>;
   markStalled: (cutoffMs: number) => void;
 }
@@ -55,6 +65,40 @@ interface LoopActivityState {
  *  real work; the watchdog runs per-client so a network hiccup only
  *  affects the local UI. */
 const STALL_THRESHOLD_MS = 60_000;
+
+/** `true` when at least one filter axis is set. Passing an empty
+ *  filter through `hydrate({})` should still behave like the
+ *  unfiltered full-snapshot replace; this guard prevents us from
+ *  evicting every row when nothing was actually narrowed. */
+function hasNarrowingFilter(filter: LoopsFilter): boolean {
+  return Boolean(
+    filter.project_id ||
+      filter.agent_instance_id ||
+      filter.task_id ||
+      filter.kind,
+  );
+}
+
+/** Whether a stored row falls within the supplied filter, matching
+ *  the server-side `/api/loops?...` filter semantics. */
+function loopMatchesFilter(row: LoopRow, filter: LoopsFilter): boolean {
+  if (filter.project_id && row.loopId.project_id !== filter.project_id) {
+    return false;
+  }
+  if (
+    filter.agent_instance_id &&
+    row.loopId.agent_instance_id !== filter.agent_instance_id
+  ) {
+    return false;
+  }
+  if (filter.task_id && row.activity.current_task_id !== filter.task_id) {
+    return false;
+  }
+  if (filter.kind && row.loopId.kind !== filter.kind) {
+    return false;
+  }
+  return true;
+}
 
 export const useLoopActivityStore = create<LoopActivityState>()((set, get) => ({
   loops: {},
@@ -76,11 +120,32 @@ export const useLoopActivityStore = create<LoopActivityState>()((set, get) => ({
       return { loops: next };
     }),
 
-  replaceSnapshot: (rows) =>
-    set(() => ({
-      loops: Object.fromEntries(rows.map((row) => [row.loopId.instance, row])),
-      hydrated: true,
-    })),
+  replaceSnapshot: (rows, filter) =>
+    set((state) => {
+      if (!filter || !hasNarrowingFilter(filter)) {
+        // Full-snapshot replace: matches the original (unfiltered)
+        // boot / reconnect rehydrate path, where the server's
+        // `/api/loops` is the source of truth across every active
+        // loop.
+        return {
+          loops: Object.fromEntries(rows.map((row) => [row.loopId.instance, row])),
+          hydrated: true,
+        };
+      }
+      // Scoped rehydrate: evict the existing rows that match the
+      // filter, then merge in the freshly-fetched ones. Preserves
+      // entries for unrelated routing keys (other projects, other
+      // agent instances) that an unfiltered replace would have wiped.
+      const next: Record<string, LoopRow> = {};
+      for (const [key, row] of Object.entries(state.loops)) {
+        if (loopMatchesFilter(row, filter)) continue;
+        next[key] = row;
+      }
+      for (const row of rows) {
+        next[row.loopId.instance] = row;
+      }
+      return { loops: next, hydrated: true };
+    }),
 
   hydrate: async (filter) => {
     try {
@@ -89,7 +154,7 @@ export const useLoopActivityStore = create<LoopActivityState>()((set, get) => ({
         loopId: entry.loop_id,
         activity: entry.activity,
       }));
-      get().replaceSnapshot(rows);
+      get().replaceSnapshot(rows, filter);
     } catch (error) {
       if (import.meta.env.DEV) {
         console.warn("Failed to hydrate loop activity", error);

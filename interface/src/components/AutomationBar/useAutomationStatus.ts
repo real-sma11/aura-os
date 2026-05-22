@@ -214,6 +214,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
         if (res.active_agent_instances) setActiveAgents(res.active_agent_instances);
         setPaused(false);
         hydrateUiFromLoopStartResponse(res, projectId);
+        rehydrateLoopActivityForProject(projectId);
       } catch (err) {
         console.error("Failed to resume loop", err);
       }
@@ -254,6 +255,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       // Seed the Run panel row + Tasks list "live" dot from the response
       // so the user sees activity without waiting for task_started.
       hydrateUiFromLoopStartResponse(res, projectId);
+      rehydrateLoopActivityForProject(projectId);
     } catch (err) {
       setStarting(false); setPreparing(false);
       if (isInsufficientCreditsError(err)) dispatchInsufficientCredits();
@@ -295,6 +297,12 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       setActiveAgents(res.active_agent_instances ?? []);
       setPaused(Boolean(res.paused));
       fetchLoopStatus();
+      // Also rehydrate the unified spinner store so any stale activity
+      // row from the loop instance we just stopped is evicted on the
+      // same round-trip as the legacy status fetch, instead of waiting
+      // for the `loop_ended` WS event to land (which may race a rapid
+      // follow-up Start).
+      rehydrateLoopActivityForProject(projectId);
     } catch (err) {
       console.error("Failed to stop loop", err);
       setStopError(errorMessage(err, "Failed to stop automation"));
@@ -302,6 +310,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       // from the server so the UI reflects the true state instead of our
       // optimistic clear.
       fetchLoopStatus();
+      rehydrateLoopActivityForProject(projectId);
     }
   }, [projectId, boundLoopId, fetchLoopStatus]);
 

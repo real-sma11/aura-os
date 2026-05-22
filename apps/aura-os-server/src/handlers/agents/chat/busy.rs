@@ -192,6 +192,9 @@ mod tests {
             paused,
             alive: Arc::new(AtomicBool::new(alive)),
             forwarder: None,
+            ws_reader_handle: None,
+            loop_handle: None,
+            last_forwarder_event_at: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             session_id: None,
         }
     }

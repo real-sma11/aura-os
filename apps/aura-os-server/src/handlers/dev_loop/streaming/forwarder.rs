@@ -30,6 +30,14 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
             automaton_id,
             task_id,
             events_tx,
+            // Held alive for the entire forwarder task body. Dropped on
+            // normal completion (closes the harness ws via the safety
+            // net on the last `WsReaderHandle` clone) and on abort.
+            // `abort_and_remove` also holds a clone via
+            // `ActiveAutomaton.ws_reader_handle` and calls `cancel()`
+            // on it explicitly to short-circuit the wait, so the
+            // upstream ws-slot is released immediately on stop instead
+            // of after this task fully unwinds.
             ws_reader_handle: _ws_reader_handle,
             alive,
             timeout,
@@ -37,8 +45,8 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
             jwt,
             session_id,
             retry_state,
+            last_forwarder_event_at,
         } = ctx;
-        let loop_handle = Arc::new(loop_handle);
         let jwt = jwt.map(Arc::new);
         // Subscribe the chat persist pipeline to this same harness
         // broadcast so every dev-loop harness event lands as a
@@ -91,9 +99,16 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
         let event_worker_jwt = jwt.clone();
         let event_worker_fallback_task_id = fallback_task_id.clone();
         let event_worker_retry_state = retry_state.clone();
+        let event_worker_last_event_at = last_forwarder_event_at.clone();
         let event_worker = tokio::spawn(async move {
             let mut live_analyzer = LiveAnalyzer::new();
             while let Some((event, event_type)) = event_task_rx.recv().await {
+                // Stamp freshness BEFORE doing work so a slow side-
+                // effect path doesn't make the forwarder look stale.
+                // `can_reuse_forwarder` reads this through the shared
+                // `ActiveAutomaton.last_forwarder_event_at` clone.
+                event_worker_last_event_at
+                    .store(current_millis(), Ordering::Relaxed);
                 event_worker_state
                     .loop_log
                     .on_json_event(project_id, agent_instance_id, &event)
@@ -273,6 +288,18 @@ pub(crate) fn spawn_event_forwarder(ctx: ForwarderContext) -> tokio::task::Abort
 fn short_task_id(task_id: &str) -> &str {
     let len = task_id.len().min(8);
     &task_id[..len]
+}
+
+/// Wall-clock millis since the unix epoch, saturating to 0 on the
+/// (impossible-in-practice) pre-epoch error path. Used by the
+/// forwarder to stamp `last_forwarder_event_at` and by
+/// `can_reuse_forwarder` to evaluate freshness, so both sides MUST
+/// read from the same monotonic-ish clock domain — wall clock is
+/// good enough here because freshness is compared against a
+/// generous threshold and we only care about drops on the order of
+/// tens of seconds.
+pub(crate) fn current_millis() -> i64 {
+    chrono::Utc::now().timestamp_millis()
 }
 /// Inputs for [`maybe_spawn_dev_loop_persist`]. Bundled so the helper
 /// signature stays inside the 5-parameter limit while still pulling

@@ -1,6 +1,9 @@
 //! `POST /v1/projects/:id/tasks/:task_id/run-once` handler: spawns a fresh ephemeral executor instance per call so concurrent single-task runs in the same project don't collide on the `(project_id, agent_instance_id)` registry key, plus the background reaper that cleans the ephemeral row up after the run.
 
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64},
+    Arc,
+};
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
@@ -16,7 +19,9 @@ use crate::state::{ActiveAutomaton, AppState, AuthJwt, AuthSession};
 
 use super::super::session::begin_session;
 use super::super::start::{build_start_params, map_start_error, resolve_start_context};
-use super::super::streaming::{emit_domain_event, seed_task_output, spawn_event_forwarder};
+use super::super::streaming::{
+    current_millis, emit_domain_event, seed_task_output, spawn_event_forwarder,
+};
 use super::super::types::{ForwarderContext, LoopQueryParams, LoopRetryState};
 use super::common::{loop_user_id, TASK_STREAM_TIMEOUT};
 
@@ -153,14 +158,15 @@ pub(crate) async fn run_single_task(
         }),
     );
     let alive = Arc::new(AtomicBool::new(true));
-    let loop_handle = state.loop_registry.open(LoopId::new(
+    let loop_handle = Arc::new(state.loop_registry.open(LoopId::new(
         loop_user_id(&session),
         Some(project_id),
         Some(ephemeral_instance_id),
         ctx.agent_id,
         LoopKind::TaskRun,
-    ));
+    )));
     loop_handle.set_current_task(Some(task_id)).await;
+    let last_forwarder_event_at = Arc::new(AtomicI64::new(current_millis()));
     let forwarder = spawn_event_forwarder(ForwarderContext {
         state: state.clone(),
         project_id,
@@ -168,13 +174,14 @@ pub(crate) async fn run_single_task(
         automaton_id: result.automaton_id.clone(),
         task_id: Some(task_id_str.clone()),
         events_tx,
-        ws_reader_handle,
+        ws_reader_handle: ws_reader_handle.clone(),
         alive: alive.clone(),
         timeout: TASK_STREAM_TIMEOUT,
-        loop_handle,
+        loop_handle: loop_handle.clone(),
         jwt: Some(forwarder_jwt),
         session_id,
         retry_state: Arc::new(LoopRetryState::new()),
+        last_forwarder_event_at: last_forwarder_event_at.clone(),
     });
     // No `replace_registry_entry`: the ephemeral id is freshly minted,
     // there is nothing to displace, and concurrent task runs are
@@ -190,6 +197,9 @@ pub(crate) async fn run_single_task(
             paused: false,
             alive,
             forwarder: Some(forwarder),
+            ws_reader_handle: Some(ws_reader_handle),
+            loop_handle: Some(loop_handle),
+            last_forwarder_event_at,
             session_id,
         },
     );

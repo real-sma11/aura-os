@@ -24,7 +24,7 @@ use aura_os_events::{DomainEvent, LegacyJsonEvent};
 
 use crate::state::AppState;
 
-pub(crate) use forwarder::spawn_event_forwarder;
+pub(crate) use forwarder::{current_millis, spawn_event_forwarder};
 pub(crate) use side_effects::seed_task_output;
 
 #[cfg(test)]

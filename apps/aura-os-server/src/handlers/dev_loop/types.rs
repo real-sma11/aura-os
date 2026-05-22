@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64},
+    Arc,
+};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -60,11 +63,22 @@ pub(super) struct ForwarderContext {
     pub(super) alive: Arc<AtomicBool>,
     pub(super) timeout: Duration,
     /// Handle into [`aura_os_loops::LoopRegistry`] for this loop. The
-    /// forwarder owns the handle and publishes `LoopActivityChanged`
+    /// forwarder owns a clone and publishes `LoopActivityChanged`
     /// transitions through it as harness events arrive. On completion
     /// it calls `mark_completed` / `mark_failed`; on stream collapse,
-    /// the handle's RAII drop emits a `Cancelled` event.
-    pub(super) loop_handle: LoopHandle,
+    /// the handle's RAII drop emits a `Cancelled` event. Stashed as
+    /// `Arc<LoopHandle>` so the `automaton_registry` entry can hold a
+    /// second clone and call `mark_cancelled()` synchronously on stop
+    /// (before the forwarder unwinds), guaranteeing `LoopEnded` lands
+    /// on the wire before any rapid-restart `LoopOpened`.
+    pub(super) loop_handle: Arc<LoopHandle>,
+    /// Shared millis-since-epoch cell updated on every harness event
+    /// the forwarder consumes. The `automaton_registry` entry holds a
+    /// clone so [`crate::handlers::dev_loop::registry::can_reuse_forwarder`]
+    /// can refuse the adopt-shortcut on a forwarder that has gone
+    /// silent (harness-side wedge), forcing a clean rebuild instead of
+    /// inheriting a dead pipe.
+    pub(super) last_forwarder_event_at: Arc<AtomicI64>,
     /// JWT captured from the HTTP request that started this loop, used
     /// by the forwarder for best-effort background writes back to
     /// aura-storage (e.g. persisting `tasks.execution_notes` on a

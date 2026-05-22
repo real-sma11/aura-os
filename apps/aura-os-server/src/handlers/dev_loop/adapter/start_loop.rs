@@ -1,6 +1,9 @@
 //! `POST /v1/projects/:id/dev-loop` cold-start handler and the orphan-recovery sweep that runs before the harness scheduler comes online.
 
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64},
+    Arc,
+};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -18,7 +21,7 @@ use crate::state::{ActiveAutomaton, AppState, AuthJwt, AuthSession};
 use super::super::registry::{can_reuse_forwarder, replace_registry_entry, status_response};
 use super::super::session::{begin_session, existing_session_id, recover_orphan_tasks};
 use super::super::start::{build_start_params, resolve_start_context, start_or_adopt};
-use super::super::streaming::{emit_domain_event, spawn_event_forwarder};
+use super::super::streaming::{current_millis, emit_domain_event, spawn_event_forwarder};
 use super::super::types::{ForwarderContext, LoopQueryParams, LoopRetryState};
 use super::common::{loop_user_id, resolve_loop_instance_id, LOOP_STREAM_TIMEOUT};
 
@@ -132,13 +135,18 @@ pub(crate) async fn start_loop(
     })?;
 
     let alive = Arc::new(AtomicBool::new(true));
-    let loop_handle = state.loop_registry.open(LoopId::new(
+    let loop_handle = Arc::new(state.loop_registry.open(LoopId::new(
         loop_user_id(&session),
         Some(project_id),
         Some(agent_instance_id),
         ctx.agent_id,
         LoopKind::Automation,
-    ));
+    )));
+    // Seed freshness at registration time. Without this, a brand-new
+    // entry would always look stale to `can_reuse_forwarder` until the
+    // first harness event lands, which can take a few seconds while
+    // the harness boots its event stream.
+    let last_forwarder_event_at = Arc::new(AtomicI64::new(current_millis()));
     state
         .loop_log
         .on_loop_started(project_id, agent_instance_id)
@@ -150,13 +158,14 @@ pub(crate) async fn start_loop(
         automaton_id: started.automaton_id.clone(),
         task_id: None,
         events_tx,
-        ws_reader_handle,
+        ws_reader_handle: ws_reader_handle.clone(),
         alive: alive.clone(),
         timeout: LOOP_STREAM_TIMEOUT,
-        loop_handle,
+        loop_handle: loop_handle.clone(),
         jwt: Some(forwarder_jwt),
         session_id,
         retry_state,
+        last_forwarder_event_at: last_forwarder_event_at.clone(),
     });
     state.automaton_registry.lock().await.insert(
         (project_id, agent_instance_id),
@@ -168,6 +177,9 @@ pub(crate) async fn start_loop(
             paused: false,
             alive,
             forwarder: Some(forwarder),
+            ws_reader_handle: Some(ws_reader_handle),
+            loop_handle: Some(loop_handle),
+            last_forwarder_event_at,
             session_id,
         },
     );

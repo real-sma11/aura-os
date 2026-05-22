@@ -1,10 +1,34 @@
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use aura_os_core::{AgentInstanceId, ProjectId};
 use aura_os_events::LoopKind;
 
 use crate::dto::{ActiveLoopTask, LoopStatusResponse};
 use crate::state::AppState;
+
+use super::streaming::current_millis;
+
+/// Maximum gap between consecutive harness events the forwarder is
+/// allowed to go silent for before the adopt-shortcut in
+/// [`super::adapter::start_loop::start_loop`] stops trusting the
+/// existing registry entry and forces a full forwarder + ws-reader
+/// rebuild.
+///
+/// Sized to comfortably absorb the longest legitimate idle window we
+/// expect on a healthy forwarder (heartbeat-class harness events,
+/// scheduler tick between tasks) while still catching the failure mode
+/// the user reported — a forwarder that registered `alive = true` but
+/// whose harness ws-reader is dead, so no events ever arrive and the
+/// UI sits frozen with the play-button ring spinning forever.
+///
+/// Two minutes is generous enough to avoid false positives on a
+/// loop genuinely waiting for the next `Ready` task; the cost of a
+/// false positive is a single forced restart of the forwarder (one
+/// new harness WS slot + one new `LoopOpened` event), which is
+/// strictly preferable to inheriting a wedged pipe that needs a
+/// full app + harness restart to clear.
+const FORWARDER_FRESHNESS_THRESHOLD: Duration = Duration::from_secs(120);
 
 pub(super) async fn set_paused(
     state: &AppState,
@@ -28,14 +52,77 @@ pub(super) async fn can_reuse_forwarder(
     agent_instance_id: AgentInstanceId,
     automaton_id: &str,
 ) -> bool {
-    state
-        .automaton_registry
-        .lock()
-        .await
-        .get(&(project_id, agent_instance_id))
-        .is_some_and(|entry| {
-            entry.automaton_id == automaton_id && entry.alive.load(Ordering::SeqCst)
-        })
+    let snapshot = {
+        let reg = state.automaton_registry.lock().await;
+        reg.get(&(project_id, agent_instance_id))
+            .map(|entry| ForwarderHealthSnapshot {
+                automaton_id_matches: entry.automaton_id == automaton_id,
+                alive: entry.alive.load(Ordering::SeqCst),
+                paused: entry.paused,
+                last_event_at_ms: entry.last_forwarder_event_at.load(Ordering::Relaxed),
+            })
+    };
+    let Some(snapshot) = snapshot else {
+        return false;
+    };
+    let decision = evaluate_forwarder_reuse(&snapshot, current_millis());
+    if let ReuseDecision::Wedged { gap_ms } = decision {
+        tracing::warn!(
+            %project_id,
+            %agent_instance_id,
+            automaton_id,
+            gap_ms,
+            threshold_ms = FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64,
+            "refusing adopt-shortcut: forwarder appears wedged \
+             (no harness events received within freshness window); \
+             forcing full restart"
+        );
+    }
+    matches!(decision, ReuseDecision::Reuse)
+}
+
+struct ForwarderHealthSnapshot {
+    automaton_id_matches: bool,
+    alive: bool,
+    paused: bool,
+    last_event_at_ms: i64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ReuseDecision {
+    /// All gates passed: adopt-shortcut may reuse the existing
+    /// forwarder + ws-reader pair.
+    Reuse,
+    /// Hard mismatch (wrong automaton_id, registry says
+    /// `alive == false`, etc.). Reuse never made sense here.
+    Refuse,
+    /// `alive == true` and `automaton_id` matches, but the forwarder
+    /// has gone silent past the freshness window — almost certainly
+    /// wedged (ws-reader dead but registry entry still says alive).
+    /// Carries the observed gap for logging.
+    Wedged { gap_ms: i64 },
+}
+
+/// Pure decision function for the adopt-shortcut gate. Extracted from
+/// [`can_reuse_forwarder`] so the freshness logic can be unit-tested
+/// without standing up a full [`AppState`].
+fn evaluate_forwarder_reuse(snapshot: &ForwarderHealthSnapshot, now_ms: i64) -> ReuseDecision {
+    if !snapshot.automaton_id_matches || !snapshot.alive {
+        return ReuseDecision::Refuse;
+    }
+    // Paused loops legitimately have no harness traffic; skip the
+    // freshness gate for them. A user resuming a paused loop should
+    // not pay the cost of a forwarder rebuild just because Pause put
+    // the harness to sleep.
+    if snapshot.paused {
+        return ReuseDecision::Reuse;
+    }
+    let gap_ms = now_ms.saturating_sub(snapshot.last_event_at_ms);
+    if gap_ms < FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64 {
+        ReuseDecision::Reuse
+    } else {
+        ReuseDecision::Wedged { gap_ms }
+    }
 }
 
 pub(super) async fn replace_registry_entry(
@@ -51,15 +138,129 @@ pub(super) async fn abort_and_remove(
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
 ) {
-    if let Some(entry) = state
+    let Some(entry) = state
         .automaton_registry
         .lock()
         .await
         .remove(&(project_id, agent_instance_id))
-    {
-        if let Some(handle) = entry.forwarder {
-            handle.abort();
+    else {
+        return;
+    };
+    // Publish `LoopEnded` synchronously BEFORE aborting the forwarder
+    // task. Without this the only path to `LoopEnded` was the
+    // `Drop` impl on the forwarder's `Arc<LoopHandle>` clone, which
+    // fires asynchronously after the task fully unwinds and the
+    // event-worker mpsc drains. In a rapid Stop+Start cycle the new
+    // `LoopOpened` would race ahead of the late `LoopEnded`, leaving
+    // the client with a stale activity row for the previous loop
+    // instance. Marking cancelled here flushes the terminal event
+    // through the hub on the calling task's clock.
+    if let Some(handle) = entry.loop_handle {
+        handle.mark_cancelled().await;
+    }
+    // Release the harness ws-slot immediately rather than waiting for
+    // the forwarder task to drop the last `WsReaderHandle` clone on
+    // its way out. The harness enforces a per-process WS-slot
+    // semaphore (`AURA_HARNESS_WS_SLOTS`) and back-to-back
+    // Stop+Start cycles can pin the slot if we let the reader linger.
+    if let Some(reader) = entry.ws_reader_handle {
+        reader.cancel();
+    }
+    if let Some(handle) = entry.forwarder {
+        handle.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the adopt-shortcut freshness gate. The wedge
+    //! the user reported (AutomationBar ring spinning forever after
+    //! rapid Stop+Start cycles, no task progress, needs harness + app
+    //! restart) was caused by [`can_reuse_forwarder`] returning
+    //! `true` whenever `alive == true` regardless of whether the
+    //! forwarder had received any actual harness traffic. These
+    //! tests pin the new gating behaviour (extracted into
+    //! [`evaluate_forwarder_reuse`] so it can be exercised without
+    //! standing up a full [`AppState`]) so a future refactor cannot
+    //! quietly regress back to the alive-only check.
+
+    use super::{
+        evaluate_forwarder_reuse, ForwarderHealthSnapshot, ReuseDecision,
+        FORWARDER_FRESHNESS_THRESHOLD,
+    };
+
+    fn snapshot(
+        alive: bool,
+        paused: bool,
+        automaton_id_matches: bool,
+        last_event_at_ms: i64,
+    ) -> ForwarderHealthSnapshot {
+        ForwarderHealthSnapshot {
+            automaton_id_matches,
+            alive,
+            paused,
+            last_event_at_ms,
         }
+    }
+
+    const NOW_MS: i64 = 10_000_000;
+
+    #[test]
+    fn fresh_active_forwarder_can_be_reused() {
+        let snap = snapshot(true, false, true, NOW_MS);
+        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+    }
+
+    #[test]
+    fn stale_active_forwarder_is_refused_as_wedged() {
+        // One ms past the threshold: must trip the wedge gate, NOT
+        // be allowed through. This is the regression the user hit —
+        // a registry entry still flagged `alive` but whose ws-reader
+        // had died, so no harness events were arriving.
+        let gap = FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64 + 1;
+        let snap = snapshot(true, false, true, NOW_MS - gap);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Wedged { gap_ms: gap }
+        );
+    }
+
+    #[test]
+    fn freshness_window_is_inclusive_at_the_edge() {
+        // One ms inside the threshold: still allowed. The gate uses
+        // strict less-than, so the boundary belongs to the
+        // "still fresh" half.
+        let gap = FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64 - 1;
+        let snap = snapshot(true, false, true, NOW_MS - gap);
+        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+    }
+
+    #[test]
+    fn paused_forwarder_skips_freshness_gate() {
+        // Paused loops legitimately have no harness traffic; gating
+        // on freshness for them would force a forwarder rebuild on
+        // every Resume click and regress the pause/resume happy path.
+        let stale = NOW_MS - (FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64) - 1_000;
+        let snap = snapshot(true, true, true, stale);
+        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+    }
+
+    #[test]
+    fn dead_forwarder_is_refused_even_when_fresh() {
+        let snap = snapshot(false, false, true, NOW_MS);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Refuse
+        );
+    }
+
+    #[test]
+    fn mismatched_automaton_id_is_refused() {
+        let snap = snapshot(true, false, false, NOW_MS);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Refuse
+        );
     }
 }
 

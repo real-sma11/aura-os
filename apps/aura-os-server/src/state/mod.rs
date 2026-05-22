@@ -18,9 +18,11 @@ use aura_os_core::{
     AgentId, AgentInstanceId, HarnessMode, ProjectId, SessionId, TaskId, ZeroAuthSession,
 };
 use aura_os_events::EventHub;
-use aura_os_harness::{AutomatonClient, HarnessCommandSender, HarnessLink, HarnessOutbound};
+use aura_os_harness::{
+    AutomatonClient, HarnessCommandSender, HarnessLink, HarnessOutbound, WsReaderHandle,
+};
 use aura_os_integrations::IntegrationsClient;
-use aura_os_loops::LoopRegistry;
+use aura_os_loops::{LoopHandle, LoopRegistry};
 
 use crate::agent_events::AgentEventListener;
 use crate::harness_gateway::HarnessHttpGateway;
@@ -89,6 +91,31 @@ pub struct ActiveAutomaton {
     /// can proactively terminate the forwarder instead of waiting for
     /// the harness broadcast to close on its own.
     pub forwarder: Option<tokio::task::AbortHandle>,
+    /// Clone of the harness ws-reader handle so `abort_and_remove` can
+    /// explicitly cancel the upstream WebSocket subscription instead of
+    /// relying on the forwarder's drop-time safety net firing
+    /// asynchronously. The forwarder also holds a clone, so the actual
+    /// reader task stays alive until both this entry is dropped AND
+    /// the forwarder task finishes; explicit `cancel()` shortcuts both.
+    pub ws_reader_handle: Option<WsReaderHandle>,
+    /// Clone of the loop registry handle so `abort_and_remove` can call
+    /// `mark_cancelled()` synchronously on stop. Without this, the
+    /// `LoopEnded` event was only emitted via the `Drop` impl on the
+    /// forwarder's clone, which races with a rapid follow-up Start
+    /// (the new `loop_opened` could land on the client before the old
+    /// `loop_ended`, leaving a stale spinner anchored to the previous
+    /// loop instance).
+    pub loop_handle: Option<Arc<LoopHandle>>,
+    /// Millis-since-epoch of the most recent harness event the
+    /// forwarder consumed for this entry. Updated on every event in
+    /// the forwarder's event worker. Used by
+    /// [`crate::handlers::dev_loop::registry::can_reuse_forwarder`] to
+    /// refuse the adopt-shortcut on a forwarder that has not received
+    /// any harness traffic for [`FORWARDER_FRESHNESS_THRESHOLD`] —
+    /// the symptom of a harness-side wedge where the registry still
+    /// reports `alive` but no events are arriving. Forces a full
+    /// forwarder + ws-reader restart in that case.
+    pub last_forwarder_event_at: Arc<std::sync::atomic::AtomicI64>,
     /// Storage `Session` id materialised for this automation run via
     /// `SessionService::create_session`, or `None` when no session
     /// could be created (e.g. tests without a configured storage
