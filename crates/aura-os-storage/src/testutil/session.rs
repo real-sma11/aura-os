@@ -1,12 +1,52 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
 use chrono::Utc;
+use serde::Deserialize;
 
 use crate::types::*;
 
 use super::db::{new_id, SharedDb};
+
+#[derive(Debug, Deserialize, Default)]
+pub(super) struct SessionListQuery {
+    #[serde(default)]
+    include_empty: bool,
+}
+
+/// Mock parity with aura-storage migration 0014: a session is
+/// "non-empty" iff it has at least one row in `session_events`. Real
+/// aura-storage maintains `event_count` via an AFTER INSERT trigger;
+/// the mock recomputes from `db.events` so tests can seed events in
+/// any order without bookkeeping.
+fn session_event_count(db: &super::db::MockStorageDb, session_id: &str) -> usize {
+    db.events
+        .iter()
+        .filter(|e| e.session_id.as_deref() == Some(session_id))
+        .count()
+}
+
+fn session_last_event_at(db: &super::db::MockStorageDb, session_id: &str) -> Option<String> {
+    db.events
+        .iter()
+        .filter(|e| e.session_id.as_deref() == Some(session_id))
+        .filter_map(|e| e.created_at.clone())
+        .max()
+}
+
+/// Stamp `event_count` and `last_event_at` on a clone for the response.
+/// Real aura-storage exposes these as columns; here we project them on
+/// the way out so the mock matches the wire shape.
+fn project_event_stats(
+    session: &StorageSession,
+    db: &super::db::MockStorageDb,
+) -> StorageSession {
+    let mut s = session.clone();
+    s.event_count = Some(session_event_count(db, &session.id) as u32);
+    s.last_event_at = session_last_event_at(db, &session.id);
+    s
+}
 
 pub(super) async fn create_session(
     Path(project_agent_id): Path<String>,
@@ -29,6 +69,8 @@ pub(super) async fn create_session(
         started_at: Some(Utc::now().to_rfc3339()),
         created_at: Some(Utc::now().to_rfc3339()),
         updated_at: Some(Utc::now().to_rfc3339()),
+        event_count: Some(0),
+        last_event_at: None,
     };
     let mut db = db.lock().await;
     db.sessions.push(session.clone());
@@ -43,7 +85,7 @@ pub(super) async fn get_session(
     db.sessions
         .iter()
         .find(|s| s.id == session_id)
-        .cloned()
+        .map(|s| project_event_stats(s, &db))
         .map(Json)
         .ok_or(axum::http::StatusCode::NOT_FOUND)
 }
@@ -85,16 +127,58 @@ pub(super) async fn update_session(
 
 pub(super) async fn list_sessions(
     Path(project_agent_id): Path<String>,
+    Query(query): Query<SessionListQuery>,
     State(db): State<SharedDb>,
 ) -> Json<Vec<StorageSession>> {
     let db = db.lock().await;
-    let filtered: Vec<StorageSession> = db
+    let mut out: Vec<StorageSession> = db
         .sessions
         .iter()
         .filter(|s| s.project_agent_id.as_deref() == Some(project_agent_id.as_str()))
-        .cloned()
+        .map(|s| project_event_stats(s, &db))
+        .filter(|s| query.include_empty || s.event_count.unwrap_or(0) > 0)
         .collect();
-    Json(filtered)
+    out.sort_by(|a, b| {
+        b.last_event_at
+            .clone()
+            .unwrap_or_default()
+            .cmp(&a.last_event_at.clone().unwrap_or_default())
+            .then_with(|| {
+                b.started_at
+                    .clone()
+                    .unwrap_or_default()
+                    .cmp(&a.started_at.clone().unwrap_or_default())
+            })
+    });
+    Json(out)
+}
+
+pub(super) async fn list_project_sessions(
+    Path(project_id): Path<String>,
+    Query(query): Query<SessionListQuery>,
+    State(db): State<SharedDb>,
+) -> Json<Vec<StorageSession>> {
+    let db = db.lock().await;
+    let mut out: Vec<StorageSession> = db
+        .sessions
+        .iter()
+        .filter(|s| s.project_id.as_deref() == Some(project_id.as_str()))
+        .map(|s| project_event_stats(s, &db))
+        .filter(|s| query.include_empty || s.event_count.unwrap_or(0) > 0)
+        .collect();
+    out.sort_by(|a, b| {
+        b.last_event_at
+            .clone()
+            .unwrap_or_default()
+            .cmp(&a.last_event_at.clone().unwrap_or_default())
+            .then_with(|| {
+                b.started_at
+                    .clone()
+                    .unwrap_or_default()
+                    .cmp(&a.started_at.clone().unwrap_or_default())
+            })
+    });
+    Json(out)
 }
 
 pub(super) async fn delete_session(

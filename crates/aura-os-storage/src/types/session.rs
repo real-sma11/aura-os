@@ -34,6 +34,18 @@ pub struct StorageSession {
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Number of `session_events` rows for this session. Maintained by
+    /// the `session_events_after_insert` trigger in aura-storage
+    /// (migration 0014). aura-os-server uses this on the list path to
+    /// decide whether a row is navigable; pre-0014 deployments return
+    /// `None` and we treat that as "unknown — keep the row".
+    #[serde(default)]
+    pub event_count: Option<u32>,
+    /// Timestamp of the most recent `session_events` row for this
+    /// session. Used as the primary sort key on the chat-app session
+    /// list so the most recently-active sessions float to the top.
+    #[serde(default)]
+    pub last_event_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

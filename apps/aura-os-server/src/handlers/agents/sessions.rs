@@ -1,6 +1,5 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use futures_util::future::join_all;
 use serde::Serialize;
 use serde_json::json;
 use tracing::{info, warn};
@@ -58,6 +57,21 @@ fn clean_title(raw: &str) -> String {
     stripped.trim().to_string()
 }
 
+/// Project-scoped session list.
+///
+/// Single indexed query into aura-storage's `idx_sessions_project_recent`
+/// partial index (migration 0014): `WHERE project_id = $1 AND event_count > 0
+/// ORDER BY last_event_at DESC NULLS LAST, started_at DESC`. Empty
+/// orphan rows (sessions created before the first message persisted)
+/// are filtered server-side by aura-storage; aura-os-server is a
+/// straight pass-through.
+///
+/// Previous implementation walked `list_project_agents` and called
+/// `list_sessions(agent)` for each in a sequential loop, then issued
+/// one `list_events?limit=1` probe per session via `join_all` to drop
+/// the orphans. For an active project that was 1 + A + N round-trips
+/// to aura-storage on every list call (A = project agents, N = total
+/// sessions). Now it's 1.
 pub(crate) async fn list_project_sessions(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
@@ -65,30 +79,26 @@ pub(crate) async fn list_project_sessions(
 ) -> ApiResult<Json<Vec<Session>>> {
     let storage = state.require_storage_client()?;
 
-    let storage_agents = storage
-        .list_project_agents(&project_id.to_string(), &jwt)
+    let storage_sessions = storage
+        .list_project_sessions(&project_id.to_string(), &jwt)
         .await
         .map_err(map_storage_error)?;
 
-    let mut sessions = Vec::new();
-    for agent in &storage_agents {
-        match storage.list_sessions(&agent.id, &jwt).await {
-            Ok(agent_sessions) => {
-                for ss in agent_sessions {
-                    match storage_session_to_session(ss, None) {
-                        Ok(s) => sessions.push(s),
-                        Err(e) => warn!(error = %e, "skipping malformed session"),
-                    }
-                }
-            }
-            Err(e) => warn!(agent_id = %agent.id, error = %e, "failed to list sessions for agent"),
-        }
-    }
-    sessions = filter_nonempty_sessions(storage, &jwt, sessions).await;
-    sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    let sessions: Vec<Session> = storage_sessions
+        .into_iter()
+        .filter_map(|s| {
+            storage_session_to_session(s, None)
+                .map_err(|e| warn!(error = %e, "skipping malformed session"))
+                .ok()
+        })
+        .collect();
+
     Ok(Json(sessions))
 }
 
+/// Per-agent session list. Same single-query story as
+/// `list_project_sessions` — the empty-row filter and ordering are
+/// pushed into aura-storage (migration 0014).
 pub(crate) async fn list_sessions(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
@@ -107,58 +117,7 @@ pub(crate) async fn list_sessions(
                 .ok()
         })
         .collect();
-    let sessions = filter_nonempty_sessions(storage, &jwt, sessions).await;
     Ok(Json(sessions))
-}
-
-/// Drop sessions that have zero persisted events.
-///
-/// Sessions get created in storage *before* the first user message is
-/// persisted (see `create_new_chat_session` in
-/// `apps/aura-os-server/src/handlers/agents/chat/persist.rs`), so any
-/// race or persist failure on the very first turn leaves an orphan
-/// session row with no events. Plus there's pre-`lazy-+` legacy data
-/// already in storage from before the chat-input "+" became lazy.
-///
-/// The frontend `SessionsList` renders these orphans as "New chat"
-/// rows that do nothing on click — clicking flips `?session=<id>` to
-/// a transcript with no events, looking visually identical to where
-/// the user already was. Filtering at the API is the simplest way to
-/// keep the sidekick honest without a schema change.
-///
-/// The probe is one `list_events?limit=1` per session, fanned out via
-/// `join_all`. Probe errors fail-open (we keep the session) so a
-/// transient aura-storage hiccup never makes a real chat disappear.
-async fn filter_nonempty_sessions(
-    storage: &StorageClient,
-    jwt: &str,
-    sessions: Vec<Session>,
-) -> Vec<Session> {
-    if sessions.is_empty() {
-        return sessions;
-    }
-    let probes = sessions.iter().map(|s| {
-        let sid = s.session_id.to_string();
-        async move {
-            match storage.list_events(&sid, jwt, Some(1), None).await {
-                Ok(events) => !events.is_empty(),
-                Err(e) => {
-                    warn!(
-                        session_id = %sid,
-                        error = %e,
-                        "list_events probe failed while filtering empty sessions; keeping row",
-                    );
-                    true
-                }
-            }
-        }
-    });
-    let keep = join_all(probes).await;
-    sessions
-        .into_iter()
-        .zip(keep)
-        .filter_map(|(s, k)| if k { Some(s) } else { None })
-        .collect()
 }
 
 pub(crate) async fn get_session(

@@ -10,16 +10,20 @@
 //! storage from before the chat-input "+" became lazy. These would
 //! render in the chats sidekick as unclickable "New chat" rows; the
 //! API now drops them.
+//!
+//! As of aura-storage migration `0014_add_session_event_tracking`,
+//! the empty-row filter lives in aura-storage itself: the public
+//! list endpoints select on `event_count > 0`, maintained by the
+//! `session_events_after_insert` trigger. aura-os-server is a
+//! straight pass-through (no per-session `list_events?limit=1`
+//! probes), and these tests verify the through-pass behavior against
+//! the in-memory mock which mirrors that filter.
 
 mod common;
 
-use std::sync::Arc;
-
 use axum::http::StatusCode;
-use axum::routing::get;
-use axum::{Json, Router};
+use axum::Router;
 use serde_json::Value;
-use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 use aura_os_storage::{
@@ -160,86 +164,12 @@ async fn list_sessions_filters_sessions_with_no_events() {
     );
 }
 
-/// Probe failures must fail open: a transient aura-storage hiccup on
-/// the events endpoint must not erase real chats from the sidekick.
-/// We stand up a custom mock where the sessions/project-agent routes
-/// behave normally but `GET /api/sessions/:id/events` always returns
-/// 500, then assert the proxy still surfaces every session.
-#[tokio::test]
-async fn list_sessions_keeps_rows_when_events_probe_errors() {
-    let project_id = uuid::Uuid::new_v4().to_string();
-    let pa_id_uuid = uuid::Uuid::new_v4().to_string();
-    let session_id_uuid = uuid::Uuid::new_v4().to_string();
-
-    let pa_resp_id = pa_id_uuid.clone();
-    let session_resp_id = session_id_uuid.clone();
-    let session_resp_pid = project_id.clone();
-
-    let storage_app = Router::new()
-        .route(
-            "/api/projects/:project_id/agents",
-            get(move || {
-                let pa_id = pa_resp_id.clone();
-                let pid = session_resp_pid.clone();
-                async move {
-                    Json::<Vec<Value>>(vec![serde_json::json!({
-                        "id": pa_id,
-                        "projectId": pid,
-                        "agentId": uuid::Uuid::new_v4().to_string(),
-                        "name": "x",
-                        "status": "active",
-                    })])
-                }
-            }),
-        )
-        .route(
-            "/api/project-agents/:project_agent_id/sessions",
-            get(
-                move |axum::extract::Path(pa_id): axum::extract::Path<String>| {
-                    let session_id = session_resp_id.clone();
-                    async move {
-                        Json(serde_json::json!([{
-                            "id": session_id,
-                            "projectAgentId": pa_id,
-                            "projectId": uuid::Uuid::new_v4().to_string(),
-                            "status": "active",
-                            "startedAt": chrono::Utc::now().to_rfc3339(),
-                        }]))
-                    }
-                },
-            ),
-        )
-        .route(
-            "/api/sessions/:session_id/events",
-            get(|| async {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "events backend down"})),
-                )
-            }),
-        );
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let storage_url = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move { axum::serve(listener, storage_app).await.ok() });
-
-    let storage = Arc::new(StorageClient::with_base_url(&storage_url));
-    let store_dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(aura_os_store::SettingsStore::open(store_dir.path()).unwrap());
-    store_zero_auth_session(&store);
-    let (app, _state) = build_test_app_from_store(
-        store,
-        store_dir.path().to_path_buf(),
-        None,
-        Some(storage),
-        None,
-        None,
-    );
-
-    let ids = fetch_session_ids(&app, &format!("/api/projects/{project_id}/sessions")).await;
-    assert_eq!(
-        ids,
-        vec![session_id_uuid],
-        "session is preserved when the events probe errors (fail-open)",
-    );
-}
+// The previous `list_sessions_keeps_rows_when_events_probe_errors`
+// test verified fail-open behavior of `filter_nonempty_sessions` in
+// aura-os-server. That probe is gone — aura-storage filters
+// `event_count > 0` directly via the `idx_sessions_pa_recent` /
+// `idx_sessions_project_recent` partial indexes (migration 0014), so
+// there is no probe round-trip that could fail. If aura-storage's
+// list endpoint itself errors, the entire list call propagates the
+// upstream error to the UI, which is the correct behavior: the
+// sidekick should refuse to render rather than render half-truth.

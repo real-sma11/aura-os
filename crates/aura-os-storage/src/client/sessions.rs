@@ -38,6 +38,26 @@ impl StorageClient {
         .await
     }
 
+    /// Project-scoped session list. Backed by the indexed
+    /// `idx_sessions_project_recent` partial index in aura-storage
+    /// (migration 0014). Replaces aura-os-server's old per-agent
+    /// fan-out: it used to call `list_project_agents` and then
+    /// `list_sessions(agent)` once per project-agent in a sequential
+    /// loop, then drop empty rows via N `list_events?limit=1` probes —
+    /// now it's a single indexed `WHERE project_id = $1 AND event_count > 0`.
+    pub async fn list_project_sessions(
+        &self,
+        project_id: &str,
+        jwt: &str,
+    ) -> Result<Vec<StorageSession>, StorageError> {
+        validate_url_id(project_id, "project_id")?;
+        self.get_authed(
+            &format!("{}/api/projects/{}/sessions", self.base_url, project_id),
+            jwt,
+        )
+        .await
+    }
+
     pub async fn get_session(
         &self,
         session_id: &str,

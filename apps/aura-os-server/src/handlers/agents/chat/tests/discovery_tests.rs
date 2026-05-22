@@ -21,6 +21,8 @@ fn storage_session(id: &str, started_at: Option<&str>, created_at: Option<&str>)
         started_at: started_at.map(str::to_string),
         created_at: created_at.map(str::to_string),
         updated_at: None,
+        event_count: None,
+        last_event_at: None,
     }
 }
 

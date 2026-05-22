@@ -36,6 +36,8 @@ async fn create_session_handler(
         started_at: Some(Utc::now().to_rfc3339()),
         created_at: Some(Utc::now().to_rfc3339()),
         updated_at: Some(Utc::now().to_rfc3339()),
+        event_count: Some(0),
+        last_event_at: None,
     };
     let mut db = db.lock().await;
     db.push(session.clone());
