@@ -60,6 +60,25 @@
   --color-bg-elevated: var(--color-elevated);
   --color-border-strong: var(--color-border);
 
+  /* Hover / active surface aliases. Many app modules write
+     `var(--color-surface-hover, rgba(255, 255, 255, 0.06))` as the
+     "row hover" / "icon-button hover" backdrop, which left those
+     surfaces stuck on the dark-mode literal in light mode (the
+     fallback fired in both themes because the token was undefined).
+     Aliasing to ZUI's `--color-overlay-light` / `--color-overlay-medium`
+     dereferences to the right tint per theme automatically. */
+  --color-surface-hover: var(--color-overlay-light);
+  --color-surface-active: var(--color-overlay-medium);
+
+  /* Channel-decomposed --color-bg, used by the public chat radial
+     vignette (`LoggedOutShell.chatView::after`) and the marketing
+     navbar fade (`MarketingNavbar.css`) which compose translucent
+     stops via `rgba(var(--color-bg-rgb), N)`. Without this token
+     the call sites' fallback `9, 9, 11` fired in both themes,
+     leaving the vignette permanently dark. Keep in sync with the
+     resolved `--color-bg` value for each theme. */
+  --color-bg-rgb: 9, 9, 11;
+
   /* ----------------------------------------------------------------------
      Icon-button hover plate. Icon-only buttons keep their full hit target
      for accessibility, but the visible hover background is a tighter
@@ -236,6 +255,11 @@
   --color-text-muted: #4b5563;
 
   --color-border: #e5e7eb;
+
+  /* Channel-decomposed --color-bg for light mode — matches the
+     #ffffff value of `--color-bg` above. See the dark block for
+     rationale. */
+  --color-bg-rgb: 255, 255, 255;
 
   /* Editable chrome tokens — light overrides. */
   --color-surface-tint: rgba(0, 0, 0, 0.04);

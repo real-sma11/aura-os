@@ -25,7 +25,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
+  background: var(--color-sidebar-bg);
   border-radius: 6px;
   overflow: hidden;
   /* Pull the sidebar above the chat panel's decorative
@@ -115,7 +115,7 @@
 .authPillSecondary {
   background: transparent;
   color: var(--color-text-primary, #f5f5f7);
-  border-color: var(--color-border, rgba(255, 255, 255, 0.16));
+  border-color: var(--color-border);
 }
 
 /* sessions panel */
@@ -133,7 +133,7 @@
 
 .newChatButton {
   background: transparent;
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.16));
+  border: 1px solid var(--color-border);
   color: var(--color-text-primary, inherit);
   border-radius: 6px;
   width: 24px;
@@ -146,7 +146,7 @@
 }
 
 .newChatButton:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
 }
 
 .sessionsBody {
@@ -176,11 +176,11 @@
 }
 
 .sessionRow:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
 }
 
 .sessionRowActive {
-  background: var(--color-surface-active, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface-active);
 }
 
 .sessionRowSelect {
@@ -225,12 +225,12 @@
 
 .deleteButton:hover {
   color: var(--color-text-primary, inherit);
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.08));
+  background: var(--color-surface-hover);
 }
 
 /* footer */
 .footer {
-  border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--color-border);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -255,7 +255,7 @@
 
 .footerLink:hover {
   color: var(--color-text-primary, inherit);
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.05));
+  background: var(--color-surface-hover);
 }
 
 /* chat view */
@@ -313,10 +313,12 @@
    aura-web's `VideoBackground.css` so the orb's edges feather into
    the panel background instead of butting against a hard rectangle
    when the video would otherwise be clipped by the chat column.
-   Outer stops fade to `--color-bg` (via the repo's standard
-   `--color-bg-rgb` fallback used in `MarketingNavbar.css`) so the
-   gradient blends seamlessly into whatever surface sits behind the
-   chat panel — currently `var(--color-bg)` on `.shell` above.
+   Outer stops fade to `--color-bg` via `--color-bg-rgb` (defined
+   per theme in `tokens.css`) so the gradient blends seamlessly
+   into whatever surface sits behind the chat panel —
+   `var(--color-bg)` on `.shell` above. The token is composed via
+   `rgba(var(--color-bg-rgb), N)` so each stop can declare its own
+   alpha while the channel triplet flips with the active theme.
    Paints between the video (z-index 0) and the chat content
    (z-index 1) by DOM-order tiebreak: `::after` is a sibling that
    follows `.chatBackgroundVideo`, while `.chatScroller` and
@@ -344,11 +346,11 @@
      before the panel boundary. */
   background: radial-gradient(
     circle farthest-side at 50% 50%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 0%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 18%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0.55) 32%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0.9) 46%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 1) 58%
+    rgba(var(--color-bg-rgb), 0) 0%,
+    rgba(var(--color-bg-rgb), 0) 18%,
+    rgba(var(--color-bg-rgb), 0.55) 32%,
+    rgba(var(--color-bg-rgb), 0.9) 46%,
+    rgba(var(--color-bg-rgb), 1) 58%
   );
 }
 
@@ -416,7 +418,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--color-backdrop-medium, rgba(0, 0, 0, 0.55));
+  background: var(--color-backdrop-medium);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -443,7 +445,7 @@
 
 .loginOverlayClose:hover {
   color: var(--color-text-primary, inherit);
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
 }
 
 /* Inline compose surface — sits inside `.chatEmpty` and replaces the
@@ -490,13 +492,17 @@
    card without reflowing the layout when the script advances.
 
    The visual frame uses the standard "double background, two clip
-   regions" trick: the solid dark interior (`#0d0d12`) is painted
-   into the padding-box while the pink/purple gradient fills the
-   border-box, so the visible result is a 1.5px gradient edge
-   wrapping an opaque dark surface. Solid (not translucent) interior
-   keeps message text legible regardless of what's painted behind
-   the banner — the parent `.chatView` has the AURA visual loop
-   running and we don't want it bleeding through the conversation. */
+   regions" trick: the solid theme-aware interior is painted into
+   the padding-box (`--color-bg-elevated`, which resolves to a near-
+   black in dark mode and white in light) while the pink/purple
+   gradient fills the border-box, so the visible result is a 1.5px
+   gradient edge wrapping an opaque elevated surface. The pink ->
+   purple -> deep-purple gradient is the marketing brand element
+   and stays literal regardless of theme — it reads on both light
+   and dark surrounds. Solid (not translucent) interior keeps
+   message text legible regardless of what's painted behind the
+   banner — the parent `.chatView` has the AURA visual loop running
+   and we don't want it bleeding through the conversation. */
 .composeBanner {
   width: 100%;
   max-width: 680px;
@@ -508,10 +514,13 @@
   display: flex;
   flex-direction: column;
   background:
-    linear-gradient(#0d0d12, #0d0d12) padding-box,
+    linear-gradient(var(--color-bg-elevated), var(--color-bg-elevated)) padding-box,
     linear-gradient(135deg, #ff6fb5 0%, #c084fc 50%, #7c3aed 100%) border-box;
   border: 1.5px solid transparent;
   overflow: hidden;
+  /* Purple glow tint kept literal so the marketing brand halo reads
+     on both themes — its alpha is low enough that the soft purple
+     tint does not muddy the surrounding bg in light mode. */
   box-shadow: 0 0 40px rgba(192, 132, 252, 0.15);
 }
 
@@ -524,9 +533,12 @@
 /* Marketing title bar at the top of the demo banner. Sits above the
    decorative agent loop and is the screen-reader-accessible content
    of the hero (the loop itself is `aria-hidden`). The bottom border
-   uses a translucent purple tuned to read against the dark interior
-   without competing with the gradient frame. The element sits at
-   z-index 3 so it stays above the demo's top-fade overlay. */
+   uses a translucent purple tuned to the gradient brand frame — it
+   stays literal so the line reads as a softer continuation of the
+   marketing border in either theme. Title text uses the theme
+   primary so it stays readable against the elevated interior on
+   both dark (near-black) and light (white) surfaces. The element
+   sits at z-index 3 so it stays above the demo's top-fade overlay. */
 .composeBannerTitle {
   flex-shrink: 0;
   padding: 14px 20px;
@@ -534,7 +546,7 @@
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--color-text-primary);
   position: relative;
   z-index: 3;
 }
@@ -573,7 +585,9 @@
   left: 0;
   right: 0;
   height: 44px;
-  background: linear-gradient(to bottom, #0d0d12 0%, transparent 100%);
+  /* Match the banner's padding-box interior so older rows fade into
+     the same surface the banner is painted on, regardless of theme. */
+  background: linear-gradient(to bottom, var(--color-bg-elevated) 0%, transparent 100%);
   pointer-events: none;
   z-index: 2;
 }
@@ -673,7 +687,10 @@
    agent-demo-script.ts) so each agent reads as a distinct jewel
    without a class explosion. The icon itself (`<Icon />` rendered
    by `AgentAvatar` in AgentDemoBanner.tsx) is sized to `14px` and
-   forced to `#fff` so the gradient stays the dominant signal. */
+   forced to `#fff` so it stays legible on the saturated agent
+   gradients regardless of the surrounding theme — the avatar
+   gradients (purple, pink, teal) are intentionally branded and
+   high-contrast in both light and dark mode. */
 .demoAvatar {
   flex-shrink: 0;
   width: 28px;
@@ -706,11 +723,11 @@
   max-width: 520px;
   padding: 9px 13px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #f5f5f7;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
   font-size: 13px;
   line-height: 1.45;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-border);
 }
 
 /* Bubble shape used during a row's typing phase. The dots themselves
@@ -729,13 +746,14 @@
 /* Tool-call card — used for code diffs, todo lists, bash output,
    etc. Border color is set inline from the agent's accent (with an
    alpha suffix) so the card visually belongs to the agent that ran
-   the tool. Solid black-ish surface (not translucent) so monospace
-   content stays readable against any background. */
+   the tool. Solid theme-bg surface (not translucent) reads as one
+   tier "below" the banner's `--color-bg-elevated` interior so the
+   card visually inset from the surrounding bubbles in either theme. */
 .demoToolCard {
   align-self: flex-start;
   max-width: 520px;
   border-radius: 10px;
-  background: #050507;
+  background: var(--color-bg);
   border: 1px solid;
   padding: 9px 11px;
   display: flex;
@@ -756,7 +774,7 @@
 }
 
 .demoToolTarget {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--color-text-muted);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
     monospace);
   font-size: 11px;
@@ -769,7 +787,7 @@
     monospace);
   font-size: 11px;
   line-height: 1.5;
-  color: rgba(245, 245, 247, 0.88);
+  color: var(--color-text-secondary);
   white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -873,12 +891,14 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-secondary, #c9c9cf);
-  /* Dark translucent surface so the labels stay readable against
-     the centered AURA visual loop bleeding behind the row. The
-     0.55 alpha keeps a hint of the video visible through the pill
-     while landing well above WCAG contrast for the text. */
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  /* Theme-aware translucent surface so the labels stay readable
+     against the centered AURA visual loop bleeding behind the row.
+     `color-mix` blends the theme bg with transparency so the pill
+     reads as a muted dark surface in dark mode and a muted light
+     surface in light mode, while still letting the centered video
+     show through. */
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
+  border: 1px solid var(--color-border);
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -887,9 +907,9 @@
 }
 
 .composeExample:hover {
-  background: rgba(0, 0, 0, 0.7);
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
   color: var(--color-text-primary, inherit);
-  border-color: var(--color-border-strong, rgba(255, 255, 255, 0.2));
+  border-color: var(--color-border-strong);
 }
 
 .composeExample:focus-visible {
@@ -930,8 +950,8 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 6px;
-  border: 1px dashed var(--color-border, rgba(255, 255, 255, 0.15));
-  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
+  border: 1px dashed var(--color-border);
+  background: var(--color-sidebar-bg);
   color: var(--color-text-secondary);
   font-size: 12px;
   cursor: pointer;
@@ -939,7 +959,7 @@
 }
 
 .imageAttachButton:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
   border-color: var(--color-text-muted);
 }
 
@@ -949,8 +969,8 @@
   gap: 8px;
   padding: 4px 10px;
   border-radius: 6px;
-  background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  background: var(--color-sidebar-bg);
+  border: 1px solid var(--color-border);
 }
 
 .imageAttachThumb {
@@ -967,13 +987,13 @@
   height: 18px;
   border-radius: 50%;
   border: none;
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface-hover);
   color: var(--color-text-secondary);
   cursor: pointer;
 }
 
 .imageAttachRemove:hover {
-  background: var(--color-surface-active, rgba(255, 255, 255, 0.15));
+  background: var(--color-surface-active);
 }
 
 .imageAttachLabel {
@@ -999,7 +1019,7 @@
 }
 
 .themeToggle:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
   color: var(--color-text-primary, inherit);
 }
 
@@ -1019,7 +1039,7 @@
 }
 
 .menuToggle:hover {
-  background: var(--color-surface-hover, rgba(255, 255, 255, 0.06));
+  background: var(--color-surface-hover);
   color: var(--color-text-primary, inherit);
 }
 
@@ -1047,7 +1067,7 @@
     width: 280px;
     z-index: 60;
     border-radius: 0;
-    border-right: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
+    border-right: 1px solid var(--color-border-main-panel);
     border-top: none;
     border-bottom: none;
     border-left: none;
@@ -1062,7 +1082,7 @@
     position: fixed;
     inset: 0;
     z-index: 55;
-    background: var(--color-backdrop-medium, rgba(0, 0, 0, 0.5));
+    background: var(--color-backdrop-medium);
   }
 
   .menuToggle {
