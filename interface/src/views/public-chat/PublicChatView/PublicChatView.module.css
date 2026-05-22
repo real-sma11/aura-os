@@ -49,6 +49,14 @@
   pointer-events: none;
 }
 
+/*
+ * Inverted CTA: background uses `--color-text-primary` and the
+ * foreground uses `--color-bg`, so the pill always reads as the
+ * opposite of the surrounding page. In dark mode this lands as a
+ * white pill with dark glyphs; in light mode it flips to a near-black
+ * pill with light glyphs. Both modes stay legible against the
+ * `MockAuraApp` hero behind it.
+ */
 .ctaButton {
   pointer-events: auto;
   display: inline-flex;
@@ -56,9 +64,9 @@
   gap: 8px;
   padding: 10px 18px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
+  border: 1px solid transparent;
+  background: var(--color-text-primary);
+  color: var(--color-bg);
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
@@ -70,7 +78,7 @@
 }
 
 .ctaButton:hover {
-  background: color-mix(in srgb, var(--color-bg) 92%, var(--color-text-primary) 8%);
+  background: color-mix(in srgb, var(--color-text-primary) 88%, var(--color-bg) 12%);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
 }
 
