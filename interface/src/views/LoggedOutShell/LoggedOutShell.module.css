@@ -526,5 +526,9 @@
 .composeExampleIcon {
   display: inline-flex;
   align-items: center;
-  color: var(--color-text-muted, #8a8a8e);
+  /* Promoted from `--color-text-muted` (#8a8a8e) to
+     `--color-text-secondary` (#c9c9cf) so the icons match the
+     label color and stay legible on the dark translucent pill +
+     centered video backdrop. */
+  color: var(--color-text-secondary, #c9c9cf);
 }
