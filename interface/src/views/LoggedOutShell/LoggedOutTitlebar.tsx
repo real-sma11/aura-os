@@ -47,13 +47,13 @@ export function LoggedOutTitlebar() {
         >
           <Link
             to={{ pathname: "/login", search: signinSearch }}
-            className={`${styles.authPill} ${styles.authPillPrimary}`}
+            className={`${styles.authPill} ${styles.authPillSecondary}`}
           >
             Log in
           </Link>
           <Link
             to={{ pathname: "/login", search: signupSearch }}
-            className={`${styles.authPill} ${styles.authPillSecondary}`}
+            className={`${styles.authPill} ${styles.authPillPrimary}`}
           >
             Sign up for free
           </Link>
