@@ -638,27 +638,30 @@
 
 /* Mode-row "+" new-chat button. Wraps `<ModeSelector>` and a small
    icon button so the "+" sits at the right end of the mode row,
-   visually directly above the send button. The trailing padding
-   matches the send button's `right: 2px` inset in
-   `InputBarShell.module.css`, mirroring the attach button's
-   `left: 2px`, so all four corner buttons share a 2px inset from
-   the rounded-container edges. */
+   visually directly above the send button. A 3-track grid pairs the
+   right-side `+` (24px) with an equal-width phantom track on the
+   left so the centred pills inside `<ModeSelector>` stay visually
+   centred against the full bar — without the `+` shifting them
+   off-axis. The 2px horizontal padding mirrors the send button's
+   `right: 2px` inset in `InputBarShell.module.css` and the attach
+   button's `left: 2px`, so all four corner buttons share a 2px
+   inset from the rounded-container edges. */
 .modeBarRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 24px 1fr 24px;
   align-items: stretch;
   width: 100%;
   min-width: 0;
-  padding-right: 2px;
-  /* Own the divider for the whole mode-bar row (including the 2px
-     padding-right gap above the send button) so the line spans the
-     full input-container width. The two children below have their
-     own border-bottoms suppressed to avoid stacking a second
+  padding: 0 2px;
+  /* Own the divider for the whole mode-bar row so the line spans
+     the full input-container width. The selector child below has
+     its own border-bottom suppressed to avoid stacking a second
      semi-transparent border on top of this one. */
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
 }
 
 .modeSelectorFlex {
-  flex: 1 1 auto;
+  grid-column: 2;
   min-width: 0;
 }
 
@@ -677,7 +680,7 @@
    styles/tokens.css), same Plus glyph size/strokeWidth in the TSX. */
 .modeNewChatButton {
   position: relative;
-  flex: 0 0 auto;
+  grid-column: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;

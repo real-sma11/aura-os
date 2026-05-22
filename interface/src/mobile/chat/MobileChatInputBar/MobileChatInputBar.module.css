@@ -41,26 +41,32 @@
 
 /* Wrapper used when an `onNewChat` handler is supplied so a small
    "+" sits at the right end of the mode-selector row, mirroring the
-   desktop affordance. */
+   desktop affordance. The 3-track grid pairs the right-side `+`
+   (36px) with an equal-width phantom track on the left so the
+   centred pills inside `<ModeSelector>` stay visually centred
+   against the full bar — without the `+` shifting them off-axis.
+   The 8px right padding preserves the original visual inset that
+   used to live on the button as `margin-right`. */
 .modeBarRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
   align-items: stretch;
   width: 100%;
   min-width: 0;
+  padding: 0 8px;
 }
 
 .modeSelectorFlex {
-  flex: 1 1 auto;
+  grid-column: 2;
   min-width: 0;
 }
 
 .modeNewChatButton {
-  flex: 0 0 auto;
+  grid-column: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
-  margin-right: 8px;
   border: none;
   background: transparent;
   color: var(--color-text-muted);

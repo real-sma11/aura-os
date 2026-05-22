@@ -9,18 +9,15 @@
 .root {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  /* Align the active pill chip's left edge with the visible centre of
-     the attach (`+`) icon on the input row below it. The `+` button
-     itself is anchored at `left: 2px` and is 24px wide, but the 16px
-     lucide Plus glyph sits centred inside it — so its visible left
-     edge falls around 6–8px from the container. 6px here + the inner
-     `SlidingPills` wrapper's own 2px of padding puts the pill chip's
-     left edge at 8px, which reads as flush with the `+` glyph rather
-     than the (invisible) bounding box of the button. The 12px on the
-     right keeps the pills clear of the send button (anchored at
-     `right: 14px`, so 12 + the pills wrapper's 2px = 14px). */
-  padding: 0 12px 0 6px;
+  /* Pills are horizontally centred on their own row, relative to the
+     full input-area width. In layouts that pair the selector with a
+     right-side `+` new-chat button (`.modeBarRow` in the consuming
+     stylesheets) the parent grid balances the `+` track with an
+     equal-width phantom track on the left so the pills stay visually
+     centred against the bar, not offset by the `+`. */
+  padding: 0 12px;
   min-height: var(--control-height-sm, 32px);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
   /* The pill buttons are pure controls — text selection here is
@@ -80,11 +77,7 @@
 
 @media (max-width: 640px) {
   .root {
-    /* Mobile attach button is anchored at `left: 0` and is a 44px hit
-       target with a 16px icon centred inside it, so the visible `+`
-       glyph sits ~14px from the container's left edge. Match that on
-       the pill chip (12px here + the pills wrapper's 2px = 14px). */
-    padding: 0 10px 0 12px;
+    padding: 0 12px;
     gap: 8px;
   }
 
