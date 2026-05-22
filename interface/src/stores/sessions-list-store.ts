@@ -2,7 +2,15 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
 import { sessionsApi } from "../shared/api/agents";
-import { useProjectsListStore } from "./projects-list-store";
+// `useProjectsListStore` is loaded dynamically inside `loadUserSessions`
+// (the sole consumer in this file) to break a static circular dep that
+// would otherwise put `useAuthStore` in TDZ at boot:
+//   auth-store -> event-store -> engine-event-handlers ->
+//   sessions-list-store -> projects-list-store -> useAuthStore.subscribe(...)
+// projects-list-store calls `useAuthStore.subscribe(...)` at module top
+// level, and any static import here would force its evaluation while
+// auth-store's own top-level `const useAuthStore = create(...)` is still
+// running, throwing "Cannot access 'useAuthStore' before initialization".
 import type { AnnotatedSession } from "../components/SessionsList";
 import type { Session } from "../shared/types";
 
@@ -553,7 +561,10 @@ export const useSessionsListStore = create<SessionsListStore>((set, get) => ({
       // here is a one-shot lookup, not a subscription, so a later
       // projects refresh won't auto-rename rows; the next
       // `loadUserSessions` call (e.g. on `bumpVersion`) picks up
-      // the updated names.
+      // the updated names. Dynamic import (vs. static at the top of
+      // this file) is load-bearing: see the comment on the import
+      // block at the top for the auth-store TDZ cycle it breaks.
+      const { useProjectsListStore } = await import("./projects-list-store");
       const projectsById = new Map(
         useProjectsListStore
           .getState()
