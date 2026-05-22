@@ -17,7 +17,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 import { Menu, Moon, Plus, Sun } from "lucide-react";
 import { useTheme } from "@cypher-asi/zui";
 import { BackgroundLayer } from "../../components/DesktopShell/BackgroundLayer";
-import { cycleTheme, getThemeToggleIconKind, getThemeToggleAriaLabel } from "../../lib/theme-toggle";
+import { cycleTheme, getThemeToggleAriaLabel } from "../../lib/theme-toggle";
 import { ShellTitlebar } from "../../components/ShellTitlebar";
 import { WindowControls } from "../../components/WindowControls";
 import { useAuth } from "../../stores/auth-store";
