@@ -37,10 +37,16 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  overflow: hidden;
+  /* No border, no rounded corners, no clip rectangle: the panel is
+     a pure layout container so the AURA visual loop can bleed past
+     the right column into the rest of the body. The shell-level
+     background is the same `var(--color-bg)`, so removing the
+     duplicate fill here is purely visual — there's no second
+     surface peeking through. The body's own `overflow: hidden`
+     remains the outermost clip boundary. */
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .titleCenter {
@@ -253,7 +259,13 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* No `overflow: hidden`: the absolute-positioned
+     `.chatBackgroundVideo` below uses negative margins / `min(...)`
+     widths that intentionally exceed the chat column so the video
+     can bleed sideways past the panel boundary into the body's
+     gutter. The body's own `overflow: hidden` is the final clip.
+     Internal vertical scrolling still belongs to `.chatScroller`,
+     which keeps its own `overflow-y: auto`. */
 }
 
 /* Decorative AURA visual loop pinned to the center of the chat
@@ -271,8 +283,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(880px, 90%);
-  max-height: 80%;
+  /* `min(1100px, 110%)` deliberately exceeds the chat column width
+     so the video bleeds past `.mainPanel`'s left edge into the
+     6px body gutter (and a touch beyond on wide viewports). The
+     body's own `overflow: hidden` clips the spill at the shell
+     edge so it never leaks under the sidebar. */
+  width: min(1100px, 110%);
+  max-height: 90%;
   object-fit: contain;
   opacity: 0.35;
   pointer-events: none;
