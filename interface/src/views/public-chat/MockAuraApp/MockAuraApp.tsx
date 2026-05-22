@@ -1,5 +1,18 @@
-import type { ReactNode } from "react";
-import { Minus, PanelLeft, PanelRight, Square, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  ChevronRight,
+  Circle,
+  CreditCard,
+  Folder,
+  Globe,
+  LayoutGrid,
+  Minus,
+  PanelLeft,
+  PanelRight,
+  Settings,
+  Square,
+  X,
+} from "lucide-react";
 import { ShellTitlebar } from "../../../components/ShellTitlebar";
 import { DMWindowManager } from "./DMWindowManager";
 import styles from "./MockAuraApp.module.css";
@@ -11,12 +24,14 @@ import styles from "./MockAuraApp.module.css";
  * MSN/ICQ-style DM windows float over the wallpaper as agents trade
  * messages in parallel threads.
  *
- * Phase 1 layers the actual `ShellTitlebar` component (the same one
- * mounted by `AuraShell` in production) over the wallpaper as an
- * absolute `.topChrome` overlay with mock decorative children for the
- * three slots — the rounded pill margin/radius/blur all come for free
- * from `ShellTitlebar`'s own `.alignRail` rule. Phase 2 will add the
- * three bottom dock pills.
+ * The chrome is now visually 1:1 with a live Aura window: phase 1
+ * layers the actual `ShellTitlebar` component (the same one mounted
+ * by `AuraShell` in production) over the top via the `.topChrome`
+ * overlay, and phase 2 layers three rounded `BottomTaskbar`-style
+ * pills over the bottom via the `.bottomChrome` overlay. The pills
+ * reuse the same `--shell-chrome-*` tokens that drive the real
+ * `BottomTaskbar.module.css`, so margins, radii, blur, and border
+ * colors stay in lockstep with the live shell.
  *
  * The wallpaper, vignette, and overlay chrome are decorative —
  * `aria-hidden` keeps them out of the assistive-tech tree. The only
@@ -29,7 +44,18 @@ import styles from "./MockAuraApp.module.css";
  * first message the parent flips to the populated transcript layout
  * and this component unmounts entirely.
  */
+function formatClock(date: Date): string {
+  const hours24 = date.getHours();
+  const minutes = date.getMinutes();
+  const period = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutesPadded = minutes.toString().padStart(2, "0");
+  return `${hours12}:${minutesPadded} ${period}`;
+}
+
 export function MockAuraApp(): ReactNode {
+  const [clockLabel] = useState<string>(() => formatClock(new Date()));
+
   return (
     <div className={styles.appFrame} data-testid="mock-aura-app">
       <video
@@ -74,6 +100,38 @@ export function MockAuraApp(): ReactNode {
           }
           onDoubleClick={() => undefined}
         />
+      </div>
+      <div className={styles.bottomChrome} aria-hidden="true">
+        <div className={`${styles.pill} ${styles.bottomLeft}`}>
+          <span className={styles.taskbarIconButton}>
+            <Circle size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.favAvatar} />
+          <span className={styles.favAvatar} />
+        </div>
+        <div className={`${styles.pill} ${styles.bottomCenter}`}>
+          <span className={styles.taskbarIconButton}>
+            <LayoutGrid size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.taskbarIconButton}>
+            <Folder size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.taskbarIconButton}>
+            <ChevronRight size={14} strokeWidth={2} />
+          </span>
+        </div>
+        <div className={`${styles.pill} ${styles.bottomRight}`}>
+          <span className={styles.taskbarIconButton}>
+            <CreditCard size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.taskbarIconButton}>
+            <Settings size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.taskbarIconButton}>
+            <Globe size={14} strokeWidth={2} />
+          </span>
+          <span className={styles.clock}>{clockLabel}</span>
+        </div>
       </div>
     </div>
   );

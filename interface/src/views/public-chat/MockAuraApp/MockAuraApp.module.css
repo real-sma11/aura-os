@@ -3,9 +3,13 @@
  * flat 16:10 wallpaper rectangle with a soft drop shadow and square
  * corners. The wallpaper video and a radial vignette sit absolutely
  * inside the frame; the `DMWindowManager` cascades the scripted DM
- * windows over them. Phase 1 layers the real `ShellTitlebar`
- * component over the top via the `.topChrome` overlay below — phase
- * 2 will add the three bottom dock pills.
+ * windows over them. The chrome is now visually 1:1 with a live Aura
+ * window — phase 1 layers the real `ShellTitlebar` component over
+ * the top via the `.topChrome` overlay, and phase 2 layers three
+ * rounded `BottomTaskbar`-style pills (left / center / right) over
+ * the bottom via the `.bottomChrome` overlay. Both overlays reuse
+ * the same `--shell-chrome-*` tokens that drive the real shell, so
+ * margins, radii, blur, and border colors stay in lockstep.
  */
 
 /*
@@ -118,4 +122,77 @@
   width: auto;
   opacity: 0.85;
   pointer-events: none;
+}
+
+/*
+ * Phase 2 — bottom chrome overlay. Three independent rounded pills
+ * (left / center / right) styled with the same `--shell-chrome-*`
+ * tokens that drive `.left/.center/.right` in
+ * `BottomTaskbar.module.css`, so the mock dock is visually 1:1 with
+ * the real Aura bottom taskbar. The center pill is absolute-centered
+ * with the same `position: absolute; transform: translate(-50%, -50%)`
+ * trick the real BottomTaskbar uses.
+ */
+.bottomChrome {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: var(--shell-chrome-outer-height);
+  padding: var(--shell-chrome-inset);
+}
+
+.pill {
+  height: var(--shell-chrome-height);
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+  border: 1px solid var(--color-border-chrome);
+  border-radius: var(--shell-chrome-radius);
+  padding: 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary);
+}
+
+.bottomCenter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.taskbarIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: inherit;
+}
+
+.favAvatar {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a4d5b 0%, #2a2c36 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.clock {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: inherit;
+  padding: 0 4px;
+  user-select: none;
 }
