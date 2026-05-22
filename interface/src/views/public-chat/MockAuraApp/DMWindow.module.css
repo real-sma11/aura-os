@@ -1,39 +1,38 @@
 /*
- * DMWindow — one floating MSN/ICQ-style chat window inside the
- * mock Aura desktop. Each window owns its own titlebar (with both
- * participants' names + decorative window controls), a status
- * strip showing the thread title, and a scrolling body that hosts
- * left/right-aligned message bubbles + tool cards.
+ * DMWindow — one floating chat window inside the public-mode mock
+ * Aura desktop. The chrome is intentionally 1:1 with the real
+ * advanced-desktop `AgentWindow` (see
+ * `interface/src/apps/agents/components/AgentWindow/AgentWindow.module.css`):
+ * same radius / border / glass / shadow recipe, same titlebar
+ * structure, same min-max-close control buttons. The only
+ * differences are decorative — a status strip under the titlebar
+ * showing the thread title, a body that hosts left/right-aligned
+ * message bubbles + tool cards, and per-window pop / idle-drift
+ * animations.
  *
- * The window is a fixed-width card (260px) that pops open when its
- * thread receives its first frame and stays mounted for the rest
- * of the loop. The pop-open keyframe scales from 0.9 + small
- * translate to neutral pose, paired with the `dmIdleDrift`
- * animation that keeps the window subtly bobbing so the desktop
- * never reads as a static screenshot.
- *
- * Color palette is dark-only because the mock chrome is meant to
- * read as a dark desktop OS regardless of the host theme — light-
- * mode users still see the same windowed look from the marketing
- * screenshot.
+ * Each window is absolutely positioned inside `DMWindowManager`
+ * with its `top/left/right/bottom/width/maxHeight` driven by an
+ * inline style from `DMWindow.tsx`, so the manager can fan windows
+ * across the wallpaper and vary their sizes per thread. The CSS
+ * here only supplies a minimum floor and the responsive clamps.
  */
 
 .dmWindow {
   position: absolute;
-  width: 260px;
-  max-height: 320px;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
-  overflow: hidden;
+  min-width: 200px;
   pointer-events: auto;
-  background: rgba(18, 19, 26, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  backdrop-filter: blur(64px) saturate(1.2);
+  -webkit-backdrop-filter: blur(64px) saturate(1.2);
   box-shadow:
-    0 18px 40px -12px rgba(0, 0, 0, 0.55),
-    0 6px 14px -6px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
-  backdrop-filter: blur(6px);
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  contain: layout;
   /* Two animations layered: `dmWindowPop` plays once on mount when
      the window first appears, and `dmIdleDrift` runs continuously so
      the window has a subtle floaty motion the rest of the time. The
@@ -43,6 +42,18 @@
     dmWindowPop 420ms cubic-bezier(0.16, 1, 0.3, 1) both,
     dmIdleDrift 9s ease-in-out 600ms infinite alternate;
   transform-origin: 50% 0%;
+}
+
+/*
+ * Focused state — the window whose thread most recently received a
+ * frame paints with a heavier drop shadow, mirroring the real
+ * `AgentWindow`'s `.windowFocused` recipe so the active window
+ * reads as the one in front of the cascade.
+ */
+.dmWindowFocused {
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 @keyframes dmWindowPop {
@@ -68,17 +79,21 @@
   }
 }
 
+/* Responsive clamps. The inline `width` / `maxHeight` supplied by
+   `DMWindow.tsx` is the authoring intent; at narrow viewports we
+   override it with `!important` so a small wallpaper area never
+   gets a window wider than itself. */
 @media (max-width: 720px) {
   .dmWindow {
-    width: 220px;
-    max-height: 260px;
+    width: 220px !important;
+    max-height: 260px !important;
   }
 }
 
 @media (max-width: 540px) {
   .dmWindow {
-    width: 190px;
-    max-height: 220px;
+    width: 190px !important;
+    max-height: 220px !important;
   }
 }
 
@@ -86,45 +101,43 @@
 
 .dmTitlebar {
   flex-shrink: 0;
-  height: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  background: linear-gradient(
-    to bottom,
-    rgba(36, 38, 50, 0.95),
-    rgba(22, 23, 32, 0.95)
-  );
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  gap: var(--space-2, 8px);
+  height: var(--control-height-sm, 28px);
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
   user-select: none;
 }
 
 .dmTitleParticipants {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
+  flex: 1;
   overflow: hidden;
 }
 
 .dmTitleName {
-  font-size: 10.5px;
+  font-size: var(--text-xs, 11px);
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: rgba(232, 233, 240, 0.9);
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
 .dmTitleSep {
-  color: rgba(232, 233, 240, 0.4);
+  color: var(--color-text-muted);
   font-size: 10px;
 }
 
 .dmParticipantDot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
   border: 1px solid;
@@ -133,8 +146,7 @@
 .dmControls {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  color: rgba(232, 233, 240, 0.55);
+  gap: 2px;
   flex-shrink: 0;
 }
 
@@ -142,13 +154,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--color-text-muted);
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.dmControl:last-child:hover {
-  background: rgba(232, 76, 76, 0.7);
+.dmControl:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+}
+
+.dmControlClose:hover {
+  background: #e81123;
   color: #fff;
 }
 
@@ -159,10 +179,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  background: rgba(12, 13, 18, 0.72);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  color: rgba(232, 233, 240, 0.55);
+  padding: 4px 12px;
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   font-size: 10px;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -191,15 +211,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 8px 10px 8px;
+  padding: 8px 10px 10px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: linear-gradient(
-    to bottom,
-    rgba(18, 19, 26, 0.85),
-    rgba(14, 15, 21, 0.95)
-  );
+  background: transparent;
   scrollbar-width: none;
 }
 
@@ -259,7 +275,7 @@
   border-radius: 9px;
   font-size: 11.5px;
   line-height: 1.4;
-  color: rgba(240, 240, 246, 0.95);
+  color: var(--color-text);
   word-wrap: break-word;
   /* Pin a min-height so the typing -> message swap doesn't jolt the
      bubble taller; matches the morph behaviour from the previous
@@ -269,14 +285,14 @@
 }
 
 .dmBubbleLeft {
-  background: rgba(50, 52, 68, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  border: 1px solid var(--color-border);
   border-bottom-left-radius: 3px;
 }
 
 .dmBubbleRight {
-  background: rgba(70, 56, 110, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--color-elevated) 75%, transparent);
+  border: 1px solid var(--color-border);
   border-bottom-right-radius: 3px;
 }
 
@@ -331,7 +347,7 @@
 .dmToolCard {
   max-width: 92%;
   border-radius: 8px;
-  background: rgba(8, 9, 13, 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   border: 1px solid;
   padding: 6px 8px;
   display: flex;
@@ -356,7 +372,7 @@
 }
 
 .dmToolTarget {
-  color: rgba(232, 233, 240, 0.55);
+  color: var(--color-text-muted);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
     monospace);
   font-size: 10px;

@@ -125,20 +125,51 @@ function frameDwellMs(frame: DemoFrame): number {
 }
 
 /**
- * Static positions for each DM window inside the wallpaper area.
- * Coordinates are CSS percentages relative to the wallpaper body,
- * laid out so the four windows tile across the corners with a
- * gentle off-axis stagger that matches the cascading-window feel
- * of classic IM clients. A small idle drift animation (see
- * `.dmWindow` in the CSS module) gives each window a touch of life
- * so the panel doesn't read as "static screenshot" once a window
- * settles.
+ * Per-thread window layout — position, width, and height. Each
+ * window picks a different point along both axes so the four
+ * windows fan across the wallpaper in a deliberate cascade
+ * (instead of all four hugging a corner), and each one declares a
+ * different `width`/`maxHeight` so the surface reads as a populated
+ * desktop with windows of varied content rather than four identical
+ * IM panes. Some overlap is intentional — real desktop windows
+ * overlap, and the manager already raises the most-recently-touched
+ * window via `lastTouchedAt` -> `zByThread` so the cascade reads
+ * correctly when windows do collide.
  */
-const THREAD_POSITIONS: Readonly<Record<ThreadId, { top?: string; left?: string; right?: string; bottom?: string }>> = {
-  architect_frontend: { top: "8%", left: "5%" },
-  architect_backend: { top: "10%", right: "6%" },
-  backend_reviewer: { bottom: "8%", left: "8%" },
-  frontend_reviewer: { bottom: "12%", right: "5%" },
+interface ThreadLayout {
+  readonly top?: string;
+  readonly left?: string;
+  readonly right?: string;
+  readonly bottom?: string;
+  readonly width: string;
+  readonly maxHeight: string;
+}
+
+const THREAD_POSITIONS: Readonly<Record<ThreadId, ThreadLayout>> = {
+  architect_frontend: {
+    top: "6%",
+    left: "4%",
+    width: "280px",
+    maxHeight: "320px",
+  },
+  architect_backend: {
+    top: "14%",
+    right: "12%",
+    width: "260px",
+    maxHeight: "280px",
+  },
+  backend_reviewer: {
+    top: "46%",
+    left: "22%",
+    width: "240px",
+    maxHeight: "220px",
+  },
+  frontend_reviewer: {
+    bottom: "8%",
+    right: "4%",
+    width: "250px",
+    maxHeight: "240px",
+  },
 };
 
 export function DMWindowManager(): ReactNode {
@@ -203,6 +234,20 @@ export function DMWindowManager(): ReactNode {
     return map;
   }, [state.windows]);
 
+  // The window whose thread most recently received a frame is the
+  // "focused" one and paints with the heavier `.dmWindowFocused`
+  // drop shadow. We pick the max `lastTouchedAt` here so the
+  // selection stays in sync with `zByThread` (whichever window is
+  // visually on top is also the focused one).
+  const focusedThreadId = useMemo<ThreadId | null>(() => {
+    if (state.windows.length === 0) return null;
+    let best = state.windows[0];
+    for (const w of state.windows) {
+      if (w.lastTouchedAt > best.lastTouchedAt) best = w;
+    }
+    return best.threadId;
+  }, [state.windows]);
+
   return (
     <div
       className={styles.windowManager}
@@ -225,6 +270,7 @@ export function DMWindowManager(): ReactNode {
             frames={frames}
             zIndex={z}
             position={position}
+            isFocused={win.threadId === focusedThreadId}
             onFocus={focusThread}
           />
         );

@@ -51,6 +51,16 @@ export interface DMWindowPosition {
   readonly left?: string;
   readonly right?: string;
   readonly bottom?: string;
+  /**
+   * Optional per-window footprint. When supplied, the inline style
+   * applies `width` / `maxHeight` so the manager can vary each
+   * window's size — a long thread reads as a "tall" window, a
+   * short thread reads as a compact one, matching how real
+   * desktop windows differ. The CSS module still supplies a
+   * `min-width` floor and responsive overrides below 720/540px.
+   */
+  readonly width?: string;
+  readonly maxHeight?: string;
 }
 
 interface DMWindowProps {
@@ -60,6 +70,13 @@ interface DMWindowProps {
   readonly frames: ReadonlyArray<DMWindowFrame>;
   readonly zIndex: number;
   readonly position: DMWindowPosition;
+  /**
+   * True when this window's thread most recently received a frame.
+   * Drives the `.dmWindowFocused` shadow bump, mirroring how the
+   * real advanced-desktop `AgentWindow` raises a heavier drop
+   * shadow on the focused window.
+   */
+  readonly isFocused: boolean;
   readonly onFocus: (threadId: ThreadId) => void;
 }
 
@@ -70,6 +87,7 @@ export function DMWindow({
   frames,
   zIndex,
   position,
+  isFocused,
   onFocus,
 }: DMWindowProps): ReactNode {
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -96,18 +114,23 @@ export function DMWindow({
     left: position.left,
     right: position.right,
     bottom: position.bottom,
+    width: position.width,
+    maxHeight: position.maxHeight,
   };
 
   const [leftAgent, rightAgent] = participants;
   const leftMeta = AGENTS[leftAgent];
   const rightMeta = AGENTS[rightAgent];
 
+  const windowClass = `${styles.dmWindow} ${isFocused ? styles.dmWindowFocused : ""}`;
+
   return (
     <div
-      className={styles.dmWindow}
+      className={windowClass}
       style={containerStyle}
       data-thread-id={threadId}
       data-testid={`dm-window-${threadId}`}
+      data-focused={isFocused ? "true" : undefined}
       onMouseDown={handleFocus}
     >
       <div className={styles.dmTitlebar}>
@@ -120,13 +143,13 @@ export function DMWindow({
         </div>
         <div className={styles.dmControls}>
           <span className={styles.dmControl}>
-            <Minus size={9} strokeWidth={2.4} />
+            <Minus size={12} strokeWidth={2} />
           </span>
           <span className={styles.dmControl}>
-            <Square size={8} strokeWidth={2.4} />
+            <Square size={10} strokeWidth={2} />
           </span>
-          <span className={styles.dmControl}>
-            <X size={9} strokeWidth={2.4} />
+          <span className={`${styles.dmControl} ${styles.dmControlClose}`}>
+            <X size={12} strokeWidth={2} />
           </span>
         </div>
       </div>
