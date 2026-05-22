@@ -321,7 +321,7 @@
   align-items: center;
   max-width: 88%;
   padding: 6px 10px;
-  border-radius: 9px;
+  border-radius: 3px;
   font-size: 11.5px;
   line-height: 1.4;
   color: var(--color-text);
@@ -335,12 +335,10 @@
 
 .dmBubbleLeft {
   background: color-mix(in srgb, var(--color-surface) 80%, transparent);
-  border-bottom-left-radius: 3px;
 }
 
 .dmBubbleRight {
   background: color-mix(in srgb, var(--color-elevated) 75%, transparent);
-  border-bottom-right-radius: 3px;
 }
 
 .dmBubblePhase {
