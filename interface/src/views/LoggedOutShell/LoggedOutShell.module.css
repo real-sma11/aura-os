@@ -280,20 +280,18 @@
    still). */
 .chatBackgroundVideo {
   position: absolute;
-  /* Full-fill cover instead of `contain` + max-height so there are
-     no letterbox bars: the video grows to whichever of the two
-     axes is larger and crops the other. The 110% width keeps the
-     deliberate horizontal bleed past `.mainPanel`'s left edge into
-     the 6px body gutter; height runs the full chat column so the
-     hard top/bottom edges visible with `max-height: 90%` are gone.
-     The body's `overflow: hidden` is still the outermost clip. */
-  top: 0;
+  /* Show the full visual loop uncropped (`object-fit: contain`) at
+     full brightness, sized small enough that the natural letterbox
+     gutters around the video disappear into the dark shell — no
+     hard rectangular boundary because the empty space simply blends
+     with the background. Centered on both axes via top/left + the
+     symmetric translate. */
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  width: min(1100px, 110%);
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.35;
+  transform: translate(-50%, -50%);
+  width: min(640px, 70%);
+  max-height: 80%;
+  object-fit: contain;
   pointer-events: none;
   z-index: 0;
 }
