@@ -39,8 +39,8 @@ export function LoginView() {
               <img
                 src="/AURA_logo_text_mark.png"
                 alt="AURA"
+                draggable={false}
                 data-aura-wordmark
-                style={{ height: 11, display: "block" }}
               />
             </span>
           }

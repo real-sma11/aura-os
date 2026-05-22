@@ -179,10 +179,21 @@ html[data-mobile-client="true"] select {
   -webkit-app-region: no-drag;
 }
 
-/* AURA wordmark — keep a single white-on-transparent PNG and invert it
-   in light mode so it reads as black-on-light. The data attribute lets
-   the rule apply to all three render sites (DesktopTitlebar, MobileTopbar,
-   LoginView) without coupling to a CSS module class. */
+/* AURA wordmark — single canonical render of the brand mark. The
+   `data-aura-wordmark` attribute is the global hook every surface uses
+   (DesktopTitlebar, LoggedOutTitlebar, LoginView, MobileTopbar,
+   MarketingNavbar) so the mark renders at the same size + same
+   non-interactive styling everywhere; the only per-site CSS left is
+   positioning and optional hover treatments. The light-mode invert
+   keeps the white-on-transparent PNG legible on light themes. */
+img[data-aura-wordmark] {
+  height: 11px;
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+
 [data-theme='light'] img[data-aura-wordmark] {
   filter: invert(1);
 }

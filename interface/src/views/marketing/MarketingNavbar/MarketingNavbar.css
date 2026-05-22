@@ -85,8 +85,11 @@
 }
 
 .titleLogo {
-  height: 16px;
-  width: auto;
+  /* Height + display + non-interactive styling come from the global
+     `img[data-aura-wordmark]` rule in `index.css` so the marketing nav
+     mark renders at the same size as every other shell mark. Only the
+     marketing-specific aesthetic (subtle opacity + hover glow) lives
+     here. */
   opacity: 0.9;
   transition:
     opacity var(--marketing-transition-fast, 150ms ease),
@@ -199,10 +202,6 @@ body.mobileMenuOpen {
 @media (max-width: 768px) {
   .navbar {
     padding: 0 24px;
-  }
-
-  .titleLogo {
-    height: 18px;
   }
 
   .navbarInner {

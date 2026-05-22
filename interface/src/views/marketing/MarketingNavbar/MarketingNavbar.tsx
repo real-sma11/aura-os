@@ -126,7 +126,13 @@ export function MarketingNavbar(): React.ReactNode {
     <header className={headerClass}>
       <nav className="navbarInner" aria-label="Primary">
         <Link to="/" className="logoLink">
-          <img src="/aura-logo.png" alt="AURA" className="titleLogo" />
+          <img
+            src="/AURA_logo_text_mark.png"
+            alt="AURA"
+            draggable={false}
+            data-aura-wordmark
+            className="titleLogo"
+          />
         </Link>
         <ul className="navLinks">
           {NAV_LINKS.map(({ label, href }) => {
