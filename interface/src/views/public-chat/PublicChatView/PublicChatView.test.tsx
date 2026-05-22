@@ -1,19 +1,34 @@
 /**
  * Behavioural test for `PublicChatView`'s landing layout.
  *
- * The public surface no longer renders a chat input, transcript, or
- * gate modal — it is a pure marketing landing with the decorative
- * `MockAuraApp` hero and a single bottom-anchored "Create your agent"
- * CTA button. These tests pin that contract and guard against any of
- * the removed chat chrome accidentally reappearing.
+ * The public surface is a pure marketing landing with the
+ * decorative `MockAuraApp` hero, a right-edge `PersonaTickRail`,
+ * and a single bottom-anchored "Create your agent" CTA button.
+ * These tests pin that contract, the persona-theme swap wiring,
+ * and guard against any of the removed chat chrome accidentally
+ * reappearing.
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+// Stub `MockAuraApp` so the test surfaces just the wallpaper-prop
+// contract — the real component pulls in a video element and the
+// scripted DM windows, neither of which the landing test needs to
+// exercise. The stub echoes `desktopBackgroundUrl` into a data
+// attribute so the persona-theme swap is observable.
 vi.mock("../MockAuraApp", () => ({
-  MockAuraApp: () => <div data-testid="mock-aura-app-stub" />,
+  MockAuraApp: ({
+    desktopBackgroundUrl,
+  }: {
+    desktopBackgroundUrl?: string | null;
+  }) => (
+    <div
+      data-testid="mock-aura-app-stub"
+      data-desktop-bg={desktopBackgroundUrl ?? ""}
+    />
+  ),
 }));
 
 import { PublicChatView } from "./PublicChatView";
@@ -55,11 +70,11 @@ describe("PublicChatView landing", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the 6 persona ticks on the right rail", () => {
+  it("renders the 6 persona ticks on the right rail with the Solo Builder slot", () => {
     renderView();
     const personas = [
       "Vibecoder",
-      "Indie Hacker",
+      "Solo Builder",
       "Giga Brain",
       "Coordinator",
       "Researcher",
@@ -82,12 +97,44 @@ describe("PublicChatView landing", () => {
     expect(researcher).not.toHaveAttribute("aria-current");
     expect(researcher).toHaveAttribute("data-active", "false");
 
-    // Hovering a different tick promotes it to active and demotes the
-    // previously-active row — the panel renders this same flag.
+    // Hovering a different tick promotes it to active and demotes
+    // the previously-active row. The panel and parent theme both
+    // observe this via the shared `data-active` flag.
     fireEvent.mouseEnter(researcher);
     expect(researcher).toHaveAttribute("aria-current", "true");
     expect(researcher).toHaveAttribute("data-active", "true");
     expect(vibecoder).not.toHaveAttribute("aria-current");
     expect(vibecoder).toHaveAttribute("data-active", "false");
+  });
+
+  it("swaps the desktop wallpaper and site background when the Solo Builder tick activates", () => {
+    renderView();
+    const soloBuilderTick = screen.getByRole("button", { name: "Solo Builder" });
+    const heroStub = screen.getByTestId("mock-aura-app-stub");
+
+    // Vibecoder is the default and has no theme overrides: the
+    // wallpaper falls back to the video loop (empty data attr on
+    // the stub) and the `.chatView` carries no inline background.
+    expect(heroStub).toHaveAttribute("data-desktop-bg", "");
+
+    fireEvent.mouseEnter(soloBuilderTick);
+
+    expect(heroStub).toHaveAttribute(
+      "data-desktop-bg",
+      "/personas/solo-builder/desktop.png",
+    );
+
+    // The active persona id is mirrored on the root for downstream
+    // CSS hooks; the inline background is applied to the same
+    // element via `style`.
+    const chatView = document.querySelector(
+      '[data-persona-id="solo-builder"]',
+    );
+    expect(chatView).not.toBeNull();
+    const inline = (chatView as HTMLElement).style;
+    expect(inline.backgroundColor).not.toBe("");
+    expect(inline.backgroundImage).toContain(
+      "/personas/solo-builder/site.png",
+    );
   });
 });
