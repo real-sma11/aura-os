@@ -289,6 +289,36 @@
   z-index: 0;
 }
 
+/* Radial vignette around the AURA visual loop, mirroring
+   aura-web's `VideoBackground.css` so the orb's edges feather into
+   the panel background instead of butting against a hard rectangle
+   when the video would otherwise be clipped by the chat column.
+   Outer stops fade to `--color-bg` (via the repo's standard
+   `--color-bg-rgb` fallback used in `MarketingNavbar.css`) so the
+   gradient blends seamlessly into whatever surface sits behind the
+   chat panel — currently `var(--color-bg)` on `.shell` above.
+   Paints between the video (z-index 0) and the chat content
+   (z-index 1) by DOM-order tiebreak: `::after` is a sibling that
+   follows `.chatBackgroundVideo`, while `.chatScroller` and
+   `.inputBarSlot` opt themselves above the vignette via their
+   explicit `z-index: 1`. `pointer-events: none` keeps text
+   selection and click targets in the chat unaffected. */
+.chatView::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 54%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 0%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 22%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0.32) 34%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0.78) 54%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0.98) 72%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 1) 100%
+  );
+}
+
 .chatScroller {
   position: relative;
   z-index: 1;
