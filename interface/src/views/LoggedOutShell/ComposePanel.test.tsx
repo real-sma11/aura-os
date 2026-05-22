@@ -32,6 +32,14 @@ vi.mock("./LoggedOutShell.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
+// The hero banner runs a `setTimeout` chain to play its scripted
+// agent timeline. These focus-handoff tests don't care about that
+// motion, so we stub the banner to a static marker — keeps the test
+// deterministic without `vi.useFakeTimers()` plumbing.
+vi.mock("./AgentDemoBanner", () => ({
+  AgentDemoBanner: () => <div data-testid="agent-demo-banner-stub" />,
+}));
+
 vi.mock("../../features/chat-ui/ChatInputBar", () => {
   interface StubProps {
     input: string;

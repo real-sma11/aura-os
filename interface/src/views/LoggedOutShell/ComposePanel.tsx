@@ -6,14 +6,17 @@ import {
 } from "../../features/chat-ui/ChatInputBar";
 import { type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
+import { AgentDemoBanner } from "./AgentDemoBanner";
 import styles from "./LoggedOutShell.module.css";
 
 /**
  * Inline empty-state compose surface for the logged-out chat view.
  * Renders, top-to-bottom:
- *   1. A pink/purple gradient banner that hosts the compose heading
- *      ("What do you want to create?"), so the heading reads as a
- *      bold landscape rectangle anchoring the stack.
+ *   1. A pink/purple gradient hero (`AgentDemoBanner`) that loops a
+ *      scripted multi-agent collaboration — three agents trading
+ *      messages, tool calls, and approvals — as a live-feeling
+ *      demonstration of what the platform can do. Replaced the
+ *      previous static "What do you want to create?" heading.
  *   2. The shared `DesktopChatInputBar`, rendered inline via the
  *      `isStatic` prop so it joins the centered stack instead of
  *      floating absolutely at the bottom of the scroll lane. The
@@ -127,9 +130,7 @@ export function ComposePanel({
       role="region"
       aria-label="Start a new conversation"
     >
-      <div className={styles.composeBanner}>
-        <h2 className={styles.composeHeading}>What do you want to create?</h2>
-      </div>
+      <AgentDemoBanner />
       <div className={styles.composeInput}>
         <DesktopChatInputBar
           ref={inputBarRef}

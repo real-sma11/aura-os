@@ -2,9 +2,11 @@
  * Behavioural test for `LoggedOutChatView` empty-state inline
  * compose surface + auth-gated send. Pins four contracts:
  *
- *  - The empty state renders the inline compose heading
- *    ("What do you want to create?") and the example-prompt button
- *    row directly in the main panel (no modal overlay).
+ *  - The empty state renders the looping multi-agent demo banner
+ *    (`AgentDemoBanner`) and the example-prompt button row directly
+ *    in the main panel (no modal overlay). The banner replaced the
+ *    older "What do you want to create?" heading; the rest of the
+ *    empty-state stack (input + helper tabs) is unchanged.
  *  - The example-prompt row carries one button per agent mode
  *    (Code / Plan / Image / Video / 3D), labelled with the
  *    canonical short copy.
@@ -16,9 +18,8 @@
  *    request (interim auth gate while the public router is flaky).
  *
  * The shared `DesktopChatInputBar` is stubbed to a minimal textarea
- * + send button so this test does not pull in slash-command menus,
- * model pickers, or the input-bar shell — keeping the assertions
- * focused on the view's own logic.
+ * + send button, and `AgentDemoBanner` is stubbed to a no-op marker
+ * so the test stays free of timer-driven script playback.
  */
 
 import { render, screen, within } from "@testing-library/react";
@@ -77,6 +78,14 @@ vi.mock("../../components/KeepChattingModal", () => ({
   KeepChattingModal: () => <div data-testid="keep-chatting-modal-stub" />,
 }));
 
+// `AgentDemoBanner` runs a `setTimeout` chain to play its scripted
+// agent timeline. The view's own assertions don't care about that
+// motion, so we stub the banner to a static marker — keeps the test
+// deterministic without `vi.useFakeTimers()` plumbing.
+vi.mock("./AgentDemoBanner", () => ({
+  AgentDemoBanner: () => <div data-testid="agent-demo-banner-stub" />,
+}));
+
 import { LoggedOutChatView } from "./LoggedOutChatView";
 import { usePublicChatStore } from "../../stores/public-chat-store";
 
@@ -119,10 +128,14 @@ afterEach(() => {
 });
 
 describe("LoggedOutChatView inline compose", () => {
-  it("renders the compose heading and example-prompt buttons inline (no modal overlay)", () => {
+  it("renders the agent demo banner and example-prompt buttons inline (no modal overlay)", () => {
     renderView();
+    // The hero banner now plays a scripted multi-agent demo instead
+    // of the older static heading. The view's contract is just that
+    // *something* rendered there as the empty-state hero — the
+    // banner's own behaviour is exercised in `AgentDemoBanner.test.tsx`.
     expect(
-      screen.getByRole("heading", { name: "What do you want to create?" }),
+      screen.getByTestId("agent-demo-banner-stub"),
     ).toBeInTheDocument();
 
     // The example-prompt row is a curated single-line list of

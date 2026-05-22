@@ -26,7 +26,6 @@
   min-width: 0;
   min-height: 0;
   background: var(--color-sidebar-bg, rgba(0, 0, 0, 0.18));
-  border: 1px solid var(--color-border-main-panel, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   overflow: hidden;
 }
@@ -287,6 +286,12 @@
   object-fit: contain;
   pointer-events: none;
   z-index: 0;
+  /* Match the page-centering offset on `.composePanel` below so the
+     AURA visual loop's centered orb stays visually aligned with the
+     compose surface — the body grid puts the chat column at
+     column-center = page-center + 143px, so the same negative
+     translate lands the orb at page center too. */
+  transform: translateX(calc((-280px - 6px) / 2));
 }
 
 /* Radial vignette around the AURA visual loop, mirroring
@@ -308,14 +313,27 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* Travel with `.chatBackgroundVideo` and `.composePanel` so the
+     radial vignette's center stays under the orb at page-center
+     rather than the column-center. */
+  transform: translateX(calc((-280px - 6px) / 2));
+  /* `farthest-side` anchors the gradient's 100% to the nearest
+     panel edge midpoint (rather than the far corner used by
+     aura-web's `VideoBackground`), so the falloff stays tight in
+     the chat column's narrow aspect ratio: corners are past 100%
+     and pick up the final fully-opaque stop, hiding the video
+     element's rectangular frame entirely. Stops are pulled
+     inward vs. the aura-web port (transparent core ends ~18%,
+     fully opaque by ~58%) so the orb's bright body stays clear
+     while the rectangular edge of the AURA loop fades to bg well
+     before the panel boundary. */
   background: radial-gradient(
-    circle at 50% 54%,
+    circle farthest-side at 50% 50%,
     rgba(var(--color-bg-rgb, 9, 9, 11), 0) 0%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 22%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0.32) 34%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0.78) 54%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 0.98) 72%,
-    rgba(var(--color-bg-rgb, 9, 9, 11), 1) 100%
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0) 18%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0.55) 32%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 0.9) 46%,
+    rgba(var(--color-bg-rgb, 9, 9, 11), 1) 58%
   );
 }
 
@@ -435,6 +453,14 @@
      this also keeps the panel centered if the parent is ever
      swapped back to a flex container. */
   align-self: center;
+  /* Page-center the empty-state compose: the body grid reserves a
+     280px left rail + 6px gap, which pushes the column-centered
+     panel ~143px right of viewport center. Shift it back so the
+     LLM section lands at the actual horizontal middle of the page,
+     ignoring the sidebar. `transform` (not margin) keeps the grid
+     layout math intact and the body's existing `overflow: hidden`
+     clips any sliver of bleed on very narrow viewports. */
+  transform: translateX(calc((-280px - 6px) / 2));
 }
 
 /* Pink/purple gradient banner that hosts the compose heading on the
@@ -485,6 +511,49 @@
   width: 100%;
 }
 
+/* Public page only: halve the vertical distance between the bottom
+   of the rounded input rectangle and the top of the helper-tab row
+   ("Code an app" / "Build a website" / "Plan a trip" / "Research a
+   topic"). Three sources stack to produce the ~30px gap on the
+   shared `DesktopChatInputBar`:
+     1. `.inputWrapper` in `InputBarShell.module.css` carries
+        `padding-bottom: var(--space-3)` (12px) to keep the floating
+        bar clear of the panel edge — irrelevant on the public
+        compose surface where the bar is statically stacked, not
+        floating.
+     2. `.inputInfoBar` in the same module renders a row below the
+        rounded container for the agent environment / orbit /
+        project / context-usage chrome. None of that chrome applies
+        on the public page (no project, no context usage,
+        AgentEnvironment is invisible without a machine type), so
+        the row is effectively decorative dead space.
+     3. `.composePanel`'s 22px flex gap minus `.composeExamples`'s
+        `margin-top` (handled in `.composeExamples` below) controls
+        the residual gap between the input section and the helper
+        tabs.
+   The two overrides below collapse sources (1) and (2); the
+   `margin-top` change on `.composeExamples` below trims source (3).
+   All three are scoped under `.composeInput` so the authenticated
+   shell — which shares the same `DesktopChatInputBar` — is
+   unaffected. The data-attribute scope (`data-agent-surface=
+   "chat-input-bar"`, set via `rootProps` in `ChatInputBar.tsx`)
+   survives the consuming CSS module's class-name hashing. The
+   nested `> div:not([class*="inputContainer"])` selector
+   discriminates the info-bar sibling from the rounded
+   `.inputContainer` it sits beside: CSS Modules hashes the class
+   name but keeps the literal substring `inputContainer` in the
+   compiled selector, so `[class*="inputContainer"]` matches the
+   rounded box and excludes it from the hide. */
+.composeInput [data-agent-surface="chat-input-bar"] {
+  padding-bottom: 0;
+}
+
+.composeInput
+  [data-agent-surface="chat-input-bar"]
+  > div:not([class*="inputContainer"]) {
+  display: none;
+}
+
 /* Example-prompt button row — replaces the previous mode-pill
    widget row, which was visually redundant with the
    Code/Plan/Image/Video/3D pills baked into the input bar. Each
@@ -506,11 +575,14 @@
   max-width: 680px;
   margin-left: auto;
   margin-right: auto;
-  /* Tight 8px gap between the input section and the helper tab
-     row. Parent `.composePanel` flex gap is 22px, so the -14px
+  /* Tight 4px gap between the input section and the helper tab
+     row. Parent `.composePanel` flex gap is 22px, so the -18px
      margin-top trims the effective spacing without changing the
-     banner -> input gap above. */
-  margin-top: -14px;
+     banner -> input gap above. Combined with the two `.composeInput`
+     overrides above (zeroing the input wrapper's bottom padding and
+     hiding the empty info-bar row), this halves the previously
+     ~30px visible distance to ~15px without further restructuring. */
+  margin-top: -18px;
   overflow-x: auto;
   scrollbar-width: none;
 }
