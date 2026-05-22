@@ -46,7 +46,8 @@
 
 /* `prefers-reduced-motion: reduce` is intentionally NOT honoured
    here — the typewriter only runs inside the decorative
-   `AgentDemoBanner`, whose comment justifies playing every part of
-   the demo regardless of the media query (otherwise the homepage
+   `MockAuraApp` hero (via its DM windows), whose comment justifies
+   playing every part of the demo regardless of the media query
+   (otherwise the homepage
    hero reads as broken). The caret keeps blinking with the stream
    so the bubble stays consistent with the rest of the loop. */

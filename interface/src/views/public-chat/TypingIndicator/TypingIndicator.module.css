@@ -32,8 +32,9 @@
        feel of native iOS typing dots.
 
    `prefers-reduced-motion` handling: the dot animation ALWAYS
-   plays. The indicator only renders inside `AgentDemoBanner`, whose
-   own comment already justifies overriding reduced-motion for the
+   plays. The indicator only renders inside `MockAuraApp`'s DM
+   windows, whose own comment already justifies overriding
+   reduced-motion for the
    decorative homepage hero ("the demo is the entire point of the
    hero, so freezing it would just leave a static empty rectangle").
    Killing the per-dot bounce under that media query made the dots

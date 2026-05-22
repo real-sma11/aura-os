@@ -1,6 +1,6 @@
 /**
  * Behavioural test for `TerminalStream`. Pins three contracts that
- * protect the tool-preview reveal in `AgentDemoBanner`:
+ * protect the tool-preview reveal in `MockAuraApp`'s DM windows:
  *
  *   1. At t=0 the stream is empty — no completed lines, no rendered
  *      text from the active line — so consumers can rely on the

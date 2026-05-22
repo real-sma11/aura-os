@@ -27,10 +27,10 @@
  *       and the `useSidebarSearchStore` (for public).
  *
  *   (d) **Public-only content gate.** In public effective mode the
- *       marketing footer (Pricing link) and `AgentDemoBanner` are in
- *       the DOM. After `useAuthStore.setState({ user: ... })` (auth
- *       simulated), the same queries return null — the public-only
- *       surface is gone.
+ *       marketing footer (Pricing link) and `MockAuraApp` hero are
+ *       in the DOM. After `useAuthStore.setState({ user: ... })`
+ *       (auth simulated), the same queries return null — the
+ *       public-only surface is gone.
  *
  * `data-testid` contract:
  *   - `aura-shell`          — root `.shell` div

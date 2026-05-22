@@ -1,0 +1,270 @@
+/*
+ * MockAuraApp — empty-state hero for the public chat. Frames the
+ * panel with a windowed Aura desktop chrome (titlebar + wallpaper
+ * + taskbar) and slots an `inputDock` row in the bottom-of-frame
+ * area for the helper pills + real chat input bar.
+ *
+ * The frame fills the parent `.chatEmpty` grid cell — the parent
+ * uses `place-items: stretch` so the frame can extend to the chat
+ * panel's full width and height. A subtle gradient border + outer
+ * shadow give it the "windowed app on a wallpaper" feel from the
+ * marketing screenshot. Color literals are kept theme-aware via
+ * CSS variables wherever possible; a few near-black overlays are
+ * baked in because the mock chrome is meant to read as a dark
+ * desktop OS regardless of the host theme.
+ */
+
+.appFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    linear-gradient(#0b0c10, #0b0c10) padding-box,
+    linear-gradient(135deg, #2a2b34 0%, #14151c 60%, #2a2b34 100%) border-box;
+  border: 1px solid transparent;
+  box-shadow:
+    0 30px 60px -20px rgba(0, 0, 0, 0.55),
+    0 8px 18px -8px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  color: #e6e7ee;
+}
+
+/* ── Titlebar ─────────────────────────────────────────────── */
+
+.titlebar {
+  flex-shrink: 0;
+  height: 32px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 10px;
+  background: linear-gradient(
+    to bottom,
+    rgba(20, 21, 28, 0.95),
+    rgba(12, 13, 18, 0.95)
+  );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.titlebarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+}
+
+.titlebarCenter {
+  justify-self: center;
+}
+
+.titlebarRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+  color: rgba(230, 231, 238, 0.55);
+}
+
+.titlebarLogo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.titlebarLogoImg {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.titlebarWordmark {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: rgba(230, 231, 238, 0.78);
+  text-transform: uppercase;
+}
+
+.titlebarControl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: inherit;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.titlebarControl:last-child:hover {
+  background: rgba(232, 76, 76, 0.7);
+  color: #fff;
+}
+
+/* ── Body (wallpaper + DM windows) ────────────────────────── */
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/*
+ * Re-mounts the existing `/AURA_visual_loop.mp4` as a full-bleed
+ * wallpaper sitting *inside* the mock frame (the previous always-on
+ * video on `.chatView` was removed when this surface took over the
+ * empty state). `object-fit: cover` lets the orb crop into the
+ * available area at any aspect ratio without leaving letterbox
+ * bands, and `pointer-events: none` keeps the video from blocking
+ * clicks on the (decorative) DM windows above.
+ */
+.wallpaper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/*
+ * Soft radial vignette over the wallpaper so the DM windows have
+ * something contrasty to land on at their edges. The orb in the
+ * AURA loop is bright at the centre — without this the white-ish
+ * DM titlebars vanish into the wallpaper near 50%/50%.
+ */
+.wallpaperVignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 50% 55%,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.18) 40%,
+      rgba(0, 0, 0, 0.45) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.25) 0%,
+      rgba(0, 0, 0, 0) 25%,
+      rgba(0, 0, 0, 0) 75%,
+      rgba(0, 0, 0, 0.3) 100%
+    );
+}
+
+/* ── Input dock (helper pills + chat input bar) ───────────── */
+
+.inputDock {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  padding: 12px 14px 10px 14px;
+  background: linear-gradient(
+    to bottom,
+    rgba(11, 12, 16, 0.55) 0%,
+    rgba(11, 12, 16, 0.85) 40%,
+    rgba(11, 12, 16, 0.95) 100%
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Taskbar ──────────────────────────────────────────────── */
+
+.taskbar {
+  flex-shrink: 0;
+  height: 34px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 12px;
+  background: linear-gradient(
+    to top,
+    rgba(8, 9, 13, 0.95),
+    rgba(14, 15, 21, 0.92)
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(230, 231, 238, 0.7);
+  user-select: none;
+}
+
+.taskbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.taskbarGroup:nth-child(1) {
+  justify-self: start;
+}
+
+.taskbarGroup:nth-child(2) {
+  justify-self: center;
+}
+
+.taskbarGroup:nth-child(3) {
+  justify-self: end;
+}
+
+.taskbarIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: inherit;
+  transition: background 120ms ease;
+}
+
+.taskbarClock {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+}
+
+/* ── Responsive trims ─────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .titlebar {
+    height: 28px;
+    padding: 0 8px;
+  }
+
+  .titlebarWordmark {
+    font-size: 10px;
+    letter-spacing: 0.28em;
+  }
+
+  .taskbar {
+    height: 30px;
+    padding: 0 8px;
+  }
+
+  .inputDock {
+    padding: 10px 10px 8px 10px;
+  }
+}

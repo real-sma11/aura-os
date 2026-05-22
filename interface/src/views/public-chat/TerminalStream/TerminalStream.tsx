@@ -154,8 +154,8 @@ function renderTokens(tokens: ReadonlyArray<Token>): ReactNode {
  * hangs off the trailing edge of the currently-typing line so the
  * preview reads as "actively running" rather than pre-rendered.
  *
- * Used by `AgentDemoBanner` tool frames to make the tool preview
- * feel like the agent's tool is producing output in real time
+ * Used by `MockAuraApp`'s DM-window tool frames to make the tool
+ * preview feel like the agent's tool is producing output in real time
  * (matching the per-character LLM-stream feel of `TypewriterText`
  * on the message bubbles in the same banner). The inline message
  * typewriter stays a separate component because its layout is
@@ -182,8 +182,8 @@ function renderTokens(tokens: ReadonlyArray<Token>): ReactNode {
  *
  * Like its sibling `TypewriterText`, this component intentionally
  * does NOT honour `prefers-reduced-motion: reduce` — see the
- * `AgentDemoBanner` file comment for the rationale (decorative
- * homepage hero, whole banner is `aria-hidden`).
+ * `MockAuraApp` file comment for the rationale (decorative
+ * homepage hero, whole mock app is `aria-hidden`).
  */
 export function TerminalStream({
   lines,
@@ -221,7 +221,7 @@ export function TerminalStream({
 
     // No explicit snapshot reset here: the initial `useState` value
     // is already `{ lineIdx: 0, chars: 0 }`, and the only consumer
-    // (`AgentDemoBanner` tool frames) mounts this component fresh
+    // (`MockAuraApp` DM-window tool frames) mounts this component fresh
     // inside a phase-keyed wrapper, so the snapshot is guaranteed
     // to start at the correct empty state. A sync `setSnapshot` at
     // the top of the effect would correctly reset if `lines` ever

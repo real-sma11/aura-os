@@ -1,6 +1,6 @@
 /**
  * Smoke test for `TypewriterText`. Pins the streaming-character
- * behaviour at the unit level so the AgentDemoBanner suite stays
+ * behaviour at the unit level so the MockAuraApp suite stays
  * focused on the timeline orchestrator while the per-character
  * stream contract lives next to its component.
  *
@@ -8,8 +8,9 @@
  *    disappears once the last character has rolled in.
  *  - `prefers-reduced-motion: reduce` does NOT short-circuit the
  *    stream. The only current consumer is the decorative
- *    `AgentDemoBanner`, which is explicitly designed to play every
- *    animation regardless of the media query (see the banner's
+ *    `MockAuraApp` (via its DM windows), which is explicitly
+ *    designed to play every animation regardless of the media query
+ *    (see the mock app's
  *    file-level comment) — pinning the message to "appear instantly"
  *    for reduced-motion users made the demo loop read as broken.
  */

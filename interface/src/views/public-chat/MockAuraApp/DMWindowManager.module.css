@@ -1,0 +1,21 @@
+/*
+ * DMWindowManager — thin layout container that hosts the floating
+ * DM windows over the wallpaper. Sits as the topmost child of
+ * `MockAuraApp .body` so windows paint above the AURA video and
+ * the soft vignette but below the input dock / taskbar (which live
+ * outside `.body`).
+ */
+
+.windowManager {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/*
+ * Children (`.dmWindow` in DMWindow.module.css) re-enable
+ * `pointer-events: auto` on themselves so a future hover/focus
+ * interaction can raise a window without the empty regions of the
+ * manager intercepting clicks meant for the wallpaper.
+ */

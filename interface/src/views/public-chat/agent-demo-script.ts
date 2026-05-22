@@ -1,16 +1,16 @@
 /**
- * Hand-authored timeline that drives the logged-out homepage banner
- * (`AgentDemoBanner`). Stays a pure data module — no React, no DOM —
- * so it's trivially unit-testable and the banner component can stay
- * a thin renderer over `SCRIPT`.
+ * Hand-authored timeline that drives the logged-out homepage hero
+ * (`MockAuraApp`). Stays a pure data module — no React, no DOM —
+ * so it's trivially unit-testable and the hero component can stay a
+ * thin renderer over `SCRIPT`.
  *
- * The scenario walks four agents through a "ship a feature" loop:
- * an Architect plans the work, a Frontend agent writes the JSX, a
- * Backend agent wires the matching API endpoint + SQL migration +
- * test run, and a Reviewer rubber-stamps the green build. Total
- * wall-clock for one pass is ~40 seconds; the banner restarts from
- * the top once `SCRIPT` is exhausted so visitors who linger see a
- * continuous demo instead of a frozen final frame.
+ * The scenario walks four agents through a "ship a feature" loop
+ * across multiple parallel DM threads — an Architect coordinates a
+ * Frontend (tier cards) and a Backend (pricing endpoint + migration)
+ * agent in two separate windows, then a Reviewer signs off the work
+ * in two more. Total wall-clock for one pass is ~45 seconds; the
+ * hero restarts from the top once `SCRIPT` is exhausted so visitors
+ * who linger see a continuous demo instead of a frozen final frame.
  *
  * Frame durations are the *time the resolved frame is the latest
  * entry on screen* (not the typing duration of the message it
@@ -21,6 +21,14 @@
  * stacked rows. The script-level wall-clock for a frame with typing
  * is therefore `typingMs + durationMs`.
  *
+ * Each frame is tagged with a `thread` id so the renderer can route
+ * it into one of several floating DM windows (MSN/ICQ-style). A
+ * thread's window mounts the first time it receives a frame, then
+ * subsequent frames for that thread append messages inside the same
+ * window. Threads are 1:1 conversations between two agents — the
+ * agent identified by `frame.agent` is the speaker and the other
+ * participant from `THREADS[id].participants` is the listener.
+ *
  * Tool frames may declare a `language` (any `highlight.js/lib/common`
  * language id, e.g. `typescript`, `sql`, `bash`) which makes
  * `TerminalStream` syntax-highlight the preview lines with the theme
@@ -28,10 +36,6 @@
  * on theme change). Frames that aren't really code (e.g. the
  * Architect's plan checklist) leave `language` omitted and render as
  * plain text.
- *
- * Older frames keep rendering above the latest one until they scroll
- * out of the visible window — see `AgentDemoBanner.tsx` for the
- * windowing logic.
  */
 
 import {
@@ -106,6 +110,54 @@ export const AGENTS: Readonly<Record<AgentId, AgentMeta>> = {
 };
 
 /**
+ * Stable identifier for a 1:1 DM thread between two agents. The
+ * renderer mounts one floating chat window per thread and routes
+ * every script frame into the window matching `frame.thread`.
+ */
+export type ThreadId =
+  | "architect_frontend"
+  | "architect_backend"
+  | "backend_reviewer"
+  | "frontend_reviewer";
+
+export interface ThreadMeta {
+  readonly id: ThreadId;
+  /**
+   * Tuple of the two agents whose messages flow through this thread.
+   * The tuple order also determines the alignment of message bubbles
+   * inside the window — the first participant's bubbles render on
+   * the left, the second participant's on the right, mirroring the
+   * "you / them" split used by classic IM clients.
+   */
+  readonly participants: readonly [AgentId, AgentId];
+  /** Short title rendered in the DM window's titlebar. */
+  readonly title: string;
+}
+
+export const THREADS: Readonly<Record<ThreadId, ThreadMeta>> = {
+  architect_frontend: {
+    id: "architect_frontend",
+    participants: ["architect", "frontend"],
+    title: "Architect · Frontend",
+  },
+  architect_backend: {
+    id: "architect_backend",
+    participants: ["architect", "backend"],
+    title: "Architect · Backend",
+  },
+  backend_reviewer: {
+    id: "backend_reviewer",
+    participants: ["backend", "reviewer"],
+    title: "Backend · Reviewer",
+  },
+  frontend_reviewer: {
+    id: "frontend_reviewer",
+    participants: ["frontend", "reviewer"],
+    title: "Frontend · Reviewer",
+  },
+};
+
+/**
  * Common fields for every script frame. `typingMs`, when set,
  * triggers the row to first render the `TypingIndicator` for that
  * many milliseconds before its resolved content (message text or
@@ -113,6 +165,9 @@ export const AGENTS: Readonly<Record<AgentId, AgentMeta>> = {
  * instantly omit `typingMs` (or set it to 0).
  */
 interface BaseFrame {
+  /** DM window the frame renders inside. */
+  readonly thread: ThreadId;
+  /** Speaker — must be one of the thread's two participants. */
   readonly agent: AgentId;
   /**
    * Optional pre-roll: render typing dots inside the row for this
@@ -167,63 +222,69 @@ export interface ToolFrame extends BaseFrame {
 export type DemoFrame = MessageFrame | ToolFrame;
 
 /**
- * The curated timeline. Keep individual frames short (< 90 chars for
- * messages, ≤ 6 lines for tool previews) so they render cleanly inside
- * the 680 × 408 banner without wrapping into ugly multi-line bubbles.
+ * The curated timeline. Frames are ordered to interleave the four
+ * DM threads — a viewer watching the hero will see the Architect
+ * kick off two parallel threads (one with Frontend, one with
+ * Backend), each thread fills with messages + tool calls, and then
+ * a Reviewer thread opens to sign off the build.
  *
- * Beats that previously stood alone as `kind: "typing"` entries are
- * now folded into the following message/tool via `typingMs` — the row
- * shows the typing indicator first, then morphs in place into its
- * resolved content.
+ * Keep individual frames short (< 90 chars for messages, ≤ 6 lines
+ * for tool previews) so they render cleanly inside the small DM
+ * windows without wrapping into ugly multi-line bubbles.
  */
 export const SCRIPT: ReadonlyArray<DemoFrame> = [
   {
     kind: "message",
+    thread: "architect_frontend",
     agent: "architect",
-    text: "Let's ship the new pricing page. I'll break it into tasks.",
-    // 1500ms holds the indicator long enough for ~2 full bounce
-    // cycles of the dots' 800ms keyframe — short typing beats (~500-
-    // 700ms) read as a flash and obscured the up/down motion, which
-    // was the user-reported gap. The same reasoning drives the
-    // longer values on the other typing-led frames below; tool-led
-    // frames stay slightly shorter because they precede a card
-    // mount rather than a streamed message.
+    text: "Shipping the pricing page today. Can you take the tier cards?",
     typingMs: 1500,
     durationMs: 2200,
   },
   {
+    kind: "message",
+    thread: "architect_backend",
+    agent: "architect",
+    text: "Need a /pricing endpoint and a migration on your side.",
+    typingMs: 1300,
+    durationMs: 2000,
+  },
+  {
     kind: "tool",
+    thread: "architect_frontend",
     agent: "architect",
     toolName: "plan",
     target: "pricing.todo",
     preview: [
       "1. Hero + tagline",
       "2. Tier cards (3)",
-      "3. Pricing API + migration",
+      "3. Wire CTA -> /signup",
       "4. FAQ section",
-      "5. Wire CTA -> /signup",
     ],
-    // No `language` — the plan is a checklist, not code, and
-    // routing it through highlight.js would just colour the leading
-    // numbers as numeric literals (noisy + wrong semantically).
-    durationMs: 2600,
+    durationMs: 2400,
   },
   {
     kind: "message",
+    thread: "architect_frontend",
     agent: "frontend",
     text: "On it. Building the tier cards first.",
-    typingMs: 1400,
+    typingMs: 1200,
+    durationMs: 1800,
+  },
+  {
+    kind: "message",
+    thread: "architect_backend",
+    agent: "backend",
+    text: "Wiring the pricing endpoint and migration in parallel.",
+    typingMs: 1300,
     durationMs: 1900,
   },
   {
     kind: "tool",
+    thread: "architect_frontend",
     agent: "frontend",
     toolName: "edit_file",
     target: "PricingTiers.tsx",
-    // Typed TSX so highlight.js paints `interface`, `string`,
-    // `number`, JSX tags, and string literals with their full
-    // github-dark / github theme. The `+` diff prefix is gone now
-    // that the colour is doing the heavy lifting visually.
     preview: [
       "interface TierProps {",
       "  name: string;",
@@ -234,20 +295,11 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "  <Card>{name} — ${price}/mo</Card>;",
     ],
     language: "typescript",
-    // Streaming budget: ~180 chars / 14ms = ~2520ms + 6 line gaps
-    // * 90ms = ~3060ms total stream, so a 3400ms dwell leaves a
-    // beat of post-stream pause before the next frame appears.
-    durationMs: 3400,
-  },
-  {
-    kind: "message",
-    agent: "backend",
-    text: "Wiring the pricing endpoint and migration in parallel.",
-    typingMs: 1300,
-    durationMs: 1900,
+    durationMs: 3200,
   },
   {
     kind: "tool",
+    thread: "architect_backend",
     agent: "backend",
     toolName: "edit_file",
     target: "api/pricing.ts",
@@ -260,10 +312,11 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "  res.json(await db.tier.findMany()));",
     ],
     language: "typescript",
-    durationMs: 3200,
+    durationMs: 3000,
   },
   {
     kind: "tool",
+    thread: "architect_backend",
     agent: "backend",
     toolName: "edit_file",
     target: "migrations/0001_pricing.sql",
@@ -276,10 +329,19 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       ");",
     ],
     language: "sql",
-    durationMs: 3200,
+    durationMs: 3000,
+  },
+  {
+    kind: "message",
+    thread: "backend_reviewer",
+    agent: "backend",
+    text: "Pricing API is live and tests pass. Ready for review.",
+    typingMs: 1200,
+    durationMs: 2000,
   },
   {
     kind: "tool",
+    thread: "backend_reviewer",
     agent: "backend",
     toolName: "bash",
     target: "pytest tests/test_pricing.py",
@@ -288,16 +350,12 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "tests/test_pricing.py ........ [100%]",
       "============== 8 passed in 0.42s ===============",
     ],
-    // `bash` is the closest match in `highlight.js/lib/common` for
-    // shell output — it'll leave most of the line as plain text
-    // but colour the status markers (`100%`, `passed`, numerics)
-    // enough to register as terminal output rather than prose.
     language: "bash",
-    typingMs: 900,
-    durationMs: 2200,
+    durationMs: 2400,
   },
   {
     kind: "tool",
+    thread: "frontend_reviewer",
     agent: "frontend",
     toolName: "bash",
     target: "npm run build",
@@ -308,30 +366,33 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "build succeeded in 4.8s",
     ],
     language: "bash",
-    typingMs: 1100,
-    durationMs: 2600,
-  },
-  {
-    kind: "message",
-    agent: "reviewer",
-    text: "Build is green and the tier copy looks clean. Approving.",
-    typingMs: 1300,
+    typingMs: 900,
     durationMs: 2400,
   },
   {
+    kind: "message",
+    thread: "frontend_reviewer",
+    agent: "reviewer",
+    text: "Build is green and the tier copy looks clean. Approving.",
+    typingMs: 1300,
+    durationMs: 2200,
+  },
+  {
     kind: "tool",
+    thread: "backend_reviewer",
     agent: "reviewer",
     toolName: "merge",
     target: "feat/pricing-page",
     preview: ["3 files changed, 84 insertions(+)", "merged to main."],
-    // No `language` — the merge summary isn't code and a `bash`
-    // tag would just colour "merged" as a builtin, which mis-reads.
+    typingMs: 800,
     durationMs: 2200,
   },
   {
     kind: "message",
+    thread: "architect_frontend",
     agent: "architect",
-    text: "Shipped. Next: a marketing post for the launch?",
-    durationMs: 2400,
+    text: "Shipped. Marketing post next?",
+    typingMs: 1100,
+    durationMs: 2200,
   },
 ];

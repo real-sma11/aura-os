@@ -3,15 +3,16 @@ import styles from "./TypingIndicator.module.css";
 
 /**
  * Three-dot "agent is typing" indicator with a staggered up/down
- * bounce. Used by `AgentDemoBanner` during the brief beat between a
- * frame becoming the latest row and the row's content (message text
- * or tool card) revealing. The dots animate purely in CSS so the
- * component stays a thin renderer over the agent's accent `color`.
+ * bounce. Used inside `MockAuraApp`'s DM windows during the brief
+ * beat between a frame becoming the latest row and the row's
+ * content (message text or tool card) revealing. The dots animate
+ * purely in CSS so the component stays a thin renderer over the
+ * agent's accent `color`.
  *
  * The root is marked `aria-hidden` because the bouncing dots convey
- * no information for assistive tech — the surrounding demo loop in
- * `AgentDemoBanner` is already marked decorative for the same
- * reason, and tagging this component independently keeps it safe to
+ * no information for assistive tech — the surrounding mock app hero
+ * is already marked decorative for the same reason, and tagging
+ * this component independently keeps it safe to
  * lift into a non-decorative surface later without bleeding into the
  * accessibility tree.
  *
