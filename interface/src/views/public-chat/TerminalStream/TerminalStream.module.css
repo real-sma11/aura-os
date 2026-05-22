@@ -1,0 +1,63 @@
+/* Scoped styles for the line-by-line terminal preview. Lives next to
+   `TerminalStream.tsx` so the component is fully self-contained — a
+   consumer drops `<TerminalStream lines={...} />` inside any tool
+   card surface and gets the stdout-style reveal without any
+   adjacent CSS plumbing.
+
+   Layout notes:
+     - Root `<pre>` keeps the legacy `demoToolPreview` rules
+       (margin: 0, monospace, white-space: pre, overflow: hidden,
+       text-overflow: ellipsis) so the streamed preview lines up
+       pixel-perfect with the previous static-preview design — the
+       tool card frame around it is unchanged. We intentionally
+       duplicate those rules here (rather than re-using
+       `.demoToolPreview` from the banner module) so the component
+       can move to another tool card surface later without dragging
+       the banner's CSS module along.
+     - Per-line `<span>` wrappers each end with an explicit "\n" so
+       `white-space: pre` keeps the newlines and the active-line
+       caret sits at the end of the typed prefix on the same line
+       (rather than wrapping to its own line).
+
+   Caret design — mirrors `TypewriterText`'s caret so the message
+   bubbles and the tool previews read as the "same kind of live
+   stream":
+     - 0.5em x 1em block cursor sized relative to the font.
+     - currentColor background so the cursor inherits the preview's
+       text color (which is theme-aware via --color-text-secondary).
+     - 900ms hard blink via `steps(2, start)` — same cadence as the
+       message caret so the two streams pulse in unison rather than
+       fighting each other for attention. */
+.terminalStream {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
+    monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  vertical-align: text-bottom;
+  background: currentColor;
+  margin-left: 2px;
+  border-radius: 1px;
+  opacity: 0.85;
+  animation: terminalStreamCaretBlink 900ms steps(2, start) infinite;
+}
+
+@keyframes terminalStreamCaretBlink {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}

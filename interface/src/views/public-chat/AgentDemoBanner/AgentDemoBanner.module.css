@@ -111,20 +111,38 @@
   }
 }
 
+/* Row entrance is the user's first read of "a new agent just spoke,"
+   so the motion needs to be slow + smooth enough to register as
+   intentional rather than a layout snap. The earlier 380ms / 6px
+   slide + opacity-only fade was too clipped — rows appeared to
+   "pop in" rather than glide. The longer 560ms / 14px slide paired
+   with a subtle 0.96 -> 1 scale and a near-flat ease-out-quart
+   gives the row a luxurious "settle into place" feel; the scale
+   compounds with the bubble's own pop animation (transform-origin
+   0% 100% on the row aligns both motions to the avatar's anchor
+   point so the row appears to grow from where it lands rather than
+   from the centre of the panel). The opacity ramps in faster than
+   the transform (at 55%) so the row is fully visible while it's
+   still settling, which keeps the eye on the final pose rather than
+   on a long fade-in tail. */
 .demoRow {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  animation: demoRowEnter 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: demoRowEnter 560ms cubic-bezier(0.165, 0.84, 0.44, 1) both;
+  transform-origin: 0% 100%;
 }
 
 @keyframes demoRowEnter {
-  from {
-    transform: translateY(6px);
+  0% {
+    transform: translateY(14px) scale(0.96);
     opacity: 0;
   }
-  to {
-    transform: translateY(0);
+  55% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
@@ -280,15 +298,9 @@
   font-size: 11px;
 }
 
-.demoToolPreview {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo,
-    monospace);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* The tool card's preview body is no longer styled here — it's now
+   rendered by `<TerminalStream />` (see `TerminalStream.module.css`)
+   which streams the preview lines char-by-char like a real stdout
+   flush. The new component owns the equivalent `<pre>` rules
+   (monospace, `white-space: pre`, overflow ellipsis) so the visual
+   footprint inside the tool card is unchanged. */

@@ -11,6 +11,7 @@ import {
   type AgentId,
   type DemoFrame,
 } from "../agent-demo-script";
+import { TerminalStream } from "../TerminalStream";
 import { TypingIndicator } from "../TypingIndicator";
 import { TypewriterText } from "../TypewriterText";
 import styles from "./AgentDemoBanner.module.css";
@@ -243,9 +244,7 @@ function DemoFrameRow({ frame }: DemoFrameRowProps): ReactNode {
                 </span>
               ) : null}
             </div>
-            <pre className={styles.demoToolPreview}>
-              {frame.preview.join("\n")}
-            </pre>
+            <TerminalStream lines={frame.preview} />
           </div>
         )}
       </div>
