@@ -41,8 +41,13 @@ export interface AuraTitlebarProps {
  * AuraTitlebar wraps a single `<ShellTitlebar>` instance for every
  * effective UI mode. The wrapper component identity stays stable
  * across mode flips — only its `icon` (leading) and `actions`
- * (trailing) slot children swap based on `mode`. The wordmark
- * (`title`) is identical in all three modes.
+ * (trailing) slot children swap based on `mode`. The `title` slot's
+ * outer `<span className="titlebar-center">` wrapper is also stable
+ * across modes; only its inner content swaps — authenticated modes
+ * render the AURA wordmark `<img>`, public mode leaves the slot
+ * empty so logged-out visitors aren't shown the brand twice (the
+ * marketing surfaces already carry the wordmark) and the center
+ * drag region reads as clean window chrome.
  *
  * Layout:
  * - Leading slot:
@@ -84,13 +89,15 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
       }
       title={
         <span className={`titlebar-center ${styles.titleCenter}`}>
-          <img
-            src="/AURA_logo_text_mark.png"
-            alt="AURA"
-            draggable={false}
-            className={styles.titleLogo}
-            data-aura-wordmark
-          />
+          {!isPublic && (
+            <img
+              src="/AURA_logo_text_mark.png"
+              alt="AURA"
+              draggable={false}
+              className={styles.titleLogo}
+              data-aura-wordmark
+            />
+          )}
         </span>
       }
       actions={

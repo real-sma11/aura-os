@@ -90,6 +90,21 @@
   pointer-events: auto;
 }
 
+/*
+ * Public mode also strips the titlebar's chrome border. The 1px box-
+ * sizing contribution stays (`border-color: transparent` rather than
+ * `border: none`) so the shell's chrome height and inner content
+ * alignment are identical across mode flips — same approach the
+ * `[data-desktop-mode]` overrides above use on `.sidebar` and
+ * `.mainPanel`. The `:global(.titlebar-drag)` hook targets the
+ * `ShellTitlebar`'s outer element without reaching into its CSS
+ * module, so the shared primitive's default border remains intact
+ * for `LoginView` and other surfaces that mount it directly.
+ */
+.shell[data-ui-mode="public"] :global(.titlebar-drag) {
+  border-color: transparent;
+}
+
 .sidebarBody {
   flex: 1;
   min-height: 0;
