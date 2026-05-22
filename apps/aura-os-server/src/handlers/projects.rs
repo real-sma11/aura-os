@@ -124,39 +124,63 @@ async fn create_project_impl(
 
     if let (Some(owner), Some(repo)) = (&project.orbit_owner, &project.orbit_repo) {
         if !owner.is_empty() && !repo.is_empty() && project.git_repo_url.is_none() {
-            let orbit = state.orbit_client.as_deref().ok_or_else(|| {
-                ApiError::service_unavailable(
-                    "Orbit client not configured (ORBIT_BASE_URL not set); \
-                     cannot create required Orbit repo",
-                )
-            })?;
-
-            if let Err(e) = orbit
-                .ensure_repo(repo, owner, &project.project_id.to_string(), jwt)
-                .await
-            {
-                tracing::error!(
-                    %owner, %repo,
-                    error = %e,
-                    "Orbit repo creation failed — rolling back project"
-                );
-                // Best-effort rollback: remove the project we just created.
-                if let Some(client) = &state.network_client {
-                    let _ = client
-                        .delete_project(&project.project_id.to_string(), jwt)
-                        .await;
-                }
-                let _ = state.project_service.delete_project(&project.project_id);
-                return Err(ApiError::internal(format!(
-                    "Orbit repo creation failed (project rolled back): {e}"
-                )));
-            }
+            try_ensure_orbit_repo(state, owner, repo, &project.project_id.to_string(), jwt).await;
         }
     }
 
     ensure_canonical_workspace_dir(&state.data_dir, &project.project_id)?;
 
     Ok((StatusCode::CREATED, Json(project)))
+}
+
+/// Best-effort Orbit `ensure_repo` for a freshly created or freshly
+/// attached project.
+///
+/// Failures are intentionally **non-fatal**: when Orbit is unreachable,
+/// misconfigured, or returns a 5xx (e.g. `failed to initialize
+/// repository storage` from an exhausted-rootfs deploy), the project
+/// stays created with its `orbit_owner` / `orbit_repo` metadata intact.
+/// Rationale:
+///   - Project creation should not be coupled to a third-party service's
+///     transient availability. Rolling back the project for an
+///     Orbit-only failure leaves the user with nothing usable and no
+///     obvious recovery path.
+///   - `OrbitClient::ensure_repo` already treats `409 Conflict` as
+///     success, so the *next* code path that needs the Orbit repo (push
+///     from the dev loop, manual re-attach via `update_project`, etc.)
+///     can safely re-invoke it and will succeed once Orbit recovers.
+///   - The push path classifies the downstream failure mode as
+///     `remote_storage_exhausted` / `push_deferred` and surfaces it
+///     through the Orbit status indicator and project banner (see
+///     `docs/render-deployment.md` "Orbit ENOSPC runbook"), so the user
+///     still gets a clear "Orbit is unhealthy" signal — just at push
+///     time rather than at create time.
+async fn try_ensure_orbit_repo(
+    state: &AppState,
+    owner: &str,
+    repo: &str,
+    project_id: &str,
+    jwt: &str,
+) {
+    let Some(orbit) = state.orbit_client.as_deref() else {
+        tracing::warn!(
+            %owner, %repo, %project_id,
+            "Orbit client not configured (ORBIT_BASE_URL not set); \
+             skipping Orbit repo creation — project will work without Orbit \
+             until ORBIT_BASE_URL is set and the repo is created."
+        );
+        return;
+    };
+
+    if let Err(e) = orbit.ensure_repo(repo, owner, project_id, jwt).await {
+        tracing::warn!(
+            %owner, %repo, %project_id,
+            error = %e,
+            "Orbit repo creation failed; project kept anyway. \
+             Pushes to this Orbit repo will fail until Orbit recovers \
+             and the repo is created (idempotent retry)."
+        );
+    }
 }
 
 pub(crate) async fn create_project(
@@ -399,25 +423,14 @@ pub(crate) async fn update_project(
         if attaching_new_orbit_repo {
             if let (Some(owner), Some(repo)) = (&merged.orbit_owner, &merged.orbit_repo) {
                 if !owner.is_empty() && !repo.is_empty() {
-                    let orbit = state.orbit_client.as_deref().ok_or_else(|| {
-                        ApiError::service_unavailable(
-                            "Orbit client not configured (ORBIT_BASE_URL not set); \
-                             cannot create required Orbit repo",
-                        )
-                    })?;
-                    if let Err(e) = orbit
-                        .ensure_repo(repo, owner, &merged.project_id.to_string(), &jwt)
-                        .await
-                    {
-                        tracing::error!(
-                            %owner, %repo,
-                            error = %e,
-                            "Orbit repo creation failed during update_project"
-                        );
-                        return Err(ApiError::internal(format!(
-                            "Orbit repo creation failed: {e}"
-                        )));
-                    }
+                    try_ensure_orbit_repo(
+                        &state,
+                        owner,
+                        repo,
+                        &merged.project_id.to_string(),
+                        &jwt,
+                    )
+                    .await;
                 }
             }
         }
