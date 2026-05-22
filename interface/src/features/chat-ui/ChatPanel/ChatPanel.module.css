@@ -271,7 +271,12 @@
    itself never overlaps a message. */
 .pinnedStreamingIndicator {
   position: absolute;
-  bottom: 108px;
+  /* `--streaming-indicator-bottom` lets host views (e.g. the public
+     chat surface in `PublicChatView.module.css`, where the input pill
+     floats above the viewport bottom instead of sitting flush) push
+     the indicator up so it always clears the input. Defaults to the
+     authenticated chat's 108px (which clears the ~103px input bar). */
+  bottom: var(--streaming-indicator-bottom, 108px);
   left: 0;
   right: 0;
   z-index: 11;
@@ -353,7 +358,10 @@
   }
 
   .pinnedStreamingIndicator {
-    bottom: calc(144px + var(--aura-mobile-keyboard-inset, 0px));
+    bottom: var(
+      --streaming-indicator-bottom-mobile,
+      calc(144px + var(--aura-mobile-keyboard-inset, 0px))
+    );
   }
 
   .newMessagesPill {

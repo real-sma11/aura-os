@@ -24,6 +24,17 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /*
+   * The shared `ChatStreamingIndicator` (rendered as a sibling of
+   * `.inputBarSlot`) positions itself via `bottom: var(--streaming-
+   * indicator-bottom, 108px)` from `ChatPanel.module.css`. Because the
+   * public input bar now floats `5vh` above the viewport bottom (see
+   * `.inputBarSlot` below) the default 108px anchor would sit behind
+   * the input pill on tall viewports, so push the indicator up to
+   * clear the pill at every viewport height the public surface
+   * supports.
+   */
+  --streaming-indicator-bottom: calc(5vh + 64px);
 }
 
 .chatScroller {
@@ -32,20 +43,32 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 16px 140px;
+  /*
+   * Bottom padding reserves space below the transcript so the latest
+   * message clears the floating `.inputBarSlot` (which is now
+   * absolutely positioned `5vh` above the viewport bottom, with the
+   * pill itself adding ~52px of height). The empty-state override
+   * below collapses this back to a symmetric 24px because the mock
+   * desktop hero is centered in the available area and has no need to
+   * reserve space for the floating input.
+   */
+  padding: 24px 16px calc(5vh + 80px);
   display: flex;
   flex-direction: column;
 }
 
 /*
  * In the empty state the chatScroller's asymmetric padding
- * (24px top / 140px bottom — the bottom reserves space below
- * scrolled transcripts so the latest message clears the floating
- * input bar) would shift the centered mock app ~58px above the
- * scroller's geometric midpoint. There's no scrolled transcript to
- * protect when the hero is mounted, so neutralize the bottom
+ * (24px top / `calc(5vh + 80px)` bottom — the bottom reserves space
+ * below scrolled transcripts so the latest message clears the
+ * floating input bar) would shift the centered mock app upward off
+ * the scroller's geometric midpoint. There's no scrolled transcript
+ * to protect when the hero is mounted, so neutralize the bottom
  * reservation to a symmetric 24px and let the mock app land on the
- * panel's true visual centre.
+ * panel's true visual centre. The mock app's bottom edge then leaves
+ * roughly equal slack above and below the floating input pill, which
+ * is what makes the pill read as vertically centered in the gap
+ * between the desktop hero and the viewport bottom.
  */
 .chatScroller:has(> .chatEmpty) {
   padding-bottom: 24px;
@@ -66,9 +89,25 @@
   min-height: 0;
 }
 
+/*
+ * The input pill is taken out of the `.chatView` flex flow and
+ * anchored to the viewport bottom by a viewport-relative offset, so
+ * it floats vertically centered in the gap between the bottom of the
+ * empty-state `MockAuraApp` desktop section and the bottom of the
+ * window. Removing it from the flex flow also means the
+ * `.chatScroller` keeps its full height (and therefore the mock
+ * desktop, sized via `cqh` inside `.composePanel`, keeps its current
+ * geometry). The same offset is used in the populated state so the
+ * pill never visibly jumps when the visitor sends their first
+ * message — `.chatScroller`'s `padding-bottom` (above) reserves the
+ * matching strip so transcripts don't slide under the pill.
+ */
 .inputBarSlot {
-  padding: 8px 12px 16px 12px;
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5vh;
+  padding: 0 12px;
   z-index: 1;
 }
 
@@ -78,16 +117,27 @@
 }
 
 @media (max-width: 640px) {
-  .chatScroller {
-    padding: 16px 8px 160px;
+  .chatView {
+    /* Mobile public input sits at `8px + safe-area-inset-bottom` with
+       a ~52px pill, so anchor the streaming indicator above that. */
+    --streaming-indicator-bottom-mobile: calc(
+      env(safe-area-inset-bottom, 0px) + 72px +
+        var(--aura-mobile-keyboard-inset, 0px)
+    );
   }
 
-  /* On mobile the floating `.inputBarSlot` below the scroller
-     already owns the safe-area inset, so the empty-state mock
-     app stretches to fill the available area without any extra
+  .chatScroller {
+    padding: 16px 8px calc(env(safe-area-inset-bottom, 0px) + 96px);
+  }
+
+  /* On mobile the floating `.inputBarSlot` owns the safe-area inset
+     directly via `bottom: calc(... + env(...))` so it never gets
+     clipped by the iOS home indicator. The empty-state mock app
+     still stretches to fill the available area without any extra
      `.chatEmpty` padding (its own internal chrome owns the inset). */
 
   .inputBarSlot {
-    padding: 4px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 0 8px;
   }
 }
