@@ -623,24 +623,37 @@
   }
 }
 
-/* Bubble phase fade — runs whenever a fresh bubble element mounts
-   inside a row, including the row's initial typing-dots bubble AND
-   the resolved content bubble that replaces it after `typingMs`.
-   The `key` swap on the bubble in `AgentDemoBanner.tsx` forces a
-   remount on phase change, which re-triggers this animation and
-   produces the typing-to-content cross-fade. The slight 0.97 -> 1
-   scale gives the new bubble a soft "settle in" feel that bridges
-   the small width change between dots and text without an obvious
-   pop. */
+/* Bubble phase transition — runs whenever a fresh bubble element
+   mounts inside a row, including the row's initial typing-dots
+   bubble AND the resolved content bubble that replaces it after
+   `typingMs`. The `key` swap on the bubble in `AgentDemoBanner.tsx`
+   forces a remount on phase change, which re-triggers this
+   animation.
+
+   This is a deliberately pronounced scale-up (0.7 -> 1, ~30% growth
+   anchored to the bubble's left edge) so the typing -> text moment
+   reads as the bubble physically expanding into its resolved size,
+   not as a soft fade-in — that was the user-reported gap in v1's
+   0.97 -> 1 micro-scale. Combined with the per-character width
+   growth produced by `TypewriterText` streaming into the bubble,
+   the visible effect is: dots disappear, a small bubble pops in
+   anchored at the agent name, grows to full height, and then
+   continues to widen as the text rolls in.
+
+   `transform-origin: 0 50%` anchors the scale to the row's left
+   edge so the bubble grows outward from the agent name rather than
+   from its centre — without that origin, the bubble would visibly
+   slide leftward as it expands, which fights the row entry's
+   downward translate. */
 .demoBubblePhase {
-  animation: demoBubblePhaseEnter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: demoBubblePhaseEnter 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: 0 50%;
 }
 
 @keyframes demoBubblePhaseEnter {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.7);
   }
   to {
     opacity: 1;

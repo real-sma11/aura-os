@@ -113,11 +113,12 @@ describe("AgentDemoBanner", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    // act 2: step past the 700ms typing window so the row's phase
-    // flips to `content`; the bubble remounts and the typewriter
-    // schedules its interval but hasn't fired a tick yet.
+    // act 2: step past the 1500ms typing window (frame 0's
+    // `typingMs`) so the row's phase flips to `content`; the bubble
+    // remounts and the typewriter schedules its interval but hasn't
+    // fired a tick yet.
     act(() => {
-      vi.advanceTimersByTime(800);
+      vi.advanceTimersByTime(1600);
     });
     // act 3: roll the typewriter for ~300ms (~10 ticks at 28ms each)
     // so a strict prefix of the message is on screen.
@@ -151,20 +152,20 @@ describe("AgentDemoBanner", () => {
       screen.queryByText(/Let's ship the new pricing page/),
     ).not.toBeInTheDocument();
 
-    // act 2: step past the 700ms typing window so the row's bubble
+    // act 2: step past the 1500ms typing window so the row's bubble
     // swaps from typing dots to the streaming-message variant. The
     // typewriter mounts inside the same row.
     act(() => {
-      vi.advanceTimersByTime(800);
+      vi.advanceTimersByTime(1600);
     });
 
     // act 3: let the per-character typewriter complete (~1.6s for
-    // the 58-char first line at 28ms/char). Total elapsed (2800ms)
-    // is still below the frame's full dwell of 2900ms (typingMs 700
-    // + durationMs 2200), so the script has not yet advanced to the
-    // second frame and the architect label must still appear
-    // exactly once — proving the typing beat lived *inside* the row
-    // rather than as a separate stacked entry above the message.
+    // the 58-char first line at 28ms/char). Total elapsed (3600ms)
+    // is still below the frame's full dwell of 3700ms (typingMs
+    // 1500 + durationMs 2200), so the script has not yet advanced
+    // to the second frame and the architect label must still
+    // appear exactly once — proving the typing beat lived *inside*
+    // the row rather than as a separate stacked entry above it.
     act(() => {
       vi.advanceTimersByTime(1700);
     });

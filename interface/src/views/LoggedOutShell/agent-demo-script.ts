@@ -140,7 +140,14 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
     kind: "message",
     agent: "architect",
     text: "Let's ship the new pricing page. I'll break it into tasks.",
-    typingMs: 700,
+    // 1500ms holds the indicator long enough for ~2 full bounce
+    // cycles of the dots' 800ms keyframe — short typing beats (~500-
+    // 700ms) read as a flash and obscured the up/down motion, which
+    // was the user-reported gap. The same reasoning drives the
+    // longer values on the other typing-led frames below; tool-led
+    // frames stay slightly shorter because they precede a card
+    // mount rather than a streamed message.
+    typingMs: 1500,
     durationMs: 2200,
   },
   {
@@ -160,7 +167,7 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
     kind: "message",
     agent: "frontend",
     text: "On it. Building the tier cards first.",
-    typingMs: 600,
+    typingMs: 1400,
     durationMs: 1900,
   },
   {
@@ -186,14 +193,14 @@ export const SCRIPT: ReadonlyArray<DemoFrame> = [
       "dist/index.html  1.2 kB | gzip: 0.6 kB",
       "build succeeded in 4.8s",
     ],
-    typingMs: 500,
+    typingMs: 1100,
     durationMs: 2600,
   },
   {
     kind: "message",
     agent: "reviewer",
     text: "Build is green and the tier copy looks clean. Approving.",
-    typingMs: 600,
+    typingMs: 1300,
     durationMs: 2400,
   },
   {
