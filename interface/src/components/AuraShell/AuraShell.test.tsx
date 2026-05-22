@@ -46,7 +46,7 @@
  * theme/wallpaper background layer, the LoginOverlay).
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import {
@@ -324,6 +324,76 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("(e) hides the Simple/Advanced ModeToggle in public mode and remounts it on sign-in", async () => {
+    // The toggle never makes sense for unauthenticated visitors —
+    // they have no persisted authed mode to flip. AuraSidebar gates
+    // the render behind `mode !== "public"` so the radiogroup is
+    // absent until the user logs in.
+    setLoggedOut();
+
+    renderAuraShell();
+
+    expect(
+      screen.queryByRole("radiogroup", { name: "Interface mode" }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      setLoggedIn();
+      useUIModeStore.setState({ mode: "simple" });
+    });
+
+    expect(
+      screen.getByRole("radiogroup", { name: "Interface mode" }),
+    ).toBeInTheDocument();
+  });
+
+  it("(f) public titlebar does not render a theme toggle (day/night lives in BottomTaskbar) but keeps the auth pills", () => {
+    setLoggedOut();
+
+    renderAuraShell();
+
+    const titlebar = screen.getByTestId("aura-titlebar");
+    // No sun/moon button anywhere inside the titlebar — the public
+    // chrome's only day/night affordance lives in the BottomTaskbar
+    // right cluster. `getThemeToggleAriaLabel` formats as
+    // "Switch theme (currently <theme>)", so a `/switch theme/i`
+    // role query catches it regardless of the resolved theme.
+    expect(
+      within(titlebar).queryByRole("button", { name: /switch theme/i }),
+    ).not.toBeInTheDocument();
+
+    // The Log in / Sign up pills are the load-bearing public-mode
+    // CTAs and must remain in the trailing slot.
+    expect(
+      within(titlebar).getByRole("link", { name: "Log in" }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("link", { name: "Sign up for free" }),
+    ).toBeInTheDocument();
+  });
+
+  it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public mode and mounts it once the user signs in", async () => {
+    // The persisted desktop wallpaper must not bleed onto logged-out
+    // surfaces. AuraShell gates `<BackgroundLayer />` behind
+    // `!isPublic`, so the stub testid is absent in public mode and
+    // appears the moment auth flips the effective mode away from
+    // `public`.
+    setLoggedOut();
+
+    renderAuraShell();
+
+    expect(
+      screen.queryByTestId("background-layer-stub"),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      setLoggedIn();
+      useUIModeStore.setState({ mode: "simple" });
+    });
+
+    expect(screen.getByTestId("background-layer-stub")).toBeInTheDocument();
   });
 
   it("mounts the LoginOverlay on top of the public chat surface when the active route is /login", () => {

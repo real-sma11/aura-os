@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Sun, Moon, Server } from "lucide-react";
-import { Button, useTheme } from "@cypher-asi/zui";
+import { Menu, Server } from "lucide-react";
+import { Button } from "@cypher-asi/zui";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { OrgSelector } from "../OrgSelector";
 import { MenuBar } from "../MenuBar";
@@ -8,16 +8,9 @@ import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
 import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
-import {
-  cycleTheme,
-  getThemeToggleAriaLabel,
-  getThemeToggleIconKind,
-} from "../../lib/theme-toggle";
 import { track } from "../../lib/analytics";
 import type { UIMode } from "../../stores/ui-mode-store";
 import styles from "./AuraShell.module.css";
-
-const THEME_ICON = { sun: Sun, moon: Moon } as const;
 
 export interface AuraTitlebarProps {
   /**
@@ -52,8 +45,12 @@ export interface AuraTitlebarProps {
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `EarnCreditsButton` + `WindowControls` (with the sidekick /
  *     split-screen toggles plumbed through props).
- *   - Public: theme toggle button + Log in / Sign up pills +
- *     `WindowControls`.
+ *   - Public: Log in / Sign up pills + `WindowControls`. The day/
+ *     night theme toggle is intentionally not in the public titlebar —
+ *     it lives only in the bottom-right `BottomTaskbar` cluster so
+ *     unauthenticated visitors aren't given two redundant affordances
+ *     for the same control. The "Sign up for free" pill is the
+ *     primary CTA and inverts with theme via `.authPillPrimary`.
  */
 export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   const { mode } = props;
@@ -161,8 +158,6 @@ function AuthedActions({
 
 function PublicActions(): React.ReactElement {
   const { search } = useLocation();
-  const { theme, resolvedTheme, setTheme } = useTheme();
-  const ThemeIcon = THEME_ICON[getThemeToggleIconKind(theme, resolvedTheme)];
   // Preserve any existing query (notably `?session=...`) across the
   // trip into the login modal so the public chat surface stays
   // selected behind the overlay.
@@ -173,14 +168,6 @@ function PublicActions(): React.ReactElement {
 
   return (
     <div className={`${styles.publicTitleActions} titlebar-no-drag`}>
-      <button
-        type="button"
-        className={styles.themeToggle}
-        onClick={() => setTheme(cycleTheme(theme, resolvedTheme))}
-        aria-label={getThemeToggleAriaLabel(theme, resolvedTheme)}
-      >
-        <ThemeIcon size={16} />
-      </button>
       <Link
         to={{ pathname: "/login", search: signinSearch }}
         className={`${styles.authPill} ${styles.authPillSecondary}`}

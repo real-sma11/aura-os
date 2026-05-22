@@ -158,35 +158,24 @@
   outline-offset: 2px;
 }
 
+/*
+ * Primary public CTA. Re-tokened to invert with the active theme:
+ * `--color-text-primary` is near-white in dark / near-black in light,
+ * and `--color-bg` is its inverse. Dark theme reads as a near-white
+ * pill on the dark titlebar (visually identical to the previous
+ * `--color-on-surface` painting); light theme flips to a near-black
+ * pill with white text so the "Sign up for free" CTA pops against
+ * the light titlebar.
+ */
 .authPillPrimary {
-  background: var(--color-on-surface, #fff);
-  color: var(--color-on-light, #111);
+  background: var(--color-text-primary);
+  color: var(--color-bg);
 }
 
 .authPillSecondary {
   background: transparent;
-  color: var(--color-text-primary, #f5f5f7);
+  color: var(--color-text-primary);
   border-color: var(--color-border);
-}
-
-.themeToggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-secondary, #c9c9cf);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.themeToggle:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary, inherit);
 }
 
 .menuToggle {

@@ -28,22 +28,19 @@ const ITEMS: ReadonlyArray<SlidingPillItem<ToggleMode>> = [
  * / Image / Video / 3D), making the two controls feel like one
  * family.
  *
- * In **public** (logged-out) mode the toggle stays mounted at the
- * same DOM identity but is rendered inert: the wrapper carries
- * `aria-disabled` and `pointer-events: none`, and writes are
- * suppressed at the change handler. The same `SlidingPills` instance
- * is reused across every mode flip — Phase 3's load-bearing
- * invariant is that the `lastAppliedValueRef` inside `SlidingPills`
- * survives across flips so the indicator *slides* (rather than
- * snaps) on every Simple <-> Advanced toggle. Wrapping with
- * `key={mode}` would remount and reset that ref; we deliberately
- * don't.
+ * Public-mode behavior: the toggle returns `null` whenever the
+ * effective mode is `"public"` (logged-out visitors). `AuraSidebar`
+ * already gates the render with the same condition so this is
+ * defense-in-depth — direct mounts (e.g. tests, future surfaces)
+ * still get the right answer. The slide-not-snap invariant for the
+ * Simple <-> Advanced flip is preserved because the toggle only
+ * unmounts across the public boundary, which is a discrete login
+ * event where remount + snap is the correct UX.
  */
-export function ModeToggle(): React.ReactElement {
+export function ModeToggle(): React.ReactElement | null {
   const mode = useUIModeStore((s) => s.mode);
   const setMode = useUIModeStore((s) => s.setMode);
   const effectiveMode = useEffectiveMode();
-  const isInert = effectiveMode === "public";
 
   const items = useMemo(() => ITEMS, []);
   // The store's `mode` carries the full `UIMode` union (including
@@ -56,19 +53,17 @@ export function ModeToggle(): React.ReactElement {
 
   const handleChange = useCallback(
     (next: ToggleMode): void => {
-      if (isInert) return;
       setMode(next);
     },
-    [isInert, setMode],
+    [setMode],
   );
+
+  if (effectiveMode === "public") return null;
 
   return (
     <div
       className={styles.root}
       data-agent-surface="ui-mode-toggle"
-      data-inert={isInert || undefined}
-      aria-disabled={isInert || undefined}
-      style={isInert ? { pointerEvents: "none", opacity: 0.6 } : undefined}
     >
       <SlidingPills
         items={items}

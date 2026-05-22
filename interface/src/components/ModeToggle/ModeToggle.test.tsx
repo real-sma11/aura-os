@@ -87,19 +87,22 @@ describe("ModeToggle", () => {
     expect(indicator).toHaveAttribute("data-active-id", "simple");
   });
 
-  it("renders as aria-disabled with pointer-events:none in public (logged-out) effective mode", () => {
+  it("does not render in public (logged-out) effective mode", () => {
     // `useEffectiveMode()` returns `"public"` whenever the user is
-    // logged out, regardless of the persisted `mode`. The pill stays
-    // mounted but is rendered inert so clicks / focus don't reach
-    // the radio buttons.
+    // logged out, regardless of the persisted `mode`. AuraSidebar
+    // already gates the render at the parent level with
+    // `mode !== "public" && <ModeToggle />`; the component itself
+    // returns null in public as defense-in-depth so direct mounts
+    // (tests, future surfaces) get the same answer. The radiogroup
+    // and the wrapper div should both be absent from the DOM.
     useAuthStore.setState({ user: null });
     const { container } = render(<ModeToggle />);
-    const wrapper = container.querySelector(
-      "[data-agent-surface='ui-mode-toggle']",
-    ) as HTMLElement | null;
-    expect(wrapper).not.toBeNull();
-    expect(wrapper).toHaveAttribute("aria-disabled", "true");
-    expect(wrapper?.style.pointerEvents).toBe("none");
+    expect(
+      screen.queryByRole("radiogroup", { name: "Interface mode" }),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector("[data-agent-surface='ui-mode-toggle']"),
+    ).toBeNull();
   });
 
   // Phase 3 regression — the load-bearing invariant: when `mode` flips

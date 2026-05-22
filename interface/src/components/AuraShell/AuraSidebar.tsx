@@ -39,25 +39,35 @@ const PUBLIC_SEARCH_KEY = "public";
 
 export interface AuraSidebarProps {
   /**
-   * Effective UI mode. Drives the body slot but NOT the wrapping
-   * `<aside>`, the `<Lane>` instance, the `.sidebarHeader`, the
-   * `<PanelSearch>` input, or the `<ModeToggle>` — those keep stable
-   * DOM identity across every mode flip so the slide-not-snap and
-   * search-continuity invariants hold.
+   * Effective UI mode. Drives the body slot, search variant, and
+   * `<ModeToggle>` presence — but NOT the wrapping `<aside>`, the
+   * `<Lane>` instance, the `.sidebarHeader`, or the `<PanelSearch>`
+   * input. Those keep stable DOM identity across every mode flip so
+   * the slide-not-snap and search-continuity invariants hold.
+   *
+   * `<ModeToggle>` is gated to authenticated modes only — it
+   * unmounts in `public` and remounts on sign-in. The slide-not-snap
+   * invariant is preserved across the in-scope flow (Simple <->
+   * Advanced); the public boundary is a discrete login event where
+   * a remount is the correct UX.
    */
   mode: UIMode;
 }
 
 /**
  * Single `<Lane>` (and single `<aside>` wrapper) mounted across
- * every effective mode. Header slot always renders
- * `<PanelSearch>` + `<ModeToggle>`. Body slot conditionally
- * renders one of three subtrees based on `mode`.
+ * every effective mode. Header slot always renders the
+ * `<PanelSearch>` and renders `<ModeToggle>` only in authenticated
+ * modes (`simple` / `advanced`). Body slot conditionally renders one
+ * of three subtrees based on `mode`.
  *
  * Phase 3 invariants:
- * - The Lane mount, sidebarHeader div, PanelSearch input, and
- *   ModeToggle pills retain reference-stable DOM identity across
- *   mode flips. Only `<Body />` swaps.
+ * - The Lane mount, sidebarHeader div, and PanelSearch input retain
+ *   reference-stable DOM identity across every mode flip. The
+ *   `ModeToggle` keeps reference-stable identity across the
+ *   Simple <-> Advanced flip; it remounts across the public <->
+ *   authed boundary, where the remount is the correct UX for a
+ *   discrete login event.
  * - The sidebar Lane writes its current width to the
  *   `--aura-sidebar-width` CSS variable on `documentElement` so the
  *   public-chat surface's centered AURA visual loop stays aligned
@@ -92,7 +102,7 @@ export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
               data-testid="aura-sidebar-header"
             >
               <AuraSidebarSearch mode={mode} />
-              <ModeToggle />
+              {mode !== "public" && <ModeToggle />}
             </div>
           }
         >

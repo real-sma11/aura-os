@@ -39,32 +39,37 @@ function useClock(): string {
 export interface BottomTaskbarProps {
   /**
    * Effective UI mode (public / simple / advanced). Drives child
-   * content: public mode renders only the `ThemeToggleButton` in the
-   * right slot, suppressing the left (Desktop + favorites) and
-   * center (apps rail) columns. The outer `.bar` element is always
-   * rendered so `--shell-chrome-outer-height` reserves the same row
-   * of vertical space in every mode — flipping modes does not move
-   * the main panel's bottom edge.
+   * content. The outer `.bar` element is always rendered so
+   * `--shell-chrome-outer-height` reserves the same row of vertical
+   * space in every mode — flipping modes does not move the main
+   * panel's bottom edge.
+   *
+   * - `public`: only the `ThemeToggleButton` in the right slot.
+   * - `simple`: Credits, Settings, ThemeToggle, Profile rail in the
+   *   right slot. No Desktop button, no app rail center, no clock,
+   *   no Help, no collapse chevron — a minimal authed surface.
+   * - `advanced`: full chrome (Desktop + favorites left, AppNavRail
+   *   center, collapsible right cluster with Credits/Settings/
+   *   ThemeToggle/Help/Profile, plus the clock readout).
    */
   mode: UIMode;
 }
 
 /**
  * Bottom chrome strip rendered by `AuraShell` in every effective
- * mode. Phase 3 added the `mode` prop so the same DOM-identity outer
- * `.bar` element survives login / logout / Simple <-> Advanced flips
- * while its inner content swaps. The full taskbar (left favorites
- * strip, center app rail, right credits/settings/profile cluster)
- * mounts in `simple` and `advanced`; public renders a minimal
- * theme-toggle-only right slot. The full-mode branch holds the
- * existing auth-required hook calls and stays untouched so logged-in
- * users keep the same affordances.
+ * mode. The outer `.bar` element is mounted in all three modes (so
+ * `--shell-chrome-outer-height` reserves the same row of vertical
+ * space) while child slots branch on mode. `public` renders the
+ * minimal theme-toggle path; authed (`simple` / `advanced`) renders
+ * `AuthedBottomTaskbar`, which itself branches on `mode === "advanced"`
+ * to swap the heavy chrome (Desktop button, app rail, collapse
+ * chevron, Help, clock readout) on/off.
  */
 export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement {
   if (mode === "public") {
     return <PublicBottomTaskbar />;
   }
-  return <FullBottomTaskbar mode={mode} />;
+  return <AuthedBottomTaskbar mode={mode} />;
 }
 
 /**
@@ -95,17 +100,40 @@ function PublicBottomTaskbar(): React.ReactElement {
 }
 
 /**
- * Authenticated (Simple / Advanced) taskbar render path. Mirrors the
- * pre-Phase-3 component verbatim so logged-in users keep the same
- * Desktop / FavoriteAgentsStrip / AppNavRail / Apps / Credits /
- * Settings / Theme / Help / Profile / Clock arrangement.
+ * Authenticated (Simple / Advanced) taskbar render path. The outer
+ * `.bar` div, `.left` / `.center` / `.right` flex containers, and the
+ * `rightPrimary` cluster are mounted unconditionally — so flipping
+ * Simple <-> Advanced reconciles in place rather than remounting the
+ * row. Branches on `isAdvanced` to gate:
+ *
+ *   - `.left`:  Desktop button + `<FavoriteAgentsStrip />` (Advanced only)
+ *   - `.center`: AppNavRail + Apps + collapse chevron (Advanced only)
+ *   - `.right.rightPrimary`:
+ *     - Right-cluster collapse chevron (Advanced only)
+ *     - Credits / Settings / ThemeToggle (both modes; in Advanced these
+ *       hide behind the right-cluster collapse — Simple has no collapse
+ *       affordance so they always show)
+ *     - HelpButton (Advanced only)
+ *     - Profile AppNavRail (both modes)
+ *   - `.clock` readout (Advanced only — extracted into a tiny
+ *     `<ClockReadout />` so `useClock`'s `setInterval` doesn't mount
+ *     in Simple)
+ *
+ * The collapse-state hooks (`getTaskbarRightCollapsed` / `getTaskbarAppsCollapsed`)
+ * still run unconditionally so the rules-of-hooks contract is preserved
+ * across mode flips; Simple just ignores the stored value.
  */
-function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
+function AuthedBottomTaskbar({
+  mode,
+}: {
+  mode: Exclude<UIMode, "public">;
+}): React.ReactElement {
+  const isAdvanced = mode === "advanced";
+
   const openBuyCredits = useUIModalStore((s) => s.openBuyCredits);
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
   const activeApp = useActiveApp();
-  const time = useClock();
   const navigate = useNavigate();
   const previousPath = useAppUIStore((s) => s.previousPath);
   const [collapsed, setCollapsed] = useState(() => getTaskbarAppsCollapsed());
@@ -139,6 +167,10 @@ function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
     handleContextMenu(event);
   };
 
+  // Simple has no collapse affordance — always show the secondary
+  // cluster contents. Advanced respects the stored collapse state.
+  const showSecondaryCluster = !isAdvanced || !rightCollapsed;
+
   return (
     <div
       className={styles.bar}
@@ -149,62 +181,72 @@ function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
       onContextMenu={onContextMenu}
     >
       <div className={styles.left}>
-        <TaskbarIconButton
-          selected={activeApp.id === "desktop"}
-          icon={<Circle size={TASKBAR_ICON_SIZE} />}
-          title="Desktop"
-          aria-label="Desktop"
-          onClick={() => {
-            if (activeApp.id === "desktop") {
-              if (previousPath) navigate(previousPath);
-            } else {
-              navigate("/desktop");
-            }
-          }}
-        />
-        <FavoriteAgentsStrip />
+        {isAdvanced && (
+          <>
+            <TaskbarIconButton
+              selected={activeApp.id === "desktop"}
+              icon={<Circle size={TASKBAR_ICON_SIZE} />}
+              title="Desktop"
+              aria-label="Desktop"
+              onClick={() => {
+                if (activeApp.id === "desktop") {
+                  if (previousPath) navigate(previousPath);
+                } else {
+                  navigate("/desktop");
+                }
+              }}
+            />
+            <FavoriteAgentsStrip />
+          </>
+        )}
       </div>
 
       <div className={styles.center}>
-        <AppNavRail
-          layout="taskbar"
-          allowReorder
-          excludeIds={["profile"]}
-          {...(collapsed && { includeIds: ["agents", "projects"] })}
-        />
-        <TaskbarIconButton
-          icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
-          title="Apps"
-          aria-label="Apps"
-          onClick={openAppsModal}
-        />
-        <TaskbarIconButton
-          icon={
-            collapsed ? (
-              <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-            ) : (
-              <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
-            )
-          }
-          onClick={toggleAppsCollapsed}
-          aria-label={collapsed ? "Expand apps" : "Collapse apps"}
-        />
+        {isAdvanced && (
+          <>
+            <AppNavRail
+              layout="taskbar"
+              allowReorder
+              excludeIds={["profile"]}
+              {...(collapsed && { includeIds: ["agents", "projects"] })}
+            />
+            <TaskbarIconButton
+              icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
+              title="Apps"
+              aria-label="Apps"
+              onClick={openAppsModal}
+            />
+            <TaskbarIconButton
+              icon={
+                collapsed ? (
+                  <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+                ) : (
+                  <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+                )
+              }
+              onClick={toggleAppsCollapsed}
+              aria-label={collapsed ? "Expand apps" : "Collapse apps"}
+            />
+          </>
+        )}
       </div>
 
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
-          <TaskbarIconButton
-            icon={
-              rightCollapsed ? (
-                <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
-              ) : (
-                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-              )
-            }
-            onClick={toggleRightCollapsed}
-            aria-label={rightCollapsed ? "Expand taskbar" : "Collapse taskbar"}
-          />
-          {!rightCollapsed && (
+          {isAdvanced && (
+            <TaskbarIconButton
+              icon={
+                rightCollapsed ? (
+                  <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+                ) : (
+                  <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+                )
+              }
+              onClick={toggleRightCollapsed}
+              aria-label={rightCollapsed ? "Expand taskbar" : "Collapse taskbar"}
+            />
+          )}
+          {showSecondaryCluster && (
             <>
               <TaskbarIconButton
                 icon={<CreditCard size={TASKBAR_ICON_SIZE} />}
@@ -219,7 +261,7 @@ function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
                 onClick={openOrgSettings}
               />
               <ThemeToggleButton />
-              <HelpButton />
+              {isAdvanced && <HelpButton />}
             </>
           )}
           <AppNavRail
@@ -228,9 +270,21 @@ function FullBottomTaskbar({ mode }: { mode: UIMode }): React.ReactElement {
             ariaLabel="Profile shortcut"
           />
         </div>
-        <span className={styles.clock}>{time}</span>
+        {isAdvanced && <ClockReadout />}
       </div>
       {menuElement}
     </div>
   );
+}
+
+/**
+ * Live wall-clock readout extracted into a separate component so the
+ * `setInterval` inside `useClock` only mounts in Advanced mode.
+ * Simple mode never instantiates this component, so the timer never
+ * fires — which both saves wakeups on simple-mode users and matches
+ * the product spec ("no clock in Simple").
+ */
+function ClockReadout(): React.ReactElement {
+  const time = useClock();
+  return <span className={styles.clock}>{time}</span>;
 }
