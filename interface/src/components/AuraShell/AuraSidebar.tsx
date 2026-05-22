@@ -6,6 +6,7 @@ import { PanelSearch } from "../PanelSearch";
 import { ModeToggle } from "../ModeToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
+import { PublicSidebarFooter } from "../../views/public-chat/PublicSidebarFooter";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
@@ -78,20 +79,35 @@ export interface AuraSidebarProps {
  *   so typing survives mode flips.
  */
 export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
-  const laneRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
+  const isPublic = mode === "public";
 
-  useAuraSidebarWidthCssVar(laneRef);
+  // Publish the active sidebar width (the `<aside>` rather than just
+  // the inner Lane) so that when the public Lane is collapsed and
+  // the marketing footer is the only thing keeping the aside visible,
+  // the chat surface's background video / vignette still re-centers
+  // around the actual chrome — not around 0.
+  useAuraSidebarWidthCssVar(asideRef);
 
   return (
     <aside
+      ref={asideRef}
       className={shellStyles.sidebar}
       data-testid="aura-sidebar"
       data-ui-mode={mode}
+      data-public-sidebar-collapsed={
+        isPublic ? (publicSidebarCollapsed ? "true" : "false") : undefined
+      }
     >
       <div className={shellStyles.sidebarBody}>
         <Lane
-          ref={laneRef}
-          resizable
+          // Public-mode Lane is collapsible and toggled from the
+          // titlebar's left drawer button (`<PanelLeft />`); authed
+          // modes keep the legacy always-open resizable behaviour.
+          resizable={!isPublic || !publicSidebarCollapsed}
+          collapsible={isPublic}
+          collapsed={isPublic ? publicSidebarCollapsed : false}
           resizePosition="right"
           defaultWidth={200}
           maxWidth={600}
@@ -102,13 +118,22 @@ export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
               data-testid="aura-sidebar-header"
             >
               <AuraSidebarSearch mode={mode} />
-              {mode !== "public" && <ModeToggle />}
+              {!isPublic && <ModeToggle />}
             </div>
           }
         >
           <SidebarBody mode={mode} />
         </Lane>
       </div>
+      {/*
+        The marketing footer lives as a direct child of `<aside>`,
+        OUTSIDE the collapsible Lane, so the Product / Changelog /
+        Feedback / Pricing links remain visible even when the Lane
+        animates to width 0. The aside's column-flex layout keeps
+        the footer pinned at the bottom and lets it set the aside's
+        natural width when the Lane is collapsed.
+      */}
+      {isPublic && <PublicSidebarFooter />}
     </aside>
   );
 }
@@ -247,26 +272,32 @@ function useSidebarSearchQueryForKey(
 }
 
 /**
- * Writes the active sidebar Lane width to the
+ * Writes the active sidebar width (the `<aside>` element) to the
  * `--aura-sidebar-width` CSS variable on `<html>` so the public-
- * chat surface (`LoggedOutShell.module.css`) can offset its
+ * chat surface (`PublicChatView.module.css`) can offset its
  * centered AURA visual loop / compose panel by half of the
  * sidebar's current width plus the inter-panel gap. The previous
  * implementation hard-coded `calc((-280px - 6px) / 2)` against
- * the old fixed-width sidebar; Phase 3's resizable Lane makes
- * that translate magic-number-dependent and theme-fragile.
+ * the old fixed-width sidebar; Phase 3's resizable Lane made
+ * that translate magic-number-dependent.
  *
- * Uses a `ResizeObserver` on the Lane ref so the variable
- * updates live as the user drags the lane handle. Also publishes
- * `--left-panel-width` for backwards compatibility with the
- * existing DesktopShell-era consumers in `apps/notes/` and
- * `apps/feed/`.
+ * Phase 5: the public left drawer can collapse the inner Lane to
+ * width 0 while the marketing footer keeps the `<aside>` visible.
+ * Measuring the aside (instead of just the Lane) keeps the chat
+ * orb correctly centered relative to the actually-rendered
+ * sidebar in both expanded and collapsed states.
+ *
+ * Uses a `ResizeObserver` on the aside ref so the variable
+ * updates live as the user drags the lane handle or toggles the
+ * drawer. Also publishes `--left-panel-width` for backwards
+ * compatibility with the existing DesktopShell-era consumers in
+ * `apps/notes/` and `apps/feed/`.
  */
 function useAuraSidebarWidthCssVar(
-  laneRef: React.RefObject<HTMLDivElement | null>,
+  asideRef: React.RefObject<HTMLElement | null>,
 ): void {
   useEffect(() => {
-    const el = laneRef.current;
+    const el = asideRef.current;
     if (!el) return;
     let lastWidth = -1;
     const apply = (width: number): void => {
@@ -290,5 +321,5 @@ function useAuraSidebarWidthCssVar(
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [laneRef]);
+  }, [asideRef]);
 }

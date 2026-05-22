@@ -178,25 +178,20 @@
   border-color: var(--color-border);
 }
 
-.menuToggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-secondary, #c9c9cf);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-@media (max-width: 640px) {
-  .menuToggle {
-    display: inline-flex;
-  }
+/*
+ * `<PanelLeft />` left drawer toggle in the public titlebar.
+ * Mirrors the `.sidekickToggle` rule in `WindowControls.module.css`
+ * so the open-state ([aria-pressed="true"]) reads as neutral window
+ * chrome rather than an accent-coloured emphasis on either side.
+ *
+ * Specificity (0,2,0) outweighs ZUI's `.selected` rule (0,1,0)
+ * without resorting to !important; this matches the right-side
+ * sidekick toggle's approach so both drawers feel like one symmetric
+ * affordance pair.
+ */
+.publicSidebarToggle[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  text-shadow: none;
 }
 
 .panelActive {

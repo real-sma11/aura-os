@@ -62,6 +62,8 @@ import { useUIModeStore } from "../../stores/ui-mode-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
 import { usePublicChatStore } from "../../stores/public-chat-store";
+import { useAppUIStore } from "../../stores/app-ui-store";
+import { PUBLIC_SIDEBAR_COLLAPSED_KEY } from "../../constants";
 
 vi.mock("@cypher-asi/zui", async () => {
   const actual = await vi.importActual<Record<string, unknown>>("@cypher-asi/zui");
@@ -195,6 +197,9 @@ beforeEach(() => {
   });
   useSidebarSearchStore.setState({ queries: {} });
   useUIModeStore.setState({ mode: "simple" });
+  // Reset the public-sidebar collapse state (its default is `true`,
+  // but a previous test may have toggled it open via store action).
+  useAppUIStore.setState({ publicSidebarCollapsed: true });
 });
 
 afterEach(() => {
@@ -516,5 +521,106 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
     expect(getActiveAppId(container)).toBe("chat");
+  });
+});
+
+/**
+ * Public-mode left drawer toggle. Mirrors the right-side sidekick
+ * drawer (`PanelRight` in `WindowControls.tsx`) on the left so a
+ * logged-out visitor sees a ChatGPT-style collapsed sessions panel
+ * by default and can flip it open via a single titlebar button. The
+ * marketing footer (Product / Changelog / Feedback / Pricing) lives
+ * outside the collapsing Lane so it stays visible in both states.
+ *
+ * `aria-pressed` mirrors the sidekick toggle's contract (true when
+ * the drawer is open, false when collapsed) so AT users get a
+ * symmetric experience on both sides of the window chrome.
+ */
+describe("AuraShell — public left drawer", () => {
+  it("renders the left drawer toggle in public mode and starts collapsed (aria-pressed=false), with the marketing footer still visible", () => {
+    setLoggedOut();
+    renderAuraShell("/");
+
+    const toggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    const sidebar = screen.getByTestId("aura-sidebar");
+    expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "true");
+
+    // The marketing footer must remain in the DOM at the bottom-left
+    // even when the sessions panel above it is collapsed.
+    expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Product" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Changelog" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Feedback" })).toBeInTheDocument();
+  });
+
+  it("clicking the drawer toggle flips aria-pressed and the sidebar collapse data attribute, then collapses again on a second click", async () => {
+    setLoggedOut();
+    const user = userEvent.setup();
+    renderAuraShell("/");
+
+    const toggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    const sidebar = screen.getByTestId("aura-sidebar");
+
+    await user.click(toggle);
+
+    // After opening: same DOM node (no remount), aria-pressed flips,
+    // and the data attribute on the aside reflects the open state.
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "false");
+    expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "true");
+  });
+
+  it("persists the drawer's open state to localStorage so the choice survives a reload", async () => {
+    setLoggedOut();
+    const user = userEvent.setup();
+    renderAuraShell("/");
+
+    expect(window.localStorage.getItem(PUBLIC_SIDEBAR_COLLAPSED_KEY)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+
+    expect(window.localStorage.getItem(PUBLIC_SIDEBAR_COLLAPSED_KEY)).toBe(
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+
+    expect(window.localStorage.getItem(PUBLIC_SIDEBAR_COLLAPSED_KEY)).toBe(
+      "true",
+    );
+  });
+
+  it("does not render the public left drawer toggle in authed modes (no double-affordance with the right sidekick)", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+    renderAuraShell("/chat");
+
+    expect(
+      screen.queryByRole("button", { name: "Toggle sidebar" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("the left drawer toggle's aria-pressed contract matches the right sidekick toggle (open=true, collapsed=false)", async () => {
+    setLoggedOut();
+    const user = userEvent.setup();
+    renderAuraShell("/");
+
+    const leftToggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    // Default starts collapsed: aria-pressed="false" (mirrors how the
+    // right sidekick reads aria-pressed=false when collapsed).
+    expect(leftToggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(leftToggle);
+
+    // Open: aria-pressed="true" — same boolean contract as the right
+    // sidekick toggle in `WindowControls.tsx`.
+    expect(leftToggle).toHaveAttribute("aria-pressed", "true");
   });
 });

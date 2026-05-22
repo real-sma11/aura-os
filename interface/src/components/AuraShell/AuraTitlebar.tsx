@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Server } from "lucide-react";
+import { PanelLeft, Server } from "lucide-react";
 import { Button } from "@cypher-asi/zui";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { OrgSelector } from "../OrgSelector";
@@ -19,8 +19,16 @@ export interface AuraTitlebarProps {
    * every mode flip.
    */
   mode: UIMode;
-  /** Public-only: mobile menu toggle. */
-  onMobileMenuToggle?: () => void;
+  /**
+   * Public-only: collapse state of the left sidebar (sessions panel).
+   * Drives the `<PanelLeft />` drawer button's `selected` /
+   * `aria-pressed` so it lights up when the drawer is open and goes
+   * neutral when it is collapsed — the left-side mirror of the
+   * `<PanelRight />` sidekick toggle in `WindowControls`.
+   */
+  publicSidebarCollapsed?: boolean;
+  /** Public-only: toggle action for the left drawer. */
+  onTogglePublicSidebar?: () => void;
   /** Authenticated only: sidekick & split-screen toggles + host settings. */
   sidekickCollapsed?: boolean;
   onToggleSidekick?: () => void;
@@ -40,7 +48,12 @@ export interface AuraTitlebarProps {
  * - Leading slot:
  *   - Authenticated (`simple` | `advanced`): `OrgSelector` + `MenuBar`
  *     (ported from `DesktopTitlebar`).
- *   - Public: mobile menu button (ported from `LoggedOutTitlebar`).
+ *   - Public: `<PanelLeft />` drawer button that opens / closes the
+ *     left sidebar (sessions panel). Mirrors the `<PanelRight />`
+ *     sidekick toggle in `WindowControls.tsx` 1:1 — same ZUI `Button`
+ *     props (`variant="ghost"`, `size="sm"`, `iconOnly`,
+ *     `selected={!collapsed}`, `aria-pressed`) and the same neutral-
+ *     text override on `[aria-pressed="true"]`. Just on the left.
  * - Trailing slot:
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `EarnCreditsButton` + `WindowControls` (with the sidekick /
@@ -59,7 +72,16 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   return (
     <ShellTitlebar
       data-testid="aura-titlebar"
-      icon={isPublic ? <PublicLeading onMenuToggle={props.onMobileMenuToggle} /> : <AuthedLeading />}
+      icon={
+        isPublic ? (
+          <PublicLeading
+            collapsed={props.publicSidebarCollapsed ?? true}
+            onToggle={props.onTogglePublicSidebar}
+          />
+        ) : (
+          <AuthedLeading />
+        )
+      }
       title={
         <span className={`titlebar-center ${styles.titleCenter}`}>
           <img
@@ -97,17 +119,34 @@ function AuthedLeading(): React.ReactElement {
   );
 }
 
-function PublicLeading({ onMenuToggle }: { onMenuToggle?: () => void }): React.ReactElement | null {
-  if (!onMenuToggle) return null;
+function PublicLeading({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle?: () => void;
+}): React.ReactElement | null {
+  if (!onToggle) return null;
   return (
-    <button
-      type="button"
-      className={styles.menuToggle}
-      onClick={onMenuToggle}
-      aria-label="Toggle menu"
-    >
-      <Menu size={18} />
-    </button>
+    <span className={`${styles.titleLeading} titlebar-no-drag`}>
+      <Button
+        variant="ghost"
+        size="sm"
+        rounded="md"
+        iconOnly
+        // Mirrors `WindowControls`' sidekick toggle: `selected` lights
+        // the icon when the drawer is open. `aria-pressed` carries the
+        // same boolean so AT users get the same contract on both sides.
+        selected={!collapsed}
+        title="Toggle sidebar"
+        aria-label="Toggle sidebar"
+        aria-pressed={!collapsed}
+        className={styles.publicSidebarToggle}
+        onClick={onToggle}
+      >
+        <PanelLeft size={14} strokeWidth={2} />
+      </Button>
+    </span>
   );
 }
 

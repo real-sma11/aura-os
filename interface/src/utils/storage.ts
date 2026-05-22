@@ -7,6 +7,7 @@ import {
   LAST_DEBUG_RUN_KEY,
   LAST_PROJECT_KEY,
   PROJECT_ORDER_KEY,
+  PUBLIC_SIDEBAR_COLLAPSED_KEY,
   TASKBAR_APP_ORDER_KEY,
   TASKBAR_APPS_COLLAPSED_KEY,
   TASKBAR_HIDDEN_APPS_KEY,
@@ -349,6 +350,31 @@ export function getTaskbarRightCollapsed(): boolean {
 export function setTaskbarRightCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(TASKBAR_RIGHT_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/**
+ * Public-shell sidebar collapse state. Defaults to `true` (collapsed)
+ * on first visit so logged-out visitors land on a clean ChatGPT-style
+ * surface; subsequent toggles via the titlebar's left drawer button
+ * persist here so the choice survives reloads.
+ */
+export function getPublicSidebarCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(PUBLIC_SIDEBAR_COLLAPSED_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  } catch {
+    // ignore storage failures
+  }
+  return true;
+}
+
+export function setPublicSidebarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(PUBLIC_SIDEBAR_COLLAPSED_KEY, String(collapsed));
   } catch {
     // ignore storage failures
   }

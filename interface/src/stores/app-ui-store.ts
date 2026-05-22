@@ -2,6 +2,10 @@ import { create } from "zustand";
 import type { ReactNode } from "react";
 import { PREVIOUS_PATH_KEY } from "../constants";
 import { sanitizeRestorePath } from "../utils/last-app-path";
+import {
+  getPublicSidebarCollapsed,
+  setPublicSidebarCollapsed as writePublicSidebarCollapsed,
+} from "../utils/storage";
 
 const SIDEKICK_SPLIT_STORAGE_KEY = "aura-sidekick-split";
 
@@ -53,6 +57,15 @@ type AppUIState = {
   sidebarActions: Record<string, ReactNode>;
   sidekickCollapsed: boolean;
   sidekickSplitScreen: boolean;
+  /**
+   * Whether the public-shell left sidebar is collapsed. Mirrors
+   * `sidekickCollapsed` for the right side: a single boolean,
+   * persisted to `localStorage`, toggled from a titlebar drawer
+   * button (`<PanelLeft />` left, `<PanelRight />` right). Default
+   * is `true` so first-visit logged-out users land on a clean
+   * ChatGPT-style surface.
+   */
+  publicSidebarCollapsed: boolean;
   previousPath: string | null;
 
   markAppVisited: (appId: string) => void;
@@ -61,6 +74,8 @@ type AppUIState = {
   toggleSidekick: () => void;
   toggleSidekickSplitScreen: () => void;
   setSidekickSplitScreen: (value: boolean) => void;
+  togglePublicSidebar: () => void;
+  setPublicSidebarCollapsed: (value: boolean) => void;
   setPreviousPath: (path: string) => void;
 };
 
@@ -70,6 +85,7 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
   sidebarActions: {},
   sidekickCollapsed: false,
   sidekickSplitScreen: readSidekickSplitScreen(),
+  publicSidebarCollapsed: getPublicSidebarCollapsed(),
   previousPath: readPreviousPath(),
 
   markAppVisited: (appId): void => {
@@ -107,6 +123,22 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
       if (s.sidekickSplitScreen === value) return s;
       writeSidekickSplitScreen(value);
       return { sidekickSplitScreen: value };
+    });
+  },
+
+  togglePublicSidebar: (): void => {
+    set((s) => {
+      const next = !s.publicSidebarCollapsed;
+      writePublicSidebarCollapsed(next);
+      return { publicSidebarCollapsed: next };
+    });
+  },
+
+  setPublicSidebarCollapsed: (value): void => {
+    set((s) => {
+      if (s.publicSidebarCollapsed === value) return s;
+      writePublicSidebarCollapsed(value);
+      return { publicSidebarCollapsed: value };
     });
   },
 

@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 import { X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { usePublicChatStore } from "../../../stores/public-chat-store";
-import { PublicSidebarFooter } from "../PublicSidebarFooter";
 import styles from "./PublicSessionsPanel.module.css";
 
 interface PublicSessionsPanelProps {
@@ -16,8 +15,7 @@ interface PublicSessionsPanelProps {
 
 /**
  * Left rail body for the public (logged-out) chat shell. Lists
- * public sessions (read from `usePublicChatStore`) and renders the
- * marketing footer (`PublicSidebarFooter`) at the bottom.
+ * public sessions read from `usePublicChatStore`.
  *
  * Intentionally does NOT reuse `components/SessionsList` — that
  * component is shaped around server-fetched `AnnotatedSession` rows
@@ -27,8 +25,10 @@ interface PublicSessionsPanelProps {
  * public sessions.
  *
  * The "+" new-chat affordance and the search input live in the
- * shared `AuraSidebar` header; this component owns only the row
- * list + marketing footer.
+ * shared `AuraSidebar` header; the marketing footer
+ * (`PublicSidebarFooter`) is rendered as a sibling of this panel
+ * inside `AuraSidebar` so it stays bottom-anchored even when the
+ * Lane wrapping this body collapses to width 0.
  */
 export function PublicSessionsPanel({
   searchQuery = "",
@@ -88,42 +88,39 @@ export function PublicSessionsPanel({
     : "No conversations yet";
 
   return (
-    <>
-      <div className={styles.sessionsBody}>
-        {filteredSessions.length === 0 ? (
-          <div className={styles.emptyHint}>{emptyMessage}</div>
-        ) : (
-          filteredSessions.map((session) => (
-            // Two sibling <button>s in a flex row instead of a delete
-            // button nested inside a select button. Nesting interactive
-            // content inside a <button> is invalid HTML and was the
-            // root cause of unreliable click delivery on the X icon.
-            <div
-              key={session.id}
-              className={`${styles.sessionRow} ${
-                session.id === activeSessionId ? styles.sessionRowActive : ""
-              }`}
+    <div className={styles.sessionsBody}>
+      {filteredSessions.length === 0 ? (
+        <div className={styles.emptyHint}>{emptyMessage}</div>
+      ) : (
+        filteredSessions.map((session) => (
+          // Two sibling <button>s in a flex row instead of a delete
+          // button nested inside a select button. Nesting interactive
+          // content inside a <button> is invalid HTML and was the
+          // root cause of unreliable click delivery on the X icon.
+          <div
+            key={session.id}
+            className={`${styles.sessionRow} ${
+              session.id === activeSessionId ? styles.sessionRowActive : ""
+            }`}
+          >
+            <button
+              type="button"
+              className={styles.sessionRowSelect}
+              onClick={() => handleSelect(session.id)}
             >
-              <button
-                type="button"
-                className={styles.sessionRowSelect}
-                onClick={() => handleSelect(session.id)}
-              >
-                <span className={styles.sessionRowTitle}>{session.title}</span>
-              </button>
-              <button
-                type="button"
-                className={styles.deleteButton}
-                onClick={() => handleDelete(session.id)}
-                aria-label={`Delete chat "${session.title}"`}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-      <PublicSidebarFooter />
-    </>
+              <span className={styles.sessionRowTitle}>{session.title}</span>
+            </button>
+            <button
+              type="button"
+              className={styles.deleteButton}
+              onClick={() => handleDelete(session.id)}
+              aria-label={`Delete chat "${session.title}"`}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
