@@ -28,7 +28,7 @@ import styles from "./LoggedOutShell.module.css";
  * full-page route.
  *
  * The sidebar header owns the always-visible search input + the
- * Normie/Advanced mode toggle. Search filters the sessions list
+ * Simple/Advanced mode toggle. Search filters the sessions list
  * (lifted to this component so the input + filter live in the same
  * place); the toggle's "always under search" placement matches the
  * Advanced shell's sidebar so the surface stays consistent across

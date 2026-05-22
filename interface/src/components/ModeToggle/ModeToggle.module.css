@@ -1,6 +1,6 @@
 /* ============================================================
  * ModeToggle — sidebar-chrome wrapper around `SlidingPills` so the
- * two-segment Normie/Advanced control inherits the exact same
+ * two-segment Simple/Advanced control inherits the exact same
  * sliding-indicator animation as the chat input's mode selector
  * (Code / Plan / Image / Video / 3D).
  *
@@ -30,7 +30,7 @@
   width: 100%;
   /*
    * 20% taller than the shared shell-chrome height so the
-   * Normie/Advanced toggle reads as a more deliberate control than
+   * Simple/Advanced toggle reads as a more deliberate control than
    * the search row above it. Kept as a `calc()` over the token
    * chain so theme overrides of `--shell-chrome-height` /
    * `--control-height-sm` still flow through proportionally.

@@ -18,8 +18,7 @@ import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardin
 import { useShallow } from "zustand/react/shallow";
 import { DesktopShell } from "../DesktopShell";
 import { MobileShell } from "../../mobile/shell";
-import { SimpleShell } from "../../views/SimpleShell/SimpleShell";
-import { useAppModeStore } from "../../stores/app-mode-store";
+import { useUIModeStore } from "../../stores/ui-mode-store";
 import { markShellVisible } from "../../lib/perf/startup-perf";
 import {
   applyAuraCaptureSeedPlan,
@@ -99,16 +98,15 @@ function ProjectCreationModalHost() {
 
 function ResponsiveShell() {
   const { isMobileLayout } = useAuraCapabilities();
-  const appMode = useAppModeStore((s) => s.mode);
+  const uiMode = useUIModeStore((s) => s.mode);
 
   useEffect(() => {
-    import("../../lib/analytics").then(({ registerProperty }) => {
-      registerProperty("app_mode", isMobileLayout ? "mobile" : appMode);
+    void import("../../lib/analytics").then(({ registerProperty }) => {
+      registerProperty("app_mode", isMobileLayout ? "mobile" : uiMode);
     });
-  }, [appMode, isMobileLayout]);
+  }, [uiMode, isMobileLayout]);
 
   if (isMobileLayout) return <MobileShell />;
-  if (appMode === "simple") return <SimpleShell />;
   return <DesktopShell />;
 }
 
@@ -361,7 +359,7 @@ function useOnboardingHydration() {
 function AppContent() {
   useOnboardingHydration();
   useOnboardingTaskWatcher();
-  const appMode = useAppModeStore((s) => s.mode);
+  const uiMode = useUIModeStore((s) => s.mode);
 
   const {
     orgSettingsOpen, orgInitialSection, closeOrgSettings,
@@ -409,7 +407,7 @@ function AppContent() {
         </LazyModalBoundary>
       ) : null}
       <ProjectCreationModalHost />
-      {appMode !== "simple" && (
+      {uiMode === "advanced" && (
         <>
           <LazyModalBoundary>
             <WelcomeModal />

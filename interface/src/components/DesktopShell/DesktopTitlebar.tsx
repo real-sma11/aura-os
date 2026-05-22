@@ -7,7 +7,6 @@ import { ShellTitlebar } from "../ShellTitlebar";
 import { UpdatePill } from "../UpdateBanner";
 import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
-import { useAppModeStore } from "../../stores/app-mode-store";
 import styles from "./DesktopShell.module.css";
 
 interface DesktopTitlebarProps {
@@ -26,7 +25,6 @@ export function DesktopTitlebar({
   onOpenHostSettings,
 }: DesktopTitlebarProps) {
   const { features } = useAuraCapabilities();
-  const toggleSimple = useAppModeStore((s) => s.toggle);
 
   return (
     <ShellTitlebar
@@ -66,15 +64,6 @@ export function DesktopTitlebar({
             </Button>
           )}
           <EarnCreditsButton />
-          <Button
-            variant="ghost"
-            size="sm"
-            rounded="md"
-            onClick={toggleSimple}
-            aria-label="Switch to simple mode"
-          >
-            Simple
-          </Button>
           <WindowControls
             sidekickCollapsed={sidekickCollapsed}
             onToggleSidekick={onToggleSidekick}

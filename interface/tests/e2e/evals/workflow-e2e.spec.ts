@@ -22,9 +22,9 @@ for (const scenario of scenarios) {
 
     // Workflow tests require the full DesktopShell (advanced mode) to
     // access project workbench routes. Set the preference before any
-    // navigation so SimpleShell doesn't redirect to /chat.
+    // navigation so the simple-mode shell doesn't redirect to /chat.
     await page.addInitScript(() => {
-      localStorage.setItem("aura-app-mode", "advanced");
+      localStorage.setItem("aura-ui-mode", "advanced");
     });
 
     const harness = await installWorkflowMockApp(page, scenario);

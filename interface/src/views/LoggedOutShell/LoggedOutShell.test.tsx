@@ -132,11 +132,11 @@ describe("LoggedOutShell", () => {
     expect(
       screen.getByPlaceholderText("Search"),
     ).toBeInTheDocument();
-    // Normie/Advanced toggle is rendered under the search. The
+    // Simple/Advanced toggle is rendered under the search. The
     // toggle is built on `SlidingPills`, so its segments expose
     // `role="radio"` (matches the chat input mode selector).
     expect(
-      screen.getByRole("radio", { name: "Normie" }),
+      screen.getByRole("radio", { name: "Simple" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radio", { name: "Advanced" }),

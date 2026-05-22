@@ -15,19 +15,19 @@ afterEach(() => {
 });
 
 describe("ModeToggle", () => {
-  it("renders both segments labelled Normie and Advanced", () => {
+  it("renders both segments labelled Simple and Advanced", () => {
     render(<ModeToggle />);
     // Built on `SlidingPills`, so segments expose `role="radio"`
     // (matches the chat input ModeSelector for a consistent feel).
-    expect(screen.getByRole("radio", { name: "Normie" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Simple" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Advanced" })).toBeInTheDocument();
   });
 
   it("reflects the store's active mode via aria-checked", () => {
-    useUIModeStore.setState({ mode: "normie" });
+    useUIModeStore.setState({ mode: "simple" });
     render(<ModeToggle />);
     expect(
-      screen.getByRole("radio", { name: "Normie", checked: true }),
+      screen.getByRole("radio", { name: "Simple", checked: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radio", { name: "Advanced", checked: false }),
@@ -39,8 +39,8 @@ describe("ModeToggle", () => {
     render(<ModeToggle />);
 
     expect(useUIModeStore.getState().mode).toBe("advanced");
-    await user.click(screen.getByRole("radio", { name: "Normie" }));
-    expect(useUIModeStore.getState().mode).toBe("normie");
+    await user.click(screen.getByRole("radio", { name: "Simple" }));
+    expect(useUIModeStore.getState().mode).toBe("simple");
     await user.click(screen.getByRole("radio", { name: "Advanced" }));
     expect(useUIModeStore.getState().mode).toBe("advanced");
   });
@@ -53,5 +53,18 @@ describe("ModeToggle", () => {
     );
     expect(indicators).toHaveLength(1);
     expect(indicators[0]).toHaveAttribute("data-active-id", "advanced");
+  });
+
+  it("renders the indicator on 'simple' when the persisted mode is 'public' (logged-in stale)", () => {
+    // The toggle never writes "public", but a stale localStorage
+    // value or a logged-out store snapshot can land us here. The
+    // indicator should still pick a valid segment instead of
+    // collapsing.
+    useUIModeStore.setState({ mode: "public" });
+    const { container } = render(<ModeToggle />);
+    const indicator = container.querySelector(
+      "[data-sliding-pills-indicator]",
+    );
+    expect(indicator).toHaveAttribute("data-active-id", "simple");
   });
 });

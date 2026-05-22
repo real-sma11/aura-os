@@ -190,14 +190,15 @@ export function App() {
 function AppRoutes({ showShell }: { showShell: boolean }) {
   const location = useLocation();
   const { isNativeApp } = useAuraCapabilities();
-  // The Normie/Advanced toggle (left sidebar) controls which shell an
-  // authenticated user sees. In `normie` mode we mount the same
+  // The Simple/Advanced toggle (left sidebar) controls which shell an
+  // authenticated user sees. In `simple` mode we mount the same
   // `LoggedOutShell` chat-only surface guests see so the public-mode
   // experience is reachable without signing out. `advanced` keeps the
-  // full `AppShell`/`DesktopShell` tree.
+  // full `AppShell`/`DesktopShell` tree. (Phase 3 will collapse this
+  // branch into a single mounted shell.)
   const uiMode = useUIModeStore((s) => s.mode);
   const inAdvancedShell = showShell && uiMode === "advanced";
-  const inNormieShell = showShell && uiMode === "normie";
+  const inSimpleShell = showShell && uiMode === "simple";
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -249,9 +250,9 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
             </Route>
           </Route>
         </Route>
-      ) : inNormieShell ? (
+      ) : inSimpleShell ? (
         // Authenticated user with the global UI mode toggled to
-        // `normie`: serve the same `LoggedOutShell` chat-only surface
+        // `simple`: serve the same `LoggedOutShell` chat-only surface
         // guests see today. `RequireAuth` is intentionally omitted —
         // showShell already implies an authenticated user, and the
         // public chat view is guest-token-driven so there's no
@@ -260,8 +261,8 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
         // The `*` catch-all is load-bearing: flipping the UI toggle
         // does not change the URL, so a user sitting on an advanced
         // route like `/projects/:id/agents/:id` and then toggling to
-        // normie would land on a URL that matches none of the
-        // normie-shell routes. Without the catch-all React Router
+        // simple would land on a URL that matches none of the
+        // simple-shell routes. Without the catch-all React Router
         // emits a `No routes matched location` warning and renders
         // nothing. Redirect to `/` so the toggle always lands on a
         // valid view.
