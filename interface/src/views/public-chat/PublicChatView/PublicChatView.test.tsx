@@ -486,3 +486,154 @@ describe("PublicChatView landing", () => {
     );
   });
 });
+
+/**
+ * Wheel-driven persona cycling: the entire public landing surface
+ * acts as a vertical carousel — scrolling down advances to the
+ * next persona (one step down the tick rail) and scrolling up
+ * rewinds, wrapping past either end. A 350ms cooldown ensures one
+ * discrete gesture (mouse-wheel notch or trackpad flick) advances
+ * exactly one persona, no matter how many wheel events the input
+ * device emits during that gesture.
+ */
+describe("PublicChatView wheel cycling", () => {
+  function wheel(deltaY: number): void {
+    fireEvent.wheel(screen.getByTestId("public-chat-view"), { deltaY });
+  }
+
+  it("advances to the next persona on a wheel-down gesture", () => {
+    renderView();
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+
+    wheel(120);
+
+    expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+    expect(tickFor("Vibecoder")).not.toHaveAttribute("aria-current");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "1",
+    );
+  });
+
+  it("wraps from the first persona to the last on a wheel-up gesture", () => {
+    // Vibecoder (index 0) + wheel-up should land on Cypher Punk
+    // (index PERSONAS.length - 1 = 5) rather than clamping at the
+    // top — the user explicitly asked for cycling, not clamping.
+    renderView();
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+
+    wheel(-120);
+
+    expect(tickFor("Cypher Punk")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "5",
+    );
+  });
+
+  it("wraps from the last persona back to the first on a wheel-down gesture", () => {
+    // Companion to the wrap-backwards test above. Land on Cypher
+    // Punk first via the panel (clicking is the established
+    // user-driven path) and then wheel-down to prove the forward
+    // wrap also works end-to-start.
+    vi.useFakeTimers();
+    try {
+      renderView();
+      fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
+      fireEvent.click(panelFor("Cypher Punk"));
+      expect(tickFor("Cypher Punk")).toHaveAttribute("aria-current", "true");
+
+      // Step past the 350ms cooldown floor so the wheel event below
+      // isn't swallowed by the just-fired persona-click landing in
+      // the same tick (the click handler doesn't touch the cooldown,
+      // but `performance.now()` starts at 0 under fake timers so a
+      // wheel at t=0 immediately after the click would still be the
+      // first wheel-trigger and trip cleanly — advancing the clock
+      // keeps the test robust against future cooldown integration).
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      wheel(120);
+
+      expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+        "data-active-persona-index",
+        "0",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("debounces back-to-back wheel events so one gesture only advances one persona", () => {
+    // A momentum trackpad emits a continuous stream of wheel events
+    // for the duration of an inertial scroll; without the cooldown
+    // a single flick would race past every persona. Fire three
+    // wheel events in immediate succession and assert only the
+    // first one landed.
+    vi.useFakeTimers();
+    try {
+      renderView();
+      expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+
+      wheel(120);
+      wheel(120);
+      wheel(120);
+
+      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+      expect(tickFor("Giga Brain")).not.toHaveAttribute("aria-current");
+      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+        "data-active-persona-index",
+        "1",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accepts another wheel event after the 350ms cooldown elapses", () => {
+    // Companion to the debounce test: prove the cooldown actually
+    // re-opens. Two wheel-downs separated by a 400ms gap should
+    // advance two personas (Vibecoder → Solo Builder → Giga Brain).
+    vi.useFakeTimers();
+    try {
+      renderView();
+
+      wheel(120);
+      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      wheel(120);
+      expect(tickFor("Giga Brain")).toHaveAttribute("aria-current", "true");
+      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+        "data-active-persona-index",
+        "2",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores near-zero deltaY events (horizontal trackpad jitter)", () => {
+    // Some browsers fold tiny horizontal trackpad noise into
+    // `deltaY` as sub-pixel values; without the magnitude floor a
+    // sideways two-finger swipe would occasionally flip the
+    // persona. WHEEL_DELTA_THRESHOLD = 4 keeps those out.
+    renderView();
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+
+    wheel(1);
+    wheel(-2);
+    wheel(3);
+
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "0",
+    );
+  });
+});
