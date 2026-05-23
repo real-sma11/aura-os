@@ -293,27 +293,16 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // the letterbox bar and any image edge stays imperceptible
       // along the full height of the frame.
       desktopBackgroundColor: "#7a9eac",
-      // Zoom OUT 15% from the `contain` baseline — intentionally
-      // different from Vibecoder + Cypher Punk's `1.1`. The
-      // Vibecoder + Cypher Punk source PNGs frame their subject
-      // edge-to-edge (hair / hood touch the top of the source,
-      // shoulders reach the bottom), so `1.1` makes those figures
-      // fill the rendered frame as a tight head-and-shoulders
-      // portrait. The Solo Builder source, in contrast, authors
-      // the helmeted figure as a much smaller element with a
-      // wide band of sky above and around it — at `1.1` the
-      // visor floats small and high in the upper third of the
-      // frame instead of reading as a comparable portrait.
-      //
-      // Contracting to `0.85` does double duty: the figure
-      // shrinks (the "zoom out" half of the user's request) AND
-      // the visor falls visibly closer to frame center (the
-      // "move down" half), because scaling shrinks everything
-      // toward the element's center and the visor was sitting
-      // above it. The resulting widened bg-color border on all
-      // four sides reads as deliberate negative space rather
-      // than as a small head in an oversized window.
-      desktopBackgroundScale: 0.85,
+      // Calibrated against the Vibecoder + Cypher Punk `1.1`
+      // baseline. The Solo Builder source authors its helmeted
+      // figure smaller within its own 1024×1024 frame than the
+      // other two character portraits (whose hair / hood reach
+      // the top edge and whose shoulders reach the bottom edge),
+      // so the right number for "matching visual presence" is
+      // landed by eye rather than by math. Current value started
+      // from a `0.85` test and was bumped up 25% from there per
+      // direct user feedback.
+      desktopBackgroundScale: 1.221875,
       siteBackgroundUrl: "/personas/solo-builder/site.png",
       // Sampled from the dominant mid-tone of `site.png` so the page
       // paints a matching dusty-blue immediately on first paint and
