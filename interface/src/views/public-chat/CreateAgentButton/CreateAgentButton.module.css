@@ -1,0 +1,94 @@
+/*
+ * CreateAgentButton — neon-glow CTA pill shared between the public
+ * landing surface (`PublicChatView`) and the marketing `/product`
+ * hero (`ProductView` via `PageHero`).
+ *
+ * Lifted verbatim from `PublicChatView.module.css`'s prior
+ * `.ctaButton` block when the button was extracted into a shared
+ * component. The styles are intentionally untouched from the
+ * original (same alphas, same blur radii, same shadow stops) so the
+ * landing and product surfaces render identical chrome — only the
+ * `--glow` hue ever differs between them.
+ *
+ * Theme hook
+ * ----------
+ * `--glow` resolves from the `--public-cta-glow-color` custom
+ * property published by the consuming surface (the public landing
+ * publishes the active persona's `siteCtaGlowColor`; the product
+ * hero leaves it unset). Falls back to neon-violet `#9b5cff`, which
+ * is tuned to read as a separate light source against the dark
+ * landing wallpapers and the orb-video product hero alike.
+ *
+ * Pointer-events
+ * --------------
+ * `pointer-events: auto` is set explicitly because the public
+ * landing's `.ctaSlot` parent disables pointer events to let
+ * clicks fall through to the wallpaper underneath. The product
+ * hero doesn't disable pointer events on its parent, so the
+ * declaration is a no-op there but stays for symmetry.
+ */
+.ctaButton {
+  --glow: var(--public-cta-glow-color, #9b5cff);
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--glow) 55%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
+    rgba(12, 8, 22, 0.55);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  /* Three-layer bloom — a 1px hairline keeps the rim defined, then
+     two outer halos fade off into the page bg. The radii + alphas
+     are deliberately understated so the pill reads as a softly lit
+     panel instead of a saturated neon sign; idle should feel
+     ambient, with hover doing the real lighting. */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow) 22%, transparent),
+    0 0 12px color-mix(in srgb, var(--glow) 32%, transparent),
+    0 0 32px color-mix(in srgb, var(--glow) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: transform 160ms ease, box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+
+.ctaButton:hover {
+  border-color: color-mix(in srgb, var(--glow) 75%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow) 32%, transparent),
+    0 0 18px color-mix(in srgb, var(--glow) 45%, transparent),
+    0 0 44px color-mix(in srgb, var(--glow) 25%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.ctaButton:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow) 25%, transparent),
+    0 0 10px color-mix(in srgb, var(--glow) 30%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.ctaButton:focus-visible {
+  outline: 2px solid var(--color-overlay-focus, var(--color-border-strong));
+  outline-offset: 2px;
+}
+
+.ctaButton > svg {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ctaButton {
+    transition: none;
+  }
+}

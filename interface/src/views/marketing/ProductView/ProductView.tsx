@@ -6,9 +6,11 @@ import {
   LockIcon,
   ShieldIcon,
 } from "../FeaturePanel/FeaturePanel";
+import { CreateAgentButton } from "../../public-chat/CreateAgentButton";
 import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
 import { ProductScreenSection } from "../ProductScreenSection";
+import styles from "./ProductView.module.css";
 
 /**
  * Marketing `/product` page. Ported from
@@ -29,19 +31,14 @@ export function ProductView(): ReactNode {
   }, []);
 
   return (
-    <>
+    <div className={styles.productView}>
       <PageHero
-        headline={
-          <>
-            The
-            <br />
-            Open Intelligence
-            <br />
-            Network
-          </>
-        }
-        description="AURA enables you to train, hire and deploy agents to build fully autonomous products and companies."
+        headline="Your Personal Agent."
+        description="AURA agents run on a secure virtual machine that is yours, keeping your data completely secure."
         preview={null}
+        centered
+        backgroundVideoSrc="/AURA_visual_loop.mp4"
+        headlineCta={<CreateAgentButton />}
       />
       <ProductScreenSection
         headline="A secure operating system to manage agentic swarms."
@@ -93,6 +90,6 @@ export function ProductView(): ReactNode {
       />
       <ChangelogPreview />
       <ProductCallToAction href="/download" label="DOWNLOAD" />
-    </>
+    </div>
   );
 }

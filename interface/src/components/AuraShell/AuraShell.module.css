@@ -144,6 +144,16 @@
   background: transparent;
   border: none;
   border-radius: 0;
+  /* Form an isolated stacking context so descendant z-indexes (e.g.
+     `.pageHeroContent` / `.pageHeroFlowVideo` at z-index: 2 inside
+     the marketing `<PageHero>`) stay contained inside the main
+     panel and cannot paint over the absolutely-positioned public
+     sidebar overlay (`.sidebar` at z-index: 2 in `.body`'s context).
+     Without isolation, both z-index: 2s land in the same shell-
+     level stacking context, and the later-in-DOM main-panel content
+     wins the tie — visibly hiding the left nav under the
+     `/product` hero video. */
+  isolation: isolate;
 }
 
 .shell:not([data-ui-mode="public"]) .mainPanel {

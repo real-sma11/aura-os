@@ -20,7 +20,10 @@
 
 .pageHeroContent {
   position: relative;
-  z-index: 1;
+  /* Sits above the optional `.pageHeroBackgroundVideo` (z-index 0) and
+     `.pageHeroBackgroundImage` (z-index 1) layers so the headline +
+     description always read on top of any decorative background media. */
+  z-index: 2;
   display: flex;
   flex-direction: column;
   /* See `--marketing-content-max-width` in `interface/src/index.css`:
@@ -30,6 +33,367 @@
   width: 100%;
   margin: 0 auto;
   gap: 20px;
+}
+
+/* Optional background-media layers — opt-in via the `backgroundVideoSrc`
+   and `backgroundImageSrc` props on `<PageHero />`. Both are absolutely
+   positioned full-bleed inside `.pageHero` (which already supplies
+   `position: relative` + `overflow: hidden`), so `inset: 0` aligns to
+   the padding box and the layers escape the section's 96px top/bottom
+   padding without negative offsets. Pointer events are disabled so the
+   decorative media never intercepts clicks on the headline / CTA. */
+.pageHeroBackgroundVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+  pointer-events: none;
+  /* Decorative — no controls, muted, autoplaying. Modern browsers
+     gate autoplay on muted+playsinline (set on the React element). */
+}
+
+.pageHeroBackgroundImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* `contain` keeps a portrait/silhouette source from being cropped at
+     wide aspect ratios — instead it letterboxes on the long axis, and
+     the video underneath stays visible in those bars. The expected
+     asset is a figure on a near-black field, so the contain-bg gap on
+     the short axis blends invisibly into `.pageHero`'s `#000` and the
+     figure reads as free-floating against the orb video. */
+  object-fit: contain;
+  object-position: center;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Side-only vignette painted over the background media (z-index 0/1)
+   and beneath the content (z-index 2). Mounts only when
+   `backgroundVideoSrc` or `backgroundImageSrc` is set so plain text-
+   only heroes don't get gratuitously darkened.
+
+   A single horizontal linear gradient sweeps from fully opaque black
+   at the far left/right edges (`1.0` alpha) through `0.92` at 18%/82%
+   and `0.7` at 32%/68%, then drops to fully transparent across a
+   narrow 6%-wide keyhole at the very center (47–53%). Result: the
+   left and right thirds of the rectangle are essentially solid
+   black, with a short soft-falloff ramp into a tight clear slot in
+   the middle. Only the brightest center of the
+   `/AURA_visual_loop.mp4` orb pokes through the keyhole behind the
+   headline pill and description footer; the rest of the orb plus
+   its halo is completely swallowed by the side bars so the hero
+   reads as a deeply theatrical, almost spotlit composition. */
+.pageHeroVignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.92) 18%,
+    rgba(0, 0, 0, 0.7) 32%,
+    rgba(0, 0, 0, 0) 47%,
+    rgba(0, 0, 0, 0) 53%,
+    rgba(0, 0, 0, 0.7) 68%,
+    rgba(0, 0, 0, 0.92) 82%,
+    rgba(0, 0, 0, 1) 100%
+  );
+}
+
+/* Centered variant — opt-in via the `centered` prop on `<PageHero />`.
+   Pulls three changes together so the hero reads as the dominant,
+   poster-style first frame the product page wants:
+     1. Vertically centers the content stack inside a full-viewport
+        column (so the headline sits mid-screen instead of pinned to
+        the top with the original 120px padding-top).
+     2. Centers each text block on the cross axis and on its own line.
+     3. Scales the headline up roughly 2× the default left-aligned
+        size since there is no preview/screenshot competing with it
+        for visual weight.
+
+   Specificity note: `.pageHero.pageHeroCentered` and
+   `.pageHeroContentCentered .*` use compound / descendant selectors
+   so they win against the lower-specificity media-query overrides on
+   `.pageHero` / `.pageHeroNoPreview` / `.pageHeroHeadline` further
+   down the file without having to duplicate the centered branch
+   inside every breakpoint. */
+.pageHero.pageHeroCentered {
+  /* The section itself no longer owns the first-viewport min-height
+     or the symmetric vertical padding — those moved to
+     `.pageHeroContentCentered` below so the centered headline /
+     description / CTA stack fills the first screen on its own and
+     the flowing video block (`.pageHeroFlowVideo`) can sit BELOW
+     that stack as a regular block sibling. With the video out of
+     the absolute-backdrop layer, the section is just a vertical
+     flex column: content stack on top (~viewport tall), video
+     below the fold. The 0 min-height override is needed to undo
+     the `100vh` baseline declared on the base `.pageHero` rule
+     further up the file, otherwise the section would still try to
+     be a viewport tall even with no padding/content of its own,
+     leaving a black gap between the centered content and the
+     video. */
+  align-items: stretch;
+  min-height: 0;
+  padding: 0;
+}
+
+.pageHeroContentCentered {
+  align-items: center;
+  text-align: center;
+  /* Sized to the height of the visible AURA "body" (the area
+     between the top titlebar pill and the bottom taskbar pill),
+     NOT the full viewport. AuraShell's `.body` is a flex child
+     between `ShellTitlebar` (outer height
+     `--shell-chrome-outer-height` ≈ 42px) and `BottomTaskbar`
+     (same `--shell-chrome-outer-height` ≈ 42px), so the
+     scrollable marketing column inside it lives between
+     `viewport_top + 42px` and `viewport_bottom - 42px`. Sizing
+     the centered area to a FULL 100vh — the prior implementation
+     — placed `justify-content: center`'s 50% midpoint at
+     `body_top + 50vh = 50vh + 42px` in viewport coordinates,
+     which is 42px BELOW the visible body's center (the body is
+     symmetric around 50vh because both chromes are 42px). That
+     made the headline / description / CTA stack read as sitting
+     too low on initial load even though it was geometrically
+     centered in the section's own coordinate space. Matching
+     the content area to `100vh - 2 × --shell-chrome-outer-height`
+     puts the centered wrapper at the body's TRUE midpoint
+     instead, which is where the user's eye expects "vertically
+     centered in app". The 42px fallback covers any consumer
+     that mounts PageHero outside the AuraShell token context. */
+  box-sizing: border-box;
+  min-height: calc(
+    100vh - 2 * var(--shell-chrome-outer-height, 42px)
+  );
+  min-height: calc(
+    100dvh - 2 * var(--shell-chrome-outer-height, 42px)
+  );
+  justify-content: center;
+  /* Mirrors the prior `.pageHero.pageHeroCentered` padding so
+     vertical centering reads visually balanced after the padding
+     ownership moved from the section to the content column. */
+  padding: 96px 32px;
+}
+
+/* Wrapper div around the centered hero's headline / description /
+   CTA trio. Mounted in JSX only when `centered` is true so the
+   parent `.pageHeroContentCentered` flex column has a single
+   child to center vertically. The wrapper itself becomes the
+   flex column for the three pieces — taking over the `gap: 20px`
+   that the parent contributed in the prior layout (the parent
+   still declares it, but with one child the parent's gap has no
+   effect; the wrapper redeclares it so the headline → description
+   → CTA spacing survives the indirection). The fit-content width
+   keeps the wrapper hugging its tallest child (the headline pill
+   on most viewports), preventing the centered column from
+   expanding to the full marketing content width and pushing the
+   CTA pill off the visual center axis. */
+.pageHeroCenteredStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pageHeroContentCentered .pageHeroHeadline {
+  /* Type ramp for the centered hero. All three stops are scaled
+     0.85× off the prior 31–56px range (another 15% smaller),
+     keeping the same proportions across breakpoints. New stops:
+     - 26px floor keeps it comfortably readable on phones.
+     - 4.3vw mid-band gives a smooth scale across desktop widths
+       (~33px at 768px, ~44px at 1024px, ~62px → clamped at 1440px).
+     - 48px ceiling caps the maximum so the headline doesn't blow
+       past the description max-width on wide viewports. */
+  font-size: clamp(26px, 4.3vw, 48px);
+  line-height: 1.05;
+  /* Hero-only override of the global `--color-text-primary`
+     (which resolves to `#e6e8eb` in dark mode). The marketing
+     hero now reads as a near-pure white slab against the
+     section's `background: #000`, opening up the visual
+     hierarchy gap between the headline and the description
+     below (`.pageHeroDescriptionInline`, light gray) instead of
+     the prior ~30-unit brightness delta between
+     `--color-text-primary` (#e6e8eb) and `--color-text-secondary`
+     (#c9c9cf). Scoped to the centered-hero descendant selector
+     so the rest of the app's text tokens stay on the system
+     defaults; this is a hero-specific typographic choice, not a
+     global theme change. The literal `#f7f8fb` matches the
+     near-white the changelog highres-capture script already
+     publishes for marketing surfaces. */
+  color: #f7f8fb;
+  /* Drop the default 680px cap — at 66px the headline can still need
+     more room than the default. The parent `.pageHeroCenteredStack`'s
+     `width: 100%` cap still constrains the column. */
+  max-width: none;
+  margin-inline: auto;
+  /* Optical-balance margin. The base `.pageHeroCenteredStack`
+     declares `gap: 20px` between the three flex children
+     (headline, description, CTA), so the raw flex gap above and
+     below the description is identical. But the `<button>` inside
+     the CTA wrapper declares `padding: 12px 22px`, which means
+     the CTA's VISIBLE top edge (the rounded pill rim) sits 12px
+     INSIDE the wrapper's box. Without compensation the visual
+     space from the description text bottom → button pill top
+     would read 12px LARGER than the space from the headline text
+     bottom → description text top, leaving the description
+     drifting toward the headline. Adding the same 12px to the
+     headline's `margin-bottom` widens the upper visual gap by
+     exactly that delta so both spacings read equal on screen,
+     even though the underlying flex gap is uniform. */
+  margin-bottom: 12px;
+}
+
+.pageHeroContentCentered .pageHeroActions {
+  align-items: center;
+  justify-content: center;
+}
+
+/* Slot for the optional `headlineCta` ReactNode passed by the
+   consuming view — `ProductView` mounts the shared
+   `<CreateAgentButton />` here so the same neon-glow pill used on
+   the public landing surface sits directly under the headline pill
+   on `/product`. The slot itself is just a centered flex shell so
+   it can host any element (button, link, group of links) without
+   forking PageHero. */
+.pageHeroHeadlineCta {
+  display: flex;
+  justify-content: center;
+}
+
+/* In `centered` mode the headline CTA sits IN the column flow so
+   the visual stack reads headline → description → CTA, matching
+   the new content ordering on `/product`. The base
+   `.pageHeroHeadlineCta` rule already declares
+   `display: flex; justify-content: center`, so horizontal
+   alignment falls out of the parent's `align-items: center`
+   without extra positioning.
+
+   The optical-balance compensation that previously lived here
+   as `margin-top: 12px` now lives on the headline as
+   `margin-bottom: 12px` — see the `.pageHeroContentCentered
+   .pageHeroHeadline` block above. Moving it to the upper half
+   of the stack widens the headline→description gap instead of
+   the description→CTA gap, which is the correct side to grow
+   now that the headline pill background has been removed and
+   the CTA button's `padding-top: 12px` is the ONLY remaining
+   asymmetric inset between siblings. */
+
+/* Description rendered inline in the centered content column,
+   between the headline pill and the headline CTA. Uses the
+   compound `.pageHeroDescription.pageHeroDescriptionInline`
+   selector for the same specificity reason as the headline rule
+   above: it must out-rank the base `.pageHeroDescription` block
+   (and its narrow-viewport overrides) defined later in this file
+   so the type-ramp / wrap / max-width tweaks below actually
+   paint instead of getting reset by source-order. */
+.pageHeroDescription.pageHeroDescriptionInline {
+  max-width: min(720px, 100%);
+  text-align: center;
+  text-wrap: balance;
+  font-size: calc(var(--text-lg) * 1.5);
+  /* Hero-only secondary tier. The base `.pageHeroDescription`
+     rule resolves to `var(--color-text-secondary)` (#c9c9cf in
+     dark mode), which sits only ~30 brightness units below
+     `--color-text-primary` and reads as nearly the same shade
+     as the headline. Stepping the centered-hero description
+     down to `#a3a3a8` opens a clear ~85-unit gap below the
+     #f7f8fb headline above, so the marketing surface reads
+     with a deliberate primary/secondary hierarchy instead of
+     two near-white sentences stacked together. Same scoping
+     argument as the headline override above: this is a
+     hero-specific decision and lives on the compound class
+     rather than overriding the shared token. */
+  color: #a3a3a8;
+}
+
+/* Looping animation video that flows below the centered content
+   column. Mounts as a regular block sibling of
+   `.pageHeroContent` (not as an absolute backdrop) so it sits
+   BELOW the centered first-viewport content stack rather than
+   painting behind it. The 100% width keeps it full-bleed across
+   the section's edge-to-edge `.pageHero` box, and the natural
+   `height: auto` lets the video's intrinsic aspect ratio drive
+   its on-page height — the user scrolls down to see the rest of
+   the loop after the peek strip declared by the negative
+   `margin-top` below.
+
+   The negative `margin-top` of `-1/3 viewport` keeps the video's
+   top edge anchored at ~2/3 of the viewport on initial load even
+   though `.pageHeroContentCentered` now reserves a FULL viewport
+   for centering. Without the offset the video would start at
+   100vh (just below the fold), erasing the bottom-of-screen peek
+   the user requested earlier. With the offset:
+     - Content area: 100vh tall, wrapper centered at 50vh
+     - Video natural start: 100vh (after the content area)
+     - Video actual start: 100vh − 33vh = ~67vh = 2/3 down
+     - Visible peek strip on load: 100vh − 67vh = ~33vh
+   The negative margin also shrinks the section's overall height
+   by the same 33vh, so subsequent marketing sections
+   (`ProductScreenSection`, etc.) flow up by that amount — i.e.
+   they sit RIGHT below the video's bottom edge instead of being
+   pushed an extra 33vh down by the now-100vh content area. The
+   `z-index: 1` (down from the prior 2) keeps the video BENEATH
+   the centered content stack even if a tall viewport pushes the
+   centered wrapper's bottom edge past the video's top, so the
+   headline / description / CTA never end up partially covered
+   by the loop.
+
+   The `mask-image` fades the video IN from the black `.pageHero`
+   background across its top 22% so there's no hard horizontal
+   seam where the video meets the empty space above it; instead
+   the loop materializes smoothly out of the page bg. Masking
+   (rather than overlaying a black gradient div) means the faded
+   pixels are literally transparent, so the section's `#000`
+   shows through naturally — no need to match the gradient color
+   to the page background. Both the spec property and the
+   `-webkit-` prefixed variant are declared because Safari still
+   needs the prefix as of mid-2026. */
+.pageHeroFlowVideo {
+  display: block;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: auto;
+  margin-top: calc(
+    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+  );
+  margin-top: calc(
+    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+  );
+  pointer-events: none;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 22%,
+    #000 100%
+  );
+}
+
+@media (max-width: 768px) {
+  .pageHeroContentCentered {
+    padding: 64px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pageHeroContentCentered {
+    padding: 48px 20px;
+  }
 }
 
 .pageHeroLabel {

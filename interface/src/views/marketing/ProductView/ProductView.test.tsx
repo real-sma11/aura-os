@@ -47,8 +47,8 @@ function renderProductView() {
 }
 
 describe("ProductView", () => {
-  it("renders the hero 'Open Intelligence' headline", () => {
+  it("renders the 'Your Personal Agent.' hero headline", () => {
     renderProductView();
-    expect(screen.getByText(/Open Intelligence/)).toBeInTheDocument();
+    expect(screen.getByText(/Your Personal Agent\./)).toBeInTheDocument();
   });
 });

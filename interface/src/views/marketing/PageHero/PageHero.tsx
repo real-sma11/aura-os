@@ -10,6 +10,49 @@ interface PageHeroProps {
   readonly ctaHref?: string;
   readonly onCtaClick?: () => void;
   readonly preview?: ReactNode | null;
+  /**
+   * When true, horizontally centers the label/headline/description/CTA
+   * stack inside the hero column instead of the default left alignment.
+   * Headline and description still respect their per-element
+   * `max-width` caps; the wrapper just becomes `align-items: center` /
+   * `text-align: center` so the inner blocks center as a group.
+   */
+  readonly centered?: boolean;
+  /**
+   * Optional looping `<video>` source rendered as a full-bleed,
+   * `object-fit: cover` ambient background beneath the content layer.
+   * The video is muted, autoplays, and is marked `aria-hidden` since
+   * it's purely decorative. Pair with `backgroundImageSrc` to overlay
+   * a centered figure / silhouette on top of the video.
+   */
+  readonly backgroundVideoSrc?: string;
+  /**
+   * Optional `<img>` source rendered as a full-bleed,
+   * `object-fit: contain` layer above the background video and beneath
+   * the content. Designed for a centered figure / silhouette on a
+   * black field — its own black bg blends seamlessly into `.pageHero`'s
+   * `#000` so the image reads as a free-floating figure rather than a
+   * boxed inset, while the video continues to play in the contain-fit
+   * letterbox bars on either side.
+   */
+  readonly backgroundImageSrc?: string;
+  /**
+   * Optional alt text for `backgroundImageSrc`. Defaults to `""`
+   * (decorative) so the image is hidden from assistive tech and the
+   * headline / description carry the page's accessible name.
+   */
+  readonly backgroundImageAlt?: string;
+  /**
+   * Optional CTA element rendered directly beneath the headline.
+   * In `centered` mode the consuming view typically passes the
+   * shared `<CreateAgentButton />` here so the neon-glow pill from
+   * the public landing surface mounts under the headline pill,
+   * keeping the call-to-action grouped with the title rather than
+   * pinned to the bottom of the section like the description.
+   * Slot accepts any `ReactNode`, so future centered heroes can
+   * mount different CTA chrome without forking this component.
+   */
+  readonly headlineCta?: ReactNode;
 }
 
 /**
@@ -36,44 +79,142 @@ export function PageHero({
   ctaHref,
   onCtaClick,
   preview,
+  centered = false,
+  backgroundVideoSrc,
+  backgroundImageSrc,
+  backgroundImageAlt = "",
+  headlineCta,
 }: PageHeroProps): ReactNode {
-  const pageHeroClassName =
-    preview === null ? "pageHero pageHeroNoPreview" : "pageHero";
+  const pageHeroClassName = [
+    "pageHero",
+    preview === null ? "pageHeroNoPreview" : null,
+    centered ? "pageHeroCentered" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const contentClassName = centered
+    ? "pageHeroContent pageHeroContentCentered"
+    : "pageHeroContent";
+
+  /*
+   * In `centered` mode the background video is no longer painted as
+   * an absolutely-positioned full-bleed backdrop behind the headline.
+   * Instead it flows as a regular block immediately AFTER the
+   * centered content column, so the first viewport is owned by the
+   * headline / description / CTA stack and the video sits below the
+   * fold with only its top edge peeking at the bottom of the screen.
+   * The user scrolls to reveal the rest of the loop. Non-centered
+   * heroes keep the original behind-content backdrop treatment for
+   * backward compatibility with future marketing pages.
+   */
+  const renderBackdropMedia = !centered;
+  const renderFlowVideo = centered && Boolean(backgroundVideoSrc);
 
   return (
     <section className={pageHeroClassName}>
-      <div className="pageHeroContent">
-        {label ? <span className="pageHeroLabel">{label}</span> : null}
-        <h1 className="pageHeroHeadline">{headline}</h1>
-        <p className="pageHeroDescription">{description}</p>
-        {ctaText ? (
-          <div className="pageHeroActions">
-            {ctaHref ? (
-              <a
-                href={ctaHref}
-                className="pageHeroCtaButton"
-                onClick={onCtaClick}
-              >
-                {ctaIcon ? (
-                  <span aria-hidden="true">{ctaIcon}</span>
-                ) : null}
-                {ctaText}
-              </a>
-            ) : (
-              <button
-                type="button"
-                className="pageHeroCtaButton"
-                onClick={onCtaClick}
-              >
-                {ctaIcon ? (
-                  <span aria-hidden="true">{ctaIcon}</span>
-                ) : null}
-                {ctaText}
-              </button>
-            )}
+      {renderBackdropMedia && backgroundVideoSrc ? (
+        <video
+          className="pageHeroBackgroundVideo"
+          src={backgroundVideoSrc}
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+        />
+      ) : null}
+      {renderBackdropMedia && backgroundImageSrc ? (
+        <img
+          className="pageHeroBackgroundImage"
+          src={backgroundImageSrc}
+          alt={backgroundImageAlt}
+          aria-hidden={backgroundImageAlt === "" ? true : undefined}
+          draggable={false}
+        />
+      ) : null}
+      {renderBackdropMedia &&
+      (backgroundVideoSrc || backgroundImageSrc) ? (
+        <div className="pageHeroVignette" aria-hidden="true" />
+      ) : null}
+      <div className={contentClassName}>
+        {centered ? (
+          /*
+           * Centered mode wraps the headline / description / CTA
+           * trio in a `pageHeroCenteredStack` div so the parent
+           * `.pageHeroContentCentered` column has a SINGLE flex
+           * child to center. With the content area sized at the
+           * full viewport height (see PageHero.css) and
+           * `justify-content: center` on the parent, the wrapper
+           * lands at the true 50vh midpoint — so the top distance
+           * from the viewport top to the headline equals the
+           * bottom distance from the CTA to the viewport bottom
+           * on initial load, regardless of where the flowing
+           * video sits below.
+           */
+          <div className="pageHeroCenteredStack">
+            {label ? (
+              <span className="pageHeroLabel">{label}</span>
+            ) : null}
+            <h1 className="pageHeroHeadline">{headline}</h1>
+            <p className="pageHeroDescription pageHeroDescriptionInline">
+              {description}
+            </p>
+            {headlineCta ? (
+              <div className="pageHeroHeadlineCta">{headlineCta}</div>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          <>
+            {label ? (
+              <span className="pageHeroLabel">{label}</span>
+            ) : null}
+            <h1 className="pageHeroHeadline">{headline}</h1>
+            {headlineCta ? (
+              <div className="pageHeroHeadlineCta">{headlineCta}</div>
+            ) : null}
+            <p className="pageHeroDescription">{description}</p>
+            {ctaText ? (
+              <div className="pageHeroActions">
+                {ctaHref ? (
+                  <a
+                    href={ctaHref}
+                    className="pageHeroCtaButton"
+                    onClick={onCtaClick}
+                  >
+                    {ctaIcon ? (
+                      <span aria-hidden="true">{ctaIcon}</span>
+                    ) : null}
+                    {ctaText}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="pageHeroCtaButton"
+                    onClick={onCtaClick}
+                  >
+                    {ctaIcon ? (
+                      <span aria-hidden="true">{ctaIcon}</span>
+                    ) : null}
+                    {ctaText}
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
+      {renderFlowVideo ? (
+        <video
+          className="pageHeroFlowVideo"
+          src={backgroundVideoSrc}
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+        />
+      ) : null}
       {preview !== null ? (
         <div className="pageHeroPreview">
           {preview ?? <div className="pageHeroPreviewPlaceholder" />}

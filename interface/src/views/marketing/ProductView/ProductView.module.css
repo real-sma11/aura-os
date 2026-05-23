@@ -1,0 +1,17 @@
+/*
+ * ProductView — wrapper that narrows the stacked marketing sections
+ * (`PageHero`, `ProductScreenSection`, `FeaturePanel`,
+ * `ChangelogPreview`, `ProductCallToAction`) on the public `/product`
+ * route only. Each of those components caps its inner column at
+ * `--marketing-content-max-width` (defined globally as `75%` in
+ * `interface/src/index.css` so it tracks the `MockAuraApp` wallpaper
+ * rectangle on the landing page). Overriding the custom property on
+ * the `ProductView` wrapper shrinks the column to ~85% of the shared
+ * marketing width — i.e. 15% narrower — without touching the other
+ * three marketing views (Changelog / Feedback / Pricing), which keep
+ * inheriting the global `75%` value from `:root`.
+ */
+.productView {
+  --marketing-content-max-width: 63.75%;
+  display: contents;
+}
