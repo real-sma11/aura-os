@@ -38,7 +38,7 @@ export function ProductView(): ReactNode {
         preview={null}
         centered
         backgroundVideoSrc="/AURA_visual_loop.mp4"
-        headlineCta={<CreateAgentButton className={styles.heroCtaLight} />}
+        headlineCta={<CreateAgentButton />}
       />
       <ProductScreenSection
         headline="A secure operating system to manage agentic swarms."

@@ -43,27 +43,11 @@
 }
 
 /*
- * Off-white variant of the shared `CreateAgentButton`, applied only
- * to the pill mounted in the `/product` hero. The doubled class
- * selector (`.heroCtaLight.heroCtaLight`) bumps specificity to
- * `(0,2,0)` so this rule beats the base `.ctaButton` `(0,1,0)`
- * declaration in `CreateAgentButton.module.css` regardless of the
- * order the two CSS-Module stylesheets land in the document.
- *
- * Only `background` + `color` are overridden — the violet rim,
- * three-layer bloom, blur, and hover/active transitions inherit
- * from the base rule so the pill still reads as the same lit
- * object against the product hero's video backdrop.
- *
- * The top-edge linear-gradient is kept (now as a white sheen
- * instead of the base's near-transparent white) so the pill still
- * has the subtle "lit from above" highlight that ties it to the
- * landing-surface variant; without it the off-white fill reads as
- * a flat sticker.
+ * The product hero's `<CreateAgentButton />` previously used a
+ * `.heroCtaLight` override to force an off-white fill on top of the
+ * base pill's dark body. That override was retired when the shared
+ * `.ctaButton` baseline in
+ * `CreateAgentButton.module.css` adopted the off-white fill itself,
+ * so the same pill now paints identically on the landing surface and
+ * the product hero with no per-surface chrome rule needed here.
  */
-.heroCtaLight.heroCtaLight {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0)),
-    #f3efe7;
-  color: #0c0816;
-}

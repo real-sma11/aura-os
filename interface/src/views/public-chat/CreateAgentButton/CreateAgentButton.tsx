@@ -5,10 +5,11 @@ import styles from "./CreateAgentButton.module.css";
 interface CreateAgentButtonProps {
   /**
    * Optional consumer-supplied class appended to the base
-   * `.ctaButton` rule. Lets a surface (e.g. the marketing
-   * `/product` hero) layer per-location overrides — different
-   * fill, text color, border treatment — without forking the
-   * shared component or mutating the landing-surface baseline.
+   * `.ctaButton` rule. Reserved as a future hook for per-surface
+   * tweaks (extra spacing, alternate hover, etc.) — there are no
+   * consumers today because the shared chrome (off-white fill +
+   * theme-tinted rim) already paints identically on every
+   * surface, so no override is currently needed.
    *
    * Override rules should use a doubled-class selector
    * (`.myOverride.myOverride { ... }`) so they beat the base
@@ -20,7 +21,7 @@ interface CreateAgentButtonProps {
 }
 
 /**
- * Shared "Create your agent" CTA pill — the neon-glow registration
+ * Shared "Create your agent" CTA pill — the off-white registration
  * button used on every public (logged-out) marketing surface.
  *
  * Originally lived inline in `PublicChatView.tsx` as `.ctaButton`.
@@ -30,18 +31,17 @@ interface CreateAgentButtonProps {
  *
  * Theming
  * -------
- * The button reads its accent hue from the
- * `--public-cta-glow-color` custom property and falls back to the
+ * The pill body (off-white fill, dark label, shimmer sweep) is a
+ * constant on every surface. ONLY the rim border and the
+ * three-layer outer bloom read the active accent hue from the
+ * `--public-cta-glow-color` custom property and fall back to the
  * default neon-violet (`#9b5cff`) when the property is unset.
  *   - On the public landing surface, `PublicChatView` publishes
  *     the active persona's `siteCtaGlowColor` on its `.chatView`
- *     wrapper, so the bloom flips with the active tick.
+ *     wrapper, so the rim + bloom flip with the active tick.
  *   - On the product hero (`ProductView` / `PageHero`), no value
  *     is published so the default violet paints — which matches
  *     the spec since the product page has no persona context.
- *
- * Per-surface chrome (background fill, text color, etc.) can be
- * layered via the optional `className` prop — see its JSDoc.
  *
  * The button always navigates to `/login?tab=register`. There is
  * no `onClick` prop today because every consumer wants the same

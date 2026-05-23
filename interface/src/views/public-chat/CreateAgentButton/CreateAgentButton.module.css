@@ -1,23 +1,20 @@
 /*
- * CreateAgentButton — neon-glow CTA pill shared between the public
- * landing surface (`PublicChatView`) and the marketing `/product`
- * hero (`ProductView` via `PageHero`).
+ * CreateAgentButton — off-white CTA pill with a theme-tinted neon
+ * rim + bloom, shared between the public landing surface
+ * (`PublicChatView`) and the marketing `/product` hero
+ * (`ProductView` via `PageHero`).
  *
- * Lifted verbatim from `PublicChatView.module.css`'s prior
- * `.ctaButton` block when the button was extracted into a shared
- * component. The styles are intentionally untouched from the
- * original (same alphas, same blur radii, same shadow stops) so the
- * landing and product surfaces render identical chrome — only the
- * `--glow` hue ever differs between them.
- *
- * Theme hook
- * ----------
- * `--glow` resolves from the `--public-cta-glow-color` custom
- * property published by the consuming surface (the public landing
- * publishes the active persona's `siteCtaGlowColor`; the product
- * hero leaves it unset). Falls back to neon-violet `#9b5cff`, which
- * is tuned to read as a separate light source against the dark
- * landing wallpapers and the orb-video product hero alike.
+ * Fill / chrome split
+ * -------------------
+ * The pill body is a constant off-white sheen on every surface so
+ * the CTA reads as the same physical object regardless of which
+ * persona / page background is behind it. ONLY the rim border and
+ * the three-layer outer bloom react to the active persona — they
+ * pick up `--glow` (resolved from the `--public-cta-glow-color`
+ * custom property published by the consuming surface) so the
+ * accent color flips with the active tick on the landing surface
+ * and falls back to neon-violet `#9b5cff` on the product hero
+ * where no value is published.
  *
  * Pointer-events
  * --------------
@@ -36,10 +33,14 @@
   padding: 12px 22px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--glow) 55%, transparent);
+  /* Off-white fill with a soft "lit from above" sheen on top. The
+     sheen alpha (0.6) is deliberately strong so the highlight
+     remains visible against the already-bright #f3efe7 base —
+     anything subtler reads as flat. */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
-    rgba(12, 8, 22, 0.55);
-  color: #ffffff;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0)),
+    #f3efe7;
+  color: #0c0816;
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
@@ -87,16 +88,22 @@
   display: block;
 }
 
-/* Label shimmer — a bright highlight band sweeps left-to-right across
-   "Create your agent" on a continuous loop, so the CTA pulls the eye
-   on the landing surface and the product hero. Same `background-clip:
-   text` recipe as `CookingIndicator` and `ThinkingBlock`. Stops use
-   OPAQUE colors (medium gray base, pure-white peak) rather than alpha
-   variations of white, so the moving highlight reads clearly against
-   the dark pill fill instead of all stops blending into the same
-   apparent shade. Linear timing keeps the sweep at a steady cadence
-   rather than easing out at the edges. `display: inline-block` is
-   required because some engines won't repaint a `background-clip:
+/* Label shimmer — a darker highlight band sweeps left-to-right across
+   "Create your agent" on a continuous loop so the CTA pulls the eye on
+   every surface. Same `background-clip: text` recipe as
+   `CookingIndicator` and `ThinkingBlock`, and deliberately uses the
+   same `200% 100%` background-size + `100% → -100%` keyframe range +
+   `ease-in-out` timing as those two — that combination keeps the
+   gradient inside the text rectangle for the entire animation, so the
+   sweep reads as a localized highlight band rather than the whole
+   label flashing. The earlier `250% 100%` + `200% → -200%` recipe
+   put the gradient well outside the text on most frames and made the
+   animation read as broken (the entire label oscillated gray <-> white
+   in lockstep).
+   Stops use OPAQUE colors with a DARK peak (`#0c0816`, matching the
+   body text color) because the pill fill is off-white now — a white
+   peak would disappear into the background. `display: inline-block`
+   is required because some engines won't repaint a `background-clip:
    text` gradient across an inline span as the background-position
    animates — promoting to an inline block forces the gradient onto
    its own paint layer so the animation actually renders. */
@@ -104,24 +111,22 @@
   display: inline-block;
   background: linear-gradient(
     90deg,
-    #8a8a98 0%,
-    #8a8a98 35%,
-    #ffffff 50%,
-    #8a8a98 65%,
-    #8a8a98 100%
+    #6b6b75 0%,
+    #0c0816 40%,
+    #6b6b75 80%
   );
-  background-size: 250% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
   will-change: background-position;
-  animation: ctaShimmer 2.6s linear infinite;
+  animation: ctaShimmer 2.6s ease-in-out infinite;
 }
 
 @keyframes ctaShimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

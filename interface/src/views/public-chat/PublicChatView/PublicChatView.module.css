@@ -200,15 +200,15 @@
 }
 
 /*
- * The neon-glow "Create your agent" CTA pill — formerly defined here
- * as `.ctaButton` — has been extracted into the shared
+ * The "Create your agent" CTA pill — formerly defined here as
+ * `.ctaButton` — has been extracted into the shared
  * `<CreateAgentButton />` component
  * (`interface/src/views/public-chat/CreateAgentButton/`). The styles
  * now live alongside the component in its own CSS module so the
  * marketing `/product` hero can mount the same pill via
  * `<PageHero headlineCta={<CreateAgentButton />} />` without
  * duplicating chrome. `--public-cta-glow-color` (still published
- * inline on `.chatView` above) drives the bloom hue and the
+ * inline on `.chatView` above) drives the rim + bloom hue and the
  * extracted styles read it through the same custom property.
  */
 
