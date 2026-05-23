@@ -19,6 +19,20 @@
   flex-direction: column;
   gap: 12px;
   flex-shrink: 0;
+  /*
+   * Pin the footer to its natural max-content width so each link
+   * row (and its hover/active background highlight) renders at the
+   * same size whether the public sidebar Lane is expanded or
+   * collapsed. Without this cap, `.footerLink`'s `display: block`
+   * + the flex column's default `align-items: stretch` make every
+   * link fill the surrounding `<aside>`'s width — so the bg cells
+   * grow as the user resizes the sidebar wider, and shrink back
+   * to a thin natural strip when the drawer collapses. Pinning to
+   * `max-content` keeps the row width tied to the longest label
+   * (`Changelog`) plus the link's own padding, which is the same
+   * value in both states.
+   */
+  width: max-content;
 }
 
 .footerLinks {
