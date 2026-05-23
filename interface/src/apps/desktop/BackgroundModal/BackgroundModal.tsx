@@ -118,7 +118,13 @@ function BackgroundConfigSection({
       {view === "image" && (
         <div className={styles.section}>
           {mode === "image" && imageDataUrl && (
-            <img src={imageDataUrl} alt={`${title} preview`} className={styles.imagePreview} />
+            <img
+              src={imageDataUrl}
+              alt={`${title} preview`}
+              className={styles.imagePreview}
+              loading="lazy"
+              decoding="async"
+            />
           )}
           <div className={styles.imageActions}>
             <Button

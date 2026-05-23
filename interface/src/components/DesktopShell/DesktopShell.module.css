@@ -15,6 +15,41 @@
   pointer-events: none;
 }
 
+/*
+ * Crossfade primitives for `BackgroundLayer`. The component renders the
+ * previous wallpaper and the next wallpaper as two absolutely-stacked
+ * children: the `current` layer stays at opacity 1 underneath while the
+ * `incoming` layer enters at opacity 0 and animates to 1 on top. Image
+ * data URLs are decoded (Image.decode) before the incoming layer mounts,
+ * so the fade never reveals a half-painted frame.
+ */
+.bgFadeBase {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transition: opacity 250ms ease-out;
+  will-change: opacity;
+}
+
+.bgFadeCurrent {
+  opacity: 1;
+}
+
+.bgFadeIncomingEnter {
+  opacity: 0;
+}
+
+.bgFadeIncomingActive {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bgFadeBase {
+    transition: none;
+  }
+}
+
 .desktopContent {
   position: relative;
   flex: 1;
