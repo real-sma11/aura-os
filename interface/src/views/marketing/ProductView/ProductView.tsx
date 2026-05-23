@@ -7,10 +7,31 @@ import {
   ShieldIcon,
 } from "../FeaturePanel/FeaturePanel";
 import { CreateAgentButton } from "../../public-chat/CreateAgentButton";
+import { TypewriterText } from "../../public-chat/TypewriterText";
 import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
 import { ProductScreenSection } from "../ProductScreenSection";
 import styles from "./ProductView.module.css";
+
+/*
+ * The hero copy is hoisted into a module-level constant because it
+ * is referenced in TWO places that must stay byte-identical:
+ *
+ *   1. The `text` prop on `<TypewriterText />`, which drives the
+ *      per-character reveal.
+ *   2. The `data-text` attribute on the `.headlineReserve` wrapper,
+ *      which the CSS rule mirrors into a `::before` ghost via
+ *      `content: attr(data-text)` so the parent flex column reserves
+ *      the FINAL headline's width/height from frame one. Without
+ *      that reservation the description + headlineCta + flowing
+ *      video below the headline would shift downward each time a
+ *      newly-typed character forces an extra line wrap under the
+ *      `clamp(26px, 4.3vw, 48px)` type ramp.
+ *
+ * Pulling the literal into a constant means a future copy change
+ * cannot drift the ghost and the streamed text out of sync.
+ */
+const HERO_HEADLINE = "Your Personal Agent.";
 
 /**
  * Marketing `/product` page. Ported from
@@ -33,7 +54,14 @@ export function ProductView(): ReactNode {
   return (
     <div className={styles.productView}>
       <PageHero
-        headline="Your Personal Agent."
+        headline={
+          <span
+            className={styles.headlineReserve}
+            data-text={HERO_HEADLINE}
+          >
+            <TypewriterText text={HERO_HEADLINE} speedMs={45} />
+          </span>
+        }
         description="AURA agents run on a secure virtual machine that is yours, keeping your data completely secure."
         preview={null}
         centered

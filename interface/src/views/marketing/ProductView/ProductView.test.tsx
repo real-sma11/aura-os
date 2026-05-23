@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeAll, describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProductView } from "./ProductView";
@@ -46,9 +46,27 @@ function renderProductView() {
   );
 }
 
+afterEach(() => {
+  // Restore real timers in case a test installed `vi.useFakeTimers()`.
+  // Tests that need fake timers opt in per-test; the reset keeps that
+  // opt-in from leaking into subsequent suites if a new test forgets
+  // to clean up after itself.
+  vi.useRealTimers();
+});
+
 describe("ProductView", () => {
-  it("renders the 'Your Personal Agent.' hero headline", () => {
+  it("streams the 'Your Personal Agent.' hero headline via the typewriter", () => {
+    // The hero headline now renders through `<TypewriterText />`,
+    // which reveals characters on a 45ms interval. The full literal
+    // string only appears in the DOM after the interval has run for
+    // every character (20 chars × 45ms = 900ms). Advancing fake
+    // timers past that threshold flushes the whole stream in a
+    // single `act()` tick.
+    vi.useFakeTimers();
     renderProductView();
-    expect(screen.getByText(/Your Personal Agent\./)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByText("Your Personal Agent.")).toBeInTheDocument();
   });
 });

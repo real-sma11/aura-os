@@ -43,6 +43,79 @@
 }
 
 /*
+ * Hero headline wrapper that pre-reserves the FINAL headline's
+ * width and height before the typewriter has streamed any
+ * characters into it. Without this reservation the centered hero
+ * stack reads as broken on load: the `<h1>` starts at ~0 width,
+ * the description / `headlineCta` / flowing video underneath
+ * snap upward into the empty slot, then everything jerks
+ * downward one character at a time as the typewriter pushes the
+ * `<h1>` toward its eventual size and the `clamp(26px, 4.3vw,
+ * 48px)` type ramp triggers fresh line wraps at the natural
+ * break points. Mounting a hidden ghost of the completed
+ * headline reserves the exact pixel box the streamed text will
+ * eventually fill, so the rest of the centered stack lands at
+ * its final position from frame one.
+ *
+ * Implementation:
+ *   - `display: inline-block; position: relative` makes the
+ *     wrapper its own positioning context AND lets it size to
+ *     its widest in-flow child (the `::before` ghost). It must
+ *     NOT be `display: block` — `.pageHeroHeadline` (the parent
+ *     `<h1>`) is already a block-level flex/text container, so
+ *     a block wrapper would stretch to the full headline column
+ *     width and the absolutely positioned streaming span would
+ *     be left-aligned inside that wide box instead of tracking
+ *     the centered ghost on viewports where the headline wraps
+ *     to fewer lines than the column can hold.
+ *   - `::before { content: attr(data-text) }` mirrors the JSX
+ *     `data-text` attribute (kept byte-identical to the
+ *     `TypewriterText` `text` prop via the shared
+ *     `HERO_HEADLINE` constant in `ProductView.tsx`) into a
+ *     hidden but laid-out ghost. The ghost inherits the
+ *     headline's `font-size`, `line-height`, `letter-spacing`,
+ *     and `text-wrap: balance` from `.pageHeroHeadline`, so the
+ *     reserved box matches the final headline's line breaks
+ *     pixel-for-pixel.
+ *   - `visibility: hidden` keeps the ghost in flow (so it
+ *     contributes to layout) without painting. `pointer-events:
+ *     none` is belt-and-braces in case a future test selects by
+ *     visible text and somehow walks into the ghost.
+ *   - The streaming span (the root `<span>` rendered by
+ *     `TypewriterText`) is pulled out of flow with `position:
+ *     absolute; inset: 0` and stacked on top of the ghost. It
+ *     is selected via the descendant `> span` because the
+ *     `TypewriterText.module.css` class names are hashed by
+ *     Vite at build time, so we can't reference them from this
+ *     file. The wrapper has exactly one child element in JSX
+ *     (the `TypewriterText` root), so the structural selector
+ *     is unambiguous.
+ *   - `text-align: inherit` on the streaming span lets it
+ *     re-pick the centered-hero's text alignment cascaded from
+ *     `.pageHeroContentCentered` (`text-align: center`) so the
+ *     streamed prefix + trailing caret sit centered inside the
+ *     reserved box on every line, matching where the final
+ *     headline will eventually land.
+ */
+.headlineReserve {
+  display: inline-block;
+  position: relative;
+}
+
+.headlineReserve::before {
+  content: attr(data-text);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.headlineReserve > span {
+  position: absolute;
+  inset: 0;
+  display: block;
+  text-align: inherit;
+}
+
+/*
  * The product hero's `<CreateAgentButton />` previously used a
  * `.heroCtaLight` override to force an off-white fill on top of the
  * base pill's dark body. That override was retired when the shared
