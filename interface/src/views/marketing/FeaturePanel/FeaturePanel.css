@@ -4,7 +4,12 @@
    global token layer. The `.featurePanel*` class prefix keeps the selector
    namespace conflict-free. */
 .featurePanel {
-  background: #000;
+  /* Off-black surface tint inherited from `.productView` (see the
+     `--marketing-section-bg` rationale in `ProductView.module.css`).
+     Only the outer wrapper is retinted; the inner `.featurePanelInner`
+     cream card stays `#f8f5ef` so the high-contrast feature trio
+     keeps its intentional light-on-dark inversion. */
+  background: var(--marketing-section-bg, #000);
   padding: 80px 32px;
 }
 

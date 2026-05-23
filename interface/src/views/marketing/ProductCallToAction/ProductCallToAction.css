@@ -1,7 +1,9 @@
 /* Ported verbatim from
    aura-web/src/components/ProductCallToAction/ProductCallToAction.css. */
 .productCtaSection {
-  background: #000;
+  /* Off-black surface tint inherited from `.productView` (see the
+     `--marketing-section-bg` rationale in `ProductView.module.css`). */
+  background: var(--marketing-section-bg, #000);
   padding: 80px 32px 120px;
 }
 
@@ -19,7 +21,12 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  background: #000;
+  /* Matches the outer section tint so the brief flash between the
+     panel mounting and the `<video>` element painting its first
+     frame doesn't reveal a darker rectangle on top of the off-black
+     section. The video itself is `object-fit: cover` so once it
+     starts playing, this color is fully obscured. */
+  background: var(--marketing-section-bg, #000);
   isolation: isolate;
 }
 

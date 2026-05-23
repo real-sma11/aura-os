@@ -8,7 +8,12 @@
   flex-direction: column;
   padding: 120px 32px 0;
   overflow: hidden;
-  background: #000;
+  /* Off-black surface tint inherited from `.productView` (see
+     `ProductView.module.css` for the token rationale). Falls back to
+     true black so any future marketing page that mounts `<PageHero />`
+     outside the `--marketing-section-bg` scope keeps the original
+     poster-black backdrop. */
+  background: var(--marketing-section-bg, #000);
   min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
   min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
 }
@@ -94,16 +99,31 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  /* Each stop is `color-mix(... ALPHA%, transparent)` rather than a
+     literal `rgba(0, 0, 0, ALPHA)` so the alpha ramp is generated from
+     the inherited `--marketing-section-bg` token instead of being
+     hard-wired to pure black. With the product page's `#0a0a0c` off-
+     black tint, the 100%-alpha side bars resolve to the same
+     `#0a0a0c` that `.pageHero` paints behind them, so the bars blend
+     seamlessly into the section bg instead of reading as a darker
+     stripe over the now-slightly-lighter page. The fallback (`#000`
+     baked into the `var(...)` second arg) preserves the original
+     pure-black vignette for any future consumer that mounts
+     `<PageHero />` outside the `--marketing-section-bg` scope. The
+     alpha percentages and stop positions are unchanged from the
+     prior literal-rgba gradient so the keyhole geometry — solid side
+     thirds, soft 32→47% falloff, 6%-wide transparent slot at
+     47–53%, mirrored falloff on the right — reads identically. */
   background: linear-gradient(
     to right,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.92) 18%,
-    rgba(0, 0, 0, 0.7) 32%,
-    rgba(0, 0, 0, 0) 47%,
-    rgba(0, 0, 0, 0) 53%,
-    rgba(0, 0, 0, 0.7) 68%,
-    rgba(0, 0, 0, 0.92) 82%,
-    rgba(0, 0, 0, 1) 100%
+    color-mix(in srgb, var(--marketing-section-bg, #000) 100%, transparent) 0%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 92%, transparent) 18%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 70%, transparent) 32%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 0%, transparent) 47%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 0%, transparent) 53%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 70%, transparent) 68%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 92%, transparent) 82%,
+    color-mix(in srgb, var(--marketing-section-bg, #000) 100%, transparent) 100%
   );
 }
 
@@ -232,12 +252,14 @@
   /* Hero-only override of the global `--color-text-primary`
      (which resolves to `#e6e8eb` in dark mode). The marketing
      hero now reads as a near-pure white slab against the
-     section's `background: #000`, opening up the visual
-     hierarchy gap between the headline and the description
-     below (`.pageHeroDescriptionInline`, light gray) instead of
-     the prior ~30-unit brightness delta between
-     `--color-text-primary` (#e6e8eb) and `--color-text-secondary`
-     (#c9c9cf). Scoped to the centered-hero descendant selector
+     section's off-black `--marketing-section-bg` (resolving to
+     `#0f0f12` on the product page; falls back to `#000` for any
+     consumer that mounts `<PageHero />` outside that scope),
+     opening up the visual hierarchy gap between the headline
+     and the description below (`.pageHeroDescriptionInline`,
+     light gray) instead of the prior ~30-unit brightness delta
+     between `--color-text-primary` (#e6e8eb) and
+     `--color-text-secondary` (#c9c9cf). Scoped to the centered-hero descendant selector
      so the rest of the app's text tokens stay on the system
      defaults; this is a hero-specific typographic choice, not a
      global theme change. The literal `#f7f8fb` matches the
@@ -368,21 +390,77 @@
    headline / description / CTA never end up partially covered
    by the loop.
 
-   The `mask-image` fades the video IN from the black `.pageHero`
-   background across its top 22% so there's no hard horizontal
-   seam where the video meets the empty space above it; instead
-   the loop materializes smoothly out of the page bg. Masking
-   (rather than overlaying a black gradient div) means the faded
-   pixels are literally transparent, so the section's `#000`
+   The `mask-image` stack composites two layers via
+   `mask-composite: intersect` so a video pixel only paints when
+   BOTH layers are opaque. Result: smooth top + bottom fades AND
+   a radial corner vignette, in one mask pass, with no extra
+   overlay div.
+
+   Layer 1 (linear, top-to-bottom fade-in + fade-out): symmetric
+   `transparent → opaque → transparent` ramp at 0% / 22% / 78% /
+   100%. The 22%-wide ramps at the top and bottom let the loop
+   materialize smoothly out of the page bg at the top and melt
+   back into it at the bottom, with no horizontal seam where the
+   video rectangle meets the empty space above or below. The two
+   ramp widths are intentionally identical so the fade reads as
+   visually symmetric.
+
+   Layer 2 (radial corner vignette): an ellipse fit to the video
+   box (the default `ellipse` is `farthest-corner`, so its ray
+   ends at the corner and the stops are measured along that ray).
+   `#000 50%` keeps the entire central half — i.e. the orb and
+   its main halo — fully opaque; `transparent 100%` fades the
+   outer half out to fully transparent at the corner so the
+   video's pure-black corners are progressively replaced by the
+   page bg (`--marketing-section-bg`, `#0f0f12` on the product
+   page). Without this layer the video's own `#000` corners read
+   as a slightly DARKER rectangle inside the lighter off-black
+   page; the radial mask blends them out so the loop reads as a
+   free-floating orb instead of a boxed inset.
+
+   Masking (rather than overlaying a gradient div) means the
+   faded pixels are literally transparent, so the section bg
    shows through naturally — no need to match the gradient color
-   to the page background. Both the spec property and the
-   `-webkit-` prefixed variant are declared because Safari still
-   needs the prefix as of mid-2026. */
+   to the page background. The mask color stops use `#000` purely
+   as "fully opaque mask"; only the alpha channel of the mask is
+   sampled, so the literal value never paints and doesn't need to
+   track the section-bg token.
+
+   Both the spec properties (`mask-image` + `mask-composite:
+   intersect`) and the `-webkit-` prefixed variants
+   (`-webkit-mask-image` + `-webkit-mask-composite: source-in`)
+   are declared. Standard `mask-composite: intersect` is
+   supported in Safari 18+ (Sept 2024) / Chrome 120+ / Firefox
+   53+, but the webkit `source-in` keyword has shipped since
+   Safari 4, so the prefixed pair keeps the radial vignette
+   working on any older WebKit build that would otherwise fall
+   back to the default `mask-composite: add` (union, not
+   intersection) and paint the corners. */
 .pageHeroFlowVideo {
   display: block;
   position: relative;
   z-index: 1;
   width: 100%;
+  /* Reserve the video's intrinsic 1280×720 (16:9) box BEFORE the
+     mp4 metadata loads, so the section's eventual rendered height
+     is locked in at the very first paint instead of jumping when
+     the browser learns the natural dimensions. Without this the
+     `<video>` element starts at 0px tall (or whatever the UA
+     default placeholder height is), which means the
+     `.pageHeroFlowVideo` block contributes nothing to the layout
+     during the initial paint frames — `ProductScreenSection`
+     directly below the hero renders against a still-collapsing
+     section, then snaps DOWNWARD by the full 720×(width/1280)
+     once the video's `loadedmetadata` event fires. The headline
+     "A secure operating system to manage agentic swarms." was the
+     most visible casualty (largest element directly below the
+     hero), but every section in `ProductView` was being yanked
+     down by the same amount. Declaring the ratio at the CSS
+     layer instead of the `<video width=/height=>` HTML attributes
+     means it survives flexbox sizing on the parent and works the
+     same in every modern engine (Chrome, Safari, Firefox all
+     respect `aspect-ratio` on replaced elements per CSS-Sizing-4). */
+  aspect-ratio: 1280 / 720;
   height: auto;
   margin-top: calc(
     (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
@@ -391,18 +469,34 @@
     (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
   );
   pointer-events: none;
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    #000 22%,
-    #000 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    #000 22%,
-    #000 100%
-  );
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 22%,
+      #000 78%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse at center,
+      #000 50%,
+      transparent 100%
+    );
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 22%,
+      #000 78%,
+      transparent 100%
+    ),
+    radial-gradient(
+      ellipse at center,
+      #000 50%,
+      transparent 100%
+    );
+  -webkit-mask-composite: source-in;
 }
 
 @media (max-width: 768px) {

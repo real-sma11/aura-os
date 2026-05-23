@@ -3,7 +3,11 @@
    Class names keep their `productScreenSection*` prefix; no token
    substitutions are needed. */
 .productScreenSection {
-  background: #000;
+  /* Off-black surface tint inherited from `.productView` (see the
+     `--marketing-section-bg` rationale in `ProductView.module.css`).
+     Falls back to pure black for any consumer that mounts this
+     section outside the product-page wrapper. */
+  background: var(--marketing-section-bg, #000);
   padding: 80px 32px;
 }
 
@@ -41,16 +45,33 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   border: 1px solid var(--color-border);
+  /* Base surface bumped from a pure-gray `#111` to the off-black
+     scale `#18181b` so the placeholder reads as a slight elevation
+     ABOVE the section bg (`--marketing-section-bg`, `#0f0f12` on
+     the product page) instead of an unrelated neutral gray. The
+     ~9-unit delta over the section bg matches the prior `#000 →
+     #111` step so the elevation cue is unchanged perceptually,
+     just shifted up the lightness axis with the rest of the
+     palette. The top-of-card white highlight gradient is
+     unchanged — it's pure alpha-on-white, so it retints
+     automatically over any base. */
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    #111;
+    #18181b;
 }
 
 .productScreenSectionImageFrame {
   width: 100%;
   overflow: hidden;
   border: 1px solid var(--color-border);
-  background: #0b0b0b;
+  /* Slight elevation above the off-black section bg; tracks the
+     same `#0f0f12 → #18181b` ramp the placeholder above uses, but
+     stops one step lower (`#141417`) since this surface only shows
+     during the very brief window between layout and the screenshot
+     `<img>` actually painting — pulling it closer to the section bg
+     means the page reads as a single dark plane during that flash
+     instead of momentarily revealing a brighter rectangle. */
+  background: #141417;
 }
 
 .productScreenSectionImageFrameHidden {

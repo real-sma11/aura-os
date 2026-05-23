@@ -1,7 +1,13 @@
 /* Ported verbatim from
    aura-web/src/components/ChangelogPreview/ChangelogPreview.css. */
 .changelogPreview {
-  background: #000;
+  /* Off-black surface tint inherited from `.productView` (see the
+     `--marketing-section-bg` rationale in `ProductView.module.css`).
+     The white-on-translucent changelog cards (`.changelogPreviewCard`)
+     are drawn with `rgba(255, 255, 255, ...)` borders/fills, so they
+     retint automatically over whichever base color the section
+     inherits — no per-card update needed. */
+  background: var(--marketing-section-bg, #000);
   padding: 80px 32px;
 }
 

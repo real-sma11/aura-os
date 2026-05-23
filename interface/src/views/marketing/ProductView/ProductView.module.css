@@ -10,8 +10,60 @@
  * marketing width — i.e. 15% narrower — without touching the other
  * three marketing views (Changelog / Feedback / Pricing), which keep
  * inheriting the global `75%` value from `:root`.
+ *
+ * `--marketing-section-bg` is the single source of truth for the
+ * surface tint shared by every section component listed above. It
+ * cascades through `display: contents` (custom-property inheritance
+ * survives the boxless wrapper, unlike layout/positioning) into each
+ * section's `.pageHero` / `.productScreenSection` / `.featurePanel`
+ * / `.changelogPreview` / `.productCtaSection` rule, which read it
+ * via `var(--marketing-section-bg, #000)`. The `#0f0f12` value is a
+ * mid-tier warm-neutral off-black (rgb 15, 15, 18) — sits roughly
+ * halfway between true black (`#000`) and the canonical "dark
+ * card" surface (`#18181b`, rgb 24, 24, 27) used by Vercel /
+ * Linear / shadcn-ui's `zinc-950`. At ~15 units above pure black
+ * it reads as clearly off-black against device chrome / video
+ * letterbox bars without lifting all the way into "dark gray"
+ * territory, so the section keeps a poster-black feel while still
+ * separating from true `#000` chrome. The `PageHero` vignette
+ * gradient is wired through
+ * `color-mix(in srgb, var(--marketing-section-bg) X%, transparent)`
+ * for each of its alpha stops, so retinting the page is a one-line
+ * token change and the gradient seams stay invisible against the
+ * new section bg automatically. The `PageHero` flow-video mask
+ * still uses literal `#000` stops because mask-image only reads
+ * the alpha channel of its source — the color is purely cosmetic
+ * inside a mask and never paints, so wiring it through the token
+ * would add indirection without changing any pixel.
  */
 .productView {
   --marketing-content-max-width: 63.75%;
+  --marketing-section-bg: #0f0f12;
   display: contents;
+}
+
+/*
+ * Off-white variant of the shared `CreateAgentButton`, applied only
+ * to the pill mounted in the `/product` hero. The doubled class
+ * selector (`.heroCtaLight.heroCtaLight`) bumps specificity to
+ * `(0,2,0)` so this rule beats the base `.ctaButton` `(0,1,0)`
+ * declaration in `CreateAgentButton.module.css` regardless of the
+ * order the two CSS-Module stylesheets land in the document.
+ *
+ * Only `background` + `color` are overridden — the violet rim,
+ * three-layer bloom, blur, and hover/active transitions inherit
+ * from the base rule so the pill still reads as the same lit
+ * object against the product hero's video backdrop.
+ *
+ * The top-edge linear-gradient is kept (now as a white sheen
+ * instead of the base's near-transparent white) so the pill still
+ * has the subtle "lit from above" highlight that ties it to the
+ * landing-surface variant; without it the off-white fill reads as
+ * a flat sticker.
+ */
+.heroCtaLight.heroCtaLight {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0)),
+    #f3efe7;
+  color: #0c0816;
 }

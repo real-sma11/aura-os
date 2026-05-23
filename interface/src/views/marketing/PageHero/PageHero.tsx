@@ -205,9 +205,27 @@ export function PageHero({
         )}
       </div>
       {renderFlowVideo ? (
+        /*
+         * `width` / `height` attributes mirror the source video's
+         * intrinsic 1280×720 dimensions so the browser computes
+         * the aspect-ratio box from the FIRST render — before the
+         * mp4 metadata is fetched, before `loadedmetadata` fires,
+         * and before the `.pageHeroFlowVideo` stylesheet rule's
+         * `aspect-ratio: 1280 / 720` is necessarily applied. They
+         * are intentionally NOT used as sizing constraints; the
+         * `.pageHeroFlowVideo` rule still drives the rendered
+         * width (`width: 100%`) and height (derived from
+         * `aspect-ratio`). The attributes only exist to lock the
+         * intrinsic ratio for the very first paint frame, which
+         * is what eliminates the headline jank where
+         * `ProductScreenSection` directly below would snap down
+         * the moment the browser learned the video's true height.
+         */
         <video
           className="pageHeroFlowVideo"
           src={backgroundVideoSrc}
+          width={1280}
+          height={720}
           autoPlay
           loop
           muted
