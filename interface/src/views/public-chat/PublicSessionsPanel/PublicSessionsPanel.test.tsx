@@ -2,12 +2,12 @@
  * Behavioural test for `PublicSessionsPanel` focused on the
  * delete-chat affordance. The previous implementation nested an
  * interactive delete element inside a row `<button>` and, when the
- * deleted row was the active session, navigated to `/` — which
+ * deleted row was the active session, navigated to bare `/chat` — which
  * caused `PublicChatView` to immediately auto-create a fresh "New
  * chat" entry, making the X look like it did nothing. These tests
  * pin both the markup invariant (no nested interactive content)
  * and the navigation contract (hop to the next remaining session
- * instead of `/` when the active row is deleted).
+ * instead of bare `/chat` when the active row is deleted).
  */
 
 import { render, screen, act } from "@testing-library/react";
@@ -25,13 +25,13 @@ function LocationProbe() {
   );
 }
 
-function renderPanel(initialPath = "/", searchQuery = "") {
+function renderPanel(initialPath = "/chat", searchQuery = "") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <LocationProbe />
       <Routes>
         <Route
-          path="/"
+          path="*"
           element={<PublicSessionsPanel searchQuery={searchQuery} />}
         />
       </Routes>
@@ -64,7 +64,7 @@ describe("PublicSessionsPanel", () => {
         .appendUserTurn(createdId, "hello world");
     });
 
-    renderPanel(`/?session=${createdId}`);
+    renderPanel(`/chat?session=${createdId}`);
 
     const deleteBtn = await screen.findByRole("button", {
       name: /Delete chat "hello world"/,
@@ -88,7 +88,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(secondId, "second chat");
     });
 
-    renderPanel(`/?session=${secondId}`);
+    renderPanel(`/chat?session=${secondId}`);
 
     const deleteBtn = await screen.findByRole("button", {
       name: /Delete chat "second chat"/,
@@ -100,11 +100,11 @@ describe("PublicSessionsPanel", () => {
       Object.keys(usePublicChatStore.getState().sessions),
     ).toEqual([firstId]);
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/?session=${firstId}`,
+      `/chat?session=${firstId}`,
     );
   });
 
-  it("falls back to `/` when the deleted row was the only session", async () => {
+  it("falls back to `/chat` when the deleted row was the only session", async () => {
     const user = userEvent.setup();
     let onlyId = "";
     act(() => {
@@ -112,7 +112,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(onlyId, "lonely chat");
     });
 
-    renderPanel(`/?session=${onlyId}`);
+    renderPanel(`/chat?session=${onlyId}`);
 
     const deleteBtn = await screen.findByRole("button", {
       name: /Delete chat "lonely chat"/,
@@ -121,7 +121,7 @@ describe("PublicSessionsPanel", () => {
 
     expect(usePublicChatStore.getState().sessions[onlyId]).toBeUndefined();
     expect(usePublicChatStore.getState().sessionOrder).toEqual([]);
-    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    expect(screen.getByTestId("location")).toHaveTextContent("/chat");
   });
 
   it("does not navigate when a non-active row is deleted", async () => {
@@ -135,7 +135,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(activeId, "active chat");
     });
 
-    renderPanel(`/?session=${activeId}`);
+    renderPanel(`/chat?session=${activeId}`);
 
     const deleteBtn = await screen.findByRole("button", {
       name: /Delete chat "other chat"/,
@@ -144,7 +144,7 @@ describe("PublicSessionsPanel", () => {
 
     expect(usePublicChatStore.getState().sessions[otherId]).toBeUndefined();
     expect(screen.getByTestId("location")).toHaveTextContent(
-      `/?session=${activeId}`,
+      `/chat?session=${activeId}`,
     );
   });
 
@@ -155,7 +155,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(id, "row text");
     });
 
-    renderPanel(`/?session=${id}`);
+    renderPanel(`/chat?session=${id}`);
 
     const deleteBtn = await screen.findByRole("button", {
       name: /Delete chat "row text"/,
@@ -174,7 +174,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(c, "trip itinerary");
     });
 
-    renderPanel("/", "trip");
+    renderPanel("/chat", "trip");
 
     expect(screen.getByText("Trip planning")).toBeInTheDocument();
     expect(screen.getByText("trip itinerary")).toBeInTheDocument();
@@ -187,7 +187,7 @@ describe("PublicSessionsPanel", () => {
       usePublicChatStore.getState().appendUserTurn(id, "Recipe ideas");
     });
 
-    renderPanel("/", "spaceships");
+    renderPanel("/chat", "spaceships");
 
     expect(screen.getByText("No matching chats")).toBeInTheDocument();
     expect(screen.queryByText("Recipe ideas")).not.toBeInTheDocument();

@@ -1,21 +1,35 @@
 /**
- * Behavioural test for `PublicChatView`'s landing layout.
+ * Behavioural test for `PublicChatView`'s public chat layout.
  *
- * The public surface is a pure marketing landing with the
- * decorative `MockAuraApp` hero, a right-edge `PersonaTickRail`
- * (state-driven open/close menu), and a single bottom-anchored
- * "Create your agent" CTA button. These tests pin that contract,
- * the persona-theme swap wiring, and guard against any of the
- * removed chat chrome accidentally reappearing.
+ * The public surface keeps the decorative `MockAuraApp` frame and
+ * persona controls, then mounts a simple transcript + input on
+ * `/chat`. These tests pin that contract and the persona-theme swap
+ * wiring.
  */
 
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { streamPublicChatMock } = vi.hoisted(() => ({
+  streamPublicChatMock: vi.fn(),
+}));
+
+vi.mock("../../../api/public-chat", () => ({
+  streamPublicChat: streamPublicChatMock,
+}));
 
 // Stub `MockAuraApp` so the test surfaces just the wallpaper-prop
 // contract — the real component pulls in the scripted DM windows
-// and full chrome that the landing test doesn't need to exercise.
+// and full chrome that these chat-surface tests don't need to exercise.
 // The stub echoes BOTH the current desktop bg URL AND the
 // outgoing snapshot's URL into data attributes so the layered
 // cross-fade is observable, plus the current `activePersonaIndex`
@@ -67,10 +81,11 @@ vi.mock("../MockAuraApp", () => ({
 }));
 
 import { PublicChatView } from "./PublicChatView";
+import { usePublicChatStore } from "../../../stores/public-chat-store";
 
-function renderView() {
+function renderView(initialPath = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <PublicChatView />
     </MemoryRouter>,
   );
@@ -92,9 +107,9 @@ function LocationProbe(): React.ReactElement {
   );
 }
 
-function renderViewWithProbe() {
+function renderViewWithProbe(initialPath = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="*" element={<PublicChatView />} />
       </Routes>
@@ -120,7 +135,37 @@ function panelFor(name: string): HTMLElement {
   return within(panel).getByRole("button", { name, hidden: true });
 }
 
-describe("PublicChatView landing", () => {
+beforeEach(() => {
+  window.localStorage.clear();
+  streamPublicChatMock.mockImplementation(
+    (args: { onDelta: (text: string) => void; onDone?: () => void }) => {
+      args.onDelta("Hello from Aura");
+      args.onDone?.();
+      return { close: vi.fn() };
+    },
+  );
+  usePublicChatStore.setState({
+    sessions: {},
+    sessionOrder: [],
+    turnCount: 0,
+    guestToken: "guest-token",
+    setupInFlight: false,
+  });
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+  streamPublicChatMock.mockReset();
+  usePublicChatStore.setState({
+    sessions: {},
+    sessionOrder: [],
+    turnCount: 0,
+    guestToken: null,
+    setupInFlight: false,
+  });
+});
+
+describe("PublicChatView", () => {
   it("renders the MockAuraApp hero inside the empty-state region", () => {
     renderView();
     expect(screen.getByTestId("mock-aura-app-stub")).toBeInTheDocument();
@@ -140,7 +185,7 @@ describe("PublicChatView landing", () => {
   });
 
   it("navigates to /login?tab=register when the CTA button is clicked", () => {
-    // Mirrors the destination used by the marketing nav's "Sign Up"
+    // Mirrors the destination used by the public shell's "Sign Up"
     // pill, so the AuraShell-mounted LoginOverlay opens with the
     // Create Account tab pre-selected (via `useLoginForm`'s
     // `?tab=register` seed effect).
@@ -157,14 +202,67 @@ describe("PublicChatView landing", () => {
     expect(probe).toHaveAttribute("data-search", "?tab=register");
   });
 
-  it("does not render any chat input, transcript, or gate modal", () => {
-    renderView();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Compose")).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  it("auto-selects an empty session and shows the simple chat input on /chat", async () => {
+    renderViewWithProbe("/chat");
+
     expect(
-      screen.queryByTestId("keep-chatting-modal-stub"),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("textbox", { name: "Message Aura" }),
+    ).toBeInTheDocument();
+
+    const sessionOrder = usePublicChatStore.getState().sessionOrder;
+    expect(sessionOrder).toHaveLength(1);
+    expect(screen.getByTestId("location-probe")).toHaveAttribute(
+      "data-pathname",
+      "/chat",
+    );
+    expect(screen.getByTestId("location-probe")).toHaveAttribute(
+      "data-search",
+      `?session=${sessionOrder[0]}`,
+    );
+  });
+
+  it("renders the selected public chat transcript", () => {
+    let sessionId = "";
+    act(() => {
+      sessionId = usePublicChatStore.getState().createSession();
+      usePublicChatStore.getState().appendUserTurn(sessionId, "hello aura");
+      usePublicChatStore
+        .getState()
+        .appendAssistantToken(sessionId, "assistant-1", "hello human", "code");
+      usePublicChatStore.getState().commitAssistant(sessionId, "assistant-1");
+    });
+
+    renderView(`/chat?session=${sessionId}`);
+
+    expect(screen.getByText("hello aura")).toBeInTheDocument();
+    expect(screen.getByText("hello human")).toBeInTheDocument();
+  });
+
+  it("sends a public chat turn through the existing stream client", async () => {
+    const user = userEvent.setup();
+    let sessionId = "";
+    act(() => {
+      sessionId = usePublicChatStore.getState().createSession();
+    });
+    renderView(`/chat?session=${sessionId}`);
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Message Aura" }),
+      "Can you help?",
+    );
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(streamPublicChatMock).toHaveBeenCalledTimes(1));
+    expect(streamPublicChatMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: "guest-token",
+        sessionId,
+        message: "Can you help?",
+        mode: "code",
+      }),
+    );
+    expect(screen.getByText("Can you help?")).toBeInTheDocument();
+    expect(screen.getByText("Hello from Aura")).toBeInTheDocument();
   });
 
   it("renders 6 persona ticks AND 6 panel rows including the Solo Builder slot", () => {
@@ -435,14 +533,14 @@ describe("PublicChatView landing", () => {
     expect(tickFor("Researcher")).toHaveAttribute("aria-current", "true");
   });
 
-  it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {
+  it("publishes per-persona foreground CSS vars on <html> for the public nav footer + tick rail to read", () => {
     const { unmount } = renderView();
     const root = document.documentElement;
 
     // Vibecoder is the default and pins the dark-mode text token
     // pair (`#e6e8eb` / `#c9c9cf`) because its `siteBackgroundColor`
     // (`#2a0258`) is theme-invariant — the foreground must be theme-
-    // invariant too, otherwise the marketing nav collapses to near-
+    // invariant too, otherwise the public nav collapses to near-
     // black on the deep-purple bg in light mode.
     expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
       "#e6e8eb",
@@ -498,7 +596,7 @@ describe("PublicChatView landing", () => {
 });
 
 /**
- * Wheel-driven persona cycling: the entire public landing surface
+ * Wheel-driven persona cycling: the entire public chat surface
  * acts as a vertical carousel — scrolling down advances to the
  * next persona (one step down the tick rail) and scrolling up
  * rewinds, wrapping past either end. There is intentionally NO

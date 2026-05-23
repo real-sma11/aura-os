@@ -2,11 +2,24 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type FormEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { useTheme } from "@cypher-asi/zui";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  streamPublicChat,
+  type PublicChatStreamHandle,
+  type PublicChatTurn,
+} from "../../../api/public-chat";
+import {
+  usePublicChatStore,
+  type PublicMessage,
+  type PublicSession,
+} from "../../../stores/public-chat-store";
 import { ComposePanel } from "../ComposePanel";
 import { CreateAgentButton } from "../CreateAgentButton";
 import { PersonaTickRail } from "../PersonaTickRail";
@@ -68,15 +81,166 @@ const FADE_MS = 550;
 // tiny sub-pixel values — without this guard a sideways two-finger
 // swipe would occasionally trip a persona change.
 const WHEEL_DELTA_THRESHOLD = 4;
+const PUBLIC_CHAT_PATH = "/chat";
+
+function publicChatRoute(sessionId: string): string {
+  return `${PUBLIC_CHAT_PATH}?session=${encodeURIComponent(sessionId)}`;
+}
+
+function findReusableEmptySessionId(
+  sessions: Record<string, PublicSession>,
+  sessionOrder: readonly string[],
+): string | null {
+  return (
+    sessionOrder.find((id) => {
+      const session = sessions[id];
+      return session != null && session.turns.length === 0;
+    }) ?? null
+  );
+}
+
+function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] {
+  return turns.flatMap((turn): PublicChatTurn[] => {
+    if (turn.role === "user") {
+      return [{ role: "user", content: turn.content }];
+    }
+    if (turn.mode === "code" || turn.mode === "plan") {
+      return [{ role: "assistant", content: turn.content }];
+    }
+    return [];
+  });
+}
+
+function messageText(message: PublicMessage): string {
+  if ("content" in message) return message.content;
+  return `${message.mode} generated from: ${message.prompt}`;
+}
 
 export function PublicChatView(): React.ReactElement {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const activeSessionId = searchParams.get("session");
+  const isChatPage = location.pathname === PUBLIC_CHAT_PATH;
+
+  const sessions = usePublicChatStore((s) => s.sessions);
+  const sessionOrder = usePublicChatStore((s) => s.sessionOrder);
+  const createSession = usePublicChatStore((s) => s.createSession);
+  const ensureToken = usePublicChatStore((s) => s.ensureToken);
+  const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
+  const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
+  const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
+  const setTurnCount = usePublicChatStore((s) => s.setTurnCount);
+
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [draft, setDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const streamRef = useRef<PublicChatStreamHandle | null>(null);
 
   const [swap, setSwap] = useState<PersonaSwapState>(() => ({
     committedIndex: 0,
     outgoing: null,
     nextFadeKey: 1,
   }));
+
+  const activeSession =
+    activeSessionId != null ? sessions[activeSessionId] ?? null : null;
+  const hasTranscript =
+    isChatPage && activeSession != null && activeSession.turns.length > 0;
+
+  useEffect(() => {
+    if (!isChatPage) return;
+    if (activeSessionId != null && activeSession != null) return;
+    const reusableId = findReusableEmptySessionId(sessions, sessionOrder);
+    const nextSessionId = reusableId ?? createSession();
+    navigate(publicChatRoute(nextSessionId), { replace: true });
+  }, [
+    activeSession,
+    activeSessionId,
+    createSession,
+    isChatPage,
+    navigate,
+    sessionOrder,
+    sessions,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.close();
+      streamRef.current = null;
+    };
+  }, []);
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+      event.preventDefault();
+      const message = draft.trim();
+      if (!message || isSending) return;
+
+      const state = usePublicChatStore.getState();
+      const targetSessionId =
+        activeSessionId && state.sessions[activeSessionId]
+          ? activeSessionId
+          : findReusableEmptySessionId(state.sessions, state.sessionOrder) ??
+            createSession();
+      const history = toPublicChatHistory(
+        state.sessions[targetSessionId]?.turns ?? [],
+      );
+      const assistantMessageId = `assistant-${Date.now().toString(36)}`;
+
+      setDraft("");
+      setSendError(null);
+      setIsSending(true);
+      navigate(publicChatRoute(targetSessionId), { replace: true });
+
+      try {
+        const token = await ensureToken();
+        appendUserTurn(targetSessionId, message);
+        streamRef.current = streamPublicChat({
+          token,
+          sessionId: targetSessionId,
+          history,
+          message,
+          mode: "code",
+          onDelta: (delta) => {
+            appendAssistantToken(
+              targetSessionId,
+              assistantMessageId,
+              delta,
+              "code",
+            );
+          },
+          onLimit: setTurnCount,
+          onError: (err) => {
+            setSendError(err.message || "Unable to send message");
+            setIsSending(false);
+            streamRef.current = null;
+          },
+          onDone: () => {
+            commitAssistant(targetSessionId, assistantMessageId);
+            setIsSending(false);
+            streamRef.current = null;
+          },
+        });
+      } catch (err) {
+        setSendError(err instanceof Error ? err.message : "Unable to send message");
+        setIsSending(false);
+      }
+    },
+    [
+      activeSessionId,
+      appendAssistantToken,
+      appendUserTurn,
+      commitAssistant,
+      createSession,
+      draft,
+      ensureToken,
+      isSending,
+      navigate,
+      setTurnCount,
+    ],
+  );
 
   // Detect a persona change during render and capture the outgoing
   // snapshot in the same paint as the new committed index. The
@@ -131,7 +295,7 @@ export function PublicChatView(): React.ReactElement {
     setActiveIndex(next);
   }, []);
 
-  // Wheel-driven persona cycling. Scrolling down on the landing
+  // Wheel-driven persona cycling. Scrolling down on the public chat
   // surface advances to the next persona (one further down the
   // tick rail) and scrolling up rewinds to the previous one,
   // wrapping past either end so the list reads as an infinite
@@ -282,7 +446,11 @@ export function PublicChatView(): React.ReactElement {
           ) : null}
         </div>
       ) : null}
-      <div className={styles.heroSlot}>
+      <div
+        className={`${styles.heroSlot} ${
+          isChatPage ? styles.heroSlotChatPage : ""
+        } ${hasTranscript ? styles.heroSlotWithTranscript : ""}`}
+      >
         <ComposePanel
           desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
           desktopBackgroundPosition={
@@ -308,15 +476,63 @@ export function PublicChatView(): React.ReactElement {
           onPersonaSelect={handleActiveIndexChange}
         />
       </div>
+      {isChatPage ? (
+        <div className={styles.chatSurface} aria-live="polite">
+          {activeSession && activeSession.turns.length > 0 ? (
+            <div className={styles.transcript} aria-label="Chat transcript">
+              {activeSession.turns.map((message) => (
+                <div
+                  key={message.id}
+                  className={`${styles.messageRow} ${
+                    message.role === "user"
+                      ? styles.messageRowUser
+                      : styles.messageRowAssistant
+                  }`}
+                >
+                  <div className={styles.messageBubble}>
+                    {messageText(message)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={styles.chatEmptyHint}>Start chatting with Aura.</div>
+          )}
+        </div>
+      ) : null}
       <div className={styles.tickRailSlot}>
         <PersonaTickRail
           activeIndex={activeIndex}
           onActiveIndexChange={handleActiveIndexChange}
         />
       </div>
-      <div className={styles.ctaSlot}>
-        <CreateAgentButton />
-      </div>
+      {isChatPage ? (
+        <form className={styles.inputBarSlot} onSubmit={handleSubmit}>
+          <label className={styles.inputLabel} htmlFor="public-chat-input">
+            Message Aura
+          </label>
+          <input
+            id="public-chat-input"
+            className={styles.chatInput}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Ask Aura anything..."
+            disabled={isSending}
+          />
+          <button
+            type="submit"
+            className={styles.sendButton}
+            disabled={isSending || draft.trim().length === 0}
+          >
+            {isSending ? "Sending" : "Send"}
+          </button>
+          {sendError ? <p className={styles.sendError}>{sendError}</p> : null}
+        </form>
+      ) : (
+        <div className={styles.ctaSlot}>
+          <CreateAgentButton />
+        </div>
+      )}
       <div className={styles.preloadStash} aria-hidden="true">
         {preloadUrls.map((url) => (
           <img

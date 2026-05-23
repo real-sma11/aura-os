@@ -29,7 +29,7 @@ export function LoginOverlay() {
   const f = useLoginForm();
 
   const handleClose = useCallback(() => {
-    // When the modal was opened from a non-landing surface (Product,
+    // When the modal was opened from a public subpage (Product,
     // Pricing, Changelog, Feedback, …), the trigger stashed the
     // origin URL in `state.backgroundLocation`. Pop the `/login`
     // history entry to restore the prior URL + scroll position so

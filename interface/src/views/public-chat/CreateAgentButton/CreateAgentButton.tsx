@@ -22,7 +22,7 @@ interface CreateAgentButtonProps {
 
 /**
  * Shared "Create your agent" CTA pill — the off-white registration
- * button used on every public (logged-out) marketing surface.
+ * button used on the public chat surface and related public pages.
  *
  * Originally lived inline in `PublicChatView.tsx` as `.ctaButton`.
  * Extracted into its own component so the marketing `/product`
@@ -36,7 +36,7 @@ interface CreateAgentButtonProps {
  * three-layer outer bloom read the active accent hue from the
  * `--public-cta-glow-color` custom property and fall back to the
  * default neon-violet (`#9b5cff`) when the property is unset.
- *   - On the public landing surface, `PublicChatView` publishes
+ *   - On the public chat surface, `PublicChatView` publishes
  *     the active persona's `siteCtaGlowColor` on its `.chatView`
  *     wrapper, so the rim + bloom flip with the active tick.
  *   - On the product hero (`ProductView` / `PageHero`), no value
@@ -63,9 +63,9 @@ export function CreateAgentButton({
       data-agent-surface="public-landing-cta"
       // Stash the current location as `state.backgroundLocation`
       // so `AppRoutes` keeps the underlying surface (Product /
-      // Pricing / Changelog / Feedback / chat landing) mounted
+      // Pricing / Changelog / Feedback / Chat) mounted
       // while `AuraShell` overlays the `LoginOverlay` on top.
-      // Without this state the marketing page would unmount and
+      // Without this state the public page would unmount and
       // `PublicChatView` would flash in behind the modal.
       onClick={() =>
         navigate("/login?tab=register", {

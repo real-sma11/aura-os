@@ -55,7 +55,7 @@ if (initiallyLoggedIn) {
 function LastAppRedirect(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
   // Phase 4 `p4_simple_pin_chat`: in Simple mode the only valid
-  // landing surface is `/chat` — short-circuit before consulting the
+  // chat surface is `/chat` — short-circuit before consulting the
   // last-visited app so a logged-out -> Simple sign-in lands on the
   // chat surface even if the user previously persisted a different
   // app id (e.g. `notes`).
@@ -214,12 +214,12 @@ function AppRoutes(): React.ReactElement {
   const { isNativeApp } = useAuraCapabilities();
 
   // "Background location" pattern: when a public-mode visitor opens
-  // the login modal from a marketing page (or any other surface),
+  // the login modal from a public page,
   // the trigger navigates to `/login?tab=...` with
   // `state.backgroundLocation` carrying the URL they came from. We
   // drive the desktop/web `<Routes>` matcher off that stashed
   // location so the underlying view (ProductView, PricingView, the
-  // public chat landing, etc.) stays mounted while we overlay
+  // public chat surface, etc.) stays mounted while we overlay
   // `LoginOverlay` on top.
   //
   // The overlay is mounted as a sibling of `<Routes>` (below) rather
@@ -287,11 +287,11 @@ function AppRoutes(): React.ReactElement {
   // boot, modals, CaptureBridge) and renders `<AuraShell>` for
   // desktop (or `<MobileShell>` on mobile layouts). AuraShell uses
   // `<Outlet />` to mount per-route content in its `<main>` slot.
-  // Marketing routes (`/product`, `/changelog`, `/feedback`,
+  // Public subpages (`/product`, `/changelog`, `/feedback`,
   // `/pricing`) also mount in this tree under
   // `<PublicMarketingPanel>`, so they share the same public-mode
   // chrome (titlebar + sidebar + `PublicSidebarFooter`) as the
-  // chat landing surface — only the middle panel content swaps.
+  // public chat surface — only the middle panel content swaps.
   //
   // `LoginOverlay` is mounted as a sibling of `<Routes>` (see
   // `showLoginOverlay` above) so it overlays whichever underlying
@@ -314,10 +314,10 @@ function AppRoutes(): React.ReactElement {
           <Route path="chat" element={<ChatRouteSwitch />} />
           <Route path="login" element={<PublicChatView />} />
           {/*
-            Marketing routes mount inside the public-mode `AuraShell`
-            main `<Outlet />` (replacing `PublicChatView`'s hero) via
+            Public subpages mount inside the public-mode `AuraShell`
+            main `<Outlet />` via
             `PublicMarketingPanel`, a thin scroll-column wrapper. Same
-            sidebar / titlebar / footer as the public chat landing —
+            sidebar / titlebar / footer as the public chat surface —
             just the middle panel content swaps when the visitor
             clicks Product / Changelog / Feedback / Pricing in
             `PublicSidebarFooter`. Replaces the standalone

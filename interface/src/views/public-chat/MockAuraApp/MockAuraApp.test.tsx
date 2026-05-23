@@ -191,7 +191,7 @@ describe("MockAuraApp", () => {
   it("leaves the frame un-themed (no data attribute, no inline mock vars) when no chatPalette is supplied", () => {
     render(<MockAuraApp />);
     const frame = screen.getByTestId("mock-aura-app");
-    // NO_THEME personas (and the default landing surface) reach
+    // NO_THEME personas (and the default public chat surface) reach
     // here with `chatPalette = null` — the persona override block
     // in MockAuraApp.module.css is keyed on this attribute and
     // must NOT fire so the existing shell tokens keep painting.

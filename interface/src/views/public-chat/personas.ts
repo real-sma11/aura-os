@@ -1,8 +1,8 @@
 /**
  * Source of truth for the six agent personas surfaced on the public
- * landing surface (`PublicChatView`) via the right-edge
+ * chat surface (`PublicChatView`) via the right-edge
  * `PersonaTickRail`. Each entry pairs a stable id + display name
- * with an optional visual theme that re-skins the public landing
+ * with an optional visual theme that re-skins the public chat surface
  * the moment the visitor hovers, focuses, or clicks the matching
  * tick.
  *
@@ -114,13 +114,13 @@ export interface PersonaTheme {
    *
    * Published as the `--public-nav-fg-color` custom property on
    * `document.documentElement` while the persona is active so the
-   * marketing footer (a sibling outside `PublicChatView`'s subtree)
+   * public nav footer (a sibling outside `PublicChatView`'s subtree)
    * can read the same value.
    */
   readonly siteForegroundColor: string | null;
   /**
    * Muted foreground color (idle) paired with `siteForegroundColor`.
-   * Used by idle ticks and idle marketing links so the existing two-
+   * Used by idle ticks and idle public nav links so the existing two-
    * level hierarchy (secondary -> primary on hover/active) survives a
    * persona contrast override. When `null` the default
    * `--color-text-secondary` paints.
@@ -130,7 +130,7 @@ export interface PersonaTheme {
    */
   readonly siteForegroundColorMuted: string | null;
   /**
-   * Neon accent color used for the landing CTA's glowing border and
+   * Neon accent color used for the public CTA's glowing border and
    * bloom shadow (the "Create your agent" pill in `PublicChatView`).
    * Published as `--public-cta-glow-color` on `.chatView` while this
    * persona is active so only the CTA reads it. When `null` the CSS
@@ -141,7 +141,7 @@ export interface PersonaTheme {
    * the default violet: pick a hue that pops off the page bg (warm
    * accent on cool washes, cool accent on warm washes). The glow is
    * the only surface that consumes this value, so changing it never
-   * affects the rail, the marketing footer, or the chat palette.
+   * affects the rail, the public nav footer, or the chat palette.
    */
   readonly siteCtaGlowColor: string | null;
   /**
@@ -262,7 +262,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // user theme — so the nav / tick foreground must be theme-
       // invariant too, otherwise light-mode visitors see the muted
       // token collapse to near-black `#374151` on the deep-purple bg
-      // and the marketing nav strip becomes unreadable.
+      // and the public nav strip becomes unreadable.
       siteForegroundColor: "#e6e8eb",
       siteForegroundColorMuted: "#c9c9cf",
       // CTA keeps the default neon-violet bloom which is tuned
@@ -316,7 +316,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       siteBackgroundColor: "#b3c4d2",
       // The dusty-blue site is light enough that the default
       // near-white nav/tick tokens wash out. Override with a near-
-      // black pair so the marketing footer links and the right-edge
+      // black pair so the public nav links and the right-edge
       // tick column stay legible — strong for active/hover, muted
       // for idle. Both are intentionally close to pure black; the
       // 16-point gap is just enough hierarchy for the hover state
@@ -395,7 +395,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // default near-white nav/tick tokens lose contrast against
       // it. Mirror the `solo-builder` / `coordinator` approach:
       // near-black for active/hover, slightly lighter near-black
-      // for idle, so the marketing footer (bottom-left links)
+      // for idle, so the public nav footer (bottom-left links)
       // and right-edge tick rail keep a legible two-step
       // hierarchy on the bg.
       siteForegroundColor: "#0a0a0a",
@@ -471,7 +471,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // the default near-white nav/tick tokens lose contrast against
       // it. Mirror the `solo-builder` approach: near-black for the
       // active/hover state, a slightly lighter near-black for idle,
-      // so the marketing footer (bottom-left links) and right-edge
+      // so the public nav footer (bottom-left links) and right-edge
       // tick rail keep a legible two-step hierarchy on the bg.
       siteForegroundColor: "#0a0a0a",
       siteForegroundColorMuted: "#1a1a1a",
@@ -540,7 +540,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // user theme — so the nav / tick foreground must be theme-
       // invariant too, otherwise light-mode visitors see the CSS
       // fallback collapse `--color-text-secondary` to `#374151` and
-      // the marketing nav strip becomes unreadable on the dark wash.
+      // the public nav strip becomes unreadable on the dark wash.
       siteForegroundColor: "#e6e8eb",
       siteForegroundColorMuted: "#c9c9cf",
       // Spring-green / cyan-lifted neon sampled from the helmet

@@ -27,7 +27,7 @@
  *       and the `useSidebarSearchStore` (for public).
  *
  *   (d) **Public-only content gate.** In public effective mode the
- *       marketing footer (Pricing link) and `MockAuraApp` hero are
+ *       public nav footer (Pricing link) and `MockAuraApp` hero are
  *       in the DOM. After `useAuthStore.setState({ user: ... })`
  *       (auth simulated), the same queries return null — the
  *       public-only surface is gone.
@@ -310,18 +310,21 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(inputAfter.value).toBe("hello");
   });
 
-  it("(d) gates marketing footer (Pricing link) behind public mode and hides it when logged in", async () => {
+  it("(d) gates public nav footer links behind public mode and hides them when logged in", async () => {
     setLoggedOut();
 
     renderAuraShell();
 
-    // `PublicSidebarFooter` exposes a "Pricing" `NavLink` pointing
-    // at the internal `/pricing` route — a load-bearing public-only
-    // marketing affordance. It must be present for unauthenticated
-    // visitors and absent the moment the user signs in.
+    // `PublicSidebarFooter` exposes public-only links. They must be
+    // present for unauthenticated visitors and absent the moment the
+    // user signs in.
     expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute(
       "href",
       "/pricing",
+    );
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
+      "href",
+      "/chat",
     );
 
     await act(async () => {
@@ -332,6 +335,7 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Chat" })).not.toBeInTheDocument();
   });
 
   it("(e) hides the Simple/Advanced ModeToggle in public mode and remounts it on sign-in", async () => {
@@ -491,11 +495,11 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     setLoggedOut();
     renderAuraShell("/");
 
-    // `PublicSidebarFooter` (formerly `LoggedOutPanelFooter`) is the
-    // public-only marketing footer. In public mode it must mount
+    // `PublicSidebarFooter` is the public-only nav footer. In public mode it must mount
     // alongside the public sidebar body — its absence would mean
     // the shell mistakenly resolved to an authed surface.
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });
 
   it("sign-in transition (public -> simple) tears down the public footer and mounts ChatAppLeftPanel", async () => {
@@ -503,6 +507,7 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     const { container } = renderAuraShell("/");
 
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
     expect(getActiveAppId(container)).toBeNull();
 
     await act(async () => {
@@ -513,6 +518,7 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     expect(
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Chat" })).not.toBeInTheDocument();
     expect(getActiveAppId(container)).toBe("chat");
   });
 });
@@ -522,15 +528,16 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
  * drawer (`PanelRight` in `WindowControls.tsx`) on the left so a
  * logged-out visitor sees a ChatGPT-style collapsed sessions panel
  * by default and can flip it open via a single titlebar button. The
- * marketing footer (Product / Changelog / Feedback / Pricing) lives
- * outside the collapsing Lane so it stays visible in both states.
+ * public nav footer (Product / Changelog / Feedback / Pricing /
+ * Chat) lives outside the collapsing Lane so it stays visible in
+ * both states.
  *
  * `aria-pressed` mirrors the sidekick toggle's contract (true when
  * the drawer is open, false when collapsed) so AT users get a
  * symmetric experience on both sides of the window chrome.
  */
 describe("AuraShell — public left drawer", () => {
-  it("renders the left drawer toggle in public mode and starts collapsed (aria-pressed=false), with the marketing footer still visible", () => {
+  it("renders the left drawer toggle in public mode and starts collapsed (aria-pressed=false), with the public nav footer still visible", () => {
     setLoggedOut();
     renderAuraShell("/");
 
@@ -540,12 +547,13 @@ describe("AuraShell — public left drawer", () => {
     const sidebar = screen.getByTestId("aura-sidebar");
     expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "true");
 
-    // The marketing footer must remain in the DOM at the bottom-left
+    // The public nav footer must remain in the DOM at the bottom-left
     // even when the sessions panel above it is collapsed.
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Product" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Changelog" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Feedback" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });
 
   it("clicking the drawer toggle flips aria-pressed and the sidebar collapse data attribute, then collapses again on a second click", async () => {
@@ -563,6 +571,7 @@ describe("AuraShell — public left drawer", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "false");
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
 
     await user.click(toggle);
 

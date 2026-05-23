@@ -1,14 +1,14 @@
 /*
  * PublicSidebarFooter — Phase 4 split-out from
  * `the legacy `LoggedOutShell.module.css``. Sticky footer at
- * the bottom of `PublicSessionsPanel` carrying the marketing-site
- * links (Product / Changelog / Feedback / Pricing). Logged-in users
+ * the bottom of `PublicSessionsPanel` carrying the public sidebar
+ * links (Product / Changelog / Feedback / Pricing / Chat). Logged-in users
  * never see this footer; the import-graph reachability matches the
  * runtime gate.
  */
 .footer {
   /*
-   * No `border-top`: the marketing nav strip should read as part of
+   * No `border-top`: the public nav strip should read as part of
    * the same flat sidebar surface as the sessions list above it.
    * The previous separator made the footer look like a docked
    * second pane stacked on top of the sidebar; flush spacing keeps
@@ -20,7 +20,7 @@
   gap: 12px;
   flex-shrink: 0;
   /*
-   * The marketing nav links read as buttons, not body copy — there's
+   * The public nav links read as buttons, not body copy — there's
    * no reason for visitors to text-select "Home" / "Product" / etc.
    * Suppressing selection on the whole footer also avoids the awkward
    * mid-drag highlight when users click between links quickly.

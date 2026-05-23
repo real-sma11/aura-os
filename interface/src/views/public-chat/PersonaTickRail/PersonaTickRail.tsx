@@ -10,7 +10,7 @@ import styles from "./PersonaTickRail.module.css";
 
 /**
  * Decorative rail pinned to the far-right edge of the public
- * landing surface (`PublicChatView`). In its resting state the
+ * chat surface (`PublicChatView`). In its resting state the
  * rail shows one fixed-size horizontal tick per entry in
  * `PERSONAS`, stacked top-to-bottom. Every tick paints the same
  * persona-aware foreground color (`--public-nav-fg-color`, fall-

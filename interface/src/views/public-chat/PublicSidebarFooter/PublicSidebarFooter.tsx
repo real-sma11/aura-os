@@ -22,6 +22,7 @@ const FOOTER_LINKS: ReadonlyArray<FooterLink> = [
   { label: "Changelog", to: "/changelog" },
   { label: "Feedback", to: "/feedback" },
   { label: "Pricing", to: "/pricing" },
+  { label: "Chat", to: "/chat" },
 ];
 
 /**
@@ -29,7 +30,7 @@ const FOOTER_LINKS: ReadonlyArray<FooterLink> = [
  * sliding pill stays in lockstep with whichever NavLink picked up
  * the `.footerLinkActive` class. `end: true` means the pathname
  * must equal `to` exactly (used for Home so it doesn't latch on
- * every nested marketing route); otherwise we accept the pathname
+ * every nested public route); otherwise we accept the pathname
  * equaling `to` or starting with `to + "/"` so a hypothetical
  * `/changelog/v2` would still keep the Changelog row selected
  * (matching `NavLink`'s default segment-prefix behavior).
@@ -42,13 +43,11 @@ function isLinkActive(link: FooterLink, pathname: string): boolean {
 }
 
 /**
- * Sticky footer at the bottom of `PublicSessionsPanel`. Renders five
- * marketing-route links — Home (the public chat landing at `/`) plus
- * the four marketing pages — that swap the public-mode main panel
- * content for the corresponding view (`PublicChatView` for Home,
- * otherwise `ProductView` / `ChangelogView` / `FeedbackView` /
- * `PricingView`) while leaving the rest of the public shell
- * (titlebar + sidebar + this footer) mounted.
+ * Sticky footer at the bottom of `PublicSessionsPanel`. Renders the
+ * public sidebar links — Home, Product, Changelog, Feedback, Pricing,
+ * and Chat — that swap the public-mode main panel content while
+ * leaving the rest of the public shell (titlebar + sidebar + this
+ * footer) mounted.
  *
  * `NavLink` drives the active highlight: when the current route
  * matches one of the targets, the matching link picks up the
@@ -58,7 +57,7 @@ function isLinkActive(link: FooterLink, pathname: string): boolean {
  *
  * Phase 4 product rule: this footer is **public-only**. It mounts
  * exclusively inside `PublicSidebarBody` (in `AuraSidebar`) so
- * logged-in Simple and Advanced users never see the marketing nav
+ * logged-in Simple and Advanced users never see the public nav
  * strip in the sidebar.
  */
 export function PublicSidebarFooter(): React.ReactElement {
@@ -92,24 +91,34 @@ export function PublicSidebarFooter(): React.ReactElement {
   );
 
   useLayoutEffect(() => {
-    if (activeIndex < 0) {
-      setPill((prev) => ({ ...prev, visible: false }));
-      return;
+    const update = (): void => {
+      if (activeIndex < 0) {
+        setPill((prev) => ({ ...prev, visible: false }));
+        return;
+      }
+      const node = linkRefs.current[activeIndex];
+      if (node === null || node === undefined) {
+        return;
+      }
+      setPill({
+        top: node.offsetTop,
+        height: node.offsetHeight,
+        visible: true,
+      });
+    };
+
+    if (typeof window.requestAnimationFrame === "function") {
+      const frame = window.requestAnimationFrame(update);
+      return () => window.cancelAnimationFrame(frame);
     }
-    const node = linkRefs.current[activeIndex];
-    if (node === null || node === undefined) {
-      return;
-    }
-    setPill({
-      top: node.offsetTop,
-      height: node.offsetHeight,
-      visible: true,
-    });
+
+    const timeout = window.setTimeout(update, 0);
+    return () => window.clearTimeout(timeout);
   }, [activeIndex]);
 
   return (
     <div className={styles.footer}>
-      <nav className={styles.footerLinks} aria-label="AURA marketing">
+      <nav className={styles.footerLinks} aria-label="AURA public navigation">
         {/*
          * Sliding active-route highlight. Rendered as the first
          * sibling so default stacking-context paint order layers it

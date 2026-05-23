@@ -25,7 +25,7 @@ interface PublicSessionsPanelProps {
  * public sessions.
  *
  * The "+" new-chat affordance and the search input live in the
- * shared `AuraSidebar` header; the marketing footer
+ * shared `AuraSidebar` header; the public nav footer
  * (`PublicSidebarFooter`) is rendered as a sibling of this panel
  * inside `AuraSidebar` so it stays bottom-anchored even when the
  * Lane wrapping this body collapses to width 0.
@@ -59,7 +59,7 @@ export function PublicSessionsPanel({
 
   const handleSelect = useCallback(
     (id: string) => {
-      navigate(`/?session=${id}`);
+      navigate(`/chat?session=${id}`);
     },
     [navigate],
   );
@@ -70,14 +70,14 @@ export function PublicSessionsPanel({
       if (id !== activeSessionId) return;
       // The deleted row was the active session, so the URL still
       // points at it. Hop to the most recent remaining session
-      // (sessionOrder is newest-first) instead of falling back to
-      // `/`, which would otherwise re-trigger `PublicChatView`'s
+      // (sessionOrder is newest-first) instead of falling back to a
+      // bare `/chat`, which would otherwise re-trigger `PublicChatView`'s
       // auto-create-on-mount and immediately spawn a fresh "New chat"
       // row in place of the one the user just removed — making the
       // delete look like it failed. If nothing remains, hand off to
-      // `/` so the auto-create lands the visitor on a usable surface.
+      // `/chat` so the auto-create lands the visitor on a usable surface.
       const nextActive = sessionOrder.find((existing) => existing !== id);
-      navigate(nextActive ? `/?session=${nextActive}` : "/");
+      navigate(nextActive ? `/chat?session=${nextActive}` : "/chat");
     },
     [activeSessionId, deleteSession, navigate, sessionOrder],
   );

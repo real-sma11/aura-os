@@ -85,7 +85,7 @@ export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
 
   // Publish the active sidebar width (the `<aside>` rather than just
   // the inner Lane) so that when the public Lane is collapsed and
-  // the marketing footer is the only thing keeping the aside visible,
+  // the public nav footer is the only thing keeping the aside visible,
   // the chat surface's background video / vignette still re-centers
   // around the actual chrome — not around 0.
   useAuraSidebarWidthCssVar(asideRef);
@@ -126,12 +126,12 @@ export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
         </Lane>
       </div>
       {/*
-        The marketing footer lives as a direct child of `<aside>`,
+        The public nav footer lives as a direct child of `<aside>`,
         OUTSIDE the collapsible Lane, so the Product / Changelog /
-        Feedback / Pricing links remain visible even when the Lane
-        animates to width 0. The aside's column-flex layout keeps
-        the footer pinned at the bottom and lets it set the aside's
-        natural width when the Lane is collapsed.
+        Feedback / Pricing / Chat links remain visible even when the
+        Lane animates to width 0. The aside's column-flex layout
+        keeps the footer pinned at the bottom and lets it set the
+        aside's natural width when the Lane is collapsed.
       */}
       {isPublic && <PublicSidebarFooter />}
     </aside>
@@ -146,9 +146,9 @@ function SidebarBody({ mode }: { mode: UIMode }): React.ReactElement {
   // body. Phase 4's `p4_simple_pin_chat` pins `ChatApp` as the
   // active app whenever `effectiveMode === "simple"`, so the body
   // resolves to ChatAppLeftPanel automatically via `useActiveApp`
-  // without the shell needing to import from `apps/*`. The
-  // marketing footer (`LoggedOutPanelFooter`) only lives inside
-  // `PublicSidebarBody` — it never reaches simple/advanced users.
+  // without the shell needing to import from `apps/*`. The public
+  // nav footer only lives inside `PublicSidebarBody` — it never
+  // reaches simple/advanced users.
   return <AuthedSidebarBody />;
 }
 
@@ -212,7 +212,7 @@ function PublicSearchBox(): React.ReactElement {
       return session != null && session.turns.length === 0;
     });
     const id = existingEmptyId ?? createSession();
-    navigate(`/?session=${id}`);
+    navigate(`/chat?session=${id}`);
   }, [createSession, navigate]);
 
   return (
@@ -282,7 +282,7 @@ function useSidebarSearchQueryForKey(
  * that translate magic-number-dependent.
  *
  * Phase 5: the public left drawer can collapse the inner Lane to
- * width 0 while the marketing footer keeps the `<aside>` visible.
+ * width 0 while the public nav footer keeps the `<aside>` visible.
  * Measuring the aside (instead of just the Lane) keeps the chat
  * orb correctly centered relative to the actually-rendered
  * sidebar in both expanded and collapsed states.

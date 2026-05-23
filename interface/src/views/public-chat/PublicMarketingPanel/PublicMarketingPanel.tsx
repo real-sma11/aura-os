@@ -16,7 +16,7 @@ import styles from "./PublicMarketingPanel.module.css";
  * `MarketingNavbar` + `MarketingFooter` wrapper) so the marketing
  * pages render under the same public-mode chrome — `ShellTitlebar`,
  * `AuraSidebar`, and `PublicSidebarFooter` — as the public chat
- * landing surface. The persona tick rail and "Create your agent"
+ * surface. The persona tick rail and "Create your agent"
  * CTA disappear automatically because they live inside
  * `PublicChatView`, which only mounts on the chat / landing routes.
  *

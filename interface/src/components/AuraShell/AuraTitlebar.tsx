@@ -224,7 +224,7 @@ function PublicActions(): React.ReactElement {
 
   // Stash the current location as `state.backgroundLocation` so
   // `AppRoutes` keeps the underlying surface (e.g. ProductView,
-  // PricingView, the public chat landing) mounted while
+  // PricingView, the public chat surface) mounted while
   // `AuraShell` overlays `LoginOverlay`. Without this state the
   // current view would unmount and `PublicChatView` would flash
   // in behind the modal.
