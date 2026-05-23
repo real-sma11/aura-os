@@ -301,6 +301,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
   /*
    * Width/height are driven from JSX (`style={{ width, height }}`)
    * by the fish-eye magnifier in `MockAuraApp.tsx` — `18px` here
@@ -321,17 +323,7 @@
   cursor: pointer;
   overflow: hidden;
   box-sizing: border-box;
-  /*
-   * Anchor the magnified avatar to the bottom of the pill so it
-   * grows UPWARD out of the dock — `.bottomLeft` is `align-items:
-   * center` by inheritance and without this override the avatar
-   * would re-center vertically as it grows, which reads as
-   * "floating" instead of "popping out of the dock". Combined
-   * with the pill's default `overflow: visible`, scaled avatars
-   * escape the top of the pill the same way the macOS dock's
-   * icons do.
-   */
-  align-self: end;
+  align-self: center;
   /*
    * Short width/height transition so JS-driven size updates feel
    * smoothly interpolated during pointer moves and the
@@ -361,27 +353,27 @@
   box-shadow: 0 0 0 1px var(--color-text-primary);
 }
 
-/*
- * Pair with `.personaAvatar { align-self: end }` above so the
- * leading `<Circle>` glyph also rides the pill's bottom edge —
- * without this it would stay vertically centered and the icon
- * would visually drift away from the avatars as they magnify.
- */
 .bottomLeft {
-  align-items: end;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-end;
+  transition:
+    width 180ms ease-out,
+    height 180ms ease-out,
+    min-height 180ms ease-out,
+    padding 180ms ease-out,
+    gap 180ms ease-out,
+    border-radius 180ms ease-out;
+  will-change: height, padding, gap, border-radius;
 }
 
-/*
- * Honour the user's reduced-motion preference: the JS magnifier
- * in `MockAuraApp.tsx` already short-circuits to base size when
- * the same media query matches, but we also zero the transition
- * here so any residual paint between mount and the first effect
- * tick can't animate.
- */
-@media (prefers-reduced-motion: reduce) {
-  .personaAvatar {
-    transition: none;
-  }
+.bottomLeft:hover {
+  width: 320px;
+  height: calc(var(--shell-chrome-height) * 2);
+  min-height: calc(var(--shell-chrome-height) * 2);
+  padding: 0 calc(var(--space-2) * 2);
+  gap: 8px;
+  border-radius: calc(var(--shell-chrome-radius) * 2);
 }
 
 .personaAvatarFallback {

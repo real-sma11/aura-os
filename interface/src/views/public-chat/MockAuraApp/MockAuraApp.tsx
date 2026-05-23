@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -8,7 +9,6 @@ import {
 } from "react";
 import {
   ChevronRight,
-  Circle,
   CreditCard,
   Folder,
   Globe,
@@ -35,36 +35,33 @@ const AVATAR_DEFAULT_OBJECT_POSITION = "50% 18%";
 
 /*
  * Fish-eye magnification tunables for the bottom-left persona dock.
- * The dock paints each avatar at `AVATAR_BASE_SIZE_PX` (matches the
- * CSS module's `.personaAvatar` width/height) and, while the pointer
- * hovers the `.bottomLeft` pill, inflates each one based on its
- * horizontal distance from the cursor.
+ * The dock paints each avatar at `AVATAR_REST_SIZE_PX` while idle.
+ * After the taskbar pill finishes opening, every avatar grows to
+ * `AVATAR_OPEN_BASE_SIZE_PX`, then the fish-eye inflates nearby
+ * avatars further based on horizontal distance from the cursor.
  *
  * A raised-cosine falloff (same family the macOS dock uses) maps
  * distances in `[0, INFLUENCE_RADIUS_PX]` onto sizes in
- * `[AVATAR_MAX_SIZE_PX, AVATAR_BASE_SIZE_PX]` — smooth at both ends,
- * peaking at the cursor and decaying to no magnification past the
- * radius. Avatars further than the radius stay at base size, so the
- * effect is local to the cursor's immediate neighbourhood the way a
- * dock magnifier feels.
+ * `[AVATAR_MAX_SIZE_PX, AVATAR_OPEN_BASE_SIZE_PX]` — smooth at both
+ * ends, peaking at the cursor and decaying to the open base size
+ * past the radius. The max stays below the opened 64px pill height,
+ * so the avatar image scales up crisply via real layout pixels while
+ * still leaving breathing room inside the taskbar.
  */
-const AVATAR_BASE_SIZE_PX = 18;
-const AVATAR_MAX_SIZE_PX = 36;
+const AVATAR_REST_SIZE_PX = 18;
+const AVATAR_OPEN_BASE_SIZE_PX = 28;
+const AVATAR_MAX_SIZE_PX = 44;
 const INFLUENCE_RADIUS_PX = 80;
+const DOCK_OPEN_MS = 180;
 
 function computeAvatarSize(distancePx: number): number {
-  if (distancePx >= INFLUENCE_RADIUS_PX) return AVATAR_BASE_SIZE_PX;
+  if (distancePx >= INFLUENCE_RADIUS_PX) return AVATAR_OPEN_BASE_SIZE_PX;
   const t = distancePx / INFLUENCE_RADIUS_PX;
   const falloff = 0.5 * (1 + Math.cos(Math.PI * t));
   return (
-    AVATAR_BASE_SIZE_PX +
-    (AVATAR_MAX_SIZE_PX - AVATAR_BASE_SIZE_PX) * falloff
+    AVATAR_OPEN_BASE_SIZE_PX +
+    (AVATAR_MAX_SIZE_PX - AVATAR_OPEN_BASE_SIZE_PX) * falloff
   );
-}
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**
@@ -223,14 +220,14 @@ export function MockAuraApp({
 
   /*
    * Per-avatar live size (in px) for the fish-eye dock magnifier.
-   * Initialised to `AVATAR_BASE_SIZE_PX` so the dock paints at its
+   * Initialised to `AVATAR_REST_SIZE_PX` so the dock paints at its
    * natural size on first render and when the pointer is outside
    * the `.bottomLeft` pill. The array length tracks `PERSONAS` so a
    * persona swap doesn't desync — `PERSONAS` is a frozen module
    * constant so a single initialiser is safe.
    */
   const [avatarSizes, setAvatarSizes] = useState<number[]>(() =>
-    PERSONAS.map(() => AVATAR_BASE_SIZE_PX),
+    PERSONAS.map(() => AVATAR_REST_SIZE_PX),
   );
   /*
    * One ref slot per persona button so the pointer-move handler can
@@ -243,43 +240,77 @@ export function MockAuraApp({
    * length never needs to be reconciled at runtime.
    */
   const avatarRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const dockOpenTimerRef = useRef<number | null>(null);
+  const latestDockPointerXRef = useRef<number | null>(null);
+  const avatarMagnifierReadyRef = useRef(false);
+
+  const clearDockOpenTimer = useCallback(() => {
+    if (dockOpenTimerRef.current == null) return;
+    window.clearTimeout(dockOpenTimerRef.current);
+    dockOpenTimerRef.current = null;
+  }, []);
 
   const resetAvatarSizes = useCallback(() => {
     setAvatarSizes((prev) => {
-      const allBase = prev.every((size) => size === AVATAR_BASE_SIZE_PX);
+      const allBase = prev.every((size) => size === AVATAR_REST_SIZE_PX);
       if (allBase) return prev;
-      return PERSONAS.map(() => AVATAR_BASE_SIZE_PX);
+      return PERSONAS.map(() => AVATAR_REST_SIZE_PX);
     });
   }, []);
 
+  const applyAvatarMagnifier = useCallback((cursorX: number) => {
+    const nextSizes = avatarRefs.current.map((node) => {
+      if (!node) return AVATAR_OPEN_BASE_SIZE_PX;
+      const rect = node.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      return computeAvatarSize(Math.abs(cursorX - centerX));
+    });
+    setAvatarSizes((prev) => {
+      if (
+        prev.length === nextSizes.length &&
+        prev.every((size, index) => size === nextSizes[index])
+      ) {
+        return prev;
+      }
+      return nextSizes;
+    });
+  }, []);
+
+  const handleDockPointerEnter = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      latestDockPointerXRef.current = event.clientX;
+      avatarMagnifierReadyRef.current = false;
+      resetAvatarSizes();
+      clearDockOpenTimer();
+      dockOpenTimerRef.current = window.setTimeout(() => {
+        dockOpenTimerRef.current = null;
+        avatarMagnifierReadyRef.current = true;
+        const cursorX = latestDockPointerXRef.current;
+        if (cursorX != null) applyAvatarMagnifier(cursorX);
+      }, DOCK_OPEN_MS);
+    },
+    [applyAvatarMagnifier, clearDockOpenTimer, resetAvatarSizes],
+  );
+
   const handleDockPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      // Respect the user's reduced-motion preference: keep every
-      // avatar at the base size so there is no magnification at
-      // all. Mirrors the CSS rule that zeroes the transition.
-      if (prefersReducedMotion()) {
-        resetAvatarSizes();
-        return;
-      }
-      const cursorX = event.clientX;
-      const nextSizes = avatarRefs.current.map((node) => {
-        if (!node) return AVATAR_BASE_SIZE_PX;
-        const rect = node.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        return computeAvatarSize(Math.abs(cursorX - centerX));
-      });
-      setAvatarSizes((prev) => {
-        if (
-          prev.length === nextSizes.length &&
-          prev.every((size, index) => size === nextSizes[index])
-        ) {
-          return prev;
-        }
-        return nextSizes;
-      });
+      latestDockPointerXRef.current = event.clientX;
+      if (!avatarMagnifierReadyRef.current) return;
+      applyAvatarMagnifier(event.clientX);
     },
-    [resetAvatarSizes],
+    [applyAvatarMagnifier],
   );
+
+  const handleDockPointerLeave = useCallback(() => {
+    latestDockPointerXRef.current = null;
+    avatarMagnifierReadyRef.current = false;
+    clearDockOpenTimer();
+    resetAvatarSizes();
+  }, [clearDockOpenTimer, resetAvatarSizes]);
+
+  useEffect(() => {
+    return clearDockOpenTimer;
+  }, [clearDockOpenTimer]);
 
   const frameStyle: CSSProperties | undefined = chatPalette
     ? (paletteToCssVars(chatPalette) as CSSProperties)
@@ -427,12 +458,10 @@ export function MockAuraApp({
           // gaps between avatars. `onPointerLeave` resets every
           // avatar to base size; the CSS transition on width/height
           // animates the shrink-back smoothly.
+          onPointerEnter={handleDockPointerEnter}
           onPointerMove={handleDockPointerMove}
-          onPointerLeave={resetAvatarSizes}
+          onPointerLeave={handleDockPointerLeave}
         >
-          <span className={styles.taskbarIconButton}>
-            <Circle size={14} strokeWidth={2} />
-          </span>
           {PERSONAS.map((persona, index) => {
             const isActive = index === activePersonaIndex;
             const { desktopBackgroundUrl: avatarUrl, avatarObjectPosition } =
@@ -445,7 +474,7 @@ export function MockAuraApp({
             // personas have no image at all; they fall back to
             // the initial-letter card below so the dock still
             // shows one circle per persona.
-            const liveSize = avatarSizes[index] ?? AVATAR_BASE_SIZE_PX;
+            const liveSize = avatarSizes[index] ?? AVATAR_REST_SIZE_PX;
             const avatarStyle: CSSProperties = {
               width: `${liveSize}px`,
               height: `${liveSize}px`,

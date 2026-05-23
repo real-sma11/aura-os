@@ -315,63 +315,122 @@ describe("MockAuraApp", () => {
      * then assert the inline `style.width` values the component
      * paints in response to a synthetic pointer event.
      */
-    it("inflates the avatar nearest the pointer and shrinks every avatar back on pointer-leave", () => {
-      render(<MockAuraApp />);
+    it("waits for the dock to open before inflating the nearest avatar, then resets on pointer-leave", () => {
+      vi.useFakeTimers();
+      try {
+        render(<MockAuraApp />);
 
-      const dock = screen.getByTestId("mock-aura-bottom-left");
-      const avatars = PERSONAS.map((persona) =>
-        screen.getByTestId(`mock-aura-avatar-${persona.id}`),
-      );
+        const dock = screen.getByTestId("mock-aura-bottom-left");
+        const avatars = PERSONAS.map((persona) =>
+          screen.getByTestId(`mock-aura-avatar-${persona.id}`),
+        );
 
-      // Each avatar gets an 18px-wide rect centered at a unique X.
-      // The first avatar's center is at x=100 (matches the
-      // pointerMove clientX below), so it should hit the
-      // raised-cosine peak (~36px). Subsequent avatars are spaced
-      // 200px apart — well past the 80px influence radius — so
-      // they stay at the 18px base size and the assertion isolates
-      // the peak from any neighbour spillover.
-      const BUTTON_WIDTH = 18;
-      const SPACING_PX = 200;
-      const FIRST_CENTER_X = 100;
-      avatars.forEach((node, index) => {
-        const centerX = FIRST_CENTER_X + index * SPACING_PX;
-        const left = centerX - BUTTON_WIDTH / 2;
-        node.getBoundingClientRect = () =>
+        // Each avatar gets an 18px-wide rect centered at a unique X.
+        // The first avatar's center is at x=100, so it should hit
+        // the raised-cosine peak (~44px) once the dock-open delay
+        // has elapsed. Distant avatars settle at the opened base
+        // size (28px), so every portrait scales up with real layout
+        // pixels instead of being blurred by a parent transform.
+        const BUTTON_WIDTH = 18;
+        const SPACING_PX = 200;
+        const FIRST_CENTER_X = 100;
+        avatars.forEach((node, index) => {
+          const centerX = FIRST_CENTER_X + index * SPACING_PX;
+          const left = centerX - BUTTON_WIDTH / 2;
+          node.getBoundingClientRect = () =>
+            ({
+              left,
+              right: left + BUTTON_WIDTH,
+              top: 500,
+              bottom: 500 + BUTTON_WIDTH,
+              width: BUTTON_WIDTH,
+              height: BUTTON_WIDTH,
+              x: left,
+              y: 500,
+              toJSON: () => ({}),
+            }) as DOMRect;
+        });
+
+        fireEvent.pointerEnter(dock, { clientX: FIRST_CENTER_X, clientY: 500 });
+        fireEvent.pointerMove(dock, { clientX: FIRST_CENTER_X, clientY: 500 });
+
+        // The circular avatars wait while the pill itself performs
+        // its open animation.
+        expect(avatars[0].style.width).toBe("18px");
+        expect(avatars[0].style.height).toBe("18px");
+
+        act(() => {
+          vi.advanceTimersByTime(180);
+        });
+
+        expect(avatars[0].style.width).toBe("44px");
+        expect(avatars[0].style.height).toBe("44px");
+
+        for (let i = 1; i < avatars.length; i += 1) {
+          expect(avatars[i].style.width).toBe("28px");
+          expect(avatars[i].style.height).toBe("28px");
+        }
+
+        fireEvent.pointerLeave(dock);
+        for (const node of avatars) {
+          expect(node.style.width).toBe("18px");
+          expect(node.style.height).toBe("18px");
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps avatar magnification active when reduced motion is enabled", () => {
+      vi.useFakeTimers();
+      const originalMatchMedia = window.matchMedia;
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      });
+
+      try {
+        render(<MockAuraApp />);
+
+        const dock = screen.getByTestId("mock-aura-bottom-left");
+        const avatar = screen.getByTestId("mock-aura-avatar-vibecoder");
+        avatar.getBoundingClientRect = () =>
           ({
-            left,
-            right: left + BUTTON_WIDTH,
+            left: 91,
+            right: 109,
             top: 500,
-            bottom: 500 + BUTTON_WIDTH,
-            width: BUTTON_WIDTH,
-            height: BUTTON_WIDTH,
-            x: left,
+            bottom: 518,
+            width: 18,
+            height: 18,
+            x: 91,
             y: 500,
             toJSON: () => ({}),
           }) as DOMRect;
-      });
 
-      fireEvent.pointerMove(dock, { clientX: FIRST_CENTER_X, clientY: 500 });
+        fireEvent.pointerEnter(dock, { clientX: 100, clientY: 509 });
+        act(() => {
+          vi.advanceTimersByTime(180);
+        });
 
-      // First avatar sits under the cursor → peak magnification
-      // (the raised-cosine falloff returns 1 at distance 0, so the
-      // size lands at the configured max of 36px).
-      expect(avatars[0].style.width).toBe("36px");
-      expect(avatars[0].style.height).toBe("36px");
-
-      // Distant avatars stay at the base 18px because their centers
-      // are outside the 80px influence radius.
-      for (let i = 1; i < avatars.length; i += 1) {
-        expect(avatars[i].style.width).toBe("18px");
-        expect(avatars[i].style.height).toBe("18px");
-      }
-
-      // Pointer-leave resets every avatar back to base size so the
-      // dock animates smoothly back to its dormant footprint via the
-      // CSS transition on `.personaAvatar`.
-      fireEvent.pointerLeave(dock);
-      for (const node of avatars) {
-        expect(node.style.width).toBe("18px");
-        expect(node.style.height).toBe("18px");
+        expect(avatar.style.width).toBe("44px");
+        expect(avatar.style.height).toBe("44px");
+      } finally {
+        Object.defineProperty(window, "matchMedia", {
+          configurable: true,
+          writable: true,
+          value: originalMatchMedia,
+        });
+        vi.useRealTimers();
       }
     });
   });
