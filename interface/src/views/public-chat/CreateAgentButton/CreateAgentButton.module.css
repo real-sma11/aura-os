@@ -44,7 +44,15 @@
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
-  line-height: 1;
+  /* `1` clipped the descenders on "g" / "y" in "Create your agent"
+     because the line box (= font-size at lh:1) ends right at the
+     baseline, leaving no room for the part of the glyph that sits
+     below. Bumping to `1.2` matches the UA default and adds ~3px of
+     vertical room — enough to paint the descender — without making
+     the pill visibly taller (the inline-flex centers the label so
+     the extra space is absorbed symmetrically as padding above and
+     below the cap-height row). */
+  line-height: 1.2;
   cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
