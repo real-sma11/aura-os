@@ -29,6 +29,44 @@
   padding: 0 var(--space-2);
 }
 
+/*
+ * Public-mode pill chrome — shrink the bottom-taskbar pills (and
+ * the icon buttons inside them) to match the top Log In / Sign Up
+ * `.authPill` chrome in `AuraTitlebar`. Both surfaces read the
+ * same `--public-pill-height` / `--public-pill-item-size` tokens
+ * from `:root` in `index.css`, so the top auth pills and the
+ * bottom pills always render at exactly the same height.
+ *
+ * The outer `.bar` height intentionally stays at
+ * `--shell-chrome-outer-height` (~42px) so flipping into / out of
+ * public mode does not move the main panel's bottom edge — the
+ * row of vertical space the taskbar reserves is unchanged,
+ * just the pill chrome inside it is more compact.
+ *
+ * Re-binding `--taskbar-item-size` on the public `.bar` cascades
+ * automatically to `.taskbarBtn` in `AppNavRail.module.css`
+ * (which reads `var(--taskbar-item-size, 30px)`), so the
+ * `ThemeToggleButton` and any other `TaskbarIconButton` inside
+ * the public bar shrink to fit inside the new shorter pill
+ * without per-component overrides. `.poweredByGrid` reads the
+ * same item-size token explicitly below so the attribution chip
+ * sits at the same height as the icon button next to it.
+ */
+.bar[data-ui-mode="public"] .left,
+.bar[data-ui-mode="public"] .center,
+.bar[data-ui-mode="public"] .right {
+  height: var(--public-pill-height, 24px);
+  min-height: var(--public-pill-height, 24px);
+}
+
+.bar[data-ui-mode="public"] {
+  --taskbar-item-size: var(--public-pill-item-size, 22px);
+}
+
+.bar[data-ui-mode="public"] .poweredByGrid {
+  height: var(--public-pill-item-size, 22px);
+}
+
 .left {
   display: flex;
   align-items: center;

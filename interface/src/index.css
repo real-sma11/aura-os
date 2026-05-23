@@ -69,6 +69,24 @@
   --shell-chrome-backdrop-filter: blur(40px) saturate(1.4);
 
   /*
+   * Public-mode pill tokens. Shared by the top Log In / Sign Up
+   * `.authPill` chrome in `AuraTitlebar` and the bottom-taskbar
+   * `.left` / `.right` pill chrome in `BottomTaskbar` (and the
+   * icon buttons inside them via `--taskbar-item-size` re-bind)
+   * so both surfaces lock to one source of truth — change the
+   * token and both pill rows shrink/grow together.
+   *
+   * Deliberately distinct from `--shell-chrome-height` (which
+   * sizes the real titlebar pill, the mock `MockAuraApp` chrome,
+   * and the authed bottom-taskbar pills) so this re-tune only
+   * affects public-mode auth pills + the public bottom taskbar.
+   * `--public-pill-item-size` is 2px shorter than the pill so the
+   * icon button sits inside with 1px breathing room on each side.
+   */
+  --public-pill-height: 24px;
+  --public-pill-item-size: 22px;
+
+  /*
    * Per-surface border tints. Both default to --color-border so the shell
    * looks identical unless the user customizes them from
    * Settings > Appearance > Custom colors. `--color-border-main-panel`

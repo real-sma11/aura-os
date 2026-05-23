@@ -201,12 +201,29 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 14px;
+  /*
+   * Pin the pill chrome to the shared `--public-pill-height` token
+   * (24px) so the rendered height is deterministic instead of
+   * drifting with the inherited line-height. The bottom-taskbar
+   * pills in public mode read the same token, so the top auth
+   * pills and the bottom pills always render at exactly the same
+   * height.
+   *
+   * Vertical padding is zeroed because the explicit height now
+   * does the work; the previous `3px 14px` shorthand left the
+   * height to compute as font + line-height + padding + border,
+   * which floated between ~22–26px depending on Inter's
+   * resolved line-height.
+   */
+  height: var(--public-pill-height, 24px);
+  padding: 0 14px;
   border-radius: 999px;
   font-size: 12px;
+  line-height: 1;
   font-weight: 600;
   text-decoration: none;
   border: 1px solid transparent;
+  box-sizing: border-box;
   transition: opacity 120ms ease;
 }
 
