@@ -87,8 +87,38 @@
   display: block;
 }
 
+/* Label shimmer — a slow gloss sweep across "Create your agent" so the
+   CTA pulls the eye on the landing surface and the product hero. Uses
+   the same `background-clip: text` recipe as `CookingIndicator` and
+   `ThinkingBlock`, but the stops sit at near-white (not muted grey) so
+   the label never reads as dim against the dark pill fill mid-cycle.
+   Cadence is slightly slower than the streaming indicators (2.4s vs
+   2s) so it reads as polished chrome instead of a work-in-progress
+   spinner. */
+.ctaLabel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.78) 0%,
+    #ffffff 40%,
+    rgba(255, 255, 255, 0.78) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ctaButton {
     transition: none;
+  }
+  .ctaLabel {
+    animation: none;
   }
 }

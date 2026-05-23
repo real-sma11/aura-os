@@ -73,7 +73,7 @@ export function CreateAgentButton({
         })
       }
     >
-      <span>Create your agent</span>
+      <span className={styles.ctaLabel}>Create your agent</span>
       <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
     </button>
   );
