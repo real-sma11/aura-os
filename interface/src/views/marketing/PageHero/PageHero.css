@@ -235,21 +235,10 @@
      `width: 100%` cap still constrains the column. */
   max-width: none;
   margin-inline: auto;
-  /* Optical-balance margin. The base `.pageHeroCenteredStack`
-     declares `gap: 20px` between the three flex children
-     (headline, description, CTA), so the raw flex gap above and
-     below the description is identical. But the `<button>` inside
-     the CTA wrapper declares `padding: 12px 22px`, which means
-     the CTA's VISIBLE top edge (the rounded pill rim) sits 12px
-     INSIDE the wrapper's box. Without compensation the visual
-     space from the description text bottom → button pill top
-     would read 12px LARGER than the space from the headline text
-     bottom → description text top, leaving the description
-     drifting toward the headline. Adding the same 12px to the
-     headline's `margin-bottom` widens the upper visual gap by
-     exactly that delta so both spacings read equal on screen,
-     even though the underlying flex gap is uniform. */
-  margin-bottom: 12px;
+  /* No extra block margin — spacing between the three centered-stack
+     siblings (headline, description, CTA) is owned exclusively by
+     `.pageHeroCenteredStack`'s `gap: 20px` so the three gaps stay
+     uniform. */
 }
 
 .pageHeroContentCentered .pageHeroActions {
@@ -275,17 +264,10 @@
    `.pageHeroHeadlineCta` rule already declares
    `display: flex; justify-content: center`, so horizontal
    alignment falls out of the parent's `align-items: center`
-   without extra positioning.
-
-   The optical-balance compensation that previously lived here
-   as `margin-top: 12px` now lives on the headline as
-   `margin-bottom: 12px` — see the `.pageHeroContentCentered
-   .pageHeroHeadline` block above. Moving it to the upper half
-   of the stack widens the headline→description gap instead of
-   the description→CTA gap, which is the correct side to grow
-   now that the headline pill background has been removed and
-   the CTA button's `padding-top: 12px` is the ONLY remaining
-   asymmetric inset between siblings. */
+   without extra positioning. Vertical spacing to the description
+   above is owned by `.pageHeroCenteredStack`'s uniform
+   `gap: 20px` (no optical-balance margin override) so the three
+   sibling gaps in the centered stack stay equal. */
 
 /* Description rendered inline in the centered content column,
    between the headline pill and the headline CTA. Uses the
