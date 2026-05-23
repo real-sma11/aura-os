@@ -221,6 +221,19 @@ describe("PublicChatView", () => {
     );
   });
 
+  it("auto-focuses the chat input when landing on /chat", async () => {
+    // Arriving on /chat (whether from the sidebar's Chat link, a
+    // session row click, or a direct visit) must place the cursor
+    // inside the message input so the visitor can start typing
+    // without a manual click. The composer form unmounts on the
+    // landing surface and re-mounts on /chat, so React's autoFocus
+    // fires exactly once per arrival.
+    renderView("/chat");
+
+    const input = await screen.findByRole("textbox", { name: "Message Aura" });
+    expect(input).toHaveFocus();
+  });
+
   /*
    * The decorative `MockAuraApp` hero and the right-edge persona
    * `PersonaTickRail` are landing-only chrome. On `/chat` the visitor

@@ -542,6 +542,7 @@ export function PublicChatView(): React.ReactElement {
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Ask Aura anything..."
             disabled={isSending}
+            autoFocus
           />
           <button
             type="submit"
