@@ -128,3 +128,16 @@
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+
+/*
+ * Lightning-bolt glyph that replaces the word "Powered" in the chip
+ * label. Solid `--color-success` fill + matching `currentColor`
+ * stroke, with a faint drop-shadow halo so the bolt reads as a
+ * "live energy" mark glowing at the start of the chip.
+ */
+.poweredByGridBolt {
+  color: var(--color-success, #2ecc71);
+  fill: var(--color-success, #2ecc71);
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 3px var(--color-success, #2ecc71));
+}
