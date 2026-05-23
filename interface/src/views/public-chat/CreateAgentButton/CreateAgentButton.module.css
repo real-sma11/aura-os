@@ -99,9 +99,7 @@
    required because some engines won't repaint a `background-clip:
    text` gradient across an inline span as the background-position
    animates — promoting to an inline block forces the gradient onto
-   its own paint layer so the animation actually renders.
-   `:global(...)` keeps the keyframes name un-hashed by CSS Modules so
-   the `animation` reference is guaranteed to resolve at runtime. */
+   its own paint layer so the animation actually renders. */
 .ctaLabel {
   display: inline-block;
   background: linear-gradient(
@@ -121,7 +119,7 @@
   animation: ctaShimmer 2.6s linear infinite;
 }
 
-@keyframes :global(ctaShimmer) {
+@keyframes ctaShimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
