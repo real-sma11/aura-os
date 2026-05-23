@@ -175,28 +175,29 @@
   z-index: 30;
   /*
    * Re-bind ONLY the nested mock `ShellTitlebar`'s background to
-   * the theme titlebar color at 15% opacity (i.e. 85% transparent)
-   * so the wallpaper / DM cascade reads through the pill while
-   * still picking up the active theme's titlebar tint. The
-   * existing `--shell-chrome-backdrop-filter: blur(40px)
-   * saturate(1.4)` — read by `ShellTitlebar.module.css`'s `.blur`
-   * rule — stays in effect and provides the frosted-glass
-   * treatment over the let-through wallpaper.
+   * the theme titlebar color at 85% opacity (so 15% of the
+   * wallpaper + blur reads through) — still mostly solid so the
+   * AURA wordmark and trailing window-control glyphs stay
+   * legible, but lets a hint of the wallpaper hue tint the pill
+   * via the existing `--shell-chrome-backdrop-filter: blur(40px)
+   * saturate(1.4)` frost (read by `ShellTitlebar.module.css`'s
+   * `.blur` rule).
    *
-   * The `background: var(--shell-chrome-background) !important`
-   * on `.blur` still wins specificity-wise; `!important`
-   * evaluates the resolved value, not the variable reference,
-   * so re-binding the var here cleanly overrides the painted
-   * color without touching `ShellTitlebar`. Scoped to
+   * 5pp more transparent than the global `:root` default of 90%,
+   * which leaves the rest of the shell (real `AuraTitlebar`, real
+   * `BottomTaskbar`, the mock's own `.bottomChrome` pills)
+   * unchanged. The `background: var(--shell-chrome-background)
+   * !important` on `.blur` still wins specificity-wise;
+   * `!important` evaluates the resolved value, not the variable
+   * reference, so re-binding the var here cleanly overrides the
+   * painted color without touching `ShellTitlebar`. Scoped to
    * `.topChrome` so this only affects the mock surface's top
-   * pill: the real `AuraTitlebar`, the real `BottomTaskbar`
-   * pills, and the mock's own `.bottomChrome` pills (siblings,
-   * not descendants) all keep their default 90%-opaque
-   * shell-chrome background.
+   * pill — the `.bottomChrome` pills are siblings, not
+   * descendants, so they don't inherit this override.
    */
   --shell-chrome-background: color-mix(
     in srgb,
-    var(--color-titlebar-bg) 15%,
+    var(--color-titlebar-bg) 85%,
     transparent
   );
 }
