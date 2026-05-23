@@ -43,7 +43,7 @@
  * Test setup uses `MemoryRouter` to drive the route tree (so
  * `useLocation` / `useOutlet` work) and stubs the few heavy modules
  * that don't matter for shell composition (zui Topbar / Input, the
- * theme/wallpaper background layer, the LoginOverlay).
+ * theme/wallpaper background layer).
  */
 
 import { act, render, screen, within } from "@testing-library/react";
@@ -127,10 +127,6 @@ vi.mock("../../lib/windowCommand", () => ({
 
 vi.mock("../DesktopShell/BackgroundLayer", () => ({
   BackgroundLayer: () => <div data-testid="background-layer-stub" />,
-}));
-
-vi.mock("../../views/public-chat/LoginOverlay", () => ({
-  LoginOverlay: () => <div data-testid="login-overlay-stub" role="dialog" />,
 }));
 
 // HostSettingsModal and the agents window layer are lazy-imported by
@@ -408,20 +404,10 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(screen.getByTestId("background-layer-stub")).toBeInTheDocument();
   });
 
-  it("mounts the LoginOverlay on top of the public chat surface when the active route is /login", () => {
-    setLoggedOut();
-    renderAuraShell("/login");
-
-    // The chat outlet stays mounted behind the overlay so the modal
-    // can be dismissed back into public mode without losing context.
-    expect(screen.getByTestId("login-overlay-stub")).toBeInTheDocument();
-  });
-
-  it("does not mount the LoginOverlay on the public landing route", () => {
-    setLoggedOut();
-    renderAuraShell("/");
-    expect(screen.queryByTestId("login-overlay-stub")).not.toBeInTheDocument();
-  });
+  // Note: the `/login` overlay mount lives in `App.tsx` (above the
+  // background-location-aware `<Routes>` so `useLocation()` can read
+  // the real `/login` URL). Coverage for the overlay UI itself is in
+  // `LoginOverlay.test.tsx`; AuraShell no longer owns the gating.
 });
 
 /**

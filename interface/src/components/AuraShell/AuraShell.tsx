@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation, useOutlet } from "react-router-dom";
+import { useOutlet } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { BackgroundLayer } from "../DesktopShell/BackgroundLayer";
 import { PersistentSidekickLane } from "../DesktopShell/PersistentSidekickLane";
@@ -21,7 +21,6 @@ import {
 import { ResponsiveMainLane } from "../ResponsiveMainLane";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { BottomTaskbar } from "../BottomTaskbar";
-import { LoginOverlay } from "../../views/public-chat/LoginOverlay";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useUIModalStore } from "../../stores/ui-modal-store";
@@ -80,9 +79,7 @@ function blurActiveElement(): void {
  */
 export function AuraShell(): React.ReactElement {
   const mode = useEffectiveMode();
-  const location = useLocation();
   const isPublic = mode === "public";
-  const isLoginRoute = location.pathname === "/login";
 
   // Authed-side state. We call these hooks unconditionally because
   // their subscriptions are cheap store reads — `useAppUIStore`,
@@ -305,7 +302,6 @@ export function AuraShell(): React.ReactElement {
           />
         </Suspense>
       ) : null}
-      {isPublic && isLoginRoute && <LoginOverlay />}
     </>
   );
 }

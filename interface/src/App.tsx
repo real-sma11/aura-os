@@ -17,6 +17,7 @@ import { NativeContextMenuOverride } from "./components/NativeContextMenuOverrid
 import { LoginView } from "./views/LoginView";
 import { PublicChatView } from "./views/public-chat/PublicChatView";
 import { PublicMarketingPanel } from "./views/public-chat/PublicMarketingPanel";
+import { LoginOverlay } from "./views/public-chat/LoginOverlay";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
@@ -216,12 +217,17 @@ function AppRoutes(): React.ReactElement {
   // the login modal from a marketing page (or any other surface),
   // the trigger navigates to `/login?tab=...` with
   // `state.backgroundLocation` carrying the URL they came from. We
-  // drive the top-level `<Routes>` matcher off that stashed
+  // drive the desktop/web `<Routes>` matcher off that stashed
   // location so the underlying view (ProductView, PricingView, the
-  // public chat landing, etc.) stays mounted while `AuraShell`
-  // overlays `LoginOverlay` on top — see `AuraShell.isLoginRoute`,
-  // which still keys off `useLocation().pathname` (the real `/login`)
-  // so the overlay still mounts.
+  // public chat landing, etc.) stays mounted while we overlay
+  // `LoginOverlay` on top.
+  //
+  // The overlay is mounted as a sibling of `<Routes>` (below) rather
+  // than inside it because `<Routes location={...}>` overrides
+  // `LocationContext` for every descendant — `useLocation()` inside
+  // would return the background location, not the real `/login`,
+  // making any in-tree gating impossible. Mounting outside lets the
+  // sibling read `useLocation()` and see the real `/login` URL.
   //
   // Without `backgroundLocation` (direct deep link to `/login`,
   // `RequireAuth`'s `state.from` redirect, etc.) we fall through to
@@ -229,6 +235,7 @@ function AppRoutes(): React.ReactElement {
   // `/login` path resolves to `<PublicChatView />` underneath.
   const navState = location.state as { backgroundLocation?: Location } | null;
   const routeLocation = navState?.backgroundLocation ?? location;
+  const showLoginOverlay = location.pathname === "/login";
 
   if (isCaptureLoginRoute(location)) {
     return (
@@ -279,14 +286,18 @@ function AppRoutes(): React.ReactElement {
   // wraps every route. AppShell provides the provider tree (auth
   // boot, modals, CaptureBridge) and renders `<AuraShell>` for
   // desktop (or `<MobileShell>` on mobile layouts). AuraShell uses
-  // `<Outlet />` to mount per-route content in its `<main>` slot
-  // and renders `LoginOverlay` internally when `pathname ===
-  // "/login"`. Marketing routes (`/product`, `/changelog`,
-  // `/feedback`, `/pricing`) also mount in this tree under
+  // `<Outlet />` to mount per-route content in its `<main>` slot.
+  // Marketing routes (`/product`, `/changelog`, `/feedback`,
+  // `/pricing`) also mount in this tree under
   // `<PublicMarketingPanel>`, so they share the same public-mode
   // chrome (titlebar + sidebar + `PublicSidebarFooter`) as the
   // chat landing surface — only the middle panel content swaps.
+  //
+  // `LoginOverlay` is mounted as a sibling of `<Routes>` (see
+  // `showLoginOverlay` above) so it overlays whichever underlying
+  // surface the visitor was on when they opened the modal.
   return (
+    <>
     <Routes location={routeLocation}>
       <Route path="capture-login" element={<CaptureLoginView />} />
       <Route
@@ -363,6 +374,8 @@ function AppRoutes(): React.ReactElement {
         </Route>
       </Route>
     </Routes>
+    {showLoginOverlay && <LoginOverlay />}
+    </>
   );
 }
 
