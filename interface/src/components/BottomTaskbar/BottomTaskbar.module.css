@@ -131,13 +131,13 @@
 
 /*
  * Lightning-bolt glyph that replaces the word "Powered" in the chip
- * label. Filled in `--color-success` so the icon reads as a solid
- * energy mark rather than a thin outline, with a faint drop-shadow
- * glow so it carries the same "live" feel at a distance.
+ * label. 1px green stroke (`color` drives lucide's `currentColor`
+ * `stroke` attribute; `strokeWidth={1}` on the JSX side narrows the
+ * outline from the lucide default of 2) over a solid black interior
+ * fill — reads as a high-contrast badge against the taskbar pill.
  */
 .poweredByGridBolt {
   color: var(--color-success, #2ecc71);
-  fill: var(--color-success, #2ecc71);
+  fill: #000;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 3px var(--color-success, #2ecc71));
 }

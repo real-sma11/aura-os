@@ -27,6 +27,7 @@ export function PoweredByGridButton(): React.ReactElement {
     >
       <Zap
         size={POWERED_ICON_SIZE}
+        strokeWidth={1}
         aria-hidden="true"
         className={styles.poweredByGridBolt}
       />
