@@ -725,6 +725,41 @@ describe("PublicChatView wheel cycling", () => {
     );
   });
 
+  /*
+   * Companion to the "hides the MockAuraApp hero AND the persona
+   * tick rail on /chat" test in the main suite above: with both
+   * surfaces unmounted, the wheel handler must also short-circuit
+   * so an in-transcript scroll doesn't silently flip the page bg
+   * persona from underneath the visitor (they'd see the theme
+   * change with no on-screen affordance explaining why). We can't
+   * easily read the persona state through the test ids the rest
+   * of this `describe` block uses — the rail + hero stub are
+   * unmounted on `/chat` by construction — so we read the active
+   * persona via the `data-persona-id` attribute on `.chatView`
+   * that the component publishes for the site-bg layer.
+   */
+  it("does not cycle personas on /chat (no on-screen selector to indicate the gesture)", () => {
+    // The rail + hero stub are unmounted on /chat, so we read the
+    // active persona via the `data-persona-id` attribute on
+    // `.chatView` itself — it's bound to the committed persona and
+    // updates in the same render the wheel handler accepts an
+    // event. If the chat-mode short-circuit ever regresses, this
+    // attribute flips after the first wheel-down call below and
+    // the assertion fires.
+    renderView("/chat");
+
+    const view = screen.getByTestId("public-chat-view");
+    expect(view).toHaveAttribute("data-persona-id", "vibecoder");
+
+    fireEvent.wheel(view, { deltaY: 120 });
+    fireEvent.wheel(view, { deltaY: 120 });
+    fireEvent.wheel(view, { deltaY: -120 });
+
+    // Persona stays pinned to Vibecoder — none of the three wheel
+    // gestures advanced the active index.
+    expect(view).toHaveAttribute("data-persona-id", "vibecoder");
+  });
+
   it("ignores near-zero deltaY events (horizontal trackpad jitter)", () => {
     // Some browsers fold tiny horizontal trackpad noise into
     // `deltaY` as sub-pixel values; without the magnitude floor a

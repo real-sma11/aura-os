@@ -299,6 +299,15 @@ export function PublicChatView(): React.ReactElement {
   // wrapping past either end so the list reads as an infinite
   // carousel rather than a clamped slider.
   //
+  // Gated on `!isChatPage` because the chat surface hides both the
+  // `PersonaTickRail` AND the `MockAuraApp` hero — the visitor has
+  // no on-screen affordance that says "scrolling cycles the
+  // theme", so an accidental swipe inside the transcript would
+  // flip the page bg from underneath them with no visible cause.
+  // Landing keeps the carousel because both surfaces are visible
+  // there and the scroll-to-cycle gesture reads naturally against
+  // the right-edge tick column.
+  //
   // No time-based throttle: every wheel event with a non-trivial
   // deltaY advances the active persona by one step. A momentum
   // trackpad flick will therefore stream multiple persona changes
@@ -311,6 +320,7 @@ export function PublicChatView(): React.ReactElement {
   // fires a single wheel event.
   const handleWheelCycle = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>): void => {
+      if (isChatPage) return;
       const delta = event.deltaY;
       if (Math.abs(delta) < WHEEL_DELTA_THRESHOLD) return;
 
@@ -321,7 +331,7 @@ export function PublicChatView(): React.ReactElement {
       // would otherwise round-trip into the clamp guard below.
       setActiveIndex((prev) => ((prev + direction) % n + n) % n);
     },
-    [],
+    [isChatPage],
   );
 
   // Foreground vars + CTA glow bound to the ACTIVE persona so the
