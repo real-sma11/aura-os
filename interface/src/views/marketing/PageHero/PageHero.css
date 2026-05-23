@@ -326,21 +326,26 @@
    the loop after the peek strip declared by the negative
    `margin-top` below.
 
-   The negative `margin-top` of `-1/3 viewport` keeps the video's
-   top edge anchored at ~2/3 of the viewport on initial load even
-   though `.pageHeroContentCentered` now reserves a FULL viewport
-   for centering. Without the offset the video would start at
-   100vh (just below the fold), erasing the bottom-of-screen peek
-   the user requested earlier. With the offset:
-     - Content area: 100vh tall, wrapper centered at 50vh
-     - Video natural start: 100vh (after the content area)
-     - Video actual start: 100vh − 33vh = ~67vh = 2/3 down
-     - Visible peek strip on load: 100vh − 67vh = ~33vh
+   The negative `margin-top` of `-1/3 body height` keeps the
+   video's top edge anchored at ~2/3 of the visible AURA body on
+   initial load even though `.pageHeroContentCentered` now
+   reserves the FULL body for centering. Without the offset the
+   video would start at the very bottom of the body (just above
+   the taskbar pill), erasing the bottom-of-screen peek the user
+   requested. The expression matches the body sizing used for
+   `.pageHeroContentCentered`'s `min-height` so the two stay in
+   lockstep — change one and you change the other:
+     - Content area: `100vh - 2 * --shell-chrome-outer-height`
+       (~100vh − 84px), wrapper centered at the body midpoint
+     - Video natural start: end of content area (~body bottom)
+     - Video pulled up: 1/3 of body height
+     - Video actual start: ~2/3 down the visible body
+     - Visible peek strip on load: ~1/3 of the body
    The negative margin also shrinks the section's overall height
-   by the same 33vh, so subsequent marketing sections
-   (`ProductScreenSection`, etc.) flow up by that amount — i.e.
-   they sit RIGHT below the video's bottom edge instead of being
-   pushed an extra 33vh down by the now-100vh content area. The
+   by the same 1/3-body amount, so subsequent marketing sections
+   (`ProductScreenSection`, etc.) flow up to sit RIGHT below the
+   video's bottom edge instead of being pushed an extra 1/3-body
+   further down by the now-body-tall content area. The
    `z-index: 1` (down from the prior 2) keeps the video BENEATH
    the centered content stack even if a tall viewport pushes the
    centered wrapper's bottom edge past the video's top, so the
