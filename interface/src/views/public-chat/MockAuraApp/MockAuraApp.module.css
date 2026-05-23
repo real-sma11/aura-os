@@ -175,22 +175,30 @@
   z-index: 30;
   /*
    * Re-bind ONLY the nested mock `ShellTitlebar`'s background to
-   * fully transparent so the wallpaper (and the DM cascade above
-   * it) shows through the top pill. The existing
-   * `--shell-chrome-backdrop-filter: blur(40px) saturate(1.4)` —
-   * read by `ShellTitlebar.module.css`'s `.blur` rule — stays in
-   * effect and provides the frosted-glass treatment. The
-   * `background: var(--shell-chrome-background) !important` on
-   * `.blur` still wins specificity-wise; `!important` evaluates
-   * the resolved value, not the variable reference, so re-binding
-   * the var here cleanly overrides the painted color without
-   * touching `ShellTitlebar`. Scoped to `.topChrome` so this
-   * only affects the mock surface's top pill: the real
-   * `AuraTitlebar`, the real `BottomTaskbar` pills, and the
-   * mock's own `.bottomChrome` pills (siblings, not descendants)
-   * all keep their default 90%-opaque shell-chrome background.
+   * the theme titlebar color at 15% opacity (i.e. 85% transparent)
+   * so the wallpaper / DM cascade reads through the pill while
+   * still picking up the active theme's titlebar tint. The
+   * existing `--shell-chrome-backdrop-filter: blur(40px)
+   * saturate(1.4)` — read by `ShellTitlebar.module.css`'s `.blur`
+   * rule — stays in effect and provides the frosted-glass
+   * treatment over the let-through wallpaper.
+   *
+   * The `background: var(--shell-chrome-background) !important`
+   * on `.blur` still wins specificity-wise; `!important`
+   * evaluates the resolved value, not the variable reference,
+   * so re-binding the var here cleanly overrides the painted
+   * color without touching `ShellTitlebar`. Scoped to
+   * `.topChrome` so this only affects the mock surface's top
+   * pill: the real `AuraTitlebar`, the real `BottomTaskbar`
+   * pills, and the mock's own `.bottomChrome` pills (siblings,
+   * not descendants) all keep their default 90%-opaque
+   * shell-chrome background.
    */
-  --shell-chrome-background: transparent;
+  --shell-chrome-background: color-mix(
+    in srgb,
+    var(--color-titlebar-bg) 15%,
+    transparent
+  );
 }
 
 /* Decorative slot content sized to feel like the real public-mode
