@@ -90,29 +90,38 @@
 /* Label shimmer — a bright highlight band sweeps left-to-right across
    "Create your agent" on a continuous loop, so the CTA pulls the eye
    on the landing surface and the product hero. Same `background-clip:
-   text` recipe as `CookingIndicator` and `ThinkingBlock`, but with a
-   dimmer base (~45% white) and a tight #ffffff peak so the moving
-   highlight reads clearly against the dark pill fill instead of
-   washing out. Linear timing keeps the sweep at a steady cadence
-   rather than easing out at the edges, so it feels like polished
-   chrome rather than a stuttering loop. */
+   text` recipe as `CookingIndicator` and `ThinkingBlock`. Stops use
+   OPAQUE colors (medium gray base, pure-white peak) rather than alpha
+   variations of white, so the moving highlight reads clearly against
+   the dark pill fill instead of all stops blending into the same
+   apparent shade. Linear timing keeps the sweep at a steady cadence
+   rather than easing out at the edges. `display: inline-block` is
+   required because some engines won't repaint a `background-clip:
+   text` gradient across an inline span as the background-position
+   animates — promoting to an inline block forces the gradient onto
+   its own paint layer so the animation actually renders.
+   `:global(...)` keeps the keyframes name un-hashed by CSS Modules so
+   the `animation` reference is guaranteed to resolve at runtime. */
 .ctaLabel {
+  display: inline-block;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 255, 255, 0.45) 35%,
+    #8a8a98 0%,
+    #8a8a98 35%,
     #ffffff 50%,
-    rgba(255, 255, 255, 0.45) 65%,
-    rgba(255, 255, 255, 0.45) 100%
+    #8a8a98 65%,
+    #8a8a98 100%
   );
   background-size: 250% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
+  will-change: background-position;
   animation: ctaShimmer 2.6s linear infinite;
 }
 
-@keyframes ctaShimmer {
+@keyframes :global(ctaShimmer) {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
