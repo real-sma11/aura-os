@@ -68,7 +68,17 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  transition: opacity 220ms ease;
+  /*
+   * Keep this in lockstep with `.siteBackground` in
+   * `PublicChatView.module.css` (currently `400ms ease-in-out`)
+   * so the wallpaper inside the mock window and the page bg
+   * behind it tween together. The 400ms duration also leaves a
+   * ~150ms hold at opacity 0 inside the parent's 550ms `FADE_MS`
+   * window — that blank pause is what makes the swap obviously
+   * read as fade-out -> swap -> fade-in instead of one
+   * uninterrupted dissolve.
+   */
+  transition: opacity 400ms ease-in-out;
 }
 
 /*

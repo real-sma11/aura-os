@@ -16,30 +16,33 @@ import styles from "./PublicChatView.module.css";
 /**
  * Right-side surface for the public (logged-out) shell.
  *
- * Persona swap: fade-out, swap, fade-in
- * -------------------------------------
+ * Persona swap: fade-out, blank hold, fade-in
+ * -------------------------------------------
  * Picking a new tick drives a single derived `visible` boolean
  * (`activeIndex === committedIndex`) that owns the opacity of BOTH
  * the page bg layer (rendered here) and the desktop wallpaper
  * (rendered inside `MockAuraApp` via `ComposePanel`). The swap
- * runs in three steps:
+ * runs in four phases:
  *
  *   1. User clicks a tick. `activeIndex` flips immediately, which
  *      drives the rail's `aria-current`, the marketing nav / tick
  *      foreground vars, and the CTA glow — clicks always feel
  *      responsive. `activeIndex !== committedIndex` so `visible`
- *      drops to `false` in the same render and the CSS opacity
- *      transitions on `.siteBackground` and the desktop bg
- *      wrapper (220ms ease) tween both surfaces from 1 → 0 in
- *      parallel.
- *   2. The swap effect schedules a `setTimeout(FADE_MS)`. While
- *      it's pending the layers stay at opacity 0, painting the
- *      OLD persona's color + image invisibly.
- *   3. Timer fires. `setCommittedIndex(activeIndex)` updates the
- *      painted content AND — because `visible` is derived — flips
- *      it back to `true` in the same render. The new content
- *      lands in the DOM at opacity 0, then the CSS transition
- *      tweens opacity 0 → 1 to reveal it.
+ *      drops to `false` in the same render.
+ *   2. CSS opacity transitions on `.siteBackground` and the
+ *      desktop bg wrapper (400ms ease-in-out) tween both surfaces
+ *      from 1 → 0 in parallel. The OLD persona's color + image
+ *      fade out together as one snapshot.
+ *   3. The transitions finish at 400ms; the layers sit at
+ *      opacity 0 for the remaining ~150ms of the `FADE_MS`
+ *      window. This blank hold is what makes the swap obviously
+ *      read as a clean fade-out-then-fade-in instead of one
+ *      uninterrupted dissolve.
+ *   4. Timer fires at 550ms. `setCommittedIndex(activeIndex)`
+ *      updates the painted content AND — because `visible` is
+ *      derived — flips it back to `true` in the same render. The
+ *      new content lands in the DOM at opacity 0, then the CSS
+ *      transition tweens opacity 0 → 1 to reveal it.
  *
  * That's it. No layered cross-fade, no decode gate, no
  * onLoad-driven state machine. The bg color + image always paint
@@ -58,7 +61,15 @@ import styles from "./PublicChatView.module.css";
  * moment opacity reaches 1.
  */
 
-const FADE_MS = 220;
+// Total wait between the click and committing the new persona. Holds
+// the layers at opacity 0 for `FADE_MS - <css transition duration>`
+// milliseconds AFTER the fade-out transition finishes so the swap
+// reads as fade-out -> brief blank hold -> fade-in rather than a
+// single uninterrupted dissolve. The matching CSS opacity transition
+// in `PublicChatView.module.css` and `MockAuraApp.module.css` is
+// 400ms, so the difference (150ms) is the visible dark pause that
+// makes the swap obvious without feeling sluggish.
+const FADE_MS = 550;
 
 export function PublicChatView(): React.ReactElement {
   const navigate = useNavigate();

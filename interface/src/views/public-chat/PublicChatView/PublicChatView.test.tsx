@@ -274,13 +274,14 @@ describe("PublicChatView landing", () => {
         "/personas/vibecoder/desktop.png",
       );
 
-      // Advance past the 220ms fade-out window. The setTimeout
-      // callback runs `setCommittedIndex` + `setVisible(true)` in
-      // one batch, so the next paint has the new persona's
-      // wallpaper + site bg at opacity 1 (CSS transition handles
-      // the actual fade-in tween).
+      // Advance past the 550ms fade-out + blank-hold window. The
+      // setTimeout callback runs `setCommittedIndex`; the derived
+      // `visible` boolean flips back to true on the same render
+      // so the next paint has the new persona's wallpaper + site
+      // bg at opacity 1 (CSS transition handles the actual
+      // fade-in tween over the next 400ms).
       await act(async () => {
-        vi.advanceTimersByTime(250);
+        vi.advanceTimersByTime(600);
       });
 
       expect(heroStub).toHaveAttribute(
@@ -308,8 +309,8 @@ describe("PublicChatView landing", () => {
     // Two-tier state contract: `activeIndex` drives the rail and
     // foreground vars synchronously so the click feels responsive;
     // `committedIndex` (which drives the bg + wallpaper rendering)
-    // only advances after a 220ms fade-out so the swap is always
-    // fade out -> swap -> fade in.
+    // only advances after a 550ms fade-out + blank-hold window so
+    // the swap is always fade out -> brief blank -> fade in.
     vi.useFakeTimers();
     try {
       renderView();
@@ -330,7 +331,8 @@ describe("PublicChatView landing", () => {
       expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
 
       // The committed bg + wallpaper still reflect Vibecoder —
-      // we're mid-fade-out, before the 220ms timer runs.
+      // we're inside the 550ms fade-out + blank-hold window,
+      // before the timer fires.
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
         "/personas/vibecoder/desktop.png",
@@ -346,10 +348,10 @@ describe("PublicChatView landing", () => {
       ).toBe("0");
 
       // Letting the timer fire advances the committed index and
-      // flips the wrapper opacity back to 1 so the CSS transition
-      // fades the new persona in.
+      // flips the derived `visible` back to true so the CSS
+      // transition fades the new persona in.
       await act(async () => {
-        vi.advanceTimersByTime(250);
+        vi.advanceTimersByTime(600);
       });
 
       expect(heroStub).toHaveAttribute(

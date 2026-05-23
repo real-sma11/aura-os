@@ -55,7 +55,23 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  transition: opacity 220ms ease, background-color 220ms ease;
+  /*
+   * Opacity tween duration must match `MockAuraApp.module.css`'s
+   * `.desktopBackground` (currently 400ms ease-in-out) so the page
+   * bg and the wallpaper inside the mock window swap in lockstep,
+   * and must be SHORTER than `FADE_MS` in `PublicChatView.tsx`
+   * (currently 550ms) so the layer settles at opacity 0 for the
+   * remaining ~150ms before `setCommittedIndex` flips it back to
+   * 1. That brief blank hold is what makes the swap legible —
+   * without it the two transitions would chain back-to-back and
+   * read as a single 800ms dissolve.
+   *
+   * `ease-in-out` slows the start AND end of the tween, which
+   * exaggerates the perceptual change near opacity 1 where the
+   * eye is most sensitive, so the fade feels deliberate instead
+   * of snappy.
+   */
+  transition: opacity 400ms ease-in-out, background-color 400ms ease-in-out;
 }
 
 .siteBackgroundImage {
