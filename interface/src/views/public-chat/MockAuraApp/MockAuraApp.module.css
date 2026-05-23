@@ -178,16 +178,17 @@
    * backdrop-filter so the wallpaper structure actually reads
    * through the pill.
    *
-   * Background: theme titlebar color at 50% opacity — half the
-   * wallpaper reads through while enough theme tint remains for
-   * the AURA wordmark and window-control glyphs to stay legible
-   * in both dark and light themes.
+   * Background: theme titlebar color at 30% opacity (70%
+   * transparent) — most of the wallpaper reads through while
+   * enough theme tint remains for the AURA wordmark and
+   * window-control glyphs to stay legible in both dark and
+   * light themes.
    *
    * Backdrop filter: the global `:root` default of `blur(40px)
    * saturate(1.4)` is tuned for the real shell, where the pill
    * sits over arbitrary opaque app content and wants a strong
    * frost. Over the mock's wallpaper that 40px blur smears
-   * everything into a single average color, so even at 50%
+   * everything into a single average color, so even at high
    * transparency you can't see image features behind the bar.
    * Drop to `blur(8px) saturate(1.1)` so the wallpaper's shapes
    * and gradients still register through the frost.
@@ -205,7 +206,7 @@
    */
   --shell-chrome-background: color-mix(
     in srgb,
-    var(--color-titlebar-bg) 50%,
+    var(--color-titlebar-bg) 30%,
     transparent
   );
   --shell-chrome-backdrop-filter: blur(8px) saturate(1.1);
