@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "@cypher-asi/zui";
 import { ArrowRight } from "lucide-react";
 import { ComposePanel } from "../ComposePanel";
@@ -31,9 +32,11 @@ import styles from "./PublicChatView.module.css";
  *     button is styled as a neon-glow panel: dark translucent fill
  *     with a colored bloom whose hue is driven by the active
  *     persona's `siteCtaGlowColor` (published below as
- *     `--public-cta-glow-color` on `.chatView`). The button itself
- *     is still a placeholder (no onClick / no route); wiring it to
- *     a real signup destination is a follow-up.
+ *     `--public-cta-glow-color` on `.chatView`). Clicking it
+ *     navigates to `/login?tab=register`, which `AuraShell` overlays
+ *     as the `LoginOverlay` modal with the Create Account tab
+ *     pre-selected — the same destination the marketing nav's
+ *     "Sign Up" pill uses.
  *
  * Theme propagation:
  *   The active persona's `siteBackgroundColor` and
@@ -44,6 +47,8 @@ import styles from "./PublicChatView.module.css";
  *   `undefined` and the shell's default page color shows through.
  */
 export function PublicChatView(): React.ReactElement {
+  const navigate = useNavigate();
+
   // Index 0 (Vibecoder) is the default landing persona. Hover/
   // focus/click on a tick promotes that persona to active and the
   // selection sticks until the visitor picks another tick — there
@@ -168,6 +173,7 @@ export function PublicChatView(): React.ReactElement {
           type="button"
           className={styles.ctaButton}
           data-agent-surface="public-landing-cta"
+          onClick={() => navigate("/login?tab=register")}
         >
           <span>Create your agent</span>
           <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />

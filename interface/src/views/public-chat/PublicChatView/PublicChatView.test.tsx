@@ -10,7 +10,7 @@
  */
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 // Stub `MockAuraApp` so the test surfaces just the wallpaper-prop
@@ -37,6 +37,33 @@ function renderView() {
   return render(
     <MemoryRouter initialEntries={["/"]}>
       <PublicChatView />
+    </MemoryRouter>,
+  );
+}
+
+/**
+ * Echoes the current router location into the DOM so navigation
+ * effects triggered by the CTA can be asserted without coupling
+ * the test to React Router internals.
+ */
+function LocationProbe(): React.ReactElement {
+  const location = useLocation();
+  return (
+    <div
+      data-testid="location-probe"
+      data-pathname={location.pathname}
+      data-search={location.search}
+    />
+  );
+}
+
+function renderViewWithProbe() {
+  return render(
+    <MemoryRouter initialEntries={["/"]}>
+      <Routes>
+        <Route path="*" element={<PublicChatView />} />
+      </Routes>
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -75,6 +102,24 @@ describe("PublicChatView landing", () => {
       "data-agent-surface",
       "public-landing-cta",
     );
+  });
+
+  it("navigates to /login?tab=register when the CTA button is clicked", () => {
+    // Mirrors the destination used by the marketing nav's "Sign Up"
+    // pill, so the AuraShell-mounted LoginOverlay opens with the
+    // Create Account tab pre-selected (via `useLoginForm`'s
+    // `?tab=register` seed effect).
+    renderViewWithProbe();
+    const probe = screen.getByTestId("location-probe");
+    expect(probe).toHaveAttribute("data-pathname", "/");
+    expect(probe).toHaveAttribute("data-search", "");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /create your agent/i }),
+    );
+
+    expect(probe).toHaveAttribute("data-pathname", "/login");
+    expect(probe).toHaveAttribute("data-search", "?tab=register");
   });
 
   it("does not render any chat input, transcript, or gate modal", () => {
