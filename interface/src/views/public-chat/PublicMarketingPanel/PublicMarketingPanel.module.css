@@ -30,17 +30,14 @@
  * the standard CSS `transition: opacity` to fade in on `/product`
  * entry and fade out on exit.
  *
- * The `inset: 0` anchors the ring flush with the visible scroll-
- * column edges (the scroll column is itself `position: absolute;
- * inset: 0` inside `AuraShell.mainPanel`, which sits inside
- * `.body`'s `margin: 0 5px` body gutter), so the frame traces the
- * outer perimeter of the public-mode shell content area — directly
- * underneath the top titlebar pill, directly above the bottom
- * taskbar pill, and at the inner edge of the 5px body gutter on the
- * left/right. Because the overlay is positioned absolutely against
- * the scroll column (the scrolling viewport), it stays anchored to
- * the visible page area rather than scrolling with the underlying
- * `<Outlet />` content.
+ * The `inset: 12px` anchors the ring inside the visible scroll-column
+ * box (which is itself `position: absolute; inset: 0` inside
+ * `AuraShell.mainPanel`), so the frame sits 12px inside the public-
+ * mode shell chrome on all four sides — between the top titlebar pill
+ * and the bottom taskbar pill. Because the overlay is positioned
+ * absolutely against the scroll column (the scrolling viewport), it
+ * stays anchored to the visible page area rather than scrolling with
+ * the underlying `<Outlet />` content.
  *
  * Border treatment: the standard pseudo-less recipe for a rounded
  * gradient border. The element itself paints the gradient as its
@@ -55,8 +52,8 @@
  */
 .gradientFrame {
   position: absolute;
-  inset: 0;
-  border-radius: 6px;
+  inset: 12px;
+  border-radius: 16px;
   padding: 1.5px;
   background: linear-gradient(
     135deg,
