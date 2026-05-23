@@ -128,16 +128,3 @@
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-
-/*
- * Lightning-bolt glyph that replaces the word "Powered" in the chip
- * label. 1px green stroke (`color` drives lucide's `currentColor`
- * `stroke` attribute; `strokeWidth={1}` on the JSX side narrows the
- * outline from the lucide default of 2) over a solid black interior
- * fill — reads as a high-contrast badge against the taskbar pill.
- */
-.poweredByGridBolt {
-  color: var(--color-success, #2ecc71);
-  fill: #000;
-  flex-shrink: 0;
-}

@@ -29,7 +29,6 @@ export function PoweredByGridButton(): React.ReactElement {
         size={POWERED_ICON_SIZE}
         strokeWidth={1}
         aria-hidden="true"
-        className={styles.poweredByGridBolt}
       />
       <span>
         by <strong>THE GRID</strong>
