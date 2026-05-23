@@ -1,34 +1,25 @@
 /*
  * MockAuraApp — empty-state hero for the public chat. The frame is a
  * flat 16:10 wallpaper rectangle with a soft drop shadow and square
- * corners. A per-persona wallpaper `<img>` paints across the frame
- * (or no wallpaper at all for NO_THEME personas), and the
- * `DMWindowManager` cascades the scripted DM windows over it. The
- * chrome is visually 1:1 with a live Aura window — phase 1 layers
- * the real `ShellTitlebar` component over the top via the
- * `.topChrome` overlay, and phase 2 layers three rounded
- * `BottomTaskbar`-style pills (left / center / right) over the
- * bottom via the `.bottomChrome` overlay. Both overlays reuse the
- * same `--shell-chrome-*` tokens that drive the real shell, so
- * margins, radii, blur, and border colors stay in lockstep.
+ * corners. A per-persona desktop background (color + wallpaper
+ * image) paints across the frame (or nothing at all for NO_THEME
+ * personas), and the `DMWindowManager` cascades the scripted DM
+ * windows over it. The chrome is visually 1:1 with a live Aura
+ * window — phase 1 layers the real `ShellTitlebar` over the top
+ * via `.topChrome`, and phase 2 layers three rounded
+ * `BottomTaskbar`-style pills over the bottom via `.bottomChrome`.
  *
- * The wallpaper cross-fade lifecycle is owned by `useCrossFadeLayers`
- * (see `cross-fade.ts`); the matching `.layerEntering` /
- * `.layerLeaving` classes that animate opacity live in the shared
- * `cross-fade.module.css` and are applied to the layers from JSX.
+ * Persona swap (fade-out then fade-in)
+ * ------------------------------------
+ * `MockAuraApp` doesn't own any swap state — the parent
+ * (`PublicChatView`) toggles `desktopBackgroundOpacity` between 1
+ * and 0 to drive a single `.desktopBackground` wrapper through a
+ * 220ms opacity transition. Because the persona color lives on
+ * the wrapper AND the wallpaper `<img>` lives inside it, both
+ * channels always dissolve together as one snapshot — no
+ * compositing math, no layered cross-fade, no onLoad gating.
  */
 
-/*
- * The wallpaper rectangle is sized to ~75% of the empty-state panel in
- * both dimensions, centered by the parent `.composePanel`'s grid (see
- * `ComposePanel.module.css`). The `min(75cqw, 75cqh * 16 / 10)` clamp
- * picks whichever axis is the binding constraint so the 16:10 frame
- * always fits inside both 75% width AND 75% height — leaving a healthy
- * gutter of the page background visible on every side regardless of
- * the panel's aspect ratio. `75cqw`/`75cqh` resolve against the
- * `.composePanel` query container so the sidebar / input-bar area
- * never bleed into the percentage.
- */
 .appFrame {
   position: relative;
   aspect-ratio: 16 / 10;
@@ -36,68 +27,79 @@
   max-width: 75cqw;
   max-height: 75cqh;
   /*
-   * Default fill painted behind the wallpaper. Shows through for
-   * NO_THEME personas (no wallpaper layer at all) and as the
-   * letterbox fill for `contain`-fit wallpapers whose persona
-   * doesn't override `desktopBackgroundColor`.
+   * Default fill painted underneath everything. Shows through for
+   * NO_THEME personas (no `.desktopBackground` wrapper mounted) and
+   * during the fade-out window (when the wrapper above sits at
+   * opacity 0).
    */
   background: #0b0c10;
   /*
    * Clip everything painted inside the frame to its 16:10
-   * rectangle. The outer drop shadow below is unaffected because
+   * rectangle. The outer drop shadow is unaffected because
    * `box-shadow` paints OUTSIDE the element's box, not as
    * descendant content. This matters for personas that supply
    * `desktopBackgroundScale` != 1 — a scaled wallpaper either
    * overflows (scale > 1) or shrinks (scale < 1) inside this
-   * frame, and we want the overflow trimmed cleanly at the
-   * window edge / the shrinking border filled by this element's
-   * bg color rather than spilling onto the surrounding site bg.
+   * frame, and we want the overflow trimmed cleanly to the window
+   * edge / the shrinking border filled by this element's bg color
+   * rather than spilling onto the surrounding site bg.
    */
   overflow: hidden;
-  /*
-   * Tween the frame bg color when the active persona swaps to
-   * one with a different `desktopBackgroundColor` (e.g.
-   * Vibecoder's pink ↔ Cypher Punk's black). The wallpaper
-   * cross-fade runs in parallel above this bg, so matching the
-   * fade duration keeps the two channels feeling like one
-   * synchronized swap rather than a bg snap with a fading image
-   * on top.
-   */
-  transition: background-color 220ms ease;
   box-shadow:
     0 30px 60px -20px rgba(0, 0, 0, 0.55),
     0 8px 18px -8px rgba(0, 0, 0, 0.45);
 }
 
 /*
- * Per-persona wallpaper `<img>` painted across the mock frame. Two
- * instances mount during a persona swap (an outgoing one and an
- * entering one) so the swap dissolves rather than snaps; the
- * fade-in / fade-out animations come from the shared
- * `cross-fade.module.css` (`.layerEntering` / `.layerLeaving`),
- * applied to the layers from JSX in `MockAuraApp.tsx`.
+ * Desktop background wrapper. ONE element that paints both the
+ * persona's `desktopBackgroundColor` (via `background-color` set
+ * inline from JSX) and the wallpaper `<img>` (as the wrapper's
+ * only direct child). The parent toggles this element's opacity
+ * to drive the fade between personas, so color + image always
+ * dissolve together as a single snapshot — there's no separate
+ * color layer that could snap while the image fades.
+ *
+ * `transition: opacity 220ms ease` keeps the fade-out + fade-in
+ * timing consistent with the page bg layer in
+ * `PublicChatView.module.css`, so both surfaces swap in lockstep.
+ */
+.desktopBackground {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+/*
+ * Per-persona wallpaper `<img>`. Painted inside `.desktopBackground`
+ * so it inherits the wrapper's opacity during the fade — the parent
+ * only animates the wrapper, never the image directly.
  *
  * `object-fit: cover` is the default; personas with a non-16:10
- * source can override to `contain` via `desktopBackgroundFit` —
- * inline `object-position` and `transform: scale()` (from
- * `desktopBackgroundPosition` / `desktopBackgroundScale`) are
- * applied per-layer so the outgoing layer keeps painting its
- * frozen crop while it fades.
+ * source can override to `contain` via `desktopBackgroundFit` from
+ * JSX. `object-position` and `transform: scale()` come from the
+ * persona theme and are applied inline.
  *
- * No `transition` on `object-position` / `transform` — when a
- * persona swap changes the crop, the new wallpaper must mount
- * already at its final position and just fade in. Sliding the
- * crop window between two unrelated images reads as the figure
- * "warping" mid-swap, which the cross-fade is designed to avoid.
+ * No `transition` on `object-position` / `transform` — when the
+ * persona swap changes the crop, the new wallpaper mounts already
+ * at its final position. Sliding the crop window between two
+ * unrelated images reads as the figure "warping" mid-swap, which
+ * defeats the dissolve.
  */
-.wallpaper {
+.wallpaperImage {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   pointer-events: none;
-  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktopBackground {
+    transition: none;
+  }
 }
 
 /*

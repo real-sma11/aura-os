@@ -233,88 +233,104 @@ describe("PublicChatView landing", () => {
     expect(panelFor("Researcher")).toHaveAttribute("data-active", "true");
   });
 
-  it("swaps the decode-gated wallpaper and layered site background when Solo Builder is selected from the menu", async () => {
-    renderView();
-    const rail = screen.getByTestId("persona-tick-rail");
-    const heroStub = screen.getByTestId("mock-aura-app-stub");
+  it("swaps the wallpaper and site background to the new persona after the fade window elapses", async () => {
+    vi.useFakeTimers();
+    try {
+      renderView();
+      const rail = screen.getByTestId("persona-tick-rail");
+      const heroStub = screen.getByTestId("mock-aura-app-stub");
 
-    // Vibecoder is the default landing theme: the mock window's
-    // wallpaper is the curated cyberpunk portrait and the page
-    // bg behind the window is the deep-purple gradient image
-    // (painted onto a stacked `.siteBackground` layer rather than
-    // inline on `.chatView`).
-    expect(heroStub).toHaveAttribute(
-      "data-desktop-bg",
-      "/personas/vibecoder/desktop.png",
-    );
-    const initialSiteBg = screen.getByTestId("public-chat-site-bg");
-    expect(initialSiteBg.style.backgroundImage).toContain(
-      "/personas/vibecoder/site.png",
-    );
-    expect(initialSiteBg.style.backgroundColor).not.toBe("");
+      // Vibecoder is the default landing theme: the mock window's
+      // wallpaper is the curated cyberpunk portrait and the page
+      // bg behind the window paints the deep-purple gradient as
+      // an inner `<img>` inside the single `.siteBackground`
+      // wrapper. The wrapper carries the persona's background
+      // color so color + image fade together.
+      expect(heroStub).toHaveAttribute(
+        "data-desktop-bg",
+        "/personas/vibecoder/desktop.png",
+      );
+      const initialSiteBg = screen.getByTestId("public-chat-site-bg");
+      const initialSiteBgImg = screen.getByTestId("public-chat-site-bg-image");
+      expect(initialSiteBgImg).toHaveAttribute(
+        "src",
+        "/personas/vibecoder/site.png",
+      );
+      expect(initialSiteBg.style.backgroundColor).not.toBe("");
+      // Wrapper starts visible.
+      expect(initialSiteBg.style.opacity).toBe("1");
 
-    fireEvent.mouseEnter(rail);
-    fireEvent.click(panelFor("Solo Builder"));
+      fireEvent.mouseEnter(rail);
+      fireEvent.click(panelFor("Solo Builder"));
 
-    // `useDecodedPersonaIndex` resolves on the next microtask once
-    // the stubbed `Image.decode()` promises settle, so flush a
-    // microtask before reading the committed snapshot.
-    await act(async () => {
-      await Promise.resolve();
-    });
+      // Click immediately starts the fade-out: opacity flips to 0
+      // on the same render (synchronous setState), but the
+      // committed persona doesn't change until the timer fires.
+      expect(
+        screen.getByTestId("public-chat-site-bg").style.opacity,
+      ).toBe("0");
+      expect(heroStub).toHaveAttribute(
+        "data-desktop-bg",
+        "/personas/vibecoder/desktop.png",
+      );
 
-    expect(heroStub).toHaveAttribute(
-      "data-desktop-bg",
-      "/personas/solo-builder/desktop.png",
-    );
-    expect(
-      document.querySelector('[data-persona-id="solo-builder"]'),
-    ).not.toBeNull();
+      // Advance past the 220ms fade-out window. The setTimeout
+      // callback runs `setCommittedIndex` + `setVisible(true)` in
+      // one batch, so the next paint has the new persona's
+      // wallpaper + site bg at opacity 1 (CSS transition handles
+      // the actual fade-in tween).
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
 
-    const committedSiteBg = screen.getByTestId("public-chat-site-bg");
-    expect(committedSiteBg.style.backgroundImage).toContain(
-      "/personas/solo-builder/site.png",
-    );
-    expect(committedSiteBg.style.backgroundColor).not.toBe("");
+      expect(heroStub).toHaveAttribute(
+        "data-desktop-bg",
+        "/personas/solo-builder/desktop.png",
+      );
+      expect(
+        document.querySelector('[data-persona-id="solo-builder"]'),
+      ).not.toBeNull();
+
+      const committedSiteBg = screen.getByTestId("public-chat-site-bg");
+      const committedSiteBgImg = screen.getByTestId("public-chat-site-bg-image");
+      expect(committedSiteBgImg).toHaveAttribute(
+        "src",
+        "/personas/solo-builder/site.png",
+      );
+      expect(committedSiteBg.style.backgroundColor).not.toBe("");
+      expect(committedSiteBg.style.opacity).toBe("1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("flips the active tick immediately on click while holding the bg/wallpaper commit until images decode", async () => {
+  it("flips the active tick immediately on click while holding the committed bg/wallpaper until the fade-out finishes", async () => {
     // Two-tier state contract: `activeIndex` drives the rail and
     // foreground vars synchronously so the click feels responsive;
-    // `committedIndex` (which drives the bg layers + wallpaper) is
-    // gated on `Image.decode()` so neither layer pops in mid-fade.
-    renderView();
-    const heroStub = screen.getByTestId("mock-aura-app-stub");
-    const initialSiteBg = screen.getByTestId("public-chat-site-bg");
-    expect(initialSiteBg.style.backgroundImage).toContain(
-      "/personas/vibecoder/site.png",
-    );
-
-    // Hold the next decode so the gate observably blocks the commit.
-    let releaseDecode: () => void = () => undefined;
-    const decodeBlocker = new Promise<void>((resolve) => {
-      releaseDecode = resolve;
-    });
-    const originalDecode = HTMLImageElement.prototype.decode;
-    HTMLImageElement.prototype.decode = function gatedDecode(): Promise<void> {
-      return decodeBlocker;
-    };
-
+    // `committedIndex` (which drives the bg + wallpaper rendering)
+    // only advances after a 220ms fade-out so the swap is always
+    // fade out -> swap -> fade in.
+    vi.useFakeTimers();
     try {
+      renderView();
+      const heroStub = screen.getByTestId("mock-aura-app-stub");
+      const initialSiteBgImg = screen.getByTestId(
+        "public-chat-site-bg-image",
+      );
+      expect(initialSiteBgImg).toHaveAttribute(
+        "src",
+        "/personas/vibecoder/site.png",
+      );
+
       const rail = screen.getByTestId("persona-tick-rail");
       fireEvent.mouseEnter(rail);
       fireEvent.click(panelFor("Solo Builder"));
 
-      // Tick + aria-current flip immediately (active state is
-      // un-gated). Pump one microtask so React commits the
-      // synchronous setState before we assert.
-      await act(async () => {
-        await Promise.resolve();
-      });
+      // Active tick + aria-current flip immediately.
       expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
 
-      // The committed bg + wallpaper, however, must still reflect
-      // Vibecoder — the decode-gated commit is pending.
+      // The committed bg + wallpaper still reflect Vibecoder —
+      // we're mid-fade-out, before the 220ms timer runs.
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
         "/personas/vibecoder/desktop.png",
@@ -323,25 +339,31 @@ describe("PublicChatView landing", () => {
         document.querySelector('[data-persona-id="vibecoder"]'),
       ).not.toBeNull();
       expect(
-        screen.getByTestId("public-chat-site-bg").style.backgroundImage,
-      ).toContain("/personas/vibecoder/site.png");
+        screen.getByTestId("public-chat-site-bg-image"),
+      ).toHaveAttribute("src", "/personas/vibecoder/site.png");
+      expect(
+        screen.getByTestId("public-chat-site-bg").style.opacity,
+      ).toBe("0");
 
-      // Releasing the decode advances the committed index and the
-      // bg/wallpaper layers swap to Solo Builder.
+      // Letting the timer fire advances the committed index and
+      // flips the wrapper opacity back to 1 so the CSS transition
+      // fades the new persona in.
       await act(async () => {
-        releaseDecode();
-        await Promise.resolve();
-        await Promise.resolve();
+        vi.advanceTimersByTime(250);
       });
+
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
         "/personas/solo-builder/desktop.png",
       );
       expect(
-        screen.getByTestId("public-chat-site-bg").style.backgroundImage,
-      ).toContain("/personas/solo-builder/site.png");
+        screen.getByTestId("public-chat-site-bg-image"),
+      ).toHaveAttribute("src", "/personas/solo-builder/site.png");
+      expect(
+        screen.getByTestId("public-chat-site-bg").style.opacity,
+      ).toBe("1");
     } finally {
-      HTMLImageElement.prototype.decode = originalDecode;
+      vi.useRealTimers();
     }
   });
 

@@ -37,6 +37,16 @@ export interface ComposePanelProps {
    */
   readonly desktopBackgroundScale?: number | null;
   /**
+   * Forwarded straight through to `MockAuraApp`. Drives the
+   * persona-swap fade: the parent (`PublicChatView`) toggles
+   * this between `1` and `0` so the mock window's desktop
+   * background (color + wallpaper image) dissolves together as
+   * one snapshot. Optional so a standalone render of the panel
+   * (e.g. isolated tests) keeps the wallpaper at full opacity
+   * without needing external state.
+   */
+  readonly desktopBackgroundOpacity?: number;
+  /**
    * Forwarded straight through to `MockAuraApp`. The parent
    * (`PublicChatView`) derives this from the active persona's
    * `siteBackgroundColor` via `deriveChatPalette`; this layer
@@ -71,6 +81,7 @@ export function ComposePanel({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
+  desktopBackgroundOpacity = 1,
   chatPalette = null,
 }: ComposePanelProps = {}): React.ReactElement {
   return (
@@ -85,6 +96,7 @@ export function ComposePanel({
         desktopBackgroundFit={desktopBackgroundFit}
         desktopBackgroundColor={desktopBackgroundColor}
         desktopBackgroundScale={desktopBackgroundScale}
+        desktopBackgroundOpacity={desktopBackgroundOpacity}
         chatPalette={chatPalette}
       />
     </div>

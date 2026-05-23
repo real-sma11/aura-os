@@ -30,24 +30,79 @@
 }
 
 /*
- * Cross-fading site-bg snapshot layer. `PublicChatView.tsx` mounts
- * two instances when the committed persona changes (the outgoing
- * one carries `.layerLeaving`, the entering one carries
- * `.layerEntering` from `cross-fade.module.css`) so the swap reads
- * as one synchronized 220ms dissolve of image + color.
+ * Page bg layer. ONE element that paints both the persona's
+ * `siteBackgroundColor` (on the wrapper itself) and its
+ * `siteBackgroundUrl` (as an inner `<img>`). Persona swaps drive
+ * the swap entirely through `opacity` on this single wrapper, so
+ * color and image always dissolve together as one unit — no
+ * stacked outgoing/entering layers, no compositing math, no
+ * onLoad gates.
  *
- * Both layers sit at `z-index: 0`; every peer slot (`.heroSlot`,
- * `.ctaSlot`, `.tickRailSlot`) pins itself at `z-index: 1` below so
- * the hero / CTA / rail always paint above the bg.
+ * `PublicChatView.tsx` flips the wrapper's `style.opacity` to 0
+ * when the visitor picks a new tick, waits `FADE_MS` for the
+ * transition below to finish, swaps the committed persona's
+ * color + image (re-rendering the wrapper and its inner `<img>`
+ * with new values), and flips opacity back to 1 in the same
+ * batch — so the next paint kicks off a clean 0 → 1 transition
+ * over the new content.
+ *
+ * Sits at `z-index: 0`; every peer slot (`.heroSlot`, `.ctaSlot`,
+ * `.tickRailSlot`) pins itself at `z-index: 1` so the hero / CTA
+ * / rail always paint above the bg.
  */
 .siteBackground {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
   pointer-events: none;
+  transition: opacity 220ms ease, background-color 220ms ease;
+}
+
+.siteBackgroundImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .siteBackground {
+    transition: none;
+  }
+}
+
+/*
+ * GPU-resident persona-image preload stash. `PublicChatView.tsx`
+ * renders one persistent `<img>` per persona URL inside this
+ * container so the decoded bitmaps stay warm in the browser's image
+ * cache for the entire lifetime of the public-mode shell. When the
+ * visible bg / wallpaper layers later mount a new `<img>` with the
+ * same URL, the browser reuses the cached bitmap and paints in the
+ * same frame as the mount — without this stash the visible `<img>`
+ * sometimes paints one frame AFTER the cross-fade animation starts,
+ * which reads as the new image popping in over a translucent fade.
+ *
+ * Positioned offscreen at 1px × 1px so it never affects layout or
+ * scroll geometry. `visibility: hidden` would skip the paint and
+ * defeat the purpose, so we keep the box visible but invisible to
+ * users via the offscreen translate.
+ */
+.preloadStash {
+  position: absolute;
+  left: -10000px;
+  top: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.preloadStash img {
+  width: 1px;
+  height: 1px;
 }
 
 .heroSlot {
@@ -119,84 +174,17 @@
 }
 
 /*
- * Neon-glow CTA: a dark translucent pill with a colored bloom that
- * reads as a lit panel floating over the persona wallpaper. The glow
- * hue is driven by `--public-cta-glow-color`, published inline on
- * `.chatView` from the active persona's `siteCtaGlowColor` (see
- * `PublicChatView.tsx`). Personas that leave the field `null` fall
- * back to the neon-violet default below, which matches the original
- * reference frame and stays legible on the dark/video site bgs.
- *
- * The fill stays dark in both themes so the bloom always reads as a
- * separate light source against the page — flipping the fill per
- * light/dark theme would force the glow to fight a near-white card
- * in light mode and lose almost all of its bloom radius.
+ * The neon-glow "Create your agent" CTA pill — formerly defined here
+ * as `.ctaButton` — has been extracted into the shared
+ * `<CreateAgentButton />` component
+ * (`interface/src/views/public-chat/CreateAgentButton/`). The styles
+ * now live alongside the component in its own CSS module so the
+ * marketing `/product` hero can mount the same pill via
+ * `<PageHero headlineCta={<CreateAgentButton />} />` without
+ * duplicating chrome. `--public-cta-glow-color` (still published
+ * inline on `.chatView` above) drives the bloom hue and the
+ * extracted styles read it through the same custom property.
  */
-.ctaButton {
-  --glow: var(--public-cta-glow-color, #9b5cff);
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 22px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--glow) 55%, transparent);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
-    rgba(12, 8, 22, 0.55);
-  color: #ffffff;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  /* Three-layer bloom — a 1px hairline keeps the rim defined, then
-     two outer halos fade off into the page bg. The radii + alphas
-     are deliberately understated so the pill reads as a softly lit
-     panel instead of a saturated neon sign; idle should feel
-     ambient, with hover doing the real lighting. */
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--glow) 22%, transparent),
-    0 0 12px color-mix(in srgb, var(--glow) 32%, transparent),
-    0 0 32px color-mix(in srgb, var(--glow) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  transition: transform 160ms ease, box-shadow 200ms ease,
-    border-color 200ms ease;
-}
-
-.ctaButton:hover {
-  border-color: color-mix(in srgb, var(--glow) 75%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--glow) 32%, transparent),
-    0 0 18px color-mix(in srgb, var(--glow) 45%, transparent),
-    0 0 44px color-mix(in srgb, var(--glow) 25%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
-}
-
-.ctaButton:active {
-  transform: translateY(1px);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--glow) 25%, transparent),
-    0 0 10px color-mix(in srgb, var(--glow) 30%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14);
-}
-
-.ctaButton:focus-visible {
-  outline: 2px solid var(--color-overlay-focus, var(--color-border-strong));
-  outline-offset: 2px;
-}
-
-.ctaButton > svg {
-  display: block;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ctaButton {
-    transition: none;
-  }
-}
 
 @media (max-width: 640px) {
   .heroSlot {

@@ -1,8 +1,4 @@
-import {
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   ChevronRight,
   Circle,
@@ -20,8 +16,6 @@ import {
 import { ShellTitlebar } from "../../../components/ShellTitlebar";
 import { DMWindowManager } from "./DMWindowManager";
 import { paletteToCssVars, type ChatPalette } from "./derive-chat-palette";
-import { useCrossFadeLayers } from "../cross-fade";
-import crossFadeStyles from "../cross-fade.module.css";
 import styles from "./MockAuraApp.module.css";
 
 /**
@@ -29,22 +23,24 @@ import styles from "./MockAuraApp.module.css";
  * wallpaper rectangle hosts the scripted MSN/ICQ-style DM windows
  * that float over it, with the real `ShellTitlebar` overlaid on top
  * (phase 1) and three `BottomTaskbar`-style pills on the bottom
- * (phase 2). Both chrome overlays reuse the same `--shell-chrome-*`
- * tokens that drive the live shell, so margins, radii, blur, and
- * border colors stay in lockstep.
+ * (phase 2).
  *
- * The wallpaper itself is a per-persona `<img>` painted across the
- * frame. When the visitor swaps personas the previous wallpaper
- * stays mounted as an outgoing layer that fades out while the
- * incoming wallpaper fades in — the cross-fade lifecycle is owned
- * by `useCrossFadeLayers` (see `cross-fade.ts`). `PublicChatView`
- * decodes the new persona's assets BEFORE flipping the props it
- * passes here, so both the page bg and this wallpaper start their
- * fades together rather than popping in independently.
+ * Desktop background as one unit
+ * ------------------------------
+ * The wallpaper color and image are painted by a single child
+ * `<div>` — `desktopBackgroundColor` lives on the wrapper, the
+ * `<img>` is the wrapper's only child. The parent
+ * (`PublicChatView`) drives the persona swap by toggling the
+ * wrapper's opacity via the `desktopBackgroundOpacity` prop:
+ * 1 → 0 fades the whole desktop background out, 0 → 1 fades the
+ * new one in. Because color + image live on the same element they
+ * always fade as one snapshot — the image never out-races the
+ * color and vice versa.
  *
- * NO_THEME personas (`giga-brain`, `researcher`) leave
- * `desktopBackgroundUrl` null. In that case no wallpaper layer is
- * rendered at all — the frame's own near-black fill shows through.
+ * NO_THEME personas leave `desktopBackgroundUrl` and
+ * `desktopBackgroundColor` both null. In that case the wallpaper
+ * wrapper is omitted entirely and `.appFrame`'s own near-black
+ * fill paints through.
  *
  * All decorative children are `aria-hidden`. The only keyboard-
  * reachable surface in the empty state is the CTA button mounted
@@ -60,94 +56,80 @@ function formatClock(date: Date): string {
 }
 
 /**
- * Frozen snapshot of the visual fields that fully describe one
- * rendering of the wallpaper. The cross-fade hook keeps two of
- * these alive during a swap so the outgoing layer can keep
- * painting its original crop / fit / scale while it fades out,
- * even though the parent has already moved on to the next
- * persona's props.
+ * Builds the optional inline style applied to the wallpaper
+ * `<img>` itself — crop position, object-fit, and any
+ * `transform: scale()` adjustment. Returns `undefined` when every
+ * field is null so React skips the style prop entirely (and the
+ * `object-fit: cover` default from the CSS module wins).
  */
-interface WallpaperSnapshot {
-  readonly url: string | null;
-  readonly position: string | null;
-  readonly fit: "cover" | "contain" | null;
-  readonly scale: number | null;
-}
-
-/**
- * Builds the optional inline style that pins the wallpaper
- * `<img>`'s crop, fit, and scale. Returns `undefined` when every
- * field is null so React skips the style prop entirely (preserves
- * the default `object-fit: cover` from the CSS module). Shared
- * between the entering and leaving layers so both paint with
- * identical positioning.
- */
-function wallpaperStyleFor(
-  snapshot: WallpaperSnapshot,
+function wallpaperImgStyle(
+  position: string | null,
+  fit: "cover" | "contain" | null,
+  scale: number | null,
 ): CSSProperties | undefined {
-  if (!snapshot.position && !snapshot.fit && snapshot.scale == null) {
-    return undefined;
-  }
+  if (!position && !fit && scale == null) return undefined;
   const style: CSSProperties = {};
-  if (snapshot.position) style.objectPosition = snapshot.position;
-  if (snapshot.fit) style.objectFit = snapshot.fit;
-  if (snapshot.scale != null) style.transform = `scale(${snapshot.scale})`;
+  if (position) style.objectPosition = position;
+  if (fit) style.objectFit = fit;
+  if (scale != null) style.transform = `scale(${scale})`;
   return style;
 }
 
 export interface MockAuraAppProps {
   /**
    * Static wallpaper URL painted across the 16:10 frame. When
-   * `null` no wallpaper layer mounts — the frame's own near-black
-   * background fill shows through (used by `NO_THEME` personas).
-   * Drives the per-persona theme swap from `PublicChatView` —
-   * `personas.ts` supplies the URL, the parent passes it down.
+   * `null` no wallpaper wrapper mounts — the frame's own near-
+   * black background fill shows through (used by `NO_THEME`
+   * personas). Drives the per-persona theme swap from
+   * `PublicChatView`.
    */
   readonly desktopBackgroundUrl?: string | null;
   /**
-   * Optional CSS `object-position` for the wallpaper `<img>`. Only
-   * meaningful in `"cover"` fit mode (the default) — `"contain"`
-   * mode leaves the image fully visible and `object-position`
-   * just nudges it within its letterbox bars. `null` (the
-   * default) defers to the browser's `50% 50%` (center-cropped).
+   * Optional CSS `object-position` for the wallpaper `<img>`.
+   * Only meaningful in `"cover"` fit mode (the default). `null`
+   * defers to the browser's centered crop.
    */
   readonly desktopBackgroundPosition?: string | null;
   /**
    * `object-fit` mode for the wallpaper `<img>`. Defaults to
-   * `"cover"` so the existing curated wallpapers (which were
-   * authored at 16:10) keep filling the frame. Switch to
-   * `"contain"` for tall portrait sources that should NOT be
-   * cropped — pair it with `desktopBackgroundColor` so the
-   * letterbox bars blend with the image's own background.
+   * `"cover"`. Switch to `"contain"` for tall portrait sources
+   * that should NOT be cropped — pair it with
+   * `desktopBackgroundColor` so the letterbox bars blend with
+   * the image's own background.
    */
   readonly desktopBackgroundFit?: "cover" | "contain" | null;
   /**
-   * Solid color painted as the `.appFrame` background BEHIND the
-   * wallpaper `<img>`. When `null` the frame's default near-black
-   * fill paints through. Pair with `desktopBackgroundFit:
-   * "contain"` and a sampled match of the image's natural
-   * background so the letterbox bars look like an extension of
-   * the artwork.
+   * Solid color painted on the desktop-background wrapper BEHIND
+   * the wallpaper `<img>`. When `null` and `desktopBackgroundUrl`
+   * is also null the wrapper isn't mounted; when only the color
+   * is null the wrapper still mounts (so the image carries the
+   * fade) but no fill paints behind the image.
    */
   readonly desktopBackgroundColor?: string | null;
   /**
    * Multiplier applied as `transform: scale(N)` on the wallpaper
-   * `<img>` to zoom the rendered image in (>1) or out (<1) from
-   * its baseline `object-fit` size. `.appFrame` carries
-   * `overflow: hidden` so scaled-up content is clipped cleanly
-   * to the mock window rectangle. Defaults to no transform when
-   * `null`.
+   * `<img>`. `.appFrame` clips with `overflow: hidden` so scaled
+   * content is trimmed cleanly to the mock window rectangle.
    */
   readonly desktopBackgroundScale?: number | null;
+  /**
+   * Opacity of the desktop-background wrapper (color + image
+   * together). The parent (`PublicChatView`) toggles this between
+   * `1` and `0` to drive the persona-swap fade. CSS supplies the
+   * transition; this prop is just the target opacity. Defaults
+   * to `1` so a standalone render of `MockAuraApp` (e.g. in
+   * isolated tests / Storybook) paints the wallpaper at full
+   * opacity without any external state.
+   */
+  readonly desktopBackgroundOpacity?: number;
   /**
    * Optional per-persona text/syntax palette derived by
    * `deriveChatPalette` from the active persona's
    * `siteBackgroundColor`. When supplied, every piece of text
-   * inside the frame (DM bubbles, agent name labels, tool target
-   * paths, terminal stream prose, and the global `hljs-*` syntax
-   * tokens) re-tints to a palette that coordinates with the
-   * wallpaper hue family. See the `[data-persona-themed="true"]`
-   * block in `MockAuraApp.module.css` for the cascade.
+   * inside the frame re-tints to a palette that coordinates
+   * with the wallpaper hue family. See the
+   * `[data-persona-themed="true"]` block in
+   * `MockAuraApp.module.css` for the cascade.
    */
   readonly chatPalette?: ChatPalette | null;
 }
@@ -158,38 +140,22 @@ export function MockAuraApp({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
+  desktopBackgroundOpacity = 1,
   chatPalette = null,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
-  const wallpaper: WallpaperSnapshot = {
-    url: desktopBackgroundUrl,
-    position: desktopBackgroundPosition,
-    fit: desktopBackgroundFit,
-    scale: desktopBackgroundScale,
-  };
 
-  // Signature is the URL so position/fit/scale tweaks on the same
-  // wallpaper don't trigger a cross-fade. Falls back to a sentinel
-  // string when the persona has no wallpaper at all so two
-  // consecutive NO_THEME personas don't trigger a no-op fade of two
-  // empty layers.
-  const { outgoing: outgoingWallpaper, current: currentWallpaper } =
-    useCrossFadeLayers(wallpaper, wallpaper.url ?? "__empty__");
+  // The chat palette publishes per-persona text/syntax tokens onto
+  // `.appFrame` as CSS custom properties; the desktop background
+  // color does NOT — it paints the wallpaper wrapper below so it
+  // fades with the image. Returns undefined when neither piece of
+  // state is set so React skips the style prop entirely.
+  const frameStyle: CSSProperties | undefined = chatPalette
+    ? (paletteToCssVars(chatPalette) as CSSProperties)
+    : undefined;
 
-  // Merge the optional palette vars with the optional bg-color
-  // override into one style object. `desktopBackgroundColor` paints
-  // behind the wallpaper `<img>` so `contain`-fit wallpapers can
-  // match their natural background to the letterbox bars.
-  const frameStyle: CSSProperties | undefined = (() => {
-    if (!chatPalette && !desktopBackgroundColor) return undefined;
-    const merged: CSSProperties = chatPalette
-      ? (paletteToCssVars(chatPalette) as CSSProperties)
-      : {};
-    if (desktopBackgroundColor) {
-      merged.backgroundColor = desktopBackgroundColor;
-    }
-    return merged;
-  })();
+  const hasDesktopBackground =
+    desktopBackgroundUrl != null || desktopBackgroundColor != null;
 
   return (
     <div
@@ -199,35 +165,41 @@ export function MockAuraApp({
       style={frameStyle}
     >
       {/*
-       * Outgoing wallpaper layer. Mounts only during the cross-fade
-       * window after a persona swap, then unmounts when
-       * `useCrossFadeLayers` clears the outgoing slot. Carries the
-       * previous snapshot's frozen crop/fit/scale so its visible
-       * pixels stay locked while the opacity tweens to zero.
+       * Desktop background. ONE element that holds the persona's
+       * color (as `background-color` on the wrapper) and its
+       * wallpaper `<img>` (the wrapper's only direct child). The
+       * parent drives the persona-swap fade by toggling this
+       * wrapper's opacity — color and image always dissolve as a
+       * single snapshot. Omitted entirely for NO_THEME personas
+       * so the frame's own near-black fill paints through cleanly.
        */}
-      {outgoingWallpaper?.url ? (
-        <img
-          key={`wallpaper-out-${outgoingWallpaper.__crossFadeId}`}
-          className={`${styles.wallpaper} ${crossFadeStyles.layerLeaving}`}
-          src={outgoingWallpaper.url}
-          alt=""
+      {hasDesktopBackground ? (
+        <div
+          className={styles.desktopBackground}
+          style={{
+            backgroundColor: desktopBackgroundColor ?? undefined,
+            opacity: desktopBackgroundOpacity,
+          }}
           aria-hidden="true"
-          draggable={false}
-          data-testid="mock-aura-wallpaper-outgoing"
-          style={wallpaperStyleFor(outgoingWallpaper)}
-        />
-      ) : null}
-      {currentWallpaper.url ? (
-        <img
-          key={`wallpaper-in-${currentWallpaper.url}`}
-          className={`${styles.wallpaper} ${crossFadeStyles.layerEntering}`}
-          src={currentWallpaper.url}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-          data-testid="mock-aura-wallpaper-image"
-          style={wallpaperStyleFor(currentWallpaper)}
-        />
+          data-testid="mock-aura-desktop-bg"
+        >
+          {desktopBackgroundUrl ? (
+            <img
+              className={styles.wallpaperImage}
+              src={desktopBackgroundUrl}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              decoding="sync"
+              data-testid="mock-aura-wallpaper-image"
+              style={wallpaperImgStyle(
+                desktopBackgroundPosition,
+                desktopBackgroundFit,
+                desktopBackgroundScale,
+              )}
+            />
+          ) : null}
+        </div>
       ) : null}
       <DMWindowManager />
       <div
