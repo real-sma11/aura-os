@@ -5,12 +5,53 @@
  * referenced by the public-only fallback layout too.
  */
 
+/*
+ * Public sidebar body — wraps `PublicSessionsPanel`. This subtree
+ * floats transparently over the active persona's `siteBackgroundColor`
+ * (the `<aside>` is `background: transparent` in public mode), so its
+ * text has to track the PERSONA, not the user theme: Vibecoder /
+ * Cypher Punk paint dark backgrounds in both user themes and need
+ * light text, while Solo Builder / Giga Brain / Coordinator /
+ * Researcher paint light backgrounds in both user themes and need
+ * dark text. The standard `--color-text-primary` token is theme-
+ * keyed and would collapse to near-black on Vibecoder's deep purple
+ * in light mode (the regression that prompted this rule).
+ *
+ * Re-bind the standard text tokens here so every descendant that
+ * reads them (session row labels via `PublicSessionsPanel.module.css`,
+ * the `.emptyHint` muted line, etc.) inherits the persona-aware hue
+ * automatically. The vars `--public-nav-fg-color` /
+ * `--public-nav-fg-color-muted` are already published on `<html>` by
+ * `PublicChatView.tsx` for the same reason that `PublicSidebarFooter`
+ * and `PersonaTickRail` consume them.
+ *
+ * Scope is intentionally LIMITED to this body wrapper — NOT the
+ * whole sidebar. The `PanelSearch` chrome pill in the sidebar header
+ * has its own theme-keyed background (`--shell-chrome-background =
+ * color-mix(--color-titlebar-bg, 90%, transparent)`), so its
+ * placeholder, icon, value text, and `+ New chat` action button must
+ * keep the standard theme-keyed text tokens or they go invisible
+ * inside the pill (e.g. light-mode + Vibecoder paints a near-white
+ * pill, on which a persona-mandated `#c9c9cf` placeholder would
+ * disappear). The session-list body underneath has no chrome pill
+ * — it's the persona bg straight through — so this is exactly where
+ * the persona-aware override belongs.
+ *
+ * Falls back to the dark-mode hex pair (`#e6e8eb` / `#c9c9cf`) so
+ * NO_THEME personas (no `siteBackgroundColor` either) and any
+ * public-mode route that doesn't mount `PublicChatView` still get a
+ * sane theme-invariant value.
+ */
 .publicSessionsBody {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  --color-text-primary: var(--public-nav-fg-color, #e6e8eb);
+  --color-text-secondary: var(--public-nav-fg-color-muted, #c9c9cf);
+  --color-text-muted: var(--public-nav-fg-color-muted, #c9c9cf);
+  --color-text: var(--public-nav-fg-color, #e6e8eb);
 }
 
 .advancedSidebarBody {

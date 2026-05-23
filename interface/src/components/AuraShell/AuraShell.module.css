@@ -91,40 +91,6 @@
 }
 
 /*
- * Re-bind the standard text tokens at the public-sidebar boundary so
- * the search row, session list, and inline `+ New chat` button track
- * the active persona's `siteForegroundColor` pair instead of the
- * theme-keyed defaults. The `<aside>` is `background: transparent`
- * over the persona's `siteBackgroundColor`, which is theme-invariant
- * (e.g. Vibecoder paints `#2a0258` deep purple in both user themes,
- * Solo Builder paints `#b3c4d2` dusty blue in both), so the chat
- * list text has to track the persona — not the user theme — to stay
- * legible.
- *
- * `--public-nav-fg-color` / `--public-nav-fg-color-muted` are
- * published on `<html>` by `PublicChatView.tsx` whenever the active
- * persona declares a foreground override; the same vars already
- * drive `PublicSidebarFooter` and `PersonaTickRail`. Aliasing
- * `--color-text-*` here pipes those values through every descendant
- * that reads the standard tokens (`PublicSessionsPanel` rows, the
- * inline `New chat` button color, `.emptyHint`, the `PanelSearch`
- * placeholder + icon) without each consumer having to opt in
- * directly.
- *
- * Falls back to the dark-mode hex pair (`#e6e8eb` / `#c9c9cf`) so
- * NO_THEME personas (no `siteBackgroundColor` either) and any
- * public-mode route that doesn't mount `PublicChatView` still get a
- * sane theme-invariant value rather than collapsing to near-black
- * `#111827` on whatever bg paints behind the floating sidebar.
- */
-.shell[data-ui-mode="public"] .sidebar {
-  --color-text-primary: var(--public-nav-fg-color, #e6e8eb);
-  --color-text-secondary: var(--public-nav-fg-color-muted, #c9c9cf);
-  --color-text-muted: var(--public-nav-fg-color-muted, #c9c9cf);
-  --color-text: var(--public-nav-fg-color, #e6e8eb);
-}
-
-/*
  * Public mode also strips the titlebar's chrome border. The 1px box-
  * sizing contribution stays (`border-color: transparent` rather than
  * `border: none`) so the shell's chrome height and inner content
