@@ -1,4 +1,5 @@
 import { MockAuraApp } from "../MockAuraApp";
+import type { OutgoingDesktopBackground } from "../MockAuraApp/MockAuraApp";
 import type { ChatPalette } from "../MockAuraApp/derive-chat-palette";
 import styles from "./ComposePanel.module.css";
 
@@ -37,15 +38,14 @@ export interface ComposePanelProps {
    */
   readonly desktopBackgroundScale?: number | null;
   /**
-   * Forwarded straight through to `MockAuraApp`. Drives the
-   * persona-swap fade: the parent (`PublicChatView`) toggles
-   * this between `1` and `0` so the mock window's desktop
-   * background (color + wallpaper image) dissolves together as
-   * one snapshot. Optional so a standalone render of the panel
-   * (e.g. isolated tests) keeps the wallpaper at full opacity
-   * without needing external state.
+   * Forwarded straight through to `MockAuraApp`. Frozen snapshot
+   * of the PREVIOUS persona's desktop background, supplied by the
+   * parent (`PublicChatView`) while that snapshot dissolves out
+   * on top of the current one. Optional so a standalone render
+   * of the panel (e.g. isolated tests) just paints the current
+   * snapshot without a layered fade.
    */
-  readonly desktopBackgroundOpacity?: number;
+  readonly outgoingDesktopBackground?: OutgoingDesktopBackground | null;
   /**
    * Forwarded straight through to `MockAuraApp`. The parent
    * (`PublicChatView`) derives this from the active persona's
@@ -54,6 +54,21 @@ export interface ComposePanelProps {
    * persona swap without touching the panel.
    */
   readonly chatPalette?: ChatPalette | null;
+  /**
+   * Forwarded straight through to `MockAuraApp` so the bottom-
+   * left avatar dock can paint the correct selected border. The
+   * panel itself stays persona-agnostic — it just relays whatever
+   * the host passes in.
+   */
+  readonly activePersonaIndex?: number;
+  /**
+   * Forwarded straight through to `MockAuraApp`. Fires when the
+   * visitor clicks an avatar in the dock; the parent
+   * (`PublicChatView`) routes this to the same `setActiveIndex`
+   * call the right-edge tick rail uses so both surfaces drive a
+   * single piece of state.
+   */
+  readonly onPersonaSelect?: (index: number) => void;
 }
 
 /**
@@ -81,8 +96,10 @@ export function ComposePanel({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
-  desktopBackgroundOpacity = 1,
+  outgoingDesktopBackground = null,
   chatPalette = null,
+  activePersonaIndex,
+  onPersonaSelect,
 }: ComposePanelProps = {}): React.ReactElement {
   return (
     <div
@@ -96,8 +113,10 @@ export function ComposePanel({
         desktopBackgroundFit={desktopBackgroundFit}
         desktopBackgroundColor={desktopBackgroundColor}
         desktopBackgroundScale={desktopBackgroundScale}
-        desktopBackgroundOpacity={desktopBackgroundOpacity}
+        outgoingDesktopBackground={outgoingDesktopBackground}
         chatPalette={chatPalette}
+        activePersonaIndex={activePersonaIndex}
+        onPersonaSelect={onPersonaSelect}
       />
     </div>
   );

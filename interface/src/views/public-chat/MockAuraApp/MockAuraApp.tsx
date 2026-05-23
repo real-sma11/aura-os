@@ -16,7 +16,15 @@ import {
 import { ShellTitlebar } from "../../../components/ShellTitlebar";
 import { DMWindowManager } from "./DMWindowManager";
 import { paletteToCssVars, type ChatPalette } from "./derive-chat-palette";
+import { PERSONAS } from "../personas";
 import styles from "./MockAuraApp.module.css";
+
+// Default `background-position` for the avatar dock when a persona
+// doesn't override `avatarObjectPosition`. With `background-size:
+// 200%` (the dock's hard-coded zoom) this lands the upper-third
+// slice of the source portrait in the 18px circle — where the head
+// sits on every existing character portrait.
+const AVATAR_DEFAULT_OBJECT_POSITION = "50% 18%";
 
 /**
  * Empty-state hero for the public chat surface. A flat 16:10
@@ -25,26 +33,23 @@ import styles from "./MockAuraApp.module.css";
  * (phase 1) and three `BottomTaskbar`-style pills on the bottom
  * (phase 2).
  *
- * Desktop background as one unit
- * ------------------------------
- * The wallpaper color and image are painted by a single child
- * `<div>` — `desktopBackgroundColor` lives on the wrapper, the
- * `<img>` is the wrapper's only child. The parent
- * (`PublicChatView`) drives the persona swap by toggling the
- * wrapper's opacity via the `desktopBackgroundOpacity` prop:
- * 1 → 0 fades the whole desktop background out, 0 → 1 fades the
- * new one in. Because color + image live on the same element they
- * always fade as one snapshot — the image never out-races the
- * color and vice versa.
+ * Desktop background — layered dissolve
+ * -------------------------------------
+ * Each persona's desktop background is painted as a single
+ * `.desktopBackground` `<div>` that carries the persona color on
+ * itself and holds the wallpaper `<img>` as its only child —
+ * color + image are always one unit. During a persona swap the
+ * parent passes an additional `outgoingDesktopBackground`
+ * snapshot, and we mount a second `.desktopBackground` element
+ * ON TOP of the new one with a fade-out animation. The new layer
+ * underneath sits at full opacity the entire time, so as the
+ * outgoing layer dissolves the new pixels are revealed beneath
+ * it — no dark midpoint, no parent-bg leak.
  *
  * NO_THEME personas leave `desktopBackgroundUrl` and
  * `desktopBackgroundColor` both null. In that case the wallpaper
  * wrapper is omitted entirely and `.appFrame`'s own near-black
  * fill paints through.
- *
- * All decorative children are `aria-hidden`. The only keyboard-
- * reachable surface in the empty state is the CTA button mounted
- * by the parent `PublicChatView`.
  */
 function formatClock(date: Date): string {
   const hours24 = date.getHours();
@@ -59,13 +64,13 @@ function formatClock(date: Date): string {
  * Builds the optional inline style applied to the wallpaper
  * `<img>` itself — crop position, object-fit, and any
  * `transform: scale()` adjustment. Returns `undefined` when every
- * field is null so React skips the style prop entirely (and the
- * `object-fit: cover` default from the CSS module wins).
+ * field is null so React skips the style prop entirely and the
+ * `object-fit: cover` default from the CSS module wins.
  */
 function wallpaperImgStyle(
-  position: string | null,
-  fit: "cover" | "contain" | null,
-  scale: number | null,
+  position: string | null | undefined,
+  fit: "cover" | "contain" | null | undefined,
+  scale: number | null | undefined,
 ): CSSProperties | undefined {
   if (!position && !fit && scale == null) return undefined;
   const style: CSSProperties = {};
@@ -75,35 +80,46 @@ function wallpaperImgStyle(
   return style;
 }
 
+/**
+ * Frozen snapshot of the previous persona's desktop-background
+ * fields, passed in while that snapshot is fading out. `fadeKey`
+ * is a monotonically-increasing token the parent bumps on every
+ * swap so React mounts a fresh `<div>` per swap (and a rapid
+ * second click can't reuse the in-flight outgoing layer's animation
+ * state).
+ */
+export interface OutgoingDesktopBackground {
+  readonly url: string | null;
+  readonly position: string | null;
+  readonly fit: "cover" | "contain" | null;
+  readonly color: string | null;
+  readonly scale: number | null;
+  readonly fadeKey: number;
+}
+
 export interface MockAuraAppProps {
   /**
    * Static wallpaper URL painted across the 16:10 frame. When
    * `null` no wallpaper wrapper mounts — the frame's own near-
    * black background fill shows through (used by `NO_THEME`
-   * personas). Drives the per-persona theme swap from
-   * `PublicChatView`.
+   * personas).
    */
   readonly desktopBackgroundUrl?: string | null;
   /**
    * Optional CSS `object-position` for the wallpaper `<img>`.
-   * Only meaningful in `"cover"` fit mode (the default). `null`
-   * defers to the browser's centered crop.
+   * Only meaningful in `"cover"` fit mode.
    */
   readonly desktopBackgroundPosition?: string | null;
   /**
    * `object-fit` mode for the wallpaper `<img>`. Defaults to
-   * `"cover"`. Switch to `"contain"` for tall portrait sources
-   * that should NOT be cropped — pair it with
-   * `desktopBackgroundColor` so the letterbox bars blend with
-   * the image's own background.
+   * `"cover"`.
    */
   readonly desktopBackgroundFit?: "cover" | "contain" | null;
   /**
    * Solid color painted on the desktop-background wrapper BEHIND
-   * the wallpaper `<img>`. When `null` and `desktopBackgroundUrl`
-   * is also null the wrapper isn't mounted; when only the color
-   * is null the wrapper still mounts (so the image carries the
-   * fade) but no fill paints behind the image.
+   * the wallpaper `<img>`. When both this and
+   * `desktopBackgroundUrl` are null the wrapper isn't mounted at
+   * all and `.appFrame`'s own near-black fill paints through.
    */
   readonly desktopBackgroundColor?: string | null;
   /**
@@ -113,25 +129,42 @@ export interface MockAuraAppProps {
    */
   readonly desktopBackgroundScale?: number | null;
   /**
-   * Opacity of the desktop-background wrapper (color + image
-   * together). The parent (`PublicChatView`) toggles this between
-   * `1` and `0` to drive the persona-swap fade. CSS supplies the
-   * transition; this prop is just the target opacity. Defaults
-   * to `1` so a standalone render of `MockAuraApp` (e.g. in
-   * isolated tests / Storybook) paints the wallpaper at full
-   * opacity without any external state.
+   * Snapshot of the PREVIOUS persona's desktop background,
+   * supplied while it dissolves out. Mounts a second
+   * `.desktopBackground` `<div>` ON TOP of the current one with
+   * a fade-out animation; the new layer's pixels sit underneath
+   * at full opacity the whole time, so as the outgoing dissolves
+   * they're revealed beneath. `null` outside of a swap window.
+   *
+   * Owned by the parent (`PublicChatView`) so a standalone
+   * render of `MockAuraApp` for isolated tests / Storybook never
+   * carries an outgoing layer and just paints the current
+   * snapshot.
    */
-  readonly desktopBackgroundOpacity?: number;
+  readonly outgoingDesktopBackground?: OutgoingDesktopBackground | null;
   /**
    * Optional per-persona text/syntax palette derived by
    * `deriveChatPalette` from the active persona's
-   * `siteBackgroundColor`. When supplied, every piece of text
-   * inside the frame re-tints to a palette that coordinates
-   * with the wallpaper hue family. See the
-   * `[data-persona-themed="true"]` block in
-   * `MockAuraApp.module.css` for the cascade.
+   * `siteBackgroundColor`.
    */
   readonly chatPalette?: ChatPalette | null;
+  /**
+   * Index into `PERSONAS` of the avatar that should paint with the
+   * "selected" border in the bottom-left dock. Defaults to `0`
+   * (Vibecoder) so a standalone render of `MockAuraApp` for
+   * isolated tests / Storybook still picks a deterministic active
+   * avatar without needing external state.
+   */
+  readonly activePersonaIndex?: number;
+  /**
+   * Click handler invoked when the visitor picks an avatar in the
+   * bottom-left dock. Mirrors the contract `PersonaTickRail` uses
+   * for `onActiveIndexChange`, so the parent (`PublicChatView`)
+   * can route both entry points into the same `setActiveIndex`
+   * call and the two surfaces stay in lockstep. Defaults to a
+   * no-op so standalone renders are clickable but inert.
+   */
+  readonly onPersonaSelect?: (index: number) => void;
 }
 
 export function MockAuraApp({
@@ -140,22 +173,23 @@ export function MockAuraApp({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
-  desktopBackgroundOpacity = 1,
+  outgoingDesktopBackground = null,
   chatPalette = null,
+  activePersonaIndex = 0,
+  onPersonaSelect,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
 
-  // The chat palette publishes per-persona text/syntax tokens onto
-  // `.appFrame` as CSS custom properties; the desktop background
-  // color does NOT — it paints the wallpaper wrapper below so it
-  // fades with the image. Returns undefined when neither piece of
-  // state is set so React skips the style prop entirely.
   const frameStyle: CSSProperties | undefined = chatPalette
     ? (paletteToCssVars(chatPalette) as CSSProperties)
     : undefined;
 
-  const hasDesktopBackground =
+  const hasCurrentDesktopBg =
     desktopBackgroundUrl != null || desktopBackgroundColor != null;
+  const hasOutgoingDesktopBg =
+    outgoingDesktopBackground != null &&
+    (outgoingDesktopBackground.url != null ||
+      outgoingDesktopBackground.color != null);
 
   return (
     <div
@@ -165,20 +199,16 @@ export function MockAuraApp({
       style={frameStyle}
     >
       {/*
-       * Desktop background. ONE element that holds the persona's
-       * color (as `background-color` on the wrapper) and its
-       * wallpaper `<img>` (the wrapper's only direct child). The
-       * parent drives the persona-swap fade by toggling this
-       * wrapper's opacity — color and image always dissolve as a
-       * single snapshot. Omitted entirely for NO_THEME personas
-       * so the frame's own near-black fill paints through cleanly.
+       * Current desktop background — paints the new persona's
+       * color + image at full opacity, no animation. Sits BENEATH
+       * the outgoing layer below; as the outgoing dissolves
+       * these pixels are revealed.
        */}
-      {hasDesktopBackground ? (
+      {hasCurrentDesktopBg ? (
         <div
           className={styles.desktopBackground}
           style={{
             backgroundColor: desktopBackgroundColor ?? undefined,
-            opacity: desktopBackgroundOpacity,
           }}
           aria-hidden="true"
           data-testid="mock-aura-desktop-bg"
@@ -196,6 +226,42 @@ export function MockAuraApp({
                 desktopBackgroundPosition,
                 desktopBackgroundFit,
                 desktopBackgroundScale,
+              )}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {/*
+       * Outgoing desktop background — mounts on top of the current
+       * one only while the parent is mid-swap, carries the OLD
+       * persona's color + image, and fades from opacity 1 → 0 via
+       * the `.desktopBackgroundLeaving` keyframe animation. React
+       * unmounts it `FADE_MS + 50ms` later; until then this is the
+       * sole element animating, so the swap reads as the old
+       * pixels dissolving into the new ones underneath.
+       */}
+      {hasOutgoingDesktopBg && outgoingDesktopBackground ? (
+        <div
+          key={`mock-aura-desktop-bg-out-${outgoingDesktopBackground.fadeKey}`}
+          className={`${styles.desktopBackground} ${styles.desktopBackgroundLeaving}`}
+          style={{
+            backgroundColor: outgoingDesktopBackground.color ?? undefined,
+          }}
+          aria-hidden="true"
+          data-testid="mock-aura-desktop-bg-outgoing"
+        >
+          {outgoingDesktopBackground.url ? (
+            <img
+              className={styles.wallpaperImage}
+              src={outgoingDesktopBackground.url}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              decoding="sync"
+              style={wallpaperImgStyle(
+                outgoingDesktopBackground.position,
+                outgoingDesktopBackground.fit,
+                outgoingDesktopBackground.scale,
               )}
             />
           ) : null}
@@ -255,8 +321,51 @@ export function MockAuraApp({
           <span className={styles.taskbarIconButton}>
             <Circle size={14} strokeWidth={2} />
           </span>
-          <span className={styles.favAvatar} />
-          <span className={styles.favAvatar} />
+          {PERSONAS.map((persona, index) => {
+            const isActive = index === activePersonaIndex;
+            const { desktopBackgroundUrl: avatarUrl, avatarObjectPosition } =
+              persona.theme;
+            // Persona portraits live at the same URL the mock
+            // wallpaper uses. We zoom the source 2x via
+            // `background-size: 200%` and slide the upper-third
+            // slice into view via `background-position` so the
+            // head ends up centered in the 18px circle. NO_THEME
+            // personas have no image at all; they fall back to
+            // the initial-letter card below so the dock still
+            // shows one circle per persona.
+            const avatarStyle: CSSProperties | undefined = avatarUrl
+              ? {
+                  backgroundImage: `url(${avatarUrl})`,
+                  backgroundPosition:
+                    avatarObjectPosition ?? AVATAR_DEFAULT_OBJECT_POSITION,
+                }
+              : undefined;
+            return (
+              <button
+                key={persona.id}
+                type="button"
+                className={styles.personaAvatar}
+                data-active={isActive ? "true" : "false"}
+                data-persona-id={persona.id}
+                data-testid={`mock-aura-avatar-${persona.id}`}
+                // The whole `bottomChrome` carries `aria-hidden`
+                // because it's decorative mock chrome; keyboard
+                // users select personas via the right-edge
+                // `PersonaTickRail`. `tabIndex={-1}` keeps the
+                // avatars out of the focus order so AT users
+                // don't land on hidden buttons.
+                tabIndex={-1}
+                style={avatarStyle}
+                onClick={() => onPersonaSelect?.(index)}
+              >
+                {!avatarUrl ? (
+                  <span className={styles.personaAvatarFallback}>
+                    {persona.name.charAt(0)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
         <div className={`${styles.pill} ${styles.bottomCenter}`}>
           <span className={styles.taskbarIconButton}>

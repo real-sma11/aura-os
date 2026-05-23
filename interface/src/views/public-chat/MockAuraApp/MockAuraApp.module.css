@@ -9,15 +9,24 @@
  * via `.topChrome`, and phase 2 layers three rounded
  * `BottomTaskbar`-style pills over the bottom via `.bottomChrome`.
  *
- * Persona swap (fade-out then fade-in)
- * ------------------------------------
- * `MockAuraApp` doesn't own any swap state — the parent
- * (`PublicChatView`) toggles `desktopBackgroundOpacity` between 1
- * and 0 to drive a single `.desktopBackground` wrapper through a
- * 220ms opacity transition. Because the persona color lives on
- * the wrapper AND the wallpaper `<img>` lives inside it, both
- * channels always dissolve together as one snapshot — no
- * compositing math, no layered cross-fade, no onLoad gating.
+ * Persona swap — layered dissolve through an outgoing copy
+ * --------------------------------------------------------
+ * `MockAuraApp` doesn't own any swap state. The parent
+ * (`PublicChatView`) supplies the current persona's desktop-bg
+ * fields AND, while a swap is in flight, an
+ * `outgoingDesktopBackground` snapshot of the PREVIOUS persona's
+ * fields. We mount a SECOND `.desktopBackground` wrapper for that
+ * snapshot ON TOP of the current one and run a fade-out keyframe
+ * animation on it (opacity 1 → 0 over 550ms). The new layer
+ * underneath stays at full opacity the entire time, so as the
+ * outgoing layer dissolves the new pixels are revealed beneath
+ * it. No dark midpoint, no parent-bg leak — the swap reads as a
+ * true cross-fade where the old persona "fades into" the new.
+ *
+ * Each layer is still a single `<div>` wrapping a single `<img>`,
+ * so color + image inside one persona snapshot still dissolve as
+ * one unit; the layering is between the OLD snapshot and the NEW
+ * snapshot, not between color and image.
  */
 
 .appFrame {
@@ -51,34 +60,26 @@
 }
 
 /*
- * Desktop background wrapper. ONE element that paints both the
- * persona's `desktopBackgroundColor` (via `background-color` set
- * inline from JSX) and the wallpaper `<img>` (as the wrapper's
- * only direct child). The parent toggles this element's opacity
- * to drive the fade between personas, so color + image always
- * dissolve together as a single snapshot — there's no separate
- * color layer that could snap while the image fades.
+ * Desktop background wrapper. ONE element per persona snapshot
+ * that paints both the persona's `desktopBackgroundColor` (via
+ * `background-color` set inline from JSX) and the wallpaper
+ * `<img>` (as the wrapper's only direct child). Color + image
+ * always dissolve together as a single snapshot — the layering
+ * is between the OLD persona snapshot and the NEW one, not
+ * between color and image.
  *
- * `transition: opacity 220ms ease` keeps the fade-out + fade-in
- * timing consistent with the page bg layer in
- * `PublicChatView.module.css`, so both surfaces swap in lockstep.
+ * The CURRENT-persona wrapper has no animation and sits at
+ * opacity 1. When a swap is in flight, the parent mounts a
+ * SECOND wrapper after it in DOM order (= painted on top)
+ * carrying the OUTGOING snapshot and the `.desktopBackgroundLeaving`
+ * class which animates it from 1 → 0. As the outgoing wrapper
+ * fades out, the current wrapper underneath shows through.
  */
 .desktopBackground {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  /*
-   * Keep this in lockstep with `.siteBackground` in
-   * `PublicChatView.module.css` (currently `400ms ease-in-out`)
-   * so the wallpaper inside the mock window and the page bg
-   * behind it tween together. The 400ms duration also leaves a
-   * ~150ms hold at opacity 0 inside the parent's 550ms `FADE_MS`
-   * window — that blank pause is what makes the swap obviously
-   * read as fade-out -> swap -> fade-in instead of one
-   * uninterrupted dissolve.
-   */
-  transition: opacity 400ms ease-in-out;
 }
 
 /*
@@ -106,9 +107,33 @@
   pointer-events: none;
 }
 
+/*
+ * Outgoing wrapper — fades from opacity 1 → 0 over 550ms while
+ * the new wrapper sits underneath at full opacity. Duration MUST
+ * match `FADE_MS` in `PublicChatView.tsx` AND the
+ * `.siteBackgroundLeaving` keyframe in
+ * `PublicChatView.module.css` so the wallpaper inside the mock
+ * window and the page bg behind it dissolve in lockstep.
+ *
+ * Using a keyframe `animation` (not a `transition`) here so the
+ * 1 → 0 sweep fires automatically when React mounts the wrapper —
+ * a transition would need a separate trigger (mount at 1, flip
+ * to 0 in a follow-up paint) which is racy under React's
+ * batching.
+ */
+.desktopBackgroundLeaving {
+  animation: mockAuraDesktopBgFadeOut 550ms ease-in-out forwards;
+}
+
+@keyframes mockAuraDesktopBgFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .desktopBackground {
-    transition: none;
+  .desktopBackgroundLeaving {
+    animation: none;
+    opacity: 0;
   }
 }
 
@@ -253,13 +278,76 @@
   color: inherit;
 }
 
-.favAvatar {
-  display: inline-block;
+/*
+ * Persona avatar dock — one button per `PERSONAS` entry, sitting in
+ * the `.bottomLeft` pill alongside the leading `<Circle />` icon.
+ * The visitor can pick a persona by clicking an avatar; the click
+ * is routed back through `onPersonaSelect` to the same
+ * `setActiveIndex` setter that drives the right-edge
+ * `PersonaTickRail`. The selected avatar is marked via
+ * `data-active="true"` and gets a contrasting border + outline
+ * halo so it reads as the current selection over any wallpaper
+ * color behind the pill.
+ *
+ * Image sourcing: the persona's `desktopBackgroundUrl` is painted
+ * via `background-image` with `background-size: 200%` so the
+ * source portrait zooms 2x and the per-persona
+ * `avatarObjectPosition` (fallback `50% 18%`) slides the head into
+ * the visible slice. NO_THEME personas have no image and fall
+ * back to a flat gray gradient with an initial letter painted by
+ * the inner `.personaAvatarFallback`.
+ */
+.personaAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
+  padding: 0;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4a4d5b 0%, #2a2c36 100%);
+  background-color: transparent;
+  background-size: 200% auto;
+  background-repeat: no-repeat;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition:
+    border-color 120ms ease-in-out,
+    box-shadow 120ms ease-in-out,
+    transform 120ms ease-in-out;
+}
+
+.personaAvatar:hover {
+  transform: scale(1.08);
+}
+
+.personaAvatar[data-active="true"] {
+  border-color: var(--color-text-primary);
+  /*
+   * Outer halo doubles the active-state read against busy
+   * wallpapers — a single 1px border can disappear over a
+   * high-detail portrait, so we also paint a 1px translucent
+   * ring just outside the circle that picks up the same
+   * primary text color.
+   */
+  box-shadow: 0 0 0 1px var(--color-text-primary);
+}
+
+.personaAvatarFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #4a4d5b 0%, #2a2c36 100%);
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+  text-transform: uppercase;
+  user-select: none;
+  line-height: 1;
 }
 
 .clock {

@@ -14,19 +14,31 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 // Stub `MockAuraApp` so the test surfaces just the wallpaper-prop
-// contract — the real component pulls in a video element and the
-// scripted DM windows, neither of which the landing test needs to
-// exercise. The stub echoes `desktopBackgroundUrl` into a data
-// attribute so the persona-theme swap is observable.
+// contract — the real component pulls in the scripted DM windows
+// and full chrome that the landing test doesn't need to exercise.
+// The stub echoes BOTH the current desktop bg URL AND the
+// outgoing snapshot's URL into data attributes so the layered
+// cross-fade is observable.
 vi.mock("../MockAuraApp", () => ({
   MockAuraApp: ({
     desktopBackgroundUrl,
+    outgoingDesktopBackground,
   }: {
     desktopBackgroundUrl?: string | null;
+    outgoingDesktopBackground?: {
+      readonly url: string | null;
+      readonly fadeKey: number;
+    } | null;
   }) => (
     <div
       data-testid="mock-aura-app-stub"
       data-desktop-bg={desktopBackgroundUrl ?? ""}
+      data-outgoing-desktop-bg={outgoingDesktopBackground?.url ?? ""}
+      data-outgoing-fade-key={
+        outgoingDesktopBackground?.fadeKey != null
+          ? String(outgoingDesktopBackground.fadeKey)
+          : ""
+      }
     />
   ),
 }));
@@ -233,140 +245,135 @@ describe("PublicChatView landing", () => {
     expect(panelFor("Researcher")).toHaveAttribute("data-active", "true");
   });
 
-  it("swaps the wallpaper and site background to the new persona after the fade window elapses", async () => {
+  it("mounts the new persona's wallpaper + site bg immediately on click, with the OLD persona kept as a fading-out overlay until the dissolve completes", async () => {
+    // Layered cross-fade contract: clicking a tick swaps the
+    // committed persona in the SAME render as the click. The
+    // previous persona is captured into an `outgoingDesktopBackground`
+    // / outgoing `.siteBackground` snapshot that mounts ON TOP of
+    // the new one with a 550ms fade-out animation. After
+    // FADE_MS + 50ms the outgoing snapshot unmounts.
     vi.useFakeTimers();
     try {
       renderView();
-      const rail = screen.getByTestId("persona-tick-rail");
       const heroStub = screen.getByTestId("mock-aura-app-stub");
 
       // Vibecoder is the default landing theme: the mock window's
-      // wallpaper is the curated cyberpunk portrait and the page
-      // bg behind the window paints the deep-purple gradient as
-      // an inner `<img>` inside the single `.siteBackground`
-      // wrapper. The wrapper carries the persona's background
-      // color so color + image fade together.
+      // wallpaper is the curated cyberpunk portrait. No outgoing
+      // snapshot yet — nothing to dissolve out.
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
         "/personas/vibecoder/desktop.png",
       );
-      const initialSiteBg = screen.getByTestId("public-chat-site-bg");
+      expect(heroStub).toHaveAttribute("data-outgoing-desktop-bg", "");
       const initialSiteBgImg = screen.getByTestId("public-chat-site-bg-image");
       expect(initialSiteBgImg).toHaveAttribute(
         "src",
         "/personas/vibecoder/site.png",
       );
-      expect(initialSiteBg.style.backgroundColor).not.toBe("");
-      // Wrapper starts visible.
-      expect(initialSiteBg.style.opacity).toBe("1");
+      expect(
+        screen.queryByTestId("public-chat-site-bg-outgoing"),
+      ).not.toBeInTheDocument();
 
-      fireEvent.mouseEnter(rail);
+      fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
       fireEvent.click(panelFor("Solo Builder"));
 
-      // Click immediately starts the fade-out: opacity flips to 0
-      // on the same render (synchronous setState), but the
-      // committed persona doesn't change until the timer fires.
-      expect(
-        screen.getByTestId("public-chat-site-bg").style.opacity,
-      ).toBe("0");
+      // Click immediately commits the new persona's wallpaper +
+      // site bg. The OLD persona (vibecoder) is now the outgoing
+      // snapshot mounted on top, so during the fade window BOTH
+      // images coexist in the DOM and the test stub exposes them
+      // via separate attributes.
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
+        "/personas/solo-builder/desktop.png",
+      );
+      expect(heroStub).toHaveAttribute(
+        "data-outgoing-desktop-bg",
         "/personas/vibecoder/desktop.png",
       );
+      expect(heroStub.getAttribute("data-outgoing-fade-key")).not.toBe("");
+      expect(
+        screen.getByTestId("public-chat-site-bg-image"),
+      ).toHaveAttribute("src", "/personas/solo-builder/site.png");
+      const outgoingSiteBg = screen.getByTestId(
+        "public-chat-site-bg-outgoing",
+      );
+      const outgoingSiteBgImg = outgoingSiteBg.querySelector("img");
+      expect(outgoingSiteBgImg).not.toBeNull();
+      expect(outgoingSiteBgImg).toHaveAttribute(
+        "src",
+        "/personas/vibecoder/site.png",
+      );
 
-      // Advance past the 550ms fade-out + blank-hold window. The
-      // setTimeout callback runs `setCommittedIndex`; the derived
-      // `visible` boolean flips back to true on the same render
-      // so the next paint has the new persona's wallpaper + site
-      // bg at opacity 1 (CSS transition handles the actual
-      // fade-in tween over the next 400ms).
+      // Advance past the 550ms fade-out window + 50ms teardown
+      // grace. The outgoing layer unmounts and only the new
+      // persona's snapshot remains in the DOM.
       await act(async () => {
-        vi.advanceTimersByTime(600);
+        vi.advanceTimersByTime(700);
       });
 
       expect(heroStub).toHaveAttribute(
         "data-desktop-bg",
         "/personas/solo-builder/desktop.png",
       );
+      expect(heroStub).toHaveAttribute("data-outgoing-desktop-bg", "");
+      expect(
+        screen.queryByTestId("public-chat-site-bg-outgoing"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("public-chat-site-bg-image"),
+      ).toHaveAttribute("src", "/personas/solo-builder/site.png");
       expect(
         document.querySelector('[data-persona-id="solo-builder"]'),
       ).not.toBeNull();
-
-      const committedSiteBg = screen.getByTestId("public-chat-site-bg");
-      const committedSiteBgImg = screen.getByTestId("public-chat-site-bg-image");
-      expect(committedSiteBgImg).toHaveAttribute(
-        "src",
-        "/personas/solo-builder/site.png",
-      );
-      expect(committedSiteBg.style.backgroundColor).not.toBe("");
-      expect(committedSiteBg.style.opacity).toBe("1");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("flips the active tick immediately on click while holding the committed bg/wallpaper until the fade-out finishes", async () => {
-    // Two-tier state contract: `activeIndex` drives the rail and
-    // foreground vars synchronously so the click feels responsive;
-    // `committedIndex` (which drives the bg + wallpaper rendering)
-    // only advances after a 550ms fade-out + blank-hold window so
-    // the swap is always fade out -> brief blank -> fade in.
-    vi.useFakeTimers();
-    try {
-      renderView();
-      const heroStub = screen.getByTestId("mock-aura-app-stub");
-      const initialSiteBgImg = screen.getByTestId(
-        "public-chat-site-bg-image",
-      );
-      expect(initialSiteBgImg).toHaveAttribute(
-        "src",
-        "/personas/vibecoder/site.png",
-      );
+  it("flips the active tick AND the committed wallpaper/site bg in the SAME render as the click — only the outgoing overlay lingers", () => {
+    // The previous "two-tier active vs committed" contract is gone:
+    // active + committed advance together so the painted persona
+    // matches the rail's aria-current immediately. The dissolve
+    // effect now comes from the OUTGOING overlay layer being
+    // captured at the moment of swap and animated to opacity 0.
+    renderView();
+    const heroStub = screen.getByTestId("mock-aura-app-stub");
+    expect(heroStub).toHaveAttribute(
+      "data-desktop-bg",
+      "/personas/vibecoder/desktop.png",
+    );
 
-      const rail = screen.getByTestId("persona-tick-rail");
-      fireEvent.mouseEnter(rail);
-      fireEvent.click(panelFor("Solo Builder"));
+    fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
+    fireEvent.click(panelFor("Solo Builder"));
 
-      // Active tick + aria-current flip immediately.
-      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+    // Active tick + aria-current flip immediately.
+    expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
 
-      // The committed bg + wallpaper still reflect Vibecoder —
-      // we're inside the 550ms fade-out + blank-hold window,
-      // before the timer fires.
-      expect(heroStub).toHaveAttribute(
-        "data-desktop-bg",
-        "/personas/vibecoder/desktop.png",
-      );
-      expect(
-        document.querySelector('[data-persona-id="vibecoder"]'),
-      ).not.toBeNull();
-      expect(
-        screen.getByTestId("public-chat-site-bg-image"),
-      ).toHaveAttribute("src", "/personas/vibecoder/site.png");
-      expect(
-        screen.getByTestId("public-chat-site-bg").style.opacity,
-      ).toBe("0");
+    // Committed bg + wallpaper ALSO flip immediately to the new
+    // persona — the visible-on-top outgoing layer is what carries
+    // the OLD persona's pixels during the dissolve.
+    expect(heroStub).toHaveAttribute(
+      "data-desktop-bg",
+      "/personas/solo-builder/desktop.png",
+    );
+    expect(heroStub).toHaveAttribute(
+      "data-outgoing-desktop-bg",
+      "/personas/vibecoder/desktop.png",
+    );
+    expect(
+      document.querySelector('[data-persona-id="solo-builder"]'),
+    ).not.toBeNull();
+    expect(
+      screen.getByTestId("public-chat-site-bg-image"),
+    ).toHaveAttribute("src", "/personas/solo-builder/site.png");
 
-      // Letting the timer fire advances the committed index and
-      // flips the derived `visible` back to true so the CSS
-      // transition fades the new persona in.
-      await act(async () => {
-        vi.advanceTimersByTime(600);
-      });
-
-      expect(heroStub).toHaveAttribute(
-        "data-desktop-bg",
-        "/personas/solo-builder/desktop.png",
-      );
-      expect(
-        screen.getByTestId("public-chat-site-bg-image"),
-      ).toHaveAttribute("src", "/personas/solo-builder/site.png");
-      expect(
-        screen.getByTestId("public-chat-site-bg").style.opacity,
-      ).toBe("1");
-    } finally {
-      vi.useRealTimers();
-    }
+    // The outgoing site bg overlay is mounted with the leaving
+    // animation class so CSS can fade it from opacity 1 → 0 over
+    // the next 550ms.
+    const outgoingSiteBg = screen.getByTestId(
+      "public-chat-site-bg-outgoing",
+    );
+    expect(outgoingSiteBg.className).toMatch(/Leaving/);
   });
 
   it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {
