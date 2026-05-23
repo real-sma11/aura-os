@@ -17,3 +17,61 @@
   background: #000;
   color: var(--color-text-primary);
 }
+
+/*
+ * Decorative gradient ring overlaid on the visible scroll-column box.
+ * Lives at this layout level (instead of inside `ProductView`) so the
+ * element stays mounted across route changes — React Router unmounts
+ * the per-route Outlet immediately on navigation away, which would
+ * cut the exit transition mid-frame if the ring were a child of
+ * `ProductView`. Keeping a single overlay alive across all four
+ * marketing routes lets `PublicMarketingPanel` simply toggle the
+ * `gradientFrameActive` class on `useLocation()` matches and rely on
+ * the standard CSS `transition: opacity` to fade in on `/product`
+ * entry and fade out on exit.
+ *
+ * The `inset: 12px` anchors the ring inside the visible scroll-column
+ * box (which is itself `position: absolute; inset: 0` inside
+ * `AuraShell.mainPanel`), so the frame sits 12px inside the public-
+ * mode shell chrome on all four sides — between the top titlebar pill
+ * and the bottom taskbar pill. Because the overlay is positioned
+ * absolutely against the scroll column (the scrolling viewport), it
+ * stays anchored to the visible page area rather than scrolling with
+ * the underlying `<Outlet />` content.
+ *
+ * Border treatment: the standard pseudo-less recipe for a rounded
+ * gradient border. The element itself paints the gradient as its
+ * background, then `mask-composite: exclude` punches out the
+ * `content-box` interior, leaving only the `padding`-sized ring
+ * visible at the rounded corners. `pointer-events: none` keeps the
+ * decorative ring from intercepting clicks on the underlying page
+ * content. `z-index: 1` lifts it above the default outlet content
+ * while staying below `ProductScreenSection`'s `z-index: 2000`
+ * lightbox portal so the fullscreen image viewer still paints on top
+ * of the frame.
+ */
+.gradientFrame {
+  position: absolute;
+  inset: 12px;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: linear-gradient(
+    135deg,
+    #5b2e8c 0%,
+    #d946ef 50%,
+    #ff6b9d 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  z-index: 1;
+}
+
+.gradientFrameActive {
+  opacity: 1;
+}
