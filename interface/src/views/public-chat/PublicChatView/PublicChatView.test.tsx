@@ -600,17 +600,16 @@ describe("PublicChatView", () => {
       "#1a1a1a",
     );
 
-    // Switching to the NO_THEME persona (Researcher) clears both
-    // properties so the default `--color-text-*` tokens take over on
-    // the next paint. Researcher has no `siteBackgroundColor` of its
-    // own — the page falls back to the global `--color-bg`, which IS
-    // theme-driven, so the nav text must keep tracking the user's
-    // theme here.
+    // Researcher ships with a warm, light page background paired
+    // with near-black foreground overrides so the public nav footer
+    // and tick rail stay legible over the portrait theme.
     fireEvent.mouseEnter(rail);
     fireEvent.click(panelFor("Researcher"));
-    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
+      "#0a0a0a",
+    );
     expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
-      "",
+      "#1a1a1a",
     );
 
     // Re-select Solo Builder so the cleanup path on unmount has

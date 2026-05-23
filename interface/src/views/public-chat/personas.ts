@@ -338,79 +338,89 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     id: "giga-brain",
     name: "Giga Brain",
     theme: {
-      // Glossy black helmet with a gold AURA-stamped earpiece
-      // and a single red visor LED, set on a saturated
-      // terracotta field. Source is a 1024×1024 square — same
-      // aspect as the Vibecoder / Cypher Punk portraits — so the
-      // wallpaper framing inherits the same `contain` +
-      // matching-frame-bg math: the figure renders end-to-end
-      // vertically and the sampled terracotta paints the
+      // Chrome-visor figure on a soft cream studio field — a
+      // woman in a cream hooded fleece zipper jacket, head
+      // wrapped in a mirror-finish chrome helmet (dome visor +
+      // jaw guard + chrome neck collar). Source is a 1024×1024
+      // square, same aspect as the Vibecoder / Cypher Punk
+      // portraits, so the wallpaper framing inherits the same
+      // `contain` + matching-frame-bg math: the figure renders
+      // end-to-end vertically and the sampled cream paints the
       // horizontal letterbox bars so the source's own backdrop
       // appears to extend to the window edges with no visible
       // seam.
       //
-      // Intentionally split from the surrounding page bg —
-      // `desktopBackgroundColor` here matches the SOURCE asset
-      // (terracotta) while `siteBackgroundColor` below stays at
-      // the warm tan, so the mock window reads as a saturated
-      // inset framed by the page's softer tan field instead of
-      // dissolving into a single flat color.
+      // The page-level surround (`siteBackgroundColor` below)
+      // is painted in the same flat cream so the area outside
+      // the mock window reads as one continuous backdrop with
+      // the photo's own studio field — the chrome figure inside
+      // the mock window then floats on a uniform cream
+      // composition that runs corner to corner of the viewport.
       desktopBackgroundUrl: "/personas/giga-brain/desktop.png",
       // Position is irrelevant under `contain` (the image fits
       // entirely inside the frame and there is no crop axis to
       // anchor). Same shape as the other character portraits.
       desktopBackgroundPosition: null,
       desktopBackgroundFit: "contain",
-      // Sampled mid-tone of the source's terracotta field,
-      // averaged across the top, middle, and bottom edges where
-      // the gradient runs from ~`#af755d` (top-center) down to
-      // ~`#9f6b53` (bottom corners). `#a87058` lands in the
-      // middle of that range so the seam between the letterbox
-      // bar and the image edge stays imperceptible along the
-      // full height of the frame.
-      desktopBackgroundColor: "#a87058",
-      // Zoom in ~28.8% from the `contain` baseline — bumped up
-      // from an initial `1.12` by a further 15% per direct user
-      // feedback (1.12 * 1.15 = 1.288), so the helmeted figure
-      // reads noticeably larger within its mock window than the
-      // other character portraits. The painted contain rectangle
-      // (1000×1000 inside a 1600×1000 frame) scales to
-      // ~1288×1288 around the frame center: the figure grows
-      // ~29% larger, the horizontal letterbox bars shrink from
-      // 300px to ~156px each side, and a ~11% slice at the top /
-      // bottom of the source falls outside the frame and gets
-      // trimmed by `.appFrame`'s `overflow: hidden`. The
-      // matching terracotta bg above still fills the (narrower)
+      // User-picked cream `#e3d8cc` (sampled from a flat color
+      // swatch — averaged R=227 G=216 B=204 across the swatch).
+      // Sits within ~3 levels of every channel of the source
+      // photo's own studio backdrop (gradient runs from ~`#e9dfd0`
+      // top to ~`#dccfba` bottom), so the seam between the
+      // letterbox bar painted at this color and the image edge
+      // stays imperceptible along the full height of the frame.
+      // Identical to `siteBackgroundColor` below so the bars
+      // visually continue into the page surround as one
+      // unbroken cream plane.
+      desktopBackgroundColor: "#e3d8cc",
+      // Zoom in 10% from the `contain` baseline — matches the
+      // Vibecoder + Cypher Punk scale exactly so all three
+      // 1024×1024 character portraits render at the same
+      // visible 1100×1100 size, keeping cross-fades between
+      // them a clean dissolve with no size jump. The painted
+      // contain rectangle (1000×1000 inside a 1600×1000 frame)
+      // scales to 1100×1100 around the frame center: the figure
+      // grows 10% larger, the horizontal letterbox bars shrink
+      // from 300px to 250px each side, and a ~4.5% slice at
+      // the top / bottom of the source falls outside the frame
+      // and gets trimmed by `.appFrame`'s `overflow: hidden`.
+      // The matching cream bg above still fills the (narrower)
       // letterbox bars so the seam stays invisible.
-      desktopBackgroundScale: 1.288,
-      // No surrounding site image — the page paints a flat warm
-      // tan behind the `MockAuraApp` rectangle. Intentionally a
-      // softer / lighter tone than the wallpaper's saturated
-      // terracotta above so the mock window reads as a
-      // saturated inset against the page's calmer surround
-      // instead of dissolving into one flat color.
+      desktopBackgroundScale: 1.1,
+      // No surrounding site image — the page paints a flat
+      // user-picked cream behind the `MockAuraApp` rectangle so
+      // the chrome-helmeted portrait inside the mock window
+      // sits on the same uniform studio field that fills the
+      // viewport.
       siteBackgroundUrl: null,
-      siteBackgroundColor: "#bc987a",
-      // The warm tan is mid-tone but bright enough that the
-      // default near-white nav/tick tokens lose contrast against
-      // it. Mirror the `solo-builder` / `coordinator` approach:
-      // near-black for active/hover, slightly lighter near-black
-      // for idle, so the public nav footer (bottom-left links)
-      // and right-edge tick rail keep a legible two-step
-      // hierarchy on the bg.
+      // Same `#e3d8cc` cream the user sampled from a flat color
+      // swatch — paints both the page surround AND (above) the
+      // letterbox bars inside the mock window, so the entire
+      // public chat surface reads as one continuous cream plane
+      // with the chrome character floating in the mock window
+      // at its center.
+      siteBackgroundColor: "#e3d8cc",
+      // The cream wash is light enough that the default near-
+      // white nav/tick tokens lose contrast against it. Mirror
+      // the `solo-builder` / `coordinator` approach: near-black
+      // for active/hover, a slightly lighter near-black for
+      // idle, so the public nav footer (bottom-left links) and
+      // right-edge tick rail keep a legible two-step hierarchy
+      // on the bg.
       siteForegroundColor: "#0a0a0a",
       siteForegroundColorMuted: "#1a1a1a",
-      // Saturated red sampled from the helmet's visor LED so the
-      // CTA's neon border + bloom read as if lit by the same
-      // light source as the character — and as a strong warm
-      // accent that pops off the warm tan page bg instead of
-      // melting into it the way the default neon violet would.
-      siteCtaGlowColor: "#ff2a3a",
-      // Default `50% 18%` framing keeps the visor + helmet
-      // centered inside the 18px avatar circle once the dock
-      // zooms in 2x on the 1024×1024 source — the head sits in
-      // the upper third of the source like every other curated
-      // portrait, so no per-persona override is needed.
+      // Cool electric blue accent — pops cleanly off the warm
+      // cream page bg (which would wash out the default neon
+      // violet) and resonates with the cool chrome highlights
+      // on the helmet, so the CTA's neon border + bloom read
+      // as if lit by the same reflective surfaces as the
+      // character.
+      siteCtaGlowColor: "#3b82f6",
+      // Default `50% 18%` framing keeps the chrome visor +
+      // helmet centered inside the 18px avatar circle once the
+      // dock zooms in 2x on the 1024×1024 source — the head
+      // sits in the upper third of the source like every other
+      // curated portrait, so no per-persona override is needed.
       avatarObjectPosition: null,
     },
   },
@@ -486,7 +496,32 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       avatarObjectPosition: null,
     },
   },
-  { id: "researcher", name: "Researcher", theme: NO_THEME },
+  {
+    id: "researcher",
+    name: "Researcher",
+    theme: {
+      // Glossy black-and-gold researcher android on a warm studio
+      // beige field. `contain` is intentional here: it preserves
+      // the portrait's top and bottom in the fixed 16:10 mock
+      // desktop. A larger uniform scale would crop vertically.
+      desktopBackgroundUrl: "/personas/researcher/desktop.png",
+      desktopBackgroundPosition: null,
+      desktopBackgroundFit: "contain",
+      desktopBackgroundColor: "#c7b6a6",
+      desktopBackgroundScale: 1,
+      // Warm amber wash behind the mock desktop, matching the
+      // portrait's studio backdrop while giving the page its own
+      // soft texture.
+      siteBackgroundUrl: "/personas/researcher/site.png",
+      siteBackgroundColor: "#c7b6a6",
+      siteForegroundColor: "#0a0a0a",
+      siteForegroundColorMuted: "#1a1a1a",
+      siteCtaGlowColor: "#d79a2e",
+      // Nudge the dock crop a touch higher so the single amber lens,
+      // rather than the hood or torso, lands in the avatar circle.
+      avatarObjectPosition: "50% 14%",
+    },
+  },
   {
     id: "cypher-punk",
     name: "Cypher Punk",

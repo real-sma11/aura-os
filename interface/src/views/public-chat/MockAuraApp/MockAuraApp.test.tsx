@@ -284,25 +284,23 @@ describe("MockAuraApp", () => {
       expect(onPersonaSelect).toHaveBeenCalledWith(1);
     });
 
-    it("paints the persona's portrait via background-image for themed personas and shows an initial-letter fallback for NO_THEME personas", () => {
+    it("paints themed persona portraits via background-image in the avatar dock", () => {
       render(<MockAuraApp />);
 
-      // Themed personas with a desktopBackgroundUrl render the
-      // portrait inline as a background-image; their inner content
-      // stays empty (no fallback letter to obscure the image).
+      // Personas with a desktopBackgroundUrl render the portrait
+      // inline as a background-image; their inner content stays
+      // empty (no fallback letter to obscure the image).
       const vibecoder = screen.getByTestId("mock-aura-avatar-vibecoder");
       expect(vibecoder.style.backgroundImage).toContain(
         "/personas/vibecoder/desktop.png",
       );
       expect(vibecoder.textContent).toBe("");
 
-      // NO_THEME personas (currently Researcher) leave the
-      // background-image empty and render the persona's initial
-      // inside `.personaAvatarFallback` so the dock still shows
-      // one circle per persona.
       const researcher = screen.getByTestId("mock-aura-avatar-researcher");
-      expect(researcher.style.backgroundImage).toBe("");
-      expect(researcher.textContent).toBe("R");
+      expect(researcher.style.backgroundImage).toContain(
+        "/personas/researcher/desktop.png",
+      );
+      expect(researcher.textContent).toBe("");
     });
 
     /*

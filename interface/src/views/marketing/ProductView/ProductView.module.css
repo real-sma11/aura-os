@@ -39,6 +39,9 @@
 .productView {
   --marketing-content-max-width: 63.75%;
   --marketing-section-bg: #0f0f12;
+  --color-text-primary: #f7f8fb;
+  --color-text-secondary: #a3a3a8;
+  --color-text-muted: rgba(255, 255, 255, 0.52);
   display: contents;
 }
 
