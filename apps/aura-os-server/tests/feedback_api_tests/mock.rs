@@ -125,6 +125,10 @@ impl MockNetwork {
         let votes_for_feed = self.votes.clone();
         let viewer_for_feed = self.viewer_profile_id.clone();
 
+        let events_for_public = self.events.clone();
+        let votes_for_public = self.votes.clone();
+        let viewer_for_public = self.viewer_profile_id.clone();
+
         let events_for_create = self.events.clone();
         let events_for_get = self.events.clone();
         let events_for_patch = self.events.clone();
@@ -141,6 +145,107 @@ impl MockNetwork {
         let viewer_for_vote = self.viewer_profile_id.clone();
 
         Router::new()
+            // Mirrors aura-network's anonymous list endpoint. Unauthenticated,
+            // and the wire shape is intentionally narrower than `/api/feed`:
+            // it strips down to the fields the marketing client needs.
+            .route(
+                "/api/public/feedback",
+                get(move |Query(q): Query<HashMap<String, String>>| {
+                    let events = events_for_public.clone();
+                    let votes = votes_for_public.clone();
+                    let viewer = viewer_for_public.clone();
+                    async move {
+                        let snapshot = events.lock().unwrap().clone();
+                        let votes = votes.lock().unwrap();
+                        let category_filter = q.get("category").cloned();
+                        let status_filter = q.get("status").cloned();
+                        let sort = q.get("sort").cloned().unwrap_or_else(|| "latest".into());
+                        let limit = q
+                            .get("limit")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(100);
+                        let mut items: Vec<Value> = snapshot
+                            .into_iter()
+                            .filter(|e| {
+                                e.get("eventType").and_then(Value::as_str)
+                                    == Some(FEEDBACK_EVENT_TYPE)
+                            })
+                            .filter(|e| match category_filter.as_deref() {
+                                Some(c) => {
+                                    e.get("metadata")
+                                        .and_then(|m| m.get("feedbackCategory"))
+                                        .and_then(Value::as_str)
+                                        == Some(c)
+                                }
+                                None => true,
+                            })
+                            .filter(|e| match status_filter.as_deref() {
+                                Some(s) => {
+                                    e.get("metadata")
+                                        .and_then(|m| m.get("feedbackStatus"))
+                                        .and_then(Value::as_str)
+                                        == Some(s)
+                                }
+                                None => true,
+                            })
+                            .map(|e| {
+                                let inflated = inflate_event(&e, &votes, &viewer);
+                                let metadata = e.get("metadata").cloned().unwrap_or(Value::Null);
+                                let body = metadata
+                                    .get("body")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_string();
+                                let category = metadata
+                                    .get("feedbackCategory")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("feedback")
+                                    .to_string();
+                                let status = metadata
+                                    .get("feedbackStatus")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("not_started")
+                                    .to_string();
+                                json!({
+                                    "id": inflated.get("id").cloned().unwrap_or(Value::Null),
+                                    "title": inflated.get("title").cloned().unwrap_or(Value::Null),
+                                    "body": body,
+                                    "category": category,
+                                    "status": status,
+                                    "upvotes": inflated.get("upvotes").cloned().unwrap_or(json!(0)),
+                                    "downvotes": inflated.get("downvotes").cloned().unwrap_or(json!(0)),
+                                    "voteScore": inflated.get("voteScore").cloned().unwrap_or(json!(0)),
+                                    "commentCount": inflated.get("commentCount").cloned().unwrap_or(json!(0)),
+                                    "createdAt": inflated.get("createdAt").cloned().unwrap_or(Value::Null),
+                                    "authorName": Value::Null,
+                                    "authorAvatar": Value::Null,
+                                })
+                            })
+                            .collect();
+                        match sort.as_str() {
+                            "most_voted" => items.sort_by(|a, b| {
+                                b.get("voteScore")
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or(0)
+                                    .cmp(&a.get("voteScore").and_then(Value::as_i64).unwrap_or(0))
+                            }),
+                            "least_voted" => items.sort_by(|a, b| {
+                                a.get("voteScore")
+                                    .and_then(Value::as_i64)
+                                    .unwrap_or(0)
+                                    .cmp(&b.get("voteScore").and_then(Value::as_i64).unwrap_or(0))
+                            }),
+                            _ => items.sort_by(|a, b| {
+                                b.get("createdAt")
+                                    .and_then(Value::as_str)
+                                    .cmp(&a.get("createdAt").and_then(Value::as_str))
+                            }),
+                        }
+                        items.truncate(limit);
+                        Json(items)
+                    }
+                }),
+            )
             .route(
                 "/api/feed",
                 get(move |Query(q): Query<HashMap<String, String>>| {

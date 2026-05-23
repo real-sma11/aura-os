@@ -14,5 +14,6 @@ mod comments;
 mod create;
 mod list;
 mod mock;
+mod pub_list;
 mod status;
 mod voting;

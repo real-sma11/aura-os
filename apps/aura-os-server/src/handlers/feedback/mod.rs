@@ -13,6 +13,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use futures_util::future::join_all;
+use serde::Deserialize;
 use tracing::warn;
 
 use aura_os_network::{NetworkClient, NetworkProfile};
@@ -390,4 +391,85 @@ pub(crate) async fn cast_feedback_vote(
         vote_score: summary.score,
         viewer_vote: summary.viewer_vote,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Public (unauthenticated) marketing endpoint
+// ---------------------------------------------------------------------------
+
+/// Query parameters accepted by the public marketing feedback list. Mirrors
+/// the parameter set the SPA at `interface/src/api/marketing/feedback.ts`
+/// forwards (sort + optional category/status + limit). All values are
+/// optional and bad values are dropped rather than 400'd so a default
+/// invocation always succeeds.
+#[derive(Debug, Deserialize)]
+pub(crate) struct PublicFeedbackListQuery {
+    pub sort: Option<String>,
+    pub category: Option<String>,
+    pub status: Option<String>,
+    pub limit: Option<u32>,
+}
+
+/// Public, unauthenticated list of feedback for the marketing
+/// `/feedback` page. Acts as a same-origin pass-through over aura-network's
+/// `GET /api/public/feedback`, so the SPA no longer needs a build-time
+/// `VITE_AURA_NETWORK_URL` — `AURA_NETWORK_URL` stays a server-side env.
+///
+/// Returns `[]` (rather than a 503) when no aura-network client is
+/// configured, matching the original aura-web behaviour at
+/// `aura-web/src/server/feedback.ts` so a default Aura OS build renders
+/// an empty roadmap instead of an error.
+pub(crate) async fn pub_list_feedback(
+    State(state): State<AppState>,
+    Query(query): Query<PublicFeedbackListQuery>,
+) -> Json<Vec<serde_json::Value>> {
+    let Some(client) = state
+        .feedback_network_client
+        .as_ref()
+        .or(state.network_client.as_ref())
+    else {
+        warn!("public feedback requested but no aura-network client configured");
+        return Json(Vec::new());
+    };
+
+    // Drop unknown values rather than 400 — this is a public read path
+    // and graceful fallthrough to "latest" / no-filter matches aura-web's
+    // `normalize*` helpers.
+    let sort = query
+        .sort
+        .as_deref()
+        .filter(|v| SORTS.contains(v))
+        .unwrap_or("latest");
+    let category = query.category.as_deref().filter(|v| CATEGORIES.contains(v));
+    let status = query.status.as_deref().filter(|v| STATUSES.contains(v));
+    let limit = query.limit.unwrap_or(100).clamp(1, 200);
+
+    let mut params = vec![("sort", sort.to_string()), ("limit", limit.to_string())];
+    if let Some(c) = category {
+        params.push(("category", c.to_string()));
+    }
+    if let Some(s) = status {
+        params.push(("status", s.to_string()));
+    }
+
+    let url = format!("{}/api/public/feedback", client.base_url());
+    let resp = match client.http_client().get(&url).query(&params).send().await {
+        Ok(resp) => resp,
+        Err(err) => {
+            warn!(%url, error = %err, "public feedback upstream request failed");
+            return Json(Vec::new());
+        }
+    };
+    if !resp.status().is_success() {
+        let status = resp.status();
+        warn!(%url, %status, "public feedback upstream returned non-success");
+        return Json(Vec::new());
+    }
+    match resp.json::<Vec<serde_json::Value>>().await {
+        Ok(items) => Json(items),
+        Err(err) => {
+            warn!(%url, error = %err, "public feedback upstream returned malformed JSON");
+            Json(Vec::new())
+        }
+    }
 }

@@ -11,10 +11,10 @@
 //! disabling public chat. Default is `true`; set
 //! `AURA_PUBLIC_GENERATION_ENABLED=false` to turn them off.
 
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
 
-use crate::handlers::public;
+use crate::handlers::{feedback, public};
 use crate::state::AppState;
 
 /// Env var that toggles the three public generation endpoints. When
@@ -42,7 +42,12 @@ fn public_generation_enabled() -> bool {
 pub(super) fn public_routes() -> Router<AppState> {
     let mut router = Router::new()
         .route("/api/public/setup", post(public::public_setup))
-        .route("/api/public/chat/stream", post(public::public_chat_stream));
+        .route("/api/public/chat/stream", post(public::public_chat_stream))
+        // Marketing `/feedback` page reads from this same-origin pass-through
+        // so the browser no longer needs `VITE_AURA_NETWORK_URL`; the upstream
+        // `AURA_NETWORK_URL` stays a server-side env (mirrors the aura-web
+        // `force-dynamic` RSC pattern at `src/app/roadmap/page.tsx`).
+        .route("/api/public/feedback", get(feedback::pub_list_feedback));
     if public_generation_enabled() {
         router = router
             .route(

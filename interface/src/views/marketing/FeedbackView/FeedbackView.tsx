@@ -3,7 +3,6 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  hasNetworkUrl,
   listFeedback,
   normalizeCategory,
   normalizeSort,
@@ -21,6 +20,11 @@ import "./FeedbackView.css";
  * `useSearchParams()` call; the `await listFeedback(...)` call becomes a
  * React Query query so the page can re-fetch on filter changes without a
  * full reload.
+ *
+ * The fetch now goes to a same-origin pass-through on `aura-os-server`
+ * (`GET /api/public/feedback`), which forwards to aura-network using the
+ * server-side `AURA_NETWORK_URL`. The browser no longer reads any
+ * upstream URL directly.
  */
 export function FeedbackView(): ReactNode {
   useEffect(() => {
@@ -37,12 +41,9 @@ export function FeedbackView(): ReactNode {
   const category = normalizeCategory(searchParams.get("type"));
   const status = normalizeStatus(searchParams.get("status"));
 
-  const networkConfigured = hasNetworkUrl();
-
   const { data, isLoading } = useQuery({
     queryKey: ["marketing-feedback", sort, category, status],
     queryFn: () => listFeedback({ sort, category, status }),
-    enabled: networkConfigured,
   });
 
   const entries = data ?? [];
@@ -62,21 +63,8 @@ export function FeedbackView(): ReactNode {
             </div>
           ) : showEmpty ? (
             <div className="feedbackEmptyState">
-              {networkConfigured ? (
-                <>
-                  <h2>No feedback yet.</h2>
-                  <p>No AURA feedback posts match the current filters.</p>
-                </>
-              ) : (
-                <>
-                  <h2>Feedback unavailable.</h2>
-                  <p>
-                    Set <code>AURA_NETWORK_URL</code> (e.g.{" "}
-                    <code>https://network.aura.ai</code>) to load feedback
-                    from the aura-network service.
-                  </p>
-                </>
-              )}
+              <h2>No feedback yet.</h2>
+              <p>No AURA feedback posts match the current filters.</p>
             </div>
           ) : null}
         </div>

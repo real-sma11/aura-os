@@ -1,22 +1,29 @@
 /**
- * Browser-side client for aura-network's public Feedback list.
+ * Browser-side client for the marketing `/feedback` page.
  *
- * Ported from `aura-web/src/server/feedback.ts`. The source ran as a
- * Next.js Server Component module that hit aura-network from the edge;
- * this port talks to the same `GET /api/public/feedback` endpoint, but
- * from the SPA. The endpoint is unauthenticated.
+ * Originally ported from `aura-web/src/server/feedback.ts`, which ran as a
+ * Next.js Server Component and read `process.env.AURA_NETWORK_URL` in the
+ * Node process. The first SPA port pushed that fetch into the browser and
+ * required a build-time `VITE_AURA_NETWORK_URL`, which left default builds
+ * with no roadmap data.
  *
- * Behavior parity:
- *   - Same `FeedbackSort` / `FeedbackCategory` / `FeedbackStatus` unions,
- *     same `normalizeSort` / `normalizeCategory` / `normalizeStatus`
- *     guards, same `coerceEntry` shape.
- *   - Reads the network base URL from `import.meta.env.VITE_AURA_NETWORK_URL`
- *     (was `process.env.AURA_NETWORK_URL` server-side). Trailing slashes
- *     are stripped so URL composition is predictable.
- *   - Returns `[]` on missing config, non-OK responses, or thrown
- *     fetch/JSON errors; failures are logged via `console.error` (same
- *     verb the source uses).
+ * The SPA now talks to the main `aura-os-server` instead: it exposes a
+ * same-origin pass-through at `GET /api/public/feedback` that proxies to
+ * aura-network using the server-side `AURA_NETWORK_URL` (or
+ * `AURA_NETWORK_FEEDBACK_URL`). That mirrors aura-web's RSC model — the
+ * upstream URL stays a server secret, the browser just hits its own
+ * origin.
+ *
+ * Endpoint contract:
+ *   - Unauthenticated. Returns an empty array when aura-network is not
+ *     configured on the server.
+ *   - Same wire shape (`PublicFeedbackEntryResponse`) as aura-network's
+ *     `GET /api/public/feedback`, so `coerceEntry` is unchanged.
+ *   - Accepts `sort`, `category`, `status`, `limit` query params; unknown
+ *     values are dropped server-side and fall back to "latest".
  */
+
+import { resolveApiUrl } from "../../shared/lib/host-config";
 
 export type FeedbackSort =
   | "latest"
@@ -107,14 +114,6 @@ export function normalizeStatus(
     : null;
 }
 
-function networkBaseUrl(): string | null {
-  const raw = import.meta.env.VITE_AURA_NETWORK_URL?.trim();
-  if (!raw) return null;
-  // Strip a single trailing slash so URL construction is predictable
-  // whether operators set "https://network.aura.ai" or the same with a "/".
-  return raw.replace(/\/+$/, "");
-}
-
 interface PublicFeedbackEntryResponse {
   readonly id: string;
   readonly title: string;
@@ -154,9 +153,6 @@ function coerceEntry(raw: PublicFeedbackEntryResponse): FeedbackEntry {
 export async function listFeedback(
   params: ListFeedbackParams = {},
 ): Promise<readonly FeedbackEntry[]> {
-  const base = networkBaseUrl();
-  if (!base) return [];
-
   const sort = normalizeSort(params.sort ?? null);
   const category = normalizeCategory(params.category ?? null);
   const status = normalizeStatus(params.status ?? null);
@@ -168,7 +164,7 @@ export async function listFeedback(
   if (category) search.set("category", category);
   if (status) search.set("status", status);
 
-  const url = `${base}/api/public/feedback?${search.toString()}`;
+  const url = `${resolveApiUrl("/api/public/feedback")}?${search.toString()}`;
 
   try {
     const res = await fetch(url, { cache: "no-store" });
@@ -188,8 +184,4 @@ export async function listFeedback(
     console.error("[feedback] listFeedback failed", err);
     return [];
   }
-}
-
-export function hasNetworkUrl(): boolean {
-  return networkBaseUrl() !== null;
 }

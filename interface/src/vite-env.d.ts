@@ -7,12 +7,12 @@ interface ImportMetaEnv {
   readonly VITE_MIXPANEL_TOKEN?: string;
   readonly VITE_PRIVACY_POLICY_URL?: string;
   readonly VITE_SUPPORT_URL?: string;
-  // Marketing pages (Phase 1 port from aura-web). Optional overrides for the
-  // changelog index location and the aura-network base URL the public
-  // Feedback list reads from. Both fall back to sensible defaults (the
-  // public GitHub Pages index + `null` -> empty list) when unset.
+  // Marketing pages (Phase 1 port from aura-web). Optional override for the
+  // changelog index location; falls back to the public GitHub Pages index
+  // when unset. The marketing Feedback list reads from the main server's
+  // `/api/public/feedback` pass-through, so no browser-side aura-network
+  // URL is required.
   readonly VITE_CHANGELOG_INDEX_URL?: string;
-  readonly VITE_AURA_NETWORK_URL?: string;
 }
 
 interface ImportMeta {
