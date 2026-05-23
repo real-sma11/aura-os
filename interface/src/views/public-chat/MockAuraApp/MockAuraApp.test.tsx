@@ -29,7 +29,7 @@
  *      because they're decorative with no semantic value.
  */
 
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import {
   afterEach,
   beforeAll,
@@ -44,6 +44,7 @@ import {
   SCRIPT,
   type MessageFrame,
 } from "../agent-demo-script";
+import { PERSONAS } from "../personas";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -222,5 +223,90 @@ describe("MockAuraApp", () => {
     expect(frame.style.getPropertyValue("--mock-hljs-comment")).toBe(
       palette.hljsComment,
     );
+  });
+
+  /*
+   * Persona avatar dock — one circular button per `PERSONAS` entry
+   * inside the bottom-left mock dock pill. The dock is the second
+   * entry point for persona swaps (next to `PersonaTickRail`), so
+   * these tests pin both the visual contract (right number of
+   * buttons, right active marker, right image-vs-fallback split)
+   * and the wiring contract (clicks fire `onPersonaSelect` with the
+   * array index of the clicked persona).
+   */
+  describe("persona avatar dock", () => {
+    it("renders one button per entry in PERSONAS in array order", () => {
+      render(<MockAuraApp />);
+      const buttons = PERSONAS.map((persona) =>
+        screen.getByTestId(`mock-aura-avatar-${persona.id}`),
+      );
+      expect(buttons).toHaveLength(PERSONAS.length);
+      for (const [index, persona] of PERSONAS.entries()) {
+        expect(buttons[index]).toHaveAttribute("data-persona-id", persona.id);
+        expect(buttons[index].tagName).toBe("BUTTON");
+        // `bottomChrome` is `aria-hidden`, so the dock buttons stay
+        // out of the keyboard focus order.
+        expect(buttons[index]).toHaveAttribute("tabindex", "-1");
+      }
+    });
+
+    it("marks the button at activePersonaIndex as active and leaves the rest inactive", () => {
+      render(<MockAuraApp activePersonaIndex={3} />);
+      for (const [index, persona] of PERSONAS.entries()) {
+        const button = screen.getByTestId(`mock-aura-avatar-${persona.id}`);
+        expect(button).toHaveAttribute(
+          "data-active",
+          index === 3 ? "true" : "false",
+        );
+      }
+    });
+
+    it("defaults activePersonaIndex to 0 (Vibecoder) when omitted", () => {
+      render(<MockAuraApp />);
+      expect(
+        screen.getByTestId(`mock-aura-avatar-${PERSONAS[0].id}`),
+      ).toHaveAttribute("data-active", "true");
+      expect(
+        screen.getByTestId(`mock-aura-avatar-${PERSONAS[1].id}`),
+      ).toHaveAttribute("data-active", "false");
+    });
+
+    it("fires onPersonaSelect with the array index when an avatar is clicked", () => {
+      const onPersonaSelect = vi.fn();
+      render(<MockAuraApp onPersonaSelect={onPersonaSelect} />);
+
+      // Pick the Solo Builder slot (index 1) — distinct from the
+      // default active index (0) so the click registers a real
+      // change and the assertion isn't a no-op.
+      fireEvent.click(screen.getByTestId("mock-aura-avatar-solo-builder"));
+
+      expect(onPersonaSelect).toHaveBeenCalledTimes(1);
+      expect(onPersonaSelect).toHaveBeenCalledWith(1);
+    });
+
+    it("paints the persona's portrait via background-image for themed personas and shows an initial-letter fallback for NO_THEME personas", () => {
+      render(<MockAuraApp />);
+
+      // Themed personas with a desktopBackgroundUrl render the
+      // portrait inline as a background-image; their inner content
+      // stays empty (no fallback letter to obscure the image).
+      const vibecoder = screen.getByTestId("mock-aura-avatar-vibecoder");
+      expect(vibecoder.style.backgroundImage).toContain(
+        "/personas/vibecoder/desktop.png",
+      );
+      expect(vibecoder.textContent).toBe("");
+
+      // NO_THEME personas (Giga Brain, Researcher) leave the
+      // background-image empty and render the persona's initial
+      // inside `.personaAvatarFallback` so the dock still shows
+      // one circle per persona.
+      const gigaBrain = screen.getByTestId("mock-aura-avatar-giga-brain");
+      expect(gigaBrain.style.backgroundImage).toBe("");
+      expect(gigaBrain.textContent).toBe("G");
+
+      const researcher = screen.getByTestId("mock-aura-avatar-researcher");
+      expect(researcher.style.backgroundImage).toBe("");
+      expect(researcher.textContent).toBe("R");
+    });
   });
 });

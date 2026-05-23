@@ -18,15 +18,39 @@
  *     gone.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./ComposePanel.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
 
+// MockAuraApp stub that echoes the persona-dock props out as DOM
+// attributes plus exposes a tiny "click" button so ComposePanel
+// tests can verify (a) `activePersonaIndex` reaches the child, and
+// (b) `onPersonaSelect` is forwarded — without pulling the real
+// scripted DM windows in.
 vi.mock("../MockAuraApp", () => ({
-  MockAuraApp: () => <div data-testid="mock-aura-app-stub" />,
+  MockAuraApp: ({
+    activePersonaIndex,
+    onPersonaSelect,
+  }: {
+    activePersonaIndex?: number;
+    onPersonaSelect?: (index: number) => void;
+  }) => (
+    <div
+      data-testid="mock-aura-app-stub"
+      data-active-persona-index={
+        activePersonaIndex != null ? String(activePersonaIndex) : ""
+      }
+    >
+      <button
+        type="button"
+        data-testid="mock-aura-app-stub-select-2"
+        onClick={() => onPersonaSelect?.(2)}
+      />
+    </div>
+  ),
 }));
 
 import { ComposePanel } from "./ComposePanel";
@@ -36,9 +60,26 @@ afterEach(() => {
 });
 
 describe("ComposePanel", () => {
-  it("renders the MockAuraApp hero and no example-prompt buttons", () => {
+  it("renders the MockAuraApp hero", () => {
     render(<ComposePanel />);
     expect(screen.getByTestId("mock-aura-app-stub")).toBeInTheDocument();
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("forwards activePersonaIndex straight through to MockAuraApp", () => {
+    render(<ComposePanel activePersonaIndex={4} />);
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "4",
+    );
+  });
+
+  it("forwards onPersonaSelect straight through so an avatar click bubbles back to the host", () => {
+    const onPersonaSelect = vi.fn();
+    render(<ComposePanel onPersonaSelect={onPersonaSelect} />);
+
+    fireEvent.click(screen.getByTestId("mock-aura-app-stub-select-2"));
+
+    expect(onPersonaSelect).toHaveBeenCalledTimes(1);
+    expect(onPersonaSelect).toHaveBeenCalledWith(2);
   });
 });

@@ -18,17 +18,26 @@ import { describe, expect, it, vi } from "vitest";
 // and full chrome that the landing test doesn't need to exercise.
 // The stub echoes BOTH the current desktop bg URL AND the
 // outgoing snapshot's URL into data attributes so the layered
-// cross-fade is observable.
+// cross-fade is observable, plus the current `activePersonaIndex`
+// so we can pin that the bottom-left avatar dock and the right-
+// edge `PersonaTickRail` share one piece of state. A pair of
+// hidden click targets simulate the dock firing
+// `onPersonaSelect(1)` / `onPersonaSelect(2)` without pulling
+// the real avatar buttons in.
 vi.mock("../MockAuraApp", () => ({
   MockAuraApp: ({
     desktopBackgroundUrl,
     outgoingDesktopBackground,
+    activePersonaIndex,
+    onPersonaSelect,
   }: {
     desktopBackgroundUrl?: string | null;
     outgoingDesktopBackground?: {
       readonly url: string | null;
       readonly fadeKey: number;
     } | null;
+    activePersonaIndex?: number;
+    onPersonaSelect?: (index: number) => void;
   }) => (
     <div
       data-testid="mock-aura-app-stub"
@@ -39,7 +48,21 @@ vi.mock("../MockAuraApp", () => ({
           ? String(outgoingDesktopBackground.fadeKey)
           : ""
       }
-    />
+      data-active-persona-index={
+        activePersonaIndex != null ? String(activePersonaIndex) : ""
+      }
+    >
+      <button
+        type="button"
+        data-testid="mock-aura-app-dock-select-solo-builder"
+        onClick={() => onPersonaSelect?.(1)}
+      />
+      <button
+        type="button"
+        data-testid="mock-aura-app-dock-select-giga-brain"
+        onClick={() => onPersonaSelect?.(2)}
+      />
+    </div>
   ),
 }));
 
@@ -374,6 +397,42 @@ describe("PublicChatView landing", () => {
       "public-chat-site-bg-outgoing",
     );
     expect(outgoingSiteBg.className).toMatch(/Leaving/);
+  });
+
+  it("shares activeIndex between the right-edge tick rail and the bottom-left avatar dock — both directions", () => {
+    // Single-piece-of-state contract: PublicChatView owns
+    // `activeIndex` and forwards it to BOTH the right-edge rail
+    // (via `aria-current`) AND the bottom-left avatar dock inside
+    // MockAuraApp (via `activePersonaIndex`). The handler each
+    // surface calls (`onActiveIndexChange` / `onPersonaSelect`) is
+    // the same `setActiveIndex` setter, so a click on either
+    // surface updates BOTH surfaces in the next render. This test
+    // pins that loop by alternating clicks between the two
+    // entry points.
+    renderView();
+    const heroStub = screen.getByTestId("mock-aura-app-stub");
+
+    // Initial state: Vibecoder (index 0) is active in both
+    // surfaces.
+    expect(heroStub).toHaveAttribute("data-active-persona-index", "0");
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+
+    // Click the dock's Solo Builder avatar — the rail's
+    // aria-current jumps to Solo Builder in the same render.
+    fireEvent.click(
+      screen.getByTestId("mock-aura-app-dock-select-solo-builder"),
+    );
+    expect(heroStub).toHaveAttribute("data-active-persona-index", "1");
+    expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+    expect(tickFor("Vibecoder")).not.toHaveAttribute("aria-current");
+
+    // Click a rail row — the dock's `activePersonaIndex` jumps to
+    // Researcher (index 4) in the same render, proving the wiring
+    // works in both directions.
+    fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
+    fireEvent.click(panelFor("Researcher"));
+    expect(heroStub).toHaveAttribute("data-active-persona-index", "4");
+    expect(tickFor("Researcher")).toHaveAttribute("aria-current", "true");
   });
 
   it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {

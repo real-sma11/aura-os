@@ -144,6 +144,20 @@ export interface PersonaTheme {
    * affects the rail, the marketing footer, or the chat palette.
    */
   readonly siteCtaGlowColor: string | null;
+  /**
+   * Per-persona crop hint for the bottom-left avatar dock inside
+   * `MockAuraApp`. The dock reuses `desktopBackgroundUrl` as the
+   * avatar image and zooms ~2x via `background-size: 200%`, so a
+   * `background-position` value here decides which slice of the
+   * source portrait lands in the 18px circle. When `null` the dock
+   * falls back to `"50% 18%"` — the upper-third sweet spot where
+   * the head sits in every existing character portrait.
+   *
+   * NO_THEME personas don't paint an avatar image at all (they
+   * render an initial-letter fallback instead), so this field is
+   * ignored for them.
+   */
+  readonly avatarObjectPosition: string | null;
 }
 
 export interface Persona {
@@ -170,6 +184,7 @@ const NO_THEME: PersonaTheme = {
   siteForegroundColor: null,
   siteForegroundColorMuted: null,
   siteCtaGlowColor: null,
+  avatarObjectPosition: null,
 };
 
 export const PERSONAS: ReadonlyArray<Persona> = [
@@ -247,6 +262,11 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // CTA keeps the default neon-violet bloom which is tuned
       // to pop against the deep purple page bg.
       siteCtaGlowColor: null,
+      // Default `50% 18%` framing keeps the visor + face centered
+      // inside the 18px circle once the dock zooms in 2x on the
+      // 1024x1024 source — the figure was authored with the head
+      // near the top so no per-persona override is needed.
+      avatarObjectPosition: null,
     },
   },
   {
@@ -312,6 +332,11 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // site bg so the CTA's neon border + bloom read as a separate
       // light source instead of melting into the page color.
       siteCtaGlowColor: "#ff7a59",
+      // Default framing — the helmeted figure is centered in the
+      // 1024x1024 source with the helmet brim near the top edge,
+      // so the shared `50% 18%` slice lands the visor on the
+      // vertical centerline of the 18px avatar circle.
+      avatarObjectPosition: null,
     },
   },
   { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },
@@ -348,6 +373,11 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // lavender page wash on the color wheel — the default neon
       // violet would disappear into the bg here.
       siteCtaGlowColor: "#5ce0ff",
+      // The portrait source is a tall 3:4 frame (helmet + upper
+      // torso) so the head naturally sits higher than on the
+      // square sources. Default `50% 18%` slice still lands the
+      // helmet centered in the 18px avatar circle.
+      avatarObjectPosition: null,
     },
   },
   { id: "researcher", name: "Researcher", theme: NO_THEME },
@@ -409,6 +439,11 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // "Create your agent" pill reads as if lit by the same
       // visor light source against the dark blue-gray page bg.
       siteCtaGlowColor: "#3aff8a",
+      // Default framing — the hooded operator's visor sits in the
+      // upper third of the 1024x1024 source, so the shared
+      // `50% 18%` slice lands the visor centered in the 18px
+      // avatar circle.
+      avatarObjectPosition: null,
     },
   },
 ];
