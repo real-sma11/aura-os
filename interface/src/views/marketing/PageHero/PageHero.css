@@ -199,7 +199,15 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  /* Single source of truth for the spacing between the three
+     centered-stack siblings (headline, description, CTA). The
+     headline rule above zeros the UA `<h1>` block margins and the
+     description rule below zeros the UA `<p>` margins, so this
+     `gap` value is the entire visible whitespace between each
+     pair. 32px gives the hero more breathing room than the
+     previous 20px without breaking the equal-gap invariant — both
+     gaps grow by the same amount when this value changes. */
+  gap: 32px;
   width: 100%;
   max-width: 100%;
 }
