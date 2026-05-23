@@ -6,10 +6,13 @@ import styles from "./PersonaTickRail.module.css";
  * Decorative rail pinned to the far-right edge of the public
  * landing surface (`PublicChatView`). In its resting state the
  * rail shows one fixed-size horizontal tick per entry in
- * `PERSONAS`, stacked top-to-bottom with the active persona
- * painted in `--color-text-primary` and the rest in
- * `--color-text-secondary` so the column reads as a calm
- * scrollbar-style indicator that's already theme-aware.
+ * `PERSONAS`, stacked top-to-bottom. Every tick paints the same
+ * persona-aware foreground color (`--public-nav-fg-color`, fall-
+ * back to `--color-text-primary`); only opacity flips between
+ * 0.5 (idle) and 1 (active) so the column reads as a single hue
+ * at two transparency levels — white-on-dark for video / dark-bg
+ * personas, near-black for light-bg personas (Solo Builder,
+ * Coordinator).
  *
  * Open / close model
  * ------------------

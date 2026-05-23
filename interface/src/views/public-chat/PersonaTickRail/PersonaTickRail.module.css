@@ -4,12 +4,16 @@
  * rail has two states:
  *
  *   Closed (default)
- *     `.list` is visible, each tick paints
- *     `--color-text-secondary` and the active tick paints
- *     `--color-text-primary` so the column reads as a calm
- *     scrollbar-style indicator. The `.panel` is hidden
- *     (opacity 0, pointer-events: none) and stacked behind the
- *     ticks so it never intercepts pointer events.
+ *     `.list` is visible. Every tick paints the same persona-
+ *     aware foreground color (`--public-nav-fg-color`, falling
+ *     back to `--color-text-primary` for the default near-white
+ *     hue on dark bgs); only `opacity` flips between 0.5 (idle)
+ *     and 1 (active) so the column reads as a single hue at two
+ *     transparency levels — pure-feeling white-on-dark for the
+ *     video / dark-bg personas, near-black on light-bg personas
+ *     like Solo Builder. The `.panel` is hidden (opacity 0,
+ *     pointer-events: none) and stacked behind the ticks so it
+ *     never intercepts pointer events.
  *
  *   Open (data-panel-open="true")
  *     The ticks fade to opacity 0 with pointer-events disabled,
@@ -78,31 +82,32 @@
 
 /*
  * Fixed-size tick. Width and height never change with state —
- * only `background` flips between `--color-text-secondary`
- * (idle) and `--color-text-primary` (active). The 160ms
+ * only `opacity` flips between 0.5 (idle) and 1 (active). All
+ * ticks paint the same persona-aware foreground color, so the
+ * column reads as a single hue at two transparency levels:
+ * white-on-dark for video / dark-bg personas, black-on-light
+ * for light-bg personas (Solo Builder, Coordinator). The 160ms
  * transition matches the CTA hover transition in
  * `PublicChatView.module.css`.
+ *
+ * `--public-nav-fg-color` is published on `<html>` by
+ * `PublicChatView` whenever the active persona declares a
+ * `siteForegroundColor`; the fallback (`--color-text-primary`)
+ * is the theme's near-white primary token, which is correct for
+ * every `NO_THEME` persona since their site bgs are dark / video.
  */
 .tick {
   display: block;
   width: 18px;
   height: 2px;
-  /*
-   * The rail paints directly over the active persona's site
-   * background. `--public-nav-fg-color-muted` is published on `<html>`
-   * by `PublicChatView` when the active persona declares a
-   * `siteForegroundColorMuted`, so light-bg themes (e.g. Solo Builder)
-   * render dark idle ticks instead of the default near-white token
-   * washing into the bg image. Default token fallback keeps every
-   * `NO_THEME` persona pixel-identical to today.
-   */
-  background: var(--public-nav-fg-color-muted, var(--color-text-secondary));
+  background: var(--public-nav-fg-color, var(--color-text-primary));
   border-radius: 2px;
-  transition: background 160ms ease;
+  opacity: 0.5;
+  transition: opacity 160ms ease;
 }
 
 .tickButton[data-active="true"] .tick {
-  background: var(--public-nav-fg-color, var(--color-text-primary));
+  opacity: 1;
 }
 
 /*
