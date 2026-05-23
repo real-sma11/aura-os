@@ -3,7 +3,12 @@
   min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
   min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
   padding: 120px clamp(20px, 5vw, 56px) 80px;
-  background: #000;
+  /* Off-black surface tint matching the `/product` page sections
+     (see the `--marketing-section-bg` rationale in
+     `ProductView.module.css`). The token isn't inherited here
+     because `ChangelogView` isn't wrapped by `.productView`, so
+     reference it explicitly with the same `#0f0f12` fallback. */
+  background: var(--marketing-section-bg, #0f0f12);
 }
 
 .changelogPageShell {
