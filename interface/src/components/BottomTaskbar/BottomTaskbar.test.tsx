@@ -74,6 +74,7 @@ vi.mock("lucide-react", () => ({
   Upload: () => <svg />,
   Sun: () => <svg data-testid="theme-icon-sun" />,
   Moon: () => <svg data-testid="theme-icon-moon" />,
+  Github: () => <svg data-testid="icon-github" />,
 }));
 
 interface MockMenuItem {
@@ -634,6 +635,32 @@ describe("BottomTaskbar", () => {
       ).not.toBeInTheDocument();
       expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
       expect(container.querySelector(".clock")).toBeNull();
+    });
+
+    it("renders a 'Powered by THE GRID' link to the GitHub repo opening in a new tab", () => {
+      render(<BottomTaskbar mode="public" />);
+
+      const link = screen.getByRole("link", { name: /powered by the grid/i });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://github.com/cypher-asi/the-grid",
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      const rel = link.getAttribute("rel") ?? "";
+      expect(rel).toContain("noopener");
+      expect(rel).toContain("noreferrer");
+    });
+
+    it("does not render the 'Powered by THE GRID' link in authed modes", () => {
+      const { rerender } = render(<BottomTaskbar mode="simple" />);
+      expect(
+        screen.queryByRole("link", { name: /powered by the grid/i }),
+      ).not.toBeInTheDocument();
+
+      rerender(<BottomTaskbar mode="advanced" />);
+      expect(
+        screen.queryByRole("link", { name: /powered by the grid/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });

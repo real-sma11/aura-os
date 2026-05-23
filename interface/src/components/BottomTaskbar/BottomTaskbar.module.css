@@ -94,3 +94,37 @@
   user-select: none;
   padding: 0 4px;
 }
+
+/*
+ * Public-mode-only attribution chip. Sized to match the surrounding
+ * `TaskbarIconButton` height (`--taskbar-item-size`) so it lines up
+ * with the theme toggle on the same row, but allowed to grow
+ * horizontally to fit its text label. Rendered as an `<a>` for native
+ * link semantics — see `PoweredByGridButton.tsx`.
+ */
+.poweredByGrid {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--taskbar-item-size);
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: var(--text-2xs);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.poweredByGrid:hover,
+.poweredByGrid:focus-visible {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.poweredByGrid strong {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
