@@ -23,7 +23,10 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  max-width: 1200px;
+  /* See `--marketing-content-max-width` in `interface/src/index.css`:
+     tracks the `MockAuraApp` wallpaper width on the public landing
+     page so this hero never reads wider than the product it advertises. */
+  max-width: var(--marketing-content-max-width, 1200px);
   width: 100%;
   margin: 0 auto;
   gap: 20px;
@@ -98,7 +101,7 @@
 .pageHeroPreview {
   position: relative;
   z-index: 1;
-  max-width: 1200px;
+  max-width: var(--marketing-content-max-width, 1200px);
   width: 100%;
   margin: 48px auto 0;
 }

@@ -91,6 +91,32 @@
   --marketing-taskbar-safe-offset: env(safe-area-inset-bottom, 0px);
   --marketing-main-bottom-space: 24px;
   --marketing-transition-fast: 150ms ease;
+
+  /*
+   * Width cap for the stacked sections on the public `/product` route
+   * (`PageHero`, `ProductScreenSection`, `FeaturePanel`,
+   * `ChangelogPreview`, `ProductCallToAction`). Sized to track the
+   * `MockAuraApp` wallpaper rectangle on the public landing page so
+   * the product page never reads as wider than the hero it advertises.
+   *
+   * MockAuraApp paints at `min(75cqw, calc(75cqh * 16 / 10))` against
+   * `composePanel` (see `MockAuraApp.module.css`), which itself sits
+   * inside `heroSlot` (16px horizontal padding) → `composePanel`
+   * (16px horizontal padding), so the wallpaper's typical (cqw-binding)
+   * width resolves to `0.75 * (main_width - 64px)`. Every section on
+   * `ProductView` lives inside a parent with `padding: ... 32px ...`
+   * (32px on each side, 64px total), so its inner container's parent
+   * width is also `main_width - 64px`. Capping each inner container's
+   * `max-width` at `75%` therefore lands on `0.75 * (main_width - 64px)`
+   * — an exact visual match to the wallpaper rectangle at any viewport.
+   *
+   * The narrow-viewport media queries inside each component still drop
+   * section padding to 24px/20px, and the public landing page drops
+   * heroSlot padding to 8px below 640px, so there's a sub-10px mismatch
+   * at phone widths; that's well inside the visual tolerance for "as
+   * wide as the wallpaper" and the 75% formula stays stable.
+   */
+  --marketing-content-max-width: 75%;
 }
 
 html, body, #root {

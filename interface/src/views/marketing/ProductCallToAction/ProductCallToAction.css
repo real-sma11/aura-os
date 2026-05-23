@@ -11,7 +11,9 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  max-width: 1200px;
+  /* Track the public landing-page `MockAuraApp` wallpaper width; see
+     `--marketing-content-max-width` in `interface/src/index.css`. */
+  max-width: var(--marketing-content-max-width, 1200px);
   min-height: 460px;
   margin: 0 auto;
   overflow: hidden;
