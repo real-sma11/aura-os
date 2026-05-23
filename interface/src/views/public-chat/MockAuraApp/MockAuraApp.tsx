@@ -288,6 +288,7 @@ export function MockAuraApp({
                 alt="AURA"
                 className={styles.titleLogo}
                 draggable={false}
+                data-aura-wordmark
               />
             </span>
           }
