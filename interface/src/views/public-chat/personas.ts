@@ -94,6 +94,21 @@ export interface PersonaTheme {
    * `document.documentElement` while the persona is active.
    */
   readonly siteForegroundColorMuted: string | null;
+  /**
+   * Neon accent color used for the landing CTA's glowing border and
+   * bloom shadow (the "Create your agent" pill in `PublicChatView`).
+   * Published as `--public-cta-glow-color` on `.chatView` while this
+   * persona is active so only the CTA reads it. When `null` the CSS
+   * default — a neon violet matching the reference — paints, which
+   * is correct for personas with a dark / video site background.
+   *
+   * Override on personas whose `siteBackgroundColor` would wash out
+   * the default violet: pick a hue that pops off the page bg (warm
+   * accent on cool washes, cool accent on warm washes). The glow is
+   * the only surface that consumes this value, so changing it never
+   * affects the rail, the marketing footer, or the chat palette.
+   */
+  readonly siteCtaGlowColor: string | null;
 }
 
 export interface Persona {
@@ -116,6 +131,7 @@ const NO_THEME: PersonaTheme = {
   siteBackgroundColor: null,
   siteForegroundColor: null,
   siteForegroundColorMuted: null,
+  siteCtaGlowColor: null,
 };
 
 export const PERSONAS: ReadonlyArray<Persona> = [
@@ -140,6 +156,10 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // to read without sacrificing idle legibility on the bg.
       siteForegroundColor: "#0a0a0a",
       siteForegroundColorMuted: "#1a1a1a",
+      // Warm coral accent contrasts cleanly against the dusty-blue
+      // site bg so the CTA's neon border + bloom read as a separate
+      // light source instead of melting into the page color.
+      siteCtaGlowColor: "#ff7a59",
     },
   },
   { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },
@@ -169,6 +189,10 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // tick rail keep a legible two-step hierarchy on the bg.
       siteForegroundColor: "#0a0a0a",
       siteForegroundColorMuted: "#1a1a1a",
+      // Cyan accent so the CTA's neon glow sits opposite the
+      // lavender page wash on the color wheel — the default neon
+      // violet would disappear into the bg here.
+      siteCtaGlowColor: "#5ce0ff",
     },
   },
   { id: "researcher", name: "Researcher", theme: NO_THEME },

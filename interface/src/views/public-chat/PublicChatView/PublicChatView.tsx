@@ -28,8 +28,12 @@ import styles from "./PublicChatView.module.css";
  *     hero.
  *   - `.ctaSlot` floats at `bottom: 5vh` and mounts a single
  *     horizontally-centered "Create your agent" pill button. The
- *     button is a placeholder today (no onClick / no route);
- *     wiring it to a real signup destination is a follow-up.
+ *     button is styled as a neon-glow panel: dark translucent fill
+ *     with a colored bloom whose hue is driven by the active
+ *     persona's `siteCtaGlowColor` (published below as
+ *     `--public-cta-glow-color` on `.chatView`). The button itself
+ *     is still a placeholder (no onClick / no route); wiring it to
+ *     a real signup destination is a follow-up.
  *
  * Theme propagation:
  *   The active persona's `siteBackgroundColor` and
@@ -102,11 +106,17 @@ export function PublicChatView(): React.ReactElement {
   );
 
   const chatViewStyle = useMemo<CSSProperties | undefined>(() => {
-    const { siteBackgroundColor, siteBackgroundUrl } = activePersona.theme;
-    if (!siteBackgroundColor && !siteBackgroundUrl) {
+    const { siteBackgroundColor, siteBackgroundUrl, siteCtaGlowColor } =
+      activePersona.theme;
+    if (!siteBackgroundColor && !siteBackgroundUrl && !siteCtaGlowColor) {
       return undefined;
     }
-    const style: CSSProperties = {};
+    // Extend the standard CSSProperties record with the one custom
+    // property we publish on this element. Cast through `Record` so
+    // the literal `--public-cta-glow-color` survives the type check
+    // without widening the overall style to `any`.
+    const style: CSSProperties & Record<"--public-cta-glow-color", string> =
+      {} as CSSProperties & Record<"--public-cta-glow-color", string>;
     if (siteBackgroundColor) {
       style.backgroundColor = siteBackgroundColor;
     }
@@ -115,6 +125,14 @@ export function PublicChatView(): React.ReactElement {
       style.backgroundSize = "cover";
       style.backgroundPosition = "center";
       style.backgroundRepeat = "no-repeat";
+    }
+    // Scope the CTA accent variable to this view — the glow is the
+    // only consumer, so there's no reason to leak it onto
+    // `documentElement` like the nav/tick foreground tokens. CSS
+    // falls back to the neon-violet default in `.ctaButton` when
+    // the active persona leaves this field `null`.
+    if (siteCtaGlowColor) {
+      style["--public-cta-glow-color"] = siteCtaGlowColor;
     }
     return style;
   }, [activePersona]);
