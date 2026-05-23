@@ -8,7 +8,22 @@
  * assume a parent scroll container, so we provide one here. Painting
  * the column black matches the previous `MarketingShell` baseline
  * (`#000`) so the dark marketing aesthetic survives the chrome swap.
+ *
+ * Two-layer structure so the shared `<OverlayScrollbar>` (same sleek
+ * 4px mouseover-revealed pill the aura-os left menu uses) can pin to
+ * the panel rectangle without scrolling along with the marketing
+ * content:
+ *   .root          — positioned ancestor; `OverlayScrollbar`'s
+ *                    absolute `.scrollTrack` anchors against this.
+ *   .scrollColumn  — fills `.root` and owns the actual scroll. The
+ *                    native scrollbar is hidden so only the overlay
+ *                    thumb is visible.
  */
+.root {
+  position: absolute;
+  inset: 0;
+}
+
 .scrollColumn {
   position: absolute;
   inset: 0;
@@ -16,4 +31,9 @@
   overflow-x: hidden;
   background: #000;
   color: var(--color-text-primary);
+  scrollbar-width: none;
+}
+
+.scrollColumn::-webkit-scrollbar {
+  display: none;
 }
