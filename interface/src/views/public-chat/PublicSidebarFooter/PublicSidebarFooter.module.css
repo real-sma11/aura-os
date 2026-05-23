@@ -121,23 +121,24 @@
   border-radius: 999px;
   pointer-events: none;
   /*
-   * 0.15s slide tuned per direct user feedback to feel "snappy" —
-   * the prior 0.25s read as draggy on quick successive clicks
-   * between adjacent rows (Product -> Changelog -> Feedback) because
-   * the slide hadn't finished settling before the next click started
-   * a new one. 0.15s is short enough to keep up with fast nav
-   * traversal while staying long enough that the eye still registers
-   * the click-to-pill continuity instead of seeing a hard jump.
+   * 0.1s slide tuned per direct user feedback for maximum snappiness
+   * while staying above the ~80-100ms perceptual floor where motion
+   * starts reading as a teleport instead of a slide. Below that the
+   * eye loses the "pill came FROM there" continuity that justified
+   * having a transition at all; at 0.1s the slide still tracks the
+   * cursor in fast successive nav clicks (Home -> Product -> Chat)
+   * without any pile-up because each slide finishes long before the
+   * next click can fire.
    *
-   * Height + opacity share the same duration so the mount fade-in
-   * resolves on the same beat as a slide arrival — avoids the
+   * Height + opacity share the same beat so the mount fade-in
+   * resolves on the same tick as a slide arrival — avoids the
    * pre-tune look of the pill snapping into the wrong height a
    * fraction of a second after the transform lands.
    */
   transition:
-    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    height 0.15s ease,
-    opacity 0.15s ease;
+    transform 0.1s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.1s ease,
+    opacity 0.1s ease;
 }
 
 .footerLink {
