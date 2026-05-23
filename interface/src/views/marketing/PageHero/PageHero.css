@@ -204,10 +204,16 @@
      headline rule above zeros the UA `<h1>` block margins and the
      description rule below zeros the UA `<p>` margins, so this
      `gap` value is the entire visible whitespace between each
-     pair. 40px gives the hero generous breathing room without
-     breaking the equal-gap invariant — both gaps grow by the same
-     amount when this value changes. */
-  gap: 40px;
+     pair. 32px sets the headline→description gap; the
+     description→CTA gap is intentionally widened by an extra 8px
+     via a `margin-top` on `.pageHeroContentCentered
+     .pageHeroHeadlineCta` (see that rule below) so the CTA reads
+     as a clearly separated affordance below the headline+blurb
+     pair instead of sitting at the exact same rhythm as the type
+     stack. Changing this value moves BOTH gaps in lockstep; tune
+     the CTA's `margin-top` independently to adjust only the
+     bottom gap. */
+  gap: 32px;
   width: 100%;
   max-width: 100%;
 }
@@ -280,10 +286,15 @@
    `.pageHeroHeadlineCta` rule already declares
    `display: flex; justify-content: center`, so horizontal
    alignment falls out of the parent's `align-items: center`
-   without extra positioning. Vertical spacing to the description
-   above is owned by `.pageHeroCenteredStack`'s uniform
-   `gap: 20px` (no optical-balance margin override) so the three
-   sibling gaps in the centered stack stay equal. */
+   without extra positioning. The `margin-top: 8px` adds 8px on
+   top of `.pageHeroCenteredStack`'s 32px flex `gap` so the
+   description→CTA gap reads as ~40px while the
+   headline→description gap stays at the base 32px — making the
+   CTA breathe slightly more than the type stack above it without
+   pulling the whole stack apart. */
+.pageHeroContentCentered .pageHeroHeadlineCta {
+  margin-top: 8px;
+}
 
 /* Description rendered inline in the centered content column,
    between the headline pill and the headline CTA. Uses the
