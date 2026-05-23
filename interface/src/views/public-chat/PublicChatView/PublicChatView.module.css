@@ -23,6 +23,14 @@
   display: flex;
   flex-direction: column;
   /*
+   * Hide any overflow from the absolutely-positioned site-bg
+   * `<video>` (`.siteBackgroundVideo` below). With `object-fit:
+   * cover` the video's aspect ratio rarely matches the view, so
+   * one axis overflows by design and we just clip the excess to
+   * the chat view rectangle.
+   */
+  overflow: hidden;
+  /*
    * Smoothly fade between persona site backgrounds when the active
    * tick changes. `background-image` itself can't tween, so the
    * fade reads as a quick color/opacity swap of the underlying
@@ -30,6 +38,33 @@
    * rail never feels like a hard cut.
    */
   transition: background-color 220ms ease;
+}
+
+/*
+ * Full-bleed looping video painted as the page background BEHIND
+ * the mock desktop window and every floating slot. Mounted by
+ * `PublicChatView` only when the active persona supplies a
+ * `siteBackgroundVideoUrl` (currently the default Vibecoder
+ * landing, where the AURA orb video lives outside the mock
+ * window instead of inside it).
+ *
+ * Layering: `z-index: 0` plus an explicit `z-index: 1` on every
+ * peer slot (`.heroSlot`, `.ctaSlot`, `.tickRailSlot`) keeps the
+ * video pinned underneath. We DO NOT use `z-index: -1` because
+ * that would push the video behind `.chatView`'s own background
+ * color, which exists as the pre-decode fallback paint.
+ *
+ * Decorative, so `pointer-events: none` keeps it from blocking
+ * clicks on the tick rail / CTA / mock window above.
+ */
+.siteBackgroundVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .heroSlot {
@@ -43,6 +78,15 @@
   display: grid;
   place-items: center;
   padding: 24px 16px;
+  /*
+   * Sit above the optional `.siteBackgroundVideo` layer. Without
+   * an explicit stacking position the in-flow `.heroSlot` would
+   * paint UNDER the absolutely-positioned video (per the
+   * positioned-after-flow paint order rule) and the mock desktop
+   * window would vanish behind the orb loop.
+   */
+  position: relative;
+  z-index: 1;
 }
 
 .ctaSlot {

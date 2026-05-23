@@ -18,6 +18,25 @@ export interface ComposePanelProps {
    */
   readonly desktopBackgroundPosition?: string | null;
   /**
+   * Forwarded straight through to `MockAuraApp`. Optional
+   * `object-fit` for the wallpaper `<img>` — `"cover"` (default)
+   * or `"contain"`. The parent picks the value from
+   * `PersonaTheme.desktopBackgroundFit`.
+   */
+  readonly desktopBackgroundFit?: "cover" | "contain" | null;
+  /**
+   * Forwarded straight through to `MockAuraApp`. Optional solid
+   * color painted behind the wallpaper `<img>`. The parent picks
+   * the value from `PersonaTheme.desktopBackgroundColor`.
+   */
+  readonly desktopBackgroundColor?: string | null;
+  /**
+   * Forwarded straight through to `MockAuraApp`. Optional CSS
+   * scale multiplier for the wallpaper `<img>`. The parent picks
+   * the value from `PersonaTheme.desktopBackgroundScale`.
+   */
+  readonly desktopBackgroundScale?: number | null;
+  /**
    * Forwarded straight through to `MockAuraApp`. The parent
    * (`PublicChatView`) derives this from the active persona's
    * `siteBackgroundColor` via `deriveChatPalette`; this layer
@@ -49,6 +68,9 @@ export interface ComposePanelProps {
 export function ComposePanel({
   desktopBackgroundUrl = null,
   desktopBackgroundPosition = null,
+  desktopBackgroundFit = null,
+  desktopBackgroundColor = null,
+  desktopBackgroundScale = null,
   chatPalette = null,
 }: ComposePanelProps = {}): React.ReactElement {
   return (
@@ -60,6 +82,9 @@ export function ComposePanel({
       <MockAuraApp
         desktopBackgroundUrl={desktopBackgroundUrl}
         desktopBackgroundPosition={desktopBackgroundPosition}
+        desktopBackgroundFit={desktopBackgroundFit}
+        desktopBackgroundColor={desktopBackgroundColor}
+        desktopBackgroundScale={desktopBackgroundScale}
         chatPalette={chatPalette}
       />
     </div>

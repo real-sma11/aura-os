@@ -39,11 +39,13 @@ export interface PersonaTheme {
   readonly desktopBackgroundUrl: string | null;
   /**
    * Optional `object-position` override for the wallpaper `<img>`
-   * inside the `MockAuraApp` frame. The wallpaper is rendered with
-   * `object-fit: cover`, so the image is scaled to fill the 16:10
-   * rectangle and the overflowing axis is cropped. The default
-   * (`null`) leaves the browser default of `50% 50%` — center-
-   * cropped on both axes — which is correct for most wallpapers.
+   * inside the `MockAuraApp` frame. Only meaningful when
+   * `desktopBackgroundFit` resolves to `"cover"` (the default) —
+   * `contain` mode never crops, so `object-position` only nudges
+   * a letterboxed image within its bars (rarely useful). The
+   * default (`null`) leaves the browser default of `50% 50%` —
+   * center-cropped on both axes — which is correct for most
+   * wallpapers.
    *
    * Set this when a curated portrait needs a non-centered crop —
    * e.g. a head-and-shoulders shot whose subject is in the upper
@@ -54,6 +56,39 @@ export interface PersonaTheme {
    */
   readonly desktopBackgroundPosition: string | null;
   /**
+   * `object-fit` mode for the wallpaper `<img>`. Defaults to
+   * `"cover"` when `null` — the image fills the 16:10 mock
+   * window, cropping whichever axis overflows. Switch to
+   * `"contain"` when the source is a tall portrait (or any other
+   * non-16:10 asset) that you want to display in full instead of
+   * cropping; pair it with `desktopBackgroundColor` set to the
+   * dominant tone of the image so the letterbox bars blend with
+   * the artwork's own background.
+   */
+  readonly desktopBackgroundFit: "cover" | "contain" | null;
+  /**
+   * Solid color painted behind the wallpaper `<img>` inside the
+   * `MockAuraApp` frame. Defaults to the frame's own near-black
+   * fill when `null`. Pair this with
+   * `desktopBackgroundFit: "contain"` and a sampled match of the
+   * image's natural background so the letterbox bars left by
+   * `contain` mode look like an extension of the artwork rather
+   * than dark bands cutting it off.
+   */
+  readonly desktopBackgroundColor: string | null;
+  /**
+   * Multiplier applied as a `transform: scale(N)` on the wallpaper
+   * `<img>` to zoom the rendered image in (>1) or out (<1) from
+   * its baseline `object-fit` size. Defaults to no transform when
+   * `null` (i.e. the image renders at its natural `cover`/`contain`
+   * size). Use values like `1.2` to push the figure a notch
+   * larger inside a `contain`-fit wallpaper without re-cropping
+   * the source asset. `.appFrame` carries `overflow: hidden` so
+   * scaled-up content is clipped cleanly to the mock window
+   * rectangle.
+   */
+  readonly desktopBackgroundScale: number | null;
+  /**
    * Static image URL painted as the page background behind the
    * whole `PublicChatView` (i.e. the area surrounding the
    * `MockAuraApp` rectangle). Applied via inline `background-image`
@@ -61,10 +96,25 @@ export interface PersonaTheme {
    */
   readonly siteBackgroundUrl: string | null;
   /**
-   * Solid color paired with `siteBackgroundUrl` — paints under the
-   * image so the page never flashes the shell color while the
-   * static asset is still loading. Also serves as the sole site
-   * background when `siteBackgroundUrl` is `null`.
+   * Looping video URL painted as the page background behind the
+   * whole `PublicChatView`. Mounted as an absolutely-positioned
+   * `<video autoplay loop muted playsinline>` layered beneath the
+   * hero / CTA / tick rail. Takes precedence over
+   * `siteBackgroundUrl` when both are set — use this for personas
+   * whose surrounding bg should be motion (e.g. the default
+   * Vibecoder landing where the AURA orb video sits behind the
+   * mock desktop window). `siteBackgroundColor` still paints under
+   * the video so the page never flashes shell color while the
+   * asset is still loading.
+   */
+  readonly siteBackgroundVideoUrl: string | null;
+  /**
+   * Solid color paired with `siteBackgroundUrl` /
+   * `siteBackgroundVideoUrl` — paints under the image or video so
+   * the page never flashes the shell color while the asset is
+   * still loading. Also serves as the sole site background when
+   * both `siteBackgroundUrl` and `siteBackgroundVideoUrl` are
+   * `null`.
    */
   readonly siteBackgroundColor: string | null;
   /**
@@ -127,7 +177,11 @@ export interface Persona {
 const NO_THEME: PersonaTheme = {
   desktopBackgroundUrl: null,
   desktopBackgroundPosition: null,
+  desktopBackgroundFit: null,
+  desktopBackgroundColor: null,
+  desktopBackgroundScale: null,
   siteBackgroundUrl: null,
+  siteBackgroundVideoUrl: null,
   siteBackgroundColor: null,
   siteForegroundColor: null,
   siteForegroundColorMuted: null,
@@ -135,14 +189,90 @@ const NO_THEME: PersonaTheme = {
 };
 
 export const PERSONAS: ReadonlyArray<Persona> = [
-  { id: "vibecoder", name: "Vibecoder", theme: NO_THEME },
+  {
+    id: "vibecoder",
+    name: "Vibecoder",
+    theme: {
+      // Cyberpunk portrait fills the mock desktop window's
+      // wallpaper rectangle. The source is a 1024×1024 square
+      // head-and-shoulders shot of the AURA-jacket character on
+      // a saturated pink field. The figure was authored at the
+      // image's natural center (head leans slightly right, body
+      // slightly left — natural pose with negligible net
+      // horizontal offset), so no asset pre-processing is needed
+      // to keep the visor centered inside the wallpaper window.
+      //
+      // Uses the same shape as the other curated personas
+      // (`solo-builder`, `coordinator`): default `cover` fit
+      // with an `object-position` tweak to control which slice
+      // survives the vertical crop. Sharing one fit mode across
+      // personas means switching ticks cross-fades cleanly
+      // between two correctly-positioned wallpapers (the fade
+      // is driven by `MockAuraApp`) instead of jumping between
+      // `contain` + scale + frame-bg-color overrides.
+      desktopBackgroundUrl: "/personas/vibecoder/desktop.png",
+      // Position is irrelevant under `contain` (the image fits
+      // entirely inside the frame and there is no crop axis to
+      // anchor). Leave null and document the fact rather than
+      // setting a misleading value that suggests the position
+      // does something here.
+      desktopBackgroundPosition: null,
+      // `contain` shows the full source vertically: the
+      // 1024×1024 square fits to the frame's 1000px height and
+      // the leftover ~600px of frame width becomes horizontal
+      // letterbox bars. Switched from `cover` because that mode
+      // was cropping ~37% of the source's height to fill the
+      // frame width — the user explicitly wants the figure read
+      // end-to-end top to bottom.
+      desktopBackgroundFit: "contain",
+      // Matches the sampled hot-pink corners of the source
+      // (~`#ea3580`). With `contain` fit it paints the
+      // horizontal letterbox bars on either side of the
+      // centered image; the source's own pink bg then appears
+      // to extend seamlessly to the window edges instead of
+      // revealing the default near-black appFrame fill behind
+      // the bars.
+      desktopBackgroundColor: "#ea3580",
+      // No scale — `contain` already sizes the image down to
+      // fit the frame's height, so the figure renders at a
+      // calmer "zoomed out" scale by definition. Adding a
+      // `scale()` on top would shrink it further inside the
+      // letterbox and is unnecessary now.
+      desktopBackgroundScale: null,
+      // Deep purple-violet gradient with diagonal light streaks
+      // painted as the page bg behind the mock desktop window —
+      // the cool atmospheric backdrop offsets the hot pink
+      // portrait inside the window without competing for
+      // attention. Replaces the earlier AURA-loop site video.
+      siteBackgroundUrl: "/personas/vibecoder/site.png",
+      siteBackgroundVideoUrl: null,
+      // Mid-tone of the gradient (sampled from the image's
+      // center band) so the page paints a matching deep purple
+      // immediately on first paint and there is no dark flash
+      // before the static asset finishes loading.
+      siteBackgroundColor: "#2a0258",
+      // The deep-purple bg is dark and high-contrast, so the
+      // default near-white nav/tick foreground tokens already
+      // read cleanly — leave both overrides null so the shell
+      // defaults paint through.
+      siteForegroundColor: null,
+      siteForegroundColorMuted: null,
+      // CTA keeps the default neon-violet bloom which is tuned
+      // to pop against the deep purple page bg.
+      siteCtaGlowColor: null,
+    },
+  },
   {
     id: "solo-builder",
     name: "Solo Builder",
     theme: {
       desktopBackgroundUrl: "/personas/solo-builder/desktop.png",
       desktopBackgroundPosition: null,
+      desktopBackgroundFit: null,
+      desktopBackgroundColor: null,
+      desktopBackgroundScale: null,
       siteBackgroundUrl: "/personas/solo-builder/site.png",
+      siteBackgroundVideoUrl: null,
       // Sampled from the dominant mid-tone of `site.png` so the page
       // paints a matching dusty-blue immediately on first paint and
       // there is no dark flash before the image finishes loading.
@@ -176,10 +306,14 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // 20% and the default — a softer shift that still avoids the
       // mid-chest slice but keeps more of the upper torso visible.
       desktopBackgroundPosition: "center 35%",
+      desktopBackgroundFit: null,
+      desktopBackgroundColor: null,
+      desktopBackgroundScale: null,
       // No surrounding site image — the page paints a solid lavender
       // wash behind the `MockAuraApp` rectangle so the helmeted
       // portrait sits on a flat saturated field.
       siteBackgroundUrl: null,
+      siteBackgroundVideoUrl: null,
       siteBackgroundColor: "#B06AB3",
       // The lavender wash is mid-tone but still bright enough that
       // the default near-white nav/tick tokens lose contrast against
@@ -196,7 +330,68 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     },
   },
   { id: "researcher", name: "Researcher", theme: NO_THEME },
-  { id: "cypher-punk", name: "Cypher Punk", theme: NO_THEME },
+  {
+    id: "cypher-punk",
+    name: "Cypher Punk",
+    theme: {
+      // Hooded operator with a green-lit neon visor on a pure-
+      // black field. The source is a 1024×1024 square — same
+      // aspect as the Vibecoder portrait — so the wallpaper
+      // framing inherits the same `cover`-fit math (scaled to
+      // fill the 16:10 frame width, ~37% of height cropped).
+      //
+      // `center 20%` pushes the crop window high in the source
+      // so the visible content slides DOWN inside the mock
+      // window: with the default center crop the visor sat in
+      // the upper-third of the frame and the top of the hood
+      // got clipped; pinning at 20% exposes more of the hood
+      // top and lands the visor + face on the vertical
+      // centerline of the wallpaper window, making the face
+      // read as the focal point instead of feeling pushed up
+      // against the titlebar.
+      desktopBackgroundUrl: "/personas/cypher-punk/desktop.png",
+      // Same shape as Vibecoder above: `contain` shows the full
+      // source vertically, with the matching black bg filling
+      // the horizontal letterbox bars so the figure's natural
+      // black backdrop appears to extend to the window edges.
+      // Position is null because `contain` has no crop axis to
+      // anchor — the prior `"center 20%"` was a `cover`-mode
+      // nudge that became a no-op when we switched to `contain`,
+      // so it's been dropped rather than left as misleading
+      // dead code.
+      desktopBackgroundPosition: null,
+      desktopBackgroundFit: "contain",
+      // Matches the wallpaper's near-pure-black corners
+      // (sampled at #030303).
+      desktopBackgroundColor: "#030303",
+      // No scale — `contain` already sizes the figure down to
+      // fit the frame's height; Vibecoder + Cypher Punk share
+      // a 1024×1024 source so both render the figure at exactly
+      // the same 1000×1000 visible size, keeping the
+      // cross-fade between them a clean dissolve with no size
+      // jump.
+      desktopBackgroundScale: null,
+      // No surrounding site image — the page paints a flat dark
+      // blue-gray wash behind the `MockAuraApp` rectangle so the
+      // pure-black wallpaper inside the window reads as a darker
+      // inset against the slightly lighter page bg.
+      siteBackgroundUrl: null,
+      siteBackgroundVideoUrl: null,
+      siteBackgroundColor: "#22272E",
+      // Page bg is dark and high-contrast, so the default near-
+      // white nav/tick foreground tokens already read cleanly.
+      siteForegroundColor: null,
+      siteForegroundColorMuted: null,
+      // Spring-green / cyan-lifted neon sampled from the helmet
+      // visor stripes in the wallpaper portrait — slightly cooler
+      // than a pure matrix `#39ff14` so it tracks the actual
+      // emissive green inside the mock window. The CTA's border +
+      // bloom inherit it via `--public-cta-glow-color`, so the
+      // "Create your agent" pill reads as if lit by the same
+      // visor light source against the dark blue-gray page bg.
+      siteCtaGlowColor: "#3aff8a",
+    },
+  },
 ];
 
 /**

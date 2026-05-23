@@ -18,6 +18,12 @@ import styles from "./PublicChatView.module.css";
  * the page-level site background painted on `.chatView`.
  *
  * Layout:
+ *   - An optional full-bleed `<video>` layer is mounted as the
+ *     FIRST child of `.chatView` when the active persona supplies
+ *     a `siteBackgroundVideoUrl` — paints behind every slot below
+ *     so the looping motion frames the mock desktop window the
+ *     way the desktop frames the orb on the default Vibecoder
+ *     landing.
  *   - `.heroSlot` fills the available area and mounts `ComposePanel`,
  *     which centers the decorative `MockAuraApp` (a flat 16:10
  *     rectangle with scripted DM windows floating inside) and
@@ -42,9 +48,15 @@ import styles from "./PublicChatView.module.css";
  *   The active persona's `siteBackgroundColor` and
  *   `siteBackgroundUrl` are applied as inline styles on
  *   `.chatView` (color paints under the image so first-paint
- *   matches the dominant tone of the asset). When both fields are
- *   `null` for the active persona the inline style collapses to
- *   `undefined` and the shell's default page color shows through.
+ *   matches the dominant tone of the asset). When the persona
+ *   supplies a `siteBackgroundVideoUrl` instead, a dedicated
+ *   `<video>` layer is mounted as the FIRST child of `.chatView`
+ *   so it paints beneath the hero / CTA / tick rail (z-index
+ *   layering lives in `PublicChatView.module.css`); the inline
+ *   image bg is suppressed in that case so the two layers never
+ *   stack. When every site-bg field is `null` for the active
+ *   persona the inline style collapses to `undefined` and the
+ *   shell's default page color shows through.
  */
 export function PublicChatView(): React.ReactElement {
   const navigate = useNavigate();
@@ -111,9 +123,18 @@ export function PublicChatView(): React.ReactElement {
   );
 
   const chatViewStyle = useMemo<CSSProperties | undefined>(() => {
-    const { siteBackgroundColor, siteBackgroundUrl, siteCtaGlowColor } =
-      activePersona.theme;
-    if (!siteBackgroundColor && !siteBackgroundUrl && !siteCtaGlowColor) {
+    const {
+      siteBackgroundColor,
+      siteBackgroundUrl,
+      siteBackgroundVideoUrl,
+      siteCtaGlowColor,
+    } = activePersona.theme;
+    if (
+      !siteBackgroundColor &&
+      !siteBackgroundUrl &&
+      !siteBackgroundVideoUrl &&
+      !siteCtaGlowColor
+    ) {
       return undefined;
     }
     // Extend the standard CSSProperties record with the one custom
@@ -125,7 +146,11 @@ export function PublicChatView(): React.ReactElement {
     if (siteBackgroundColor) {
       style.backgroundColor = siteBackgroundColor;
     }
-    if (siteBackgroundUrl) {
+    // The video bg (rendered as a separate `<video>` layer below)
+    // takes precedence over the static image bg — if a persona
+    // sets both, the video wins and the image is ignored so the
+    // two layers never paint stacked.
+    if (siteBackgroundUrl && !siteBackgroundVideoUrl) {
       style.backgroundImage = `url("${siteBackgroundUrl}")`;
       style.backgroundSize = "cover";
       style.backgroundPosition = "center";
@@ -148,12 +173,39 @@ export function PublicChatView(): React.ReactElement {
       data-persona-id={activePersona.id}
       style={chatViewStyle}
     >
+      {activePersona.theme.siteBackgroundVideoUrl ? (
+        /*
+         * Looping site-background video. Sits BEHIND every other
+         * slot (`.heroSlot`, `.ctaSlot`, `.tickRailSlot`) via the
+         * z-index ordering in `PublicChatView.module.css`. `key` is
+         * the URL so React fully remounts the element when the
+         * active persona swaps to a different video — otherwise
+         * React would reuse the same `<video>` node and the new
+         * `src` would not always start the loop fresh. The
+         * `aria-hidden` + decorative attributes keep this layer
+         * out of the assistive-tech tree.
+         */
+        <video
+          key={activePersona.theme.siteBackgroundVideoUrl}
+          className={styles.siteBackgroundVideo}
+          src={activePersona.theme.siteBackgroundVideoUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+          data-testid="public-chat-site-bg-video"
+        />
+      ) : null}
       <div className={styles.heroSlot}>
         <ComposePanel
           desktopBackgroundUrl={activePersona.theme.desktopBackgroundUrl}
           desktopBackgroundPosition={
             activePersona.theme.desktopBackgroundPosition
           }
+          desktopBackgroundFit={activePersona.theme.desktopBackgroundFit}
+          desktopBackgroundColor={activePersona.theme.desktopBackgroundColor}
+          desktopBackgroundScale={activePersona.theme.desktopBackgroundScale}
           chatPalette={chatPalette}
         />
       </div>

@@ -186,10 +186,21 @@ describe("PublicChatView landing", () => {
     const rail = screen.getByTestId("persona-tick-rail");
     const heroStub = screen.getByTestId("mock-aura-app-stub");
 
-    // Vibecoder is the default and has no theme overrides: the
-    // wallpaper falls back to the video loop (empty data attr on
-    // the stub) and the `.chatView` carries no inline background.
-    expect(heroStub).toHaveAttribute("data-desktop-bg", "");
+    // Vibecoder is the default landing theme: the mock window's
+    // wallpaper is the curated cyberpunk portrait and the page
+    // bg behind the window is the deep-purple gradient image
+    // (applied as an inline `background-image` on `.chatView`).
+    expect(heroStub).toHaveAttribute(
+      "data-desktop-bg",
+      "/personas/vibecoder/desktop.png",
+    );
+    const vibecoderView = document.querySelector(
+      '[data-persona-id="vibecoder"]',
+    );
+    expect(vibecoderView).not.toBeNull();
+    expect((vibecoderView as HTMLElement).style.backgroundImage).toContain(
+      "/personas/vibecoder/site.png",
+    );
 
     fireEvent.mouseEnter(rail);
     fireEvent.click(panelFor("Solo Builder"));
@@ -211,6 +222,25 @@ describe("PublicChatView landing", () => {
     expect(inline.backgroundImage).toContain(
       "/personas/solo-builder/site.png",
     );
+  });
+
+  it("renders the site-bg video layer only for personas that supply `siteBackgroundVideoUrl`", () => {
+    // No persona currently ships with a site-bg video, so the
+    // dedicated `<video>` layer must NOT mount on first paint
+    // (Vibecoder) or after switching to any other persona. The
+    // infrastructure still exists in `PublicChatView` for future
+    // personas that want motion — this test pins the gate.
+    renderView();
+    expect(
+      screen.queryByTestId("public-chat-site-bg-video"),
+    ).not.toBeInTheDocument();
+
+    const rail = screen.getByTestId("persona-tick-rail");
+    fireEvent.mouseEnter(rail);
+    fireEvent.click(panelFor("Coordinator"));
+    expect(
+      screen.queryByTestId("public-chat-site-bg-video"),
+    ).not.toBeInTheDocument();
   });
 
   it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {

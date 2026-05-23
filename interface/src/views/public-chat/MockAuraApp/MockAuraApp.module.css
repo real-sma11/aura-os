@@ -30,6 +30,28 @@
   max-width: 75cqw;
   max-height: 75cqh;
   background: #0b0c10;
+  /*
+   * Clip everything painted inside the frame to its 16:10
+   * rectangle. The outer drop shadow below is unaffected because
+   * `box-shadow` paints OUTSIDE the element's box, not as
+   * descendant content. This matters for personas that supply
+   * `desktopBackgroundScale` != 1 — a scaled wallpaper either
+   * overflows (scale > 1) or shrinks (scale < 1) inside this
+   * frame, and we want the overflow trimmed cleanly at the
+   * window edge / the shrinking border filled by this element's
+   * bg color rather than spilling onto the surrounding site bg.
+   */
+  overflow: hidden;
+  /*
+   * Tween the frame bg color when the active persona swaps to
+   * one with a different `desktopBackgroundColor` (e.g.
+   * Vibecoder's pink ↔ Cypher Punk's black). The wallpaper
+   * cross-fade runs in parallel above this bg, so matching the
+   * fade duration keeps the two channels feeling like one
+   * synchronized swap rather than a bg snap with a fading
+   * image on top.
+   */
+  transition: background-color 220ms ease;
   box-shadow:
     0 30px 60px -20px rgba(0, 0, 0, 0.55),
     0 8px 18px -8px rgba(0, 0, 0, 0.45);
@@ -52,6 +74,62 @@
   object-fit: cover;
   pointer-events: none;
   z-index: 0;
+  /*
+   * No `transition` on `object-position` / `transform` — when a
+   * persona swap changes the crop, the new wallpaper must mount
+   * already at its final position and just fade in. Sliding the
+   * crop window between two unrelated images reads as the
+   * figure "warping" mid-swap, which the cross-fade is designed
+   * to avoid. The fade itself is driven by `wallpaperEntering` /
+   * `wallpaperLeaving` below.
+   */
+}
+
+/*
+ * Cross-fade layers driven by `MockAuraApp.tsx`. When the active
+ * wallpaper URL changes, the previous wallpaper is rendered one
+ * last time with `wallpaperLeaving` (opacity 1 → 0) while the
+ * new wallpaper mounts with `wallpaperEntering` (opacity 0 → 1).
+ * Both layers are stacked at `z-index: 0` and sit beneath the
+ * vignette + DM windows + chrome, so the fade is purely a paint
+ * swap with no layout disturbance.
+ *
+ * `forwards` on the leaving layer pins opacity at 0 once the
+ * animation ends — the React effect tears the element down a
+ * tick later via a `setTimeout`, but `forwards` prevents a
+ * one-frame opacity-1 flash if the unmount lags the animation.
+ */
+@keyframes wallpaper-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes wallpaper-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.wallpaperEntering {
+  animation: wallpaper-fade-in 220ms ease;
+}
+
+.wallpaperLeaving {
+  animation: wallpaper-fade-out 220ms ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wallpaperEntering,
+  .wallpaperLeaving {
+    animation: none;
+  }
 }
 
 /*
