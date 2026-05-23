@@ -89,7 +89,28 @@
   top: 0;
   height: var(--pill-height, 0);
   transform: translateY(var(--pill-top, 0));
-  background: var(--color-surface-active, var(--color-surface-hover));
+  /*
+   * Tint the pill from the active persona's foreground color rather
+   * than the theme-dependent `--color-surface-active` (which resolves
+   * to a near-white overlay in dark mode but a near-black overlay in
+   * light mode). The persona's `siteBackgroundColor` is theme-
+   * invariant in public mode, so the active highlight has to be
+   * theme-invariant too — otherwise a light-mode visitor on a dark
+   * persona bg sees `rgba(0,0,0,~0.1)` over `#2a0258` and the pill
+   * disappears.
+   *
+   * `color-mix` at 10% picks up whichever foreground the active
+   * persona has pinned (`#e6e8eb` near-white for dark-bg personas,
+   * `#0a0a0a` near-black for light-bg personas) and washes the pill
+   * with the matching contrast direction. Researcher (NO_THEME)
+   * falls back to `--color-text-primary`, which IS theme-driven —
+   * correct here because Researcher's site bg is theme-driven too.
+   */
+  background: color-mix(
+    in srgb,
+    var(--public-nav-fg-color, var(--color-text-primary)) 10%,
+    transparent
+  );
   /*
    * Matches the resting `.footerLink` `border-radius` below so the
    * sliding active surface reads as the same fully-rounded pill the
@@ -158,18 +179,24 @@
 }
 
 /*
- * Active-route color promotion. `NavLink` adds the
- * `.footerLinkActive` class when its `to` matches the current
- * pathname; we promote the link's color to the persona-strong
- * `--public-nav-fg-color` so the selected page reads with stronger
- * contrast than the muted siblings above. The accent surface tint
- * itself is owned by `.activePill` (the sliding element), so this
- * rule no longer paints a background — that would lock a static
- * highlight onto the active row and defeat the slide animation.
+ * Active-route rows keep the SAME `--public-nav-fg-color-muted`
+ * color as their idle siblings. The selection cue is owned entirely
+ * by the sliding `.activePill` highlight; promoting the active label
+ * to a brighter `--public-nav-fg-color` would split the nav into a
+ * two-tier color hierarchy (active brighter than idle) that reads
+ * inconsistent on the persona-driven dark backgrounds — the user's
+ * direct ask was that every section in the nav list paint the same
+ * text color so the pill alone does the "you are here" work.
+ *
+ * The :hover specifier here is what kept hover from un-doing the
+ * uniform color on the active row (since the sibling
+ * `.footerLink:not(.footerLinkActive):hover` rule already excludes
+ * active rows from the hover color promotion); leaving it in place
+ * matches the existing safety net.
  */
 .footerLinkActive,
 .footerLinkActive:hover {
-  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
+  color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
 }
 
 /*
