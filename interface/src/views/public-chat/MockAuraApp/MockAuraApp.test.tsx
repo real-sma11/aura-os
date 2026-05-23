@@ -296,14 +296,10 @@ describe("MockAuraApp", () => {
       );
       expect(vibecoder.textContent).toBe("");
 
-      // NO_THEME personas (Giga Brain, Researcher) leave the
+      // NO_THEME personas (currently Researcher) leave the
       // background-image empty and render the persona's initial
       // inside `.personaAvatarFallback` so the dock still shows
       // one circle per persona.
-      const gigaBrain = screen.getByTestId("mock-aura-avatar-giga-brain");
-      expect(gigaBrain.style.backgroundImage).toBe("");
-      expect(gigaBrain.textContent).toBe("G");
-
       const researcher = screen.getByTestId("mock-aura-avatar-researcher");
       expect(researcher.style.backgroundImage).toBe("");
       expect(researcher.textContent).toBe("R");

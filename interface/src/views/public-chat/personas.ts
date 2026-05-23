@@ -328,23 +328,134 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       avatarObjectPosition: null,
     },
   },
-  { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },
+  {
+    id: "giga-brain",
+    name: "Giga Brain",
+    theme: {
+      // Glossy black helmet with a gold AURA-stamped earpiece
+      // and a single red visor LED, set on a saturated
+      // terracotta field. Source is a 1024×1024 square — same
+      // aspect as the Vibecoder / Cypher Punk portraits — so the
+      // wallpaper framing inherits the same `contain` +
+      // matching-frame-bg math: the figure renders end-to-end
+      // vertically and the sampled terracotta paints the
+      // horizontal letterbox bars so the source's own backdrop
+      // appears to extend to the window edges with no visible
+      // seam.
+      //
+      // Intentionally split from the surrounding page bg —
+      // `desktopBackgroundColor` here matches the SOURCE asset
+      // (terracotta) while `siteBackgroundColor` below stays at
+      // the warm tan, so the mock window reads as a saturated
+      // inset framed by the page's softer tan field instead of
+      // dissolving into a single flat color.
+      desktopBackgroundUrl: "/personas/giga-brain/desktop.png",
+      // Position is irrelevant under `contain` (the image fits
+      // entirely inside the frame and there is no crop axis to
+      // anchor). Same shape as the other character portraits.
+      desktopBackgroundPosition: null,
+      desktopBackgroundFit: "contain",
+      // Sampled mid-tone of the source's terracotta field,
+      // averaged across the top, middle, and bottom edges where
+      // the gradient runs from ~`#af755d` (top-center) down to
+      // ~`#9f6b53` (bottom corners). `#a87058` lands in the
+      // middle of that range so the seam between the letterbox
+      // bar and the image edge stays imperceptible along the
+      // full height of the frame.
+      desktopBackgroundColor: "#a87058",
+      // Zoom in ~28.8% from the `contain` baseline — bumped up
+      // from an initial `1.12` by a further 15% per direct user
+      // feedback (1.12 * 1.15 = 1.288), so the helmeted figure
+      // reads noticeably larger within its mock window than the
+      // other character portraits. The painted contain rectangle
+      // (1000×1000 inside a 1600×1000 frame) scales to
+      // ~1288×1288 around the frame center: the figure grows
+      // ~29% larger, the horizontal letterbox bars shrink from
+      // 300px to ~156px each side, and a ~11% slice at the top /
+      // bottom of the source falls outside the frame and gets
+      // trimmed by `.appFrame`'s `overflow: hidden`. The
+      // matching terracotta bg above still fills the (narrower)
+      // letterbox bars so the seam stays invisible.
+      desktopBackgroundScale: 1.288,
+      // No surrounding site image — the page paints a flat warm
+      // tan behind the `MockAuraApp` rectangle. Intentionally a
+      // softer / lighter tone than the wallpaper's saturated
+      // terracotta above so the mock window reads as a
+      // saturated inset against the page's calmer surround
+      // instead of dissolving into one flat color.
+      siteBackgroundUrl: null,
+      siteBackgroundColor: "#bc987a",
+      // The warm tan is mid-tone but bright enough that the
+      // default near-white nav/tick tokens lose contrast against
+      // it. Mirror the `solo-builder` / `coordinator` approach:
+      // near-black for active/hover, slightly lighter near-black
+      // for idle, so the marketing footer (bottom-left links)
+      // and right-edge tick rail keep a legible two-step
+      // hierarchy on the bg.
+      siteForegroundColor: "#0a0a0a",
+      siteForegroundColorMuted: "#1a1a1a",
+      // Saturated red sampled from the helmet's visor LED so the
+      // CTA's neon border + bloom read as if lit by the same
+      // light source as the character — and as a strong warm
+      // accent that pops off the warm tan page bg instead of
+      // melting into it the way the default neon violet would.
+      siteCtaGlowColor: "#ff2a3a",
+      // Default `50% 18%` framing keeps the visor + helmet
+      // centered inside the 18px avatar circle once the dock
+      // zooms in 2x on the 1024×1024 source — the head sits in
+      // the upper third of the source like every other curated
+      // portrait, so no per-persona override is needed.
+      avatarObjectPosition: null,
+    },
+  },
   {
     id: "coordinator",
     name: "Coordinator",
     theme: {
       desktopBackgroundUrl: "/personas/coordinator/desktop.png",
-      // The source portrait is a tall 3:4 frame (helmet + upper
-      // torso). Center-cropped into the 16:10 wallpaper it slices
-      // mid-chest; pulling the crop window up keeps the helmeted
-      // head fully framed and trims the awkward chest cut from the
-      // default 50% position. 35% lands halfway between the prior
-      // 20% and the default — a softer shift that still avoids the
-      // mid-chest slice but keeps more of the upper torso visible.
-      desktopBackgroundPosition: "center 35%",
-      desktopBackgroundFit: null,
-      desktopBackgroundColor: null,
-      desktopBackgroundScale: null,
+      // Position is irrelevant under `contain` (the image fits
+      // entirely within the frame on its constrained axis and
+      // there is no crop window to anchor). The prior
+      // `"center 35%"` was a `cover`-mode nudge that became a
+      // no-op when we switched to `contain`, so it's been dropped
+      // rather than left as misleading dead code.
+      desktopBackgroundPosition: null,
+      // `contain` keeps the figure pinned edge-to-edge vertically:
+      // for a 3:4 source inside the 16:10 frame, contain fits the
+      // source HEIGHT exactly (rendered 750×1000 at scale 1.0)
+      // and the leftover ~850px of frame width becomes horizontal
+      // letterbox bars. Switched here from the prior `cover` +
+      // `scale: 0.85` combo because that combo shrank both axes
+      // uniformly — the 15% zoom-out exposed slate-blue bars on
+      // top + bottom + sides, breaking the "full height" read.
+      // With `contain` + a scale > 1 the image fills the height
+      // again (vertical overflow gets cropped instead of bars
+      // appearing) while still rendering the figure smaller than
+      // the original `cover` view.
+      desktopBackgroundFit: "contain",
+      // Sampled mid-tone of the source's steel-blue field
+      // (~`#6f7d8a` averaged across the upper expanse around the
+      // helmet). Painted behind the wallpaper `<img>` so the
+      // ~350px horizontal letterbox bars exposed by `contain` +
+      // `scale 1.2` below blend with the figure's own backdrop
+      // instead of revealing the default near-black appFrame
+      // fill at the seams.
+      desktopBackgroundColor: "#6f7d8a",
+      // Zoom in 20% from the `contain` baseline so the helmeted
+      // figure reads close to the user's requested "about 15%
+      // smaller" target relative to the prior `cover`-fit view,
+      // while still filling the full frame height. The painted
+      // contain rectangle (750×1000 inside a 1600×1000 frame)
+      // scales to 900×1200 around the frame center: the figure
+      // grows 20% larger than its raw contain size, the
+      // horizontal letterbox bars shrink from 425px to ~350px
+      // each side, and ~100px of the source slips outside the
+      // frame on top and bottom — almost entirely the empty sky
+      // above the helmet and the negative space below the body,
+      // so no figure detail is sacrificed. The matching steel-
+      // blue bg above still fills the (narrower) side bars so
+      // the seam stays imperceptible.
+      desktopBackgroundScale: 1.2,
       // No surrounding site image — the page paints a solid lavender
       // wash behind the `MockAuraApp` rectangle so the helmeted
       // portrait sits on a flat saturated field.
