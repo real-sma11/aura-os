@@ -5,6 +5,26 @@
   background: #000;
 }
 
+/*
+ * Public-mode AuraShell renders the sidebar as an absolutely-positioned
+ * overlay (see `AuraShell.module.css` `[data-ui-mode="public"] .sidebar`
+ * block), so `<main>` spans the full body width. A plain `margin: 0 auto`
+ * on `.feedbackPageShell` therefore centers content relative to the
+ * underlying full-width main — which reads as visually offset, since the
+ * floating sidebar (Lane + marketing footer) occludes the main's left
+ * edge. Pad the page by the live `--aura-sidebar-width` in public mode
+ * so the centered shell balances against the *visible* region (body
+ * minus the overlay). Authed shells keep the sidebar in-flow, so this
+ * branch never applies and the default centering stays untouched.
+ *
+ * `--aura-sidebar-width` is published on `<html>` by `AuraSidebar`'s
+ * ResizeObserver (see `useAuraSidebarWidthCssVar` in `AuraSidebar.tsx`),
+ * so the offset tracks live Lane expand/collapse and user resizes.
+ */
+:where([data-ui-mode='public']) .feedbackPage {
+  padding-inline-start: calc(32px + var(--aura-sidebar-width, 0px));
+}
+
 .feedbackPageShell {
   width: 100%;
   max-width: 960px;
