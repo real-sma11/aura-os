@@ -204,10 +204,10 @@
      headline rule above zeros the UA `<h1>` block margins and the
      description rule below zeros the UA `<p>` margins, so this
      `gap` value is the entire visible whitespace between each
-     pair. 32px gives the hero more breathing room than the
-     previous 20px without breaking the equal-gap invariant — both
-     gaps grow by the same amount when this value changes. */
-  gap: 32px;
+     pair. 40px gives the hero generous breathing room without
+     breaking the equal-gap invariant — both gaps grow by the same
+     amount when this value changes. */
+  gap: 40px;
   width: 100%;
   max-width: 100%;
 }
