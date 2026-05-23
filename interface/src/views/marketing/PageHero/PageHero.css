@@ -235,10 +235,18 @@
      `width: 100%` cap still constrains the column. */
   max-width: none;
   margin-inline: auto;
-  /* No extra block margin — spacing between the three centered-stack
-     siblings (headline, description, CTA) is owned exclusively by
-     `.pageHeroCenteredStack`'s `gap: 20px` so the three gaps stay
-     uniform. */
+  /* Zero the user-agent `<h1>` block margins (Chrome/Firefox/Safari
+     default `margin-block: 0.67em`, ≈32px at the desktop headline
+     size). Flex layouts do NOT collapse sibling margins, so the UA
+     margin would stack on top of `.pageHeroCenteredStack`'s
+     `gap: 20px` and the description's own UA `<p>` `margin-top: 1em`,
+     widening the headline→description gap by ~32px relative to the
+     description→CTA gap (the button below has no UA margin). Zeroing
+     the block margin here, plus `margin: 0` on the inline description
+     rule below, leaves the 20px flex gap as the sole spacing source so
+     all three centered-stack siblings (headline, description, CTA)
+     share an equal gap. */
+  margin-block: 0;
 }
 
 .pageHeroContentCentered .pageHeroActions {
@@ -282,6 +290,13 @@
   text-align: center;
   text-wrap: balance;
   font-size: calc(var(--text-lg) * 1.5);
+  /* Zero the user-agent `<p>` `margin-block: 1em` (~27px at this
+     font size) for the same reason as the headline rule above:
+     flex sibling margins don't collapse and would otherwise stack
+     on top of `.pageHeroCenteredStack`'s `gap: 20px`, leaving the
+     description visually farther from the headline than from the
+     CTA button below. */
+  margin: 0;
   /* Hero-only secondary tier. The base `.pageHeroDescription`
      rule resolves to `var(--color-text-secondary)` (#c9c9cf in
      dark mode), which sits only ~30 brightness units below
