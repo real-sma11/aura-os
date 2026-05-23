@@ -49,3 +49,17 @@
   color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
   background: var(--color-surface-hover);
 }
+
+/*
+ * Active-route highlight. `NavLink` adds the `.footerLinkActive`
+ * class when its `to` matches the current pathname; we promote the
+ * link's color to the persona-strong `--public-nav-fg-color` so the
+ * selected page reads with stronger contrast than the muted siblings
+ * above. The accent surface tint mirrors the hover state so the
+ * active row visually settles between idle and hover.
+ */
+.footerLinkActive,
+.footerLinkActive:hover {
+  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
+  background: var(--color-surface-active, var(--color-surface-hover));
+}

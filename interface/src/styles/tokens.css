@@ -71,12 +71,11 @@
   --color-surface-active: var(--color-overlay-medium);
 
   /* Channel-decomposed --color-bg, used by the public chat radial
-     vignette (`LoggedOutShell.chatView::after`) and the marketing
-     navbar fade (`MarketingNavbar.css`) which compose translucent
-     stops via `rgba(var(--color-bg-rgb), N)`. Without this token
-     the call sites' fallback `9, 9, 11` fired in both themes,
-     leaving the vignette permanently dark. Keep in sync with the
-     resolved `--color-bg` value for each theme. */
+     vignette (`LoggedOutShell.chatView::after`) which composes
+     translucent stops via `rgba(var(--color-bg-rgb), N)`. Without
+     this token the call sites' fallback `9, 9, 11` fired in both
+     themes, leaving the vignette permanently dark. Keep in sync
+     with the resolved `--color-bg` value for each theme. */
   --color-bg-rgb: 9, 9, 11;
 
   /* ----------------------------------------------------------------------

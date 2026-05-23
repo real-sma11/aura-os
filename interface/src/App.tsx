@@ -8,6 +8,7 @@ import { ChatRedirectGuard } from "./components/ChatRedirectGuard";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
 import { PublicChatView } from "./views/public-chat/PublicChatView";
+import { PublicMarketingPanel } from "./views/public-chat/PublicMarketingPanel";
 import { CaptureLoginView } from "./views/CaptureLoginView";
 import { apps } from "./apps/registry";
 import { getInitialShellPath } from "./utils/last-app-path";
@@ -23,9 +24,6 @@ const InviteAcceptView = lazy(() =>
   import("./views/InviteAcceptView").then((m) => ({ default: m.InviteAcceptView })),
 );
 const IdeView = lazy(() => import("./views/IdeView").then((m) => ({ default: m.IdeView })));
-const MarketingShell = lazy(() =>
-  import("./views/marketing/MarketingShell").then((m) => ({ default: m.MarketingShell })),
-);
 const ProductView = lazy(() =>
   import("./views/marketing/ProductView").then((m) => ({ default: m.ProductView })),
 );
@@ -257,7 +255,11 @@ function AppRoutes(): React.ReactElement {
   // desktop (or `<MobileShell>` on mobile layouts). AuraShell uses
   // `<Outlet />` to mount per-route content in its `<main>` slot
   // and renders `LoginOverlay` internally when `pathname ===
-  // "/login"`. Marketing routes stay on their own tree above.
+  // "/login"`. Marketing routes (`/product`, `/changelog`,
+  // `/feedback`, `/pricing`) also mount in this tree under
+  // `<PublicMarketingPanel>`, so they share the same public-mode
+  // chrome (titlebar + sidebar + `PublicSidebarFooter`) as the
+  // chat landing surface — only the middle panel content swaps.
   return (
     <Routes>
       <Route path="capture-login" element={<CaptureLoginView />} />
@@ -269,52 +271,55 @@ function AppRoutes(): React.ReactElement {
           </Suspense>
         }
       />
-      <Route
-        element={
-          <Suspense fallback={<RouteFallback />}>
-            <MarketingShell />
-          </Suspense>
-        }
-      >
-        <Route
-          path="product"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <ProductView />
-            </Suspense>
-          }
-        />
-        <Route
-          path="changelog"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <ChangelogView />
-            </Suspense>
-          }
-        />
-        <Route
-          path="feedback"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <FeedbackView />
-            </Suspense>
-          }
-        />
-        <Route
-          path="pricing"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <PricingView />
-            </Suspense>
-          }
-        />
-      </Route>
-
       <Route element={<AppShell />}>
         <Route element={<ShellOutletSuspense />}>
           <Route index element={<LandingRoute />} />
           <Route path="chat" element={<ChatRouteSwitch />} />
           <Route path="login" element={<PublicChatView />} />
+          {/*
+            Marketing routes mount inside the public-mode `AuraShell`
+            main `<Outlet />` (replacing `PublicChatView`'s hero) via
+            `PublicMarketingPanel`, a thin scroll-column wrapper. Same
+            sidebar / titlebar / footer as the public chat landing —
+            just the middle panel content swaps when the visitor
+            clicks Product / Changelog / Feedback / Pricing in
+            `PublicSidebarFooter`. Replaces the standalone
+            `MarketingShell` chrome that previously owned these paths.
+          */}
+          <Route element={<PublicMarketingPanel />}>
+            <Route
+              path="product"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ProductView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="changelog"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ChangelogView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="feedback"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <FeedbackView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="pricing"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <PricingView />
+                </Suspense>
+              }
+            />
+          </Route>
           <Route element={<RequireAuth />}>
             <Route element={<SimpleModeChatRedirectLayout />}>
               {renderRoutes(shellAppRoutes)}

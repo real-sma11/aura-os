@@ -52,8 +52,9 @@ function getMediaAltText(title: string, alt: string | undefined): string {
  * Marketing `/changelog` page. Ported from
  * `aura-web/src/app/changelog/page.tsx` as a client component that uses
  * React Query against the new `api/marketing/changelog` helper instead
- * of the Next.js `async` server component. Page chrome
- * (`<MarketingShell>` / `<main>`) is owned by the parent route.
+ * of the Next.js `async` server component. Page chrome (public-mode
+ * `AuraShell` + `PublicMarketingPanel` scroll column) is owned by the
+ * parent route.
  */
 export function ChangelogView(): ReactNode {
   useEffect(() => {

@@ -68,9 +68,9 @@ const PLANS: readonly Plan[] = [
 
 /**
  * Marketing `/pricing` page. Ported from
- * `aura-web/src/app/pricing/page.tsx`. The page chrome (`<MarketingShell>` /
- * `<main>`) is owned by the parent route; the page itself is just the
- * pricing section.
+ * `aura-web/src/app/pricing/page.tsx`. The page chrome (public-mode
+ * `AuraShell` + `PublicMarketingPanel` scroll column) is owned by the
+ * parent route; the page itself is just the pricing section.
  */
 export function PricingView(): ReactNode {
   useEffect(() => {

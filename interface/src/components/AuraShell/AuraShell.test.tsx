@@ -319,13 +319,13 @@ describe("AuraShell — Phase 3 unified shell", () => {
 
     renderAuraShell();
 
-    // `LoggedOutPanelFooter` exposes a "Pricing" anchor to
-    // aura.ai/pricing — a load-bearing public-only marketing
-    // affordance. It must be present for unauthenticated visitors
-    // and absent the moment the user signs in.
+    // `PublicSidebarFooter` exposes a "Pricing" `NavLink` pointing
+    // at the internal `/pricing` route — a load-bearing public-only
+    // marketing affordance. It must be present for unauthenticated
+    // visitors and absent the moment the user signs in.
     expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute(
       "href",
-      "https://aura.ai/pricing",
+      "/pricing",
     );
 
     await act(async () => {

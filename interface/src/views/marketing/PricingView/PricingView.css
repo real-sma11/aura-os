@@ -3,8 +3,8 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  min-height: calc(100vh - var(--marketing-navbar-height) - var(--marketing-main-bottom-space));
-  min-height: calc(100dvh - var(--marketing-navbar-height) - var(--marketing-main-bottom-space));
+  min-height: calc(100vh - var(--marketing-main-bottom-space));
+  min-height: calc(100dvh - var(--marketing-main-bottom-space));
   padding: clamp(48px, 8vh, 88px) clamp(32px, 5vw, 72px);
   box-sizing: border-box;
   background: #000;

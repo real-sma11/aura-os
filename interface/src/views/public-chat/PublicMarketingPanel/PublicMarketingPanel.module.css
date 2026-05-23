@@ -1,0 +1,19 @@
+/*
+ * PublicMarketingPanel — scroll column that hosts the four marketing
+ * views (`ProductView` / `ChangelogView` / `FeedbackView` /
+ * `PricingView`) inside the public-mode `AuraShell` main outlet.
+ *
+ * `AuraShell.mainPanel` enforces `overflow: hidden` and the pages
+ * themselves use `min-height: 100dvh` plus stacked sections that
+ * assume a parent scroll container, so we provide one here. Painting
+ * the column black matches the previous `MarketingShell` baseline
+ * (`#000`) so the dark marketing aesthetic survives the chrome swap.
+ */
+.scrollColumn {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #000;
+  color: var(--color-text-primary);
+}

@@ -13,9 +13,10 @@ import { ProductScreenSection } from "../ProductScreenSection";
 /**
  * Marketing `/product` page. Ported from
  * `aura-web/src/app/product/page.tsx` as a pure JSX composition of the
- * shared marketing components. The page-level chrome (Navbar / Footer /
- * scrollable `<main>`) is owned by `MarketingShell`, so this component
- * only renders the section stack.
+ * shared marketing components. The page-level chrome (titlebar /
+ * sidebar / footer / scrollable column) is owned by the public-mode
+ * `AuraShell` + `PublicMarketingPanel`, so this component only
+ * renders the section stack.
  */
 export function ProductView(): ReactNode {
   useEffect(() => {

@@ -80,13 +80,14 @@
   --color-border-chrome: var(--color-border);
 
   /*
-   * Marketing surface tokens. Used by the logged-out marketing routes
-   * (Product / Changelog / Feedback / Pricing) under MarketingShell and the
-   * components ported from `aura-web`. Namespaced as `--marketing-*` so they
-   * never clash with the app shell's `--navbar-height` / `--transition-fast`
-   * scales.
+   * Marketing surface tokens. Consumed by the four logged-out
+   * marketing views (Product / Changelog / Feedback / Pricing) ported
+   * from `aura-web` — they now mount inside the public-mode
+   * `AuraShell` via `PublicMarketingPanel` instead of the standalone
+   * `MarketingShell` chrome. Namespaced as `--marketing-*` so they
+   * never clash with the app shell's `--navbar-height` /
+   * `--transition-fast` scales.
    */
-  --marketing-navbar-height: calc(var(--control-height-md, 40px) * 2);
   --marketing-taskbar-safe-offset: env(safe-area-inset-bottom, 0px);
   --marketing-main-bottom-space: 24px;
   --marketing-transition-fast: 150ms ease;
@@ -106,23 +107,6 @@ html, body, #root {
 html:has([role="dialog"][aria-modal="true"]),
 body:has([role="dialog"][aria-modal="true"]) {
   overflow: hidden;
-}
-
-/*
- * Marketing pages (MarketingShell) own a long scrollable column and must
- * NOT inherit the app-shell `overflow: hidden` lock above. The MarketingShell
- * component stamps `data-marketing-shell="true"` on `<html>` while mounted;
- * we revert overflow + height here so the page scrolls naturally on iOS,
- * Android, and desktop. Modal dialogs still re-lock via the rule above
- * because that selector is more specific (and runs after this one in the
- * cascade only when active).
- */
-html[data-marketing-shell="true"],
-html[data-marketing-shell="true"] body,
-html[data-marketing-shell="true"] #root {
-  overflow: visible;
-  height: auto;
-  min-height: 100%;
 }
 
 @media (pointer: coarse), (max-width: 900px) {
@@ -181,11 +165,11 @@ html[data-mobile-client="true"] select {
 
 /* AURA wordmark — single canonical render of the brand mark. The
    `data-aura-wordmark` attribute is the global hook every surface uses
-   (DesktopTitlebar, LoggedOutTitlebar, LoginView, MobileTopbar,
-   MarketingNavbar) so the mark renders at the same size + same
-   non-interactive styling everywhere; the only per-site CSS left is
-   positioning and optional hover treatments. The light-mode invert
-   keeps the white-on-transparent PNG legible on light themes. */
+   (DesktopTitlebar, LoggedOutTitlebar, LoginView, MobileTopbar) so the
+   mark renders at the same size + same non-interactive styling
+   everywhere; the only per-site CSS left is positioning and optional
+   hover treatments. The light-mode invert keeps the white-on-
+   transparent PNG legible on light themes. */
 img[data-aura-wordmark] {
   height: 11px;
   display: block;
