@@ -41,10 +41,23 @@
   justify-content: flex-end;
 }
 
+/*
+ * Extra 5px right inset on top of the slot's 5px gutter
+ * (`.tickRailSlot { padding-right: 5px }` in
+ * `PublicChatView.module.css`) so the resting tick column sits
+ * ~10px from the viewport edge — double the original 5px inset.
+ * Because `.list` keeps `align-items: flex-end`, the padding
+ * shrinks only the inner content box: rows reflow 5px further
+ * left while the list's outer right edge (and therefore the
+ * rail's right edge, its `onMouseEnter` hit area, and the
+ * `.panel`'s anchor via `--persona-tick-rail-gutter`) all stay
+ * exactly where they were, so the mouseover menu still activates
+ * from the same strip and lands flush against the viewport edge.
+ */
 .list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 5px 0 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
