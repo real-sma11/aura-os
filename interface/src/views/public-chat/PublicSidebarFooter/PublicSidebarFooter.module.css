@@ -47,12 +47,59 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /*
+   * Anchor for the absolutely-positioned `.activePill` below — the
+   * pill measures its top from this container's content box so its
+   * `transform: translateY(...)` lines up with the active row's
+   * `offsetTop` reported by the React layout effect.
+   */
+  position: relative;
+}
+
+/*
+ * Sliding active-route highlight. One span sits as the first DOM
+ * child of `.footerLinks`; its `--pill-top` / `--pill-height` are
+ * written from a layout effect in `PublicSidebarFooter.tsx` after
+ * measuring whichever NavLink is currently active. Because every
+ * row has identical width (the parent is `width: max-content` keyed
+ * on the longest label) and identical height (same font + padding),
+ * the pill only needs a vertical transform to traverse between
+ * rows — a single transition produces one smooth slide instead of
+ * a multi-axis morph.
+ *
+ * Painted BEHIND the link text via natural stacking-context rules:
+ * this positioned span comes first in the DOM, the positioned links
+ * come later, so paint order puts the pill at the bottom of the
+ * stack with no `z-index` arithmetic required.
+ */
+.activePill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--pill-height, 0);
+  transform: translateY(var(--pill-top, 0));
+  background: var(--color-surface-active, var(--color-surface-hover));
+  border-radius: 4px;
+  pointer-events: none;
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.2s ease,
+    opacity 0.18s ease;
 }
 
 .footerLink {
   display: block;
   text-decoration: none;
   font-size: 12px;
+  /*
+   * Positioned so the link's text paints ABOVE the absolutely-
+   * positioned `.activePill` span above. With both elements
+   * positioned and no `z-index` on either, the painter follows DOM
+   * order: pill first (behind), links after (on top). Removing this
+   * declaration would make the pill float over the labels.
+   */
+  position: relative;
   /*
    * Public mode floats this footer over the active persona's site
    * background (the `<aside>` is transparent + absolutely positioned).
@@ -67,21 +114,42 @@
   border-radius: 4px;
 }
 
-.footerLink:hover {
+/*
+ * Hover surface is scoped to NON-active rows. The active row's
+ * background is painted by `.activePill` (a separate sliding
+ * element), so painting another translucent surface here on hover
+ * would double-up the highlight and read as two stacked pills.
+ * Narrowing with `:not(.footerLinkActive)` keeps the hover affordance
+ * for siblings while letting the pill own the active row.
+ */
+.footerLink:not(.footerLinkActive):hover {
   color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
   background: var(--color-surface-hover);
 }
 
 /*
- * Active-route highlight. `NavLink` adds the `.footerLinkActive`
- * class when its `to` matches the current pathname; we promote the
- * link's color to the persona-strong `--public-nav-fg-color` so the
- * selected page reads with stronger contrast than the muted siblings
- * above. The accent surface tint mirrors the hover state so the
- * active row visually settles between idle and hover.
+ * Active-route color promotion. `NavLink` adds the
+ * `.footerLinkActive` class when its `to` matches the current
+ * pathname; we promote the link's color to the persona-strong
+ * `--public-nav-fg-color` so the selected page reads with stronger
+ * contrast than the muted siblings above. The accent surface tint
+ * itself is owned by `.activePill` (the sliding element), so this
+ * rule no longer paints a background — that would lock a static
+ * highlight onto the active row and defeat the slide animation.
  */
 .footerLinkActive,
 .footerLinkActive:hover {
   color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
-  background: var(--color-surface-active, var(--color-surface-hover));
+}
+
+/*
+ * Respect the user's reduced-motion preference: keep the pill
+ * positioning logic, drop the transition so it jumps directly to
+ * the new row instead of sliding. Matches the precedent set by
+ * the public-chat CTA shimmer's reduced-motion handling.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .activePill {
+    transition: none;
+  }
 }
