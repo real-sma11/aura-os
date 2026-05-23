@@ -14,7 +14,17 @@
    * second pane stacked on top of the sidebar; flush spacing keeps
    * it as a quiet bottom-left footer instead.
    */
-  padding: 12px;
+  /*
+   * Asymmetric left padding: the link's own `padding-left` is `10px`
+   * (vs `4px` historically), so we shave 6px off the footer's left
+   * padding to keep each label's on-screen X exactly where it was
+   * before the pill redesign. Net text origin from the footer's
+   * outer left edge stays at `6px + 10px = 16px`, matching the
+   * previous `12px + 4px = 16px`. Right side keeps the full 12px so
+   * the widened pill (longest label + 20px) is allowed to grow
+   * outward to the right rather than crowding the sidebar gutter.
+   */
+  padding: 12px 12px 12px 6px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -80,7 +90,14 @@
   height: var(--pill-height, 0);
   transform: translateY(var(--pill-top, 0));
   background: var(--color-surface-active, var(--color-surface-hover));
-  border-radius: 4px;
+  /*
+   * Matches the resting `.footerLink` `border-radius` below so the
+   * sliding active surface reads as the same fully-rounded pill the
+   * hover/idle cells imply. Anything smaller would visibly clip the
+   * pill's caps and break the "slides between identical-shape cells"
+   * illusion mid-transition.
+   */
+  border-radius: 999px;
   pointer-events: none;
   transition:
     transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
@@ -110,8 +127,21 @@
    * token for dark / video persona backgrounds.
    */
   color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
-  padding: 4px 4px;
-  border-radius: 4px;
+  /*
+   * 10px side padding gives each pill 10px of breathing room on both
+   * sides of the label. Paired with `.footer`'s reduced left padding
+   * above, the label's on-screen X stays unchanged from the pre-pill
+   * design while the cell visibly extends ~6px further left and
+   * ~6px further right of where it used to sit.
+   */
+  padding: 4px 10px;
+  /*
+   * Fully rounded pill: `999px` always exceeds half the link's
+   * rendered height, so the corners stay perfectly capped regardless
+   * of future font-size or padding tweaks. Matched by `.activePill`
+   * above so the sliding active highlight reads as the same shape.
+   */
+  border-radius: 999px;
 }
 
 /*
