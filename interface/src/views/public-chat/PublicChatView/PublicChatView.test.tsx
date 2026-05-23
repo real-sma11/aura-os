@@ -439,10 +439,16 @@ describe("PublicChatView landing", () => {
     const { unmount } = renderView();
     const root = document.documentElement;
 
-    // Vibecoder is the default (NO_THEME): neither variable is set.
-    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
+    // Vibecoder is the default and pins the dark-mode text token
+    // pair (`#e6e8eb` / `#c9c9cf`) because its `siteBackgroundColor`
+    // (`#2a0258`) is theme-invariant — the foreground must be theme-
+    // invariant too, otherwise the marketing nav collapses to near-
+    // black on the deep-purple bg in light mode.
+    expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe(
+      "#e6e8eb",
+    );
     expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
-      "",
+      "#c9c9cf",
     );
 
     const rail = screen.getByTestId("persona-tick-rail");
@@ -459,10 +465,14 @@ describe("PublicChatView landing", () => {
       "#1a1a1a",
     );
 
-    // Switching back to a NO_THEME persona clears both properties so
-    // the default tokens take over on the next paint.
+    // Switching to the NO_THEME persona (Researcher) clears both
+    // properties so the default `--color-text-*` tokens take over on
+    // the next paint. Researcher has no `siteBackgroundColor` of its
+    // own — the page falls back to the global `--color-bg`, which IS
+    // theme-driven, so the nav text must keep tracking the user's
+    // theme here.
     fireEvent.mouseEnter(rail);
-    fireEvent.click(panelFor("Vibecoder"));
+    fireEvent.click(panelFor("Researcher"));
     expect(root.style.getPropertyValue("--public-nav-fg-color")).toBe("");
     expect(root.style.getPropertyValue("--public-nav-fg-color-muted")).toBe(
       "",

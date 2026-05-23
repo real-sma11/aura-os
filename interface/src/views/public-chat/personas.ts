@@ -253,12 +253,18 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // immediately on first paint and there is no dark flash
       // before the static asset finishes loading.
       siteBackgroundColor: "#2a0258",
-      // The deep-purple bg is dark and high-contrast, so the
-      // default near-white nav/tick foreground tokens already
-      // read cleanly — leave both overrides null so the shell
-      // defaults paint through.
-      siteForegroundColor: null,
-      siteForegroundColorMuted: null,
+      // Pin the dark-mode `--color-text-primary` / `--color-text-
+      // secondary` hex pair (sampled from `vendor/zui/src/styles/
+      // themes.css` and `interface/src/styles/tokens.css`) rather
+      // than leaving these null and letting the CSS fallbacks walk
+      // through `--color-text-*`. The persona's `siteBackgroundColor`
+      // is theme-invariant — `#2a0258` paints in both light and dark
+      // user theme — so the nav / tick foreground must be theme-
+      // invariant too, otherwise light-mode visitors see the muted
+      // token collapse to near-black `#374151` on the deep-purple bg
+      // and the marketing nav strip becomes unreadable.
+      siteForegroundColor: "#e6e8eb",
+      siteForegroundColorMuted: "#c9c9cf",
       // CTA keeps the default neon-violet bloom which is tuned
       // to pop against the deep purple page bg.
       siteCtaGlowColor: null,
@@ -527,10 +533,16 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // inset against the slightly lighter page bg.
       siteBackgroundUrl: null,
       siteBackgroundColor: "#22272E",
-      // Page bg is dark and high-contrast, so the default near-
-      // white nav/tick foreground tokens already read cleanly.
-      siteForegroundColor: null,
-      siteForegroundColorMuted: null,
+      // Pin the dark-mode `--color-text-primary` / `--color-text-
+      // secondary` hex pair (matches Vibecoder's override) rather
+      // than leaving these null. The persona's `siteBackgroundColor`
+      // is theme-invariant — `#22272E` paints in both light and dark
+      // user theme — so the nav / tick foreground must be theme-
+      // invariant too, otherwise light-mode visitors see the CSS
+      // fallback collapse `--color-text-secondary` to `#374151` and
+      // the marketing nav strip becomes unreadable on the dark wash.
+      siteForegroundColor: "#e6e8eb",
+      siteForegroundColorMuted: "#c9c9cf",
       // Spring-green / cyan-lifted neon sampled from the helmet
       // visor stripes in the wallpaper portrait — slightly cooler
       // than a pure matrix `#39ff14` so it tracks the actual
