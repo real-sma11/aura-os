@@ -7,7 +7,7 @@
   min-height: calc(100dvh - var(--marketing-main-bottom-space));
   padding: clamp(48px, 8vh, 88px) clamp(32px, 5vw, 72px);
   box-sizing: border-box;
-  background: #000;
+  background: #22272e;
 }
 
 .pricingPageContent {
