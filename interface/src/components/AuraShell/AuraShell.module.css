@@ -218,9 +218,9 @@
   height: var(--public-pill-height, 24px);
   padding: 0 14px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--public-pill-font-size, 12px);
   line-height: 1;
-  font-weight: 600;
+  font-weight: var(--public-pill-font-weight, 600);
   text-decoration: none;
   border: 1px solid transparent;
   box-sizing: border-box;

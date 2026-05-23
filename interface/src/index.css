@@ -85,6 +85,8 @@
    */
   --public-pill-height: 24px;
   --public-pill-item-size: 22px;
+  --public-pill-font-size: 12px;
+  --public-pill-font-weight: 600;
 
   /*
    * Per-surface border tints. Both default to --color-border so the shell

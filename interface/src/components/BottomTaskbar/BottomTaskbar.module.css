@@ -147,7 +147,17 @@
   height: var(--taskbar-item-size);
   padding: 0 8px;
   border-radius: 8px;
-  font-size: var(--text-2xs);
+  /*
+   * Lock font-size + font-weight to the same `--public-pill-*` tokens
+   * that drive the top Log In / Sign Up `.authPill` chrome so the
+   * "by THE GRID" chip and the top auth pills read with identical
+   * type sizing. Without the explicit weight, the "by" prefix
+   * inherits the default 400 weight while "Sign Up" / "Log In"
+   * paint at 600 — at the same 12px size, 400-weight Inter has
+   * visibly thinner strokes and reads as a smaller type face.
+   */
+  font-size: var(--public-pill-font-size, var(--text-2xs));
+  font-weight: var(--public-pill-font-weight, 600);
   line-height: 1;
   color: var(--color-text-secondary);
   text-decoration: none;
