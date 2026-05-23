@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type WheelEvent as ReactWheelEvent,
@@ -62,15 +61,6 @@ interface PersonaSwapState {
 // React teardown timer (`FADE_MS + 50`) clears the outgoing layer
 // exactly one frame after its animation lands at opacity 0.
 const FADE_MS = 550;
-
-// Cooldown between wheel-driven persona changes. One discrete scroll
-// gesture (wheel notch / trackpad flick) advances exactly one
-// persona; subsequent wheel events that arrive inside this window
-// are ignored so a momentum trackpad can't blow through every
-// persona in a single swipe. Tuned to land just above the
-// `FADE_MS` cross-fade so the previous dissolve is visually
-// well underway before the next one starts stacking on top.
-const WHEEL_COOLDOWN_MS = 350;
 
 // Floor on `event.deltaY` magnitude before a wheel event counts as
 // a vertical scroll. Filters out near-zero noise from horizontal
@@ -145,32 +135,22 @@ export function PublicChatView(): React.ReactElement {
   // surface advances to the next persona (one further down the
   // tick rail) and scrolling up rewinds to the previous one,
   // wrapping past either end so the list reads as an infinite
-  // carousel rather than a clamped slider. The cooldown ref holds
-  // the wall-clock timestamp of the most recent accepted wheel
-  // event so a momentum trackpad gesture (which fires many wheel
-  // events per flick) advances exactly one persona instead of
-  // racing through the whole list. The ref deliberately bypasses
-  // state so the per-frame wheel event stream doesn't trigger a
-  // re-render — only the eventual `setActiveIndex` call does.
+  // carousel rather than a clamped slider.
   //
-  // Sentinel is `-Infinity` (not 0) so the very first wheel event
-  // always passes the cooldown gate. With `performance.now()`
-  // starting near 0 on a fresh mount — or exactly 0 under
-  // Vitest's fake timers — a 0-initialized ref would mean
-  // `0 - 0 === 0 < WHEEL_COOLDOWN_MS` and silently swallow the
-  // first wheel event.
-  const lastWheelTriggerRef = useRef<number>(Number.NEGATIVE_INFINITY);
-
+  // No time-based throttle: every wheel event with a non-trivial
+  // deltaY advances the active persona by one step. A momentum
+  // trackpad flick will therefore stream multiple persona changes
+  // in quick succession, which is the desired "snappy" feel — the
+  // 550ms cross-fade is decorative and the active persona
+  // (rail aria-current, dock border, theme vars) flips immediately
+  // on each accepted wheel event regardless of how many fade
+  // overlays are still mid-animation. Discrete mouse-wheel notches
+  // continue to feel like one-notch-one-persona because each notch
+  // fires a single wheel event.
   const handleWheelCycle = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>): void => {
       const delta = event.deltaY;
       if (Math.abs(delta) < WHEEL_DELTA_THRESHOLD) return;
-      const now =
-        typeof performance !== "undefined" && typeof performance.now === "function"
-          ? performance.now()
-          : Date.now();
-      if (now - lastWheelTriggerRef.current < WHEEL_COOLDOWN_MS) return;
-      lastWheelTriggerRef.current = now;
 
       const direction = delta > 0 ? 1 : -1;
       const n = PERSONAS.length;

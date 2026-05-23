@@ -491,10 +491,12 @@ describe("PublicChatView landing", () => {
  * Wheel-driven persona cycling: the entire public landing surface
  * acts as a vertical carousel — scrolling down advances to the
  * next persona (one step down the tick rail) and scrolling up
- * rewinds, wrapping past either end. A 350ms cooldown ensures one
- * discrete gesture (mouse-wheel notch or trackpad flick) advances
- * exactly one persona, no matter how many wheel events the input
- * device emits during that gesture.
+ * rewinds, wrapping past either end. There is intentionally NO
+ * time-based throttle: every accepted wheel event advances exactly
+ * one persona so the rail feels as snappy as the input device
+ * (one wheel-notch = one persona; a fast trackpad flick streams
+ * multiple persona changes in quick succession, which is the
+ * desired "feels fast" behaviour).
  */
 describe("PublicChatView wheel cycling", () => {
   function wheel(deltaY: number): void {
@@ -536,86 +538,59 @@ describe("PublicChatView wheel cycling", () => {
     // Punk first via the panel (clicking is the established
     // user-driven path) and then wheel-down to prove the forward
     // wrap also works end-to-start.
-    vi.useFakeTimers();
-    try {
-      renderView();
-      fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
-      fireEvent.click(panelFor("Cypher Punk"));
-      expect(tickFor("Cypher Punk")).toHaveAttribute("aria-current", "true");
+    renderView();
+    fireEvent.mouseEnter(screen.getByTestId("persona-tick-rail"));
+    fireEvent.click(panelFor("Cypher Punk"));
+    expect(tickFor("Cypher Punk")).toHaveAttribute("aria-current", "true");
 
-      // Step past the 350ms cooldown floor so the wheel event below
-      // isn't swallowed by the just-fired persona-click landing in
-      // the same tick (the click handler doesn't touch the cooldown,
-      // but `performance.now()` starts at 0 under fake timers so a
-      // wheel at t=0 immediately after the click would still be the
-      // first wheel-trigger and trip cleanly — advancing the clock
-      // keeps the test robust against future cooldown integration).
-      act(() => {
-        vi.advanceTimersByTime(400);
-      });
+    wheel(120);
 
-      wheel(120);
-
-      expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
-      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
-        "data-active-persona-index",
-        "0",
-      );
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "0",
+    );
   });
 
-  it("debounces back-to-back wheel events so one gesture only advances one persona", () => {
-    // A momentum trackpad emits a continuous stream of wheel events
-    // for the duration of an inertial scroll; without the cooldown
-    // a single flick would race past every persona. Fire three
-    // wheel events in immediate succession and assert only the
-    // first one landed.
-    vi.useFakeTimers();
-    try {
-      renderView();
-      expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
+  it("advances one persona per wheel event with no time-based throttle", () => {
+    // The original implementation debounced consecutive wheel events
+    // behind a 350ms cooldown. The current "feels fast" contract
+    // intentionally has no cooldown: three wheel-downs in immediate
+    // succession advance three personas (Vibecoder → Solo Builder →
+    // Giga Brain → Coordinator), proving that nothing in the
+    // handler swallows events that arrive on the same tick as a
+    // prior accepted event.
+    renderView();
+    expect(tickFor("Vibecoder")).toHaveAttribute("aria-current", "true");
 
-      wheel(120);
-      wheel(120);
-      wheel(120);
+    wheel(120);
+    wheel(120);
+    wheel(120);
 
-      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
-      expect(tickFor("Giga Brain")).not.toHaveAttribute("aria-current");
-      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
-        "data-active-persona-index",
-        "1",
-      );
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(tickFor("Coordinator")).toHaveAttribute("aria-current", "true");
+    expect(tickFor("Solo Builder")).not.toHaveAttribute("aria-current");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "3",
+    );
   });
 
-  it("accepts another wheel event after the 350ms cooldown elapses", () => {
-    // Companion to the debounce test: prove the cooldown actually
-    // re-opens. Two wheel-downs separated by a 400ms gap should
-    // advance two personas (Vibecoder → Solo Builder → Giga Brain).
-    vi.useFakeTimers();
-    try {
-      renderView();
+  it("a wheel-down stream past the end wraps cleanly through the carousel boundary", () => {
+    // The wrap arithmetic (`((prev + dir) % n + n) % n`) must hold
+    // up across consecutive same-tick events, not just a single
+    // boundary crossing. PERSONAS.length is 6, so seven wheel-down
+    // events from index 0 land on index 1 (= 7 mod 6) — Solo
+    // Builder — having passed through every persona exactly once
+    // plus a re-entry into Vibecoder mid-stream.
+    renderView();
 
-      wheel(120);
-      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+    for (let i = 0; i < 7; i += 1) wheel(120);
 
-      act(() => {
-        vi.advanceTimersByTime(400);
-      });
-
-      wheel(120);
-      expect(tickFor("Giga Brain")).toHaveAttribute("aria-current", "true");
-      expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
-        "data-active-persona-index",
-        "2",
-      );
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("mock-aura-app-stub")).toHaveAttribute(
+      "data-active-persona-index",
+      "1",
+    );
   });
 
   it("ignores near-zero deltaY events (horizontal trackpad jitter)", () => {
