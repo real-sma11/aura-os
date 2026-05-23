@@ -3,31 +3,30 @@
  * `DMWindowManager`). Pins the contracts that protect both the
  * windowed visual frame and the looping DM-driven animation:
  *
- *   1. The mock app frame mounts with its full decorative chrome —
- *      the real `ShellTitlebar` pill (with the AURA wordmark `<img>`
- *      in its title slot) overlaid via `.topChrome`, the wallpaper
- *      `<video>`, and the three bottom dock pills overlaid via
- *      `.bottomChrome` — even before any DM frame has fired. The
- *      top/bottom overlays are pinned via dedicated `data-testid`
- *      hooks so the assertion does not depend on internal class
- *      names.
- *   2. The DM window manager starts empty — no script frame is
+ *   1. The mock app frame mounts with its decorative chrome — the
+ *      real `ShellTitlebar` pill (with the AURA wordmark `<img>`
+ *      in its title slot) overlaid via `.topChrome` and the three
+ *      bottom dock pills overlaid via `.bottomChrome` — even before
+ *      any DM frame has fired. The top/bottom overlays are pinned
+ *      via dedicated `data-testid` hooks so the assertion does not
+ *      depend on internal class names.
+ *   2. With no `desktopBackgroundUrl` supplied (the NO_THEME case)
+ *      no wallpaper layer mounts at all — the frame's own dark
+ *      fill paints through. Supplying a URL mounts an `<img>`
+ *      wallpaper.
+ *   3. The DM window manager starts empty — no script frame is
  *      rendered eagerly. The first window pops open only after the
  *      `setTimeout` chain advances past the initial 250ms warm-up.
- *   3. Two distinct threads' frames land in two distinct DM
+ *   4. Two distinct threads' frames land in two distinct DM
  *      windows: the architect_frontend thread's first frame
  *      streams into one window while the architect_backend
  *      thread's first frame streams into a separate window —
  *      proving the manager routes by `thread` id rather than
  *      stacking every frame into one window.
- *   4. The decorative window manager is `aria-hidden` so the
+ *   5. The decorative window manager is `aria-hidden` so the
  *      looping content never bleeds into the assistive-tech tree.
  *      The top/bottom chrome overlays are also `aria-hidden`
  *      because they're decorative with no semantic value.
- *
- * `MockAuraApp` is now parameterless — the previous `inputDock`
- * slot was removed when the public-chat input bar was moved into
- * `PublicChatView`'s own bottom-anchored slot in phase 0.
  */
 
 import { act, render, screen, within } from "@testing-library/react";
@@ -68,7 +67,7 @@ afterEach(() => {
 });
 
 describe("MockAuraApp", () => {
-  it("mounts the windowed chrome with titlebar pill, wallpaper video, and bottom dock pills", () => {
+  it("mounts the windowed chrome with titlebar pill and bottom dock pills, and no wallpaper layer in the NO_THEME case", () => {
     render(<MockAuraApp />);
 
     expect(screen.getByTestId("mock-aura-app")).toBeInTheDocument();
@@ -85,18 +84,17 @@ describe("MockAuraApp", () => {
     expect(bottomChrome).toBeInTheDocument();
     expect(bottomChrome).toHaveAttribute("aria-hidden", "true");
 
-    const wallpaperVideo = document.querySelector("video");
-    expect(wallpaperVideo).not.toBeNull();
-    expect(wallpaperVideo?.getAttribute("src")).toBe("/AURA_visual_loop.mp4");
-
-    // The vignette ships with the default video loop so the DM
-    // windows have contrast at their edges against the bright orb.
+    // NO_THEME personas (and the unparameterised default) don't
+    // mount a wallpaper layer at all — `.appFrame`'s own near-black
+    // fill paints through. Pin both: no <video> and no wallpaper
+    // <img>.
+    expect(document.querySelector("video")).toBeNull();
     expect(
-      screen.getByTestId("mock-aura-wallpaper-vignette"),
-    ).toBeInTheDocument();
+      screen.queryByTestId("mock-aura-wallpaper-image"),
+    ).not.toBeInTheDocument();
   });
 
-  it("swaps the wallpaper to an <img> and suppresses the vignette when a custom desktopBackgroundUrl is provided", () => {
+  it("mounts an <img> wallpaper layer when a desktopBackgroundUrl is provided", () => {
     render(
       <MockAuraApp desktopBackgroundUrl="/personas/solo-builder/desktop.png" />,
     );
@@ -108,13 +106,6 @@ describe("MockAuraApp", () => {
       "/personas/solo-builder/desktop.png",
     );
     expect(document.querySelector("video")).toBeNull();
-
-    // Vignette is suppressed for persona wallpapers — layering the
-    // tuned-for-video dark gradient over a curated image just
-    // muddies the colors.
-    expect(
-      screen.queryByTestId("mock-aura-wallpaper-vignette"),
-    ).not.toBeInTheDocument();
   });
 
   it("starts with no DM windows and reveals them as scripted timers advance", () => {

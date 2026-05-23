@@ -1,15 +1,21 @@
 /*
  * MockAuraApp — empty-state hero for the public chat. The frame is a
  * flat 16:10 wallpaper rectangle with a soft drop shadow and square
- * corners. The wallpaper video and a radial vignette sit absolutely
- * inside the frame; the `DMWindowManager` cascades the scripted DM
- * windows over them. The chrome is now visually 1:1 with a live Aura
- * window — phase 1 layers the real `ShellTitlebar` component over
- * the top via the `.topChrome` overlay, and phase 2 layers three
- * rounded `BottomTaskbar`-style pills (left / center / right) over
- * the bottom via the `.bottomChrome` overlay. Both overlays reuse
- * the same `--shell-chrome-*` tokens that drive the real shell, so
+ * corners. A per-persona wallpaper `<img>` paints across the frame
+ * (or no wallpaper at all for NO_THEME personas), and the
+ * `DMWindowManager` cascades the scripted DM windows over it. The
+ * chrome is visually 1:1 with a live Aura window — phase 1 layers
+ * the real `ShellTitlebar` component over the top via the
+ * `.topChrome` overlay, and phase 2 layers three rounded
+ * `BottomTaskbar`-style pills (left / center / right) over the
+ * bottom via the `.bottomChrome` overlay. Both overlays reuse the
+ * same `--shell-chrome-*` tokens that drive the real shell, so
  * margins, radii, blur, and border colors stay in lockstep.
+ *
+ * The wallpaper cross-fade lifecycle is owned by `useCrossFadeLayers`
+ * (see `cross-fade.ts`); the matching `.layerEntering` /
+ * `.layerLeaving` classes that animate opacity live in the shared
+ * `cross-fade.module.css` and are applied to the layers from JSX.
  */
 
 /*
@@ -29,6 +35,12 @@
   width: min(75cqw, calc(75cqh * 16 / 10));
   max-width: 75cqw;
   max-height: 75cqh;
+  /*
+   * Default fill painted behind the wallpaper. Shows through for
+   * NO_THEME personas (no wallpaper layer at all) and as the
+   * letterbox fill for `contain`-fit wallpapers whose persona
+   * doesn't override `desktopBackgroundColor`.
+   */
   background: #0b0c10;
   /*
    * Clip everything painted inside the frame to its 16:10
@@ -48,8 +60,8 @@
    * Vibecoder's pink ↔ Cypher Punk's black). The wallpaper
    * cross-fade runs in parallel above this bg, so matching the
    * fade duration keeps the two channels feeling like one
-   * synchronized swap rather than a bg snap with a fading
-   * image on top.
+   * synchronized swap rather than a bg snap with a fading image
+   * on top.
    */
   transition: background-color 220ms ease;
   box-shadow:
@@ -58,13 +70,25 @@
 }
 
 /*
- * Re-mounts the existing `/AURA_visual_loop.mp4` as a full-bleed
- * wallpaper sitting *inside* the mock frame (the previous always-on
- * video on `.chatView` was removed when this surface took over the
- * empty state). `object-fit: cover` lets the orb crop into the
- * available area at any aspect ratio without leaving letterbox
- * bands, and `pointer-events: none` keeps the video from blocking
- * clicks on the (decorative) DM windows above.
+ * Per-persona wallpaper `<img>` painted across the mock frame. Two
+ * instances mount during a persona swap (an outgoing one and an
+ * entering one) so the swap dissolves rather than snaps; the
+ * fade-in / fade-out animations come from the shared
+ * `cross-fade.module.css` (`.layerEntering` / `.layerLeaving`),
+ * applied to the layers from JSX in `MockAuraApp.tsx`.
+ *
+ * `object-fit: cover` is the default; personas with a non-16:10
+ * source can override to `contain` via `desktopBackgroundFit` —
+ * inline `object-position` and `transform: scale()` (from
+ * `desktopBackgroundPosition` / `desktopBackgroundScale`) are
+ * applied per-layer so the outgoing layer keeps painting its
+ * frozen crop while it fades.
+ *
+ * No `transition` on `object-position` / `transform` — when a
+ * persona swap changes the crop, the new wallpaper must mount
+ * already at its final position and just fade in. Sliding the
+ * crop window between two unrelated images reads as the figure
+ * "warping" mid-swap, which the cross-fade is designed to avoid.
  */
 .wallpaper {
   position: absolute;
@@ -74,89 +98,6 @@
   object-fit: cover;
   pointer-events: none;
   z-index: 0;
-  /*
-   * No `transition` on `object-position` / `transform` — when a
-   * persona swap changes the crop, the new wallpaper must mount
-   * already at its final position and just fade in. Sliding the
-   * crop window between two unrelated images reads as the
-   * figure "warping" mid-swap, which the cross-fade is designed
-   * to avoid. The fade itself is driven by `wallpaperEntering` /
-   * `wallpaperLeaving` below.
-   */
-}
-
-/*
- * Cross-fade layers driven by `MockAuraApp.tsx`. When the active
- * wallpaper URL changes, the previous wallpaper is rendered one
- * last time with `wallpaperLeaving` (opacity 1 → 0) while the
- * new wallpaper mounts with `wallpaperEntering` (opacity 0 → 1).
- * Both layers are stacked at `z-index: 0` and sit beneath the
- * vignette + DM windows + chrome, so the fade is purely a paint
- * swap with no layout disturbance.
- *
- * `forwards` on the leaving layer pins opacity at 0 once the
- * animation ends — the React effect tears the element down a
- * tick later via a `setTimeout`, but `forwards` prevents a
- * one-frame opacity-1 flash if the unmount lags the animation.
- */
-@keyframes wallpaper-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes wallpaper-fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-.wallpaperEntering {
-  animation: wallpaper-fade-in 220ms ease;
-}
-
-.wallpaperLeaving {
-  animation: wallpaper-fade-out 220ms ease forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wallpaperEntering,
-  .wallpaperLeaving {
-    animation: none;
-  }
-}
-
-/*
- * Soft radial vignette over the wallpaper so the DM windows have
- * something contrasty to land on at their edges. The orb in the
- * AURA loop is bright at the centre — without this the white-ish
- * DM titlebars vanish into the wallpaper near 50%/50%.
- */
-.wallpaperVignette {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 50% 55%,
-      rgba(0, 0, 0, 0) 0%,
-      rgba(0, 0, 0, 0.18) 40%,
-      rgba(0, 0, 0, 0.45) 100%
-    ),
-    linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0.25) 0%,
-      rgba(0, 0, 0, 0) 25%,
-      rgba(0, 0, 0, 0) 75%,
-      rgba(0, 0, 0, 0.3) 100%
-    );
 }
 
 /*

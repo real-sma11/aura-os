@@ -6,68 +6,102 @@ import { ComposePanel } from "../ComposePanel";
 import { PersonaTickRail } from "../PersonaTickRail";
 import { deriveChatPalette } from "../MockAuraApp/derive-chat-palette";
 import { PERSONAS, getPersonaAt } from "../personas";
+import { useCrossFadeLayers } from "../cross-fade";
+import { useDecodedPersonaIndex } from "../persona-preload";
+import crossFadeStyles from "../cross-fade.module.css";
 import styles from "./PublicChatView.module.css";
 
 /**
  * Right-side surface for the public (logged-out) shell. As of the
  * landing-CTA refactor this is a pure marketing landing — there is
  * no chat input, transcript, gate modal, or per-session state. The
- * view also owns the per-persona theme swap: the right-rail
+ * view owns the per-persona theme swap: the right-rail
  * `PersonaTickRail` is rendered as a controlled component, the
  * active index drives both the wallpaper inside `MockAuraApp` and
  * the page-level site background painted on `.chatView`.
  *
- * Layout:
- *   - An optional full-bleed `<video>` layer is mounted as the
- *     FIRST child of `.chatView` when the active persona supplies
- *     a `siteBackgroundVideoUrl` — paints behind every slot below
- *     so the looping motion frames the mock desktop window the
- *     way the desktop frames the orb on the default Vibecoder
- *     landing.
- *   - `.heroSlot` fills the available area and mounts `ComposePanel`,
- *     which centers the decorative `MockAuraApp` (a flat 16:10
- *     rectangle with scripted DM windows floating inside) and
- *     paints the active persona's `desktopBackgroundUrl` as the
- *     wallpaper (falling back to `/AURA_visual_loop.mp4` when the
- *     active theme leaves it `null`).
- *   - `.tickRailSlot` pins the `PersonaTickRail` to the far-right
- *     edge of the surface and vertically centers it next to the
- *     hero.
- *   - `.ctaSlot` floats at `bottom: 5vh` and mounts a single
- *     horizontally-centered "Create your agent" pill button. The
- *     button is styled as a neon-glow panel: dark translucent fill
- *     with a colored bloom whose hue is driven by the active
- *     persona's `siteCtaGlowColor` (published below as
- *     `--public-cta-glow-color` on `.chatView`). Clicking it
- *     navigates to `/login?tab=register`, which `AuraShell` overlays
- *     as the `LoginOverlay` modal with the Create Account tab
- *     pre-selected — the same destination the marketing nav's
- *     "Sign Up" pill uses.
+ * Two-tier persona state
+ * ----------------------
+ * The visitor's tick selection drives `activeIndex`, which commits
+ * IMMEDIATELY so the rail's `aria-current`, the marketing nav / tick
+ * foreground variables, the CTA glow, and the mock window's
+ * text/syntax palette all flip on the same frame as the click —
+ * clicks always feel responsive. The bg/wallpaper layers, however,
+ * read from `committedIndex`: a separate state advanced by
+ * `useDecodedPersonaIndex` that holds the swap until the new
+ * persona's `desktop.png` + `site.png` are decoded. Without the
+ * gate the page bg `<img>` and the wallpaper `<img>` would mount in
+ * the same render but pop in at different moments depending on
+ * which finished its network fetch first; with it both images are
+ * paint-ready before either layer starts to fade in.
  *
- * Theme propagation:
- *   The active persona's `siteBackgroundColor` and
- *   `siteBackgroundUrl` are applied as inline styles on
- *   `.chatView` (color paints under the image so first-paint
- *   matches the dominant tone of the asset). When the persona
- *   supplies a `siteBackgroundVideoUrl` instead, a dedicated
- *   `<video>` layer is mounted as the FIRST child of `.chatView`
- *   so it paints beneath the hero / CTA / tick rail (z-index
- *   layering lives in `PublicChatView.module.css`); the inline
- *   image bg is suppressed in that case so the two layers never
- *   stack. When every site-bg field is `null` for the active
- *   persona the inline style collapses to `undefined` and the
- *   shell's default page color shows through.
+ * Layered backgrounds
+ * -------------------
+ * `.chatView` no longer carries an inline `background-image` — that
+ * would snap on every swap because `background-image` can't tween.
+ * Instead two `<div className={styles.siteBackground}>` layers sit
+ * absolutely behind every slot:
+ *   - The outgoing snapshot (from the previous committed persona)
+ *     plays `.layerLeaving` and unmounts after the fade.
+ *   - The current snapshot plays `.layerEntering`.
+ * The `useCrossFadeLayers` hook owns the lifecycle. The same hook
+ * drives the wallpaper cross-fade inside `MockAuraApp`, so the two
+ * surfaces always dissolve in lockstep.
+ *
+ * Layout slots
+ * ------------
+ * `.heroSlot` fills the available area and mounts `ComposePanel`,
+ *   which centers the decorative `MockAuraApp` and paints the
+ *   committed persona's `desktopBackgroundUrl` as the wallpaper.
+ * `.tickRailSlot` pins the `PersonaTickRail` to the far-right
+ *   edge of the surface and vertically centers it next to the
+ *   hero.
+ * `.ctaSlot` floats at `bottom: 5vh` and mounts a single
+ *   horizontally-centered "Create your agent" pill button. The
+ *   button's hue is driven by the active persona's `siteCtaGlowColor`
+ *   (published below as `--public-cta-glow-color` on `.chatView`).
+ *   Clicking it navigates to `/login?tab=register`.
  */
+
+/**
+ * Frozen snapshot of the site bg fields for one persona. The
+ * cross-fade hook keeps two of these alive during a swap — one
+ * outgoing, one entering — so the image+color paint together as a
+ * single visual snapshot rather than tweening field-by-field.
+ */
+interface SiteBgSnapshot {
+  readonly color: string | null;
+  readonly url: string | null;
+}
+
+function siteBgStyle(snapshot: SiteBgSnapshot): CSSProperties | undefined {
+  if (!snapshot.color && !snapshot.url) return undefined;
+  const style: CSSProperties = {};
+  if (snapshot.color) style.backgroundColor = snapshot.color;
+  if (snapshot.url) style.backgroundImage = `url("${snapshot.url}")`;
+  return style;
+}
+
 export function PublicChatView(): React.ReactElement {
   const navigate = useNavigate();
 
-  // Index 0 (Vibecoder) is the default landing persona. Hover/
-  // focus/click on a tick promotes that persona to active and the
+  // Index 0 (Vibecoder) is the default landing persona. Hover/focus/
+  // click on a tick promotes that persona to active and the
   // selection sticks until the visitor picks another tick — there
   // is no auto-reset on mouseleave.
   const [activeIndex, setActiveIndex] = useState<number>(0);
-
   const activePersona = useMemo(() => getPersonaAt(activeIndex), [activeIndex]);
+
+  // Decode-gated commit. The visible bg + wallpaper read from this
+  // index, not from `activeIndex`, so the two image layers never
+  // start fading in until both `desktop.png` + `site.png` have
+  // decoded. See `persona-preload.ts` for the gating + monotonic
+  // token logic that protects against rapid swap races.
+  const committedIndex = useDecodedPersonaIndex(activeIndex);
+  const committedPersona = useMemo(
+    () => getPersonaAt(committedIndex),
+    [committedIndex],
+  );
 
   // The marketing footer in `PublicSidebarFooter` lives inside
   // `AuraSidebar` — a sibling of `PublicChatView`, not a descendant
@@ -75,9 +109,8 @@ export function PublicChatView(): React.ReactElement {
   // `document.documentElement` as CSS custom properties. The right-
   // edge `PersonaTickRail` (a child of this view) also reads the
   // same properties so the rail and the marketing footer stay in
-  // visual sync across persona swaps. Cleanup on unmount/persona
-  // change keeps the variables from leaking into authed shells where
-  // neither surface mounts.
+  // visual sync. Bound to `activePersona` (not committed) so the
+  // footer/rail flip the same instant the visitor clicks a tick.
   useEffect(() => {
     const root = document.documentElement;
     const { siteForegroundColor, siteForegroundColorMuted } = activePersona.theme;
@@ -99,113 +132,84 @@ export function PublicChatView(): React.ReactElement {
   // Derive the per-persona text + syntax palette consumed by every
   // piece of text inside the `MockAuraApp` frame (bubble bodies,
   // agent labels, tool target/preview, terminal stream prose, and
-  // the global `hljs-*` tokens). Pure helper, runs synchronously on
-  // every persona swap; returns `null` for `NO_THEME` personas so
-  // the shell's default tokens keep painting. The result is passed
-  // through `ComposePanel` to `MockAuraApp`, which spreads it onto
-  // `.appFrame` as `--mock-*` custom properties — see
-  // `derive-chat-palette.ts` and `MockAuraApp.module.css`'s
-  // `[data-persona-themed="true"]` block.
-  //
-  // `resolvedTheme` decides the contrast direction (the DM bubbles
-  // fill from `--color-surface` which tracks the theme, not the
-  // wallpaper). Recomputing on theme change keeps the chat readable
-  // when the user flips light/dark while a persona is active —
-  // mirrors how `HighlightThemeBridge` reacts to the same hook.
+  // the global `hljs-*` tokens). Bound to the COMMITTED persona so
+  // the in-window text colors flip in the same render as the
+  // wallpaper rather than racing ahead of it.
   const { resolvedTheme } = useTheme();
   const chatPalette = useMemo(
     () =>
       deriveChatPalette(
-        activePersona.theme.siteBackgroundColor,
+        committedPersona.theme.siteBackgroundColor,
         resolvedTheme,
       ),
-    [activePersona, resolvedTheme],
+    [committedPersona, resolvedTheme],
   );
 
+  // CTA glow color — keyed to the active (not committed) persona so
+  // it flips with the click, matching the rail + footer.
   const chatViewStyle = useMemo<CSSProperties | undefined>(() => {
-    const {
-      siteBackgroundColor,
-      siteBackgroundUrl,
-      siteBackgroundVideoUrl,
-      siteCtaGlowColor,
-    } = activePersona.theme;
-    if (
-      !siteBackgroundColor &&
-      !siteBackgroundUrl &&
-      !siteBackgroundVideoUrl &&
-      !siteCtaGlowColor
-    ) {
-      return undefined;
-    }
+    const { siteCtaGlowColor } = activePersona.theme;
+    if (!siteCtaGlowColor) return undefined;
     // Extend the standard CSSProperties record with the one custom
     // property we publish on this element. Cast through `Record` so
     // the literal `--public-cta-glow-color` survives the type check
     // without widening the overall style to `any`.
     const style: CSSProperties & Record<"--public-cta-glow-color", string> =
       {} as CSSProperties & Record<"--public-cta-glow-color", string>;
-    if (siteBackgroundColor) {
-      style.backgroundColor = siteBackgroundColor;
-    }
-    // The video bg (rendered as a separate `<video>` layer below)
-    // takes precedence over the static image bg — if a persona
-    // sets both, the video wins and the image is ignored so the
-    // two layers never paint stacked.
-    if (siteBackgroundUrl && !siteBackgroundVideoUrl) {
-      style.backgroundImage = `url("${siteBackgroundUrl}")`;
-      style.backgroundSize = "cover";
-      style.backgroundPosition = "center";
-      style.backgroundRepeat = "no-repeat";
-    }
-    // Scope the CTA accent variable to this view — the glow is the
-    // only consumer, so there's no reason to leak it onto
-    // `documentElement` like the nav/tick foreground tokens. CSS
-    // falls back to the neon-violet default in `.ctaButton` when
-    // the active persona leaves this field `null`.
-    if (siteCtaGlowColor) {
-      style["--public-cta-glow-color"] = siteCtaGlowColor;
-    }
+    style["--public-cta-glow-color"] = siteCtaGlowColor;
     return style;
   }, [activePersona]);
+
+  const siteBgSnapshot: SiteBgSnapshot = {
+    color: committedPersona.theme.siteBackgroundColor,
+    url: committedPersona.theme.siteBackgroundUrl,
+  };
+  const { outgoing: outgoingSiteBg, current: currentSiteBg } =
+    useCrossFadeLayers(siteBgSnapshot, committedPersona.id);
 
   return (
     <div
       className={styles.chatView}
-      data-persona-id={activePersona.id}
+      data-persona-id={committedPersona.id}
       style={chatViewStyle}
     >
-      {activePersona.theme.siteBackgroundVideoUrl ? (
-        /*
-         * Looping site-background video. Sits BEHIND every other
-         * slot (`.heroSlot`, `.ctaSlot`, `.tickRailSlot`) via the
-         * z-index ordering in `PublicChatView.module.css`. `key` is
-         * the URL so React fully remounts the element when the
-         * active persona swaps to a different video — otherwise
-         * React would reuse the same `<video>` node and the new
-         * `src` would not always start the loop fresh. The
-         * `aria-hidden` + decorative attributes keep this layer
-         * out of the assistive-tech tree.
-         */
-        <video
-          key={activePersona.theme.siteBackgroundVideoUrl}
-          className={styles.siteBackgroundVideo}
-          src={activePersona.theme.siteBackgroundVideoUrl}
-          autoPlay
-          loop
-          muted
-          playsInline
+      {/*
+       * Page-level site background, painted as stacked absolutely-
+       * positioned layers BEHIND every slot below. Splitting the bg
+       * into outgoing + entering layers is what lets the swap
+       * cross-fade — `background-image` itself can't tween, but
+       * two stacked layers animating opacity dissolve cleanly.
+       * Both layers render only when their snapshot has actual
+       * content; an all-null snapshot collapses to nothing so the
+       * shell's default page color shows through.
+       */}
+      {outgoingSiteBg && siteBgStyle(outgoingSiteBg) ? (
+        <div
+          key={`site-bg-out-${outgoingSiteBg.__crossFadeId}`}
+          className={`${styles.siteBackground} ${crossFadeStyles.layerLeaving}`}
+          style={siteBgStyle(outgoingSiteBg)}
+          data-testid="public-chat-site-bg-outgoing"
           aria-hidden="true"
-          data-testid="public-chat-site-bg-video"
+        />
+      ) : null}
+      {siteBgStyle(currentSiteBg) ? (
+        <div
+          key={`site-bg-in-${committedPersona.id}`}
+          className={`${styles.siteBackground} ${crossFadeStyles.layerEntering}`}
+          style={siteBgStyle(currentSiteBg)}
+          data-testid="public-chat-site-bg"
+          aria-hidden="true"
         />
       ) : null}
       <div className={styles.heroSlot}>
         <ComposePanel
-          desktopBackgroundUrl={activePersona.theme.desktopBackgroundUrl}
+          desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
           desktopBackgroundPosition={
-            activePersona.theme.desktopBackgroundPosition
+            committedPersona.theme.desktopBackgroundPosition
           }
-          desktopBackgroundFit={activePersona.theme.desktopBackgroundFit}
-          desktopBackgroundColor={activePersona.theme.desktopBackgroundColor}
-          desktopBackgroundScale={activePersona.theme.desktopBackgroundScale}
+          desktopBackgroundFit={committedPersona.theme.desktopBackgroundFit}
+          desktopBackgroundColor={committedPersona.theme.desktopBackgroundColor}
+          desktopBackgroundScale={committedPersona.theme.desktopBackgroundScale}
           chatPalette={chatPalette}
         />
       </div>

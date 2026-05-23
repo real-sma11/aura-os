@@ -96,25 +96,10 @@ export interface PersonaTheme {
    */
   readonly siteBackgroundUrl: string | null;
   /**
-   * Looping video URL painted as the page background behind the
-   * whole `PublicChatView`. Mounted as an absolutely-positioned
-   * `<video autoplay loop muted playsinline>` layered beneath the
-   * hero / CTA / tick rail. Takes precedence over
-   * `siteBackgroundUrl` when both are set — use this for personas
-   * whose surrounding bg should be motion (e.g. the default
-   * Vibecoder landing where the AURA orb video sits behind the
-   * mock desktop window). `siteBackgroundColor` still paints under
-   * the video so the page never flashes shell color while the
-   * asset is still loading.
-   */
-  readonly siteBackgroundVideoUrl: string | null;
-  /**
-   * Solid color paired with `siteBackgroundUrl` /
-   * `siteBackgroundVideoUrl` — paints under the image or video so
-   * the page never flashes the shell color while the asset is
-   * still loading. Also serves as the sole site background when
-   * both `siteBackgroundUrl` and `siteBackgroundVideoUrl` are
-   * `null`.
+   * Solid color paired with `siteBackgroundUrl` — paints under the
+   * image so the page never flashes the shell color while the asset
+   * is still loading. Also serves as the sole site background when
+   * `siteBackgroundUrl` is `null`.
    */
   readonly siteBackgroundColor: string | null;
   /**
@@ -181,7 +166,6 @@ const NO_THEME: PersonaTheme = {
   desktopBackgroundColor: null,
   desktopBackgroundScale: null,
   siteBackgroundUrl: null,
-  siteBackgroundVideoUrl: null,
   siteBackgroundColor: null,
   siteForegroundColor: null,
   siteForegroundColorMuted: null,
@@ -233,19 +217,22 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // revealing the default near-black appFrame fill behind
       // the bars.
       desktopBackgroundColor: "#ea3580",
-      // No scale — `contain` already sizes the image down to
-      // fit the frame's height, so the figure renders at a
-      // calmer "zoomed out" scale by definition. Adding a
-      // `scale()` on top would shrink it further inside the
-      // letterbox and is unnecessary now.
-      desktopBackgroundScale: null,
+      // Zoom in 10% from the `contain` baseline. The painted
+      // contain rectangle (1000×1000 inside a 1600×1000 frame)
+      // scales to 1100×1100 around the frame center: the figure
+      // grows 10% larger, the horizontal letterbox bars shrink
+      // from 300px to 250px each side, and a ~4.5% slice at
+      // the top / bottom of the source falls outside the frame
+      // and gets trimmed by `.appFrame`'s `overflow: hidden`.
+      // The matching pink bg above still fills the (narrower)
+      // letterbox bars so the seam stays invisible.
+      desktopBackgroundScale: 1.1,
       // Deep purple-violet gradient with diagonal light streaks
       // painted as the page bg behind the mock desktop window —
       // the cool atmospheric backdrop offsets the hot pink
       // portrait inside the window without competing for
-      // attention. Replaces the earlier AURA-loop site video.
+      // attention.
       siteBackgroundUrl: "/personas/vibecoder/site.png",
-      siteBackgroundVideoUrl: null,
       // Mid-tone of the gradient (sampled from the image's
       // center band) so the page paints a matching deep purple
       // immediately on first paint and there is no dark flash
@@ -267,12 +254,47 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     name: "Solo Builder",
     theme: {
       desktopBackgroundUrl: "/personas/solo-builder/desktop.png",
+      // Position is irrelevant under `contain` (the image fits
+      // entirely inside the frame and there is no crop axis to
+      // anchor). Same shape as Vibecoder / Cypher Punk below.
       desktopBackgroundPosition: null,
-      desktopBackgroundFit: null,
-      desktopBackgroundColor: null,
-      desktopBackgroundScale: null,
+      // `contain` shows the full source vertically: the
+      // 1024×1024 square fits to the frame's 1000px height and
+      // the leftover ~600px of frame width becomes horizontal
+      // letterbox bars. Matches Vibecoder + Cypher Punk so the
+      // figure renders at the same visible size across all three
+      // character-portrait personas — cross-fading between them
+      // is a clean image dissolve with no size jump.
+      desktopBackgroundFit: "contain",
+      // Sampled midpoint of the source's left/right edges,
+      // which run from `#7ea2b0` at the top to `#7195a5` at the
+      // bottom in a gentle vertical gradient. `#7a9eac` sits
+      // right in the middle of that range, so the seam between
+      // the letterbox bar and any image edge stays imperceptible
+      // along the full height of the frame.
+      desktopBackgroundColor: "#7a9eac",
+      // Zoom OUT 15% from the `contain` baseline — intentionally
+      // different from Vibecoder + Cypher Punk's `1.1`. The
+      // Vibecoder + Cypher Punk source PNGs frame their subject
+      // edge-to-edge (hair / hood touch the top of the source,
+      // shoulders reach the bottom), so `1.1` makes those figures
+      // fill the rendered frame as a tight head-and-shoulders
+      // portrait. The Solo Builder source, in contrast, authors
+      // the helmeted figure as a much smaller element with a
+      // wide band of sky above and around it — at `1.1` the
+      // visor floats small and high in the upper third of the
+      // frame instead of reading as a comparable portrait.
+      //
+      // Contracting to `0.85` does double duty: the figure
+      // shrinks (the "zoom out" half of the user's request) AND
+      // the visor falls visibly closer to frame center (the
+      // "move down" half), because scaling shrinks everything
+      // toward the element's center and the visor was sitting
+      // above it. The resulting widened bg-color border on all
+      // four sides reads as deliberate negative space rather
+      // than as a small head in an oversized window.
+      desktopBackgroundScale: 0.85,
       siteBackgroundUrl: "/personas/solo-builder/site.png",
-      siteBackgroundVideoUrl: null,
       // Sampled from the dominant mid-tone of `site.png` so the page
       // paints a matching dusty-blue immediately on first paint and
       // there is no dark flash before the image finishes loading.
@@ -313,7 +335,6 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // wash behind the `MockAuraApp` rectangle so the helmeted
       // portrait sits on a flat saturated field.
       siteBackgroundUrl: null,
-      siteBackgroundVideoUrl: null,
       siteBackgroundColor: "#B06AB3",
       // The lavender wash is mid-tone but still bright enough that
       // the default near-white nav/tick tokens lose contrast against
@@ -364,19 +385,17 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // Matches the wallpaper's near-pure-black corners
       // (sampled at #030303).
       desktopBackgroundColor: "#030303",
-      // No scale — `contain` already sizes the figure down to
-      // fit the frame's height; Vibecoder + Cypher Punk share
-      // a 1024×1024 source so both render the figure at exactly
-      // the same 1000×1000 visible size, keeping the
-      // cross-fade between them a clean dissolve with no size
-      // jump.
-      desktopBackgroundScale: null,
+      // Zoom in 10% from the `contain` baseline — matches the
+      // Vibecoder scale exactly so the two personas (which share
+      // a 1024×1024 source) render the figure at the same
+      // visible 1100×1100 size, keeping the cross-fade between
+      // them a clean dissolve with no size jump.
+      desktopBackgroundScale: 1.1,
       // No surrounding site image — the page paints a flat dark
       // blue-gray wash behind the `MockAuraApp` rectangle so the
       // pure-black wallpaper inside the window reads as a darker
       // inset against the slightly lighter page bg.
       siteBackgroundUrl: null,
-      siteBackgroundVideoUrl: null,
       siteBackgroundColor: "#22272E",
       // Page bg is dark and high-contrast, so the default near-
       // white nav/tick foreground tokens already read cleanly.

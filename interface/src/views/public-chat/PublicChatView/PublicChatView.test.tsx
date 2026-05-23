@@ -9,7 +9,7 @@
  * removed chat chrome accidentally reappearing.
  */
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -181,7 +181,7 @@ describe("PublicChatView landing", () => {
     expect(panelFor("Researcher")).toHaveAttribute("data-active", "true");
   });
 
-  it("swaps the desktop wallpaper and site background when Solo Builder is selected from the menu", () => {
+  it("swaps the decode-gated wallpaper and layered site background when Solo Builder is selected from the menu", async () => {
     renderView();
     const rail = screen.getByTestId("persona-tick-rail");
     const heroStub = screen.getByTestId("mock-aura-app-stub");
@@ -189,58 +189,108 @@ describe("PublicChatView landing", () => {
     // Vibecoder is the default landing theme: the mock window's
     // wallpaper is the curated cyberpunk portrait and the page
     // bg behind the window is the deep-purple gradient image
-    // (applied as an inline `background-image` on `.chatView`).
+    // (painted onto a stacked `.siteBackground` layer rather than
+    // inline on `.chatView`).
     expect(heroStub).toHaveAttribute(
       "data-desktop-bg",
       "/personas/vibecoder/desktop.png",
     );
-    const vibecoderView = document.querySelector(
-      '[data-persona-id="vibecoder"]',
-    );
-    expect(vibecoderView).not.toBeNull();
-    expect((vibecoderView as HTMLElement).style.backgroundImage).toContain(
+    const initialSiteBg = screen.getByTestId("public-chat-site-bg");
+    expect(initialSiteBg.style.backgroundImage).toContain(
       "/personas/vibecoder/site.png",
     );
+    expect(initialSiteBg.style.backgroundColor).not.toBe("");
 
     fireEvent.mouseEnter(rail);
     fireEvent.click(panelFor("Solo Builder"));
+
+    // `useDecodedPersonaIndex` resolves on the next microtask once
+    // the stubbed `Image.decode()` promises settle, so flush a
+    // microtask before reading the committed snapshot.
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(heroStub).toHaveAttribute(
       "data-desktop-bg",
       "/personas/solo-builder/desktop.png",
     );
+    expect(
+      document.querySelector('[data-persona-id="solo-builder"]'),
+    ).not.toBeNull();
 
-    // The active persona id is mirrored on the root for downstream
-    // CSS hooks; the inline background is applied to the same
-    // element via `style`.
-    const chatView = document.querySelector(
-      '[data-persona-id="solo-builder"]',
-    );
-    expect(chatView).not.toBeNull();
-    const inline = (chatView as HTMLElement).style;
-    expect(inline.backgroundColor).not.toBe("");
-    expect(inline.backgroundImage).toContain(
+    const committedSiteBg = screen.getByTestId("public-chat-site-bg");
+    expect(committedSiteBg.style.backgroundImage).toContain(
       "/personas/solo-builder/site.png",
     );
+    expect(committedSiteBg.style.backgroundColor).not.toBe("");
   });
 
-  it("renders the site-bg video layer only for personas that supply `siteBackgroundVideoUrl`", () => {
-    // No persona currently ships with a site-bg video, so the
-    // dedicated `<video>` layer must NOT mount on first paint
-    // (Vibecoder) or after switching to any other persona. The
-    // infrastructure still exists in `PublicChatView` for future
-    // personas that want motion — this test pins the gate.
+  it("flips the active tick immediately on click while holding the bg/wallpaper commit until images decode", async () => {
+    // Two-tier state contract: `activeIndex` drives the rail and
+    // foreground vars synchronously so the click feels responsive;
+    // `committedIndex` (which drives the bg layers + wallpaper) is
+    // gated on `Image.decode()` so neither layer pops in mid-fade.
     renderView();
-    expect(
-      screen.queryByTestId("public-chat-site-bg-video"),
-    ).not.toBeInTheDocument();
+    const heroStub = screen.getByTestId("mock-aura-app-stub");
+    const initialSiteBg = screen.getByTestId("public-chat-site-bg");
+    expect(initialSiteBg.style.backgroundImage).toContain(
+      "/personas/vibecoder/site.png",
+    );
 
-    const rail = screen.getByTestId("persona-tick-rail");
-    fireEvent.mouseEnter(rail);
-    fireEvent.click(panelFor("Coordinator"));
-    expect(
-      screen.queryByTestId("public-chat-site-bg-video"),
-    ).not.toBeInTheDocument();
+    // Hold the next decode so the gate observably blocks the commit.
+    let releaseDecode: () => void = () => undefined;
+    const decodeBlocker = new Promise<void>((resolve) => {
+      releaseDecode = resolve;
+    });
+    const originalDecode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = function gatedDecode(): Promise<void> {
+      return decodeBlocker;
+    };
+
+    try {
+      const rail = screen.getByTestId("persona-tick-rail");
+      fireEvent.mouseEnter(rail);
+      fireEvent.click(panelFor("Solo Builder"));
+
+      // Tick + aria-current flip immediately (active state is
+      // un-gated). Pump one microtask so React commits the
+      // synchronous setState before we assert.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(tickFor("Solo Builder")).toHaveAttribute("aria-current", "true");
+
+      // The committed bg + wallpaper, however, must still reflect
+      // Vibecoder — the decode-gated commit is pending.
+      expect(heroStub).toHaveAttribute(
+        "data-desktop-bg",
+        "/personas/vibecoder/desktop.png",
+      );
+      expect(
+        document.querySelector('[data-persona-id="vibecoder"]'),
+      ).not.toBeNull();
+      expect(
+        screen.getByTestId("public-chat-site-bg").style.backgroundImage,
+      ).toContain("/personas/vibecoder/site.png");
+
+      // Releasing the decode advances the committed index and the
+      // bg/wallpaper layers swap to Solo Builder.
+      await act(async () => {
+        releaseDecode();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(heroStub).toHaveAttribute(
+        "data-desktop-bg",
+        "/personas/solo-builder/desktop.png",
+      );
+      expect(
+        screen.getByTestId("public-chat-site-bg").style.backgroundImage,
+      ).toContain("/personas/solo-builder/site.png");
+    } finally {
+      HTMLImageElement.prototype.decode = originalDecode;
+    }
   });
 
   it("publishes per-persona foreground CSS vars on <html> for the marketing footer + tick rail to read", () => {

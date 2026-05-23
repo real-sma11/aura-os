@@ -1,6 +1,4 @@
 import {
-  useEffect,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -22,34 +20,35 @@ import {
 import { ShellTitlebar } from "../../../components/ShellTitlebar";
 import { DMWindowManager } from "./DMWindowManager";
 import { paletteToCssVars, type ChatPalette } from "./derive-chat-palette";
+import { useCrossFadeLayers } from "../cross-fade";
+import crossFadeStyles from "../cross-fade.module.css";
 import styles from "./MockAuraApp.module.css";
 
 /**
- * Empty-state hero for the public chat surface. The existing
- * `/AURA_visual_loop.mp4` video fills a flat 16:10 wallpaper
- * rectangle, a soft radial vignette sits above it, and the scripted
- * MSN/ICQ-style DM windows float over the wallpaper as agents trade
- * messages in parallel threads.
+ * Empty-state hero for the public chat surface. A flat 16:10
+ * wallpaper rectangle hosts the scripted MSN/ICQ-style DM windows
+ * that float over it, with the real `ShellTitlebar` overlaid on top
+ * (phase 1) and three `BottomTaskbar`-style pills on the bottom
+ * (phase 2). Both chrome overlays reuse the same `--shell-chrome-*`
+ * tokens that drive the live shell, so margins, radii, blur, and
+ * border colors stay in lockstep.
  *
- * The chrome is now visually 1:1 with a live Aura window: phase 1
- * layers the actual `ShellTitlebar` component (the same one mounted
- * by `AuraShell` in production) over the top via the `.topChrome`
- * overlay, and phase 2 layers three rounded `BottomTaskbar`-style
- * pills over the bottom via the `.bottomChrome` overlay. The pills
- * reuse the same `--shell-chrome-*` tokens that drive the real
- * `BottomTaskbar.module.css`, so margins, radii, blur, and border
- * colors stay in lockstep with the live shell.
+ * The wallpaper itself is a per-persona `<img>` painted across the
+ * frame. When the visitor swaps personas the previous wallpaper
+ * stays mounted as an outgoing layer that fades out while the
+ * incoming wallpaper fades in — the cross-fade lifecycle is owned
+ * by `useCrossFadeLayers` (see `cross-fade.ts`). `PublicChatView`
+ * decodes the new persona's assets BEFORE flipping the props it
+ * passes here, so both the page bg and this wallpaper start their
+ * fades together rather than popping in independently.
  *
- * The wallpaper, vignette, and overlay chrome are decorative —
- * `aria-hidden` keeps them out of the assistive-tech tree. The only
- * keyboard-reachable surface in the empty state is the
- * `PublicComposeInput`, which the parent `PublicChatView` mounts in
- * its own bottom-anchored slot (not inside this frame).
+ * NO_THEME personas (`giga-brain`, `researcher`) leave
+ * `desktopBackgroundUrl` null. In that case no wallpaper layer is
+ * rendered at all — the frame's own near-black fill shows through.
  *
- * Mounts only on the public-chat empty state (see
- * `PublicChatView`'s `isEmpty` gate). Once the visitor sends their
- * first message the parent flips to the populated transcript layout
- * and this component unmounts entirely.
+ * All decorative children are `aria-hidden`. The only keyboard-
+ * reachable surface in the empty state is the CTA button mounted
+ * by the parent `PublicChatView`.
  */
 function formatClock(date: Date): string {
   const hours24 = date.getHours();
@@ -61,20 +60,12 @@ function formatClock(date: Date): string {
 }
 
 /**
- * Duration of the wallpaper cross-fade (matches the keyframe
- * length in `MockAuraApp.module.css`). Kept here as a constant
- * so the React effect that tears down the outgoing layer stays
- * in lockstep with the CSS animation — bump both together if
- * the easing ever needs to slow down.
- */
-const WALLPAPER_FADE_MS = 220;
-
-/**
  * Frozen snapshot of the visual fields that fully describe one
- * rendering of the wallpaper. Captured at the moment of a
- * persona swap so the outgoing layer can keep painting its
- * original crop / fit / scale while it fades out, even though
- * the parent has already moved on to the next persona's props.
+ * rendering of the wallpaper. The cross-fade hook keeps two of
+ * these alive during a swap so the outgoing layer can keep
+ * painting its original crop / fit / scale while it fades out,
+ * even though the parent has already moved on to the next
+ * persona's props.
  */
 interface WallpaperSnapshot {
   readonly url: string | null;
@@ -85,11 +76,11 @@ interface WallpaperSnapshot {
 
 /**
  * Builds the optional inline style that pins the wallpaper
- * `<img>`'s crop, fit, and scale. Returns `undefined` when
- * every field is null so React skips the style prop entirely
- * (preserves the default `object-fit: cover` from the CSS
- * module). Shared between the entering (current) and leaving
- * (outgoing) layers so both paint with identical positioning.
+ * `<img>`'s crop, fit, and scale. Returns `undefined` when every
+ * field is null so React skips the style prop entirely (preserves
+ * the default `object-fit: cover` from the CSS module). Shared
+ * between the entering and leaving layers so both paint with
+ * identical positioning.
  */
 function wallpaperStyleFor(
   snapshot: WallpaperSnapshot,
@@ -106,15 +97,11 @@ function wallpaperStyleFor(
 
 export interface MockAuraAppProps {
   /**
-   * Optional static wallpaper override. When provided, the
-   * default `/AURA_visual_loop.mp4` video is replaced with an
-   * `<img>` painted across the same 16:10 frame AND the dark
-   * radial vignette is suppressed (the vignette was tuned for the
-   * bright AURA orb in the default video; layering it over a
-   * curated persona image just muddies the colors). Drives the
-   * per-persona theme swap from `PublicChatView` — `personas.ts`
-   * supplies the URL, the parent passes it down, and a `null`
-   * here keeps the orb video loop and its vignette in place.
+   * Static wallpaper URL painted across the 16:10 frame. When
+   * `null` no wallpaper layer mounts — the frame's own near-black
+   * background fill shows through (used by `NO_THEME` personas).
+   * Drives the per-persona theme swap from `PublicChatView` —
+   * `personas.ts` supplies the URL, the parent passes it down.
    */
   readonly desktopBackgroundUrl?: string | null;
   /**
@@ -123,10 +110,6 @@ export interface MockAuraAppProps {
    * mode leaves the image fully visible and `object-position`
    * just nudges it within its letterbox bars. `null` (the
    * default) defers to the browser's `50% 50%` (center-cropped).
-   * Set when a curated portrait needs a non-centered crop
-   * (e.g. `"center 20%"` to keep a head-and-shoulders subject
-   * from getting sliced mid-chest by the 16:10 frame's default
-   * center crop).
    */
   readonly desktopBackgroundPosition?: string | null;
   /**
@@ -140,20 +123,20 @@ export interface MockAuraAppProps {
   readonly desktopBackgroundFit?: "cover" | "contain" | null;
   /**
    * Solid color painted as the `.appFrame` background BEHIND the
-   * wallpaper `<img>`. When `null` the frame's default
-   * near-black fill paints through. Pair with
-   * `desktopBackgroundFit: "contain"` and a sampled match of
-   * the image's natural background so the letterbox bars look
-   * like an extension of the artwork.
+   * wallpaper `<img>`. When `null` the frame's default near-black
+   * fill paints through. Pair with `desktopBackgroundFit:
+   * "contain"` and a sampled match of the image's natural
+   * background so the letterbox bars look like an extension of
+   * the artwork.
    */
   readonly desktopBackgroundColor?: string | null;
   /**
    * Multiplier applied as `transform: scale(N)` on the wallpaper
    * `<img>` to zoom the rendered image in (>1) or out (<1) from
    * its baseline `object-fit` size. `.appFrame` carries
-   * `overflow: hidden` so the scaled-up content is clipped
-   * cleanly to the mock window rectangle. Defaults to no
-   * transform when `null`.
+   * `overflow: hidden` so scaled-up content is clipped cleanly
+   * to the mock window rectangle. Defaults to no transform when
+   * `null`.
    */
   readonly desktopBackgroundScale?: number | null;
   /**
@@ -163,16 +146,8 @@ export interface MockAuraAppProps {
    * inside the frame (DM bubbles, agent name labels, tool target
    * paths, terminal stream prose, and the global `hljs-*` syntax
    * tokens) re-tints to a palette that coordinates with the
-   * wallpaper hue family. The fields land as
-   * `--mock-text`/`--mock-text-secondary`/`--mock-text-muted` and
-   * `--mock-hljs-*` custom properties on `.appFrame`; the
-   * matching `[data-persona-themed="true"]` block in
-   * `MockAuraApp.module.css` re-binds `--color-text*` (cascading
-   * into every descendant) and overrides each `hljs-*` selector
-   * scoped to this frame so the global highlight.js theme
-   * stylesheet keeps painting unchanged everywhere else. A
-   * `null` value (the `NO_THEME` personas) collapses the inline
-   * style and keeps the existing shell tokens.
+   * wallpaper hue family. See the `[data-persona-themed="true"]`
+   * block in `MockAuraApp.module.css` for the cascade.
    */
   readonly chatPalette?: ChatPalette | null;
 }
@@ -186,79 +161,25 @@ export function MockAuraApp({
   chatPalette = null,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
-  const hasCustomWallpaper = Boolean(desktopBackgroundUrl);
-  const currentSnapshot: WallpaperSnapshot = {
+  const wallpaper: WallpaperSnapshot = {
     url: desktopBackgroundUrl,
     position: desktopBackgroundPosition,
     fit: desktopBackgroundFit,
     scale: desktopBackgroundScale,
   };
 
-  // Cross-fade state. `outgoing` holds the previous persona's
-  // wallpaper config (captured at the moment of swap) so it can
-  // paint one last frame with its own crop/fit/scale while
-  // fading out, then unmount once the animation finishes.
-  // `previousSnapshotRef` mirrors what was painted last render
-  // so we can detect URL changes; `nextOutgoingIdRef` gives each
-  // outgoing layer a fresh React `key` so rapid cascading swaps
-  // don't reuse the same DOM element and accidentally short-
-  // circuit the animation.
-  const previousSnapshotRef = useRef<WallpaperSnapshot>(currentSnapshot);
-  const nextOutgoingIdRef = useRef<number>(1);
-  const [outgoing, setOutgoing] = useState<
-    (WallpaperSnapshot & { readonly id: number }) | null
-  >(null);
-
-  // Capture the outgoing snapshot DURING render (not in a post-
-  // commit effect) so the outgoing layer mounts in the SAME paint
-  // as the entering layer. If we deferred this to `useEffect`,
-  // there would be one browser frame between commits where only
-  // the entering layer existed; on its next render the outgoing
-  // layer would then mount at the leaving keyframe's `opacity: 1`
-  // and visibly "pop in" before fading out. That race is hidden
-  // for `cover`-fit wallpapers (the entering layer covers the
-  // whole frame and masks the pop-in) but Cypher Punk uses
-  // `object-fit: contain`, so its letterbox bars expose the
-  // previous persona's wallpaper appearing for one frame. Doing
-  // the swap in render keeps both layers in the same commit so
-  // their fade-in / fade-out animations start synchronously and
-  // the cross-fade reads as a clean blend at every fit mode.
-  //
-  // Only react to URL changes — bare position/fit/scale tweaks
-  // on the same persona would slide rather than fade, and the
-  // user contract is "wallpaper itself fades, never animates
-  // its crop". The current behavior is "snap" on those, which
-  // is fine because no persona currently mutates them without
-  // also changing the URL.
-  if (previousSnapshotRef.current.url !== currentSnapshot.url) {
-    const id = nextOutgoingIdRef.current;
-    nextOutgoingIdRef.current = id + 1;
-    setOutgoing({ id, ...previousSnapshotRef.current });
-    previousSnapshotRef.current = currentSnapshot;
-  }
-
-  // Tear the outgoing layer down a hair after the CSS animation
-  // ends. We can't rely on `onAnimationEnd` because jsdom never
-  // fires animation events under test, and a stalled outgoing
-  // layer would compound on repeated swaps. The `+ 50ms` buffer
-  // covers easing slop without producing a visible re-flash
-  // (the leaving keyframe pins opacity at 0 via `forwards`).
-  const outgoingId = outgoing?.id;
-  useEffect(() => {
-    if (outgoingId == null) return;
-    const timer = window.setTimeout(() => {
-      setOutgoing((current) =>
-        current?.id === outgoingId ? null : current,
-      );
-    }, WALLPAPER_FADE_MS + 50);
-    return () => window.clearTimeout(timer);
-  }, [outgoingId]);
+  // Signature is the URL so position/fit/scale tweaks on the same
+  // wallpaper don't trigger a cross-fade. Falls back to a sentinel
+  // string when the persona has no wallpaper at all so two
+  // consecutive NO_THEME personas don't trigger a no-op fade of two
+  // empty layers.
+  const { outgoing: outgoingWallpaper, current: currentWallpaper } =
+    useCrossFadeLayers(wallpaper, wallpaper.url ?? "__empty__");
 
   // Merge the optional palette vars with the optional bg-color
-  // override into one style object. `desktopBackgroundColor`
-  // paints behind the wallpaper `<img>` so `contain`-fit
-  // wallpapers can match their natural background to the
-  // letterbox bars.
+  // override into one style object. `desktopBackgroundColor` paints
+  // behind the wallpaper `<img>` so `contain`-fit wallpapers can
+  // match their natural background to the letterbox bars.
   const frameStyle: CSSProperties | undefined = (() => {
     if (!chatPalette && !desktopBackgroundColor) return undefined;
     const merged: CSSProperties = chatPalette
@@ -270,8 +191,6 @@ export function MockAuraApp({
     return merged;
   })();
 
-  const currentWallpaperStyle = wallpaperStyleFor(currentSnapshot);
-
   return (
     <div
       className={styles.appFrame}
@@ -280,76 +199,36 @@ export function MockAuraApp({
       style={frameStyle}
     >
       {/*
-       * Outgoing wallpaper layer (cross-fade out). Rendered with
-       * the previous persona's frozen snapshot so it stays at
-       * its correct crop/fit/scale while fading. Mounts only
-       * during the WALLPAPER_FADE_MS window after a persona
-       * swap and tears itself down once the timer above fires.
+       * Outgoing wallpaper layer. Mounts only during the cross-fade
+       * window after a persona swap, then unmounts when
+       * `useCrossFadeLayers` clears the outgoing slot. Carries the
+       * previous snapshot's frozen crop/fit/scale so its visible
+       * pixels stay locked while the opacity tweens to zero.
        */}
-      {outgoing &&
-        (outgoing.url ? (
-          <img
-            key={`outgoing-${outgoing.id}`}
-            className={`${styles.wallpaper} ${styles.wallpaperLeaving}`}
-            src={outgoing.url}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            data-testid="mock-aura-wallpaper-outgoing"
-            style={wallpaperStyleFor(outgoing)}
-          />
-        ) : (
-          <video
-            key={`outgoing-${outgoing.id}`}
-            className={`${styles.wallpaper} ${styles.wallpaperLeaving}`}
-            src="/AURA_visual_loop.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
-            aria-hidden="true"
-            data-testid="mock-aura-wallpaper-outgoing"
-          />
-        ))}
-      {hasCustomWallpaper ? (
+      {outgoingWallpaper?.url ? (
         <img
-          key={`current-${desktopBackgroundUrl}`}
-          className={`${styles.wallpaper} ${styles.wallpaperEntering}`}
-          src={desktopBackgroundUrl ?? undefined}
+          key={`wallpaper-out-${outgoingWallpaper.__crossFadeId}`}
+          className={`${styles.wallpaper} ${crossFadeStyles.layerLeaving}`}
+          src={outgoingWallpaper.url}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          data-testid="mock-aura-wallpaper-outgoing"
+          style={wallpaperStyleFor(outgoingWallpaper)}
+        />
+      ) : null}
+      {currentWallpaper.url ? (
+        <img
+          key={`wallpaper-in-${currentWallpaper.url}`}
+          className={`${styles.wallpaper} ${crossFadeStyles.layerEntering}`}
+          src={currentWallpaper.url}
           alt=""
           aria-hidden="true"
           draggable={false}
           data-testid="mock-aura-wallpaper-image"
-          style={currentWallpaperStyle}
+          style={wallpaperStyleFor(currentWallpaper)}
         />
-      ) : (
-        <video
-          key="current-video-fallback"
-          className={`${styles.wallpaper} ${styles.wallpaperEntering}`}
-          src="/AURA_visual_loop.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-          aria-hidden="true"
-          data-testid="mock-aura-wallpaper-video"
-        />
-      )}
-      {/*
-       * The vignette was tuned for the bright AURA orb in the
-       * default video — layered over a curated persona wallpaper
-       * it reads as a heavy dark overlay that mutes the chosen
-       * colors. Skip it whenever a static `desktopBackgroundUrl`
-       * is in play; if a future persona theme needs its own
-       * vignette, expose a `vignette` flag on `PersonaTheme`.
-       */}
-      {!hasCustomWallpaper && (
-        <div
-          className={styles.wallpaperVignette}
-          aria-hidden="true"
-          data-testid="mock-aura-wallpaper-vignette"
-        />
-      )}
+      ) : null}
       <DMWindowManager />
       <div
         className={styles.topChrome}

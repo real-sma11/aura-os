@@ -20,3 +20,16 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   (globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
     NoopResizeObserver as unknown as typeof ResizeObserver;
 }
+
+// JSDOM doesn't implement `HTMLImageElement.prototype.decode`. The public-mode
+// persona swap (see `persona-preload.ts`) gates the committed persona index on
+// `Image.decode()` resolving for the new persona's wallpaper + site bg URLs;
+// under jsdom that promise would never settle and `committedIndex` would
+// stall at 0. Resolve immediately so the gate is effectively a pass-through
+// in tests — the production behavior is unchanged because the polyfill only
+// applies when the native impl is missing.
+if (typeof HTMLImageElement.prototype.decode !== "function") {
+  HTMLImageElement.prototype.decode = function decode(): Promise<void> {
+    return Promise.resolve();
+  };
+}

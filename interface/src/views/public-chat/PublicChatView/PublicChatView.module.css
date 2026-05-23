@@ -1,20 +1,19 @@
 /*
  * PublicChatView — public (logged-out) landing surface.
  *
- * The chat input pill and transcript layout were removed in the
- * landing-CTA refactor. The view is now a two-slot composition:
+ * Two-slot composition:
  *
  *   .heroSlot — fills the available area and hosts the decorative
  *               `MockAuraApp` (mounted via `ComposePanel`).
- *   .ctaSlot  — floats at `bottom: 5vh` (the same vertical anchor the
- *               old input pill used) and holds a single horizontally-
- *               centered "Create your agent" CTA button.
+ *   .ctaSlot  — floats at `bottom: 5vh` and holds a single
+ *               horizontally-centered "Create your agent" CTA pill.
  *
- * Centering model: in public mode the `<aside>` left sidebar is an
- * absolute overlay over `.body` (see `AuraShell.module.css`), so the
- * `<main>` chat panel always spans the full body width. The CTA
- * therefore centers on the viewport via plain flexbox — no
- * `translateX` offsets compensating for sidebar width.
+ * The site bg is no longer painted as inline `background-image` on
+ * `.chatView` — that approach made every persona swap a hard snap
+ * because `background-image` can't tween. The bg now lives in
+ * absolutely-positioned `.siteBackground` layers (one outgoing, one
+ * entering) driven by `useCrossFadeLayers`, so image+color dissolve
+ * together over the standard 220ms cross-fade window.
  */
 .chatView {
   position: relative;
@@ -23,48 +22,32 @@
   display: flex;
   flex-direction: column;
   /*
-   * Hide any overflow from the absolutely-positioned site-bg
-   * `<video>` (`.siteBackgroundVideo` below). With `object-fit:
-   * cover` the video's aspect ratio rarely matches the view, so
-   * one axis overflows by design and we just clip the excess to
-   * the chat view rectangle.
+   * Clip the absolutely-positioned `.siteBackground` layers to the
+   * chat-view rectangle. They use `background-size: cover` so one
+   * axis routinely overflows by design.
    */
   overflow: hidden;
-  /*
-   * Smoothly fade between persona site backgrounds when the active
-   * tick changes. `background-image` itself can't tween, so the
-   * fade reads as a quick color/opacity swap of the underlying
-   * fallback color — good enough that swapping personas in the
-   * rail never feels like a hard cut.
-   */
-  transition: background-color 220ms ease;
 }
 
 /*
- * Full-bleed looping video painted as the page background BEHIND
- * the mock desktop window and every floating slot. Mounted by
- * `PublicChatView` only when the active persona supplies a
- * `siteBackgroundVideoUrl` (currently the default Vibecoder
- * landing, where the AURA orb video lives outside the mock
- * window instead of inside it).
+ * Cross-fading site-bg snapshot layer. `PublicChatView.tsx` mounts
+ * two instances when the committed persona changes (the outgoing
+ * one carries `.layerLeaving`, the entering one carries
+ * `.layerEntering` from `cross-fade.module.css`) so the swap reads
+ * as one synchronized 220ms dissolve of image + color.
  *
- * Layering: `z-index: 0` plus an explicit `z-index: 1` on every
- * peer slot (`.heroSlot`, `.ctaSlot`, `.tickRailSlot`) keeps the
- * video pinned underneath. We DO NOT use `z-index: -1` because
- * that would push the video behind `.chatView`'s own background
- * color, which exists as the pre-decode fallback paint.
- *
- * Decorative, so `pointer-events: none` keeps it from blocking
- * clicks on the tick rail / CTA / mock window above.
+ * Both layers sit at `z-index: 0`; every peer slot (`.heroSlot`,
+ * `.ctaSlot`, `.tickRailSlot`) pins itself at `z-index: 1` below so
+ * the hero / CTA / rail always paint above the bg.
  */
-.siteBackgroundVideo {
+.siteBackground {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
   z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 .heroSlot {
@@ -79,11 +62,10 @@
   place-items: center;
   padding: 24px 16px;
   /*
-   * Sit above the optional `.siteBackgroundVideo` layer. Without
-   * an explicit stacking position the in-flow `.heroSlot` would
-   * paint UNDER the absolutely-positioned video (per the
-   * positioned-after-flow paint order rule) and the mock desktop
-   * window would vanish behind the orb loop.
+   * Sit above the `.siteBackground` layers. Without an explicit
+   * stacking position the in-flow `.heroSlot` would paint UNDER
+   * the absolutely-positioned bg layers (per the positioned-after-
+   * flow paint order rule) and the mock window would vanish.
    */
   position: relative;
   z-index: 1;
