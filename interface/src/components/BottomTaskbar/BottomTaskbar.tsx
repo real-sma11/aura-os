@@ -91,10 +91,12 @@ function PublicBottomTaskbar(): React.ReactElement {
       data-agent-context-anchor="desktop-shell-bottom-taskbar"
       data-ui-mode="public"
     >
+      <div className={styles.left}>
+        <ThemeToggleButton />
+      </div>
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
           <PoweredByGridButton />
-          <ThemeToggleButton />
         </div>
       </div>
     </div>

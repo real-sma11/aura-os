@@ -13,17 +13,6 @@
   padding: var(--shell-chrome-inset, 5px);
 }
 
-/*
- * Public mode only renders the `.right` slot (no `.left`, no `.center`),
- * so the bar's `justify-content: space-between` lands that single child
- * at the start instead of the end. Flip to `flex-end` for public so the
- * right cluster sits flush against the viewport's right edge — matching
- * authed-mode visual alignment.
- */
-.bar[data-ui-mode="public"] {
-  justify-content: flex-end;
-}
-
 .left,
 .center,
 .right {

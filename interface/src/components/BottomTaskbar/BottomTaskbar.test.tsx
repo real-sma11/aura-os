@@ -606,7 +606,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Public mode", () => {
-    it("renders only the theme toggle inside the right cluster and `data-ui-mode='public'`", () => {
+    it("renders the theme toggle in the left slot and `data-ui-mode='public'` on the bar", () => {
       const { container } = render(<BottomTaskbar mode="public" />);
 
       const bar = container.querySelector(
@@ -615,12 +615,16 @@ describe("BottomTaskbar", () => {
       expect(bar).not.toBeNull();
       expect(bar).toHaveAttribute("data-ui-mode", "public");
 
-      // Only the theme toggle survives — Credits, Settings, Apps,
-      // Desktop, the profile rail, and the clock are all gated
-      // behind `AuthedBottomTaskbar` which doesn't mount in public.
-      expect(
-        screen.getByRole("button", { name: /switch theme/i }),
-      ).toBeInTheDocument();
+      // Theme toggle moved to the left slot in public mode (paired
+      // with the 'Powered by THE GRID' link on the right). Credits,
+      // Settings, Apps, Desktop, the profile rail, and the clock are
+      // all gated behind `AuthedBottomTaskbar` which doesn't mount.
+      const themeToggle = screen.getByRole("button", { name: /switch theme/i });
+      expect(themeToggle).toBeInTheDocument();
+      const leftSlot = container.querySelector(".left");
+      expect(leftSlot).not.toBeNull();
+      expect(leftSlot).toContainElement(themeToggle);
+
       expect(
         screen.queryByRole("button", { name: "Credits" }),
       ).not.toBeInTheDocument();
