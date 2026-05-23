@@ -394,7 +394,7 @@
 
 .dmToolCard {
   max-width: 92%;
-  border-radius: 8px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   padding: 6px 8px;
   display: flex;
