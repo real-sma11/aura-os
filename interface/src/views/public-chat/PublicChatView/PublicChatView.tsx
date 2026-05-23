@@ -502,9 +502,7 @@ export function PublicChatView(): React.ReactElement {
                 </div>
               ))}
             </div>
-          ) : (
-            <div className={styles.chatEmptyHint}>Start chatting with Aura.</div>
-          )}
+          ) : null}
         </div>
       ) : null}
       {/*
