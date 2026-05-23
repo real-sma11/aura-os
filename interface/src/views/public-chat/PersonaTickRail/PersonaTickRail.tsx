@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactElement,
+} from "react";
 import { PERSONAS } from "../personas";
 import styles from "./PersonaTickRail.module.css";
 
@@ -34,6 +40,16 @@ import styles from "./PersonaTickRail.module.css";
  * `.rail` wrapper, but the panel extends visually further left,
  * so a hard mouseleave/enter pair would otherwise flicker the
  * panel closed and immediately re-open it).
+ *
+ * Direction-aware close: the rail and panel hug the viewport's
+ * right edge (`.tickRailSlot` is pinned at `right: 0` and
+ * `.panel` is offset `right: -5px` so it lands flush against the
+ * viewport). A cursor that leaves rightward toward the screen
+ * edge has nothing past the viewport to interact with, so a
+ * `mouseleave` whose final `clientX` is at/past the viewport's
+ * right edge is treated as a no-op — the menu stays open. Only
+ * up / down / left exits (and clicks on a panel row) actually
+ * close the menu.
  *
  * Controlled component
  * --------------------
@@ -83,6 +99,20 @@ export function PersonaTickRail({
     }, CLOSE_DEBOUNCE_MS);
   };
 
+  // Direction-aware mouseleave: skip the close when the cursor
+  // exits via the viewport's right edge. The rail+panel are pinned
+  // to that edge, so a rightward exit has no other content to
+  // interact with — keeping the menu open matches the visitor's
+  // intent. Up / down / left exits still schedule the normal 80ms
+  // debounced close. The 1px tolerance covers sub-pixel rounding
+  // when the cursor leaves the viewport itself.
+  const handleMouseLeave = (
+    event: ReactMouseEvent<HTMLElement>,
+  ): void => {
+    if (event.clientX >= window.innerWidth - 1) return;
+    scheduleClose();
+  };
+
   const commitSelection = (index: number): void => {
     cancelScheduledClose();
     onActiveIndexChange(index);
@@ -97,7 +127,7 @@ export function PersonaTickRail({
       data-testid="persona-tick-rail"
       data-panel-open={isOpen ? "true" : "false"}
       onMouseEnter={open}
-      onMouseLeave={scheduleClose}
+      onMouseLeave={handleMouseLeave}
     >
       <ul className={styles.list} aria-label="Agent personas">
         {PERSONAS.map((persona, index) => {
@@ -126,7 +156,7 @@ export function PersonaTickRail({
         data-testid="persona-tick-rail-panel"
         aria-hidden={isOpen ? undefined : "true"}
         onMouseEnter={open}
-        onMouseLeave={scheduleClose}
+        onMouseLeave={handleMouseLeave}
       >
         <ul className={styles.panelList}>
           {PERSONAS.map((persona, index) => (

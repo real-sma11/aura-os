@@ -164,6 +164,58 @@ describe("PublicChatView landing", () => {
     expect(rail).toHaveAttribute("data-panel-open", "true");
   });
 
+  it("keeps the overlay open when the cursor exits via the viewport's right edge", () => {
+    // The rail and its panel hug the viewport's right edge; a
+    // rightward exit has no other content to interact with, so the
+    // menu must stay open and only close on up / down / left exits
+    // (or a row click). Drive fake timers so the 80ms close debounce
+    // can be flushed deterministically without a real wall-clock wait.
+    vi.useFakeTimers();
+    try {
+      renderView();
+      const rail = screen.getByTestId("persona-tick-rail");
+
+      fireEvent.mouseEnter(rail);
+      expect(rail).toHaveAttribute("data-panel-open", "true");
+
+      fireEvent.mouseLeave(rail, {
+        clientX: window.innerWidth,
+        clientY: 200,
+      });
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
+
+      expect(rail).toHaveAttribute("data-panel-open", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the overlay when the cursor exits leftward (away from the right edge)", () => {
+    // Companion to the right-exit test above: a non-right exit still
+    // schedules the standard 80ms debounced close so the visitor can
+    // dismiss the menu by moving the cursor back toward the chat
+    // surface.
+    vi.useFakeTimers();
+    try {
+      renderView();
+      const rail = screen.getByTestId("persona-tick-rail");
+
+      fireEvent.mouseEnter(rail);
+      expect(rail).toHaveAttribute("data-panel-open", "true");
+
+      fireEvent.mouseLeave(rail, { clientX: 100, clientY: 200 });
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
+
+      expect(rail).toHaveAttribute("data-panel-open", "false");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("commits the persona selection AND closes the menu when a panel row is clicked", () => {
     renderView();
     const rail = screen.getByTestId("persona-tick-rail");
