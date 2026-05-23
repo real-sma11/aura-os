@@ -1,4 +1,11 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import {
   ChevronRight,
   Circle,
@@ -25,6 +32,40 @@ import styles from "./MockAuraApp.module.css";
 // slice of the source portrait in the 18px circle — where the head
 // sits on every existing character portrait.
 const AVATAR_DEFAULT_OBJECT_POSITION = "50% 18%";
+
+/*
+ * Fish-eye magnification tunables for the bottom-left persona dock.
+ * The dock paints each avatar at `AVATAR_BASE_SIZE_PX` (matches the
+ * CSS module's `.personaAvatar` width/height) and, while the pointer
+ * hovers the `.bottomLeft` pill, inflates each one based on its
+ * horizontal distance from the cursor.
+ *
+ * A raised-cosine falloff (same family the macOS dock uses) maps
+ * distances in `[0, INFLUENCE_RADIUS_PX]` onto sizes in
+ * `[AVATAR_MAX_SIZE_PX, AVATAR_BASE_SIZE_PX]` — smooth at both ends,
+ * peaking at the cursor and decaying to no magnification past the
+ * radius. Avatars further than the radius stay at base size, so the
+ * effect is local to the cursor's immediate neighbourhood the way a
+ * dock magnifier feels.
+ */
+const AVATAR_BASE_SIZE_PX = 18;
+const AVATAR_MAX_SIZE_PX = 36;
+const INFLUENCE_RADIUS_PX = 80;
+
+function computeAvatarSize(distancePx: number): number {
+  if (distancePx >= INFLUENCE_RADIUS_PX) return AVATAR_BASE_SIZE_PX;
+  const t = distancePx / INFLUENCE_RADIUS_PX;
+  const falloff = 0.5 * (1 + Math.cos(Math.PI * t));
+  return (
+    AVATAR_BASE_SIZE_PX +
+    (AVATAR_MAX_SIZE_PX - AVATAR_BASE_SIZE_PX) * falloff
+  );
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 /**
  * Empty-state hero for the public chat surface. A flat 16:10
@@ -180,6 +221,66 @@ export function MockAuraApp({
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
 
+  /*
+   * Per-avatar live size (in px) for the fish-eye dock magnifier.
+   * Initialised to `AVATAR_BASE_SIZE_PX` so the dock paints at its
+   * natural size on first render and when the pointer is outside
+   * the `.bottomLeft` pill. The array length tracks `PERSONAS` so a
+   * persona swap doesn't desync — `PERSONAS` is a frozen module
+   * constant so a single initialiser is safe.
+   */
+  const [avatarSizes, setAvatarSizes] = useState<number[]>(() =>
+    PERSONAS.map(() => AVATAR_BASE_SIZE_PX),
+  );
+  /*
+   * One ref slot per persona button so the pointer-move handler can
+   * read each avatar's current screen-space center via
+   * `getBoundingClientRect()` without re-querying the DOM by class.
+   * The `.map()` below assigns into `avatarRefs.current[index]` via
+   * a ref callback during the commit phase, so the slots are
+   * guaranteed to be filled before any pointer event fires.
+   * `PERSONAS` is a frozen module-level constant so the array
+   * length never needs to be reconciled at runtime.
+   */
+  const avatarRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const resetAvatarSizes = useCallback(() => {
+    setAvatarSizes((prev) => {
+      const allBase = prev.every((size) => size === AVATAR_BASE_SIZE_PX);
+      if (allBase) return prev;
+      return PERSONAS.map(() => AVATAR_BASE_SIZE_PX);
+    });
+  }, []);
+
+  const handleDockPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      // Respect the user's reduced-motion preference: keep every
+      // avatar at the base size so there is no magnification at
+      // all. Mirrors the CSS rule that zeroes the transition.
+      if (prefersReducedMotion()) {
+        resetAvatarSizes();
+        return;
+      }
+      const cursorX = event.clientX;
+      const nextSizes = avatarRefs.current.map((node) => {
+        if (!node) return AVATAR_BASE_SIZE_PX;
+        const rect = node.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        return computeAvatarSize(Math.abs(cursorX - centerX));
+      });
+      setAvatarSizes((prev) => {
+        if (
+          prev.length === nextSizes.length &&
+          prev.every((size, index) => size === nextSizes[index])
+        ) {
+          return prev;
+        }
+        return nextSizes;
+      });
+    },
+    [resetAvatarSizes],
+  );
+
   const frameStyle: CSSProperties | undefined = chatPalette
     ? (paletteToCssVars(chatPalette) as CSSProperties)
     : undefined;
@@ -318,7 +419,17 @@ export function MockAuraApp({
         data-testid="mock-aura-bottom-chrome"
         aria-hidden="true"
       >
-        <div className={`${styles.pill} ${styles.bottomLeft}`}>
+        <div
+          className={`${styles.pill} ${styles.bottomLeft}`}
+          data-testid="mock-aura-bottom-left"
+          // Fish-eye magnifier handlers live on the pill itself so
+          // the effect stays active while the cursor crosses the
+          // gaps between avatars. `onPointerLeave` resets every
+          // avatar to base size; the CSS transition on width/height
+          // animates the shrink-back smoothly.
+          onPointerMove={handleDockPointerMove}
+          onPointerLeave={resetAvatarSizes}
+        >
           <span className={styles.taskbarIconButton}>
             <Circle size={14} strokeWidth={2} />
           </span>
@@ -334,17 +445,25 @@ export function MockAuraApp({
             // personas have no image at all; they fall back to
             // the initial-letter card below so the dock still
             // shows one circle per persona.
-            const avatarStyle: CSSProperties | undefined = avatarUrl
-              ? {
-                  backgroundImage: `url(${avatarUrl})`,
-                  backgroundPosition:
-                    avatarObjectPosition ?? AVATAR_DEFAULT_OBJECT_POSITION,
-                }
-              : undefined;
+            const liveSize = avatarSizes[index] ?? AVATAR_BASE_SIZE_PX;
+            const avatarStyle: CSSProperties = {
+              width: `${liveSize}px`,
+              height: `${liveSize}px`,
+              ...(avatarUrl
+                ? {
+                    backgroundImage: `url(${avatarUrl})`,
+                    backgroundPosition:
+                      avatarObjectPosition ?? AVATAR_DEFAULT_OBJECT_POSITION,
+                  }
+                : null),
+            };
             return (
               <button
                 key={persona.id}
                 type="button"
+                ref={(node) => {
+                  avatarRefs.current[index] = node;
+                }}
                 className={styles.personaAvatar}
                 data-active={isActive ? "true" : "false"}
                 data-persona-id={persona.id}

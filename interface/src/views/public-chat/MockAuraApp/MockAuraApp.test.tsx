@@ -304,5 +304,75 @@ describe("MockAuraApp", () => {
       expect(researcher.style.backgroundImage).toBe("");
       expect(researcher.textContent).toBe("R");
     });
+
+    /*
+     * Fish-eye magnifier — pointer-move over the `.bottomLeft` pill
+     * inflates each avatar based on its horizontal distance from the
+     * cursor, and pointer-leave snaps every avatar back to the base
+     * size. jsdom doesn't compute layout, so we stub
+     * `getBoundingClientRect` on each avatar button with
+     * deterministic positions that match the order in `PERSONAS`,
+     * then assert the inline `style.width` values the component
+     * paints in response to a synthetic pointer event.
+     */
+    it("inflates the avatar nearest the pointer and shrinks every avatar back on pointer-leave", () => {
+      render(<MockAuraApp />);
+
+      const dock = screen.getByTestId("mock-aura-bottom-left");
+      const avatars = PERSONAS.map((persona) =>
+        screen.getByTestId(`mock-aura-avatar-${persona.id}`),
+      );
+
+      // Each avatar gets an 18px-wide rect centered at a unique X.
+      // The first avatar's center is at x=100 (matches the
+      // pointerMove clientX below), so it should hit the
+      // raised-cosine peak (~36px). Subsequent avatars are spaced
+      // 200px apart — well past the 80px influence radius — so
+      // they stay at the 18px base size and the assertion isolates
+      // the peak from any neighbour spillover.
+      const BUTTON_WIDTH = 18;
+      const SPACING_PX = 200;
+      const FIRST_CENTER_X = 100;
+      avatars.forEach((node, index) => {
+        const centerX = FIRST_CENTER_X + index * SPACING_PX;
+        const left = centerX - BUTTON_WIDTH / 2;
+        node.getBoundingClientRect = () =>
+          ({
+            left,
+            right: left + BUTTON_WIDTH,
+            top: 500,
+            bottom: 500 + BUTTON_WIDTH,
+            width: BUTTON_WIDTH,
+            height: BUTTON_WIDTH,
+            x: left,
+            y: 500,
+            toJSON: () => ({}),
+          }) as DOMRect;
+      });
+
+      fireEvent.pointerMove(dock, { clientX: FIRST_CENTER_X, clientY: 500 });
+
+      // First avatar sits under the cursor → peak magnification
+      // (the raised-cosine falloff returns 1 at distance 0, so the
+      // size lands at the configured max of 36px).
+      expect(avatars[0].style.width).toBe("36px");
+      expect(avatars[0].style.height).toBe("36px");
+
+      // Distant avatars stay at the base 18px because their centers
+      // are outside the 80px influence radius.
+      for (let i = 1; i < avatars.length; i += 1) {
+        expect(avatars[i].style.width).toBe("18px");
+        expect(avatars[i].style.height).toBe("18px");
+      }
+
+      // Pointer-leave resets every avatar back to base size so the
+      // dock animates smoothly back to its dormant footprint via the
+      // CSS transition on `.personaAvatar`.
+      fireEvent.pointerLeave(dock);
+      for (const node of avatars) {
+        expect(node.style.width).toBe("18px");
+        expect(node.style.height).toBe("18px");
+      }
+    });
   });
 });

@@ -301,6 +301,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /*
+   * Width/height are driven from JSX (`style={{ width, height }}`)
+   * by the fish-eye magnifier in `MockAuraApp.tsx` — `18px` here
+   * is just a safety baseline that paints before the first
+   * inline-style flush (and inside snapshot/static tests that
+   * never fire a pointer event). The JS state initialises to the
+   * same 18px so there is no visible jump on mount.
+   */
   width: 18px;
   height: 18px;
   padding: 0;
@@ -313,14 +321,32 @@
   cursor: pointer;
   overflow: hidden;
   box-sizing: border-box;
+  /*
+   * Anchor the magnified avatar to the bottom of the pill so it
+   * grows UPWARD out of the dock — `.bottomLeft` is `align-items:
+   * center` by inheritance and without this override the avatar
+   * would re-center vertically as it grows, which reads as
+   * "floating" instead of "popping out of the dock". Combined
+   * with the pill's default `overflow: visible`, scaled avatars
+   * escape the top of the pill the same way the macOS dock's
+   * icons do.
+   */
+  align-self: end;
+  /*
+   * Short width/height transition so JS-driven size updates feel
+   * smoothly interpolated during pointer moves and the
+   * pointer-leave reset animates back to the base size rather
+   * than snapping. 120ms is short enough to feel responsive
+   * while the cursor sweeps across the dock and long enough to
+   * make the shrink-back read as an animation. `border-color` /
+   * `box-shadow` keep the active-state transition timing they
+   * had before this change.
+   */
   transition:
+    width 120ms ease-out,
+    height 120ms ease-out,
     border-color 120ms ease-in-out,
-    box-shadow 120ms ease-in-out,
-    transform 120ms ease-in-out;
-}
-
-.personaAvatar:hover {
-  transform: scale(1.08);
+    box-shadow 120ms ease-in-out;
 }
 
 .personaAvatar[data-active="true"] {
@@ -333,6 +359,29 @@
    * primary text color.
    */
   box-shadow: 0 0 0 1px var(--color-text-primary);
+}
+
+/*
+ * Pair with `.personaAvatar { align-self: end }` above so the
+ * leading `<Circle>` glyph also rides the pill's bottom edge —
+ * without this it would stay vertically centered and the icon
+ * would visually drift away from the avatars as they magnify.
+ */
+.bottomLeft {
+  align-items: end;
+}
+
+/*
+ * Honour the user's reduced-motion preference: the JS magnifier
+ * in `MockAuraApp.tsx` already short-circuits to base size when
+ * the same media query matches, but we also zero the transition
+ * here so any residual paint between mount and the first effect
+ * tick can't animate.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .personaAvatar {
+    transition: none;
+  }
 }
 
 .personaAvatarFallback {
