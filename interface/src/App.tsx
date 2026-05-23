@@ -1,4 +1,12 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useLocation,
+  type Location,
+} from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { useAuthStore } from "./stores/auth-store";
 import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
@@ -204,6 +212,24 @@ function AppRoutes(): React.ReactElement {
   const location = useLocation();
   const { isNativeApp } = useAuraCapabilities();
 
+  // "Background location" pattern: when a public-mode visitor opens
+  // the login modal from a marketing page (or any other surface),
+  // the trigger navigates to `/login?tab=...` with
+  // `state.backgroundLocation` carrying the URL they came from. We
+  // drive the top-level `<Routes>` matcher off that stashed
+  // location so the underlying view (ProductView, PricingView, the
+  // public chat landing, etc.) stays mounted while `AuraShell`
+  // overlays `LoginOverlay` on top — see `AuraShell.isLoginRoute`,
+  // which still keys off `useLocation().pathname` (the real `/login`)
+  // so the overlay still mounts.
+  //
+  // Without `backgroundLocation` (direct deep link to `/login`,
+  // `RequireAuth`'s `state.from` redirect, etc.) we fall through to
+  // the real location and the route table behaves as before — the
+  // `/login` path resolves to `<PublicChatView />` underneath.
+  const navState = location.state as { backgroundLocation?: Location } | null;
+  const routeLocation = navState?.backgroundLocation ?? location;
+
   if (isCaptureLoginRoute(location)) {
     return (
       <Routes>
@@ -261,7 +287,7 @@ function AppRoutes(): React.ReactElement {
   // chrome (titlebar + sidebar + `PublicSidebarFooter`) as the
   // chat landing surface — only the middle panel content swaps.
   return (
-    <Routes>
+    <Routes location={routeLocation}>
       <Route path="capture-login" element={<CaptureLoginView />} />
       <Route
         path="ide"

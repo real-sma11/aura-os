@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 import { Panel, Text } from "@cypher-asi/zui";
 import { X } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, type Location } from "react-router-dom";
 import { useLoginForm } from "../../LoginView/use-login-form";
 import { LoginForm } from "../../LoginView/LoginForm";
 import { ResetPasswordForm } from "../../LoginView/ResetPasswordForm";
@@ -29,11 +29,25 @@ export function LoginOverlay() {
   const f = useLoginForm();
 
   const handleClose = useCallback(() => {
-    // Preserve the visitor's session id when closing the modal so the
-    // public chat surface they came from stays selected in the
-    // sidebar. Dropping the query (the old `navigate("/")` behaviour)
-    // caused `PublicChatView` to auto-mint a fresh empty chat on the
-    // way back out — turning each open/close round trip into a new
+    // When the modal was opened from a non-landing surface (Product,
+    // Pricing, Changelog, Feedback, …), the trigger stashed the
+    // origin URL in `state.backgroundLocation`. Pop the `/login`
+    // history entry to restore the prior URL + scroll position so
+    // the visitor lands back exactly where they came from instead
+    // of being snapped to `/`.
+    const navState = location.state as
+      | { backgroundLocation?: Location }
+      | null;
+    if (navState?.backgroundLocation) {
+      navigate(-1);
+      return;
+    }
+    // Direct deep link to `/login` (no background): preserve the
+    // visitor's session id when closing so the public chat surface
+    // they came from stays selected in the sidebar. Dropping the
+    // query (the old `navigate("/")` behaviour) caused
+    // `PublicChatView` to auto-mint a fresh empty chat on the way
+    // back out — turning each open/close round trip into a new
     // "New chat" row. The `tab` selector is the only param worth
     // dropping; it belongs to the form's internal Sign in / Create
     // Account state, not the chat surface.
@@ -41,7 +55,7 @@ export function LoginOverlay() {
     params.delete("tab");
     const next = params.toString();
     navigate({ pathname: "/", search: next ? `?${next}` : "" });
-  }, [navigate, location.search]);
+  }, [navigate, location.state, location.search]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {

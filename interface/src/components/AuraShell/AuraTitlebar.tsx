@@ -212,7 +212,8 @@ function AuthedActions({
 }
 
 function PublicActions(): React.ReactElement {
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search } = location;
   // Preserve any existing query (notably `?session=...`) across the
   // trip into the login modal so the public chat surface stays
   // selected behind the overlay.
@@ -221,10 +222,19 @@ function PublicActions(): React.ReactElement {
   signupParams.set("tab", "register");
   const signupSearch = `?${signupParams.toString()}`;
 
+  // Stash the current location as `state.backgroundLocation` so
+  // `AppRoutes` keeps the underlying surface (e.g. ProductView,
+  // PricingView, the public chat landing) mounted while
+  // `AuraShell` overlays `LoginOverlay`. Without this state the
+  // current view would unmount and `PublicChatView` would flash
+  // in behind the modal.
+  const backgroundState = { backgroundLocation: location };
+
   return (
     <div className={`${styles.publicTitleActions} titlebar-no-drag`}>
       <Link
         to={{ pathname: "/login", search: signinSearch }}
+        state={backgroundState}
         className={`${styles.authPill} ${styles.authPillSecondary}`}
         onClick={() => track("public_login_clicked", { source: "titlebar" })}
       >
@@ -232,6 +242,7 @@ function PublicActions(): React.ReactElement {
       </Link>
       <Link
         to={{ pathname: "/login", search: signupSearch }}
+        state={backgroundState}
         className={`${styles.authPill} ${styles.authPillPrimary}`}
         onClick={() => track("public_signup_clicked", { source: "titlebar" })}
       >
