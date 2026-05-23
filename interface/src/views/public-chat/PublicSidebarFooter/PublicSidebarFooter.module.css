@@ -102,9 +102,9 @@
    * `color-mix` at 10% picks up whichever foreground the active
    * persona has pinned (`#e6e8eb` near-white for dark-bg personas,
    * `#0a0a0a` near-black for light-bg personas) and washes the pill
-   * with the matching contrast direction. Researcher (NO_THEME)
-   * falls back to `--color-text-primary`, which IS theme-driven —
-   * correct here because Researcher's site bg is theme-driven too.
+   * with the matching contrast direction. Light-bg personas like
+   * Researcher pin a near-black foreground so the pill keeps the
+   * same contrast direction as the rest of the public nav.
    */
   background: color-mix(
     in srgb,
@@ -120,10 +120,24 @@
    */
   border-radius: 999px;
   pointer-events: none;
+  /*
+   * 0.15s slide tuned per direct user feedback to feel "snappy" —
+   * the prior 0.25s read as draggy on quick successive clicks
+   * between adjacent rows (Product -> Changelog -> Feedback) because
+   * the slide hadn't finished settling before the next click started
+   * a new one. 0.15s is short enough to keep up with fast nav
+   * traversal while staying long enough that the eye still registers
+   * the click-to-pill continuity instead of seeing a hard jump.
+   *
+   * Height + opacity share the same duration so the mount fade-in
+   * resolves on the same beat as a slide arrival — avoids the
+   * pre-tune look of the pill snapping into the wrong height a
+   * fraction of a second after the transform lands.
+   */
   transition:
-    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    height 0.2s ease,
-    opacity 0.18s ease;
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .footerLink {
@@ -200,13 +214,19 @@
 }
 
 /*
- * Respect the user's reduced-motion preference: keep the pill
- * positioning logic, drop the transition so it jumps directly to
- * the new row instead of sliding. Matches the precedent set by
- * the public-chat CTA shimmer's reduced-motion handling.
+ * Note: deliberately NO `prefers-reduced-motion: reduce` guard on
+ * `.activePill`'s `transition`. The slide is a load-bearing
+ * navigation affordance — it's the only motion that ties the
+ * previously-active row to the newly-clicked one ("the pill came
+ * FROM there"), so suppressing it under reduced-motion left visitors
+ * with the OS preference enabled (e.g. Windows' "Show animations"
+ * setting off) seeing a hard jump that read as a re-paint bug
+ * rather than a respectful no-motion fallback. Keeping the 0.25s
+ * transform transition active in all environments is the deliberate
+ * trade — accept a small motion budget in exchange for the click-
+ * to-pill continuity that the design needs.
+ *
+ * The CTA shimmer in `PublicChatView` still honors reduced-motion
+ * because its motion is purely decorative (a glow loop), not a
+ * navigation cue, so the precedents diverge on purpose.
  */
-@media (prefers-reduced-motion: reduce) {
-  .activePill {
-    transition: none;
-  }
-}
