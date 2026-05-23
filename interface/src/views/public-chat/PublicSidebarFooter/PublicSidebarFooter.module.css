@@ -20,6 +20,14 @@
   gap: 12px;
   flex-shrink: 0;
   /*
+   * The marketing nav links read as buttons, not body copy — there's
+   * no reason for visitors to text-select "Home" / "Product" / etc.
+   * Suppressing selection on the whole footer also avoids the awkward
+   * mid-drag highlight when users click between links quickly.
+   */
+  user-select: none;
+  -webkit-user-select: none;
+  /*
    * Pin the footer to its natural max-content width so each link
    * row (and its hover/active background highlight) renders at the
    * same size whether the public sidebar Lane is expanded or
