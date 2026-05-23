@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import styles from "./PublicSidebarFooter.module.css";
 
 interface FooterLink {
@@ -24,6 +25,23 @@ const FOOTER_LINKS: ReadonlyArray<FooterLink> = [
 ];
 
 /**
+ * Mirrors React Router's `NavLink` active-matching rule so the
+ * sliding pill stays in lockstep with whichever NavLink picked up
+ * the `.footerLinkActive` class. `end: true` means the pathname
+ * must equal `to` exactly (used for Home so it doesn't latch on
+ * every nested marketing route); otherwise we accept the pathname
+ * equaling `to` or starting with `to + "/"` so a hypothetical
+ * `/changelog/v2` would still keep the Changelog row selected
+ * (matching `NavLink`'s default segment-prefix behavior).
+ */
+function isLinkActive(link: FooterLink, pathname: string): boolean {
+  if (link.end === true) {
+    return pathname === link.to;
+  }
+  return pathname === link.to || pathname.startsWith(`${link.to}/`);
+}
+
+/**
  * Sticky footer at the bottom of `PublicSessionsPanel`. Renders five
  * marketing-route links — Home (the public chat landing at `/`) plus
  * the four marketing pages — that swap the public-mode main panel
@@ -44,14 +62,84 @@ const FOOTER_LINKS: ReadonlyArray<FooterLink> = [
  * strip in the sidebar.
  */
 export function PublicSidebarFooter(): React.ReactElement {
+  const { pathname } = useLocation();
+  /*
+   * One ref slot per FOOTER_LINKS entry, populated via NavLink's
+   * forwarded ref so we can measure each row's `offsetTop` /
+   * `offsetHeight` after layout. The array is created once on mount
+   * and reused across renders — React clears stale refs by passing
+   * `null` to the callback when an element unmounts, so we never
+   * read a detached node.
+   */
+  const linkRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  /*
+   * Geometry for the single sliding pill that paints behind the
+   * active row. `top` + `height` are written from a layout effect
+   * after measuring the active link; `visible` flips off whenever
+   * no link matches the current route (e.g. the footer is mounted
+   * over a non-marketing path) so the pill fades out in place
+   * instead of stranding on a stale row.
+   */
+  const [pill, setPill] = useState<{
+    top: number;
+    height: number;
+    visible: boolean;
+  }>({ top: 0, height: 0, visible: false });
+
+  const activeIndex = useMemo(
+    () => FOOTER_LINKS.findIndex((link) => isLinkActive(link, pathname)),
+    [pathname],
+  );
+
+  useLayoutEffect(() => {
+    if (activeIndex < 0) {
+      setPill((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+    const node = linkRefs.current[activeIndex];
+    if (node === null || node === undefined) {
+      return;
+    }
+    setPill({
+      top: node.offsetTop,
+      height: node.offsetHeight,
+      visible: true,
+    });
+  }, [activeIndex]);
+
   return (
     <div className={styles.footer}>
       <nav className={styles.footerLinks} aria-label="AURA marketing">
-        {FOOTER_LINKS.map((link) => (
+        {/*
+         * Sliding active-route highlight. Rendered as the first
+         * sibling so default stacking-context paint order layers it
+         * BEHIND the link text (the links carry `position: relative`
+         * in the stylesheet so they win against this positioned
+         * span). CSS variables drive position + height so a single
+         * `transform` transition handles the slide between rows in
+         * one motion; `opacity` handles the mount fade-in and the
+         * no-active-route fade-out without ever snapping the pill
+         * to a wrong row.
+         */}
+        <span
+          className={styles.activePill}
+          aria-hidden="true"
+          style={
+            {
+              "--pill-top": `${pill.top}px`,
+              "--pill-height": `${pill.height}px`,
+              opacity: pill.visible ? 1 : 0,
+            } as React.CSSProperties
+          }
+        />
+        {FOOTER_LINKS.map((link, index) => (
           <NavLink
             key={link.label}
             to={link.to}
             end={link.end}
+            ref={(el) => {
+              linkRefs.current[index] = el;
+            }}
             className={({ isActive }) =>
               `${styles.footerLink} ${isActive ? styles.footerLinkActive : ""}`
             }
