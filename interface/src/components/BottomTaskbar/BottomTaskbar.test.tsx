@@ -74,6 +74,7 @@ vi.mock("lucide-react", () => ({
   Upload: () => <svg />,
   Sun: () => <svg data-testid="theme-icon-sun" />,
   Moon: () => <svg data-testid="theme-icon-moon" />,
+  Zap: () => <svg data-testid="icon-zap" />,
 }));
 
 interface MockMenuItem {

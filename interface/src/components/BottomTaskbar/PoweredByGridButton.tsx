@@ -1,6 +1,8 @@
+import { Zap } from "lucide-react";
 import styles from "./BottomTaskbar.module.css";
 
 const GRID_REPO_URL = "https://github.com/cypher-asi/the-grid";
+const POWERED_ICON_SIZE = 12;
 
 /**
  * Public-mode-only attribution chip in the bottom taskbar's right
@@ -29,8 +31,13 @@ export function PoweredByGridButton(): React.ReactElement {
       aria-label="Powered by THE GRID. Opens GitHub in a new tab."
     >
       <span className={styles.poweredByGridStatusDot} aria-hidden="true" />
+      <Zap
+        size={POWERED_ICON_SIZE}
+        aria-hidden="true"
+        className={styles.poweredByGridBolt}
+      />
       <span>
-        Powered by <strong>THE GRID</strong>
+        by <strong>THE GRID</strong>
       </span>
     </a>
   );
