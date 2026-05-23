@@ -137,11 +137,13 @@
   100% { background-position: -100% 0; }
 }
 
+/* Keep the label shimmer even when the OS asks for reduced motion.
+   This CTA is a marketing affordance, and without the animation the
+   text falls back to a static clipped gradient that reads like normal
+   dark text. The motion is limited to text paint and does not move
+   layout, scale, or position. */
 @media (prefers-reduced-motion: reduce) {
   .ctaButton {
     transition: none;
-  }
-  .ctaLabel {
-    animation: none;
   }
 }
