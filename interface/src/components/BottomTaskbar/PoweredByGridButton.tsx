@@ -1,5 +1,3 @@
-import { Github } from "lucide-react";
-import { TASKBAR_ICON_SIZE } from "../AppNavRail";
 import styles from "./BottomTaskbar.module.css";
 
 const GRID_REPO_URL = "https://github.com/cypher-asi/the-grid";
@@ -14,6 +12,11 @@ const GRID_REPO_URL = "https://github.com/cypher-asi/the-grid";
  * `target="_blank"` opens the GitHub repo in a new tab; `rel` carries
  * `noopener noreferrer` to prevent the opened page from accessing
  * `window.opener` and to avoid leaking the referrer to GitHub.
+ *
+ * The leading green dot reads as a "service online" status indicator,
+ * signalling that THE GRID is live + healthy. It's a pure decorative
+ * affordance — `aria-hidden` so screen readers fall through to the
+ * label.
  */
 export function PoweredByGridButton(): React.ReactElement {
   return (
@@ -25,7 +28,7 @@ export function PoweredByGridButton(): React.ReactElement {
       title="Powered by THE GRID — opens GitHub in a new tab"
       aria-label="Powered by THE GRID. Opens GitHub in a new tab."
     >
-      <Github size={TASKBAR_ICON_SIZE} aria-hidden="true" />
+      <span className={styles.poweredByGridStatusDot} aria-hidden="true" />
       <span>
         Powered by <strong>THE GRID</strong>
       </span>
