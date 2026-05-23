@@ -146,8 +146,6 @@ export function PublicChatView(): React.ReactElement {
 
   const activeSession =
     activeSessionId != null ? sessions[activeSessionId] ?? null : null;
-  const hasTranscript =
-    isChatPage && activeSession != null && activeSession.turns.length > 0;
 
   useEffect(() => {
     if (!isChatPage) return;
@@ -446,36 +444,45 @@ export function PublicChatView(): React.ReactElement {
           ) : null}
         </div>
       ) : null}
-      <div
-        className={`${styles.heroSlot} ${
-          isChatPage ? styles.heroSlotChatPage : ""
-        } ${hasTranscript ? styles.heroSlotWithTranscript : ""}`}
-      >
-        <ComposePanel
-          desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
-          desktopBackgroundPosition={
-            committedPersona.theme.desktopBackgroundPosition
-          }
-          desktopBackgroundFit={committedPersona.theme.desktopBackgroundFit}
-          desktopBackgroundColor={committedPersona.theme.desktopBackgroundColor}
-          desktopBackgroundScale={committedPersona.theme.desktopBackgroundScale}
-          outgoingDesktopBackground={
-            outgoingPersona && swap.outgoing
-              ? {
-                  url: outgoingPersona.theme.desktopBackgroundUrl,
-                  position: outgoingPersona.theme.desktopBackgroundPosition,
-                  fit: outgoingPersona.theme.desktopBackgroundFit,
-                  color: outgoingPersona.theme.desktopBackgroundColor,
-                  scale: outgoingPersona.theme.desktopBackgroundScale,
-                  fadeKey: swap.outgoing.fadeKey,
-                }
-              : null
-          }
-          chatPalette={chatPalette}
-          activePersonaIndex={activeIndex}
-          onPersonaSelect={handleActiveIndexChange}
-        />
-      </div>
+      {/*
+       * Empty-state hero — the decorative `MockAuraApp` window with
+       * the persona wallpaper, scripted DM windows, and bottom-left
+       * avatar dock. Only mounts on the landing surface; chat mode
+       * (`/chat`) hides it entirely so the chat surface, input bar,
+       * and persona page bg own the visual field without the demo
+       * desktop dominating the foreground. Unmounting (rather than
+       * `display: none`) also stops the scripted DM timer + the
+       * fish-eye dock magnifier from running while the visitor is
+       * focused on chatting.
+       */}
+      {!isChatPage ? (
+        <div className={styles.heroSlot}>
+          <ComposePanel
+            desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
+            desktopBackgroundPosition={
+              committedPersona.theme.desktopBackgroundPosition
+            }
+            desktopBackgroundFit={committedPersona.theme.desktopBackgroundFit}
+            desktopBackgroundColor={committedPersona.theme.desktopBackgroundColor}
+            desktopBackgroundScale={committedPersona.theme.desktopBackgroundScale}
+            outgoingDesktopBackground={
+              outgoingPersona && swap.outgoing
+                ? {
+                    url: outgoingPersona.theme.desktopBackgroundUrl,
+                    position: outgoingPersona.theme.desktopBackgroundPosition,
+                    fit: outgoingPersona.theme.desktopBackgroundFit,
+                    color: outgoingPersona.theme.desktopBackgroundColor,
+                    scale: outgoingPersona.theme.desktopBackgroundScale,
+                    fadeKey: swap.outgoing.fadeKey,
+                  }
+                : null
+            }
+            chatPalette={chatPalette}
+            activePersonaIndex={activeIndex}
+            onPersonaSelect={handleActiveIndexChange}
+          />
+        </div>
+      ) : null}
       {isChatPage ? (
         <div className={styles.chatSurface} aria-live="polite">
           {activeSession && activeSession.turns.length > 0 ? (
@@ -500,12 +507,21 @@ export function PublicChatView(): React.ReactElement {
           )}
         </div>
       ) : null}
-      <div className={styles.tickRailSlot}>
-        <PersonaTickRail
-          activeIndex={activeIndex}
-          onActiveIndexChange={handleActiveIndexChange}
-        />
-      </div>
+      {/*
+       * Right-edge persona selector. Pinned to the landing surface
+       * for the same reason as the hero above: chat mode hides it
+       * so the chat surface owns the visual field. Unmounting also
+       * tears down the rail's hover-debounce timers and overlay
+       * panel state instead of leaving them lurking off-screen.
+       */}
+      {!isChatPage ? (
+        <div className={styles.tickRailSlot}>
+          <PersonaTickRail
+            activeIndex={activeIndex}
+            onActiveIndexChange={handleActiveIndexChange}
+          />
+        </div>
+      ) : null}
       {isChatPage ? (
         <form className={styles.inputBarSlot} onSubmit={handleSubmit}>
           <label className={styles.inputLabel} htmlFor="public-chat-input">

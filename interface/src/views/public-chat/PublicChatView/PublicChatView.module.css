@@ -155,14 +155,6 @@
   z-index: 1;
 }
 
-.heroSlotChatPage {
-  padding-bottom: 112px;
-}
-
-.heroSlotWithTranscript {
-  opacity: 0.18;
-}
-
 .chatSurface {
   position: absolute;
   inset: 0;

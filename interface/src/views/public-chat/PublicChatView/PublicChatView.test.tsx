@@ -221,6 +221,30 @@ describe("PublicChatView", () => {
     );
   });
 
+  /*
+   * The decorative `MockAuraApp` hero and the right-edge persona
+   * `PersonaTickRail` are landing-only chrome. On `/chat` the visitor
+   * is focused on talking to Aura, so both unmount entirely — the
+   * chat surface, input bar, and persona page background own the
+   * visual field without the demo desktop dominating the foreground
+   * or the tick column distracting from the transcript. Pinned via
+   * the two test ids the rest of the suite already uses for these
+   * surfaces, so a regression that leaves either visible on the
+   * chat page would also flip this assertion.
+   */
+  it("hides the MockAuraApp hero AND the persona tick rail on /chat", async () => {
+    renderView("/chat");
+
+    // Sanity: the chat input does render (proves we're really on the
+    // chat surface and not a route-mismatch false-negative).
+    expect(
+      await screen.findByRole("textbox", { name: "Message Aura" }),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByTestId("mock-aura-app-stub")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("persona-tick-rail")).not.toBeInTheDocument();
+  });
+
   it("renders the selected public chat transcript", () => {
     let sessionId = "";
     act(() => {
