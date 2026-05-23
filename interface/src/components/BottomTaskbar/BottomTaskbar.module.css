@@ -130,26 +130,10 @@
 }
 
 /*
- * "Service online" status indicator that prefixes the link label. A
- * small solid green dot with a soft halo glow so it reads as a live
- * status light, not a bullet point. `--color-success` falls back to a
- * vivid green for themes that don't define the token.
- */
-.poweredByGridStatusDot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success, #2ecc71);
-  box-shadow: 0 0 6px var(--color-success, #2ecc71);
-  flex-shrink: 0;
-}
-
-/*
  * Lightning-bolt glyph that replaces the word "Powered" in the chip
- * label. Filled fill so the icon reads as a solid energy mark rather
- * than a thin outline, and a faint glow to echo the status-dot halo
- * one slot to its left.
+ * label. Filled in `--color-success` so the icon reads as a solid
+ * energy mark rather than a thin outline, with a faint drop-shadow
+ * glow so it carries the same "live" feel at a distance.
  */
 .poweredByGridBolt {
   color: var(--color-success, #2ecc71);

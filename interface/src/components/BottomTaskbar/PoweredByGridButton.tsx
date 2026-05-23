@@ -14,11 +14,6 @@ const POWERED_ICON_SIZE = 12;
  * `target="_blank"` opens the GitHub repo in a new tab; `rel` carries
  * `noopener noreferrer` to prevent the opened page from accessing
  * `window.opener` and to avoid leaking the referrer to GitHub.
- *
- * The leading green dot reads as a "service online" status indicator,
- * signalling that THE GRID is live + healthy. It's a pure decorative
- * affordance — `aria-hidden` so screen readers fall through to the
- * label.
  */
 export function PoweredByGridButton(): React.ReactElement {
   return (
@@ -30,7 +25,6 @@ export function PoweredByGridButton(): React.ReactElement {
       title="Powered by THE GRID — opens GitHub in a new tab"
       aria-label="Powered by THE GRID. Opens GitHub in a new tab."
     >
-      <span className={styles.poweredByGridStatusDot} aria-hidden="true" />
       <Zap
         size={POWERED_ICON_SIZE}
         aria-hidden="true"
