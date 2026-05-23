@@ -2,7 +2,7 @@ import { Zap } from "lucide-react";
 import styles from "./BottomTaskbar.module.css";
 
 const GRID_REPO_URL = "https://github.com/cypher-asi/the-grid";
-const POWERED_ICON_SIZE = 12;
+const POWERED_ICON_SIZE = 14;
 
 /**
  * Public-mode-only attribution chip in the bottom taskbar's right
