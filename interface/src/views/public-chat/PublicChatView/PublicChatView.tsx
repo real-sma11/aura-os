@@ -128,6 +128,9 @@ export function PublicChatView(): React.ReactElement {
       <div className={styles.heroSlot}>
         <ComposePanel
           desktopBackgroundUrl={activePersona.theme.desktopBackgroundUrl}
+          desktopBackgroundPosition={
+            activePersona.theme.desktopBackgroundPosition
+          }
           chatPalette={chatPalette}
         />
       </div>

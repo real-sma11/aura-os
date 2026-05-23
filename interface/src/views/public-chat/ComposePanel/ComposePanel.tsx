@@ -11,6 +11,13 @@ export interface ComposePanelProps {
    */
   readonly desktopBackgroundUrl?: string | null;
   /**
+   * Forwarded straight through to `MockAuraApp`. Optional
+   * `object-position` for the wallpaper `<img>` (only meaningful
+   * when `desktopBackgroundUrl` is set). The parent picks the
+   * value from `PersonaTheme.desktopBackgroundPosition`.
+   */
+  readonly desktopBackgroundPosition?: string | null;
+  /**
    * Forwarded straight through to `MockAuraApp`. The parent
    * (`PublicChatView`) derives this from the active persona's
    * `siteBackgroundColor` via `deriveChatPalette`; this layer
@@ -41,6 +48,7 @@ export interface ComposePanelProps {
  */
 export function ComposePanel({
   desktopBackgroundUrl = null,
+  desktopBackgroundPosition = null,
   chatPalette = null,
 }: ComposePanelProps = {}): React.ReactElement {
   return (
@@ -51,6 +59,7 @@ export function ComposePanel({
     >
       <MockAuraApp
         desktopBackgroundUrl={desktopBackgroundUrl}
+        desktopBackgroundPosition={desktopBackgroundPosition}
         chatPalette={chatPalette}
       />
     </div>

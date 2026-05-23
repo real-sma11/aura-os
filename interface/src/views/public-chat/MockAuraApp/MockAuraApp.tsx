@@ -68,6 +68,18 @@ export interface MockAuraAppProps {
    */
   readonly desktopBackgroundUrl?: string | null;
   /**
+   * Optional CSS `object-position` for the wallpaper `<img>`. Only
+   * applied when `desktopBackgroundUrl` is set — the wallpaper is
+   * rendered with `object-fit: cover` so the overflowing axis is
+   * cropped; this controls *which* slice of the image survives.
+   * `null` (the default) defers to the browser's `50% 50%`
+   * (center-cropped). Set when a curated portrait needs a non-
+   * centered crop (e.g. `"center 20%"` to keep a head-and-
+   * shoulders subject from getting sliced mid-chest by the 16:10
+   * frame's default center crop).
+   */
+  readonly desktopBackgroundPosition?: string | null;
+  /**
    * Optional per-persona text/syntax palette derived by
    * `deriveChatPalette` from the active persona's
    * `siteBackgroundColor`. When supplied, every piece of text
@@ -90,12 +102,16 @@ export interface MockAuraAppProps {
 
 export function MockAuraApp({
   desktopBackgroundUrl = null,
+  desktopBackgroundPosition = null,
   chatPalette = null,
 }: MockAuraAppProps = {}): ReactNode {
   const [clockLabel] = useState<string>(() => formatClock(new Date()));
   const hasCustomWallpaper = Boolean(desktopBackgroundUrl);
   const frameStyle: CSSProperties | undefined = chatPalette
     ? (paletteToCssVars(chatPalette) as CSSProperties)
+    : undefined;
+  const wallpaperStyle: CSSProperties | undefined = desktopBackgroundPosition
+    ? { objectPosition: desktopBackgroundPosition }
     : undefined;
 
   return (
@@ -113,6 +129,7 @@ export function MockAuraApp({
           aria-hidden="true"
           draggable={false}
           data-testid="mock-aura-wallpaper-image"
+          style={wallpaperStyle}
         />
       ) : (
         <video

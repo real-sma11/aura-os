@@ -38,6 +38,22 @@ export interface PersonaTheme {
    */
   readonly desktopBackgroundUrl: string | null;
   /**
+   * Optional `object-position` override for the wallpaper `<img>`
+   * inside the `MockAuraApp` frame. The wallpaper is rendered with
+   * `object-fit: cover`, so the image is scaled to fill the 16:10
+   * rectangle and the overflowing axis is cropped. The default
+   * (`null`) leaves the browser default of `50% 50%` — center-
+   * cropped on both axes — which is correct for most wallpapers.
+   *
+   * Set this when a curated portrait needs a non-centered crop —
+   * e.g. a head-and-shoulders shot whose subject is in the upper
+   * third of the source asset and would otherwise get sliced
+   * mid-chest by the default center crop. Any valid CSS
+   * `object-position` value works (`"center 20%"`,
+   * `"50% top"`, two-keyword forms, etc.).
+   */
+  readonly desktopBackgroundPosition: string | null;
+  /**
    * Static image URL painted as the page background behind the
    * whole `PublicChatView` (i.e. the area surrounding the
    * `MockAuraApp` rectangle). Applied via inline `background-image`
@@ -95,6 +111,7 @@ export interface Persona {
 
 const NO_THEME: PersonaTheme = {
   desktopBackgroundUrl: null,
+  desktopBackgroundPosition: null,
   siteBackgroundUrl: null,
   siteBackgroundColor: null,
   siteForegroundColor: null,
@@ -108,6 +125,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     name: "Solo Builder",
     theme: {
       desktopBackgroundUrl: "/personas/solo-builder/desktop.png",
+      desktopBackgroundPosition: null,
       siteBackgroundUrl: "/personas/solo-builder/site.png",
       // Sampled from the dominant mid-tone of `site.png` so the page
       // paints a matching dusty-blue immediately on first paint and
@@ -125,7 +143,34 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     },
   },
   { id: "giga-brain", name: "Giga Brain", theme: NO_THEME },
-  { id: "coordinator", name: "Coordinator", theme: NO_THEME },
+  {
+    id: "coordinator",
+    name: "Coordinator",
+    theme: {
+      desktopBackgroundUrl: "/personas/coordinator/desktop.png",
+      // The source portrait is a tall 3:4 frame (helmet + upper
+      // torso). Center-cropped into the 16:10 wallpaper it slices
+      // mid-chest; pulling the crop window up keeps the helmeted
+      // head fully framed and trims the awkward chest cut from the
+      // default 50% position. 35% lands halfway between the prior
+      // 20% and the default — a softer shift that still avoids the
+      // mid-chest slice but keeps more of the upper torso visible.
+      desktopBackgroundPosition: "center 35%",
+      // No surrounding site image — the page paints a solid lavender
+      // wash behind the `MockAuraApp` rectangle so the helmeted
+      // portrait sits on a flat saturated field.
+      siteBackgroundUrl: null,
+      siteBackgroundColor: "#B06AB3",
+      // The lavender wash is mid-tone but still bright enough that
+      // the default near-white nav/tick tokens lose contrast against
+      // it. Mirror the `solo-builder` approach: near-black for the
+      // active/hover state, a slightly lighter near-black for idle,
+      // so the marketing footer (bottom-left links) and right-edge
+      // tick rail keep a legible two-step hierarchy on the bg.
+      siteForegroundColor: "#0a0a0a",
+      siteForegroundColorMuted: "#1a1a1a",
+    },
+  },
   { id: "researcher", name: "Researcher", theme: NO_THEME },
   { id: "cypher-punk", name: "Cypher Punk", theme: NO_THEME },
 ];
