@@ -151,18 +151,9 @@ const profileState = {
   },
 };
 
-const billingState = {
-  subscription: { plan: "Pro" } as { plan: string } | null,
-};
-
 vi.mock("../../stores/profile-store", () => ({
   useProfileStore: (selector: (state: typeof profileState) => unknown) =>
     selector(profileState),
-}));
-
-vi.mock("../../stores/billing-store", () => ({
-  useBillingStore: (selector: (state: typeof billingState) => unknown) =>
-    selector(billingState),
 }));
 
 vi.mock("../../hooks/use-active-app", () => ({

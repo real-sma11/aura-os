@@ -8,25 +8,10 @@ vi.mock("./ProfilePill.module.css", () => ({
 import { ProfilePill } from "./ProfilePill";
 
 describe("ProfilePill", () => {
-  it("renders name and plan when both are supplied", () => {
-    render(
-      <ProfilePill
-        name="Ada Lovelace"
-        plan="Pro"
-        onOpenSettings={() => {}}
-      />,
-    );
-
-    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
-    expect(screen.getByText("Pro")).toBeInTheDocument();
-  });
-
-  it("hides the plan line when plan is undefined", () => {
+  it("renders the supplied name", () => {
     render(<ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} />);
 
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
-    // The .plan span only renders when a plan is truthy.
-    expect(screen.queryByText("Pro")).not.toBeInTheDocument();
   });
 
   it("falls back to the User icon when avatarUrl is missing", () => {

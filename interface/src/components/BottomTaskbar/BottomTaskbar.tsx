@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useProfileStore } from "../../stores/profile-store";
-import { useBillingStore } from "../../stores/billing-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import type { UIMode } from "../../stores/ui-mode-store";
@@ -49,8 +48,8 @@ export interface BottomTaskbarProps {
    * panel's bottom edge.
    *
  * - `public`: only the `ThemeToggleButton` in the right slot.
- * - `simple`: bottom-left `ProfilePill` (avatar + name + plan)
- *   plus Credits, Settings, and ThemeToggle in the right slot.
+ * - `simple`: bottom-left `ProfilePill` (avatar + name) plus
+ *   Credits, Settings, and ThemeToggle in the right slot.
  *   No Desktop button, no app rail center, no center pill, no
  *   profile rail shortcut, no clock, no Help, no collapse chevron
  *   — a minimal authed surface anchored by the profile pill.
@@ -118,9 +117,8 @@ function PublicBottomTaskbar(): React.ReactElement {
  * still gated on `isAdvanced`.
  *
  * This component acts as the container for the presentational
- * `<ProfilePill />`: it reads `profile-store` (display name, avatar),
- * `billing-store` (subscription plan), and `ui-modal-store`
- * (`openOrgSettings`) and pipes them in as props.
+ * `<ProfilePill />`: it reads `profile-store` (display name, avatar)
+ * and `ui-modal-store` (`openOrgSettings`) and pipes them in as props.
  *
  * Branches on `isAdvanced` to gate:
  *
@@ -157,7 +155,6 @@ function AuthedBottomTaskbar({
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
   const profile = useProfileStore((s) => s.profile);
-  const plan = useBillingStore((s) => s.subscription?.plan);
   const activeApp = useActiveApp();
   const navigate = useNavigate();
   const previousPath = useAppUIStore((s) => s.previousPath);
@@ -209,7 +206,6 @@ function AuthedBottomTaskbar({
         <ProfilePill
           name={profile.name}
           avatarUrl={profile.avatarUrl}
-          plan={plan ?? undefined}
           onOpenSettings={openOrgSettings}
         />
         {isAdvanced && (

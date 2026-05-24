@@ -17,14 +17,6 @@
   background: var(--color-surface-hover);
 }
 
-.text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.1;
-  min-width: 0;
-}
-
 .name {
   font-size: var(--text-2xs);
   font-weight: 600;
@@ -33,13 +25,5 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 120px;
-}
-
-.plan {
-  font-size: var(--text-2xs);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
+  line-height: 1.1;
 }
