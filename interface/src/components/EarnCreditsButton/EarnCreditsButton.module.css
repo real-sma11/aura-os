@@ -1,28 +1,29 @@
 .button {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
   padding: 0 var(--space-3);
-  margin-right: var(--space-1);
   border-radius: 999px;
   border: 1px solid var(--color-border-main-panel);
   background: transparent;
   color: var(--color-accent);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
-.button:hover {
+.button:hover,
+.button:focus-visible {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .label {
-  font-size: calc(var(--text-2xs) - 1.5px);
+  font-size: var(--text-2xs);
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   color: inherit;
   line-height: 1;
-  padding-top: 2px;
+  text-align: center;
 }

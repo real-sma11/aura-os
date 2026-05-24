@@ -440,8 +440,10 @@ describe("AuraShell — Phase 3 unified shell", () => {
  * Simple-mode chrome stripping. Simple is a chat-only surface, so
  * the desktop wallpaper, the right sidekick lane, and the two
  * sidekick-related icon buttons (`Toggle split screen` /
- * `Toggle sidekick` next to `Earn Credits`) all unmount. The
- * window controls (`EarnCreditsButton`, min/max/close) stay.
+ * `Toggle sidekick`) all unmount. The window controls
+ * (min/max/close) stay. The referral CTA (`EarnCreditsButton`)
+ * now lives in the left sidebar footer instead of the titlebar
+ * trailing cluster — covered by the sidebar assertion below.
  *
  * Coverage for the wallpaper itself is in test (g) above; this
  * block focuses on the right lane + the titlebar trailing cluster.
@@ -469,7 +471,7 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
     ).not.toBeNull();
   });
 
-  it("does not render the Split-screen / Sidekick toggle icon buttons in the titlebar in Simple mode, but keeps EarnCredits", () => {
+  it("does not render the Split-screen / Sidekick toggle icon buttons in the titlebar in Simple mode, and renders EarnCredits in the sidebar footer", () => {
     setLoggedIn();
     useUIModeStore.setState({ mode: "simple" });
 
@@ -482,11 +484,16 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
     expect(
       within(titlebar).queryByRole("button", { name: /toggle split screen/i }),
     ).not.toBeInTheDocument();
-    // `EarnCreditsButton` is the load-bearing trailing CTA — it must
-    // survive Simple-mode chrome stripping. Its accessible name is
-    // sourced from the rendered "Earn" label in the button.
+    // The referral CTA moved out of the titlebar trailing cluster and
+    // into the left sidebar footer (`AuthedSidebarFooter`). Assert it
+    // is *not* in the titlebar anymore and *is* in the sidebar — keyed
+    // off the new aria-label "Refer a member to earn credits".
     expect(
-      within(titlebar).getByRole("button", { name: /earn/i }),
+      within(titlebar).queryByRole("button", { name: /refer a member/i }),
+    ).not.toBeInTheDocument();
+    const sidebar = screen.getByTestId("aura-sidebar");
+    expect(
+      within(sidebar).getByRole("button", { name: /refer a member/i }),
     ).toBeInTheDocument();
   });
 

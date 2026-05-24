@@ -6,7 +6,6 @@ import { OrgSelector } from "../OrgSelector";
 import { MenuBar } from "../MenuBar";
 import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
-import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { track } from "../../lib/analytics";
 import type { UIMode } from "../../stores/ui-mode-store";
@@ -61,8 +60,10 @@ export interface AuraTitlebarProps {
  *     text override on `[aria-pressed="true"]`. Just on the left.
  * - Trailing slot:
  *   - Authenticated: `UpdatePill` + optional host-settings button +
- *     `EarnCreditsButton` + `WindowControls` (with the sidekick /
- *     split-screen toggles plumbed through props).
+ *     `WindowControls` (with the sidekick / split-screen toggles
+ *     plumbed through props). The referral CTA lives in the left
+ *     sidebar footer (`AuraSidebar`'s `AuthedSidebarFooter`) — not
+ *     in the titlebar.
  *   - Public: Log In / Sign Up pills + `WindowControls`. The day/
  *     night theme toggle is intentionally not in the public titlebar —
  *     it lives only in the bottom-right `BottomTaskbar` cluster so
@@ -200,14 +201,13 @@ function AuthedActions({
           <Server size={14} strokeWidth={2} />
         </Button>
       )}
-      <EarnCreditsButton />
       <WindowControls
         sidekickCollapsed={sidekickCollapsed}
         // Pass through `undefined` (rather than substituting a no-op
         // function) so `WindowControls` can drop the `Toggle sidekick`
         // / `Toggle split screen` icon buttons entirely when the host
         // has opted out — this is what gives Simple mode a clean
-        // titlebar trailing cluster (Earn + min/max/close only).
+        // titlebar trailing cluster (min/max/close only).
         onToggleSidekick={onToggleSidekick}
         splitScreenActive={splitScreenActive}
         onToggleSplitScreen={onToggleSplitScreen}

@@ -7,6 +7,7 @@ import { ModeToggle } from "../ModeToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { PublicSidebarFooter } from "../../views/public-chat/PublicSidebarFooter";
+import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
@@ -149,7 +150,24 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
         aside's natural width when the Lane is collapsed.
       */}
       {isPublic && <PublicSidebarFooter />}
+      {/*
+        Authed-mode sidebar footer — mirrors `PublicSidebarFooter`'s
+        mount point (sibling of the Lane inside `<aside>`) so the
+        referral pill stays pinned to the bottom of the aside and
+        doesn't scroll with the Lane body. `!isDesktop` keeps the
+        pill out of the way when advanced `/desktop` collapses the
+        lane edge-to-edge over the wallpaper.
+      */}
+      {!isPublic && !isDesktop && <AuthedSidebarFooter />}
     </aside>
+  );
+}
+
+function AuthedSidebarFooter(): React.ReactElement {
+  return (
+    <div className={styles.authedFooter}>
+      <EarnCreditsButton />
+    </div>
   );
 }
 

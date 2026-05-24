@@ -61,3 +61,16 @@
 .simpleSidebarBody {
   display: contents;
 }
+
+/*
+ * Authed-mode sidebar footer wrapper — pins the referral pill
+ * (`EarnCreditsButton`) to the bottom of `<aside>`, sibling to
+ * the Lane (mirrors `PublicSidebarFooter`'s mount). The pill
+ * itself stretches to fill the wrapper via `width: 100%`; the
+ * wrapper owns the breathing room so the button stays layout-
+ * agnostic.
+ */
+.authedFooter {
+  display: flex;
+  padding: var(--space-2) var(--space-3);
+}
