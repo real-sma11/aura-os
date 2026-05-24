@@ -124,6 +124,36 @@ describe("PublicSessionsPanel", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/chat");
   });
 
+  it("deletes a brand-new empty 'New chat' as the only session and leaves the store empty (no auto-replacement)", async () => {
+    // The reported bug: click `+`, land on the freshly-minted "New
+    // chat", click the X, watch the chat "come back" because the
+    // route-side auto-mint effect spawned a replacement. This test
+    // pins the post-fix contract: the delete leaves `sessionOrder`
+    // empty AND the URL on bare `/chat`. The matching no-auto-mint
+    // assertion on the `/chat` route itself lives in
+    // `PublicChatView.test.tsx` — this panel test owns the store +
+    // navigation contract on the delete side.
+    const user = userEvent.setup();
+    let newChatId = "";
+    act(() => {
+      // No `appendUserTurn` — this is a zero-turn session whose
+      // title stays "New chat" (matches the `+` button flow in
+      // `AuraSidebar.handleNewChat`).
+      newChatId = usePublicChatStore.getState().createSession();
+    });
+
+    renderPanel(`/chat?session=${newChatId}`);
+
+    const deleteBtn = await screen.findByRole("button", {
+      name: /Delete chat "New chat"/,
+    });
+    await user.click(deleteBtn);
+
+    expect(usePublicChatStore.getState().sessions[newChatId]).toBeUndefined();
+    expect(usePublicChatStore.getState().sessionOrder).toEqual([]);
+    expect(screen.getByTestId("location")).toHaveTextContent("/chat");
+  });
+
   it("does not navigate when a non-active row is deleted", async () => {
     const user = userEvent.setup();
     let activeId = "";

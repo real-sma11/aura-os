@@ -70,12 +70,13 @@ export function PublicSessionsPanel({
       if (id !== activeSessionId) return;
       // The deleted row was the active session, so the URL still
       // points at it. Hop to the most recent remaining session
-      // (sessionOrder is newest-first) instead of falling back to a
-      // bare `/chat`, which would otherwise re-trigger `PublicChatView`'s
-      // auto-create-on-mount and immediately spawn a fresh "New chat"
-      // row in place of the one the user just removed — making the
-      // delete look like it failed. If nothing remains, hand off to
-      // `/chat` so the auto-create lands the visitor on a usable surface.
+      // (sessionOrder is newest-first) when one exists so the
+      // visitor lands on a populated chat rather than an empty
+      // composer. When nothing remains, fall through to bare
+      // `/chat`: `PublicChatView` no longer auto-mints on visit,
+      // so the visitor sees an empty composer instead of a fresh
+      // "New chat" row spawning on top of the one they just
+      // removed.
       const nextActive = sessionOrder.find((existing) => existing !== id);
       navigate(nextActive ? `/chat?session=${nextActive}` : "/chat");
     },

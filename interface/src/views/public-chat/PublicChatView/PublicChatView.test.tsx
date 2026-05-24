@@ -202,22 +202,32 @@ describe("PublicChatView", () => {
     expect(probe).toHaveAttribute("data-search", "?tab=register");
   });
 
-  it("auto-selects an empty session and shows the simple chat input on /chat", async () => {
+  it("shows the simple chat input on /chat WITHOUT auto-minting a session", async () => {
+    // Landing on `/chat` no longer auto-mints a session — the
+    // composer renders in its empty state and the first
+    // `handleSubmit` is what creates the session row. Pinning this
+    // here so the delete flow (`PublicSessionsPanel.handleDelete`)
+    // can land the visitor on a session-less `/chat` without
+    // spawning a fresh "New chat" on top of the one they just
+    // removed.
     renderViewWithProbe("/chat");
 
     expect(
       await screen.findByRole("textbox", { name: "Message Aura" }),
     ).toBeInTheDocument();
 
-    const sessionOrder = usePublicChatStore.getState().sessionOrder;
-    expect(sessionOrder).toHaveLength(1);
+    // Give a microtask + macrotask for any stray effect to flush.
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(0);
     expect(screen.getByTestId("location-probe")).toHaveAttribute(
       "data-pathname",
       "/chat",
     );
     expect(screen.getByTestId("location-probe")).toHaveAttribute(
       "data-search",
-      `?session=${sessionOrder[0]}`,
+      "",
     );
   });
 

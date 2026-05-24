@@ -122,14 +122,26 @@ describe("MobilePublicChatView", () => {
     expect(callArgs.sessionId).toMatch(/^public-/);
   });
 
-  it("auto-mints (or reuses) a session and rewrites the URL when landing on /chat without one", async () => {
+  it("does NOT auto-mint a session when landing on /chat without one; the composer stays empty until the visitor sends", async () => {
     renderView("/chat");
 
     const probe = screen.getByTestId("location-probe");
-    await waitFor(() => {
-      expect(probe.getAttribute("data-search")).toMatch(/^\?session=public-/);
-    });
+    expect(probe).toHaveAttribute("data-pathname", "/chat");
+    // No `?session=` should be appended on visit. Wait one tick to
+    // make sure no deferred effect mints behind our back.
+    await Promise.resolve();
+    expect(probe.getAttribute("data-search") ?? "").toBe("");
+    expect(usePublicChatStore.getState().sessionOrder).toHaveLength(0);
 
+    // The empty-state composer is still present and submitting it
+    // should be what creates the session (and rewrites the URL).
+    const input = screen.getByRole("textbox", { name: "Message Aura" });
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(streamPublicChatMock).toHaveBeenCalledTimes(1);
+    });
     const order = usePublicChatStore.getState().sessionOrder;
     expect(order).toHaveLength(1);
     expect(probe.getAttribute("data-search")).toBe(`?session=${order[0]}`);

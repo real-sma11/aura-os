@@ -82,7 +82,6 @@ export function MobilePublicChatView(): React.ReactElement {
   const isChatPage = location.pathname === PUBLIC_CHAT_PATH;
 
   const sessions = usePublicChatStore((s) => s.sessions);
-  const sessionOrder = usePublicChatStore((s) => s.sessionOrder);
   const createSession = usePublicChatStore((s) => s.createSession);
   const ensureToken = usePublicChatStore((s) => s.ensureToken);
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
@@ -99,24 +98,13 @@ export function MobilePublicChatView(): React.ReactElement {
   const activeSession =
     activeSessionId != null ? sessions[activeSessionId] ?? null : null;
 
-  // On `/chat` without a valid session, mint or reuse one and rewrite
-  // the URL. Mirrors `PublicChatView`'s landing-into-chat behaviour
-  // so deep links to `/chat` always resolve to a real session row.
-  useEffect(() => {
-    if (!isChatPage) return;
-    if (activeSessionId != null && activeSession != null) return;
-    const reusableId = findReusableEmptySessionId(sessions, sessionOrder);
-    const nextSessionId = reusableId ?? createSession();
-    navigate(publicChatRoute(nextSessionId), { replace: true });
-  }, [
-    activeSession,
-    activeSessionId,
-    createSession,
-    isChatPage,
-    navigate,
-    sessionOrder,
-    sessions,
-  ]);
+  // Note: `/chat` without a valid `?session=` deliberately does NOT
+  // auto-mint a session here. Sessions are minted by `handleSubmit`
+  // on first send (and on desktop by the sidebar `+` button). This
+  // keeps the delete flow working — if the visitor deletes the only
+  // session, they land back on `/chat` with an empty composer
+  // rather than watching a fresh "New chat" spawn on top of the one
+  // they just removed.
 
   useEffect(() => {
     return () => {

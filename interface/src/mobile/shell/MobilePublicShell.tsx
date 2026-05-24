@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import { Menu, Trash2, X } from "lucide-react";
 import { track } from "../../lib/analytics";
+import { usePublicChatStore } from "../../stores/public-chat-store";
 import styles from "./MobilePublicShell.module.css";
 
 /**
@@ -41,12 +49,46 @@ const NAV_ROWS: ReadonlyArray<NavRow> = [
   { label: "Pricing", to: "/pricing" },
 ];
 
+const PUBLIC_CHAT_PATH = "/chat";
+
 export function MobilePublicShell(): React.ReactElement {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  // Active public chat (for the topbar trash affordance). Read the
+  // same selectors `MobilePublicChatView` uses so the button only
+  // appears when there's a real session to delete. The visitor has
+  // no session sidebar on mobile, so deleting the chat they're on
+  // is the only delete entry point this surface ships.
+  const sessions = usePublicChatStore((s) => s.sessions);
+  const deleteSession = usePublicChatStore((s) => s.deleteSession);
+  const activeSessionId = searchParams.get("session");
+  const isChatPage = location.pathname === PUBLIC_CHAT_PATH;
+  const activeSession =
+    activeSessionId != null ? sessions[activeSessionId] ?? null : null;
+  const canDeleteActiveChat =
+    isChatPage && activeSessionId != null && activeSession != null;
+
+  const handleDeleteActiveChat = useCallback(() => {
+    if (activeSessionId == null) return;
+    deleteSession(activeSessionId);
+    // Mirror `PublicSessionsPanel.handleDelete`: hop to the most
+    // recent remaining session if one exists, otherwise fall
+    // through to bare `/chat`. `MobilePublicChatView` no longer
+    // auto-mints on visit, so the visitor lands on an empty
+    // composer rather than watching the deleted chat respawn.
+    const remaining = usePublicChatStore.getState().sessionOrder;
+    const nextActive = remaining.find((id) => id !== activeSessionId);
+    navigate(
+      nextActive != null ? `${PUBLIC_CHAT_PATH}?session=${nextActive}` : PUBLIC_CHAT_PATH,
+      { replace: true },
+    );
+  }, [activeSessionId, deleteSession, navigate]);
 
   // Drawer closes only via explicit user action — backdrop click, X
   // button, Escape, or clicking one of the nav rows / auth pills
@@ -100,7 +142,19 @@ export function MobilePublicShell(): React.ReactElement {
         <Link to="/" className={styles.wordmark} aria-label="AURA home">
           AURA
         </Link>
-        <span className={styles.topbarSpacer} aria-hidden="true" />
+        {canDeleteActiveChat ? (
+          <button
+            type="button"
+            className={styles.deleteButton}
+            onClick={handleDeleteActiveChat}
+            aria-label={`Delete chat "${activeSession?.title ?? "this chat"}"`}
+            data-testid="mobile-public-delete-chat"
+          >
+            <Trash2 size={20} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className={styles.topbarSpacer} aria-hidden="true" />
+        )}
       </header>
 
       <main className={styles.body}>

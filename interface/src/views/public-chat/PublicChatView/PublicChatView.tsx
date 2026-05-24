@@ -124,7 +124,6 @@ export function PublicChatView(): React.ReactElement {
   const isChatPage = location.pathname === PUBLIC_CHAT_PATH;
 
   const sessions = usePublicChatStore((s) => s.sessions);
-  const sessionOrder = usePublicChatStore((s) => s.sessionOrder);
   const createSession = usePublicChatStore((s) => s.createSession);
   const ensureToken = usePublicChatStore((s) => s.ensureToken);
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
@@ -147,21 +146,14 @@ export function PublicChatView(): React.ReactElement {
   const activeSession =
     activeSessionId != null ? sessions[activeSessionId] ?? null : null;
 
-  useEffect(() => {
-    if (!isChatPage) return;
-    if (activeSessionId != null && activeSession != null) return;
-    const reusableId = findReusableEmptySessionId(sessions, sessionOrder);
-    const nextSessionId = reusableId ?? createSession();
-    navigate(publicChatRoute(nextSessionId), { replace: true });
-  }, [
-    activeSession,
-    activeSessionId,
-    createSession,
-    isChatPage,
-    navigate,
-    sessionOrder,
-    sessions,
-  ]);
+  // Note: `/chat` without a valid `?session=` deliberately does NOT
+  // auto-mint a session here. Sessions are minted by exactly two
+  // explicit actions: the `+` button in `AuraSidebar.handleNewChat`,
+  // and the first call to `handleSubmit` below. This keeps the
+  // delete flow working — if the visitor deletes the only session,
+  // they land back on `/chat` with an empty composer rather than
+  // watching a fresh "New chat" row spawn on top of the one they
+  // just removed.
 
   useEffect(() => {
     return () => {

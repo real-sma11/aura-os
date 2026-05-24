@@ -72,6 +72,34 @@
   display: block;
 }
 
+/*
+ * Trash button — mirrors `.menuButton` on the opposite side of the
+ * topbar grid so the two icons feel balanced. Only mounts when the
+ * visitor is on `/chat?session=<id>` with a real session, since the
+ * mobile public shell has no separate session list — deleting the
+ * chat you're on is the only delete entry point.
+ */
+.deleteButton {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary, #c9c9cf);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-right: 4px;
+  margin-left: auto;
+}
+
+.deleteButton:hover,
+.deleteButton:focus-visible {
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  color: var(--color-text-primary);
+}
+
 .body {
   flex: 1;
   min-height: 0;
