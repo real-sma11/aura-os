@@ -5,25 +5,33 @@
 //! ```text
 //! on task_failed:
 //!     kind = HarnessFailureKind from event.reason
-//!     if kind.is_retryable() && task.attempts < MAX_TASK_ATTEMPTS:
+//!     action = kind.retry_action(task.attempts)
+//!     if action != Terminal && task.attempts < MAX_TASK_ATTEMPTS:
 //!         storage.update_task(attempts = task.attempts + 1)
 //!         safe_transition(Failed -> Ready)
-//!         emit task_retrying
+//!         emit task_retrying (carries `action` so the harness can
+//!             route `RetryWithDecomposition` through the Phase 5
+//!             splitter agent rather than a plain re-run)
 //!     else:
 //!         leave task in Failed
 //! ```
 //!
 //! The persisted `tasks.attempts` counter (see
 //! `docs/migrations/2026-05-21-task-attempts-column.md`) holds the
-//! per-task budget. Tool-level retries are the harness's
-//! responsibility — it sees every tool result; the server does not
-//! need a parallel tool-retry tracker.
+//! per-task budget AND now drives the attempt-aware
+//! [`HarnessFailureKind::retry_action`] escalation ladder: the first
+//! failure is a plain `Retry`, the second escalates to
+//! `RetryWithDecomposition` (so a task that looped its way into the
+//! same trap twice gets broken into sub-tasks by the harness Phase 5
+//! splitter), and the third is `Terminal`. Tool-level retries are
+//! the harness's responsibility — it sees every tool result; the
+//! server does not need a parallel tool-retry tracker.
 
 use tracing::{info, warn};
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId, TaskStatus};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
-use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal};
+use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal, RetryAction};
 
 use super::failure::resolve_failure_reason_for_persistence;
 use super::MAX_TASK_ATTEMPTS;
@@ -43,8 +51,13 @@ fn classify_reason(reason: &str) -> HarnessFailureKind {
 /// Decide whether to push the failed task back to `Ready` and emit
 /// the `task_retrying` UI signal. Gated by:
 ///
-/// * [`HarnessFailureKind::is_retryable`] — terminal failures
-///   (agent-stuck, insufficient credits) stay in `Failed`.
+/// * [`HarnessFailureKind::retry_action`] — terminal failures
+///   (agent-stuck, insufficient credits, exhausted per-kind escalation
+///   ladder for the current attempt index) stay in `Failed`. Non-
+///   terminal actions (`Retry`, `RetryWithDecomposition`) are surfaced
+///   onto the `task_retrying` event so the harness can route the
+///   `RetryWithDecomposition` action through the Phase 5 splitter
+///   agent.
 /// * The persisted `tasks.attempts` counter being strictly below
 ///   [`MAX_TASK_ATTEMPTS`] — a permanently-broken task does not
 ///   loop forever, and the count survives server restarts.
@@ -68,6 +81,11 @@ pub(super) async fn maybe_apply_task_level_retry(
     };
     let reason = resolve_failure_reason_for_persistence(event);
     let kind = classify_reason(&reason);
+    // Fast path: kinds that are terminal at every attempt index
+    // (AgentStuck, InsufficientCredits, Other) short-circuit before
+    // the storage round-trip — they will never become retryable on
+    // a higher attempt count, so we don't need to read `attempts`
+    // to make that decision.
     if !kind.is_retryable() {
         return;
     }
@@ -86,6 +104,21 @@ pub(super) async fn maybe_apply_task_level_retry(
         }
     };
     let prior_attempts = task.attempts.unwrap_or(0);
+    // Attempt-aware policy: ResearchLoopAbort / Truncation /
+    // CompletionContract go Retry → RetryWithDecomposition → Terminal
+    // across attempts 0/1/2, instead of looping the same fresh-context
+    // retry indefinitely. See `HarnessFailureKind::retry_action`.
+    let action = kind.retry_action(prior_attempts);
+    if matches!(action, RetryAction::Terminal) {
+        info!(
+            %task_id,
+            prior_attempts,
+            ?kind,
+            "task-level retry: per-kind escalation ladder is terminal at this \
+             attempt index; leaving task in Failed"
+        );
+        return;
+    }
     if prior_attempts >= MAX_TASK_ATTEMPTS {
         info!(
             %task_id,
@@ -124,6 +157,7 @@ pub(super) async fn maybe_apply_task_level_retry(
         attempt = next_attempts,
         budget = MAX_TASK_ATTEMPTS,
         ?kind,
+        ?action,
         "task-level retry: pushed task from Failed back to Ready"
     );
     emit_task_retrying_signal(
@@ -134,6 +168,7 @@ pub(super) async fn maybe_apply_task_level_retry(
         next_attempts,
         MAX_TASK_ATTEMPTS,
         &reason,
+        action,
         session_id,
     );
 }
@@ -144,6 +179,11 @@ pub(super) async fn maybe_apply_task_level_retry(
 /// retry banner without polling. Mirrors the JSON shape of
 /// `task_failed` / `task_completed` so existing front-end handlers
 /// can decode the same fields.
+///
+/// `action` is serialised onto the payload (`retry_action`) so
+/// downstream consumers — in particular the `aura-harness` Phase 5
+/// splitter — can branch on `retry` vs `retry_with_decomposition`
+/// without re-classifying the failure reason themselves.
 #[allow(clippy::too_many_arguments)]
 fn emit_task_retrying_signal(
     state: &AppState,
@@ -153,6 +193,7 @@ fn emit_task_retrying_signal(
     attempt: u32,
     budget: u32,
     reason: &str,
+    action: RetryAction,
     session_id: Option<SessionId>,
 ) {
     let mut payload = serde_json::json!({
@@ -164,6 +205,7 @@ fn emit_task_retrying_signal(
         "budget": budget,
         "scope": "task_level",
         "reason": reason,
+        "retry_action": action,
     });
     if let Some(session_id) = session_id {
         if let Some(object) = payload.as_object_mut() {
