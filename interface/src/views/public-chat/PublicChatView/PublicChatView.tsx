@@ -467,6 +467,9 @@ export function PublicChatView(): React.ReactElement {
             desktopBackgroundFit={committedPersona.theme.desktopBackgroundFit}
             desktopBackgroundColor={committedPersona.theme.desktopBackgroundColor}
             desktopBackgroundScale={committedPersona.theme.desktopBackgroundScale}
+            desktopBackgroundOffsetY={
+              committedPersona.theme.desktopBackgroundOffsetY
+            }
             outgoingDesktopBackground={
               outgoingPersona && swap.outgoing
                 ? {
@@ -475,6 +478,7 @@ export function PublicChatView(): React.ReactElement {
                     fit: outgoingPersona.theme.desktopBackgroundFit,
                     color: outgoingPersona.theme.desktopBackgroundColor,
                     scale: outgoingPersona.theme.desktopBackgroundScale,
+                    offsetY: outgoingPersona.theme.desktopBackgroundOffsetY,
                     fadeKey: swap.outgoing.fadeKey,
                   }
                 : null

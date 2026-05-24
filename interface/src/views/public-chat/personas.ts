@@ -89,6 +89,24 @@ export interface PersonaTheme {
    */
   readonly desktopBackgroundScale: number | null;
   /**
+   * Optional vertical translation applied to the wallpaper `<img>`
+   * AFTER `desktopBackgroundScale`, expressed as a percent of the
+   * frame height (positive = pull image DOWN, negative = push UP).
+   * Composed as `translateY(N%) scale(...)`; CSS applies the
+   * rightmost transform first so the percent is screen-space
+   * relative to the 16:10 frame, not to the pre-scale image size,
+   * and the offset stays proportional at any viewport size.
+   *
+   * Useful when `desktopBackgroundFit: "contain"` plus a scale > 1
+   * crops the source vertically and the default frame-centered
+   * crop window lands too high on the figure (e.g. the helmet sits
+   * pinned to the top of the visible band). A small positive value
+   * like `8` shifts the visible window up the source so the focal
+   * subject sits more centered in the frame. `null` = no
+   * translation.
+   */
+  readonly desktopBackgroundOffsetY: number | null;
+  /**
    * Static image URL painted as the page background behind the
    * whole `PublicChatView` (i.e. the area surrounding the
    * `MockAuraApp` rectangle). Applied via inline `background-image`
@@ -179,6 +197,7 @@ const NO_THEME: PersonaTheme = {
   desktopBackgroundFit: null,
   desktopBackgroundColor: null,
   desktopBackgroundScale: null,
+  desktopBackgroundOffsetY: null,
   siteBackgroundUrl: null,
   siteBackgroundColor: null,
   siteForegroundColor: null,
@@ -242,6 +261,10 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // The matching pink bg above still fills the (narrower)
       // letterbox bars so the seam stays invisible.
       desktopBackgroundScale: 1.1,
+      // Default-centered crop is correct for this 1024×1024
+      // square portrait — the figure is authored centered in
+      // the source so no vertical translation is needed.
+      desktopBackgroundOffsetY: null,
       // Deep purple-violet gradient with diagonal light streaks
       // painted as the page bg behind the mock desktop window —
       // the cool atmospheric backdrop offsets the hot pink
@@ -309,6 +332,8 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // from a `0.85` test and was bumped up 25% from there per
       // direct user feedback.
       desktopBackgroundScale: 1.221875,
+      // Centered crop reads correctly for this 1024×1024 source.
+      desktopBackgroundOffsetY: null,
       siteBackgroundUrl: "/personas/solo-builder/site.png",
       // Sampled from the dominant mid-tone of `site.png` so the page
       // paints a matching dusty-blue immediately on first paint and
@@ -387,6 +412,9 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // The matching cream bg above still fills the (narrower)
       // letterbox bars so the seam stays invisible.
       desktopBackgroundScale: 1.1,
+      // Default-centered crop is correct for this 1024×1024
+      // square portrait — no vertical nudge needed.
+      desktopBackgroundOffsetY: null,
       // No surrounding site image — the page paints a flat
       // user-picked cream behind the `MockAuraApp` rectangle so
       // the chrome-helmeted portrait inside the mock window
@@ -451,27 +479,39 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       desktopBackgroundFit: "contain",
       // Sampled mid-tone of the source's steel-blue field
       // (~`#6f7d8a` averaged across the upper expanse around the
-      // helmet). Painted behind the wallpaper `<img>` so the
-      // ~350px horizontal letterbox bars exposed by `contain` +
-      // `scale 1.2` below blend with the figure's own backdrop
+      // helmet). Painted behind the wallpaper `<img>` so any
+      // residual seam between the wallpaper rectangle and the
+      // appFrame fill blends with the figure's own backdrop
       // instead of revealing the default near-black appFrame
-      // fill at the seams.
+      // fill. At scale 2.4 the rendered image fully overflows
+      // the frame on every side, so this color is mostly a
+      // safety net for sub-pixel rounding rather than a visible
+      // letterbox fill.
       desktopBackgroundColor: "#6f7d8a",
-      // Zoom in 20% from the `contain` baseline so the helmeted
-      // figure reads close to the user's requested "about 15%
-      // smaller" target relative to the prior `cover`-fit view,
-      // while still filling the full frame height. The painted
-      // contain rectangle (750×1000 inside a 1600×1000 frame)
-      // scales to 900×1200 around the frame center: the figure
-      // grows 20% larger than its raw contain size, the
-      // horizontal letterbox bars shrink from 425px to ~350px
-      // each side, and ~100px of the source slips outside the
-      // frame on top and bottom — almost entirely the empty sky
-      // above the helmet and the negative space below the body,
-      // so no figure detail is sacrificed. The matching steel-
-      // blue bg above still fills the (narrower) side bars so
-      // the seam stays imperceptible.
-      desktopBackgroundScale: 1.2,
+      // Zoom in ~2× from the original 1.2 setting so the helmeted
+      // figure dominates the mock desktop. The `contain`
+      // baseline paints the 3:4 source at 750×1000 inside a
+      // 1600×1000 frame; multiplying by 2.4 around the frame
+      // center renders it at 1800×2400, which now overflows the
+      // frame on all four sides (~100px each horizontally,
+      // ~700px each vertically). The horizontal letterbox bars
+      // disappear entirely; the vertical crop is then biased by
+      // `desktopBackgroundOffsetY` below so the visible band
+      // lands on the helmet + upper chest rather than the dead
+      // center of the source.
+      desktopBackgroundScale: 2.4,
+      // Pull the wallpaper down 8% of frame height (~80px in the
+      // 1000px design frame) so the helmet/upper-torso slice
+      // sits centered in the visible window instead of pinned
+      // to the top. Composed as `translateY(8%) scale(2.4)` —
+      // CSS applies the rightmost transform first, so the 8%
+      // is screen-space (relative to the frame) rather than
+      // pre-scale source-space, and stays proportional at any
+      // viewport size. With this offset the visible source band
+      // shifts from y≈291–708 (default-centered) up to y≈258–675,
+      // exposing ~33 more source-px of the helmet/sky above the
+      // visor and trimming the same amount off the lower torso.
+      desktopBackgroundOffsetY: 8,
       // No surrounding site image — the page paints a solid lavender
       // wash behind the `MockAuraApp` rectangle so the helmeted
       // portrait sits on a flat saturated field.
@@ -509,6 +549,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       desktopBackgroundFit: "contain",
       desktopBackgroundColor: "#c7b6a6",
       desktopBackgroundScale: 1,
+      desktopBackgroundOffsetY: null,
       // Warm amber wash behind the mock desktop, matching the
       // portrait's studio backdrop while giving the page its own
       // soft texture.
@@ -562,6 +603,9 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // visible 1100×1100 size, keeping the cross-fade between
       // them a clean dissolve with no size jump.
       desktopBackgroundScale: 1.1,
+      // Default-centered crop reads correctly for this 1024×1024
+      // square portrait — no vertical nudge needed.
+      desktopBackgroundOffsetY: null,
       // No surrounding site image — the page paints a flat dark
       // blue-gray wash behind the `MockAuraApp` rectangle so the
       // pure-black wallpaper inside the window reads as a darker

@@ -38,6 +38,13 @@ export interface ComposePanelProps {
    */
   readonly desktopBackgroundScale?: number | null;
   /**
+   * Forwarded straight through to `MockAuraApp`. Optional vertical
+   * translation (in percent of frame height; positive = pull image
+   * down) applied AFTER the scale. The parent picks the value from
+   * `PersonaTheme.desktopBackgroundOffsetY`.
+   */
+  readonly desktopBackgroundOffsetY?: number | null;
+  /**
    * Forwarded straight through to `MockAuraApp`. Frozen snapshot
    * of the PREVIOUS persona's desktop background, supplied by the
    * parent (`PublicChatView`) while that snapshot dissolves out
@@ -96,6 +103,7 @@ export function ComposePanel({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
+  desktopBackgroundOffsetY = null,
   outgoingDesktopBackground = null,
   chatPalette = null,
   activePersonaIndex,
@@ -113,6 +121,7 @@ export function ComposePanel({
         desktopBackgroundFit={desktopBackgroundFit}
         desktopBackgroundColor={desktopBackgroundColor}
         desktopBackgroundScale={desktopBackgroundScale}
+        desktopBackgroundOffsetY={desktopBackgroundOffsetY}
         outgoingDesktopBackground={outgoingDesktopBackground}
         chatPalette={chatPalette}
         activePersonaIndex={activePersonaIndex}

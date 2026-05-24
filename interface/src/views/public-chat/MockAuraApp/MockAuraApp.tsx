@@ -109,12 +109,30 @@ function wallpaperImgStyle(
   position: string | null | undefined,
   fit: "cover" | "contain" | null | undefined,
   scale: number | null | undefined,
+  offsetY: number | null | undefined,
 ): CSSProperties | undefined {
-  if (!position && !fit && scale == null) return undefined;
+  if (!position && !fit && scale == null && offsetY == null) return undefined;
   const style: CSSProperties = {};
   if (position) style.objectPosition = position;
   if (fit) style.objectFit = fit;
-  if (scale != null) style.transform = `scale(${scale})`;
+  if (scale != null || offsetY != null) {
+    /*
+     * Compose translation BEFORE scale in the transform list so
+     * CSS applies the scale first (rightmost transform applied
+     * first) and the translateY's percent unit resolves against
+     * the post-scale layout — i.e. the percent is a screen-space
+     * shift relative to the 16:10 frame, not a fraction of the
+     * pre-scale source. That makes `desktopBackgroundOffsetY`
+     * behave intuitively (positive = pull image down by N% of
+     * the frame height) and stay proportional under viewport
+     * resize. When only one of the two is set, the missing piece
+     * collapses out of the joined string.
+     */
+    const parts: string[] = [];
+    if (offsetY != null) parts.push(`translateY(${offsetY}%)`);
+    if (scale != null) parts.push(`scale(${scale})`);
+    style.transform = parts.join(" ");
+  }
   return style;
 }
 
@@ -132,6 +150,7 @@ export interface OutgoingDesktopBackground {
   readonly fit: "cover" | "contain" | null;
   readonly color: string | null;
   readonly scale: number | null;
+  readonly offsetY: number | null;
   readonly fadeKey: number;
 }
 
@@ -166,6 +185,16 @@ export interface MockAuraAppProps {
    * content is trimmed cleanly to the mock window rectangle.
    */
   readonly desktopBackgroundScale?: number | null;
+  /**
+   * Optional vertical translation applied to the wallpaper `<img>`
+   * AFTER `desktopBackgroundScale`, expressed as a percent of the
+   * frame height (positive = pull image DOWN). Composed as
+   * `translateY(N%) scale(...)` so the percent is screen-space
+   * relative to the 16:10 frame and stays proportional at any
+   * viewport size. `.appFrame`'s `overflow: hidden` clips the
+   * shifted image to the mock window edge.
+   */
+  readonly desktopBackgroundOffsetY?: number | null;
   /**
    * Snapshot of the PREVIOUS persona's desktop background,
    * supplied while it dissolves out. Mounts a second
@@ -211,6 +240,7 @@ export function MockAuraApp({
   desktopBackgroundFit = null,
   desktopBackgroundColor = null,
   desktopBackgroundScale = null,
+  desktopBackgroundOffsetY = null,
   outgoingDesktopBackground = null,
   chatPalette = null,
   activePersonaIndex = 0,
@@ -358,6 +388,7 @@ export function MockAuraApp({
                 desktopBackgroundPosition,
                 desktopBackgroundFit,
                 desktopBackgroundScale,
+                desktopBackgroundOffsetY,
               )}
             />
           ) : null}
@@ -394,6 +425,7 @@ export function MockAuraApp({
                 outgoingDesktopBackground.position,
                 outgoingDesktopBackground.fit,
                 outgoingDesktopBackground.scale,
+                outgoingDesktopBackground.offsetY,
               )}
             />
           ) : null}
