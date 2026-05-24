@@ -69,8 +69,69 @@
  * itself stretches to fill the wrapper via `width: 100%`; the
  * wrapper owns the breathing room so the button stays layout-
  * agnostic.
+ *
+ * Position is absolute (anchored to `.sidebar`, which sets
+ * `position: relative` in `AuraShell.module.css`) so the pill
+ * floats OVER the bottom of `.sidebarBody` instead of taking
+ * its own flex row in the column. That lets `.sidebarBody`
+ * expand to the full sidebar height — pair it with the
+ * `.sidebarBodyFadeAboveFooter` mask below and the list rows
+ * inside the Lane visibly fade out as they pass behind the
+ * pill, instead of getting truncated above a hard footer edge.
+ *
+ * `pointer-events` stays at the default `auto` on the button so
+ * the pill remains clickable, but is dropped to `none` on the
+ * surrounding wrapper padding so list rows that fade out in the
+ * band beside / behind the pill (e.g. a row's trailing icon
+ * peeking into the corner gap) stay hover/clickable instead of
+ * being swallowed by an invisible rectangle.
  */
 .authedFooter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
   display: flex;
   padding: var(--space-2) var(--space-3);
+  pointer-events: none;
+}
+
+.authedFooter > * {
+  pointer-events: auto;
+}
+
+/*
+ * Applied to `.sidebarBody` only when the authed footer pill is
+ * mounted (i.e. simple/advanced mode, not public, not desktop).
+ * Fades the bottom of the body to transparency over the height
+ * of the floating pill (~56px including its 8px breathing room)
+ * via a `mask-image` linear gradient, so list rows inside the
+ * Lane appear to dissolve as they scroll behind the pill instead
+ * of butting up against an opaque footer edge.
+ *
+ * The fade height is intentionally a hair taller than the pill
+ * itself (32px button + 2*8px wrapper padding = 48px) so the
+ * leading edge of the fade band starts ABOVE the top of the
+ * pill — list rows start to fade before they actually reach the
+ * pill chrome, giving the "passing behind" read room to breathe
+ * instead of starting abruptly at the pill border.
+ *
+ * Kept off the wrapper when no footer is mounted (public mode
+ * uses the marketing nav footer, desktop mode strips it) so the
+ * mask doesn't paint a phantom fade on surfaces that have a
+ * legitimate edge-to-edge bottom (e.g. the public sessions
+ * list's last row reaching the page nav links unmasked).
+ */
+.sidebarBodyFadeAboveFooter {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 64px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 64px),
+    transparent 100%
+  );
 }

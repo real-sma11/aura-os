@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
+import { cn } from "@cypher-asi/zui";
 import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
 import { ModeToggle } from "../ModeToggle";
@@ -93,6 +94,15 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
   const asideRef = useRef<HTMLElement>(null);
   const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
   const isPublic = mode === "public";
+  // Authed footer (`AuthedSidebarFooter` -> `EarnCreditsButton`)
+  // mounts whenever we're in an authenticated mode AND the lane is
+  // visible (i.e. not the `/desktop` edge-to-edge wallpaper). When
+  // mounted, it floats absolutely over the bottom of `.sidebarBody`
+  // and the body picks up a `mask-image` fade so list rows visibly
+  // dissolve behind the pill instead of stopping above a static
+  // footer row. Compute once so both the mask class and the footer
+  // render share a single source of truth.
+  const hasAuthedFooter = !isPublic && !isDesktop;
 
   // Publish the active sidebar width (the `<aside>` rather than just
   // the inner Lane) so that when the public Lane is collapsed and
@@ -111,7 +121,12 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
         isPublic ? (publicSidebarCollapsed ? "true" : "false") : undefined
       }
     >
-      <div className={shellStyles.sidebarBody}>
+      <div
+        className={cn(
+          shellStyles.sidebarBody,
+          hasAuthedFooter && styles.sidebarBodyFadeAboveFooter,
+        )}
+      >
         <Lane
           // Public-mode Lane is collapsible and toggled from the
           // titlebar's left drawer button (`<PanelLeft />`); authed
@@ -151,14 +166,17 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
       */}
       {isPublic && <PublicSidebarFooter />}
       {/*
-        Authed-mode sidebar footer — mirrors `PublicSidebarFooter`'s
-        mount point (sibling of the Lane inside `<aside>`) so the
-        referral pill stays pinned to the bottom of the aside and
-        doesn't scroll with the Lane body. `!isDesktop` keeps the
-        pill out of the way when advanced `/desktop` collapses the
-        lane edge-to-edge over the wallpaper.
+        Authed-mode sidebar footer — pinned to the bottom of the
+        `<aside>` via `position: absolute` (the aside owns
+        `position: relative`) so the referral pill floats OVER the
+        bottom of the Lane body instead of carving out its own row
+        in the flex column. The body picks up a `mask-image` fade
+        above (via `styles.sidebarBodyFadeAboveFooter`) so list rows
+        visibly dissolve as they pass behind the pill.
+        `!isDesktop` keeps the pill out of the way when advanced
+        `/desktop` collapses the lane edge-to-edge over the wallpaper.
       */}
-      {!isPublic && !isDesktop && <AuthedSidebarFooter />}
+      {hasAuthedFooter && <AuthedSidebarFooter />}
     </aside>
   );
 }
