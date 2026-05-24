@@ -56,13 +56,16 @@
 .scrollThumb {
   position: absolute;
   right: 0;
-  width: 4px;
+  width: 12px;
+  padding-left: 8px;
+  box-sizing: border-box;
   min-height: 18px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.2);
+  background-clip: content-box;
   opacity: 0;
   transition: opacity 0.2s ease;
-  pointer-events: auto;
+  pointer-events: none;
   cursor: default;
 }
 
@@ -72,6 +75,7 @@
 
 .scrollThumbVisible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .list {
