@@ -2,18 +2,28 @@ import { useState, useRef, useEffect } from "react";
 import styles from "./IdeView.module.css";
 
 interface Props {
-  onConfirm: (fileName: string) => Promise<string | null>;
+  label: string;
+  placeholder?: string;
+  initialValue?: string;
+  confirmLabel?: string;
+  onConfirm: (value: string) => Promise<string | null>;
   onCancel: () => void;
 }
 
-export function NewFileDialog({ onConfirm, onCancel }: Props) {
-  const [value, setValue] = useState("");
+export function InputDialog({ label, placeholder, initialValue = "", confirmLabel = "Create", onConfirm, onCancel }: Props) {
+  const [value, setValue] = useState(initialValue);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    if (initialValue) {
+      const dotIdx = initialValue.lastIndexOf(".");
+      el.setSelectionRange(0, dotIdx > 0 ? dotIdx : initialValue.length);
+    }
   }, []);
 
   const handleSubmit = async () => {
@@ -40,7 +50,7 @@ export function NewFileDialog({ onConfirm, onCancel }: Props) {
   return (
     <div className={styles.dialogOverlay} onClick={onCancel}>
       <div className={styles.dialogBox} onClick={(e) => e.stopPropagation()}>
-        <label className={styles.dialogLabel}>New file name</label>
+        <label className={styles.dialogLabel}>{label}</label>
         <input
           ref={inputRef}
           className={styles.dialogInput}
@@ -48,7 +58,7 @@ export function NewFileDialog({ onConfirm, onCancel }: Props) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="example.ts"
+          placeholder={placeholder}
           disabled={submitting}
         />
         {error && <span className={styles.dialogError}>{error}</span>}
@@ -57,7 +67,7 @@ export function NewFileDialog({ onConfirm, onCancel }: Props) {
             Cancel
           </button>
           <button className={styles.dialogButtonPrimary} onClick={handleSubmit} disabled={!value.trim() || submitting}>
-            Create
+            {confirmLabel}
           </button>
         </div>
       </div>

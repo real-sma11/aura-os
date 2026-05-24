@@ -112,9 +112,30 @@ export function useIdeViewTabs(initialFile: string, remoteAgentId?: string) {
     return null;
   }, [openTab]);
 
+  const createDirectory = useCallback(async (dirPath: string) => {
+    const res = await api.createDirectory(dirPath);
+    if (!res.ok) return res.error ?? "Failed to create folder";
+    return null;
+  }, []);
+
+  const renamePath = useCallback(async (oldPath: string, newPath: string) => {
+    const res = await api.renamePath(oldPath, newPath);
+    if (!res.ok) return res.error ?? "Failed to rename";
+    setTabs((prev) => prev.map((t) => t.path === oldPath ? { ...t, path: newPath } : t));
+    if (activeTabPath === oldPath) setActiveTabPath(newPath);
+    return null;
+  }, [activeTabPath]);
+
+  const deletePath = useCallback(async (path: string) => {
+    const res = await api.deletePath(path);
+    if (!res.ok) return res.error ?? "Failed to delete";
+    closeTab(path);
+    return null;
+  }, [closeTab]);
+
   return {
     tabs, activeTab, activeTabPath, setActiveTabPath,
-    openTab, closeTab, createFile,
+    openTab, closeTab, createFile, createDirectory, renamePath, deletePath,
     saving, saveError, dirty, language,
     handleContentChange, handleSave,
     textareaRef, gutterRef, highlightRef,

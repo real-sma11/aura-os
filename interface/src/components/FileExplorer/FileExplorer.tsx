@@ -1,9 +1,20 @@
+import { useCallback } from "react";
 import { Explorer, Spinner, PageEmptyState } from "@cypher-asi/zui";
 import { Folder, FolderOpen } from "lucide-react";
 import { useFileExplorerState } from "./useFileExplorerState";
 import { MobileFileList } from "../../mobile/files/MobileFileList";
 import { FileExplorerHeader } from "./FileExplorerHeader";
+import { findNode } from "./useFileExplorerState";
 import styles from "./FileExplorer.module.css";
+
+export interface FileContextMenuInfo {
+  path: string;
+  name: string;
+  isDir: boolean;
+  isRoot: boolean;
+  x: number;
+  y: number;
+}
 
 interface FileExplorerProps {
   rootPath?: string;
@@ -14,6 +25,7 @@ interface FileExplorerProps {
   refreshTrigger?: number;
   /** Called when the user wants to create a new file. */
   onCreateFile?: () => void;
+  onContextMenu?: (info: FileContextMenuInfo) => void;
 }
 
 export function FileExplorer({
@@ -23,6 +35,7 @@ export function FileExplorer({
   remoteAgentId,
   refreshTrigger,
   onCreateFile,
+  onContextMenu,
 }: FileExplorerProps) {
   const s = useFileExplorerState({
     rootPath,
@@ -32,6 +45,23 @@ export function FileExplorer({
     refreshTrigger,
     onCreateFile,
   });
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!onContextMenu) return;
+    let el = e.target as HTMLElement | null;
+    while (el && el.getAttribute?.("role") !== "treeitem") el = el.parentElement;
+    if (!el) return;
+    const nodeId = el.id;
+    if (!nodeId) return;
+    e.preventDefault();
+    const isRoot = nodeId === "__files_root__";
+    const node = findNode(s.filteredData, nodeId);
+    const isDir = isRoot || Boolean(node?.children);
+    const name = isRoot
+      ? (rootPath?.split(/[\\/]/).pop() ?? "root")
+      : (node?.label ?? nodeId.split(/[\\/]/).pop() ?? nodeId);
+    onContextMenu({ path: isRoot ? rootPath! : nodeId, name: String(name), isDir, isRoot, x: e.clientX, y: e.clientY });
+  }, [onContextMenu, s.filteredData, rootPath]);
 
   if (!s.canBrowseWorkspace) {
     return (
@@ -87,7 +117,11 @@ export function FileExplorer({
   }
 
   return (
-    <div className={styles.explorerContainer} data-explorer-scope="files">
+    <div
+      className={styles.explorerContainer}
+      data-explorer-scope="files"
+      onContextMenu={handleContextMenu}
+    >
       {rootPath && <FileExplorerHeader rootPath={rootPath} />}
       <Explorer
         data={s.filteredData}

@@ -299,7 +299,7 @@ export function useFileExplorerState({
   };
 }
 
-function findNode(nodes: ExplorerNode[], id: string): ExplorerNode | null {
+export function findNode(nodes: ExplorerNode[], id: string): ExplorerNode | null {
   for (const node of nodes) {
     if (node.id === id) return node;
     if (node.children) {
