@@ -233,6 +233,7 @@ export function AuraShell(): React.ReactElement {
       <div
         className={styles.shell}
         data-ui-mode={mode}
+        data-desktop-mode={desktopModeActive || undefined}
         data-testid="aura-shell"
         data-agent-context={isPublic ? "logged-out-shell" : "desktop-shell"}
       >
@@ -252,9 +253,8 @@ export function AuraShell(): React.ReactElement {
         <div
           ref={desktopContentRef}
           className={styles.body}
-          data-desktop-mode={desktopModeActive || undefined}
         >
-          <AuraSidebar mode={mode} />
+          <AuraSidebar mode={mode} isDesktop={isDesktop} />
           <MainPanelSlot
             mode={mode}
             mainPanelHostRef={mainPanelHostRef}

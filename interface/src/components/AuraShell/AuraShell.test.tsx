@@ -63,6 +63,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
 import { usePublicChatStore } from "../../stores/public-chat-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
+import { useDesktopBackgroundStore } from "../../stores/desktop-background-store";
 import { PUBLIC_SIDEBAR_COLLAPSED_KEY } from "../../constants";
 
 vi.mock("@cypher-asi/zui", async () => {
@@ -174,6 +175,10 @@ function renderAuraShell(initialPath = "/"): ReturnType<typeof render> {
           />
           <Route
             path="/projects/:id"
+            element={<div data-testid="outlet-child">child route</div>}
+          />
+          <Route
+            path="/desktop"
             element={<div data-testid="outlet-child">child route</div>}
           />
         </Route>
@@ -731,5 +736,112 @@ describe("AuraShell — public left drawer", () => {
     await user.dblClick(leftToggle);
 
     expect(windowCommand).not.toHaveBeenCalledWith("maximize");
+  });
+});
+
+/**
+ * Advanced `/desktop` regression coverage. Two behaviours were lost
+ * when DesktopShell was folded into AuraShell and are tracked here:
+ *
+ *   1. `data-desktop-mode` must live on the `.shell` root (the
+ *      element with `data-testid="aura-shell"`). Several CSS
+ *      selectors — most notably `.shell[data-desktop-mode] .mainPanel`
+ *      in `AuraShell.module.css` — depend on that location to strip
+ *      the main panel's solid background + 1px border so the
+ *      wallpaper-backed `BackgroundLayer` bleeds edge-to-edge. When
+ *      the attribute sat on the inner `.body` div, the selector
+ *      never matched and the wallpaper got sliced.
+ *
+ *   2. The left sidebar Lane must collapse to width 0 on `/desktop`.
+ *      `DesktopApp.LeftPanel` returns `null`, so the body is empty,
+ *      but the `<PanelSearch>` row + `<ModeToggle>` would otherwise
+ *      keep the lane open and visibly cover the wallpaper. Legacy
+ *      `DesktopShell` had this via `<Lane collapsed={isDesktop}
+ *      animateCollapse={false}>`; `AuraSidebar` now mirrors the
+ *      behaviour off the `isDesktop` prop AuraShell threads in.
+ */
+describe("AuraShell — advanced /desktop chrome", () => {
+  beforeEach(() => {
+    // `desktopModeActive = isDesktop && backgroundHydrated`. The
+    // store starts in an unhydrated state in the no-image-slot
+    // default, but the `data-desktop-mode` flip should be observable
+    // immediately, so we mark it hydrated up front.
+    useDesktopBackgroundStore.setState({ hydrated: true });
+  });
+
+  it("stamps `data-desktop-mode` on the `.shell` root (not the inner `.body`) when on /desktop in advanced mode", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    renderAuraShell("/desktop");
+
+    const shell = screen.getByTestId("aura-shell");
+    expect(shell).toHaveAttribute("data-desktop-mode", "true");
+    // No descendant of `.shell` should carry the attribute — it used
+    // to live on the inner `.body` div but module CSS selectors like
+    // `.shell[data-desktop-mode] .mainPanel` only resolve when the
+    // attribute is on the shell root itself. `querySelector` walks
+    // descendants only (not the root), so a single nullish assertion
+    // pins both the location move and the no-duplicate invariant.
+    expect(shell.querySelector("[data-desktop-mode]")).toBeNull();
+  });
+
+  it("does not stamp `data-desktop-mode` on /chat in advanced mode (only `/desktop` activates it)", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    renderAuraShell("/chat");
+
+    const shell = screen.getByTestId("aura-shell");
+    expect(shell).not.toHaveAttribute("data-desktop-mode");
+  });
+
+  it("does not stamp `data-desktop-mode` on /desktop in Simple mode (Simple pins ChatApp regardless of URL)", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    renderAuraShell("/desktop");
+
+    const shell = screen.getByTestId("aura-shell");
+    expect(shell).not.toHaveAttribute("data-desktop-mode");
+  });
+
+  it("collapses the sidebar Lane to 0 width on /desktop in advanced mode (wallpaper-edge-to-edge)", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    renderAuraShell("/desktop");
+
+    const sidebar = screen.getByTestId("aura-sidebar");
+    const lane = sidebar.querySelector<HTMLElement>("[data-lane]");
+    expect(lane).not.toBeNull();
+    // Lane writes the resolved width onto inline `style.width`;
+    // `collapsed=true` short-circuits to 0 regardless of the
+    // persisted user-resized value.
+    expect(lane?.style.width).toBe("0px");
+  });
+
+  it("re-expands the sidebar Lane when navigating away from /desktop without remounting it", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    renderAuraShell("/desktop");
+
+    const sidebar = screen.getByTestId("aura-sidebar");
+    const laneBefore = sidebar.querySelector<HTMLElement>("[data-lane]");
+    expect(laneBefore).not.toBeNull();
+    expect(laneBefore?.style.width).toBe("0px");
+
+    // Flip into Simple mode (which pins ChatApp) to take the user
+    // off `/desktop`'s collapsed path — the simplest way to assert
+    // re-expansion without a navigate(). The Lane wrapper must keep
+    // DOM identity (same invariant as test (a) above).
+    await act(async () => {
+      useUIModeStore.setState({ mode: "simple" });
+    });
+
+    const laneAfter = sidebar.querySelector<HTMLElement>("[data-lane]");
+    expect(laneAfter).toBe(laneBefore);
+    expect(laneAfter?.style.width).not.toBe("0px");
   });
 });

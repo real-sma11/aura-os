@@ -53,6 +53,16 @@ export interface AuraSidebarProps {
    * a remount is the correct UX.
    */
   mode: UIMode;
+  /**
+   * True when the user is on `/desktop` in advanced mode. Collapses
+   * the Lane to 0 width (snap, not animated) so the wallpaper-backed
+   * Desktop surface goes edge-to-edge — matching the legacy
+   * `DesktopShell` behaviour that was lost in Phase 3's consolidation.
+   * `DesktopApp.LeftPanel` returns `null` so the body has nothing to
+   * show anyway; the search box + `<ModeToggle>` would otherwise hang
+   * over the wallpaper.
+   */
+  isDesktop?: boolean;
 }
 
 /**
@@ -78,7 +88,7 @@ export interface AuraSidebarProps {
  *   sidebarQueries` (for authenticated modes via `useSidebarSearch`)
  *   so typing survives mode flips.
  */
-export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
+export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): React.ReactElement {
   const asideRef = useRef<HTMLElement>(null);
   const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
   const isPublic = mode === "public";
@@ -105,9 +115,14 @@ export function AuraSidebar({ mode }: AuraSidebarProps): React.ReactElement {
           // Public-mode Lane is collapsible and toggled from the
           // titlebar's left drawer button (`<PanelLeft />`); authed
           // modes keep the legacy always-open resizable behaviour.
-          resizable={!isPublic || !publicSidebarCollapsed}
-          collapsible={isPublic}
-          collapsed={isPublic ? publicSidebarCollapsed : false}
+          // Advanced `/desktop` collapses the entire Lane (snap, no
+          // animation) so the wallpaper extends edge-to-edge — same
+          // behaviour the legacy `DesktopShell` had via `collapsed=
+          // {isDesktop} animateCollapse={false}`.
+          resizable={!isDesktop && (!isPublic || !publicSidebarCollapsed)}
+          collapsible={isPublic || isDesktop}
+          collapsed={isPublic ? publicSidebarCollapsed : isDesktop}
+          animateCollapse={!isDesktop}
           resizePosition="right"
           defaultWidth={200}
           maxWidth={600}

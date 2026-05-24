@@ -85,29 +85,12 @@
 }
 
 /*
- * In desktop mode the Desktop app's MainPanel is an invisible
- * marquee/context-menu surface layered over the wallpaper-backed
- * BackgroundLayer. The opaque `background: var(--color-bg)` above
- * would paint a solid rectangle over the wallpaper, so clear it
- * (and the lane border) when the shell is in desktop mode so the
- * wallpaper isn't sliced by stray hairlines.
+ * `.mainPanelHost`, `.mainPanelHostNoSidekick`, and `.windowLayerHost`
+ * lived on the legacy `DesktopShell` tree that AuraShell replaced.
+ * The wallpaper-bleed override that used to clear `.mainPanelHost`'s
+ * background now lives in `AuraShell.module.css` on `.mainPanel`,
+ * which is the equivalent slot inside `AuraShell`.
  */
-.desktopShell[data-desktop-mode] .mainPanelHost {
-  background: transparent;
-  border-color: transparent;
-}
-
-.mainPanelHostNoSidekick {
-  border-top-right-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-
-.windowLayerHost {
-  position: absolute;
-  inset: 0;
-  z-index: 1000;
-  pointer-events: none;
-}
 
 .desktopSidebar {
   flex-shrink: 0;
@@ -208,7 +191,13 @@
   border-bottom-right-radius: 6px;
 }
 
-.desktopShell[data-desktop-mode] .sidekickLane {
+/*
+ * `data-desktop-mode` lives on AuraShell's `.shell` root, not on a
+ * `.desktopShell` (deleted with Phase 3). Using `:global([data-desktop-mode])`
+ * keeps this rule working under the new shell wrapper — same approach as
+ * `.desktopSidebar` above.
+ */
+:global([data-desktop-mode]) .sidekickLane {
   border-color: transparent;
 }
 
