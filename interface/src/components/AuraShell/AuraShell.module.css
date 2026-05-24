@@ -164,6 +164,18 @@
 .shell[data-desktop-mode] .mainPanel {
   background: transparent;
   border-color: transparent;
+  /*
+   * Desktop mode strips the panel's chrome so the wallpaper bleeds
+   * across the whole main lane. The `.surface` inside the desktop
+   * app already pins `user-select: none`, but pin it on `.mainPanel`
+   * too so any thin gutter between the surface and the transparent
+   * panel edge is not text-selectable either — matches the
+   * `BackgroundLayer` / `.surface` / `.appFrame` rules elsewhere so
+   * neither the wallpaper nor any wallpaper-adjacent chrome gap
+   * starts a text selection on drag.
+   */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .titleLeading {

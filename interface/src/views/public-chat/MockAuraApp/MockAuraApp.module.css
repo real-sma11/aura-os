@@ -36,6 +36,17 @@
   max-width: 75cqw;
   max-height: 75cqh;
   /*
+   * The mock Aura window is a passive hero — the wallpaper, chrome
+   * pills, persona dock, and scripted DM windows are demo paint,
+   * not interactive content. Pinning the whole frame to
+   * `user-select: none` stops a click-drag across the wallpaper
+   * (or anywhere else inside the mock) from highlighting the demo
+   * text, matching the real desktop's `.surface` rule and the
+   * `BackgroundLayer` rule in `DesktopShell.module.css`.
+   */
+  user-select: none;
+  -webkit-user-select: none;
+  /*
    * Default fill painted underneath everything. Shows through for
    * NO_THEME personas (no `.desktopBackground` wrapper mounted) and
    * during the fade-out window (when the wrapper above sits at

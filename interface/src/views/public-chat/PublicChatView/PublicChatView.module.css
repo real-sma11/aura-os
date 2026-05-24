@@ -29,6 +29,24 @@
    * axis routinely overflows by design.
    */
   overflow: hidden;
+  /*
+   * The public chat surface is the visitor-facing "wallpaper" of
+   * the logged-out shell — the persona-tinted `.siteBackground`
+   * gradient bleeds across the whole `.chatView` rectangle, and
+   * the mock `MockAuraApp` window floats in the middle of it. A
+   * drag inside the gutter around the mock (or anywhere on the
+   * site bg itself) must not initiate a text selection — matching
+   * the real desktop's `.surface` rule and the
+   * `BackgroundLayer` / `MockAuraApp .appFrame` rules, so neither
+   * the authed wallpaper nor the public wallpaper is text-
+   * selectable. `.transcript` re-enables `user-select: text`
+   * below so actual chat messages on `/chat` stay copyable; form
+   * inputs / textareas inside `.inputBarSlot` always remain
+   * editable because the browser ignores `user-select: none` on
+   * native text-input controls.
+   */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /*
@@ -175,6 +193,15 @@
   max-height: min(58vh, 560px);
   overflow: auto;
   pointer-events: auto;
+  /*
+   * `.chatView` above pins the whole public surface to `user-select:
+   * none` so the wallpaper-like persona bg is not text-selectable.
+   * Chat history is real content the visitor may want to copy
+   * (assistant replies, code snippets, links), so re-enable text
+   * selection here.
+   */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .messageRow {

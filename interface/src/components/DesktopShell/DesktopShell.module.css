@@ -13,6 +13,18 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  /*
+   * Wallpaper paint is passive chrome — `pointer-events: none`
+   * already keeps it from receiving clicks, and `user-select: none`
+   * keeps drag-selections that originate elsewhere from extending
+   * across (or pinning a caret on) the wallpaper. Matches the
+   * `.surface` rule in `apps/desktop/DesktopApp.module.css` and the
+   * `.appFrame` rule in `views/public-chat/MockAuraApp/MockAuraApp.module.css`
+   * so neither the real desktop wallpaper nor the public-hero mock
+   * wallpaper is text-selectable.
+   */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /*
