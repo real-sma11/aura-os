@@ -148,15 +148,17 @@
   padding: 0 8px;
   border-radius: 8px;
   /*
-   * Lock font-size + font-weight to the same `--public-pill-*` tokens
-   * that drive the top Log In / Sign Up `.authPill` chrome so the
-   * "by THE GRID" chip and the top auth pills read with identical
-   * type sizing. Without the explicit weight, the "by" prefix
-   * inherits the default 400 weight while "Sign Up" / "Log In"
-   * paint at 600 — at the same 12px size, 400-weight Inter has
-   * visibly thinner strokes and reads as a smaller type face.
+   * Derive font-size from the same `--public-pill-font-size` token that
+   * drives the top Log In / Sign Up `.authPill` chrome, but render
+   * exactly 1px smaller so the attribution chip reads as secondary
+   * chrome next to the auth pills. Font-weight stays locked to the
+   * shared `--public-pill-font-weight` (600) — without the explicit
+   * weight, the "by" prefix would inherit the default 400 weight
+   * while "THE GRID" / "Sign Up" / "Log In" paint at 600, and at the
+   * same size 400-weight Inter has visibly thinner strokes that read
+   * as an even smaller type face.
    */
-  font-size: var(--public-pill-font-size, var(--text-2xs));
+  font-size: calc(var(--public-pill-font-size, var(--text-2xs)) - 1px);
   font-weight: var(--public-pill-font-weight, 600);
   line-height: 1;
   color: var(--color-text-secondary);
