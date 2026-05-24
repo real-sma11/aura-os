@@ -113,24 +113,30 @@ export function useIdeViewTabs(initialFile: string, remoteAgentId?: string) {
   }, [openTab]);
 
   const createDirectory = useCallback(async (dirPath: string) => {
-    const res = await api.createDirectory(dirPath);
-    if (!res.ok) return res.error ?? "Failed to create folder";
-    return null;
+    try {
+      const res = await api.createDirectory(dirPath);
+      if (!res.ok) return res.error ?? "Failed to create folder";
+      return null;
+    } catch (e) { return String(e); }
   }, []);
 
   const renamePath = useCallback(async (oldPath: string, newPath: string) => {
-    const res = await api.renamePath(oldPath, newPath);
-    if (!res.ok) return res.error ?? "Failed to rename";
-    setTabs((prev) => prev.map((t) => t.path === oldPath ? { ...t, path: newPath } : t));
-    if (activeTabPath === oldPath) setActiveTabPath(newPath);
-    return null;
+    try {
+      const res = await api.renamePath(oldPath, newPath);
+      if (!res.ok) return res.error ?? "Failed to rename";
+      setTabs((prev) => prev.map((t) => t.path === oldPath ? { ...t, path: newPath } : t));
+      if (activeTabPath === oldPath) setActiveTabPath(newPath);
+      return null;
+    } catch (e) { return String(e); }
   }, [activeTabPath]);
 
   const deletePath = useCallback(async (path: string) => {
-    const res = await api.deletePath(path);
-    if (!res.ok) return res.error ?? "Failed to delete";
-    closeTab(path);
-    return null;
+    try {
+      const res = await api.deletePath(path);
+      if (!res.ok) return res.error ?? "Failed to delete";
+      closeTab(path);
+      return null;
+    } catch (e) { return String(e); }
   }, [closeTab]);
 
   return {
