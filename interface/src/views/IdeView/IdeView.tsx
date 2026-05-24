@@ -40,39 +40,41 @@ export function IdeView() {
 
   const sep = rootPath.includes("\\") ? "\\" : "/";
 
-  const handleDialogConfirm = useCallback(async (value?: string) => {
+  const handleNewFileConfirm = useCallback(async (value: string) => {
     if (!dialog) return null;
-    switch (dialog.type) {
-      case "newFile": {
-        const fullPath = dialog.dirPath + sep + value;
-        const err = await ide.createFile(fullPath);
-        if (err) return err;
-        setDialog(null);
-        return null;
-      }
-      case "newDir": {
-        const fullPath = dialog.dirPath + sep + value;
-        const err = await ide.createDirectory(fullPath);
-        if (err) return err;
-        setDialog(null);
-        return null;
-      }
-      case "rename": {
-        const parentPath = dialog.targetPath.replace(/[\\/][^\\/]+$/, "");
-        const newPath = parentPath + sep + value;
-        const err = await ide.renamePath(dialog.targetPath, newPath);
-        if (err) return err;
-        setDialog(null);
-        return null;
-      }
-      case "delete": {
-        const err = await ide.deletePath(dialog.targetPath);
-        if (err) return err;
-        setDialog(null);
-        return null;
-      }
-    }
-  }, [dialog, sep, ide]);
+    const fullPath = dialog.dirPath + sep + value;
+    const err = await ide.createFile(fullPath);
+    if (err) return err;
+    setDialog(null);
+    return null;
+  }, [dialog?.dirPath, sep, ide.createFile]);
+
+  const handleNewDirConfirm = useCallback(async (value: string) => {
+    if (!dialog) return null;
+    const fullPath = dialog.dirPath + sep + value;
+    const err = await ide.createDirectory(fullPath);
+    if (err) return err;
+    setDialog(null);
+    return null;
+  }, [dialog?.dirPath, sep, ide.createDirectory]);
+
+  const handleRenameConfirm = useCallback(async (value: string) => {
+    if (!dialog) return null;
+    const parentPath = dialog.targetPath.replace(/[\\/][^\\/]+$/, "");
+    const newPath = parentPath + sep + value;
+    const err = await ide.renamePath(dialog.targetPath, newPath);
+    if (err) return err;
+    setDialog(null);
+    return null;
+  }, [dialog?.targetPath, sep, ide.renamePath]);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!dialog) return null;
+    const err = await ide.deletePath(dialog.targetPath);
+    if (err) return err;
+    setDialog(null);
+    return null;
+  }, [dialog?.targetPath, ide.deletePath]);
 
   if (!features.ideIntegration && !remoteAgentId) {
     return <PageEmptyState title="IDE stays on desktop" description="This device does not expose local file editing or IDE workflows." />;
@@ -157,7 +159,7 @@ export function IdeView() {
         <InputDialog
           label="New file name"
           placeholder="example.ts"
-          onConfirm={(v) => handleDialogConfirm(v)}
+          onConfirm={handleNewFileConfirm}
           onCancel={closeDialog}
         />
       )}
@@ -166,7 +168,7 @@ export function IdeView() {
         <InputDialog
           label="New folder name"
           placeholder="my-folder"
-          onConfirm={(v) => handleDialogConfirm(v)}
+          onConfirm={handleNewDirConfirm}
           onCancel={closeDialog}
         />
       )}
@@ -176,7 +178,7 @@ export function IdeView() {
           label="Rename"
           initialValue={dialog.targetName}
           confirmLabel="Rename"
-          onConfirm={(v) => handleDialogConfirm(v)}
+          onConfirm={handleRenameConfirm}
           onCancel={closeDialog}
         />
       )}
@@ -185,7 +187,7 @@ export function IdeView() {
         <ConfirmDeleteDialog
           name={dialog.targetName}
           isDir={dialog.isDir}
-          onConfirm={() => handleDialogConfirm()}
+          onConfirm={handleDeleteConfirm}
           onCancel={closeDialog}
         />
       )}
