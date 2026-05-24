@@ -16,6 +16,7 @@ import { ChatRedirectGuard } from "./components/ChatRedirectGuard";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
 import { PublicChatView } from "./views/public-chat/PublicChatView";
+import { MobilePublicChatView } from "./views/public-chat/MobilePublicChatView";
 import { PublicMarketingPanel } from "./views/public-chat/PublicMarketingPanel";
 import { LoginOverlay } from "./views/public-chat/LoginOverlay";
 import { CaptureLoginView } from "./views/CaptureLoginView";
@@ -105,8 +106,9 @@ function ShellOutletSuspense(): React.ReactElement {
  */
 function ChatRouteSwitch(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
+  const { isMobileLayout } = useAuraCapabilities();
   if (effectiveMode === "public") {
-    return <PublicChatView />;
+    return isMobileLayout ? <MobilePublicChatView /> : <PublicChatView />;
   }
   return <ChatAppRoute />;
 }
@@ -120,8 +122,9 @@ function ChatRouteSwitch(): React.ReactElement {
  */
 function LandingRoute(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
+  const { isMobileLayout } = useAuraCapabilities();
   if (effectiveMode === "public") {
-    return <PublicChatView />;
+    return isMobileLayout ? <MobilePublicChatView /> : <PublicChatView />;
   }
   return <LastAppRedirect />;
 }

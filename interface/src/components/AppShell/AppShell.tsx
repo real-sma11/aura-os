@@ -17,8 +17,9 @@ import { useOnboardingStore } from "../../features/onboarding/onboarding-store";
 import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardingTaskWatcher";
 import { useShallow } from "zustand/react/shallow";
 import { AuraShell } from "../AuraShell";
-import { MobileShell } from "../../mobile/shell";
+import { MobileShell, MobilePublicShell } from "../../mobile/shell";
 import { useUIModeStore } from "../../stores/ui-mode-store";
+import { useEffectiveMode } from "../../stores/use-effective-mode";
 import { markShellVisible } from "../../lib/perf/startup-perf";
 import {
   applyAuraCaptureSeedPlan,
@@ -99,6 +100,7 @@ function ProjectCreationModalHost() {
 function ResponsiveShell() {
   const { isMobileLayout } = useAuraCapabilities();
   const uiMode = useUIModeStore((s) => s.mode);
+  const effectiveMode = useEffectiveMode();
 
   useEffect(() => {
     void import("../../lib/analytics").then(({ registerProperty }) => {
@@ -106,7 +108,12 @@ function ResponsiveShell() {
     });
   }, [uiMode, isMobileLayout]);
 
-  if (isMobileLayout) return <MobileShell />;
+  if (isMobileLayout) {
+    // Public visitors on mobile get a dedicated chrome
+    // (`MobilePublicShell`) — `MobileShell` is project/auth coupled
+    // and would not render a logged-out surface correctly.
+    return effectiveMode === "public" ? <MobilePublicShell /> : <MobileShell />;
+  }
   return <AuraShell />;
 }
 

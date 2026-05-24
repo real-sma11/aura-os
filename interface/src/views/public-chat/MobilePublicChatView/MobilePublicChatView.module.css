@@ -1,0 +1,183 @@
+/*
+ * MobilePublicChatView — single-column mobile public chat surface.
+ *
+ * Layout: column flex, the hero / transcript expands to fill, the
+ * composer sticks at the bottom. The page background and any
+ * surrounding chrome (topbar, drawer) are owned by `MobilePublicShell`;
+ * this stylesheet stays scoped to the chat-content rectangle.
+ *
+ * Borrows numbers from dom's overwritten `LoggedOutShell.module.css`
+ * mobile pass (commit 30dc4c6f7): 16px gutters, `env(safe-area-inset-bottom)`
+ * on the input bar, and 32px breathing room around the empty hero so
+ * the composer keeps its safe area on iOS.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  background: var(--color-bg-canvas, #0b0b0e);
+  color: var(--color-text-primary);
+}
+
+.heroSlot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 32px 20px;
+  gap: 12px;
+}
+
+.heroHeading {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  max-width: 320px;
+}
+
+.heroBlurb {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text-muted, #9aa0a6);
+  max-width: 280px;
+}
+
+.transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transcriptEmpty {
+  margin: auto;
+  font-size: 16px;
+  color: var(--color-text-muted, #9aa0a6);
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.messageRow {
+  display: flex;
+}
+
+.messageRowUser {
+  justify-content: flex-end;
+}
+
+.messageRowAssistant {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  max-width: 86%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-elevated, #111827) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #334155) 60%, transparent);
+  white-space: pre-wrap;
+  line-height: 1.45;
+  font-size: 15px;
+}
+
+.messageRowUser .messageBubble {
+  color: #fff;
+  background: color-mix(in srgb, #7c3aed 84%, transparent);
+  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
+}
+
+/*
+ * Composer pill. Sticks to the bottom of the column with safe-area
+ * padding so iOS home-indicator doesn't overlap the input. Same
+ * grid layout as the desktop input bar (`PublicChatView.module.css`'s
+ * `.inputBarSlot`) — 1fr input + auto-sized send — but full-width
+ * inside the column instead of a centred 760px pill.
+ */
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid color-mix(in srgb, var(--color-border, #334155) 60%, transparent);
+  background: color-mix(in srgb, var(--color-bg-elevated, #111827) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.composerLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.composerInput {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border, #334155) 70%, transparent);
+  background: color-mix(in srgb, var(--color-bg-canvas, #0b0b0e) 80%, transparent);
+  color: var(--color-text-primary);
+  font-size: 16px; /* 16px prevents iOS zoom-on-focus */
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.composerInput::placeholder {
+  color: var(--color-text-muted, #9aa0a6);
+}
+
+.composerInput:focus {
+  border-color: color-mix(in srgb, #7c3aed 70%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #7c3aed 28%, transparent);
+}
+
+.composerInput:disabled {
+  opacity: 0.7;
+}
+
+.composerSend {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-text-primary, #ffffff);
+  color: var(--color-bg-canvas, #0b0b0e);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.composerSend:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.composerError {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--color-text-error, #ef4444);
+}

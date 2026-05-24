@@ -1,0 +1,279 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowUp } from "lucide-react";
+import {
+  streamPublicChat,
+  type PublicChatStreamHandle,
+  type PublicChatTurn,
+} from "../../../api/public-chat";
+import {
+  usePublicChatStore,
+  type PublicMessage,
+  type PublicSession,
+} from "../../../stores/public-chat-store";
+import styles from "./MobilePublicChatView.module.css";
+
+/**
+ * Mobile-only public chat surface.
+ *
+ * Mounts at `/` and `/chat` when the layout is mobile and the
+ * effective UI mode is `public`. Distinct from the desktop
+ * `PublicChatView` — this surface intentionally drops the
+ * decorative `MockAuraApp`, persona swap, persona tick rail, and
+ * site-wallpaper system. On mobile the visitor lands on a single
+ * "What do you want to create?" composer; once they submit, the
+ * route flips to `/chat?session=<id>` and the same composer becomes
+ * a sticky bottom input below a scrollable transcript.
+ *
+ * State sharing: backed by the same [`usePublicChatStore`] and the
+ * same [`streamPublicChat`] SSE client as the desktop surface, so
+ * sessions and history are continuous across resize / device
+ * switches mid-session.
+ */
+
+const PUBLIC_CHAT_PATH = "/chat";
+
+function publicChatRoute(sessionId: string): string {
+  return `${PUBLIC_CHAT_PATH}?session=${encodeURIComponent(sessionId)}`;
+}
+
+function findReusableEmptySessionId(
+  sessions: Record<string, PublicSession>,
+  sessionOrder: readonly string[],
+): string | null {
+  return (
+    sessionOrder.find((id) => {
+      const session = sessions[id];
+      return session != null && session.turns.length === 0;
+    }) ?? null
+  );
+}
+
+function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] {
+  return turns.flatMap((turn): PublicChatTurn[] => {
+    if (turn.role === "user") {
+      return [{ role: "user", content: turn.content }];
+    }
+    if (turn.mode === "code" || turn.mode === "plan") {
+      return [{ role: "assistant", content: turn.content }];
+    }
+    return [];
+  });
+}
+
+function messageText(message: PublicMessage): string {
+  if ("content" in message) return message.content;
+  return `${message.mode} generated from: ${message.prompt}`;
+}
+
+const COMPOSER_PLACEHOLDER = "What do you want to create?";
+
+export function MobilePublicChatView(): React.ReactElement {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const activeSessionId = searchParams.get("session");
+  const isChatPage = location.pathname === PUBLIC_CHAT_PATH;
+
+  const sessions = usePublicChatStore((s) => s.sessions);
+  const sessionOrder = usePublicChatStore((s) => s.sessionOrder);
+  const createSession = usePublicChatStore((s) => s.createSession);
+  const ensureToken = usePublicChatStore((s) => s.ensureToken);
+  const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
+  const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
+  const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
+  const setTurnCount = usePublicChatStore((s) => s.setTurnCount);
+
+  const [draft, setDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const streamRef = useRef<PublicChatStreamHandle | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+
+  const activeSession =
+    activeSessionId != null ? sessions[activeSessionId] ?? null : null;
+
+  // On `/chat` without a valid session, mint or reuse one and rewrite
+  // the URL. Mirrors `PublicChatView`'s landing-into-chat behaviour
+  // so deep links to `/chat` always resolve to a real session row.
+  useEffect(() => {
+    if (!isChatPage) return;
+    if (activeSessionId != null && activeSession != null) return;
+    const reusableId = findReusableEmptySessionId(sessions, sessionOrder);
+    const nextSessionId = reusableId ?? createSession();
+    navigate(publicChatRoute(nextSessionId), { replace: true });
+  }, [
+    activeSession,
+    activeSessionId,
+    createSession,
+    isChatPage,
+    navigate,
+    sessionOrder,
+    sessions,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.close();
+      streamRef.current = null;
+    };
+  }, []);
+
+  // Keep the transcript pinned to the latest message as tokens stream
+  // in. We scroll the inner `.transcript` container (not `window`) so
+  // the topbar + composer stay fixed.
+  useEffect(() => {
+    const node = transcriptRef.current;
+    if (node == null) return;
+    node.scrollTop = node.scrollHeight;
+  }, [activeSession?.turns.length, activeSession?.updatedAt]);
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+      event.preventDefault();
+      const message = draft.trim();
+      if (!message || isSending) return;
+
+      const state = usePublicChatStore.getState();
+      const targetSessionId =
+        activeSessionId && state.sessions[activeSessionId]
+          ? activeSessionId
+          : findReusableEmptySessionId(state.sessions, state.sessionOrder) ??
+            createSession();
+      const history = toPublicChatHistory(
+        state.sessions[targetSessionId]?.turns ?? [],
+      );
+      const assistantMessageId = `assistant-${Date.now().toString(36)}`;
+
+      setDraft("");
+      setSendError(null);
+      setIsSending(true);
+      navigate(publicChatRoute(targetSessionId), { replace: true });
+
+      try {
+        const token = await ensureToken();
+        appendUserTurn(targetSessionId, message);
+        streamRef.current = streamPublicChat({
+          token,
+          sessionId: targetSessionId,
+          history,
+          message,
+          mode: "code",
+          onDelta: (delta) => {
+            appendAssistantToken(
+              targetSessionId,
+              assistantMessageId,
+              delta,
+              "code",
+            );
+          },
+          onLimit: setTurnCount,
+          onError: (err) => {
+            setSendError(err.message || "Unable to send message");
+            setIsSending(false);
+            streamRef.current = null;
+          },
+          onDone: () => {
+            commitAssistant(targetSessionId, assistantMessageId);
+            setIsSending(false);
+            streamRef.current = null;
+          },
+        });
+      } catch (err) {
+        setSendError(err instanceof Error ? err.message : "Unable to send message");
+        setIsSending(false);
+      }
+    },
+    [
+      activeSessionId,
+      appendAssistantToken,
+      appendUserTurn,
+      commitAssistant,
+      createSession,
+      draft,
+      ensureToken,
+      isSending,
+      navigate,
+      setTurnCount,
+    ],
+  );
+
+  return (
+    <div className={styles.root} data-testid="mobile-public-chat-view">
+      {!isChatPage ? (
+        <div className={styles.heroSlot}>
+          <h1 className={styles.heroHeading}>{COMPOSER_PLACEHOLDER}</h1>
+          <p className={styles.heroBlurb}>
+            Send Aura a prompt and start building.
+          </p>
+        </div>
+      ) : (
+        <div
+          ref={transcriptRef}
+          className={styles.transcript}
+          aria-live="polite"
+          aria-label="Chat transcript"
+          data-testid="mobile-public-chat-transcript"
+        >
+          {activeSession && activeSession.turns.length > 0 ? (
+            activeSession.turns.map((message) => (
+              <div
+                key={message.id}
+                className={`${styles.messageRow} ${
+                  message.role === "user"
+                    ? styles.messageRowUser
+                    : styles.messageRowAssistant
+                }`}
+              >
+                <div className={styles.messageBubble}>
+                  {messageText(message)}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className={styles.transcriptEmpty} aria-hidden="true">
+              {COMPOSER_PLACEHOLDER}
+            </div>
+          )}
+        </div>
+      )}
+
+      <form className={styles.composer} onSubmit={handleSubmit}>
+        <label className={styles.composerLabel} htmlFor="mobile-public-chat-input">
+          Message Aura
+        </label>
+        <input
+          id="mobile-public-chat-input"
+          className={styles.composerInput}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={COMPOSER_PLACEHOLDER}
+          disabled={isSending}
+          autoComplete="off"
+          autoCorrect="on"
+          spellCheck="true"
+          enterKeyHint="send"
+        />
+        <button
+          type="submit"
+          className={styles.composerSend}
+          disabled={isSending || draft.trim().length === 0}
+          aria-label={isSending ? "Sending" : "Send"}
+        >
+          <ArrowUp size={18} strokeWidth={2.4} aria-hidden="true" />
+        </button>
+        {sendError ? (
+          <p className={styles.composerError} role="alert">
+            {sendError}
+          </p>
+        ) : null}
+      </form>
+    </div>
+  );
+}
