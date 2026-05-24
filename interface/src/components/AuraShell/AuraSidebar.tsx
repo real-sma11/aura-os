@@ -237,7 +237,7 @@ function PublicSearchBox(): React.ReactElement {
 
 const NEW_CHAT_BUTTON_STYLE: React.CSSProperties = {
   background: "transparent",
-  border: "1px solid var(--color-border)",
+  border: "none",
   color: "var(--color-text-primary, inherit)",
   borderRadius: 6,
   width: 24,
