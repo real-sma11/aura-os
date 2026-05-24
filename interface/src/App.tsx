@@ -330,7 +330,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="product"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <ProductView />
                 </Suspense>
               }
