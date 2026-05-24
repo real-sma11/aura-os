@@ -101,6 +101,32 @@ vi.mock("../../stores/ui-modal-store", () => ({
   useUIModalStore: (selector: (state: typeof uiModalState) => unknown) => selector(uiModalState),
 }));
 
+const profileState = {
+  profile: {
+    name: "Ada Lovelace",
+    handle: "@ada",
+    bio: "",
+    website: "",
+    location: "",
+    joinedDate: "",
+    avatarUrl: undefined as string | undefined,
+  },
+};
+
+const billingState = {
+  subscription: { plan: "Pro" } as { plan: string } | null,
+};
+
+vi.mock("../../stores/profile-store", () => ({
+  useProfileStore: (selector: (state: typeof profileState) => unknown) =>
+    selector(profileState),
+}));
+
+vi.mock("../../stores/billing-store", () => ({
+  useBillingStore: (selector: (state: typeof billingState) => unknown) =>
+    selector(billingState),
+}));
+
 vi.mock("../../hooks/use-active-app", () => ({
   useActiveApp: () => activeAppState.activeApp,
   useActiveAppId: () => activeAppState.activeApp.id,

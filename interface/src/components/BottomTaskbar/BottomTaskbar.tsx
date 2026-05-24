@@ -9,6 +9,8 @@ import {
   Settings,
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
+import { useProfileStore } from "../../stores/profile-store";
+import { useBillingStore } from "../../stores/billing-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import type { UIMode } from "../../stores/ui-mode-store";
@@ -21,6 +23,7 @@ import {
 import { AppNavRail, TaskbarIconButton, TASKBAR_ICON_SIZE } from "../AppNavRail";
 import { useDesktopContextMenu } from "../DesktopContextMenu";
 import { FavoriteAgentsStrip } from "./FavoriteAgentsStrip";
+import { ProfilePill } from "./ProfilePill";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PoweredByGridButton } from "./PoweredByGridButton";
@@ -46,13 +49,14 @@ export interface BottomTaskbarProps {
    * panel's bottom edge.
    *
  * - `public`: only the `ThemeToggleButton` in the right slot.
- * - `simple`: Credits, Settings, and ThemeToggle in the right slot.
- *   No Desktop button, no app rail center, no left/center pill at
- *   all, no profile shortcut, no clock, no Help, no collapse chevron
- *   — a minimal authed surface.
- * - `advanced`: full chrome (Desktop + favorites left, AppNavRail
- *   center, collapsible right cluster with Credits/Settings/
- *   ThemeToggle/Help/Profile, plus the clock readout).
+ * - `simple`: bottom-left `ProfilePill` (avatar + name + plan)
+ *   plus Credits, Settings, and ThemeToggle in the right slot.
+ *   No Desktop button, no app rail center, no center pill, no
+ *   profile rail shortcut, no clock, no Help, no collapse chevron
+ *   — a minimal authed surface anchored by the profile pill.
+ * - `advanced`: full chrome (ProfilePill + Desktop + favorites left,
+ *   AppNavRail center, collapsible right cluster with Credits/
+ *   Settings/ThemeToggle/Help/Profile, plus the clock readout).
    */
   mode: UIMode;
 }
@@ -106,18 +110,23 @@ function PublicBottomTaskbar(): React.ReactElement {
 
 /**
  * Authenticated (Simple / Advanced) taskbar render path. The outer
- * `.bar` div, the `.right` flex container, and the `rightPrimary`
- * cluster are mounted unconditionally — so flipping Simple <->
- * Advanced reconciles the load-bearing chrome in place (the outer
- * `.bar` reserves `--shell-chrome-outer-height`). The `.left` and
- * `.center` pill containers themselves are now gated on `isAdvanced`:
- * Simple is a chat-only surface, so the previously-empty pills
- * disappear entirely rather than rendering as floating empty chrome.
+ * `.bar` div, the `.left` pill (anchored by `<ProfilePill />`), the
+ * `.right` flex container, and the `rightPrimary` cluster are mounted
+ * unconditionally — so flipping Simple <-> Advanced reconciles the
+ * load-bearing chrome in place (the outer `.bar` reserves
+ * `--shell-chrome-outer-height`). The `.center` pill container is
+ * still gated on `isAdvanced`.
+ *
+ * This component acts as the container for the presentational
+ * `<ProfilePill />`: it reads `profile-store` (display name, avatar),
+ * `billing-store` (subscription plan), and `ui-modal-store`
+ * (`openOrgSettings`) and pipes them in as props.
  *
  * Branches on `isAdvanced` to gate:
  *
- *   - `.left`:  the entire pill (Desktop button + `<FavoriteAgentsStrip />`)
- *     — Advanced only.
+ *   - `.left`:  the pill is mounted in both modes; the trailing
+ *     Desktop `TaskbarIconButton` and `<FavoriteAgentsStrip />` are
+ *     Advanced-only. Simple shows the profile pill on its own.
  *   - `.center`: the entire pill (AppNavRail + Apps + collapse
  *     chevron) — Advanced only.
  *   - `.right.rightPrimary`:
@@ -147,6 +156,8 @@ function AuthedBottomTaskbar({
   const openBuyCredits = useUIModalStore((s) => s.openBuyCredits);
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
+  const profile = useProfileStore((s) => s.profile);
+  const plan = useBillingStore((s) => s.subscription?.plan);
   const activeApp = useActiveApp();
   const navigate = useNavigate();
   const previousPath = useAppUIStore((s) => s.previousPath);
@@ -194,8 +205,14 @@ function AuthedBottomTaskbar({
       data-ui-mode={mode}
       onContextMenu={onContextMenu}
     >
-      {isAdvanced && (
-        <div className={styles.left}>
+      <div className={styles.left}>
+        <ProfilePill
+          name={profile.name}
+          avatarUrl={profile.avatarUrl}
+          plan={plan ?? undefined}
+          onOpenSettings={openOrgSettings}
+        />
+        {isAdvanced && (
           <TaskbarIconButton
             selected={activeApp.id === "desktop"}
             icon={<Circle size={TASKBAR_ICON_SIZE} />}
@@ -209,9 +226,9 @@ function AuthedBottomTaskbar({
               }
             }}
           />
-          <FavoriteAgentsStrip />
-        </div>
-      )}
+        )}
+        {isAdvanced && <FavoriteAgentsStrip />}
+      </div>
 
       {isAdvanced && (
         <div className={styles.center}>

@@ -1,0 +1,45 @@
+.profilePill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--taskbar-item-size, 30px);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border-radius: 999px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  min-width: 0;
+  color: inherit;
+}
+
+.profilePill:hover,
+.profilePill:focus-visible {
+  background: var(--color-surface-hover);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.plan {
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}

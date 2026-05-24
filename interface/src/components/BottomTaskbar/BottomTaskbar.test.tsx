@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockNavigate = vi.fn();
@@ -137,6 +137,32 @@ vi.mock("../CreditsBadge/useCreditBalance", () => ({
 
 vi.mock("../../stores/ui-modal-store", () => ({
   useUIModalStore: (selector: (state: typeof uiModalState) => unknown) => selector(uiModalState),
+}));
+
+const profileState = {
+  profile: {
+    name: "Ada Lovelace",
+    handle: "@ada",
+    bio: "",
+    website: "",
+    location: "",
+    joinedDate: "",
+    avatarUrl: undefined as string | undefined,
+  },
+};
+
+const billingState = {
+  subscription: { plan: "Pro" } as { plan: string } | null,
+};
+
+vi.mock("../../stores/profile-store", () => ({
+  useProfileStore: (selector: (state: typeof profileState) => unknown) =>
+    selector(profileState),
+}));
+
+vi.mock("../../stores/billing-store", () => ({
+  useBillingStore: (selector: (state: typeof billingState) => unknown) =>
+    selector(billingState),
 }));
 
 vi.mock("../../hooks/use-active-app", () => ({
@@ -510,7 +536,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Simple vs Advanced visible difference", () => {
-    it("hides Desktop, favorites, app rail, both collapse chevrons, Help, the clock, and the .left/.center pills entirely in Simple mode", () => {
+    it("hides Desktop, favorites, app rail, both collapse chevrons, Help, the clock, and the .center pill in Simple mode (ProfilePill stays)", () => {
       // Even with a non-default stored collapse state (`false` would
       // expose the right-cluster contents in Advanced), Simple mode
       // never surfaces the chevron — it has no collapse affordance.
@@ -520,15 +546,19 @@ describe("BottomTaskbar", () => {
       const { container } = render(<BottomTaskbar mode="simple" />);
 
       // Left slot — Desktop button + favorite agents are Advanced-only,
-      // and the `.left` pill itself doesn't mount in Simple so the row
-      // doesn't carry an empty rounded chrome pill on the left edge.
+      // but the `.left` pill itself now mounts in Simple too because it
+      // anchors the always-on `<ProfilePill />`. The pill remains a
+      // single-click target to open settings.
       expect(
         screen.queryByRole("button", { name: "Desktop" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Desk Helper" }),
       ).not.toBeInTheDocument();
-      expect(container.querySelector(".left")).toBeNull();
+      expect(container.querySelector(".left")).not.toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Open settings" }),
+      ).toBeInTheDocument();
 
       // Center slot — AppNavRail + Apps + apps-collapse chevron are
       // Advanced-only, and the `.center` pill itself unmounts in
@@ -582,12 +612,14 @@ describe("BottomTaskbar", () => {
       expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
     });
 
-    it("flipping mode='advanced' -> mode='simple' removes Desktop / Apps / clock / .left / .center / profile rail without remounting .bar", () => {
+    it("flipping mode='advanced' -> mode='simple' removes Desktop / Apps / clock / .center / profile rail without remounting .bar (ProfilePill survives in .left)", () => {
       // Reference-equality across Simple <-> Advanced is asserted in
       // the "preserves outer .bar DOM identity" test in the
       // right-click describe block; this case covers the *visible*
       // differential — what disappears between Advanced and Simple
-      // inside the same outer container.
+      // inside the same outer container. The `.left` pill stays
+      // mounted in both modes now (anchored by `<ProfilePill />`),
+      // so only `.center` unmounts on the Simple flip.
       getTaskbarRightCollapsed.mockReturnValue(false);
       const { container, rerender } = render(<BottomTaskbar mode="advanced" />);
 
@@ -607,7 +639,10 @@ describe("BottomTaskbar", () => {
         screen.queryByRole("button", { name: "Apps" }),
       ).not.toBeInTheDocument();
       expect(container.querySelector(".clock")).toBeNull();
-      expect(container.querySelector(".left")).toBeNull();
+      expect(container.querySelector(".left")).not.toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Open settings" }),
+      ).toBeInTheDocument();
       expect(container.querySelector(".center")).toBeNull();
       expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
     });
