@@ -165,6 +165,50 @@ describe("MockAuraApp", () => {
     ).toBeInTheDocument();
   });
 
+  it("raises a DM window above its peers on mousedown and marks it focused", () => {
+    vi.useFakeTimers();
+
+    render(<MockAuraApp />);
+
+    // Advance far enough for both architect_frontend and
+    // architect_backend windows to mount via the scripted loop, so
+    // we have a real two-window stack to reorder.
+    for (let i = 0; i < 12; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+    }
+
+    const frontend = screen.getByTestId("dm-window-architect_frontend");
+    const backend = screen.getByTestId("dm-window-architect_backend");
+
+    const readZ = (el: HTMLElement): number => Number(el.style.zIndex);
+    const initialFrontendZ = readZ(frontend);
+    const initialBackendZ = readZ(backend);
+    expect(initialFrontendZ).not.toEqual(initialBackendZ);
+
+    // Pick whichever window is currently underneath; clicking it
+    // must promote it above its peer regardless of which one the
+    // script most recently touched.
+    const [lower, higher] =
+      initialFrontendZ < initialBackendZ
+        ? [frontend, backend]
+        : [backend, frontend];
+
+    // Sanity: the higher-z window currently carries the focused
+    // marker (script-driven focus and z-order stay in sync).
+    expect(higher).toHaveAttribute("data-focused", "true");
+    expect(lower).not.toHaveAttribute("data-focused");
+
+    act(() => {
+      fireEvent.mouseDown(lower);
+    });
+
+    expect(readZ(lower)).toBeGreaterThan(readZ(higher));
+    expect(lower).toHaveAttribute("data-focused", "true");
+    expect(higher).not.toHaveAttribute("data-focused");
+  });
+
   it("renders a single participant name in each DM window titlebar", () => {
     vi.useFakeTimers();
 

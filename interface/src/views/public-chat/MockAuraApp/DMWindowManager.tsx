@@ -99,6 +99,7 @@ type ManagerState = {
 
 type ManagerAction =
   | { type: "advance" }
+  | { type: "focus"; threadId: ThreadId }
   | { type: "beginClose" }
   | { type: "reset" };
 
@@ -160,6 +161,30 @@ function managerReducer(
         nextKey: state.nextKey + 1,
         tick,
       };
+    }
+    case "focus": {
+      // User clicked a DM window — raise it above its peers by
+      // bumping `lastTouchedAt`, which feeds `zByThread` /
+      // `focusedThreadId` below. Guarded so a stray click during
+      // the reverse-z close cascade can't reshuffle which window
+      // collapses first. Also a no-op when the target is unknown
+      // (script hasn't opened it yet) or already on top, to avoid
+      // pointless re-renders.
+      if (state.phase !== "running") return state;
+      const idx = state.windows.findIndex(
+        (w) => w.threadId === action.threadId,
+      );
+      if (idx === -1) return state;
+      let maxTouched = state.windows[0].lastTouchedAt;
+      for (const w of state.windows) {
+        if (w.lastTouchedAt > maxTouched) maxTouched = w.lastTouchedAt;
+      }
+      if (state.windows[idx].lastTouchedAt === maxTouched) return state;
+      const tick = state.tick + 1;
+      const nextWindows = state.windows.map((w, i) =>
+        i === idx ? { ...w, lastTouchedAt: tick } : w,
+      );
+      return { ...state, windows: nextWindows, tick };
     }
     case "beginClose": {
       // Idempotent: a `beginClose` while already closing is a no-op
@@ -296,17 +321,13 @@ export function DMWindowManager(): ReactNode {
   }, [state.cursor, state.phase, state.windows.length]);
 
   // Stable callback the child windows use to nudge their thread to
-  // the top of the z-index stack. Currently the manager only bumps
-  // on frame advance (via `lastTouchedAt`), but exposing this hook
-  // means a future hover/focus interaction can raise the window
-  // without writing into the reducer's frames map. The `threadId`
-  // argument is intentionally unused for now — the decorative loop
-  // has no real "focus" event today; we keep the parameter so a
-  // future consumer can wire mouse interactions in without a
-  // structural change. The `void threadId` line below silences the
-  // unused-arg lint while still documenting the intent.
+  // the top of the z-index stack on mouse-down / drag / resize.
+  // Routes into the reducer's `focus` action, which bumps the
+  // thread's `lastTouchedAt` so `zByThread` and `focusedThreadId`
+  // below promote the clicked window above its peers — same
+  // mechanism the script-driven frame advance uses.
   const focusThread = useCallback((threadId: ThreadId) => {
-    void threadId;
+    dispatch({ type: "focus", threadId });
   }, []);
 
   // Pre-compute the z-index ordering for the current windows array.
