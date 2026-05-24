@@ -112,6 +112,19 @@
   gap: var(--space-2);
   min-width: 0;
   flex-shrink: 0;
+  /*
+   * Anchor the right cluster to the right edge of the bar regardless
+   * of how many flex siblings are present. The bar uses
+   * `justify-content: space-between`, which pushes `.right` to the
+   * far end only when `.left` is also mounted (Advanced). In Simple
+   * mode `.left` and `.center` unmount, leaving `.right` as the sole
+   * flex child — `space-between` then collapses it to the start
+   * (visually moving Credits/Settings/Theme to the left). The auto
+   * left margin restores the right-anchored behaviour without
+   * needing to mount an empty `.left` placeholder, and is a no-op
+   * in Advanced where `.left` already claims its position naturally.
+   */
+  margin-left: auto;
 }
 
 .rightPrimary {
