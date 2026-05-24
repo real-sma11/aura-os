@@ -216,6 +216,49 @@ export function selectTaskActivity(
   return aggregateRows(rows);
 }
 
+/**
+ * Set of `task_id`s that any actively-running loop is currently
+ * working on, scoped to one project (or all loops when `projectId`
+ * is omitted).
+ *
+ * This is the canonical "is this task being worked on right now?"
+ * selector for the entire UI: `useLiveTaskIdsForProject` (in
+ * `live-task-ids-store.ts`) is now a thin derived view over this
+ * function, so every per-row spinner — `TaskList`, `TaskFeed`,
+ * `useMobileTasks`, the Run-pane status etc. — reads from a single
+ * source of truth and cannot diverge.
+ *
+ * Source of `current_task_id` updates: the registry's
+ * `LoopActivityChanged` broadcasts, published on every
+ * `set_current_task` call (the throttle bypass in
+ * `aura-os-loops::registry::transition` ensures task transitions
+ * never get coalesced with the 4Hz cadence). A `task_started` →
+ * `set_current_task(Some(id))` lights the row; `task_completed` /
+ * `task_failed` → `set_current_task(None)` clears it; `LoopEnded`
+ * removes the loop entirely (e.g. on stop / cancel / panic), at
+ * which point this selector contributes nothing for that loop
+ * regardless of its last `current_task_id`.
+ *
+ * The `isLoopActivityActive` filter explicitly excludes paused /
+ * stopped / completed rows, so a paused loop's last task won't show
+ * a spinner even while the row lingers in the store.
+ */
+export function selectActiveTaskIdsForProject(
+  state: LoopActivityState,
+  projectId: string | null | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const row of Object.values(state.loops)) {
+    if (projectId && row.loopId.project_id !== projectId) continue;
+    if (!isLoopActivityActive(row.activity.status)) continue;
+    const taskId = row.activity.current_task_id;
+    if (typeof taskId === "string" && taskId.length > 0) {
+      out.add(taskId);
+    }
+  }
+  return out;
+}
+
 /* ── Watchdog ──────────────────────────────────────────────────────
  * Starts a lightweight interval that demotes idle loops to `stalled`.
  * Exported so the auth bootstrap can start it exactly once, and stops

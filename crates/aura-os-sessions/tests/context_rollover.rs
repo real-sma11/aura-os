@@ -238,6 +238,8 @@ async fn update_context_usage_accumulates() {
             session_id: session.session_id,
             input_tokens: 20_000,
             output_tokens: 20_000,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
             total_input_tokens: None,
             total_output_tokens: None,
             context_usage_estimate: None,
@@ -260,6 +262,8 @@ async fn update_context_usage_accumulates() {
             session_id: session.session_id,
             input_tokens: 40_000,
             output_tokens: 40_000,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
             total_input_tokens: None,
             total_output_tokens: None,
             context_usage_estimate: None,
@@ -309,6 +313,8 @@ async fn context_usage_caps_at_one() {
             session_id: session.session_id,
             input_tokens: 250_000,
             output_tokens: 250_000,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
             total_input_tokens: None,
             total_output_tokens: None,
             context_usage_estimate: None,
@@ -355,6 +361,8 @@ async fn exact_context_usage_overrides_additive_estimate() {
             session_id: session.session_id,
             input_tokens: 12_000,
             output_tokens: 4_000,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
             total_input_tokens: Some(120_000),
             total_output_tokens: Some(30_000),
             context_usage_estimate: Some(0.73),
@@ -401,6 +409,8 @@ async fn end_to_end_usage_triggers_rollover() {
         session_id: session.session_id,
         input_tokens: 30_000,
         output_tokens: 30_000,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
         total_input_tokens: None,
         total_output_tokens: None,
         context_usage_estimate: None,
@@ -424,6 +434,8 @@ async fn end_to_end_usage_triggers_rollover() {
         session_id: session.session_id,
         input_tokens: 30_000,
         output_tokens: 30_000,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
         total_input_tokens: None,
         total_output_tokens: None,
         context_usage_estimate: None,
@@ -467,4 +479,55 @@ async fn end_to_end_usage_triggers_rollover() {
         .find(|s| s.id == session.session_id.to_string())
         .expect("session should exist in storage");
     assert_eq!(old.status.as_deref(), Some("rolled_over"));
+}
+
+#[tokio::test]
+async fn update_context_usage_counts_cache_tokens_toward_utilization() {
+    let (storage_url, _db) = start_mock_storage().await;
+    let tmp = tempfile::TempDir::new().expect("temp dir should be created");
+    let store = Arc::new(
+        aura_os_store::SettingsStore::open(tmp.path()).expect("SettingsStore should open"),
+    );
+    store_test_jwt(&store);
+
+    let svc = make_session_service(&store, &storage_url, 0.8);
+
+    let pid = ProjectId::new();
+    let aid = AgentInstanceId::new();
+
+    let session = svc
+        .create_session(CreateSessionParams {
+            agent_instance_id: aid,
+            project_id: pid,
+            active_task_id: None,
+            summary: String::new(),
+            user_id: None,
+            model: None,
+        })
+        .await
+        .expect("session creation should succeed");
+
+    // 10k input + 10k output + 60k cache_read + 20k cache_creation = 100k / 200k = 0.5
+    let updated = svc
+        .update_context_usage(UpdateContextUsageParams {
+            project_id: pid,
+            agent_instance_id: aid,
+            session_id: session.session_id,
+            input_tokens: 10_000,
+            output_tokens: 10_000,
+            cache_creation_input_tokens: 20_000,
+            cache_read_input_tokens: 60_000,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            context_usage_estimate: None,
+        })
+        .await
+        .expect("context usage update should succeed");
+
+    let expected = 100_000.0 / 200_000.0;
+    assert!(
+        (updated.context_usage_estimate - expected).abs() < 0.001,
+        "cache tokens should count toward utilization (got {})",
+        updated.context_usage_estimate
+    );
 }

@@ -87,6 +87,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+.attachDiagnosticsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs, 11px);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.attachDiagnosticsRow input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.attachDiagnosticsRow input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
 @media (max-width: 640px) {
   .formColumn {
     flex: 1 1 auto;

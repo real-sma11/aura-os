@@ -161,6 +161,8 @@ fn automaton_start_params_serializes_proxy_identity_context() {
             default_model: Some("aura-claude-opus-4-7".into()),
             fallback_model: None,
             prompt_caching_enabled: Some(true),
+            prompt_cache_key: None,
+            prompt_cache_retention: None,
         }),
         user_id: Some("user-1".into()),
         intent_classifier: None,

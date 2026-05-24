@@ -1,0 +1,160 @@
+/* Ported verbatim from aura-web/src/components/PageHero/PageHero.css with one
+   replacement: `var(--taskbar-safe-offset)` -> `var(--marketing-taskbar-safe-offset)`
+   so the value resolves from `index.css`'s `--marketing-*` token namespace
+   without colliding with the app shell taskbar variables. */
+.pageHero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 120px 32px 0;
+  overflow: hidden;
+  background: #000;
+  min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
+  min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
+}
+
+.pageHeroNoPreview {
+  min-height: 0;
+  padding-bottom: 32px;
+}
+
+.pageHeroContent {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 20px;
+}
+
+.pageHeroLabel {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.pageHeroHeadline {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 300;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  color: var(--color-text-primary);
+  max-width: 680px;
+}
+
+.pageHeroHeadlineMuted {
+  color: var(--color-text-muted);
+}
+
+.pageHeroDescription {
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-secondary);
+  max-width: 540px;
+}
+
+.pageHeroActions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.pageHeroActions > * {
+  max-width: 100%;
+}
+
+/* Inline CTA button — replaces the `ButtonAction` component from aura-web.
+   This is only used when the consuming view passes `ctaText`; the Product
+   view passes `preview={null}` and no `ctaText` so this branch is dormant
+   today. We still ship the styles so future marketing pages can opt in. */
+.pageHeroCtaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 20px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: #0a0a0c;
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--marketing-transition-fast, 150ms ease);
+}
+
+.pageHeroCtaButton:hover {
+  background: #f4f4f4;
+}
+
+.pageHeroPreview {
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 48px auto 0;
+}
+
+.pageHeroPreviewPlaceholder {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #1a1a1a;
+  border: 1px solid var(--color-border);
+}
+
+@media (max-width: 768px) {
+  .pageHero {
+    padding: 96px 24px 0;
+  }
+
+  .pageHeroNoPreview {
+    padding-bottom: 24px;
+  }
+
+  .pageHeroContent {
+    gap: 20px;
+  }
+
+  .pageHeroHeadline {
+    font-size: clamp(36px, 11vw, 50px);
+  }
+
+  .pageHeroDescription {
+    font-size: var(--text-lg);
+    max-width: 620px;
+  }
+
+  .pageHeroActions {
+    gap: 14px;
+  }
+
+  .pageHeroPreview {
+    margin-top: 36px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pageHero {
+    padding: 84px 20px 0;
+  }
+
+  .pageHeroNoPreview {
+    padding-bottom: 20px;
+  }
+
+  .pageHeroHeadline {
+    font-size: clamp(34px, 12vw, 46px);
+  }
+
+  .pageHeroPreview {
+    margin-top: 28px;
+  }
+}

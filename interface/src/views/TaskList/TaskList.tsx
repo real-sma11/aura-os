@@ -12,6 +12,7 @@ import { isLoopActivityActive } from "../../shared/types/aura-events";
 import { useDelayedEmpty } from "../../shared/hooks/use-delayed-empty";
 import { titleSortKey } from "../../utils/collections";
 import { filterExplorerNodes } from "../../shared/utils/filterExplorerNodes";
+import { getTaskDisplayStatus } from "../../shared/utils/task-display-status";
 import { Explorer } from "@cypher-asi/zui";
 import { EmptyState } from "../../components/EmptyState";
 import { useSidekickStore } from "../../stores/sidekick-store";
@@ -32,7 +33,7 @@ import {
   useSidekickItemContextMenu,
 } from "../../components/SidekickItemContextMenu";
 import { DeleteSpecModal } from "../../components/DeleteSpecModal";
-import { useDeleteSpec } from "../../hooks/use-delete-spec";
+import { useDeleteSpec, isPendingSpecId } from "../../hooks/use-delete-spec";
 import { useRenameSpec } from "../../hooks/use-rename-spec";
 
 type TaskMenuTarget =
@@ -106,12 +107,7 @@ export function TaskList({ searchQuery }: { searchQuery: string }) {
 
       function toNode(task: Task): ExplorerNodeWithSuffix {
         const subtasks = childrenByParent.get(task.task_id);
-        const displayStatus =
-          task.status === "in_progress" &&
-          !liveTaskIds.has(task.task_id) &&
-          (!loopActive || liveTaskIds.size > 0)
-            ? "ready"
-            : task.status;
+        const displayStatus = getTaskDisplayStatus(task, liveTaskIds, loopActive);
         return {
           id: task.task_id,
           label: task.title,
@@ -162,7 +158,11 @@ export function TaskList({ searchQuery }: { searchQuery: string }) {
       const task = taskMap.get(nodeId);
       if (task) return { kind: "task", task };
       const spec = specMap.get(nodeId);
-      if (spec) return { kind: "spec", spec };
+      // Suppress the context menu for optimistic `pending-*` spec rows
+      // -- they have no server-side identity yet, so Rename and Delete
+      // are both no-ops (Delete would round-trip a bare "Bad Request"
+      // from the backend's UUID-only path extractor).
+      if (spec && !isPendingSpecId(spec.spec_id)) return { kind: "spec", spec };
       return null;
     },
     [taskMap, specMap],

@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams } from "react-router-dom";
 import { api, isInsufficientCreditsError, dispatchInsufficientCredits } from "../../api/client";
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
-import { useChatUI } from "../../stores/chat-ui-store";
-import { projectChatHistoryKey } from "../../stores/chat-history-store";
 import { useTaskOutputPanelStore } from "../../stores/task-output-panel-store";
-import { useLiveTaskIdsStore } from "../../stores/live-task-ids-store";
-import { useAutomationLoopStore } from "../../stores/automation-loop-store";
+import {
+  useAutomationLoopStore,
+  useAutomationModel,
+} from "../../stores/automation-loop-store";
 import type { ProjectId } from "../../shared/types";
 import { EventType } from "../../shared/types/aura-events";
 
@@ -41,20 +40,21 @@ function hydrateActiveTasksFromLoopStatus(
 }
 
 /**
- * Seed every piece of "we're running" UI from the response body of
- * `/loop/start` (or `/loop/resume`) so the Run panel row and the Tasks
- * list "live" dot appear immediately — without waiting for the
- * corresponding `task_started` WebSocket event. The backend already
- * resolves the first or interrupted task id before responding, so this
- * closes the dead window that would otherwise leave the sidekick looking
- * idle on the very first task of a new run.
+ * Seed the Run-panel row store from the response body of
+ * `/loop/start` (or `/loop/resume`) so the panel appears immediately
+ * — without waiting for the corresponding `task_started` WebSocket
+ * event. The Tasks-list per-row spinner is fed by the
+ * `useLoopActivityStore`-derived `useLiveTaskIdsForProject` and does
+ * not need a parallel start-response hydration: the backend's
+ * `loop_opened` + `loop_activity_changed` WS events arrive within a
+ * frame of the HTTP response and write `current_task_id` directly
+ * onto the loop-activity store (now the single source of truth).
  */
 function hydrateUiFromLoopStartResponse(
   res: LoopStatusResponse,
   projectId: ProjectId,
 ): void {
   hydrateActiveTasksFromLoopStatus(res, projectId);
-  useLiveTaskIdsStore.getState().hydrateFromLoopStatus(res, projectId);
 }
 
 type AutomationStatus = "idle" | "starting" | "preparing" | "active" | "paused" | "stopped";
@@ -86,16 +86,13 @@ function errorMessage(err: unknown, fallback: string): string {
 export function useAutomationStatus(projectId: ProjectId): AutomationStatusData {
   const subscribe = useEventStore((s) => s.subscribe);
   const connected = useEventStore((s) => s.connected);
-  // The URL's agentInstanceId is the *chat* surface the user is
-  // currently viewing — keeping that around for the chat-ui-store
-  // model selector. The loop runs on a separate `Loop`-role
-  // instance; see `boundLoopId` below.
-  const { agentInstanceId: chatAgentInstanceId } = useParams<{ agentInstanceId: string }>();
-  const streamKey =
-    projectId && chatAgentInstanceId
-      ? projectChatHistoryKey(projectId, chatAgentInstanceId)
-      : null;
-  const { selectedModel } = useChatUI(streamKey ?? "__automation-status__");
+  // Model the user picked in the AutomationBar's own picker. This is
+  // deliberately independent of whichever chat thread is in the URL —
+  // the loop's model is the loop's own per-project setting, not a
+  // side effect of which chat tab happens to be visible. A `null`
+  // here means "let the backend fall back to the bound Loop agent's
+  // stored default_model".
+  const { model: selectedModel } = useAutomationModel(projectId);
   const [activeAgents, setActiveAgents] = useState<string[]>([]);
   const [paused, setPaused] = useState(false);
   const [starting, setStarting] = useState(false);

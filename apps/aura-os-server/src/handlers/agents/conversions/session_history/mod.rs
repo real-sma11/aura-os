@@ -106,6 +106,21 @@ fn parse_user_message_event(
         .and_then(|v| v.as_array().cloned())
         .map(|raw_blocks| deserialize_content_blocks(&event.id, raw_blocks))
         .filter(|blocks| !blocks.is_empty());
+    // Cross-agent provenance. When `persist_user_message` was called
+    // from a cross-agent path (either A→B `send_to_agent` inbound or
+    // B→A reply callback), the persisted content carries
+    // `from_agent_id` — surface it on `SessionEvent` so the chat
+    // panel can label the row "from <agent>" instead of rendering
+    // a cross-agent message indistinguishably from a real user
+    // prompt. Blank values are normalized to `None` so a stray
+    // empty string written by a future producer doesn't trigger
+    // the badge UI.
+    let from_agent_id = content
+        .and_then(|c| c.get("from_agent_id"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     Some(SessionEvent {
         event_id: SessionEventId::new(),
         agent_instance_id,
@@ -117,6 +132,7 @@ fn parse_user_message_event(
         thinking_duration_ms: None,
         created_at: parse_dt(&event.created_at),
         in_flight: None,
+        from_agent_id,
     })
 }
 
@@ -164,6 +180,7 @@ fn parse_assistant_message_end_event(
         thinking_duration_ms: None,
         created_at: parse_dt(&event.created_at),
         in_flight: None,
+        from_agent_id: None,
     })
 }
 
@@ -230,6 +247,7 @@ fn reconstruct_completed_assistant_from_deltas(
         thinking_duration_ms: None,
         created_at: parse_dt(&terminal_event.created_at),
         in_flight: None,
+        from_agent_id: None,
     })
 }
 
@@ -257,5 +275,6 @@ fn parse_task_output_event(
         thinking_duration_ms: None,
         created_at: parse_dt(&event.created_at),
         in_flight: None,
+        from_agent_id: None,
     })
 }

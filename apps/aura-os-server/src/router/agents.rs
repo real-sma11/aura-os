@@ -63,6 +63,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::list_agent_events_paginated),
         )
         .route(
+            "/api/agents/:agent_id/sessions/:session_id/events",
+            get(agents::list_agent_session_events),
+        )
+        .route(
             "/api/agents/:agent_id/runtime/test",
             post(agents::test_agent_runtime),
         )
@@ -77,6 +81,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/agents/:agent_id/reset-session",
             post(agents::reset_agent_session),
+        )
+        .route(
+            "/api/agents/:agent_id/cancel-turn",
+            post(agents::cancel_agent_turn),
         )
         .route(
             "/api/agents/:agent_id/context-usage",
@@ -110,6 +118,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/reset-session",
             post(agents::reset_instance_session),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/cancel-turn",
+            post(agents::cancel_instance_turn),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/context-usage",

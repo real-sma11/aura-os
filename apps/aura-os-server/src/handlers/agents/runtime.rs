@@ -85,16 +85,44 @@ fn non_empty_string(value: &str) -> Option<String> {
 /// there is no provider/routing toggle on the wire. Returns `None` when
 /// no model is set, which tells the harness to use its env defaults
 /// verbatim.
-pub(crate) fn session_model_overrides(model: Option<&str>) -> Option<SessionModelOverrides> {
+///
+/// Stable cache key strategy: pass `Some(cache_key)` derived from the
+/// agent / instance / session identity so OpenAI-family routing can pin
+/// the prefix on the upstream provider. `retention` defaults to the
+/// shorter in-memory TTL when `None`; pass `Some("24h")` for long-lived
+/// project agents whose context survives idle gaps.
+pub(crate) fn session_model_overrides_with_cache(
+    model: Option<&str>,
+    cache_key: Option<String>,
+    retention: Option<&str>,
+) -> Option<SessionModelOverrides> {
     let default_model = model
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)?;
+        .map(str::to_string);
+    let cache_key = cache_key
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let retention = retention
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    if default_model.is_none() && cache_key.is_none() && retention.is_none() {
+        return None;
+    }
     Some(SessionModelOverrides {
-        default_model: Some(default_model),
+        default_model,
         fallback_model: None,
         prompt_caching_enabled: Some(true),
+        prompt_cache_key: cache_key,
+        prompt_cache_retention: retention,
     })
+}
+
+/// Backwards-compatible shorthand used by call sites that don't yet
+/// derive a stable cache key (test harness runtime, dev-loop bootstrap).
+/// New chat surfaces should prefer `session_model_overrides_with_cache`.
+pub(crate) fn session_model_overrides(model: Option<&str>) -> Option<SessionModelOverrides> {
+    session_model_overrides_with_cache(model, None, None)
 }
 
 async fn run_harness_test(
@@ -118,7 +146,7 @@ async fn run_harness_test(
     };
     let config = SessionConfig {
         system_prompt: Some(agent.system_prompt.clone()),
-        agent_id: Some(aura_os_core::harness_agent_id(&agent.agent_id, None)),
+        agent_id: Some(aura_os_core::harness_agent_id(&agent.agent_id, None, None)),
         template_agent_id: Some(agent.agent_id.to_string()),
         agent_name: Some(agent.name.clone()),
         model: model.clone(),
@@ -195,6 +223,8 @@ mod tests {
             .expect("model present should produce overrides");
         assert_eq!(overrides.default_model.as_deref(), Some("claude-sonnet-4"));
         assert_eq!(overrides.prompt_caching_enabled, Some(true));
+        assert!(overrides.prompt_cache_key.is_none());
+        assert!(overrides.prompt_cache_retention.is_none());
     }
 
     #[test]
@@ -202,5 +232,25 @@ mod tests {
         assert!(session_model_overrides(None).is_none());
         assert!(session_model_overrides(Some("")).is_none());
         assert!(session_model_overrides(Some("   ")).is_none());
+    }
+
+    #[test]
+    fn session_model_overrides_with_cache_populates_key_and_retention() {
+        let overrides = session_model_overrides_with_cache(
+            Some("aura-gpt-4.1"),
+            Some("agent:abc-123".into()),
+            Some("24h"),
+        )
+        .expect("model + key should produce overrides");
+        assert_eq!(overrides.prompt_cache_key.as_deref(), Some("agent:abc-123"));
+        assert_eq!(overrides.prompt_cache_retention.as_deref(), Some("24h"));
+    }
+
+    #[test]
+    fn session_model_overrides_with_cache_returns_none_when_all_blank() {
+        assert!(session_model_overrides_with_cache(None, None, None).is_none());
+        assert!(
+            session_model_overrides_with_cache(Some(""), Some("  ".into()), Some("")).is_none()
+        );
     }
 }

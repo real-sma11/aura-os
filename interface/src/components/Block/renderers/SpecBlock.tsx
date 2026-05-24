@@ -1,6 +1,8 @@
+import { useCallback, useRef } from "react";
 import { FileText } from "lucide-react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { useHighlightedHtml } from "../../../shared/hooks/use-highlighted-html";
+import { useMarkdownCopy } from "../../../shared/hooks/use-markdown-copy";
 import { specFilename } from "../../../shared/utils/format";
 import { CopyButton } from "../../CopyButton";
 import { Block } from "../Block";
@@ -23,6 +25,15 @@ export function SpecBlock({ entry, defaultExpanded }: SpecBlockProps) {
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
   const showCopyToolbar = content.length > 0 && !entry.pending;
 
+  // Select+copy of the whole spec body should yield the *original*
+  // markdown source rather than the highlighted-HTML rendering --
+  // otherwise pasting into Obsidian gets a soup of `<span class="hljs-...">`
+  // text with broken indentation. Partial selections fall through to
+  // the browser default.
+  const codeAreaRef = useRef<HTMLDivElement>(null);
+  const getMarkdown = useCallback(() => content, [content]);
+  useMarkdownCopy(codeAreaRef, getMarkdown);
+
   return (
     <Block
       icon={<FileText size={12} />}
@@ -33,13 +44,13 @@ export function SpecBlock({ entry, defaultExpanded }: SpecBlockProps) {
       forceExpanded={entry.pending}
       autoScroll={entry.pending}
       flushBody
+      trailing={
+        showCopyToolbar ? (
+          <CopyButton getMarkdown={() => content} ariaLabel={`Copy ${filename}`} />
+        ) : undefined
+      }
     >
-      {showCopyToolbar ? (
-        <div className={styles.blockBodyToolbar}>
-          <CopyButton getText={() => content} ariaLabel={`Copy ${filename}`} />
-        </div>
-      ) : null}
-      <div className={styles.codeArea}>
+      <div ref={codeAreaRef} className={styles.codeArea}>
         <pre>
           <code
             className="hljs language-markdown"

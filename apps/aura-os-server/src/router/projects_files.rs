@@ -2,8 +2,8 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 
-use crate::handlers::{files, project_artifacts, project_stats, projects};
 use crate::handlers::project_artifacts::THUMBNAIL_MAX_BYTES;
+use crate::handlers::{files, project_artifacts, project_stats, projects};
 use crate::state::AppState;
 
 pub(super) fn project_routes() -> Router<AppState> {

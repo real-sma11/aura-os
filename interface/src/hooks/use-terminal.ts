@@ -7,6 +7,10 @@ import {
 } from "../shared/api/terminal";
 
 export interface UseTerminalOptions {
+  /** Fallback if `spawn()` is somehow never called by the consumer.
+   *  In normal use the rendering layer measures the container and calls
+   *  `spawn(cols, rows)` with the real size, which is the whole point
+   *  of the deferred-spawn flow. */
   cols?: number;
   rows?: number;
   cwd?: string;
@@ -21,6 +25,14 @@ export interface UseTerminalOptions {
 export interface UseTerminalReturn {
   terminalId: string | null;
   connected: boolean;
+  /** Spawn the underlying PTY at the given size. Idempotent: calling
+   *  more than once is a no-op. The hook does NOT spawn on mount —
+   *  consumers must measure their container first and then call this
+   *  so the shell starts at the correct buffer width. Without this,
+   *  PowerShell + ConPTY caches the spawn-time 80x24 size and later
+   *  cursor-positioning math (history navigation, multi-line input)
+   *  drifts out of sync with what xterm.js actually renders. */
+  spawn: (cols: number, rows: number) => void;
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   onOutput: (cb: (data: string) => void) => () => void;
@@ -54,129 +66,144 @@ export function useTerminal(opts: UseTerminalOptions = {}): UseTerminalReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const outputListeners = useRef<Set<(data: string) => void>>(new Set());
   const idRef = useRef<string | null>(null);
-  const remoteRef = useRef<string | undefined>(opts.remoteAgentId);
-  remoteRef.current = opts.remoteAgentId;
-
+  const cancelledRef = useRef(false);
+  const spawnedRef = useRef(false);
+  // Latest opts captured in a ref so the deferred `spawn()` callback
+  // doesn't close over a stale snapshot from the first render.
+  // Updated in an effect rather than during render to satisfy the
+  // react-hooks/refs lint rule.
+  const optsRef = useRef(opts);
   useEffect(() => {
-    let cancelled = false;
-    let ws: WebSocket | null = null;
+    optsRef.current = opts;
+  });
 
-    function wireWs(socket: WebSocket, isRemote: boolean) {
-      ws = socket;
-      wsRef.current = socket;
-      let receivedData = false;
-
-      socket.onmessage = (event) => {
-        receivedData = true;
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === "output" && msg.data) {
-            const decoded = atob(msg.data);
-            outputListeners.current.forEach((cb) => cb(decoded));
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-
-      socket.onclose = () => {
-        if (cancelled) return;
-        setConnected(false);
-        if (!receivedData && isRemote) {
-          emitRemoteConnectionError(outputListeners.current);
-        }
-      };
-
-      socket.onerror = () => {
-        socket.close();
-      };
-    }
-
-    async function initLocal() {
-      const cols = opts.cols ?? 80;
-      const rows = opts.rows ?? 24;
-
-      const resp = await spawnTerminal({
-        cols,
-        rows,
-        cwd: opts.cwd,
-        projectId: opts.projectId,
-      });
-
-      if (cancelled) {
-        killTerminal(resp.id).catch(() => {});
-        return;
-      }
-
-      idRef.current = resp.id;
-      setTerminalId(resp.id);
-
-      const socket = new WebSocket(terminalWsUrl(resp.id));
-      wireWs(socket, false);
-
-      socket.onopen = () => {
-        if (!cancelled) setConnected(true);
-      };
-    }
-
-    function initRemote(agentId: string) {
-      const cols = opts.cols ?? 80;
-      const rows = opts.rows ?? 24;
-
-      const socket = new WebSocket(remoteTerminalWsUrl(agentId));
-      wireWs(socket, true);
-
-      socket.onopen = () => {
-        if (cancelled) {
-          socket.close();
-          return;
-        }
-        const spawnPayload: Record<string, unknown> = { type: "spawn", cols, rows };
-        if (opts.cwd) {
-          spawnPayload.cwd = opts.cwd;
-        }
-        socket.send(
-          JSON.stringify(spawnPayload),
-        );
-        setConnected(true);
-      };
-    }
-
-    async function init() {
-      const remote = opts.remoteAgentId;
-      try {
-        if (remote) {
-          initRemote(remote);
-        } else {
-          await initLocal();
-        }
-      } catch (err) {
-        if (cancelled) return;
-        if (remote) {
-          emitRemoteConnectionError(outputListeners.current);
-        } else {
-          const detail =
-            err instanceof Error ? err.message : "unknown error";
-          emitError(
-            outputListeners.current,
-            `Could not spawn local terminal.\r\n${ANSI_YELLOW}       ${detail}${ANSI_RESET}`,
-          );
-        }
-      }
-    }
-
-    init();
-
+  // Mount effect is cleanup-only; the actual PTY spawn is driven by an
+  // explicit `spawn(cols, rows)` call from the consumer once it knows
+  // the real terminal size.
+  useEffect(() => {
+    cancelledRef.current = false;
     return () => {
-      cancelled = true;
-      ws?.close();
+      cancelledRef.current = true;
+      wsRef.current?.close();
       wsRef.current = null;
       if (idRef.current) {
         killTerminal(idRef.current).catch(() => {});
+        idRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const wireWs = useCallback((socket: WebSocket, isRemote: boolean) => {
+    wsRef.current = socket;
+    let receivedData = false;
+
+    socket.onmessage = (event) => {
+      receivedData = true;
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "output" && msg.data) {
+          const decoded = atob(msg.data);
+          outputListeners.current.forEach((cb) => cb(decoded));
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    socket.onclose = () => {
+      if (cancelledRef.current) return;
+      setConnected(false);
+      if (!receivedData && isRemote) {
+        emitRemoteConnectionError(outputListeners.current);
+      }
+    };
+
+    socket.onerror = () => {
+      socket.close();
+    };
+  }, []);
+
+  const spawn = useCallback(
+    (cols: number, rows: number) => {
+      if (spawnedRef.current || cancelledRef.current) return;
+      spawnedRef.current = true;
+
+      const currentOpts = optsRef.current;
+      const remote = currentOpts.remoteAgentId;
+
+      const initLocal = async () => {
+        const resp = await spawnTerminal({
+          cols,
+          rows,
+          cwd: currentOpts.cwd,
+          projectId: currentOpts.projectId,
+        });
+
+        if (cancelledRef.current) {
+          killTerminal(resp.id).catch(() => {});
+          return;
+        }
+
+        idRef.current = resp.id;
+        setTerminalId(resp.id);
+
+        const socket = new WebSocket(terminalWsUrl(resp.id));
+        wireWs(socket, false);
+
+        socket.onopen = () => {
+          if (!cancelledRef.current) setConnected(true);
+        };
+      };
+
+      const initRemote = (agentId: string) => {
+        const socket = new WebSocket(remoteTerminalWsUrl(agentId));
+        wireWs(socket, true);
+
+        socket.onopen = () => {
+          if (cancelledRef.current) {
+            socket.close();
+            return;
+          }
+          const spawnPayload: Record<string, unknown> = {
+            type: "spawn",
+            cols,
+            rows,
+          };
+          if (currentOpts.cwd) {
+            spawnPayload.cwd = currentOpts.cwd;
+          }
+          socket.send(JSON.stringify(spawnPayload));
+          setConnected(true);
+        };
+      };
+
+      const run = async () => {
+        try {
+          if (remote) {
+            initRemote(remote);
+          } else {
+            await initLocal();
+          }
+        } catch (err) {
+          if (cancelledRef.current) return;
+          // Allow a retry from the consumer if the failure was transient.
+          spawnedRef.current = false;
+          if (remote) {
+            emitRemoteConnectionError(outputListeners.current);
+          } else {
+            const detail = err instanceof Error ? err.message : "unknown error";
+            emitError(
+              outputListeners.current,
+              `Could not spawn local terminal.\r\n${ANSI_YELLOW}       ${detail}${ANSI_RESET}`,
+            );
+          }
+        }
+      };
+
+      void run();
+    },
+    [wireWs],
+  );
 
   const write = useCallback((data: string) => {
     const ws = wsRef.current;
@@ -206,9 +233,10 @@ export function useTerminal(opts: UseTerminalOptions = {}): UseTerminalReturn {
       killTerminal(idRef.current).catch(() => {});
       idRef.current = null;
     }
+    spawnedRef.current = false;
     setTerminalId(null);
     setConnected(false);
   }, []);
 
-  return { terminalId, connected, write, resize, onOutput, kill };
+  return { terminalId, connected, spawn, write, resize, onOutput, kill };
 }

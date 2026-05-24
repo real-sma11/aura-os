@@ -7,6 +7,7 @@ import { TaskBlock } from "./renderers/TaskBlock";
 import { ListBlock } from "./renderers/ListBlock";
 import { ImageBlock } from "./renderers/ImageBlock";
 import { Model3DBlock } from "./renderers/Model3DBlock";
+import { VideoBlock } from "./renderers/VideoBlock";
 import { StatusReadoutBlock } from "./renderers/StatusReadoutBlock";
 import { GenericToolBlock } from "./renderers/GenericToolBlock";
 
@@ -73,6 +74,7 @@ const REGISTRY: Record<string, BlockRenderer> = {
 
   generate_image: (entry, def) => <ImageBlock entry={entry} defaultExpanded={def} />,
   generate_3d_model: (entry, def) => <Model3DBlock entry={entry} defaultExpanded={def} />,
+  generate_video: (entry, def) => <VideoBlock entry={entry} defaultExpanded={def} />,
 
   get_project: (entry, def) => <StatusReadoutBlock entry={entry} defaultExpanded={def} />,
   get_fleet_status: (entry, def) => <StatusReadoutBlock entry={entry} defaultExpanded={def} />,

@@ -67,6 +67,13 @@ export const projectQueryKeys = {
   agents: (projectId: string) => ["projects", "agents", projectId] as const,
   agentInstance: (projectId: string, agentInstanceId: string) =>
     ["projects", "agent-instance", projectId, agentInstanceId] as const,
+  // Prefix that matches every per-instance query under a project. Used by
+  // `queryClient.invalidateQueries` to drop the cache for all agent
+  // instances of a project at once (e.g. after the project's
+  // `local_workspace_path` changes, which the server folds into every
+  // instance's `workspace_path`).
+  agentInstancesForProject: (projectId: string) =>
+    ["projects", "agent-instance", projectId] as const,
   layout: (projectId: string) => ["projects", "layout", projectId] as const,
 };
 

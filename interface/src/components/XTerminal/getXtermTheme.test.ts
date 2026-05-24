@@ -7,6 +7,7 @@ const VAR_NAMES = [
   "--color-terminal-cursor",
   "--color-terminal-cursor-accent",
   "--color-terminal-selection-bg",
+  "--color-terminal-selection-fg",
   "--color-terminal-selection-inactive-bg",
   "--color-terminal-ansi-black",
   "--color-terminal-ansi-red",
@@ -47,6 +48,7 @@ describe("getXtermTheme", () => {
     setVar("--color-terminal-cursor", "#ff00ff");
     setVar("--color-terminal-cursor-accent", "#00ffff");
     setVar("--color-terminal-selection-bg", "#123456");
+    setVar("--color-terminal-selection-fg", "#fedcba");
     setVar("--color-terminal-selection-inactive-bg", "rgba(18, 52, 86, 0.5)");
     setVar("--color-terminal-ansi-black", "#010101");
     setVar("--color-terminal-ansi-red", "#020202");
@@ -72,6 +74,7 @@ describe("getXtermTheme", () => {
     expect(theme.cursor).toBe("#ff00ff");
     expect(theme.cursorAccent).toBe("#00ffff");
     expect(theme.selectionBackground).toBe("#123456");
+    expect(theme.selectionForeground).toBe("#fedcba");
     expect(theme.selectionInactiveBackground).toBe("rgba(18, 52, 86, 0.5)");
     expect(theme.black).toBe("#010101");
     expect(theme.red).toBe("#020202");
@@ -110,7 +113,8 @@ describe("getXtermTheme", () => {
     expect(theme.foreground).toBe("#cccccc");
     expect(theme.cursor).toBe("#aeafad");
     expect(theme.cursorAccent).toBe("#1e1e1e");
-    expect(theme.selectionBackground).toBe("#264f78");
+    expect(theme.selectionBackground).toBe("#01f4cb");
+    expect(theme.selectionForeground).toBe("#0a0a0a");
     expect(theme.black).toBe("#000000");
     expect(theme.red).toBe("#cd3131");
     expect(theme.green).toBe("#0dbc79");
@@ -124,7 +128,8 @@ describe("getXtermTheme", () => {
     expect(theme.foreground).toBe("#1f2937");
     expect(theme.cursor).toBe("#374151");
     expect(theme.cursorAccent).toBe("#ffffff");
-    expect(theme.selectionBackground).toBe("#bfdbfe");
+    expect(theme.selectionBackground).toBe("#0d9488");
+    expect(theme.selectionForeground).toBe("#ffffff");
     expect(theme.black).toBe("#000000");
     expect(theme.green).toBe("#00bc00");
     expect(theme.brightWhite).toBe("#a5a5a5");

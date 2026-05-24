@@ -186,4 +186,37 @@ describe("buildDisplayEvents", () => {
     const result = buildDisplayEvents(msgs);
     expect(result).toHaveLength(0);
   });
+
+  it("threads from_agent_id through as fromAgentId on cross-agent user messages", () => {
+    // The server-side `parse_user_message_event` only sets
+    // `from_agent_id` on user_message rows that were injected by
+    // another agent (A→B inbound or B→A async reply). The display
+    // adapter must surface it verbatim under the camelCased
+    // `fromAgentId` key so `MessageBubble` can render the
+    // "↩ from <agent>" provenance badge. Without this pass-through
+    // Barret's reply renders indistinguishably from a real human
+    // prompt — the regression Fix A was added to close.
+    const msgs: SessionEvent[] = [
+      makeMsg({
+        event_id: "msg-cross-agent",
+        role: "user",
+        content: "Hello back!",
+        from_agent_id: "barret-agent-uuid",
+      }),
+    ];
+    const result = buildDisplayEvents(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].fromAgentId).toBe("barret-agent-uuid");
+  });
+
+  it("leaves fromAgentId undefined on regular human-typed user messages", () => {
+    // Negative pin: a regular user prompt has no `from_agent_id`
+    // set, and the badge UI must stay off — defaulting to a
+    // visible badge would mislabel every typed message.
+    const msgs: SessionEvent[] = [
+      makeMsg({ event_id: "u-1", role: "user", content: "hi" }),
+    ];
+    const result = buildDisplayEvents(msgs);
+    expect(result[0].fromAgentId).toBeUndefined();
+  });
 });

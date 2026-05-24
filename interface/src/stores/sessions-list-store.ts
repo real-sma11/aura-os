@@ -107,9 +107,9 @@ export function buildOptimisticSession(args: {
  *
  * `version` is preserved as a write-side bump that consumers fold into
  * their effect dependencies; calling `bumpVersion()` after a stream
- * emits `SessionReady` (or after the chat-input "+" / RotateCcw soft
- * reset) re-runs the load so newly-persisted sessions surface without
- * a manual refresh.
+ * emits `SessionReady` (or after the chat-input "+" new-chat reset)
+ * re-runs the load so newly-persisted sessions surface without a
+ * manual refresh.
  */
 
 const EMPTY_SESSIONS: AnnotatedSession[] = [];

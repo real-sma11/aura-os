@@ -25,13 +25,15 @@ export function getStreamingPhaseLabel(state: {
   streamingText: string;
   toolCalls: ToolCallEntry[];
   progressText?: string;
+  /**
+   * Accepted for backwards-compat with callers that still forward the
+   * stream entry's `isWriting` flag, but intentionally unused: the
+   * pinned cooking shimmer must stay visible for the entire active
+   * turn rather than oscillate on every word-reveal step. Visibility
+   * is gated upstream by `nowStreaming` in the indicator components.
+   */
   isWriting?: boolean;
 }): string | null {
-  // While text is actively revealing word-by-word the prose itself is
-  // the indicator — hide the cooking row so it does not flicker under
-  // the cursor.
-  if (state.isWriting) return null;
-
   const pending = state.toolCalls.find((tc) => tc.pending);
   if (pending) return TOOL_PHASE_LABELS[pending.name] ?? "Working...";
   if (state.thinkingText && !state.streamingText) return "Thinking...";
@@ -40,11 +42,8 @@ export function getStreamingPhaseLabel(state: {
     if (state.progressText.toLowerCase() === "connecting") {
       return pickConnectingLabel();
     }
-    // Phase 3: the input bar surfaces a dedicated "Queued behind
-    // current turn…" pill; suppress the duplicate streaming-phase
-    // label so the user sees one clear hint instead of two.
     if (state.progressText.toLowerCase() === "queued") {
-      return null;
+      return "Queued...";
     }
     return state.progressText;
   }

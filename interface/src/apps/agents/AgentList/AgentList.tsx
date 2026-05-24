@@ -603,8 +603,15 @@ export function AgentList({ mode = "default" }: AgentListProps) {
         agent={editTarget ?? undefined}
         onClose={() => setEditTarget(null)}
         onSaved={(updated) => {
+          const projectsStore = useProjectsListStore.getState();
           useAgentStore.getState().patchAgent(updated);
-          useProjectsListStore.getState().patchAgentTemplateFields(updated);
+          projectsStore.patchAgentTemplateFields(updated);
+          // The agent template's `local_workspace_path` flows into every
+          // project instance's `workspace_path` via `resolve_workspace_path`
+          // on the server. Refresh the agent caches for each project
+          // hosting an instance so the env-overlay's "Workspace Folder"
+          // row picks up the new path without requiring a manual reload.
+          projectsStore.refreshAgentInstancesForTemplate(updated.agent_id);
           void fetchAgents({ force: true });
           setEditTarget(null);
         }}

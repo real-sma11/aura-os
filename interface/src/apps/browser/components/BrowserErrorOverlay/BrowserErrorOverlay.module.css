@@ -5,6 +5,11 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* Theme-aware solid fill: `--color-bg` flips between light/dark via the
+     `[data-theme]` attribute managed by zui, so this overlay replaces
+     Chromium's native error page with a surface that matches the rest of
+     the app chrome in both modes. The hex fallbacks are only used if the
+     tokens are somehow missing at runtime. */
   background: var(--color-bg, #0f0f0f);
   color: var(--color-text, #ededed);
   font-family: var(--font-sans, system-ui);
@@ -48,38 +53,6 @@
   margin-top: 6px;
   flex-wrap: wrap;
   justify-content: center;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 92px;
-  height: 26px;
-  padding: 0 12px;
-  border-radius: var(--radius-sm, 6px);
-  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.14));
-  background: var(--color-bg-subtle, #1a1a1a);
-  color: var(--color-text, #ededed);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--color-bg-hover, #242424);
-  border-color: var(--color-border-strong, rgba(255, 255, 255, 0.24));
-}
-
-.button:focus-visible {
-  outline: 2px solid var(--color-accent, #4c8bf5);
-  outline-offset: 2px;
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .details {

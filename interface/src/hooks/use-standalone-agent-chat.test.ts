@@ -20,13 +20,22 @@ vi.mock("./use-agent-chat-stream", () => ({
   })),
 }));
 
-vi.mock("./use-chat-history-sync", () => ({
-  useChatHistorySync: vi.fn(() => ({
+interface MockUseChatHistorySyncArgs {
+  fetchFn?: (() => Promise<unknown>) | undefined;
+  historyKey?: string;
+  streamKey?: string;
+}
+const { mockUseChatHistorySync } = vi.hoisted(() => ({
+  mockUseChatHistorySync: vi.fn(() => ({
     historyResolved: true,
     isLoading: false,
     historyError: null,
     wrapSend: (fn: (...args: unknown[]) => unknown) => fn,
   })),
+}));
+
+vi.mock("./use-chat-history-sync", () => ({
+  useChatHistorySync: (args: MockUseChatHistorySyncArgs) => mockUseChatHistorySync(args),
 }));
 
 vi.mock("../shared/hooks/use-delayed-loading", () => ({
@@ -43,19 +52,42 @@ vi.mock("./use-agent-chat-meta", () => ({
   })),
 }));
 
+// `vi.mock` is hoisted to the top of the file by vitest, so any
+// top-level `const` referenced inside the factory would be in the
+// temporal-dead-zone when the mock is constructed. `vi.hoisted` runs
+// the factory at the same hoisted point, which lets us share a
+// jest-fn handle between the mocked module surface and the
+// per-test reset hooks below.
+const { mockListEvents, mockListSessionEvents } = vi.hoisted(() => ({
+  mockListEvents: vi.fn().mockResolvedValue([]),
+  mockListSessionEvents: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("../api/client", () => ({
   api: {
     agents: {
-      listEvents: vi.fn().mockResolvedValue([]),
+      listEvents: mockListEvents,
+      listSessionEvents: mockListSessionEvents,
       getContextUsage: vi.fn().mockResolvedValue({ context_utilization: 0 }),
       resetSession: vi.fn().mockResolvedValue(undefined),
+      cancelTurn: vi.fn().mockResolvedValue(undefined),
     },
   },
   STANDALONE_AGENT_HISTORY_LIMIT: 50,
 }));
 
+const { mockClearHistory } = vi.hoisted(() => ({
+  mockClearHistory: vi.fn(),
+}));
 vi.mock("../stores/chat-history-store", () => ({
   agentHistoryKey: (id: string) => `agent:${id}`,
+  projectChatHistoryKey: (projectId: string, instanceId: string) =>
+    `project:${projectId}:${instanceId}`,
+  useChatHistoryStore: {
+    getState: () => ({
+      clearHistory: mockClearHistory,
+    }),
+  },
 }));
 
 const mockSetSelectedAgent = vi.fn();
@@ -138,6 +170,17 @@ vi.mock("../stores/context-usage-store", () => ({
   },
 }));
 
+const { mockMessageQueueClear } = vi.hoisted(() => ({
+  mockMessageQueueClear: vi.fn(),
+}));
+vi.mock("../stores/message-queue-store", () => ({
+  useMessageQueueStore: {
+    getState: () => ({
+      clear: mockMessageQueueClear,
+    }),
+  },
+}));
+
 vi.mock("./use-hydrate-context-utilization", () => ({
   useHydrateContextUtilization: vi.fn(),
 }));
@@ -163,6 +206,13 @@ describe("useStandaloneAgentChat", () => {
     mockReplaceSessionId.mockReset();
     mockBumpVersion.mockReset();
     mockAddOptimisticSession.mockReset();
+    mockListEvents.mockClear();
+    mockListEvents.mockResolvedValue([]);
+    mockListSessionEvents.mockClear();
+    mockListSessionEvents.mockResolvedValue([]);
+    mockMessageQueueClear.mockClear();
+    mockUseChatHistorySync.mockClear();
+    mockClearHistory.mockClear();
     storageState.clear();
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -601,7 +651,7 @@ describe("useStandaloneAgentChat", () => {
       expect(mockResetEvents).not.toHaveBeenCalled();
     });
 
-    it("does not clear the stream when pinnedSessionId flips defined → null (handled by handleNewSession)", () => {
+    it("does not clear the stream when pinnedSessionId flips defined → null (handled by handleNewChat)", () => {
       const { rerender } = renderHook(
         ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
         { initialProps: { sid: "session-A" } },
@@ -610,13 +660,21 @@ describe("useStandaloneAgentChat", () => {
       mockResetEvents.mockClear();
       rerender({ sid: null });
 
-      // `handleNewSession` already calls `resetEvents` directly when
-      // the user clicks "+", so the transition effect should stay
-      // out of the way.
+      // `handleNewChat` already calls `resetEvents` directly when the
+      // user clicks "+", so the transition effect should stay out of
+      // the way.
       expect(mockResetEvents).not.toHaveBeenCalled();
     });
 
-    it("does not clear the stream while a turn is actively streaming on the pinned session", () => {
+    it("clears session B's slot on a cross-session navigation even while session A is still streaming", () => {
+      // Phase 3: `useStreamCore` is now keyed on `(agentId, sessionId)`,
+      // so `resetEvents` always targets the *new* pinned session's slot
+      // (here `agent-1:session-B`). Session A's in-flight stream lives
+      // on its own slot (`agent-1:session-A`) and is structurally
+      // untouchable by the destination's clear. The previous
+      // `getIsStreaming(streamKey)` bail-out guarded against the old
+      // shared-key model where A's stream and B's transcript collided.
+      // That guard is now dead code.
       mockGetIsStreaming.mockImplementation(() => true);
 
       const { rerender } = renderHook(
@@ -627,7 +685,10 @@ describe("useStandaloneAgentChat", () => {
       mockResetEvents.mockClear();
       rerender({ sid: "session-B" });
 
-      expect(mockResetEvents).not.toHaveBeenCalled();
+      expect(mockResetEvents).toHaveBeenCalledTimes(1);
+      expect(mockResetEvents).toHaveBeenCalledWith([], {
+        allowWhileStreaming: true,
+      });
     });
 
     it("clears the stream on a true cross-session navigation when idle", () => {
@@ -641,6 +702,101 @@ describe("useStandaloneAgentChat", () => {
 
       expect(mockResetEvents).toHaveBeenCalledTimes(1);
       expect(mockResetEvents).toHaveBeenCalledWith([], { allowWhileStreaming: true });
+    });
+  });
+
+  describe("history fetch routing (Phase 4: per-session events endpoint)", () => {
+    // Pull the most recent `fetchFn` the hook handed to
+    // `useChatHistorySync`. The hook builds the fetcher inside a
+    // `useMemo`, so reading it through the mock is the most direct
+    // way to verify which API the next history hydrate will call.
+    const latestFetchFn = (): (() => Promise<unknown>) | undefined => {
+      const lastCall = mockUseChatHistorySync.mock.calls.at(-1);
+      const args = lastCall?.[0] as MockUseChatHistorySyncArgs | undefined;
+      return args?.fetchFn;
+    };
+
+    it("uses the per-agent timeline when no session is pinned", async () => {
+      renderHook(() => useStandaloneAgentChat("agent-1", null));
+
+      const fetchFn = latestFetchFn();
+      expect(fetchFn).toBeDefined();
+      await fetchFn?.();
+
+      expect(mockListEvents).toHaveBeenCalledTimes(1);
+      expect(mockListEvents).toHaveBeenCalledWith("agent-1", { limit: 50 });
+      expect(mockListSessionEvents).not.toHaveBeenCalled();
+    });
+
+    it("uses the per-session endpoint when a session is pinned", async () => {
+      // The user-visible bug Phase 4 closes: with a `?session=X`
+      // pin, the hook must NOT fall back to `listEvents` (which
+      // aggregates across every session of the agent and would drag
+      // X's prior siblings back into the panel after a reset).
+      renderHook(() => useStandaloneAgentChat("agent-1", "session-A"));
+
+      const fetchFn = latestFetchFn();
+      expect(fetchFn).toBeDefined();
+      await fetchFn?.();
+
+      expect(mockListSessionEvents).toHaveBeenCalledTimes(1);
+      expect(mockListSessionEvents).toHaveBeenCalledWith(
+        "agent-1",
+        "session-A",
+        { limit: 50 },
+      );
+      expect(mockListEvents).not.toHaveBeenCalled();
+    });
+
+    it("rebuilds the fetcher when pinnedSessionId changes", async () => {
+      const { rerender } = renderHook(
+        ({ sid }: { sid: string | null }) => useStandaloneAgentChat("agent-1", sid),
+        { initialProps: { sid: "session-A" as string | null } },
+      );
+
+      await latestFetchFn()?.();
+      expect(mockListSessionEvents).toHaveBeenLastCalledWith(
+        "agent-1",
+        "session-A",
+        { limit: 50 },
+      );
+
+      mockListSessionEvents.mockClear();
+      rerender({ sid: "session-B" });
+
+      await latestFetchFn()?.();
+      expect(mockListSessionEvents).toHaveBeenLastCalledWith(
+        "agent-1",
+        "session-B",
+        { limit: 50 },
+      );
+    });
+  });
+
+  describe("queue clearing on reset (Phase 4)", () => {
+    // Phase 1 made the chat send pipeline queue-by-default when a
+    // stream is busy. Phase 4 closes the loop on the matching reset
+    // affordance: pressing `+` (`handleNewChat`) must drop any queued
+    // message so it doesn't bleed into the freshly-minted session as
+    // the next dequeue's "first send". (The previous RotateCcw
+    // `handleNewSession` reset path was retired alongside the inline
+    // context-reset button.)
+    it("handleNewChat clears useMessageQueueStore for the streamKey", () => {
+      mockProjects = [
+        {
+          project_id: "proj-home",
+          name: "Home",
+          description: "[aura:agent-home] Auto-created workspace",
+        },
+      ];
+      mockAgentsByProject = { "proj-home": [{ agent_id: "agent-1" }] };
+
+      const { result } = renderHook(() => useStandaloneAgentChat("agent-1"));
+
+      expect(typeof result.current.onNewChat).toBe("function");
+      result.current.onNewChat?.();
+
+      expect(mockMessageQueueClear).toHaveBeenCalledWith("test-stream-key");
     });
   });
 });

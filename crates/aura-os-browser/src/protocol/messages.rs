@@ -138,6 +138,12 @@ pub struct NavError {
     /// carries a well-known numeric mapping.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<i32>,
+    /// HTTP status code when the failure was synthesized from a 4xx/5xx
+    /// response on the main-frame document (e.g. `404`). Kept separate
+    /// from [`Self::code`] so consumers can render the user-facing HTTP
+    /// status without confusing it with a Chromium `net_error` numeric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
 }
 
 /// Events pushed from the server to the client.
@@ -230,9 +236,11 @@ mod tests {
             url: "http://example.invalid/".into(),
             error_text: "net::ERR_NAME_NOT_RESOLVED".into(),
             code: None,
+            http_status: None,
         };
         let json = serde_json::to_string(&err).unwrap();
         assert!(!json.contains("code"));
+        assert!(!json.contains("http_status"));
         let back: NavError = serde_json::from_str(&json).unwrap();
         assert_eq!(back, err);
     }
@@ -243,9 +251,25 @@ mod tests {
             url: "http://example.invalid/".into(),
             error_text: "net::ERR_NAME_NOT_RESOLVED".into(),
             code: Some(-105),
+            http_status: None,
         };
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("\"code\":-105"));
+        assert!(!json.contains("http_status"));
+        let back: NavError = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, err);
+    }
+
+    #[test]
+    fn nav_error_round_trips_with_http_status() {
+        let err = NavError {
+            url: "http://127.0.0.1:8080/".into(),
+            error_text: "net::ERR_HTTP_RESPONSE_CODE_FAILURE".into(),
+            code: Some(-379),
+            http_status: Some(404),
+        };
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"http_status\":404"));
         let back: NavError = serde_json::from_str(&json).unwrap();
         assert_eq!(back, err);
     }

@@ -1,0 +1,193 @@
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type {
+  BrowserClientMsg,
+  NavError,
+  NavState,
+  ProjectBrowserSettings,
+} from "../../../../shared/api/browser";
+import type {
+  UseBrowserOptions,
+  UseBrowserReturn,
+} from "../../../../hooks/use-browser";
+
+// Capture the `useBrowser` options the component registers so each test can
+// drive the navigation lifecycle (`onNav` / `onNavError`) directly. Using
+// `vi.hoisted` keeps the mock factory wiring deterministic regardless of
+// import order.
+const { capturedOpts, mockSend } = vi.hoisted(() => ({
+  capturedOpts: { current: null as UseBrowserOptions | null },
+  mockSend: vi.fn<(msg: BrowserClientMsg) => void>(),
+}));
+
+vi.mock("../../../../hooks/use-browser", () => ({
+  useBrowser: (opts: UseBrowserOptions): UseBrowserReturn => {
+    capturedOpts.current = opts;
+    return {
+      sessionId: "session-1",
+      connected: true,
+      spawning: false,
+      initialUrl: null,
+      focusAddressBar: false,
+      spawn: vi.fn(),
+      send: mockSend,
+      kill: vi.fn(),
+    };
+  },
+}));
+
+vi.mock("../../../../shared/api/browser", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../../shared/api/browser")
+  >("../../../../shared/api/browser");
+  const emptySettings: ProjectBrowserSettings = {
+    schema_version: 1,
+    pinned_url: null,
+    last_url: null,
+    detected_urls: [],
+    history: [],
+  };
+  return {
+    ...actual,
+    getProjectBrowserSettings: vi.fn().mockResolvedValue(emptySettings),
+    updateProjectBrowserSettings: vi.fn().mockResolvedValue(emptySettings),
+    triggerBrowserDetect: vi.fn().mockResolvedValue([]),
+  };
+});
+
+// Replace the address bar / viewport with thin shims so the test can poke
+// the Reload action and inspect the overlay slot without standing up the
+// real DOM canvas + worker pipeline.
+vi.mock("../BrowserAddressBar", () => ({
+  BrowserAddressBar: ({ onReload }: { onReload?: () => void }) => (
+    <button type="button" data-testid="address-bar-reload" onClick={onReload}>
+      Reload
+    </button>
+  ),
+}));
+
+vi.mock("../BrowserViewport", () => ({
+  BrowserViewport: ({ overlay }: { overlay?: React.ReactNode }) => (
+    <div data-testid="viewport">{overlay}</div>
+  ),
+}));
+
+import { BrowserInstance } from "./BrowserInstance";
+
+const ERROR_404: NavError = {
+  url: "http://127.0.0.1:8080/",
+  error_text: "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+  code: -379,
+  http_status: 404,
+};
+
+function navState(url: string, loading = false): NavState {
+  return {
+    url,
+    title: null,
+    can_go_back: false,
+    can_go_forward: false,
+    loading,
+  };
+}
+
+function setup() {
+  render(<BrowserInstance clientId="client-1" width={400} height={300} />);
+  if (!capturedOpts.current) {
+    throw new Error("useBrowser was not invoked during render");
+  }
+  return capturedOpts.current;
+}
+
+describe("BrowserInstance navError lifecycle", () => {
+  beforeEach(() => {
+    capturedOpts.current = null;
+    mockSend.mockClear();
+  });
+
+  it("keeps the error overlay mounted after the user clicks Reload from the overlay", () => {
+    const opts = setup();
+
+    act(() => opts.onNavError?.(ERROR_404));
+    const overlay = screen.getByTestId("browser-error-overlay");
+    expect(overlay).toBeInTheDocument();
+
+    // Click Reload from inside the overlay — this previously cleared
+    // `navError` immediately, exposing Chromium's stale `chrome-error://`
+    // frame in the canvas. The overlay must stay mounted instead, since
+    // a same-URL retry has nothing else to render until the new outcome
+    // arrives from the backend.
+    fireEvent.click(within(overlay).getByRole("button", { name: /Reload/i }));
+
+    expect(mockSend).toHaveBeenCalledWith({ type: "reload" });
+    expect(
+      screen.getByTestId("browser-error-overlay"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the error overlay mounted after the user clicks Reload from the address bar", () => {
+    const opts = setup();
+
+    act(() => opts.onNavError?.(ERROR_404));
+    expect(
+      screen.getByTestId("browser-error-overlay"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("address-bar-reload"));
+
+    expect(mockSend).toHaveBeenCalledWith({ type: "reload" });
+    expect(
+      screen.getByTestId("browser-error-overlay"),
+    ).toBeInTheDocument();
+  });
+
+  it("preserves the overlay when Chromium commits its native chrome-error document", () => {
+    const opts = setup();
+
+    act(() => opts.onNavError?.(ERROR_404));
+    // Chromium's native error commit re-fires `frameStartedLoading` /
+    // `frameNavigated`, which surface here as another `Nav` carrying a
+    // `chrome-error://...` URL. Clearing on those would wipe our overlay
+    // (the regression fixed in 2a39a371e).
+    act(() => opts.onNav?.(navState("chrome-error://chromewebdata/", true)));
+
+    expect(
+      screen.getByTestId("browser-error-overlay"),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the overlay when a real (non-chrome-error) URL commits", () => {
+    const opts = setup();
+
+    act(() => opts.onNavError?.(ERROR_404));
+    expect(
+      screen.getByTestId("browser-error-overlay"),
+    ).toBeInTheDocument();
+
+    // A successful retry commits the original document; that's the
+    // unambiguous "page is back" signal we use to drop the overlay.
+    act(() => opts.onNav?.(navState("http://127.0.0.1:8080/", false)));
+
+    expect(
+      screen.queryByTestId("browser-error-overlay"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("replaces the overlay's contents when a new NavError arrives", () => {
+    const opts = setup();
+
+    act(() => opts.onNavError?.(ERROR_404));
+    expect(screen.getByText("This page can't be found")).toBeInTheDocument();
+
+    act(() =>
+      opts.onNavError?.({
+        url: "http://127.0.0.1:8080/",
+        error_text: "net::ERR_CONNECTION_RESET",
+        code: -101,
+      }),
+    );
+
+    expect(screen.getByText("Can't connect to server")).toBeInTheDocument();
+  });
+});

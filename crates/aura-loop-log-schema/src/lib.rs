@@ -62,6 +62,10 @@ pub struct RunCounters {
     pub task_failed: u64,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u64,
+    #[serde(default)]
+    pub cache_read_input_tokens: u64,
     /// Count of streamed assistant `text_delta` frames. A first-class
     /// narration signal so heuristics (e.g. zero-tool-calls /
     /// narration-bloat) don't have to re-scan `events.jsonl`.

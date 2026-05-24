@@ -95,11 +95,69 @@ fn is_powershell_shell(shell: &str) -> bool {
     file_name.eq_ignore_ascii_case("powershell.exe") || file_name.eq_ignore_ascii_case("pwsh.exe")
 }
 
+/// Args to pass to PowerShell on spawn.
+///
+/// Beyond `-NoLogo` (suppress the startup banner), the `-Command`
+/// payload installs two compatibility fixes for running PowerShell
+/// over a `portable_pty` ConPTY pipe into xterm.js:
+///
+/// **1. `Clear-Host` override.** Emits the standard VT reset
+/// sequences directly:
+///
+///  * `ESC[H`  — cursor home
+///  * `ESC[2J` — erase visible viewport
+///  * `ESC[3J` — erase saved lines (xterm.js scrollback)
+///
+/// Windows PowerShell 5.1's built-in `Clear-Host` calls
+/// `[Console]::Clear()`, which routes through Win32 console APIs.
+/// Over ConPTY the translation is imperfect (the visible viewport
+/// isn't always fully wiped) and never emits `ESC[3J`, so the
+/// 100k-line xterm.js scrollback survives — leaving old output one
+/// scroll-up away from a "cleared" screen.
+///
+/// **2. PSReadLine removal.** PSReadLine maintains its own model of
+/// the buffer width, prompt position, and wrap state, then redraws the
+/// current line with cursor-save / selective-erase / cursor-restore VT
+/// sequences on every keystroke and history navigation. When that
+/// model disagrees with what xterm.js actually rendered — which it
+/// readily does whenever output has wrapped, the prompt spans more
+/// than one row, or the terminal was resized after spawn — the
+/// redraws land in the wrong place and stack fragments of previous
+/// content on top of the current line. Removing the module forces
+/// PowerShell back to its built-in console-host line editor: no
+/// inline prediction, no greyed completion overlay, and a much
+/// simpler single-line redraw model with no wrap tracking. Up/Down
+/// history and basic editing still work; tab completion / Ctrl+R
+/// search / syntax highlighting are the trade-off.
+///
+/// `Remove-Module` runs after the user's profile has loaded (profiles
+/// are processed before `-Command`), so any PSReadLine setup the user
+/// did is discarded along with the module.
+///
+/// `[char]27` is used instead of the `` `e `` escape literal because the
+/// latter only exists in PowerShell 6+ and would be a syntax error on
+/// Windows PowerShell 5.1.
+#[cfg(windows)]
+pub(crate) fn powershell_args() -> Vec<&'static str> {
+    vec![
+        "-NoLogo",
+        "-NoExit",
+        "-Command",
+        "function global:Clear-Host { \
+         [Console]::Out.Write([char]27 + '[H' + [char]27 + '[2J' + [char]27 + '[3J') }; \
+         Remove-Module PSReadLine -Force -ErrorAction SilentlyContinue",
+    ]
+}
+
 fn configure_shell_command(cmd: &mut CommandBuilder, shell: &str) {
     #[cfg(windows)]
     if is_powershell_shell(shell) {
-        cmd.arg("-NoLogo");
+        for arg in powershell_args() {
+            cmd.arg(arg);
+        }
     }
+    #[cfg(not(windows))]
+    let _ = (cmd, shell);
 }
 
 struct PtyComponents {
@@ -339,6 +397,62 @@ mod tests {
             r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
         ));
         assert!(!is_powershell_shell("cmd.exe"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_args_install_clear_host_override() {
+        let args = powershell_args();
+        assert_eq!(args.first().copied(), Some("-NoLogo"));
+        assert!(args.contains(&"-NoExit"), "argv missing -NoExit: {args:?}");
+        let cmd_idx = args
+            .iter()
+            .position(|a| *a == "-Command")
+            .expect("-Command flag missing");
+        let init = args
+            .get(cmd_idx + 1)
+            .expect("-Command must be followed by a script");
+        assert!(
+            init.contains("Clear-Host"),
+            "init script must override Clear-Host: {init}"
+        );
+        // Each VT sequence we rely on must be present, expressed via
+        // `[char]27` (PS 5.1-compatible) rather than the `` `e `` literal
+        // that only exists on PowerShell 6+.
+        assert!(
+            init.contains("[char]27"),
+            "init script must use [char]27 for PS 5.1 compatibility: {init}"
+        );
+        for seq in ["[H", "[2J", "[3J"] {
+            assert!(
+                init.contains(seq),
+                "init script missing VT sequence {seq}: {init}"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_args_remove_psreadline() {
+        let args = powershell_args();
+        let cmd_idx = args
+            .iter()
+            .position(|a| *a == "-Command")
+            .expect("-Command flag missing");
+        let init = args
+            .get(cmd_idx + 1)
+            .expect("-Command must be followed by a script");
+        assert!(
+            init.contains("Remove-Module PSReadLine -Force -ErrorAction SilentlyContinue"),
+            "init must remove PSReadLine to avoid history-nav rendering artifacts: {init}"
+        );
+        // We deliberately do not Import-Module / configure it — the
+        // whole point is that PowerShell falls back to its built-in
+        // line editor.
+        assert!(
+            !init.contains("Set-PSReadLineOption"),
+            "init must not configure PSReadLine after removing it: {init}"
+        );
     }
 
     #[test]

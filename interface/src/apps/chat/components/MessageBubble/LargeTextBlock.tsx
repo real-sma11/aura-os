@@ -56,7 +56,7 @@ export function LargeTextBlock({ text }: { text: string }) {
       <div className={styles.header}>
         <FileText size={14} className={styles.headerIcon} />
         <span className={styles.headerTitle}>{title}</span>
-        <CopyButton getText={() => text} className={styles.headerCopy} />
+        <CopyButton getMarkdown={() => text} className={styles.headerCopy} />
         <span className={styles.badge}>Doc</span>
       </div>
 

@@ -52,4 +52,24 @@ export interface SessionEvent {
    * from the partial `content_blocks` it carries.
    */
   in_flight?: boolean;
+  /**
+   * Set on `user_message` rows that were *injected by another agent*
+   * rather than typed by the human user. Two paths populate it
+   * server-side:
+   *   1. **A → B inbound** — when agent A invokes the harness
+   *      `send_to_agent` tool against B, the harness's
+   *      `cross_agent_hook::deliver_message` POSTs a `user_message`
+   *      into B's session carrying `from_agent_id: A's UUID`.
+   *   2. **B → A async reply** — when B's turn finishes, the
+   *      server-side `spawn_cross_agent_reply_callback` POSTs B's
+   *      reply back into A's session as another `user_message`,
+   *      stamped with `from_agent_id: B's UUID`.
+   *
+   * `MessageBubble` reads this and labels the row "↩ from
+   * <agent name>" instead of styling it indistinguishably from a
+   * real user prompt — without it, Barret's reply showed up in
+   * A's chat as a duplicate of A's own input. `undefined` on every
+   * regular human-typed user message and on assistant rows.
+   */
+  from_agent_id?: string;
 }

@@ -5,6 +5,8 @@ import { useSidekickStore } from "../../stores/sidekick-store";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { useProjectsList } from "../../apps/projects/useProjectsList";
 import { useProjectsListStore } from "../../stores/projects-list-store";
+import { useAttachCreatedAgent } from "../../hooks/use-attach-created-agent";
+import { api } from "../../api/client";
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useDesktopWindowStore } from "../../stores/desktop-window-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
@@ -16,6 +18,8 @@ import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardin
 import { useShallow } from "zustand/react/shallow";
 import { DesktopShell } from "../DesktopShell";
 import { MobileShell } from "../../mobile/shell";
+import { SimpleShell } from "../../views/SimpleShell/SimpleShell";
+import { useAppModeStore } from "../../stores/app-mode-store";
 import { markShellVisible } from "../../lib/perf/startup-perf";
 import {
   applyAuraCaptureSeedPlan,
@@ -50,17 +54,33 @@ const OnboardingChecklist = lazy(() =>
 function ProjectCreationModalHost() {
   const navigate = useNavigate();
   const closePreview = useSidekickStore((s) => s.closePreview);
-  const { setProjects, newProjectModalOpen, closeNewProjectModal } = useProjectsList();
+  const { prependProject, newProjectModalOpen, closeNewProjectModal } = useProjectsList();
+  const attachCreatedAgent = useAttachCreatedAgent();
 
-  const handleProjectCreated = useCallback((project: import("../../shared/types").Project) => {
-    closeNewProjectModal();
-    closePreview();
-    setProjects((prev) => {
-      const next = prev.filter((existing) => existing.project_id !== project.project_id);
-      return [...next, project];
-    });
-    navigate(`/projects/${project.project_id}`);
-  }, [closeNewProjectModal, navigate, setProjects, closePreview]);
+  // Auto-create a Standard Agent on every new project and route the
+  // user straight into that agent's chat with a `create-agent` handoff
+  // state. `ChatPanel` keys off that state to focus the input bar on
+  // desktop, so the user lands ready to type instead of on
+  // `ProjectEmptyView` having to click "Add Agent" themselves. If the
+  // agent call fails we still want the project to exist, so we fall
+  // back to the empty-state route and let the user pick an agent
+  // manually.
+  const handleProjectCreated = useCallback(
+    async (project: import("../../shared/types").Project) => {
+      closePreview();
+      prependProject(project);
+      try {
+        const instance = await api.createGeneralAgentInstance(project.project_id);
+        attachCreatedAgent(instance);
+      } catch (err) {
+        console.error("Failed to auto-create Standard Agent for new project", err);
+        navigate(`/projects/${project.project_id}`);
+      } finally {
+        closeNewProjectModal();
+      }
+    },
+    [attachCreatedAgent, closeNewProjectModal, closePreview, navigate, prependProject],
+  );
 
   if (!newProjectModalOpen) {
     return null;
@@ -79,7 +99,17 @@ function ProjectCreationModalHost() {
 
 function ResponsiveShell() {
   const { isMobileLayout } = useAuraCapabilities();
-  return isMobileLayout ? <MobileShell /> : <DesktopShell />;
+  const appMode = useAppModeStore((s) => s.mode);
+
+  useEffect(() => {
+    import("../../lib/analytics").then(({ registerProperty }) => {
+      registerProperty("app_mode", isMobileLayout ? "mobile" : appMode);
+    });
+  }, [appMode, isMobileLayout]);
+
+  if (isMobileLayout) return <MobileShell />;
+  if (appMode === "simple") return <SimpleShell />;
+  return <DesktopShell />;
 }
 
 function LazyModalBoundary({ children }: { children: React.ReactNode }) {
@@ -331,6 +361,7 @@ function useOnboardingHydration() {
 function AppContent() {
   useOnboardingHydration();
   useOnboardingTaskWatcher();
+  const appMode = useAppModeStore((s) => s.mode);
 
   const {
     orgSettingsOpen, orgInitialSection, closeOrgSettings,
@@ -378,12 +409,16 @@ function AppContent() {
         </LazyModalBoundary>
       ) : null}
       <ProjectCreationModalHost />
-      <LazyModalBoundary>
-        <WelcomeModal />
-      </LazyModalBoundary>
-      <LazyModalBoundary>
-        <OnboardingChecklist />
-      </LazyModalBoundary>
+      {appMode !== "simple" && (
+        <>
+          <LazyModalBoundary>
+            <WelcomeModal />
+          </LazyModalBoundary>
+          <LazyModalBoundary>
+            <OnboardingChecklist />
+          </LazyModalBoundary>
+        </>
+      )}
     </>
   );
 }

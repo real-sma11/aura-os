@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Check, Copy } from "lucide-react";
 import { copyToClipboard } from "../../shared/utils/clipboard";
+import { markdownToHtml } from "../../shared/utils/markdown-to-html";
 import styles from "./CopyButton.module.css";
 
 interface CopyButtonProps {
   /** Lazily-evaluated so streaming content is read at click time. */
-  getText: () => string;
+  getText?: () => string;
+  /**
+   * When provided, the clipboard is populated with both the markdown
+   * source (`text/plain`) and a rendered HTML version (`text/html`).
+   * Pasting into Obsidian / a markdown editor preserves the source
+   * verbatim, while pasting into Notion / Docs / mail clients shows
+   * formatted text. Takes precedence over `getText` when both are set.
+   */
+  getMarkdown?: () => string;
   className?: string;
   ariaLabel?: string;
   /** Hide the text label and render icon only. */
@@ -26,6 +35,7 @@ const COPIED_RESET_MS = 1800;
  */
 export function CopyButton({
   getText,
+  getMarkdown,
   className,
   ariaLabel = "Copy",
   iconOnly = false,
@@ -45,10 +55,15 @@ export function CopyButton({
     async (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
       event.preventDefault();
-      const text = getText();
+      const md = getMarkdown?.();
+      const text = md ?? getText?.() ?? "";
       if (!text) return;
       try {
-        await copyToClipboard(text);
+        if (md) {
+          await copyToClipboard({ plain: md, html: markdownToHtml(md) });
+        } else {
+          await copyToClipboard(text);
+        }
         setCopied(true);
         if (timerRef.current !== null) {
           window.clearTimeout(timerRef.current);
@@ -61,7 +76,7 @@ export function CopyButton({
         console.warn("copy failed", err);
       }
     },
-    [getText],
+    [getMarkdown, getText],
   );
 
   const label = copied ? "Copied" : "Copy";

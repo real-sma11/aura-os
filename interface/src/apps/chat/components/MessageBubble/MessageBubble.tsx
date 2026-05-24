@@ -1,10 +1,19 @@
-import { memo, useMemo } from "react";
-import { FileText } from "lucide-react";
+import { Suspense, lazy, memo, useCallback, useMemo, useRef } from "react";
+import { CornerDownLeft, FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
   DisplayImageBlock,
+  DisplayModel3DBlock,
   DisplaySessionEvent,
+  DisplayVideoBlock,
 } from "../../../../shared/types/stream";
+import { useAgentStore } from "../../../agents/stores/agent-store";
+
+const WebGLViewer = lazy(() =>
+  import("../../../aura3d/WebGLViewer/WebGLViewer").then((m) => ({
+    default: m.WebGLViewer,
+  })),
+);
 
 /** Resolve an image block to a renderable src URL. Prefers source_url (S3) over inline base64. */
 function imageBlockSrc(block: DisplayImageBlock): string {
@@ -20,15 +29,45 @@ import { CopyButton } from "../../../../components/CopyButton";
 import { useGallery, type GalleryItem } from "../../../../components/Gallery";
 import { LLMOutput } from "../LLMOutput";
 import { LargeTextBlock, isLargeText } from "./LargeTextBlock";
+import { ReportBugButton } from "../../../../components/ReportBugButton";
+import { useMarkdownCopy } from "../../../../shared/hooks/use-markdown-copy";
 
 interface Props {
   message: DisplaySessionEvent;
   isStreaming?: boolean;
   initialThinkingExpanded?: boolean;
   initialActivitiesExpanded?: boolean;
+  /**
+   * Phase 5: stream key the message belongs to. Threaded into the
+   * inline `ReportBugButton` rendered on error variants so the
+   * pre-filled bundle filters the breadcrumb ring down to this
+   * stream's recent activity. Optional because not every render
+   * site has it (e.g. the historical-message preview surfaces).
+   */
+  streamKey?: string;
+  /** Phase 5: optional agent id forwarded to the inline `ReportBugButton`. */
+  agentId?: string;
+  /** Phase 5: optional session id forwarded to the inline `ReportBugButton`. */
+  sessionId?: string;
 }
 
 const FILE_PREFIX_RE = /^\[File:\s*(.+?)\]\n\n([\s\S]*)$/;
+
+/**
+ * Render-friendly fallback when the local `useAgentStore` doesn't
+ * carry a name for the sender (typically because the sending agent
+ * lives in another org the user has never opened). UUID prefix +
+ * ellipsis keeps the badge compact while preserving enough of the
+ * id for an operator to disambiguate by hand. Empty string in →
+ * empty string out so callers can guard with the same `senderLabel`
+ * truthiness check.
+ */
+function truncateAgentId(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= 8) return trimmed;
+  return `${trimmed.slice(0, 8)}…`;
+}
 
 function FileAttachmentBlock({ text }: { text: string }) {
   const match = text.match(FILE_PREFIX_RE);
@@ -72,6 +111,9 @@ export const MessageBubble = memo(function MessageBubble({
   isStreaming = false,
   initialThinkingExpanded,
   initialActivitiesExpanded,
+  streamKey,
+  agentId,
+  sessionId,
 }: Props) {
   const openBuyCredits = useUIModalStore((state) => state.openBuyCredits);
   const { openGallery } = useGallery();
@@ -89,19 +131,25 @@ export const MessageBubble = memo(function MessageBubble({
   // crammed into the same padded card. We keep the original `contentBlocks`
   // index alongside each entry so gallery ids stay stable (`<msgId>-img-<i>`)
   // regardless of how we split or filter for rendering.
-  const { imageBlocks, nonImageBlocks } = useMemo(() => {
+  const { imageBlocks, videoBlocks, model3dBlocks, nonImageBlocks } = useMemo(() => {
     const images: { block: DisplayImageBlock; index: number }[] = [];
+    const videos: { block: DisplayVideoBlock; index: number }[] = [];
+    const models: { block: DisplayModel3DBlock; index: number }[] = [];
     const others: { block: DisplayContentBlock; index: number }[] = [];
     if (hasContentBlocks && message.contentBlocks) {
       message.contentBlocks.forEach((block, index) => {
         if (block.type === "image") {
           images.push({ block, index });
+        } else if (block.type === "video") {
+          videos.push({ block, index });
+        } else if (block.type === "model3d") {
+          models.push({ block, index });
         } else {
           others.push({ block, index });
         }
       });
     }
-    return { imageBlocks: images, nonImageBlocks: others };
+    return { imageBlocks: images, videoBlocks: videos, model3dBlocks: models, nonImageBlocks: others };
   }, [hasContentBlocks, message.contentBlocks]);
 
   const galleryImages = useMemo<GalleryItem[]>(() => {
@@ -115,18 +163,19 @@ export const MessageBubble = memo(function MessageBubble({
   // still leaves contentBlocks non-empty but nothing renderable, so ignore
   // whitespace-only text blocks when deciding if the bubble carries prose.
   const hasRenderableBlocks = (message.contentBlocks ?? []).some(
-    (b) => b.type === "image" || (b.type === "text" && b.text.trim().length > 0),
+    (b) => b.type === "image" || b.type === "video" || b.type === "model3d" || (b.type === "text" && b.text.trim().length > 0),
   );
   // A tool-only assistant bubble holds no prose/thinking -- it is just a
   // slice of the agent's tool-use loop. Drop the bubble padding for these
   // so consecutive tool-only bubbles stack as a tight checklist instead of
-  // each row floating in its own 16px padding box. Stream-dropped bubbles
-  // own their own banner chrome and must not be collapsed into the compact
-  // tool-only slot.
+  // each row floating in its own 16px padding box. Stream-dropped and
+  // other error bubbles own their own chrome (banner / action row) and
+  // must not be collapsed into the compact tool-only slot.
+  const hasInlineErrorActionChrome = !!message.errorMessage
+    || !!message.supportId || !!message.displayVariant;
   const isAssistantToolOnly =
     message.role === "assistant"
-    && !isInsufficientCreditsError
-    && !isStreamDropped
+    && !hasInlineErrorActionChrome
     && !hasContent
     && !hasRenderableBlocks
     && !hasThinking
@@ -149,7 +198,43 @@ export const MessageBubble = memo(function MessageBubble({
     return false;
   })();
 
-  if (!hasContent && !hasToolCalls && !hasContentBlocks && !hasThinking && !hasArtifactRefs) return null;
+  // Hover-revealed "copy whole assistant message as markdown" affordance.
+  // Only attached when the bubble actually carries prose (skips
+  // tool-only / error-only frames where there's nothing markdown-y to
+  // hand to Obsidian). Bubble ref + `useMarkdownCopy` also intercept
+  // OS-level select+copy *of the entire bubble* so users who hit
+  // Ctrl/Cmd+A inside the bubble get markdown source instead of the
+  // rendered text. Hook calls live above the early `return null` below
+  // to keep call order stable across renders.
+  const assistantBubbleRef = useRef<HTMLDivElement>(null);
+  const showAssistantCopy = !!(
+    message.role === "assistant"
+    && !isStreaming
+    && !isStreamDropped
+    && hasContent
+    && !isAssistantToolOnly
+  );
+  const getAssistantMarkdown = useCallback(
+    () => message.content ?? "",
+    [message.content],
+  );
+  const noopRef = useRef<HTMLElement>(null);
+  useMarkdownCopy(
+    showAssistantCopy ? assistantBubbleRef : noopRef,
+    getAssistantMarkdown,
+  );
+
+  // Error events (handleStreamError) carry the synthesized
+  // string in `errorMessage` instead of `content`, so an
+  // otherwise-empty error bubble must still render in order to
+  // surface the action row. `displayVariant` covers the same
+  // case for variants that don't carry a message (none today,
+  // but kept for forward compatibility). Reuses the same
+  // predicate that suppresses the compact tool-only layout.
+  if (
+    !hasContent && !hasToolCalls && !hasContentBlocks
+    && !hasThinking && !hasArtifactRefs && !hasInlineErrorActionChrome
+  ) return null;
 
   const renderUserContent = () => {
     if (hasContentBlocks && message.contentBlocks) {
@@ -173,7 +258,86 @@ export const MessageBubble = memo(function MessageBubble({
     return message.content;
   };
 
+  // Shared chrome for every error variant. Renders as two
+  // stacked lines below the optional partial streaming buffer /
+  // meta block:
+  //   line 1: full (wrapping) error message + one-click copy
+  //   line 2: Support ID chip and Report bug button (plus the
+  //           variant-specific primary action, e.g. "Buy
+  //           credits", when applicable)
+  // Stacking — rather than the previous single ellipsised row —
+  // lets long contract-blocked messages stay fully readable
+  // without forcing the user to hover for a `title` tooltip,
+  // while keeping the support id + bug-report controls grouped
+  // on their own row directly under the message they describe.
+  const renderErrorActions = () => {
+    if (
+      !message.displayVariant
+      && !message.supportId
+      && !message.errorMessage
+    ) {
+      return null;
+    }
+    return (
+      <div className={styles.errorChrome}>
+        {message.errorMessage && (
+          <div className={styles.errorMessageLine}>
+            <span className={styles.errorMessageText}>
+              {message.errorMessage}
+            </span>
+            <CopyButton
+              getText={() => message.errorMessage ?? ""}
+              ariaLabel="Copy error message"
+              iconOnly
+              className={styles.errorCopyBtn}
+            />
+          </div>
+        )}
+        <div className={styles.errorMetaRow}>
+          {isInsufficientCreditsError && (
+            <button
+              type="button"
+              className={styles.inlineErrorLink}
+              onClick={openBuyCredits}
+            >
+              Buy credits
+            </button>
+          )}
+          {message.supportId && (
+            <span
+              className={styles.supportIdChip}
+              title="Server-stamped support id — copy and share with support to join this report to the matching server log entry"
+            >
+              <span className={styles.supportIdLabel}>Support ID</span>
+              <code className={styles.supportIdValue}>{message.supportId}</code>
+              <CopyButton
+                getText={() => message.supportId ?? ""}
+                ariaLabel="Copy support id"
+                iconOnly
+                className={styles.supportIdCopyBtn}
+              />
+            </span>
+          )}
+          <ReportBugButton
+            streamKey={streamKey}
+            supportId={message.supportId}
+            agentId={agentId}
+            sessionId={sessionId}
+            compact
+          />
+        </div>
+      </div>
+    );
+  };
+
   const renderAssistantContent = () => {
+    // Partial streaming buffer captured before the turn errored
+    // out (or normal assistant content on success). Skipped when
+    // empty so an error with no prefix doesn't render an empty
+    // markdown frame above the action row.
+    const hasRenderableContent = hasContent || hasToolCalls
+      || hasThinking || hasArtifactRefs || hasTimeline;
+
     if (isStreamDropped) {
       return (
         <div
@@ -184,11 +348,10 @@ export const MessageBubble = memo(function MessageBubble({
           <span className={styles.streamDroppedTitle}>
             Chat stream interrupted
           </span>
-          <span className={styles.streamDroppedMessage}>{message.content}</span>
-          {(hasToolCalls || hasThinking || hasArtifactRefs || hasTimeline) && (
+          {hasRenderableContent && (
             <div className={styles.streamDroppedMeta}>
               <LLMOutput
-                content=""
+                content={message.content}
                 timeline={message.timeline}
                 toolCalls={message.toolCalls}
                 thinkingText={message.thinkingText}
@@ -200,65 +363,74 @@ export const MessageBubble = memo(function MessageBubble({
               />
             </div>
           )}
+          {renderErrorActions()}
         </div>
       );
     }
 
-    if (!isInsufficientCreditsError) {
-      return (
-        <LLMOutput
-          content={message.content}
-          timeline={message.timeline}
-          toolCalls={message.toolCalls}
-          thinkingText={message.thinkingText}
-          thinkingDurationMs={message.thinkingDurationMs}
-          artifactRefs={message.artifactRefs}
-          isStreaming={isStreaming}
-          defaultThinkingExpanded={initialThinkingExpanded}
-          defaultActivitiesExpanded={initialActivitiesExpanded}
-        />
-      );
-    }
-
     return (
-      <div className={styles.inlineError}>
-        <span className={styles.inlineErrorMessage}>{message.content}</span>
-        <button
-          type="button"
-          className={styles.inlineErrorLink}
-          onClick={openBuyCredits}
-        >
-          Buy credits
-        </button>
-        {(hasToolCalls || hasThinking || hasArtifactRefs || hasTimeline) && (
-          <div className={styles.inlineErrorMeta}>
-            <LLMOutput
-              content=""
-              timeline={message.timeline}
-              toolCalls={message.toolCalls}
-              thinkingText={message.thinkingText}
-              thinkingDurationMs={message.thinkingDurationMs}
-              artifactRefs={message.artifactRefs}
-              isStreaming={isStreaming}
-              defaultThinkingExpanded={initialThinkingExpanded}
-              defaultActivitiesExpanded={initialActivitiesExpanded}
-            />
-          </div>
+      <>
+        {hasRenderableContent && (
+          <LLMOutput
+            content={message.content}
+            timeline={message.timeline}
+            toolCalls={message.toolCalls}
+            thinkingText={message.thinkingText}
+            thinkingDurationMs={message.thinkingDurationMs}
+            artifactRefs={message.artifactRefs}
+            isStreaming={isStreaming}
+            defaultThinkingExpanded={initialThinkingExpanded}
+            defaultActivitiesExpanded={initialActivitiesExpanded}
+          />
         )}
-      </div>
+        {renderErrorActions()}
+      </>
     );
   };
 
   const isUser = message.role === "user";
   const hasUserImages = isUser && imageBlocks.length > 0;
+  const hasAssistantImages = !isUser && imageBlocks.length > 0;
   // For user messages we suppress the dark text bubble entirely when the
   // message is image-only -- the image strip becomes the message itself.
   // When contentBlocks isn't used (legacy plain-text path) we always show
   // the bubble. Assistant rendering is unaffected.
   const renderUserBubble =
     isUser && (!hasContentBlocks || nonImageBlocks.length > 0);
-  const renderBubble = isUser ? renderUserBubble : true;
+  // Suppress the assistant text bubble when the message is media-only
+  // (image/video/3D with empty text content). The media strips render
+  // above the bubble, so an empty bubble just adds dead padding.
+  const hasAssistantMediaOnly =
+    !isUser &&
+    !hasContent &&
+    !hasToolCalls &&
+    !hasThinking &&
+    !hasArtifactRefs &&
+    !hasInlineErrorActionChrome &&
+    (imageBlocks.length > 0 || videoBlocks.length > 0 || model3dBlocks.length > 0);
+  const renderBubble = isUser ? renderUserBubble : !hasAssistantMediaOnly;
   const isUserImageOnly = isUser && hasUserImages && !renderUserBubble;
+  // Cross-agent provenance badge. When the persisted user_message
+  // carries a `from_agent_id` (set by `parse_user_message_event`
+  // server-side for any row injected by another agent — A→B inbound
+  // or B→A async reply), surface a small "↩ from <agent>" label
+  // above the bubble. Without this, replies posted back into the
+  // sender's chat panel by the cross-agent reply callback look
+  // indistinguishable from the user's own input — exactly the
+  // duplicate-prompt UX bug Fix A was added to close. Resolves the
+  // sender's display name from `useAgentStore` (every agent the
+  // local org knows about is already cached there); falls back to a
+  // truncated id for cross-org senders the local store has never
+  // fetched, so the badge always renders something useful.
+  const isCrossAgentReply = isUser && !!message.fromAgentId;
+  const senderName = useAgentStore((state) =>
+    isCrossAgentReply
+      ? state.agents.find((a) => a.agent_id === message.fromAgentId)?.name
+      : undefined,
+  );
+  const senderLabel = isCrossAgentReply
+    ? senderName?.trim() || truncateAgentId(message.fromAgentId ?? "")
+    : null;
 
   return (
     <div
@@ -266,8 +438,21 @@ export const MessageBubble = memo(function MessageBubble({
         isUser ? styles.messageUser : styles.messageAssistant
       } ${userBlocksAreAllWidgets ? styles.messageUserWidgetOnly : ""} ${
         isUserImageOnly ? styles.messageUserImageOnly : ""
-      }`}
+      } ${isCrossAgentReply ? styles.messageUserCrossAgent : ""}`}
     >
+      {isCrossAgentReply && senderLabel && (
+        <div
+          className={styles.crossAgentBadge}
+          // Full UUID lives in a tooltip so power users can grab
+          // the canonical handle (matches the truncated-id
+          // fallback when the agent isn't in the local store).
+          title={`Cross-agent reply from agent ${message.fromAgentId}`}
+          aria-label={`Cross-agent reply from ${senderLabel}`}
+        >
+          <CornerDownLeft size={12} className={styles.crossAgentBadgeIcon} />
+          <span className={styles.crossAgentBadgeText}>from {senderLabel}</span>
+        </div>
+      )}
       {hasUserImages && (
         <div className={styles.userImageStrip}>
           {imageBlocks.map(({ block, index }) => (
@@ -294,15 +479,99 @@ export const MessageBubble = memo(function MessageBubble({
           ))}
         </div>
       )}
+      {hasAssistantImages && (
+        <div className={styles.generatedImageStrip}>
+          {imageBlocks.map(({ block, index }) => (
+            <button
+              key={index}
+              type="button"
+              className={styles.generatedImageWrapper}
+              onClick={() => {
+                if (galleryImages.length === 0) return;
+                openGallery({
+                  items: galleryImages.map((item) => ({
+                    ...item,
+                    downloadUrl: item.src,
+                  })),
+                  initialId: `${message.id}-img-${index}`,
+                });
+              }}
+              aria-label="Open generated image in gallery"
+            >
+              <img
+                src={imageBlockSrc(block)}
+                alt="Generated image"
+                className={styles.generatedImageInline}
+                loading="lazy"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      {videoBlocks.length > 0 && (
+        <div className={styles.generatedVideoStrip}>
+          {videoBlocks.map(({ block, index }) => (
+            <div key={index} className={styles.generatedVideoContainer}>
+              <video
+                src={`${block.url}#t=0.5`}
+                className={styles.generatedVideoPlayer}
+                controls
+                playsInline
+                preload="metadata"
+              />
+              <a
+                href={block.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.generatedMediaDownload}
+                download
+              >
+                Download video
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+      {model3dBlocks.length > 0 && (
+        <div className={styles.generatedModel3DStrip}>
+          {model3dBlocks.map(({ block, index }) => (
+            <div key={index} className={styles.generatedModel3DContainer}>
+              <div className={styles.generatedModel3DViewerWrap}>
+                <Suspense fallback={<div style={{ height: 400, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>Loading 3D viewer…</div>}>
+                  <WebGLViewer glbUrl={block.url} showGrid showTexture />
+                </Suspense>
+              </div>
+              <a
+                href={block.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.generatedMediaDownload}
+                download
+              >
+                Download 3D model
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
       {renderBubble && (
         <div
+          ref={!isUser ? assistantBubbleRef : undefined}
           className={`${styles.bubble} ${
             isUser ? styles.bubbleUser : styles.bubbleAssistant
           } ${isAssistantToolOnly ? styles.bubbleAssistantCompact : ""} ${
             userBlocksAreAllWidgets ? styles.bubbleUserWidgetOnly : ""
-          }`}
+          } ${showAssistantCopy ? styles.bubbleWithCopy : ""}`}
         >
           {isUser ? renderUserContent() : renderAssistantContent()}
+          {showAssistantCopy && (
+            <CopyButton
+              getMarkdown={getAssistantMarkdown}
+              className={styles.assistantCopyBtn}
+              ariaLabel="Copy message as markdown"
+              iconOnly
+            />
+          )}
         </div>
       )}
     </div>

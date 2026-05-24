@@ -1,0 +1,92 @@
+//! Routes for the `/api/public/*` anonymous endpoint family.
+//!
+//! Phase 2 wired setup + chat; phase 3 extends the router with three
+//! generation endpoints (image / video / model3d) that share the
+//! Phase 1 rate limiter and count toward the same 3-turn bucket.
+//!
+//! The three generation routes are mounted only when
+//! [`public_generation_enabled`] returns `true`, allowing ops to
+//! disable the expensive endpoints (the three generation modalities
+//! are materially more expensive per-call than chat) without
+//! disabling public chat. Default is `true`; set
+//! `AURA_PUBLIC_GENERATION_ENABLED=false` to turn them off.
+
+use axum::routing::post;
+use axum::Router;
+
+use crate::handlers::public;
+use crate::state::AppState;
+
+/// Env var that toggles the three public generation endpoints. When
+/// blank, malformed, or unset, the endpoints are enabled (consistent
+/// with the rest of the codebase's "default-on" feature flags).
+const PUBLIC_GENERATION_ENABLED_ENV: &str = "AURA_PUBLIC_GENERATION_ENABLED";
+
+/// Parse [`PUBLIC_GENERATION_ENABLED_ENV`] as a boolean. Treats any
+/// case-insensitive `false` / `0` / `no` / `off` as disabled;
+/// everything else (including unset) enables the endpoints.
+fn public_generation_enabled() -> bool {
+    match std::env::var(PUBLIC_GENERATION_ENABLED_ENV) {
+        Ok(raw) => !matches!(
+            raw.trim().to_ascii_lowercase().as_str(),
+            "false" | "0" | "no" | "off",
+        ),
+        Err(_) => true,
+    }
+}
+
+/// Build the public-endpoint router. Mounted from
+/// [`super::create_router_with_interface`] next to `auth_routes()`
+/// — never inside `protected_api_router` — so the global auth
+/// middleware never inspects the request.
+pub(super) fn public_routes() -> Router<AppState> {
+    let mut router = Router::new()
+        .route("/api/public/setup", post(public::public_setup))
+        .route("/api/public/chat/stream", post(public::public_chat_stream));
+    if public_generation_enabled() {
+        router = router
+            .route(
+                "/api/public/generation/image",
+                post(public::public_image_stream),
+            )
+            .route(
+                "/api/public/generation/video",
+                post(public::public_video_stream),
+            )
+            .route(
+                "/api/public/generation/model3d",
+                post(public::public_model3d_stream),
+            );
+    }
+    router
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_generation_enabled_defaults_to_true() {
+        // Snapshot whatever the test env currently has, then ensure
+        // the default-on contract holds when the var is absent.
+        let prior = std::env::var(PUBLIC_GENERATION_ENABLED_ENV).ok();
+        std::env::remove_var(PUBLIC_GENERATION_ENABLED_ENV);
+        assert!(public_generation_enabled());
+        if let Some(value) = prior {
+            std::env::set_var(PUBLIC_GENERATION_ENABLED_ENV, value);
+        }
+    }
+
+    #[test]
+    fn public_generation_enabled_parses_false_strings() {
+        let prior = std::env::var(PUBLIC_GENERATION_ENABLED_ENV).ok();
+        for token in ["false", "FALSE", "0", "no", "off"] {
+            std::env::set_var(PUBLIC_GENERATION_ENABLED_ENV, token);
+            assert!(!public_generation_enabled(), "token = {token}");
+        }
+        match prior {
+            Some(value) => std::env::set_var(PUBLIC_GENERATION_ENABLED_ENV, value),
+            None => std::env::remove_var(PUBLIC_GENERATION_ENABLED_ENV),
+        }
+    }
+}

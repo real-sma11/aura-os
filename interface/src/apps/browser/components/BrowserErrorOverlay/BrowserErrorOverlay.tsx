@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Button } from "@cypher-asi/zui";
 import type { NavError } from "../../../../shared/api/browser";
 import styles from "./BrowserErrorOverlay.module.css";
 
@@ -32,11 +33,17 @@ function hostLabel(url: string): string {
 }
 
 /**
- * Translate a `net::ERR_*` string into a short headline suitable for the
- * overlay title. Falls back to a generic "Can't load page" when we don't
- * have a specific mapping.
+ * Translate an error payload into a short headline suitable for the
+ * overlay title. HTTP failures synthesized from main-frame 4xx/5xx
+ * responses get tailored copy keyed off `http_status`; everything else
+ * falls through to the existing Chromium `net::ERR_*` mapping.
  */
-function headlineFor(errorText: string): string {
+function headlineFor(errorText: string, httpStatus: number | null): string {
+  if (httpStatus !== null) {
+    if (httpStatus === 404) return "This page can't be found";
+    if (httpStatus >= 500) return "The server returned an error";
+    if (httpStatus >= 400) return "This page can't be loaded";
+  }
   const key = errorText.replace(/^net::/, "");
   switch (key) {
     case "ERR_NAME_NOT_RESOLVED":
@@ -78,7 +85,15 @@ function headlineFor(errorText: string): string {
 
 function subtitleFor(error: NavError): string {
   const host = hostLabel(error.url);
-  const codeSuffix = typeof error.code === "number" ? ` (${error.code})` : "";
+  // Prefer the HTTP status when present so the parenthetical reads
+  // `(404)` instead of the Chromium `net_error` numeric `(-379)`.
+  const numeric =
+    typeof error.http_status === "number"
+      ? error.http_status
+      : typeof error.code === "number"
+        ? error.code
+        : null;
+  const codeSuffix = numeric !== null ? ` (${numeric})` : "";
   return `Could not reach ${host}.${codeSuffix}`;
 }
 
@@ -89,7 +104,12 @@ export function BrowserErrorOverlay({
 }: BrowserErrorOverlayProps) {
   const [showDetails, setShowDetails] = useState(false);
 
-  const headline = useMemo(() => headlineFor(error.error_text), [error.error_text]);
+  const httpStatus =
+    typeof error.http_status === "number" ? error.http_status : null;
+  const headline = useMemo(
+    () => headlineFor(error.error_text, httpStatus),
+    [error.error_text, httpStatus],
+  );
   const subtitle = useMemo(() => subtitleFor(error), [error]);
 
   return (
@@ -103,30 +123,26 @@ export function BrowserErrorOverlay({
         <h1 className={styles.title}>{headline}</h1>
         <p className={styles.subtitle}>{subtitle}</p>
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.button}
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => onAskAgent?.(error)}
             disabled={!onAskAgent}
           >
             Ask Agent
-          </button>
-          <button
-            type="button"
-            className={styles.button}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setShowDetails((v) => !v)}
             aria-expanded={showDetails}
           >
             {showDetails ? "Hide Details" : "Show Details"}
-          </button>
+          </Button>
           {onReload && (
-            <button
-              type="button"
-              className={styles.button}
-              onClick={onReload}
-            >
+            <Button variant="primary" size="sm" onClick={onReload}>
               Reload
-            </button>
+            </Button>
           )}
         </div>
         {showDetails && (
@@ -143,6 +159,12 @@ export function BrowserErrorOverlay({
               <div className={styles.detailsRow}>
                 <dt>Code</dt>
                 <dd>{error.code}</dd>
+              </div>
+            )}
+            {httpStatus !== null && (
+              <div className={styles.detailsRow}>
+                <dt>HTTP</dt>
+                <dd>{httpStatus}</dd>
               </div>
             )}
           </dl>

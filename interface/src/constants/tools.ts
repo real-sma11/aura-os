@@ -86,6 +86,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_remote_agent_state: "Remote agent state",
   generate_image: "Generate image",
   generate_3d_model: "Generate 3D model",
+  generate_video: "Generate video",
   get_3d_status: "3D generation status",
   load_domain_tools: "Load tools",
 };
@@ -132,6 +133,7 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   extract_tasks: "Extracting tasks...",
   generate_image: "Generating image...",
   generate_3d_model: "Generating 3D model...",
+  generate_video: "Generating video...",
   load_domain_tools: "Loading additional tools...",
   send_to_agent: "Sending message to agent...",
 };

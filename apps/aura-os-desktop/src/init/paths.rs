@@ -204,7 +204,11 @@ pub(super) fn migrate_legacy_dev_skills_dir(home: &Path) {
             stable = %stable_skills.display(),
             "skipping aura-dev skills -> aura skills migration: both trees populated; leaving each in place"
         );
-        let _ = drop_migration_marker(&stable_skills_home, &marker, "destination already populated");
+        let _ = drop_migration_marker(
+            &stable_skills_home,
+            &marker,
+            "destination already populated",
+        );
         return;
     }
 
@@ -230,7 +234,8 @@ pub(super) fn migrate_legacy_dev_skills_dir(home: &Path) {
                 to = %stable_skills.display(),
                 "migrated ~/.aura-dev/skills -> ~/.aura/skills (recovery from channel-selection bug)"
             );
-            let _ = drop_migration_marker(&stable_skills_home, &marker, "skills migration succeeded");
+            let _ =
+                drop_migration_marker(&stable_skills_home, &marker, "skills migration succeeded");
         }
         Err(err) => {
             // Fall back to a recursive copy + best-effort delete: rename
@@ -446,7 +451,10 @@ mod tests {
             !stable.join("store").join("b.json").exists(),
             "marker should have blocked the second migration"
         );
-        assert!(dev.join("store").join("b.json").is_file(), "second-run dev data must be left alone");
+        assert!(
+            dev.join("store").join("b.json").is_file(),
+            "second-run dev data must be left alone"
+        );
     }
 
     #[test]

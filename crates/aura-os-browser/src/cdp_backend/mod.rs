@@ -82,13 +82,20 @@ impl BrowserBackend for CdpBackend {
         cancel: CancellationToken,
     ) -> Result<(), Error> {
         let browser = self.browser().await?;
-        let url = initial_url
-            .as_ref()
-            .map(|u| u.to_string())
-            .unwrap_or_else(|| "about:blank".to_string());
 
+        // Always create the page on `about:blank` and defer the real
+        // navigation into the session loop. `browser.new_page(url)`
+        // kicks the initial navigation off synchronously, which races
+        // ahead of our CDP event subscriptions in `run_session_loop`
+        // -- we'd miss `Network.requestWillBeSent` / `responseReceived`
+        // / `loadingFailed` for the first hit and never paint the
+        // themed error overlay on a bad initial URL (issue surfaced as
+        // "first nav shows Chromium's native error page, refresh shows
+        // ours"). `about:blank` is special-cased by Chromium and
+        // produces no main-frame Network events, so missing those is
+        // a no-op.
         let page = browser
-            .new_page(url.as_str())
+            .new_page("about:blank")
             .await
             .map_err(|e| Error::backend("new_page", e.to_string()))?;
 
@@ -106,6 +113,7 @@ impl BrowserBackend for CdpBackend {
             quality,
             width: opts.width,
             height: opts.height,
+            initial_url,
         }));
 
         self.inner.sessions.insert(id, SessionState { tx, task });

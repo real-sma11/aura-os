@@ -14,6 +14,7 @@ fn make_assistant_event_with_blocks(content_blocks: Vec<ChatContentBlock>) -> Se
         thinking_duration_ms: None,
         created_at: chrono::Utc::now(),
         in_flight: None,
+        from_agent_id: None,
     }
 }
 
@@ -39,6 +40,7 @@ async fn test_agent_harness_history_strips_dangling_tool_use_block() {
             thinking_duration_ms: None,
             created_at: chrono::Utc::now(),
             in_flight: None,
+            from_agent_id: None,
         },
         make_assistant_event_with_blocks(vec![
             ChatContentBlock::Text {

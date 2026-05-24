@@ -347,6 +347,8 @@ pub fn build_test_app_from_store(
         stability_metrics: Arc::new(aura_os_server::stability_metrics::StabilityMetrics::new()),
         started_at: std::time::Instant::now(),
         harness_broadcast_capacity: 16384,
+        public_rate_limiter: aura_os_server::PublicRateLimiter::new(),
+        public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
     };
 
     let app = aura_os_server::create_router_with_interface(state.clone(), None);

@@ -1,0 +1,119 @@
+/* Ported verbatim from
+   aura-web/src/components/ChangelogPreview/ChangelogPreview.css. */
+.changelogPreview {
+  background: #000;
+  padding: 80px 32px;
+}
+
+.changelogPreviewShell {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.changelogPreviewHeading {
+  margin: 0 0 24px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.changelogPreviewGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.changelogPreviewCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 140px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.changelogPreviewCard:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateY(-1px);
+}
+
+.changelogPreviewVersion {
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.changelogPreviewDate {
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.changelogPreviewTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  color: rgba(255, 255, 255, 0.88);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.changelogPreviewCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 20px;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 14px;
+  font-weight: 400;
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.changelogPreviewCta:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.changelogPreviewCta span {
+  transition: transform 160ms ease;
+}
+
+.changelogPreviewCta:hover span {
+  transform: translateX(2px);
+}
+
+@media (max-width: 900px) {
+  .changelogPreviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .changelogPreview {
+    padding: 64px 24px;
+  }
+
+  .changelogPreviewGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .changelogPreviewCard {
+    min-height: 120px;
+  }
+}

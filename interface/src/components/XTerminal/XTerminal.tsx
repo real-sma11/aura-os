@@ -35,6 +35,13 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
   const hookRef = useRef(hook);
   const fitFrameRef = useRef<number | null>(null);
   const pendingFitRef = useRef({ force: false, notifyResize: false });
+  // The first fit tells the hook what size to spawn the PTY at.
+  // Subsequent fits send a resize over the existing connection.
+  // Without this, the PTY would be spawned at the hard-coded 80x24
+  // and PowerShell + ConPTY would cache the wrong buffer width,
+  // leaving PSReadLine and prompt redraws permanently out of sync
+  // with what xterm.js actually renders.
+  const hasSpawnedRef = useRef(false);
   const [viewportReady, setViewportReady] = useState(false);
 
   useEffect(() => {
@@ -70,7 +77,11 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
       }
 
       fitAddon.fit();
-      if (pending.notifyResize) {
+
+      if (!hasSpawnedRef.current) {
+        hasSpawnedRef.current = true;
+        hookRef.current.spawn(xterm.cols, xterm.rows);
+      } else if (pending.notifyResize) {
         hookRef.current.resize(xterm.cols, xterm.rows);
       }
     });
@@ -129,6 +140,26 @@ export function XTerminal({ terminal: hook, visible, focused }: XTerminalProps) 
     }
 
     scheduleFit({ force: true, notifyResize: true });
+
+    // Ctrl+L safety net. We let the keystroke through to the shell so the
+    // prompt repaints, but also call `xterm.clear()` directly so the
+    // 100k-line scrollback is wiped instantly regardless of what the
+    // shell emits. This protects against shells whose `clear`/`cls`
+    // doesn't include `ESC[3J` (notably cmd.exe's `cls` and remote
+    // shells where the server-side override doesn't apply).
+    xterm.attachCustomKeyEventHandler((event) => {
+      if (
+        event.type === "keydown"
+        && event.ctrlKey
+        && !event.shiftKey
+        && !event.altKey
+        && !event.metaKey
+        && event.key.toLowerCase() === "l"
+      ) {
+        xterm.clear();
+      }
+      return true;
+    });
 
     const dataDisposable = xterm.onData((data) => {
       hook.write(data);

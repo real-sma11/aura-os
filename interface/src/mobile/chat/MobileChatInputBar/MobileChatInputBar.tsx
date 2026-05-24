@@ -9,15 +9,15 @@ import {
 } from "react";
 import { ArrowUp, ChevronDown, FileText, Plus, X } from "lucide-react";
 import { AgentEnvironment } from "../../../apps/agents/components/AgentEnvironment";
-import { CommandChips } from "../../../apps/chat/components/ChatInputBar/CommandChips";
-import { ContextUsageIndicator } from "../../../apps/chat/components/ChatInputBar/ContextUsageIndicator";
-import { SlashCommandMenu } from "../../../apps/chat/components/ChatInputBar/SlashCommandMenu";
-import { useFileAttachments } from "../../../apps/chat/components/ChatInputBar/useFileAttachments";
+import { CommandChips } from "../../../features/chat-ui/ChatInputBar/CommandChips";
+import { ContextUsageIndicator } from "../../../features/chat-ui/ChatInputBar/ContextUsageIndicator";
+import { SlashCommandMenu } from "../../../features/chat-ui/ChatInputBar/SlashCommandMenu";
+import { useFileAttachments } from "../../../features/chat-ui/ChatInputBar/useFileAttachments";
 import type {
   AttachmentItem,
   ChatInputBarHandle,
   ChatInputBarProps,
-} from "../../../apps/chat/components/ChatInputBar/ChatInputBar";
+} from "../../../features/chat-ui/ChatInputBar/ChatInputBar";
 import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
 import {
   availableModelsForAdapter,
@@ -105,7 +105,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       isVisible = true,
       isCentered = false,
       contextUsage,
-      onNewSession,
       onNewChat,
     },
     ref,
@@ -142,7 +141,9 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
         ? "image"
         : modeBehavior.kind === "generate_3d"
           ? "3d"
-          : "chat";
+          : modeBehavior.kind === "generate_video"
+            ? "video"
+            : "chat";
     const isLocalAgent = machineType === "local";
     const isThreeDMode = generationMode === "3d";
     const pinnedSourceImage = chatUI.pinnedSourceImage;
@@ -302,7 +303,10 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const handleCommandSelect = useCallback(
       (command: SlashCommand) => {
         if (isGenerationCommand(command.id)) {
-          const targetMode: AgentMode = command.id === "generate_image" ? "image" : "3d";
+          const targetMode: AgentMode =
+            command.id === "generate_image" ? "image" :
+            command.id === "generate_video" ? "video" :
+            "3d";
           chatUI.setSelectedMode(streamKey, targetMode, adapterType, agentId);
         } else {
           onCommandsChange?.([...selectedCommands, command]);
@@ -671,7 +675,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               <ContextUsageIndicator
                 utilization={contextUsage.utilization}
                 estimatedTokens={contextUsage.estimatedTokens}
-                onNewSession={onNewSession}
+                breakdown={contextUsage.breakdown}
               />
             ) : null}
             {modelsForMode.length > 0 ? (

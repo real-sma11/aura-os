@@ -1,5 +1,5 @@
 use super::*;
-use aura_os_core::{AgentId, AgentInstanceId, ProjectId, UserId};
+use aura_os_core::{AgentId, AgentInstanceId, ProjectId, TaskId, UserId};
 use aura_os_events::{LoopKind, SubscriptionFilter, Topic};
 
 fn fresh_loop_id(project: ProjectId, instance: AgentInstanceId, kind: LoopKind) -> LoopId {
@@ -165,6 +165,68 @@ async fn transition_throttles_same_status_updates() {
     handle.mark_completed().await;
     let end = rx.recv().await.unwrap();
     assert!(matches!(end.as_ref(), DomainEvent::LoopEnded(_)));
+}
+
+#[tokio::test]
+async fn set_current_task_bypasses_throttle_even_without_status_change() {
+    use std::time::Duration as StdDuration;
+
+    // Regression: the very first `set_current_task` after `open()` is
+    // typically driven by the harness's `task_started` event. It only
+    // mutates `current_task_id` and leaves `status = Starting`, so
+    // before the bypass the 4 Hz throttle could swallow the publish
+    // (the `last_published_ms` baseline is seeded with the open
+    // timestamp, so `elapsed_ms` is well under 250ms). Without the
+    // publish, the frontend's `loop-activity-store` keeps the seed
+    // payload (`current_task_id: None`) and `selectTaskActivity`
+    // returns null, so the per-task UI spinner cannot bind and the
+    // active task renders as a hollow circle.
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let project = ProjectId::new();
+    let (_g, mut rx) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
+    let handle = registry.open(fresh_loop_id(
+        project,
+        AgentInstanceId::new(),
+        LoopKind::Automation,
+    ));
+
+    // Drain the LoopOpened.
+    let _ = rx.recv().await;
+
+    let task_id = TaskId::new();
+    handle.set_current_task(Some(task_id)).await;
+
+    let evt = tokio::time::timeout(StdDuration::from_millis(50), rx.recv())
+        .await
+        .expect("set_current_task must bypass the throttle when current_task_id changes")
+        .expect("event");
+    match evt.as_ref() {
+        DomainEvent::LoopActivityChanged(p) => {
+            assert_eq!(p.activity.current_task_id, Some(task_id));
+            assert_eq!(p.activity.status, LoopStatus::Starting);
+        }
+        other => panic!("expected LoopActivityChanged, got {other:?}"),
+    }
+
+    // Clearing the binding (`task_completed` / `task_failed` calls
+    // `set_current_task(None)`) is also a task-pointer change and
+    // must publish, even back-to-back within the throttle window.
+    handle.set_current_task(None).await;
+    let evt = tokio::time::timeout(StdDuration::from_millis(50), rx.recv())
+        .await
+        .expect("clearing current_task_id must bypass the throttle too")
+        .expect("event");
+    match evt.as_ref() {
+        DomainEvent::LoopActivityChanged(p) => {
+            assert_eq!(p.activity.current_task_id, None);
+        }
+        other => panic!("expected LoopActivityChanged, got {other:?}"),
+    }
+
+    handle.mark_completed().await;
+    let _ = rx.recv().await;
 }
 
 #[tokio::test]

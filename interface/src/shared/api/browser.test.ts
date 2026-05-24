@@ -82,6 +82,20 @@ describe("isBrowserServerTextEvent", () => {
     ).toBe(true);
   });
 
+  it("accepts a nav_error event with an HTTP status", () => {
+    expect(
+      isBrowserServerTextEvent({
+        type: "nav_error",
+        error: {
+          url: "http://127.0.0.1:8080/",
+          error_text: "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+          code: -379,
+          http_status: 404,
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("rejects garbage", () => {
     expect(isBrowserServerTextEvent(null)).toBe(false);
     expect(isBrowserServerTextEvent({ type: "other" })).toBe(false);

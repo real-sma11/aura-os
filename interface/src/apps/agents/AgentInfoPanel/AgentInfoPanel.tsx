@@ -324,8 +324,15 @@ export function AgentInfoPanel({ variant = "default", agent: agentOverride }: Ag
         agent={selectedAgent ?? undefined}
         onClose={closeEditor}
         onSaved={(updated) => {
+          const projectsStore = useProjectsListStore.getState();
           useAgentStore.getState().patchAgent(updated);
-          useProjectsListStore.getState().patchAgentTemplateFields(updated);
+          projectsStore.patchAgentTemplateFields(updated);
+          // Server folds `Agent.local_workspace_path` into every project
+          // instance's `workspace_path` (see `resolve_workspace_path`).
+          // Refresh the agent caches for each project hosting an instance
+          // so the env-overlay's "Workspace Folder" row reflects the
+          // new path without a manual reload.
+          projectsStore.refreshAgentInstancesForTemplate(updated.agent_id);
           setSelectedAgent(updated.agent_id);
           useAgentStore.getState().fetchAgents({ force: true });
         }}

@@ -194,18 +194,20 @@ async fn list_sessions_keeps_rows_when_events_probe_errors() {
         )
         .route(
             "/api/project-agents/:project_agent_id/sessions",
-            get(move |axum::extract::Path(pa_id): axum::extract::Path<String>| {
-                let session_id = session_resp_id.clone();
-                async move {
-                    Json(serde_json::json!([{
-                        "id": session_id,
-                        "projectAgentId": pa_id,
-                        "projectId": uuid::Uuid::new_v4().to_string(),
-                        "status": "active",
-                        "startedAt": chrono::Utc::now().to_rfc3339(),
-                    }]))
-                }
-            }),
+            get(
+                move |axum::extract::Path(pa_id): axum::extract::Path<String>| {
+                    let session_id = session_resp_id.clone();
+                    async move {
+                        Json(serde_json::json!([{
+                            "id": session_id,
+                            "projectAgentId": pa_id,
+                            "projectId": uuid::Uuid::new_v4().to_string(),
+                            "status": "active",
+                            "startedAt": chrono::Utc::now().to_rfc3339(),
+                        }]))
+                    }
+                },
+            ),
         )
         .route(
             "/api/sessions/:session_id/events",

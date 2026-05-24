@@ -37,6 +37,17 @@ pub enum OutboundMessage {
     AssistantMessageEnd(AssistantMessageEnd),
     /// An error occurred.
     Error(ErrorMsg),
+    /// Progress heartbeat. Strictly additive: the harness emits these
+    /// during long tool calls (`stage = "tool_running"`, every
+    /// `AURA_TURN_TOOL_HEARTBEAT_INTERVAL_SECS`) so the aura-os
+    /// sliding-idle watchdog and the client-side stuck-stream
+    /// watchdog see forward motion and don't trip a `turn_timeout` on
+    /// a turn that is actually working. Older clients ignore unknown
+    /// SSE event types (the chat handler already does — see
+    /// `interface/src/hooks/use-chat-stream/build-stream-handler.ts`
+    /// `EventType.Progress` branch) so adding the variant is
+    /// wire-compatible in both directions.
+    Progress(ProgressMsg),
     /// Generation started.
     GenerationStart(GenerationStart),
     /// Generation progress update.
@@ -180,6 +191,80 @@ pub struct SessionUsage {
     pub model: String,
     /// Provider name (e.g., "anthropic").
     pub provider: String,
+    /// Per-bucket token estimates that sum (approximately) to
+    /// `estimated_context_tokens`. Strictly additive — older harness
+    /// builds emit `ContextBreakdown::default()` (all zeros), and the
+    /// frontend treats an all-zero breakdown as "not available" and
+    /// falls back to the legacy used/total view.
+    #[serde(default)]
+    pub context_breakdown: ContextBreakdown,
+}
+
+/// Per-bucket token estimates for the current session context, computed
+/// using the same `chars / CHARS_PER_TOKEN` heuristic as
+/// [`SessionUsage::estimated_context_tokens`]. The buckets approximate
+/// what the model actually receives on the next turn:
+///
+/// - `system_prompt_tokens` — the rendered system prompt.
+/// - `tools_tokens` — serialized tool definitions (name + description +
+///   JSON schema for each tool the request would carry).
+/// - `skills_tokens` — installed skill metadata (name + description).
+/// - `mcp_tokens` — reserved for MCP server context once aura-harness
+///   gains MCP support; today this is always `0`.
+/// - `subagents_tokens` — registered subagent kind specs.
+/// - `conversation_tokens` — the live message transcript including
+///   tool results and assistant turns. This is the same number as
+///   `estimated_context_tokens` minus the static buckets above.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS), ts(export))]
+pub struct ContextBreakdown {
+    pub system_prompt_tokens: u64,
+    pub tools_tokens: u64,
+    pub skills_tokens: u64,
+    pub mcp_tokens: u64,
+    pub subagents_tokens: u64,
+    pub conversation_tokens: u64,
+    /// Tokens served from the upstream provider's prompt cache during
+    /// the most recent turn (Anthropic's `cache_read_input_tokens` or
+    /// OpenAI's `prompt_tokens_details.cached_tokens`). Describes what
+    /// fraction of the *conversation* bucket was a cache hit; not a
+    /// separate context bucket, so excluded from [`Self::total`] and
+    /// [`Self::is_empty`].
+    #[serde(default)]
+    pub cache_read_tokens: u64,
+    /// Tokens written to the upstream provider's prompt cache during
+    /// the most recent turn (Anthropic's `cache_creation_input_tokens`,
+    /// or the cache-miss portion of OpenAI's responses). See
+    /// [`Self::cache_read_tokens`] for why this is NOT included in
+    /// [`Self::total`] / [`Self::is_empty`].
+    #[serde(default)]
+    pub cache_creation_tokens: u64,
+}
+
+impl ContextBreakdown {
+    /// True when every bucket is zero. Used by the frontend to detect
+    /// pre-upgrade harness builds and fall back to the legacy popover.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.system_prompt_tokens == 0
+            && self.tools_tokens == 0
+            && self.skills_tokens == 0
+            && self.mcp_tokens == 0
+            && self.subagents_tokens == 0
+            && self.conversation_tokens == 0
+    }
+
+    /// Sum of every bucket. Useful as a sanity check against
+    /// [`SessionUsage::estimated_context_tokens`].
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.system_prompt_tokens
+            .saturating_add(self.tools_tokens)
+            .saturating_add(self.skills_tokens)
+            .saturating_add(self.mcp_tokens)
+            .saturating_add(self.subagents_tokens)
+            .saturating_add(self.conversation_tokens)
+    }
 }
 
 /// A single file mutation observed during a turn.
@@ -235,6 +320,61 @@ pub struct ErrorMsg {
     pub code: String,
     pub message: String,
     pub recoverable: bool,
+    /// Short opaque id (12 lowercase hex chars) used to correlate this
+    /// error across server logs, client breadcrumbs, and user-pasted
+    /// support reports. Strictly additive on the wire:
+    ///
+    /// - Older clients that don't know the field deserialize fine
+    ///   (`#[serde(default)]` keeps the field optional inbound), and
+    ///   the sender omits it from the JSON when `None`
+    ///   (`skip_serializing_if = "Option::is_none"`) so older receivers
+    ///   never see an unexpected key.
+    /// - Older harness builds simply leave it `None`. The aura-os SSE
+    ///   remap boundary in `apps/aura-os-server/src/handlers/agents/chat/errors.rs`
+    ///   keeps stamping a `(support_id=<id>)` suffix into `message`
+    ///   for that case so existing clients still get a usable id.
+    /// - Newer harness in-process emit sites (e.g. the watchdog
+    ///   `stream_stalled` / `turn_timeout` synth, the agent loop's
+    ///   `agent_stalled` terminal event) can pre-populate the field so
+    ///   the same id appears on both the structured field and the
+    ///   message suffix; the SSE remap path leaves a prepopulated id
+    ///   untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_id: Option<String>,
+}
+
+/// Payload for `progress` heartbeat / status events.
+///
+/// `stage` is the only required field and carries a free-form short
+/// label (`"tool_running"`, `"lagged"`, `"forked_for_context"`, …).
+/// Unknown stages flow straight through to the client which renders
+/// them as a generic progress label, so we can introduce new stages
+/// without coordinating a wire bump.
+///
+/// Optional fields are omitted from the JSON when `None`
+/// (`skip_serializing_if = "Option::is_none"`) and default to `None`
+/// inbound (`#[serde(default)]`) so older harness/client pairs that
+/// don't know about them deserialize cleanly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS), ts(export))]
+pub struct ProgressMsg {
+    /// Short machine-readable stage tag. The aura-os chat client
+    /// renders unknown values as the literal label, so adding new
+    /// stages does not require a coordinated client release.
+    pub stage: String,
+    /// Tool whose long-running execution is producing this heartbeat.
+    /// Set on `stage = "tool_running"`; left `None` for stages that
+    /// don't refer to a single tool (e.g. `"lagged"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Wall-clock milliseconds since the heartbeat's reference event
+    /// (tool start for `"tool_running"`). Optional — older clients
+    /// ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u64>,
+    /// Optional human-readable label / detail string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 // ============================================================================

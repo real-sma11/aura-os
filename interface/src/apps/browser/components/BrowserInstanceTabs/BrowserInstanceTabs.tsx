@@ -1,6 +1,6 @@
-import { X, Plus } from "lucide-react";
+import { useMemo } from "react";
 import type { BrowserInstance } from "../../../../stores/browser-panel-store";
-import styles from "./BrowserInstanceTabs.module.css";
+import { InstanceTabs, type InstanceTab } from "../../../../components/InstanceTabs";
 
 export interface BrowserInstanceTabsProps {
   instances: BrowserInstance[];
@@ -17,41 +17,19 @@ export function BrowserInstanceTabs({
   onClose,
   onAdd,
 }: BrowserInstanceTabsProps) {
+  const tabs = useMemo<InstanceTab[]>(
+    () => instances.map((i) => ({ id: i.clientId, title: i.title })),
+    [instances],
+  );
+
   return (
-    <div className={styles.root} role="tablist">
-      {instances.map((instance) => {
-        const active = instance.clientId === activeClientId;
-        return (
-          <div key={instance.clientId} className={styles.tabWrap}>
-            <button
-              type="button"
-              role="tab"
-              aria-current={active ? "page" : undefined}
-              aria-selected={active}
-              className={styles.tab}
-              onClick={() => onActivate(instance.clientId)}
-            >
-              <span className={styles.title}>{instance.title}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.close}
-              aria-label={`Close ${instance.title}`}
-              onClick={() => onClose(instance.clientId)}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        );
-      })}
-      <button
-        type="button"
-        className={styles.addButton}
-        aria-label="New browser tab"
-        onClick={onAdd}
-      >
-        <Plus size={14} />
-      </button>
-    </div>
+    <InstanceTabs
+      tabs={tabs}
+      activeId={activeClientId}
+      onActivate={onActivate}
+      onClose={onClose}
+      onAdd={onAdd}
+      addAriaLabel="New browser tab"
+    />
   );
 }

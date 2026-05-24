@@ -351,7 +351,9 @@ mod tests {
     /// Parse a query string the same way the running handler does.
     /// `axum::extract::Query` round-trips via `serde_urlencoded` which
     /// is the wire format for HTTP query strings.
-    async fn parse_query(qs: &str) -> Result<ListAgentsQuery, axum::extract::rejection::QueryRejection> {
+    async fn parse_query(
+        qs: &str,
+    ) -> Result<ListAgentsQuery, axum::extract::rejection::QueryRejection> {
         use axum::extract::Query;
         use axum::http::Request;
         let uri = format!("http://example/?{qs}");

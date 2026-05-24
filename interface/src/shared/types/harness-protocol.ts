@@ -133,6 +133,39 @@ export interface SessionUsage {
   context_utilization: number;
   model: string;
   provider: string;
+  /**
+   * Per-bucket token estimates that approximately sum to
+   * `estimated_context_tokens`. Optional because older harness builds
+   * omit it; the frontend treats an absent or all-zero breakdown as
+   * "not available" and falls back to the legacy used/total view.
+   */
+  context_breakdown?: ContextBreakdown;
+}
+
+/**
+ * Per-bucket context-window token estimates emitted by the harness.
+ * `mcp_tokens` is reserved (always 0 today) for future MCP integration.
+ */
+export interface ContextBreakdown {
+  system_prompt_tokens: number;
+  tools_tokens: number;
+  skills_tokens: number;
+  mcp_tokens: number;
+  subagents_tokens: number;
+  conversation_tokens: number;
+  /**
+   * Tokens served from the upstream provider's prompt cache during the
+   * most recent turn (Anthropic `cache_read_input_tokens` or OpenAI
+   * `prompt_tokens_details.cached_tokens`). Describes what fraction of
+   * the *conversation* bucket was a cache hit; the popover renders
+   * this as a "Cached this turn" sub-row, not as a separate bucket.
+   */
+  cache_read_tokens?: number;
+  /**
+   * Tokens written to the upstream provider's prompt cache during the
+   * most recent turn (Anthropic `cache_creation_input_tokens`).
+   */
+  cache_creation_tokens?: number;
 }
 
 export interface FileOp {

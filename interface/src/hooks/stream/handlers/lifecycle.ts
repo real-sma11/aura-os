@@ -9,7 +9,9 @@ import { SSEIdleTimeoutError } from "../../../shared/api/sse";
 import {
   recordStreamCloseReason,
   type StreamCloseClassification,
+  type StreamCloseContext,
 } from "../../../shared/observability/stream-breadcrumbs";
+import { extractSupportId } from "../../../shared/observability/support-id";
 import type { SessionEvent, ChatContentBlock } from "../../../shared/types";
 import { extractToolCalls, extractArtifactRefs } from "../../../utils/chat-history";
 import type {
@@ -85,6 +87,14 @@ function classifyFinalizeReason(
 interface FinalizeStreamOptions {
   reason?: FinalizeStreamReason;
   message?: string;
+  /**
+   * Phase 5: optional context the chat hooks can thread through so
+   * the persisted breadcrumb carries the stream key / agent id /
+   * session id alongside the close reason. Lifecycle handlers are
+   * agnostic of these ids; the use-site (the chat hook closing
+   * over the captured partition) supplies them when available.
+   */
+  breadcrumbContext?: StreamCloseContext;
 }
 
 function getStreamErrorMessage(error: unknown): string {
@@ -119,6 +129,8 @@ function getStreamErrorCode(error: unknown): string | undefined {
  *
  * - `SSEIdleTimeoutError` (client-side 90s read-watchdog),
  * - `stream_lagged` (server-side broadcast backpressure),
+ * - `stream_truncated` (server-side broadcast closed before terminal),
+ * - `turn_timeout` / `stream_stalled` (server-side turn watchdogs),
  * - `harness_ws_closed` / `harness_ws_read_error` (Phase 2: the
  *   upstream harness WebSocket dropped mid-turn; the next send
  *   transparently rehydrates state from session storage),
@@ -130,7 +142,22 @@ export function isStreamDroppedError(error: unknown, message?: string): boolean 
   if (error instanceof SSEIdleTimeoutError) return true;
   if (error instanceof Error && error.name === "SSEIdleTimeoutError") return true;
   const code = getStreamErrorCode(error);
-  if (code === "STREAM_LAGGED" || code === "stream_lagged") return true;
+  if (
+    code === "STREAM_LAGGED" ||
+    code === "stream_lagged" ||
+    code === "STREAM_TRUNCATED" ||
+    code === "stream_truncated"
+  ) {
+    return true;
+  }
+  if (
+    code === "TURN_TIMEOUT" ||
+    code === "turn_timeout" ||
+    code === "STREAM_STALLED" ||
+    code === "stream_stalled"
+  ) {
+    return true;
+  }
   if (
     code === "harness_ws_closed" ||
     code === "harness_ws_read_error" ||
@@ -398,22 +425,40 @@ export function handleStreamError(
   refs: StreamRefs,
   setters: StreamSetters,
   error: unknown,
+  breadcrumbContext?: StreamCloseContext,
 ): void {
   const rawMessage = getStreamErrorMessage(error);
   const rawCode = getStreamErrorCode(error);
+  // Phase 5: peel the `(support_id=...)` suffix off the raw server
+  // message before any user-facing copy is built so the bubble
+  // text stays clean and the id surfaces as a copyable chip on
+  // the synthesized event instead.
+  const { supportId, cleanedMessage } = extractSupportId(rawMessage);
   const { message, displayVariant } = normalizeStreamError(error);
-  const displayMessage = rawCode && !displayVariant ? `${message} (${rawCode})` : message;
+  // For the unbucketed default branch `normalizeStreamError`
+  // returns the raw message verbatim; swap in the cleaned copy so
+  // the support_id suffix doesn't leak into the rendered bubble.
+  const messageForDisplay =
+    !displayVariant && message === rawMessage ? cleanedMessage : message;
+  const displayMessage = rawCode && !displayVariant ? `${messageForDisplay} (${rawCode})` : messageForDisplay;
 
   console.error("Chat stream error:", rawCode ? `${rawCode}: ${rawMessage}` : rawMessage);
   // Phase 5 client-side breadcrumb. Fires BEFORE `dispatchInsufficientCredits`
   // and the React state churn below so a future telemetry handler
   // wiring to `aura:stream-close` sees the close reason on the same
-  // tick the consumer first surfaces it.
-  recordStreamCloseReason({
-    classified: classifyStreamErrorVariant(displayVariant),
-    message: rawMessage,
-    code: rawCode,
-  });
+  // tick the consumer first surfaces it. The persisted ring entry
+  // also carries the parsed `support_id` and the optional
+  // breadcrumb context (stream key / agent / session) supplied by
+  // the use-site.
+  recordStreamCloseReason(
+    {
+      classified: classifyStreamErrorVariant(displayVariant),
+      message: cleanedMessage,
+      code: rawCode,
+      support_id: supportId ?? undefined,
+    },
+    breadcrumbContext,
+  );
   if (displayVariant === "insufficientCreditsError") {
     dispatchInsufficientCredits();
   }
@@ -427,9 +472,19 @@ export function handleStreamError(
   const { savedThinking, savedThinkingDuration } = snapshotThinking(refs);
   const savedToolCalls = snapshotToolCalls(refs);
   const savedTimeline = snapshotTimeline(refs);
-  const prefix = refs.streamBuffer.current
-    ? refs.streamBuffer.current + "\n\n"
-    : "";
+  // Bubble `content` carries ONLY the partial streaming buffer
+  // (text the assistant produced before the turn errored). The
+  // synthesized error string moves to `errorMessage` so
+  // `MessageBubble` can render it inline in the Support ID +
+  // Report Bug action row instead of stacking it above the row
+  // as a duplicate of what's already in the chip.
+  //
+  // Captured into a const here (not read off the ref inside the
+  // setEvents callback) because `resetStreamBuffers` below
+  // clears `refs.streamBuffer.current` before the React batch
+  // flushes -- the lazy read would always observe an empty
+  // buffer.
+  const bufferedPrefix = refs.streamBuffer.current ?? "";
   const errorId = `error-${Date.now()}`;
   setters.setEvents((prev) => [
     ...prev,
@@ -437,10 +492,10 @@ export function handleStreamError(
       id: errorId,
       clientId: errorId,
       role: "assistant",
-      content: displayVariant
-        ? prefix + displayMessage
-        : prefix + `*Error: ${displayMessage}*`,
+      content: bufferedPrefix,
+      errorMessage: displayMessage,
       displayVariant,
+      supportId: supportId ?? undefined,
       toolCalls: savedToolCalls,
       thinkingText: savedThinking,
       thinkingDurationMs: savedThinkingDuration,
@@ -449,6 +504,7 @@ export function handleStreamError(
   ]);
   resetStreamBuffers(refs, setters);
   setters.setProgressText("");
+  setters.clearGeneration();
   setters.setIsStreaming(false);
   setters.setIsWriting(false);
 }
@@ -465,10 +521,13 @@ export function finalizeStream(
   // `aura:stream-close` event. `message` defaults to the
   // classification name when no explicit message is passed so the
   // consumer always has *something* to render.
-  recordStreamCloseReason({
-    classified: classifyFinalizeReason(options?.reason),
-    message: options?.message ?? options?.reason ?? "completed",
-  });
+  recordStreamCloseReason(
+    {
+      classified: classifyFinalizeReason(options?.reason),
+      message: options?.message ?? options?.reason ?? "completed",
+    },
+    options?.breadcrumbContext,
+  );
   if (refs.streamBuffer.current) {
     flushStreamingText(refs, setters);
   } else {
@@ -535,6 +594,7 @@ export function finalizeStream(
   }
 
   setters.setProgressText("");
+  setters.clearGeneration();
   setters.setIsStreaming(false);
   setters.setIsWriting(false);
   abortRef.current?.abort();
