@@ -203,7 +203,12 @@ function AuthedActions({
       <EarnCreditsButton />
       <WindowControls
         sidekickCollapsed={sidekickCollapsed}
-        onToggleSidekick={onToggleSidekick ?? (() => undefined)}
+        // Pass through `undefined` (rather than substituting a no-op
+        // function) so `WindowControls` can drop the `Toggle sidekick`
+        // / `Toggle split screen` icon buttons entirely when the host
+        // has opted out — this is what gives Simple mode a clean
+        // titlebar trailing cluster (Earn + min/max/close only).
+        onToggleSidekick={onToggleSidekick}
         splitScreenActive={splitScreenActive}
         onToggleSplitScreen={onToggleSplitScreen}
       />

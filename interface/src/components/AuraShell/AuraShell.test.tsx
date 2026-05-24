@@ -386,12 +386,13 @@ describe("AuraShell — Phase 3 unified shell", () => {
     ).toBeInTheDocument();
   });
 
-  it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public mode and mounts it once the user signs in", async () => {
+  it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public and Simple modes and mounts it only in Advanced", async () => {
     // The persisted desktop wallpaper must not bleed onto logged-out
-    // surfaces. AuraShell gates `<BackgroundLayer />` behind
-    // `!isPublic`, so the stub testid is absent in public mode and
-    // appears the moment auth flips the effective mode away from
-    // `public`.
+    // surfaces, and Simple mode is a chat-only surface that also
+    // suppresses the wallpaper. AuraShell gates `<BackgroundLayer />`
+    // behind `mode === "advanced"`, so the stub testid is absent in
+    // public + Simple and appears only when the user lands in
+    // Advanced.
     setLoggedOut();
 
     renderAuraShell();
@@ -405,13 +406,99 @@ describe("AuraShell — Phase 3 unified shell", () => {
       useUIModeStore.setState({ mode: "simple" });
     });
 
+    expect(
+      screen.queryByTestId("background-layer-stub"),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "advanced" });
+    });
+
     expect(screen.getByTestId("background-layer-stub")).toBeInTheDocument();
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "simple" });
+    });
+
+    expect(
+      screen.queryByTestId("background-layer-stub"),
+    ).not.toBeInTheDocument();
   });
 
   // Note: the `/login` overlay mount lives in `App.tsx` (above the
   // background-location-aware `<Routes>` so `useLocation()` can read
   // the real `/login` URL). Coverage for the overlay UI itself is in
   // `LoginOverlay.test.tsx`; AuraShell no longer owns the gating.
+});
+
+/**
+ * Simple-mode chrome stripping. Simple is a chat-only surface, so
+ * the desktop wallpaper, the right sidekick lane, and the two
+ * sidekick-related icon buttons (`Toggle split screen` /
+ * `Toggle sidekick` next to `Earn Credits`) all unmount. The
+ * window controls (`EarnCreditsButton`, min/max/close) stay.
+ *
+ * Coverage for the wallpaper itself is in test (g) above; this
+ * block focuses on the right lane + the titlebar trailing cluster.
+ */
+describe("AuraShell — Simple-mode chrome stripping", () => {
+  it("does not mount the right sidekick lane (no `data-agent-surface=\"sidekick-panel\"`) in Simple, and remounts it in Advanced", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    const { container } = renderAuraShell("/chat");
+
+    expect(
+      container.querySelector('[data-agent-surface="sidekick-panel"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-agent-surface="sidekick-header"]'),
+    ).toBeNull();
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "advanced" });
+    });
+
+    expect(
+      container.querySelector('[data-agent-surface="sidekick-panel"]'),
+    ).not.toBeNull();
+  });
+
+  it("does not render the Split-screen / Sidekick toggle icon buttons in the titlebar in Simple mode, but keeps EarnCredits", () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    renderAuraShell("/chat");
+
+    const titlebar = screen.getByTestId("aura-titlebar");
+    expect(
+      within(titlebar).queryByRole("button", { name: /toggle sidekick/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(titlebar).queryByRole("button", { name: /toggle split screen/i }),
+    ).not.toBeInTheDocument();
+    // `EarnCreditsButton` is the load-bearing trailing CTA — it must
+    // survive Simple-mode chrome stripping. Its accessible name is
+    // sourced from the rendered "Earn" label in the button.
+    expect(
+      within(titlebar).getByRole("button", { name: /earn/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the Split-screen / Sidekick toggle icon buttons in the titlebar in Advanced mode", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "advanced" });
+
+    renderAuraShell("/chat");
+
+    const titlebar = screen.getByTestId("aura-titlebar");
+    expect(
+      within(titlebar).getByRole("button", { name: /toggle sidekick/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("button", { name: /toggle split screen/i }),
+    ).toBeInTheDocument();
+  });
 });
 
 /**

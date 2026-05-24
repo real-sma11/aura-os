@@ -45,13 +45,14 @@ export interface BottomTaskbarProps {
    * space in every mode — flipping modes does not move the main
    * panel's bottom edge.
    *
-   * - `public`: only the `ThemeToggleButton` in the right slot.
-   * - `simple`: Credits, Settings, ThemeToggle, Profile rail in the
-   *   right slot. No Desktop button, no app rail center, no clock,
-   *   no Help, no collapse chevron — a minimal authed surface.
-   * - `advanced`: full chrome (Desktop + favorites left, AppNavRail
-   *   center, collapsible right cluster with Credits/Settings/
-   *   ThemeToggle/Help/Profile, plus the clock readout).
+ * - `public`: only the `ThemeToggleButton` in the right slot.
+ * - `simple`: Credits, Settings, and ThemeToggle in the right slot.
+ *   No Desktop button, no app rail center, no left/center pill at
+ *   all, no profile shortcut, no clock, no Help, no collapse chevron
+ *   — a minimal authed surface.
+ * - `advanced`: full chrome (Desktop + favorites left, AppNavRail
+ *   center, collapsible right cluster with Credits/Settings/
+ *   ThemeToggle/Help/Profile, plus the clock readout).
    */
   mode: UIMode;
 }
@@ -105,20 +106,29 @@ function PublicBottomTaskbar(): React.ReactElement {
 
 /**
  * Authenticated (Simple / Advanced) taskbar render path. The outer
- * `.bar` div, `.left` / `.center` / `.right` flex containers, and the
- * `rightPrimary` cluster are mounted unconditionally — so flipping
- * Simple <-> Advanced reconciles in place rather than remounting the
- * row. Branches on `isAdvanced` to gate:
+ * `.bar` div, the `.right` flex container, and the `rightPrimary`
+ * cluster are mounted unconditionally — so flipping Simple <->
+ * Advanced reconciles the load-bearing chrome in place (the outer
+ * `.bar` reserves `--shell-chrome-outer-height`). The `.left` and
+ * `.center` pill containers themselves are now gated on `isAdvanced`:
+ * Simple is a chat-only surface, so the previously-empty pills
+ * disappear entirely rather than rendering as floating empty chrome.
  *
- *   - `.left`:  Desktop button + `<FavoriteAgentsStrip />` (Advanced only)
- *   - `.center`: AppNavRail + Apps + collapse chevron (Advanced only)
+ * Branches on `isAdvanced` to gate:
+ *
+ *   - `.left`:  the entire pill (Desktop button + `<FavoriteAgentsStrip />`)
+ *     — Advanced only.
+ *   - `.center`: the entire pill (AppNavRail + Apps + collapse
+ *     chevron) — Advanced only.
  *   - `.right.rightPrimary`:
  *     - Right-cluster collapse chevron (Advanced only)
  *     - Credits / Settings / ThemeToggle (both modes; in Advanced these
  *       hide behind the right-cluster collapse — Simple has no collapse
  *       affordance so they always show)
  *     - HelpButton (Advanced only)
- *     - Profile AppNavRail (both modes)
+ *     - Profile AppNavRail (Advanced only — Simple drops the profile
+ *       shortcut so the right cluster reads as Credits / Settings /
+ *       Theme only)
  *   - `.clock` readout (Advanced only — extracted into a tiny
  *     `<ClockReadout />` so `useClock`'s `setInterval` doesn't mount
  *     in Simple)
@@ -184,56 +194,52 @@ function AuthedBottomTaskbar({
       data-ui-mode={mode}
       onContextMenu={onContextMenu}
     >
-      <div className={styles.left}>
-        {isAdvanced && (
-          <>
-            <TaskbarIconButton
-              selected={activeApp.id === "desktop"}
-              icon={<Circle size={TASKBAR_ICON_SIZE} />}
-              title="Desktop"
-              aria-label="Desktop"
-              onClick={() => {
-                if (activeApp.id === "desktop") {
-                  if (previousPath) navigate(previousPath);
-                } else {
-                  navigate("/desktop");
-                }
-              }}
-            />
-            <FavoriteAgentsStrip />
-          </>
-        )}
-      </div>
-
-      <div className={styles.center}>
-        {isAdvanced && (
-          <>
-            <AppNavRail
-              layout="taskbar"
-              allowReorder
-              excludeIds={["profile"]}
-              {...(collapsed && { includeIds: ["agents", "projects"] })}
-            />
-            <TaskbarIconButton
-              icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
-              title="Apps"
-              aria-label="Apps"
-              onClick={openAppsModal}
-            />
-            <TaskbarIconButton
-              icon={
-                collapsed ? (
-                  <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-                ) : (
-                  <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
-                )
+      {isAdvanced && (
+        <div className={styles.left}>
+          <TaskbarIconButton
+            selected={activeApp.id === "desktop"}
+            icon={<Circle size={TASKBAR_ICON_SIZE} />}
+            title="Desktop"
+            aria-label="Desktop"
+            onClick={() => {
+              if (activeApp.id === "desktop") {
+                if (previousPath) navigate(previousPath);
+              } else {
+                navigate("/desktop");
               }
-              onClick={toggleAppsCollapsed}
-              aria-label={collapsed ? "Expand apps" : "Collapse apps"}
-            />
-          </>
-        )}
-      </div>
+            }}
+          />
+          <FavoriteAgentsStrip />
+        </div>
+      )}
+
+      {isAdvanced && (
+        <div className={styles.center}>
+          <AppNavRail
+            layout="taskbar"
+            allowReorder
+            excludeIds={["profile"]}
+            {...(collapsed && { includeIds: ["agents", "projects"] })}
+          />
+          <TaskbarIconButton
+            icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
+            title="Apps"
+            aria-label="Apps"
+            onClick={openAppsModal}
+          />
+          <TaskbarIconButton
+            icon={
+              collapsed ? (
+                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+              ) : (
+                <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+              )
+            }
+            onClick={toggleAppsCollapsed}
+            aria-label={collapsed ? "Expand apps" : "Collapse apps"}
+          />
+        </div>
+      )}
 
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
@@ -268,11 +274,13 @@ function AuthedBottomTaskbar({
               {isAdvanced && <HelpButton />}
             </>
           )}
-          <AppNavRail
-            layout="taskbar"
-            includeIds={["profile"]}
-            ariaLabel="Profile shortcut"
-          />
+          {isAdvanced && (
+            <AppNavRail
+              layout="taskbar"
+              includeIds={["profile"]}
+              ariaLabel="Profile shortcut"
+            />
+          )}
         </div>
         {isAdvanced && <ClockReadout />}
       </div>

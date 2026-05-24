@@ -80,6 +80,10 @@ function blurActiveElement(): void {
 export function AuraShell(): React.ReactElement {
   const mode = useEffectiveMode();
   const isPublic = mode === "public";
+  // Simple mode is a chat-only surface: no wallpaper, no right
+  // sidekick lane, no titlebar split/sidekick toggles, no host
+  // settings entry — only Advanced gets the full chrome.
+  const isAdvanced = mode === "advanced";
 
   // Authed-side state. We call these hooks unconditionally because
   // their subscriptions are cheap store reads — `useAppUIStore`,
@@ -105,10 +109,10 @@ export function AuraShell(): React.ReactElement {
     (state) => Object.keys(state.windows).length,
   );
 
-  const isDesktop = !isPublic && activeApp.id === "desktop";
+  const isDesktop = isAdvanced && activeApp.id === "desktop";
   const desktopModeActive = isDesktop && backgroundHydrated;
   const hasActiveSidekick =
-    !isPublic && Boolean(activeApp.SidekickPanel) && !isDesktop;
+    isAdvanced && Boolean(activeApp.SidekickPanel) && !isDesktop;
   const sidekickHostCollapsed = sidekickCollapsed || !hasActiveSidekick;
   const showSidekickHeader = hasActiveSidekick && Boolean(activeApp.SidekickTaskbar);
   const splitScreenActive = sidekickSplitScreen && hasActiveSidekick;
@@ -232,18 +236,18 @@ export function AuraShell(): React.ReactElement {
         data-testid="aura-shell"
         data-agent-context={isPublic ? "logged-out-shell" : "desktop-shell"}
       >
-        {!isPublic && <BackgroundLayer />}
+        {isAdvanced && <BackgroundLayer />}
         <AuraTitlebar
           mode={mode}
           publicSidebarCollapsed={publicSidebarCollapsed}
           onTogglePublicSidebar={isPublic ? togglePublicSidebar : undefined}
           sidekickCollapsed={sidekickCollapsed}
-          onToggleSidekick={isPublic ? undefined : toggleSidekick}
+          onToggleSidekick={isAdvanced ? toggleSidekick : undefined}
           splitScreenActive={splitScreenActive}
           onToggleSplitScreen={
-            !isPublic && hasActiveSidekick ? handleToggleSplitScreen : undefined
+            isAdvanced && hasActiveSidekick ? handleToggleSplitScreen : undefined
           }
-          onOpenHostSettings={isPublic ? undefined : openHostSettings}
+          onOpenHostSettings={isAdvanced ? openHostSettings : undefined}
         />
         <div
           ref={desktopContentRef}
@@ -255,7 +259,7 @@ export function AuraShell(): React.ReactElement {
             mode={mode}
             mainPanelHostRef={mainPanelHostRef}
           />
-          {!isPublic && (
+          {isAdvanced && (
             <>
               {hasActiveSidekick && (
                 <ErrorBoundary name="sidekick">
@@ -291,7 +295,7 @@ export function AuraShell(): React.ReactElement {
         </div>
         <BottomTaskbar mode={mode} />
       </div>
-      {!isPublic && hostSettingsOpen ? (
+      {isAdvanced && hostSettingsOpen ? (
         <Suspense fallback={null}>
           <HostSettingsModal
             isOpen={hostSettingsOpen}

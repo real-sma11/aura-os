@@ -29,13 +29,13 @@
   display: flex;
   width: 100%;
   /*
-   * 20% taller than the shared shell-chrome height so the
-   * Simple/Advanced toggle reads as a more deliberate control than
-   * the search row above it. Kept as a `calc()` over the token
-   * chain so theme overrides of `--shell-chrome-height` /
-   * `--control-height-sm` still flow through proportionally.
+   * Pinned to the same `--shell-chrome-height` token chain that
+   * `PanelSearch`'s `.chrome` reads, so the Simple/Advanced toggle
+   * and the search row above it stack as one consistent chrome
+   * strip — both pills end up the same height regardless of theme
+   * overrides on `--shell-chrome-height` / `--control-height-sm`.
    */
-  height: calc(var(--shell-chrome-height, var(--control-height-sm, 28px)) * 1.2);
+  height: var(--shell-chrome-height, var(--control-height-sm, 28px));
   padding: 2px;
   gap: 2px;
   background: var(--shell-chrome-background);

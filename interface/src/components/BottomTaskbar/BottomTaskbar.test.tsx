@@ -510,7 +510,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Simple vs Advanced visible difference", () => {
-    it("hides Desktop, favorites, app rail, both collapse chevrons, Help, and the clock in Simple mode", () => {
+    it("hides Desktop, favorites, app rail, both collapse chevrons, Help, the clock, and the .left/.center pills entirely in Simple mode", () => {
       // Even with a non-default stored collapse state (`false` would
       // expose the right-cluster contents in Advanced), Simple mode
       // never surfaces the chevron — it has no collapse affordance.
@@ -519,17 +519,21 @@ describe("BottomTaskbar", () => {
 
       const { container } = render(<BottomTaskbar mode="simple" />);
 
-      // Left slot — Desktop button + favorite agents are Advanced-only.
+      // Left slot — Desktop button + favorite agents are Advanced-only,
+      // and the `.left` pill itself doesn't mount in Simple so the row
+      // doesn't carry an empty rounded chrome pill on the left edge.
       expect(
         screen.queryByRole("button", { name: "Desktop" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Desk Helper" }),
       ).not.toBeInTheDocument();
+      expect(container.querySelector(".left")).toBeNull();
 
       // Center slot — AppNavRail + Apps + apps-collapse chevron are
-      // Advanced-only. The `.center` flex container itself stays
-      // mounted (empty) so the row doesn't reflow on flip.
+      // Advanced-only, and the `.center` pill itself unmounts in
+      // Simple too (the empty rounded pill that previously floated in
+      // the middle of the row is gone).
       expect(
         screen.queryByRole("button", { name: "Apps" }),
       ).not.toBeInTheDocument();
@@ -539,6 +543,7 @@ describe("BottomTaskbar", () => {
       expect(
         screen.queryByRole("button", { name: /collapse apps/i }),
       ).not.toBeInTheDocument();
+      expect(container.querySelector(".center")).toBeNull();
 
       // Right slot — the right-cluster collapse chevron and Help
       // button are Advanced-only.
@@ -555,7 +560,7 @@ describe("BottomTaskbar", () => {
       expect(container.querySelector(".clock")).toBeNull();
     });
 
-    it("renders Credits, Settings, the theme toggle, and the profile rail in Simple mode (no collapse)", () => {
+    it("renders Credits, Settings, and the theme toggle in Simple mode (no profile rail, no collapse)", () => {
       // Stored right-cluster collapse state is true (Advanced default)
       // but Simple ignores it — Credits/Settings/Theme always show.
       getTaskbarRightCollapsed.mockReturnValue(true);
@@ -570,17 +575,14 @@ describe("BottomTaskbar", () => {
         screen.getByRole("button", { name: /switch theme/i }),
       ).toBeInTheDocument();
 
-      // The only AppNavRail mounted in Simple is the profile rail —
-      // the center-slot rail is Advanced-only.
-      const navRails = screen.getAllByTestId("app-nav-rail");
-      expect(navRails).toHaveLength(1);
-      expect(navRails[0]).toHaveAttribute(
-        "data-include-ids",
-        JSON.stringify(["profile"]),
-      );
+      // Simple drops every AppNavRail — the center rail is Advanced-
+      // only and the bottom-right profile rail is now gated on
+      // `isAdvanced` too, so the right cluster reads as Credits /
+      // Settings / Theme only.
+      expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
     });
 
-    it("flipping mode='advanced' -> mode='simple' removes Desktop / Apps / clock without remounting .bar", () => {
+    it("flipping mode='advanced' -> mode='simple' removes Desktop / Apps / clock / .left / .center / profile rail without remounting .bar", () => {
       // Reference-equality across Simple <-> Advanced is asserted in
       // the "preserves outer .bar DOM identity" test in the
       // right-click describe block; this case covers the *visible*
@@ -592,6 +594,9 @@ describe("BottomTaskbar", () => {
       expect(screen.getByRole("button", { name: "Desktop" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Apps" })).toBeInTheDocument();
       expect(container.querySelector(".clock")).not.toBeNull();
+      expect(container.querySelector(".left")).not.toBeNull();
+      expect(container.querySelector(".center")).not.toBeNull();
+      expect(screen.getAllByTestId("app-nav-rail")).toHaveLength(2);
 
       rerender(<BottomTaskbar mode="simple" />);
 
@@ -602,6 +607,9 @@ describe("BottomTaskbar", () => {
         screen.queryByRole("button", { name: "Apps" }),
       ).not.toBeInTheDocument();
       expect(container.querySelector(".clock")).toBeNull();
+      expect(container.querySelector(".left")).toBeNull();
+      expect(container.querySelector(".center")).toBeNull();
+      expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
     });
   });
 
