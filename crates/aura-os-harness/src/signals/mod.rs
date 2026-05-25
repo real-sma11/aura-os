@@ -836,6 +836,143 @@ mod tests {
         }
     }
 
+    /// Exhaustive cross-product invariant over EVERY variant and
+    /// attempt index 0..=5: the attempt-agnostic
+    /// [`HarnessFailureKind::is_retryable`] predicate MUST stay
+    /// consistent with `retry_action(0) != Terminal` regardless of
+    /// how the attempt-aware ladder evolves for higher indices.
+    /// `is_retryable()` is wired into call sites that don't have an
+    /// attempt counter in scope, so a future revert that leaves
+    /// `is_retryable()` returning `true` for a kind whose attempt-0
+    /// action is `Terminal` (or vice versa) would silently strand
+    /// the legacy callers in a state that disagrees with the
+    /// reconciler.
+    #[test]
+    fn is_retryable_matches_retry_action_for_every_kind_and_attempt() {
+        use HarnessFailureKind::{
+            AgentStuck, CompletionContract, InsufficientCredits, Other, ProviderInternal,
+            PushTimeout, RateLimited, ResearchLoopAbort, Truncation,
+        };
+        let kinds = [
+            RateLimited,
+            PushTimeout,
+            ProviderInternal,
+            Truncation,
+            CompletionContract,
+            ResearchLoopAbort,
+            AgentStuck,
+            InsufficientCredits,
+            Other,
+        ];
+        for kind in kinds {
+            let legacy = kind.is_retryable();
+            for attempt in 0u32..=5 {
+                let action = kind.retry_action(attempt);
+                let derived = action != RetryAction::Terminal;
+                if attempt == 0 {
+                    // Exact agreement with the attempt-agnostic
+                    // predicate at attempt 0 — `is_retryable` is
+                    // defined as `retry_action(0) != Terminal`.
+                    assert_eq!(
+                        legacy, derived,
+                        "is_retryable/retry_action(0) diverge for {kind:?}",
+                    );
+                }
+                // Independent invariant that holds at every attempt
+                // index: a kind whose attempt-0 action is `Terminal`
+                // (so `is_retryable() == false`) must stay
+                // `Terminal` for all higher attempts. The escalation
+                // ladder only EVER ratchets toward Terminal, never
+                // back to a retry. A future kind that violates this
+                // would let the reconciler resurrect a task that
+                // legacy callers think is permanently failed.
+                if !legacy {
+                    assert_eq!(
+                        action,
+                        RetryAction::Terminal,
+                        "{kind:?}@{attempt}: terminal-from-zero kinds must stay terminal forever",
+                    );
+                }
+            }
+        }
+    }
+
+    /// On-wire format pin: the `RetryAction` variants must serialize
+    /// to the EXACT snake_case strings `aura-harness`'s Phase 5
+    /// splitter and the `task_retrying` event consumers
+    /// pattern-match against. Phase 6's
+    /// `emit_task_retrying_signal` (in
+    /// `apps/aura-os-server/src/handlers/dev_loop/streaming/
+    /// side_effects/retry.rs`) embeds the serialized variant under
+    /// the `retry_action` JSON key; downstream consumers route on
+    /// the literal strings, so a typo or rename would silently
+    /// break the splitter handoff.
+    #[test]
+    fn retry_action_serializes_to_snake_case_strings() {
+        assert_eq!(
+            serde_json::to_string(&RetryAction::Retry).unwrap(),
+            "\"retry\"",
+        );
+        assert_eq!(
+            serde_json::to_string(&RetryAction::RetryWithDecomposition).unwrap(),
+            "\"retry_with_decomposition\"",
+        );
+        assert_eq!(
+            serde_json::to_string(&RetryAction::Terminal).unwrap(),
+            "\"terminal\"",
+        );
+
+        // Round-trip pin: the same wire strings must deserialize
+        // back to the same variants. Without this, a server that
+        // serializes `retry_with_decomposition` and a consumer that
+        // tries to decode it could silently disagree if either side
+        // ever drifts.
+        assert_eq!(
+            serde_json::from_str::<RetryAction>("\"retry\"").unwrap(),
+            RetryAction::Retry,
+        );
+        assert_eq!(
+            serde_json::from_str::<RetryAction>("\"retry_with_decomposition\"").unwrap(),
+            RetryAction::RetryWithDecomposition,
+        );
+        assert_eq!(
+            serde_json::from_str::<RetryAction>("\"terminal\"").unwrap(),
+            RetryAction::Terminal,
+        );
+    }
+
+    /// Cross-repo invariant: the EXACT verbatim string
+    /// `aura-harness::validate_execution` emits when a task lands
+    /// in the "no file ops AND not reached_implementing AND not
+    /// no_changes_needed" trap MUST classify as `ResearchLoopAbort`.
+    /// Pairs with the aura-harness invariant test
+    /// (`validate_execution_emits_verbatim_research_loop_abort_message`)
+    /// which pins the emitter side. Together the two tests guard
+    /// the contract that aura-harness's wire string and aura-os's
+    /// classifier substring stay in lock-step — a silent rename on
+    /// either side would route the failure into `Other` and stop
+    /// the Phase 6 retry-with-decomposition escalation.
+    #[test]
+    fn verbatim_validate_execution_message_classifies_as_research_loop_abort() {
+        // Verbatim, exactly as `aura-harness::validate_execution`
+        // emits it. The em dash is U+2014; preserve it byte-for-byte.
+        let reason = "task completed without any file operations — completion not verified";
+        assert_eq!(
+            classify_failure(Some(reason)),
+            HarnessFailureKind::ResearchLoopAbort,
+            "the verbatim aura-harness verdict must classify as \
+             ResearchLoopAbort so the Phase 6 retry-with-decomposition \
+             ladder kicks in instead of falling through to the \
+             unclassified `Other` (terminal) branch",
+        );
+        // And the per-attempt ladder must escalate: attempt 0 retries,
+        // attempt 1 escalates to decomposition, attempt 2 is terminal.
+        let kind = classify_failure(Some(reason));
+        assert_eq!(kind.retry_action(0), RetryAction::Retry);
+        assert_eq!(kind.retry_action(1), RetryAction::RetryWithDecomposition);
+        assert_eq!(kind.retry_action(2), RetryAction::Terminal);
+    }
+
     #[test]
     fn completion_contract_does_not_swallow_plain_truncation() {
         assert_eq!(
