@@ -9,9 +9,7 @@ use tracing::info;
 use crate::dto::SendChatRequest;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::billing::require_credits_for_auth_source;
-use crate::handlers::plan_mode::{
-    append_plan_mode_suffix, is_plan_mode_action, plan_mode_tool_permissions,
-};
+use crate::handlers::plan_mode::{is_plan_mode_action, plan_mode_tool_permissions};
 use crate::handlers::projects_helpers::{is_project_tool_action, project_tool_max_turns};
 use crate::state::{AppState, AuthJwt};
 
@@ -21,6 +19,7 @@ use super::persist::{build_chat_partition, ChatPersistRequest};
 use super::setup::has_live_session;
 use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
+use super::typed_session::TypedSessionFields;
 use super::types::SseResponse;
 
 use super::super::runtime::{effective_model, session_model_overrides_with_cache};
@@ -38,7 +37,7 @@ use persistence::{
     load_history_for_agent, load_persistence_only, log_history_size, log_persistence_status,
     LoadAgentHistoryCtx,
 };
-use prompt::{build_agent_system_prompt, load_project_state_for_agent, normalize_agent_perms};
+use prompt::{build_agent_session_fields, load_project_state_for_agent, normalize_agent_perms};
 use resolve::{resolve_agent_for_chat, resolve_pinned_session_for_agent};
 
 pub(crate) use resolve::parse_wire_session_id;
@@ -222,12 +221,14 @@ pub(crate) async fn send_agent_event_stream(
     let max_turns = is_project_tool_action(body.action.as_deref()).then(project_tool_max_turns);
 
     // Plan-mode parity with the instance route: when the client hits
-    // this surface with `action=generate_specs`, append the shared
-    // plan-mode system-prompt rules and hard-disable the
+    // this surface with `action=generate_specs`, the typed-fields
+    // helper folds the shared plan-mode system-prompt rules into the
+    // outgoing `agent_system_prompt` and we hard-disable the
     // code-writing tools. Warm sessions keep their existing config
     // but still see the per-turn preamble + tool_hints applied inside
     // `open_harness_chat_stream`. See `crate::handlers::plan_mode`.
     let is_plan_mode = is_plan_mode_action(body.action.as_deref());
+    let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
 
     // Project-bound bare-agent chats need the same `<project_context>`
     // block + workspace path as the instance route so workspace tools
@@ -237,25 +238,29 @@ pub(crate) async fn send_agent_event_stream(
     // bare-agent chat targeting a project (e.g. the CEO agent's
     // `send_to_agent` flow) silently lost workspace context and the
     // harness would refuse filesystem tool calls or run them against
-    // the wrong cwd.
-    let (system_prompt, project_path) = build_agent_system_prompt(
+    // the wrong cwd. The typed-fields helper resolves the workspace
+    // path AND populates `project_info` for the harness's
+    // `<project_context>` builder section in one pass.
+    let (
+        TypedSessionFields {
+            agent_identity,
+            agent_skills,
+            agent_system_prompt,
+            project_info,
+        },
+        project_path,
+    ) = build_agent_session_fields(
         &state,
         &agent,
         effective_project_id.as_deref(),
         agent.harness_mode(),
         project_state_snapshot.as_deref(),
+        is_plan_mode,
     )
     .await;
 
-    let system_prompt = if is_plan_mode {
-        append_plan_mode_suffix(&system_prompt)
-    } else {
-        system_prompt
-    };
-    let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
-
     let config = SessionConfig {
-        system_prompt: Some(system_prompt),
+        system_prompt: None,
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(agent_id.to_string()),
         user_id: Some(auth_session.user_id.clone()),
@@ -278,6 +283,10 @@ pub(crate) async fn send_agent_event_stream(
         agent_permissions: (&normalized_perms).into(),
         intent_classifier: agent.intent_classifier.clone(),
         tool_permissions,
+        agent_identity,
+        agent_skills,
+        agent_system_prompt,
+        project_info,
         ..Default::default()
     };
 

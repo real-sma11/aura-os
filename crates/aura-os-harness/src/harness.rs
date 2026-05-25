@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc};
 
 use aura_protocol::{
-    AgentPermissionsWire, AgentToolPermissionsWire, ConversationMessage, InboundMessage,
-    InstalledIntegration, IntentClassifierSpec, OutboundMessage, SessionInit,
-    SessionModelOverrides,
+    AgentIdentityWire, AgentPermissionsWire, AgentToolPermissionsWire, ChatProjectInfoWire,
+    ConversationMessage, InboundMessage, InstalledIntegration, IntentClassifierSpec,
+    OutboundMessage, SessionInit, SessionModelOverrides,
 };
 
 use crate::error::HarnessError;
@@ -53,6 +53,31 @@ pub struct SessionConfig {
     pub intent_classifier: Option<IntentClassifierSpec>,
     /// Optional per-agent tool permission override stamped onto this session.
     pub tool_permissions: Option<AgentToolPermissionsWire>,
+    /// Chat-WS migration: typed agent identity (name / role /
+    /// personality). Forwarded onto [`SessionInit::agent_identity`] so
+    /// the harness's `SystemPromptBuilder` renders the
+    /// `<agent_identity>` section. Mirrors the dev-loop wire shape
+    /// established by PR B for `AutomatonStartParams`. `None` ⇒
+    /// `skip_serializing_if` keeps the wire shape unchanged for
+    /// callers that still pre-bake the system prompt server-side.
+    pub agent_identity: Option<AgentIdentityWire>,
+    /// Chat-WS migration: operator-curated skills list. Forwarded onto
+    /// [`SessionInit::agent_skills`] so the harness renders
+    /// `<agent_skills>`. Empty ⇒ `skip_serializing_if` drops the
+    /// field on the wire.
+    pub agent_skills: Vec<String>,
+    /// Chat-WS migration: operator-authored system prompt (and any
+    /// server-baked addenda — project-state snapshot, plan-mode suffix
+    /// — concatenated by the chat handler before send). Forwarded onto
+    /// [`SessionInit::agent_system_prompt`].
+    pub agent_system_prompt: Option<String>,
+    /// Chat-WS migration: typed project descriptor. Forwarded onto
+    /// [`SessionInit::project_info`] so the harness assembles
+    /// `<project_context>` from structured fields rather than reading
+    /// a server-baked prompt string. When populated, the harness's
+    /// chat session ignores the legacy
+    /// [`SessionConfig::system_prompt`] field.
+    pub project_info: Option<ChatProjectInfoWire>,
 }
 
 pub struct HarnessSession {
@@ -122,6 +147,15 @@ pub fn build_session_init(cfg: &SessionConfig) -> SessionInit {
         intent_classifier: cfg.intent_classifier.clone(),
         agent_permissions: cfg.agent_permissions.clone(),
         tool_permissions: cfg.tool_permissions.clone(),
+        // Chat-WS migration: forward typed identity / project info
+        // fields so the harness's `SystemPromptBuilder` can produce
+        // the chat system prompt itself. Empty / `None` values cause
+        // the harness to fall back to the legacy `system_prompt`
+        // string above for backward compatibility.
+        agent_identity: cfg.agent_identity.clone(),
+        agent_skills: cfg.agent_skills.clone(),
+        agent_system_prompt: cfg.agent_system_prompt.clone(),
+        project_info: cfg.project_info.clone(),
     }
 }
 

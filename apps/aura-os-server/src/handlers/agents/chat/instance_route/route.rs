@@ -9,9 +9,7 @@ use tracing::info;
 use crate::dto::SendChatRequest;
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::billing::require_credits_for_auth_source;
-use crate::handlers::plan_mode::{
-    append_plan_mode_suffix, is_plan_mode_action, plan_mode_tool_permissions,
-};
+use crate::handlers::plan_mode::{is_plan_mode_action, plan_mode_tool_permissions};
 use crate::handlers::projects_helpers::{
     is_project_tool_action, project_tool_max_turns, resolve_agent_instance_workspace_path,
 };
@@ -19,15 +17,16 @@ use crate::state::{AppState, AuthJwt};
 
 use super::super::agent_route::parse_wire_session_id;
 use super::super::busy::{reject_if_partition_busy, BusyScope};
-use super::super::compaction::append_project_state_to_system_prompt;
 use super::super::cross_agent_reply::read_cross_agent_depth;
-use super::super::identity_preamble::build_identity_preamble;
 use super::super::persist::{
     build_chat_partition, try_pin_session, ChatPersistRequest, PinnedSessionOutcome,
 };
 use super::super::setup::setup_project_chat_persistence;
 use super::super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::super::tools::{build_session_installed_tools, InstalledToolsCtx};
+use super::super::typed_session::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
+};
 use super::super::types::SseResponse;
 
 use super::super::super::runtime::session_model_overrides_with_cache;
@@ -37,7 +36,6 @@ use super::helpers::{
     fetch_org_integrations, installed_workspace_integrations, load_history_and_project_state,
     normalize_instance_perms, pick_instance_model, resolve_effective_org_id,
 };
-use super::project_prompt::build_project_system_prompt;
 
 pub(crate) async fn send_event_stream(
     State(state): State<AppState>,
@@ -190,28 +188,6 @@ pub(crate) async fn send_event_stream(
     let pid_str = project_id.to_string();
     let project_path =
         resolve_agent_instance_workspace_path(&state, &project_id, Some(agent_instance_id)).await;
-    // Restore parity with the harness-side task-execution path
-    // (`build_agent_preamble`): the chat hot path used to forward only
-    // `instance.system_prompt`, silently dropping personality / role /
-    // skills on every interactive turn. The identity preamble lands
-    // FIRST — before the `<project_context>` block — so the LLM reads
-    // "who am I" before "what project am I operating in", matching the
-    // ordering `agentic_execution_system_prompt` uses.
-    let identity_preamble = build_identity_preamble(
-        &instance.name,
-        &instance.role,
-        &instance.personality,
-        &instance.skills,
-    );
-    let project_block = build_project_system_prompt(
-        &state,
-        &project_id,
-        &instance.system_prompt,
-        project_path.as_deref(),
-    );
-    let system_prompt = format!("{identity_preamble}{project_block}");
-    let system_prompt =
-        append_project_state_to_system_prompt(&system_prompt, project_state_snapshot.as_deref());
 
     let model = pick_instance_model(&body, &instance);
     let effective_org_id = resolve_effective_org_id(&state, instance.org_id.as_ref(), &project_id);
@@ -245,23 +221,48 @@ pub(crate) async fn send_event_stream(
     let max_turns = is_project_tool_action(body.action.as_deref()).then(project_tool_max_turns);
 
     // Plan mode (spec-planning prompt unification): when the client
-    // hits this surface with `action=generate_specs`, append the
-    // shared plan-mode rules to the system prompt and hard-disable
-    // the code-writing tools via `tool_permissions`. The cold-start
-    // session sees the strict policy; warm sessions keep their
-    // existing config but still get the per-turn preamble + tool_hints
-    // applied inside `open_harness_chat_stream`. See
-    // `crate::handlers::plan_mode` for the full contract.
+    // hits this surface with `action=generate_specs`, the helper folds
+    // the shared plan-mode rules into the typed
+    // `agent_system_prompt` and hard-disables the code-writing tools
+    // via `tool_permissions`. The cold-start session sees the strict
+    // policy; warm sessions keep their existing config but still get
+    // the per-turn preamble + tool_hints applied inside
+    // `open_harness_chat_stream`. See `crate::handlers::plan_mode`
+    // for the full contract.
     let is_plan_mode = is_plan_mode_action(body.action.as_deref());
-    let system_prompt = if is_plan_mode {
-        append_plan_mode_suffix(&system_prompt)
-    } else {
-        system_prompt
-    };
     let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
 
+    // Chat-WS migration: forward typed identity / skills /
+    // operator-prompt / project_info on the wire and let the harness
+    // assemble the `<chat_capabilities>` + `<agent_identity>` +
+    // `<agent_skills>` + `<agent_system_prompt>` + `<project_context>`
+    // + `<agents_md>` envelope via `SystemPromptBuilder`. The legacy
+    // `system_prompt: Option<String>` field stays empty so the
+    // harness picks the typed-fields branch.
+    let TypedSessionFields {
+        agent_identity,
+        agent_skills,
+        agent_system_prompt,
+        project_info,
+    } = build_typed_session_fields(
+        &state,
+        TypedSessionInputs {
+            name: &instance.name,
+            role: &instance.role,
+            personality: &instance.personality,
+            skills: &instance.skills,
+            agent_template_prompt: &instance.system_prompt,
+            project_state_snapshot: project_state_snapshot.as_deref(),
+            plan_mode: is_plan_mode,
+            project: Some(TypedProjectInputs {
+                project_id: &project_id,
+                workspace_path: project_path.as_deref(),
+            }),
+        },
+    );
+
     let config = SessionConfig {
-        system_prompt: Some(system_prompt),
+        system_prompt: None,
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(instance.agent_id.to_string()),
         user_id: Some(auth_session.user_id.clone()),
@@ -284,6 +285,10 @@ pub(crate) async fn send_event_stream(
         agent_permissions: (&normalized_instance_perms).into(),
         intent_classifier: instance.intent_classifier.clone(),
         tool_permissions,
+        agent_identity,
+        agent_skills,
+        agent_system_prompt,
+        project_info,
         ..Default::default()
     };
 

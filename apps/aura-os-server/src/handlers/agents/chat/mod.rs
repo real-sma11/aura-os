@@ -14,7 +14,6 @@ mod discovery;
 pub(crate) mod errors;
 mod event_bus;
 mod events;
-mod identity_preamble;
 mod instance_route;
 mod loaders;
 mod persist;
@@ -25,6 +24,7 @@ mod setup;
 mod streaming;
 mod tools;
 pub(crate) mod turn_slot;
+mod typed_session;
 mod types;
 
 #[cfg(test)]
@@ -37,10 +37,11 @@ pub(crate) use event_bus::{publish_assistant_message_end_event, publish_user_mes
 pub(crate) use events::{
     list_agent_events, list_agent_events_paginated, list_agent_session_events, list_events,
 };
-pub(crate) use instance_route::{build_project_system_prompt, send_event_stream};
-#[cfg(test)]
-pub(crate) use instance_route::{render_project_context, render_project_context_fallback};
+pub(crate) use instance_route::send_event_stream;
 pub(crate) use persist::{persist_user_message, ChatPersistCtx, ChatPersistRequest};
+pub use typed_session::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
+};
 pub(crate) use persist_task::persist_event;
 pub(crate) use setup::{
     cancel_agent_turn, cancel_instance_turn, reset_agent_session, reset_instance_session,

@@ -115,31 +115,9 @@ pub fn build_active_automaton_for_test(
 /// [`build_active_automaton_for_test`].
 pub use crate::state::ActiveAutomaton;
 
-pub fn build_project_system_prompt_for_test(
-    project_id: &str,
-    name: &str,
-    description: &str,
-    agent_prompt: &str,
-) -> String {
-    let mut ctx = format!(
-        "<project_context>\nproject_id: {}\nproject_name: {}\n",
-        project_id, name,
-    );
-    if !description.is_empty() {
-        ctx.push_str(&format!("description: {}\n", description));
-    }
-    ctx.push_str("</project_context>\n\n");
-    ctx.push_str(
-        "IMPORTANT: When calling tools that accept a project_id parameter, \
-         always use the project_id from the project_context above.\n\n",
-    );
-    ctx.push_str(
-        "IMPORTANT: When an implementation task depends on a missing internal API, \
-         type, helper, or module, do not stop at discovery. Infer and implement \
-         the smallest compatible prerequisite needed to complete the requested \
-         task, following existing project patterns and adding focused tests. \
-         Stop only when the prerequisite would require external credentials, \
-         unavailable services, destructive changes, or a product decision.\n\n",
-    );
-    format!("{}{}", ctx, agent_prompt)
-}
+/// Re-export the typed wire-field bundle so integration tests can
+/// inspect the payload the chat handlers now forward to the harness
+/// in lieu of a server-baked `SessionConfig.system_prompt`.
+pub use crate::handlers::agents::chat::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
+};

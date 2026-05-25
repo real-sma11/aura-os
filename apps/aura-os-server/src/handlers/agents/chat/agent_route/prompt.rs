@@ -1,8 +1,9 @@
-//! System prompt + permissions assembly for the bare-agent chat
-//! route. Wraps the agent template prompt with a project-aware
-//! `<project_context>` block when the turn is project-bound, splices
-//! self-project permission caps into the harness bundle, and folds
-//! the project-state snapshot in on cold start.
+//! Permissions + project-state continuity helpers for the bare-agent
+//! chat route. The chat-WS migration moved the system-prompt assembly
+//! into the harness's `SystemPromptBuilder`; this module now only
+//! carries the helpers the route still needs server-side
+//! (project-state snapshot fetch, agent permission normalisation, and
+//! workspace-path resolution for the typed `project_info` wire field).
 
 use aura_os_core::{AgentPermissions, ProjectId};
 
@@ -10,12 +11,11 @@ use crate::dto::SendChatRequest;
 use crate::handlers::projects_helpers::resolve_project_tool_workspace_path;
 use crate::state::AppState;
 
-use super::super::compaction::{
-    append_project_state_to_system_prompt, load_project_state_snapshot,
-};
-use super::super::identity_preamble::build_identity_preamble;
-use super::super::instance_route::build_project_system_prompt;
+use super::super::compaction::load_project_state_snapshot;
 use super::super::persist::ChatPersistCtx;
+use super::super::typed_session::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
+};
 
 /// Project-state continuity: on cold start, load a specs+tasks snapshot
 /// for the project we're resolving the chat under so it can be appended
@@ -63,57 +63,60 @@ pub(super) fn normalize_agent_perms(
     }
 }
 
-/// Compose the system prompt + workspace path for the bare-agent
-/// chat route, mirroring `instance_route::send_event_stream`'s
-/// behaviour:
+/// Compose the typed wire-field bundle + workspace path for the
+/// bare-agent chat route, mirroring `instance_route::send_event_stream`:
 ///
 /// * If the turn is project-bound (explicit `body.project_id` or
-///   inferred via the persistence context), wrap the agent
-///   template prompt with the project-aware `<project_context>`
-///   block via [`build_project_system_prompt`] and resolve the
-///   workspace path so workspace tools see a real cwd.
-/// * Otherwise fall back to the bare template prompt with no
-///   workspace path (legacy bare-agent semantics).
+///   inferred via the persistence context), resolve the workspace
+///   path so the harness can render `<project_context>` and the
+///   workspace tools see a real cwd.
+/// * Otherwise the helper produces typed fields with `project_info =
+///   None`, matching legacy bare-agent semantics (no project block).
 ///
-/// In either case the project-state snapshot (specs / tasks
-/// summary) is appended last, matching the instance route.
-pub(super) async fn build_agent_system_prompt(
+/// In either case the project-state snapshot (specs / tasks summary)
+/// and plan-mode suffix are folded into `agent_system_prompt` by the
+/// shared `build_typed_session_fields` helper, matching the instance
+/// route's behaviour.
+pub(super) async fn build_agent_session_fields(
     state: &AppState,
     agent: &aura_os_core::Agent,
     effective_project_id: Option<&str>,
     harness_mode: aura_os_core::HarnessMode,
     project_state_snapshot: Option<&str>,
-) -> (String, Option<String>) {
-    // Restore parity with the harness-side task-execution path
-    // (`build_agent_preamble`): the chat hot path used to forward only
-    // `agent.system_prompt`, silently dropping personality / role /
-    // skills on every interactive turn. The identity preamble lands
-    // FIRST — before the `<project_context>` block — so the LLM reads
-    // "who am I" before "what project am I operating in", matching the
-    // ordering `agentic_execution_system_prompt` uses.
-    let preamble =
-        build_identity_preamble(&agent.name, &agent.role, &agent.personality, &agent.skills);
-    let (base_prompt, project_path) = match effective_project_id
-        .and_then(|pid| pid.parse::<ProjectId>().ok())
-    {
+    plan_mode: bool,
+) -> (TypedSessionFields, Option<String>) {
+    let project = effective_project_id.and_then(|pid| pid.parse::<ProjectId>().ok());
+
+    let project_path = match project.as_ref() {
         Some(project_id) => {
             // Bare-agent chats have no AgentInstanceId; fall back to
             // project-level workspace resolution (handles both
             // explicit `project.local_workspace_path` and the
             // canonical `data_dir`-rooted layout for Local /
             // Swarm).
-            let project_path =
-                resolve_project_tool_workspace_path(state, &project_id, harness_mode, None).await;
-            let project_block = build_project_system_prompt(
-                state,
-                &project_id,
-                &agent.system_prompt,
-                project_path.as_deref(),
-            );
-            (format!("{preamble}{project_block}"), project_path)
+            resolve_project_tool_workspace_path(state, project_id, harness_mode, None).await
         }
-        None => (format!("{preamble}{}", agent.system_prompt), None),
+        None => None,
     };
-    let with_state = append_project_state_to_system_prompt(&base_prompt, project_state_snapshot);
-    (with_state, project_path)
+
+    let typed_project = project.as_ref().map(|project_id| TypedProjectInputs {
+        project_id,
+        workspace_path: project_path.as_deref(),
+    });
+
+    let fields = build_typed_session_fields(
+        state,
+        TypedSessionInputs {
+            name: &agent.name,
+            role: &agent.role,
+            personality: &agent.personality,
+            skills: &agent.skills,
+            agent_template_prompt: &agent.system_prompt,
+            project_state_snapshot,
+            plan_mode,
+            project: typed_project,
+        },
+    );
+
+    (fields, project_path)
 }

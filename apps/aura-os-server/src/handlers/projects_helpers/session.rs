@@ -6,7 +6,9 @@ use aura_os_core::{AgentInstance, AgentInstanceId, HarnessMode, ProjectId};
 use aura_os_harness::SessionConfig;
 
 use crate::error::ApiResult;
-use crate::handlers::agents::chat::build_project_system_prompt;
+use crate::handlers::agents::chat::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
+};
 use crate::handlers::agents::conversions_pub::resolve_workspace_path;
 use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
@@ -280,21 +282,50 @@ pub(crate) async fn project_tool_session_config(
                 .into()
         })
         .unwrap_or_default();
-    // Mirror the chat path: build the same `<project_context>` block +
-    // template prompt the agent instance gets on the chat surface so the
-    // first LLM call has identical structure (system prompt, provider
-    // config, tools). Without this, the harness sent a structurally
-    // different request that the upstream proxy was 403-ing under load.
-    let agent_template_prompt = agent_instance
-        .as_ref()
-        .map(|instance| instance.system_prompt.as_str())
-        .unwrap_or("");
-    let system_prompt = Some(build_project_system_prompt(
+    // Mirror the chat path on the wire: forward the typed identity /
+    // skills / operator-prompt / project_info bundle so the harness's
+    // `SystemPromptBuilder` produces the same
+    // `<chat_capabilities>` + `<agent_identity>` + `<agent_skills>` +
+    // `<agent_system_prompt>` + `<project_context>` + `<agents_md>`
+    // envelope a chat-surface session would. Without identical
+    // structure the upstream proxy was 403-ing on the post-tool-result
+    // LLM call under load.
+    let TypedSessionFields {
+        agent_identity,
+        agent_skills,
+        agent_system_prompt,
+        project_info,
+    } = build_typed_session_fields(
         state,
-        project_id,
-        agent_template_prompt,
-        project_path.as_deref(),
-    ));
+        TypedSessionInputs {
+            name: agent_instance
+                .as_ref()
+                .map(|i| i.name.as_str())
+                .unwrap_or(""),
+            role: agent_instance
+                .as_ref()
+                .map(|i| i.role.as_str())
+                .unwrap_or(""),
+            personality: agent_instance
+                .as_ref()
+                .map(|i| i.personality.as_str())
+                .unwrap_or(""),
+            skills: agent_instance
+                .as_ref()
+                .map(|i| i.skills.as_slice())
+                .unwrap_or(&[]),
+            agent_template_prompt: agent_instance
+                .as_ref()
+                .map(|i| i.system_prompt.as_str())
+                .unwrap_or(""),
+            project_state_snapshot: None,
+            plan_mode: false,
+            project: Some(TypedProjectInputs {
+                project_id,
+                workspace_path: project_path.as_deref(),
+            }),
+        },
+    );
     let provider_overrides = session_model_overrides_with_cache(
         model.as_deref(),
         Some(format!("tool:{project_id}:{tool_agent_name}")),
@@ -312,7 +343,7 @@ pub(crate) async fn project_tool_session_config(
                 .map(|project| project.org_id.to_string())
         });
     let cfg = SessionConfig {
-        system_prompt,
+        system_prompt: None,
         agent_id: agent_id_field,
         template_agent_id: template_agent_id_field,
         agent_name: Some(
@@ -340,6 +371,10 @@ pub(crate) async fn project_tool_session_config(
         intent_classifier: agent_instance
             .as_ref()
             .and_then(|instance| instance.intent_classifier.clone()),
+        agent_identity,
+        agent_skills,
+        agent_system_prompt,
+        project_info,
         ..Default::default()
     };
 
@@ -388,7 +423,6 @@ mod tests {
         parse_project_tool_max_turns, stable_project_tool_session_id,
         DEFAULT_PROJECT_TOOL_DEADLINE_SECS, DEFAULT_PROJECT_TOOL_MAX_TURNS,
     };
-    use crate::handlers::agents::chat::{render_project_context, render_project_context_fallback};
     use aura_os_core::{AgentInstanceId, ProjectId};
 
     #[test]
@@ -498,62 +532,13 @@ mod tests {
         assert_ne!(specs, tasks);
     }
 
-    /// `project_tool_session_config` now mirrors the chat path by
-    /// composing its `system_prompt` from the same render helpers.
-    /// These tests pin the project_context formatting (project_id +
-    /// IMPORTANT reminders) so the prompt the LLM sees during spec-gen
-    /// and task-extract stays structurally identical to the chat
-    /// surface — that's what stops the upstream proxy from 403-ing on
-    /// the post-tool-result LLM call. Wiring a full `AppState` for an
-    /// end-to-end `build_project_system_prompt` test was deemed too
-    /// heavy; testing the rendering helpers it delegates to gives us
-    /// the same coverage cheaply.
-    #[test]
-    fn project_context_renders_id_and_important_reminders() {
-        let project_id = ProjectId::new();
-        let rendered = render_project_context(
-            &project_id,
-            "test-project",
-            "a project for tests",
-            Some("/tmp/workspace"),
-        );
-
-        assert!(rendered.contains("<project_context>"));
-        assert!(rendered.contains("</project_context>"));
-        assert!(
-            rendered.contains(&project_id.to_string()),
-            "expected project_id in rendered context: {rendered}"
-        );
-        assert!(
-            rendered.contains("project_name: test-project"),
-            "expected project name line: {rendered}"
-        );
-        assert!(
-            rendered.contains("workspace: /tmp/workspace"),
-            "expected workspace line: {rendered}"
-        );
-        let important_count = rendered.matches("IMPORTANT:").count();
-        assert!(
-            important_count >= 4,
-            "expected four IMPORTANT reminders, got {important_count}: {rendered}"
-        );
-        assert!(
-            rendered.contains("smallest compatible prerequisite"),
-            "expected implementation recovery reminder: {rendered}"
-        );
-    }
-
-    #[test]
-    fn project_context_fallback_keeps_id_and_important_reminders() {
-        let project_id = ProjectId::new();
-        let rendered = render_project_context_fallback(&project_id);
-
-        assert!(rendered.contains("<project_context>"));
-        assert!(rendered.contains(&project_id.to_string()));
-        assert!(rendered.contains("IMPORTANT:"));
-        assert!(
-            rendered.contains("smallest compatible prerequisite"),
-            "expected fallback implementation recovery reminder: {rendered}"
-        );
-    }
+    // The legacy "render the project context inline server-side"
+    // tests (`project_context_renders_id_and_important_reminders` /
+    // `project_context_fallback_keeps_id_and_important_reminders`)
+    // were retired alongside `render_project_context*` in the
+    // chat-WS migration. Equivalent coverage now lives on the
+    // harness side: `aura-agent`'s `prompts::system::tests`
+    // snapshots assert the canonical `<project_context>` shape that
+    // `SystemPromptBuilder::project_context` produces from the typed
+    // `ChatProjectInfoWire` we forward over the wire.
 }
