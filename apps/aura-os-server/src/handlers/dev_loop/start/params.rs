@@ -122,6 +122,16 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         agent_permissions: (&ctx.permissions).into(),
         aura_org_id,
         aura_session_id,
+        // PR B (simplify-system-prompts): wire fields carrying the
+        // typed identity bundle. aura-os does NOT populate these in
+        // PR B — the harness consumer accepts `None` / `Vec::new()`
+        // via `#[serde(default)]` and `AgenticTaskParams::agent`
+        // stays `None`, so the assembled system prompt is
+        // byte-identical with PR A. PR C flips this populator to read
+        // off the resolved `StartContext`.
+        agent_identity: None,
+        agent_skills: Vec::new(),
+        agent_system_prompt: None,
     }
 }
 

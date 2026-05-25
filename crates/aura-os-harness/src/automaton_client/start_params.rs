@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use aura_protocol::{
-    AgentPermissionsWire, InstalledIntegration, InstalledTool, IntentClassifierSpec,
-    SessionModelOverrides,
+    AgentIdentityWire, AgentPermissionsWire, InstalledIntegration, InstalledTool,
+    IntentClassifierSpec, SessionModelOverrides,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -117,6 +117,27 @@ pub struct AutomatonStartParams {
     /// it via `#[serde(default)]`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aura_session_id: Option<String>,
+    /// PR B (simplify-system-prompts): typed agent identity bundle.
+    ///
+    /// The harness's `AutomatonStartRequest` reads this back into
+    /// `AgenticTaskParams::agent.identity` and renders the
+    /// `<agent_identity>` section once PR C flips the producer side
+    /// in `assemble_automaton_start_params`. PR B leaves this `None`
+    /// at every call site, `skip_serializing_if` keeps the wire shape
+    /// identical with PR A so the harness reads the field as default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_identity: Option<AgentIdentityWire>,
+    /// PR B (simplify-system-prompts): operator-curated skills list.
+    /// Same default-empty / serialise-when-populated contract as
+    /// [`AutomatonStartParams::agent_identity`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub agent_skills: Vec<String>,
+    /// PR B (simplify-system-prompts): operator-authored system prompt
+    /// (the "system prompt" textarea on the agent template). Same
+    /// default-`None` / serialise-when-populated contract as
+    /// [`AutomatonStartParams::agent_identity`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_system_prompt: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]

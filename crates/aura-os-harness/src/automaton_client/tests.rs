@@ -136,6 +136,9 @@ fn automaton_start_params_serializes_agent_permissions() {
         work_log: Vec::new(),
         aura_org_id: None,
         aura_session_id: None,
+        agent_identity: None,
+        agent_skills: Vec::new(),
+        agent_system_prompt: None,
     };
 
     let value = serde_json::to_value(params).expect("serialize params");
@@ -144,6 +147,101 @@ fn automaton_start_params_serializes_agent_permissions() {
         value["agent_permissions"]["capabilities"][0]["type"],
         "invokeProcess"
     );
+}
+
+#[test]
+fn automaton_start_params_skips_pr_b_identity_fields_when_empty() {
+    // PR B contract: aura-os does not populate `agent_identity` /
+    // `agent_skills` / `agent_system_prompt` yet, so they must serialise
+    // as ABSENT (not as `null` or `[]`) so older harnesses see the same
+    // wire shape they did pre-PR-B.
+    let params = AutomatonStartParams {
+        project_id: "project-1".into(),
+        agent_id: None,
+        aura_agent_id: None,
+        template_agent_id: None,
+        auth_token: None,
+        model: None,
+        provider_overrides: None,
+        user_id: None,
+        intent_classifier: None,
+        max_turns: None,
+        workspace_root: None,
+        task_id: None,
+        git_repo_url: None,
+        git_branch: None,
+        installed_tools: None,
+        installed_integrations: None,
+        agent_permissions: AgentPermissionsWire::default(),
+        prior_failure: None,
+        work_log: Vec::new(),
+        aura_org_id: None,
+        aura_session_id: None,
+        agent_identity: None,
+        agent_skills: Vec::new(),
+        agent_system_prompt: None,
+    };
+
+    let value = serde_json::to_value(&params).expect("serialize params");
+    let object = value.as_object().expect("top-level object");
+    assert!(
+        !object.contains_key("agent_identity"),
+        "agent_identity must be skipped when None: {value}",
+    );
+    assert!(
+        !object.contains_key("agent_skills"),
+        "agent_skills must be skipped when empty: {value}",
+    );
+    assert!(
+        !object.contains_key("agent_system_prompt"),
+        "agent_system_prompt must be skipped when None: {value}",
+    );
+}
+
+#[test]
+fn automaton_start_params_serializes_pr_b_identity_fields_when_populated() {
+    // Forward-compat for PR C: confirm the wire shape matches what the
+    // harness's `AutomatonStartRequest` expects once `aura-os` flips
+    // the populator on.
+    let params = AutomatonStartParams {
+        project_id: "project-1".into(),
+        agent_id: None,
+        aura_agent_id: None,
+        template_agent_id: None,
+        auth_token: None,
+        model: None,
+        provider_overrides: None,
+        user_id: None,
+        intent_classifier: None,
+        max_turns: None,
+        workspace_root: None,
+        task_id: None,
+        git_repo_url: None,
+        git_branch: None,
+        installed_tools: None,
+        installed_integrations: None,
+        agent_permissions: AgentPermissionsWire::default(),
+        prior_failure: None,
+        work_log: Vec::new(),
+        aura_org_id: None,
+        aura_session_id: None,
+        agent_identity: Some(aura_protocol::AgentIdentityWire {
+            name: "Aura".into(),
+            role: "engineer".into(),
+            personality: "concise".into(),
+        }),
+        agent_skills: vec!["rust".into(), "frontend".into()],
+        agent_system_prompt: Some("Be terse.".into()),
+    };
+
+    let value = serde_json::to_value(&params).expect("serialize params");
+
+    assert_eq!(value["agent_identity"]["name"], "Aura");
+    assert_eq!(value["agent_identity"]["role"], "engineer");
+    assert_eq!(value["agent_identity"]["personality"], "concise");
+    assert_eq!(value["agent_skills"][0], "rust");
+    assert_eq!(value["agent_skills"][1], "frontend");
+    assert_eq!(value["agent_system_prompt"], "Be terse.");
 }
 
 #[test]
@@ -176,6 +274,9 @@ fn automaton_start_params_serializes_proxy_identity_context() {
         work_log: Vec::new(),
         aura_org_id: Some("org-1".into()),
         aura_session_id: Some("session-1".into()),
+        agent_identity: None,
+        agent_skills: Vec::new(),
+        agent_system_prompt: None,
     };
 
     let value = serde_json::to_value(params).expect("serialize params");
@@ -220,6 +321,9 @@ fn full_valid_params() -> AutomatonStartParams {
         work_log: Vec::new(),
         aura_org_id: Some("org-1".into()),
         aura_session_id: Some("session-1".into()),
+        agent_identity: None,
+        agent_skills: Vec::new(),
+        agent_system_prompt: None,
     }
 }
 

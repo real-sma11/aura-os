@@ -347,6 +347,9 @@ mod tests {
             work_log: Vec::new(),
             aura_org_id: Some("org-1".to_string()),
             aura_session_id: Some("session-1".to_string()),
+            agent_identity: None,
+            agent_skills: Vec::new(),
+            agent_system_prompt: None,
         }
     }
 
