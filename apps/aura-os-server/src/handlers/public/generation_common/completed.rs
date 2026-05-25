@@ -43,6 +43,8 @@ pub(crate) fn normalize_completed_payload(modality: PublicModality, payload: Val
                     "video_url",
                     "modelUrl",
                     "model_url",
+                    "glbUrl",
+                    "glb_url",
                     "url",
                 ],
             ) {
@@ -135,6 +137,16 @@ mod tests {
         let payload = normalize_completed_payload(
             PublicModality::Model3d,
             json!({ "payload": { "model_url": "https://cdn.example.com/m.glb" } }),
+        );
+        assert_eq!(payload["mode"], "model3d");
+        assert_eq!(payload["imageUrl"], "https://cdn.example.com/m.glb");
+    }
+
+    #[test]
+    fn normalize_completed_payload_promotes_glb_url() {
+        let payload = normalize_completed_payload(
+            PublicModality::Model3d,
+            json!({ "glbUrl": "https://cdn.example.com/m.glb" }),
         );
         assert_eq!(payload["mode"], "model3d");
         assert_eq!(payload["imageUrl"], "https://cdn.example.com/m.glb");

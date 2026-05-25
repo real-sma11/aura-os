@@ -51,11 +51,22 @@ export function initAnalytics(): void {
     mixpanel.register({
       platform: detectPlatform(),
       app_version: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "unknown",
+      is_authenticated: false,
     });
 
     initialized = true;
   } catch {
     // Analytics must never crash the app.
+  }
+}
+
+/** Update a super property (attached to all future events). */
+export function registerProperty(key: string, value: unknown): void {
+  if (!initialized) return;
+  try {
+    mixpanel.register({ [key]: value });
+  } catch {
+    // Silent fail.
   }
 }
 
@@ -74,6 +85,7 @@ export function identifyUser(userId: string): void {
   if (!initialized) return;
   try {
     mixpanel.identify(userId);
+    mixpanel.register({ is_authenticated: true });
   } catch {
     // Silent fail.
   }
@@ -84,6 +96,7 @@ export function resetUser(): void {
   if (!initialized) return;
   try {
     mixpanel.reset();
+    mixpanel.register({ is_authenticated: false });
   } catch {
     // Silent fail.
   }

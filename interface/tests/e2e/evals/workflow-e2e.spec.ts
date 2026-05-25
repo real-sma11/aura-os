@@ -20,6 +20,13 @@ for (const scenario of scenarios) {
       `Scenario ${scenario.id} does not target ${testInfo.project.name}`,
     );
 
+    // Workflow tests require the full DesktopShell (advanced mode) to
+    // access project workbench routes. Set the preference before any
+    // navigation so SimpleShell doesn't redirect to /chat.
+    await page.addInitScript(() => {
+      localStorage.setItem("aura-app-mode", "advanced");
+    });
+
     const harness = await installWorkflowMockApp(page, scenario);
     const importedFiles = await collectFixtureFiles(scenario.fixtureDir);
     const steps: Array<{ label: string; durationMs: number }> = [];

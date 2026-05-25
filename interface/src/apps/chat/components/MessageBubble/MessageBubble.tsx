@@ -1,11 +1,19 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { Suspense, lazy, memo, useCallback, useMemo, useRef } from "react";
 import { CornerDownLeft, FileText } from "lucide-react";
 import type {
   DisplayContentBlock,
   DisplayImageBlock,
+  DisplayModel3DBlock,
   DisplaySessionEvent,
+  DisplayVideoBlock,
 } from "../../../../shared/types/stream";
 import { useAgentStore } from "../../../agents/stores/agent-store";
+
+const WebGLViewer = lazy(() =>
+  import("../../../aura3d/WebGLViewer/WebGLViewer").then((m) => ({
+    default: m.WebGLViewer,
+  })),
+);
 
 /** Resolve an image block to a renderable src URL. Prefers source_url (S3) over inline base64. */
 function imageBlockSrc(block: DisplayImageBlock): string {
@@ -123,19 +131,25 @@ export const MessageBubble = memo(function MessageBubble({
   // crammed into the same padded card. We keep the original `contentBlocks`
   // index alongside each entry so gallery ids stay stable (`<msgId>-img-<i>`)
   // regardless of how we split or filter for rendering.
-  const { imageBlocks, nonImageBlocks } = useMemo(() => {
+  const { imageBlocks, videoBlocks, model3dBlocks, nonImageBlocks } = useMemo(() => {
     const images: { block: DisplayImageBlock; index: number }[] = [];
+    const videos: { block: DisplayVideoBlock; index: number }[] = [];
+    const models: { block: DisplayModel3DBlock; index: number }[] = [];
     const others: { block: DisplayContentBlock; index: number }[] = [];
     if (hasContentBlocks && message.contentBlocks) {
       message.contentBlocks.forEach((block, index) => {
         if (block.type === "image") {
           images.push({ block, index });
+        } else if (block.type === "video") {
+          videos.push({ block, index });
+        } else if (block.type === "model3d") {
+          models.push({ block, index });
         } else {
           others.push({ block, index });
         }
       });
     }
-    return { imageBlocks: images, nonImageBlocks: others };
+    return { imageBlocks: images, videoBlocks: videos, model3dBlocks: models, nonImageBlocks: others };
   }, [hasContentBlocks, message.contentBlocks]);
 
   const galleryImages = useMemo<GalleryItem[]>(() => {
@@ -149,7 +163,7 @@ export const MessageBubble = memo(function MessageBubble({
   // still leaves contentBlocks non-empty but nothing renderable, so ignore
   // whitespace-only text blocks when deciding if the bubble carries prose.
   const hasRenderableBlocks = (message.contentBlocks ?? []).some(
-    (b) => b.type === "image" || (b.type === "text" && b.text.trim().length > 0),
+    (b) => b.type === "image" || b.type === "video" || b.type === "model3d" || (b.type === "text" && b.text.trim().length > 0),
   );
   // A tool-only assistant bubble holds no prose/thinking -- it is just a
   // slice of the agent's tool-use loop. Drop the bubble padding for these
@@ -376,13 +390,25 @@ export const MessageBubble = memo(function MessageBubble({
 
   const isUser = message.role === "user";
   const hasUserImages = isUser && imageBlocks.length > 0;
+  const hasAssistantImages = !isUser && imageBlocks.length > 0;
   // For user messages we suppress the dark text bubble entirely when the
   // message is image-only -- the image strip becomes the message itself.
   // When contentBlocks isn't used (legacy plain-text path) we always show
   // the bubble. Assistant rendering is unaffected.
   const renderUserBubble =
     isUser && (!hasContentBlocks || nonImageBlocks.length > 0);
-  const renderBubble = isUser ? renderUserBubble : true;
+  // Suppress the assistant text bubble when the message is media-only
+  // (image/video/3D with empty text content). The media strips render
+  // above the bubble, so an empty bubble just adds dead padding.
+  const hasAssistantMediaOnly =
+    !isUser &&
+    !hasContent &&
+    !hasToolCalls &&
+    !hasThinking &&
+    !hasArtifactRefs &&
+    !hasInlineErrorActionChrome &&
+    (imageBlocks.length > 0 || videoBlocks.length > 0 || model3dBlocks.length > 0);
+  const renderBubble = isUser ? renderUserBubble : !hasAssistantMediaOnly;
   const isUserImageOnly = isUser && hasUserImages && !renderUserBubble;
   // Cross-agent provenance badge. When the persisted user_message
   // carries a `from_agent_id` (set by `parse_user_message_event`
@@ -450,6 +476,81 @@ export const MessageBubble = memo(function MessageBubble({
                 loading="lazy"
               />
             </button>
+          ))}
+        </div>
+      )}
+      {hasAssistantImages && (
+        <div className={styles.generatedImageStrip}>
+          {imageBlocks.map(({ block, index }) => (
+            <button
+              key={index}
+              type="button"
+              className={styles.generatedImageWrapper}
+              onClick={() => {
+                if (galleryImages.length === 0) return;
+                openGallery({
+                  items: galleryImages.map((item) => ({
+                    ...item,
+                    downloadUrl: item.src,
+                  })),
+                  initialId: `${message.id}-img-${index}`,
+                });
+              }}
+              aria-label="Open generated image in gallery"
+            >
+              <img
+                src={imageBlockSrc(block)}
+                alt="Generated image"
+                className={styles.generatedImageInline}
+                loading="lazy"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+      {videoBlocks.length > 0 && (
+        <div className={styles.generatedVideoStrip}>
+          {videoBlocks.map(({ block, index }) => (
+            <div key={index} className={styles.generatedVideoContainer}>
+              <video
+                src={`${block.url}#t=0.5`}
+                className={styles.generatedVideoPlayer}
+                controls
+                playsInline
+                preload="metadata"
+              />
+              <a
+                href={block.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.generatedMediaDownload}
+                download
+              >
+                Download video
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+      {model3dBlocks.length > 0 && (
+        <div className={styles.generatedModel3DStrip}>
+          {model3dBlocks.map(({ block, index }) => (
+            <div key={index} className={styles.generatedModel3DContainer}>
+              <div className={styles.generatedModel3DViewerWrap}>
+                <Suspense fallback={<div style={{ height: 400, display: "grid", placeItems: "center", color: "var(--color-text-muted)" }}>Loading 3D viewer…</div>}>
+                  <WebGLViewer glbUrl={block.url} showGrid showTexture />
+                </Suspense>
+              </div>
+              <a
+                href={block.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.generatedMediaDownload}
+                download
+              >
+                Download 3D model
+              </a>
+            </div>
           ))}
         </div>
       )}

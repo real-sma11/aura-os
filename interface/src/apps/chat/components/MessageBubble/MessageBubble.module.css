@@ -187,6 +187,96 @@
   object-fit: cover;
 }
 
+/* Assistant-side generated image strip — matches the desktop ImageBlock
+   styling (520px cap, rounded, zoom-in cursor, 1px border frame). */
+.generatedImageStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-1);
+}
+
+.generatedImageWrapper {
+  display: inline-flex;
+  max-width: min(100%, 520px);
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0;
+  cursor: zoom-in;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.generatedImageWrapper:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.generatedImageInline {
+  display: block;
+  width: auto;
+  max-width: min(100%, 520px);
+  max-height: 520px;
+  object-fit: contain;
+}
+
+/* Assistant-side generated video strip */
+.generatedVideoStrip {
+  margin-block: var(--space-1);
+}
+
+.generatedVideoContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(100%, 520px);
+}
+
+.generatedVideoPlayer {
+  width: 100%;
+  max-width: 520px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: #000;
+}
+
+/* Assistant-side generated 3D model strip */
+.generatedModel3DStrip {
+  margin-block: var(--space-1);
+}
+
+.generatedModel3DContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(100%, 520px);
+}
+
+.generatedModel3DViewerWrap {
+  width: 100%;
+  max-width: 520px;
+  height: 400px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Shared download link for video / 3D */
+.generatedMediaDownload {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.generatedMediaDownload:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
 /* File attachment block — content-specific styles (structure in ResponseBlock) */
 .fileAttachmentWrapper {
   position: relative;

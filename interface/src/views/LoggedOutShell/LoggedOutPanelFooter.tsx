@@ -1,10 +1,5 @@
 import styles from "./LoggedOutShell.module.css";
 
-// Canonical marketing host. Mirrors the `AURA_WEBSITE` constant in
-// `components/MenuBar/use-menu-actions.ts`; that constant is module-
-// private so we duplicate the value here rather than touching the
-// menu-bar file outside the Phase 2 scope. If marketing changes the
-// host, both sites should move together.
 const AURA_WEBSITE = "https://aura.ai";
 
 interface FooterLink {
@@ -21,12 +16,9 @@ const FOOTER_LINKS: FooterLink[] = [
 
 /**
  * Sticky footer at the bottom of `LoggedOutSessionsPanel`. Renders
- * four marketing-site links. Kept intentionally lightweight (no
- * analytics, no client routing) — the marketing host is owned by a
- * separate codebase and these links always escape SPA-land. The
- * personalization upsell card that previously sat below the links was
- * removed because the same "Log in" / "Sign up" CTA already lives in
- * the titlebar and the duplicated affordance was crowding the rail.
+ * four marketing-site links that open in the system browser. External
+ * links are required for desktop app parity (React Router navigation
+ * doesn't work in the native shell for marketing pages).
  */
 export function LoggedOutPanelFooter() {
   return (

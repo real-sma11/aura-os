@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import {
   selectShouldShowGate,
   selectSession,
@@ -30,8 +29,8 @@ import {
 import { createSetters, ensureEntry } from "../../hooks/stream/store";
 import { AGENT_MODE_DESCRIPTORS, type AgentMode } from "../../constants/modes";
 import { useChatUI } from "../../stores/chat-ui-store";
-import { useAuth } from "../../stores/auth-store";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
+import { track } from "../../lib/analytics";
 import { dispatchMediaTurn, type MediaDispatchMode } from "./dispatch-media";
 
 /** Public-mode return shape consumed by `LoggedOutChatView`. */
@@ -43,15 +42,12 @@ export interface PublicChatController {
   messages: DisplaySessionEvent[];
   shouldShowGate: boolean;
   isStreaming: boolean;
+  sourceImage: string | null;
+  setSourceImage: (dataUrl: string | null) => void;
   handleSend: (content: string) => Promise<void>;
   handleStop: () => void;
   input: string;
   setInput: (next: string) => void;
-  /** True when the visitor is anonymous and any send attempt will be
-   *  routed to `/login` (interim gate while the public chat backend
-   *  is unreliable — the surface still mounts so the visitor can
-   *  browse the shell). */
-  requiresLogin: boolean;
 }
 
 const DEFAULT_PUBLIC_MODEL = "aura-gpt-5-4-mini";
@@ -66,6 +62,7 @@ const PUBLIC_AGENT_ID = "public-demo";
 export function usePublicChat(sessionId: string): PublicChatController {
   const streamKey = useMemo(() => `public:${sessionId}`, [sessionId]);
   const ensureToken = usePublicChatStore((s) => s.ensureToken);
+  const invalidateToken = usePublicChatStore((s) => s.invalidateToken);
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
   const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
   const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
@@ -74,16 +71,15 @@ export function usePublicChat(sessionId: string): PublicChatController {
   const session = usePublicChatStore((s) => selectSession(s, sessionId));
   const shouldShowGate = usePublicChatStore(selectShouldShowGate);
   const turnCount = usePublicChatStore((s) => s.turnCount);
+  const limit = usePublicChatStore((s) => s.limit);
 
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { isAuthenticated } = useAuth();
-
+  const [sourceImage, setSourceImage] = useState<string | null>(null);
   const chatUI = useChatUI(streamKey);
   const selectedMode = chatUI.selectedMode;
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [errorEvent, setErrorEvent] = useState<DisplaySessionEvent | null>(null);
 
   const chatHandleRef = useRef<PublicChatStreamHandle | null>(null);
   const mediaHandleRef = useRef<PublicMediaStreamHandle | null>(null);
@@ -123,14 +119,18 @@ export function usePublicChat(sessionId: string): PublicChatController {
   );
 
   const messages = useMemo<DisplaySessionEvent[]>(() => {
-    if (!session) return [];
-    return session.turns.map((turn) => publicMessageToDisplayEvent(turn));
-  }, [session]);
+    const turns = session
+      ? session.turns.map((turn) => publicMessageToDisplayEvent(turn))
+      : [];
+    if (errorEvent) turns.push(errorEvent);
+    return turns;
+  }, [session, errorEvent]);
 
   const clearStreamState = useCallback(() => {
     settersRef.current.setIsStreaming(false);
     settersRef.current.setStreamingText("");
     settersRef.current.setProgressText("");
+    settersRef.current.clearGeneration();
     setIsStreaming(false);
   }, []);
 
@@ -170,7 +170,23 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public chat stream error", err);
-          handleStop();
+          const msg = err.message?.toLowerCase() ?? "";
+          if (msg.includes("invalid guest token")) invalidateToken();
+          if (msg.includes("limit_reached") || msg.includes("rate")) {
+            setTurnCount(limit);
+          }
+          chatHandleRef.current = null;
+          clearStreamState();
+          finalizeAssistantTurn(mode);
+          if (!msg.includes("limit_reached")) {
+            setErrorEvent({
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              errorMessage: err.message || "Something went wrong. Please try again.",
+              displayVariant: "streamDropped",
+            });
+          }
         },
         onDone: () => {
           chatHandleRef.current = null;
@@ -179,7 +195,7 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, finalizeAssistantTurn, handleStop, session, sessionId, setTurnCount],
+    [clearStreamState, finalizeAssistantTurn, invalidateToken, limit, session, sessionId, setTurnCount],
   );
 
   const dispatchMedia = useCallback(
@@ -204,7 +220,22 @@ export function usePublicChat(sessionId: string): PublicChatController {
         onLimit: (next) => setTurnCount(next),
         onError: (err) => {
           console.error("public media stream error", err);
-          handleStop();
+          const msg = err.message?.toLowerCase() ?? "";
+          if (msg.includes("invalid guest token")) invalidateToken();
+          if (msg.includes("limit_reached") || msg.includes("rate")) {
+            setTurnCount(limit);
+          }
+          mediaHandleRef.current = null;
+          clearStreamState();
+          if (!msg.includes("limit_reached")) {
+            setErrorEvent({
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              errorMessage: err.message || "Generation failed. Please try again.",
+              displayVariant: "streamDropped",
+            });
+          }
         },
         onDone: () => {
           mediaHandleRef.current = null;
@@ -212,38 +243,29 @@ export function usePublicChat(sessionId: string): PublicChatController {
         },
       });
     },
-    [clearStreamState, commitMedia, handleStop, sessionId, setTurnCount],
+    [clearStreamState, commitMedia, invalidateToken, limit, sessionId, setTurnCount],
   );
 
   const handleSend = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
-      if (shouldShowGate) return;
-      // Interim auth gate (Phase 4): the public-chat backend is
-      // currently flaky for anonymous visitors (silent failures from
-      // the guest token + SSE path). Until the router gets a
-      // dedicated JWT-or-guest fallback, route any unauthenticated
-      // send through the login flow so the visitor lands somewhere
-      // useful instead of seeing a click that does nothing.
-      if (!isAuthenticated) {
-        const next = `${location.pathname}${location.search}`;
-        navigate(`/login?next=${encodeURIComponent(next)}`);
-        return;
-      }
       const behavior = AGENT_MODE_DESCRIPTORS[selectedMode].behavior;
-      if (behavior.kind === "generate_3d") {
-        // Tripo needs a source image; the input bar's attachment
-        // pipeline lands base64 data URLs in the message body — for
-        // the public surface that's currently out of scope. Bail
-        // visibly so the user understands instead of silently
-        // swallowing the click.
-        console.warn("public 3D mode requires a source image attachment");
+      // In 3D mode, the image is the primary input — prompt is optional.
+      // In all other modes, text is required.
+      const is3d = behavior.kind === "generate_3d";
+      if (!trimmed && !(is3d && sourceImage)) return;
+      if (shouldShowGate) return;
+      if (is3d && !sourceImage) {
+        // Tripo needs a source image — the user must attach one
+        // before sending in 3D mode.
         return;
       }
+      setErrorEvent(null);
+      track("public_message_sent", { mode: selectedMode });
       try {
         const token = await ensureToken();
-        const userId = appendUserTurn(sessionId, trimmed);
+        const displayText = trimmed || (is3d ? "Generate 3D model" : "");
+        const userId = appendUserTurn(sessionId, displayText);
         setInput("");
         if (behavior.kind === "chat" || behavior.kind === "chat_with_action") {
           dispatchChatTurn(selectedMode === "plan" ? "plan" : "code", trimmed, token, userId);
@@ -255,25 +277,34 @@ export function usePublicChat(sessionId: string): PublicChatController {
         }
         if (behavior.kind === "generate_video") {
           dispatchMedia("video", trimmed, token, undefined);
+          return;
+        }
+        if (is3d) {
+          dispatchMedia("model3d", displayText, token, sourceImage ?? undefined);
+          setSourceImage(null);
         }
       } catch (err) {
         console.error("public chat send failed", err);
-        handleStop();
+        clearStreamState();
+        setErrorEvent({
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: "",
+          errorMessage: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+          displayVariant: "streamDropped",
+        });
       }
     },
     [
       appendUserTurn,
+      clearStreamState,
       dispatchChatTurn,
       dispatchMedia,
       ensureToken,
-      handleStop,
-      isAuthenticated,
-      location.pathname,
-      location.search,
-      navigate,
       selectedMode,
       sessionId,
       shouldShowGate,
+      sourceImage,
     ],
   );
 
@@ -285,11 +316,12 @@ export function usePublicChat(sessionId: string): PublicChatController {
     messages,
     shouldShowGate: shouldShowGate || turnCount >= 3,
     isStreaming,
+    sourceImage,
+    setSourceImage,
     handleSend,
     handleStop,
     input,
     setInput,
-    requiresLogin: !isAuthenticated,
   };
 }
 
@@ -322,12 +354,9 @@ function buildHistoryFromSession(
 
 /**
  * Adapt a [`PublicMessage`] into the [`DisplaySessionEvent`] shape
- * `ChatMessageList` expects. Image messages produce an inline
- * `contentBlocks` image so the chat-ui's image-rendering code path
- * works unchanged; video / model3d messages fall back to a markdown
- * link because the message bubble has no native video / 3D
- * renderer (auth'd users get those through synthesised tool turns
- * the public surface does not produce).
+ * `ChatMessageList` expects. All media modes (image, video, model3d)
+ * produce `contentBlocks` entries so the shared `MessageBubble`
+ * renders them inline (image gallery, `<video>` player, WebGLViewer).
  */
 function publicMessageToDisplayEvent(turn: PublicMessage): DisplaySessionEvent {
   if (turn.role === "user") {
@@ -352,14 +381,20 @@ function publicMessageToDisplayEvent(turn: PublicMessage): DisplaySessionEvent {
         id: turn.id,
         clientId: turn.id,
         role: "assistant",
-        content: `**Generated video** — [open in new tab](${turn.url})`,
+        content: "",
+        contentBlocks: [
+          { type: "video", url: turn.url },
+        ],
       };
     case "model3d":
       return {
         id: turn.id,
         clientId: turn.id,
         role: "assistant",
-        content: `**Generated 3D model** — [open in new tab](${turn.url})`,
+        content: "",
+        contentBlocks: [
+          { type: "model3d", url: turn.url },
+        ],
       };
   }
 }

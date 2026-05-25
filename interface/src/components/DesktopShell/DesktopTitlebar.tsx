@@ -9,6 +9,7 @@ import { UpdatePill } from "../UpdateBanner";
 import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { useDesktopLogoColor } from "../../hooks/use-desktop-logo-color";
+import { useAppModeStore } from "../../stores/app-mode-store";
 import styles from "./DesktopShell.module.css";
 
 interface DesktopTitlebarProps {
@@ -29,6 +30,7 @@ export function DesktopTitlebar({
   const { features } = useAuraCapabilities();
   const { resolvedTheme } = useTheme();
   const { color: logoColor, pulseEnabled, pulseMode, pulseSpeed, pulseFromColor, sweepReversed, pauseDuration } = useDesktopLogoColor();
+  const toggleSimple = useAppModeStore((s) => s.toggle);
 
   const themeDefault = resolvedTheme === "light" ? "#000000" : "#ffffff";
   const toColor = logoColor || themeDefault;
@@ -109,6 +111,15 @@ export function DesktopTitlebar({
             </Button>
           )}
           <EarnCreditsButton />
+          <Button
+            variant="ghost"
+            size="sm"
+            rounded="md"
+            onClick={toggleSimple}
+            aria-label="Switch to simple mode"
+          >
+            Simple
+          </Button>
           <WindowControls
             sidekickCollapsed={sidekickCollapsed}
             onToggleSidekick={onToggleSidekick}

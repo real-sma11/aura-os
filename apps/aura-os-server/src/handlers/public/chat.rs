@@ -31,7 +31,7 @@ use tracing::{info, warn};
 
 use aura_os_core::AgentId;
 use aura_os_harness::{
-    ConversationMessage, HarnessOutbound, SessionBridge, SessionBridgeTurn, SessionConfig,
+    ConversationMessage, SessionBridge, SessionBridgeStarted, SessionBridgeTurn, SessionConfig,
 };
 
 use crate::error::{ApiError, ApiResult};
@@ -130,8 +130,8 @@ pub(crate) async fn public_chat_stream(
     let action = action_for_mode(body.mode);
     let is_plan_mode = matches!(body.mode, PublicChatMode::Plan);
     let config = build_public_session_config(agent_id, &body, action, is_plan_mode);
-    let stream = open_public_stream(&state, config, body.message, is_plan_mode).await?;
-    Ok(build_public_sse_response(stream, guard))
+    let opened = open_public_stream(&state, config, body.message, is_plan_mode).await?;
+    Ok(build_public_sse_response(opened, guard))
 }
 
 /// Map a [`PublicChatMode`] onto the harness action string. Plan
@@ -177,6 +177,12 @@ fn build_public_session_config(
         conversation_messages,
         max_turns,
         tool_permissions,
+        // The harness identity preflight requires non-blank org and
+        // session. Token is None — the harness sends requests to the
+        // router without Authorization, and the router assigns
+        // user_id "public-guest" with IP-based rate limiting.
+        aura_org_id: Some("public".to_string()),
+        aura_session_id: body.session_id.clone().or_else(|| Some("public".to_string())),
         ..Default::default()
     }
 }
@@ -208,7 +214,7 @@ async fn open_public_stream(
     config: SessionConfig,
     user_content: String,
     is_plan_mode: bool,
-) -> ApiResult<tokio::sync::broadcast::Receiver<HarnessOutbound>> {
+) -> ApiResult<SessionBridgeStarted> {
     let harness = state.harness_for(aura_os_core::HarnessMode::Local);
     // Plan mode wraps the on-wire user content with the shared
     // preamble and ships the plan-mode tool_hints. Code mode sends
@@ -240,7 +246,7 @@ async fn open_public_stream(
         warn!(error = %err, "public_chat: harness open failed");
         ApiError::bad_gateway("public demo agent failed to start a session")
     })?;
-    Ok(opened.events_rx)
+    Ok(opened)
 }
 
 /// Concrete SSE stream type fed into [`Sse::new`]. Boxed because the
@@ -252,11 +258,18 @@ pub(crate) type PublicSseStream =
 /// then append the canonical `{kind:"limit"}` frame so the frontend
 /// can mount the upgrade modal even when the request itself succeeds.
 fn build_public_sse_response(
-    rx: tokio::sync::broadcast::Receiver<HarnessOutbound>,
+    opened: SessionBridgeStarted,
     guard: TurnGuard,
 ) -> Sse<PublicSseStream> {
     let turn_count = guard.turn_count();
-    let body_stream = harness_broadcast_to_sse(rx, None);
+    // Destructure so the session + commands_tx can be held alive in the
+    // tail closure while events_rx is consumed by the body stream.
+    let SessionBridgeStarted {
+        session: harness_session,
+        events_rx,
+        commands_tx: _commands_tx,
+    } = opened;
+    let body_stream = harness_broadcast_to_sse(events_rx, None);
     let limit_frame = emit_limit_frame(turn_count);
     let limit_event = match Event::default().event("limit").json_data(&limit_frame) {
         Ok(evt) => Ok(evt),
@@ -264,7 +277,14 @@ fn build_public_sse_response(
             "{{\"kind\":\"limit\",\"turn_count\":{turn_count}}}"
         ))),
     };
+    // Move the session + command sender into the tail closure so the
+    // harness WS connection stays alive for the entire SSE response.
+    // Dropping them earlier closes the command channel → WS writer
+    // exits → harness sees the close before the agent loop can send
+    // events back.
     let tail = stream::once(async move {
+        drop(harness_session);
+        drop(_commands_tx);
         record_completion(guard);
         limit_event
     });

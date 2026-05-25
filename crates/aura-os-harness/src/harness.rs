@@ -163,7 +163,16 @@ pub fn validate_session_init_identity(cfg: &SessionConfig) -> Result<(), Harness
             context: "session_init",
         });
     }
-    if is_blank(cfg.token.as_deref()) {
+    // Token is optional for public-guest sessions (aura_org_id ==
+    // "public"). The harness provider skips the Authorization header
+    // when token is None, and the router assigns user_id
+    // "public-guest". All other sessions must carry a token.
+    let is_public = cfg
+        .aura_org_id
+        .as_deref()
+        .map(|v| v == "public")
+        .unwrap_or(false);
+    if !is_public && is_blank(cfg.token.as_deref()) {
         return Err(HarnessError::SessionIdentityMissing {
             field: "auth_token",
             context: "session_init",

@@ -18,6 +18,8 @@ import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardin
 import { useShallow } from "zustand/react/shallow";
 import { DesktopShell } from "../DesktopShell";
 import { MobileShell } from "../../mobile/shell";
+import { SimpleShell } from "../../views/SimpleShell/SimpleShell";
+import { useAppModeStore } from "../../stores/app-mode-store";
 import { markShellVisible } from "../../lib/perf/startup-perf";
 import {
   applyAuraCaptureSeedPlan,
@@ -97,7 +99,17 @@ function ProjectCreationModalHost() {
 
 function ResponsiveShell() {
   const { isMobileLayout } = useAuraCapabilities();
-  return isMobileLayout ? <MobileShell /> : <DesktopShell />;
+  const appMode = useAppModeStore((s) => s.mode);
+
+  useEffect(() => {
+    import("../../lib/analytics").then(({ registerProperty }) => {
+      registerProperty("app_mode", isMobileLayout ? "mobile" : appMode);
+    });
+  }, [appMode, isMobileLayout]);
+
+  if (isMobileLayout) return <MobileShell />;
+  if (appMode === "simple") return <SimpleShell />;
+  return <DesktopShell />;
 }
 
 function LazyModalBoundary({ children }: { children: React.ReactNode }) {
@@ -349,6 +361,7 @@ function useOnboardingHydration() {
 function AppContent() {
   useOnboardingHydration();
   useOnboardingTaskWatcher();
+  const appMode = useAppModeStore((s) => s.mode);
 
   const {
     orgSettingsOpen, orgInitialSection, closeOrgSettings,
@@ -396,12 +409,16 @@ function AppContent() {
         </LazyModalBoundary>
       ) : null}
       <ProjectCreationModalHost />
-      <LazyModalBoundary>
-        <WelcomeModal />
-      </LazyModalBoundary>
-      <LazyModalBoundary>
-        <OnboardingChecklist />
-      </LazyModalBoundary>
+      {appMode !== "simple" && (
+        <>
+          <LazyModalBoundary>
+            <WelcomeModal />
+          </LazyModalBoundary>
+          <LazyModalBoundary>
+            <OnboardingChecklist />
+          </LazyModalBoundary>
+        </>
+      )}
     </>
   );
 }

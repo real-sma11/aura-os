@@ -13,6 +13,7 @@
 
 import { create } from "zustand";
 import { setupPublicSession } from "../api/public-chat";
+import { track } from "../lib/analytics";
 
 /** Modality. Code + Plan ship in Phase 2; image / video / model3d
  *  joined in Phase 3 (this file's current state) so the discriminated
@@ -65,6 +66,10 @@ interface PublicChatState {
 
 interface PublicChatActions {
   ensureToken: () => Promise<string>;
+  /** Clear the cached guest token so the next `ensureToken()` call
+   *  mints a fresh one. Called when the server rejects a token
+   *  ("invalid guest token") so the user isn't permanently stuck. */
+  invalidateToken: () => void;
   createSession: () => string;
   deleteSession: (sessionId: string) => void;
   appendUserTurn: (sessionId: string, content: string) => string;
@@ -259,10 +264,15 @@ export const usePublicChatStore = create<PublicChatStore>((set, get) => ({
         limit: response.limit,
       });
       persistFromGet(get);
+      track("public_session_started");
       return response.token;
     } finally {
       set({ setupInFlight: false });
     }
+  },
+  invalidateToken: () => {
+    set({ guestToken: null });
+    persistFromGet(get);
   },
   createSession: () => {
     const id = randomId("public");
