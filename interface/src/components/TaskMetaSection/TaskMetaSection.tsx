@@ -2,7 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Button, Text } from "@cypher-asi/zui";
-import { RotateCcw } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 import { TaskStatusIcon } from "../TaskStatusIcon";
 import { Avatar } from "../Avatar";
 import { useAvatarState } from "../../hooks/use-avatar-state";
@@ -47,6 +47,14 @@ export interface TaskMetaSectionProps {
   completedByAgent: AgentInstance | null;
   retrying: boolean;
   onRetry: () => void;
+  /**
+   * In-flight flag for the "Re-do" action shown next to the status
+   * pill on `done` tasks. Disables the button while the
+   * `redoTask` + `runTask` round-trip is pending so a double-click
+   * cannot fire two harness runs.
+   */
+  redoing: boolean;
+  onRedo: () => void;
   onViewSession: () => void;
 }
 
@@ -62,6 +70,8 @@ export function TaskMetaSection({
   completedByAgent,
   retrying,
   onRetry,
+  redoing,
+  onRedo,
   onViewSession,
 }: TaskMetaSectionProps) {
   const ctx = useProjectActions();
@@ -98,6 +108,21 @@ export function TaskMetaSection({
               icon={<RotateCcw size={14} />}
               onClick={onRetry}
               disabled={retrying}
+              title={retrying ? "Retrying..." : "Retry task"}
+              aria-label="Retry task"
+            />
+          )}
+          {effectiveStatus === "done" && (
+            <Button
+              className={styles.retryBtn}
+              variant="ghost"
+              size="sm"
+              iconOnly
+              icon={<RefreshCw size={14} />}
+              onClick={onRedo}
+              disabled={redoing}
+              title={redoing ? "Re-doing..." : "Re-do task"}
+              aria-label="Re-do task"
             />
           )}
         </span>

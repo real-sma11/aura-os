@@ -9,12 +9,18 @@
 //!   in_progress -> done | failed | blocked
 //!   failed      -> ready
 //!   blocked     -> ready
+//!   done        -> ready                (user-initiated re-do)
 //! ```
 //!
 //! Everything else is a 400 at the HTTP boundary. Any code that needs a
 //! non-adjacent hop (for example `ready -> failed` when a run aborts
 //! before starting, or `in_progress -> ready` when the retry ladder
 //! resets a stuck run) must bridge through intermediate states.
+//!
+//! The `done -> ready` edge is specifically for the user-initiated
+//! "Re-do" action exposed by `POST /api/projects/:id/tasks/:id/redo`
+//! — see `docs/migrations/2026-05-25-task-redo-transition.md` for the
+//! corresponding aura-network rollout.
 //!
 //! Use [`safe_transition`] for every transition from aura-os-server:
 //! it reads the current status, short-circuits on idempotent no-ops, and
@@ -63,8 +69,17 @@ pub fn compute_bridge(current: TaskStatus, target: TaskStatus) -> Option<Vec<Tas
     if current == target {
         return Some(vec![]);
     }
+    // `Done` is otherwise terminal; the only legal way out is the
+    // user-initiated re-do edge `done -> ready`. Every other target
+    // (including indirect bridges via `Ready`) stays impossible so the
+    // automation loop's auto-retry ladder cannot resurrect a completed
+    // task on its own.
     if current == Done {
-        return None;
+        return if target == Ready {
+            Some(vec![Ready])
+        } else {
+            None
+        };
     }
     if matches!(current, Backlog | ToDo) || matches!(target, Backlog | ToDo | Pending) {
         return None;
@@ -163,6 +178,9 @@ mod tests {
         (InProgress, Blocked),
         (Failed, Ready),
         (Blocked, Ready),
+        // User-initiated re-do of a completed task. See
+        // `docs/migrations/2026-05-25-task-redo-transition.md`.
+        (Done, Ready),
     ];
 
     const CANONICAL_STATES: &[TaskStatus] = &[Pending, Ready, InProgress, Done, Failed, Blocked];
@@ -213,15 +231,24 @@ mod tests {
     }
 
     #[test]
-    fn done_is_terminal() {
+    fn done_can_only_become_ready() {
+        // `Done -> Ready` is the dedicated user-initiated re-do edge.
+        assert_eq!(
+            compute_bridge(Done, Ready),
+            Some(vec![Ready]),
+            "Done -> Ready must be a single-hop user-initiated re-do",
+        );
+        // Every other target out of `Done` stays impossible so the
+        // automation loop's auto-retry ladder can never resurrect a
+        // completed task without an explicit user action.
         for to in CANONICAL_STATES {
-            if *to == Done {
+            if matches!(*to, Done | Ready) {
                 continue;
             }
             assert_eq!(
                 compute_bridge(Done, *to),
                 None,
-                "Done -> {to:?} must be impossible (Done is terminal)",
+                "Done -> {to:?} must be impossible (only Done -> Ready is allowed)",
             );
         }
     }
@@ -254,6 +281,19 @@ mod tests {
         assert_eq!(
             compute_bridge(Failed, InProgress),
             Some(vec![Ready, InProgress]),
+        );
+    }
+
+    /// User-initiated re-do of a completed task. The bridge must be a
+    /// single direct hop because indirect paths via `InProgress` or
+    /// `Failed` would bypass the storage validator's intent (which is
+    /// to require an explicit `Done -> Ready` write authorization).
+    #[test]
+    fn redo_edge_is_single_hop_done_to_ready() {
+        assert_eq!(
+            compute_bridge(Done, Ready),
+            Some(vec![Ready]),
+            "user-initiated re-do must be a direct hop, not bridged",
         );
     }
 

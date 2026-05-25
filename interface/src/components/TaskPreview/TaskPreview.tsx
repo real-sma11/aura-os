@@ -53,7 +53,9 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
   const {
     taskOutput, effectiveStatus, effectiveSessionId, isActive, isTerminal,
     elapsed, failReason, syncWarning, agentInstance, completedByAgent,
-    retrying, handleRetry, handleViewSession,
+    retrying, handleRetry,
+    redoing, handleRedo,
+    handleViewSession,
     fileOps, notes, showNotes, streamKey,
   } = useTaskPreviewData(task);
   const ctx = useProjectActions();
@@ -148,6 +150,8 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
         completedByAgent={completedByAgent}
         retrying={retrying}
         onRetry={handleRetry}
+        redoing={redoing}
+        onRedo={handleRedo}
         onViewSession={handleViewSession}
       />
 

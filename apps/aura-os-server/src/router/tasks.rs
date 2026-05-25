@@ -33,6 +33,10 @@ pub(super) fn task_routes() -> Router<AppState> {
             post(tasks::retry_task),
         )
         .route(
+            "/api/projects/:project_id/tasks/:task_id/redo",
+            post(tasks::redo_task),
+        )
+        .route(
             "/api/projects/:project_id/tasks/:task_id/run",
             post(dev_loop::run_single_task),
         )

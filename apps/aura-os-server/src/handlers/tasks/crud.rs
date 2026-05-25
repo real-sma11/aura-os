@@ -78,6 +78,72 @@ pub(crate) async fn retry_task(
         })
 }
 
+/// User-initiated "Re-do" of a previously completed task. Mirrors
+/// [`retry_task`] but drives `Done -> Ready` (the dedicated re-do edge
+/// — see [`aura_os_tasks::transition`]) and additionally clears the
+/// persisted `attempts` counter so the dev-loop's auto-retry ladder
+/// (`MAX_TASK_ATTEMPTS`) starts fresh on the next run.
+///
+/// Re-do diverges from retry on two axes:
+/// 1. Retry is the failure-recovery path (`Failed -> Ready`); it
+///    preserves `attempts` because the retry budget guards against
+///    infinite re-runs of a still-broken task. Re-do is explicitly
+///    user-driven, so it resets that counter.
+/// 2. Retry is also called automatically by
+///    `streaming::side_effects::retry::maybe_apply_task_level_retry`
+///    on every retryable `task_failed`. Re-do has no auto-caller; it
+///    is only reachable through this handler.
+pub(crate) async fn redo_task(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path((_project_id, task_id)): Path<(ProjectId, TaskId)>,
+) -> ApiResult<Json<Task>> {
+    let storage = state.require_storage_client()?;
+    let task =
+        aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
+            .await
+            .map_err(|e| match &e {
+                aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                    status: 404,
+                    ..
+                }) => ApiError::not_found("task not found"),
+                aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                    status: 400,
+                    body,
+                }) => ApiError::bad_request(body.clone()),
+                aura_os_tasks::TaskError::IllegalTransition { .. } => {
+                    ApiError::bad_request(format!("redoing task: {e}"))
+                }
+                _ => ApiError::internal(format!("redoing task: {e}")),
+            })?;
+
+    // Reset the retry counter so a re-do that subsequently fails gets
+    // its full `MAX_TASK_ATTEMPTS` budget, instead of inheriting
+    // whatever was burned during the original run. Best-effort: a
+    // transient storage error here would leave the task Ready but with
+    // a stale counter, which still produces the user-visible re-do
+    // behavior — log and continue rather than unwinding the transition.
+    if let Err(e) = storage
+        .update_task(
+            &task_id.to_string(),
+            &jwt,
+            &aura_os_storage::UpdateTaskRequest {
+                attempts: Some(0),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        tracing::warn!(
+            task_id = %task_id,
+            error = %e,
+            "redo_task: failed to reset attempts counter; task is Ready but retries inherit prior count"
+        );
+    }
+
+    Ok(Json(task))
+}
+
 // Accept both camelCase and snake_case bodies so the frontend (snake_case)
 // AND the harness's `HttpDomainApi::create_task` (camelCase, plus the legacy
 // `dependencyTaskIds` name) deserialize cleanly. Without this, harness POSTs
@@ -335,7 +401,14 @@ mod tests {
             compute_bridge(TaskStatus::Pending, TaskStatus::Ready),
             Some(vec![TaskStatus::Ready])
         );
-        assert!(compute_bridge(TaskStatus::Done, TaskStatus::Ready).is_none());
+        // `Done -> Ready` is the user-initiated re-do edge. It must
+        // resolve to a single direct hop so the bridge planner does not
+        // try to detour through `InProgress` (which is itself
+        // unreachable from `Done`).
+        assert_eq!(
+            compute_bridge(TaskStatus::Done, TaskStatus::Ready),
+            Some(vec![TaskStatus::Ready])
+        );
     }
 
     /// Frontend (`interface/src/shared/api/tasks.ts`) and the server's own

@@ -25,6 +25,7 @@ vi.mock("@cypher-asi/zui", () => ({
 
 const mockRunTask = vi.fn();
 const mockRetryTask = vi.fn();
+const mockRedoTask = vi.fn();
 const mockListAgentInstances = vi.fn();
 const mockGetSession = vi.fn();
 
@@ -32,6 +33,7 @@ vi.mock("../../api/client", () => ({
   api: {
     runTask: (...args: unknown[]) => mockRunTask(...args),
     retryTask: (...args: unknown[]) => mockRetryTask(...args),
+    redoTask: (...args: unknown[]) => mockRedoTask(...args),
     listAgentInstances: (...args: unknown[]) => mockListAgentInstances(...args),
     getSession: (...args: unknown[]) => mockGetSession(...args),
   },
@@ -121,6 +123,11 @@ vi.mock("../TaskMetaSection", () => ({
       {props.onRetry && (
         <button onClick={props.onRetry as () => void} data-testid="retry-btn">
           Retry
+        </button>
+      )}
+      {props.onRedo && (
+        <button onClick={props.onRedo as () => void} data-testid="redo-btn">
+          Re-do
         </button>
       )}
     </div>
@@ -278,6 +285,30 @@ describe("TaskPreview", () => {
   it("renders retry button via TaskMetaSection", () => {
     renderWithRouter(<TaskPreview task={makeTask({ status: "failed" as TaskStatus })} />);
     expect(screen.getByTestId("retry-btn")).toBeInTheDocument();
+  });
+
+  it("wires a Re-do affordance through TaskMetaSection that calls redoTask + runTask", async () => {
+    // The TaskMetaSection mock above renders a `redo-btn` whenever the
+    // hook supplies an `onRedo` callback. Clicking it must drive the
+    // same code path as the failed-Retry button: hit the dedicated
+    // `redoTask` endpoint to flip `done -> ready` (and clear the
+    // attempts counter), then immediately fire a one-shot `runTask`
+    // so the harness picks the work up regardless of whether the
+    // automation loop is currently running.
+    const user = userEvent.setup();
+    mockRedoTask.mockResolvedValue(undefined);
+    mockRunTask.mockResolvedValue(undefined);
+    mockLiveStatus = "done" as TaskStatus;
+    renderWithRouter(<TaskPreview task={makeTask({ status: "done" as TaskStatus })} />);
+
+    await user.click(screen.getByTestId("redo-btn"));
+
+    await waitFor(() => {
+      expect(mockRedoTask).toHaveBeenCalledWith("proj-1", "task-1");
+    });
+    await waitFor(() => {
+      expect(mockRunTask).toHaveBeenCalledWith("proj-1", "task-1", "agent-1", null);
+    });
   });
 
   it("renders the copy button in the Live Output header for active tasks", () => {

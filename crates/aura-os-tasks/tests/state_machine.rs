@@ -34,6 +34,9 @@ fn valid_transitions_succeed() {
     assert!(TaskService::validate_transition(TaskStatus::InProgress, TaskStatus::Blocked).is_ok());
     assert!(TaskService::validate_transition(TaskStatus::Failed, TaskStatus::Ready).is_ok());
     assert!(TaskService::validate_transition(TaskStatus::Blocked, TaskStatus::Ready).is_ok());
+    // User-initiated re-do edge. See
+    // `docs/migrations/2026-05-25-task-redo-transition.md`.
+    assert!(TaskService::validate_transition(TaskStatus::Done, TaskStatus::Ready).is_ok());
 
     // aura-os-only Backlog/ToDo edges (not persisted by storage).
     assert!(TaskService::validate_transition(TaskStatus::Backlog, TaskStatus::ToDo).is_ok());
@@ -77,8 +80,12 @@ fn auto_promote_two_step_sequence_is_valid() {
 fn illegal_transitions_are_rejected() {
     assert!(TaskService::validate_transition(TaskStatus::Pending, TaskStatus::Done).is_err());
     assert!(TaskService::validate_transition(TaskStatus::Ready, TaskStatus::Pending).is_err());
-    assert!(TaskService::validate_transition(TaskStatus::Done, TaskStatus::Ready).is_err());
+    // `Done -> Ready` is now allowed as the user-initiated re-do edge,
+    // but every other target out of `Done` must still be rejected so
+    // the auto-retry ladder cannot resurrect a completed task.
     assert!(TaskService::validate_transition(TaskStatus::Done, TaskStatus::InProgress).is_err());
+    assert!(TaskService::validate_transition(TaskStatus::Done, TaskStatus::Failed).is_err());
+    assert!(TaskService::validate_transition(TaskStatus::Done, TaskStatus::Blocked).is_err());
     assert!(TaskService::validate_transition(TaskStatus::Blocked, TaskStatus::Done).is_err());
     assert!(TaskService::validate_transition(TaskStatus::Failed, TaskStatus::Done).is_err());
 }

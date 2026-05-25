@@ -137,6 +137,88 @@ async fn task_routes_support_storage_backed_crud_and_state_changes() {
     assert!(listed.as_array().unwrap().is_empty());
 }
 
+/// User-initiated "Re-do" of a previously completed task. Exercises
+/// the dedicated `done -> ready` edge added in
+/// `docs/migrations/2026-05-25-task-redo-transition.md` and verifies
+/// that the handler also clears the persisted `attempts` counter so
+/// the dev-loop's auto-retry budget starts fresh.
+#[tokio::test]
+async fn redo_resets_done_task_to_ready_and_clears_attempts() {
+    let (app, _state, _storage, _db) = build_test_app_with_storage().await;
+    let project_id = ProjectId::new();
+
+    let req = json_request(
+        "POST",
+        &format!("/api/projects/{project_id}/specs"),
+        Some(serde_json::json!({
+            "title": "Redo Spec",
+            "markdownContents": "# Spec",
+            "orderIndex": 0
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let spec = response_json(resp).await;
+    let spec_id = spec["spec_id"].as_str().unwrap().to_string();
+
+    // Seed the task directly in the `done` state. The mock storage
+    // accepts any starting status, which lets us test the redo edge
+    // in isolation without driving the full ready -> in_progress ->
+    // done lifecycle for every assertion.
+    let req = json_request(
+        "POST",
+        &format!("/api/projects/{project_id}/tasks"),
+        Some(serde_json::json!({
+            "spec_id": spec_id.clone(),
+            "title": "Done Task",
+            "description": "Already finished",
+            "status": "done",
+            "order_index": 0
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let done = response_json(resp).await;
+    let done_task_id = done["task_id"].as_str().unwrap().to_string();
+    assert_eq!(done["status"], "done");
+
+    let req = json_request(
+        "POST",
+        &format!("/api/projects/{project_id}/tasks/{done_task_id}/redo"),
+        None,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let redone = response_json(resp).await;
+    assert_eq!(
+        redone["status"], "ready",
+        "redo must transition done -> ready"
+    );
+    assert_eq!(
+        redone["attempts"], 0,
+        "redo must reset the attempts counter so MAX_TASK_ATTEMPTS starts fresh"
+    );
+}
+
+/// Ensures the redo handler still rejects unknown task ids with a
+/// 404 (rather than surfacing the storage error verbatim) — guards
+/// against the matcher in `redo_task` regressing to the catch-all
+/// internal-error arm.
+#[tokio::test]
+async fn redo_unknown_task_returns_not_found() {
+    let (app, _state, _storage, _db) = build_test_app_with_storage().await;
+    let project_id = ProjectId::new();
+    let unknown_task_id = TaskId::new();
+
+    let req = json_request(
+        "POST",
+        &format!("/api/projects/{project_id}/tasks/{unknown_task_id}/redo"),
+        None,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn create_task_is_idempotent_on_title_within_spec() {
     // Regression: agents chain `generate specs → extract tasks → start

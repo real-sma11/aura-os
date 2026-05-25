@@ -88,6 +88,13 @@ impl TaskService {
                 | (TaskStatus::InProgress, TaskStatus::Blocked)
                 | (TaskStatus::Failed, TaskStatus::Ready)
                 | (TaskStatus::Blocked, TaskStatus::Ready)
+                // User-initiated re-do of a completed task. Reachable
+                // only through `POST /api/projects/:id/tasks/:id/redo`;
+                // the dev-loop's auto-retry ladder never targets `Done`
+                // so this edge does not let it resurrect completed
+                // tasks. See
+                // `docs/migrations/2026-05-25-task-redo-transition.md`.
+                | (TaskStatus::Done, TaskStatus::Ready)
                 // aura-os-only edges on Backlog/ToDo. Storage does not
                 // persist these statuses; they only appear in-process
                 // when the planner promotes tasks, before anything

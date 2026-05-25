@@ -103,6 +103,7 @@ export function useTaskPreviewData(task: import("../../shared/types").Task) {
       : null;
   const { selectedModel } = useChatUI(chatStreamKey ?? "__task-preview__");
   const [retrying, setRetrying] = useState(false);
+  const [redoing, setRedoing] = useState(false);
 
   const { liveStatus, liveSessionId, failReason, setLiveStatus, setFailReason } = useTaskStatus(
     task.task_id,
@@ -142,6 +143,26 @@ export function useTaskPreviewData(task: import("../../shared/types").Task) {
     finally { setRetrying(false); }
   }, [projectId, retrying, routeAgentInstanceId, selectedModel, task.task_id, setLiveStatus, setFailReason]);
 
+  // User-initiated re-do of a completed task. Mirrors `handleRetry`
+  // but drives the `done -> ready` edge and uses the dedicated
+  // `redoTask` endpoint (which also clears the persisted `attempts`
+  // counter so the dev-loop's auto-retry ladder starts fresh). The
+  // immediate `runTask` call matches the failed-retry pattern: re-do
+  // works whether the automation loop is running (loop picks it up on
+  // the next iteration anyway) or stopped (one-shot run executes it).
+  const handleRedo = useCallback(async () => {
+    if (!projectId || redoing) return;
+    setRedoing(true);
+    try {
+      await api.redoTask(projectId, task.task_id);
+      setLiveStatus("ready"); setFailReason(null);
+      try {
+        await api.runTask(projectId, task.task_id, routeAgentInstanceId, selectedModel);
+      } catch { /* reset to Ready */ }
+    } catch (err) { console.error("Redo failed:", err); }
+    finally { setRedoing(false); }
+  }, [projectId, redoing, routeAgentInstanceId, selectedModel, task.task_id, setLiveStatus, setFailReason]);
+
   const handleViewSession = useCallback(async () => {
     if (!projectId || !effectiveSessionId) return;
     try {
@@ -164,7 +185,9 @@ export function useTaskPreviewData(task: import("../../shared/types").Task) {
   return {
     taskOutput, effectiveStatus, effectiveSessionId, isActive, isTerminal,
     elapsed, failReason, syncWarning, agentInstance, completedByAgent,
-    retrying, handleRetry, handleViewSession,
+    retrying, handleRetry,
+    redoing, handleRedo,
+    handleViewSession,
     fileOps, notes, showNotes, streamKey: taskStreamKey,
   };
 }

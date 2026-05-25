@@ -52,6 +52,19 @@ export const tasksApi = {
     apiFetch<Task>(`/api/projects/${projectId}/tasks/${taskId}/retry`, {
       method: "POST",
     }),
+  /**
+   * User-initiated "Re-do" of a previously completed (`done`) task.
+   * Resets the row to `ready` (via the dedicated `done -> ready`
+   * storage edge) and clears the persisted `attempts` counter so the
+   * dev-loop's auto-retry budget starts fresh on the next run. Pair
+   * with `runTask` to fire an immediate one-shot harness run; if the
+   * automation loop is already running it will pick the task up on
+   * the next iteration regardless.
+   */
+  redoTask: (projectId: ProjectId, taskId: TaskId) =>
+    apiFetch<Task>(`/api/projects/${projectId}/tasks/${taskId}/redo`, {
+      method: "POST",
+    }),
   runTask: (
     projectId: ProjectId,
     taskId: TaskId,

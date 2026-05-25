@@ -70,6 +70,20 @@ describe("tasksApi", () => {
     );
   });
 
+  it("redoTask sends POST to the dedicated /redo endpoint", async () => {
+    // The redo endpoint is intentionally separate from /retry so the
+    // server can clear the persisted `attempts` counter (a user-
+    // initiated re-do should not inherit the auto-retry budget burned
+    // during the original run).
+    const fetchMock = mockFetch(200, { id: "t1", status: "ready", attempts: 0 });
+    globalThis.fetch = fetchMock;
+    await tasksApi.redoTask("p1" as string, "t1" as string);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/p1/tasks/t1/redo",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("runTask sends POST without agentInstanceId", async () => {
     const fetchMock = mockFetch(204, null);
     globalThis.fetch = fetchMock;

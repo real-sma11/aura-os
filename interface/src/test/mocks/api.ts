@@ -60,6 +60,7 @@ export function mockTasksApi(): Record<string, ReturnType<typeof vi.fn>> {
     listTasksBySpec: stub(),
     transitionTask: stub(),
     retryTask: stub(),
+    redoTask: stub(),
     runTask: stub(),
     getTaskOutput: stub(),
   };
