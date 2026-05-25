@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useState, type RefObject } from "react";
 import { ChevronRight } from "lucide-react";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import {
@@ -10,6 +10,7 @@ import {
   useActiveToolCalls,
   useTimeline,
   useProgressText,
+  useStreamEvents,
 } from "../../hooks/stream/hooks";
 import { LLMStreamOutput } from "../ChatOutput";
 import { CookingIndicator } from "../CookingIndicator";
@@ -18,6 +19,9 @@ import {
   renderCooldownMessage,
 } from "../../hooks/use-cooldown-status";
 import { useProjectActions } from "../../stores/project-action-store";
+import { useTaskOutput } from "../../stores/event-store/index";
+import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
+import { buildTaskCopyText } from "./task-copy-utils";
 import styles from "./TaskOutputPanel.module.css";
 
 interface ActiveTaskStreamProps {
@@ -56,12 +60,48 @@ export function ActiveTaskStream({
   const activeToolCalls = useActiveToolCalls(streamKey);
   const timeline = useTimeline(streamKey);
   const progressText = useProgressText(streamKey);
+  const events = useStreamEvents(streamKey);
+  const taskOutput = useTaskOutput(taskId);
   const ctx = useProjectActions();
   const cooldown = useCooldownStatus(undefined, ctx?.project.project_id);
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
   const hasContent = isStreaming || !!streamingText || !!thinkingText || activeToolCalls.length > 0;
+
+  const getCopyText = useCallback(
+    () =>
+      buildTaskCopyText({
+        title: title || taskId,
+        status: "in_progress",
+        fileOps: taskOutput.fileOps,
+        buildSteps: taskOutput.buildSteps,
+        testSteps: taskOutput.testSteps,
+        gitSteps: taskOutput.gitSteps,
+        events,
+        fallbackText: taskOutput.text || null,
+        liveState: {
+          streamingText,
+          thinkingText,
+          activeToolCalls,
+          timeline,
+        },
+      }),
+    [
+      title,
+      taskId,
+      taskOutput.fileOps,
+      taskOutput.buildSteps,
+      taskOutput.testSteps,
+      taskOutput.gitSteps,
+      taskOutput.text,
+      events,
+      streamingText,
+      thinkingText,
+      activeToolCalls,
+      timeline,
+    ],
+  );
 
   // Pin to bottom when the tail grows. CSS `overflow-anchor: auto` on the
   // parent scroller (see TaskOutputPanel.module.css `.content`) handles
@@ -104,6 +144,7 @@ export function ActiveTaskStream({
           </span>
           <span className={styles.taskDot} />
           <span className={styles.taskTitle}>{title || taskId}</span>
+          <CopyTaskOutputButton getCopyText={getCopyText} />
         </button>
       )}
       {!collapsed && (

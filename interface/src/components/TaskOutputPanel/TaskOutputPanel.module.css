@@ -285,13 +285,45 @@
   transition: opacity 0.1s, background 0.1s, color 0.1s;
 }
 
-.taskHeader:hover .dismissBtn {
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+}
+
+/* When the copy button is followed by the dismiss button, the dismiss
+   button keeps its own `margin-left: auto` rule, so collapse it back to a
+   small inline gap so the two buttons sit shoulder-to-shoulder. */
+.copyBtn + .dismissBtn {
+  margin-left: 0;
+}
+
+.taskHeader:hover .dismissBtn,
+.taskHeader:hover .copyBtn {
   opacity: 1;
 }
 
-.dismissBtn:hover {
+.dismissBtn:hover,
+.copyBtn:hover {
   background: var(--color-overlay-medium);
   color: var(--color-text-primary);
+}
+
+.copyBtn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .taskTitle {

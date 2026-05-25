@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useCallback, type RefObject } from "react";
 import { Button, GroupCollapsible } from "@cypher-asi/zui";
 import { GitCommitHorizontal, Loader2, Play } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -8,9 +8,21 @@ import { VerificationStepItem } from "../VerificationStepItem";
 import { GitStepItem } from "../GitStepItem";
 import { TaskMetaSection } from "../TaskMetaSection";
 import { TaskFilesSection } from "../TaskFilesSection";
-import { ActiveTaskStream, CompletedTaskOutput } from "../TaskOutputPanel";
+import {
+  ActiveTaskStream,
+  CompletedTaskOutput,
+  CopyTaskOutputButton,
+  buildTaskCopyText,
+} from "../TaskOutputPanel";
 import { useProjectActions } from "../../stores/project-action-store";
-import { toBullets } from "../../shared/utils/format";
+import { formatDuration, toBullets } from "../../shared/utils/format";
+import {
+  useStreamEvents,
+  useStreamingText,
+  useThinkingText,
+  useActiveToolCalls,
+  useTimeline,
+} from "../../hooks/stream/hooks";
 import { useTaskPreviewData, useRunTaskData } from "./useTaskPreviewData";
 import styles from "../Preview/Preview.module.css";
 
@@ -42,10 +54,72 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
     taskOutput, effectiveStatus, effectiveSessionId, isActive, isTerminal,
     elapsed, failReason, syncWarning, agentInstance, completedByAgent,
     retrying, handleRetry, handleViewSession,
-    fileOps, notes, showNotes,
+    fileOps, notes, showNotes, streamKey,
   } = useTaskPreviewData(task);
   const ctx = useProjectActions();
   const projectId = ctx?.project.project_id;
+
+  const events = useStreamEvents(streamKey);
+  const streamingText = useStreamingText(streamKey);
+  const thinkingText = useThinkingText(streamKey);
+  const activeToolCalls = useActiveToolCalls(streamKey);
+  const timeline = useTimeline(streamKey);
+
+  const panelStatusLabel: "in_progress" | "completed" | "failed" =
+    effectiveStatus === "in_progress" ? "in_progress"
+    : effectiveStatus === "failed" ? "failed"
+    : "completed";
+
+  const durationLabel = isActive
+    ? elapsed > 0 ? formatDuration(elapsed * 1000) : null
+    : isTerminal && task.created_at && task.updated_at
+      ? formatDuration(
+          new Date(task.updated_at).getTime() - new Date(task.created_at).getTime(),
+        )
+      : null;
+
+  const getCopyText = useCallback(
+    () =>
+      buildTaskCopyText({
+        title: task.title || task.task_id,
+        status: panelStatusLabel,
+        durationLabel,
+        failureReason:
+          panelStatusLabel === "failed"
+            ? failReason ?? task.execution_notes ?? null
+            : null,
+        fileOps,
+        buildSteps: taskOutput.buildSteps,
+        testSteps: taskOutput.testSteps,
+        gitSteps: taskOutput.gitSteps,
+        events,
+        fallbackText: taskOutput.text || null,
+        liveState: isActive
+          ? { streamingText, thinkingText, activeToolCalls, timeline }
+          : null,
+      }),
+    [
+      task.title,
+      task.task_id,
+      task.execution_notes,
+      panelStatusLabel,
+      durationLabel,
+      failReason,
+      fileOps,
+      taskOutput.buildSteps,
+      taskOutput.testSteps,
+      taskOutput.gitSteps,
+      taskOutput.text,
+      events,
+      isActive,
+      streamingText,
+      thinkingText,
+      activeToolCalls,
+      timeline,
+    ],
+  );
+
+  const copyButton = <CopyTaskOutputButton variant="stats" getCopyText={getCopyText} />;
 
   // For terminal tasks (`done` / `failed`), render the same
   // `CompletedTaskOutput` row the Run pane uses so the live run
@@ -137,7 +211,7 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
       )}
 
       {isActive ? (
-        <GroupCollapsible label="Live Output" defaultOpen className={styles.section}>
+        <GroupCollapsible label="Live Output" defaultOpen stats={copyButton} className={styles.section}>
           <div className={styles.liveOutputSection}>
             <ActiveTaskStream
               taskId={task.task_id}
@@ -150,7 +224,7 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
           </div>
         </GroupCollapsible>
       ) : isTerminal && panelStatus && projectId ? (
-        <GroupCollapsible label="Output" defaultOpen className={styles.section}>
+        <GroupCollapsible label="Output" defaultOpen stats={copyButton} className={styles.section}>
           <div className={styles.liveOutputSection}>
             <CompletedTaskOutput
               taskId={task.task_id}

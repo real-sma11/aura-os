@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Check, X as XIcon, AlertTriangle, CircleDashed, ChevronRight } from "lucide-react";
 import {
   useTaskOutputPanelStore,
@@ -7,7 +7,10 @@ import {
 } from "../../stores/task-output-panel-store";
 import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import { extractErrorMessage } from "../../shared/utils/extract-error-message";
+import { useTaskOutput } from "../../stores/event-store/index";
 import { MessageBubble, LLMOutput } from "../ChatOutput";
+import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
+import { buildTaskCopyText } from "./task-copy-utils";
 import styles from "./TaskOutputPanel.module.css";
 
 interface CompletedTaskOutputProps {
@@ -80,6 +83,36 @@ export function CompletedTaskOutput({
   // mount is a terminal view from the hook's perspective.
   const { events, fallbackText, hasStructuredContent, hasAnyContent } =
     useTaskOutputView(taskId, projectId, true);
+  const taskOutput = useTaskOutput(taskId);
+
+  const getCopyText = useCallback(
+    () =>
+      buildTaskCopyText({
+        title: title || taskId,
+        status,
+        failureReason: status === "failed" ? failureReason ?? null : null,
+        failureContext: status === "failed" ? failureContext ?? null : null,
+        fileOps: taskOutput.fileOps,
+        buildSteps: taskOutput.buildSteps,
+        testSteps: taskOutput.testSteps,
+        gitSteps: taskOutput.gitSteps,
+        events,
+        fallbackText,
+      }),
+    [
+      title,
+      taskId,
+      status,
+      failureReason,
+      failureContext,
+      taskOutput.fileOps,
+      taskOutput.buildSteps,
+      taskOutput.testSteps,
+      taskOutput.gitSteps,
+      events,
+      fallbackText,
+    ],
+  );
 
   // Default collapsed in the Run pane so a long history doesn't blow
   // out the panel; the task preview opts in to `defaultExpanded` so
@@ -118,6 +151,7 @@ export function CompletedTaskOutput({
           <span className={dotClass}>{statusIcon}</span>
           <span className={styles.taskTitle}>{title || taskId}</span>
           <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
+          <CopyTaskOutputButton getCopyText={getCopyText} />
           {showDismiss && (
             <span
               role="button"

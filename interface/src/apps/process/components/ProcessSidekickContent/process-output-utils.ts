@@ -116,7 +116,7 @@ function formatProcessEventForCopy(
   return parts.join("\n\n").trim();
 }
 
-function buildLiveStreamEvent(liveState: LiveCopyState): DisplaySessionEvent | null {
+export function buildLiveStreamEvent(liveState: LiveCopyState): DisplaySessionEvent | null {
   const timeline =
     liveState.timeline.length > 0
       ? liveState.timeline

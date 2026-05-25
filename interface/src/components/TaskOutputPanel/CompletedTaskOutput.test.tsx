@@ -3,8 +3,20 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 const dismissTask = vi.fn();
 
-let taskOutputState: { text: string; buildSteps?: unknown[]; testSteps?: unknown[] } = {
+interface TaskOutputState {
+  text: string;
+  fileOps?: { op: string; path: string }[];
+  buildSteps?: unknown[];
+  testSteps?: unknown[];
+  gitSteps?: unknown[];
+}
+
+let taskOutputState: TaskOutputState = {
   text: "",
+  fileOps: [],
+  buildSteps: [],
+  testSteps: [],
+  gitSteps: [],
 };
 let streamEventsState: Array<{ id: string; content: string }> = [];
 
@@ -67,7 +79,13 @@ import { CompletedTaskOutput } from "./CompletedTaskOutput";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  taskOutputState = { text: "" };
+  taskOutputState = {
+    text: "",
+    fileOps: [],
+    buildSteps: [],
+    testSteps: [],
+    gitSteps: [],
+  };
   streamEventsState = [];
 });
 

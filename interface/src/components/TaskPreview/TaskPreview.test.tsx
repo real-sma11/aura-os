@@ -11,8 +11,15 @@ vi.mock("@cypher-asi/zui", () => ({
   }) => (
     <button title={title} disabled={disabled} onClick={onClick} style={style}>{icon}{children}</button>
   ),
-  GroupCollapsible: ({ children, label }: { children?: React.ReactNode; label: string; count?: number; defaultOpen?: boolean; className?: string }) => (
-    <div data-testid={`group-${label}`}>{label}{children}</div>
+  GroupCollapsible: ({ children, label, stats }: {
+    children?: React.ReactNode; label: string; count?: number; defaultOpen?: boolean;
+    className?: string; stats?: React.ReactNode;
+  }) => (
+    <div data-testid={`group-${label}`}>
+      <div data-testid={`group-${label}-stats`}>{stats}</div>
+      {label}
+      {children}
+    </div>
   ),
 }));
 
@@ -94,6 +101,14 @@ vi.mock("../../hooks/use-task-stream", () => ({
   useTaskStream: () => ({ streamKey: "task:task-1" }),
 }));
 
+vi.mock("../../hooks/stream/hooks", () => ({
+  useStreamEvents: () => [],
+  useStreamingText: () => "",
+  useThinkingText: () => "",
+  useActiveToolCalls: () => [],
+  useTimeline: () => [],
+}));
+
 vi.mock("../VerificationStepItem", () => ({
   VerificationStepItem: () => <div data-testid="verification-step" />,
 }));
@@ -135,9 +150,18 @@ vi.mock("../TaskOutputPanel", () => ({
       data-status={status}
     />
   ),
+  CopyTaskOutputButton: ({ getCopyText }: { getCopyText: () => string }) => (
+    <button data-testid="copy-task-output-btn" onClick={() => getCopyText()}>
+      Copy
+    </button>
+  ),
+  buildTaskCopyText: vi.fn(() => "copy-text"),
 }));
 
-vi.mock("../../shared/utils/format", () => ({ toBullets: (s: string) => s }));
+vi.mock("../../shared/utils/format", () => ({
+  toBullets: (s: string) => s,
+  formatDuration: (ms: number) => `${Math.round(ms / 1000)}s`,
+}));
 vi.mock("../../utils/derive-activity", () => ({
   deriveActivity: () => [],
   computeIterationStats: () => null,
@@ -254,6 +278,29 @@ describe("TaskPreview", () => {
   it("renders retry button via TaskMetaSection", () => {
     renderWithRouter(<TaskPreview task={makeTask({ status: "failed" as TaskStatus })} />);
     expect(screen.getByTestId("retry-btn")).toBeInTheDocument();
+  });
+
+  it("renders the copy button in the Live Output header for active tasks", () => {
+    mockLiveStatus = "in_progress" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "in_progress" as TaskStatus })} />,
+    );
+    const stats = screen.getByTestId("group-Live Output-stats");
+    expect(stats).toContainElement(screen.getByTestId("copy-task-output-btn"));
+  });
+
+  it("renders the copy button in the Output header for terminal tasks", () => {
+    mockLiveStatus = "done" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "done" as TaskStatus })} />,
+    );
+    const stats = screen.getByTestId("group-Output-stats");
+    expect(stats).toContainElement(screen.getByTestId("copy-task-output-btn"));
+  });
+
+  it("does not render the copy button when there is no output panel", () => {
+    renderWithRouter(<TaskPreview task={makeTask({ status: "ready" as TaskStatus })} />);
+    expect(screen.queryByTestId("copy-task-output-btn")).not.toBeInTheDocument();
   });
 });
 
