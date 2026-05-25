@@ -6,6 +6,7 @@ mod event_kinds;
 pub(crate) mod health;
 mod progress;
 mod registry;
+mod run;
 mod session;
 mod signals;
 mod start;

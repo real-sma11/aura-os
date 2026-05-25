@@ -1,7 +1,6 @@
-//! Shared helpers used by every adapter handler (loop-instance / user-id resolution and the per-call stream timeouts).
+﻿//! Shared helpers used by every adapter handler (loop-instance / user-id resolution).
 
 use std::str::FromStr;
-use std::time::Duration;
 
 use aura_os_core::{AgentInstanceId, ProjectId, UserId};
 
@@ -10,12 +9,9 @@ use crate::state::{AppState, AuthSession};
 
 use super::super::types::LoopQueryParams;
 
-pub(super) const LOOP_STREAM_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
-pub(super) const TASK_STREAM_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
-
 /// Resolve the `agent_instance_id` to use for an automation loop.
 ///
-/// When the caller pins an explicit id, honour it — that's the
+/// When the caller pins an explicit id, honour it - that's the
 /// "I want the loop for *this* binding" case. Otherwise lazily
 /// resolve the project's canonical `Loop`-roled instance via
 /// [`AgentInstanceService::ensure_default_loop_instance`], which
