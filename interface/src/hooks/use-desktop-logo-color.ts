@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import { useAuthStore } from "../stores/auth-store";
 import type { DesktopPrefs } from "../shared/api/preferences";
+import { syncPulseKeyframes } from "./logo-pulse-keyframes";
 
 const STORAGE_KEY = "aura-desktop-preferences";
 const LEGACY_COLOR_KEY = "aura-desktop-logo-color";
@@ -53,52 +54,9 @@ function getSnapshot(): DesktopPrefsLocal {
   return _prefs;
 }
 
-// Singleton <style> element for dynamic pulse keyframes.
-// Keyframe percentages depend on speed + pause so they can't be static CSS.
-// We inject global (non-hashed) names so inline animation: can reference them.
-let _styleEl: HTMLStyleElement | null = null;
-
-function syncPulseStyle(p: DesktopPrefsLocal): void {
-  if (typeof document === "undefined") return;
-  if (!_styleEl) {
-    _styleEl = document.createElement("style");
-    _styleEl.dataset.id = "aura-pulse";
-    document.head.appendChild(_styleEl);
-  }
-
-  if (!p.pulseEnabled) {
-    _styleEl.textContent = "";
-    return;
-  }
-
-  const total = p.pulseSpeed + p.pauseDuration;
-  const fi = ((p.pulseSpeed / 2 / total) * 100).toFixed(3);  // fade-in end %
-  const pe = (((p.pulseSpeed / 2 + p.pauseDuration) / total) * 100).toFixed(3); // pause end %
-
-  _styleEl.textContent = `
-@keyframes aura-logo-fade {
-  0%      { background-color: var(--logo-pulse-from, white); }
-  ${fi}%  { background-color: var(--logo-pulse-to, white); }
-  ${pe}%  { background-color: var(--logo-pulse-to, white); }
-  100%    { background-color: var(--logo-pulse-from, white); }
-}
-@keyframes aura-logo-sweep {
-  0%      { clip-path: inset(0 100% 0 0); }
-  ${fi}%  { clip-path: inset(0 0% 0 0); }
-  ${pe}%  { clip-path: inset(0 0% 0 0); }
-  100%    { clip-path: inset(0 0 0 100%); }
-}
-@keyframes aura-logo-sweep-rev {
-  0%      { clip-path: inset(0 100% 0 0); }
-  ${fi}%  { clip-path: inset(0 0% 0 0); }
-  ${pe}%  { clip-path: inset(0 0% 0 0); }
-  100%    { clip-path: inset(0 100% 0 0); }
-}`;
-}
-
 function writeLocal(next: DesktopPrefsLocal): void {
   _prefs = next;
-  syncPulseStyle(next);
+  syncPulseKeyframes(next);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {}
@@ -225,14 +183,14 @@ useAuthStore.subscribe((state) => {
 // Eagerly initialize the style element on module load so keyframes exist
 // before the first render.
 if (typeof window !== "undefined") {
-  syncPulseStyle(_prefs);
+  syncPulseKeyframes(_prefs);
 }
 
 export function useDesktopLogoColor() {
   const prefs = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULTS);
 
   useEffect(() => {
-    syncPulseStyle(_prefs);
+    syncPulseKeyframes(_prefs);
   }, []);
 
   const setColor = useCallback((next: string | undefined) => {
