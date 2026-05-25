@@ -36,6 +36,9 @@ const FeedbackView = lazy(() =>
 const PricingView = lazy(() =>
   import("./views/marketing/PricingView").then((m) => ({ default: m.PricingView })),
 );
+const DownloadView = lazy(() =>
+  import("./views/marketing/DownloadView/DownloadView").then((m) => ({ default: m.DownloadView })),
+);
 
 /**
  * Canonical, explicit boot-time auth decision.
@@ -280,6 +283,14 @@ function AppRoutes({ showShell }: { showShell: boolean }) {
               element={
                 <Suspense fallback={<RouteFallback />}>
                   <PricingView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="download"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <DownloadView />
                 </Suspense>
               }
             />
