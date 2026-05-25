@@ -58,6 +58,15 @@ pub struct AutomatonStartParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intent_classifier: Option<IntentClassifierSpec>,
     /// Agentic-turn ceiling for the automaton's initial task executor session.
+    ///
+    /// Wire-level asymmetry: the harness's `AutomatonStartRequest` (the
+    /// dev-loop / single-task entry point) has no `max_turns` field and
+    /// silently drops this on deserialisation; that path's cap is
+    /// `AgentRunnerConfig::max_agentic_iterations` (40) inside the harness.
+    /// The dev-loop call site therefore leaves this `None`. Chat /
+    /// project-tool / public-chat sessions are unaffected: they route
+    /// `max_turns` through `aura_protocol::SessionInit::max_turns`, a
+    /// distinct harness type which the harness DOES consume.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -9,7 +9,6 @@ use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
 use crate::handlers::agents::workspace_tools::{
     installed_workspace_app_tools, installed_workspace_integrations_for_org_with_token,
 };
-use crate::handlers::projects_helpers::project_tool_max_turns;
 use crate::state::AppState;
 
 use super::super::types::StartContext;
@@ -110,7 +109,13 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         provider_overrides: start_provider_overrides(ctx, agent_instance_id),
         user_id,
         intent_classifier: ctx.intent_classifier.clone(),
-        max_turns: Some(project_tool_max_turns()),
+        // Wire-level dead field: the harness's `AutomatonStartRequest`
+        // has no `max_turns`; the dev-loop cap is
+        // `AgentRunnerConfig::max_agentic_iterations` (40) inside the
+        // harness. `None` makes serde skip the field via
+        // `skip_serializing_if`. See the doc on the struct field in
+        // `aura_os_harness::AutomatonStartParams`.
+        max_turns: None,
         workspace_root: Some(ctx.workspace_root.clone()),
         task_id,
         git_repo_url,
