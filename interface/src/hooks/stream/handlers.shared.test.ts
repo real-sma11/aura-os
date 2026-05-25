@@ -17,6 +17,7 @@ import {
   resetStreamBuffers,
 } from "./handlers";
 import {
+  closeCurrentThinkingSegment,
   syncDisplayedTimeline,
   flushStreamingText,
 } from "./handlers/shared";
@@ -93,6 +94,97 @@ describe("stream/handlers — shared snapshots and reset", () => {
       const snap = snapshotTimeline(refs)!;
       expect(snap).toHaveLength(1);
       expect(snap).not.toBe(refs.timeline.current);
+    });
+  });
+
+  describe("closeCurrentThinkingSegment", () => {
+    it("no-ops when the timeline is empty", () => {
+      const refs = makeRefs();
+      closeCurrentThinkingSegment(refs);
+      expect(refs.timeline.current).toEqual([]);
+    });
+
+    it("no-ops when the last item is not a thinking segment", () => {
+      const refs = makeRefs();
+      refs.timeline.current = [{ kind: "tool", toolCallId: "tc1", id: "tl-1" }];
+      closeCurrentThinkingSegment(refs);
+      expect(refs.timeline.current).toEqual([
+        { kind: "tool", toolCallId: "tc1", id: "tl-1" },
+      ]);
+    });
+
+    it("stamps durationMs on the trailing thinking segment", () => {
+      const refs = makeRefs();
+      const start = Date.now();
+      refs.timeline.current = [
+        { kind: "thinking", id: "tl-1", text: "a", startMs: start },
+      ];
+      vi.advanceTimersByTime(500);
+      closeCurrentThinkingSegment(refs);
+      const last = refs.timeline.current[0];
+      expect(last.kind).toBe("thinking");
+      expect((last as { durationMs?: number }).durationMs).toBeGreaterThanOrEqual(
+        500,
+      );
+    });
+
+    it("is idempotent — a second call does not overwrite durationMs", () => {
+      const refs = makeRefs();
+      refs.timeline.current = [
+        { kind: "thinking", id: "tl-1", text: "a", startMs: Date.now() },
+      ];
+      vi.advanceTimersByTime(200);
+      closeCurrentThinkingSegment(refs);
+      const first = (refs.timeline.current[0] as { durationMs?: number })
+        .durationMs;
+      vi.advanceTimersByTime(500);
+      closeCurrentThinkingSegment(refs);
+      const second = (refs.timeline.current[0] as { durationMs?: number })
+        .durationMs;
+      expect(second).toBe(first);
+    });
+
+    it("only closes the last thinking segment, not earlier ones", () => {
+      // If a tool already sits between an older thinking item and the
+      // current one, the older item was closed when that tool started;
+      // closing now must not re-stamp it.
+      const refs = makeRefs();
+      const oldStart = Date.now();
+      refs.timeline.current = [
+        {
+          kind: "thinking",
+          id: "tl-1",
+          text: "old",
+          startMs: oldStart,
+          durationMs: 123,
+        },
+        { kind: "tool", toolCallId: "tc1", id: "tl-2" },
+        {
+          kind: "thinking",
+          id: "tl-3",
+          text: "new",
+          startMs: Date.now(),
+        },
+      ];
+      vi.advanceTimersByTime(400);
+      closeCurrentThinkingSegment(refs);
+      expect(
+        (refs.timeline.current[0] as { durationMs?: number }).durationMs,
+      ).toBe(123);
+      expect(
+        (refs.timeline.current[2] as { durationMs?: number }).durationMs,
+      ).toBeGreaterThanOrEqual(400);
+    });
+
+    it("ignores items missing startMs (hydrated history rows)", () => {
+      const refs = makeRefs();
+      refs.timeline.current = [
+        { kind: "thinking", id: "tl-1", text: "hydrated" },
+      ];
+      closeCurrentThinkingSegment(refs);
+      expect(
+        (refs.timeline.current[0] as { durationMs?: number }).durationMs,
+      ).toBeUndefined();
     });
   });
 

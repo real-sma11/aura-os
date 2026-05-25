@@ -22,6 +22,7 @@ import type {
 } from "../../../shared/types/stream";
 import {
   cancelPendingStreamFlush,
+  closeCurrentThinkingSegment,
   flushStreamingText,
   resetStreamBuffers,
   snapshotThinking,
@@ -329,6 +330,11 @@ export function handleEventSaved(
   const savedThinking = msg.thinking || refs.thinkingBuffer.current || undefined;
   const savedThinkingDuration = msg.thinking_duration_ms
     ?? (refs.thinkingStart.current != null ? Date.now() - refs.thinkingStart.current : null);
+  // Stamp the trailing thinking segment's `durationMs` before
+  // `snapshotTimeline` freezes the array into the persisted event so
+  // the final block carries its own time instead of inheriting the
+  // turn-level total via the `ActivityTimeline` fallback.
+  closeCurrentThinkingSegment(refs);
   const savedMessage: DisplaySessionEvent = {
     id: msg.event_id,
     // Default `clientId = id` for the no-placeholder branch. The
@@ -374,6 +380,11 @@ export function handleAssistantTurnBoundary(
     if (hasBuffer) {
       flushStreamingText(refs, setters);
     }
+    // Close the active thinking segment so its `durationMs` is
+    // baked into the placeholder's `timeline` snapshot. Without this
+    // the trailing pre-tool segment would render with the turn-level
+    // duration as a fallback, defeating the per-segment fix.
+    closeCurrentThinkingSegment(refs);
     const { savedThinking, savedThinkingDuration } = snapshotThinking(refs);
     const bufferedContent = refs.streamBuffer.current;
 
@@ -579,6 +590,10 @@ export function finalizeStream(
     ((hasBuffer || hasUnsnapshottedTools) && (!closureIsStreaming || isTerminalReason));
 
   if (shouldPersistTurn) {
+    // Stamp the trailing thinking segment so the synthesized
+    // finalize event preserves per-segment durations on terminal
+    // close (completed / failed / disconnected).
+    closeCurrentThinkingSegment(refs);
     const { savedThinking, savedThinkingDuration } = snapshotThinking(refs);
     const bufferedContent = refs.streamBuffer.current;
     const newToolCallIds = new Set(unsnapshottedToolCalls.map((tc) => tc.id));

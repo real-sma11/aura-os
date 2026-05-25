@@ -36,7 +36,28 @@ export interface ArtifactRef {
 }
 
 export type TimelineItem =
-  | { kind: "thinking"; id: string; text?: string }
+  | {
+      kind: "thinking";
+      id: string;
+      text?: string;
+      /**
+       * Wall-clock ms when the first delta of this thinking segment
+       * arrived. Transient — only set while the stream is live so the
+       * segment closer can compute its own `durationMs`. Persisted
+       * history rows omit this.
+       */
+      startMs?: number;
+      /**
+       * Elapsed ms for this specific thinking segment. Stamped by
+       * `closeCurrentThinkingSegment` (see
+       * `interface/src/hooks/stream/handlers/shared.ts`) the moment a
+       * tool, assistant text, or stream finalize closes the segment.
+       * The `ActivityTimeline` renderer prefers this over the
+       * turn-level `thinkingDurationMs` so multi-segment turns no
+       * longer repeat the same "Thought for X" label on every block.
+       */
+      durationMs?: number;
+    }
   | { kind: "text"; content: string; id: string }
   | { kind: "tool"; toolCallId: string; id: string };
 

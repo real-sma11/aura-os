@@ -109,6 +109,45 @@ describe("stream/handlers — thinking and text deltas", () => {
       expect(thinkingItems[0]).toMatchObject({ text: "first " });
       expect(thinkingItems[1]).toMatchObject({ text: "second" });
     });
+
+    it("stamps a startMs on each new segment", () => {
+      const refs = makeRefs();
+      const setters = makeSetters();
+
+      handleThinkingDelta(refs, setters, "first ");
+      handleToolCallStarted(refs, setters, { id: "tc1", name: "run" });
+      handleThinkingDelta(refs, setters, "second");
+
+      const thinkingItems = refs.timeline.current.filter(
+        (t) => t.kind === "thinking",
+      ) as Array<{ startMs?: number }>;
+      expect(thinkingItems[0].startMs).toEqual(expect.any(Number));
+      expect(thinkingItems[1].startMs).toEqual(expect.any(Number));
+    });
+
+    it("closes the prior thinking segment with its own durationMs when a tool starts", () => {
+      // This is the screenshot scenario: thinking -> tool -> thinking ->
+      // text must yield TWO distinct per-segment durations, not the
+      // same turn-level total stamped on both blocks.
+      const refs = makeRefs();
+      const setters = makeSetters();
+
+      handleThinkingDelta(refs, setters, "first ");
+      vi.advanceTimersByTime(300);
+      handleToolCallStarted(refs, setters, { id: "tc1", name: "run" });
+      vi.advanceTimersByTime(50);
+      handleThinkingDelta(refs, setters, "second");
+      vi.advanceTimersByTime(700);
+      handleTextDelta(refs, setters, null, "done");
+
+      const thinkingItems = refs.timeline.current.filter(
+        (t) => t.kind === "thinking",
+      ) as Array<{ durationMs?: number }>;
+      expect(thinkingItems).toHaveLength(2);
+      expect(thinkingItems[0].durationMs).toBeGreaterThanOrEqual(300);
+      expect(thinkingItems[0].durationMs).toBeLessThan(700);
+      expect(thinkingItems[1].durationMs).toBeGreaterThanOrEqual(700);
+    });
   });
 
   describe("handleTextDelta", () => {

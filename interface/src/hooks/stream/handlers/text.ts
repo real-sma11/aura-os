@@ -1,5 +1,9 @@
 import type { StreamRefs, StreamSetters } from "../../../shared/types/stream";
-import { nextTimelineId, scheduleStreamingTextReveal } from "./shared";
+import {
+  closeCurrentThinkingSegment,
+  nextTimelineId,
+  scheduleStreamingTextReveal,
+} from "./shared";
 
 export function handleTextDelta(
   refs: StreamRefs,
@@ -11,6 +15,7 @@ export function handleTextDelta(
   if (refs.thinkingStart.current !== null && closureThinkingDurationMs === null) {
     setters.setThinkingDurationMs(Date.now() - refs.thinkingStart.current);
   }
+  closeCurrentThinkingSegment(refs);
 
   const tl = refs.timeline.current;
   const last = tl.length > 0 ? tl[tl.length - 1] : null;

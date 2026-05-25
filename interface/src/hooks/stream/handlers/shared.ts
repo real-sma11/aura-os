@@ -267,6 +267,35 @@ export function nextTimelineId(): string {
   return `tl-${++_tlId}`;
 }
 
+/**
+ * Stamp `durationMs` on the most recent thinking timeline item the
+ * moment the segment ends — i.e. when a tool call, assistant text,
+ * or stream finalize closes it out. Walks back from the tail and
+ * stops at the first non-thinking item, because anything beyond that
+ * boundary is already closed.
+ *
+ * Idempotent: if the segment already has `durationMs` (e.g. two
+ * closers fire back-to-back), the second call is a no-op. Safe to
+ * call even when no thinking has occurred yet (no-op).
+ *
+ * Per-segment durations replace the previous turn-level
+ * `thinkingDurationMs` that `ActivityTimeline` used to hand to every
+ * `ThinkingBlock` — that meant two segments separated by tool calls
+ * both showed the same "Thought for X" total instead of their own
+ * elapsed time.
+ */
+export function closeCurrentThinkingSegment(refs: StreamRefs): void {
+  const tl = refs.timeline.current;
+  for (let i = tl.length - 1; i >= 0; i--) {
+    const item = tl[i];
+    if (item.kind !== "thinking") return;
+    if (item.startMs != null && item.durationMs == null) {
+      item.durationMs = Date.now() - item.startMs;
+    }
+    return;
+  }
+}
+
 function getSpecDraftContent(tc: ToolCallEntry): string {
   const markdown = tc.input.markdown_contents;
   if (typeof markdown === "string" && markdown.trim()) return markdown;

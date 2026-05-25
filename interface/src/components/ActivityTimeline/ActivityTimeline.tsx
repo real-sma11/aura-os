@@ -56,9 +56,25 @@ export function ActivityTimeline({
       prev.kind === "thinking"
     ) {
       const mergedText = (prev.text ?? "") + (item.text ?? "");
+      // Sum the per-segment durations when merging contiguous
+      // thinking items so the combined block reflects the full
+      // wall-clock spent thinking across both, not just one.
+      const mergedDuration =
+        prev.durationMs != null || item.durationMs != null
+          ? (prev.durationMs ?? 0) + (item.durationMs ?? 0)
+          : undefined;
+      // Keep the earlier `startMs` so a still-open segment merge
+      // (rare, but possible if both have `startMs` and no
+      // `durationMs`) continues to measure from the original start.
+      const mergedStart =
+        prev.startMs != null
+          ? prev.startMs
+          : item.startMs;
       mergedTimeline[mergedTimeline.length - 1] = {
         ...prev,
         text: mergedText || undefined,
+        startMs: mergedStart,
+        durationMs: mergedDuration,
       };
       continue;
     }
@@ -81,7 +97,13 @@ export function ActivityTimeline({
           <ThinkingBlock
             text={segmentText}
             isStreaming={isStreaming}
-            durationMs={thinkingDurationMs}
+            // Prefer the per-segment `durationMs` stamped by
+            // `closeCurrentThinkingSegment`; fall back to the
+            // turn-level total for hydrated history rows that
+            // predate per-segment tracking. This is what stops
+            // multi-segment turns from rendering the same
+            // "Thought for X" label on every block.
+            durationMs={item.durationMs ?? thinkingDurationMs}
             defaultExpanded={defaultThinkingExpanded}
           />
         ),

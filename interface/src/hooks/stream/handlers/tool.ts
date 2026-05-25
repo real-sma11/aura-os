@@ -13,6 +13,7 @@ import type {
 } from "../../../shared/types/stream";
 import { normalizeToolInput } from "../../../utils/tool-input";
 import {
+  closeCurrentThinkingSegment,
   nextTimelineId,
   pendingToolResult,
   resolvePendingToolCallsInEvents,
@@ -51,6 +52,10 @@ function appendToolTimelineItem(refs: StreamRefs, setters: StreamSetters, toolCa
     (item) => item.kind === "tool" && item.toolCallId === toolCallId,
   );
   if (!alreadyInTimeline) {
+    // A new tool item closes any in-progress thinking segment so the
+    // segment's `durationMs` reflects only the pre-tool reasoning,
+    // not the entire turn. See `closeCurrentThinkingSegment`.
+    closeCurrentThinkingSegment(refs);
     refs.timeline.current.push({ kind: "tool", toolCallId, id: nextTimelineId() });
     syncDisplayedTimeline(refs, setters);
   }
