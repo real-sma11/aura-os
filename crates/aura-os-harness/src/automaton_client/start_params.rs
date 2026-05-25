@@ -40,11 +40,6 @@ pub struct AutomatonStartParams {
     pub auth_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Full project-aware system prompt, mirroring `SessionInit::system_prompt`.
-    /// The harness uses this to shape the first automaton LLM request the same
-    /// way chat/spec sessions are shaped.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_prompt: Option<String>,
     /// Optional per-session model/router overrides. Dev-loop automata must carry
     /// the same prompt-cache/model override envelope as `SessionInit` so the
     /// router sees an equivalent request shape.

@@ -3,7 +3,6 @@
 use aura_os_core::{harness_agent_id, AgentInstanceId, Project};
 use aura_os_harness::AutomatonStartParams;
 
-use crate::handlers::agents::chat::build_project_system_prompt;
 use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
 use crate::handlers::agents::workspace_tools::{
@@ -46,7 +45,6 @@ pub(crate) async fn build_start_params(inputs: StartParamsInputs<'_>) -> Automat
         task_id.as_deref(),
     ));
     assemble_automaton_start_params(AssembleInputs {
-        state,
         ctx,
         agent_instance_id,
         jwt,
@@ -63,7 +61,6 @@ pub(crate) async fn build_start_params(inputs: StartParamsInputs<'_>) -> Automat
 /// out of [`build_start_params`] so the assembly call site stays
 /// under the project's five-parameter ceiling.
 struct AssembleInputs<'a> {
-    state: &'a AppState,
     ctx: &'a StartContext,
     agent_instance_id: AgentInstanceId,
     jwt: Option<String>,
@@ -82,7 +79,6 @@ struct AssembleInputs<'a> {
 /// wire-shape verbatim.
 fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStartParams {
     let AssembleInputs {
-        state,
         ctx,
         agent_instance_id,
         jwt,
@@ -105,7 +101,6 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         template_agent_id: Some(ctx.agent_id.to_string()),
         auth_token: jwt,
         model: ctx.model.clone(),
-        system_prompt: Some(start_system_prompt(state, ctx)),
         provider_overrides: start_provider_overrides(ctx, agent_instance_id),
         user_id,
         intent_classifier: ctx.intent_classifier.clone(),
@@ -128,19 +123,6 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         aura_org_id,
         aura_session_id,
     }
-}
-
-/// Build the project-aware system prompt for the start request.
-/// Carved out of [`assemble_automaton_start_params`] so its body
-/// stays inside the 50-line per-function budget. Behaviour is
-/// preserved verbatim.
-fn start_system_prompt(state: &AppState, ctx: &StartContext) -> String {
-    build_project_system_prompt(
-        state,
-        &ctx.project_id,
-        &ctx.agent_system_prompt,
-        Some(&ctx.workspace_root),
-    )
 }
 
 /// Build the per-loop provider-override map with a 24h cache key
