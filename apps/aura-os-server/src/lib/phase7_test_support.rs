@@ -1,6 +1,6 @@
-/// True when `reason` is classified as a truncation-style failure
-/// by Phase 3's `classify_failure`. Anything else — auth errors,
-/// crashes, rate limits — returns `false`.
+﻿/// True when `reason` is classified as a truncation-style failure
+/// by Phase 3's `classify_failure`. Anything else -- auth errors,
+/// crashes, rate limits -- returns `false`.
 pub fn is_truncation_failure(reason: &str) -> bool {
     crate::handlers::dev_loop::is_truncation_failure(reason)
 }
@@ -23,15 +23,6 @@ pub fn classify_failure(reason: &str) -> aura_os_harness::signals::HarnessFailur
     aura_os_harness::signals::classify_failure(Some(reason))
 }
 
-/// True when `reason` looks like a provider rate-limit or overload
-/// (HTTP 429 / 529 / `overloaded_error`). The orchestrator routes
-/// these through the infra-retry path rather than Phase 3's
-/// truncation remediation so a provider cooldown isn't wasted on
-/// heuristic follow-up tasks.
-pub fn is_rate_limited_failure(reason: &str) -> bool {
-    crate::handlers::dev_loop::is_rate_limited_failure(reason)
-}
-
 /// True when `reason` indicates the provider rejected work because the
 /// account has no remaining credits. This is terminal for dev loops:
 /// retrying or moving to the next task only burns build/setup time.
@@ -47,7 +38,7 @@ pub fn is_git_push_timeout_failure(reason: &str) -> bool {
 }
 
 /// True when `reason` is classified as a transient provider
-/// internal error (5xx / stream aborted) — the class added in
+/// internal error (5xx / stream aborted) -- the class added in
 /// Axis 1 so the `LLM error: stream terminated with error:
 /// Internal server error` pattern routes through the retry path
 /// instead of being treated as terminal.
@@ -56,7 +47,7 @@ pub fn is_provider_internal_error(reason: &str) -> bool {
 }
 
 /// True when `reason` text *looks* transient but the classifier
-/// didn't match it — the `debug.retry_miss` trigger condition from
+/// didn't match it -- the `debug.retry_miss` trigger condition from
 /// Axis 4. Used by integration tests to pin the exact coverage
 /// surface of `looks_like_unclassified_transient`.
 pub fn looks_like_unclassified_transient(reason: &str) -> bool {
@@ -78,77 +69,6 @@ pub fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
 /// heuristic) **and** is not a terminal agent-stuck signal.
 pub fn should_restart_on_error_event(reason: &str) -> bool {
     crate::handlers::dev_loop::should_restart_on_error_event(reason)
-}
-
-/// Compatibility shim for the former server-side Definition-of-Done
-/// gate. The harness is now authoritative for completion semantics,
-/// so aura-os always accepts harness terminal events and only records
-/// verification evidence for display.
-pub fn completion_validation_reason(
-    live_output: &str,
-    files_changed: &[&str],
-    n_build_steps: usize,
-    n_test_steps: usize,
-    n_format_steps: usize,
-    n_lint_steps: usize,
-) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason(
-        live_output,
-        files_changed,
-        n_build_steps,
-        n_test_steps,
-        n_format_steps,
-        n_lint_steps,
-    )
-}
-
-/// Compatibility shim for callers that still pass empty-path-write
-/// counters. The harness owns task completion, so these counters are
-/// diagnostic history only.
-pub fn completion_validation_reason_with_empty_path_writes(
-    live_output: &str,
-    files_changed: &[&str],
-    n_build_steps: usize,
-    n_test_steps: usize,
-    n_format_steps: usize,
-    n_lint_steps: usize,
-    n_empty_path_writes: u32,
-) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason_with_empty_path_writes(
-        live_output,
-        files_changed,
-        n_build_steps,
-        n_test_steps,
-        n_format_steps,
-        n_lint_steps,
-        n_empty_path_writes,
-    )
-}
-
-/// Compatibility shim for callers that still pass tool-call failures.
-/// Harness policy failures remain harness-owned task failures; aura-os
-/// should not reinterpret them as server-side DoD failures.
-#[allow(clippy::too_many_arguments)]
-pub fn completion_validation_reason_with_tool_call_failures(
-    live_output: &str,
-    files_changed: &[&str],
-    n_build_steps: usize,
-    n_test_steps: usize,
-    n_format_steps: usize,
-    n_lint_steps: usize,
-    n_empty_path_writes: u32,
-    tool_call_failures: &[(&str, &str)],
-) -> Option<String> {
-    crate::handlers::dev_loop::completion_validation_failure_reason_with_tool_call_failures(
-        live_output,
-        files_changed,
-        n_build_steps,
-        n_test_steps,
-        n_format_steps,
-        n_lint_steps,
-        n_empty_path_writes,
-        tool_call_failures,
-    )
 }
 
 /// True when the harness streamed a `write_file` / `edit_file`
@@ -235,21 +155,37 @@ pub mod automation {
 /// when starting a task. Returns `Ok(())` if the workspace is
 /// usable (or eligible for auto-clone via `git_repo_url`), and the
 /// remediation hint string otherwise.
+///
+/// Mirrors the logic of the private `preflight_local_workspace` fn
+/// in `handlers::dev_loop::start::mod`, which is the production
+/// caller. Kept here as a string-error surface so the
+/// `dev_loop_dod_regression::preflight` tests can exercise the gate
+/// without a live `ApiError` / `HarnessMode` plumbing dependency.
 pub fn preflight_local_workspace(
     project_path: &str,
     git_repo_url: Option<&str>,
 ) -> Result<(), String> {
-    crate::handlers::dev_loop::preflight_local_workspace(project_path, git_repo_url)
-}
-
-/// Summarize how far a task got in the recovery lifecycle without
-/// requiring callers to replay the full handler state machine.
-pub fn recovery_checkpoint(
-    live_output: &str,
-    files_changed: &[&str],
-    git_steps: &[serde_json::Value],
-) -> &'static str {
-    crate::handlers::dev_loop::recovery_checkpoint(live_output, files_changed, git_steps)
+    if project_path.trim().is_empty() {
+        return Err("workspace path is empty".to_string());
+    }
+    let path = std::path::Path::new(project_path);
+    match crate::handlers::projects_helpers::validate_workspace_is_initialised(path) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let bootstrap_pending = git_repo_url.is_some_and(|url| !url.trim().is_empty());
+            if bootstrap_pending
+                && matches!(
+                    err,
+                    crate::handlers::projects_helpers::WorkspacePreflightError::Empty
+                        | crate::handlers::projects_helpers::WorkspacePreflightError::NotAGitRepo
+                )
+            {
+                Ok(())
+            } else {
+                Err(err.remediation_hint(path))
+            }
+        }
+    }
 }
 
 /// Run Phase 5's preflight decomposition detector against a
@@ -261,90 +197,6 @@ pub fn preflight_decomposition_reason(
     description: &str,
 ) -> Option<(String, Option<String>)> {
     crate::handlers::task_decompose::preflight_decomposition_reason(title, description)
-}
-
-/// Test-only: run the dev-loop invariant helper that decides
-/// whether a push-layer failure should keep the task in `done`.
-/// `push_class` accepts `"timeout"`, `"remote_storage_exhausted"`,
-/// or `"generic"` (anything else is treated as `"generic"`).
-#[allow(clippy::too_many_arguments)]
-pub fn should_task_complete_despite_push_failure(
-    live_output: &str,
-    files_changed: &[&str],
-    n_build_steps: usize,
-    n_test_steps: usize,
-    n_format_steps: usize,
-    n_lint_steps: usize,
-    git_steps: &[serde_json::Value],
-    push_class: &str,
-) -> bool {
-    crate::handlers::dev_loop::should_task_complete_despite_push_failure(
-        live_output,
-        files_changed,
-        n_build_steps,
-        n_test_steps,
-        n_format_steps,
-        n_lint_steps,
-        git_steps,
-        push_class,
-    )
-}
-
-/// Test-only: classify a `task_failed` reason into one of the
-/// push-failure classes, or `None` for non-push failures.
-/// Returns one of `"timeout" | "remote_storage_exhausted" | "generic"`.
-pub fn classify_push_failure(reason: &str) -> Option<&'static str> {
-    crate::handlers::dev_loop::classify_push_failure(reason)
-}
-
-/// Compatibility shim for the retired aura-os DoD retry classifier.
-/// Always returns `None`; the harness owns retry/remediation policy.
-pub fn classify_dod_remediation_kind(reason: &str) -> Option<&'static str> {
-    crate::handlers::dev_loop::classify_dod_remediation_kind(reason)
-}
-
-/// Compatibility shim for the retired aura-os DoD retry prompt.
-/// Always returns `None`; the harness owns follow-up prompts.
-pub fn build_dod_followup_prompt(
-    kind_label: &str,
-    attempt: u32,
-    previous_reason: &str,
-) -> Option<String> {
-    crate::handlers::dev_loop::build_dod_followup_prompt(
-        kind_label,
-        attempt,
-        previous_reason,
-    )
-}
-
-/// Test-only: the retired aura-os Definition-of-Done retry budget.
-/// Returns zero because retry/remediation policy now lives in the
-/// harness.
-#[must_use]
-pub const fn max_dod_retries_per_task() -> u32 {
-    crate::handlers::dev_loop::max_dod_retries_per_task()
-}
-
-/// Test-only: exercise the per-project push-failure counter.
-/// Bumps the streak `n` times on a fresh project id and returns a
-/// vector of `project_push_stuck`-emission booleans. Exactly one
-/// entry should be `true` even when `n` exceeds the threshold.
-pub fn bump_project_push_failures_streak(n: u32) -> Vec<bool> {
-    crate::handlers::dev_loop::bump_project_push_failures_streak(n)
-}
-
-/// Test-only: bump once, reset, bump once â proves the streak
-/// restarts cleanly so a subsequent threshold crossing re-emits
-/// `project_push_stuck`.
-pub fn push_failure_reset_rearms_stuck_emission() -> bool {
-    crate::handlers::dev_loop::push_failure_reset_rearms_stuck_emission()
-}
-
-/// Test-only: the dev-loop's configured push-failure stuck
-/// threshold. Exposed so regression tests don't hard-code the
-/// numeric constant.
-pub fn consecutive_push_failures_stuck_threshold() -> u32 {
-    crate::handlers::dev_loop::CONSECUTIVE_PUSH_FAILURES_STUCK_THRESHOLD
 }
 
 pub fn sync_state_from_git_steps(git_steps: &[serde_json::Value]) -> serde_json::Value {
@@ -503,65 +355,4 @@ pub fn is_successful_test_run_event(event_type: &str, event: &serde_json::Value)
 /// satisfied [`is_successful_test_run_event`].
 pub fn recognized_test_runner_label(command: &str) -> Option<&'static str> {
     crate::handlers::dev_loop::recognized_test_runner_label(command)
-}
-
-/// Replay a raw sequence of streamed `tool_call_*` events through the
-/// dev-loop's empty-path-writes bookkeeping and ask the harness-owned
-/// completion gate for a verdict.
-///
-/// The harness now owns Definition-of-Done (see
-/// `completion_validation_failure_reason_with_empty_path_writes`),
-/// so this helper always returns `None` for callers that pass through
-/// recovered or fully-evidenced histories — mirroring the deferred
-/// behaviour of the live gate. Kept as a public surface so existing
-/// regression tests can still call it without compile breakage after
-/// the production helpers were split out across modules.
-///
-/// The replay is performed against the `outstanding_empty_path_write_ids`
-/// bookkeeping recorded in [`crate::state::CachedTaskOutput`]: empty-
-/// path writes are recorded by tool-call id and reconciled when a
-/// subsequent successful pathed write/edit lands. The reconciled count
-/// is forwarded to the underlying gate, which currently treats it as
-/// diagnostic history only.
-pub fn replay_task_completion_gate(
-    events: &[(String, serde_json::Value)],
-    live_output: &str,
-    files_changed: &[&str],
-    n_build_steps: usize,
-    n_test_steps: usize,
-    n_format_steps: usize,
-    n_lint_steps: usize,
-) -> Option<String> {
-    use std::collections::HashSet;
-    let mut outstanding: HashSet<String> = HashSet::new();
-    let mut had_pathed_write_or_edit = false;
-    for (event_type, event) in events {
-        let id = event.get("id").and_then(|v| v.as_str()).map(str::to_string);
-        if is_empty_path_write_event(event_type, event) {
-            if let Some(id) = id.clone() {
-                outstanding.insert(id);
-            }
-            continue;
-        }
-        if event_type == "tool_call_completed" {
-            if let Some((_path, _op)) =
-                crate::handlers::dev_loop::successful_write_event_path(event_type, event)
-            {
-                had_pathed_write_or_edit = true;
-            }
-        }
-    }
-    if had_pathed_write_or_edit {
-        outstanding.clear();
-    }
-    let n_empty_path = outstanding.len() as u32;
-    completion_validation_reason_with_empty_path_writes(
-        live_output,
-        files_changed,
-        n_build_steps,
-        n_test_steps,
-        n_format_steps,
-        n_lint_steps,
-        n_empty_path,
-    )
 }

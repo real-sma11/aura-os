@@ -1,43 +1,4 @@
-//! Completion-validation no-op stubs and `task_done`/file-edit predicates used by the legacy phase7 test surface.
-
-pub(crate) fn completion_validation_failure_reason(
-    _live_output: &str,
-    _files_changed: &[&str],
-    _n_build_steps: usize,
-    _n_test_steps: usize,
-    _n_format_steps: usize,
-    _n_lint_steps: usize,
-) -> Option<String> {
-    None
-}
-
-pub(crate) fn completion_validation_failure_reason_with_empty_path_writes(
-    _live_output: &str,
-    _files_changed: &[&str],
-    _n_build_steps: usize,
-    _n_test_steps: usize,
-    _n_format_steps: usize,
-    _n_lint_steps: usize,
-    _n_empty_path_writes: u32,
-) -> Option<String> {
-    // The harness owns Definition-of-Done and decides whether a task is
-    // complete. aura-os only records and displays the evidence it receives.
-    None
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn completion_validation_failure_reason_with_tool_call_failures(
-    _live_output: &str,
-    _files_changed: &[&str],
-    _n_build_steps: usize,
-    _n_test_steps: usize,
-    _n_format_steps: usize,
-    _n_lint_steps: usize,
-    _n_empty_path_writes: u32,
-    _tool_call_failures: &[(&str, &str)],
-) -> Option<String> {
-    None
-}
+﻿//! `task_done`/file-edit predicates and workspace-health gate used by the dev-loop and the legacy phase7 test surface.
 
 pub(crate) fn is_empty_path_write_event(
     event_type: &str,
@@ -110,14 +71,14 @@ pub(crate) fn task_done_missing_file_changes_reason(
 /// reject the completion, or `None` to defer to the existing
 /// `task_done_missing_file_changes_reason` gate.
 ///
-/// * `event_type` + `event` — the `tool_call_completed` payload for
+/// * `event_type` + `event` -- the `tool_call_completed` payload for
 ///   the `task_done` call. Errored, non-`task_done`, and
 ///   `no_changes_needed: true` events return `None` so the existing
 ///   gates own those paths.
-/// * `baseline` — the `WorkspaceHealth` snapshot captured at task
+/// * `baseline` -- the `WorkspaceHealth` snapshot captured at task
 ///   claim. `None` means "no baseline", which always returns `None`
 ///   (defers to the existing gate).
-/// * `current` — the post-task snapshot. When `Some(baseline)` is
+/// * `current` -- the post-task snapshot. When `Some(baseline)` is
 ///   present but `current` is `None` (e.g. the post-task snapshot
 ///   was skipped for latency), the gate treats `current` as a clone
 ///   of `baseline` so the diff classifies as `Unchanged` and the

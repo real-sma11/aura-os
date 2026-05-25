@@ -1,4 +1,4 @@
-//! Server-side classifier wrappers that route reason strings through the typed
+﻿//! Server-side classifier wrappers that route reason strings through the typed
 //! [`HarnessFailureKind`] enum exported by `aura-os-harness::signals`.
 //!
 //! Every server-side gate parses the reason string through
@@ -32,7 +32,7 @@ pub(crate) fn failure_kind_of(reason: &str) -> HarnessFailureKind {
 }
 
 /// True when a transient-looking reason string was *not* picked up
-/// by the typed classifier — the safety net behind the
+/// by the typed classifier â€” the safety net behind the
 /// `debug.retry_miss` trigger condition in
 /// `autonomous_recovery_replay/classifiers.rs`.
 ///
@@ -82,10 +82,6 @@ pub(crate) fn is_completion_contract_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::CompletionContract)
 }
 
-pub(crate) fn is_rate_limited_failure(reason: &str) -> bool {
-    matches_kind(reason, HarnessFailureKind::RateLimited)
-}
-
 pub(crate) fn is_insufficient_credits_failure(reason: &str) -> bool {
     matches_kind(reason, HarnessFailureKind::InsufficientCredits)
 }
@@ -106,9 +102,9 @@ pub(crate) fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
 ///
 /// Mirrors the legacy `should_restart_on_error` semantics:
 ///
-/// * `AgentStuck` → always reject (terminal anti-waste signal).
+/// * `AgentStuck` â†’ always reject (terminal anti-waste signal).
 /// * Other retryable kinds (`RateLimited`, `ProviderInternal`,
-///   `PushTimeout`, `ResearchLoopAbort`) → accept.
+///   `PushTimeout`, `ResearchLoopAbort`) â†’ accept.
 /// * Falls back to the [`looks_like_unclassified_transient`] safety
 ///   net so the `autonomous_recovery_replay/gates.rs` matrix's
 ///   "tls handshake", "socket hang up" rows still restart.

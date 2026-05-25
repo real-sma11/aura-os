@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+﻿use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -81,7 +81,7 @@ pub struct ActiveAutomaton {
     /// automaton is still draining the harness event stream. Cleared when
     /// the forwarder terminates (normal end, stream close, or manual
     /// abort). `start_loop` reads this flag to decide whether an adopted
-    /// automaton already has a live forwarder attached — without the
+    /// automaton already has a live forwarder attached â€” without the
     /// check, adoption always spawned a second forwarder that fanned
     /// every harness event out to the client twice (duplicated "READ" /
     /// "WRITE" timeline entries in the sidekick Run tab).
@@ -111,7 +111,7 @@ pub struct ActiveAutomaton {
     /// the forwarder's event worker. Used by
     /// [`crate::handlers::dev_loop::registry::can_reuse_forwarder`] to
     /// refuse the adopt-shortcut on a forwarder that has not received
-    /// any harness traffic for [`FORWARDER_FRESHNESS_THRESHOLD`] —
+    /// any harness traffic for [`FORWARDER_FRESHNESS_THRESHOLD`] â€”
     /// the symptom of a harness-side wedge where the registry still
     /// reports `alive` but no events are arriving. Forces a full
     /// forwarder + ws-reader restart in that case.
@@ -150,7 +150,7 @@ pub(crate) type AutomatonRegistry = Arc<Mutex<HashMap<AutomatonRegistryKey, Acti
 ///
 /// The `session_key` field is the same partitioned `harness_agent_id`
 /// (`{template}::{instance}` or `{template}::default`) used before
-/// — the registry just gains a second axis. `model` is `None` when
+/// â€” the registry just gains a second axis. `model` is `None` when
 /// the caller didn't pin a model (rare; falls back to the agent's
 /// default), so two `(session_key, None)` callers still share an
 /// entry the way the legacy single-key registry did.
@@ -158,14 +158,14 @@ pub(crate) type AutomatonRegistry = Arc<Mutex<HashMap<AutomatonRegistryKey, Acti
 pub struct ChatSessionKey {
     /// Partitioned harness `agent_id` built by
     /// `aura_os_core::harness_agent_id`. Takes one of three shapes:
-    ///   - `{template}::default` — bare-template partition (legacy
+    ///   - `{template}::default` â€” bare-template partition (legacy
     ///     bare-agent chat with no resolved storage session, plus
     ///     loop / public chat / Swarm-tools paths that opt out of the
     ///     session segment).
-    ///   - `{template}::{agent_instance_id}` — per-instance partition
+    ///   - `{template}::{agent_instance_id}` â€” per-instance partition
     ///     (legacy instance-bound chat with no resolved storage
     ///     session).
-    ///   - `{template}::{instance|default}::{session_id}` — per-
+    ///   - `{template}::{instance|default}::{session_id}` â€” per-
     ///     storage-session partition. Phase 1 of parallel-session-chats:
     ///     chat routes fold the resolved storage `session_id` in so
     ///     two POSTs against the same instance with different
@@ -197,7 +197,7 @@ pub struct ChatSession {
     pub commands_tx: HarnessCommandSender,
     pub events_tx: broadcast::Sender<HarnessOutbound>,
     /// Model the harness session was opened with. After Phase 4 this
-    /// field is **NOT** consulted for cache invalidation — the
+    /// field is **NOT** consulted for cache invalidation â€” the
     /// registry now lives on a `(session_key, model)` composite key
     /// (`ChatSessionKey`), so every model lives in its own entry and
     /// `try_reuse_session` simply looks up by the full key. The field
@@ -211,7 +211,7 @@ pub struct ChatSession {
     /// is the partitioned `{template}::{instance}` (or
     /// `{template}::default`) string built by
     /// `aura_os_core::harness_agent_id`, NOT the bare template id.
-    /// Treated as opaque by every consumer in this module — use
+    /// Treated as opaque by every consumer in this module â€” use
     /// `template_agent_id` below for any logic that needs to identify
     /// "all sessions owned by this agent template".
     pub agent_id: Option<String>,
@@ -220,9 +220,9 @@ pub struct ChatSession {
     /// Populated from `SessionConfig::template_agent_id`. Used by the
     /// permissions-update flow in
     /// `handlers::agents::crud::update_agent` to invalidate every live
-    /// session owned by a given agent template — direct bare-agent
+    /// session owned by a given agent template â€” direct bare-agent
     /// sessions *and* any project-instance sessions whose underlying
-    /// agent's capability bundle just changed — so the next chat turn
+    /// agent's capability bundle just changed â€” so the next chat turn
     /// cold-starts with a fresh `installed_tools` list via the unified
     /// `build_session_tools` filter.
     pub template_agent_id: Option<String>,
@@ -261,7 +261,7 @@ impl ChatSession {
 ///
 /// Care contract: callers MUST drop any [`dashmap::mapref::one::Ref`]
 /// returned by `chat_sessions.get(...)` before awaiting on the cloned
-/// handles — holding a `Ref` across `.await` would block other
+/// handles â€” holding a `Ref` across `.await` would block other
 /// partitions on the same shard. `streaming::try_reuse_session`
 /// follows this pattern: the `Ref` is consumed inside a synchronous
 /// block that clones out the channel handles plus the turn-slot
@@ -336,8 +336,8 @@ pub struct AppState {
     pub orbit_client: Option<Arc<aura_os_network::OrbitClient>>,
     /// Process-wide cooldown tracking for orbit "remote storage
     /// exhausted" push failures. Tripped by the dev-loop event
-    /// forwarder when `classify_push_failure` returns
-    /// `RemoteStorageExhausted` so subsequent push failures inside the
+    /// forwarder when the harness emits a remote-storage-exhausted
+    /// push failure so subsequent push failures inside the
     /// cooldown window carry a `retry_after_secs` hint instead of
     /// silently thrashing orbit's rootfs with more `tmp_pack_*` objects.
     /// See [`crate::orbit_guard`] for details.
@@ -375,7 +375,7 @@ pub struct AppState {
     /// `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS` at startup (default
     /// `120s`, see `app_builder::DEFAULT_TURN_FIRST_EVENT_TIMEOUT_SECS`).
     /// Synthesizes `stream_stalled` only when the harness emits zero
-    /// events inside this window — chosen to comfortably accommodate
+    /// events inside this window â€” chosen to comfortably accommodate
     /// Opus router cold-start + first thinking delta.
     pub turn_first_event_timeout: Duration,
     /// Sliding idle ceiling for chat turns. Sourced from
@@ -401,7 +401,7 @@ pub struct AppState {
     pub chat_auto_fork_threshold: f64,
     /// Process-wide stability counters (Phase 5 of the agent-stream
     /// reliability plan). Lock-free `AtomicU64` counters covering the
-    /// reliability decisions added in phases 1-4 — turn lifecycle,
+    /// reliability decisions added in phases 1-4 â€” turn lifecycle,
     /// watchdog firings, broadcast lag, harness ws health, auto-fork
     /// triggers/applies, and the new `X-Aura-Client-Retry` header
     /// path. Snapshotted by `/api/admin/health`. Held by `Arc` so
@@ -419,7 +419,7 @@ pub struct AppState {
     pub harness_broadcast_capacity: usize,
     /// Process-wide rate limiter for the public anonymous endpoint
     /// family (`/api/public/*`). Tracks per-guest turn counts and
-    /// per-IP daily ceilings. Cheap to clone — both internal maps
+    /// per-IP daily ceilings. Cheap to clone â€” both internal maps
     /// sit behind `Arc<DashMap<...>>`. See
     /// [`crate::handlers::public::RateLimiter`] for the surface and
     /// [`crate::handlers::public::PUBLIC_TURN_LIMIT`] /

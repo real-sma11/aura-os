@@ -1,4 +1,4 @@
-//! Process-wide cooldown guard for orbit "no space left on device"
+﻿//! Process-wide cooldown guard for orbit "no space left on device"
 //! failures.
 //!
 //! Background: when orbit (`https://orbit-sfvu.onrender.com`, a remote
@@ -12,13 +12,13 @@
 //! ```
 //!
 //! The harness wraps that as `Commit+push failed: remote storage
-//! exhausted on git push...`, [`crate::handlers::dev_loop::classify_push_failure`]
-//! maps it to [`PushFailureClass::RemoteStorageExhausted`], and the
-//! task completes via the `push_deferred` path.
+//! exhausted on git push...`. The harness classifies it as a
+//! remote-storage-exhausted push failure, and the task completes
+//! via the `push_deferred` path.
 //!
 //! Without backpressure, every retry pushes another pack at orbit's
 //! already-full rootfs, leaves another quarantine/tmp_pack_* directory
-//! behind, and makes the next push more likely to fail — that is why
+//! behind, and makes the next push more likely to fail â€” that is why
 //! "this keeps happening".
 //!
 //! This guard gives the event forwarder a single flip to say
@@ -27,7 +27,6 @@
 //! The emitted `push_deferred` event carries the remaining cooldown
 //! so the UI can tell the user when retries will resume.
 //!
-//! [`PushFailureClass::RemoteStorageExhausted`]: crate::handlers::dev_loop
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

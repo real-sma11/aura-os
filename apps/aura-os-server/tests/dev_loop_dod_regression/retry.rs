@@ -1,4 +1,4 @@
-//! Harness-owned DoD and retired aura-os DoD remediation surface
+﻿//! Harness-owned DoD and retired aura-os DoD remediation surface
 //! regressions.
 //!
 //! Tool-level retries are the harness's job (it sees every tool
@@ -10,28 +10,6 @@
 
 use aura_os_server::phase7_test_support as tsp;
 use serde_json::json;
-
-#[test]
-fn tool_call_failures_are_diagnostic_history_not_aura_os_dod_failures() {
-    let reason = tsp::completion_validation_reason_with_tool_call_failures(
-        "edited one Rust file",
-        &["apps/aura-os-server/src/lib.rs"],
-        0,
-        0,
-        0,
-        0,
-        0,
-        &[(
-            "run_command",
-            "Tool 'run_command' is not allowed by the active policy",
-        )],
-    );
-
-    assert!(
-        reason.is_none(),
-        "aura-os must not convert harness tool failures into server-owned DoD rejection"
-    );
-}
 
 #[test]
 fn insufficient_credits_reason_is_terminal_at_classifier_layer() {
@@ -65,27 +43,6 @@ fn insufficient_credits_classifier_covers_api_code_forms() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Retired aura-os DoD remediation retry surface
-// ---------------------------------------------------------------------------
-
-#[test]
-fn dod_classifier_is_inert_because_harness_owns_remediation() {
-    for reason in [
-        "Task modified source code but no build/compile step was run",
-        "Task modified source code but no test step was run",
-        "Task modified source code but no format check was run",
-        "Task modified source code but no lint check was run",
-        "run_command is denied by harness command policy",
-    ] {
-        assert_eq!(
-            tsp::classify_dod_remediation_kind(reason),
-            None,
-            "aura-os must not classify harness DoD remediation reason: {reason}"
-        );
-    }
-}
-
 #[test]
 fn task_done_no_file_reason_is_completion_contract_not_truncation() {
     let reason = "ERROR: You are completing this task but have not made any file changes \
@@ -114,21 +71,6 @@ fn completion_contract_failure_retries_before_budget_exhaustion() {
             "action": "retry_task",
         }),
         "missing file-edit evidence should get a fresh task attempt before becoming terminal"
-    );
-}
-
-#[test]
-fn dod_followup_prompt_and_retry_budget_are_retired() {
-    assert!(tsp::build_dod_followup_prompt(
-        "missing_test",
-        1,
-        "Task modified source code but no test step was run"
-    )
-    .is_none());
-    assert_eq!(
-        tsp::max_dod_retries_per_task(),
-        0,
-        "aura-os must not retry harness-owned DoD failures"
     );
 }
 
