@@ -120,8 +120,8 @@ body:has([role="dialog"][aria-modal="true"]) {
 html[data-marketing-shell="true"],
 html[data-marketing-shell="true"] body,
 html[data-marketing-shell="true"] #root {
-  overflow: visible;
-  height: auto;
+  overflow: visible !important;
+  height: auto !important;
   min-height: 100%;
 }
 
