@@ -7,6 +7,7 @@ import { X, ArrowLeft, FileText } from "lucide-react";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { TaskPreview } from "../TaskPreview";
+import { TaskHeaderContextUsage } from "../TaskOutputPanel/TaskHeaderContextUsage";
 import { RunTaskButton } from "../RunTaskButton";
 import { SessionPreview } from "../SessionPreview";
 import { LogPreview } from "../LogPreview";
@@ -151,6 +152,9 @@ export function PreviewHeader() {
         {title}
       </Text>
       {displayItem.kind === "task" && <RunTaskButton task={displayItem.task} />}
+      {displayItem.kind === "task" && (
+        <TaskHeaderContextUsage taskId={displayItem.task.task_id} />
+      )}
       <Button
         variant="ghost"
         size="sm"
