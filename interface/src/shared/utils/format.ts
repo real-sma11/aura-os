@@ -125,9 +125,12 @@ export function formatCost(usd: number, decimals = 2): string {
 export function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
+  const totalMins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
+  if (totalMins < 60) return `${totalMins}m ${secs}s`;
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return `${hours}h ${mins}m ${secs}s`;
 }
 
 export function summarizeInput(name: string, input: Record<string, unknown>): string {

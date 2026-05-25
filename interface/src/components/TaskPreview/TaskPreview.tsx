@@ -72,13 +72,17 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
     : effectiveStatus === "failed" ? "failed"
     : "completed";
 
-  const durationLabel = isActive
-    ? elapsed > 0 ? formatDuration(elapsed * 1000) : null
-    : isTerminal && task.created_at && task.updated_at
-      ? formatDuration(
-          new Date(task.updated_at).getTime() - new Date(task.created_at).getTime(),
-        )
-      : null;
+  // Only report a duration for live (`in_progress`) tasks, where `elapsed`
+  // is wall-clock seconds since this panel became active. For terminal
+  // tasks the frontend has no reliable run-duration: `task.created_at` is
+  // when the task was first extracted from the spec (often many hours
+  // before the dev loop actually picks it up), and `task.updated_at` is
+  // touched on every status/notes write, so `updated_at - created_at`
+  // measured task-lifetime, not run-time, and routinely over-reported
+  // by 10x+ for tasks that sat in `ready` overnight before running.
+  const durationLabel = isActive && elapsed > 0
+    ? formatDuration(elapsed * 1000)
+    : null;
 
   const getCopyText = useCallback(
     () =>

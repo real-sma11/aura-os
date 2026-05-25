@@ -211,9 +211,17 @@ describe("formatDuration", () => {
     expect(formatDuration(59000)).toBe("59s");
   });
 
-  it("formats minutes and seconds", () => {
+  it("formats minutes and seconds under an hour", () => {
     expect(formatDuration(90_000)).toBe("1m 30s");
-    expect(formatDuration(3_660_000)).toBe("61m 0s");
+    expect(formatDuration(59 * 60_000 + 59_000)).toBe("59m 59s");
+  });
+
+  it("rolls minutes into hours once the duration crosses 60 minutes", () => {
+    expect(formatDuration(60 * 60_000)).toBe("1h 0m 0s");
+    expect(formatDuration(3_660_000)).toBe("1h 1m 0s");
+    expect(formatDuration(89 * 60 * 60_000 + 26 * 60_000 + 33_000)).toBe(
+      "89h 26m 33s",
+    );
   });
 
   it("handles zero", () => {
