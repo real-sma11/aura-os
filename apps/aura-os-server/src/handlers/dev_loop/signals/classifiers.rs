@@ -12,9 +12,8 @@ use aura_os_harness::signals::{HarnessFailureKind, HarnessSignal};
 ///
 /// Wrapper around `HarnessSignal::from_event("task_failed", ...)` so
 /// callers stay one line and don't accidentally diverge from the
-/// harness's classifier ordering (which encodes the
-/// `AgentStuck > ResearchLoopAbort` precedence pinned by the harness
-/// unit tests).
+/// harness's classifier ordering (which encodes the AgentStuck
+/// precedence pinned by the harness unit tests).
 pub(crate) fn matches_kind(reason: &str, kind: HarnessFailureKind) -> bool {
     HarnessSignal::from_event("task_failed", &serde_json::json!({ "reason": reason }))
         .and_then(|signal| signal.failure_kind())
@@ -104,7 +103,7 @@ pub(crate) fn is_agent_stuck_terminal_signal(reason: &str) -> bool {
 ///
 /// * `AgentStuck` â†’ always reject (terminal anti-waste signal).
 /// * Other retryable kinds (`RateLimited`, `ProviderInternal`,
-///   `PushTimeout`, `ResearchLoopAbort`) â†’ accept.
+///   `PushTimeout`) â†’ accept.
 /// * Falls back to the [`looks_like_unclassified_transient`] safety
 ///   net so the `autonomous_recovery_replay/gates.rs` matrix's
 ///   "tls handshake", "socket hang up" rows still restart.
@@ -119,14 +118,13 @@ pub(crate) fn should_restart_on_error_event(reason: &str) -> bool {
     // task-level retry path handles them, so restarting the entire
     // automaton would just double-spend the budget. The other
     // retryable kinds (`RateLimited`, `ProviderInternal`,
-    // `PushTimeout`, `ResearchLoopAbort`) are infra-transient and
-    // benefit from a fresh streaming attempt.
+    // `PushTimeout`) are infra-transient and benefit from a fresh
+    // streaming attempt.
     let restart_eligible = matches!(
         kind,
         HarnessFailureKind::RateLimited
             | HarnessFailureKind::ProviderInternal
-            | HarnessFailureKind::PushTimeout
-            | HarnessFailureKind::ResearchLoopAbort,
+            | HarnessFailureKind::PushTimeout,
     );
     restart_eligible || looks_like_unclassified_transient(reason)
 }

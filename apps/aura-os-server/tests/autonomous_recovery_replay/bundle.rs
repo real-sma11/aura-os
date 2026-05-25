@@ -9,7 +9,14 @@ use chrono::{TimeZone, Utc};
 use serde_json::{json, Value};
 use tempfile::TempDir;
 
-use super::{AGENT_INSTANCE_ID, BLOCKED_PATH, FAILURE_REASON, PROJECT_ID, RUN_ID, TASK_ID};
+use super::{AGENT_INSTANCE_ID, BLOCKED_PATH, PROJECT_ID, RUN_ID, TASK_ID};
+
+/// Synthetic `task_failed` reason for the run bundle. Used only to
+/// populate the on-disk events stream; the analyzer doesn't classify
+/// it, it just surfaces `SplitWriteIntoSkeletonPlusAppends` based on
+/// the repeated `write_file` blockers above.
+const FAILURE_REASON: &str =
+    "task reached implementation phase but no file operations completed";
 
 /// Build a minimal-but-realistic run bundle on disk and return the
 /// tempdir guard plus the bundle path.

@@ -143,15 +143,6 @@ pub fn decide_reconcile_action(inputs: &ReconcileInputs<'_>) -> ReconcileAction 
                 }
             }
         }
-        HarnessFailureKind::ResearchLoopAbort => {
-            if inputs.retry_budget_remaining() {
-                ReconcileAction::RetryTask
-            } else {
-                ReconcileAction::MarkTerminal {
-                    reason: TerminalReason::CompletionContract,
-                }
-            }
-        }
         HarnessFailureKind::AgentStuck | HarnessFailureKind::InsufficientCredits => {
             ReconcileAction::MarkTerminal {
                 reason: TerminalReason::RetryBudgetExhausted,

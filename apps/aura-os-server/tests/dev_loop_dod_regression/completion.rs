@@ -287,53 +287,6 @@ fn reconciler_does_not_override_other_failure_classes_with_test_evidence() {
 }
 
 // ---------------------------------------------------------------------------
-// Research-loop abort verdict (aura-harness post-hoc completion gate)
-// ---------------------------------------------------------------------------
-//
-// When the agent stays in research mode and never produces a file
-// operation, the harness's `validate_execution` emits the verbatim
-// reason below. The server classifier must recognise it as a typed
-// `ResearchLoopAbort` failure so the task-level retry path can route
-// it to a fresh-context attempt instead of marking the task
-// permanently Failed.
-
-#[test]
-fn research_loop_abort_verdict_classifies_as_research_loop_abort_kind() {
-    // Verbatim verdict from aura-harness's post-hoc completion
-    // gate. The em dash is U+2014 â€” paste verbatim, do not
-    // substitute an ASCII hyphen.
-    let reason = "agent execution error: task completed without any file operations â€” \
-                  completion not verified";
-    assert_eq!(
-        tsp::classify_failure(reason),
-        aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
-        "research-loop abort verdict must classify as the typed \
-         ResearchLoopAbort variant so the dev-loop retry path routes \
-         it to a fresh-context retry instead of marking the task \
-         permanently Failed",
-    );
-}
-
-#[test]
-fn implementation_phase_no_write_verdict_classifies_as_research_loop_abort_kind() {
-    for last_pending in ["search_code", "submit_plan"] {
-        let reason = format!(
-            "task reached implementation phase but no file operations completed â€” \
-             needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
-        );
-        assert_eq!(
-            tsp::classify_failure(&reason),
-            aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
-            "{last_pending} no-write verdict must classify as ResearchLoopAbort"
-        );
-        assert!(
-            !tsp::is_truncation_failure(&reason),
-            "{last_pending} no-write verdict must not trigger decomposition"
-        );
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Workspace-health diff gate (single-rule)
 //
 // Pins the simplified gate: errors-up or tests-regressed demote

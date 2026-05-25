@@ -73,27 +73,3 @@ fn completion_contract_failure_retries_before_budget_exhaustion() {
         "missing file-edit evidence should get a fresh task attempt before becoming terminal"
     );
 }
-
-#[test]
-fn research_loop_abort_verdict_is_restartable_at_classifier_layer() {
-    // Verbatim verdict aura-harness emits from its post-hoc
-    // `validate_execution` gate when the agent stayed in research
-    // mode and never produced a file operation. The em dash is
-    // U+2014 — paste verbatim, do not substitute an ASCII hyphen.
-    let reason = "agent execution error: task completed without any file operations — \
-                  completion not verified";
-    assert!(
-        tsp::should_restart_on_error_event(reason),
-        "research-loop abort verdict must be classified as a \
-         restartable transient so the task-level retry path can \
-         schedule a fresh-context retry instead of leaving the \
-         task permanently Failed",
-    );
-    assert_eq!(
-        tsp::classify_failure(reason),
-        aura_os_harness::signals::HarnessFailureKind::ResearchLoopAbort,
-        "and the same verdict must classify as the typed \
-         ResearchLoopAbort variant so the reconciler decision \
-         table can branch on it directly",
-    );
-}

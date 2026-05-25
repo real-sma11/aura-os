@@ -6,26 +6,22 @@
 //! on task_failed:
 //!     kind = HarnessFailureKind from event.reason
 //!     action = kind.retry_action(task.attempts)
-//!     if action != Terminal && task.attempts < MAX_TASK_ATTEMPTS:
+//!     if action == Retry && task.attempts < MAX_TASK_ATTEMPTS:
 //!         storage.update_task(attempts = task.attempts + 1)
 //!         safe_transition(Failed -> Ready)
-//!         emit task_retrying (carries `action` so the harness can
-//!             route `RetryWithDecomposition` through the Phase 5
-//!             splitter agent rather than a plain re-run)
+//!         emit task_retrying (carries `action`)
 //!     else:
 //!         leave task in Failed
 //! ```
 //!
 //! The persisted `tasks.attempts` counter (see
 //! `docs/migrations/2026-05-21-task-attempts-column.md`) holds the
-//! per-task budget AND now drives the attempt-aware
-//! [`HarnessFailureKind::retry_action`] escalation ladder: the first
-//! failure is a plain `Retry`, the second escalates to
-//! `RetryWithDecomposition` (so a task that looped its way into the
-//! same trap twice gets broken into sub-tasks by the harness Phase 5
-//! splitter), and the third is `Terminal`. Tool-level retries are
-//! the harness's responsibility — it sees every tool result; the
-//! server does not need a parallel tool-retry tracker.
+//! per-task budget. The retry ladder is now flat:
+//! `{Retry, Terminal}` — transient infra kinds retry up to three
+//! times; task-shape and terminal kinds are `Terminal` from
+//! attempt 0. Tool-level retries are the harness's responsibility —
+//! it sees every tool result; the server does not need a parallel
+//! tool-retry tracker.
 
 use tracing::{info, warn};
 
@@ -52,12 +48,10 @@ fn classify_reason(reason: &str) -> HarnessFailureKind {
 /// the `task_retrying` UI signal. Gated by:
 ///
 /// * [`HarnessFailureKind::retry_action`] — terminal failures
-///   (agent-stuck, insufficient credits, exhausted per-kind escalation
-///   ladder for the current attempt index) stay in `Failed`. Non-
-///   terminal actions (`Retry`, `RetryWithDecomposition`) are surfaced
-///   onto the `task_retrying` event so the harness can route the
-///   `RetryWithDecomposition` action through the Phase 5 splitter
-///   agent.
+///   (agent-stuck, insufficient credits, task-shape failures, or
+///   exhausted transient retry cap) stay in `Failed`. A non-
+///   terminal `Retry` action is surfaced onto the `task_retrying`
+///   event so downstream consumers can render the retry banner.
 /// * The persisted `tasks.attempts` counter being strictly below
 ///   [`MAX_TASK_ATTEMPTS`] — a permanently-broken task does not
 ///   loop forever, and the count survives server restarts.
@@ -211,9 +205,8 @@ async fn push_task_back_to_ready(
 /// can decode the same fields.
 ///
 /// `action` is serialised onto the payload (`retry_action`) so
-/// downstream consumers — in particular the `aura-harness` Phase 5
-/// splitter — can branch on `retry` vs `retry_with_decomposition`
-/// without re-classifying the failure reason themselves.
+/// downstream consumers can render the retry banner without
+/// re-classifying the failure reason themselves.
 /// Payload for [`emit_task_retrying_signal`]. Bundled so the helper
 /// signature stays inside the project's five-parameter ceiling.
 struct TaskRetryingPayload<'a> {

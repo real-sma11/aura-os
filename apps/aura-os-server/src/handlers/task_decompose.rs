@@ -1,17 +1,11 @@
-//! Shared skeleton+fill decomposition primitives.
+//! Preflight (Phase 5) skeleton+fill decomposition primitives.
 //!
-//! This module is the home of the Phase 5 preflight detection path and
-//! the skeleton+fill child-task fan-out shared by both:
-//!
-//! * Phase 3 (`super::dev_loop`) — post-failure remediation of a
-//!   truncated run.
-//! * Phase 5 (`super::tasks`) — preemptive splitting at task creation
-//!   when the title/description signals a likely-oversized generation.
-//!
-//! Keeping the fan-out in one place means the wording of the skeleton
-//! and fill child prompts stays in lockstep across both call sites, and
-//! the two phases can evolve the detection independently without drift
-//! in how they materialise the children.
+//! This module is the home of the Phase 5 preflight detection path
+//! and the skeleton+fill child-task fan-out used by `super::tasks` to
+//! preemptively split likely-oversized generations at task creation
+//! time. The Phase 3 post-failure remediation consumer that used to
+//! share this fan-out was removed when the
+//! `RetryWithDecomposition` retry-ladder branch was dropped.
 //!
 //! The module is deliberately storage-agnostic: it takes a
 //! [`TaskService`] reference and emits ordinary follow-up tasks via
@@ -47,23 +41,13 @@ pub(crate) struct DecompositionSignal {
     pub(crate) reason: String,
 }
 
-/// Caller-site context for [`spawn_skeleton_and_fill_children`]. The
-/// child-task prompt boilerplate differs slightly depending on whether
-/// the split is happening after a failure (Phase 3) or before the task
-/// ever runs (Phase 5), so the same function can serve both without the
-/// callers duplicating the fan-out logic.
+/// Caller-site context for [`spawn_skeleton_and_fill_children`].
+///
+/// Only the Phase 5 preflight context remains. The Phase 3 post-
+/// failure consumer was removed along with the
+/// `RetryWithDecomposition` retry action.
 #[derive(Debug, Clone)]
 pub(crate) enum DecompositionContext {
-    /// Phase 3: the parent task actually ran and the harness reported a
-    /// truncation / no-file-ops failure.
-    #[allow(dead_code)]
-    PostFailure {
-        /// Reason text that will be surfaced to the agent in the
-        /// skeleton and fill prompts. Phase 3 always passes a fixed
-        /// "truncated run" sentence; this field is kept for symmetry
-        /// and future extensibility.
-        reason: String,
-    },
     /// Phase 5: the parent task was just created and matched one of the
     /// preflight heuristics. The reason carried here is surfaced
     /// verbatim in the emitted `task_preflight_decomposed` event and in
@@ -73,13 +57,9 @@ pub(crate) enum DecompositionContext {
 
 impl DecompositionContext {
     /// Lead-in sentence for both child-task descriptions. Kept in one
-    /// place so the Phase 3 tests assert the exact wording and Phase 5
-    /// can vary it without drift.
+    /// place so future contexts can vary it without drift.
     fn header(&self) -> String {
         match self {
-            DecompositionContext::PostFailure { .. } => {
-                "AUTO-DECOMPOSED from a truncated run.".to_string()
-            }
             DecompositionContext::Preflight { reason } => {
                 format!("AUTO-DECOMPOSED before execution due to {reason}.")
             }
@@ -289,12 +269,12 @@ fn parse_explicit_line_count(lower: &str) -> Option<usize> {
     None
 }
 
-/// Create the shared skeleton + fill follow-up pair for either the
-/// Phase 3 post-failure path or the Phase 5 preflight path.
+/// Create the shared skeleton + fill follow-up pair for the Phase 5
+/// preflight path.
 ///
 /// Skeleton depends on nothing, fill depends on skeleton — so the
 /// existing scheduler orders them correctly with no extra wiring. The
-/// prompt header line rotates based on `context` (see
+/// prompt header line is set from `context` (see
 /// [`DecompositionContext::header`]).
 ///
 /// `path` is optional because the Phase 5 preflight detector can match
@@ -439,14 +419,10 @@ mod tests {
     }
 
     #[test]
-    fn header_differs_between_contexts() {
-        let post = DecompositionContext::PostFailure {
-            reason: "n/a".into(),
-        };
+    fn preflight_header_carries_reason() {
         let pre = DecompositionContext::Preflight {
             reason: "phrase:full implementation".into(),
         };
-        assert!(post.header().contains("from a truncated run"));
         assert!(pre.header().contains("before execution"));
         assert!(pre.header().contains("full implementation"));
     }

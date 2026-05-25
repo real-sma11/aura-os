@@ -1,19 +1,17 @@
 //! Failure-class detectors used by the retry ladder and remediation router.
 
-use super::FAILURE_REASON;
-
 #[test]
-fn classify_failure_recognizes_needs_decomposition_reason() {
+fn classify_failure_recognises_truncation_reason() {
+    let reason = "harness response truncated mid-stream";
     assert!(
-        aura_os_server::phase7_test_support::is_truncation_failure(FAILURE_REASON),
-        "Phase 2b-style reason string must classify as Truncation so \
-         try_remediate_task_failure enters the remediation path",
+        aura_os_server::phase7_test_support::is_truncation_failure(reason),
+        "explicit truncation reason must classify as Truncation",
     );
     assert!(
         !aura_os_server::phase7_test_support::is_truncation_failure(
             "tool execution failed: ENETUNREACH"
         ),
-        "transport-level errors must not be auto-decomposed",
+        "transport-level errors must not be classified as truncation",
     );
 }
 
@@ -46,7 +44,7 @@ fn classify_stream_terminated_internal_as_provider_internal_error() {
     }
 
     for reason in [
-        "task reached implementation phase but no file operations completed — needs decomposition",
+        "harness response truncated mid-stream",
         "HTTP 429 too many requests",
     ] {
         assert!(
@@ -73,7 +71,7 @@ fn looks_like_unclassified_transient_detects_retry_miss_candidates() {
 
     for reason in [
         "LLM error: stream terminated with error: Internal server error",
-        "task reached implementation phase but no file operations completed — needs decomposition",
+        "harness response truncated mid-stream",
     ] {
         assert!(
             !aura_os_server::phase7_test_support::looks_like_unclassified_transient(reason),

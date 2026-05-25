@@ -19,27 +19,21 @@ pub use synthesize::{synthesize_failure_reason, FailureContext, MAX_ERROR_EXCERP
 /// `(HarnessFailureKind, attempt)` pair. Returned by
 /// [`HarnessFailureKind::retry_action`].
 ///
-/// The three variants form the escalation ladder described in the
-/// `harness-v2-retry-policy` plan:
+/// Collapsed to two variants by the harness-cook-loop-fix plan: the
+/// orchestrator either re-runs the same task or stops. The previous
+/// `RetryWithDecomposition` action (which routed through a Phase 5
+/// splitter agent) has been removed along with its consumer in
+/// `task_decompose`.
 ///
-/// * `Retry` — re-run the same task with a fresh agent context. The
-///   classic retry hop; used on the first attempt for every kind
-///   that has any non-terminal recovery.
-/// * `RetryWithDecomposition` — re-run, but route through the
-///   Phase 5 splitter agent in `aura-harness` so the task gets
-///   broken into smaller sub-tasks before the next attempt. Used on
-///   the second attempt of `ResearchLoopAbort` /
-///   `Truncation` / `CompletionContract` so a task that looped its
-///   way to the same trap twice can escape via decomposition rather
-///   than burning the rest of the retry budget on identical reruns.
-/// * `Terminal` — stop retrying. Either the failure kind is
-///   inherently terminal (agent stuck, out of credits) or the
-///   per-kind escalation ladder is exhausted at this attempt index.
+/// * `Retry` — re-run the same task with a fresh agent context.
+///   Used while the per-kind attempt cap (3 for the transient
+///   classes) hasn't been hit.
+/// * `Terminal` — stop retrying. The failure kind is either
+///   inherently terminal or the transient retry cap is exhausted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetryAction {
     Retry,
-    RetryWithDecomposition,
     Terminal,
 }
 
@@ -50,15 +44,6 @@ pub enum HarnessFailureKind {
     RateLimited,
     PushTimeout,
     CompletionContract,
-    /// Harness aborted the agent after it stayed in research mode
-    /// and never produced any file operation. Emitted verbatim by
-    /// `aura-harness::validate_execution`'s post-hoc gate (the
-    /// `task completed without any file operations — completion
-    /// not verified` verdict, plus the `implementation phase / no
-    /// file operations completed / failed_paths=0` decomposition
-    /// hint). Retryable: the server-side dev loop schedules a
-    /// fresh-context retry.
-    ResearchLoopAbort,
     /// Terminal agent-side anti-waste signal: the harness has
     /// decided to stop on its own consecutive-error guard
     /// ("appears stuck", "stopping to prevent waste", ...).
@@ -78,8 +63,7 @@ pub enum HarnessFailureKind {
 
 impl HarnessFailureKind {
     /// Attempt-aware retry policy: decides whether the dev-loop
-    /// reconciler should re-run the task as-is, re-run it through
-    /// the Phase 5 decomposition splitter, or give up.
+    /// reconciler should re-run the task as-is or give up.
     ///
     /// `attempt` is the zero-indexed count of attempts that have
     /// ALREADY been made before the failure being classified (i.e.
@@ -95,30 +79,17 @@ impl HarnessFailureKind {
     /// Policy:
     ///
     /// * Infra-transient — `RateLimited`, `ProviderInternal`,
-    ///   `PushTimeout` — retry until `attempt >= 3` (after which the
-    ///   upstream condition clearly isn't clearing on its own
-    ///   timescale), then `Terminal`. These never decompose: the
-    ///   task shape is fine, the provider is just unavailable.
-    /// * Task-shape — `Truncation`, `CompletionContract`,
-    ///   `ResearchLoopAbort` — `Retry` on attempt 0,
-    ///   `RetryWithDecomposition` on attempt 1, `Terminal` on
-    ///   attempt 2+. The first retry stays a plain fresh-context
-    ///   re-run (consumes the enriched task context from Phase 4).
-    ///   If that ALSO fails on the same shape, the second retry
-    ///   escalates to decomposition (Phase 5 in `aura-harness`)
-    ///   rather than looping the same trap a third time. Past
-    ///   attempt 1 the task is genuinely stuck and burning more
-    ///   budget on identical reruns just wastes credits.
+    ///   `PushTimeout` — `Retry` while `attempt < 3` (the upstream
+    ///   typically clears on that timescale), then `Terminal`.
+    /// * Task-shape — `Truncation`, `CompletionContract` —
+    ///   `Terminal` from attempt 0. The decomposition splitter that
+    ///   used to handle these has been removed, so re-running the
+    ///   same task without any structural change is just burning
+    ///   credits.
     /// * Terminal — `AgentStuck`, `InsufficientCredits`, `Other` —
     ///   `Terminal` at every attempt index. The harness has decided
     ///   to stop on its own anti-waste guard, the account is out of
-    ///   credits, or the failure was unclassified (most often a
-    ///   deterministic agent error — syntax error, kernel-policy
-    ///   denial, write-permission failure — that the dev-loop unit
-    ///   tests want to surface without burning the budget). Callers
-    ///   that want a permissive default for `Other` can OR with a
-    ///   separate transient-heuristic guard (see
-    ///   `looks_like_unclassified_transient` on the server side).
+    ///   credits, or the failure was unclassified.
     #[must_use]
     pub const fn retry_action(self, attempt: u32) -> RetryAction {
         match self {
@@ -131,19 +102,9 @@ impl HarnessFailureKind {
                     RetryAction::Retry
                 }
             }
-            HarnessFailureKind::Truncation | HarnessFailureKind::CompletionContract => {
-                match attempt {
-                    0 => RetryAction::Retry,
-                    1 => RetryAction::RetryWithDecomposition,
-                    _ => RetryAction::Terminal,
-                }
-            }
-            HarnessFailureKind::ResearchLoopAbort => match attempt {
-                0 => RetryAction::Retry,
-                1 => RetryAction::RetryWithDecomposition,
-                _ => RetryAction::Terminal,
-            },
-            HarnessFailureKind::AgentStuck
+            HarnessFailureKind::Truncation
+            | HarnessFailureKind::CompletionContract
+            | HarnessFailureKind::AgentStuck
             | HarnessFailureKind::InsufficientCredits
             | HarnessFailureKind::Other => RetryAction::Terminal,
         }
@@ -154,11 +115,6 @@ impl HarnessFailureKind {
     /// in terms of [`Self::retry_action`] at `attempt = 0` so the
     /// two stay in lock-step: a kind that is terminal at attempt 0
     /// is never retryable, and vice versa.
-    ///
-    /// Prefer [`Self::retry_action`] in new code: the attempt-aware
-    /// signal is what `harness-v2-retry-policy` plumbs through to
-    /// distinguish "first failure, retry as-is" from "second
-    /// failure, decompose" from "exhausted, give up".
     #[must_use]
     pub const fn is_retryable(self) -> bool {
         !matches!(self.retry_action(0), RetryAction::Terminal)
@@ -319,21 +275,16 @@ pub fn classify_failure(reason: Option<&str>) -> HarnessFailureKind {
     };
     let reason = reason.to_ascii_lowercase();
     // Terminal anti-waste signals win first: a harness that decided to
-    // stop on its own must not be restarted, even if the same payload
-    // also mentions a research-loop abort.
+    // stop on its own must not be restarted.
     if is_agent_stuck(&reason) {
         HarnessFailureKind::AgentStuck
     } else if is_insufficient_credits(&reason) {
         HarnessFailureKind::InsufficientCredits
     } else if is_completion_contract_failure(&reason) {
         HarnessFailureKind::CompletionContract
-    } else if is_research_loop_abort(&reason) {
-        HarnessFailureKind::ResearchLoopAbort
     } else if reason.contains("truncat")
         || reason.contains("max_tokens")
         || reason.contains("maximum tokens")
-        || reason.contains("needsdecomposition")
-        || reason.contains("needs decomposition")
     {
         HarnessFailureKind::Truncation
     } else if is_rate_limited(&reason) {
@@ -383,20 +334,6 @@ fn is_provider_internal(reason: &str) -> bool {
         || reason.contains(" 504")
         || reason.contains("stream terminated")
         || reason.contains("connection reset by peer")
-}
-
-/// Substring matcher for [`HarnessFailureKind::ResearchLoopAbort`].
-///
-/// Caller must lowercase the input. The third needle requires all of
-/// "implementation phase", "no file operations completed", and
-/// "failed_paths=0" so an unrelated "implementation phase" mention
-/// in a longer reason string doesn't false-positive.
-fn is_research_loop_abort(reason: &str) -> bool {
-    reason.contains("task completed without any file operations")
-        || reason.contains("completion not verified")
-        || (reason.contains("implementation phase")
-            && reason.contains("no file operations completed")
-            && reason.contains("failed_paths=0"))
 }
 
 /// Substring matcher for [`HarnessFailureKind::AgentStuck`].
@@ -510,7 +447,7 @@ mod tests {
             "task_failed",
             &serde_json::json!({
                 "task_id": "task-1",
-                "reason": "harness response truncated; needs decomposition",
+                "reason": "harness response truncated mid-stream",
             }),
         )
         .expect("signal");
@@ -542,71 +479,14 @@ mod tests {
     }
 
     #[test]
-    fn classifies_research_loop_abort_as_research_loop_abort() {
-        // Verbatim verdict emitted by aura-harness's post-hoc
-        // `validate_execution` gate when the agent stayed in
-        // research mode and never produced any file operation.
-        // The em dash is U+2014; the classifier must accept it.
-        let reason = "agent execution error: task completed without any file operations — \
-                      completion not verified";
-        let signal = HarnessSignal::from_event(
-            "task_failed",
-            &serde_json::json!({
-                "task_id": "task-1",
-                "reason": reason,
-            }),
-        )
-        .expect("signal");
-
-        assert_eq!(
-            signal.failure_kind(),
-            Some(HarnessFailureKind::ResearchLoopAbort),
-            "research-loop abort must classify as its own typed variant \
-             so the server-side retry path can route it to a fresh-context retry",
-        );
-    }
-
-    #[test]
-    fn classifies_implementation_phase_no_write_abort_as_research_loop_abort() {
-        for last_pending in ["search_code", "submit_plan"] {
-            let reason = format!(
-                "task reached implementation phase but no file operations completed — \
-                 needs decomposition (failed_paths=0, last_pending=Some(\"{last_pending}\"))"
-            );
-            let signal = HarnessSignal::from_event(
-                "task_failed",
-                &serde_json::json!({
-                    "task_id": "task-1",
-                    "reason": reason,
-                }),
-            )
-            .expect("signal");
-
-            assert_eq!(
-                signal.failure_kind(),
-                Some(HarnessFailureKind::ResearchLoopAbort),
-                "{last_pending} no-write abort must classify as ResearchLoopAbort",
-            );
-        }
-    }
-
-    #[test]
-    fn research_loop_abort_matches_lowercased_input() {
-        // The classifier lowercases the reason before comparing, so an
-        // upper-case verdict from a different code path still resolves.
-        assert_eq!(
-            classify_failure(Some("TASK COMPLETED WITHOUT ANY FILE OPERATIONS")),
-            HarnessFailureKind::ResearchLoopAbort,
-        );
-    }
-
-    #[test]
-    fn agent_stuck_precedence_beats_research_loop_abort() {
-        // A reason that contains BOTH needles must classify as terminal:
-        // the agent-stuck guard runs first, so a harness that decided
-        // to stop on its own anti-waste verdict must not be classified
-        // as a retryable research-loop abort just because the same
-        // payload also mentions the research-loop phrasing.
+    fn agent_stuck_precedence_over_combined_reason_strings() {
+        // A reason that contains BOTH an agent-stuck phrase and what
+        // used to be a research-loop-abort phrase must still classify
+        // as `AgentStuck`: the harness has decided to stop on its own
+        // anti-waste guard and restarting just thrashes the WS
+        // reconnect path. The research-loop classifier is gone now,
+        // but the precedence over the rest of the matcher list is
+        // still load-bearing.
         let reason = "agent is stuck after task completed without any file operations";
         assert_eq!(
             classify_failure(Some(reason)),
@@ -697,10 +577,11 @@ mod tests {
         // forces an explicit decision via the exhaustive `match`.
         assert!(HarnessFailureKind::RateLimited.is_retryable());
         assert!(HarnessFailureKind::PushTimeout.is_retryable());
-        assert!(HarnessFailureKind::ResearchLoopAbort.is_retryable());
         assert!(HarnessFailureKind::ProviderInternal.is_retryable());
-        assert!(HarnessFailureKind::Truncation.is_retryable());
-        assert!(HarnessFailureKind::CompletionContract.is_retryable());
+        // Truncation and CompletionContract are terminal from attempt 0
+        // after the decomposition splitter was removed.
+        assert!(!HarnessFailureKind::Truncation.is_retryable());
+        assert!(!HarnessFailureKind::CompletionContract.is_retryable());
         assert!(!HarnessFailureKind::AgentStuck.is_retryable());
         assert!(!HarnessFailureKind::InsufficientCredits.is_retryable());
         assert!(!HarnessFailureKind::Other.is_retryable());
@@ -709,54 +590,31 @@ mod tests {
     // -----------------------------------------------------------------
     // Attempt-aware retry policy (`HarnessFailureKind::retry_action`).
     //
-    // The escalation ladder for `ResearchLoopAbort` and the other
-    // task-shape kinds is the central behaviour change of
-    // `harness-v2-retry-policy`: attempt 0 stays a plain Retry (so
-    // the Phase 4 enriched context gets one shot), attempt 1 escalates
-    // to `RetryWithDecomposition` (Phase 5 in `aura-harness`), and
-    // anything beyond that is `Terminal` so the dev-loop stops
-    // burning credits looping the same trap.
+    // Two-arm ladder: transient infra kinds retry until attempt >= 3,
+    // task-shape and terminal kinds are `Terminal` from attempt 0.
     // -----------------------------------------------------------------
 
     #[test]
-    fn research_loop_abort_escalates_through_decomposition() {
-        assert_eq!(
-            HarnessFailureKind::ResearchLoopAbort.retry_action(0),
-            RetryAction::Retry,
-        );
-        assert_eq!(
-            HarnessFailureKind::ResearchLoopAbort.retry_action(1),
-            RetryAction::RetryWithDecomposition,
-        );
-        assert_eq!(
-            HarnessFailureKind::ResearchLoopAbort.retry_action(2),
-            RetryAction::Terminal,
-        );
-    }
-
-    #[test]
-    fn task_shape_kinds_share_research_loop_escalation_ladder() {
-        // Truncation and CompletionContract are the other two
-        // task-shape failures the Phase 5 splitter agent can
-        // meaningfully decompose. Pin them to the same
-        // Retry → RetryWithDecomposition → Terminal ladder so a
-        // future refactor that diverges them surfaces here.
+    fn task_shape_kinds_are_terminal_from_zero() {
+        // Truncation and CompletionContract used to escalate through a
+        // decomposition splitter; that splitter has been removed so
+        // re-running the same task wholesale is just burning credits.
         for kind in [
             HarnessFailureKind::Truncation,
             HarnessFailureKind::CompletionContract,
         ] {
-            assert_eq!(kind.retry_action(0), RetryAction::Retry, "{kind:?}@0");
-            assert_eq!(
-                kind.retry_action(1),
-                RetryAction::RetryWithDecomposition,
-                "{kind:?}@1",
-            );
-            assert_eq!(kind.retry_action(2), RetryAction::Terminal, "{kind:?}@2");
+            for attempt in 0..5 {
+                assert_eq!(
+                    kind.retry_action(attempt),
+                    RetryAction::Terminal,
+                    "{kind:?}@{attempt}",
+                );
+            }
         }
     }
 
     #[test]
-    fn terminal_kinds_never_retry_or_decompose() {
+    fn terminal_kinds_never_retry() {
         for kind in [
             HarnessFailureKind::AgentStuck,
             HarnessFailureKind::InsufficientCredits,
@@ -808,13 +666,10 @@ mod tests {
     fn is_retryable_remains_consistent_with_retry_action() {
         // Lock-step invariant: the legacy attempt-agnostic predicate
         // must agree with `retry_action(0) != Terminal` for every
-        // kind. Without this, callsites that still consult
-        // `is_retryable()` (the ones not yet migrated by
-        // `harness-v2-retry-policy`) would silently disagree with
-        // the dev-loop reconciler's typed action.
+        // kind.
         use HarnessFailureKind::{
             AgentStuck, CompletionContract, InsufficientCredits, Other, ProviderInternal,
-            PushTimeout, RateLimited, ResearchLoopAbort, Truncation,
+            PushTimeout, RateLimited, Truncation,
         };
         for kind in [
             RateLimited,
@@ -822,7 +677,6 @@ mod tests {
             ProviderInternal,
             Truncation,
             CompletionContract,
-            ResearchLoopAbort,
             AgentStuck,
             InsufficientCredits,
             Other,
@@ -839,19 +693,15 @@ mod tests {
     /// Exhaustive cross-product invariant over EVERY variant and
     /// attempt index 0..=5: the attempt-agnostic
     /// [`HarnessFailureKind::is_retryable`] predicate MUST stay
-    /// consistent with `retry_action(0) != Terminal` regardless of
-    /// how the attempt-aware ladder evolves for higher indices.
-    /// `is_retryable()` is wired into call sites that don't have an
-    /// attempt counter in scope, so a future revert that leaves
-    /// `is_retryable()` returning `true` for a kind whose attempt-0
-    /// action is `Terminal` (or vice versa) would silently strand
-    /// the legacy callers in a state that disagrees with the
-    /// reconciler.
+    /// consistent with `retry_action(0) != Terminal`. Additionally
+    /// a kind that is `Terminal` at attempt 0 must stay `Terminal`
+    /// at every higher attempt — the ladder only ratchets toward
+    /// `Terminal`, never away.
     #[test]
     fn is_retryable_matches_retry_action_for_every_kind_and_attempt() {
         use HarnessFailureKind::{
             AgentStuck, CompletionContract, InsufficientCredits, Other, ProviderInternal,
-            PushTimeout, RateLimited, ResearchLoopAbort, Truncation,
+            PushTimeout, RateLimited, Truncation,
         };
         let kinds = [
             RateLimited,
@@ -859,7 +709,6 @@ mod tests {
             ProviderInternal,
             Truncation,
             CompletionContract,
-            ResearchLoopAbort,
             AgentStuck,
             InsufficientCredits,
             Other,
@@ -870,22 +719,11 @@ mod tests {
                 let action = kind.retry_action(attempt);
                 let derived = action != RetryAction::Terminal;
                 if attempt == 0 {
-                    // Exact agreement with the attempt-agnostic
-                    // predicate at attempt 0 — `is_retryable` is
-                    // defined as `retry_action(0) != Terminal`.
                     assert_eq!(
                         legacy, derived,
                         "is_retryable/retry_action(0) diverge for {kind:?}",
                     );
                 }
-                // Independent invariant that holds at every attempt
-                // index: a kind whose attempt-0 action is `Terminal`
-                // (so `is_retryable() == false`) must stay
-                // `Terminal` for all higher attempts. The escalation
-                // ladder only EVER ratchets toward Terminal, never
-                // back to a retry. A future kind that violates this
-                // would let the reconciler resurrect a task that
-                // legacy callers think is permanently failed.
                 if !legacy {
                     assert_eq!(
                         action,
@@ -898,15 +736,13 @@ mod tests {
     }
 
     /// On-wire format pin: the `RetryAction` variants must serialize
-    /// to the EXACT snake_case strings `aura-harness`'s Phase 5
-    /// splitter and the `task_retrying` event consumers
-    /// pattern-match against. Phase 6's
-    /// `emit_task_retrying_signal` (in
-    /// `apps/aura-os-server/src/handlers/dev_loop/streaming/
+    /// to the EXACT snake_case strings the `task_retrying` event
+    /// consumers pattern-match against. The dev-loop forwarder
+    /// (`apps/aura-os-server/src/handlers/dev_loop/streaming/
     /// side_effects/retry.rs`) embeds the serialized variant under
     /// the `retry_action` JSON key; downstream consumers route on
     /// the literal strings, so a typo or rename would silently
-    /// break the splitter handoff.
+    /// break the contract.
     #[test]
     fn retry_action_serializes_to_snake_case_strings() {
         assert_eq!(
@@ -914,63 +750,18 @@ mod tests {
             "\"retry\"",
         );
         assert_eq!(
-            serde_json::to_string(&RetryAction::RetryWithDecomposition).unwrap(),
-            "\"retry_with_decomposition\"",
-        );
-        assert_eq!(
             serde_json::to_string(&RetryAction::Terminal).unwrap(),
             "\"terminal\"",
         );
 
-        // Round-trip pin: the same wire strings must deserialize
-        // back to the same variants. Without this, a server that
-        // serializes `retry_with_decomposition` and a consumer that
-        // tries to decode it could silently disagree if either side
-        // ever drifts.
         assert_eq!(
             serde_json::from_str::<RetryAction>("\"retry\"").unwrap(),
             RetryAction::Retry,
         );
         assert_eq!(
-            serde_json::from_str::<RetryAction>("\"retry_with_decomposition\"").unwrap(),
-            RetryAction::RetryWithDecomposition,
-        );
-        assert_eq!(
             serde_json::from_str::<RetryAction>("\"terminal\"").unwrap(),
             RetryAction::Terminal,
         );
-    }
-
-    /// Cross-repo invariant: the EXACT verbatim string
-    /// `aura-harness::validate_execution` emits when a task lands
-    /// in the "no file ops AND not reached_implementing AND not
-    /// no_changes_needed" trap MUST classify as `ResearchLoopAbort`.
-    /// Pairs with the aura-harness invariant test
-    /// (`validate_execution_emits_verbatim_research_loop_abort_message`)
-    /// which pins the emitter side. Together the two tests guard
-    /// the contract that aura-harness's wire string and aura-os's
-    /// classifier substring stay in lock-step — a silent rename on
-    /// either side would route the failure into `Other` and stop
-    /// the Phase 6 retry-with-decomposition escalation.
-    #[test]
-    fn verbatim_validate_execution_message_classifies_as_research_loop_abort() {
-        // Verbatim, exactly as `aura-harness::validate_execution`
-        // emits it. The em dash is U+2014; preserve it byte-for-byte.
-        let reason = "task completed without any file operations — completion not verified";
-        assert_eq!(
-            classify_failure(Some(reason)),
-            HarnessFailureKind::ResearchLoopAbort,
-            "the verbatim aura-harness verdict must classify as \
-             ResearchLoopAbort so the Phase 6 retry-with-decomposition \
-             ladder kicks in instead of falling through to the \
-             unclassified `Other` (terminal) branch",
-        );
-        // And the per-attempt ladder must escalate: attempt 0 retries,
-        // attempt 1 escalates to decomposition, attempt 2 is terminal.
-        let kind = classify_failure(Some(reason));
-        assert_eq!(kind.retry_action(0), RetryAction::Retry);
-        assert_eq!(kind.retry_action(1), RetryAction::RetryWithDecomposition);
-        assert_eq!(kind.retry_action(2), RetryAction::Terminal);
     }
 
     #[test]
