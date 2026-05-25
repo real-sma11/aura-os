@@ -356,6 +356,29 @@ function useOnboardingHydration() {
       });
     }
   }, [user?.user_id, hydrateForUser]);
+
+  // Re-fire session_active when the app regains focus so True DAU
+  // counts users who leave the app open across days. Uses both
+  // visibilitychange (tab switch on web) and window focus (desktop
+  // app restore). Mixpanel deduplicates uniques per day so multiple
+  // fires on the same day don't inflate the count.
+  useEffect(() => {
+    if (!user?.user_id) return;
+    const fireSessionActive = () => {
+      import("../../lib/analytics").then(({ track }) => {
+        track("session_active");
+      });
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fireSessionActive();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", fireSessionActive);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", fireSessionActive);
+    };
+  }, [user?.user_id]);
 }
 
 function AppContent() {
