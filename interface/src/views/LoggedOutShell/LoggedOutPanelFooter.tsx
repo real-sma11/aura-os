@@ -10,7 +10,7 @@ interface FooterLink {
 const FOOTER_LINKS: FooterLink[] = [
   { label: "Product", href: `${AURA_WEBSITE}/product` },
   { label: "Changelog", href: `${AURA_WEBSITE}/changelog` },
-  { label: "Feedback", href: `${AURA_WEBSITE}/roadmap` },
+  { label: "Feedback", href: `${AURA_WEBSITE}/feedback` },
   { label: "Pricing", href: `${AURA_WEBSITE}/pricing` },
   { label: "Download", href: `${AURA_WEBSITE}/download` },
 ];
