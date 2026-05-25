@@ -145,6 +145,9 @@ export function MarketingNavbar(): React.ReactNode {
           })}
         </ul>
         <div className="navActions">
+          <Link to="/download" className="navAuthLink navAuthLinkSecondary">
+            Download
+          </Link>
           <Link to="/login" className="navAuthLink navAuthLinkSecondary">
             Log in
           </Link>

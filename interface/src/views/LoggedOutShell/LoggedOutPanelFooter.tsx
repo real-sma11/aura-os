@@ -12,6 +12,7 @@ const FOOTER_LINKS: FooterLink[] = [
   { label: "Changelog", href: `${AURA_WEBSITE}/changelog` },
   { label: "Feedback", href: `${AURA_WEBSITE}/roadmap` },
   { label: "Pricing", href: `${AURA_WEBSITE}/pricing` },
+  { label: "Download", href: `${AURA_WEBSITE}/download` },
 ];
 
 /**
