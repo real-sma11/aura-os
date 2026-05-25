@@ -271,7 +271,6 @@ pub fn reconcile_decision(
     retry_count: u32,
     max_retries: u32,
     has_live_automaton: bool,
-    auto_decompose_disabled: bool,
 ) -> serde_json::Value {
     reconcile_decision_with_test_evidence(
         git_steps,
@@ -279,7 +278,6 @@ pub fn reconcile_decision(
         retry_count,
         max_retries,
         has_live_automaton,
-        auto_decompose_disabled,
         false,
     )
 }
@@ -295,7 +293,6 @@ pub fn reconcile_decision_with_test_evidence(
     retry_count: u32,
     max_retries: u32,
     has_live_automaton: bool,
-    auto_decompose_disabled: bool,
     has_test_pass_evidence: bool,
 ) -> serde_json::Value {
     let sync_state = crate::sync_state::derive_sync_state(git_steps);
@@ -339,7 +336,6 @@ pub fn reconcile_decision_with_test_evidence(
     inputs.max_retries = effective_max;
     inputs.latest_signal = failure_signal.as_ref();
     inputs.has_live_automaton = has_live_automaton;
-    inputs.auto_decompose_disabled = auto_decompose_disabled;
     inputs.has_test_pass_evidence = has_test_pass_evidence;
     crate::reconciler::decide_reconcile_action(&inputs).to_json()
 }

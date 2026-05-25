@@ -13,7 +13,6 @@ impl ReconcileAction {
                 "retry_safe": retry_safe,
             }),
             Self::RetryTask => serde_json::json!({ "action": "retry_task" }),
-            Self::Decompose => serde_json::json!({ "action": "decompose" }),
             Self::MarkTerminal { reason } => serde_json::json!({
                 "action": "mark_terminal",
                 "reason": reason.as_label(),
@@ -33,8 +32,8 @@ impl TerminalReason {
             Self::RetryBudgetExhausted => "retry_budget_exhausted",
             Self::RateLimited => "rate_limited",
             Self::CommitFailed => "commit_failed",
-            Self::DecomposeDisabled => "decompose_disabled",
             Self::CompletionContract => "completion_contract",
+            Self::Truncation => "truncation",
         }
     }
 }

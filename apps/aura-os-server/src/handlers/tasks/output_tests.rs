@@ -174,7 +174,7 @@ fn task_output_from_events_keeps_committed_push_timeout_retryable() {
 }
 
 #[test]
-fn task_output_from_events_recommends_decompose_for_truncation_failure() {
+fn task_output_from_events_recommends_terminal_for_truncation_failure() {
     let task_id = uuid::Uuid::new_v4().to_string();
     let response = task_output_from_events(
         &task_id,
@@ -197,7 +197,10 @@ fn task_output_from_events_recommends_decompose_for_truncation_failure() {
 
     assert_eq!(
         response.recommended_action,
-        Some(serde_json::json!({ "action": "decompose" })),
+        Some(serde_json::json!({
+            "action": "mark_terminal",
+            "reason": "truncation",
+        })),
     );
 }
 

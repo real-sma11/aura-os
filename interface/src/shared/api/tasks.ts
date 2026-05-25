@@ -127,14 +127,13 @@ export const tasksApi = {
         | { action: "adopt_run" }
         | { action: "retry_push"; commit_sha: string; retry_safe: boolean }
         | { action: "retry_task" }
-        | { action: "decompose" }
         | {
             action: "mark_terminal";
             reason:
               | "retry_budget_exhausted"
               | "rate_limited"
               | "commit_failed"
-              | "decompose_disabled";
+              | "truncation";
           }
         | { action: "noop" };
       /**

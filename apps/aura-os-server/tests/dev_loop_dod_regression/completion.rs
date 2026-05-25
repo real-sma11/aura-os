@@ -208,7 +208,6 @@ fn reconciler_overrides_completion_contract_when_test_evidence_present() {
         0,
         3,
         false,
-        false,
         /* has_test_pass_evidence */ false,
     );
     assert_eq!(
@@ -225,7 +224,6 @@ fn reconciler_overrides_completion_contract_when_test_evidence_present() {
         "completion_contract",
         0,
         3,
-        false,
         false,
         /* has_test_pass_evidence */ true,
     );
@@ -246,7 +244,6 @@ fn reconciler_marks_completion_contract_terminal_after_retry_budget_exhaustion()
         "completion_contract",
         3,
         3,
-        false,
         false,
         /* has_test_pass_evidence */ false,
     );
@@ -271,7 +268,6 @@ fn reconciler_does_not_override_other_failure_classes_with_test_evidence() {
             class,
             0,
             3,
-            false,
             false,
             /* has_test_pass_evidence */ true,
         );

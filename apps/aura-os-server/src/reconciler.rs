@@ -19,7 +19,6 @@ pub struct ReconcileInputs<'a> {
     pub retry_count: u32,
     pub max_retries: u32,
     pub has_live_automaton: bool,
-    pub auto_decompose_disabled: bool,
     /// True when the dev-loop accumulated at least one successful
     /// test-runner invocation (cargo test / pnpm vitest / pytest /
     /// ...) for this task. The "tests-as-truth" gate uses this to
@@ -37,7 +36,6 @@ impl<'a> ReconcileInputs<'a> {
             retry_count: 0,
             max_retries: DEFAULT_MAX_RETRIES_PER_TASK,
             has_live_automaton: false,
-            auto_decompose_disabled: false,
             has_test_pass_evidence: false,
         }
     }
@@ -55,7 +53,6 @@ pub enum ReconcileAction {
         retry_safe: bool,
     },
     RetryTask,
-    Decompose,
     MarkTerminal {
         reason: TerminalReason,
     },
@@ -74,8 +71,14 @@ pub enum TerminalReason {
     RetryBudgetExhausted,
     RateLimited,
     CommitFailed,
-    DecomposeDisabled,
     CompletionContract,
+    /// Harness reported a `Truncation` failure. After the retry ladder
+    /// collapsed to `{Retry, Terminal}` (commit a7edc9994) the
+    /// decomposition splitter that used to consume truncation
+    /// remediation was removed, so truncation is terminal at attempt 0
+    /// and the reconciler routes it through `MarkTerminal` instead of
+    /// the now-defunct `Decompose` action.
+    Truncation,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,17 +122,9 @@ pub fn decide_reconcile_action(inputs: &ReconcileInputs<'_>) -> ReconcileAction 
         HarnessFailureKind::RateLimited => ReconcileAction::MarkTerminal {
             reason: TerminalReason::RateLimited,
         },
-        HarnessFailureKind::Truncation => {
-            if inputs.auto_decompose_disabled {
-                ReconcileAction::MarkTerminal {
-                    reason: TerminalReason::DecomposeDisabled,
-                }
-            } else if inputs.retry_budget_remaining() {
-                ReconcileAction::Decompose
-            } else {
-                budget_exhausted()
-            }
-        }
+        HarnessFailureKind::Truncation => ReconcileAction::MarkTerminal {
+            reason: TerminalReason::Truncation,
+        },
         HarnessFailureKind::CompletionContract => {
             if inputs.has_test_pass_evidence {
                 ReconcileAction::MarkDone {

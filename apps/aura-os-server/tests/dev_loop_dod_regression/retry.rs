@@ -63,7 +63,7 @@ fn task_done_no_file_reason_is_completion_contract_not_truncation() {
 
 #[test]
 fn completion_contract_failure_retries_before_budget_exhaustion() {
-    let decision = tsp::reconcile_decision(&[], "completion_contract", 0, 3, false, false);
+    let decision = tsp::reconcile_decision(&[], "completion_contract", 0, 3, false);
 
     assert_eq!(
         decision,
