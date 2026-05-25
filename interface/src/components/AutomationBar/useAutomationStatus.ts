@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useEffect, useReducer, useRef, useCallback, useState } from "react";
 import { api, isInsufficientCreditsError, dispatchInsufficientCredits } from "../../api/client";
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
@@ -10,6 +10,16 @@ import {
 } from "../../stores/automation-loop-store";
 import type { ProjectId } from "../../shared/types";
 import { EventType } from "../../shared/types/aura-events";
+import {
+  agentsOf,
+  automationReducer,
+  canPause as canPauseFn,
+  canPlay as canPlayFn,
+  canStop as canStopFn,
+  initialState,
+  statusOf,
+  type AutomationStatus,
+} from "./automation-state-machine";
 
 /**
  * Seed the Run panel store with "active" rows for any tasks the
@@ -28,7 +38,7 @@ function hydrateActiveTasksFromLoopStatus(
   // for this project whose task the server no longer reports as active
   // is a leftover from a stopped / refreshed prior run, and would
   // otherwise render its own cooking indicator alongside the new run's
-  // row. Demote to "interrupted" as a transient holding state — the
+  // row. Demote to "interrupted" as a transient holding state -- the
   // subsequent `reconcilePanelStatuses` pass (driven by
   // `/projects/:pid/tasks`) upgrades it to `completed` / `failed` once
   // the authoritative per-task status loads.
@@ -43,7 +53,7 @@ function hydrateActiveTasksFromLoopStatus(
 /**
  * Seed the Run-panel row store from the response body of
  * `/loop/start` (or `/loop/resume`) so the panel appears immediately
- * — without waiting for the corresponding `task_started` WebSocket
+ * -- without waiting for the corresponding `task_started` WebSocket
  * event. The Tasks-list per-row spinner is fed by the
  * `useLoopActivityStore`-derived `useLiveTaskIdsForProject` and does
  * not need a parallel start-response hydration: the backend's
@@ -67,7 +77,7 @@ function hydrateUiFromLoopStartResponse(
  * but rapid Stop+Start cycles can race those events: the server may
  * have emitted `loop_started` (the legacy event the AutomationBar
  * listens to) and inserted a fresh `loop_registry` entry, but the
- * client hasn't received the matching `loop_opened` yet — or worse,
+ * client hasn't received the matching `loop_opened` yet -- or worse,
  * inherited a stale activity row from a now-cancelled loop instance.
  *
  * Calling `hydrate({ project_id })` on every Start / Stop click
@@ -81,8 +91,6 @@ function hydrateUiFromLoopStartResponse(
 function rehydrateLoopActivityForProject(projectId: ProjectId): void {
   void useLoopActivityStore.getState().hydrate({ project_id: projectId });
 }
-
-type AutomationStatus = "idle" | "starting" | "preparing" | "active" | "paused" | "stopped";
 
 interface AutomationStatusData {
   status: AutomationStatus;
@@ -112,16 +120,20 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   const subscribe = useEventStore((s) => s.subscribe);
   const connected = useEventStore((s) => s.connected);
   // Model the user picked in the AutomationBar's own picker. This is
-  // deliberately independent of whichever chat thread is in the URL —
+  // deliberately independent of whichever chat thread is in the URL --
   // the loop's model is the loop's own per-project setting, not a
   // side effect of which chat tab happens to be visible. A `null`
   // here means "let the backend fall back to the bound Loop agent's
   // stored default_model".
   const { model: selectedModel } = useAutomationModel(projectId);
-  const [activeAgents, setActiveAgents] = useState<string[]>([]);
-  const [paused, setPaused] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [preparing, setPreparing] = useState(false);
+
+  // Single source of truth for the four previously-implicit-coupled
+  // booleans (`activeAgents`, `paused`, `starting`, `preparing`).
+  // Each WS subscription dispatches exactly one action; status,
+  // agentCount, and the canPlay/canPause/canStop button gates are
+  // pure derivations off this state. See `automation-state-machine.ts`
+  // for the transition table.
+  const [state, dispatch] = useReducer(automationReducer, initialState);
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
 
@@ -141,13 +153,11 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   const fetchLoopStatus = useCallback(() => {
     api.getLoopStatus(projectId)
       .then((res) => {
-        if (res.active_agent_instances && res.active_agent_instances.length > 0) {
-          setActiveAgents(res.active_agent_instances);
-          setPaused(res.paused);
-          setStarting(false);
-        } else {
-          setActiveAgents([]); setPaused(false); setStarting(false); setPreparing(false);
-        }
+        dispatch({
+          type: "statusFetched",
+          agents: res.active_agent_instances ?? [],
+          paused: Boolean(res.paused),
+        });
         // Rehydrate Run panel rows from authoritative server state
         // so the "No tasks" emptiness after refresh doesn't stay out
         // of sync with the spinning nav icon. Any missed
@@ -162,7 +172,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   // Hydrate the bound Loop instance id from the project's agent
   // instances on mount. We run this independently of the loop status
   // fetch so the pause / stop buttons can target the right agent
-  // even on the very first render after a refresh — before the user
+  // even on the very first render after a refresh -- before the user
   // has interacted with Start. Failure (offline, fresh project) is
   // non-fatal: the next `startLoop` response refreshes the binding.
   useEffect(() => {
@@ -189,55 +199,56 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
     const unsubs = [
       subscribe(EventType.LoopStarted, (e) => {
         if (!isForProject(e)) return;
-        const agentId = e.agent_id;
-        if (agentId) setActiveAgents((prev) => prev.includes(agentId) ? prev : [...prev, agentId]);
-        setPaused(false); setStarting(false); setPreparing(true);
+        dispatch({ type: "loopStarted", agentId: e.agent_id });
       }),
       subscribe(EventType.TaskStarted, (e) => {
-        if (!isForProject(e)) return; setPreparing(false);
+        if (!isForProject(e)) return;
+        dispatch({ type: "taskStarted" });
       }),
-      subscribe(EventType.LoopPaused, (e) => { if (!isForProject(e)) return; setPaused(true); setPreparing(false); }),
-      subscribe(EventType.LoopResumed, (e) => { if (!isForProject(e)) return; setPaused(false); }),
+      subscribe(EventType.LoopPaused, (e) => {
+        if (!isForProject(e)) return;
+        dispatch({ type: "loopPaused" });
+      }),
+      subscribe(EventType.LoopResumed, (e) => {
+        if (!isForProject(e)) return;
+        dispatch({ type: "loopResumed" });
+      }),
       subscribe(EventType.LoopStopped, (e) => {
         if (!isForProject(e)) return;
-        const agentId = e.agent_id;
-        if (agentId) setActiveAgents((prev) => prev.filter((id) => id !== agentId));
-        else setActiveAgents([]);
-        setPaused(false); setStarting(false); setPreparing(false);
+        dispatch({ type: "loopStopped", agentId: e.agent_id });
         // The Loop-role row itself is persistent, so we keep
-        // `boundLoopId` populated — the next Start reuses the same
+        // `boundLoopId` populated -- the next Start reuses the same
         // instance. We only clear it when the row is deleted, which
         // happens via `LoopFinished` for terminal lifecycles.
       }),
       subscribe(EventType.LoopFinished, (e) => {
         if (!isForProject(e)) return;
-        const agentId = e.agent_id;
-        if (agentId) setActiveAgents((prev) => prev.filter((id) => id !== agentId));
-        else setActiveAgents([]);
-        setPaused(false); setStarting(false); setPreparing(false);
+        dispatch({ type: "loopFinished", agentId: e.agent_id });
+        // Side effect kept verbatim outside the reducer: the
+        // insufficient-credits dispatch fans out to the global error
+        // banner, which is React-state work the pure reducer must
+        // not own.
         if (e.content.outcome === "insufficient_credits") dispatchInsufficientCredits();
       }),
     ];
     return () => unsubs.forEach((u) => u());
   }, [subscribe, isForProject]);
 
-  const running = activeAgents.length > 0;
-
-  let status: AutomationStatus = "idle";
-  if (starting) status = "starting";
-  else if (preparing) status = "preparing";
-  else if (paused) status = "paused";
-  else if (running) status = "active";
+  const status = statusOf(state);
+  const agentCount = agentsOf(state).length;
 
   const handleStart = useCallback(async () => {
-    if (paused) {
+    if (state.kind === "paused") {
       try {
         // Pause/resume always target the bound Loop instance so we
         // never accidentally resume an ephemeral executor or the
         // chat thread the user is currently viewing.
         const res = await api.resumeLoop(projectId, boundLoopId ?? undefined);
-        if (res.active_agent_instances) setActiveAgents(res.active_agent_instances);
-        setPaused(false);
+        dispatch({
+          type: "statusFetched",
+          agents: res.active_agent_instances ?? [],
+          paused: false,
+        });
         hydrateUiFromLoopStartResponse(res, projectId);
         rehydrateLoopActivityForProject(projectId);
       } catch (err) {
@@ -245,17 +256,16 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       }
       return;
     }
-    // Flip both `starting` and `preparing` up-front so the Run button
-    // spinner and the sidekick Run/Tasks tab loaders engage immediately
-    // on click, and stay engaged without flicker across three phases:
-    //   1. request in flight           -> starting=true,  preparing=true
-    //   2. server accepted the start   -> starting=false, preparing=true
-    //   3. first task_started arrives  -> preparing=false (via WS sub)
+    // Optimistically flip into `starting` so the Run button spinner
+    // and the sidekick Run/Tasks tab loaders engage immediately on
+    // click, and stay engaged without flicker across three phases:
+    //   1. request in flight           -> kind: "starting"
+    //   2. loop_started WS arrives     -> kind: "preparing"
+    //   3. task_started WS arrives     -> kind: "active"
     // Without this the spinner would flash off between the HTTP
-    // response and the `loop_started` WS event, making the ramp-up look
-    // stalled on the first (or interrupted) task of a fresh run.
-    setStarting(true);
-    setPreparing(true);
+    // response and the `loop_started` WS event, making the ramp-up
+    // look stalled on the first (or interrupted) task of a fresh run.
+    dispatch({ type: "startClicked" });
     try {
       // Omit `agent_instance_id`: the backend resolves to the
       // project's `Loop`-role instance via
@@ -264,9 +274,8 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       // currently-viewed chat agent here would force the loop onto
       // that chat instance and the harness's "one in-flight turn per
       // agent_id" policy would silently abort either the chat reply
-      // or the next loop turn — exactly the regression we're fixing.
+      // or the next loop turn -- exactly the regression we're fixing.
       const res = await api.startLoop(projectId, undefined, selectedModel);
-      if (res.active_agent_instances) setActiveAgents(res.active_agent_instances);
       // Capture the Loop instance the backend resolved to so all
       // subsequent pause / resume / stop calls scope themselves to
       // it. `start_loop` populates `agent_instance_id` on the
@@ -275,23 +284,35 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       if (res.agent_instance_id) {
         setBoundLoopId(projectId, res.agent_instance_id);
       }
-      setPaused(false);
-      setStarting(false);
+      // Reconcile the optimistic `starting` state with the server's
+      // authoritative agent list so the UI updates immediately, in
+      // step with the HTTP response, instead of waiting on the
+      // `loop_started` WS event.
+      dispatch({
+        type: "statusFetched",
+        agents: res.active_agent_instances ?? [],
+        paused: false,
+      });
       // Seed the Run panel row + Tasks list "live" dot from the response
       // so the user sees activity without waiting for task_started.
       hydrateUiFromLoopStartResponse(res, projectId);
       rehydrateLoopActivityForProject(projectId);
     } catch (err) {
-      setStarting(false); setPreparing(false);
+      dispatch({ type: "startFailed" });
       if (isInsufficientCreditsError(err)) dispatchInsufficientCredits();
       console.error("Failed to start loop", err);
     }
-  }, [projectId, paused, selectedModel, boundLoopId, setBoundLoopId]);
+  }, [projectId, state.kind, selectedModel, boundLoopId, setBoundLoopId]);
 
   const handlePause = useCallback(async () => {
     try {
+      // The server emits `loop_paused` on success; the WS handler
+      // dispatches `loopPaused` to drive the UI. We deliberately do
+      // NOT optimistically dispatch here: a no-op-on-failure path
+      // keeps the bar in `active` if the harness rejects the pause,
+      // matching the old code's behaviour (it only cleared
+      // `preparing`, never set `paused`).
       await api.pauseLoop(projectId, boundLoopId ?? undefined);
-      setPreparing(false);
     } catch (err) { console.error("Failed to pause loop", err); }
   }, [projectId, boundLoopId]);
 
@@ -308,19 +329,19 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
     // Optimistically clear UI state so the Run button returns immediately even
     // if the HTTP round-trip is slow or ultimately fails. We reconcile against
     // the authoritative backend state below.
-    setActiveAgents([]);
-    setPaused(false);
-    setStarting(false);
-    setPreparing(false);
+    dispatch({ type: "stopRequested" });
     try {
       // Always scope Stop to the bound Loop instance. A
       // project-wide stop (boundLoopId === null) would also tear
       // down ephemeral task executors running concurrently in the
-      // same project — the regression Phase 2's per-instance
+      // same project -- the regression Phase 2's per-instance
       // registry was built to fix.
       const res = await api.stopLoop(projectId, boundLoopId ?? undefined);
-      setActiveAgents(res.active_agent_instances ?? []);
-      setPaused(Boolean(res.paused));
+      dispatch({
+        type: "statusFetched",
+        agents: res.active_agent_instances ?? [],
+        paused: Boolean(res.paused),
+      });
       fetchLoopStatus();
       // Also rehydrate the unified spinner store so any stale activity
       // row from the loop instance we just stopped is evicted on the
@@ -340,11 +361,17 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   }, [projectId, boundLoopId, fetchLoopStatus]);
 
   return {
-    status, agentCount: activeAgents.length,
-    canPlay: (!running && !paused && !starting) || paused,
-    canPause: running && !paused,
-    canStop: running || paused,
-    starting, preparing, confirmStop, setConfirmStop,
+    status,
+    agentCount,
+    canPlay: canPlayFn(state),
+    canPause: canPauseFn(state),
+    canStop: canStopFn(state),
+    // Legacy boolean projections retained for callers that haven't
+    // migrated to `status` yet (none currently rely on them, but the
+    // interface surface stays compatible).
+    starting: state.kind === "starting",
+    preparing: state.kind === "preparing",
+    confirmStop, setConfirmStop,
     handleStart, handlePause, handleStop, handleStopConfirm,
     stopError, clearStopError,
   };
