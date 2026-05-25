@@ -1,4 +1,4 @@
-﻿//! `POST /v1/projects/:id/tasks/:task_id/run-once` handler.
+//! `POST /v1/projects/:id/tasks/:task_id/run-once` handler.
 //!
 //! After the Stage 2 unification the run pipeline lives in
 //! [`super::super::run`]; this handler keeps the SingleTask-specific
@@ -12,8 +12,6 @@
 //! stream connect, session begin, forwarder spawn, registry insert)
 //! is delegated to [`super::super::run::run_automaton`].
 
-use std::time::Duration;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 
@@ -22,6 +20,7 @@ use aura_os_core::{AgentInstanceId, ProjectId, TaskId};
 use crate::error::{ApiError, ApiResult};
 use crate::state::{AppState, AuthJwt, AuthSession};
 
+use super::super::limits::{EPHEMERAL_REAPER_POLL, EPHEMERAL_REAPER_TTL};
 use super::super::run::{run_automaton, RunMode, RunRequest};
 use super::super::types::LoopQueryParams;
 use super::common::loop_user_id;
@@ -45,15 +44,8 @@ pub(crate) async fn run_single_task(
     // drops the registry entry on terminal status, and best-effort
     // teardown of the persisted `Executor` row happens in the
     // background after the run completes.
-    let template_instance = resolve_run_template(&state, project_id, &params).await?;
-    let template_instance_id = template_instance.agent_instance_id;
-    let ephemeral = state
-        .agent_instance_service
-        .spawn_ephemeral_executor(&project_id, &template_instance)
-        .await
-        .map_err(|e| ApiError::internal(format!("allocating ephemeral executor: {e}")))?;
-    let ephemeral_instance_id = ephemeral.agent_instance_id;
-
+    let (template_instance_id, ephemeral_instance_id) =
+        allocate_ephemeral_executor(&state, project_id, &params).await?;
     let req = RunRequest {
         loop_user_id: loop_user_id(&session),
         user_id: session.0.user_id.clone(),
@@ -65,7 +57,6 @@ pub(crate) async fn run_single_task(
         model: params.model,
         mode: RunMode::SingleTask { task_id },
     };
-
     // run::run_automaton owns the cleanup-on-failure for the
     // ephemeral row at the pre-refactor failure points
     // (resolve_start_context / validate_automaton_identity /
@@ -82,6 +73,26 @@ pub(crate) async fn run_single_task(
     // janitor sweep.
     spawn_ephemeral_executor_reaper(state, ephemeral_instance_id).await;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Resolve the template project-agent and spawn a fresh ephemeral
+/// executor row for an ad-hoc task run. Returns
+/// `(template_agent_instance_id, ephemeral_agent_instance_id)`.
+/// Carved out of [`run_single_task`] so its body stays inside the
+/// 50-line per-function budget. Side-effect ordering is preserved.
+async fn allocate_ephemeral_executor(
+    state: &AppState,
+    project_id: ProjectId,
+    params: &LoopQueryParams,
+) -> ApiResult<(AgentInstanceId, AgentInstanceId)> {
+    let template_instance = resolve_run_template(state, project_id, params).await?;
+    let template_instance_id = template_instance.agent_instance_id;
+    let ephemeral = state
+        .agent_instance_service
+        .spawn_ephemeral_executor(&project_id, &template_instance)
+        .await
+        .map_err(|e| ApiError::internal(format!("allocating ephemeral executor: {e}")))?;
+    Ok((template_instance_id, ephemeral.agent_instance_id))
 }
 
 /// Resolve the project-agent instance to use as the **template** for
@@ -130,12 +141,10 @@ async fn resolve_run_template(
 /// the row at worst becomes a stale catalogue entry that the next
 /// janitor pass can sweep.
 async fn spawn_ephemeral_executor_reaper(state: AppState, ephemeral_instance_id: AgentInstanceId) {
-    const TTL: Duration = Duration::from_secs(8 * 60 * 60);
-    const POLL: Duration = Duration::from_secs(15);
     tokio::spawn(async move {
         let started = std::time::Instant::now();
         loop {
-            tokio::time::sleep(POLL).await;
+            tokio::time::sleep(EPHEMERAL_REAPER_POLL).await;
             let still_present = state
                 .automaton_registry
                 .lock()
@@ -145,7 +154,7 @@ async fn spawn_ephemeral_executor_reaper(state: AppState, ephemeral_instance_id:
             if !still_present {
                 break;
             }
-            if started.elapsed() >= TTL {
+            if started.elapsed() >= EPHEMERAL_REAPER_TTL {
                 tracing::warn!(
                     %ephemeral_instance_id,
                     elapsed_secs = started.elapsed().as_secs(),

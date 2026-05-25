@@ -37,14 +37,27 @@ mod orphan_sweep_e2e_tests;
 /// `active_task_id` lets `run_single_task` tag the session with the
 /// task it was minted for. `start_loop` passes `None` (the loop picks
 /// up tasks dynamically via `task_started` events).
-pub(super) async fn begin_session(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    active_task_id: Option<TaskId>,
-    user_id: Option<String>,
-    model: Option<String>,
-) -> Option<SessionId> {
+/// Inputs for [`begin_session`]. Bundled to keep the helper under
+/// the project's five-parameter ceiling without altering the
+/// underlying [`CreateSessionParams`] wire shape.
+pub(super) struct SessionInputs<'a> {
+    pub(super) state: &'a AppState,
+    pub(super) project_id: ProjectId,
+    pub(super) agent_instance_id: AgentInstanceId,
+    pub(super) active_task_id: Option<TaskId>,
+    pub(super) user_id: Option<String>,
+    pub(super) model: Option<String>,
+}
+
+pub(super) async fn begin_session(inputs: SessionInputs<'_>) -> Option<SessionId> {
+    let SessionInputs {
+        state,
+        project_id,
+        agent_instance_id,
+        active_task_id,
+        user_id,
+        model,
+    } = inputs;
     let params = CreateSessionParams {
         agent_instance_id,
         project_id,
@@ -92,14 +105,26 @@ pub(super) async fn begin_session(
 /// synthetic `runner-N` payloads) are deliberately skipped at the
 /// boundary so the typed storage column never sees an unparseable
 /// id.
-pub(super) async fn record_task_worked(
-    state: &AppState,
-    jwt: Option<&str>,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    session_id: SessionId,
-    task_id_str: &str,
-) {
+/// Inputs for [`record_task_worked`]. Bundled to keep the helper
+/// under the project's five-parameter ceiling.
+pub(super) struct RecordTaskWorkedInputs<'a> {
+    pub(super) state: &'a AppState,
+    pub(super) jwt: Option<&'a str>,
+    pub(super) project_id: ProjectId,
+    pub(super) agent_instance_id: AgentInstanceId,
+    pub(super) session_id: SessionId,
+    pub(super) task_id_str: &'a str,
+}
+
+pub(super) async fn record_task_worked(inputs: RecordTaskWorkedInputs<'_>) {
+    let RecordTaskWorkedInputs {
+        state,
+        jwt,
+        project_id,
+        agent_instance_id,
+        session_id,
+        task_id_str,
+    } = inputs;
     let Ok(task_id) = TaskId::from_str(task_id_str) else {
         return;
     };

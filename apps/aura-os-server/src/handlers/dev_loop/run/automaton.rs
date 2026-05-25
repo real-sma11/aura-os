@@ -1,4 +1,4 @@
-﻿//! Step 3 of the run pipeline: start (or adopt) the harness
+//! Step 3 of the run pipeline: start (or adopt) the harness
 //! automaton, with mode-specific handling for the conflict /
 //! identity-guard / capacity branches.
 //!
@@ -23,7 +23,7 @@ use crate::handlers::agents::session_identity::{
     validate_automaton_identity, SessionIdentityRequirements,
 };
 
-use super::super::start::{build_start_params, map_start_error, start_or_adopt};
+use super::super::start::{build_start_params, map_start_error, start_or_adopt, StartParamsInputs};
 use super::super::types::StartedAutomaton;
 use super::context::{spawn_ephemeral_cleanup_if_single, RunContext};
 use super::request::{RunMode, RunRequest};
@@ -46,14 +46,14 @@ pub(super) async fn start_automaton(
     req: &RunRequest,
     prep: &RunContext,
 ) -> ApiResult<StartOutcome> {
-    let params = build_start_params(
-        &req.state,
-        &prep.start,
-        req.agent_instance_id,
-        Some(req.jwt.clone()),
-        Some(req.user_id.clone()),
-        prep.task_id_str.clone(),
-    )
+    let params = build_start_params(StartParamsInputs {
+        state: &req.state,
+        ctx: &prep.start,
+        agent_instance_id: req.agent_instance_id,
+        jwt: Some(req.jwt.clone()),
+        user_id: Some(req.user_id.clone()),
+        task_id: prep.task_id_str.clone(),
+    })
     .await;
 
     match req.mode {

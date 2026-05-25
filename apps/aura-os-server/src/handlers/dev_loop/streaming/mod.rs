@@ -41,27 +41,39 @@ pub(crate) fn emit_domain_event(
     agent_instance_id: AgentInstanceId,
     extra: serde_json::Value,
 ) {
-    emit_domain_event_with_session(
+    emit_domain_event_with_session(DomainEventInputs {
         state,
         event_type,
         project_id,
         agent_instance_id,
-        None,
+        session_id: None,
         extra,
-    );
+    });
+}
+
+/// Inputs for [`emit_domain_event_with_session`]. Bundled to keep
+/// the helper under the project's five-parameter ceiling.
+pub(crate) struct DomainEventInputs<'a> {
+    pub(crate) state: &'a AppState,
+    pub(crate) event_type: &'a str,
+    pub(crate) project_id: ProjectId,
+    pub(crate) agent_instance_id: AgentInstanceId,
+    pub(crate) session_id: Option<SessionId>,
+    pub(crate) extra: serde_json::Value,
 }
 
 /// Same as [`emit_domain_event`] but also stamps the routing
 /// `session_id` so subscribers filtering by session topic receive the
 /// loop event without having to peek into the JSON payload.
-pub(crate) fn emit_domain_event_with_session(
-    state: &AppState,
-    event_type: &str,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    session_id: Option<SessionId>,
-    extra: serde_json::Value,
-) {
+pub(crate) fn emit_domain_event_with_session(inputs: DomainEventInputs<'_>) {
+    let DomainEventInputs {
+        state,
+        event_type,
+        project_id,
+        agent_instance_id,
+        session_id,
+        extra,
+    } = inputs;
     let mut event = serde_json::json!({
         "type": event_type,
         "project_id": project_id.to_string(),
@@ -89,6 +101,19 @@ pub(crate) fn emit_domain_event_with_session(
         }));
 }
 
+/// Inputs for [`emit_log_line`]. Bundled to keep the helper
+/// under the project's five-parameter ceiling. `message` is owned
+/// rather than `impl Into<String>` so the inputs struct stays
+/// callable with a heap-allocated payload assembled at the call site.
+pub(crate) struct LogLineInputs<'a> {
+    pub(crate) state: &'a AppState,
+    pub(crate) project_id: ProjectId,
+    pub(crate) agent_instance_id: AgentInstanceId,
+    pub(crate) session_id: Option<SessionId>,
+    pub(crate) message: String,
+    pub(crate) extra: serde_json::Value,
+}
+
 /// Publish a `log_line` event onto both the legacy `event_broadcast`
 /// firehose and the topic-scoped event hub, so the SidekickLog panel
 /// gets a human-readable row even for activity that does not have
@@ -108,15 +133,16 @@ pub(crate) fn emit_domain_event_with_session(
 /// `message` field and the routing keys stamped by
 /// [`emit_domain_event_with_session`]) so a malformed `extra` cannot
 /// shadow the wire-critical fields.
-pub(crate) fn emit_log_line(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    session_id: Option<SessionId>,
-    message: impl Into<String>,
-    extra: serde_json::Value,
-) {
-    let mut payload = serde_json::json!({ "message": message.into() });
+pub(crate) fn emit_log_line(inputs: LogLineInputs<'_>) {
+    let LogLineInputs {
+        state,
+        project_id,
+        agent_instance_id,
+        session_id,
+        message,
+        extra,
+    } = inputs;
+    let mut payload = serde_json::json!({ "message": message });
     if let (Some(payload_obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object()) {
         for (key, value) in extra_obj {
             payload_obj
@@ -124,14 +150,14 @@ pub(crate) fn emit_log_line(
                 .or_insert_with(|| value.clone());
         }
     }
-    emit_domain_event_with_session(
+    emit_domain_event_with_session(DomainEventInputs {
         state,
-        "log_line",
+        event_type: "log_line",
         project_id,
         agent_instance_id,
         session_id,
-        payload,
-    );
+        extra: payload,
+    });
 }
 
 #[cfg(test)]

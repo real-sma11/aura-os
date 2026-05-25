@@ -1,5 +1,4 @@
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use aura_os_core::{AgentInstanceId, ProjectId};
 use aura_os_events::LoopKind;
@@ -7,28 +6,9 @@ use aura_os_events::LoopKind;
 use crate::dto::{ActiveLoopTask, LoopStatusResponse};
 use crate::state::AppState;
 
+use super::limits::FORWARDER_FRESHNESS_THRESHOLD;
 use super::streaming::current_millis;
 
-/// Maximum gap between consecutive harness events the forwarder is
-/// allowed to go silent for before the adopt-shortcut in
-/// [`super::adapter::start_loop::start_loop`] stops trusting the
-/// existing registry entry and forces a full forwarder + ws-reader
-/// rebuild.
-///
-/// Sized to comfortably absorb the longest legitimate idle window we
-/// expect on a healthy forwarder (heartbeat-class harness events,
-/// scheduler tick between tasks) while still catching the failure mode
-/// the user reported — a forwarder that registered `alive = true` but
-/// whose harness ws-reader is dead, so no events ever arrive and the
-/// UI sits frozen with the play-button ring spinning forever.
-///
-/// Two minutes is generous enough to avoid false positives on a
-/// loop genuinely waiting for the next `Ready` task; the cost of a
-/// false positive is a single forced restart of the forwarder (one
-/// new harness WS slot + one new `LoopOpened` event), which is
-/// strictly preferable to inheriting a wedged pipe that needs a
-/// full app + harness restart to clear.
-const FORWARDER_FRESHNESS_THRESHOLD: Duration = Duration::from_secs(120);
 
 pub(super) async fn set_paused(
     state: &AppState,
@@ -269,6 +249,35 @@ pub(super) async fn status_response(
     project_id: ProjectId,
     agent_instance_id: Option<AgentInstanceId>,
 ) -> LoopStatusResponse {
+    let (active, paused) = snapshot_active_and_paused(state, project_id).await;
+    // `current_task_id` lives on `LoopActivity` (Phase 5: LoopHandle is
+    // the single authoritative source). Walk the loop registry for
+    // every Automation / TaskRun loop bound to this project and pull
+    // the typed `TaskId` straight off the activity payload.
+    let active_tasks = collect_active_loop_tasks(state, project_id);
+    let running = !active.is_empty();
+    LoopStatusResponse {
+        running,
+        paused,
+        loop_state: Some(status_loop_state(running, paused).to_string()),
+        project_id: Some(project_id),
+        agent_instance_id,
+        active_agent_instances: Some(active),
+        cooldown_remaining_ms: None,
+        cooldown_reason: None,
+        cooldown_kind: None,
+        active_tasks: Some(active_tasks),
+    }
+}
+
+/// Collect every active agent-instance id for the project together
+/// with whether ANY automaton in the project is currently paused.
+/// Carved out of [`status_response`] so its body stays inside the
+/// 50-line per-function budget. Lock acquisition is identical.
+async fn snapshot_active_and_paused(
+    state: &AppState,
+    project_id: ProjectId,
+) -> (Vec<AgentInstanceId>, bool) {
     let reg = state.automaton_registry.lock().await;
     let active: Vec<AgentInstanceId> = reg
         .iter()
@@ -278,12 +287,15 @@ pub(super) async fn status_response(
     let paused = reg
         .iter()
         .any(|((pid, _), entry)| *pid == project_id && entry.paused);
-    drop(reg);
-    // `current_task_id` lives on `LoopActivity` (Phase 5: LoopHandle is
-    // the single authoritative source). Walk the loop registry for
-    // every Automation / TaskRun loop bound to this project and pull
-    // the typed `TaskId` straight off the activity payload.
-    let active_tasks = state
+    (active, paused)
+}
+
+/// Walk the loop registry for every `Automation`/`TaskRun` loop in
+/// the project and pull the typed `TaskId` off the activity payload.
+/// Carved out of [`status_response`] so its body stays inside the
+/// 50-line per-function budget.
+fn collect_active_loop_tasks(state: &AppState, project_id: ProjectId) -> Vec<ActiveLoopTask> {
+    state
         .loop_registry
         .snapshot_where(|loop_id| {
             loop_id.project_id == Some(project_id)
@@ -298,27 +310,16 @@ pub(super) async fn status_response(
                 agent_instance_id: agent_id,
             })
         })
-        .collect::<Vec<_>>();
-    let running = !active.is_empty();
-    LoopStatusResponse {
-        running,
-        paused,
-        loop_state: Some(
-            if paused {
-                "paused"
-            } else if running {
-                "running"
-            } else {
-                "finished"
-            }
-            .to_string(),
-        ),
-        project_id: Some(project_id),
-        agent_instance_id,
-        active_agent_instances: Some(active),
-        cooldown_remaining_ms: None,
-        cooldown_reason: None,
-        cooldown_kind: None,
-        active_tasks: Some(active_tasks),
+        .collect()
+}
+
+/// Translate (running, paused) into the wire `loop_state` label.
+fn status_loop_state(running: bool, paused: bool) -> &'static str {
+    if paused {
+        "paused"
+    } else if running {
+        "running"
+    } else {
+        "finished"
     }
 }

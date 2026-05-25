@@ -34,11 +34,9 @@ pub(crate) use failure::extract_task_failure_reason;
 pub(super) use log_lines::log_line_for_event;
 pub(crate) use task_output::seed_task_output;
 
-/// Per-task ceiling on auto-retry hops the dev-loop will issue from
-/// the `task_failed` arm before leaving the task in `Failed` for
-/// good. Mirrored against the persisted `tasks.attempts` column so
-/// the budget survives server restarts.
-pub(crate) const MAX_TASK_ATTEMPTS: u32 = 3;
+// Re-export the cross-cutting attempt budget defined in `dev_loop::limits` so
+// call sites in `retry.rs` can keep the short `super::MAX_TASK_ATTEMPTS` path.
+pub(super) use super::super::limits::MAX_TASK_ATTEMPTS;
 
 /// Bundle of context the side-effects pipeline needs for every
 /// event. Grouped into a struct so [`record_event_side_effects`] and
@@ -111,10 +109,7 @@ pub(super) async fn record_event_side_effects(
         };
     broadcast_event(ctx, broadcast_payload);
     log_lines::surface_log_lines_for_event(
-        ctx.state,
-        ctx.project_id,
-        ctx.agent_instance_id,
-        ctx.session_id,
+        ctx,
         effective_event_type,
         task_id.as_deref(),
         &event,

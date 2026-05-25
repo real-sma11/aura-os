@@ -1,4 +1,4 @@
-﻿//! Step 6 of the run pipeline: spawn the event forwarder, register
+//! Step 6 of the run pipeline: spawn the event forwarder, register
 //! the live automaton in `automaton_registry`, and emit the
 //! mode-specific lifecycle event.
 //!
@@ -39,7 +39,7 @@ use super::super::streaming::{
 use super::super::types::{ForwarderContext, LoopRetryState, StartedAutomaton};
 use super::context::RunContext;
 use super::request::{RunMode, RunRequest};
-use super::{LOOP_STREAM_TIMEOUT, TASK_STREAM_TIMEOUT};
+use super::super::limits::{LOOP_STREAM_TIMEOUT, TASK_STREAM_TIMEOUT};
 
 /// Per-automaton handles allocated post-`begin_session` and shared
 /// between the spawned forwarder and the registry entry.
@@ -49,57 +49,53 @@ struct HandleSet {
     last_forwarder_event_at: Arc<AtomicI64>,
 }
 
-pub(super) async fn register_active_automaton(
-    req: &RunRequest,
-    prep: &RunContext,
-    started: &StartedAutomaton,
-    events_tx: broadcast::Sender<serde_json::Value>,
-    ws_reader_handle: WsReaderHandle,
-    session_id: Option<SessionId>,
-) {
-    match req.mode {
-        RunMode::Automation => {
-            register_automation(req, prep, started, events_tx, ws_reader_handle, session_id).await
-        }
-        RunMode::SingleTask { task_id } => {
-            register_single_task(
-                req,
-                prep,
-                started,
-                events_tx,
-                ws_reader_handle,
-                session_id,
-                task_id,
-            )
-            .await
-        }
+/// Bundled inputs for the post-`begin_session` register helpers. The
+/// forwarder spawn + registry insert legitimately needs the full
+/// pipeline context (request, prep, started automaton, broadcast
+/// channels, ws-reader handle, session id) so we group them once at
+/// the entry point and thread the bundle through the mode-specific
+/// branches instead of repeating six-arg signatures three times.
+pub(super) struct RegisterInputs<'a> {
+    pub(super) req: &'a RunRequest,
+    pub(super) prep: &'a RunContext,
+    pub(super) started: &'a StartedAutomaton,
+    pub(super) events_tx: broadcast::Sender<serde_json::Value>,
+    pub(super) ws_reader_handle: WsReaderHandle,
+    pub(super) session_id: Option<SessionId>,
+}
+
+pub(super) async fn register_active_automaton(inputs: RegisterInputs<'_>) {
+    match inputs.req.mode {
+        RunMode::Automation => register_automation(inputs).await,
+        RunMode::SingleTask { task_id } => register_single_task(inputs, task_id).await,
     }
 }
 
-async fn register_automation(
-    req: &RunRequest,
-    prep: &RunContext,
-    started: &StartedAutomaton,
-    events_tx: broadcast::Sender<serde_json::Value>,
-    ws_reader_handle: WsReaderHandle,
-    session_id: Option<SessionId>,
-) {
+async fn register_automation(inputs: RegisterInputs<'_>) {
+    let RegisterInputs {
+        req,
+        prep,
+        started,
+        events_tx,
+        ws_reader_handle,
+        session_id,
+    } = inputs;
     let handles = forge_handles(req, prep, LoopKind::Automation);
     req.state
         .loop_log
         .on_loop_started(req.project_id, req.agent_instance_id)
         .await;
-    finalize_registration(
+    finalize_registration(FinalizeInputs {
         req,
         prep,
         started,
-        &handles,
+        handles: &handles,
         events_tx,
         ws_reader_handle,
         session_id,
-        None,
-        LOOP_STREAM_TIMEOUT,
-    )
+        task_id: None,
+        timeout: LOOP_STREAM_TIMEOUT,
+    })
     .await;
     emit_domain_event(
         &req.state,
@@ -113,19 +109,51 @@ async fn register_automation(
     );
 }
 
-async fn register_single_task(
-    req: &RunRequest,
-    prep: &RunContext,
-    started: &StartedAutomaton,
-    events_tx: broadcast::Sender<serde_json::Value>,
-    ws_reader_handle: WsReaderHandle,
-    session_id: Option<SessionId>,
-    task_id: TaskId,
-) {
+async fn register_single_task(inputs: RegisterInputs<'_>, task_id: TaskId) {
+    let RegisterInputs {
+        req,
+        prep,
+        started,
+        events_tx,
+        ws_reader_handle,
+        session_id,
+    } = inputs;
     let task_id_str = prep
         .task_id_str
         .clone()
         .expect("SingleTask context always populates task_id_str");
+    seed_single_task_loop_state(req, session_id, &task_id_str, task_id).await;
+    let handles = forge_handles(req, prep, LoopKind::TaskRun);
+    handles.loop_handle.set_current_task(Some(task_id)).await;
+    finalize_registration(FinalizeInputs {
+        req,
+        prep,
+        started,
+        handles: &handles,
+        events_tx,
+        ws_reader_handle,
+        session_id,
+        task_id: Some(task_id_str),
+        timeout: TASK_STREAM_TIMEOUT,
+    })
+    .await;
+    // No `replace_registry_entry`: the ephemeral id is freshly
+    // minted, there is nothing to displace, and concurrent task
+    // runs are explicitly allowed to coexist under different
+    // ephemeral ids in the registry.
+}
+
+/// Record the loop/task start in the run log, seed the task output
+/// row, and emit the `task_started` domain event for a single-task
+/// run. Carved out of [`register_single_task`] so the body stays
+/// inside the 50-line per-function budget. Side-effect ordering is
+/// preserved verbatim.
+async fn seed_single_task_loop_state(
+    req: &RunRequest,
+    session_id: Option<SessionId>,
+    task_id_str: &str,
+    task_id: TaskId,
+) {
     req.state
         .loop_log
         .on_loop_started(req.project_id, req.agent_instance_id)
@@ -139,7 +167,7 @@ async fn register_single_task(
         req.project_id,
         req.agent_instance_id,
         session_id,
-        &task_id_str,
+        task_id_str,
     )
     .await;
     emit_domain_event(
@@ -153,24 +181,6 @@ async fn register_single_task(
             "ephemeral": true,
         }),
     );
-    let handles = forge_handles(req, prep, LoopKind::TaskRun);
-    handles.loop_handle.set_current_task(Some(task_id)).await;
-    finalize_registration(
-        req,
-        prep,
-        started,
-        &handles,
-        events_tx,
-        ws_reader_handle,
-        session_id,
-        Some(task_id_str),
-        TASK_STREAM_TIMEOUT,
-    )
-    .await;
-    // No `replace_registry_entry`: the ephemeral id is freshly
-    // minted, there is nothing to displace, and concurrent task
-    // runs are explicitly allowed to coexist under different
-    // ephemeral ids in the registry.
 }
 
 /// Allocate the per-automaton `Arc` bookkeeping shared between the
@@ -195,18 +205,34 @@ fn forge_handles(req: &RunRequest, prep: &RunContext, kind: LoopKind) -> HandleS
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn finalize_registration(
-    req: &RunRequest,
-    prep: &RunContext,
-    started: &StartedAutomaton,
-    handles: &HandleSet,
+/// Bundled inputs for [`finalize_registration`]. The forwarder + registry
+/// insert legitimately needs a wide bag of fields (events / ws-reader / session
+/// / task / timeout) so we group them here instead of widening the function
+/// signature past the project's five-parameter ceiling.
+struct FinalizeInputs<'a> {
+    req: &'a RunRequest,
+    prep: &'a RunContext,
+    started: &'a StartedAutomaton,
+    handles: &'a HandleSet,
     events_tx: broadcast::Sender<serde_json::Value>,
     ws_reader_handle: WsReaderHandle,
     session_id: Option<SessionId>,
     task_id: Option<String>,
     timeout: Duration,
-) {
+}
+
+async fn finalize_registration(inputs: FinalizeInputs<'_>) {
+    let FinalizeInputs {
+        req,
+        prep,
+        started,
+        handles,
+        events_tx,
+        ws_reader_handle,
+        session_id,
+        task_id,
+        timeout,
+    } = inputs;
     let forwarder = spawn_event_forwarder(ForwarderContext {
         state: req.state.clone(),
         project_id: req.project_id,

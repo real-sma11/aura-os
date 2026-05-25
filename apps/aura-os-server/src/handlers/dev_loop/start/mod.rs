@@ -16,7 +16,7 @@ use crate::state::AppState;
 
 use super::types::StartContext;
 
-pub(super) use params::build_start_params;
+pub(super) use params::{build_start_params, StartParamsInputs};
 pub(super) use start_or_adopt::{map_start_error, start_or_adopt};
 
 pub(super) async fn resolve_start_context(
@@ -27,45 +27,25 @@ pub(super) async fn resolve_start_context(
     requested_model: Option<String>,
 ) -> ApiResult<StartContext> {
     let project = state.project_service.get_project(&project_id).ok();
-    let agent_instance = state
-        .agent_instance_service
-        .get_instance(&project_id, &agent_instance_id)
-        .await
-        .map_err(|e| match e {
-            aura_os_agents::AgentError::NotFound => {
-                ApiError::not_found(format!("agent instance {agent_instance_id} not found"))
-            }
-            other => ApiError::internal(format!("looking up agent instance: {other}")),
-        })?;
+    let agent_instance = load_agent_instance(state, &project_id, &agent_instance_id).await?;
     let mode = agent_instance.harness_mode();
     let client = automaton_client_for_mode(state, mode, &agent_instance.agent_id.to_string(), jwt)?;
-    let workspace_root = resolve_workspace(
+    let workspace_root = resolve_workspace(ResolveWorkspaceInputs {
         state,
-        &client,
+        client: &client,
         mode,
         project_id,
-        project.as_ref(),
+        project: project.as_ref(),
         agent_instance_id,
-    )
+    })
     .await?;
     preflight_local_workspace(
         mode,
         &workspace_root,
         params::resolve_git_repo_url(project.as_ref()).as_deref(),
     )?;
-    let model = requested_model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .or_else(|| agent_instance.default_model.clone())
-        .or_else(|| agent_instance.model.clone());
-    let permissions = agent_instance
-        .permissions
-        .clone()
-        .normalized_for_identity(&agent_instance.name, Some(agent_instance.role.as_str()))
-        .with_project_self_caps(&project_id.to_string())
-        .with_dev_loop_execution_caps();
+    let model = pick_model(requested_model, &agent_instance);
+    let permissions = normalize_permissions(&agent_instance, &project_id);
     Ok(StartContext {
         client,
         project_id,
@@ -78,6 +58,59 @@ pub(super) async fn resolve_start_context(
         intent_classifier: agent_instance.intent_classifier,
         permissions,
     })
+}
+
+/// Look up the agent instance, mapping `AgentError::NotFound` to a
+/// 404 `ApiError`. Carved out of [`resolve_start_context`] so its body
+/// stays inside the 50-line per-function budget.
+async fn load_agent_instance(
+    state: &AppState,
+    project_id: &ProjectId,
+    agent_instance_id: &AgentInstanceId,
+) -> ApiResult<aura_os_core::AgentInstance> {
+    state
+        .agent_instance_service
+        .get_instance(project_id, agent_instance_id)
+        .await
+        .map_err(|e| match e {
+            aura_os_agents::AgentError::NotFound => {
+                ApiError::not_found(format!("agent instance {agent_instance_id} not found"))
+            }
+            other => ApiError::internal(format!("looking up agent instance: {other}")),
+        })
+}
+
+/// Pick the effective model for the start request: an explicit request
+/// trims-and-wins, then `default_model`, then `model`. Carved out of
+/// [`resolve_start_context`] so its body stays inside the 50-line
+/// per-function budget.
+fn pick_model(
+    requested_model: Option<String>,
+    agent_instance: &aura_os_core::AgentInstance,
+) -> Option<String> {
+    requested_model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| agent_instance.default_model.clone())
+        .or_else(|| agent_instance.model.clone())
+}
+
+/// Normalize the agent instance's permissions for dev-loop execution.
+/// Carved out of [`resolve_start_context`] so its body stays inside the
+/// 50-line per-function budget. Mirrors the previous inline chain
+/// verbatim.
+fn normalize_permissions(
+    agent_instance: &aura_os_core::AgentInstance,
+    project_id: &ProjectId,
+) -> aura_os_core::AgentPermissions {
+    agent_instance
+        .permissions
+        .clone()
+        .normalized_for_identity(&agent_instance.name, Some(agent_instance.role.as_str()))
+        .with_project_self_caps(&project_id.to_string())
+        .with_dev_loop_execution_caps()
 }
 
 fn automaton_client_for_mode(
@@ -105,14 +138,26 @@ fn automaton_client_for_mode(
     }
 }
 
-async fn resolve_workspace(
-    state: &AppState,
-    client: &AutomatonClient,
+/// Inputs for [`resolve_workspace`]. Bundled so the helper signature
+/// stays inside the project's five-parameter ceiling.
+struct ResolveWorkspaceInputs<'a> {
+    state: &'a AppState,
+    client: &'a AutomatonClient,
     mode: HarnessMode,
     project_id: ProjectId,
-    project: Option<&Project>,
+    project: Option<&'a Project>,
     agent_instance_id: AgentInstanceId,
-) -> ApiResult<String> {
+}
+
+async fn resolve_workspace(inputs: ResolveWorkspaceInputs<'_>) -> ApiResult<String> {
+    let ResolveWorkspaceInputs {
+        state,
+        client,
+        mode,
+        project_id,
+        project,
+        agent_instance_id,
+    } = inputs;
     if mode == HarnessMode::Swarm {
         let name = project.map(|p| p.name.as_str()).unwrap_or("");
         if let Ok(path) = client.resolve_workspace(name).await {

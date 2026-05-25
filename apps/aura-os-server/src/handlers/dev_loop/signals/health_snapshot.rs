@@ -35,13 +35,10 @@
 //!   clean".
 
 use std::process::Command;
-use std::time::Duration;
 
 use super::super::health::{parse_cargo_check_json_output, WorkspaceHealth};
 
-/// Hard wall-clock cap for the workspace-health snapshot, sized for a
-/// cold-cache `task_started` run.
-pub(crate) const HEALTH_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(120);
+use super::super::limits::HEALTH_SNAPSHOT_TIMEOUT;
 
 /// Capture the workspace's build health asynchronously.
 ///

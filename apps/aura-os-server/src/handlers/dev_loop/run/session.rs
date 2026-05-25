@@ -1,4 +1,4 @@
-﻿//! Step 5 of the run pipeline: materialise (or reuse) the storage
+//! Step 5 of the run pipeline: materialise (or reuse) the storage
 //! `Session` row this run will be billed against.
 //!
 //! [`super::request::RunMode::Automation`] prefers the session
@@ -17,7 +17,7 @@
 
 use aura_os_core::SessionId;
 
-use super::super::session::{begin_session, existing_session_id};
+use super::super::session::{begin_session, existing_session_id, SessionInputs};
 use super::context::RunContext;
 use super::request::{RunMode, RunRequest};
 
@@ -43,14 +43,14 @@ pub(super) async fn materialize_run_session(
             {
                 return Some(existing);
             }
-            begin_session(
-                &req.state,
-                req.project_id,
-                req.agent_instance_id,
-                None,
-                Some(req.user_id.clone()),
-                prep.start.model.clone(),
-            )
+            begin_session(SessionInputs {
+                state: &req.state,
+                project_id: req.project_id,
+                agent_instance_id: req.agent_instance_id,
+                active_task_id: None,
+                user_id: Some(req.user_id.clone()),
+                model: prep.start.model.clone(),
+            })
             .await
         }
         RunMode::SingleTask { task_id } => {
@@ -59,14 +59,14 @@ pub(super) async fn materialize_run_session(
             // - there's nothing to adopt. Tagging it with
             // `active_task_id` lets the storage backend correlate
             // the session with the task it was minted for.
-            begin_session(
-                &req.state,
-                req.project_id,
-                req.agent_instance_id,
-                Some(task_id),
-                Some(req.user_id.clone()),
-                prep.start.model.clone(),
-            )
+            begin_session(SessionInputs {
+                state: &req.state,
+                project_id: req.project_id,
+                agent_instance_id: req.agent_instance_id,
+                active_task_id: Some(task_id),
+                user_id: Some(req.user_id.clone()),
+                model: prep.start.model.clone(),
+            })
             .await
         }
     }

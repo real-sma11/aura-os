@@ -11,7 +11,7 @@ use std::str::FromStr;
 use aura_os_core::TaskId;
 
 use super::common::{event_text, set_current_task};
-use super::super::super::session::record_task_worked;
+use super::super::super::session::{record_task_worked, RecordTaskWorkedInputs};
 use super::super::super::signals::snapshot_workspace_health;
 use super::{failure, files, git, retry, task_output, SideEffectCtx};
 use crate::handlers::projects_helpers::resolve_agent_instance_workspace_path;
@@ -61,14 +61,14 @@ async fn task_started(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
     .await;
     set_current_task(ctx.loop_handle, Some(task_id.to_string())).await;
     if let Some(session_id) = ctx.session_id {
-        record_task_worked(
-            ctx.state,
-            ctx.jwt,
-            ctx.project_id,
-            ctx.agent_instance_id,
+        record_task_worked(RecordTaskWorkedInputs {
+            state: ctx.state,
+            jwt: ctx.jwt,
+            project_id: ctx.project_id,
+            agent_instance_id: ctx.agent_instance_id,
             session_id,
-            task_id,
-        )
+            task_id_str: task_id,
+        })
         .await;
     }
     spawn_health_baseline_snapshot(ctx, task_id).await;
@@ -135,16 +135,7 @@ async fn task_failed(
     };
     failure::persist_task_failure_reason(ctx.state, jwt, task_id, event).await;
     task_output::persist_cached_task_output(ctx.state, ctx.project_id, jwt, task_id).await;
-    retry::maybe_apply_task_level_retry(
-        ctx.state,
-        jwt,
-        task_id,
-        event,
-        ctx.project_id,
-        ctx.agent_instance_id,
-        ctx.session_id,
-    )
-    .await;
+    retry::maybe_apply_task_level_retry(ctx, task_id, event).await;
 }
 
 /// `tool_call_completed`: record test-pass evidence (so a completion

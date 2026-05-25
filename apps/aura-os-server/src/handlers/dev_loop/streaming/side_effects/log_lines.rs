@@ -7,11 +7,8 @@
 //! in `interface/src/hooks/use-log-stream.ts`) and the persistence
 //! allowlist (`crate::persistence::LOG_WORTHY_TYPES`) both rely on.
 
-use aura_os_core::{AgentInstanceId, ProjectId, SessionId};
-
-use super::super::emit_log_line;
+use super::super::{emit_log_line, LogLineInputs};
 use crate::log_throttle::{self, LogThrottleKey};
-use crate::state::AppState;
 
 /// Surface free-text `log_line` rows for engine events that the
 /// SidekickLog panel's subscription set (`ALL_ENGINE_EVENT_TYPES` in
@@ -30,10 +27,7 @@ use crate::state::AppState;
 /// process-wide [`crate::log_throttle`] singleton so a single fast
 /// turn cannot drown the panel.
 pub(super) fn surface_log_lines_for_event(
-    state: &AppState,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    session_id: Option<SessionId>,
+    ctx: &super::SideEffectCtx<'_>,
     event_type: &str,
     task_id: Option<&str>,
     event: &serde_json::Value,
@@ -43,8 +37,8 @@ pub(super) fn surface_log_lines_for_event(
     };
     if let Some(channel) = throttle_channel_for(event_type) {
         let key = LogThrottleKey::new(
-            project_id.to_string(),
-            agent_instance_id.to_string(),
+            ctx.project_id.to_string(),
+            ctx.agent_instance_id.to_string(),
             channel,
         );
         if !log_throttle::should_emit(key) {
@@ -55,14 +49,14 @@ pub(super) fn surface_log_lines_for_event(
         || serde_json::json!({}),
         |task_id| serde_json::json!({ "task_id": task_id }),
     );
-    emit_log_line(
-        state,
-        project_id,
-        agent_instance_id,
-        session_id,
+    emit_log_line(LogLineInputs {
+        state: ctx.state,
+        project_id: ctx.project_id,
+        agent_instance_id: ctx.agent_instance_id,
+        session_id: ctx.session_id,
         message,
         extra,
-    );
+    });
 }
 
 /// Pure mapping from an engine event into the optional `log_line`

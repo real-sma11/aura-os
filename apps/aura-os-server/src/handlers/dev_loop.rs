@@ -4,6 +4,7 @@ mod control;
 mod event_kinds;
 #[allow(dead_code)]
 pub(crate) mod health;
+mod limits;
 mod progress;
 mod registry;
 mod run;

@@ -1,4 +1,4 @@
-﻿//! Shared bootstrap pipeline for the long-lived dev-loop and
+//! Shared bootstrap pipeline for the long-lived dev-loop and
 //! single-task automaton runs.
 //!
 //! Both `start_loop` and `run_single_task` previously duplicated the
@@ -17,8 +17,6 @@ mod request;
 mod session;
 mod stream;
 
-use std::time::Duration;
-
 use axum::http::StatusCode;
 use tokio::sync::broadcast;
 
@@ -32,7 +30,7 @@ pub(super) use request::{RunMode, RunRequest};
 
 use automaton::{start_automaton, StartOutcome};
 use context::{prepare_run_context, RunContext};
-use register::register_active_automaton;
+use register::{register_active_automaton, RegisterInputs};
 use session::materialize_run_session;
 use stream::connect_automaton_stream;
 
@@ -41,12 +39,7 @@ use super::session::recover_orphan_tasks;
 use super::streaming::emit_domain_event;
 use super::types::StartedAutomaton;
 
-/// Forwarder timeout for [`RunMode::Automation`] - long-lived
-/// dev-loops.
-pub(super) const LOOP_STREAM_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
-/// Forwarder timeout for [`RunMode::SingleTask`] - short-lived
-/// single-task runs.
-pub(super) const TASK_STREAM_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
+
 
 /// Outcome of a run dispatch. Adapter handlers map this onto the
 /// HTTP shape their endpoint requires.
@@ -103,14 +96,14 @@ pub(super) async fn run_automaton(req: RunRequest) -> ApiResult<RunOutcome> {
         RunMode::SingleTask { .. } => bootstrap_single_task(&req, &prep, &started).await?,
     };
 
-    register_active_automaton(
-        &req,
-        &prep,
-        &started,
+    register_active_automaton(RegisterInputs {
+        req: &req,
+        prep: &prep,
+        started: &started,
         events_tx,
         ws_reader_handle,
         session_id,
-    )
+    })
     .await;
 
     Ok(match req.mode {

@@ -66,49 +66,85 @@ fn classify_reason(reason: &str) -> HarnessFailureKind {
 /// task back to `Ready` in a single `update_task` call before the
 /// `safe_transition` so the next attempt observes the incremented
 /// counter even if the transition itself races with another reader.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn maybe_apply_task_level_retry(
-    state: &AppState,
-    jwt: &str,
+    ctx: &super::SideEffectCtx<'_>,
     task_id: &str,
     event: &serde_json::Value,
-    project_id: ProjectId,
-    agent_instance_id: AgentInstanceId,
-    session_id: Option<SessionId>,
 ) {
-    let Some(storage) = state.storage_client.as_ref() else {
+    let Some(jwt) = ctx.jwt else {
+        return;
+    };
+    let Some(storage) = ctx.state.storage_client.as_ref() else {
         return;
     };
     let reason = resolve_failure_reason_for_persistence(event);
     let kind = classify_reason(&reason);
-    // Fast path: kinds that are terminal at every attempt index
-    // (AgentStuck, InsufficientCredits, Other) short-circuit before
-    // the storage round-trip — they will never become retryable on
-    // a higher attempt count, so we don't need to read `attempts`
-    // to make that decision.
     if !kind.is_retryable() {
         return;
     }
-    // Read the persisted attempt count. If the storage call fails
-    // we conservatively leave the task in `Failed` rather than
-    // double-spending the budget on a count we can't verify.
-    let task = match storage.get_task(task_id, jwt).await {
-        Ok(storage_task) => storage_task,
+    let Some(prior_attempts) = read_prior_attempts(storage, task_id, jwt).await else {
+        return;
+    };
+    let action = kind.retry_action(prior_attempts);
+    if !attempt_budget_allows_retry(task_id, prior_attempts, kind, action) {
+        return;
+    }
+    if !push_task_back_to_ready(storage, jwt, task_id, prior_attempts).await {
+        return;
+    }
+    let next_attempts = prior_attempts.saturating_add(1);
+    info!(
+        %task_id,
+        attempt = next_attempts,
+        budget = MAX_TASK_ATTEMPTS,
+        ?kind,
+        ?action,
+        "task-level retry: pushed task from Failed back to Ready"
+    );
+    emit_task_retrying_signal(TaskRetryingPayload {
+        state: ctx.state,
+        project_id: ctx.project_id,
+        agent_instance_id: ctx.agent_instance_id,
+        task_id,
+        attempt: next_attempts,
+        budget: MAX_TASK_ATTEMPTS,
+        reason: &reason,
+        action,
+        session_id: ctx.session_id,
+    });
+}
+
+/// Read the persisted attempt count for `task_id`. Returns `None` if
+/// the storage call fails - we conservatively leave the task in
+/// `Failed` rather than double-spending the budget on a count we
+/// can't verify.
+async fn read_prior_attempts(
+    storage: &aura_os_storage::StorageClient,
+    task_id: &str,
+    jwt: &str,
+) -> Option<u32> {
+    match storage.get_task(task_id, jwt).await {
+        Ok(storage_task) => Some(storage_task.attempts.unwrap_or(0)),
         Err(error) => {
             warn!(
                 %task_id,
                 %error,
                 "task-level retry: get_task failed; leaving task in Failed"
             );
-            return;
+            None
         }
-    };
-    let prior_attempts = task.attempts.unwrap_or(0);
-    // Attempt-aware policy: ResearchLoopAbort / Truncation /
-    // CompletionContract go Retry → RetryWithDecomposition → Terminal
-    // across attempts 0/1/2, instead of looping the same fresh-context
-    // retry indefinitely. See `HarnessFailureKind::retry_action`.
-    let action = kind.retry_action(prior_attempts);
+    }
+}
+
+/// Gate the retry on the attempt-aware policy + the persisted-budget
+/// ceiling. Returns `true` when the retry should proceed, `false`
+/// (with an `info!` log) when the task must stay in `Failed`.
+fn attempt_budget_allows_retry(
+    task_id: &str,
+    prior_attempts: u32,
+    kind: HarnessFailureKind,
+    action: RetryAction,
+) -> bool {
     if matches!(action, RetryAction::Terminal) {
         info!(
             %task_id,
@@ -117,7 +153,7 @@ pub(super) async fn maybe_apply_task_level_retry(
             "task-level retry: per-kind escalation ladder is terminal at this \
              attempt index; leaving task in Failed"
         );
-        return;
+        return false;
     }
     if prior_attempts >= MAX_TASK_ATTEMPTS {
         info!(
@@ -126,8 +162,20 @@ pub(super) async fn maybe_apply_task_level_retry(
             budget = MAX_TASK_ATTEMPTS,
             "task-level retry: attempt budget exhausted; leaving task in Failed"
         );
-        return;
+        return false;
     }
+    true
+}
+
+/// Bump the persisted `tasks.attempts` counter and transition the
+/// row back to `Ready`. Returns `false` (with a `warn!` log) on
+/// either storage failure so the caller leaves the task in `Failed`.
+async fn push_task_back_to_ready(
+    storage: &aura_os_storage::StorageClient,
+    jwt: &str,
+    task_id: &str,
+    prior_attempts: u32,
+) -> bool {
     let next_attempts = prior_attempts.saturating_add(1);
     let update = aura_os_storage::UpdateTaskRequest {
         attempts: Some(next_attempts),
@@ -139,7 +187,7 @@ pub(super) async fn maybe_apply_task_level_retry(
             %error,
             "task-level retry: update_task(attempts) failed; leaving task in Failed"
         );
-        return;
+        return false;
     }
     if let Err(error) =
         aura_os_tasks::safe_transition(storage, jwt, task_id, TaskStatus::Ready).await
@@ -150,27 +198,9 @@ pub(super) async fn maybe_apply_task_level_retry(
             "task-level retry: safe_transition(Failed -> Ready) failed after bumping attempts; \
              leaving task in Failed"
         );
-        return;
+        return false;
     }
-    info!(
-        %task_id,
-        attempt = next_attempts,
-        budget = MAX_TASK_ATTEMPTS,
-        ?kind,
-        ?action,
-        "task-level retry: pushed task from Failed back to Ready"
-    );
-    emit_task_retrying_signal(
-        state,
-        project_id,
-        agent_instance_id,
-        task_id,
-        next_attempts,
-        MAX_TASK_ATTEMPTS,
-        &reason,
-        action,
-        session_id,
-    );
+    true
 }
 
 /// Emit a `task_retrying` event onto both the legacy
@@ -184,18 +214,32 @@ pub(super) async fn maybe_apply_task_level_retry(
 /// downstream consumers — in particular the `aura-harness` Phase 5
 /// splitter — can branch on `retry` vs `retry_with_decomposition`
 /// without re-classifying the failure reason themselves.
-#[allow(clippy::too_many_arguments)]
-fn emit_task_retrying_signal(
-    state: &AppState,
+/// Payload for [`emit_task_retrying_signal`]. Bundled so the helper
+/// signature stays inside the project's five-parameter ceiling.
+struct TaskRetryingPayload<'a> {
+    state: &'a AppState,
     project_id: ProjectId,
     agent_instance_id: AgentInstanceId,
-    task_id: &str,
+    task_id: &'a str,
     attempt: u32,
     budget: u32,
-    reason: &str,
+    reason: &'a str,
     action: RetryAction,
     session_id: Option<SessionId>,
-) {
+}
+
+fn emit_task_retrying_signal(payload_in: TaskRetryingPayload<'_>) {
+    let TaskRetryingPayload {
+        state,
+        project_id,
+        agent_instance_id,
+        task_id,
+        attempt,
+        budget,
+        reason,
+        action,
+        session_id,
+    } = payload_in;
     let mut payload = serde_json::json!({
         "type": "task_retrying",
         "task_id": task_id,

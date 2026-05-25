@@ -1,4 +1,4 @@
-﻿//! Step 4 of the run pipeline: connect the harness event stream
+//! Step 4 of the run pipeline: connect the harness event stream
 //! and route the upstream WS-slot capacity 503 onto the structured
 //! `harness_capacity_exhausted` envelope.
 //!
@@ -11,6 +11,8 @@
 use tokio::sync::broadcast;
 
 use aura_os_harness::{connect_with_retries, WsReaderHandle};
+
+use super::super::limits::HARNESS_CONNECT_RETRIES;
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::agents::chat::errors::map_harness_error_to_api;
@@ -28,7 +30,7 @@ pub(super) async fn connect_automaton_stream(
         &prep.start.client,
         &started.automaton_id,
         started.event_stream_url.as_deref(),
-        2,
+        HARNESS_CONNECT_RETRIES,
     )
     .await
     .map_err(|e| {
