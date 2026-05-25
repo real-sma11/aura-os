@@ -10,6 +10,7 @@ import { extractErrorMessage } from "../../shared/utils/extract-error-message";
 import { useTaskOutput } from "../../stores/event-store/index";
 import { MessageBubble, LLMOutput } from "../ChatOutput";
 import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
+import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
 import { buildTaskCopyText } from "./task-copy-utils";
 import styles from "./TaskOutputPanel.module.css";
 
@@ -152,6 +153,7 @@ export function CompletedTaskOutput({
           <span className={styles.taskTitle}>{title || taskId}</span>
           <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
           <CopyTaskOutputButton getCopyText={getCopyText} />
+          <TaskHeaderContextUsage taskId={taskId} />
           {showDismiss && (
             <span
               role="button"

@@ -309,6 +309,27 @@
   margin-left: 0;
 }
 
+/* Per-task context-usage pill (mirrors ContextUsageIndicator in the
+   chat input bar). Always-visible status indicator like the status
+   badge — not a fade-on-hover action like copy / dismiss. flex-shrink
+   keeps the pill at its natural width so a long task title truncates
+   first, and `margin-left: auto` mirrors the copyBtn rule so the
+   widget hugs the right edge when copy is hidden (showHeader=false
+   embedding contexts). When the pill sits between copy and dismiss in
+   the Run pane's completed row, the adjacent dismiss button drops its
+   own `margin-left: auto` so the three controls pack flush. */
+.headerContextUsage {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.copyBtn + .headerContextUsage,
+.headerContextUsage + .dismissBtn {
+  margin-left: 0;
+}
+
 .taskHeader:hover .dismissBtn,
 .taskHeader:hover .copyBtn {
   opacity: 1;

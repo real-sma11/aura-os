@@ -21,6 +21,7 @@ import {
 import { useProjectActions } from "../../stores/project-action-store";
 import { useTaskOutput } from "../../stores/event-store/index";
 import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
+import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
 import { buildTaskCopyText } from "./task-copy-utils";
 import styles from "./TaskOutputPanel.module.css";
 
@@ -144,6 +145,7 @@ export function ActiveTaskStream({
           </span>
           <span className={styles.taskDot} />
           <span className={styles.taskTitle}>{title || taskId}</span>
+          <TaskHeaderContextUsage taskId={taskId} />
           <CopyTaskOutputButton getCopyText={getCopyText} />
         </button>
       )}

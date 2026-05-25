@@ -43,6 +43,7 @@ import {
 } from "./task-stream-bootstrap";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
 import { useTaskStatusStore } from "./task-status-store";
+import { useContextUsageStore } from "./context-usage-store";
 
 function resetStreamStore(): void {
   useStreamStore.setState({ entries: {} });
@@ -65,6 +66,11 @@ beforeEach(() => {
   useEventStore.setState({ taskOutputs: {} });
   useTaskOutputPanelStore.setState({ tasks: [] });
   useTaskStatusStore.getState().reset();
+  useContextUsageStore.setState({
+    usageByStreamKey: {},
+    utilPerTokenByStreamKey: {},
+    resetPendingByStreamKey: {},
+  });
   bootstrapTaskStreamSubscriptions();
 });
 
@@ -74,6 +80,11 @@ afterEach(() => {
   resetStreamStore();
   useTaskOutputPanelStore.setState({ tasks: [] });
   useTaskStatusStore.getState().reset();
+  useContextUsageStore.setState({
+    usageByStreamKey: {},
+    utilPerTokenByStreamKey: {},
+    resetPendingByStreamKey: {},
+  });
 });
 
 describe("task-stream-bootstrap: handleTaskFailed reason extraction", () => {
@@ -450,5 +461,106 @@ describe("task-stream-bootstrap: per-task status store wiring", () => {
     const live = useTaskStatusStore.getState().byTaskId["t1"];
     expect(live!.liveStatus).toBe("failed");
     expect(live!.liveFailReason).toBe("earlier real reason");
+  });
+});
+
+describe("task-stream-bootstrap: context-usage wiring", () => {
+  it("stores per-task context utilization on AssistantMessageEnd", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.AssistantMessageEnd,
+      content: {
+        task_id: "t1",
+        message_id: "msg_1",
+        stop_reason: "end_turn",
+        usage: {
+          context_utilization: 0.42,
+          estimated_context_tokens: 8400,
+          context_breakdown: {
+            system_prompt_tokens: 1200,
+            tools_tokens: 600,
+            skills_tokens: 100,
+            mcp_tokens: 0,
+            subagents_tokens: 0,
+            conversation_tokens: 6500,
+          },
+        },
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    expect(entry!.utilization).toBeCloseTo(0.42);
+    expect(entry!.estimatedTokens).toBe(8400);
+    expect(entry!.breakdown).toBeDefined();
+    expect(entry!.breakdown!.systemPromptTokens).toBe(1200);
+    expect(entry!.breakdown!.conversationTokens).toBe(6500);
+  });
+
+  it("ignores AssistantMessageEnd payloads without usage", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.AssistantMessageEnd,
+      content: {
+        task_id: "t1",
+        message_id: "msg_1",
+        stop_reason: "end_turn",
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    expect(
+      useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")],
+    ).toBeUndefined();
+  });
+
+  it("optimistically bumps estimated tokens on TextDelta when a ratio is cached", () => {
+    seedActiveTask("t1");
+    // Seed an authoritative reading so a util-per-token ratio is cached.
+    dispatch({
+      type: EventType.AssistantMessageEnd,
+      content: {
+        task_id: "t1",
+        message_id: "msg_1",
+        stop_reason: "end_turn",
+        usage: {
+          context_utilization: 0.5,
+          estimated_context_tokens: 10000,
+        },
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const baseline = useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")];
+    expect(baseline!.estimatedTokens).toBe(10000);
+
+    dispatch({
+      type: EventType.TextDelta,
+      content: { task_id: "t1", text: "x".repeat(400) },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const bumped = useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")];
+    expect(bumped!.estimatedTokens).toBeGreaterThan(baseline!.estimatedTokens!);
+    expect(bumped!.utilization).toBeGreaterThan(baseline!.utilization);
+  });
+
+  it("clears stale context-usage on TaskStarted so a rerun doesn't flash the previous turn's value", () => {
+    seedActiveTask("t1");
+    useContextUsageStore.getState().setContextUtilization(taskStreamKey("t1"), 0.77, 12000);
+    expect(
+      useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")],
+    ).toBeDefined();
+
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    expect(
+      useContextUsageStore.getState().usageByStreamKey[taskStreamKey("t1")],
+    ).toBeUndefined();
   });
 });

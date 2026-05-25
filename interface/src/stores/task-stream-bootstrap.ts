@@ -25,6 +25,12 @@ import {
 } from "../hooks/stream/handlers";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
 import { useTaskStatusStore } from "./task-status-store";
+import {
+  useContextUsageStore,
+  approxTokensFromText,
+  mapWireContextBreakdown,
+  type WireContextBreakdown,
+} from "./context-usage-store";
 import { createEventSubscriptionGroup } from "./event-subscription-group";
 import type { StreamRefs, StreamSetters } from "../shared/types/stream";
 import type { MutableRefObject } from "react";
@@ -88,6 +94,11 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   setters.setIsStreaming(true);
   isStreamingByTask.set(taskId, true);
 
+  // Drop any stale context-usage value from a prior run of the same
+  // task id so the header pill on a re-run doesn't flash the previous
+  // turn's percentage until the first AssistantMessageEnd lands.
+  useContextUsageStore.getState().clearContextUtilization(taskStreamKey(taskId));
+
   const projectId = e.project_id;
   if (projectId) {
     useTaskOutputPanelStore
@@ -116,6 +127,7 @@ function handleTextDeltaEvent(e: AuraEvent): void {
   if (!text) return;
   const { key, refs, setters } = contextForTask(taskId);
   handleTextDelta(refs, setters, getThinkingDurationMs(key), text);
+  useContextUsageStore.getState().bumpEstimatedTokens(key, approxTokensFromText(text));
 }
 
 function handleThinkingDeltaEvent(e: AuraEvent): void {
@@ -124,8 +136,9 @@ function handleThinkingDeltaEvent(e: AuraEvent): void {
   if (!taskId) return;
   const thinking = (c.thinking as string) ?? (c.text as string) ?? "";
   if (!thinking) return;
-  const { refs, setters } = contextForTask(taskId);
+  const { key, refs, setters } = contextForTask(taskId);
   handleThinkingDelta(refs, setters, thinking);
+  useContextUsageStore.getState().bumpEstimatedTokens(key, approxTokensFromText(thinking));
 }
 
 function handleToolUseStartEvent(e: AuraEvent): void {
@@ -158,13 +171,18 @@ function handleToolResultEvent(e: AuraEvent): void {
   const c = parseEventContent(e);
   const taskId = c.task_id as string | undefined;
   if (!taskId) return;
-  const { refs, setters } = contextForTask(taskId);
+  const { key, refs, setters } = contextForTask(taskId);
   handleToolResult(refs, setters, {
     id: c.id as string | undefined,
     name: (c.name as string) ?? "unknown",
     result: (c.result as string) ?? "",
     is_error: (c.is_error as boolean) ?? false,
   });
+  if (typeof c.result === "string" && c.result.length > 0) {
+    useContextUsageStore
+      .getState()
+      .bumpEstimatedTokens(key, approxTokensFromText(c.result));
+  }
 }
 
 /**
@@ -222,8 +240,30 @@ function handleAssistantMessageEndEvent(e: AuraEvent): void {
   const c = parseEventContent(e);
   const taskId = c.task_id as string | undefined;
   if (!taskId) return;
-  const { refs, setters } = contextForTask(taskId);
+  const { key, refs, setters } = contextForTask(taskId);
   handleAssistantTurnBoundary(refs, setters);
+
+  // Mirror the chat handler in `use-chat-stream/build-stream-handler.ts`
+  // so the task header context pill reconciles to the authoritative
+  // harness-reported utilization at each turn boundary. The data has
+  // always been on the wire — it was just dropped here previously.
+  const usage = c.usage as
+    | {
+        context_utilization?: number;
+        estimated_context_tokens?: number;
+        context_breakdown?: WireContextBreakdown;
+      }
+    | undefined;
+  if (usage?.context_utilization != null) {
+    useContextUsageStore
+      .getState()
+      .setContextUtilization(
+        key,
+        usage.context_utilization,
+        usage.estimated_context_tokens,
+        mapWireContextBreakdown(usage.context_breakdown),
+      );
+  }
 }
 
 function handleProgressEvent(e: AuraEvent): void {
