@@ -54,6 +54,13 @@ pub(super) async fn resolve_start_context(
         workspace_root,
         agent_id: agent_instance.agent_id,
         agent_system_prompt: agent_instance.system_prompt,
+        // PR C: forward the full identity bundle so the harness
+        // `SystemPromptBuilder` can render `<agent_identity>` /
+        // `<agent_skills>` alongside the operator-authored prompt.
+        agent_name: agent_instance.name,
+        agent_role: agent_instance.role,
+        agent_personality: agent_instance.personality,
+        agent_skills: agent_instance.skills,
         agent_org_id: agent_instance.org_id,
         intent_classifier: agent_instance.intent_classifier,
         permissions,

@@ -2,6 +2,7 @@
 
 use aura_os_core::{harness_agent_id, AgentInstanceId, Project};
 use aura_os_harness::AutomatonStartParams;
+use aura_protocol::AgentIdentityWire;
 
 use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
@@ -122,17 +123,31 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         agent_permissions: (&ctx.permissions).into(),
         aura_org_id,
         aura_session_id,
-        // PR B (simplify-system-prompts): wire fields carrying the
-        // typed identity bundle. aura-os does NOT populate these in
-        // PR B — the harness consumer accepts `None` / `Vec::new()`
-        // via `#[serde(default)]` and `AgenticTaskParams::agent`
-        // stays `None`, so the assembled system prompt is
-        // byte-identical with PR A. PR C flips this populator to read
-        // off the resolved `StartContext`.
-        agent_identity: None,
-        agent_skills: Vec::new(),
-        agent_system_prompt: None,
+        // PR C: forward the typed identity bundle resolved by
+        // `resolve_start_context`. The harness `SystemPromptBuilder`
+        // renders these as `<agent_identity>` / `<agent_skills>` /
+        // `<agent_system_prompt>` sections. Empty / blank values are
+        // dropped wire-side by `skip_serializing_if`, so legacy /
+        // blank agent rows produce no `<agent_*>` bytes.
+        agent_identity: start_agent_identity(ctx),
+        agent_skills: ctx.agent_skills.clone(),
+        agent_system_prompt: Some(ctx.agent_system_prompt.clone())
+            .filter(|s| !s.trim().is_empty()),
     }
+}
+
+/// Project the per-agent identity prose off the resolved
+/// [`StartContext`] into the wire shape. Returns `None` (which
+/// `#[serde(skip_serializing_if = "Option::is_none")]` then drops from
+/// the JSON payload) when every field is blank, so the harness keeps
+/// `<agent_identity>` out of the assembled prompt for legacy rows.
+fn start_agent_identity(ctx: &StartContext) -> Option<AgentIdentityWire> {
+    let wire = AgentIdentityWire {
+        name: ctx.agent_name.clone(),
+        role: ctx.agent_role.clone(),
+        personality: ctx.agent_personality.clone(),
+    };
+    (!wire.is_empty()).then_some(wire)
 }
 
 /// Build the per-loop provider-override map with a 24h cache key

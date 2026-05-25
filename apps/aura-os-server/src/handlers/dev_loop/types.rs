@@ -31,7 +31,21 @@ pub(super) struct StartContext {
     /// for `LoopId` construction so loop events can be filtered by
     /// `AgentId` topic in addition to `AgentInstanceId`.
     pub(super) agent_id: AgentId,
+    /// Operator-authored system prompt (the "system prompt" textarea
+    /// on the agent template). PR C forwards this on the wire as
+    /// `agent_system_prompt` so the harness `SystemPromptBuilder`
+    /// renders it inside `<agent_system_prompt>...</agent_system_prompt>`.
     pub(super) agent_system_prompt: String,
+    /// Free-form agent identity surfaced into the dev-loop system
+    /// prompt's `<agent_identity>` section. Loaded from the
+    /// `agent_instance` row alongside `agent_system_prompt` so all
+    /// three identity inputs share the same persistence path.
+    pub(super) agent_name: String,
+    pub(super) agent_role: String,
+    pub(super) agent_personality: String,
+    /// Operator-curated skills list rendered as `<agent_skills>`.
+    /// Empty list ⇒ the harness drops the section entirely.
+    pub(super) agent_skills: Vec<String>,
     pub(super) agent_org_id: Option<aura_os_core::OrgId>,
     pub(super) intent_classifier: Option<IntentClassifierSpec>,
     /// Permission bundle applied to the harness automaton kernel policy.
