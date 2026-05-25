@@ -64,6 +64,8 @@ import { useSidebarSearchStore } from "../../stores/sidebar-search-store";
 import { usePublicChatStore } from "../../stores/public-chat-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useDesktopBackgroundStore } from "../../stores/desktop-background-store";
+import { useUIModalStore } from "../../stores/ui-modal-store";
+import { __setIsMacForTesting } from "../../lib/platform";
 import { PUBLIC_SIDEBAR_COLLAPSED_KEY } from "../../constants";
 
 vi.mock("@cypher-asi/zui", async () => {
@@ -208,11 +210,18 @@ beforeEach(() => {
   // Reset the public-sidebar collapse state (its default is `true`,
   // but a previous test may have toggled it open via store action).
   useAppUIStore.setState({ publicSidebarCollapsed: true });
+  // Reset any modal state a previous test may have flipped open (the
+  // Simple-mode shortcut test below flips `orgSettingsOpen`).
+  useUIModalStore.setState({ orgSettingsOpen: false });
+  // Pin the platform to non-mac so `Ctrl+...` shortcuts match
+  // regardless of the host running the suite.
+  __setIsMacForTesting(false);
 });
 
 afterEach(() => {
   window.localStorage.clear();
   useAuthStore.setState({ user: null });
+  __setIsMacForTesting(null);
 });
 
 describe("AuraShell — Phase 3 unified shell", () => {
@@ -510,6 +519,67 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
     expect(
       within(titlebar).getByRole("button", { name: /toggle split screen/i }),
     ).toBeInTheDocument();
+  });
+
+  it("hides the File / Edit / View / Help menu bar in Simple mode and remounts it in Advanced", async () => {
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    renderAuraShell("/chat");
+
+    const titlebar = screen.getByTestId("aura-titlebar");
+    expect(
+      within(titlebar).queryByRole("menubar", { name: /application menu/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(titlebar).queryByRole("menuitem", { name: "File" }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "advanced" });
+    });
+
+    expect(
+      within(titlebar).getByRole("menubar", { name: /application menu/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("menuitem", { name: "File" }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("menuitem", { name: "Edit" }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("menuitem", { name: "View" }),
+    ).toBeInTheDocument();
+    expect(
+      within(titlebar).getByRole("menuitem", { name: "Help" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the application-menu keyboard shortcuts wired in Simple mode (no visible bar required)", () => {
+    // The visible bar is gone in Simple, but the headless
+    // `<MenuShortcuts />` companion still installs the document-level
+    // `keydown` listener. Firing `Ctrl+,` (Settings) must still flip
+    // `useUIModalStore.orgSettingsOpen` to `true` — proving the
+    // shortcut path survives the chrome stripping.
+    setLoggedIn();
+    useUIModeStore.setState({ mode: "simple" });
+
+    renderAuraShell("/chat");
+
+    expect(useUIModalStore.getState().orgSettingsOpen).toBe(false);
+
+    act(() => {
+      const event = new KeyboardEvent("keydown", {
+        key: ",",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+    });
+
+    expect(useUIModalStore.getState().orgSettingsOpen).toBe(true);
   });
 });
 

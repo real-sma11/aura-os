@@ -11,7 +11,6 @@ import { createPortal } from "react-dom";
 import { formatShortcut } from "../../lib/platform";
 import { MENU_DEFINITIONS, type MenuDefinition, type MenuActionKey } from "./menu-config";
 import { useMenuActions } from "./use-menu-actions";
-import { useMenuShortcuts } from "./use-menu-shortcuts";
 import styles from "./MenuBar.module.css";
 
 interface MenuPanelProps {
@@ -70,8 +69,13 @@ interface MenuBarProps {
 }
 
 export function MenuBar({ trailingSlot }: MenuBarProps = {}) {
+  // The document-level shortcut listener is installed by the headless
+  // `<MenuShortcuts />` companion (mounted once per authed shell in
+  // `AuraTitlebar`), so this visible bar only needs the action map and
+  // disabled-state predicate for its dropdown items. Mounting both
+  // components without that split would register the global
+  // `keydown` handler twice.
   const { actions, isItemDisabled } = useMenuActions();
-  useMenuShortcuts({ actions, isItemDisabled });
 
   const [openMenuId, setOpenMenuId] = useState<MenuDefinition["id"] | null>(null);
   const [panelPosition, setPanelPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });

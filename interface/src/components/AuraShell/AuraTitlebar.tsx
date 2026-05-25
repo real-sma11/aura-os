@@ -3,7 +3,7 @@ import { PanelLeft, Server } from "lucide-react";
 import { Button } from "@cypher-asi/zui";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { OrgSelector } from "../OrgSelector";
-import { MenuBar } from "../MenuBar";
+import { MenuBar, MenuShortcuts } from "../MenuBar";
 import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
@@ -50,8 +50,12 @@ export interface AuraTitlebarProps {
  *
  * Layout:
  * - Leading slot:
- *   - Authenticated (`simple` | `advanced`): `OrgSelector` + `MenuBar`
- *     (ported from `DesktopTitlebar`).
+ *   - Authenticated (`simple` | `advanced`): `OrgSelector` + headless
+ *     `MenuShortcuts` (always). The visible `MenuBar` (File / Edit /
+ *     View / Help) is Advanced-only — Simple is a chat-only surface
+ *     and never shows the application menu, but the global keyboard
+ *     shortcuts the menu publishes (Ctrl+N, Ctrl+,, F11, zoom, etc.)
+ *     still fire in Simple via the headless companion.
  *   - Public: `<PanelLeft />` drawer button that opens / closes the
  *     left sidebar (sessions panel). Mirrors the `<PanelRight />`
  *     sidekick toggle in `WindowControls.tsx` 1:1 — same ZUI `Button`
@@ -85,7 +89,7 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
             onToggle={props.onTogglePublicSidebar}
           />
         ) : (
-          <AuthedLeading />
+          <AuthedLeading mode={mode} />
         )
       }
       title={
@@ -118,11 +122,17 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   );
 }
 
-function AuthedLeading(): React.ReactElement {
+function AuthedLeading({ mode }: { mode: UIMode }): React.ReactElement {
+  // `MenuShortcuts` is headless (`null`) and installs the document-
+  // level shortcut listener for both Simple and Advanced. The visible
+  // `MenuBar` only mounts in Advanced — Simple is a chat-only surface
+  // and never shows the File / Edit / View / Help bar.
+  const isAdvanced = mode === "advanced";
   return (
     <span className={`${styles.titleLeading} titlebar-no-drag`}>
       <OrgSelector variant="icon" />
-      <MenuBar />
+      <MenuShortcuts />
+      {isAdvanced && <MenuBar />}
     </span>
   );
 }
