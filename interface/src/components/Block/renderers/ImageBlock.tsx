@@ -106,6 +106,10 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
       badge={model ?? "Image"}
       status={status}
       defaultExpanded={defaultExpanded ?? true}
+      copy={{
+        getText: () => imageUrl || prompt || "Generated image",
+        ariaLabel: "Copy image link",
+      }}
     >
       <div className={styles.mediaWrap}>
         {imageUrl ? (

@@ -9,9 +9,23 @@ import {
   useState,
 } from "react";
 import { ChevronRight } from "lucide-react";
+import { CopyButton } from "../CopyButton";
 import styles from "./Block.module.css";
 
 export type BlockStatus = "pending" | "done" | "error";
+
+/**
+ * Lazily-evaluated payload for the always-on copy icon every Block
+ * renders in its header. Renderers must supply this so the right edge
+ * of every block looks identical; pending / empty blocks should fall
+ * back to a string derived from the title so the icon still has
+ * something useful to copy.
+ */
+export interface BlockCopy {
+  getText?: () => string;
+  getMarkdown?: () => string;
+  ariaLabel?: string;
+}
 
 export interface BlockProps {
   /** Left-side title text (becomes a mono-styled title). */
@@ -24,6 +38,12 @@ export interface BlockProps {
   summary?: ReactNode;
   /** Arbitrary trailing content (status label, exit code, etc.). */
   trailing?: ReactNode;
+  /**
+   * Always-on icon-only copy button rendered just before the chevron.
+   * Required so every block has the same right-edge anatomy and so
+   * each renderer is forced to decide what copy means for it.
+   */
+  copy: BlockCopy;
   /** Drives the status dot color and title weight. */
   status?: BlockStatus;
   /** Whether the body starts expanded. */
@@ -78,6 +98,7 @@ export function Block({
   badge,
   summary,
   trailing,
+  copy,
   status = "done",
   defaultExpanded = false,
   forceExpanded = false,
@@ -153,6 +174,14 @@ export function Block({
         {summary ? <span className={styles.blockSummary}>{summary}</span> : null}
         {trailing ? <span className={styles.blockTrailing}>{trailing}</span> : null}
         {badge ? <span className={styles.blockBadge}>{badge}</span> : null}
+        <span className={styles.blockCopy}>
+          <CopyButton
+            getText={copy.getText}
+            getMarkdown={copy.getMarkdown}
+            ariaLabel={copy.ariaLabel ?? "Copy"}
+            iconOnly
+          />
+        </span>
         <span
           className={`${styles.blockChevron} ${bodyVisible ? styles.blockChevronExpanded : ""}`}
         >

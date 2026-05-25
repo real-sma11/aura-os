@@ -39,23 +39,33 @@ function iconFor(name: string): ReactNode {
   }
 }
 
-function resolveHeader(entry: ToolCallEntry): { title: string; badge: string } {
+interface ResolvedHeader {
+  /** Tool name with pending suffix when applicable (drives the title slot). */
+  title: string;
+  /** Task name / id for the smaller secondary summary slot. */
+  context: string;
+  /** Only set for transition_task, where the destination state is meta-info. */
+  badge?: string;
+}
+
+function resolveHeader(entry: ToolCallEntry): ResolvedHeader {
   const inputTitle = (entry.input.title as string) || "";
   const taskId = (entry.input.task_id as string) || "";
-  const status = (entry.input.status as string) || "";
+  const transitionTo = (entry.input.status as string) || "";
 
   const verbs = VERBS[entry.name] ?? VERBS.create_task;
-  let badge = entry.pending ? verbs.pending : verbs.done;
-  if (!entry.pending && entry.name === "transition_task" && status) {
-    badge = `${verbs.done} -> ${status}`;
-  }
+  const title = entry.pending ? verbs.pending : verbs.done;
+  const context = inputTitle || (taskId ? taskId.slice(0, 12) : "");
+  const badge =
+    !entry.pending && entry.name === "transition_task" && transitionTo
+      ? `-> ${transitionTo}`
+      : undefined;
 
-  const title = inputTitle || (taskId ? taskId.slice(0, 12) : entry.pending ? "" : "Untitled");
-  return { title, badge };
+  return { title, context, badge };
 }
 
 export function TaskBlock({ entry, defaultExpanded }: TaskBlockProps) {
-  const { title, badge } = resolveHeader(entry);
+  const { title, context, badge } = resolveHeader(entry);
   const description = (entry.input.description as string) || "";
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
 
@@ -70,13 +80,19 @@ export function TaskBlock({ entry, defaultExpanded }: TaskBlockProps) {
   return (
     <Block
       icon={iconFor(entry.name)}
-      title={title || "Task"}
+      title={title}
+      summary={context || undefined}
       badge={badge}
       status={status}
       defaultExpanded={defaultExpanded ?? false}
       flushBody
+      copy={{
+        getText: () =>
+          [context, description].filter((s) => s.length > 0).join("\n\n") || title,
+        ariaLabel: `Copy ${context || title}`,
+      }}
     >
-      {title ? <div className={styles.taskTitle}>{title}</div> : null}
+      {context ? <div className={styles.taskTitle}>{context}</div> : null}
       {description ? <div className={styles.taskDesc}>{description}</div> : null}
       {entry.isError && entry.result ? (
         <div className={styles.inlineError}>{String(entry.result).slice(0, 240)}</div>

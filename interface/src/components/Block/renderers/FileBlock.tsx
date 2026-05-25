@@ -3,9 +3,8 @@ import type { ReactNode } from "react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { langFromPath } from "../../../ide/lang";
 import { useHighlightedHtml } from "../../../shared/hooks/use-highlighted-html";
-import { TOOL_PHASE_LABELS } from "../../../constants/tools";
+import { TOOL_LABELS, TOOL_PHASE_LABELS } from "../../../constants/tools";
 import { decodeCapturedOutput } from "../../../shared/utils/format";
-import { CopyButton } from "../../CopyButton";
 import { Block } from "../Block";
 import blockStyles from "../Block.module.css";
 import styles from "./renderers.module.css";
@@ -110,49 +109,20 @@ export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
   const isRead = entry.name === "read_file";
   const isDelete = entry.name === "delete_file";
 
-  const badgeLabel = isEdit
-    ? "Edit"
-    : isWrite
-      ? "Write"
-      : isDelete
-        ? "Delete"
-        : "Read";
+  const toolLabel = TOOL_LABELS[entry.name] ?? "File";
   const Icon = isDelete ? FileX : isEdit || isWrite ? FileCode : FileText;
 
   const oldText = (entry.input.old_text as string) || "";
   const newText = (entry.input.new_text as string) || "";
   const writeContent = (entry.input.content as string) || "";
 
-  // While a write/edit is still streaming and the path has not arrived yet,
-  // fall back to the tool's phase label ("Writing code...") instead of a bare
-  // ellipsis so the row reads as a live action rather than malformed UI.
-  //
-  // When the call ends in an error without ever producing a path — e.g.
-  // the LLM's tool block was abandoned mid-stream by a transient
-  // provider 5xx so `resolveAbandonedPendingToolCalls` flipped it —
-  // replace the generic "Untitled file" shell with an action-specific
-  // failure title like "Write failed" so the card is self-describing
-  // before the user expands it. The red `inlineError` row below still
-  // carries the actual upstream reason.
-  const failedTitle = isDelete
-    ? "Delete failed"
-    : isEdit
-      ? "Edit failed"
-      : isWrite
-        ? "Write failed"
-        : isRead
-          ? "Read failed"
-          : "Tool call failed";
-
-  // --- Retry status --------------------------------------------------------
-  //
-  // Retry state is now propagated as first-class fields on
-  // `ToolCallEntry` from the `ToolCallRetrying` / `ToolCallFailed`
-  // reducers (see `hooks/stream/handlers.ts`). While `retrying` is
-  // true the card title reads "<phase> retrying (n/max)…"; once a
-  // fresh `ToolCallSnapshot` arrives the reducer clears `retrying`
-  // but preserves `retryAttempt`/`retryMax` so a later failure can
-  // still report "retried N/max".
+  // Retry state arrives as first-class fields on `ToolCallEntry` from the
+  // `ToolCallRetrying` / `ToolCallFailed` reducers (see
+  // `hooks/stream/handlers.ts`). While `retrying` is true the row title
+  // reads "<tool> retrying (n/max)…"; once a fresh `ToolCallSnapshot`
+  // arrives the reducer clears `retrying` but preserves
+  // `retryAttempt`/`retryMax` so a later failure can still report
+  // "retried N/max".
   const retryAttempt =
     typeof entry.retryAttempt === "number" && entry.retryAttempt > 0
       ? entry.retryAttempt
@@ -165,44 +135,43 @@ export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
   const retryExhausted = entry.retryExhausted === true;
 
   // Coarse classifier: if the failure reason in `entry.result` smells like a
-  // transient upstream hiccup, swap the bare "Write failed" title for an
-  // action-specific explanation so the card header carries the actual cause.
+  // transient upstream hiccup, swap the bare tool label for an explanation
+  // so the card header carries the actual cause.
   const resultStr =
     entry.isError && typeof entry.result === "string" ? entry.result : "";
   const hasTransientUpstreamHint =
     /stream terminated|internal server error|\b5\d{2}\b|upstream/i.test(resultStr);
-  const failedTitleWithReason = (() => {
-    if (retryExhausted && retryAttempt != null) {
-      const max = retryMax ?? "?";
-      return `${failedTitle} - retried ${retryAttempt}/${max}`;
+
+  // Title is always the tool name ("Read file", "Edit file", ...). Pending
+  // and failure states decorate it inline; the file path moves into the
+  // secondary `summary` slot so every block reads "<tool>  <context>".
+  const title = (() => {
+    if (entry.pending) {
+      const base = TOOL_PHASE_LABELS[entry.name] ?? toolLabel;
+      if (isRetrying && retryAttempt != null) {
+        const max = retryMax ?? "?";
+        return `${base} retrying (${retryAttempt}/${max})...`;
+      }
+      if (retryAttempt != null) {
+        const max = retryMax ?? "?";
+        return `${base} (retry ${retryAttempt}/${max})`;
+      }
+      return base;
     }
-    if (hasTransientUpstreamHint) {
-      return `${failedTitle} - transient upstream 5xx`;
+    if (entry.isError) {
+      if (retryExhausted && retryAttempt != null) {
+        const max = retryMax ?? "?";
+        return `${toolLabel} failed - retried ${retryAttempt}/${max}`;
+      }
+      if (hasTransientUpstreamHint) {
+        return `${toolLabel} failed - transient upstream 5xx`;
+      }
+      return `${toolLabel} failed`;
     }
-    return failedTitle;
+    return toolLabel;
   })();
 
-  const pendingTitle = (() => {
-    const base = TOOL_PHASE_LABELS[entry.name] ?? "Working...";
-    if (isRetrying && retryAttempt != null) {
-      const max = retryMax ?? "?";
-      return `${base} retrying (${retryAttempt}/${max})...`;
-    }
-    if (retryAttempt != null) {
-      const max = retryMax ?? "?";
-      return `${base} (retry ${retryAttempt}/${max})`;
-    }
-    return base;
-  })();
-
-  const fallbackTitle = entry.pending
-    ? pendingTitle
-    : entry.isError
-      ? failedTitleWithReason
-      : "Untitled file";
-  const fileName = hasPath
-    ? (path.split(/[/\\]/).pop() || path)
-    : fallbackTitle;
+  const fileName = hasPath ? (path.split(/[/\\]/).pop() || path) : "";
 
   const hasEditContent = oldText.length > 0 || newText.length > 0;
   const hasWriteContent = writeContent.length > 0;
@@ -243,31 +212,30 @@ export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
     }
   }
 
-  const showCopyToolbar = copyPayload.length > 0 && !entry.pending;
-
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
-  // Only force the preview open while content is actually streaming in; an
-  // empty seed should collapse to a compact header so we never render an empty
-  // code surface with just a "1" line number.
   const forcePreview =
     entry.pending && ((isWrite && hasWriteContent) || (isEdit && hasEditContent));
+
+  // Fall back to the visible header text so the icon-only copy slot is
+  // always meaningful, even on pending / empty / failed states where
+  // there's no file body to grab yet.
+  const copyText = copyPayload || fileName || title;
 
   return (
     <Block
       icon={<Icon size={12} />}
-      title={fileName}
-      badge={badgeLabel}
+      title={title}
+      summary={fileName || undefined}
       status={status}
       defaultExpanded={defaultExpanded || forcePreview}
       forceExpanded={forcePreview}
       autoScroll={entry.pending}
       flushBody
+      copy={{
+        getText: () => copyText,
+        ariaLabel: `Copy ${fileName || toolLabel}`,
+      }}
     >
-      {showCopyToolbar ? (
-        <div className={styles.blockBodyToolbar}>
-          <CopyButton getText={() => copyPayload} ariaLabel={`Copy ${fileName}`} />
-        </div>
-      ) : null}
       {body}
       {entry.isError && entry.result ? (
         <div className={styles.inlineError}>{String(entry.result).slice(0, 240)}</div>

@@ -38,6 +38,10 @@ export function ThinkingBlock({
       defaultExpanded={defaultExpanded ?? isStreaming}
       forceExpanded={isStreaming}
       autoScroll={isStreaming}
+      copy={{
+        getText: () => stripEmojis(text) || title,
+        ariaLabel: "Copy thinking",
+      }}
     >
       <div className={styles.thinkingText}>{stripEmojis(text)}</div>
     </Block>

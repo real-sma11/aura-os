@@ -65,6 +65,11 @@ export function StatusReadoutBlock({ entry, defaultExpanded }: StatusReadoutBloc
   const label = TOOL_LABELS[entry.name] || entry.name;
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
 
+  const getCopyText = (): string => {
+    if (pairs.length === 0) return label;
+    return pairs.map(([k, v]) => `${k}: ${v}`).join("\n");
+  };
+
   return (
     <Block
       icon={<Gauge size={12} />}
@@ -72,6 +77,7 @@ export function StatusReadoutBlock({ entry, defaultExpanded }: StatusReadoutBloc
       status={status}
       defaultExpanded={defaultExpanded ?? false}
       flushBody
+      copy={{ getText: getCopyText, ariaLabel: `Copy ${label}` }}
     >
       {entry.pending && !entry.result ? (
         <div className={styles.listEmpty}>Loading…</div>

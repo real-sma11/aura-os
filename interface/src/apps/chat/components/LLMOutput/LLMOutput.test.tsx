@@ -36,7 +36,7 @@ describe("LLMOutput", () => {
     ];
     render(<LLMOutput content="" toolCalls={toolCalls} />);
     expect(screen.getByText("foo.ts")).toBeInTheDocument();
-    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(screen.getByText("Read file")).toBeInTheDocument();
   });
 
   it("renders ActivityTimeline when timeline is provided", () => {
@@ -70,7 +70,7 @@ describe("LLMOutput", () => {
     );
 
     expect(screen.getByText("db.rs")).toBeInTheDocument();
-    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(screen.getByText("Read file")).toBeInTheDocument();
     expect(screen.getByText("List files")).toBeInTheDocument();
     expect(screen.queryByText(/\[tool:/)).not.toBeInTheDocument();
   });

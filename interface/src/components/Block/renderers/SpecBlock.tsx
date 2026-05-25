@@ -4,7 +4,7 @@ import type { ToolCallEntry } from "../../../shared/types/stream";
 import { useHighlightedHtml } from "../../../shared/hooks/use-highlighted-html";
 import { useMarkdownCopy } from "../../../shared/hooks/use-markdown-copy";
 import { specFilename } from "../../../shared/utils/format";
-import { CopyButton } from "../../CopyButton";
+import { TOOL_LABELS } from "../../../constants/tools";
 import { Block } from "../Block";
 import blockStyles from "../Block.module.css";
 import styles from "./renderers.module.css";
@@ -15,15 +15,15 @@ interface SpecBlockProps {
 }
 
 export function SpecBlock({ entry, defaultExpanded }: SpecBlockProps) {
-  const title = (entry.input.title as string) || "";
-  const filename = specFilename(title);
+  const specTitle = (entry.input.title as string) || "";
+  const filename = specFilename(specTitle);
   const toolContent = (entry.input.markdown_contents as string) || "";
   const draftPreview = (entry.input.draft_preview as string) || "";
   const content = toolContent || draftPreview;
   const highlightedHtml = useHighlightedHtml(content, "markdown");
 
   const status = entry.pending ? "pending" : entry.isError ? "error" : "done";
-  const showCopyToolbar = content.length > 0 && !entry.pending;
+  const toolLabel = TOOL_LABELS[entry.name] ?? "Spec";
 
   // Select+copy of the whole spec body should yield the *original*
   // markdown source rather than the highlighted-HTML rendering --
@@ -37,18 +37,18 @@ export function SpecBlock({ entry, defaultExpanded }: SpecBlockProps) {
   return (
     <Block
       icon={<FileText size={12} />}
-      title={filename}
-      badge={entry.name === "update_spec" ? "Update" : "Spec"}
+      title={toolLabel}
+      summary={filename || undefined}
       status={status}
       defaultExpanded={defaultExpanded || entry.pending}
       forceExpanded={entry.pending}
       autoScroll={entry.pending}
       flushBody
-      trailing={
-        showCopyToolbar ? (
-          <CopyButton getMarkdown={() => content} ariaLabel={`Copy ${filename}`} />
-        ) : undefined
-      }
+      copy={{
+        getMarkdown: content ? () => content : undefined,
+        getText: content ? undefined : () => filename || toolLabel,
+        ariaLabel: `Copy ${filename || toolLabel}`,
+      }}
     >
       <div ref={codeAreaRef} className={styles.codeArea}>
         <pre>

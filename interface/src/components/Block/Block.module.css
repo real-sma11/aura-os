@@ -159,10 +159,22 @@
   font-size: 11px;
 }
 
+/*
+ * Always-on copy icon slot, immediately left of the chevron. The CopyButton
+ * inside renders in `iconOnly` mode so the right edge of every Block reads
+ * the same regardless of which renderer is mounted (Read file, List files,
+ * Run command, etc.). Keep it flex-shrink: 0 so a long title cannot squeeze
+ * the icon off the row.
+ */
+.blockCopy {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .blockChevron {
   display: flex;
   align-items: center;
-  margin-left: auto;
   flex-shrink: 0;
   opacity: 0.35;
   transition: transform 0.2s ease;

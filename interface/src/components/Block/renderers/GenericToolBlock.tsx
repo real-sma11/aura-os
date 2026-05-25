@@ -43,6 +43,17 @@ export function GenericToolBlock({ entry, defaultExpanded }: GenericToolBlockPro
       ? summarizeError(entry.result)
       : summary || (entry.pending ? "Generating…" : "");
 
+  const getCopyText = (): string =>
+    JSON.stringify(
+      {
+        tool: entry.name,
+        input: buildInputDisplay(entry),
+        result: entry.result ?? null,
+      },
+      null,
+      2,
+    );
+
   return (
     <Block
       icon={<Wrench size={12} />}
@@ -51,6 +62,7 @@ export function GenericToolBlock({ entry, defaultExpanded }: GenericToolBlockPro
       status={status}
       defaultExpanded={defaultExpanded ?? false}
       flushBody
+      copy={{ getText: getCopyText, ariaLabel: `Copy ${label}` }}
     >
       <div className={styles.genericSection}>
         <div className={styles.genericLabel}>Input</div>

@@ -76,6 +76,10 @@ export function VideoBlock({ entry, defaultExpanded }: VideoBlockProps) {
       badge={model ?? "Video"}
       status={status}
       defaultExpanded={defaultExpanded ?? true}
+      copy={{
+        getText: () => videoUrl || prompt || "Generated video",
+        ariaLabel: "Copy video link",
+      }}
     >
       <div className={styles.mediaWrap}>
         {videoUrl ? (

@@ -89,7 +89,7 @@ describe("LLMStreamOutput", () => {
     );
 
     expect(screen.getByText("db.rs")).toBeInTheDocument();
-    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(screen.getByText("Read file")).toBeInTheDocument();
     expect(screen.getByText("List files")).toBeInTheDocument();
     expect(screen.queryByText(/\[tool:/)).not.toBeInTheDocument();
   });

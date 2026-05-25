@@ -96,7 +96,7 @@ describe("ToolCallBlock (Block dispatch)", () => {
   });
 
   describe("file blocks", () => {
-    it("renders FileBlock for a pending write_file with partial content", () => {
+    it("renders FileBlock for a pending write_file with tool name as the title and file as the secondary context", () => {
       render(
         <ToolCallBlock
           entry={makeEntry({
@@ -108,7 +108,8 @@ describe("ToolCallBlock (Block dispatch)", () => {
         />,
       );
       expect(screen.getByText("hello.ts")).toBeInTheDocument();
-      expect(screen.getByText("Write")).toBeInTheDocument();
+      // Pending writes lead with the phase label, not the bare verb.
+      expect(screen.getByText("Writing code...")).toBeInTheDocument();
     });
 
     it("renders FileBlock for a pending edit_file even before diffs stream in", () => {
@@ -123,7 +124,7 @@ describe("ToolCallBlock (Block dispatch)", () => {
         />,
       );
       expect(screen.getByText("app.tsx")).toBeInTheDocument();
-      expect(screen.getByText("Edit")).toBeInTheDocument();
+      expect(screen.getByText("Editing code...")).toBeInTheDocument();
     });
 
     it("renders FileBlock for a pending delete_file", () => {
@@ -138,7 +139,28 @@ describe("ToolCallBlock (Block dispatch)", () => {
         />,
       );
       expect(screen.getByText("stale.txt")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.getByText("Cleaning up...")).toBeInTheDocument();
+    });
+
+    it("leads with the tool label and puts the filename in the summary slot for a completed read", () => {
+      render(
+        <ToolCallBlock
+          entry={makeEntry({
+            name: "read_file",
+            pending: false,
+            started: false,
+            input: { path: "src/main.rs" },
+            result: JSON.stringify({
+              tool: "read_file",
+              ok: true,
+              stdout: btoa("fn main() {}\n"),
+              stderr: "",
+            }),
+          })}
+        />,
+      );
+      expect(screen.getByText("Read file")).toBeInTheDocument();
+      expect(screen.getByText("main.rs")).toBeInTheDocument();
     });
 
     it("decodes base64 stdout for read_file and never renders the raw envelope", () => {

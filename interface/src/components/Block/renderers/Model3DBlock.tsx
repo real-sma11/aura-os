@@ -89,6 +89,10 @@ export function Model3DBlock({ entry, defaultExpanded }: Model3DBlockProps) {
       badge={polyCount != null ? `${polyCount.toLocaleString()} polys` : "3D"}
       status={status}
       defaultExpanded={defaultExpanded ?? true}
+      copy={{
+        getText: () => glbUrl || resultStatus || "Generated 3D model",
+        ariaLabel: "Copy 3D model link",
+      }}
     >
       <div className={styles.mediaWrap}>
         {entry.pending ? (
