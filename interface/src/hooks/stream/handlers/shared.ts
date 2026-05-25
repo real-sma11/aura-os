@@ -65,23 +65,39 @@ function buildDisplayedTimeline(
 ): TimelineItem[] {
   const displayedTimeline: TimelineItem[] = [];
   let remainingVisibleText = visibleText;
+  // Once we hit a text segment whose word-reveal hasn't caught up to the
+  // streamed content, hold back every later non-text item (tool / thinking
+  // cards) so they don't render below a paragraph that's still typing in.
+  // The reveal animation re-runs this builder on every rAF step
+  // (see applyDisplayedStreamingState), so deferred items pop into place
+  // as soon as the text catches up; finalizeStream's flushStreamingText
+  // reveals the full buffer in one shot so end-of-turn renders include
+  // everything.
+  let textPending = false;
 
   for (const item of refs.timeline.current) {
-    if (item.kind !== "text") {
-      displayedTimeline.push({ ...item });
+    if (item.kind === "text") {
+      if (!remainingVisibleText) {
+        textPending = true;
+        continue;
+      }
+
+      const visibleSegment = remainingVisibleText.slice(
+        0,
+        Math.min(item.content.length, remainingVisibleText.length),
+      );
+      remainingVisibleText = remainingVisibleText.slice(visibleSegment.length);
+      if (visibleSegment.length > 0) {
+        displayedTimeline.push({ ...item, content: visibleSegment });
+      }
+      if (visibleSegment.length < item.content.length) {
+        textPending = true;
+      }
       continue;
     }
 
-    if (!remainingVisibleText) continue;
-
-    const visibleSegment = remainingVisibleText.slice(
-      0,
-      Math.min(item.content.length, remainingVisibleText.length),
-    );
-    remainingVisibleText = remainingVisibleText.slice(visibleSegment.length);
-    if (visibleSegment.length > 0) {
-      displayedTimeline.push({ ...item, content: visibleSegment });
-    }
+    if (textPending) continue;
+    displayedTimeline.push({ ...item });
   }
 
   return displayedTimeline;
