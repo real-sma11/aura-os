@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { Block } from "./Block";
 
 vi.mock("./Block.module.css", () => ({
@@ -112,5 +113,119 @@ describe("Block primitive", () => {
     // Title and summary must be distinct DOM nodes so the smaller summary
     // styling (font-size 11px, secondary color) can apply independently.
     expect(title).not.toBe(summary);
+  });
+
+  // Regression: when `forceExpanded` flips from true -> false (e.g. a
+  // ThinkingBlock whose segment just closed because a tool call started
+  // streaming), the block must auto-collapse back to its
+  // `defaultExpanded` value instead of staying open from the
+  // streaming-era forced-expand. Without this, multi-segment thinking
+  // turns left every earlier "Thinking..." block expanded after they
+  // were superseded by the next segment.
+  it("collapses to defaultExpanded when forceExpanded flips from true to false", () => {
+    function Harness() {
+      const [force, setForce] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setForce(false)}>
+            stop
+          </button>
+          <Block
+            title="Streaming"
+            copy={{ getText: () => "" }}
+            forceExpanded={force}
+            defaultExpanded={false}
+          >
+            body
+          </Block>
+        </>
+      );
+    }
+
+    render(<Harness />);
+
+    const header = screen
+      .getAllByRole("button")
+      .find((el) => el.hasAttribute("aria-expanded"));
+    expect(header).toBeDefined();
+    expect(header).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(screen.getByText("stop"));
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+  });
+
+  // Companion to the previous test: when the finalize handoff flips
+  // `defaultExpanded` to true at the same moment `forceExpanded` goes
+  // false (the just-finished message gets `initialThinkingExpanded`),
+  // the block should adopt the new default and stay open instead of
+  // snapping closed.
+  it("snaps to the new defaultExpanded value on the forceExpanded falling edge", () => {
+    function Harness() {
+      const [streaming, setStreaming] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setStreaming(false)}>
+            finalize
+          </button>
+          <Block
+            title="Streaming"
+            copy={{ getText: () => "" }}
+            forceExpanded={streaming}
+            defaultExpanded={!streaming}
+          >
+            body
+          </Block>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const header = screen
+      .getAllByRole("button")
+      .find((el) => el.hasAttribute("aria-expanded"));
+    expect(header).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(screen.getByText("finalize"));
+
+    expect(header).toHaveAttribute("aria-expanded", "true");
+  });
+
+  // Defense against the previous fix overreaching: a block that was
+  // never `forceExpanded` and whose user manually toggled open must not
+  // be reset just because `defaultExpanded` later flips (e.g. the
+  // finalize handoff that flips `defaultThinkingExpanded` to `true` on
+  // a fully historical bubble that already has user-managed state).
+  it("does not clobber user toggle when defaultExpanded changes without forceExpanded", () => {
+    function Harness() {
+      const [def, setDef] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setDef(true)}>
+            bump
+          </button>
+          <Block
+            title="History"
+            copy={{ getText: () => "" }}
+            defaultExpanded={def}
+          >
+            body
+          </Block>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const header = screen
+      .getAllByRole("button")
+      .find((el) => el.hasAttribute("aria-expanded"));
+    expect(header).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(header!);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(screen.getByText("bump"));
+    // User-managed open state survives the defaultExpanded bump.
+    expect(header).toHaveAttribute("aria-expanded", "true");
   });
 });

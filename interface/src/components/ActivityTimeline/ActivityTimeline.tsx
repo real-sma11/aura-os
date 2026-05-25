@@ -90,13 +90,26 @@ export function ActivityTimeline({
       // `thinkingText` for historical messages that predate per-segment text.
       const segmentText = item.text ?? thinkingText;
       if (!segmentText) continue;
+      // Derive a per-segment streaming flag instead of forwarding the
+      // turn-level `isStreaming` to every block. Without this, a
+      // multi-segment turn (thinking -> tool -> thinking) used to render
+      // every block as "Thinking..." with shimmer and `forceExpanded`,
+      // even though `closeCurrentThinkingSegment` had already stamped
+      // `durationMs` on the earlier segment. `handleThinkingDelta`
+      // guarantees at most one open thinking segment at a time (it
+      // extends the trailing thinking item instead of pushing a new
+      // one), so "no `durationMs`" uniquely identifies the live segment
+      // during a turn. Hydrated history rows have no `durationMs`
+      // either, but the turn-level `isStreaming` is already `false`
+      // there, so this rule still resolves correctly.
+      const segmentIsStreaming = isStreaming && item.durationMs == null;
       items.push({
         key: item.id,
         kind: "thinking",
         node: (
           <ThinkingBlock
             text={segmentText}
-            isStreaming={isStreaming}
+            isStreaming={segmentIsStreaming}
             // Prefer the per-segment `durationMs` stamped by
             // `closeCurrentThinkingSegment`; fall back to the
             // turn-level total for hydrated history rows that

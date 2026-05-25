@@ -111,9 +111,26 @@ export function Block({
 }: BlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded || forceExpanded);
 
+  // Auto-collapse on the `forceExpanded` true -> false edge so e.g. a
+  // `ThinkingBlock` whose segment just closed snaps back to its default
+  // (collapsed) state instead of staying open from the streaming-era
+  // forced-expand. The ref-guard means a steady-state change to
+  // `defaultExpanded` while `forceExpanded` is already false (e.g. the
+  // finalize-handoff that flips `defaultThinkingExpanded` to `true` on
+  // the just-finished message) does NOT clobber a user's manual toggle
+  // on blocks that were never force-expanded. While `forceExpanded` is
+  // `true` the toggle is suppressed (`aria-disabled` + `toggle`
+  // returning early), so the user cannot have set a preference we'd
+  // overwrite on the falling edge.
+  const prevForceExpandedRef = useRef(forceExpanded);
   useLayoutEffect(() => {
-    if (forceExpanded) setExpanded(true);
-  }, [forceExpanded]);
+    if (forceExpanded) {
+      setExpanded(true);
+    } else if (prevForceExpandedRef.current) {
+      setExpanded(defaultExpanded);
+    }
+    prevForceExpandedRef.current = forceExpanded;
+  }, [forceExpanded, defaultExpanded]);
 
   const toggle = useCallback(() => {
     if (forceExpanded) return;
