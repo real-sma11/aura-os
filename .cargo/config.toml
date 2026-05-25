@@ -1,5 +1,5 @@
 [build]
-target-dir = "../.aura-shared-target"
+target-dir = "target"
 
 [term]
 color = "never"
