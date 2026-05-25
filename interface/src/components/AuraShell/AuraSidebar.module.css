@@ -93,7 +93,14 @@
   right: 0;
   z-index: 1;
   display: flex;
-  padding: var(--space-2) var(--space-3);
+  /* Horizontal + bottom insets match `PanelSearch`'s `.root` padding
+     (`var(--shell-chrome-inset, 5px)`) so the referral pill renders
+     at the same width as the search chrome pill above it, and the
+     gap between the pill and the bottom of `<aside>` mirrors the
+     gap between the search pill and the top of the sidebar header.
+     Top padding stays at `--space-2` to keep breathing room above
+     the pill where it floats over the masked list rows. */
+  padding: var(--space-2) var(--shell-chrome-inset, 5px) var(--shell-chrome-inset, 5px);
   pointer-events: none;
 }
 
