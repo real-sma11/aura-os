@@ -156,6 +156,16 @@ vi.mock("../../stores/profile-store", () => ({
     selector(profileState),
 }));
 
+const billingState = {
+  subscription: null as { plan: string; is_subscribed: boolean } | null,
+  fetchSubscription: vi.fn().mockResolvedValue(undefined),
+};
+
+vi.mock("../../stores/billing-store", () => ({
+  useBillingStore: (selector: (state: typeof billingState) => unknown) =>
+    selector(billingState),
+}));
+
 vi.mock("../../hooks/use-active-app", () => ({
   useActiveApp: () => activeAppState.activeApp,
   useActiveAppId: () => activeAppState.activeApp.id,
@@ -248,6 +258,8 @@ beforeEach(() => {
   activeAppState.activeApp = { id: "projects" };
   appUIState.previousPath = "/projects";
   desktopWindowState.windows = {};
+  billingState.subscription = null;
+  billingState.fetchSubscription.mockResolvedValue(undefined);
   getTaskbarAppsCollapsed.mockReturnValue(true);
   getTaskbarRightCollapsed.mockReturnValue(true);
 });

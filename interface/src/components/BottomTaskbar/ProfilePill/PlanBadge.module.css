@@ -1,0 +1,31 @@
+/*
+ * Inline-flex wrapper so the SVG sits on the text baseline alongside
+ * the user-name span. `line-height: 0` collapses the wrapper height to
+ * the SVG's intrinsic height (12px) so the badge never inflates the
+ * profile-pill row, and `flex-shrink: 0` keeps the glyph from being
+ * squeezed out when long display names hit the pill's `max-width`.
+ *
+ * Per-plan color uses theme-aware tokens defined in
+ * `interface/src/index.css` so dark/light theme flips re-tint the
+ * badge automatically (Pro and Crusader piggy-back on zui's
+ * `--color-success` / `--color-provisioning`; Sage uses an explicit
+ * pink with a per-theme override).
+ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.badge[data-plan="pro"] {
+  color: var(--color-plan-pro);
+}
+
+.badge[data-plan="crusader"] {
+  color: var(--color-plan-crusader);
+}
+
+.badge[data-plan="sage"] {
+  color: var(--color-plan-sage);
+}

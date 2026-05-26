@@ -5,6 +5,10 @@ vi.mock("./ProfilePill.module.css", () => ({
   default: new Proxy({}, { get: (_target, prop) => String(prop) }),
 }));
 
+vi.mock("./PlanBadge.module.css", () => ({
+  default: new Proxy({}, { get: (_target, prop) => String(prop) }),
+}));
+
 import { ProfilePill } from "./ProfilePill";
 
 describe("ProfilePill", () => {
@@ -45,5 +49,53 @@ describe("ProfilePill", () => {
     render(<ProfilePill name="" onOpenSettings={() => {}} />);
 
     expect(screen.getByText("Sign in")).toBeInTheDocument();
+  });
+
+  describe("plan badge", () => {
+    it("renders no badge when plan is undefined", () => {
+      const { container } = render(
+        <ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} />,
+      );
+
+      expect(container.querySelector("[data-plan]")).toBeNull();
+    });
+
+    it("renders no badge when plan is mortal", () => {
+      const { container } = render(
+        <ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} plan="mortal" />,
+      );
+
+      expect(container.querySelector("[data-plan]")).toBeNull();
+    });
+
+    it("renders the Pro badge when plan is pro", () => {
+      const { container } = render(
+        <ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} plan="pro" />,
+      );
+
+      const badge = container.querySelector('[data-plan="pro"]');
+      expect(badge).not.toBeNull();
+      expect(screen.getByLabelText("Pro subscriber")).toBeInTheDocument();
+    });
+
+    it("renders the Crusader badge when plan is crusader", () => {
+      const { container } = render(
+        <ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} plan="crusader" />,
+      );
+
+      const badge = container.querySelector('[data-plan="crusader"]');
+      expect(badge).not.toBeNull();
+      expect(screen.getByLabelText("Crusader subscriber")).toBeInTheDocument();
+    });
+
+    it("renders the Sage badge when plan is sage", () => {
+      const { container } = render(
+        <ProfilePill name="Ada Lovelace" onOpenSettings={() => {}} plan="sage" />,
+      );
+
+      const badge = container.querySelector('[data-plan="sage"]');
+      expect(badge).not.toBeNull();
+      expect(screen.getByLabelText("Sage subscriber")).toBeInTheDocument();
+    });
   });
 });

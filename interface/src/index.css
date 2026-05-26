@@ -100,6 +100,21 @@
   --color-border-chrome: var(--color-border);
 
   /*
+   * Plan-tier badge colors used by the bottom-taskbar `<PlanBadge />`
+   * next to the user name. Pro and Crusader piggy-back on the
+   * theme-aware semantic tokens already defined in
+   * `vendor/zui/src/styles/themes.css` (`--color-success`,
+   * `--color-provisioning`), which are re-bound for `[data-theme='light']`,
+   * so they automatically pick up the lighter / darker variants when
+   * the app theme flips. Sage has no first-party pink token in zui,
+   * so we declare an explicit dark-mode value here and override it
+   * for `[data-theme='light']` further below.
+   */
+  --color-plan-pro: var(--color-success);
+  --color-plan-crusader: var(--color-provisioning);
+  --color-plan-sage: #f472b6;
+
+  /*
    * Marketing surface tokens. Consumed by the four logged-out
    * marketing views (Product / Changelog / Feedback / Pricing) ported
    * from `aura-web` — they now mount inside the public-mode
@@ -226,6 +241,18 @@ img[data-aura-wordmark] {
 
 [data-theme='light'] img[data-aura-wordmark] {
   filter: invert(1);
+}
+
+/*
+ * Light-mode override for the Sage plan badge. Pro and Crusader inherit
+ * theme-aware values automatically via `--color-success` /
+ * `--color-provisioning` (re-bound under `[data-theme='light']` in
+ * vendor/zui/src/styles/themes.css), so only Sage needs an explicit
+ * per-theme tint — pink-600 reads cleanly against the white shell
+ * surfaces where pink-400 from dark mode would wash out.
+ */
+[data-theme='light'] {
+  --color-plan-sage: #db2777;
 }
 
 ::-webkit-scrollbar {

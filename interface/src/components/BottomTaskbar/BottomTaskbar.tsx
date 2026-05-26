@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
 import { useProfileStore } from "../../stores/profile-store";
+import { useBillingStore } from "../../stores/billing-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import type { UIMode } from "../../stores/ui-mode-store";
+import type { ProfilePlan } from "./ProfilePill";
 import {
   getTaskbarAppsCollapsed,
   getTaskbarRightCollapsed,
@@ -156,6 +158,16 @@ function AuthedBottomTaskbar({
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
   const profile = useProfileStore((s) => s.profile);
+  // Subscription is owned by `billing-store` and prefetched lazily when the
+  // user opens the org-settings panel; we trigger an extra fetch on mount
+  // here so the trailing `<PlanBadge />` next to the user name hydrates
+  // for paid subscribers without requiring them to open Settings first.
+  const subscription = useBillingStore((s) => s.subscription);
+  const fetchSubscription = useBillingStore((s) => s.fetchSubscription);
+  useEffect(() => {
+    if (!subscription) void fetchSubscription();
+  }, [subscription, fetchSubscription]);
+  const plan = subscription?.plan as ProfilePlan | undefined;
   const activeApp = useActiveApp();
   const navigate = useNavigate();
   const previousPath = useAppUIStore((s) => s.previousPath);
@@ -208,6 +220,7 @@ function AuthedBottomTaskbar({
           name={profile.name}
           avatarUrl={profile.avatarUrl}
           onOpenSettings={openOrgSettings}
+          plan={plan}
         />
         {/*
          * Team selector lives in the bottom taskbar (left of the
