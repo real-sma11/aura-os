@@ -166,6 +166,22 @@ vi.mock("../TaskOutputPanel", () => ({
       Copy
     </button>
   ),
+  // Sentinel so the wiring test below can assert that TaskPreview
+  // mounts the shared pinned indicator inside its Live Output section
+  // (the indicator's own streaming-state gate is exercised in its
+  // sibling unit test; here we only verify the parent's `isActive`
+  // wiring).
+  PinnedTaskStreamingIndicator: ({
+    taskId,
+  }: {
+    taskId: string;
+    className?: string;
+  }) => (
+    <div
+      data-testid="pinned-task-streaming-indicator"
+      data-task-id={taskId}
+    />
+  ),
   buildTaskCopyText: vi.fn(() => "copy-text"),
 }));
 
@@ -347,6 +363,40 @@ describe("TaskPreview", () => {
   it("does not render the copy button when there is no output panel", () => {
     renderWithRouter(<TaskPreview task={makeTask({ status: "ready" as TaskStatus })} />);
     expect(screen.queryByTestId("copy-task-output-btn")).not.toBeInTheDocument();
+  });
+
+  it("mounts the pinned cooking indicator inside Live Output for an active task", () => {
+    // Restores the pinned shimmer that was lost in commit `c03e3114a`
+    // when `TaskOutputSection` was swapped for `ActiveTaskStream`.
+    // The shared `PinnedTaskStreamingIndicator` is mocked above, so
+    // this test only verifies that `TaskPreview` wires it into the
+    // Live Output section while `isActive` is true. The indicator's
+    // own streaming-state gate is exercised in its sibling unit test.
+    mockLiveStatus = "in_progress" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "in_progress" as TaskStatus })} />,
+    );
+    const indicator = screen.getByTestId("pinned-task-streaming-indicator");
+    expect(indicator).toHaveAttribute("data-task-id", "task-1");
+  });
+
+  it("does not render the pinned cooking indicator for terminal tasks", () => {
+    mockLiveStatus = "done" as TaskStatus;
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "done" as TaskStatus })} />,
+    );
+    expect(
+      screen.queryByTestId("pinned-task-streaming-indicator"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the pinned cooking indicator on never-run tasks", () => {
+    renderWithRouter(
+      <TaskPreview task={makeTask({ status: "ready" as TaskStatus })} />,
+    );
+    expect(
+      screen.queryByTestId("pinned-task-streaming-indicator"),
+    ).not.toBeInTheDocument();
   });
 });
 

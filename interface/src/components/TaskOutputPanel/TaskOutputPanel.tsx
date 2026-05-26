@@ -13,19 +13,9 @@ import { useScrollAnchorV2 } from "../../shared/hooks/use-scroll-anchor-v2";
 import { OverlayScrollbar } from "../OverlayScrollbar";
 import { TerminalPanelBody } from "../TerminalPanelBody";
 import { TerminalInstanceTabs } from "../TerminalInstanceTabs";
-import { useTaskStream } from "../../hooks/use-task-stream";
-import {
-  useIsStreaming,
-  useIsWriting,
-  useStreamingText,
-  useThinkingText,
-  useActiveToolCalls,
-  useProgressText,
-} from "../../hooks/stream/hooks";
-import { getStreamingPhaseLabel } from "../../utils/streaming";
-import { CookingIndicator } from "../CookingIndicator";
 import { ActiveTaskStream } from "./ActiveTaskStream";
 import { CompletedTaskOutput } from "./CompletedTaskOutput";
+import { PinnedTaskStreamingIndicator } from "./PinnedTaskStreamingIndicator";
 import styles from "./TaskOutputPanel.module.css";
 
 function AutomationControls({ projectId }: { projectId: string }) {
@@ -116,43 +106,6 @@ function AutomationControls({ projectId }: { projectId: string }) {
         />
       )}
     </>
-  );
-}
-
-/**
- * Pinned cooking indicator for the Run pane's single active task.
- *
- * Rendered inside `.contentShell` but *outside* the scrolling `.content`
- * region so the desktop shell's bottom fade gradient
- * (`.sidekickPanelSlot::after` at `z-index: 1`) can't paint over the
- * "Cooking..." / "Submitting plan..." label. Mirrors the pattern used
- * by `ChatStreamingIndicator` above the chat input bar.
- */
-function PinnedTaskStreamingIndicator({ taskId }: { taskId: string }) {
-  const { streamKey } = useTaskStream(taskId, true);
-  const isStreaming = useIsStreaming(streamKey);
-  const isWriting = useIsWriting(streamKey);
-  const streamingText = useStreamingText(streamKey);
-  const thinkingText = useThinkingText(streamKey);
-  const toolCalls = useActiveToolCalls(streamKey);
-  const progressText = useProgressText(streamKey);
-
-  const nowStreaming =
-    isStreaming || !!streamingText || !!thinkingText || toolCalls.length > 0;
-  if (!nowStreaming) return null;
-
-  const label = getStreamingPhaseLabel({
-    streamingText,
-    thinkingText,
-    toolCalls,
-    progressText,
-    isWriting,
-  });
-
-  return (
-    <div className={styles.pinnedStreamingIndicator} aria-live="polite">
-      <CookingIndicator label={label ?? "Cooking..."} hidden={!label} />
-    </div>
   );
 }
 
@@ -260,7 +213,12 @@ export function RunSidekickPane() {
             )
           )}
         </div>
-        {activeTask && <PinnedTaskStreamingIndicator taskId={activeTask.taskId} />}
+        {activeTask && (
+          <PinnedTaskStreamingIndicator
+            taskId={activeTask.taskId}
+            className={styles.pinnedStreamingIndicator}
+          />
+        )}
         <OverlayScrollbar scrollRef={contentRef} />
       </div>
     </div>

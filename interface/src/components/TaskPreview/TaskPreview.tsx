@@ -12,6 +12,7 @@ import {
   ActiveTaskStream,
   CompletedTaskOutput,
   CopyTaskOutputButton,
+  PinnedTaskStreamingIndicator,
   buildTaskCopyText,
 } from "../TaskOutputPanel";
 import { useProjectActions } from "../../stores/project-action-store";
@@ -228,6 +229,10 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
               isAutoFollowing={isAutoFollowing}
               defaultExpanded
               showHeader={false}
+            />
+            <PinnedTaskStreamingIndicator
+              taskId={task.task_id}
+              className={styles.previewStreamingIndicator}
             />
           </div>
         </GroupCollapsible>
