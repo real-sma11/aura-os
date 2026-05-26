@@ -420,3 +420,113 @@ fn permission_heal_attempt_marks_first_call_only() {
     let other = AgentId::new();
     assert!(service.note_permission_heal_attempt(&other));
 }
+
+// -----------------------------------------------------------------
+// Persisted "upstream drops the `permissions` column" sentinel.
+// The PUT-heal task writes this key the first time it observes
+// aura-network swallowing the column on writes; subsequent process
+// boots use it to silence per-agent WARNs and skip the doomed heal
+// PUT entirely. It auto-clears the moment upstream returns a
+// non-empty bundle, so a fixed deployment self-heals without any
+// manual reset.
+// -----------------------------------------------------------------
+
+#[test]
+fn reconcile_with_sentinel_set_still_adopts_shadow() {
+    let (service, _dir) = open_service();
+    let seeded = agent_with_permissions(
+        "Atlas",
+        AgentPermissions {
+            scope: AgentScope::default(),
+            capabilities: vec![Capability::SpawnAgent, Capability::ReadAgent],
+        },
+    );
+    service.save_agent_shadow(&seeded).unwrap();
+
+    // Simulate "a prior process already detected upstream is broken"
+    // by pre-seeding the sentinel directly on the store.
+    service
+        .store
+        .put_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY, b"1")
+        .unwrap();
+
+    // The in-memory rescue contract MUST still run — the sentinel
+    // only affects logging and the outbound heal PUT, never the
+    // shadow adoption that downstream callers rely on.
+    let mut fetched = seeded.clone();
+    fetched.permissions = AgentPermissions::empty();
+    service.reconcile_permissions_with_shadow(&mut fetched);
+
+    assert!(
+        !fetched.permissions.is_empty(),
+        "sentinel must not gate the shadow-adoption safety net"
+    );
+    assert!(fetched
+        .permissions
+        .capabilities
+        .contains(&Capability::SpawnAgent));
+
+    // Sentinel is still set after a known-broken reconcile — only a
+    // genuinely non-empty upstream response should clear it.
+    assert!(
+        service
+            .store
+            .get_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY)
+            .is_ok(),
+        "sentinel must persist when upstream keeps returning empty"
+    );
+}
+
+#[test]
+fn reconcile_clears_sentinel_when_upstream_returns_non_empty() {
+    let (service, _dir) = open_service();
+    // Sentinel from a previous broken deployment.
+    service
+        .store
+        .put_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY, b"1")
+        .unwrap();
+
+    // Upstream now round-trips the bundle correctly.
+    let mut fetched = agent_with_permissions(
+        "Atlas",
+        AgentPermissions {
+            scope: AgentScope::default(),
+            capabilities: vec![Capability::PostToFeed],
+        },
+    );
+    service.reconcile_permissions_with_shadow(&mut fetched);
+
+    assert!(
+        service
+            .store
+            .get_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY)
+            .is_err(),
+        "sentinel must auto-clear the moment upstream returns a non-empty bundle"
+    );
+}
+
+#[test]
+fn sentinel_survives_across_service_instances() {
+    // Simulates a process restart: the second service instance must
+    // observe the sentinel persisted by the first so subsequent boots
+    // skip the per-agent WARN + heal-PUT storm.
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(SettingsStore::open(dir.path()).unwrap());
+
+    let first = AgentService::new(store.clone(), None);
+    first
+        .store
+        .put_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY, b"1")
+        .unwrap();
+
+    drop(first);
+
+    let second = AgentService::new(store, None);
+    assert!(
+        second
+            .store
+            .get_setting(AgentService::PERMISSIONS_UPSTREAM_DROPS_KEY)
+            .is_ok(),
+        "sentinel must persist across AgentService instances backed by the same store"
+    );
+}

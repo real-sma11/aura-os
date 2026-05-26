@@ -74,8 +74,14 @@ impl AgentService {
     /// the network response is still authoritative.
     pub fn reconcile_permissions_with_shadow(&self, agent: &mut Agent) {
         if !agent.permissions.is_empty() {
+            // Upstream did round-trip the bundle. If we previously
+            // flagged it as broken, the flag is stale — clear it so
+            // the safety net can re-engage with fresh diagnostics if
+            // the regression ever returns.
+            self.clear_upstream_drops_permissions_sentinel();
             return;
         }
+        let upstream_known_broken = self.upstream_drops_permissions_sentinel();
         let shadow_permissions = match self.get_agent_local(&agent.agent_id) {
             Ok(s) if !s.permissions.is_empty() => Some(s.permissions),
             _ => None,
@@ -87,14 +93,23 @@ impl AgentService {
             // contract), but skip the WARN and the PUT to avoid log
             // spam and no-op writes when upstream genuinely cannot
             // persist the column.
+            //
+            // When the persisted sentinel is set we've already
+            // observed (in a prior process) that upstream drops the
+            // column on writes too, so skip the per-agent WARN and
+            // the doomed PUT entirely. A single boot-time INFO
+            // (emitted from `log_upstream_drops_sentinel_once`)
+            // summarizes the situation across all agents instead.
             let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
-            if first_attempt {
+            if first_attempt && !upstream_known_broken {
                 tracing::warn!(
                     agent_id = %agent.agent_id,
                     shadow_capabilities = shadow.capabilities.len(),
                     "aura-network response did not include a `permissions` bundle; using last-known shadow value and scheduling one-shot upstream heal"
                 );
                 self.try_heal_permissions_upstream(agent.agent_id, shadow.clone());
+            } else if upstream_known_broken {
+                self.log_upstream_drops_sentinel_once();
             }
             agent.permissions = shadow;
             return;
@@ -109,7 +124,7 @@ impl AgentService {
         if let Some(ceo_id) = self.bootstrapped_ceo_agent_id() {
             if ceo_id == agent.agent_id {
                 let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
-                if first_attempt {
+                if first_attempt && !upstream_known_broken {
                     tracing::warn!(
                         agent_id = %agent.agent_id,
                         "restoring CEO preset from bootstrap-stamped agent_id (both network and shadow had empty permissions); scheduling one-shot upstream heal"
@@ -118,9 +133,56 @@ impl AgentService {
                         agent.agent_id,
                         AgentPermissions::ceo_preset(),
                     );
+                } else if upstream_known_broken {
+                    self.log_upstream_drops_sentinel_once();
                 }
                 agent.permissions = AgentPermissions::ceo_preset();
             }
+        }
+    }
+
+    /// True iff a prior process observed that aura-network drops the
+    /// `permissions` column on its PUT response (the most reliable
+    /// detector — see [`Self::PERMISSIONS_UPSTREAM_DROPS_KEY`]).
+    fn upstream_drops_permissions_sentinel(&self) -> bool {
+        self.store
+            .get_setting(Self::PERMISSIONS_UPSTREAM_DROPS_KEY)
+            .is_ok()
+    }
+
+    /// Clear the "upstream drops `permissions` column" sentinel and
+    /// log a one-shot INFO if the sentinel was set. Called from the
+    /// non-empty branch of [`Self::reconcile_permissions_with_shadow`]
+    /// and from the successful-heal branch of
+    /// [`Self::try_heal_permissions_upstream`] so a fixed upstream
+    /// rearms the safety net automatically.
+    fn clear_upstream_drops_permissions_sentinel(&self) {
+        if !self.upstream_drops_permissions_sentinel() {
+            return;
+        }
+        if self
+            .store
+            .delete_setting(Self::PERMISSIONS_UPSTREAM_DROPS_KEY)
+            .is_ok()
+        {
+            tracing::info!(
+                "aura-network now round-trips the `permissions` column; cleared the 'upstream-drops-column' sentinel"
+            );
+        }
+    }
+
+    /// Emit a single boot-time INFO line summarizing that the
+    /// permissions safety net is engaged because the persisted
+    /// sentinel says upstream drops the column. Subsequent agents in
+    /// the same process stay silent — the dedup avoids per-agent
+    /// noise that the WARN flow used to produce.
+    fn log_upstream_drops_sentinel_once(&self) {
+        static SENTINEL_LOGGED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if !SENTINEL_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            tracing::info!(
+                "aura-network is known (from a prior process) to drop the `permissions` column; serving permissions from the local shadow without scheduling upstream heals. Sentinel auto-clears the next time upstream returns a non-empty bundle."
+            );
         }
     }
 
@@ -185,6 +247,11 @@ impl AgentService {
         };
         let agent_id_str = agent_id.to_string();
         let submitted_capabilities = permissions.capabilities.len();
+        // Clone for the detached task so it can update the persisted
+        // "upstream drops the column" sentinel based on the PUT
+        // outcome — set on confirmed-empty response, cleared on
+        // confirmed round-trip success.
+        let store = self.store.clone();
         handle.spawn(async move {
             let req = aura_os_network::UpdateAgentRequest {
                 permissions: Some(permissions),
@@ -198,14 +265,31 @@ impl AgentService {
                     // read and write paths. Either way, future GETs
                     // will keep returning empty and the safety net
                     // will keep filling in from the shadow — but the
-                    // dedup set will suppress further PUTs.
+                    // dedup set will suppress further PUTs. Persist
+                    // the sentinel so subsequent process boots skip
+                    // the per-agent WARN + heal-PUT storm entirely.
+                    let _ = store.put_setting(Self::PERMISSIONS_UPSTREAM_DROPS_KEY, b"1");
                     tracing::warn!(
                         agent_id = %agent_id_str,
                         submitted_capabilities,
-                        "upstream permissions heal PUT returned an empty `permissions` bundle; aura-network appears to drop the column on writes too"
+                        "upstream permissions heal PUT returned an empty `permissions` bundle; aura-network appears to drop the column on writes too (persisted sentinel will silence per-agent heals on next boot)"
                     );
                 }
                 Ok(_) => {
+                    // Upstream did round-trip the bundle — clear any
+                    // stale sentinel from a prior broken deployment
+                    // so we don't keep suppressing diagnostics if the
+                    // regression returns.
+                    if store
+                        .get_setting(Self::PERMISSIONS_UPSTREAM_DROPS_KEY)
+                        .is_ok()
+                    {
+                        let _ = store.delete_setting(Self::PERMISSIONS_UPSTREAM_DROPS_KEY);
+                        tracing::info!(
+                            agent_id = %agent_id_str,
+                            "upstream permissions heal PUT succeeded and round-tripped the bundle; cleared the 'upstream-drops-column' sentinel"
+                        );
+                    }
                     tracing::info!(
                         agent_id = %agent_id_str,
                         submitted_capabilities,

@@ -56,6 +56,20 @@ impl AgentService {
     /// already corrupted by the pre-fix PUT flow.
     pub(super) const CEO_AGENT_ID_KEY: &'static str = "bootstrap:ceo_agent_id";
 
+    /// Persisted sentinel: presence means we have empirically observed
+    /// that aura-network drops the `permissions` column on its PUT
+    /// response (and therefore almost certainly on GET too — the heal
+    /// PUT is the most reliable detector). When set, the read-time
+    /// reconciliation in
+    /// [`Self::reconcile_permissions_with_shadow`] silently adopts the
+    /// shadow without scheduling another heal PUT and without emitting
+    /// per-agent WARNs; a single boot-time INFO summarizes the state
+    /// instead. The sentinel is cleared automatically the moment we
+    /// observe a non-empty `permissions` bundle from upstream, so a
+    /// future fix to aura-network self-heals without any manual reset.
+    pub(super) const PERMISSIONS_UPSTREAM_DROPS_KEY: &'static str =
+        "permissions:upstream_drops_column";
+
     pub fn new(
         store: Arc<SettingsStore>,
         network_client: Option<Arc<aura_os_network::NetworkClient>>,
