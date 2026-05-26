@@ -22,6 +22,7 @@ import { RunFilterBar, type RunFilterState } from "./RunFilterBar";
 const STATUS_PARAM = "status";
 const AGENT_PARAM = "agent";
 const SPEC_PARAM = "spec";
+const TASK_PARAM = "task";
 
 const VALID_STATUSES: readonly DebugRunStatus[] = [
   "running",
@@ -115,6 +116,7 @@ export function DebugRunListView() {
       statuses: validStatuses,
       agents: parseCsvParam(searchParams.get(AGENT_PARAM)),
       specs: parseCsvParam(searchParams.get(SPEC_PARAM)),
+      tasks: parseCsvParam(searchParams.get(TASK_PARAM)),
     };
   }, [searchParams]);
 
@@ -130,7 +132,8 @@ export function DebugRunListView() {
     if (
       filters.statuses.size === 0 &&
       filters.agents.size === 0 &&
-      filters.specs.size === 0
+      filters.specs.size === 0 &&
+      filters.tasks.size === 0
     ) {
       return runs;
     }
@@ -147,6 +150,11 @@ export function DebugRunListView() {
       if (filters.specs.size > 0) {
         const specIds = run.spec_ids ?? [];
         const hit = specIds.some((id) => filters.specs.has(id));
+        if (!hit) return false;
+      }
+      if (filters.tasks.size > 0) {
+        const tasks = run.tasks ?? [];
+        const hit = tasks.some((task) => filters.tasks.has(task.task_id));
         if (!hit) return false;
       }
       return true;
@@ -206,6 +214,13 @@ export function DebugRunListView() {
     [filters.specs, updateFilterParam],
   );
 
+  const onToggleTask = useCallback(
+    (taskId: string) => {
+      updateFilterParam(TASK_PARAM, toggleInSet(new Set(filters.tasks), taskId));
+    },
+    [filters.tasks, updateFilterParam],
+  );
+
   const clearStatus = useCallback(
     () => updateFilterParam(STATUS_PARAM, new Set()),
     [updateFilterParam],
@@ -218,19 +233,25 @@ export function DebugRunListView() {
     () => updateFilterParam(SPEC_PARAM, new Set()),
     [updateFilterParam],
   );
+  const clearTask = useCallback(
+    () => updateFilterParam(TASK_PARAM, new Set()),
+    [updateFilterParam],
+  );
 
   const clearAll = useCallback(() => {
     const params = new URLSearchParams(searchParams);
     params.delete(STATUS_PARAM);
     params.delete(AGENT_PARAM);
     params.delete(SPEC_PARAM);
+    params.delete(TASK_PARAM);
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const anyFilterActive =
     filters.statuses.size > 0 ||
     filters.agents.size > 0 ||
-    filters.specs.size > 0;
+    filters.specs.size > 0 ||
+    filters.tasks.size > 0;
 
   if (!projectId) {
     return <div className={styles.empty}>No project selected.</div>;
@@ -255,9 +276,11 @@ export function DebugRunListView() {
           onToggleStatus={onToggleStatus}
           onToggleAgent={onToggleAgent}
           onToggleSpec={onToggleSpec}
+          onToggleTask={onToggleTask}
           onClearStatus={clearStatus}
           onClearAgent={clearAgent}
           onClearSpec={clearSpec}
+          onClearTask={clearTask}
           onClearAll={clearAll}
         />
       </div>

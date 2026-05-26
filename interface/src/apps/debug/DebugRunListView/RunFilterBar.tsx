@@ -13,18 +13,22 @@ export interface RunFilterState {
   statuses: ReadonlySet<DebugRunStatus>;
   agents: ReadonlySet<string>;
   specs: ReadonlySet<string>;
+  /** Selected `task_id`s. Filtering matches runs that include any selected task. */
+  tasks: ReadonlySet<string>;
 }
 
 interface Props {
-  /** All runs returned for the project (pre-filter), used to derive the agent/spec option lists. */
+  /** All runs returned for the project (pre-filter), used to derive the agent/spec/task option lists. */
   runs: readonly DebugRunMetadata[];
   filters: RunFilterState;
   onToggleStatus: (status: DebugRunStatus) => void;
   onToggleAgent: (agentInstanceId: string) => void;
   onToggleSpec: (specId: string) => void;
+  onToggleTask: (taskId: string) => void;
   onClearStatus: () => void;
   onClearAgent: () => void;
   onClearSpec: () => void;
+  onClearTask: () => void;
   onClearAll: () => void;
 }
 
@@ -50,9 +54,11 @@ export function RunFilterBar({
   onToggleStatus,
   onToggleAgent,
   onToggleSpec,
+  onToggleTask,
   onClearStatus,
   onClearAgent,
   onClearSpec,
+  onClearTask,
   onClearAll,
 }: Props) {
   const agentOptions = useMemo<MultiSelectFilterOption[]>(() => {
@@ -88,8 +94,46 @@ export function RunFilterBar({
       }));
   }, [runs]);
 
+  /**
+   * Task options aggregate every distinct task observed across the
+   * project's runs. The dropdown label prefers `task_name` (so users
+   * recognize what they're filtering for) and uses the short task id
+   * as the hint so both pieces of information are visible at once.
+   * When no name is available we fall back to the id as the label.
+   */
+  const taskOptions = useMemo<MultiSelectFilterOption[]>(() => {
+    const names = new Map<string, string>();
+    const counts = new Map<string, number>();
+    for (const run of runs) {
+      for (const task of run.tasks ?? []) {
+        counts.set(task.task_id, (counts.get(task.task_id) ?? 0) + 1);
+        const name = task.task_name?.trim();
+        if (name && !names.has(task.task_id)) {
+          names.set(task.task_id, name);
+        }
+      }
+    }
+    return Array.from(counts.entries())
+      .sort(([idA], [idB]) => {
+        const nameA = names.get(idA) ?? idA;
+        const nameB = names.get(idB) ?? idB;
+        return nameA.localeCompare(nameB);
+      })
+      .map(([id, count]) => {
+        const name = names.get(id);
+        return {
+          id,
+          label: name ?? shortId(id),
+          hint: name ? `${shortId(id)} · ${count}` : `${count}`,
+        };
+      });
+  }, [runs]);
+
   const totalSelected =
-    filters.statuses.size + filters.agents.size + filters.specs.size;
+    filters.statuses.size +
+    filters.agents.size +
+    filters.specs.size +
+    filters.tasks.size;
 
   return (
     <div className={styles.root}>
@@ -100,6 +144,15 @@ export function RunFilterBar({
         options={STATUS_OPTIONS}
         onToggle={(id) => onToggleStatus(id as DebugRunStatus)}
         onClear={onClearStatus}
+      />
+      <MultiSelectFilterMenu
+        emptyLabel="All tasks"
+        aria-label="Filter runs by task"
+        selected={filters.tasks}
+        options={taskOptions}
+        onToggle={onToggleTask}
+        onClear={onClearTask}
+        disabled={taskOptions.length === 0}
       />
       <MultiSelectFilterMenu
         emptyLabel="All agents"
