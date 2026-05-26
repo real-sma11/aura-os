@@ -134,11 +134,19 @@ pub(super) async fn update_usage_cache(
 /// persisted `tasks` row + session events. The cache entry is removed
 /// after persistence so the in-memory map doesn't grow unbounded
 /// across task completions.
+///
+/// `forwarder_session_id` is the forwarder's authoritative session id,
+/// threaded through to `persist_task_output` so a redundant
+/// `task_completed` / `task_failed` (with a `cache.entry().or_default()`
+/// reseed by an interleaved `token_usage`) still has a session to
+/// attribute the persisted events to. See the rationale on
+/// `crate::persistence::persist_task_output`.
 pub(super) async fn persist_cached_task_output(
     state: &AppState,
     project_id: ProjectId,
     jwt: &str,
     task_id: &str,
+    forwarder_session_id: Option<SessionId>,
 ) {
     let Some(key) = parse_task_key(project_id, task_id) else {
         return;
@@ -150,11 +158,13 @@ pub(super) async fn persist_cached_task_output(
     let Some(cached) = cached else {
         return;
     };
+    let forwarder_session_id_str = forwarder_session_id.map(|sid| sid.to_string());
     crate::persistence::persist_task_output(
         state.storage_client.as_ref(),
         Some(jwt),
         task_id,
         &cached,
+        forwarder_session_id_str.as_deref(),
     )
     .await;
 }

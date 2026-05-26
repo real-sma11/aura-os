@@ -9,6 +9,7 @@
 use std::str::FromStr;
 
 use aura_os_core::TaskId;
+use tracing::info;
 
 use super::common::{event_text, set_current_task};
 use super::super::super::session::{record_task_worked, RecordTaskWorkedInputs};
@@ -51,6 +52,13 @@ pub(super) async fn apply_event_side_effect(
 /// single writer of `tasks.session_id`.
 async fn task_started(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
     let Some(task_id) = task_id else { return };
+    info!(
+        target: "aura::automation",
+        project_id = %ctx.project_id,
+        agent_instance_id = %ctx.agent_instance_id,
+        task_id = task_id,
+        "automation task started"
+    );
     task_output::seed_task_output(
         ctx.state,
         ctx.project_id,
@@ -104,12 +112,26 @@ async fn spawn_health_baseline_snapshot(ctx: &SideEffectCtx<'_>, task_id: &str) 
 /// `update_usage_cache` are silently discarded when the cache is
 /// evicted, leaving the dashboard "Tokens" stat at 0.
 async fn task_completed(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
+    info!(
+        target: "aura::automation",
+        project_id = %ctx.project_id,
+        agent_instance_id = %ctx.agent_instance_id,
+        task_id = task_id.unwrap_or(""),
+        "automation task completed"
+    );
     set_current_task(ctx.loop_handle, None).await;
     if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
         ctx.retry_state.health_baseline.clear(task_uuid);
     }
     if let (Some(task_id), Some(jwt)) = (task_id, ctx.jwt) {
-        task_output::persist_cached_task_output(ctx.state, ctx.project_id, jwt, task_id).await;
+        task_output::persist_cached_task_output(
+            ctx.state,
+            ctx.project_id,
+            jwt,
+            task_id,
+            ctx.session_id,
+        )
+        .await;
     }
 }
 
@@ -126,6 +148,14 @@ async fn task_failed(
     task_id: Option<&str>,
     event: &serde_json::Value,
 ) {
+    info!(
+        target: "aura::automation",
+        project_id = %ctx.project_id,
+        agent_instance_id = %ctx.agent_instance_id,
+        task_id = task_id.unwrap_or(""),
+        reason = failure::extract_task_failure_reason(event).as_deref().unwrap_or(""),
+        "automation task failed"
+    );
     set_current_task(ctx.loop_handle, None).await;
     if let Some(task_uuid) = task_id.and_then(|s| TaskId::from_str(s).ok()) {
         ctx.retry_state.health_baseline.clear(task_uuid);
@@ -134,7 +164,14 @@ async fn task_failed(
         return;
     };
     failure::persist_task_failure_reason(ctx.state, jwt, task_id, event).await;
-    task_output::persist_cached_task_output(ctx.state, ctx.project_id, jwt, task_id).await;
+    task_output::persist_cached_task_output(
+        ctx.state,
+        ctx.project_id,
+        jwt,
+        task_id,
+        ctx.session_id,
+    )
+    .await;
     retry::maybe_apply_task_level_retry(ctx, task_id, event).await;
 }
 
@@ -148,8 +185,31 @@ async fn tool_call_completed(
     event: &serde_json::Value,
 ) {
     let Some(task_id) = task_id else { return };
+    info!(
+        target: "aura::automation",
+        project_id = %ctx.project_id,
+        agent_instance_id = %ctx.agent_instance_id,
+        task_id = task_id,
+        tool = %tool_name(event),
+        is_error = event.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
+        "automation tool call completed"
+    );
     task_output::record_test_pass_evidence(ctx.state, ctx.project_id, task_id, event).await;
     git::record_git_commit_push_timeout(ctx.state, ctx.project_id, task_id, event).await;
+}
+
+/// Tool name from a `tool_call_completed` event payload, falling
+/// back to a generic label. Kept local to this module so the
+/// dispatch arm doesn't reach into the harness collector's private
+/// helpers; mirrors the same key precedence the activity-side
+/// helper uses.
+fn tool_name(event: &serde_json::Value) -> &str {
+    event
+        .get("name")
+        .and_then(|v| v.as_str())
+        .or_else(|| event.get("tool_name").and_then(|v| v.as_str()))
+        .or_else(|| event.get("tool").and_then(|v| v.as_str()))
+        .unwrap_or("tool")
 }
 
 /// Git checkpoint events (commit / push, success / failure). Each
@@ -163,6 +223,14 @@ async fn git_lifecycle(
     event: &serde_json::Value,
 ) {
     let Some(task_id) = task_id else { return };
+    info!(
+        target: "aura::automation",
+        project_id = %ctx.project_id,
+        agent_instance_id = %ctx.agent_instance_id,
+        task_id = task_id,
+        event_type = event_type,
+        "automation git checkpoint"
+    );
     git::record_git_checkpoint(ctx.state, ctx.project_id, task_id, event_type, event).await;
 }
 

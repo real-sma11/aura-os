@@ -185,11 +185,21 @@ pub(crate) async fn persist_log_event(
 /// aura-storage as session events, and update the task record with
 /// accumulated token counts. Called from `forward_automaton_events`
 /// when a task completes or fails.
+///
+/// `forwarder_session_id` is the session id the forwarder driving this
+/// task knows about. It is used as a second fallback (after the in-memory
+/// cache) when resolving which session to attribute the persisted output
+/// to. Without it, a redundant `task_completed` / `task_failed` event that
+/// arrives after the cache entry has been drained (e.g. a trailing
+/// `token_usage` reseeded the entry with `CachedTaskOutput::default()`
+/// via `cache.entry().or_default()`) would have lost the session linkage
+/// and the persist would silently drop with a `session_id missing` warning.
 pub(crate) async fn persist_task_output(
     storage: Option<&Arc<StorageClient>>,
     jwt: Option<&str>,
     task_id: &str,
     cached: &CachedTaskOutput,
+    forwarder_session_id: Option<&str>,
 ) {
     let (Some(storage), Some(jwt)) = (storage, jwt) else {
         return;
@@ -219,26 +229,46 @@ pub(crate) async fn persist_task_output(
         }
     }
 
-    // The automaton does not include session_id in its WS event payloads,
-    // so the cache usually has None.  Fall back to the task document which
-    // gets session_id written by TaskService::assign_task when the harness
-    // claims the task.
+    // Resolve session_id with a three-tier fallback so a drained
+    // cache (post-first-persist) doesn't lose attribution:
+    //   1. `cached.session_id` — stamped by `seed_task_output` on
+    //      `task_started`, the authoritative path for a fresh task.
+    //   2. `forwarder_session_id` — the session the forwarder driving
+    //      this task owns. Always set for storage-backed runs; this
+    //      catches the case where a trailing `token_usage` event
+    //      reseeded the cache with `or_default()` (session_id=None)
+    //      AFTER an earlier `task_completed` already drained the
+    //      original entry.
+    //   3. `storage.get_task(...).session_id` — cold-read ground truth
+    //      stamped onto the task row by `record_task_worked` at
+    //      `task_started`. Used as a defensive last resort in case
+    //      both in-memory paths missed.
     let session_id: String = match cached.session_id.clone() {
         Some(sid) => sid,
-        None => match storage.get_task(task_id, jwt).await {
-            Ok(task) if task.session_id.is_some() => {
-                let sid = task.session_id.unwrap();
-                info!(task_id, %sid, "Resolved session_id from task document (cache miss fallback)");
-                sid
+        None => match forwarder_session_id {
+            Some(sid) if !sid.is_empty() => {
+                info!(
+                    task_id,
+                    %sid,
+                    "Resolved session_id from forwarder context (cache miss fallback)"
+                );
+                sid.to_string()
             }
-            Ok(_) => {
-                warn!(task_id, "Cannot persist task output: session_id missing from both cache and task document");
-                return;
-            }
-            Err(e) => {
-                warn!(task_id, error = %e, "Cannot persist task output: failed to fetch task for session_id fallback");
-                return;
-            }
+            _ => match storage.get_task(task_id, jwt).await {
+                Ok(task) if task.session_id.is_some() => {
+                    let sid = task.session_id.unwrap();
+                    info!(task_id, %sid, "Resolved session_id from task document (cache miss fallback)");
+                    sid
+                }
+                Ok(_) => {
+                    warn!(task_id, "Cannot persist task output: session_id missing from cache, forwarder context, and task document");
+                    return;
+                }
+                Err(e) => {
+                    warn!(task_id, error = %e, "Cannot persist task output: failed to fetch task for session_id fallback");
+                    return;
+                }
+            },
         },
     };
 
