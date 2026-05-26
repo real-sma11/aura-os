@@ -68,7 +68,17 @@ export function ActiveTaskStream({
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
-  const hasContent = isStreaming || !!streamingText || !!thinkingText || activeToolCalls.length > 0;
+  // Only real (non-synthetic) tool calls count as "content" — synthetic
+  // `transition_task` lifecycle cards we emit on TaskStarted live in
+  // `activeToolCalls` for the entire run, so leaving them in this gate
+  // would mask the `Waiting for output…` cooking placeholder for the
+  // whole window between TaskStarted and the first real delta.
+  // `isStreaming` is also intentionally NOT part of this gate: the
+  // parent surface already gates mounting on `entry.status === "active"`
+  // (see RunTaskOutputBody / TaskPreview), and treating `isStreaming`
+  // as content here was what previously hid the placeholder.
+  const hasRealToolCalls = activeToolCalls.some((tc) => !tc.synthetic);
+  const hasContent = !!streamingText || !!thinkingText || hasRealToolCalls;
 
   const getCopyText = useCallback(
     () =>
