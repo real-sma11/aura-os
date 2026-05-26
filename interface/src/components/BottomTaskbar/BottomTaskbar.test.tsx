@@ -265,16 +265,17 @@ beforeEach(() => {
 });
 
 describe("BottomTaskbar", () => {
-  it("places the OrgSelector after ProfilePill in the left cluster in advanced mode (left of the Desktop icon)", () => {
+  it("places the OrgSelector after ProfilePill in the left cluster in advanced mode (Desktop icon is no longer in .left)", () => {
     const { container } = render(<BottomTaskbar mode="advanced" />);
 
     const leftSlot = container.querySelector<HTMLElement>(".left");
     expect(leftSlot).not.toBeNull();
     if (!leftSlot) return;
 
-    // Collect the visible authoring chrome inside the `.left` cluster
-    // in document order: ProfilePill (rendered as "Open settings"),
-    // then OrgSelector ("Switch team"), then Desktop ("Desktop").
+    // The `.left` cluster now reads as ProfilePill ("Open settings")
+    // then OrgSelector ("Switch team"). The Desktop circle moved to
+    // the front of the `.center` cluster, so it must not be present
+    // inside `.left` anymore.
     const buttons = Array.from(leftSlot.querySelectorAll("button"));
     const profilePillIndex = buttons.findIndex(
       (btn) => btn.getAttribute("aria-label") === "Open settings",
@@ -282,13 +283,44 @@ describe("BottomTaskbar", () => {
     const orgSelectorIndex = buttons.findIndex(
       (btn) => btn.getAttribute("aria-label") === "Switch team",
     );
-    const desktopIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Desktop",
-    );
 
     expect(profilePillIndex).toBeGreaterThanOrEqual(0);
     expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
-    expect(desktopIndex).toBeGreaterThan(orgSelectorIndex);
+    expect(
+      leftSlot.querySelector('button[aria-label="Desktop"]'),
+    ).toBeNull();
+  });
+
+  it("leads the .center cluster with the Desktop circle, ahead of the AppNavRail and Apps button", () => {
+    const { container } = render(<BottomTaskbar mode="advanced" />);
+
+    const centerSlot = container.querySelector<HTMLElement>(".center");
+    expect(centerSlot).not.toBeNull();
+    if (!centerSlot) return;
+
+    const desktopButton = centerSlot.querySelector<HTMLElement>(
+      'button[aria-label="Desktop"]',
+    );
+    expect(desktopButton).not.toBeNull();
+    if (!desktopButton) return;
+
+    const navRail = centerSlot.querySelector<HTMLElement>(
+      '[data-testid="app-nav-rail"]',
+    );
+    const appsButton = centerSlot.querySelector<HTMLElement>(
+      'button[aria-label="Apps"]',
+    );
+    expect(navRail).not.toBeNull();
+    expect(appsButton).not.toBeNull();
+
+    const orderedChildren = Array.from(centerSlot.children);
+    const desktopIndex = orderedChildren.indexOf(desktopButton);
+    const navRailIndex = orderedChildren.indexOf(navRail as Element);
+    const appsIndex = orderedChildren.indexOf(appsButton as Element);
+
+    expect(desktopIndex).toBeGreaterThanOrEqual(0);
+    expect(desktopIndex).toBeLessThan(navRailIndex);
+    expect(navRailIndex).toBeLessThan(appsIndex);
   });
 
   it("places the OrgSelector after ProfilePill in the left cluster in simple mode (no Desktop icon present)", () => {

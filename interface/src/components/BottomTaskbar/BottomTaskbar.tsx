@@ -56,9 +56,9 @@ export interface BottomTaskbarProps {
  *   No Desktop button, no app rail center, no center pill, no
  *   profile rail shortcut, no clock, no Help, no collapse chevron
  *   — a minimal authed surface anchored by the profile pill.
- * - `advanced`: full chrome (ProfilePill + Desktop + favorites left,
- *   AppNavRail center, collapsible right cluster with Credits/
- *   Settings/ThemeToggle/Help/Profile, plus the clock readout).
+ * - `advanced`: full chrome (ProfilePill + favorites left,
+ *   Desktop + AppNavRail center, collapsible right cluster with
+ *   Credits/Settings/ThemeToggle/Help/Profile, plus the clock readout).
    */
   mode: UIMode;
 }
@@ -126,10 +126,12 @@ function PublicBottomTaskbar(): React.ReactElement {
  * Branches on `isAdvanced` to gate:
  *
  *   - `.left`:  the pill is mounted in both modes; the trailing
- *     Desktop `TaskbarIconButton` and `<FavoriteAgentsStrip />` are
- *     Advanced-only. Simple shows the profile pill on its own.
- *   - `.center`: the entire pill (AppNavRail + Apps + collapse
- *     chevron) — Advanced only.
+ *     `<FavoriteAgentsStrip />` is Advanced-only. Simple shows the
+ *     profile pill (plus OrgSelector) on its own.
+ *   - `.center`: the entire pill (Desktop + AppNavRail + Apps +
+ *     collapse chevron) — Advanced only. The Desktop circle leads
+ *     the cluster so the active-app surface is anchored at the
+ *     front of the middle taskbar.
  *   - `.right.rightPrimary`:
  *     - Right-cluster collapse chevron (Advanced only)
  *     - Credits / Settings / ThemeToggle (both modes; in Advanced these
@@ -223,15 +225,21 @@ function AuthedBottomTaskbar({
           plan={plan}
         />
         {/*
-         * Team selector lives in the bottom taskbar (left of the
-         * Desktop icon in Advanced; right after `ProfilePill` in
-         * Simple, which has no Desktop icon). The titlebar's leading
-         * slot is now a uniform `<PanelLeft />` drawer toggle across
-         * every mode, so the team affordance no longer competes for
-         * that spot.
+         * Team selector lives in the bottom taskbar right after
+         * `ProfilePill` in every authed mode. The Desktop icon now
+         * leads the `.center` cluster instead of trailing the
+         * left cluster, so `OrgSelector` is the last fixed item in
+         * `.left` (followed only by Advanced's `FavoriteAgentsStrip`).
+         * The titlebar's leading slot is a uniform `<PanelLeft />`
+         * drawer toggle across every mode, so the team affordance no
+         * longer competes for that spot.
          */}
         <OrgSelector variant="icon" />
-        {isAdvanced && (
+        {isAdvanced && <FavoriteAgentsStrip />}
+      </div>
+
+      {isAdvanced && (
+        <div className={styles.center}>
           <TaskbarIconButton
             selected={activeApp.id === "desktop"}
             icon={<Circle size={TASKBAR_ICON_SIZE} />}
@@ -245,12 +253,6 @@ function AuthedBottomTaskbar({
               }
             }}
           />
-        )}
-        {isAdvanced && <FavoriteAgentsStrip />}
-      </div>
-
-      {isAdvanced && (
-        <div className={styles.center}>
           <AppNavRail
             layout="taskbar"
             allowReorder
