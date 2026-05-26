@@ -14,8 +14,15 @@ vi.mock("../Block/Block.module.css", () => ({
 vi.mock("../Block/ThinkingBlock.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
 }));
+vi.mock("../Block/renderers/renderers.module.css", () => ({
+  default: new Proxy({}, { get: (_t, prop) => String(prop) }),
+}));
 vi.mock("../CopyButton/CopyButton.module.css", () => ({
   default: new Proxy({}, { get: (_t, prop) => String(prop) }),
+}));
+
+vi.mock("../../shared/hooks/use-highlighted-html", () => ({
+  useHighlightedHtml: (src: string) => src,
 }));
 
 describe("ActivityTimeline thinking segments", () => {
@@ -107,5 +114,196 @@ describe("ActivityTimeline thinking segments", () => {
     );
 
     expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+  });
+});
+
+// Phase 5 — UI clarity. The chat-block feed now disambiguates same-basename
+// file rows by promoting each row's summary to its minimum-unique tail
+// across the visible feed, and collapses runs of adjacent identical tool
+// calls into a single block carrying a `xN` badge in its header.
+describe("ActivityTimeline Phase 5 — file path disambiguation", () => {
+  it("promotes colliding basenames to the minimum-unique tail across the feed", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "crates/A/Cargo.toml" },
+        result: undefined,
+        pending: false,
+      },
+      {
+        id: "tc-2",
+        name: "read_file",
+        input: { path: "crates/B/Cargo.toml" },
+        result: undefined,
+        pending: false,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "tool", toolCallId: "tc-2", id: "tl-2" },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        isStreaming={false}
+      />,
+    );
+
+    // Both colliding paths promote to their disambiguating tail. The bare
+    // basename "Cargo.toml" no longer appears anywhere in the rendered DOM.
+    expect(screen.getByText("crates/A/Cargo.toml")).toBeInTheDocument();
+    expect(screen.getByText("crates/B/Cargo.toml")).toBeInTheDocument();
+    expect(screen.queryByText("Cargo.toml")).not.toBeInTheDocument();
+  });
+
+  it("renders a lone block with the bare basename when no collision exists", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "crates/A/Cargo.toml" },
+        result: undefined,
+        pending: false,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        isStreaming={false}
+      />,
+    );
+
+    // No sibling collision: the single block falls back to the bare
+    // basename. The full prefixed tail must not appear.
+    expect(screen.getByText("Cargo.toml")).toBeInTheDocument();
+    expect(screen.queryByText("crates/A/Cargo.toml")).not.toBeInTheDocument();
+  });
+});
+
+describe("ActivityTimeline Phase 5 — adjacent identical tool grouping", () => {
+  it("collapses N consecutive identical reads into one row carrying a xN badge", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "foo.rs" },
+        result: "first",
+        pending: false,
+      },
+      {
+        id: "tc-2",
+        name: "read_file",
+        input: { path: "foo.rs" },
+        result: "second",
+        pending: false,
+      },
+      {
+        id: "tc-3",
+        name: "read_file",
+        input: { path: "foo.rs" },
+        result: "latest",
+        pending: false,
+      },
+      {
+        id: "tc-4",
+        name: "read_file",
+        input: { path: "bar.rs" },
+        result: "only",
+        pending: false,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "tool", toolCallId: "tc-2", id: "tl-2" },
+      { kind: "tool", toolCallId: "tc-3", id: "tl-3" },
+      { kind: "tool", toolCallId: "tc-4", id: "tl-4" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        isStreaming={false}
+      />,
+    );
+
+    // 4 entries collapse to 2 rendered rows: the first ×3, the second a
+    // normal single-row block. We count the expandable header buttons —
+    // each `Block` renders exactly one — so the assertion stays robust
+    // against the always-on header copy button (which never carries
+    // `aria-expanded`).
+    const headers = screen
+      .getAllByRole("button")
+      .filter((el) => el.hasAttribute("aria-expanded"));
+    expect(headers).toHaveLength(2);
+
+    // The first row carries the `×3` chip, the second row has no badge.
+    const badge = container.querySelector(".blockBadge");
+    expect(badge?.textContent).toBe("×3");
+    expect(container.querySelectorAll(".blockBadge").length).toBe(1);
+
+    // Both paths still appear in their respective summary slots; `foo.rs`
+    // is rendered exactly once (because the run collapsed to one row).
+    expect(screen.getAllByText("foo.rs")).toHaveLength(1);
+    expect(screen.getByText("bar.rs")).toBeInTheDocument();
+  });
+
+  it("does not collapse identical tool calls broken up by a different tool in the middle", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "foo.rs" },
+        result: "first",
+        pending: false,
+      },
+      {
+        id: "tc-2",
+        name: "list_files",
+        input: { path: "src" },
+        result: undefined,
+        pending: false,
+      },
+      {
+        id: "tc-3",
+        name: "read_file",
+        input: { path: "foo.rs" },
+        result: "second",
+        pending: false,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "tool", toolCallId: "tc-2", id: "tl-2" },
+      { kind: "tool", toolCallId: "tc-3", id: "tl-3" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        isStreaming={false}
+      />,
+    );
+
+    // Three distinct rows — the intervening `list_files` breaks the run
+    // so the two `read_file` calls do not merge.
+    const headers = screen
+      .getAllByRole("button")
+      .filter((el) => el.hasAttribute("aria-expanded"));
+    expect(headers).toHaveLength(3);
+    // No `×N` badge anywhere since no run reached length 2. The
+    // `list_files` row paints its own item-count badge ("0 items"),
+    // so we filter for the multiplication-sign chip specifically.
+    const badges = Array.from(container.querySelectorAll(".blockBadge"));
+    expect(badges.some((b) => (b.textContent ?? "").includes("×"))).toBe(false);
   });
 });

@@ -97,9 +97,33 @@ function CodeView({
 interface FileBlockProps {
   entry: ToolCallEntry;
   defaultExpanded?: boolean;
+  /**
+   * Optional pre-computed minimum-unique path tail supplied by the
+   * parent feed (`ActivityTimeline`). When two file blocks in the
+   * same feed share a basename (e.g. multiple `Cargo.toml` reads
+   * across crates), the parent walks every visible path and hands
+   * each `FileBlock` the shortest tail that disambiguates it within
+   * the feed. Falls back to the bare basename so the component can
+   * still be used outside a feed.
+   */
+  displayPath?: string;
+  /**
+   * Phase 5 — when adjacent identical tool calls collapse into a
+   * single rendered row, the parent feed sets this to the number of
+   * calls in the run (>= 2). The block renders the count as a `×N`
+   * badge in the header so operators can see how many redundant
+   * reads/writes the agent performed without scrolling through five
+   * identical rows. Absent / 1 means a regular single-call block.
+   */
+  groupCount?: number;
 }
 
-export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
+export function FileBlock({
+  entry,
+  defaultExpanded,
+  displayPath,
+  groupCount,
+}: FileBlockProps) {
   const path = (entry.input.path as string) || "";
   const lang = langFromPath(path);
   const hasPath = path.length > 0;
@@ -172,6 +196,13 @@ export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
   })();
 
   const fileName = hasPath ? (path.split(/[/\\]/).pop() || path) : "";
+  // Prefer the feed-supplied disambiguating tail when present; otherwise
+  // fall back to the bare basename so the renderer remains useful when
+  // mounted outside `ActivityTimeline` (e.g. the `ToolCallBlock` direct
+  // render path exercised by `ToolRow.test.tsx`).
+  const summaryLabel = displayPath && displayPath.length > 0 ? displayPath : fileName;
+  const repeatBadge =
+    typeof groupCount === "number" && groupCount >= 2 ? `×${groupCount}` : undefined;
 
   const hasEditContent = oldText.length > 0 || newText.length > 0;
   const hasWriteContent = writeContent.length > 0;
@@ -225,7 +256,8 @@ export function FileBlock({ entry, defaultExpanded }: FileBlockProps) {
     <Block
       icon={<Icon size={12} />}
       title={title}
-      summary={fileName || undefined}
+      summary={summaryLabel || undefined}
+      badge={repeatBadge}
       status={status}
       defaultExpanded={defaultExpanded || forcePreview}
       forceExpanded={forcePreview}

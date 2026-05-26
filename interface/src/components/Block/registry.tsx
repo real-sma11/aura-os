@@ -12,11 +12,39 @@ import { StatusReadoutBlock } from "./renderers/StatusReadoutBlock";
 import { GenericToolBlock } from "./renderers/GenericToolBlock";
 
 /**
+ * Phase 5 — extra hints the parent feed (`ActivityTimeline`) can hand
+ * to a renderer when the same tool call ends up sharing a row with
+ * siblings that need disambiguation or collapsing. Only `FileBlock`
+ * consumes these today; other renderers ignore them.
+ */
+export interface BlockRenderOptions {
+  /**
+   * Minimum-unique right-anchored path tail for the file under render,
+   * computed across every file block visible in the current feed. Lets
+   * two `Cargo.toml` reads in different crates show as
+   * `crates/A/Cargo.toml` / `crates/B/Cargo.toml` instead of two
+   * identical `Cargo.toml` rows.
+   */
+  displayPath?: string;
+  /**
+   * Number of adjacent identical tool calls collapsed into this single
+   * rendered row. `undefined` / 1 ⇒ a normal single-call row; `>= 2`
+   * triggers the `×N` badge in the block header.
+   */
+  groupCount?: number;
+}
+
+/**
  * Renderer contract: every block renderer takes a ToolCallEntry plus an
  * optional defaultExpanded hint and returns a ReactNode built around the
- * shared `Block` primitive.
+ * shared `Block` primitive. Renderers that opt into feed-aware hints
+ * (e.g. `FileBlock`) destructure them off the optional third argument.
  */
-export type BlockRenderer = (entry: ToolCallEntry, defaultExpanded?: boolean) => ReactNode;
+export type BlockRenderer = (
+  entry: ToolCallEntry,
+  defaultExpanded?: boolean,
+  options?: BlockRenderOptions,
+) => ReactNode;
 
 /**
  * Tools that default to expanded when a fresh streaming bubble flips into
@@ -38,10 +66,38 @@ export function isAutoExpandedTool(name: string): boolean {
 }
 
 const REGISTRY: Record<string, BlockRenderer> = {
-  read_file: (entry, def) => <FileBlock entry={entry} defaultExpanded={def} />,
-  write_file: (entry, def) => <FileBlock entry={entry} defaultExpanded={def} />,
-  edit_file: (entry, def) => <FileBlock entry={entry} defaultExpanded={def} />,
-  delete_file: (entry, def) => <FileBlock entry={entry} defaultExpanded={def} />,
+  read_file: (entry, def, opts) => (
+    <FileBlock
+      entry={entry}
+      defaultExpanded={def}
+      displayPath={opts?.displayPath}
+      groupCount={opts?.groupCount}
+    />
+  ),
+  write_file: (entry, def, opts) => (
+    <FileBlock
+      entry={entry}
+      defaultExpanded={def}
+      displayPath={opts?.displayPath}
+      groupCount={opts?.groupCount}
+    />
+  ),
+  edit_file: (entry, def, opts) => (
+    <FileBlock
+      entry={entry}
+      defaultExpanded={def}
+      displayPath={opts?.displayPath}
+      groupCount={opts?.groupCount}
+    />
+  ),
+  delete_file: (entry, def, opts) => (
+    <FileBlock
+      entry={entry}
+      defaultExpanded={def}
+      displayPath={opts?.displayPath}
+      groupCount={opts?.groupCount}
+    />
+  ),
 
   run_command: (entry, def) => <CommandBlock entry={entry} defaultExpanded={def} />,
 
@@ -96,8 +152,9 @@ const REGISTRY: Record<string, BlockRenderer> = {
 export function renderToolBlock(
   entry: ToolCallEntry,
   defaultExpanded?: boolean,
+  options?: BlockRenderOptions,
 ): ReactNode {
   const renderer = REGISTRY[entry.name];
-  if (renderer) return renderer(entry, defaultExpanded);
+  if (renderer) return renderer(entry, defaultExpanded, options);
   return <GenericToolBlock entry={entry} defaultExpanded={defaultExpanded} />;
 }

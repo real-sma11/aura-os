@@ -1,5 +1,6 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import type { TimelineItem, ToolCallEntry } from "../../shared/types/stream";
+import { FILE_OPS } from "../../constants/tools";
 import {
   stripEmojis,
   normalizeMidSentenceBreaks,
@@ -8,6 +9,7 @@ import {
 } from "../../shared/utils/text-normalize";
 import { ThinkingBlock, isAutoExpandedTool, renderToolBlock } from "../Block";
 import { SegmentedContent } from "../SegmentedContent";
+import { canonicalInputKey, computeUniquePathTails } from "./grouping";
 import styles from "./ActivityTimeline.module.css";
 
 interface ActivityTimelineProps {
@@ -81,8 +83,65 @@ export function ActivityTimeline({
     mergedTimeline.push(item);
   }
 
-  const items: RenderedItem[] = [];
+  // Phase 5 — feed-wide path disambiguation. Walk the file-op tool
+  // entries reachable from this turn's timeline and compute the shortest
+  // right-anchored tail that uniquely identifies each path within the
+  // visible set. A lone `Cargo.toml` stays a bare basename; two reads of
+  // `crates/aura-os-core/Cargo.toml` and `crates/aura-os-cli/Cargo.toml`
+  // promote to their full distinguishing tails so operators can tell
+  // identical-looking rows apart at a glance.
+  const visibleFilePaths: string[] = [];
   for (const item of mergedTimeline) {
+    if (item.kind !== "tool") continue;
+    const entry = toolCallMap.get(item.toolCallId);
+    if (!entry) continue;
+    if (!FILE_OPS.has(entry.name)) continue;
+    const raw = entry.input?.path;
+    if (typeof raw === "string" && raw.length > 0) visibleFilePaths.push(raw);
+  }
+  const pathTailMap = computeUniquePathTails(visibleFilePaths);
+
+  // Phase 5 — adjacent identical tool-call grouping. Walk the merged
+  // timeline once and collapse runs of consecutive tool items sharing
+  // `(tool_name, canonical_input)` into a single render slot pointing
+  // at the *latest* entry in the run. The first non-matching item (or
+  // any non-tool item) breaks the run. Non-tool items pass through
+  // verbatim so thinking / text segments still interleave normally.
+  interface TimelineSlot {
+    item: TimelineItem;
+    groupCount?: number;
+  }
+  const slots: TimelineSlot[] = [];
+  let lastGroupKey: string | null = null;
+  for (const item of mergedTimeline) {
+    if (item.kind !== "tool") {
+      slots.push({ item });
+      lastGroupKey = null;
+      continue;
+    }
+    const entry = toolCallMap.get(item.toolCallId);
+    if (!entry) {
+      lastGroupKey = null;
+      continue;
+    }
+    const groupKey = canonicalInputKey(entry.name, entry.input ?? {});
+    const prevSlot = slots[slots.length - 1];
+    if (
+      prevSlot &&
+      prevSlot.item.kind === "tool" &&
+      lastGroupKey === groupKey
+    ) {
+      prevSlot.item = item;
+      prevSlot.groupCount = (prevSlot.groupCount ?? 1) + 1;
+      continue;
+    }
+    slots.push({ item, groupCount: 1 });
+    lastGroupKey = groupKey;
+  }
+
+  const items: RenderedItem[] = [];
+  for (const slot of slots) {
+    const item = slot.item;
     if (item.kind === "thinking") {
       // Prefer per-segment text (set by handleThinkingDelta) so that when
       // multiple thinking runs occur within one turn each block shows only
@@ -132,10 +191,25 @@ export function ActivityTimeline({
       const defaultToolExpanded = defaultActivitiesExpanded
         ? auto
         : entry.pending && auto;
+      // Surface the feed-wide disambiguating tail for file ops and the
+      // collapsed-run badge count for any tool whose previous adjacent
+      // siblings shared its `(name, input)` fingerprint.
+      let displayPath: string | undefined;
+      if (FILE_OPS.has(entry.name)) {
+        const raw = entry.input?.path;
+        if (typeof raw === "string" && raw.length > 0) {
+          displayPath = pathTailMap.get(raw);
+        }
+      }
+      const groupCount =
+        slot.groupCount && slot.groupCount >= 2 ? slot.groupCount : undefined;
       items.push({
         key: item.id,
         kind: "tool",
-        node: renderToolBlock(entry, defaultToolExpanded),
+        node: renderToolBlock(entry, defaultToolExpanded, {
+          displayPath,
+          groupCount,
+        }),
       });
     } else {
       const normalized = normalizeLooseStrongEmphasis(
