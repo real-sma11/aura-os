@@ -37,6 +37,15 @@ export function useOverlayScrollbar(
     const el = containerRef.current;
     if (!el) return;
 
+    // Hover is tracked on the wrapper that contains both the scroll
+    // container and the scroll thumb (a sibling, not a descendant, of
+    // the scroll container). If we listened on the scroll container
+    // itself, moving the cursor onto the now 12px-wide thumb hit area
+    // would fire `mouseleave` on the container, flip the thumb's
+    // pointer-events to none, drop the cursor back onto the container,
+    // re-fire `mouseenter`, and flicker the thumb opacity in a loop.
+    const hoverEl = el.parentElement ?? el;
+
     const onScroll = () => {
       update();
     };
@@ -51,8 +60,8 @@ export function useOverlayScrollbar(
     };
 
     el.addEventListener("scroll", onScroll, { passive: true });
-    el.addEventListener("mouseenter", onEnter);
-    el.addEventListener("mouseleave", onLeave);
+    hoverEl.addEventListener("mouseenter", onEnter);
+    hoverEl.addEventListener("mouseleave", onLeave);
 
     const ro =
       typeof ResizeObserver === "undefined"
@@ -64,8 +73,8 @@ export function useOverlayScrollbar(
 
     return () => {
       el.removeEventListener("scroll", onScroll);
-      el.removeEventListener("mouseenter", onEnter);
-      el.removeEventListener("mouseleave", onLeave);
+      hoverEl.removeEventListener("mouseenter", onEnter);
+      hoverEl.removeEventListener("mouseleave", onLeave);
       ro?.disconnect();
     };
   }, [containerRef, containerRef.current, update]);

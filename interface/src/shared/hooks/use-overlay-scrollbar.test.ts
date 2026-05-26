@@ -18,7 +18,9 @@ function createScrollContainer({
   scrollHeight: number;
   scrollTop?: number;
 }) {
+  const wrapper = document.createElement("div");
   const element = document.createElement("div");
+  wrapper.appendChild(element);
   let currentScrollTop = scrollTop;
 
   Object.defineProperty(element, "clientHeight", {
@@ -37,7 +39,7 @@ function createScrollContainer({
     },
   });
 
-  return element;
+  return { element, wrapper };
 }
 
 describe("useOverlayScrollbar", () => {
@@ -50,47 +52,68 @@ describe("useOverlayScrollbar", () => {
   });
 
   it("shows only while hovered when the container overflows", () => {
-    const container = createScrollContainer({ clientHeight: 100, scrollHeight: 300 });
-    const containerRef = { current: container };
+    const { element, wrapper } = createScrollContainer({ clientHeight: 100, scrollHeight: 300 });
+    const containerRef = { current: element };
     const { result } = renderHook(() => useOverlayScrollbar(containerRef));
 
     expect(result.current.visible).toBe(false);
 
     act(() => {
-      container.dispatchEvent(new MouseEvent("mouseenter"));
+      wrapper.dispatchEvent(new MouseEvent("mouseenter"));
     });
 
     expect(result.current.visible).toBe(true);
 
     act(() => {
-      container.dispatchEvent(new MouseEvent("mouseleave"));
+      wrapper.dispatchEvent(new MouseEvent("mouseleave"));
     });
 
     expect(result.current.visible).toBe(false);
   });
 
   it("stays hidden when the container does not overflow", () => {
-    const container = createScrollContainer({ clientHeight: 100, scrollHeight: 100 });
-    const containerRef = { current: container };
+    const { element, wrapper } = createScrollContainer({ clientHeight: 100, scrollHeight: 100 });
+    const containerRef = { current: element };
     const { result } = renderHook(() => useOverlayScrollbar(containerRef));
 
     act(() => {
-      container.dispatchEvent(new MouseEvent("mouseenter"));
-      container.dispatchEvent(new Event("scroll"));
+      wrapper.dispatchEvent(new MouseEvent("mouseenter"));
+      element.dispatchEvent(new Event("scroll"));
     });
 
     expect(result.current.visible).toBe(false);
   });
 
   it("does not become visible from scrolling alone when not hovered", () => {
-    const container = createScrollContainer({ clientHeight: 100, scrollHeight: 300, scrollTop: 24 });
-    const containerRef = { current: container };
+    const { element } = createScrollContainer({ clientHeight: 100, scrollHeight: 300, scrollTop: 24 });
+    const containerRef = { current: element };
     const { result } = renderHook(() => useOverlayScrollbar(containerRef));
 
     act(() => {
-      container.dispatchEvent(new Event("scroll"));
+      element.dispatchEvent(new Event("scroll"));
     });
 
     expect(result.current.visible).toBe(false);
+  });
+
+  it("keeps hovered=true when the cursor crosses onto a sibling thumb inside the wrapper", () => {
+    const { element, wrapper } = createScrollContainer({ clientHeight: 100, scrollHeight: 300 });
+    const thumb = document.createElement("div");
+    wrapper.appendChild(thumb);
+    const containerRef = { current: element };
+    const { result } = renderHook(() => useOverlayScrollbar(containerRef));
+
+    act(() => {
+      wrapper.dispatchEvent(new MouseEvent("mouseenter"));
+    });
+    expect(result.current.visible).toBe(true);
+
+    // Cursor moves from the scroll container onto the thumb. With hover
+    // tracked on the wrapper, this should NOT fire `mouseleave` on the
+    // wrapper, so visibility stays true and no flicker loop starts.
+    act(() => {
+      element.dispatchEvent(new MouseEvent("mouseleave"));
+    });
+    expect(result.current.visible).toBe(true);
   });
 });
