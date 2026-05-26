@@ -265,7 +265,7 @@ beforeEach(() => {
 });
 
 describe("BottomTaskbar", () => {
-  it("orders the left cluster as Desktop -> OrgSelector -> ProfilePill in advanced mode", () => {
+  it("places the OrgSelector after ProfilePill in the left cluster in advanced mode (left of the Desktop icon)", () => {
     const { container } = render(<BottomTaskbar mode="advanced" />);
 
     const leftSlot = container.querySelector<HTMLElement>(".left");
@@ -273,25 +273,25 @@ describe("BottomTaskbar", () => {
     if (!leftSlot) return;
 
     // Collect the visible authoring chrome inside the `.left` cluster
-    // in document order: Desktop ("Desktop"), then OrgSelector
-    // ("Switch team"), then ProfilePill (rendered as "Open settings").
+    // in document order: ProfilePill (rendered as "Open settings"),
+    // then OrgSelector ("Switch team"), then Desktop ("Desktop").
     const buttons = Array.from(leftSlot.querySelectorAll("button"));
-    const desktopIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Desktop",
+    const profilePillIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Open settings",
     );
     const orgSelectorIndex = buttons.findIndex(
       (btn) => btn.getAttribute("aria-label") === "Switch team",
     );
-    const profilePillIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Open settings",
+    const desktopIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Desktop",
     );
 
-    expect(desktopIndex).toBeGreaterThanOrEqual(0);
-    expect(orgSelectorIndex).toBeGreaterThan(desktopIndex);
-    expect(profilePillIndex).toBeGreaterThan(orgSelectorIndex);
+    expect(profilePillIndex).toBeGreaterThanOrEqual(0);
+    expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
+    expect(desktopIndex).toBeGreaterThan(orgSelectorIndex);
   });
 
-  it("orders the left cluster as OrgSelector -> ProfilePill in simple mode (no Desktop icon present)", () => {
+  it("places the OrgSelector after ProfilePill in the left cluster in simple mode (no Desktop icon present)", () => {
     const { container } = render(<BottomTaskbar mode="simple" />);
 
     const leftSlot = container.querySelector<HTMLElement>(".left");
@@ -299,17 +299,17 @@ describe("BottomTaskbar", () => {
     if (!leftSlot) return;
 
     const buttons = Array.from(leftSlot.querySelectorAll("button"));
-    const orgSelectorIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Switch team",
-    );
     const profilePillIndex = buttons.findIndex(
       (btn) => btn.getAttribute("aria-label") === "Open settings",
     );
+    const orgSelectorIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Switch team",
+    );
 
-    expect(orgSelectorIndex).toBeGreaterThanOrEqual(0);
-    expect(profilePillIndex).toBeGreaterThan(orgSelectorIndex);
-    // Simple has no Desktop icon — the OrgSelector leads the left
-    // cluster, with the profile pill trailing it.
+    expect(profilePillIndex).toBeGreaterThanOrEqual(0);
+    expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
+    // Simple has no Desktop icon, so the OrgSelector sits right after
+    // the profile pill in the left cluster.
     expect(
       leftSlot.querySelector('button[aria-label="Desktop"]'),
     ).toBeNull();
