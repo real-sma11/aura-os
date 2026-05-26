@@ -73,11 +73,18 @@ impl LoopLogWriter {
     /// DB), it is stamped on the `RunTaskSummary` and unioned into
     /// `RunMetadata::spec_ids` so the Debug UI can group runs by
     /// spec without re-walking the filesystem.
+    ///
+    /// `task_name` is an optional human-readable title. Callers that
+    /// do not know it (most of them — the title lives in storage,
+    /// not in the controller) pass `None`; the writer then backfills
+    /// the field from the first `task_started` / `task_completed` /
+    /// `task_failed` event payload that carries `task_title`.
     pub async fn on_task_started(
         &self,
         project_id: ProjectId,
         agent_instance_id: AgentInstanceId,
         task_id: TaskId,
+        task_name: Option<String>,
         spec_id: Option<SpecId>,
     ) {
         {
@@ -90,6 +97,7 @@ impl LoopLogWriter {
             if !run.metadata.tasks.iter().any(|t| t.task_id == tid) {
                 run.metadata.tasks.push(RunTaskSummary {
                     task_id: tid,
+                    task_name,
                     spec_id,
                     started_at: Some(Utc::now()),
                     ended_at: None,
@@ -140,16 +148,20 @@ impl LoopLogWriter {
             if let Some(run) = state.get_mut(&(project_id, agent_instance_id)) {
                 run.metadata.counters.events_total += 1;
                 update_counters(&mut run.metadata.counters, &event_type, event);
-                if matches!(event_type.as_str(), "task_completed" | "task_failed") {
-                    if let Some(tid) = event.get("task_id").and_then(|v| v.as_str()) {
-                        if let Some(entry) =
-                            run.metadata.tasks.iter_mut().find(|t| t.task_id == tid)
-                        {
-                            entry.ended_at = Some(Utc::now());
-                            entry.status = Some(event_type.clone());
+            if let Some(tid) = event.get("task_id").and_then(|v| v.as_str()) {
+                if let Some(entry) = run.metadata.tasks.iter_mut().find(|t| t.task_id == tid)
+                {
+                    if entry.task_name.is_none() {
+                        if let Some(name) = event_task_name(event) {
+                            entry.task_name = Some(name);
                         }
                     }
+                    if matches!(event_type.as_str(), "task_completed" | "task_failed") {
+                        entry.ended_at = Some(Utc::now());
+                        entry.status = Some(event_type.clone());
+                    }
                 }
+            }
                 if let Err(error) = write_metadata(&run.run_dir, &run.metadata).await {
                     warn!(
                         path = %run.run_dir.display(),
@@ -229,6 +241,22 @@ impl LoopLogWriter {
             let _ = run.run_id;
         }
     }
+}
+
+/// Pull a human-readable task name out of a harness event. The
+/// harness emits `task_title` on `task_started` / `task_completed` /
+/// `task_failed`; older or hand-built events may use `task_name` or
+/// `name` instead, so we accept all three with a stable priority.
+fn event_task_name(event: &serde_json::Value) -> Option<String> {
+    for key in ["task_title", "task_name", "name"] {
+        if let Some(value) = event.get(key).and_then(|v| v.as_str()) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Insert `spec_id` into `spec_ids` if not already present, keeping

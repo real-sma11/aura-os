@@ -790,9 +790,15 @@ async fn record_loop_log_task_lifecycle(
 
     match event_type {
         "task_started" => {
+            let task_name = event
+                .get("task_title")
+                .and_then(|v| v.as_str())
+                .or_else(|| event.get("task_name").and_then(|v| v.as_str()))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
             state
                 .loop_log
-                .on_task_started(project_id, agent_instance_id, task_id, None)
+                .on_task_started(project_id, agent_instance_id, task_id, task_name, None)
                 .await;
         }
         "task_completed" | "task_failed" => {

@@ -160,7 +160,7 @@ async fn seed_single_task_loop_state(
         .await;
     req.state
         .loop_log
-        .on_task_started(req.project_id, req.agent_instance_id, task_id, None)
+        .on_task_started(req.project_id, req.agent_instance_id, task_id, None, None)
         .await;
     seed_task_output(
         &req.state,

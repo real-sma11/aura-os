@@ -33,6 +33,13 @@ export interface DebugRunCounters {
 export interface DebugRunTask {
   task_id: string;
   /**
+   * Human-readable task title backfilled from `task_started` /
+   * `task_completed` / `task_failed` event payloads. Optional because
+   * older bundles persisted before this field existed (and very-early
+   * harness events sometimes omit `task_title`).
+   */
+  task_name?: string | null;
+  /**
    * Spec the task belongs to. Present when the server could resolve
    * it from the task DB at `task_started` time; `null`/missing on
    * older bundles or when the lookup failed.

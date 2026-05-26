@@ -271,12 +271,12 @@ mod tests {
         let tid = TaskId::new();
 
         writer.on_loop_started(pid, aiid).await;
-        writer.on_task_started(pid, aiid, tid, None).await;
+        writer.on_task_started(pid, aiid, tid, None, None).await;
         writer
             .on_json_event(
                 pid,
                 aiid,
-                &serde_json::json!({"type": "task_started", "task_id": tid}),
+                &serde_json::json!({"type": "task_started", "task_id": tid, "task_title": "Fix login regression"}),
             )
             .await;
         writer
@@ -297,6 +297,11 @@ mod tests {
         assert_eq!(runs[0].tasks.len(), 1);
         assert_eq!(runs[0].tasks[0].task_id, tid.to_string());
         assert_eq!(runs[0].tasks[0].status.as_deref(), Some("task_failed"));
+        assert_eq!(
+            runs[0].tasks[0].task_name.as_deref(),
+            Some("Fix login regression"),
+            "task_name should be backfilled from the task_started payload"
+        );
 
         let output_path = writer
             .bundle_dir(pid, &runs[0].run_id)

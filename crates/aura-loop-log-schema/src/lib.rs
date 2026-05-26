@@ -76,6 +76,14 @@ pub struct RunCounters {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunTaskSummary {
     pub task_id: String,
+    /// Human-readable task title, populated either at
+    /// `on_task_started` time when the caller already knows the
+    /// title, or backfilled from `task_started` / `task_completed`
+    /// / `task_failed` event payloads carrying `task_title`. Old
+    /// bundles written before this field existed deserialize as
+    /// `None` and the UI falls back to `task_id`.
+    #[serde(default)]
+    pub task_name: Option<String>,
     /// Spec the task belongs to, when it could be resolved at
     /// `on_task_started` time. `None` if the storage lookup failed.
     #[serde(default)]

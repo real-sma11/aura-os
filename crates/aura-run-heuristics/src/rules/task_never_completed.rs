@@ -56,6 +56,7 @@ mod tests {
             b.metadata.status = RunStatus::Running;
             b.metadata.tasks.push(RunTaskSummary {
                 task_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
+                task_name: None,
                 spec_id: None,
                 started_at: None,
                 ended_at: None,
@@ -71,6 +72,7 @@ mod tests {
             b.metadata.status = RunStatus::Completed;
             b.metadata.tasks.push(RunTaskSummary {
                 task_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
+                task_name: None,
                 spec_id: None,
                 started_at: None,
                 ended_at: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()),
@@ -86,6 +88,7 @@ mod tests {
             b.metadata.status = RunStatus::Failed;
             b.metadata.tasks.push(RunTaskSummary {
                 task_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
+                task_name: None,
                 spec_id: None,
                 started_at: None,
                 ended_at: None,
