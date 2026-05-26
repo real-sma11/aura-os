@@ -209,6 +209,27 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
     [projectId],
   );
 
+  // Loop-terminal / pause / resume events are emitted by EVERY
+  // forwarder teardown (or pause/resume hop), including the ephemeral
+  // task-runner automatons that `run_single_task` mints per task. They
+  // all share the project_id, but the AutomationBar only cares about
+  // the bound `Loop`-role instance — letting an ephemeral
+  // `loop_finished` through would call `filterAgent` against the
+  // bound id and (in the WS-blip case where the same id arrives) drop
+  // the bar back to "idle" while the harness automaton keeps running.
+  // When `boundLoopId` is not yet known (very first Start in a fresh
+  // project) we still admit any project-matching event so the
+  // `LoopStarted` handler can populate the binding from the WS frame
+  // itself; once bound, every subsequent terminal event must match.
+  const isForBoundLoop = useCallback(
+    (event: { project_id?: string; agent_id?: string }) => {
+      if (event.project_id !== projectId) return false;
+      if (boundLoopId == null) return true;
+      return event.agent_id === boundLoopId;
+    },
+    [projectId, boundLoopId],
+  );
+
   const fetchLoopStatus = useCallback(() => {
     api.getLoopStatus(projectId)
       .then((res) => {
@@ -258,22 +279,34 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
     const unsubs = [
       subscribe(EventType.LoopStarted, (e) => {
         if (!isForProject(e)) return;
+        // `loop_started` is how the bar *discovers* the bound Loop
+        // instance on a fresh project (the listAgentInstances hydrate
+        // on mount may have raced this WS frame). Cache the binding
+        // here so the subsequent terminal-event filter has a real id
+        // to match against on the very first run.
+        if (e.agent_id && boundLoopId == null) {
+          setBoundLoopId(projectId, e.agent_id);
+        }
         dispatch({ type: "loopStarted", agentId: e.agent_id });
       }),
       subscribe(EventType.TaskStarted, (e) => {
+        // Project-only filter intentionally: `task_started` for an
+        // ephemeral task runner carries the runner's `agent_id`, not
+        // the bound Loop's, and the bar legitimately uses any project
+        // task start to promote preparing → active.
         if (!isForProject(e)) return;
         dispatch({ type: "taskStarted" });
       }),
       subscribe(EventType.LoopPaused, (e) => {
-        if (!isForProject(e)) return;
+        if (!isForBoundLoop(e)) return;
         dispatch({ type: "loopPaused" });
       }),
       subscribe(EventType.LoopResumed, (e) => {
-        if (!isForProject(e)) return;
+        if (!isForBoundLoop(e)) return;
         dispatch({ type: "loopResumed" });
       }),
       subscribe(EventType.LoopStopped, (e) => {
-        if (!isForProject(e)) return;
+        if (!isForBoundLoop(e)) return;
         dispatch({ type: "loopStopped", agentId: e.agent_id });
         // The Loop-role row itself is persistent, so we keep
         // `boundLoopId` populated -- the next Start reuses the same
@@ -281,7 +314,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
         // happens via `LoopFinished` for terminal lifecycles.
       }),
       subscribe(EventType.LoopFinished, (e) => {
-        if (!isForProject(e)) return;
+        if (!isForBoundLoop(e)) return;
         dispatch({ type: "loopFinished", agentId: e.agent_id });
         // Side effect kept verbatim outside the reducer: the
         // insufficient-credits dispatch fans out to the global error
@@ -291,7 +324,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       }),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [subscribe, isForProject]);
+  }, [subscribe, isForProject, isForBoundLoop, projectId, boundLoopId, setBoundLoopId]);
 
   const status = statusOf(state);
   const agentCount = agentsOf(state).length;
