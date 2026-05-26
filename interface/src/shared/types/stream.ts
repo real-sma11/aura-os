@@ -172,6 +172,17 @@ export interface ToolCallEntry {
    * recovery history, not just the last stream abort.
    */
   retryExhausted?: boolean;
+  /**
+   * `true` when this entry was synthesised by the FE
+   * (`emitSyntheticTransitionBlock` in `task-stream-bootstrap.ts`)
+   * to render a decorative lifecycle card in the timeline rather
+   * than reflecting a real harness tool invocation. Downstream
+   * consumers (`getStreamingPhaseLabel`, `ActiveTaskStream`) filter
+   * these out of phase-label / has-content gates so the cooking
+   * shimmer and "Waiting for output…" placeholder still show up
+   * before any real tool / text delta arrives.
+   */
+  synthetic?: boolean;
 }
 
 /* ------------------------------------------------------------------ */

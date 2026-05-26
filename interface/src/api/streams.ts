@@ -46,12 +46,23 @@ export interface ToolResultInfo {
 export interface ToolCallStartedInfo {
   id: string;
   name: string;
+  /**
+   * `true` when the FE itself synthesised this tool-call lifecycle
+   * (e.g. `emitSyntheticTransitionBlock` rendering a `transition_task`
+   * card). Threaded onto the resulting `ToolCallEntry.synthetic` so
+   * downstream consumers can filter decorative cards out of phase
+   * label / has-content gates. See
+   * `interface/src/shared/types/stream.ts::ToolCallEntry`.
+   */
+  synthetic?: boolean;
 }
 
 export interface ToolCallSnapshotInfo {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  /** See {@link ToolCallStartedInfo.synthetic}. */
+  synthetic?: boolean;
 }
 
 /**

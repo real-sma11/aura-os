@@ -764,6 +764,56 @@ describe("task-stream-bootstrap: synthetic emit failures stay isolated", () => {
   });
 });
 
+describe("task-stream-bootstrap: synthetic flag is threaded onto ToolCallEntry", () => {
+  // Plumbing test for the `synthetic: true` flag added to ToolCallEntry
+  // (see interface/src/shared/types/stream.ts). The flag is what lets
+  // `getStreamingPhaseLabel` and `ActiveTaskStream`'s `hasContent`
+  // gate filter decorative lifecycle cards out of phase-label /
+  // has-content checks. Without the round-trip working, the
+  // downstream filters in commits 2 and 3 silently no-op.
+
+  it("tags the synthetic transition_task entry with synthetic: true", () => {
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    const transition = entry!.activeToolCalls.find(
+      (c) => c.name === "transition_task",
+    );
+    expect(transition).toBeDefined();
+    expect(transition!.synthetic).toBe(true);
+  });
+
+  it("does NOT tag a real (harness-emitted) tool call as synthetic", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    // Real tool_use_start arrives over the wire after the synthetic
+    // transition card. The harness payload carries no `synthetic`
+    // flag, so the entry's `synthetic` must remain falsy — that's
+    // what keeps real tools driving the cooking-shimmer phase label.
+    dispatch({
+      type: EventType.ToolUseStart,
+      content: { task_id: "t1", id: "real-1", name: "write_file" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    const real = entry!.activeToolCalls.find((c) => c.id === "real-1");
+    expect(real).toBeDefined();
+    expect(real!.name).toBe("write_file");
+    expect(real!.synthetic).toBeFalsy();
+  });
+});
+
 describe("task-stream-bootstrap: task_updated synthetic blocks", () => {
   it("renders a single `update_task` block summarising the changed fields", () => {
     seedActiveTask("t1");

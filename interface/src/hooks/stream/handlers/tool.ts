@@ -71,7 +71,18 @@ export function handleToolCallStarted(
     const existing = refs.toolCalls.current[existingIdx];
     if (!existing.started) {
       refs.toolCalls.current = refs.toolCalls.current.map((tc, i) =>
-        i === existingIdx ? { ...tc, started: true, pending: tc.pending ?? true } : tc,
+        i === existingIdx
+          ? {
+              ...tc,
+              started: true,
+              pending: tc.pending ?? true,
+              // Preserve any existing `synthetic` flag — once a card
+              // has been tagged synthetic by `emitSyntheticTransitionBlock`
+              // we never want to flip it back even if a follow-up
+              // `started` re-fires without the flag set on the wire.
+              synthetic: tc.synthetic ?? info.synthetic,
+            }
+          : tc,
       );
       setters.setActiveToolCalls([...refs.toolCalls.current]);
     }
@@ -91,6 +102,7 @@ export function handleToolCallStarted(
     input: initialInput,
     pending: true,
     started: true,
+    ...(info.synthetic ? { synthetic: true } : {}),
   };
   refs.toolCalls.current = [...refs.toolCalls.current, entry];
   setters.setActiveToolCalls([...refs.toolCalls.current]);
@@ -113,6 +125,7 @@ export function handleToolCallSnapshot(
         input,
         pending: true,
         started: true,
+        ...(info.synthetic ? { synthetic: true } : {}),
       },
     ];
     appendToolTimelineItem(refs, setters, info.id);
@@ -127,6 +140,11 @@ export function handleToolCallSnapshot(
         name: info.name,
         input: { ...normalizeToolInput(tc.input), ...input },
         retrying: false,
+        // Preserve any existing `synthetic` flag on the entry; only
+        // adopt the snapshot's flag when the entry doesn't yet carry
+        // one. A snapshot that omits `synthetic` must not erase the
+        // flag set by the prior `started` event.
+        synthetic: tc.synthetic ?? info.synthetic,
       }
       : tc,
   );

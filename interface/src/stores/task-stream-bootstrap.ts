@@ -169,10 +169,17 @@ function emitSyntheticTransitionBlock(
 ): void {
   const { refs, setters } = contextForTask(taskId);
   const id = crypto.randomUUID();
-  handleToolCallStarted(refs, setters, { id, name: "transition_task" });
+  // Tag the entries `synthetic: true` so `getStreamingPhaseLabel` and
+  // `ActiveTaskStream`'s `hasContent` gate filter them out — these
+  // decorative lifecycle cards must not stop the cooking shimmer
+  // label from falling back to "Cooking..." or hide the
+  // "Waiting for output…" placeholder before any real text / tool
+  // delta arrives.
+  handleToolCallStarted(refs, setters, { id, name: "transition_task", synthetic: true });
   handleToolCallSnapshot(refs, setters, {
     id,
     name: "transition_task",
+    synthetic: true,
     input: {
       task_id: taskId,
       ...(args.title ? { title: args.title } : {}),
