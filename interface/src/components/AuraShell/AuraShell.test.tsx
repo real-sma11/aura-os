@@ -768,14 +768,28 @@ describe("AuraShell — public left drawer", () => {
     );
   });
 
-  it("does not render the public left drawer toggle in authed modes (no double-affordance with the right sidekick)", () => {
+  it("renders the left drawer toggle in authed modes too (uniform affordance across public / simple / advanced)", async () => {
+    // The titlebar leading slot is a uniform `<PanelLeft />` drawer
+    // toggle on every effective mode now — the previous "no toggle
+    // in authed modes" guarantee was relaxed when the team selector
+    // moved to the bottom taskbar. Verify it mounts in Simple, in
+    // Advanced, and remains present across the Simple <-> Advanced
+    // flip.
     setLoggedIn();
     useUIModeStore.setState({ mode: "simple" });
     renderAuraShell("/chat");
 
     expect(
-      screen.queryByRole("button", { name: "Toggle sidebar" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Toggle sidebar" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      useUIModeStore.setState({ mode: "advanced" });
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Toggle sidebar" }),
+    ).toBeInTheDocument();
   });
 
   it("the left drawer toggle's aria-pressed contract matches the right sidekick toggle (open=true, collapsed=false)", async () => {

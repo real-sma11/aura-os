@@ -2,7 +2,6 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeft, Server } from "lucide-react";
 import { Button } from "@cypher-asi/zui";
 import { ShellTitlebar } from "../ShellTitlebar";
-import { OrgSelector } from "../OrgSelector";
 import { MenuBar, MenuShortcuts } from "../MenuBar";
 import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
@@ -28,6 +27,15 @@ export interface AuraTitlebarProps {
   publicSidebarCollapsed?: boolean;
   /** Public-only: toggle action for the left drawer. */
   onTogglePublicSidebar?: () => void;
+  /**
+   * Authenticated-only: collapse state of the authed left sidebar.
+   * Drives the same `<PanelLeft />` drawer toggle the public shell
+   * uses, just bound to a separate store field so the two shells
+   * remember independent positions.
+   */
+  authedSidebarCollapsed?: boolean;
+  /** Authenticated-only: toggle action for the authed left drawer. */
+  onToggleAuthedSidebar?: () => void;
   /** Authenticated only: sidekick & split-screen toggles + host settings. */
   sidekickCollapsed?: boolean;
   onToggleSidekick?: () => void;
@@ -49,19 +57,22 @@ export interface AuraTitlebarProps {
  * drag region reads as clean window chrome.
  *
  * Layout:
- * - Leading slot:
- *   - Authenticated (`simple` | `advanced`): `OrgSelector` + headless
- *     `MenuShortcuts` (always). The visible `MenuBar` (File / Edit /
- *     View / Help) is Advanced-only — Simple is a chat-only surface
- *     and never shows the application menu, but the global keyboard
- *     shortcuts the menu publishes (Ctrl+N, Ctrl+,, F11, zoom, etc.)
- *     still fire in Simple via the headless companion.
- *   - Public: `<PanelLeft />` drawer button that opens / closes the
- *     left sidebar (sessions panel). Mirrors the `<PanelRight />`
- *     sidekick toggle in `WindowControls.tsx` 1:1 — same ZUI `Button`
- *     props (`variant="ghost"`, `size="sm"`, `iconOnly`,
- *     `selected={!collapsed}`, `aria-pressed`) and the same neutral-
- *     text override on `[aria-pressed="true"]`. Just on the left.
+ * - Leading slot (all modes): `<PanelLeft />` drawer toggle that
+ *   opens / closes the left sidebar. Mirrors the `<PanelRight />`
+ *   sidekick toggle in `WindowControls.tsx` 1:1 — same ZUI `Button`
+ *   props (`variant="ghost"`, `size="sm"`, `iconOnly`,
+ *   `selected={!collapsed}`, `aria-pressed`) and the same neutral-
+ *   text override on `[aria-pressed="true"]`. Public and authed
+ *   shells each bind the toggle to their own collapse state so the
+ *   two drawers remember independent positions. Authenticated modes
+ *   additionally mount headless `MenuShortcuts` (always) and the
+ *   visible `MenuBar` (File / Edit / View / Help) in Advanced only —
+ *   Simple is chat-only and never shows the application menu, but
+ *   the global keyboard shortcuts the menu publishes (Ctrl+N, Ctrl+,,
+ *   F11, zoom, etc.) still fire in Simple via the headless companion.
+ *   The team selector (`OrgSelector`) lives in the bottom taskbar's
+ *   `.left` cluster (left of the Desktop icon in Advanced) instead
+ *   of the titlebar.
  * - Trailing slot:
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `WindowControls` (with the sidekick / split-screen toggles
@@ -89,7 +100,11 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
             onToggle={props.onTogglePublicSidebar}
           />
         ) : (
-          <AuthedLeading mode={mode} />
+          <AuthedLeading
+            mode={mode}
+            collapsed={props.authedSidebarCollapsed ?? false}
+            onToggle={props.onToggleAuthedSidebar}
+          />
         )
       }
       title={
@@ -122,15 +137,34 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   );
 }
 
-function AuthedLeading({ mode }: { mode: UIMode }): React.ReactElement {
+function AuthedLeading({
+  mode,
+  collapsed,
+  onToggle,
+}: {
+  mode: UIMode;
+  collapsed: boolean;
+  onToggle?: () => void;
+}): React.ReactElement {
   // `MenuShortcuts` is headless (`null`) and installs the document-
   // level shortcut listener for both Simple and Advanced. The visible
   // `MenuBar` only mounts in Advanced — Simple is a chat-only surface
   // and never shows the File / Edit / View / Help bar.
   const isAdvanced = mode === "advanced";
   return (
-    <span className={`${styles.titleLeading} titlebar-no-drag`}>
-      <OrgSelector variant="icon" />
+    <span
+      className={`${styles.titleLeading} titlebar-no-drag`}
+      // The titlebar treats unhandled double-clicks as a window-
+      // maximize gesture (see `ShellTitlebar`'s default
+      // `onDoubleClick`). Without this stop, a fast double-tap on
+      // the drawer toggle ends up maximizing the OS window — the
+      // exact same fix `AuthedActions` applies to its trailing
+      // cluster, mirrored here for the authed leading slot.
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {onToggle && (
+        <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
+      )}
       <MenuShortcuts />
       {isAdvanced && <MenuBar />}
     </span>
@@ -148,32 +182,47 @@ function PublicLeading({
   return (
     <span
       className={`${styles.titleLeading} titlebar-no-drag`}
-      // The titlebar treats unhandled double-clicks as a window-
-      // maximize gesture (see `ShellTitlebar`'s default
-      // `onDoubleClick`). Without this stop, a fast double-tap on
-      // the drawer toggle ends up maximizing the OS window — the
-      // exact same fix `AuthedActions` applies to its trailing
-      // cluster, mirrored here for the public leading slot.
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <Button
-        variant="ghost"
-        size="sm"
-        rounded="md"
-        iconOnly
-        // Mirrors `WindowControls`' sidekick toggle: `selected` lights
-        // the icon when the drawer is open. `aria-pressed` carries the
-        // same boolean so AT users get the same contract on both sides.
-        selected={!collapsed}
-        title="Toggle sidebar"
-        aria-label="Toggle sidebar"
-        aria-pressed={!collapsed}
-        className={styles.publicSidebarToggle}
-        onClick={onToggle}
-      >
-        <PanelLeft size={14} strokeWidth={2} />
-      </Button>
+      <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
     </span>
+  );
+}
+
+/**
+ * The shared `<PanelLeft />` drawer toggle used across every mode
+ * (public / simple / advanced). Mirrors the right-side sidekick
+ * toggle in `WindowControls.tsx` 1:1 so the two drawers feel like a
+ * symmetric affordance pair — same ZUI `Button` props, same
+ * `aria-pressed` contract (open=true, collapsed=false), and the
+ * same `[aria-pressed="true"]` neutral-text override defined in
+ * `AuraShell.module.css` under `.publicSidebarToggle`. The class
+ * name is shared (and therefore "public" in name only) because the
+ * styling rule is identical regardless of which collapse state
+ * field the caller is bound to.
+ */
+function SidebarDrawerToggle({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      rounded="md"
+      iconOnly
+      selected={!collapsed}
+      title="Toggle sidebar"
+      aria-label="Toggle sidebar"
+      aria-pressed={!collapsed}
+      className={styles.publicSidebarToggle}
+      onClick={onToggle}
+    >
+      <PanelLeft size={14} strokeWidth={2} />
+    </Button>
   );
 }
 

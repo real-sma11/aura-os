@@ -97,6 +97,8 @@ export function AuraShell(): React.ReactElement {
   const setSidekickSplitScreen = useAppUIStore((s) => s.setSidekickSplitScreen);
   const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
   const togglePublicSidebar = useAppUIStore((s) => s.togglePublicSidebar);
+  const authedSidebarCollapsed = useAppUIStore((s) => s.authedSidebarCollapsed);
+  const toggleAuthedSidebar = useAppUIStore((s) => s.toggleAuthedSidebar);
   const { hostSettingsOpen, openHostSettings, closeHostSettings } = useUIModalStore(
     useShallow((s) => ({
       hostSettingsOpen: s.hostSettingsOpen,
@@ -242,6 +244,8 @@ export function AuraShell(): React.ReactElement {
           mode={mode}
           publicSidebarCollapsed={publicSidebarCollapsed}
           onTogglePublicSidebar={isPublic ? togglePublicSidebar : undefined}
+          authedSidebarCollapsed={authedSidebarCollapsed}
+          onToggleAuthedSidebar={!isPublic ? toggleAuthedSidebar : undefined}
           sidekickCollapsed={sidekickCollapsed}
           onToggleSidekick={isAdvanced ? toggleSidekick : undefined}
           splitScreenActive={splitScreenActive}

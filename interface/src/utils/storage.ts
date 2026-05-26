@@ -1,4 +1,5 @@
 import {
+  AUTHED_SIDEBAR_COLLAPSED_KEY,
   COLLAPSED_PROJECTS_KEY,
   DEBUG_COLLAPSED_PROJECTS_KEY,
   LAST_AGENT_KEY,
@@ -375,6 +376,34 @@ export function getPublicSidebarCollapsed(): boolean {
 export function setPublicSidebarCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(PUBLIC_SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/**
+ * Authenticated-shell (simple / advanced) sidebar collapse state.
+ * Defaults to `false` (open) so signed-in users continue to land on
+ * the familiar always-open sidebar; the titlebar drawer toggle
+ * (`<PanelLeft />`) writes the user's choice here so it survives
+ * reloads. Persisted under a separate key from `PUBLIC_SIDEBAR_
+ * COLLAPSED_KEY` so the public and authed drawers remember their
+ * own positions independently.
+ */
+export function getAuthedSidebarCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(AUTHED_SIDEBAR_COLLAPSED_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  } catch {
+    // ignore storage failures
+  }
+  return false;
+}
+
+export function setAuthedSidebarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(AUTHED_SIDEBAR_COLLAPSED_KEY, String(collapsed));
   } catch {
     // ignore storage failures
   }

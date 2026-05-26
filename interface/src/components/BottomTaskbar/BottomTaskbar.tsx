@@ -21,6 +21,7 @@ import {
 } from "../../utils/storage";
 import { AppNavRail, TaskbarIconButton, TASKBAR_ICON_SIZE } from "../AppNavRail";
 import { useDesktopContextMenu } from "../DesktopContextMenu";
+import { OrgSelector } from "../OrgSelector";
 import { FavoriteAgentsStrip } from "./FavoriteAgentsStrip";
 import { ProfilePill } from "./ProfilePill";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
@@ -208,6 +209,15 @@ function AuthedBottomTaskbar({
           avatarUrl={profile.avatarUrl}
           onOpenSettings={openOrgSettings}
         />
+        {/*
+         * Team selector lives in the bottom taskbar (left of the
+         * Desktop icon in Advanced; right after `ProfilePill` in
+         * Simple, which has no Desktop icon). The titlebar's leading
+         * slot is now a uniform `<PanelLeft />` drawer toggle across
+         * every mode, so the team affordance no longer competes for
+         * that spot.
+         */}
+        <OrgSelector variant="icon" />
         {isAdvanced && (
           <TaskbarIconButton
             selected={activeApp.id === "desktop"}

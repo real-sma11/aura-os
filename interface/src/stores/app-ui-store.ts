@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { PREVIOUS_PATH_KEY } from "../constants";
 import { sanitizeRestorePath } from "../utils/last-app-path";
 import {
+  getAuthedSidebarCollapsed,
   getPublicSidebarCollapsed,
+  setAuthedSidebarCollapsed as writeAuthedSidebarCollapsed,
   setPublicSidebarCollapsed as writePublicSidebarCollapsed,
 } from "../utils/storage";
 
@@ -66,6 +68,16 @@ type AppUIState = {
    * ChatGPT-style surface.
    */
   publicSidebarCollapsed: boolean;
+  /**
+   * Whether the authenticated-shell (simple / advanced) left
+   * sidebar is collapsed. Mirrors `publicSidebarCollapsed` but
+   * persisted under its own storage key so the two shells remember
+   * independent positions. Default is `false` (open) so signed-in
+   * users continue to land on the familiar always-open sidebar;
+   * the titlebar drawer toggle drives this boolean and the choice
+   * survives reloads.
+   */
+  authedSidebarCollapsed: boolean;
   previousPath: string | null;
 
   markAppVisited: (appId: string) => void;
@@ -76,6 +88,8 @@ type AppUIState = {
   setSidekickSplitScreen: (value: boolean) => void;
   togglePublicSidebar: () => void;
   setPublicSidebarCollapsed: (value: boolean) => void;
+  toggleAuthedSidebar: () => void;
+  setAuthedSidebarCollapsed: (value: boolean) => void;
   setPreviousPath: (path: string) => void;
 };
 
@@ -86,6 +100,7 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
   sidekickCollapsed: false,
   sidekickSplitScreen: readSidekickSplitScreen(),
   publicSidebarCollapsed: getPublicSidebarCollapsed(),
+  authedSidebarCollapsed: getAuthedSidebarCollapsed(),
   previousPath: readPreviousPath(),
 
   markAppVisited: (appId): void => {
@@ -139,6 +154,22 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
       if (s.publicSidebarCollapsed === value) return s;
       writePublicSidebarCollapsed(value);
       return { publicSidebarCollapsed: value };
+    });
+  },
+
+  toggleAuthedSidebar: (): void => {
+    set((s) => {
+      const next = !s.authedSidebarCollapsed;
+      writeAuthedSidebarCollapsed(next);
+      return { authedSidebarCollapsed: next };
+    });
+  },
+
+  setAuthedSidebarCollapsed: (value): void => {
+    set((s) => {
+      if (s.authedSidebarCollapsed === value) return s;
+      writeAuthedSidebarCollapsed(value);
+      return { authedSidebarCollapsed: value };
     });
   },
 

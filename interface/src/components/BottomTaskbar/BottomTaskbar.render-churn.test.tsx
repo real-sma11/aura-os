@@ -131,6 +131,14 @@ vi.mock("../Avatar", () => ({
   Avatar: ({ name }: { name?: string }) => <span>{name}</span>,
 }));
 
+vi.mock("../OrgSelector", () => ({
+  OrgSelector: () => (
+    <button type="button" aria-label="Switch team">
+      Switch team
+    </button>
+  ),
+}));
+
 vi.mock("../AppNavRail", () => ({
   TASKBAR_ICON_SIZE: 16,
   AppNavRail: () => {

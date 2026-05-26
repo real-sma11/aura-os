@@ -192,6 +192,14 @@ vi.mock("../Avatar", () => ({
   Avatar: ({ name }: { name?: string }) => <span>{name}</span>,
 }));
 
+vi.mock("../OrgSelector", () => ({
+  OrgSelector: () => (
+    <button type="button" aria-label="Switch team" data-testid="org-selector">
+      Switch team
+    </button>
+  ),
+}));
+
 vi.mock("../AppNavRail", () => ({
   TASKBAR_ICON_SIZE: 16,
   AppNavRail: (props: Record<string, unknown>) => (
@@ -245,6 +253,56 @@ beforeEach(() => {
 });
 
 describe("BottomTaskbar", () => {
+  it("places the OrgSelector after ProfilePill in the left cluster in advanced mode (left of the Desktop icon)", () => {
+    const { container } = render(<BottomTaskbar mode="advanced" />);
+
+    const leftSlot = container.querySelector<HTMLElement>(".left");
+    expect(leftSlot).not.toBeNull();
+    if (!leftSlot) return;
+
+    // Collect the visible authoring chrome inside the `.left` cluster
+    // in document order: ProfilePill (rendered as "Open settings"),
+    // then OrgSelector ("Switch team"), then Desktop ("Desktop").
+    const buttons = Array.from(leftSlot.querySelectorAll("button"));
+    const profilePillIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Open settings",
+    );
+    const orgSelectorIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Switch team",
+    );
+    const desktopIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Desktop",
+    );
+
+    expect(profilePillIndex).toBeGreaterThanOrEqual(0);
+    expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
+    expect(desktopIndex).toBeGreaterThan(orgSelectorIndex);
+  });
+
+  it("places the OrgSelector after ProfilePill in the left cluster in simple mode (no Desktop icon present)", () => {
+    const { container } = render(<BottomTaskbar mode="simple" />);
+
+    const leftSlot = container.querySelector<HTMLElement>(".left");
+    expect(leftSlot).not.toBeNull();
+    if (!leftSlot) return;
+
+    const buttons = Array.from(leftSlot.querySelectorAll("button"));
+    const profilePillIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Open settings",
+    );
+    const orgSelectorIndex = buttons.findIndex(
+      (btn) => btn.getAttribute("aria-label") === "Switch team",
+    );
+
+    expect(profilePillIndex).toBeGreaterThanOrEqual(0);
+    expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
+    // Simple has no Desktop icon, so the OrgSelector sits right after
+    // the profile pill in the left cluster.
+    expect(
+      leftSlot.querySelector('button[aria-label="Desktop"]'),
+    ).toBeNull();
+  });
+
   it("opens a favorite agent without navigating to desktop when outside desktop mode", async () => {
     const user = userEvent.setup();
 

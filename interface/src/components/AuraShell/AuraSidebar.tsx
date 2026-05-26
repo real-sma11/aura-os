@@ -93,7 +93,12 @@ export interface AuraSidebarProps {
 export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): React.ReactElement {
   const asideRef = useRef<HTMLElement>(null);
   const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
+  const authedSidebarCollapsed = useAppUIStore((s) => s.authedSidebarCollapsed);
   const isPublic = mode === "public";
+  // Authed-mode collapse: titlebar drawer toggle drives this. The
+  // `/desktop` advanced surface forces collapse regardless of the
+  // user's stored preference so the wallpaper stays edge-to-edge.
+  const authedCollapsed = !isPublic && (isDesktop || authedSidebarCollapsed);
   // Authed footer (`AuthedSidebarFooter` -> `EarnCreditsButton`)
   // mounts whenever we're in an authenticated mode AND the lane is
   // visible (i.e. not the `/desktop` edge-to-edge wallpaper). When
@@ -120,6 +125,9 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
       data-public-sidebar-collapsed={
         isPublic ? (publicSidebarCollapsed ? "true" : "false") : undefined
       }
+      data-authed-sidebar-collapsed={
+        !isPublic ? (authedCollapsed ? "true" : "false") : undefined
+      }
     >
       <div
         className={cn(
@@ -128,16 +136,22 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
         )}
       >
         <Lane
-          // Public-mode Lane is collapsible and toggled from the
-          // titlebar's left drawer button (`<PanelLeft />`); authed
-          // modes keep the legacy always-open resizable behaviour.
-          // Advanced `/desktop` collapses the entire Lane (snap, no
-          // animation) so the wallpaper extends edge-to-edge — same
-          // behaviour the legacy `DesktopShell` had via `collapsed=
-          // {isDesktop} animateCollapse={false}`.
-          resizable={!isDesktop && (!isPublic || !publicSidebarCollapsed)}
-          collapsible={isPublic || isDesktop}
-          collapsed={isPublic ? publicSidebarCollapsed : isDesktop}
+          // Every mode is now collapsible: public toggles via the
+          // titlebar drawer (`publicSidebarCollapsed`), authed
+          // modes toggle the same drawer bound to
+          // `authedSidebarCollapsed`, and advanced `/desktop`
+          // forces collapse (snap, no animation) so the wallpaper
+          // extends edge-to-edge — same behaviour the legacy
+          // `DesktopShell` had via `collapsed={isDesktop}
+          // animateCollapse={false}`. Resizing is gated on the lane
+          // being expanded so the drag handle disappears with the
+          // panel.
+          resizable={
+            !isDesktop &&
+            (isPublic ? !publicSidebarCollapsed : !authedCollapsed)
+          }
+          collapsible
+          collapsed={isPublic ? publicSidebarCollapsed : authedCollapsed}
           animateCollapse={!isDesktop}
           resizePosition="right"
           defaultWidth={200}
