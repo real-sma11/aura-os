@@ -34,10 +34,11 @@ export function getStreamingPhaseLabel(state: {
    */
   isWriting?: boolean;
 }): string | null {
-  const pending = state.toolCalls.find((tc) => tc.pending);
+  const realToolCalls = state.toolCalls.filter((tc) => !tc.synthetic);
+  const pending = realToolCalls.find((tc) => tc.pending);
   if (pending) return TOOL_PHASE_LABELS[pending.name] ?? "Working...";
   if (state.thinkingText && !state.streamingText) return "Thinking...";
-  if (state.toolCalls.length > 0) return "Putting it all together...";
+  if (realToolCalls.length > 0) return "Putting it all together...";
   if (state.progressText) {
     if (state.progressText.toLowerCase() === "connecting") {
       return pickConnectingLabel();
