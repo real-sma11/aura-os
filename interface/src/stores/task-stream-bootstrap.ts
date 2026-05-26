@@ -117,6 +117,63 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   if (e.session_id) {
     status.setLiveSessionId(taskId, e.session_id);
   }
+
+  // Synthesise a `transition_task` block so the activity timeline
+  // opens with an explicit "ready -> in_progress" card, matching the
+  // closing "in_progress -> done" card emitted from `handleTaskCompleted`.
+  // Without this the actual status flip done server-side by
+  // `assign_task` is invisible: the user only sees text/tool blocks
+  // but no record of the lifecycle transition that started the run.
+  emitSyntheticTransitionBlock(taskId, {
+    fromStatus: "ready",
+    toStatus: "in_progress",
+    title: e.content.task_title,
+  });
+}
+
+/**
+ * Append a synthetic, already-resolved `transition_task` tool-call
+ * entry to the task stream so the activity timeline renders a
+ * dedicated block via the registry-routed
+ * [`TaskBlock`](../components/Block/renderers/TaskBlock.tsx) renderer.
+ *
+ * Mirrors the git-event pattern (`handleGitCommittedEvent`) so the
+ * same `handleToolCallStarted` + `handleToolCallSnapshot` +
+ * `handleToolResult` reducer chain runs — guaranteeing the synthetic
+ * block lands in `events[]` before `finalizeStream` snapshots a run
+ * (so the block survives stream pruning + page reloads via
+ * `persistTaskTurns`).
+ */
+function emitSyntheticTransitionBlock(
+  taskId: string,
+  args: {
+    fromStatus: string;
+    toStatus: string;
+    title?: string;
+    isError?: boolean;
+    reason?: string;
+  },
+): void {
+  const { refs, setters } = contextForTask(taskId);
+  const id = crypto.randomUUID();
+  handleToolCallStarted(refs, setters, { id, name: "transition_task" });
+  handleToolCallSnapshot(refs, setters, {
+    id,
+    name: "transition_task",
+    input: {
+      task_id: taskId,
+      ...(args.title ? { title: args.title } : {}),
+      status: args.toStatus,
+      from_status: args.fromStatus,
+    },
+  });
+  const summary = `${args.fromStatus} -> ${args.toStatus}`;
+  handleToolResult(refs, setters, {
+    id,
+    name: "transition_task",
+    result: args.isError && args.reason ? `${summary}: ${args.reason}` : summary,
+    is_error: args.isError ?? false,
+  });
 }
 
 function handleTextDeltaEvent(e: AuraEvent): void {
@@ -386,6 +443,16 @@ function handleTaskCompleted(e: AuraEventOfType<typeof EventType.TaskCompleted>)
   if (!taskId) return;
   const { refs, setters, abortRef } = contextForTask(taskId);
   mergeBufferedOutput(taskId, refs.streamBuffer.current, e.project_id);
+  // Inject the closing `in_progress -> done` block BEFORE finalize so
+  // it lands inside the same assistant turn that finalizeStream snapshots
+  // into `events[]` (and therefore survives `snapshotTaskTurns`'s reload
+  // rehydration). Adding it after finalize would leak it onto the next
+  // turn or be discarded entirely.
+  emitSyntheticTransitionBlock(taskId, {
+    fromStatus: "in_progress",
+    toStatus: "done",
+    title: e.content.task_title,
+  });
   finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
     reason: "completed",
   });
@@ -434,6 +501,18 @@ function handleTaskFailed(e: AuraEventOfType<typeof EventType.TaskFailed>): void
   // forwarding it through to `finalizeStream`, the synthetic failure
   // event below would lose it on the `setProgressText("")` reset.
   const progressText = getStreamEntry(taskStreamKey(taskId))?.progressText;
+  // Closing `in_progress -> failed` block matching the shape used by
+  // `handleTaskCompleted`. Emitted before finalize so the synthetic
+  // entry is captured in the assistant turn that gets snapshotted,
+  // and rendered with `is_error: true` so `TaskBlock` paints the red
+  // `inlineError` row carrying the failure reason.
+  emitSyntheticTransitionBlock(taskId, {
+    fromStatus: "in_progress",
+    toStatus: "failed",
+    title: e.content.task_title,
+    isError: true,
+    reason: reason ?? undefined,
+  });
   finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
     reason: "failed",
     message: reason ?? undefined,
@@ -493,6 +572,49 @@ function handleTaskCompletionGateEvent(
     name: "completion_gate_rejected",
     result: `${reason}\n${evidence}`,
     is_error: true,
+  });
+}
+
+/**
+ * Synthesise a block for every server-side task field write.
+ *
+ * Pairs with `broadcast_task_updated` in
+ * `apps/aura-os-server/src/handlers/tasks/crud.rs`. Status flips are
+ * intentionally suppressed here because the lifecycle handlers
+ * (`handleTaskStarted` / `handleTaskCompleted` / `handleTaskFailed`)
+ * already inject a `transition_task` block for the same edge using
+ * their richer payloads (failure reason, task title). Without this
+ * dedupe we'd render two side-by-side "Task Moved" cards for every
+ * `task_started` and `task_completed`.
+ *
+ * Non-status updates flow through as `update_task` blocks whose
+ * summary is the comma-joined `changed_fields` list (see
+ * `interface/src/components/Block/renderers/TaskBlock.tsx`).
+ */
+function handleTaskUpdated(e: AuraEventOfType<typeof EventType.TaskUpdated>): void {
+  const taskId = e.content.task_id;
+  if (!taskId) return;
+  const isStatusEdge = !!e.content.status;
+  if (isStatusEdge) {
+    // The lifecycle subscribers own status-edge blocks; skip the
+    // synthetic update_task to avoid duplicate cards.
+    return;
+  }
+  const fields = e.content.changed_fields ?? [];
+  if (fields.length === 0) return;
+  const { refs, setters } = contextForTask(taskId);
+  const id = crypto.randomUUID();
+  handleToolCallStarted(refs, setters, { id, name: "update_task" });
+  handleToolCallSnapshot(refs, setters, {
+    id,
+    name: "update_task",
+    input: { task_id: taskId, changed_fields: fields },
+  });
+  handleToolResult(refs, setters, {
+    id,
+    name: "update_task",
+    result: fields.join(", "),
+    is_error: false,
   });
 }
 
@@ -580,6 +702,7 @@ const taskStreamSubscriptionGroup = createEventSubscriptionGroup(
     subscribe(EventType.TaskCompletionGate, handleTaskCompletionGateEvent),
     subscribe(EventType.TaskRetrying, handleTaskRetryingEvent),
     subscribe(EventType.TaskFailed, handleTaskFailed),
+    subscribe(EventType.TaskUpdated, handleTaskUpdated),
     subscribe(EventType.LoopStopped, handleLoopEnd),
     subscribe(EventType.LoopFinished, handleLoopEnd),
   ],

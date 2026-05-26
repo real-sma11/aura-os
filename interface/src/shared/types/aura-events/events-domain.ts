@@ -139,6 +139,24 @@ export type DomainEventVariant =
 
   // ── Task lifecycle ─────────────────────────────────────────
   | { type: typeof EventType.TaskSaved; content: { task: Task } }
+  /**
+   * Per-edit broadcast emitted by the server's task CRUD/transition
+   * handlers (see `broadcast_task_updated` in
+   * `apps/aura-os-server/src/handlers/tasks/crud.rs`).
+   *
+   * `changed_fields` always carries at least one entry (`"status"`
+   * for transitions; field names like `"title"`, `"execution_notes"`
+   * for direct field writes). `status` is present only when this
+   * edit flipped the persisted task status, so the receiving
+   * `task-stream-bootstrap` handler can dedupe against the lifecycle
+   * `task_started` / `task_completed` / `task_failed` events that
+   * already produce their own `transition_task` blocks.
+   */
+  | { type: typeof EventType.TaskUpdated; content: {
+      task_id: string;
+      changed_fields: string[];
+      status?: { from: string; to: string };
+    } }
   | { type: typeof EventType.TaskStarted; content: {
       task_id: string;
       task_title?: string;

@@ -564,3 +564,159 @@ describe("task-stream-bootstrap: context-usage wiring", () => {
     ).toBeUndefined();
   });
 });
+
+describe("task-stream-bootstrap: synthetic transition_task lifecycle blocks", () => {
+  // Picks the synthetic transition_task entry created by the
+  // lifecycle handler. activeToolCalls is the live list (entries get
+  // moved to events on finalizeStream); both surfaces should be
+  // checked depending on whether the task is mid-run or completed.
+  function findTransitionEntry(
+    list: Array<{ name: string; input: Record<string, unknown> }>,
+    toStatus: string,
+  ) {
+    return list.find(
+      (c) =>
+        c.name === "transition_task" &&
+        (c.input as { status?: string }).status === toStatus,
+    );
+  }
+
+  it("appends a `ready -> in_progress` block on TaskStarted", () => {
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    const block = findTransitionEntry(entry!.activeToolCalls, "in_progress");
+    expect(block).toBeDefined();
+    expect(block!.input.from_status).toBe("ready");
+    expect(block!.input.task_id).toBe("t1");
+  });
+
+  it("appends a closing `in_progress -> done` block on TaskCompleted that survives finalize", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    dispatch({
+      type: EventType.TaskCompleted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    // After finalizeStream the closing block must live in `events[]`
+    // (the snapshotted assistant turn). Without injecting BEFORE
+    // finalize, the block would be discarded.
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    const allToolCalls = entry!.events.flatMap((e) => e.toolCalls ?? []);
+    const closing = findTransitionEntry(
+      allToolCalls as unknown as Array<{ name: string; input: Record<string, unknown> }>,
+      "done",
+    );
+    expect(closing).toBeDefined();
+    expect(closing!.input.from_status).toBe("in_progress");
+  });
+
+  it("appends a closing `in_progress -> failed` block carrying the reason on TaskFailed", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    dispatch({
+      type: EventType.TaskFailed,
+      content: { task_id: "t1", reason: "build broke" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    const allToolCalls = entry!.events.flatMap((e) => e.toolCalls ?? []);
+    const closing = (allToolCalls as unknown as Array<{
+      name: string;
+      input: Record<string, unknown>;
+      isError?: boolean;
+      result?: string;
+    }>).find(
+      (c) =>
+        c.name === "transition_task" &&
+        (c.input as { status?: string }).status === "failed",
+    );
+    expect(closing).toBeDefined();
+    expect(closing!.input.from_status).toBe("in_progress");
+    expect(closing!.isError).toBe(true);
+    expect(closing!.result).toContain("build broke");
+  });
+});
+
+describe("task-stream-bootstrap: task_updated synthetic blocks", () => {
+  it("renders a single `update_task` block summarising the changed fields", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskUpdated,
+      content: { task_id: "t1", changed_fields: ["title", "description"] },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry).toBeDefined();
+    const block = entry!.activeToolCalls.find((c) => c.name === "update_task");
+    expect(block).toBeDefined();
+    expect(block!.input.changed_fields).toEqual(["title", "description"]);
+    expect(block!.result).toBe("title, description");
+    expect(block!.isError).toBeFalsy();
+  });
+
+  it("ignores task_updated with no changed_fields (defensive: no-op writes)", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskUpdated,
+      content: { task_id: "t1", changed_fields: [] },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    if (entry) {
+      expect(
+        entry.activeToolCalls.find((c) => c.name === "update_task"),
+      ).toBeUndefined();
+    }
+  });
+
+  it("dedupes against lifecycle: a status-edge task_updated does NOT add a second transition block", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+    // The TaskStarted handler synthesised one transition_task block.
+    // A bystander task_updated that piggybacks on the same status
+    // edge (e.g. server's update_task with status=in_progress) must
+    // not stack a second card.
+    dispatch({
+      type: EventType.TaskUpdated,
+      content: {
+        task_id: "t1",
+        changed_fields: ["status"],
+        status: { from: "ready", to: "in_progress" },
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    const transitions = entry!.activeToolCalls.filter(
+      (c) => c.name === "transition_task",
+    );
+    expect(transitions).toHaveLength(1);
+  });
+});

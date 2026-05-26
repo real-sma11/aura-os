@@ -48,18 +48,38 @@ interface ResolvedHeader {
   badge?: string;
 }
 
+function changedFieldsSummary(entry: ToolCallEntry): string {
+  const raw = entry.input.changed_fields;
+  if (!Array.isArray(raw)) return "";
+  const fields = raw.filter((f): f is string => typeof f === "string" && f.length > 0);
+  return fields.join(", ");
+}
+
 function resolveHeader(entry: ToolCallEntry): ResolvedHeader {
   const inputTitle = (entry.input.title as string) || "";
   const taskId = (entry.input.task_id as string) || "";
   const transitionTo = (entry.input.status as string) || "";
+  const transitionFrom = (entry.input.from_status as string) || "";
 
   const verbs = VERBS[entry.name] ?? VERBS.create_task;
   const title = entry.pending ? verbs.pending : verbs.done;
-  const context = inputTitle || (taskId ? taskId.slice(0, 12) : "");
-  const badge =
-    !entry.pending && entry.name === "transition_task" && transitionTo
-      ? `-> ${transitionTo}`
-      : undefined;
+  // For `update_task` blocks (server-side broadcasts of non-status
+  // field writes), surface the list of changed fields in the summary
+  // slot — without this the block header is just "Task Updated" with
+  // no indication of WHAT was updated.
+  const fieldsSummary =
+    entry.name === "update_task" ? changedFieldsSummary(entry) : "";
+  const context =
+    fieldsSummary || inputTitle || (taskId ? taskId.slice(0, 12) : "");
+  // For `transition_task`, show the full edge ("in_progress -> done")
+  // when the upstream broadcast carries `from_status`; older payloads
+  // without it fall back to the destination-only "-> done" form.
+  let badge: string | undefined;
+  if (!entry.pending && entry.name === "transition_task" && transitionTo) {
+    badge = transitionFrom
+      ? `${transitionFrom} -> ${transitionTo}`
+      : `-> ${transitionTo}`;
+  }
 
   return { title, context, badge };
 }

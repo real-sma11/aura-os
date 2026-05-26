@@ -5,6 +5,7 @@ use tracing::warn;
 use aura_os_harness::signals::{synthesize_failure_reason, FailureContext};
 use aura_os_storage::UpdateTaskRequest;
 
+use crate::handlers::tasks::{broadcast_task_updated, storage_task_to_task};
 use crate::state::AppState;
 
 /// Extract the fail reason from a `task_failed` event. Checks the same
@@ -63,7 +64,37 @@ pub(super) async fn persist_task_failure_reason(
             %error,
             "failed to persist task_failed reason to tasks.execution_notes"
         );
+        return;
     }
+    // Surface the server-side `execution_notes` write as its own block
+    // in the activity timeline. Without this, the failure-reason
+    // assignment is invisible to the user — only the `task_failed`
+    // lifecycle event lands, and that already produces a separate
+    // `transition_task` block (in_progress -> failed) on its own. The
+    // `execution_notes` row is what makes "this is the reason it
+    // failed" auditable in the timeline rather than buried in the
+    // failure banner. Best-effort: a follow-up fetch failure leaves
+    // the persisted row intact, we just skip the broadcast.
+    let storage_task = match storage.get_task(task_id, jwt).await {
+        Ok(t) => t,
+        Err(error) => {
+            warn!(
+                %task_id,
+                %error,
+                "failed to refetch task after persisting failure reason; skipping task_updated broadcast"
+            );
+            return;
+        }
+    };
+    let task = match storage_task_to_task(storage_task) {
+        Ok(t) => t,
+        Err(error) => {
+            warn!(%task_id, %error, "failed to convert refetched task; skipping task_updated broadcast");
+            return;
+        }
+    };
+    let project_id = task.project_id;
+    broadcast_task_updated(state, &project_id, &task, &["execution_notes"], None);
 }
 
 /// Resolve the string to persist into `tasks.execution_notes`.

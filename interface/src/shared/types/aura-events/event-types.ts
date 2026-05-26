@@ -93,6 +93,19 @@ export const EventType = {
 
   // Task lifecycle
   TaskSaved:             "task_saved",
+  /**
+   * Per-field-write companion to `TaskSaved`. Where `task_saved` is
+   * a create-only snapshot of the full task row, `task_updated` is
+   * fired by every CRUD/transition handler in
+   * `apps/aura-os-server/src/handlers/tasks/crud.rs` (plus the
+   * dev-loop's server-side `execution_notes` write on failure) and
+   * carries a structured diff: `changed_fields: string[]` plus an
+   * optional `status: { from, to }` for the status edge. The
+   * frontend `task-stream-bootstrap::handleTaskUpdated` synthesises
+   * one timeline block per event so the activity timeline records
+   * every server-side task field change as its own card.
+   */
+  TaskUpdated:           "task_updated",
   TaskStarted:           "task_started",
   TaskCompleted:         "task_completed",
   TaskFailed:            "task_failed",

@@ -14,13 +14,23 @@ use crate::state::{AppState, AuthJwt};
 pub(crate) async fn transition_task(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
-    Path((_project_id, task_id)): Path<(ProjectId, TaskId)>,
+    Path((project_id, task_id)): Path<(ProjectId, TaskId)>,
     Json(req): Json<TransitionTaskRequest>,
 ) -> ApiResult<Json<Task>> {
     let storage = state.require_storage_client()?;
-    aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), req.new_status)
+    // Capture the pre-transition status so the broadcast carries a
+    // `{ from, to }` pair instead of just the destination — the UI
+    // renders the badge as "in_progress -> done" only when both ends
+    // are known. A failed lookup degrades gracefully: we still attempt
+    // the transition, just without a `from` value on the event.
+    let prev_status = storage
+        .get_task(&task_id.to_string(), &jwt)
         .await
-        .map(Json)
+        .ok()
+        .and_then(|t| storage_task_to_task(t).ok())
+        .map(|t| t.status);
+    let task = aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), req.new_status)
+        .await
         .map_err(|e| match &e {
             aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
                 status: 404,
@@ -34,18 +44,31 @@ pub(crate) async fn transition_task(
                 ApiError::bad_request(format!("transitioning task: {e}"))
             }
             _ => ApiError::internal(format!("transitioning task: {e}")),
-        })
+        })?;
+    broadcast_task_updated(
+        &state,
+        &project_id,
+        &task,
+        &["status"],
+        prev_status.map(|from| (from, task.status)),
+    );
+    Ok(Json(task))
 }
 
 pub(crate) async fn retry_task(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
-    Path((_project_id, task_id)): Path<(ProjectId, TaskId)>,
+    Path((project_id, task_id)): Path<(ProjectId, TaskId)>,
 ) -> ApiResult<Json<Task>> {
     let storage = state.require_storage_client()?;
-    aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
+    let prev_status = storage
+        .get_task(&task_id.to_string(), &jwt)
         .await
-        .map(Json)
+        .ok()
+        .and_then(|t| storage_task_to_task(t).ok())
+        .map(|t| t.status);
+    let task = aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
+        .await
         .map_err(|e| match &e {
             aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
                 status: 404,
@@ -59,7 +82,15 @@ pub(crate) async fn retry_task(
                 ApiError::bad_request(format!("retrying task: {e}"))
             }
             _ => ApiError::internal(format!("retrying task: {e}")),
-        })
+        })?;
+    broadcast_task_updated(
+        &state,
+        &project_id,
+        &task,
+        &["status"],
+        prev_status.map(|from| (from, task.status)),
+    );
+    Ok(Json(task))
 }
 
 /// User-initiated "Re-do" of a previously completed task. Mirrors
@@ -80,9 +111,15 @@ pub(crate) async fn retry_task(
 pub(crate) async fn redo_task(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
-    Path((_project_id, task_id)): Path<(ProjectId, TaskId)>,
+    Path((project_id, task_id)): Path<(ProjectId, TaskId)>,
 ) -> ApiResult<Json<Task>> {
     let storage = state.require_storage_client()?;
+    let prev_status = storage
+        .get_task(&task_id.to_string(), &jwt)
+        .await
+        .ok()
+        .and_then(|t| storage_task_to_task(t).ok())
+        .map(|t| t.status);
     let task =
         aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
             .await
@@ -100,6 +137,13 @@ pub(crate) async fn redo_task(
                 }
                 _ => ApiError::internal(format!("redoing task: {e}")),
             })?;
+    broadcast_task_updated(
+        &state,
+        &project_id,
+        &task,
+        &["status"],
+        prev_status.map(|from| (from, task.status)),
+    );
 
     // Reset the retry counter so a re-do that subsequently fails gets
     // its full `MAX_TASK_ATTEMPTS` budget, instead of inheriting
@@ -123,6 +167,12 @@ pub(crate) async fn redo_task(
             error = %e,
             "redo_task: failed to reset attempts counter; task is Ready but retries inherit prior count"
         );
+    } else {
+        // Best-effort follow-up broadcast for the `attempts` reset so
+        // the timeline picks up the non-status field change too. Skip
+        // when the storage write above failed (no actual change to
+        // surface).
+        broadcast_task_updated(&state, &project_id, &task, &["attempts"], None);
     }
 
     Ok(Json(task))
@@ -249,7 +299,7 @@ pub(crate) struct UpdateTaskBody {
 pub(crate) async fn update_task(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
-    Path((_project_id, task_id)): Path<(ProjectId, TaskId)>,
+    Path((project_id, task_id)): Path<(ProjectId, TaskId)>,
     Json(req): Json<UpdateTaskBody>,
 ) -> ApiResult<Json<Task>> {
     let storage = state.require_storage_client()?;
@@ -264,11 +314,28 @@ pub(crate) async fn update_task(
         })?;
     let current_task = storage_task_to_task(current).map_err(ApiError::internal)?;
 
-    let has_direct_updates = req.title.is_some()
-        || req.description.is_some()
-        || req.order_index.is_some()
-        || req.dependency_ids.is_some()
-        || req.assigned_agent_instance_id.is_some();
+    // Track which fields actually changed so the broadcast at the end
+    // carries the precise set the activity-timeline `update_task`
+    // block uses to render its summary slot ("title, description").
+    // Status is tracked separately because it produces a dedicated
+    // `transition_task` block via the `status_change` arm.
+    let mut changed: Vec<&'static str> = Vec::new();
+    if req.title.is_some() {
+        changed.push("title");
+    }
+    if req.description.is_some() {
+        changed.push("description");
+    }
+    if req.order_index.is_some() {
+        changed.push("order_index");
+    }
+    if req.dependency_ids.is_some() {
+        changed.push("dependency_ids");
+    }
+    if req.assigned_agent_instance_id.is_some() {
+        changed.push("assigned_agent_instance_id");
+    }
+    let has_direct_updates = !changed.is_empty();
     if has_direct_updates {
         storage
             .update_task(
@@ -287,6 +354,7 @@ pub(crate) async fn update_task(
             .map_err(storage_transition_error("updating task"))?;
     }
 
+    let mut status_change: Option<(TaskStatus, TaskStatus)> = None;
     if let Some(status) = req.status {
         let parsed_status =
             serde_json::from_value::<TaskStatus>(serde_json::Value::String(status.clone()))
@@ -304,6 +372,7 @@ pub(crate) async fn update_task(
                 )
                 .await
                 .map_err(storage_transition_error("transitioning updated task"))?;
+            status_change = Some((current_task.status, parsed_status));
         }
     }
 
@@ -311,9 +380,24 @@ pub(crate) async fn update_task(
         .get_task(&task_id.to_string(), &jwt)
         .await
         .map_err(|e| ApiError::internal(format!("fetching updated task: {e}")))?;
-    Ok(Json(
-        storage_task_to_task(updated).map_err(ApiError::internal)?,
-    ))
+    let updated_task = storage_task_to_task(updated).map_err(ApiError::internal)?;
+    // Emit two distinct events when both happened so the timeline
+    // gets one `update_task` block (field diff) and one
+    // `transition_task` block (status edge), instead of a single
+    // hybrid block the renderer would have to disambiguate.
+    if has_direct_updates {
+        broadcast_task_updated(&state, &project_id, &updated_task, &changed, None);
+    }
+    if let Some(edge) = status_change {
+        broadcast_task_updated(
+            &state,
+            &project_id,
+            &updated_task,
+            &["status"],
+            Some(edge),
+        );
+    }
+    Ok(Json(updated_task))
 }
 
 pub(crate) async fn delete_task(
@@ -341,6 +425,56 @@ fn broadcast_task_saved(state: &AppState, project_id: &ProjectId, task: &Task) {
         "task": task,
         "task_id": task.task_id.to_string(),
     }));
+}
+
+/// Broadcast a `task_updated` event so the live activity timeline can
+/// inject a synthetic block per server-side field write.
+///
+/// Distinct from [`broadcast_task_saved`] which is create-only and
+/// carries the full task row: `task_updated` is fire-on-every-edit
+/// and ships a structured diff (`changed_fields`, optional
+/// `{ from, to }` for status flips). The frontend
+/// (`task-stream-bootstrap::handleTaskUpdated`) routes status
+/// changes into a `transition_task` block and field changes into an
+/// `update_task` block, both rendered through
+/// `interface/src/components/Block/renderers/TaskBlock.tsx`.
+///
+/// `status_change` is `Some` when this update flipped the task's
+/// status (so the receiving handler can dedupe against the lifecycle
+/// `task_started` / `task_completed` / `task_failed` events that
+/// `task-stream-bootstrap` already turns into transition blocks). A
+/// `None` value means the broadcast covers only non-status fields.
+pub(crate) fn broadcast_task_updated(
+    state: &AppState,
+    project_id: &ProjectId,
+    task: &Task,
+    changed_fields: &[&str],
+    status_change: Option<(TaskStatus, TaskStatus)>,
+) {
+    let payload = build_task_updated_payload(project_id, task, changed_fields, status_change);
+    let _ = state.event_broadcast.send(payload);
+}
+
+/// Pure JSON-shape builder split out of [`broadcast_task_updated`] so
+/// the wire format can be unit-tested without standing up an
+/// `AppState`. Mirrored by the frontend variant in
+/// `interface/src/shared/types/aura-events/events-domain.ts`.
+fn build_task_updated_payload(
+    project_id: &ProjectId,
+    task: &Task,
+    changed_fields: &[&str],
+    status_change: Option<(TaskStatus, TaskStatus)>,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "type": "task_updated",
+        "project_id": project_id.to_string(),
+        "task_id": task.task_id.to_string(),
+        "changed_fields": changed_fields,
+    });
+    if let Some((from, to)) = status_change {
+        payload["status"] = serde_json::json!({ "from": from, "to": to });
+    }
+    payload
 }
 
 fn storage_transition_error(
@@ -471,6 +605,117 @@ mod tests {
         assert_eq!(
             body.dependency_ids.as_deref(),
             Some(&["a".to_string(), "b".to_string()][..])
+        );
+    }
+
+    /// `task_updated` payload pins the wire shape consumed by the
+    /// frontend's `handleTaskUpdated` handler. Status edges include a
+    /// `status: { from, to }` object; non-status edits omit the key
+    /// entirely (so the JS `e.content.status` check works as the
+    /// dedupe trigger).
+    #[test]
+    fn task_updated_payload_includes_status_edge_when_provided() {
+        use chrono::Utc;
+        use aura_os_core::{
+            AgentInstanceId, ProjectId, SessionId, SpecId, Task, TaskId, TaskStatus,
+        };
+        let _ = (AgentInstanceId::nil(), SessionId::nil());
+        let project_id = ProjectId::nil();
+        let task = Task {
+            task_id: TaskId::nil(),
+            project_id,
+            spec_id: SpecId::nil(),
+            title: "T".into(),
+            description: String::new(),
+            status: TaskStatus::Done,
+            order_index: 0,
+            dependency_ids: vec![],
+            parent_task_id: None,
+            skip_auto_decompose: false,
+            assigned_agent_instance_id: None,
+            completed_by_agent_instance_id: None,
+            session_id: None,
+            execution_notes: String::new(),
+            files_changed: vec![],
+            live_output: String::new(),
+            build_steps: vec![],
+            test_steps: vec![],
+            user_id: None,
+            model: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            attempts: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let payload = super::build_task_updated_payload(
+            &project_id,
+            &task,
+            &["status"],
+            Some((TaskStatus::InProgress, TaskStatus::Done)),
+        );
+        assert_eq!(payload["type"], "task_updated");
+        assert_eq!(payload["task_id"], task.task_id.to_string());
+        assert_eq!(payload["project_id"], project_id.to_string());
+        assert_eq!(
+            payload["changed_fields"],
+            serde_json::json!(["status"]),
+            "changed_fields must round-trip as a JSON array even for single-element diffs",
+        );
+        assert_eq!(payload["status"]["from"], "in_progress");
+        assert_eq!(payload["status"]["to"], "done");
+    }
+
+    /// Non-status updates must NOT carry a `status` key — the
+    /// frontend uses its presence as the dedupe signal against the
+    /// lifecycle `task_started` / `task_completed` events. Adding it
+    /// here would cause every `update_task` block (e.g. an
+    /// `execution_notes` write) to be silently swallowed.
+    #[test]
+    fn task_updated_payload_omits_status_for_non_status_edits() {
+        use chrono::Utc;
+        use aura_os_core::{ProjectId, SpecId, Task, TaskId, TaskStatus};
+        let project_id = ProjectId::nil();
+        let task = Task {
+            task_id: TaskId::nil(),
+            project_id,
+            spec_id: SpecId::nil(),
+            title: "T".into(),
+            description: String::new(),
+            status: TaskStatus::Failed,
+            order_index: 0,
+            dependency_ids: vec![],
+            parent_task_id: None,
+            skip_auto_decompose: false,
+            assigned_agent_instance_id: None,
+            completed_by_agent_instance_id: None,
+            session_id: None,
+            execution_notes: "boom".into(),
+            files_changed: vec![],
+            live_output: String::new(),
+            build_steps: vec![],
+            test_steps: vec![],
+            user_id: None,
+            model: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            attempts: 1,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let payload = super::build_task_updated_payload(
+            &project_id,
+            &task,
+            &["execution_notes"],
+            None,
+        );
+        assert_eq!(payload["type"], "task_updated");
+        assert_eq!(payload["changed_fields"], serde_json::json!(["execution_notes"]));
+        assert!(
+            payload.get("status").is_none(),
+            "non-status edits must omit the `status` key, found: {payload}",
         );
     }
 
