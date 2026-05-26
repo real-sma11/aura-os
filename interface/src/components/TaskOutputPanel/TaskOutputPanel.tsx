@@ -132,6 +132,37 @@ function RunPaneModelPicker({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * Pinned cooking strip for the Run pane. Mirrors the `loopWorking`
+ * derivation used by `AutomationBar` (`PlayLoopGlyph`) so the shimmer
+ * lights up in lockstep with the progress glyph — even during the
+ * `starting` / `preparing` window before the first `task_started`
+ * event has produced any stream deltas. Once an active task exists we
+ * pass its id so the indicator can swap from the static `Cooking...`
+ * fallback to `getStreamingPhaseLabel`'s richer `Thinking...` / tool
+ * labels. Extracted into its own component so `useAutomationStatus`
+ * only mounts when we have a real `projectId`.
+ */
+function RunPaneCookingIndicator({
+  projectId,
+  taskId,
+}: {
+  projectId: string;
+  taskId: string | undefined;
+}) {
+  const { status } = useAutomationStatus(projectId);
+  const loopWorking =
+    status === "starting" || status === "preparing" || status === "active";
+  if (!loopWorking && !taskId) return null;
+  return (
+    <PinnedTaskStreamingIndicator
+      taskId={taskId ?? ""}
+      className={styles.pinnedStreamingIndicator}
+      forceShow={loopWorking}
+    />
+  );
+}
+
 export function RunSidekickPane() {
   const clearCompleted = useTaskOutputPanelStore((s) => s.clearCompleted);
   const ctx = useProjectActions();
@@ -213,10 +244,10 @@ export function RunSidekickPane() {
             )
           )}
         </div>
-        {activeTask && (
-          <PinnedTaskStreamingIndicator
-            taskId={activeTask.taskId}
-            className={styles.pinnedStreamingIndicator}
+        {projectId && (
+          <RunPaneCookingIndicator
+            projectId={projectId}
+            taskId={activeTask?.taskId}
           />
         )}
         <OverlayScrollbar scrollRef={contentRef} />

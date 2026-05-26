@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button, GroupCollapsible } from "@cypher-asi/zui";
 import { GitCommitHorizontal, Loader2, Play } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -16,6 +17,11 @@ import {
   buildTaskCopyText,
 } from "../TaskOutputPanel";
 import { useProjectActions } from "../../stores/project-action-store";
+import {
+  selectTaskActivity,
+  useLoopActivityStore,
+} from "../../stores/loop-activity-store";
+import { isLoopActivityActive } from "../../shared/types/aura-events";
 import { formatDuration, toBullets } from "../../shared/utils/format";
 import {
   useStreamEvents,
@@ -67,6 +73,18 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
   const thinkingText = useThinkingText(streamKey);
   const activeToolCalls = useActiveToolCalls(streamKey);
   const timeline = useTimeline(streamKey);
+
+  // Mirrors the `LoopProgress` ring on this task's row in `TaskList` so
+  // the Live Output cooking shimmer lights up the moment the dev loop
+  // picks the task up — even before the task's status transitions to
+  // `in_progress` (and `isActive` flips) and the first stream delta
+  // arrives. Without this, the progress ring on the task row spins for
+  // the short `starting` window while the preview body sits empty.
+  const taskActivity = useLoopActivityStore(
+    useShallow((s) => selectTaskActivity(s, task.task_id)),
+  );
+  const loopWorking =
+    !!taskActivity && isLoopActivityActive(taskActivity.status);
 
   const panelStatusLabel: "in_progress" | "completed" | "failed" =
     effectiveStatus === "in_progress" ? "in_progress"
@@ -219,8 +237,13 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
         </GroupCollapsible>
       )}
 
-      {isActive ? (
-        <GroupCollapsible label="Live Output" defaultOpen stats={copyButton} className={styles.section}>
+      {isActive || (loopWorking && !isTerminal) ? (
+        <GroupCollapsible
+          label="Live Output"
+          defaultOpen
+          stats={copyButton}
+          className={`${styles.section} ${styles.liveOutputCollapsible}`}
+        >
           <div className={styles.liveOutputSection}>
             <ActiveTaskStream
               taskId={task.task_id}
@@ -233,6 +256,7 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
             <PinnedTaskStreamingIndicator
               taskId={task.task_id}
               className={styles.previewStreamingIndicator}
+              forceShow={loopWorking}
             />
           </div>
         </GroupCollapsible>

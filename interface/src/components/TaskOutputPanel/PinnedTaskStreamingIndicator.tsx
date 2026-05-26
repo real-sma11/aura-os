@@ -22,6 +22,19 @@ interface PinnedTaskStreamingIndicatorProps {
    * duplicating the hook chain.
    */
   className?: string;
+  /**
+   * Render the shimmer with a default `Cooking...` label even before any
+   * stream delta arrives. Used by callers that want the indicator to
+   * appear in lockstep with the loop's progress glyph (e.g. the moment
+   * automation enters `starting` / `preparing` / `active`, before
+   * `task_started` produces real stream events). When `false` (the
+   * default), the historical behaviour is preserved: the indicator only
+   * mounts once real streaming activity is in flight. Passing an empty
+   * string `taskId` is valid in this mode — the stream hooks return
+   * empty state and the component renders the static `Cooking...`
+   * fallback.
+   */
+  forceShow?: boolean;
 }
 
 /**
@@ -46,6 +59,7 @@ interface PinnedTaskStreamingIndicatorProps {
 export function PinnedTaskStreamingIndicator({
   taskId,
   className,
+  forceShow = false,
 }: PinnedTaskStreamingIndicatorProps) {
   const { streamKey } = useTaskStream(taskId, true);
   const isStreaming = useIsStreaming(streamKey);
@@ -57,7 +71,7 @@ export function PinnedTaskStreamingIndicator({
 
   const nowStreaming =
     isStreaming || !!streamingText || !!thinkingText || toolCalls.length > 0;
-  if (!nowStreaming) return null;
+  if (!nowStreaming && !forceShow) return null;
 
   const label = getStreamingPhaseLabel({
     streamingText,
@@ -67,9 +81,13 @@ export function PinnedTaskStreamingIndicator({
     isWriting,
   });
 
+  // When `forceShow` is on but no stream data has arrived yet, fall back
+  // to the static `Cooking...` label so the shimmer is visible. Once
+  // real stream activity lands, `getStreamingPhaseLabel` takes over and
+  // swaps to `Thinking.../tool name/etc.` without remounting.
   return (
     <div className={className} aria-live="polite" data-testid="pinned-task-streaming-indicator">
-      <CookingIndicator label={label ?? "Cooking..."} hidden={!label} />
+      <CookingIndicator label={label ?? "Cooking..."} />
     </div>
   );
 }

@@ -380,12 +380,11 @@
 /* Backdrop matches `ChatPanel.module.css` `.pinnedStreamingIndicator`
    and `TaskOutputPanel.module.css` `.pinnedStreamingIndicator` so the
    shimmering "Cooking..." label reads as a single visual treatment
-   across the chat input, Run pane, and Tasks pane. Without the
-   gradient, trailing rows of the scrolling Live Output feed bleed
-   through into the shimmer area. The 40% solid stop matches the
-   sibling Run-pane indicator (also a shorter element, since
-   `.previewStreamingIndicator > *` below collapses the
-   `CookingIndicator`'s own vertical padding). */
+   across the chat input, Run pane, and Tasks pane. Uses a single
+   continuous fade (`transparent 0%` -> `var(--color-bg) 100%`) so the
+   trailing rows of the scrolling Live Output feed fade out smoothly
+   instead of being cut off by the sharp opacity step at 40% that
+   previously read as a horizontal line directly above the shimmer. */
 .previewStreamingIndicator {
   position: sticky;
   bottom: var(--sidekick-fade-height, 72px);
@@ -397,13 +396,24 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    var(--color-bg) 40%,
     var(--color-bg) 100%
   );
 }
 
 .previewStreamingIndicator > * {
   padding: var(--space-2) 0 0;
+}
+
+/* Live Output GroupCollapsible variant — drops the header's
+   `border-bottom` so the cooking shimmer / `Waiting for output…`
+   placeholder sits flush under the section label instead of having a
+   1px divider between the two. Other preview sections (Build
+   Verification, Test Verification, Git Activity, Notes) keep the
+   default border because their bodies are visually distinct from the
+   header; the shimmer reads as a continuation of the label, so a
+   divider only adds noise. */
+.liveOutputCollapsible [class*="header"] {
+  border-bottom: none;
 }
 
 .streamProgress {
