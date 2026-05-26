@@ -171,13 +171,25 @@ async fn grant_signup_credits(user_id: &str, is_zero_pro: bool, referred_by: Opt
 }
 
 /// Get z-billing service URL and API key. Returns None if not configured.
+///
+/// The "not configured" warn is throttled to fire at most once per
+/// process: `grant_signup_credits` is fire-and-forget on every login
+/// *and* on the session-restore retry path, so without this guard the
+/// log fills with the same line on every auth round-trip in any
+/// environment that legitimately ships without a billing key (notably
+/// local dev, where `AURA_DESKTOP_DEFAULT_Z_BILLING_API_KEY` defaults
+/// to empty in `apps/aura-os-desktop/build.rs`).
 fn billing_service_config() -> Option<(String, String)> {
     let billing_url = std::env::var("Z_BILLING_URL")
         .unwrap_or_else(|_| "https://z-billing.onrender.com".to_string());
     match std::env::var("Z_BILLING_API_KEY") {
         Ok(key) => Some((billing_url, key)),
         Err(_) => {
-            tracing::warn!("Z_BILLING_API_KEY not set, skipping credit grant");
+            static MISSING_KEY_WARNED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !MISSING_KEY_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                tracing::warn!("Z_BILLING_API_KEY not set, skipping credit grant");
+            }
             None
         }
     }
