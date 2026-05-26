@@ -31,6 +31,30 @@ vi.hoisted(() => {
   }
 });
 
+// Hoisted spy lets a single test simulate `handleToolCallStarted`
+// throwing (the reducer chain `emitSyntheticTransitionBlock` drives),
+// while every other test continues to exercise the real
+// implementation via the factory-installed default below.
+const { toolCallStartedSpy } = vi.hoisted(() => ({
+  toolCallStartedSpy: vi.fn(),
+}));
+
+vi.mock("../hooks/stream/handlers", async () => {
+  const actual = await vi.importActual<
+    typeof import("../hooks/stream/handlers")
+  >("../hooks/stream/handlers");
+  // Default: pass through to the real implementation so the rest of
+  // the file's assertions (which depend on the synthetic transition
+  // block landing in the stream store) keep working unchanged.
+  toolCallStartedSpy.mockImplementation(actual.handleToolCallStarted);
+  return {
+    ...actual,
+    handleToolCallStarted: (
+      ...args: Parameters<typeof actual.handleToolCallStarted>
+    ) => toolCallStartedSpy(...args),
+  };
+});
+
 import type { AuraEvent } from "../shared/types/aura-events";
 import { EventType } from "../shared/types/aura-events";
 import { subscribers } from "./event-store/event-store";
@@ -655,6 +679,88 @@ describe("task-stream-bootstrap: synthetic transition_task lifecycle blocks", ()
     expect(closing!.input.from_status).toBe("in_progress");
     expect(closing!.isError).toBe(true);
     expect(closing!.result).toContain("build broke");
+  });
+});
+
+describe("task-stream-bootstrap: synthetic emit failures stay isolated", () => {
+  // Regression: the synthetic `transition_task` block emits in
+  // `handleTaskStarted` / `handleTaskCompleted` / `handleTaskFailed`
+  // are decorative — they MUST NOT be able to interrupt the core
+  // lifecycle work (`addTask`, `setLiveStatus`, `completeTask`,
+  // `failTask`, `snapshotTaskTurns`). This test mocks
+  // `handleToolCallStarted` to throw once, simulating a reducer
+  // failure inside the synthetic emit, and asserts that the Run
+  // panel row still appears for the started task.
+
+  it("populates the task row on TaskStarted even if the synthetic emit throws", () => {
+    // Suppress the DEV-only console.warn the try/catch emits so the
+    // test output stays clean. The wrap is the contract under test.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // First handleToolCallStarted call (the synthetic block) throws;
+    // subsequent calls fall through to the factory default.
+    toolCallStartedSpy.mockImplementationOnce(() => {
+      throw new Error("simulated reducer failure");
+    });
+
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1" },
+      project_id: "p1",
+      session_id: "sess-1",
+    } as unknown as AuraEvent);
+
+    const panelTasks = useTaskOutputPanelStore.getState().tasks;
+    expect(panelTasks).toHaveLength(1);
+    expect(panelTasks[0].taskId).toBe("t1");
+    expect(panelTasks[0].status).toBe("active");
+    // The status / session updates that live BEFORE the synthetic
+    // emit must have run; the wrap is what guarantees they stay
+    // reachable even if the synthetic reducer chain blows up.
+    const live = useTaskStatusStore.getState().byTaskId["t1"];
+    expect(live?.liveStatus).toBe("in_progress");
+    expect(live?.liveSessionId).toBe("sess-1");
+
+    warnSpy.mockRestore();
+  });
+
+  it("completes the task on TaskCompleted even if the synthetic emit throws", () => {
+    // `handleTaskCompleted` calls the synthetic emit BEFORE
+    // `finalizeStream` / `completeTask` / `setLiveStatus("done")` /
+    // `snapshotTaskTurns`, so this scenario is where the wrap
+    // genuinely earns its keep — without the try/catch a throw here
+    // would leave the task stuck on "active" forever.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t2", task_title: "Task t2" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    // Clear the call queue from TaskStarted's synthetic emit so the
+    // next `mockImplementationOnce` targets the TaskCompleted call.
+    toolCallStartedSpy.mockClear();
+    toolCallStartedSpy.mockImplementationOnce(() => {
+      throw new Error("simulated reducer failure on completion");
+    });
+
+    dispatch({
+      type: EventType.TaskCompleted,
+      content: { task_id: "t2", task_title: "Task t2" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore
+      .getState()
+      .tasks.find((t) => t.taskId === "t2");
+    expect(row).toBeDefined();
+    expect(row!.status).toBe("completed");
+    expect(useTaskStatusStore.getState().byTaskId["t2"]?.liveStatus).toBe(
+      "done",
+    );
+
+    warnSpy.mockRestore();
   });
 });
 

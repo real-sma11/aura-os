@@ -124,11 +124,24 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   // Without this the actual status flip done server-side by
   // `assign_task` is invisible: the user only sees text/tool blocks
   // but no record of the lifecycle transition that started the run.
-  emitSyntheticTransitionBlock(taskId, {
-    fromStatus: "ready",
-    toStatus: "in_progress",
-    title: e.content.task_title,
-  });
+  //
+  // Wrapped: the synthetic timeline card is decorative; if the
+  // reducer chain it drives throws (e.g. ref bag not initialised
+  // when the event lands before any chat hook mounts), it MUST NOT
+  // be allowed to interrupt the lifecycle writes above (`addTask`,
+  // `setLiveStatus`) — those are what light up the Run panel row
+  // and per-task spinner that this whole regression turned off.
+  try {
+    emitSyntheticTransitionBlock(taskId, {
+      fromStatus: "ready",
+      toStatus: "in_progress",
+      title: e.content.task_title,
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn("synthetic transition block emit failed; lifecycle continues", err);
+    }
+  }
 }
 
 /**
@@ -448,11 +461,22 @@ function handleTaskCompleted(e: AuraEventOfType<typeof EventType.TaskCompleted>)
   // into `events[]` (and therefore survives `snapshotTaskTurns`'s reload
   // rehydration). Adding it after finalize would leak it onto the next
   // turn or be discarded entirely.
-  emitSyntheticTransitionBlock(taskId, {
-    fromStatus: "in_progress",
-    toStatus: "done",
-    title: e.content.task_title,
-  });
+  //
+  // Wrapped: synthetic block emit is decorative — see the matching
+  // try/catch in `handleTaskStarted` for the rationale. The lifecycle
+  // calls below (`finalizeStream`, `completeTask`, `setLiveStatus`,
+  // `snapshotTaskTurns`) MUST run even if the synthetic emit throws.
+  try {
+    emitSyntheticTransitionBlock(taskId, {
+      fromStatus: "in_progress",
+      toStatus: "done",
+      title: e.content.task_title,
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn("synthetic transition block emit failed; lifecycle continues", err);
+    }
+  }
   finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
     reason: "completed",
   });
@@ -506,13 +530,26 @@ function handleTaskFailed(e: AuraEventOfType<typeof EventType.TaskFailed>): void
   // entry is captured in the assistant turn that gets snapshotted,
   // and rendered with `is_error: true` so `TaskBlock` paints the red
   // `inlineError` row carrying the failure reason.
-  emitSyntheticTransitionBlock(taskId, {
-    fromStatus: "in_progress",
-    toStatus: "failed",
-    title: e.content.task_title,
-    isError: true,
-    reason: reason ?? undefined,
-  });
+  //
+  // Wrapped: synthetic block emit is decorative — see the matching
+  // try/catch in `handleTaskStarted` for the rationale. The lifecycle
+  // calls below (`finalizeStream`, `failTask`, `setLiveStatus`,
+  // `snapshotTaskTurns`) MUST run even if the synthetic emit throws,
+  // otherwise a failed task would silently linger as "active" in the
+  // Run panel.
+  try {
+    emitSyntheticTransitionBlock(taskId, {
+      fromStatus: "in_progress",
+      toStatus: "failed",
+      title: e.content.task_title,
+      isError: true,
+      reason: reason ?? undefined,
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn("synthetic transition block emit failed; lifecycle continues", err);
+    }
+  }
   finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
     reason: "failed",
     message: reason ?? undefined,
