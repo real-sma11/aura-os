@@ -230,6 +230,71 @@ async fn set_current_task_bypasses_throttle_even_without_status_change() {
 }
 
 #[tokio::test]
+async fn re_emit_loop_opened_publishes_for_known_loop() {
+    // Regression: the dev-loop adopt-shortcut path skips
+    // `register_active_automaton` (and therefore `LoopRegistry::open`)
+    // when it reuses an existing forwarder, but the FE's
+    // `useLoopActivityStore` is only seeded by the `LoopOpened` event
+    // the bridge mirrors. `re_emit_loop_opened` is the seam that lets
+    // the adopt path republish that frame against the live activity
+    // snapshot without minting a fresh handle.
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let project = ProjectId::new();
+    let (_g, mut rx) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
+    let loop_id = fresh_loop_id(project, AgentInstanceId::new(), LoopKind::Automation);
+    let handle = registry.open(loop_id.clone());
+
+    // Drain the initial LoopOpened from `open()`.
+    let _ = rx.recv().await;
+
+    // Advance the live activity so we can assert the re-emit carries
+    // the *current* snapshot rather than the original `Starting` seed.
+    handle.mark_running(Some(0.5), Some("re-emit test".into())).await;
+    let _ = rx.recv().await;
+
+    assert!(registry.re_emit_loop_opened(&loop_id));
+    let evt = rx.recv().await.expect("re_emit publishes a LoopOpened");
+    match evt.as_ref() {
+        DomainEvent::LoopOpened(payload) => {
+            assert_eq!(payload.loop_id, loop_id);
+            assert_eq!(payload.activity.status, LoopStatus::Running);
+            assert_eq!(payload.activity.percent, Some(0.5));
+            assert_eq!(
+                payload.activity.current_step.as_deref(),
+                Some("re-emit test")
+            );
+        }
+        other => panic!("expected LoopOpened, got {other:?}"),
+    }
+
+    handle.mark_completed().await;
+    let _ = rx.recv().await;
+}
+
+#[tokio::test]
+async fn re_emit_loop_opened_is_noop_for_unknown_loop() {
+    use std::time::Duration as StdDuration;
+
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let project = ProjectId::new();
+    let (_g, mut rx) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
+    let unknown =
+        fresh_loop_id(project, AgentInstanceId::new(), LoopKind::Automation);
+
+    assert!(!registry.re_emit_loop_opened(&unknown));
+    // Nothing should hit the bus — wait briefly to catch a stray publish.
+    let nothing = tokio::time::timeout(StdDuration::from_millis(50), rx.recv()).await;
+    assert!(
+        nothing.is_err(),
+        "re_emit on an unknown loop must not publish any event"
+    );
+}
+
+#[tokio::test]
 async fn snapshot_filters_by_project() {
     let hub = EventHub::new();
     let registry = LoopRegistry::new(hub);

@@ -109,6 +109,46 @@ impl LoopRegistry {
         }
     }
 
+    /// Re-publish a [`DomainEvent::LoopOpened`] for an already-open
+    /// loop, using the current [`LoopActivity`] snapshot from the
+    /// registry. Returns `true` when a slot was found and the event
+    /// was published, `false` when there is no live slot for
+    /// `loop_id` (no-op).
+    ///
+    /// Used by the dev-loop adopt-shortcut path
+    /// (`apps/aura-os-server/src/handlers/dev_loop/run/mod.rs::adopt_shortcut_outcome`)
+    /// to seed the FE's `useLoopActivityStore` when the existing
+    /// forwarder is reused: that path skips
+    /// `register_active_automaton` and therefore never calls
+    /// [`Self::open`], so the typed `LoopOpened` event the
+    /// `loop_events_bridge` mirrors into the WS broadcast would
+    /// otherwise be missing for the reused loop. Without that frame
+    /// every downstream surface that reads from
+    /// `useLoopActivityStore.loops` (nav-bar ring, per-task spinner,
+    /// Run pane) stays idle even while the harness is actively
+    /// working.
+    ///
+    /// This is a re-publish, not a re-`open`: the registry slot is
+    /// left intact, no fresh `LoopHandle` is allocated, and the
+    /// throttle bookkeeping (`last_published_ms`) is untouched. The
+    /// next `transition` will run against the same activity it would
+    /// have run against without this call.
+    pub fn re_emit_loop_opened(&self, loop_id: &LoopId) -> bool {
+        let Some(entry) = self.inner.entries.get(loop_id) else {
+            return false;
+        };
+        let activity = entry.value().activity.clone();
+        drop(entry);
+        self.inner
+            .hub
+            .publish(DomainEvent::LoopOpened(LoopLifecycle {
+                loop_id: loop_id.clone(),
+                activity,
+                at: Utc::now(),
+            }));
+        true
+    }
+
     /// Snapshot every loop matching the predicate. Used by
     /// `GET /api/loops` and aggregation selectors.
     #[must_use]

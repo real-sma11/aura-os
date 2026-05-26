@@ -21,6 +21,7 @@ use axum::http::StatusCode;
 use tokio::sync::broadcast;
 
 use aura_os_core::SessionId;
+use aura_os_events::{LoopId, LoopKind};
 use aura_os_harness::WsReaderHandle;
 
 use crate::dto::LoopStatusResponse;
@@ -79,7 +80,7 @@ pub(super) async fn run_automaton(req: RunRequest) -> ApiResult<RunOutcome> {
     let prep = prepare_run_context(&req).await?;
     let started = match start_automaton(&req, &prep).await? {
         StartOutcome::AdoptShortcutReused { started } => {
-            return Ok(adopt_shortcut_outcome(&req, &started).await);
+            return Ok(adopt_shortcut_outcome(&req, &prep, &started).await);
         }
         StartOutcome::Cold { started } => started,
     };
@@ -118,7 +119,11 @@ pub(super) async fn run_automaton(req: RunRequest) -> ApiResult<RunOutcome> {
 /// `loop_started` event with the `reused: true` payload that
 /// downstream observers key off and snapshot the existing registry
 /// state for the response body.
-async fn adopt_shortcut_outcome(req: &RunRequest, started: &StartedAutomaton) -> RunOutcome {
+async fn adopt_shortcut_outcome(
+    req: &RunRequest,
+    prep: &RunContext,
+    started: &StartedAutomaton,
+) -> RunOutcome {
     emit_domain_event(
         &req.state,
         "loop_started",
@@ -130,6 +135,44 @@ async fn adopt_shortcut_outcome(req: &RunRequest, started: &StartedAutomaton) ->
             "reused": true,
         }),
     );
+    // Re-publish the typed `LoopOpened` event for the existing
+    // registry slot. The adopt-shortcut path skips
+    // `register_active_automaton` (which is where the cold path calls
+    // `loop_registry.open()` and therefore mints the only
+    // `LoopOpened` the bridge would normally mirror to the FE). The
+    // legacy `loop_started` event above keeps `AutomationBar` happy —
+    // it pivots off `/loop/status` HTTP polls plus `loop_started` /
+    // `task_started` WS hints — but the three live surfaces that
+    // depend on `useLoopActivityStore` (nav-bar loop ring, per-task
+    // spinner, Run pane) only ingest the typed
+    // `loop_opened` / `loop_activity_changed` frames the bridge
+    // mirrors out of `aura-os-events`'s `EventHub`. Without this
+    // re-emit `useLoopActivityStore.loops` stays empty for the entire
+    // lifetime of a reused loop and every downstream selector
+    // (`selectTaskActivity`, `loop-activity-store.ts` selectors)
+    // returns null, so spinners never light up even though the
+    // harness is actively working.
+    let loop_id = LoopId::new(
+        req.loop_user_id,
+        Some(req.project_id),
+        Some(req.agent_instance_id),
+        prep.start.agent_id,
+        LoopKind::Automation,
+    );
+    if !req.state.loop_registry.re_emit_loop_opened(&loop_id) {
+        // Genuinely absent registry slot: the forwarder we adopted is
+        // alive but no `LoopRegistry::open()` ever ran for this
+        // instance (e.g. a server restart that somehow left the
+        // forwarder slot wired up without a matching registry entry).
+        // Future debugging hook — leave at debug! so it's findable
+        // without paying log volume in healthy runs.
+        tracing::debug!(
+            project_id = %req.project_id,
+            agent_instance_id = %req.agent_instance_id,
+            "adopt-shortcut: re_emit_loop_opened found no live registry slot; \
+             FE useLoopActivityStore will stay empty for this run"
+        );
+    }
     let body = status_response(&req.state, req.project_id, Some(req.agent_instance_id)).await;
     RunOutcome::AutomationReused(body)
 }
