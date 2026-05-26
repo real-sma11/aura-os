@@ -419,17 +419,62 @@ describe("BottomTaskbar", () => {
     expect(leftNavRail).toHaveAttribute("data-include-ids", "null");
   });
 
-  it("hides everything except profile when the right cluster is collapsed by default", () => {
+  it("hides Credits/Theme/Help when the right cluster is collapsed by default, but keeps Settings and the profile rail visible", () => {
     render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    // Settings is now rendered outside the collapsible secondary
+    // cluster so it remains one click away regardless of
+    // `rightCollapsed`. The right-cluster collapse only hides
+    // Credits / Theme / Help now.
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
 
     const profileNavRail = screen.getAllByTestId("app-nav-rail").find((rail) =>
       rail.getAttribute("data-include-ids") === JSON.stringify(["profile"]),
     );
     expect(profileNavRail).toBeDefined();
+  });
+
+  it("places Settings directly to the left of the clock readout in advanced mode", () => {
+    const { container } = render(<BottomTaskbar mode="advanced" />);
+
+    const rightSlot = container.querySelector<HTMLElement>(".right");
+    expect(rightSlot).not.toBeNull();
+    if (!rightSlot) return;
+
+    const rightPrimary = rightSlot.querySelector<HTMLElement>(".rightPrimary");
+    const clock = rightSlot.querySelector<HTMLElement>(".clock");
+    expect(rightPrimary).not.toBeNull();
+    expect(clock).not.toBeNull();
+    if (!rightPrimary || !clock) return;
+
+    // The clock readout is the trailing sibling inside `.right`, so
+    // "directly to the left of the time" means Settings must be the
+    // final child of `.rightPrimary` — and `.rightPrimary` itself
+    // must immediately precede `.clock` inside `.right`.
+    const rightChildren = Array.from(rightSlot.children);
+    expect(rightChildren.indexOf(rightPrimary)).toBe(rightChildren.indexOf(clock) - 1);
+
+    const settingsButton = rightPrimary.querySelector<HTMLElement>(
+      'button[aria-label="Settings"]',
+    );
+    expect(settingsButton).not.toBeNull();
+    expect(rightPrimary.lastElementChild).toBe(settingsButton);
+  });
+
+  it("keeps Settings visible in advanced mode even when the right cluster is collapsed (always-on settings affordance)", () => {
+    // Default fixture has `getTaskbarRightCollapsed.mockReturnValue(true)`,
+    // so this asserts the always-on behavior directly: even when the
+    // user has the cluster collapsed, the Settings shortcut must still
+    // render and remain clickable.
+    render(<BottomTaskbar mode="advanced" />);
+
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    expect(settingsButton).toBeInTheDocument();
+
+    fireEvent.click(settingsButton);
+    expect(openOrgSettings).toHaveBeenCalledTimes(1);
   });
 
   it("expands the right cluster and persists the state when the chevron is clicked", async () => {
@@ -453,7 +498,10 @@ describe("BottomTaskbar", () => {
 
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    // Settings is now rendered outside the collapsible secondary
+    // cluster, so re-collapsing must still leave the Settings
+    // shortcut mounted as the trailing item in `.rightPrimary`.
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     expect(setTaskbarRightCollapsed).toHaveBeenNthCalledWith(1, false);
     expect(setTaskbarRightCollapsed).toHaveBeenNthCalledWith(2, true);
   });

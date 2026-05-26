@@ -52,13 +52,15 @@ export interface BottomTaskbarProps {
    *
  * - `public`: only the `ThemeToggleButton` in the right slot.
  * - `simple`: bottom-left `ProfilePill` (avatar + name) plus
- *   Credits, Settings, and ThemeToggle in the right slot.
- *   No Desktop button, no app rail center, no center pill, no
+ *   Credits, ThemeToggle, and Settings (in that order) in the right
+ *   slot. No Desktop button, no app rail center, no center pill, no
  *   profile rail shortcut, no clock, no Help, no collapse chevron
- *   — a minimal authed surface anchored by the profile pill.
+ *   — a minimal authed surface anchored by the profile pill, with
+ *   Settings trailing as the always-visible bottom-right affordance.
  * - `advanced`: full chrome (ProfilePill + favorites left,
  *   Desktop + AppNavRail center, collapsible right cluster with
- *   Credits/Settings/ThemeToggle/Help/Profile, plus the clock readout).
+ *   Credits/ThemeToggle/Help/Profile, plus an always-visible Settings
+ *   button directly to the left of the clock readout).
    */
   mode: UIMode;
 }
@@ -134,13 +136,17 @@ function PublicBottomTaskbar(): React.ReactElement {
  *     front of the middle taskbar.
  *   - `.right.rightPrimary`:
  *     - Right-cluster collapse chevron (Advanced only)
- *     - Credits / Settings / ThemeToggle (both modes; in Advanced these
- *       hide behind the right-cluster collapse — Simple has no collapse
+ *     - Credits / ThemeToggle (both modes; in Advanced these hide
+ *       behind the right-cluster collapse — Simple has no collapse
  *       affordance so they always show)
  *     - HelpButton (Advanced only)
  *     - Profile AppNavRail (Advanced only — Simple drops the profile
- *       shortcut so the right cluster reads as Credits / Settings /
- *       Theme only)
+ *       shortcut so the right cluster reads as Credits / Theme /
+ *       Settings only)
+ *     - Settings (both modes, always visible — rendered last inside
+ *       `.rightPrimary` so it sits directly to the left of the
+ *       Advanced `<ClockReadout />` and at the end of the Simple
+ *       right cluster, regardless of `rightCollapsed`)
  *   - `.clock` readout (Advanced only — extracted into a tiny
  *     `<ClockReadout />` so `useClock`'s `setInterval` doesn't mount
  *     in Simple)
@@ -302,12 +308,6 @@ function AuthedBottomTaskbar({
                 aria-label="Credits"
                 onClick={openBuyCredits}
               />
-              <TaskbarIconButton
-                icon={<Settings size={TASKBAR_ICON_SIZE} />}
-                title="Settings"
-                aria-label="Settings"
-                onClick={openOrgSettings}
-              />
               <ThemeToggleButton />
               {isAdvanced && <HelpButton />}
             </>
@@ -319,6 +319,22 @@ function AuthedBottomTaskbar({
               ariaLabel="Profile shortcut"
             />
           )}
+          {/*
+           * Settings is rendered unconditionally (in both Simple and
+           * Advanced) as the trailing item of `.rightPrimary`, which
+           * places it directly to the left of `<ClockReadout />` in
+           * Advanced and at the end of the right cluster in Simple.
+           * It is intentionally outside the `showSecondaryCluster`
+           * branch so the Advanced right-cluster collapse no longer
+           * hides it — Settings is always one click away regardless
+           * of `rightCollapsed`.
+           */}
+          <TaskbarIconButton
+            icon={<Settings size={TASKBAR_ICON_SIZE} />}
+            title="Settings"
+            aria-label="Settings"
+            onClick={openOrgSettings}
+          />
         </div>
         {isAdvanced && <ClockReadout />}
       </div>
