@@ -31,8 +31,16 @@ static GUARDS: OnceLock<Vec<WorkerGuard>> = OnceLock::new();
 
 fn default_filter() -> EnvFilter {
     EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // `aura::automation` is a synthetic tracing target used by the
+        // dev-loop streaming pipeline (forwarder + side-effects dispatch
+        // + run/register) to surface automation lifecycle + per-event
+        // signals on stderr/desktop.log. Pinned to `info` here so an
+        // operator running `aura-os-desktop` from a console sees task
+        // and tool lifecycle without setting RUST_LOG; bumping it to
+        // `debug` enables the per-harness-event firehose without
+        // turning on debug logging for the rest of the server.
         EnvFilter::new(
-            "aura_os_desktop=info,aura_os_server=info,aura_engine=info,tower_http=warn,info",
+            "aura::automation=info,aura_os_desktop=info,aura_os_server=info,aura_engine=info,tower_http=warn,info",
         )
     })
 }

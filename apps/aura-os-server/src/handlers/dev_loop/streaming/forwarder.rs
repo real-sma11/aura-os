@@ -28,7 +28,7 @@ use aura_os_core::{AgentInstanceId, ProjectId, SessionId, SessionStatus, TaskId}
 use aura_os_harness::{collect_automaton_events, RunCompletion, WsReaderHandle};
 use aura_os_loops::LoopHandle;
 use tokio::sync::{broadcast, mpsc};
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use crate::handlers::agents::chat::{spawn_dev_loop_persist_task, ChatPersistCtx};
 use crate::handlers::live_heuristics::{emit_live_heuristic, LiveAnalyzer};
@@ -133,6 +133,15 @@ fn run_forwarder_setup(ctx: ForwarderContext) -> (ForwarderRuntimeState, EventLo
         retry_state,
         last_forwarder_event_at,
     } = ctx;
+    info!(
+        target: "aura::automation",
+        %project_id,
+        %agent_instance_id,
+        automaton_id = %automaton_id,
+        task_id = task_id.as_deref().unwrap_or(""),
+        timeout_secs = timeout.as_secs(),
+        "forwarder listening for harness events"
+    );
     let jwt = jwt.map(Arc::new);
     let pipeline = prepare_event_pipeline(EventPipelineInputs {
         state: &state,
@@ -404,6 +413,7 @@ async fn handle_forwarder_event(
         fallback_task_id,
         retry_state,
     } = inputs;
+    trace_harness_event(project_id, agent_instance_id, &event_type, &event);
     state
         .loop_log
         .on_json_event(project_id, agent_instance_id, &event)
@@ -422,6 +432,82 @@ async fn handle_forwarder_event(
         retry_state,
     };
     side_effects::record_event_side_effects(&ctx, fallback_task_id, event, &event_type).await;
+}
+
+/// Mirror a raw harness event onto the operator-facing `tracing`
+/// channel so `aura-os-desktop`'s stderr console actually shows the
+/// per-event firehose when an operator wants it. The debug! line
+/// fires for every event; the info! line fires only for the
+/// tool-call-start family because those have no side-effects arm
+/// (so dispatch.rs's lifecycle info! lines never see them) but are
+/// the single most useful signal for "the harness is doing
+/// something". Bounded payload: only the event type, short task id,
+/// and a comma-joined list of top-level keys to keep one event to
+/// one log line regardless of payload size.
+fn trace_harness_event(
+    project_id: ProjectId,
+    agent_instance_id: AgentInstanceId,
+    event_type: &str,
+    event: &serde_json::Value,
+) {
+    let task_id = event_task_id(event).unwrap_or("");
+    debug!(
+        target: "aura::automation",
+        %project_id,
+        %agent_instance_id,
+        event_type = event_type,
+        task_id = task_id,
+        keys = %top_level_keys(event),
+        "harness event"
+    );
+    if matches!(event_type, "tool_call_started" | "tool_use_start") {
+        info!(
+            target: "aura::automation",
+            %project_id,
+            %agent_instance_id,
+            task_id = task_id,
+            tool = %event_tool_name(event),
+            "automation tool call started"
+        );
+    }
+}
+
+/// Comma-joined list of top-level keys on `event`, capped so a
+/// pathologically wide payload can't blow up a single log line.
+/// Returns the empty string for non-object events (the harness
+/// always emits objects, but we don't want a panic if a malformed
+/// payload sneaks through). Used by `trace_harness_event` to give
+/// the operator-facing debug line a one-glance hint at the payload
+/// shape without dumping the full JSON.
+fn top_level_keys(event: &serde_json::Value) -> String {
+    const MAX_KEYS: usize = 12;
+    let Some(object) = event.as_object() else {
+        return String::new();
+    };
+    let mut joined = String::new();
+    for (i, key) in object.keys().take(MAX_KEYS).enumerate() {
+        if i > 0 {
+            joined.push(',');
+        }
+        joined.push_str(key);
+    }
+    if object.len() > MAX_KEYS {
+        joined.push_str(",…");
+    }
+    joined
+}
+
+/// Tool name from a `tool_use_start` / `tool_call_started` payload,
+/// falling back to a generic label. Mirrors the private helper in
+/// [`super::activity`] — kept inline here so the trace path doesn't
+/// reach into the activity module's internals.
+fn event_tool_name(event: &serde_json::Value) -> &str {
+    event
+        .get("tool")
+        .and_then(|v| v.as_str())
+        .or_else(|| event.get("name").and_then(|v| v.as_str()))
+        .or_else(|| event.get("tool_name").and_then(|v| v.as_str()))
+        .unwrap_or("tool")
 }
 
 /// Phase 2: relay harness events from the broadcast stream into the
@@ -578,6 +664,15 @@ fn emit_terminal_events(inputs: TerminalEventInputs<'_>) {
         completion,
     } = inputs;
     let terminal_outcome = terminal_outcome_label(insufficient_credits_reason, succeeded, completion);
+    info!(
+        target: "aura::automation",
+        %project_id,
+        %agent_instance_id,
+        succeeded,
+        outcome = %terminal_outcome,
+        reason = completion.failure_message().unwrap_or(""),
+        "automation loop finished"
+    );
     emit_log_line(LogLineInputs {
         state,
         project_id,
@@ -826,4 +921,53 @@ async fn task_output_snapshot(
         .await
         .get(&(project_id, task_id))
         .map(|entry| entry.live_output.clone())
+}
+
+#[cfg(test)]
+mod top_level_keys_tests {
+    use super::{event_tool_name, top_level_keys};
+    use serde_json::json;
+
+    #[test]
+    fn joins_object_keys_with_commas() {
+        let event = json!({ "type": "task_started", "task_id": "abc", "name": "init" });
+        // `serde_json::Map`'s iteration order depends on the
+        // `preserve_order` feature flag; we deliberately do not pin
+        // it here. What matters for the operator-facing log is that
+        // every key appears exactly once, comma-separated.
+        let joined = top_level_keys(&event);
+        let mut parts: Vec<&str> = joined.split(',').collect();
+        parts.sort_unstable();
+        assert_eq!(parts, vec!["name", "task_id", "type"]);
+    }
+
+    #[test]
+    fn returns_empty_for_non_object() {
+        assert_eq!(top_level_keys(&json!("string event")), "");
+        assert_eq!(top_level_keys(&json!(42)), "");
+        assert_eq!(top_level_keys(&json!([1, 2])), "");
+    }
+
+    #[test]
+    fn caps_at_twelve_keys_with_ellipsis_marker() {
+        let mut payload = serde_json::Map::new();
+        for i in 0..20 {
+            payload.insert(format!("k{i}"), json!(i));
+        }
+        let joined = top_level_keys(&serde_json::Value::Object(payload));
+        // 12 keys, comma-separated, followed by ",…" to signal truncation.
+        assert_eq!(joined.matches(',').count(), 12);
+        assert!(joined.ends_with(",…"), "expected truncation marker, got {joined}");
+    }
+
+    #[test]
+    fn event_tool_name_walks_aliases() {
+        assert_eq!(event_tool_name(&json!({ "tool": "edit_file" })), "edit_file");
+        assert_eq!(event_tool_name(&json!({ "name": "read_file" })), "read_file");
+        assert_eq!(
+            event_tool_name(&json!({ "tool_name": "run_command" })),
+            "run_command",
+        );
+        assert_eq!(event_tool_name(&json!({})), "tool");
+    }
 }

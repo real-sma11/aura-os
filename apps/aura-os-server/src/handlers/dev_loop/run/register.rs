@@ -97,6 +97,16 @@ async fn register_automation(inputs: RegisterInputs<'_>) {
         timeout: LOOP_STREAM_TIMEOUT,
     })
     .await;
+    tracing::info!(
+        target: "aura::automation",
+        project_id = %req.project_id,
+        agent_instance_id = %req.agent_instance_id,
+        automaton_id = %started.automaton_id,
+        adopted = started.adopted,
+        mode = "automation",
+        session_id = session_id.map(|s| s.to_string()).unwrap_or_default(),
+        "automation run registered"
+    );
     emit_domain_event(
         &req.state,
         "loop_started",
@@ -125,6 +135,7 @@ async fn register_single_task(inputs: RegisterInputs<'_>, task_id: TaskId) {
     seed_single_task_loop_state(req, session_id, &task_id_str, task_id).await;
     let handles = forge_handles(req, prep, LoopKind::TaskRun);
     handles.loop_handle.set_current_task(Some(task_id)).await;
+    let task_id_for_log = task_id_str.clone();
     finalize_registration(FinalizeInputs {
         req,
         prep,
@@ -137,6 +148,17 @@ async fn register_single_task(inputs: RegisterInputs<'_>, task_id: TaskId) {
         timeout: TASK_STREAM_TIMEOUT,
     })
     .await;
+    tracing::info!(
+        target: "aura::automation",
+        project_id = %req.project_id,
+        agent_instance_id = %req.agent_instance_id,
+        automaton_id = %started.automaton_id,
+        adopted = started.adopted,
+        mode = "single_task",
+        task_id = %task_id_for_log,
+        session_id = session_id.map(|s| s.to_string()).unwrap_or_default(),
+        "automation run registered"
+    );
     // No `replace_registry_entry`: the ephemeral id is freshly
     // minted, there is nothing to displace, and concurrent task
     // runs are explicitly allowed to coexist under different
