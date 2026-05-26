@@ -420,6 +420,51 @@ describe("task-stream-bootstrap: per-task status store wiring", () => {
     expect(live!.liveSessionId).toBe("sess-1");
   });
 
+  it("propagates session_id and agent_id onto the Run panel entry on TaskStarted", () => {
+    // The panel entry's `sessionId` / `agentInstanceId` are what
+    // `useTaskOutputView` uses to fall back to `api.listSessionEvents`
+    // when the local `task-turn-cache` is empty (background loop /
+    // cold reload). Without this propagation the rehydrate path
+    // could not find the right session to replay.
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t-route", task_title: "Routes" },
+      project_id: "p1",
+      agent_id: "agent-loop-1",
+      session_id: "sess-route",
+    } as unknown as AuraEvent);
+
+    const entry = useTaskOutputPanelStore
+      .getState()
+      .tasks.find((t) => t.taskId === "t-route");
+    expect(entry).toBeDefined();
+    expect(entry!.sessionId).toBe("sess-route");
+    expect(entry!.agentInstanceId).toBe("agent-loop-1");
+  });
+
+  it("refreshes the panel entry's sessionId when a re-run starts a new session", () => {
+    // A `done -> ready -> in_progress` retry produces a brand new
+    // session, so a stale `sessionId` on the panel entry would point
+    // at history the user already replayed. The store must replace
+    // it rather than silently keep the old value.
+    useTaskOutputPanelStore
+      .getState()
+      .addTask("t-retry", "p1", "Retry task", "agent-1", "sess-old");
+
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t-retry", task_title: "Retry task" },
+      project_id: "p1",
+      agent_id: "agent-1",
+      session_id: "sess-new",
+    } as unknown as AuraEvent);
+
+    const entry = useTaskOutputPanelStore
+      .getState()
+      .tasks.find((t) => t.taskId === "t-retry");
+    expect(entry!.sessionId).toBe("sess-new");
+  });
+
   it("clears a stale liveFailReason when a task starts again (retry path)", () => {
     useTaskStatusStore.getState().setLiveFailReason("t1", "previous attempt died");
 

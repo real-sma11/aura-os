@@ -243,6 +243,13 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
               defaultExpanded
               showDismiss={false}
               showHeader={false}
+              // The Tasks-tab preview already renders dedicated
+              // `Build Verification` / `Test Verification` /
+              // `Git Activity` sections above this block via
+              // `VerificationStepItem` + `GitStepItem`. Suppress the
+              // body fallback here so the rows don't appear twice
+              // on the same screen.
+              showStepsFallback={false}
             />
           </div>
         </GroupCollapsible>

@@ -9,6 +9,8 @@ import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import { extractErrorMessage } from "../../shared/utils/extract-error-message";
 import { useTaskOutput } from "../../stores/event-store/index";
 import { MessageBubble, LLMOutput } from "../ChatOutput";
+import { VerificationStepItem } from "../VerificationStepItem";
+import { GitStepItem } from "../GitStepItem";
 import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
 import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
 import { buildTaskCopyText } from "./task-copy-utils";
@@ -50,6 +52,70 @@ interface CompletedTaskOutputProps {
    * history.
    */
   showHeader?: boolean;
+  /**
+   * When `true` (default), the body renders build / test / git steps
+   * as a structured fallback whenever no chat events or fallback text
+   * are available — keeps a row useful for tasks whose only persisted
+   * artifact is verification output (`cargo build`, `cargo test`, …).
+   *
+   * Embedding contexts that already render their own verification
+   * sections (the Tasks-tab `TaskPreview` shows them above the
+   * "Output" group) should pass `false` so the steps don't appear
+   * twice on the same screen.
+   */
+  showStepsFallback?: boolean;
+}
+
+/**
+ * Render the structured `build_steps` / `test_steps` / `git_steps`
+ * carried on the event-store task output as a body fallback when no
+ * assistant events or text are available. This keeps tasks whose
+ * only persisted artifact is `cargo build` / `cargo test` /
+ * `git commit` output from collapsing to "No output captured." —
+ * the dev-loop emits the steps even when the harness produced no
+ * text turn, and the Tasks-tab `TaskPreview` already uses the same
+ * renderers above its embedded `CompletedTaskOutput`.
+ *
+ * Each section is hidden when its array is empty so the body
+ * shrinks to whatever the row actually has.
+ */
+function TaskStepsFallback({
+  buildSteps,
+  testSteps,
+  gitSteps,
+}: {
+  buildSteps: import("../../stores/event-store/index").TaskOutputEntry["buildSteps"];
+  testSteps: import("../../stores/event-store/index").TaskOutputEntry["testSteps"];
+  gitSteps: import("../../stores/event-store/index").TaskOutputEntry["gitSteps"];
+}) {
+  const hasBuild = buildSteps.length > 0;
+  const hasTest = testSteps.length > 0;
+  const hasGit = gitSteps.length > 0;
+  if (!hasBuild && !hasTest && !hasGit) return null;
+  return (
+    <div className={styles.taskBody}>
+      {hasBuild &&
+        buildSteps.map((step, i) => (
+          <VerificationStepItem
+            key={`build-${i}`}
+            step={step}
+            active={i === buildSteps.length - 1}
+            variant="build"
+          />
+        ))}
+      {hasTest &&
+        testSteps.map((step, i) => (
+          <VerificationStepItem
+            key={`test-${i}`}
+            step={step}
+            active={i === testSteps.length - 1}
+            variant="test"
+          />
+        ))}
+      {hasGit &&
+        gitSteps.map((step, i) => <GitStepItem key={`git-${i}`} step={step} />)}
+    </div>
+  );
 }
 
 /**
@@ -78,6 +144,7 @@ export function CompletedTaskOutput({
   defaultExpanded = false,
   showDismiss = true,
   showHeader = true,
+  showStepsFallback = true,
 }: CompletedTaskOutputProps) {
   const dismissTask = useTaskOutputPanelStore((s) => s.dismissTask);
   // `CompletedTaskOutput` only renders for non-active rows, so every
@@ -206,6 +273,12 @@ export function CompletedTaskOutput({
             <div className={styles.taskBody}>
               <LLMOutput content={fallbackText} />
             </div>
+          ) : showStepsFallback && hasAnyContent ? (
+            <TaskStepsFallback
+              buildSteps={taskOutput.buildSteps}
+              testSteps={taskOutput.testSteps}
+              gitSteps={taskOutput.gitSteps}
+            />
           ) : status === "failed" && failureReason ? (
             // The failure reason itself is the body; no need to also
             // show the generic "Task failed without producing output."

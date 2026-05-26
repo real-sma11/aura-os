@@ -33,6 +33,17 @@ export interface PanelTaskEntry {
   status: PanelTaskStatus;
   projectId: string;
   agentInstanceId?: string;
+  /**
+   * Authoritative session id for the run that produced (or is producing)
+   * this row. Populated from the live `TaskStarted` event's `session_id`
+   * and from the persisted `tasks.session_id` column at reload via
+   * `reconcileStatuses`. Used by `useTaskOutputView` to fall back to
+   * `api.listSessionEvents(projectId, agentInstanceId, sessionId)` when
+   * the local `task-turn-cache` is empty — the authoritative server-side
+   * replay path that makes background/cross-session runs render with the
+   * full structured timeline.
+   */
+  sessionId?: string;
   updatedAt: number;
   /**
    * Human-readable reason the task failed. Populated from either the
@@ -107,6 +118,14 @@ function loadPersistedTasks(): PanelTaskEntry[] {
               ? t.failureReason
               : undefined,
           failureContext: sanitizeFailureContext(t.failureContext),
+          sessionId:
+            typeof t.sessionId === "string" && t.sessionId.length > 0
+              ? t.sessionId
+              : undefined,
+          agentInstanceId:
+            typeof t.agentInstanceId === "string" && t.agentInstanceId.length > 0
+              ? t.agentInstanceId
+              : undefined,
         }));
     }
   } catch { /* ignore */ }
@@ -135,7 +154,13 @@ function schedulePersist(tasks: PanelTaskEntry[]) {
 interface TaskOutputPanelState {
   tasks: PanelTaskEntry[];
 
-  addTask: (taskId: string, projectId: string, title?: string, agentInstanceId?: string) => void;
+  addTask: (
+    taskId: string,
+    projectId: string,
+    title?: string,
+    agentInstanceId?: string,
+    sessionId?: string,
+  ) => void;
   /**
    * Rehydrate an "active" row for a task the server says is currently
    * streaming (from `GET /loop/status` → `active_tasks`). Used on page
@@ -146,7 +171,12 @@ interface TaskOutputPanelState {
    * `agentInstanceId` is filled in if it was missing), while rows we
    * already know about are not re-created.
    */
-  hydrateActiveTask: (taskId: string, projectId: string, agentInstanceId?: string) => void;
+  hydrateActiveTask: (
+    taskId: string,
+    projectId: string,
+    agentInstanceId?: string,
+    sessionId?: string,
+  ) => void;
   completeTask: (taskId: string) => void;
   /**
    * Mark a task as failed. When `reason` is a non-empty string it is
@@ -223,6 +253,22 @@ interface TaskOutputPanelState {
        * Ignored when patching an existing row.
        */
       updatedAt?: number;
+      /**
+       * Persisted `tasks.session_id` from the server. Used to populate
+       * `PanelTaskEntry.sessionId` so the Run pane can fall back to
+       * `api.listSessionEvents` for tasks that ran outside the current
+       * UI session (background loop / SDK / another client / reload
+       * after `task-turn-cache` was wiped). Only consumed when the
+       * row's existing `sessionId` is empty.
+       */
+      sessionId?: string | null;
+      /**
+       * Persisted `tasks.assigned_agent_instance_id` from the server,
+       * with `completed_by_agent_instance_id` as a fallback (some
+       * loop-run rows only populate the latter). Pairs with `sessionId`
+       * to address the right session-events endpoint on rehydrate.
+       */
+      agentInstanceId?: string | null;
     }>,
     options?: { seedProjectId?: string },
   ) => void;
@@ -244,16 +290,30 @@ const restoredTasks = loadPersistedTasks();
 export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get) => ({
   tasks: restoredTasks,
 
-  addTask: (taskId, projectId, title, agentInstanceId) => {
+  addTask: (taskId, projectId, title, agentInstanceId, sessionId) => {
     set((s) => {
       const existing = s.tasks.find((t) => t.taskId === taskId);
-      if (existing && existing.status === "active") return s;
+      if (existing && existing.status === "active") {
+        // Even if the row is already active, refresh the session id when
+        // the new event carries one: a re-run of the same task starts a
+        // fresh session and the old session id would point at history
+        // the user already replayed.
+        if (sessionId && sessionId !== existing.sessionId) {
+          return {
+            tasks: s.tasks.map((t) =>
+              t.taskId === taskId ? { ...t, sessionId } : t,
+            ),
+          };
+        }
+        return s;
+      }
       const entry: PanelTaskEntry = {
         taskId,
         title: title || existing?.title || taskId,
         status: "active",
         projectId,
         agentInstanceId: agentInstanceId || existing?.agentInstanceId,
+        sessionId: sessionId || existing?.sessionId,
         updatedAt: Date.now(),
       };
       const filtered = s.tasks.filter((t) => t.taskId !== taskId);
@@ -261,12 +321,17 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
     });
   },
 
-  hydrateActiveTask: (taskId, projectId, agentInstanceId) => {
+  hydrateActiveTask: (taskId, projectId, agentInstanceId, sessionId) => {
     set((s) => {
       const existing = s.tasks.find((t) => t.taskId === taskId);
       if (existing) {
         const nextAgent = existing.agentInstanceId ?? agentInstanceId;
-        if (existing.status === "active" && existing.agentInstanceId === nextAgent) {
+        const nextSession = existing.sessionId ?? sessionId;
+        if (
+          existing.status === "active" &&
+          existing.agentInstanceId === nextAgent &&
+          existing.sessionId === nextSession
+        ) {
           return s;
         }
         return {
@@ -276,6 +341,7 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
                   ...t,
                   status: "active" as const,
                   agentInstanceId: nextAgent,
+                  sessionId: nextSession,
                   updatedAt: Date.now(),
                 }
               : t,
@@ -288,6 +354,7 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
         status: "active",
         projectId,
         agentInstanceId,
+        sessionId,
         updatedAt: Date.now(),
       };
       return { tasks: [...s.tasks, entry] };
@@ -388,6 +455,11 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
 
   reconcileStatuses: (updates, options) => {
     if (updates.length === 0) return;
+    const trimOrNull = (v: string | null | undefined): string | null => {
+      if (typeof v !== "string") return null;
+      const trimmed = v.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
     const updateMap = new Map(
       updates.map(
         (u) =>
@@ -398,6 +470,8 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
               title: u.title,
               executionNotes: u.executionNotes,
               updatedAt: u.updatedAt,
+              sessionId: trimOrNull(u.sessionId),
+              agentInstanceId: trimOrNull(u.agentInstanceId),
             },
           ] as const,
       ),
@@ -419,17 +493,30 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
         // `failed` and carries a non-empty `execution_notes`, copy it
         // onto the panel entry — but only if we don't already have a
         // live `failureReason` from the WS (which is fresher than DB).
-        const trimmedNotes =
-          typeof update.executionNotes === "string" &&
-          update.executionNotes.trim().length > 0
-            ? update.executionNotes.trim()
-            : null;
+        const trimmedNotes = trimOrNull(update.executionNotes);
         const nextFailureReason =
           update.status === "failed" && trimmedNotes && !t.failureReason
             ? trimmedNotes
             : t.failureReason;
         const failureReasonChanged = nextFailureReason !== t.failureReason;
-        if (!statusChanged && !titleChanged && !failureReasonChanged) return t;
+        // Backfill sessionId / agentInstanceId from the server task
+        // row only when the existing entry doesn't already have one.
+        // Live WS values (set by `handleTaskStarted`) are fresher than
+        // anything `GET /tasks` carries, so we never clobber them.
+        const nextSessionId = t.sessionId ?? update.sessionId ?? undefined;
+        const nextAgentInstanceId =
+          t.agentInstanceId ?? update.agentInstanceId ?? undefined;
+        const sessionIdChanged = nextSessionId !== t.sessionId;
+        const agentInstanceIdChanged =
+          nextAgentInstanceId !== t.agentInstanceId;
+        if (
+          !statusChanged &&
+          !titleChanged &&
+          !failureReasonChanged &&
+          !sessionIdChanged &&
+          !agentInstanceIdChanged
+        )
+          return t;
         changed = true;
         return {
           ...t,
@@ -437,6 +524,8 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
           title: nextTitle,
           updatedAt: Date.now(),
           failureReason: nextFailureReason,
+          sessionId: nextSessionId,
+          agentInstanceId: nextAgentInstanceId,
         };
       });
       // Seed missing entries from the server task list so the Run pane
@@ -451,16 +540,17 @@ export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get)
         for (const update of updates) {
           if (existingIds.has(update.taskId)) continue;
           if (update.status === "interrupted") continue;
-          const trimmedNotes =
-            typeof update.executionNotes === "string" &&
-            update.executionNotes.trim().length > 0
-              ? update.executionNotes.trim()
-              : null;
+          const trimmedNotes = trimOrNull(update.executionNotes);
+          const seededSessionId = trimOrNull(update.sessionId) ?? undefined;
+          const seededAgentInstanceId =
+            trimOrNull(update.agentInstanceId) ?? undefined;
           seeded.push({
             taskId: update.taskId,
             title: update.title || update.taskId,
             status: update.status,
             projectId: seedProjectId,
+            agentInstanceId: seededAgentInstanceId,
+            sessionId: seededSessionId,
             updatedAt: update.updatedAt ?? Date.now(),
             failureReason:
               update.status === "failed" && trimmedNotes ? trimmedNotes : undefined,

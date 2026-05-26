@@ -103,7 +103,13 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   if (projectId) {
     useTaskOutputPanelStore
       .getState()
-      .addTask(taskId, projectId, e.content.task_title, e.agent_id ?? undefined);
+      .addTask(
+        taskId,
+        projectId,
+        e.content.task_title,
+        e.agent_id ?? undefined,
+        e.session_id ?? undefined,
+      );
   }
 
   // Update the per-task status store so observers (sidekick preview,

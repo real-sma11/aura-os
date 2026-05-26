@@ -27,6 +27,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   [EventType.SpecGenerating]: "Spec",
   [EventType.SpecGenComplete]: "Spec",
   [EventType.TaskSaved]: "Task",
+  [EventType.TaskUpdated]: "Task",
   [EventType.TaskStarted]: "Task",
   [EventType.TaskCompleted]: "Task",
   [EventType.TaskFailed]: "Task",

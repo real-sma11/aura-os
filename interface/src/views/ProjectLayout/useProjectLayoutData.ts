@@ -200,6 +200,8 @@ export function useProjectLayoutData(): ProjectLayoutData {
       title?: string;
       executionNotes?: string | null;
       updatedAt?: number;
+      sessionId?: string | null;
+      agentInstanceId?: string | null;
     }> = [];
     for (const task of initialTasks) {
       if (!task.task_id) continue;
@@ -235,6 +237,17 @@ export function useProjectLayoutData(): ProjectLayoutData {
         title: task.title,
         executionNotes: next === "failed" ? task.execution_notes : undefined,
         updatedAt: Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : undefined,
+        // Server task rows carry the canonical `session_id` and
+        // `assigned_agent_instance_id` for the run that produced the
+        // current status. Forward both so the Run pane can fall back
+        // to `api.listSessionEvents` when the local `task-turn-cache`
+        // is empty (cross-session reload, background loop, …). We
+        // prefer `assigned_agent_instance_id` but fall back to
+        // `completed_by_agent_instance_id` for loop-run rows that
+        // only populate the latter.
+        sessionId: task.session_id,
+        agentInstanceId:
+          task.assigned_agent_instance_id ?? task.completed_by_agent_instance_id,
       });
     }
     reconcilePanelStatuses(updates, { seedProjectId: projectId });

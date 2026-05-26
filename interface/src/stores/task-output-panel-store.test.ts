@@ -108,6 +108,29 @@ describe("task-output-panel-store", () => {
       useTaskOutputPanelStore.getState().addTask("t1", "p1", "Task", "ai-1");
       expect(useTaskOutputPanelStore.getState().tasks[0].agentInstanceId).toBe("ai-1");
     });
+
+    it("stores sessionId so the Run pane can fall back to api.listSessionEvents", () => {
+      useTaskOutputPanelStore
+        .getState()
+        .addTask("t1", "p1", "Task", "ai-1", "sess-1");
+      expect(useTaskOutputPanelStore.getState().tasks[0].sessionId).toBe("sess-1");
+    });
+
+    it("refreshes the sessionId on re-add even when the row is already active", () => {
+      // A `done -> ready -> in_progress` retry fires another
+      // `TaskStarted` with a fresh session id. The store must replace
+      // the stale value so the rehydrate path doesn't replay the
+      // previous attempt's transcript.
+      useTaskOutputPanelStore
+        .getState()
+        .addTask("t1", "p1", "Task", "ai-1", "sess-old");
+      useTaskOutputPanelStore
+        .getState()
+        .addTask("t1", "p1", "Task", "ai-1", "sess-new");
+      expect(useTaskOutputPanelStore.getState().tasks[0].sessionId).toBe(
+        "sess-new",
+      );
+    });
   });
 
   describe("completeTask", () => {
@@ -558,6 +581,84 @@ describe("task-output-panel-store rehydration", () => {
       "build step failed: missing cargo",
     );
     expect(byId["t-active"].status).toBe("active");
+  });
+
+  it("reconcileStatuses backfills sessionId and agentInstanceId from the server task row", async () => {
+    // Tasks that completed in a previous browser session (or
+    // background loop) need their `sessionId` / `agentInstanceId`
+    // restored from `GET /projects/.../tasks` so the Run pane's
+    // `useTaskOutputView` can replay them via
+    // `api.listSessionEvents`. The reconciler must populate empty
+    // slots without clobbering live values that the WS lifecycle
+    // already wrote.
+    const mod = await import("./task-output-panel-store");
+    mod.useTaskOutputPanelStore.setState({
+      tasks: [
+        {
+          taskId: "t-empty",
+          title: "Empty",
+          status: "completed",
+          projectId: "p1",
+          updatedAt: 1,
+        },
+        {
+          taskId: "t-live",
+          title: "Live",
+          status: "completed",
+          projectId: "p1",
+          updatedAt: 1,
+          sessionId: "sess-live",
+          agentInstanceId: "agent-live",
+        },
+      ],
+    });
+
+    mod.useTaskOutputPanelStore.getState().reconcileStatuses([
+      {
+        taskId: "t-empty",
+        status: "completed",
+        sessionId: "sess-from-db",
+        agentInstanceId: "agent-from-db",
+      },
+      {
+        taskId: "t-live",
+        status: "completed",
+        sessionId: "sess-stale-db",
+        agentInstanceId: "agent-stale-db",
+      },
+    ]);
+
+    const tasks = mod.useTaskOutputPanelStore.getState().tasks;
+    const empty = tasks.find((t) => t.taskId === "t-empty");
+    const live = tasks.find((t) => t.taskId === "t-live");
+    expect(empty?.sessionId).toBe("sess-from-db");
+    expect(empty?.agentInstanceId).toBe("agent-from-db");
+    // Live WS-set values must win over the persisted reload payload.
+    expect(live?.sessionId).toBe("sess-live");
+    expect(live?.agentInstanceId).toBe("agent-live");
+  });
+
+  it("reconcileStatuses seeds sessionId / agentInstanceId on newly-seeded rows", async () => {
+    const mod = await import("./task-output-panel-store");
+    mod.useTaskOutputPanelStore.setState({ tasks: [] });
+
+    mod.useTaskOutputPanelStore.getState().reconcileStatuses(
+      [
+        {
+          taskId: "t-seed",
+          status: "completed",
+          title: "Cold seed",
+          updatedAt: 100,
+          sessionId: "sess-cold",
+          agentInstanceId: "agent-cold",
+        },
+      ],
+      { seedProjectId: "p1" },
+    );
+
+    const entry = mod.useTaskOutputPanelStore.getState().tasks[0];
+    expect(entry.sessionId).toBe("sess-cold");
+    expect(entry.agentInstanceId).toBe("agent-cold");
   });
 
   it("reconcileStatuses without seedProjectId leaves missing rows alone", async () => {

@@ -36,17 +36,44 @@ vi.mock("../../stores/event-store/index", () => ({
 vi.mock("../../api/client", () => ({
   api: {
     getTaskOutput: vi.fn().mockResolvedValue({ output: "", build_steps: [], test_steps: [] }),
+    listSessionEvents: vi.fn().mockResolvedValue([]),
   },
 }));
 
+// The component reads `dismissTask` straight off the selector, while
+// `useTaskOutputView` (transitively pulled in) reads the matching
+// panel entry to resolve `sessionId` / `agentInstanceId` for the
+// session-events rehydrate path. Provide an empty `tasks` list so
+// the rehydrate effect short-circuits and never fires in these tests.
 vi.mock("../../stores/task-output-panel-store", () => ({
-  useTaskOutputPanelStore: vi.fn((selector: (state: { dismissTask: typeof dismissTask }) => unknown) =>
-    selector({ dismissTask }),
+  useTaskOutputPanelStore: vi.fn(
+    (selector: (state: { dismissTask: typeof dismissTask; tasks: never[] }) => unknown) =>
+      selector({ dismissTask, tasks: [] }),
+  ),
+}));
+
+vi.mock("../../stores/task-status-store", () => ({
+  useTaskStatusStore: vi.fn(
+    (selector: (state: { byTaskId: Record<string, never> }) => unknown) =>
+      selector({ byTaskId: {} }),
   ),
 }));
 
 vi.mock("../../stores/task-output-hydration-cache", () => ({
   hydrateTaskOutputOnce: vi.fn().mockResolvedValue("empty"),
+}));
+
+vi.mock("../../stores/task-turn-cache", () => ({
+  persistTaskTurns: vi.fn(),
+  readTaskTurns: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock("../../hooks/stream/store", () => ({
+  seedStreamEventsFromCache: vi.fn(),
+}));
+
+vi.mock("../../utils/build-display-messages", () => ({
+  buildDisplayEvents: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../../hooks/stream/hooks", () => ({
@@ -55,6 +82,30 @@ vi.mock("../../hooks/stream/hooks", () => ({
   // by `TaskHeaderContextUsage` now that the task header renders the
   // per-task context-usage pill.
   useIsStreaming: () => false,
+}));
+
+// Light render stubs so the body-fallback can assert against the
+// step rows without pulling in the heavy real renderers.
+vi.mock("../VerificationStepItem", () => ({
+  VerificationStepItem: ({
+    step,
+    variant,
+  }: {
+    step: { kind: string; command?: string };
+    variant: string;
+  }) => (
+    <div data-testid={`verif-${variant}`} data-kind={step.kind}>
+      {step.command ?? variant}
+    </div>
+  ),
+}));
+
+vi.mock("../GitStepItem", () => ({
+  GitStepItem: ({ step }: { step: { kind: string; commitSha?: string } }) => (
+    <div data-testid="git-step" data-kind={step.kind}>
+      {step.commitSha ?? "git"}
+    </div>
+  ),
 }));
 
 vi.mock("../ChatOutput", () => ({
@@ -303,5 +354,85 @@ describe("CompletedTaskOutput", () => {
     expect(screen.getByTestId("task-failure-context")).toHaveTextContent(
       "req=req_only",
     );
+  });
+
+  describe("steps fallback", () => {
+    it("renders build / test / git step rows when no events or text are available", () => {
+      // Reproduces the production bug where a `cargo build` task
+      // ends with structured `build_steps` populated but no
+      // assistant turn text — without the body fallback the row
+      // collapsed to "No output captured." and the user lost the
+      // verification result.
+      taskOutputState = {
+        text: "",
+        buildSteps: [
+          { kind: "passed", command: "cargo build", timestamp: 0 },
+        ],
+        testSteps: [
+          { kind: "failed", command: "cargo test", timestamp: 0 },
+        ],
+        gitSteps: [
+          { kind: "committed", commitSha: "abc1234", timestamp: 0 },
+        ],
+      };
+
+      render(
+        <CompletedTaskOutput
+          taskId="task-1"
+          projectId="proj-1"
+          title="My task"
+          status="completed"
+        />,
+      );
+      expandRow();
+
+      // None of the empty-state copies should render now.
+      expect(
+        screen.queryByText("No output captured for this run."),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("No text output captured for this run."),
+      ).not.toBeInTheDocument();
+
+      expect(screen.getByTestId("verif-build")).toHaveTextContent(
+        "cargo build",
+      );
+      expect(screen.getByTestId("verif-test")).toHaveTextContent("cargo test");
+      expect(screen.getByTestId("git-step")).toHaveTextContent("abc1234");
+    });
+
+    it("falls back to the empty-state copy when showStepsFallback is false", () => {
+      // The Tasks-tab `TaskPreview` already shows dedicated
+      // verification sections above the embedded `CompletedTaskOutput`,
+      // so it passes `showStepsFallback={false}` to suppress the body
+      // duplication. Verify the prop is honoured.
+      taskOutputState = {
+        text: "",
+        buildSteps: [
+          { kind: "passed", command: "cargo build", timestamp: 0 },
+        ],
+        testSteps: [],
+        gitSteps: [],
+      };
+
+      render(
+        <CompletedTaskOutput
+          taskId="task-1"
+          projectId="proj-1"
+          title="My task"
+          status="completed"
+          showStepsFallback={false}
+        />,
+      );
+      expandRow();
+
+      expect(screen.queryByTestId("verif-build")).not.toBeInTheDocument();
+      // hasAnyContent is true (buildSteps.length > 0), so the
+      // placeholder reads "No text output captured for this run."
+      // — the more specific copy for "we have steps but no text".
+      expect(
+        screen.getByText("No text output captured for this run."),
+      ).toBeInTheDocument();
+    });
   });
 });
