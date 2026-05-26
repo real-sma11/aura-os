@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@cypher-asi/zui";
+import { Check, Copy } from "lucide-react";
 import { useAuth } from "../../stores/auth-store";
 import { useInviteCodeStore } from "../../stores/invite-code-store";
 import styles from "../OrgSettingsPanel/OrgSettingsPanel.module.css";
@@ -53,9 +54,19 @@ export function OrgSettingsRewards({ onUpgrade, upgradePreparing = false }: Prop
           </div>
           <div className={styles.rowControl}>
             {inviteCode ? (
-              <code className={rewardStyles.codeClickable} onClick={handleCopy}>
-                {copied ? "Copied!" : inviteCode}
-              </code>
+              <div className={rewardStyles.codeRow}>
+                <code className={rewardStyles.codeClickable} onClick={handleCopy}>
+                  {copied ? "Copied!" : inviteCode}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={copied ? <Check size={14} /> : <Copy size={14} />}
+                  iconOnly
+                  aria-label="Copy invite code"
+                  onClick={handleCopy}
+                />
+              </div>
             ) : inviteLoading ? (
               <span className={rewardStyles.codeLoading}>Loading...</span>
             ) : inviteError ? (

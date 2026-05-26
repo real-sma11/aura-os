@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Modal } from "@cypher-asi/zui";
-import { Gift } from "lucide-react";
+import { Button, Modal } from "@cypher-asi/zui";
+import { Check, Copy, Gift } from "lucide-react";
 import { useAuth } from "../../stores/auth-store";
 import { useInviteCodeStore } from "../../stores/invite-code-store";
 import { track } from "../../lib/analytics";
@@ -61,13 +61,23 @@ export function InviteModal({ isOpen, onClose }: Props) {
           {inviteLoading ? (
             <span className={styles.codeValue}>Loading...</span>
           ) : inviteCode ? (
-            <span
-              className={styles.codeClickable}
-              onClick={handleCodeClick}
-              title="Click to copy"
-            >
-              {copied ? "Copied!" : inviteCode}
-            </span>
+            <div className={styles.codeRow}>
+              <span
+                className={styles.codeClickable}
+                onClick={handleCodeClick}
+                title="Click to copy"
+              >
+                {copied ? "Copied!" : inviteCode}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={copied ? <Check size={14} /> : <Copy size={14} />}
+                iconOnly
+                aria-label="Copy invite code"
+                onClick={handleCodeClick}
+              />
+            </div>
           ) : (
             <span className={styles.codeValue}>Unavailable</span>
           )}
