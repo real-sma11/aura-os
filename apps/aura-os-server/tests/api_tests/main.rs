@@ -7,6 +7,7 @@ mod integration_actions;
 mod integration_provider_mock;
 mod integration_setup;
 mod integrations;
+mod loop_adopt_shortcut;
 mod loop_stop;
 mod misc;
 mod orgs;
