@@ -1,5 +1,10 @@
 import type { ProjectId, SpecId, TaskId, TaskStatus, Task, BuildStepRecord, TestStepRecord } from "../types";
+import type { ContextUsageResponse } from "./agents";
 import { apiFetch } from "./core";
+
+type ApiRequestOptions = {
+  signal?: AbortSignal;
+};
 
 function runTaskQuery(agentInstanceId?: string, model?: string | null): string {
   const params = new URLSearchParams();
@@ -144,4 +149,25 @@ export const tasksApi = {
        */
       unavailable?: boolean;
     }>(`/api/projects/${projectId}/tasks/${taskId}/output`),
+  /**
+   * Latest persisted context-utilization for a task's session, filtered
+   * to events whose `content.task_id` matches this task. Used by
+   * `TaskHeaderContextUsage` to seed the per-task pill after a page
+   * reload — without this, tasks that completed in a prior browser
+   * session show no pill until they are re-run.
+   *
+   * Returns `context_utilization: 0` (with no breakdown) when the task
+   * has no session, the session has no qualifying `assistant_message_end`,
+   * or storage is unavailable. The frontend's `utilization > 0`
+   * visibility guard renders nothing in those cases.
+   */
+  getContextUsage: (
+    projectId: ProjectId,
+    taskId: TaskId,
+    options?: ApiRequestOptions,
+  ) =>
+    apiFetch<ContextUsageResponse>(
+      `/api/projects/${projectId}/tasks/${taskId}/context-usage`,
+      { signal: options?.signal },
+    ),
 };

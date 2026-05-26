@@ -153,7 +153,7 @@ export function CompletedTaskOutput({
           <span className={styles.taskTitle}>{title || taskId}</span>
           <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
           <CopyTaskOutputButton getCopyText={getCopyText} />
-          <TaskHeaderContextUsage taskId={taskId} />
+          <TaskHeaderContextUsage taskId={taskId} projectId={projectId} />
           {showDismiss && (
             <span
               role="button"

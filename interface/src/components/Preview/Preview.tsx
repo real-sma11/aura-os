@@ -153,7 +153,10 @@ export function PreviewHeader() {
       </Text>
       {displayItem.kind === "task" && <RunTaskButton task={displayItem.task} />}
       {displayItem.kind === "task" && (
-        <TaskHeaderContextUsage taskId={displayItem.task.task_id} />
+        <TaskHeaderContextUsage
+          taskId={displayItem.task.task_id}
+          projectId={displayItem.task.project_id}
+        />
       )}
       <Button
         variant="ghost"

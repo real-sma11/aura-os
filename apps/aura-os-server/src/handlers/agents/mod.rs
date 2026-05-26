@@ -8,7 +8,7 @@ mod instances;
 mod marketplace_fields;
 mod runtime;
 pub(crate) mod session_identity;
-mod sessions;
+pub(crate) mod sessions;
 #[allow(dead_code)]
 mod task_context;
 pub(crate) mod tool_dedupe;

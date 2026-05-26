@@ -107,8 +107,12 @@ vi.mock("../../hooks/stream/hooks", () => ({
   useStreamEvents: () => [],
   useStreamingText: () => "",
   useThinkingText: () => "",
+  useThinkingDurationMs: () => 0,
   useActiveToolCalls: () => [],
   useTimeline: () => [],
+  useProgressText: () => "",
+  useIsStreaming: () => false,
+  useIsWriting: () => false,
 }));
 
 vi.mock("../VerificationStepItem", () => ({

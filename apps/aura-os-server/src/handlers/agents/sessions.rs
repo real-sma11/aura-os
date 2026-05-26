@@ -667,10 +667,10 @@ pub(crate) struct ContextUsageResponse {
 /// Usage snapshot derived from the most recent persisted
 /// `assistant_message_end` event for a session.
 #[derive(Clone, Default)]
-struct SessionContextUsage {
-    utilization: f32,
-    estimated_context_tokens: Option<u64>,
-    context_breakdown: Option<ContextBreakdown>,
+pub(crate) struct SessionContextUsage {
+    pub(crate) utilization: f32,
+    pub(crate) estimated_context_tokens: Option<u64>,
+    pub(crate) context_breakdown: Option<ContextBreakdown>,
 }
 
 /// Representative breakdown returned by the demo capture-token branches
@@ -706,7 +706,7 @@ fn demo_context_breakdown() -> ContextBreakdown {
 /// display absolute used/total numbers alongside the percentage. Falls
 /// back to `session.context_usage_estimate` (dev-loop's source) when no
 /// such event exists.
-async fn latest_context_usage_for_session(
+pub(crate) async fn latest_context_usage_for_session(
     storage: &StorageClient,
     jwt: &str,
     session: &aura_os_storage::StorageSession,

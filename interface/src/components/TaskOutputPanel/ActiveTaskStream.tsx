@@ -145,7 +145,7 @@ export function ActiveTaskStream({
           </span>
           <span className={styles.taskDot} />
           <span className={styles.taskTitle}>{title || taskId}</span>
-          <TaskHeaderContextUsage taskId={taskId} />
+          <TaskHeaderContextUsage taskId={taskId} projectId={ctx?.project.project_id} />
           <CopyTaskOutputButton getCopyText={getCopyText} />
         </button>
       )}

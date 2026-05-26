@@ -51,6 +51,10 @@ vi.mock("../../stores/task-output-hydration-cache", () => ({
 
 vi.mock("../../hooks/stream/hooks", () => ({
   useStreamEvents: () => streamEventsState,
+  // Required by `useHydrateContextUtilization`, transitively pulled in
+  // by `TaskHeaderContextUsage` now that the task header renders the
+  // per-task context-usage pill.
+  useIsStreaming: () => false,
 }));
 
 vi.mock("../ChatOutput", () => ({

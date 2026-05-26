@@ -1,4 +1,5 @@
 mod common;
+mod context_usage;
 mod crud;
 mod extraction;
 mod flat;
@@ -6,6 +7,7 @@ mod output;
 mod preflight;
 
 pub(crate) use common::storage_task_to_task;
+pub(crate) use context_usage::get_task_context_usage;
 pub(crate) use crud::{
     create_task, delete_task, redo_task, retry_task, transition_task, update_task,
 };

@@ -44,6 +44,10 @@ pub(super) fn task_routes() -> Router<AppState> {
             "/api/projects/:project_id/tasks/:task_id/output",
             get(tasks::get_task_output),
         )
+        .route(
+            "/api/projects/:project_id/tasks/:task_id/context-usage",
+            get(tasks::get_task_context_usage),
+        )
         // Flat aliases that mirror aura-storage's task routes. The
         // harness's `HttpDomainApi` calls `/api/tasks/:id`,
         // `/api/tasks/:id/transition`, etc. directly when
