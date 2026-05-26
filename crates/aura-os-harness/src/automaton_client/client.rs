@@ -4,6 +4,26 @@ use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::info;
 
+/// Per-call timeout for `POST /automaton/start`. Overrides the
+/// client-wide `timeout(12s)` default because the harness's
+/// `bridge.start_dev_loop_with_capabilities` / `run_task_with_capabilities`
+/// does identity / tool / skill / system-prompt resolution and
+/// optional cold-start work BEFORE it returns the automaton id —
+/// which on a freshly-launched harness or a project with a large
+/// tool catalog can comfortably exceed 12 seconds. The previous
+/// default was timing out the request while the harness happily
+/// continued building the automaton in the background, producing
+/// orphan automatons + a misleading 503 in the AutomationBar even
+/// though the harness's own logs showed the run firing turns.
+///
+/// 60 seconds is deliberately generous — connection / DNS failures
+/// still surface fast via `connect_timeout(3s)`, so the only thing
+/// this extra budget changes is "harness is alive and busy setting
+/// up" vs "harness is unreachable". An operator who has genuinely
+/// lost the harness still gets a clear error within
+/// `connect_timeout`.
+const AUTOMATON_START_TIMEOUT: Duration = Duration::from_secs(60);
+
 use super::identity::validate_automaton_start_identity;
 use super::start_params::{AutomatonStartError, AutomatonStartParams, AutomatonStartResult};
 use super::ws_reader::{probe_initial_event, spawn_automaton_reader};
@@ -64,7 +84,12 @@ impl AutomatonClient {
             )));
         }
         let url = format!("{}/automaton/start", self.http_base);
-        let req = self.apply_auth(self.http.post(&url).json(&params));
+        // Override the client-wide 12s budget for this single call —
+        // see the doc comment on `AUTOMATON_START_TIMEOUT` above for
+        // why the harness needs more headroom on the start path.
+        let req = self
+            .apply_auth(self.http.post(&url).json(&params))
+            .timeout(AUTOMATON_START_TIMEOUT);
         let resp = req.send().await.map_err(|e| AutomatonStartError::Request {
             message: format!("harness start request failed: {e}"),
             is_connect: e.is_connect(),
