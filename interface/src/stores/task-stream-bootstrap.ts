@@ -110,6 +110,20 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
         e.agent_id ?? undefined,
         e.session_id ?? undefined,
       );
+  } else if (import.meta.env.DEV) {
+    // Diagnostic: when the Run pane stays empty during a live
+    // automation run, one possibility is that `task_started` events
+    // are arriving over the WS but without a `project_id` (which the
+    // server-side `enrich_event` is supposed to stamp on every
+    // forwarder-routed event). Without this log the drop is silent —
+    // `addTask` is never called and no row appears in the panel, but
+    // there's no signal anywhere in the client that an event was
+    // received and discarded. Surface it in DEV builds so an operator
+    // can grep the console while reproducing the bug.
+    console.debug(
+      "[task-stream-bootstrap] dropping task_started: missing project_id",
+      { taskId, agentId: e.agent_id, sessionId: e.session_id },
+    );
   }
 
   // Update the per-task status store so observers (sidekick preview,

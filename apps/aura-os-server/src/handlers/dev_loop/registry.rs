@@ -295,12 +295,36 @@ async fn snapshot_active_and_paused(
 /// Carved out of [`status_response`] so its body stays inside the
 /// 50-line per-function budget.
 fn collect_active_loop_tasks(state: &AppState, project_id: ProjectId) -> Vec<ActiveLoopTask> {
-    state
+    let project_loops = state
         .loop_registry
         .snapshot_where(|loop_id| {
             loop_id.project_id == Some(project_id)
                 && matches!(loop_id.kind, LoopKind::Automation | LoopKind::TaskRun)
-        })
+        });
+    // Diagnostic: when the play button + cooking strip are lit but the
+    // Run pane stays empty, the most common backend root cause is a
+    // registered Automation loop whose `current_task_id` is still
+    // `None` because the harness hasn't emitted `task_started` yet
+    // (typical during long planning / backlog-filling phases where
+    // the LLM is calling `submit_plan` / `get_task_context` /
+    // `read_file` without claiming a backlog task). Emitting this
+    // trace whenever `/loop/status` reports an empty `active_tasks`
+    // for a project that *does* have an open Automation loop gives
+    // operators a single grep target to confirm the hypothesis.
+    #[cfg(debug_assertions)]
+    for snapshot in &project_loops {
+        if snapshot.activity.current_task_id.is_none() {
+            tracing::debug!(
+                %project_id,
+                loop_kind = ?snapshot.loop_id.kind,
+                loop_status = ?snapshot.activity.status,
+                current_step = ?snapshot.activity.current_step,
+                "active_tasks: loop registered but current_task_id is None \
+                 (harness has not emitted task_started — likely planning phase)"
+            );
+        }
+    }
+    project_loops
         .into_iter()
         .filter_map(|snapshot| {
             let agent_id = snapshot.loop_id.agent_instance_id?;
