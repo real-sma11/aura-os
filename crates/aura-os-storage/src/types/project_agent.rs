@@ -36,6 +36,16 @@ pub struct StorageProjectAgent {
     pub total_output_tokens: Option<u64>,
     #[serde(default)]
     pub instance_role: Option<String>,
+    /// Provenance marker for the row. The projects sidebar
+    /// (`isUserFacingAgentInstance`) shows only rows where this is
+    /// `None` (legacy) or `"ui"` (user clicked "+" in the UI). Other
+    /// known values are `"auto_home"` (Home-project lazy bind),
+    /// `"auto_project_default"` (new-project Standard-Agent attach),
+    /// and `"sdk"` (SDK / benchmark / e2e fixtures). Stored as a free
+    /// string so we never have to migrate storage when callers add
+    /// new origin labels.
+    #[serde(default)]
+    pub source: Option<String>,
     /// Snapshot of the parent Agent's permissions at instance-creation
     /// time. Persisted so a cold reload doesn't silently fall back to
     /// an empty bundle when the parent Agent lookup fails.
@@ -71,6 +81,11 @@ pub struct CreateProjectAgentRequest {
     pub harness: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instance_role: Option<String>,
+    /// See [`StorageProjectAgent::source`]. Defaults to `"ui"` on the
+    /// server when the caller omits it so the row stays visible in the
+    /// projects sidebar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<aura_os_core::AgentPermissions>,
     #[serde(skip_serializing_if = "Option::is_none")]

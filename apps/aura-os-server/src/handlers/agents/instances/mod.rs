@@ -166,6 +166,17 @@ pub(crate) async fn create_agent_instance(
     let user_id = get_user_id(&session);
     let project = state.project_service.get_project(&project_id).ok();
 
+    // Capture the caller-provided provenance before destructuring
+    // `body` into the match below. Default to `"ui"` so the legacy
+    // UI "+" buttons (which omit the field) stay visible in the
+    // projects sidebar; non-UI callers (SDK scripts, benchmarks,
+    // new-project auto-attach) opt in by sending an explicit value.
+    let source = body.source.clone().unwrap_or_else(|| {
+        aura_os_core::AgentInstanceSource::Ui
+            .as_wire_str()
+            .to_string()
+    });
+
     let agent = match (body.agent_id, body.kind.as_deref()) {
         (Some(agent_id), None) => state
             .agent_service
@@ -229,6 +240,11 @@ pub(crate) async fn create_agent_instance(
                 .as_wire_str()
                 .to_string(),
         ),
+        // Forward the caller-supplied provenance (defaulted to `"ui"`
+        // above) so the projects sidebar's `isUserFacingAgentInstance`
+        // filter on the frontend can distinguish a real "+" click from
+        // an SDK / auto-attach / Home-bind row.
+        source: Some(source),
         permissions: Some(agent.permissions.clone()),
         intent_classifier: agent.intent_classifier.clone(),
     };

@@ -243,6 +243,7 @@ fn sample_agent_instance(project_id: ProjectId, agent_id: AgentId) -> AgentInsta
         current_task_id: None,
         current_session_id: None,
         instance_role: aura_os_core::AgentInstanceRole::Chat,
+        source: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
         model: None,

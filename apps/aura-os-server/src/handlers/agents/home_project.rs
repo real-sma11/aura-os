@@ -276,6 +276,16 @@ pub(crate) async fn ensure_agent_home_project_and_binding(
                 .as_wire_str()
                 .to_string(),
         ),
+        // Mark this row as the system-managed Home-project lazy bind
+        // so the projects sidebar's `isUserFacingAgentInstance` filter
+        // hides it. The user never asked for it; it exists purely so
+        // chat persistence has a row to attach to before they ever
+        // click into the agent.
+        source: Some(
+            aura_os_core::AgentInstanceSource::AutoHome
+                .as_wire_str()
+                .to_string(),
+        ),
         permissions: Some(agent.permissions.clone()),
         intent_classifier: agent.intent_classifier.clone(),
     };

@@ -50,6 +50,7 @@ async fn seed_project_agent(
                 org_id: None,
                 role: Some("Researcher".into()),
                 instance_role: None,
+                source: None,
                 personality: None,
                 system_prompt: None,
                 skills: Some(vec![]),

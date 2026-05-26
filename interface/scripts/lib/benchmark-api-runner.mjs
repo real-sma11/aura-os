@@ -996,7 +996,7 @@ export async function runScenario(scenario, options) {
     agentInstance = await client.apiJson(
       "POST",
       `/api/projects/${project.project_id}/agents`,
-      { agent_id: agent.agent_id },
+      { agent_id: agent.agent_id, source: "sdk" },
     );
     client.logStep("agent attached", { agentInstanceId: agentInstance.agent_instance_id });
     recordStep(

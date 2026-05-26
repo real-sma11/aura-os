@@ -39,6 +39,7 @@ async fn purge_executor_instances_keeps_persistent_roles_alive() {
         icon: None,
         harness: None,
         instance_role: role.map(str::to_string),
+        source: None,
         permissions: None,
         intent_classifier: None,
     };

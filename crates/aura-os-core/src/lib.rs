@@ -30,9 +30,9 @@ pub use entities::{
     Task, TestStepRecord, TransactionsResponse, WebSearchConfig, ZeroAuthSession,
 };
 pub use enums::{
-    AgentInstanceRole, AgentStatus, ArtifactType, ChatRole, HarnessMode, OrchestrationStatus,
-    OrgRole, ProcessEventStatus, ProcessNodeType, ProcessRunStatus, ProcessRunTrigger,
-    ProjectStatus, SessionStatus, StepStatus, TaskStatus,
+    AgentInstanceRole, AgentInstanceSource, AgentStatus, ArtifactType, ChatRole, HarnessMode,
+    OrchestrationStatus, OrgRole, ProcessEventStatus, ProcessNodeType, ProcessRunStatus,
+    ProcessRunTrigger, ProjectStatus, SessionStatus, StepStatus, TaskStatus,
 };
 pub use harness_id::harness_agent_id;
 pub use helpers::{extract_fenced_json, fuzzy_search_replace, parse_dt};

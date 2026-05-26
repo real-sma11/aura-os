@@ -406,6 +406,7 @@ async fn build_phase7_scenario() -> Scenario {
                 org_id: Some(project.org_id.to_string()),
                 role: Some("Listener".into()),
                 instance_role: None,
+                source: None,
                 personality: None,
                 system_prompt: None,
                 skills: Some(vec![]),

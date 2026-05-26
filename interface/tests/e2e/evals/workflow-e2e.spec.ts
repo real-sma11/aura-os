@@ -66,7 +66,7 @@ for (const scenario of scenarios) {
       page,
       "POST",
       `/api/projects/${project.project_id}/agents`,
-      { agent_id: agent.agent_id },
+      { agent_id: agent.agent_id, source: "sdk" },
     ));
     const specs = await timed("generate_specs", () => browserApiFetch<Array<{ title: string }>>(
       page,

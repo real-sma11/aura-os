@@ -87,6 +87,29 @@ export interface Agent {
  */
 export type AgentInstanceRole = "chat" | "loop" | "executor";
 
+/**
+ * Provenance marker for an `AgentInstance` row. Drives the projects
+ * sidebar's `isUserFacingAgentInstance` filter: only rows with `null`/
+ * `undefined` (legacy data) or `"ui"` (user clicked the "+" button)
+ * surface in the project tree.
+ *
+ * - `"ui"` — user clicked "+" in the desktop / web sidebar.
+ * - `"auto_home"` — server-side `ensure_agent_home_project_and_binding`
+ *   lazily created the row inside the per-org `"Home"` project.
+ * - `"auto_project_default"` — `AppShell.handleProjectCreated` auto-
+ *   attached the Standard Agent on new-project creation.
+ * - `"sdk"` — SDK / benchmark / e2e fixture script.
+ *
+ * Typed as a string union with a `string` fallback so a forward-compat
+ * backend that introduces a new origin doesn't poison the type, and
+ * so the sidebar filter can treat any unknown value as non-UI.
+ */
+export type AgentInstanceSource =
+  | "ui"
+  | "auto_home"
+  | "auto_project_default"
+  | "sdk";
+
 export interface AgentInstance {
   agent_instance_id: AgentInstanceId;
   project_id: ProjectId;
@@ -112,6 +135,12 @@ export interface AgentInstance {
    *  backends without the column round-trip cleanly; consumers should
    *  treat `undefined` as `"chat"`. */
   instance_role?: AgentInstanceRole;
+  /** See {@link AgentInstanceSource}. Optional on the wire so older
+   *  backends without the column round-trip cleanly. The projects
+   *  sidebar's `isUserFacingAgentInstance` treats `null`/`undefined`
+   *  as legacy data and keeps those rows visible. Typed loosely as
+   *  `string` to tolerate forward-compat values from newer servers. */
+  source?: AgentInstanceSource | string | null;
   total_input_tokens: number;
   total_output_tokens: number;
   model?: string;

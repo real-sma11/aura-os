@@ -42,20 +42,36 @@ export function resolveStatus(raw: string | undefined): string | undefined {
 /**
  * Predicate for "is this `AgentInstance` row meant for user-facing
  * surfaces like the project sidebar and the project agent chat
- * route". `Loop` and `Executor` rows are infrastructure: the former
- * is the persistent automation-loop binding, the latter is the
- * ephemeral row each `run-once` task allocates. Both must stay out
- * of the agent list — the bug they cause is one duplicate sidebar
- * entry per task run, since `spawn_ephemeral_executor` clones the
- * template's name verbatim.
+ * route". A row is user-facing when both axes line up:
  *
- * Older backends round-trip without `instance_role`; the wire
- * contract on `AgentInstance.instance_role` says consumers should
- * treat `undefined` as `"chat"`, so the predicate keeps those rows
- * visible.
+ * 1. `instance_role` is `"chat"` (or absent, treated as `"chat"`).
+ *    `Loop` and `Executor` rows are infrastructure — the former is
+ *    the persistent automation-loop binding, the latter is the
+ *    ephemeral row each `run-once` task allocates. Both must stay
+ *    out of the agent list; the bug they cause is one duplicate
+ *    sidebar entry per task run, since `spawn_ephemeral_executor`
+ *    clones the template's name verbatim.
+ *
+ * 2. `source` is `null` / `undefined` (legacy data from a backend
+ *    that doesn't echo the column yet) or `"ui"` (user actually
+ *    clicked the "+" button in the sidebar / agent selector).
+ *    Non-UI provenance — `"auto_home"` (per-org Home-project lazy
+ *    bind), `"auto_project_default"` (Standard-Agent auto-attach on
+ *    new project), `"sdk"` (benchmark / e2e / scripts) — are
+ *    system-created bindings that exist purely so chat persistence /
+ *    redirects have a row to land on. They were the source of the
+ *    repeated "Summarize This Me" rows that piled up on every dev
+ *    run because the auto-rename hook seeded them from the first
+ *    prompt.
+ *
+ * The `null`/`undefined` allowance is deliberate: it keeps existing
+ * production rows that pre-date the column visible until a backfill
+ * can stamp them; new writes always carry an explicit source.
  */
 export function isUserFacingAgentInstance(agent: AgentInstance): boolean {
-  return (agent.instance_role ?? "chat") === "chat";
+  if ((agent.instance_role ?? "chat") !== "chat") return false;
+  const source = agent.source ?? null;
+  return source === null || source === "ui";
 }
 
 export function getPreferredProjectAgent(

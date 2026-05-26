@@ -29,7 +29,14 @@ use tokio::sync::broadcast;
 /// Uses [`EventHub::subscribe_all`] because the bridge must observe
 /// every loop event regardless of which project / instance it belongs
 /// to — it's a trusted in-process consumer, not a UI subscriber.
-pub(crate) fn spawn_loop_events_bridge(
+///
+/// Public so integration tests (see
+/// `tests/api_tests/loop_adopt_shortcut.rs`) can stand the bridge up
+/// against the bare test harness — `build_test_app` deliberately skips
+/// the production `app_builder` wiring, so any test that asserts the
+/// `loop_opened` / `loop_activity_changed` / `loop_ended` JSON wire
+/// shape on `event_broadcast` needs to spawn this bridge itself.
+pub fn spawn_loop_events_bridge(
     hub: EventHub,
     broadcast: broadcast::Sender<serde_json::Value>,
 ) {

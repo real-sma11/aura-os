@@ -254,6 +254,15 @@ pub(crate) struct CreateAgentInstanceRequest {
     pub agent_id: Option<AgentId>,
     #[serde(default)]
     pub kind: Option<String>,
+    /// Provenance marker for the new instance row. Drives the projects
+    /// sidebar's `isUserFacingAgentInstance` filter on the frontend.
+    /// When omitted, the handler defaults to `"ui"` so legacy callers
+    /// (and the UI's existing "+" buttons) continue to surface in the
+    /// sidebar. Non-UI callers (SDK scripts, benchmarks, e2e fixtures,
+    /// new-project Standard-Agent auto-attach) should send an explicit
+    /// non-`"ui"` value (`"sdk"`, `"auto_project_default"`, etc.).
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

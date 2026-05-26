@@ -23,6 +23,7 @@ fn make_instance_with_role(role: AgentInstanceRole) -> AgentInstance {
         current_task_id: None,
         current_session_id: None,
         instance_role: role,
+        source: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
         model: None,

@@ -4,6 +4,7 @@ import type {
   AgentInstanceId,
   Agent,
   AgentInstance,
+  AgentInstanceSource,
   AgentPermissions,
   IntentClassifierSpec,
   Session,
@@ -260,16 +261,45 @@ export interface AgentInstalledToolsDiagnostic {
   missing_registrations: string[];
 }
 
+/**
+ * Optional create-binding overrides accepted by both
+ * {@link agentInstancesApi.createAgentInstance} and
+ * {@link agentInstancesApi.createGeneralAgentInstance}.
+ *
+ * `source` stamps a provenance tag onto the new `project_agent` row.
+ * Omitting it defaults to `"ui"` on the server, which keeps the row
+ * visible in the projects sidebar (the legacy behavior). Non-UI
+ * callers — new-project auto-attach, SDK scripts, benchmarks, e2e
+ * fixtures — should set this explicitly so the sidebar's
+ * `isUserFacingAgentInstance` filter hides them.
+ */
+export interface CreateAgentInstanceOptions {
+  source?: AgentInstanceSource;
+}
+
 export const agentInstancesApi = {
-  createAgentInstance: (projectId: ProjectId, agentId: AgentId) =>
+  createAgentInstance: (
+    projectId: ProjectId,
+    agentId: AgentId,
+    options?: CreateAgentInstanceOptions,
+  ) =>
     apiFetch<AgentInstance>(`/api/projects/${projectId}/agents`, {
       method: "POST",
-      body: JSON.stringify({ agent_id: agentId }),
+      body: JSON.stringify({
+        agent_id: agentId,
+        ...(options?.source ? { source: options.source } : {}),
+      }),
     }),
-  createGeneralAgentInstance: (projectId: ProjectId) =>
+  createGeneralAgentInstance: (
+    projectId: ProjectId,
+    options?: CreateAgentInstanceOptions,
+  ) =>
     apiFetch<AgentInstance>(`/api/projects/${projectId}/agents`, {
       method: "POST",
-      body: JSON.stringify({ kind: "general" }),
+      body: JSON.stringify({
+        kind: "general",
+        ...(options?.source ? { source: options.source } : {}),
+      }),
     }),
   listAgentInstances: (projectId: ProjectId) =>
     apiFetch<AgentInstance[]>(`/api/projects/${projectId}/agents`),

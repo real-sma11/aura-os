@@ -99,6 +99,50 @@ impl AgentInstanceRole {
     }
 }
 
+/// Provenance tag for an `AgentInstance` row. Persisted as a free
+/// string on `project_agent.source` (via [`Self::as_wire_str`]) so
+/// adding a new origin does not require a storage migration. Drives
+/// the projects sidebar filter (`isUserFacingAgentInstance`): only
+/// rows with no source (legacy data) or `Ui` surface in the project
+/// tree on the frontend.
+///
+/// The four currently meaningful origins:
+///
+/// * `Ui` — user clicked the "+" button in the desktop / web sidebar
+///   (default for `POST /api/projects/:pid/agents` when no source is
+///   sent on the request body). Visible in the projects sidebar.
+/// * `AutoHome` — `ensure_agent_home_project_and_binding` lazily
+///   created the row inside the per-org `"Home"` project so chat
+///   persistence has somewhere to land. Hidden.
+/// * `AutoProjectDefault` — `AppShell.handleProjectCreated` auto-
+///   attached the Standard Agent template to a newly-created project.
+///   Hidden.
+/// * `Sdk` — SDK / benchmark / e2e fixture script created the row via
+///   the storage REST API. Hidden so dev runs and load tests don't
+///   pollute the user's sidebar between cleanup cycles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentInstanceSource {
+    Ui,
+    AutoHome,
+    AutoProjectDefault,
+    Sdk,
+}
+
+impl AgentInstanceSource {
+    /// Stable wire string used in storage payloads and event JSON.
+    /// Mirrors the four string constants the frontend's
+    /// `isUserFacingAgentInstance` filter knows about.
+    pub fn as_wire_str(&self) -> &'static str {
+        match self {
+            Self::Ui => "ui",
+            Self::AutoHome => "auto_home",
+            Self::AutoProjectDefault => "auto_project_default",
+            Self::Sdk => "sdk",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {

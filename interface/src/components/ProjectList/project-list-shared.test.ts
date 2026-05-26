@@ -63,6 +63,59 @@ describe("isUserFacingAgentInstance", () => {
       isUserFacingAgentInstance(makeAgent({ instance_role: "executor" })),
     ).toBe(false);
   });
+
+  it("treats a missing source as legacy data and keeps the row visible", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: undefined }),
+      ),
+    ).toBe(true);
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: null }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps explicit UI-sourced Chat rows visible", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: "ui" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("hides SDK / benchmark / e2e rows so dev runs do not pollute the sidebar", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: "sdk" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("hides server-side auto-home Home-project bindings", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: "auto_home" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("hides new-project Standard-Agent auto-attach rows", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: "auto_project_default" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("hides unknown non-UI sources (forward-compat guard)", () => {
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "chat", source: "future_origin" }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("getPreferredProjectAgent", () => {

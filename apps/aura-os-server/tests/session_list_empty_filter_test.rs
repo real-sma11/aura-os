@@ -51,6 +51,7 @@ async fn seed_project_agent(
                 icon: None,
                 harness: None,
                 instance_role: None,
+                source: None,
                 permissions: None,
                 intent_classifier: None,
             },

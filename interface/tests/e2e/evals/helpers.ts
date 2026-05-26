@@ -1150,7 +1150,7 @@ export async function runLiveBenchmarkScenario(
         page,
         "POST",
         `/api/projects/${project.project_id}/agents`,
-        { agent_id: agentTemplate.agent_id },
+        { agent_id: agentTemplate.agent_id, source: "sdk" },
       ),
     );
     operationLog.push({

@@ -31,6 +31,7 @@ pub(super) async fn create_project_agent(
         total_input_tokens: None,
         total_output_tokens: None,
         instance_role: req.instance_role,
+        source: req.source,
         permissions: req.permissions,
         intent_classifier: req.intent_classifier,
         created_at: Some(now.clone()),

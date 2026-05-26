@@ -70,7 +70,14 @@ function ProjectCreationModalHost() {
       closePreview();
       prependProject(project);
       try {
-        const instance = await api.createGeneralAgentInstance(project.project_id);
+        // Tag this binding as a system-side auto-attach so the
+        // projects sidebar's `isUserFacingAgentInstance` filter hides
+        // it -- the user created a project, they didn't click "+" on
+        // the Standard Agent. Visible to the chat / detail surfaces
+        // via the normal redirect below.
+        const instance = await api.createGeneralAgentInstance(project.project_id, {
+          source: "auto_project_default",
+        });
         attachCreatedAgent(instance);
       } catch (err) {
         console.error("Failed to auto-create Standard Agent for new project", err);

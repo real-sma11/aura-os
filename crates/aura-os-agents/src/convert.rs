@@ -175,6 +175,7 @@ mod tests {
             total_input_tokens: None,
             total_output_tokens: None,
             instance_role: None,
+            source: None,
             permissions: None,
             intent_classifier: None,
             created_at: None,

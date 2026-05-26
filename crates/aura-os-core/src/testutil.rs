@@ -116,6 +116,7 @@ pub fn make_agent_instance(name: &str) -> AgentInstance {
         current_task_id: None,
         current_session_id: None,
         instance_role: crate::enums::AgentInstanceRole::Chat,
+        source: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
         model: None,

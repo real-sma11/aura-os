@@ -44,6 +44,7 @@ async fn delete_session_removes_session_from_storage() {
                 icon: None,
                 harness: None,
                 instance_role: None,
+                source: None,
                 permissions: None,
                 intent_classifier: None,
             },

@@ -27,6 +27,7 @@ async fn project_agent_create_list_get_update_delete() {
                 org_id: None,
                 role: Some("developer".into()),
                 instance_role: None,
+                source: None,
                 personality: Some("helpful".into()),
                 system_prompt: Some("You are a helpful assistant.".into()),
                 skills: Some(vec!["code".into(), "plan".into()]),

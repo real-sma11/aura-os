@@ -346,6 +346,7 @@ async function run() {
         systemPrompt: "You are a test project agent.",
         skills: ["typescript", "testing"],
         icon: "bot",
+        source: "sdk",
       },
     });
     assertStatus(res, 200, 201);

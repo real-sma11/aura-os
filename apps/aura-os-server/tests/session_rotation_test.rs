@@ -37,6 +37,7 @@ async fn reset_session_retires_prior_active_sessions() {
                 icon: None,
                 harness: None,
                 instance_role: None,
+                source: None,
                 permissions: None,
                 intent_classifier: None,
             },

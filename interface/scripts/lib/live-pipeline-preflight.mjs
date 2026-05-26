@@ -774,7 +774,7 @@ export async function runLivePipelinePreflight(options = {}) {
       const created = await client.apiJson(
         "POST",
         `/api/projects/${project.value.project_id}/agents`,
-        { agent_id: agent.value.agent_id },
+        { agent_id: agent.value.agent_id, source: "sdk" },
       );
       if (!created?.agent_instance_id) {
         throw new StepFailure(

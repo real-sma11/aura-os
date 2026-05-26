@@ -84,6 +84,7 @@ pub fn merge_agent_instance(
             .as_deref()
             .map(AgentInstanceRole::from_wire_str)
             .unwrap_or_default(),
+        source: spa.source.clone(),
         total_input_tokens: spa.total_input_tokens.unwrap_or(0),
         total_output_tokens: spa.total_output_tokens.unwrap_or(0),
         model: spa.model.clone(),
@@ -126,6 +127,7 @@ mod tests {
             total_input_tokens: None,
             total_output_tokens: None,
             instance_role: role.map(str::to_string),
+            source: None,
             permissions: None,
             intent_classifier: None,
             created_at: None,

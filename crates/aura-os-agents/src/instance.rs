@@ -238,6 +238,12 @@ impl AgentInstanceService {
             icon: agent.icon.clone(),
             harness: None,
             instance_role: Some(role.as_wire_str().to_string()),
+            // Internal `AgentInstanceService` helpers are reached only
+            // from system-initiated paths (`ensure_default_loop_instance`,
+            // `spawn_ephemeral_executor`). User-driven creation goes
+            // through `handlers::agents::instances::create_agent_instance`
+            // and stamps an explicit `source` there.
+            source: None,
             permissions: Some(agent.permissions.clone()),
             intent_classifier: agent.intent_classifier.clone(),
         };

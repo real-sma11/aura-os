@@ -205,6 +205,15 @@ pub struct AgentInstance {
     /// full multi-instance rationale.
     #[serde(default)]
     pub instance_role: AgentInstanceRole,
+    /// Provenance marker for the binding. Drives the projects
+    /// sidebar's `isUserFacingAgentInstance` filter: only rows with
+    /// `None` (legacy) or `Some("ui")` (user clicked "+") surface in
+    /// the project tree. Known non-UI values: `"auto_home"` (Home-project
+    /// lazy bind), `"auto_project_default"` (Standard-Agent attach on
+    /// new project), `"sdk"` (test / benchmark / e2e fixtures). Stored
+    /// as a free string so adding new origins is schema-free.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(default)]
     pub total_input_tokens: u64,
     #[serde(default)]

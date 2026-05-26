@@ -22,6 +22,7 @@ async fn end_to_end_project_chat_and_task_flow() {
                 org_id: None,
                 role: None,
                 instance_role: None,
+                source: None,
                 personality: None,
                 system_prompt: None,
                 skills: None,
