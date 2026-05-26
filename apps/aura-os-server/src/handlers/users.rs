@@ -1,5 +1,9 @@
+use std::sync::LazyLock;
+use std::time::{Duration, Instant};
+
 use axum::extract::{Path, State};
 use axum::Json;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -11,6 +15,35 @@ use crate::error::{map_network_error, ApiResult};
 use crate::state::{persist_zero_auth_session, AppState, AuthJwt};
 
 use super::upload::PresignResponse;
+
+/// How long a successful aura-network sync is "fresh" for. Hit at the top
+/// of [`sync_user_to_network`] to short-circuit the per-request sync that
+/// otherwise fires on every `GET /api/auth/session` — the frontend host
+/// probe in `host-store.ts` polls that endpoint every 20 s purely as a
+/// connectivity check, and the unthrottled sync was both spamming the
+/// log and round-tripping to aura-network on every poll.
+///
+/// Five minutes is short enough that any meaningful profile change
+/// becomes visible within a single page-load worth of polls, and long
+/// enough that an idle session does not generate background network
+/// traffic. Callers that need an authoritative refresh (currently only
+/// the `POST /api/auth/validate` handler) pass `force = true` to bypass
+/// the cache.
+const SYNC_DEDUPE_TTL: Duration = Duration::from_secs(300);
+
+/// Tracks the last time we successfully ran the aura-network sync for a
+/// given zOS access token. Keyed by token so a token rotation (new login,
+/// new refresh, capture-session import) starts fresh; stale entries for
+/// expired tokens leak a `(String, Instant)` pair (~50 B) until logout,
+/// which is acceptable given the bounded number of concurrent users.
+static LAST_NETWORK_SYNC: LazyLock<DashMap<String, Instant>> = LazyLock::new(DashMap::new);
+
+/// Drop the cached "last synced" entry for `access_token`. Wired into the
+/// logout handler so the dedupe map doesn't retain entries for tokens
+/// that have been explicitly invalidated.
+pub(crate) fn clear_user_network_sync_dedupe(access_token: &str) {
+    LAST_NETWORK_SYNC.remove(access_token);
+}
 
 // ---------------------------------------------------------------------------
 // Response types (snake_case for local API)
@@ -346,8 +379,27 @@ async fn rehost_mxc_avatar(
 /// on the session and refreshes the server-side auth cache plus
 /// the in-memory validation cache. Best-effort — logs warnings on failure
 /// but never errors out.
-pub(crate) async fn sync_user_to_network(state: &AppState, session: &mut ZeroAuthSession) {
+///
+/// When `force` is `false` (the common path — login, register, import,
+/// `GET /api/auth/session`), a successful sync within the last
+/// [`SYNC_DEDUPE_TTL`] for the same access token short-circuits the
+/// entire body. This keeps the 20 s frontend host probe from triggering
+/// an aura-network round-trip and a `persist_zero_auth_session` write on
+/// every poll. `force = true` (only `POST /api/auth/validate`) bypasses
+/// the cache so an explicit refresh always reaches aura-network.
+pub(crate) async fn sync_user_to_network(
+    state: &AppState,
+    session: &mut ZeroAuthSession,
+    force: bool,
+) {
     if let Some(client) = &state.network_client {
+        if !force {
+            if let Some(last) = LAST_NETWORK_SYNC.get(&session.access_token) {
+                if last.elapsed() < SYNC_DEDUPE_TTL {
+                    return;
+                }
+            }
+        }
         match client.get_current_user(&session.access_token).await {
             Ok(user) => {
                 session.network_user_id = user.user_id_typed();
@@ -457,6 +509,8 @@ pub(crate) async fn sync_user_to_network(state: &AppState, session: &mut ZeroAut
                     );
                     persist_zero_auth_session(&state.store, session);
                 }
+
+                LAST_NETWORK_SYNC.insert(session.access_token.clone(), Instant::now());
 
                 tracing::info!(
                     network_user_id = %user.id,

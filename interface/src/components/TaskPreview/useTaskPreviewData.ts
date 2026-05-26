@@ -12,6 +12,23 @@ import { useStreamingText } from "../../hooks/stream/hooks";
 import { useTaskOutputHydration } from "../../hooks/use-task-output-hydration";
 import { useChatUI } from "../../stores/chat-ui-store";
 import { projectChatHistoryKey } from "../../stores/chat-history-store";
+import { loadPersistedModel } from "../../constants/models";
+
+// Resolve the model for a task-run API call. Falls back to the
+// per-agent persisted model (or the user's last global pick / adapter
+// default) when the chat-UI store hasn't hydrated `selectedModel`
+// yet — that store is only populated once the ChatPanel for this
+// agent has mounted, so pressing Run/Retry/Redo on a task without
+// ever opening the chat would otherwise send no `model` query param,
+// the server's `pick_model` falls through to `agent_instance.default_model`/
+// `model` (often unset), and the harness rejects with HTTP 400
+// "missing model" — which the server surfaces as a misleading 502.
+function resolveTaskRunModel(
+  selectedModel: string | null,
+  agentInstanceId: string | undefined,
+): string {
+  return selectedModel ?? loadPersistedModel("default", undefined, agentInstanceId);
+}
 
 
 /**
@@ -137,7 +154,8 @@ export function useTaskPreviewData(task: import("../../shared/types").Task) {
       await api.retryTask(projectId, task.task_id);
       setLiveStatus("ready"); setFailReason(null);
       try {
-        await api.runTask(projectId, task.task_id, routeAgentInstanceId, selectedModel);
+        const modelForRun = resolveTaskRunModel(selectedModel, routeAgentInstanceId);
+        await api.runTask(projectId, task.task_id, routeAgentInstanceId, modelForRun);
       } catch { /* reset to Ready */ }
     } catch (err) { console.error("Retry failed:", err); }
     finally { setRetrying(false); }
@@ -157,7 +175,8 @@ export function useTaskPreviewData(task: import("../../shared/types").Task) {
       await api.redoTask(projectId, task.task_id);
       setLiveStatus("ready"); setFailReason(null);
       try {
-        await api.runTask(projectId, task.task_id, routeAgentInstanceId, selectedModel);
+        const modelForRun = resolveTaskRunModel(selectedModel, routeAgentInstanceId);
+        await api.runTask(projectId, task.task_id, routeAgentInstanceId, modelForRun);
       } catch { /* reset to Ready */ }
     } catch (err) { console.error("Redo failed:", err); }
     finally { setRedoing(false); }
@@ -207,7 +226,10 @@ export function useRunTaskData(task: import("../../shared/types").Task) {
   const handleRun = useCallback(async () => {
     if (!projectId || running) return;
     setRunning(true);
-    try { await api.runTask(projectId, task.task_id, agentInstanceId, selectedModel); }
+    try {
+      const modelForRun = resolveTaskRunModel(selectedModel, agentInstanceId);
+      await api.runTask(projectId, task.task_id, agentInstanceId, modelForRun);
+    }
     catch (err) {
       if (isInsufficientCreditsError(err)) dispatchInsufficientCredits();
       console.error("Run task failed:", err); setRunning(false);

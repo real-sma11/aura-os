@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { ProjectId } from "../shared/types";
+import { loadPersistedModel } from "../constants/models";
 
 /**
  * Tracks the `agent_instance_id` the project's automation loop is
@@ -144,7 +145,7 @@ export function useAutomationModel(projectId: ProjectId): {
   const model = useAutomationLoopStore((s) => {
     const inMemory = s.modelByProject[projectId];
     if (inMemory !== undefined) return inMemory;
-    return loadPersistedAutomationModel(projectId);
+    return loadPersistedAutomationModel(projectId) ?? loadPersistedModel("aura_harness");
   });
   const setLoopModel = useAutomationLoopStore((s) => s.setLoopModel);
   return {

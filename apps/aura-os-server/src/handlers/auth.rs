@@ -14,7 +14,7 @@ use crate::dto::{
     PasswordResetRequest,
 };
 use crate::error::{ApiError, ApiResult};
-use crate::handlers::users::sync_user_to_network;
+use crate::handlers::users::{clear_user_network_sync_dedupe, sync_user_to_network};
 use crate::state::{
     clear_zero_auth_session, persist_zero_auth_session, AppState, AuthJwt, AuthSession,
     AuthZeroProMeta, CachedSession,
@@ -64,7 +64,7 @@ pub(crate) async fn login(
         .await
         .map_err(map_auth_error)?;
 
-    sync_user_to_network(&state, &mut result.session).await;
+    sync_user_to_network(&state, &mut result.session, false).await;
     persist_zero_auth_session(&state.store, &result.session);
 
     // Seed the validation cache so the first authenticated request is instant.
@@ -98,7 +98,7 @@ pub(crate) async fn register(
         .await
         .map_err(map_auth_error)?;
 
-    sync_user_to_network(&state, &mut result.session).await;
+    sync_user_to_network(&state, &mut result.session, false).await;
     persist_zero_auth_session(&state.store, &result.session);
 
     state.validation_cache.insert(
@@ -274,7 +274,7 @@ pub(crate) async fn import_access_token(
         .await
         .map_err(map_auth_error)?;
 
-    sync_user_to_network(&state, &mut result.session).await;
+    sync_user_to_network(&state, &mut result.session, false).await;
     persist_zero_auth_session(&state.store, &result.session);
 
     Ok(Json(AuthSessionResponse::from_auth_result(result)))
@@ -370,7 +370,7 @@ pub(crate) async fn get_session(
         zero_pro_refresh_error,
     }: AuthZeroProMeta,
 ) -> ApiResult<Json<AuthSessionResponse>> {
-    sync_user_to_network(&state, &mut session).await;
+    sync_user_to_network(&state, &mut session, false).await;
 
     // Best-effort retry of signup grant for users whose initial grant
     // failed (z-billing was unreachable at login time). Deduped per
@@ -399,7 +399,12 @@ pub(crate) async fn validate(
         zero_pro_refresh_error,
     }: AuthZeroProMeta,
 ) -> ApiResult<Json<AuthSessionResponse>> {
-    sync_user_to_network(&state, &mut session).await;
+    // `POST /api/auth/validate` is the explicit-refresh path: middleware
+    // already bypasses the validation cache, and the contract is that
+    // aura-network profile fields come back fresh. `force = true` skips
+    // the dedupe so this stays authoritative even when a recent session
+    // poll already populated `LAST_NETWORK_SYNC`.
+    sync_user_to_network(&state, &mut session, true).await;
 
     state.validation_cache.insert(
         jwt,
@@ -440,6 +445,7 @@ pub(crate) async fn logout(
 
     if let Some(ref jwt) = token {
         state.validation_cache.remove(jwt);
+        clear_user_network_sync_dedupe(jwt);
     }
 
     clear_zero_auth_session(&state.store);

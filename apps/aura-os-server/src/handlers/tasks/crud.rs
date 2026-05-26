@@ -18,39 +18,23 @@ pub(crate) async fn transition_task(
     Json(req): Json<TransitionTaskRequest>,
 ) -> ApiResult<Json<Task>> {
     let storage = state.require_storage_client()?;
-    let current = storage
-        .get_task(&task_id.to_string(), &jwt)
+    aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), req.new_status)
         .await
+        .map(Json)
         .map_err(|e| match &e {
-            aura_os_storage::StorageError::Server { status: 404, .. } => {
-                ApiError::not_found("task not found")
+            aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                status: 404,
+                ..
+            }) => ApiError::not_found("task not found"),
+            aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                status: 400,
+                body,
+            }) => ApiError::bad_request(body.clone()),
+            aura_os_tasks::TaskError::IllegalTransition { .. } => {
+                ApiError::bad_request(format!("transitioning task: {e}"))
             }
-            _ => ApiError::internal(format!("fetching task for transition: {e}")),
-        })?;
-    let task = storage_task_to_task(current).map_err(ApiError::internal)?;
-    TaskService::validate_transition(task.status, req.new_status)
-        .map_err(|e| ApiError::bad_request(format!("validating task transition: {e}")))?;
-    let status = serde_json::to_value(req.new_status)
-        .map_err(|e| ApiError::internal(format!("serializing task status: {e}")))?
-        .as_str()
-        .unwrap_or("pending")
-        .to_string();
-
-    storage
-        .transition_task(
-            &task_id.to_string(),
-            &jwt,
-            &aura_os_storage::TransitionTaskRequest { status },
-        )
-        .await
-        .map_err(storage_transition_error("transitioning task"))?;
-    let updated = storage
-        .get_task(&task_id.to_string(), &jwt)
-        .await
-        .map_err(|e| ApiError::internal(format!("fetching updated task: {e}")))?;
-    Ok(Json(
-        storage_task_to_task(updated).map_err(ApiError::internal)?,
-    ))
+            _ => ApiError::internal(format!("transitioning task: {e}")),
+        })
 }
 
 pub(crate) async fn retry_task(

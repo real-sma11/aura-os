@@ -311,7 +311,18 @@ describe("TaskPreview", () => {
       expect(mockRedoTask).toHaveBeenCalledWith("proj-1", "task-1");
     });
     await waitFor(() => {
-      expect(mockRunTask).toHaveBeenCalledWith("proj-1", "task-1", "agent-1", null);
+      // The model arg is now always a non-empty string: when the
+      // chat-UI store hasn't hydrated `selectedModel` for this agent
+      // (which is the default in this test fixture), `useTaskPreviewData`
+      // falls back to `loadPersistedModel`, which returns the adapter
+      // default. Asserting on the exact model id would couple this
+      // test to the chat-model lineup, so we only assert the shape.
+      expect(mockRunTask).toHaveBeenCalledWith(
+        "proj-1",
+        "task-1",
+        "agent-1",
+        expect.any(String),
+      );
     });
   });
 
@@ -352,7 +363,20 @@ describe("RunTaskButton", () => {
 
     await user.click(screen.getByTitle("Run task"));
     await waitFor(() => {
-      expect(mockRunTask).toHaveBeenCalledWith("proj-1", "task-1", "agent-1", null);
+      // RunTaskButton now always sends a model id: when the chat-UI
+      // store hasn't hydrated `selectedModel` for this agent (the
+      // default in this fixture), it falls back to
+      // `loadPersistedModel("default", undefined, agentInstanceId)`,
+      // which returns the adapter default (chat model). Asserting
+      // the exact id would couple this test to the chat-model
+      // lineup, so we only assert shape — see the parent
+      // bug-fix note in `RunTaskButton.tsx`.
+      expect(mockRunTask).toHaveBeenCalledWith(
+        "proj-1",
+        "task-1",
+        "agent-1",
+        expect.any(String),
+      );
     });
   });
 

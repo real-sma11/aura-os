@@ -8,6 +8,7 @@ import { useChatUI } from "../../stores/chat-ui-store";
 import { projectChatHistoryKey } from "../../stores/chat-history-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
 import { useTaskStatus } from "../../hooks/use-task-status";
+import { loadPersistedModel } from "../../constants/models";
 import styles from "../Preview/Preview.module.css";
 
 export function RunTaskButton({ task }: { task: import("../../shared/types").Task }) {
@@ -28,10 +29,21 @@ export function RunTaskButton({ task }: { task: import("../../shared/types").Tas
   const handleRun = useCallback(async () => {
     if (!projectId || running) return;
     setRunning(true);
+    // Fall back to the per-agent persisted model (or the user's last
+    // global pick / adapter default) when the chat-UI store hasn't
+    // hydrated `selectedModel` yet — that store is only populated
+    // once the ChatPanel for this agent has mounted, so pressing
+    // Play on a task without ever opening the chat would otherwise
+    // send no `model` query param. The server's `pick_model` then
+    // falls through to `agent_instance.default_model`/`model` (often
+    // unset) and the harness rejects with HTTP 400 "missing model",
+    // which the server surfaces as a misleading 502 to the user.
+    const modelForRun =
+      selectedModel ?? loadPersistedModel("default", undefined, agentInstanceId);
     try {
       const { track } = await import("../../lib/analytics");
-      track("task_run_started", { model: selectedModel });
-      await api.runTask(projectId, task.task_id, agentInstanceId, selectedModel);
+      track("task_run_started", { model: modelForRun });
+      await api.runTask(projectId, task.task_id, agentInstanceId, modelForRun);
     } catch (err) {
       if (isInsufficientCreditsError(err)) dispatchInsufficientCredits();
       console.error("Run task failed:", err);

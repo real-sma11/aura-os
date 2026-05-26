@@ -2,6 +2,7 @@
 
 use axum::http::StatusCode;
 use axum::Json;
+use tracing::warn;
 
 use aura_os_harness::{AutomatonClient, AutomatonStartError, AutomatonStartParams};
 
@@ -113,10 +114,32 @@ pub(crate) fn map_start_error(
         {
             ApiError::harness_capacity_exhausted(ws_slots_cap)
         }
-        AutomatonStartError::Response { status, body } => ApiError::bad_gateway(format!(
-            "automaton start via {base_url} failed ({status}): {body}"
-        )),
-        other => ApiError::internal(format!("starting automaton: {other}")),
+        AutomatonStartError::Response { status, body } => {
+            // Log the upstream status + body preview server-side so a
+            // future 502 carries an actionable reason in the terminal,
+            // not just `tower_http::trace::on_failure`'s bare
+            // "Status code: 502 Bad Gateway". The full body is also
+            // included in the response envelope, but the FE rolls back
+            // optimistically on 5xx and the toast preview gets cut off,
+            // so the server log is often the first/only place an
+            // operator sees the real reason (e.g. harness 400 "missing
+            // model — task run request must include an explicit model
+            // identifier").
+            let preview: String = body.chars().take(500).collect();
+            warn!(
+                upstream_status = status,
+                base_url,
+                body_preview = %preview,
+                "automaton/start rejected by harness; mapping to 502 bad_gateway",
+            );
+            ApiError::bad_gateway(format!(
+                "automaton start via {base_url} failed ({status}): {body}"
+            ))
+        }
+        other => {
+            warn!(error = %other, base_url, "automaton/start failed; mapping to 500");
+            ApiError::internal(format!("starting automaton: {other}"))
+        }
     }
 }
 

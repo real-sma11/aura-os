@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,12 +91,28 @@ vi.mock("../../api/client", () => {
 // with this binding.
 import { ApiClientError as MockApiClientError } from "../../api/client";
 
-const subscribeMock = vi.fn((_type: string, _cb: (...args: unknown[]) => void) => vi.fn());
+type SubscribeCallback = (event: Record<string, unknown>) => void;
+
+// Per-event-type registry of subscribed callbacks so individual tests
+// can drive the AutomationBar through real WS lifecycle events
+// (loop_started, loop_finished, etc.) rather than relying solely on
+// the HTTP polling path.
+const subscribeMap = new Map<string, Set<SubscribeCallback>>();
+
+const subscribeMock = vi.fn((type: string, cb: SubscribeCallback) => {
+  if (!subscribeMap.has(type)) subscribeMap.set(type, new Set());
+  subscribeMap.get(type)!.add(cb);
+  return () => subscribeMap.get(type)?.delete(cb);
+});
+
+function fireEvent(type: string, event: Record<string, unknown>): void {
+  subscribeMap.get(type)?.forEach((cb) => cb(event));
+}
 
 vi.mock("../../stores/event-store/index", () => {
   const store = {
     connected: true,
-    subscribe: (...args: unknown[]) => subscribeMock(...args),
+    subscribe: (...args: unknown[]) => subscribeMock(...(args as Parameters<typeof subscribeMock>)),
   };
   return {
     useEventStore: (selector: (s: typeof store) => unknown) => selector(store),
@@ -170,6 +186,7 @@ function renderBar(projectId: ProjectId = "proj-1" as ProjectId) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  subscribeMap.clear();
   useAutomationLoopStore.getState().reset();
   // The automation model selector falls back to localStorage when the
   // in-memory map is empty, so tests must clear both halves of the
@@ -253,17 +270,23 @@ describe("AutomationBar", () => {
     );
   });
 
-  it("start passes a null model when no AutomationBar pick exists so the backend falls back to the Loop instance default", async () => {
+  it("start uses the model shown in the AutomationBar picker even before an explicit per-project pick", async () => {
     const user = userEvent.setup();
     mockStartLoop.mockResolvedValue({
       active_agent_instances: ["loop-agent-1"],
       agent_instance_id: "loop-agent-1",
     });
+    localStorage.setItem("aura-selected-model:aura_harness", "aura-claude-opus-4-7");
     renderBar();
     await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+    expect(screen.getByTestId("automation-model-trigger")).toHaveTextContent("Opus 4.7");
 
     await user.click(screen.getByTitle("Start"));
-    expect(mockStartLoop).toHaveBeenCalledWith("proj-1", undefined, null);
+    expect(mockStartLoop).toHaveBeenCalledWith(
+      "proj-1",
+      undefined,
+      "aura-claude-opus-4-7",
+    );
   });
 
   it("model picker writes the selected model into the automation-loop store and the next Start uses it", async () => {
@@ -666,5 +689,139 @@ describe("AutomationBar", () => {
     await waitFor(() => expect(mockStopLoop).toHaveBeenCalled());
     // Initial click + the retry triggered by Reset.
     await waitFor(() => expect(mockStartLoop).toHaveBeenCalledTimes(2));
+  });
+
+  // Regression: clicking Start on the AutomationBar used to silently
+  // flip the StatusBadge back to "idle" the moment any forwarder in
+  // the same project emitted a `loop_finished` — including the short-
+  // lived ephemeral task-runner automatons that the dev-loop scheduler
+  // spawns per task via `run_single_task`. The bar should only flip
+  // back to idle when the BOUND Loop instance itself ends; events
+  // from sibling ephemeral runners must be ignored.
+  it("ignores loop_finished from ephemeral task-runner agents while the bound Loop stays active", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+    await waitFor(() =>
+      expect(useAutomationLoopStore.getState().getLoopAgent("proj-1" as ProjectId)).toBe(
+        "loop-agent-1",
+      ),
+    );
+
+    // An ephemeral task-runner finishes and its forwarder teardown
+    // emits `loop_finished` for the runner's own ephemeral id. The
+    // bar must NOT treat that as the bound Loop ending.
+    act(() => {
+      fireEvent("loop_finished", {
+        project_id: "proj-1",
+        agent_id: "ephemeral-task-runner-1",
+        content: {},
+      });
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent("active");
+  });
+
+  it("flips to idle when loop_finished arrives for the bound Loop instance", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+    await waitFor(() =>
+      expect(useAutomationLoopStore.getState().getLoopAgent("proj-1" as ProjectId)).toBe(
+        "loop-agent-1",
+      ),
+    );
+
+    act(() => {
+      fireEvent("loop_finished", {
+        project_id: "proj-1",
+        agent_id: "loop-agent-1",
+        content: {},
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("idle");
+    });
+  });
+
+  it("ignores loop_stopped from ephemeral task-runner agents while the bound Loop stays active", async () => {
+    mockGetLoopStatus.mockResolvedValue({
+      active_agent_instances: ["loop-agent-1"],
+      paused: false,
+    });
+    renderBar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("active");
+    });
+    await waitFor(() =>
+      expect(useAutomationLoopStore.getState().getLoopAgent("proj-1" as ProjectId)).toBe(
+        "loop-agent-1",
+      ),
+    );
+
+    act(() => {
+      fireEvent("loop_stopped", {
+        project_id: "proj-1",
+        agent_id: "ephemeral-task-runner-1",
+        content: {},
+      });
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent("active");
+  });
+
+  // On a brand-new project (no Loop-role row yet, so
+  // `listAgentInstances` returns no `loop` entry), the AutomationBar
+  // discovers the bound id from the first `loop_started` WS frame.
+  // That frame must populate `boundLoopId` so the subsequent
+  // terminal-event filter has a concrete id to match against.
+  it("populates the bound Loop id from the first loop_started WS frame on a fresh project", async () => {
+    mockListAgentInstances.mockResolvedValue([
+      { agent_instance_id: "agent-1", instance_role: "chat" },
+    ]);
+    mockGetLoopStatus.mockResolvedValue({ active_agent_instances: [], paused: false });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+
+    act(() => {
+      fireEvent("loop_started", {
+        project_id: "proj-1",
+        agent_id: "loop-agent-fresh",
+        content: {},
+      });
+    });
+
+    await waitFor(() =>
+      expect(useAutomationLoopStore.getState().getLoopAgent("proj-1" as ProjectId)).toBe(
+        "loop-agent-fresh",
+      ),
+    );
+
+    // An ephemeral teardown after the bound id has been discovered
+    // must still be ignored — the bar should stay in `preparing` (no
+    // task_started yet) rather than dropping to idle.
+    act(() => {
+      fireEvent("loop_finished", {
+        project_id: "proj-1",
+        agent_id: "ephemeral-runner-1",
+        content: {},
+      });
+    });
+
+    expect(screen.getByTestId("status")).toHaveTextContent("preparing");
   });
 });

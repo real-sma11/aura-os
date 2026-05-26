@@ -44,13 +44,13 @@ pub(super) async fn resolve_start_context(
         &workspace_root,
         params::resolve_git_repo_url(project.as_ref()).as_deref(),
     )?;
-    let model = pick_model(requested_model, &agent_instance);
+    let model = require_model(pick_model(requested_model, &agent_instance))?;
     let permissions = normalize_permissions(&agent_instance, &project_id);
     Ok(StartContext {
         client,
         project_id,
         project,
-        model,
+        model: Some(model),
         workspace_root,
         agent_id: agent_instance.agent_id,
         agent_system_prompt: agent_instance.system_prompt,
@@ -102,6 +102,24 @@ fn pick_model(
         .map(str::to_string)
         .or_else(|| agent_instance.default_model.clone())
         .or_else(|| agent_instance.model.clone())
+}
+
+/// Require an explicit model on every dev-loop / task-run start. The
+/// harness rejects an unset `model` with HTTP 400
+/// `missing model — task run request must include an explicit model
+/// identifier`, and the dev-loop's `map_start_error` in turn folds
+/// that 400 into a generic 502 `bad_gateway` — which surfaces in the
+/// AutomationBar / RunTaskButton as an unhelpful "Bad Gateway" toast
+/// that hides the real cause (the FE forgot to attach a model id when
+/// the chat-UI store hadn't been hydrated for this agent yet). Bail
+/// here with a structured 400 so the FE can show a clear "pick a
+/// model" message instead of a transient-looking 502.
+fn require_model(model: Option<String>) -> ApiResult<String> {
+    model.ok_or_else(|| {
+        ApiError::bad_request(
+            "no model selected for run; pass ?model=<id> or set the agent's default_model",
+        )
+    })
 }
 
 /// Normalize the agent instance's permissions for dev-loop execution.
