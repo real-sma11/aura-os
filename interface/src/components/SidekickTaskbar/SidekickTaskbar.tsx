@@ -75,18 +75,6 @@ export function SidekickTaskbar() {
       { id: "browser", icon: <Globe size={16} />, title: "Browser" },
       { id: "specs", icon: <File size={16} />, title: "Specs" },
       {
-        id: "tasks",
-        // `CheckLoopGlyph` mirrors `PlayLoopGlyph`: the Check
-        // affordance stays visible at all times and the rotating
-        // accent ring is drawn in the same SVG when a task loop is
-        // active. The earlier behaviour swapped the entire icon out
-        // for a bare `LoopProgress` spinner, which made the tab hard
-        // to recognise while busy and broke visual parity with the
-        // adjacent Run tab.
-        icon: <CheckLoopGlyph active={tasksActive} size={16} />,
-        title: "Tasks",
-      },
-      {
         id: "run",
         // `PlayLoopGlyph` keeps the Play affordance recognisable AND
         // shows loop activity in a single SVG, so the Play glyph and
@@ -97,6 +85,18 @@ export function SidekickTaskbar() {
         // couldn't tell the Run tab was still the Run tab.
         icon: <PlayLoopGlyph active={runActive} size={16} />,
         title: "Run",
+      },
+      {
+        id: "tasks",
+        // `CheckLoopGlyph` mirrors `PlayLoopGlyph`: the Check
+        // affordance stays visible at all times and the rotating
+        // accent ring is drawn in the same SVG when a task loop is
+        // active. The earlier behaviour swapped the entire icon out
+        // for a bare `LoopProgress` spinner, which made the tab hard
+        // to recognise while busy and broke visual parity with the
+        // adjacent Run tab.
+        icon: <CheckLoopGlyph active={tasksActive} size={16} />,
+        title: "Tasks",
       },
       { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
       { id: "log", icon: <ScrollText size={16} />, title: "Log" },
