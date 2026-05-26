@@ -191,21 +191,6 @@ export interface Persona {
   readonly theme: PersonaTheme;
 }
 
-const NO_THEME: PersonaTheme = {
-  desktopBackgroundUrl: null,
-  desktopBackgroundPosition: null,
-  desktopBackgroundFit: null,
-  desktopBackgroundColor: null,
-  desktopBackgroundScale: null,
-  desktopBackgroundOffsetY: null,
-  siteBackgroundUrl: null,
-  siteBackgroundColor: null,
-  siteForegroundColor: null,
-  siteForegroundColorMuted: null,
-  siteCtaGlowColor: null,
-  avatarObjectPosition: null,
-};
-
 export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "vibecoder",
