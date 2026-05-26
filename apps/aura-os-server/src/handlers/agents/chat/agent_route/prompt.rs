@@ -5,11 +5,14 @@
 //! (project-state snapshot fetch, agent permission normalisation, and
 //! workspace-path resolution for the typed `project_info` wire field).
 
+use std::path::Path;
+
 use aura_os_core::{AgentPermissions, ProjectId};
 
 use crate::dto::SendChatRequest;
 use crate::handlers::projects_helpers::resolve_project_tool_workspace_path;
 use crate::state::AppState;
+use crate::workspace_index::build_workspace_index_block;
 
 use super::super::compaction::load_project_state_snapshot;
 use super::super::persist::ChatPersistCtx;
@@ -104,7 +107,7 @@ pub(super) async fn build_agent_session_fields(
         workspace_path: project_path.as_deref(),
     });
 
-    let fields = build_typed_session_fields(
+    let mut fields = build_typed_session_fields(
         state,
         TypedSessionInputs {
             name: &agent.name,
@@ -117,6 +120,23 @@ pub(super) async fn build_agent_session_fields(
             project: typed_project,
         },
     );
+
+    // Phase 4 (reread-efficiency): seed the workspace digest into the
+    // server-baked `agent_system_prompt` addenda so the harness echoes
+    // it inside the chat envelope. Loaded only when the turn is
+    // project-bound (we have a resolved workspace path); otherwise the
+    // bare-agent chat falls through unchanged.
+    if let Some(path) = project_path.as_deref() {
+        if let Some(block) = build_workspace_index_block(Path::new(path)) {
+            let merged = match fields.agent_system_prompt.take() {
+                Some(existing) if !existing.trim().is_empty() => {
+                    format!("{existing}\n\n{block}")
+                }
+                _ => block,
+            };
+            fields.agent_system_prompt = Some(merged);
+        }
+    }
 
     (fields, project_path)
 }

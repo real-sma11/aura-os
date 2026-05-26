@@ -26,6 +26,7 @@ pub(crate) mod router;
 pub mod stability_metrics;
 pub(crate) mod state;
 pub(crate) mod sync_state;
+pub(crate) mod workspace_index;
 
 pub use app_builder::build_app_state;
 pub use handlers::public::RateLimiter as PublicRateLimiter;

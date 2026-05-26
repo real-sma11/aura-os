@@ -38,3 +38,7 @@ logs/run_evaluation/
 # Secrets
 .env
 AURA_VIDEO_PLAN.md
+
+# Per-session caches written by aura-os-server (e.g. workspace-index.json
+# seeded into the chat system prompt).
+.aura/
