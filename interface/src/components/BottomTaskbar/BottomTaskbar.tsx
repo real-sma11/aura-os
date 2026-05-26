@@ -51,14 +51,15 @@ export interface BottomTaskbarProps {
    * panel's bottom edge.
    *
  * - `public`: only the `ThemeToggleButton` in the right slot.
- * - `simple`: bottom-left `ProfilePill` (avatar + name) plus
- *   Credits, Settings, and ThemeToggle in the right slot.
+ * - `simple`: bottom-left `OrgSelector` + `ProfilePill` (avatar +
+ *   name) plus Credits, Settings, and ThemeToggle in the right slot.
  *   No Desktop button, no app rail center, no center pill, no
  *   profile rail shortcut, no clock, no Help, no collapse chevron
  *   — a minimal authed surface anchored by the profile pill.
- * - `advanced`: full chrome (ProfilePill + Desktop + favorites left,
- *   AppNavRail center, collapsible right cluster with Credits/
- *   Settings/ThemeToggle/Help/Profile, plus the clock readout).
+ * - `advanced`: full chrome (Desktop + OrgSelector + ProfilePill +
+ *   favorites left, AppNavRail center, collapsible right cluster
+ *   with Credits/Settings/ThemeToggle/Help/Profile, plus the clock
+ *   readout).
    */
   mode: UIMode;
 }
@@ -125,9 +126,11 @@ function PublicBottomTaskbar(): React.ReactElement {
  *
  * Branches on `isAdvanced` to gate:
  *
- *   - `.left`:  the pill is mounted in both modes; the trailing
- *     Desktop `TaskbarIconButton` and `<FavoriteAgentsStrip />` are
- *     Advanced-only. Simple shows the profile pill on its own.
+ *   - `.left`:  the pill is mounted in both modes; the leading
+ *     Desktop `TaskbarIconButton` and trailing `<FavoriteAgentsStrip />`
+ *     are Advanced-only. Order is Desktop -> OrgSelector ->
+ *     ProfilePill -> FavoriteAgentsStrip in Advanced and
+ *     OrgSelector -> ProfilePill in Simple.
  *   - `.center`: the entire pill (AppNavRail + Apps + collapse
  *     chevron) — Advanced only.
  *   - `.right.rightPrimary`:
@@ -216,21 +219,15 @@ function AuthedBottomTaskbar({
       onContextMenu={onContextMenu}
     >
       <div className={styles.left}>
-        <ProfilePill
-          name={profile.name}
-          avatarUrl={profile.avatarUrl}
-          onOpenSettings={openOrgSettings}
-          plan={plan}
-        />
         {/*
-         * Team selector lives in the bottom taskbar (left of the
-         * Desktop icon in Advanced; right after `ProfilePill` in
-         * Simple, which has no Desktop icon). The titlebar's leading
-         * slot is now a uniform `<PanelLeft />` drawer toggle across
-         * every mode, so the team affordance no longer competes for
-         * that spot.
+         * Left cluster reads left -> right as
+         * Desktop icon -> OrgSelector -> ProfilePill -> favorites in
+         * Advanced, and OrgSelector -> ProfilePill in Simple (no
+         * Desktop icon, no favorites). The titlebar's leading slot
+         * is a uniform `<PanelLeft />` drawer toggle across every
+         * mode, so the team affordance does not compete for that
+         * spot.
          */}
-        <OrgSelector variant="icon" />
         {isAdvanced && (
           <TaskbarIconButton
             selected={activeApp.id === "desktop"}
@@ -246,6 +243,13 @@ function AuthedBottomTaskbar({
             }}
           />
         )}
+        <OrgSelector variant="icon" />
+        <ProfilePill
+          name={profile.name}
+          avatarUrl={profile.avatarUrl}
+          onOpenSettings={openOrgSettings}
+          plan={plan}
+        />
         {isAdvanced && <FavoriteAgentsStrip />}
       </div>
 

@@ -71,8 +71,8 @@ export interface AuraTitlebarProps {
  *   the global keyboard shortcuts the menu publishes (Ctrl+N, Ctrl+,,
  *   F11, zoom, etc.) still fire in Simple via the headless companion.
  *   The team selector (`OrgSelector`) lives in the bottom taskbar's
- *   `.left` cluster (left of the Desktop icon in Advanced) instead
- *   of the titlebar.
+ *   `.left` cluster (right of the Desktop icon in Advanced, leading
+ *   the cluster in Simple) instead of the titlebar.
  * - Trailing slot:
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `WindowControls` (with the sidekick / split-screen toggles
