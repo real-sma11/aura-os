@@ -417,6 +417,9 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         harness_broadcast_capacity,
         public_rate_limiter: crate::handlers::public::RateLimiter::new(),
         public_demo_agent_id: Arc::new(OnceCell::new()),
+        mixpanel: crate::mixpanel::MixpanelTracker::new(
+            &env_opt("MIXPANEL_TOKEN").unwrap_or_default(),
+        ),
     })
 }
 

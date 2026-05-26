@@ -416,6 +416,9 @@ pub struct AppState {
     /// async storage I/O at boot, so the cell starts empty and
     /// initialises on first public-chat hit.
     pub public_demo_agent_id: Arc<OnceCell<AgentId>>,
+    /// Optional Mixpanel tracker for server-side `session_active` events.
+    /// `None` when `MIXPANEL_TOKEN` is not set.
+    pub mixpanel: Option<crate::mixpanel::MixpanelTracker>,
 }
 
 impl AppState {

@@ -386,6 +386,7 @@ mod tests {
                 harness_broadcast_capacity: 16384,
                 public_rate_limiter: crate::handlers::public::RateLimiter::new(),
                 public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
+                mixpanel: None,
             },
             store_dir,
         )

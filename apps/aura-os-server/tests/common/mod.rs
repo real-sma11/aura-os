@@ -349,6 +349,7 @@ pub fn build_test_app_from_store(
         harness_broadcast_capacity: 16384,
         public_rate_limiter: aura_os_server::PublicRateLimiter::new(),
         public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
+        mixpanel: None,
     };
 
     let app = aura_os_server::create_router_with_interface(state.clone(), None);
