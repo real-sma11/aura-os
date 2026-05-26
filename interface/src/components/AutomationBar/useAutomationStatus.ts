@@ -1,5 +1,10 @@
 ﻿import { useEffect, useReducer, useRef, useCallback, useState } from "react";
-import { api, isInsufficientCreditsError, dispatchInsufficientCredits } from "../../api/client";
+import {
+  api,
+  ApiClientError,
+  isInsufficientCreditsError,
+  dispatchInsufficientCredits,
+} from "../../api/client";
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
 import { useLoopActivityStore } from "../../stores/loop-activity-store";
@@ -92,6 +97,21 @@ function rehydrateLoopActivityForProject(projectId: ProjectId): void {
   void useLoopActivityStore.getState().hydrate({ project_id: projectId });
 }
 
+/**
+ * Surface for a failed `POST /loop/start` returned by
+ * `useAutomationStatus`. The `code` lets the AutomationBar render a
+ * different copy + a Reset affordance for the harness-wedge case
+ * (`automation_already_running`) without parsing the free-text
+ * `message` itself; the rest of `message` is the human-readable
+ * sentence we got from the server.
+ */
+export interface StartLoopError {
+  message: string;
+  code: string | null;
+  status: number | null;
+  automatonId: string | null;
+}
+
 interface AutomationStatusData {
   status: AutomationStatus;
   agentCount: number;
@@ -108,12 +128,50 @@ interface AutomationStatusData {
   handleStopConfirm: () => Promise<void>;
   stopError: string | null;
   clearStopError: () => void;
+  startError: StartLoopError | null;
+  clearStartError: () => void;
+  handleResetAndRetry: () => Promise<void>;
 }
 
 function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string" && err.length > 0) return err;
   return fallback;
+}
+
+/**
+ * Classify a thrown error from `api.startLoop` / `api.resumeLoop` so
+ * the AutomationBar can render a structured "Reset" affordance for the
+ * `automation_already_running` 409 (the harness has a stale automaton
+ * we cannot adopt) while still surfacing every other startup failure
+ * with a visible modal instead of the previous silent
+ * `console.error`. Without this, the per-task Play button and the
+ * AutomationBar Play button both look like they did nothing after the
+ * click, even though the server cleanly rejected the request.
+ */
+function describeStartLoopError(err: unknown): StartLoopError {
+  if (err instanceof ApiClientError) {
+    const data = (err.body as { data?: unknown }).data as
+      | { automaton_id?: unknown }
+      | null
+      | undefined;
+    const automatonId =
+      typeof data?.automaton_id === "string" && data.automaton_id.length > 0
+        ? data.automaton_id
+        : null;
+    return {
+      message: err.body.error || err.message || "Failed to start automation",
+      code: err.body.code || null,
+      status: err.status,
+      automatonId,
+    };
+  }
+  return {
+    message: errorMessage(err, "Failed to start automation"),
+    code: null,
+    status: null,
+    automatonId: null,
+  };
 }
 
 export function useAutomationStatus(projectId: ProjectId): AutomationStatusData {
@@ -136,6 +194,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   const [state, dispatch] = useReducer(automationReducer, initialState);
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<StartLoopError | null>(null);
 
   // Bound `Loop`-role agent instance id for this project. Read by all
   // pause / resume / stop paths so the harness's "one in-flight turn
@@ -238,6 +297,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   const agentCount = agentsOf(state).length;
 
   const handleStart = useCallback(async () => {
+    setStartError(null);
     if (state.kind === "paused") {
       try {
         // Pause/resume always target the bound Loop instance so we
@@ -253,6 +313,7 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
         rehydrateLoopActivityForProject(projectId);
       } catch (err) {
         console.error("Failed to resume loop", err);
+        setStartError(describeStartLoopError(err));
       }
       return;
     }
@@ -299,7 +360,17 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       rehydrateLoopActivityForProject(projectId);
     } catch (err) {
       dispatch({ type: "startFailed" });
-      if (isInsufficientCreditsError(err)) dispatchInsufficientCredits();
+      if (isInsufficientCreditsError(err)) {
+        dispatchInsufficientCredits();
+      } else {
+        // Replace the previous silent `console.error` so the click is
+        // visibly resolved one way or another. The AutomationBar
+        // renders this `startError` as a ModalConfirm with a Reset
+        // affordance for the `automation_already_running` case, which
+        // is the wedge the user hit when the harness had a stale
+        // automaton from a prior aura-os-server session.
+        setStartError(describeStartLoopError(err));
+      }
       console.error("Failed to start loop", err);
     }
   }, [projectId, state.kind, selectedModel, boundLoopId, setBoundLoopId]);
@@ -322,6 +393,32 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
   }, []);
 
   const clearStopError = useCallback(() => setStopError(null), []);
+  const clearStartError = useCallback(() => setStartError(null), []);
+
+  /**
+   * "Reset and retry" path for the `automation_already_running` modal.
+   * Calls `stopLoop` against the bound Loop instance to evict any
+   * local registry slot (and forward the stop to the harness if the
+   * automaton id is known server-side), then re-invokes `handleStart`
+   * once so the user does not have to click Play a second time. Errors
+   * are funnelled back into the same `startError` modal so the user
+   * always sees the outcome.
+   */
+  const handleResetAndRetry = useCallback(async () => {
+    setStartError(null);
+    try {
+      await api.stopLoop(projectId, boundLoopId ?? undefined);
+    } catch (err) {
+      // Stop is best-effort here — the wedge may mean the local
+      // registry is empty, in which case `stopLoop` is a no-op and
+      // we still want to attempt the start. Surface the error only if
+      // the subsequent start also fails (handled below).
+      console.warn("Reset: stopLoop failed (continuing to retry start)", err);
+    }
+    fetchLoopStatus();
+    rehydrateLoopActivityForProject(projectId);
+    await handleStart();
+  }, [projectId, boundLoopId, fetchLoopStatus, handleStart]);
 
   const handleStopConfirm = useCallback(async () => {
     setConfirmStop(false);
@@ -374,5 +471,6 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
     confirmStop, setConfirmStop,
     handleStart, handlePause, handleStop, handleStopConfirm,
     stopError, clearStopError,
+    startError, clearStartError, handleResetAndRetry,
   };
 }

@@ -80,7 +80,17 @@ pub(crate) fn map_start_error(
     ws_slots_cap: usize,
 ) -> (StatusCode, Json<ApiError>) {
     match error {
-        AutomatonStartError::Conflict(_) => ApiError::conflict("a dev loop is already running"),
+        // Surface as the structured `automation_already_running` 409 so the
+        // AutomationBar can render a real "the harness has a stale automaton
+        // we cannot adopt" modal with a Reset button — instead of the silent
+        // 409 that previously turned Play into a no-op. The `automaton_id`
+        // payload is `None` here by definition: this branch is the
+        // fall-through for the case where `extract_conflict_automaton_id`
+        // could not pull an id out of the harness body, which is the only
+        // way `start_or_adopt`'s adopt-shortcut can fail to recover.
+        AutomatonStartError::Conflict(automaton_id) => {
+            ApiError::automation_already_running(automaton_id)
+        }
         AutomatonStartError::Request {
             message,
             is_connect,

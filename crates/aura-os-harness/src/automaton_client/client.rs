@@ -76,14 +76,7 @@ impl AutomatonClient {
             .await
             .map_err(|e| AutomatonStartError::Other(e.into()))?;
         if status == reqwest::StatusCode::CONFLICT {
-            let automaton_id = serde_json::from_str::<serde_json::Value>(&body)
-                .ok()
-                .and_then(|v| {
-                    v.get("error").and_then(|e| e.as_str()).and_then(|msg| {
-                        msg.find("automaton_id: ")
-                            .map(|pos| msg[pos + 14..].trim_end_matches(')').to_string())
-                    })
-                });
+            let automaton_id = extract_conflict_automaton_id(&body);
             return Err(AutomatonStartError::Conflict(automaton_id));
         }
         if !status.is_success() {
@@ -272,5 +265,158 @@ impl AutomatonClient {
 
         let handle = WsReaderHandle::new(reader.abort_handle());
         Ok((broadcast_tx, handle))
+    }
+}
+
+/// Extract an `automaton_id` from a harness 409 response body.
+///
+/// The harness has historically returned the conflict in two shapes,
+/// and a small wedge in the wild surfaces when the parser only handles
+/// one of them: starting a fresh dev loop while a stale automaton still
+/// occupies the harness's per-`agent_id` slot returns
+/// `Conflict(None)` from this client, which then bypasses the
+/// adopt-or-stop-and-restart path in `start_or_adopt` and leaves the
+/// user with a silent 409 they cannot recover from without restarting
+/// the harness process.
+///
+/// The two shapes we now accept:
+///
+/// 1. Structured: `{"automaton_id": "..."}` or
+///    `{"data": {"automaton_id": "..."}}` — the modern wire shape, used
+///    by harness builds that round-trip a typed conflict payload.
+/// 2. Legacy substring: an `error` field whose free text contains
+///    `automaton_id: <id>` — the original `Display` impl of the
+///    harness's own `Conflict(Some(_))` Debug-formats the id into the
+///    error string, which is what the previous parser keyed on.
+///
+/// Returning `Some(id)` here is what lets the server's
+/// `start_or_adopt` either adopt the live automaton or `client.stop`
+/// the stale one and retry — both of which are required for the
+/// AutomationBar Play button to recover on a wedge instead of
+/// surfacing the wedge as "Play does nothing".
+fn extract_conflict_automaton_id(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+
+    if let Some(id) = read_automaton_id_field(&value) {
+        return Some(id);
+    }
+    if let Some(data) = value.get("data") {
+        if let Some(id) = read_automaton_id_field(data) {
+            return Some(id);
+        }
+    }
+    if let Some(error) = value.get("error") {
+        if let Some(id) = read_automaton_id_field(error) {
+            return Some(id);
+        }
+        if let Some(msg) = error.as_str() {
+            if let Some(id) = extract_automaton_id_substring(msg) {
+                return Some(id);
+            }
+        }
+    }
+    if let Some(msg) = value.get("message").and_then(|v| v.as_str()) {
+        if let Some(id) = extract_automaton_id_substring(msg) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+/// Pull an `automaton_id` field off a JSON object, accepting either
+/// `automaton_id` (preferred) or the older `id` alias the harness
+/// uses for the start-response success body. Blank strings are
+/// treated as missing so we don't synthesise an empty id.
+fn read_automaton_id_field(value: &serde_json::Value) -> Option<String> {
+    let obj = value.as_object()?;
+    for key in ["automaton_id", "id"] {
+        if let Some(s) = obj.get(key).and_then(|v| v.as_str()) {
+            let trimmed = s.trim().trim_matches('"');
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Parse the `automaton_id: <id>` fragment out of a free-text error
+/// message. Matches the legacy harness Display format
+/// `"a dev loop is already running (automaton_id: \"abc\")"`, the
+/// `Some("abc")` Debug shape from `Conflict(Some(_))`, and the
+/// bare `automaton_id: abc` variant some harness builds emit.
+fn extract_automaton_id_substring(msg: &str) -> Option<String> {
+    let needle = "automaton_id:";
+    let pos = msg.find(needle)?;
+    let tail = msg[pos + needle.len()..].trim_start();
+    let mut trimmed: &str = tail;
+    if let Some(rest) = trimmed.strip_prefix("Some(") {
+        trimmed = rest.trim_end_matches(')');
+    }
+    let trimmed = trimmed.trim_matches('"').trim();
+    let end = trimmed
+        .find(|c: char| c == ')' || c == ',' || c == '}' || c == '"' || c.is_whitespace())
+        .unwrap_or(trimmed.len());
+    let candidate = &trimmed[..end];
+    if candidate.is_empty() {
+        None
+    } else {
+        Some(candidate.to_string())
+    }
+}
+
+#[cfg(test)]
+mod parser_tests {
+    use super::{extract_automaton_id_substring, extract_conflict_automaton_id};
+
+    #[test]
+    fn structured_top_level_automaton_id_is_extracted() {
+        let body = r#"{"automaton_id":"auto-abc","error":"conflict"}"#;
+        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-abc"));
+    }
+
+    #[test]
+    fn structured_nested_data_automaton_id_is_extracted() {
+        let body = r#"{"error":"conflict","data":{"automaton_id":"auto-nested"}}"#;
+        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-nested"));
+    }
+
+    #[test]
+    fn legacy_substring_in_error_string_is_extracted() {
+        // The harness's original `Display` impl serialises
+        // `Conflict(Some("auto-legacy"))` as the substring below.
+        let body = r#"{"error":"a dev loop is already running (automaton_id: \"auto-legacy\")"}"#;
+        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-legacy"));
+    }
+
+    #[test]
+    fn legacy_some_debug_format_is_extracted() {
+        let body = r#"{"error":"conflict at automaton_id: Some(\"auto-some\")"}"#;
+        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-some"));
+    }
+
+    #[test]
+    fn bare_unquoted_substring_is_extracted() {
+        let body = r#"{"message":"automaton_id: auto-bare blocked by upstream"}"#;
+        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-bare"));
+    }
+
+    #[test]
+    fn missing_id_returns_none() {
+        let body = r#"{"error":"a dev loop is already running"}"#;
+        assert_eq!(extract_conflict_automaton_id(body), None);
+    }
+
+    #[test]
+    fn non_json_body_returns_none() {
+        assert_eq!(extract_conflict_automaton_id("not json at all"), None);
+    }
+
+    #[test]
+    fn substring_helper_handles_trailing_punctuation() {
+        assert_eq!(
+            extract_automaton_id_substring("blah automaton_id: abc, more").as_deref(),
+            Some("abc"),
+        );
     }
 }

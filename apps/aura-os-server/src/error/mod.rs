@@ -120,6 +120,46 @@ impl ApiError {
         )
     }
 
+    /// `POST /loop/start` (or `/tasks/:id/run`) hit a harness 409 that
+    /// neither the adopt-shortcut nor the stop-and-restart branch in
+    /// `start_or_adopt` could recover from. Returned with HTTP 409 and a
+    /// machine-readable `code` (`automation_already_running`) so the
+    /// AutomationBar can render a "Reset automation" affordance instead
+    /// of silently console.error-ing on the catch path and leaving the
+    /// Play button looking clickable. `automaton_id` is populated when
+    /// the harness body included one (legacy substring or structured
+    /// `automaton_id` field) so the UI's Reset button can target the
+    /// stale automaton directly via `stopLoop`; `None` means the wedge
+    /// is opaque and the user will need to restart the harness process.
+    pub(crate) fn automation_already_running(
+        automaton_id: Option<String>,
+    ) -> (StatusCode, Json<Self>) {
+        let message = match automaton_id.as_deref() {
+            Some(id) => format!(
+                "A dev loop is already running on the harness (automaton {id}). \
+                 Click Reset to stop it and start a fresh run."
+            ),
+            None => {
+                "A dev loop is already running on the harness, but its id is \
+                 unknown to this server. Click Reset to clear local state — \
+                 if Play still fails after that, restart the harness process."
+                    .to_string()
+            }
+        };
+        (
+            StatusCode::CONFLICT,
+            Json(Self {
+                error: message.clone(),
+                code: "automation_already_running".to_string(),
+                details: Some(message),
+                data: Some(serde_json::json!({
+                    "code": "automation_already_running",
+                    "automaton_id": automaton_id,
+                })),
+            }),
+        )
+    }
+
     /// The upstream harness would reject a new `UserMessage` because
     /// the target agent is already running a turn (typically because
     /// the dev loop / automation started a task on the same agent id

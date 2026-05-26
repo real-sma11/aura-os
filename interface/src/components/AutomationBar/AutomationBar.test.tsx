@@ -37,19 +37,59 @@ const mockResumeLoop = vi.fn();
 const mockListAgentInstances = vi.fn();
 const mockListLoops = vi.fn();
 
-vi.mock("../../api/client", () => ({
-  api: {
-    getLoopStatus: (...args: unknown[]) => mockGetLoopStatus(...args),
-    startLoop: (...args: unknown[]) => mockStartLoop(...args),
-    pauseLoop: (...args: unknown[]) => mockPauseLoop(...args),
-    stopLoop: (...args: unknown[]) => mockStopLoop(...args),
-    resumeLoop: (...args: unknown[]) => mockResumeLoop(...args),
-    listAgentInstances: (...args: unknown[]) => mockListAgentInstances(...args),
-    listLoops: (...args: unknown[]) => mockListLoops(...args),
-  },
-  isInsufficientCreditsError: () => false,
-  dispatchInsufficientCredits: vi.fn(),
-}));
+vi.mock("../../api/client", () => {
+  // Defined inside the factory so the hoisted `vi.mock` does not
+  // reference a top-level identifier before initialisation. Minimal
+  // stand-in for the real `ApiClientError` — `describeStartLoopError`
+  // in `useAutomationStatus` checks `err instanceof ApiClientError`
+  // and then reads `body.code` / `body.error` / `body.data.automaton_id`
+  // off it to decide which modal copy to render, so the shape here
+  // mirrors `interface/src/shared/api/core.ts` byte-for-byte.
+  class MockApiClientError extends Error {
+    status: number;
+    body: {
+      error: string;
+      code: string;
+      details: string | null;
+      data?: unknown;
+    };
+    constructor(
+      status: number,
+      body: {
+        error: string;
+        code: string;
+        details: string | null;
+        data?: unknown;
+      },
+    ) {
+      super(body.error);
+      this.name = "ApiClientError";
+      this.status = status;
+      this.body = body;
+    }
+  }
+  return {
+    api: {
+      getLoopStatus: (...args: unknown[]) => mockGetLoopStatus(...args),
+      startLoop: (...args: unknown[]) => mockStartLoop(...args),
+      pauseLoop: (...args: unknown[]) => mockPauseLoop(...args),
+      stopLoop: (...args: unknown[]) => mockStopLoop(...args),
+      resumeLoop: (...args: unknown[]) => mockResumeLoop(...args),
+      listAgentInstances: (...args: unknown[]) => mockListAgentInstances(...args),
+      listLoops: (...args: unknown[]) => mockListLoops(...args),
+    },
+    ApiClientError: MockApiClientError,
+    isInsufficientCreditsError: () => false,
+    dispatchInsufficientCredits: vi.fn(),
+  };
+});
+
+// Re-import the mocked class for use inside the test bodies. Vitest
+// resolves this to the same `MockApiClientError` constructor defined
+// in the factory above, so `err instanceof ApiClientError` checks
+// inside `describeStartLoopError` evaluate true on instances created
+// with this binding.
+import { ApiClientError as MockApiClientError } from "../../api/client";
 
 const subscribeMock = vi.fn((_type: string, _cb: (...args: unknown[]) => void) => vi.fn());
 
@@ -554,5 +594,77 @@ describe("AutomationBar", () => {
       expect(screen.getByTestId("status")).toHaveTextContent("active");
     });
     expect(screen.queryByText(/agents/)).not.toBeInTheDocument();
+  });
+
+  // Regression: clicking Play used to silently `console.error` when
+  // `POST /loop/start` returned 409 ("a dev loop is already running")
+  // — the button stayed clickable, no toast, no modal, so the user
+  // could not tell anything had happened. These two tests pin the new
+  // contract: every failed Start surfaces through a ModalConfirm, and
+  // the structured `automation_already_running` 409 specifically
+  // renders a "Reset and retry" affordance instead of a Dismiss
+  // button so the user can recover from the harness wedge in one click.
+  it("surfaces a Dismiss modal when /loop/start fails with a generic error", async () => {
+    const user = userEvent.setup();
+    mockStartLoop.mockRejectedValueOnce(new Error("network down"));
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+
+    await user.click(screen.getByTitle("Start"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Start failed")).toBeInTheDocument();
+    });
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    // Generic-error modal carries the Dismiss button, NOT the Reset
+    // affordance reserved for the structured wedge case.
+    expect(screen.queryByText("Reset and retry")).not.toBeInTheDocument();
+  });
+
+  it("renders Reset and retry for automation_already_running 409 and calls stopLoop + startLoop on confirm", async () => {
+    const user = userEvent.setup();
+    // First Start call hits the harness wedge; second Start (after
+    // Reset) succeeds so we can verify the chained retry.
+    mockStartLoop
+      .mockRejectedValueOnce(
+        new MockApiClientError(409, {
+          error:
+            "A dev loop is already running on the harness (automaton auto-wedge).",
+          code: "automation_already_running",
+          details: null,
+          data: { code: "automation_already_running", automaton_id: "auto-wedge" },
+        }),
+      )
+      .mockResolvedValueOnce({
+        active_agent_instances: ["loop-agent-1"],
+        agent_instance_id: "loop-agent-1",
+      });
+    mockStopLoop.mockResolvedValueOnce({
+      active_agent_instances: [],
+      paused: false,
+    });
+    renderBar();
+    await waitFor(() => expect(mockListAgentInstances).toHaveBeenCalledWith("proj-1"));
+
+    await user.click(screen.getByTitle("Start"));
+
+    // Wedge modal copy + Reset affordance present.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Automation is wedged on the harness"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Reset and retry")).toBeInTheDocument();
+
+    // The Reset button is the "confirm" slot of the ModalConfirm mock —
+    // last button inside the modal node.
+    const resetBtn = screen.getByTestId("modal-confirm").querySelector(
+      "button:last-child",
+    )!;
+    await user.click(resetBtn);
+
+    await waitFor(() => expect(mockStopLoop).toHaveBeenCalled());
+    // Initial click + the retry triggered by Reset.
+    await waitFor(() => expect(mockStartLoop).toHaveBeenCalledTimes(2));
   });
 });

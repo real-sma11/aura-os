@@ -17,7 +17,15 @@ export function AutomationBar({ projectId }: AutomationBarProps) {
     confirmStop, setConfirmStop,
     handleStart, handlePause, handleStop, handleStopConfirm,
     stopError, clearStopError,
+    startError, clearStartError, handleResetAndRetry,
   } = useAutomationStatus(projectId);
+
+  // Whether the start error is the structured "harness has a stale
+  // automaton" 409. Drives the modal copy (Reset vs Dismiss) so the
+  // user sees the right affordance for the wedge case without us
+  // hand-parsing the free-text message in JSX.
+  const startErrorIsWedge =
+    startError?.code === "automation_already_running";
 
   // Lock the picker once the loop is starting / preparing / active /
   // paused: the model is captured at `startLoop` time, so flipping it
@@ -105,6 +113,23 @@ export function AutomationBar({ projectId }: AutomationBarProps) {
           message={stopError}
           confirmLabel="Dismiss"
           cancelLabel="Close"
+        />
+      )}
+
+      {startError && (
+        <ModalConfirm
+          isOpen
+          onClose={clearStartError}
+          onConfirm={startErrorIsWedge ? handleResetAndRetry : clearStartError}
+          title={
+            startErrorIsWedge
+              ? "Automation is wedged on the harness"
+              : "Start failed"
+          }
+          message={startError.message}
+          confirmLabel={startErrorIsWedge ? "Reset and retry" : "Dismiss"}
+          cancelLabel={startErrorIsWedge ? "Cancel" : "Close"}
+          danger={startErrorIsWedge}
         />
       )}
     </>
