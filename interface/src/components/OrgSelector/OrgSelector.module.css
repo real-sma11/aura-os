@@ -130,6 +130,7 @@
 }
 
 .iconTrigger {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -142,12 +143,35 @@
   cursor: pointer;
   padding: 2px;
   box-sizing: border-box;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color var(--transition-fast);
 }
 
-.iconTrigger:hover {
-  background: var(--color-surface-hover);
+/* Inner rounded "halo" hover plate — matches the recipe in
+   interface/docs/icon-system.md § 6 so this trigger reads the same
+   as adjacent `TaskbarIconButton` siblings (Profile, Settings,
+   ThemeToggle, etc.) in the bottom taskbar. */
+.iconTrigger::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.iconTrigger > * {
+  position: relative;
+  z-index: 1;
+}
+
+.iconTrigger:not(:disabled):hover {
   color: var(--color-text-primary);
+}
+
+.iconTrigger:not(:disabled):hover::before {
+  background: var(--icon-hover-bg);
 }
 
 .orgNameLabel {
