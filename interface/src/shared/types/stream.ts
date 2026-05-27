@@ -178,9 +178,10 @@ export interface ToolCallEntry {
    * to render a decorative lifecycle card in the timeline rather
    * than reflecting a real harness tool invocation. Downstream
    * consumers (`getStreamingPhaseLabel`, `ActiveTaskStream`) filter
-   * these out of phase-label / has-content gates so the cooking
-   * shimmer and "Waiting for output…" placeholder still show up
-   * before any real tool / text delta arrives.
+   * these out of phase-label / has-content gates so the pinned
+   * cooking shimmer's fallback `Cooking…` label still shows up
+   * before any real tool / text delta arrives, and the in-body
+   * stream renderer stays unmounted until there's real content.
    */
   synthetic?: boolean;
 }

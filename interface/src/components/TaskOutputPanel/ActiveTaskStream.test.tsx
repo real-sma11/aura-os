@@ -49,9 +49,24 @@ vi.mock("../../stores/project-action-store", () => ({
   useProjectActions: () => ({ project: { project_id: "proj-1" } }),
 }));
 
+interface CooldownState {
+  paused: boolean;
+  retryKind: string | null;
+  remainingSeconds: number | null;
+}
+
+let cooldownState: CooldownState = {
+  paused: false,
+  retryKind: null,
+  remainingSeconds: null,
+};
+
 vi.mock("../../hooks/use-cooldown-status", () => ({
-  useCooldownStatus: () => ({ paused: false }),
-  renderCooldownMessage: () => "Cooling down…",
+  useCooldownStatus: () => cooldownState,
+  renderCooldownMessage: (c: { retryKind: string | null; remainingSeconds: number | null }) =>
+    c.remainingSeconds != null
+      ? `${c.retryKind ?? "Paused"} — resuming in ${c.remainingSeconds}s…`
+      : `${c.retryKind ?? "Paused"} — resuming…`,
 }));
 
 // `LLMStreamOutput` is the heavy content renderer the component swaps
@@ -106,23 +121,29 @@ beforeEach(() => {
     thinkingText: "",
     activeToolCalls: [],
   };
+  cooldownState = {
+    paused: false,
+    retryKind: null,
+    remainingSeconds: null,
+  };
 });
 
 describe("ActiveTaskStream", () => {
-  it("renders the Waiting for output… placeholder when only synthetic tool calls are present", () => {
-    // Reproduces the regression where the synthetic `transition_task`
-    // lifecycle card emitted on `TaskStarted` flipped `hasContent` to
-    // `true` immediately, hiding the cooking placeholder for the
-    // entire window between TaskStarted and the first real delta.
+  it("renders nothing in the body when only synthetic tool calls are present", () => {
+    // The synthetic `transition_task` lifecycle card emitted on
+    // `TaskStarted` must not flip `hasContent` to `true` and mount the
+    // heavy `LLMStreamOutput`. With the redundant `Waiting for output…`
+    // placeholder removed, the body stays empty — the pinned cooking
+    // indicator at the bottom of the pane owns the active signal.
     streamState.activeToolCalls = [makeSyntheticTool()];
 
     render(<ActiveTaskStream taskId="test-task" title="Test task" />);
 
-    expect(screen.getByText("Waiting for output…")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for output…")).not.toBeInTheDocument();
     expect(screen.queryByTestId("llm-stream-output")).not.toBeInTheDocument();
   });
 
-  it("hides the placeholder and renders LLMStreamOutput once a real tool call lands", () => {
+  it("renders LLMStreamOutput once a real tool call lands", () => {
     streamState.activeToolCalls = [makeSyntheticTool(), makeRealTool()];
 
     render(<ActiveTaskStream taskId="test-task" title="Test task" />);
@@ -131,11 +152,11 @@ describe("ActiveTaskStream", () => {
     expect(screen.getByTestId("llm-stream-output")).toBeInTheDocument();
   });
 
-  it("still shows the placeholder when isStreaming is true but no text/thinking/real-tool content exists", () => {
-    // Drops `isStreaming` from the `hasContent` gate: parent surfaces
-    // already gate mounting on `entry.status === "active"`, so leaving
-    // `isStreaming` in here previously masked the placeholder for the
-    // entire active window.
+  it("renders nothing in the body while isStreaming is true but no text/thinking/real-tool content exists", () => {
+    // Parent surfaces already gate mounting on
+    // `entry.status === "active"`, so once the redundant placeholder
+    // is gone there's nothing to render in this window either — the
+    // pinned bottom indicator handles the cooking signal.
     streamState.isStreaming = true;
     streamState.streamingText = "";
     streamState.thinkingText = "";
@@ -143,7 +164,26 @@ describe("ActiveTaskStream", () => {
 
     render(<ActiveTaskStream taskId="test-task" title="Test task" />);
 
-    expect(screen.getByText("Waiting for output…")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for output…")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("llm-stream-output")).not.toBeInTheDocument();
+  });
+
+  it("renders the cooldown message in the body when the loop is paused for a provider cooldown", () => {
+    // Cooldown is the only in-body status line we still surface,
+    // because provider-cooldown state isn't shown anywhere else in
+    // this pane. Without it, users would have no signal that the
+    // loop is intentionally waiting instead of silently stuck.
+    cooldownState = {
+      paused: true,
+      retryKind: "provider_rate_limited",
+      remainingSeconds: 30,
+    };
+
+    render(<ActiveTaskStream taskId="test-task" title="Test task" />);
+
+    expect(
+      screen.getByText(/provider_rate_limited — resuming in 30s…/),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("llm-stream-output")).not.toBeInTheDocument();
   });
 });

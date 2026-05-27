@@ -15,10 +15,10 @@ import { ensureEntry, useStreamStore } from "./stream/store";
  * lands in the stream store regardless of render timing.
  *
  * When `isActive` is `true`, the entry is pre-created and
- * `isStreaming` is set synchronously on mount so the UI does not flash
- * "Waiting for output…" while waiting for the first `TaskStarted`
- * event to arrive (e.g. when the route re-renders a run that is
- * already in progress).
+ * `isStreaming` is set synchronously on mount so consumers can read
+ * the live phase label immediately when the route re-renders a run
+ * that is already in progress, instead of waiting for the next
+ * `TaskStarted` event to arrive.
  */
 export function useTaskStream(
   taskId: string | undefined,

@@ -68,15 +68,13 @@ export function ActiveTaskStream({
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
-  // Only real (non-synthetic) tool calls count as "content" — synthetic
-  // `transition_task` lifecycle cards we emit on TaskStarted live in
-  // `activeToolCalls` for the entire run, so leaving them in this gate
-  // would mask the `Waiting for output…` cooking placeholder for the
-  // whole window between TaskStarted and the first real delta.
-  // `isStreaming` is also intentionally NOT part of this gate: the
-  // parent surface already gates mounting on `entry.status === "active"`
-  // (see RunTaskOutputBody / TaskPreview), and treating `isStreaming`
-  // as content here was what previously hid the placeholder.
+  // Only real (non-synthetic) tool calls count as "content". Synthetic
+  // `transition_task` lifecycle cards land in `activeToolCalls` on
+  // every TaskStarted, so they're filtered out to keep the body empty
+  // until something real (text / thinking / a non-synthetic tool)
+  // arrives. The Run pane's pinned bottom indicator owns the
+  // "cooking" signal for that empty window — see
+  // `PinnedTaskStreamingIndicator`.
   const hasRealToolCalls = activeToolCalls.some((tc) => !tc.synthetic);
   const hasContent = !!streamingText || !!thinkingText || hasRealToolCalls;
 
@@ -137,9 +135,14 @@ export function ActiveTaskStream({
     timeline.length,
   ]);
 
-  const waitingLabel = cooldown.paused
-    ? renderCooldownMessage(cooldown)
-    : "Waiting for output…";
+  // The empty-state cooking shimmer that used to live here was
+  // redundant with the Run pane's pinned `PinnedTaskStreamingIndicator`
+  // (and the equivalent one in `TaskPreview`), which already paints a
+  // single richer label (`Cooking…` / `Thinking…` / tool phase) for the
+  // active task. The cooldown branch is kept as the only in-body
+  // status line because provider-cooldown state isn't surfaced anywhere
+  // else in this pane.
+  const showCooldownLine = !hasContent && cooldown.paused;
 
   return (
     <div className={styles.taskSection}>
@@ -159,7 +162,7 @@ export function ActiveTaskStream({
           <CopyTaskOutputButton getCopyText={getCopyText} />
         </button>
       )}
-      {!collapsed && (
+      {!collapsed && (hasContent || showCooldownLine) && (
         <div className={styles.taskBody}>
           {hasContent ? (
             <LLMStreamOutput
@@ -175,7 +178,7 @@ export function ActiveTaskStream({
               scrollRef={scrollRef}
             />
           ) : (
-            <CookingIndicator label={waitingLabel} />
+            <CookingIndicator label={renderCooldownMessage(cooldown)} />
           )}
         </div>
       )}

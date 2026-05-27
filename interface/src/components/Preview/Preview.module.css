@@ -405,13 +405,13 @@
 }
 
 /* Live Output GroupCollapsible variant — drops the header's
-   `border-bottom` so the cooking shimmer / `Waiting for output…`
-   placeholder sits flush under the section label instead of having a
-   1px divider between the two. Other preview sections (Build
-   Verification, Test Verification, Git Activity, Notes) keep the
-   default border because their bodies are visually distinct from the
-   header; the shimmer reads as a continuation of the label, so a
-   divider only adds noise. */
+   `border-bottom` so the live stream body / pinned cooking shimmer
+   sits flush under the section label instead of having a 1px divider
+   between the two. Other preview sections (Build Verification, Test
+   Verification, Git Activity, Notes) keep the default border because
+   their bodies are visually distinct from the header; the shimmer
+   reads as a continuation of the label, so a divider only adds
+   noise. */
 .liveOutputCollapsible [class*="header"] {
   border-bottom: none;
 }
