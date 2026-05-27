@@ -188,6 +188,80 @@ describe("ActivityTimeline Phase 5 — file path disambiguation", () => {
   });
 });
 
+describe("ActivityTimeline tool-position data attributes", () => {
+  // After the virtualization refactor, the wrapper `<div class="toolGroup">`
+  // that previously enclosed each run of adjacent tools was replaced by
+  // per-row `data-tool-position` attributes ("first" / "mid" / "last" /
+  // "solo") so each tool can live in its own virtualizer slot. The
+  // adjacent-stack styling that used to live on `.toolGroup` now keys on
+  // those attributes via sibling selectors in `ActivityTimeline.module.css`.
+  it("marks a single isolated tool row as solo", () => {
+    const toolCalls: ToolCallEntry[] = [
+      { id: "tc-1", name: "read_file", input: { path: "lone.rs" }, result: "ok", pending: false },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline timeline={timeline} toolCalls={toolCalls} isStreaming={false} />,
+    );
+
+    const toolRows = container.querySelectorAll<HTMLElement>('[data-kind="tool"]');
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0].dataset.toolPosition).toBe("solo");
+  });
+
+  it("marks a run of three adjacent tools as first / mid / last", () => {
+    const toolCalls: ToolCallEntry[] = [
+      { id: "tc-1", name: "read_file", input: { path: "a.rs" }, result: "ok", pending: false },
+      { id: "tc-2", name: "read_file", input: { path: "b.rs" }, result: "ok", pending: false },
+      { id: "tc-3", name: "read_file", input: { path: "c.rs" }, result: "ok", pending: false },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "tool", toolCallId: "tc-2", id: "tl-2" },
+      { kind: "tool", toolCallId: "tc-3", id: "tl-3" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline timeline={timeline} toolCalls={toolCalls} isStreaming={false} />,
+    );
+
+    const toolRows = container.querySelectorAll<HTMLElement>('[data-kind="tool"]');
+    expect(toolRows).toHaveLength(3);
+    expect(Array.from(toolRows).map((r) => r.dataset.toolPosition)).toEqual([
+      "first",
+      "mid",
+      "last",
+    ]);
+  });
+
+  it("resets the run when an intervening non-tool row breaks it", () => {
+    const toolCalls: ToolCallEntry[] = [
+      { id: "tc-1", name: "read_file", input: { path: "a.rs" }, result: "ok", pending: false },
+      { id: "tc-2", name: "read_file", input: { path: "b.rs" }, result: "ok", pending: false },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "text", id: "tx-1", content: "interlude" },
+      { kind: "tool", toolCallId: "tc-2", id: "tl-2" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline timeline={timeline} toolCalls={toolCalls} isStreaming={false} />,
+    );
+
+    const toolRows = container.querySelectorAll<HTMLElement>('[data-kind="tool"]');
+    expect(toolRows).toHaveLength(2);
+    // Both tools are isolated by the text row — each is its own run.
+    expect(Array.from(toolRows).map((r) => r.dataset.toolPosition)).toEqual([
+      "solo",
+      "solo",
+    ]);
+  });
+});
+
 describe("ActivityTimeline Phase 5 — adjacent identical tool grouping", () => {
   it("collapses N consecutive identical reads into one row carrying a xN badge", () => {
     const toolCalls: ToolCallEntry[] = [

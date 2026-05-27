@@ -172,6 +172,7 @@ export function ActiveTaskStream({
               progressText={progressText}
               isWriting={isWriting}
               showPhaseIndicator={false}
+              scrollRef={scrollRef}
             />
           ) : (
             <CookingIndicator label={waitingLabel} />

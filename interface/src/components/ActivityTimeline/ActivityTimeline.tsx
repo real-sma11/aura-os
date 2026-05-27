@@ -1,4 +1,5 @@
-import { Fragment, useMemo, type ReactNode } from "react";
+import { memo, useMemo, useRef, type ReactNode, type RefObject } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { TimelineItem, ToolCallEntry } from "../../shared/types/stream";
 import { FILE_OPS } from "../../constants/tools";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../../shared/utils/text-normalize";
 import { ThinkingBlock, isAutoExpandedTool, renderToolBlock } from "../Block";
 import { SegmentedContent } from "../SegmentedContent";
+import { useScrollMargin } from "../../shared/hooks/use-scroll-margin";
 import { canonicalInputKey, computeUniquePathTails } from "./grouping";
 import styles from "./ActivityTimeline.module.css";
 
@@ -20,13 +22,37 @@ interface ActivityTimelineProps {
   isStreaming: boolean;
   defaultThinkingExpanded?: boolean;
   defaultActivitiesExpanded?: boolean;
+  /**
+   * When provided, the timeline windows its rows via `@tanstack/react-virtual`,
+   * using `scrollRef` as the scroll element. Mirrors the approach used by
+   * `CompletedTaskOutput` so the task preview overlay stays fast on large
+   * tool-heavy runs. When absent (chat surfaces, isolated tests) the
+   * component falls back to a plain non-virtualized render.
+   */
+  scrollRef?: RefObject<HTMLElement | null>;
 }
+
+type ToolPosition = "first" | "mid" | "last" | "solo" | null;
 
 interface RenderedItem {
   key: string;
-  kind: string;
+  kind: "thinking" | "tool" | "text";
+  toolPosition: ToolPosition;
   node: ReactNode;
 }
+
+/**
+ * Per-row node wrapper. Wrapped in `React.memo` so streaming deltas that
+ * mutate only the trailing item (new tokens on the last text/thinking
+ * segment, a tool call flipping from pending to done) don't force every
+ * previously-rendered row to re-execute its ReactMarkdown / syntax
+ * highlight / Block render path. The keyed `node` ReactElement
+ * identity is stable across renders when the underlying item has not
+ * changed, so referential equality on `node` is a safe memo trigger.
+ */
+const TimelineRow = memo(function TimelineRow({ node }: { node: ReactNode }) {
+  return <>{node}</>;
+});
 
 export function ActivityTimeline({
   timeline,
@@ -36,6 +62,7 @@ export function ActivityTimeline({
   isStreaming,
   defaultThinkingExpanded,
   defaultActivitiesExpanded,
+  scrollRef,
 }: ActivityTimelineProps) {
   const toolCallMap = useMemo(() => {
     const map = new Map<string, ToolCallEntry>();
@@ -165,6 +192,7 @@ export function ActivityTimeline({
       items.push({
         key: item.id,
         kind: "thinking",
+        toolPosition: null,
         node: (
           <ThinkingBlock
             text={segmentText}
@@ -206,6 +234,9 @@ export function ActivityTimeline({
       items.push({
         key: item.id,
         kind: "tool",
+        // Position is filled in by a second pass below once we know each
+        // tool row's neighbours.
+        toolPosition: "solo",
         node: renderToolBlock(entry, defaultToolExpanded, {
           displayPath,
           groupCount,
@@ -218,37 +249,106 @@ export function ActivityTimeline({
       items.push({
         key: item.id,
         kind: "text",
+        toolPosition: null,
         node: <SegmentedContent content={normalized} isStreaming={isStreaming} />,
       });
     }
   }
 
-  const groups: ReactNode[] = [];
-  let i = 0;
-  while (i < items.length) {
-    const current = items[i];
-    if (current.kind === "tool") {
-      const toolItems: RenderedItem[] = [];
-      while (i < items.length && items[i].kind === "tool") {
-        toolItems.push(items[i]);
-        i++;
-      }
-      groups.push(
-        <div key={`toolgroup-${toolItems[0].key}`} className={styles.toolGroup}>
-          {toolItems.map((t) => (
-            <Fragment key={t.key}>{t.node}</Fragment>
-          ))}
-        </div>,
-      );
-    } else {
-      groups.push(
-        <div key={current.key} data-kind={current.kind}>
-          {current.node}
-        </div>,
-      );
-      i++;
-    }
+  // Mark each tool row with its position inside a run of adjacent tools
+  // (`first`, `mid`, `last`, `solo`). The wrapper `<div className="toolGroup">`
+  // that previously enclosed each run has been replaced by per-row data
+  // attributes so each row can live in its own virtualizer slot. The styling
+  // owned by `.toolGroup` in `ActivityTimeline.module.css` now lives behind
+  // these data attributes via adjacent-sibling selectors.
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].kind !== "tool") continue;
+    const prevIsTool = i > 0 && items[i - 1].kind === "tool";
+    const nextIsTool = i < items.length - 1 && items[i + 1].kind === "tool";
+    let pos: ToolPosition;
+    if (!prevIsTool && !nextIsTool) pos = "solo";
+    else if (!prevIsTool && nextIsTool) pos = "first";
+    else if (prevIsTool && nextIsTool) pos = "mid";
+    else pos = "last";
+    items[i] = { ...items[i], toolPosition: pos };
   }
 
-  return <div className={styles.timeline}>{groups}</div>;
+  return scrollRef ? (
+    <VirtualizedTimeline items={items} scrollRef={scrollRef} />
+  ) : (
+    <PlainTimeline items={items} />
+  );
+}
+
+function rowDataAttrs(item: RenderedItem): Record<string, string> {
+  const attrs: Record<string, string> = { "data-kind": item.kind };
+  if (item.kind === "tool" && item.toolPosition) {
+    attrs["data-tool-position"] = item.toolPosition;
+  }
+  return attrs;
+}
+
+function PlainTimeline({ items }: { items: RenderedItem[] }) {
+  return (
+    <div className={styles.timeline}>
+      {items.map((item) => (
+        <div key={item.key} {...rowDataAttrs(item)}>
+          <TimelineRow node={item.node} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VirtualizedTimeline({
+  items,
+  scrollRef,
+}: {
+  items: RenderedItem[];
+  scrollRef: RefObject<HTMLElement | null>;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const scrollMargin = useScrollMargin(wrapperRef, scrollRef);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    // Tool blocks are usually compact (collapsed headers); thinking and
+    // text segments are larger. 96px is a reasonable midpoint that keeps
+    // the initial total size close to reality before measureElement
+    // settles each row.
+    estimateSize: () => 96,
+    overscan: 6,
+    getItemKey: (index) => items[index]?.key ?? index,
+    scrollMargin,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={`${styles.timeline} ${styles.timelineVirtual}`}
+      style={{ height: `${totalSize}px` }}
+    >
+      {virtualItems.map((vi) => {
+        const item = items[vi.index];
+        if (!item) return null;
+        return (
+          <div
+            key={vi.key}
+            ref={virtualizer.measureElement}
+            data-index={vi.index}
+            {...rowDataAttrs(item)}
+            className={styles.virtualRow}
+            style={{
+              transform: `translateY(${vi.start - scrollMargin}px)`,
+            }}
+          >
+            <TimelineRow node={item.node} />
+          </div>
+        );
+      })}
+    </div>
+  );
 }

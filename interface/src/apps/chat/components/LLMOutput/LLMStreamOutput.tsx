@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import type { ArtifactRef, ToolCallEntry, TimelineItem } from "../../../../shared/types/stream";
 import { getStreamingPhaseLabel } from "../../../../utils/streaming";
 import { CookingIndicator } from "../../../../components/CookingIndicator";
@@ -20,6 +21,12 @@ export interface LLMStreamOutputProps {
    * the scroll flow.
    */
   showPhaseIndicator?: boolean;
+  /**
+   * Forwarded to `LLMOutput` -> `ActivityTimeline`. When provided, the
+   * activity timeline windows its rows against this scroll element via
+   * `@tanstack/react-virtual`. Used by the task preview overlay.
+   */
+  scrollRef?: RefObject<HTMLElement | null>;
 }
 
 function StreamingIndicator({
@@ -59,6 +66,7 @@ export function LLMStreamOutput({
   artifactRefs,
   isWriting,
   showPhaseIndicator = true,
+  scrollRef,
 }: LLMStreamOutputProps) {
   return (
     <>
@@ -70,6 +78,7 @@ export function LLMStreamOutput({
         thinkingDurationMs={thinkingDurationMs}
         artifactRefs={artifactRefs}
         isStreaming={isStreaming}
+        scrollRef={scrollRef}
       />
       {showPhaseIndicator && (
         <StreamingIndicator

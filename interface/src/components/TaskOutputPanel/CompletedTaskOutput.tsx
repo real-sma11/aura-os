@@ -1,5 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState, type RefObject } from "react";
 import { Check, X as XIcon, AlertTriangle, CircleDashed, ChevronRight } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type { DisplaySessionEvent } from "../../shared/types/stream";
 import {
   useTaskOutputPanelStore,
   type PanelTaskFailureContext,
@@ -11,6 +13,7 @@ import { useTaskOutput } from "../../stores/event-store/index";
 import { MessageBubble, LLMOutput } from "../ChatOutput";
 import { VerificationStepItem } from "../VerificationStepItem";
 import { GitStepItem } from "../GitStepItem";
+import { useScrollMargin } from "../../shared/hooks/use-scroll-margin";
 import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
 import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
 import { buildTaskCopyText } from "./task-copy-utils";
@@ -64,6 +67,102 @@ interface CompletedTaskOutputProps {
    * twice on the same screen.
    */
   showStepsFallback?: boolean;
+  /**
+   * When provided, the structured events body windows its rows via
+   * `@tanstack/react-virtual`, using `scrollRef` as the scroll element.
+   * Used by the task preview overlay where the entire `.previewBody`
+   * is the scroll container — keeps long histories (dozens of message
+   * bubbles each carrying markdown + syntax-highlighted code) from
+   * blowing out the DOM. When absent (e.g. Run pane rows whose scroll
+   * lives inside the row body), falls back to a plain `.map()` so
+   * the existing layout is unchanged.
+   */
+  scrollRef?: RefObject<HTMLElement | null>;
+}
+
+/**
+ * Body for the "structured events" path. Routes to a virtualized
+ * implementation when the embedding surface supplies a `scrollRef`
+ * (the task preview overlay, where the entire `.previewBody` is the
+ * shared scroll element) and falls back to a plain mapped list
+ * everywhere else (the Run pane, where each row owns its own scroll).
+ *
+ * Virtualization here is the main win for very long tasks: a run with
+ * dozens of message turns previously mounted every `MessageBubble`
+ * subtree at once — markdown + syntax highlighting + collapsible tool
+ * blocks per row — even when most rows lived hundreds of pixels
+ * outside the viewport. `useVirtualizer` keeps only the visible window
+ * plus a small overscan in the DOM and uses `measureElement` to
+ * accommodate the variable bubble heights without any pre-measured
+ * layout pass.
+ */
+function EventsBody({
+  events,
+  scrollRef,
+}: {
+  events: DisplaySessionEvent[];
+  scrollRef: RefObject<HTMLElement | null> | undefined;
+}) {
+  if (scrollRef) {
+    return <VirtualizedEventsBody events={events} scrollRef={scrollRef} />;
+  }
+  return (
+    <div className={styles.taskBody}>
+      {events.map((evt) => (
+        <MessageBubble key={evt.id} message={evt} />
+      ))}
+    </div>
+  );
+}
+
+function VirtualizedEventsBody({
+  events,
+  scrollRef,
+}: {
+  events: DisplaySessionEvent[];
+  scrollRef: RefObject<HTMLElement | null>;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const scrollMargin = useScrollMargin(wrapperRef, scrollRef);
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => scrollRef.current,
+    // Real message bubbles span a wide range (tool-only rows are
+    // ~40-80px, full markdown turns can be 600px+). 240px is a
+    // workable midpoint that keeps the initial total size in the
+    // ballpark before `measureElement` settles each row.
+    estimateSize: () => 240,
+    overscan: 4,
+    getItemKey: (index) => events[index]?.id ?? index,
+    scrollMargin,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={`${styles.taskBody} ${styles.taskBodyVirtual}`}
+      style={{ height: `${totalSize}px` }}
+    >
+      {virtualItems.map((vi) => {
+        const evt = events[vi.index];
+        if (!evt) return null;
+        return (
+          <div
+            key={vi.key}
+            ref={virtualizer.measureElement}
+            data-index={vi.index}
+            className={styles.taskBodyVirtualRow}
+            style={{ transform: `translateY(${vi.start - scrollMargin}px)` }}
+          >
+            <MessageBubble message={evt} />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -145,6 +244,7 @@ export function CompletedTaskOutput({
   showDismiss = true,
   showHeader = true,
   showStepsFallback = true,
+  scrollRef,
 }: CompletedTaskOutputProps) {
   const dismissTask = useTaskOutputPanelStore((s) => s.dismissTask);
   // `CompletedTaskOutput` only renders for non-active rows, so every
@@ -264,11 +364,7 @@ export function CompletedTaskOutput({
             </div>
           )}
           {hasStructuredContent ? (
-            <div className={styles.taskBody}>
-              {events.map((evt) => (
-                <MessageBubble key={evt.id} message={evt} />
-              ))}
-            </div>
+            <EventsBody events={events} scrollRef={scrollRef} />
           ) : fallbackText ? (
             <div className={styles.taskBody}>
               <LLMOutput content={fallbackText} />

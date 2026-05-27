@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type RefObject } from "react";
 import type { ArtifactRef, TimelineItem, ToolCallEntry } from "../../../../shared/types/stream";
 import { expandToolMarkersInTimeline } from "../../../../utils/tool-markers";
 import { ActivityTimeline } from "../../../../components/ActivityTimeline";
@@ -40,6 +40,13 @@ export interface LLMOutputProps {
   className?: string;
   defaultThinkingExpanded?: boolean;
   defaultActivitiesExpanded?: boolean;
+  /**
+   * When provided, forwarded to the embedded `ActivityTimeline` so it
+   * windows its rows via `@tanstack/react-virtual` against this scroll
+   * element. Used by the task preview overlay where the entire
+   * `.previewBody` is the shared scroll container.
+   */
+  scrollRef?: RefObject<HTMLElement | null>;
 }
 
 export function LLMOutput({
@@ -53,6 +60,7 @@ export function LLMOutput({
   className,
   defaultThinkingExpanded,
   defaultActivitiesExpanded,
+  scrollRef,
 }: LLMOutputProps) {
   const hasContent = content && content.trim().length > 0;
   const hasToolCalls = toolCalls && toolCalls.length > 0;
@@ -109,6 +117,7 @@ export function LLMOutput({
           isStreaming={isStreaming}
           defaultThinkingExpanded={defaultThinkingExpanded}
           defaultActivitiesExpanded={defaultActivitiesExpanded}
+          scrollRef={scrollRef}
         />
       )}
       {hasArtifactRefs && artifactRefs && (

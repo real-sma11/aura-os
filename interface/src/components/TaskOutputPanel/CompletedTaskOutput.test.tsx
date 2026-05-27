@@ -1,4 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
+import { createRef } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 const dismissTask = vi.fn();
@@ -354,6 +355,59 @@ describe("CompletedTaskOutput", () => {
     expect(screen.getByTestId("task-failure-context")).toHaveTextContent(
       "req=req_only",
     );
+  });
+
+  describe("virtualization", () => {
+    it("uses the virtualized events body when a scrollRef is provided", () => {
+      // The task preview overlay passes its `.previewBody` ref down so
+      // very long histories window their MessageBubble rows instead of
+      // mounting every subtree at once. Routing is structural: when a
+      // ref is present the body container picks up the `taskBodyVirtual`
+      // class (and the absolute-positioned row wrappers under it),
+      // even before TanStack Virtual has measured anything.
+      streamEventsState = [
+        { id: "evt-1", content: "first turn" },
+        { id: "evt-2", content: "second turn" },
+      ];
+
+      const scrollRef = createRef<HTMLDivElement>();
+      const { container } = render(
+        <div ref={scrollRef} style={{ overflow: "auto", height: 200 }}>
+          <CompletedTaskOutput
+            taskId="task-1"
+            projectId="proj-1"
+            title="My task"
+            status="completed"
+            scrollRef={scrollRef}
+          />
+        </div>,
+      );
+      expandRow();
+
+      const virtualBody = container.querySelector(".taskBodyVirtual");
+      expect(virtualBody).not.toBeNull();
+    });
+
+    it("renders the plain mapped events body when scrollRef is absent", () => {
+      // The Run pane mounts each task row with its own internal scroll
+      // and doesn't share `.previewBody`, so it omits `scrollRef`. The
+      // plain `.map()` rendering must still apply there so today's
+      // Run pane layout is unaffected by the virtualization changes.
+      streamEventsState = [{ id: "evt-1", content: "first turn" }];
+
+      const { container } = render(
+        <CompletedTaskOutput
+          taskId="task-1"
+          projectId="proj-1"
+          title="My task"
+          status="completed"
+        />,
+      );
+      expandRow();
+
+      expect(container.querySelector(".taskBodyVirtual")).toBeNull();
+      expect(screen.getByTestId("message-bubble")).toHaveTextContent("first turn");
+    });
   });
 
   describe("steps fallback", () => {

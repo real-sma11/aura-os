@@ -363,6 +363,40 @@
   line-height: 1.5;
 }
 
+/* Virtualized variant of `.taskBody`. The wrapper sits at the total
+   measured height of every event so the parent `.previewBody`
+   scrollbar reflects the full conversation length, then each row
+   absolute-positions itself via the `transform: translateY(...)`
+   emitted by `@tanstack/react-virtual`. Rows that scroll off-screen
+   are unmounted, keeping the DOM bounded regardless of how long the
+   task ran. */
+.taskBodyVirtual {
+  position: relative;
+}
+
+.taskBodyVirtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* Use box-sizing so the horizontal `.taskBody` padding above does
+     not push rows past the wrapper width. The padding-bottom matches
+     the `gap`-style spacing the non-virtualized variant gets from
+     MessageBubble's `messageAssistant` / `messageUser` margin stack. */
+  box-sizing: border-box;
+  padding-right: var(--space-3, 12px);
+  padding-left: var(--space-3, 12px);
+}
+
+.taskBodyVirtual {
+  /* The inner row wrappers own the horizontal padding now, so drop the
+     wrapper's own `.taskBody` padding so we don't double it. The
+     bottom padding is folded into the virtualizer's total size by
+     `measureElement`. */
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .taskBodyEmpty {
   composes: taskBody;
   color: var(--color-text-muted);

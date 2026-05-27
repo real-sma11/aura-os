@@ -279,6 +279,10 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
               // body fallback here so the rows don't appear twice
               // on the same screen.
               showStepsFallback={false}
+              // Window the events list against the preview's shared
+              // scroll element so long histories don't mount every
+              // MessageBubble subtree at once.
+              scrollRef={scrollRef}
             />
           </div>
         </GroupCollapsible>

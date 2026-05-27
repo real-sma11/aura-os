@@ -4,23 +4,56 @@
   gap: 8px;
 }
 
-/* Extra spacing between different item kinds */
-.timeline > .toolGroup + [data-kind="text"],
-.timeline > [data-kind="text"] + .toolGroup,
-.timeline > [data-kind="thinking"] + .toolGroup,
-.timeline > .toolGroup + [data-kind="thinking"] {
+/* Virtualized variant: rows are absolutely positioned via
+   `@tanstack/react-virtual`, so the flex layout above is inert. We
+   restore inter-row spacing through per-row `padding-bottom` (see
+   `.virtualRow`) and switch the container to `position: relative` so
+   the absolute positioning resolves against it. */
+.timelineVirtual {
+  position: relative;
+  display: block;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 8px;
+  box-sizing: border-box;
+}
+
+/* Extra spacing between different item kinds. The previous selectors
+   targeted `> .toolGroup + [data-kind]` wrappers; now that each tool
+   lives in its own row carrying `data-kind="tool"` we key on the row
+   data-kind directly. Only applied to the plain (non-virtual) variant
+   because the virtualized variant manages spacing per-row via
+   `.virtualRow`. */
+.timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="text"],
+.timeline:not(.timelineVirtual) > [data-kind="text"] + [data-kind="tool"],
+.timeline:not(.timelineVirtual) > [data-kind="thinking"] + [data-kind="tool"],
+.timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="thinking"] {
   margin-top: 4px;
 }
 
 /*
  * Grouped tool calls — flush stack so rows read as a dense checklist.
+ * `data-tool-position` is set per-row by `ActivityTimeline.tsx` so the
+ * wrapper div that previously enclosed each run is no longer required
+ * (each row lives in its own virtualizer slot when the timeline is
+ * windowed inside the task preview).
+ *
  * Border collapsing between adjacent rows is owned by Block.module.css
  * (`.block + .block`), which overlaps siblings by -1px so the bottom of
  * row N and the top of row N+1 render as a single 1px divider instead
  * of a doubled line.
  */
-.toolGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+.timeline > [data-tool-position="first"],
+.timeline > [data-tool-position="mid"] {
+  margin-bottom: 0;
+}
+
+.timeline > [data-tool-position="mid"],
+.timeline > [data-tool-position="last"] {
+  margin-top: 0;
 }
