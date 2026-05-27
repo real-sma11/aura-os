@@ -39,23 +39,30 @@
 
 .timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="text"],
 .timeline:not(.timelineVirtual) > [data-kind="text"] + [data-kind="tool"],
-.timeline:not(.timelineVirtual) > [data-kind="thinking"] + [data-kind="tool"],
-.timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="thinking"] {
+.timeline:not(.timelineVirtual) > [data-kind="thinking"] + [data-kind="text"],
+.timeline:not(.timelineVirtual) > [data-kind="text"] + [data-kind="thinking"] {
   margin-top: 12px;
 }
 
 /*
- * Grouped tool calls — flush stack so a run of adjacent tools reads as
- * a single dense checklist with one 1px divider between rows instead
- * of an 8px gap and a doubled border.
+ * Adjacent bordered Blocks — flush stack so any run of Block-rendering
+ * rows (tool ↔ tool, thinking ↔ tool, tool ↔ thinking, …) reads as a
+ * single dense bordered strip with one 1px divider between rows
+ * instead of an 8px gap and a doubled border.
  *
- * `data-tool-position` ("first" / "mid" / "last" / "solo") is set
- * per-row by `ActivityTimeline.tsx`. The wrapper div that previously
- * enclosed each run was removed so every row can live in its own
- * virtualizer slot; this used to be the responsibility of the
- * `.block + .block` rule in `Block.module.css`, but each Block is now
- * nested inside a row wrapper and is never a true adjacent sibling of
- * another Block, so the collapse must happen here.
+ * `data-block-row="true"` is stamped per-row by `ActivityTimeline.tsx`
+ * on any row whose rendered node is a `Block` primitive (today:
+ * `kind === "tool"` and `kind === "thinking"`). Text rows render bare
+ * markdown with no border so they are deliberately off this attribute
+ * and keep their full 12px breathing-room margin against bordered
+ * neighbours via the rule above.
+ *
+ * The wrapper div that previously enclosed each tool run was removed
+ * so every row can live in its own virtualizer slot; this used to be
+ * the responsibility of the `.block + .block` rule in
+ * `Block.module.css`, but each Block is now nested inside a row
+ * wrapper and is never a true adjacent sibling of another Block, so
+ * the collapse must happen here.
  *
  * Works for both variants:
  *   - Plain timeline: `margin-top: -1px` overrides the 8px from the
@@ -69,13 +76,16 @@
  *     the visible box up by 1px to overlap the divider. Margins do
  *     not affect `getBoundingClientRect()` dimensions, only position,
  *     so the virtualizer's accumulated-size math stays correct.
+ *
+ * `:has()` is used on the predecessor so the `padding-bottom: 0`
+ * adjustment fires whenever the next sibling is also a bordered row,
+ * regardless of kind — without it we'd be back to a per-kind position
+ * attribute and the cross-kind cases would silently fall through.
  */
-.timeline > [data-tool-position="first"],
-.timeline > [data-tool-position="mid"] {
+.timeline > [data-block-row]:has(+ [data-block-row]) {
   padding-bottom: 0;
 }
 
-.timeline > [data-tool-position="mid"],
-.timeline > [data-tool-position="last"] {
+.timeline > [data-block-row] + [data-block-row] {
   margin-top: -1px;
 }

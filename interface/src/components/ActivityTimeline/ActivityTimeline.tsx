@@ -326,6 +326,15 @@ export function ActivityTimeline({
 
 function rowDataAttrs(item: RenderedItem): Record<string, string> {
   const attrs: Record<string, string> = { "data-kind": item.kind };
+  // Flag rows whose rendered node is a `Block` primitive so the
+  // border-collapse rule in `ActivityTimeline.module.css` can fire on
+  // any two adjacent bordered rows (thinking + tool, tool + thinking,
+  // tool + tool, …) instead of only tool-tool runs. Text rows render
+  // bare markdown with no border, so they intentionally stay off this
+  // attribute and keep their full 12px breathing-room margin.
+  if (item.kind === "tool" || item.kind === "thinking") {
+    attrs["data-block-row"] = "true";
+  }
   if (item.kind === "tool" && item.toolPosition) {
     attrs["data-tool-position"] = item.toolPosition;
   }

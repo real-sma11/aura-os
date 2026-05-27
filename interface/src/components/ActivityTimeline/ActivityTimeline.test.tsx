@@ -262,6 +262,61 @@ describe("ActivityTimeline tool-position data attributes", () => {
   });
 });
 
+describe("ActivityTimeline block-row data attribute", () => {
+  // Generalized border-collapse marker: any row whose rendered node is a
+  // `Block` primitive (thinking + tool, today; future Block-derived
+  // kinds get it for free) carries `data-block-row="true"` so the
+  // adjacent-sibling rule in `ActivityTimeline.module.css` can collapse
+  // every Block-on-Block boundary into a single 1px divider — not only
+  // the tool↔tool pairs that the original `data-tool-position` machinery
+  // covered. Text rows render bare markdown with no border and must
+  // stay off the attribute so they keep their 12px breathing-room gap.
+  it("marks both thinking and tool rows as bordered block rows", () => {
+    const toolCalls: ToolCallEntry[] = [
+      { id: "tc-1", name: "read_file", input: { path: "a.rs" }, result: "ok", pending: false },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "thinking", id: "th-1", text: "first thoughts", durationMs: 800 },
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+      { kind: "thinking", id: "th-2", text: "second thoughts", durationMs: 600 },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline timeline={timeline} toolCalls={toolCalls} isStreaming={false} />,
+    );
+
+    const blockRows = container.querySelectorAll<HTMLElement>('[data-block-row="true"]');
+    // Two thinking blocks + one tool block.
+    expect(blockRows).toHaveLength(3);
+    expect(Array.from(blockRows).map((r) => r.dataset.kind)).toEqual([
+      "thinking",
+      "tool",
+      "thinking",
+    ]);
+  });
+
+  it("does not flag text rows so prose still gets its breathing-room margin", () => {
+    const toolCalls: ToolCallEntry[] = [
+      { id: "tc-1", name: "read_file", input: { path: "a.rs" }, result: "ok", pending: false },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "text", id: "tx-1", content: "narration" },
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline timeline={timeline} toolCalls={toolCalls} isStreaming={false} />,
+    );
+
+    const textRow = container.querySelector<HTMLElement>('[data-kind="text"]');
+    const toolRow = container.querySelector<HTMLElement>('[data-kind="tool"]');
+    expect(textRow).not.toBeNull();
+    expect(toolRow).not.toBeNull();
+    expect(textRow!.dataset.blockRow).toBeUndefined();
+    expect(toolRow!.dataset.blockRow).toBe("true");
+  });
+});
+
 // Phase 1 — when the model emits zero `thinking_delta` events on the
 // wire (Opus-4 in Adaptive mode default behaviour, and other
 // configurations where the API chooses not to surface reasoning) the
