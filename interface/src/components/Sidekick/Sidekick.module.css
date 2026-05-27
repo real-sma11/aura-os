@@ -151,11 +151,11 @@
   color: inherit;
 }
 
-.sidekickBody [class*="iconSpacer"] {
+.sidekickBody [class*="iconSpacer"]:not([data-explorer-scope] *) {
   display: none;
 }
 
-.sidekickBody [class*="itemContent"] {
+.sidekickBody [class*="itemContent"]:not([data-explorer-scope] *) {
   padding-left: var(--space-3, 12px) !important;
   padding-right: var(--space-3, 12px);
   width: auto;
@@ -188,7 +188,7 @@
 }
 
 /* Child items: same padding as parent, leafSpacer aligns text with parent label */
-.sidekickBody [class*="childrenInner"] [class*="itemContent"] {
+.sidekickBody [class*="childrenInner"] [class*="itemContent"]:not([data-explorer-scope] *) {
   padding-left: var(--space-3, 12px) !important;
   height: 30px;
   min-height: 30px;

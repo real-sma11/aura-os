@@ -83,7 +83,7 @@ export function FileExplorer({
   }
 
   return (
-    <div className={styles.explorerContainer}>
+    <div className={styles.explorerContainer} data-explorer-scope="files">
       {rootPath && <FileExplorerHeader rootPath={rootPath} />}
       <Explorer
         data={s.filteredData}
