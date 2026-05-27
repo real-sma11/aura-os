@@ -8,7 +8,7 @@ import {
 import type { LoopStatusResponse } from "../../shared/api/loop";
 import { useEventStore } from "../../stores/event-store/index";
 import { useLoopActivityStore } from "../../stores/loop-activity-store";
-import { useTaskOutputPanelStore } from "../../stores/task-output-panel-store";
+import { hydrateActiveTasksFromLoopStatus } from "../../stores/run-pane-sync";
 import {
   useAutomationLoopStore,
   useAutomationModel,
@@ -33,28 +33,6 @@ import {
  * fired before the current session connected. Scoped to the project
  * we just fetched status for so we don't touch rows from other projects.
  */
-function hydrateActiveTasksFromLoopStatus(
-  res: LoopStatusResponse,
-  projectId: ProjectId,
-): void {
-  const active = res.active_tasks ?? [];
-  const panel = useTaskOutputPanelStore.getState();
-  // Reconcile BEFORE promoting the new rows: any locally-"active" row
-  // for this project whose task the server no longer reports as active
-  // is a leftover from a stopped / refreshed prior run, and would
-  // otherwise render its own cooking indicator alongside the new run's
-  // row. Demote to "interrupted" as a transient holding state -- the
-  // subsequent `reconcilePanelStatuses` pass (driven by
-  // `/projects/:pid/tasks`) upgrades it to `completed` / `failed` once
-  // the authoritative per-task status loads.
-  const keepIds = active.map((t) => t.task_id).filter(Boolean);
-  panel.demoteStaleActive(projectId, keepIds);
-  for (const entry of active) {
-    if (!entry.task_id) continue;
-    panel.hydrateActiveTask(entry.task_id, projectId, entry.agent_instance_id);
-  }
-}
-
 /**
  * Seed the Run-panel row store from the response body of
  * `/loop/start` (or `/loop/resume`) so the panel appears immediately
@@ -391,6 +369,15 @@ export function useAutomationStatus(projectId: ProjectId): AutomationStatusData 
       // so the user sees activity without waiting for task_started.
       hydrateUiFromLoopStartResponse(res, projectId);
       rehydrateLoopActivityForProject(projectId);
+      if (
+        (res.active_agent_instances ?? []).length > 0 &&
+        (res.active_tasks ?? []).length === 0
+      ) {
+        // `/loop/start` snapshots before the forwarder binds the first
+        // harness task; re-fetch once so active_tasks catches up without
+        // wiping WS-seeded Run pane rows (see run-pane-sync demote guard).
+        window.setTimeout(() => fetchLoopStatus(), 500);
+      }
     } catch (err) {
       dispatch({ type: "startFailed" });
       if (isInsufficientCreditsError(err)) {

@@ -78,6 +78,13 @@ pub(crate) fn emit_domain_event_with_session(inputs: DomainEventInputs<'_>) {
         "type": event_type,
         "project_id": project_id.to_string(),
         "agent_instance_id": agent_instance_id.to_string(),
+        // Legacy alias: many client handlers still read `agent_id`
+        // at the top level (AutomationBar bound-loop binding,
+        // loop_finished scoping). Single-task runs worked without
+        // this because they emit `task_started` before the HTTP
+        // response; automation relies on `loop_started` + tool
+        // events where only `agent_instance_id` was present.
+        "agent_id": agent_instance_id.to_string(),
     });
     if let Some(session_id) = session_id {
         if let Some(object) = event.as_object_mut() {

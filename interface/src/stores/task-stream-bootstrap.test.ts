@@ -66,6 +66,7 @@ import {
   taskStreamKey,
 } from "./task-stream-bootstrap";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
+import { useAutomationLoopStore } from "./automation-loop-store";
 import { useTaskStatusStore } from "./task-status-store";
 import { useContextUsageStore } from "./context-usage-store";
 
@@ -89,6 +90,7 @@ beforeEach(() => {
   resetStreamStore();
   useEventStore.setState({ taskOutputs: {} });
   useTaskOutputPanelStore.setState({ tasks: [] });
+  useAutomationLoopStore.getState().reset();
   useTaskStatusStore.getState().reset();
   useContextUsageStore.setState({
     usageByStreamKey: {},
@@ -1004,5 +1006,37 @@ describe("task-stream-bootstrap: Run pane binding", () => {
     const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
     const tool = entry?.activeToolCalls.find((c) => c.id === "call-1");
     expect(tool?.result).toBe("file contents");
+  });
+});
+
+describe("loop terminal events", () => {
+  it("ignores loop_finished from ephemeral task-runner agents", () => {
+    useAutomationLoopStore.getState().setLoopAgent("p1", "bound-loop");
+    useTaskOutputPanelStore.getState().addTask("live-task", "p1", "Live", "bound-loop");
+
+    dispatch({
+      type: EventType.LoopFinished,
+      project_id: "p1",
+      agent_id: "ephemeral-runner",
+      content: {},
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore.getState().tasks.find((t) => t.taskId === "live-task");
+    expect(row?.status).toBe("active");
+  });
+
+  it("completes rows when loop_finished arrives for the bound loop agent", () => {
+    useAutomationLoopStore.getState().setLoopAgent("p1", "bound-loop");
+    useTaskOutputPanelStore.getState().addTask("live-task", "p1", "Live", "bound-loop");
+
+    dispatch({
+      type: EventType.LoopFinished,
+      project_id: "p1",
+      agent_id: "bound-loop",
+      content: {},
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore.getState().tasks.find((t) => t.taskId === "live-task");
+    expect(row?.status).toBe("completed");
   });
 });

@@ -24,6 +24,7 @@ import {
   finalizeStream,
 } from "../hooks/stream/handlers";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
+import { useAutomationLoopStore } from "./automation-loop-store";
 import { useTaskStatusStore } from "./task-status-store";
 import {
   useContextUsageStore,
@@ -95,6 +96,10 @@ function resolveEventProjectId(event: AuraEvent): string | undefined {
   return undefined;
 }
 
+function resolveEventAgentInstanceId(event: AuraEvent): string | undefined {
+  return event.project_agent_id ?? event.agent_id ?? undefined;
+}
+
 function handleLoopActivityChanged(
   e: AuraEventOfType<typeof EventType.LoopActivityChanged>,
 ): void {
@@ -133,7 +138,7 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
         taskId,
         projectId,
         e.content.task_title,
-        e.agent_id ?? undefined,
+        resolveEventAgentInstanceId(e),
         e.session_id ?? undefined,
       );
   } else if (import.meta.env.DEV) {
@@ -807,10 +812,21 @@ function handleLoopEnd(
     | AuraEventOfType<typeof EventType.LoopFinished>,
 ): void {
   const projectId = e.project_id;
-  const agentInstanceId = e.agent_id ?? undefined;
+  const agentInstanceId = resolveEventAgentInstanceId(e);
   if (!projectId) {
     // Without a project id we cannot scope safely; bail rather than
     // fall back to the old global wipe.
+    return;
+  }
+  // Ephemeral task-runner loops emit `loop_finished` for their own
+  // agent id; only tear down Run pane rows when the bound automation
+  // loop ends (mirrors AutomationBar `isForBoundLoop`).
+  const boundLoopId = useAutomationLoopStore.getState().getLoopAgent(projectId);
+  if (
+    boundLoopId != null &&
+    agentInstanceId != null &&
+    agentInstanceId !== boundLoopId
+  ) {
     return;
   }
   const panel = useTaskOutputPanelStore.getState();
