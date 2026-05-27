@@ -82,22 +82,54 @@ fn tasks_changed_since(before: &[Task], after: &[Task]) -> bool {
 
 fn task_extraction_prompt(project_id: impl std::fmt::Display) -> String {
     format!(
-        "Extract tasks for project {project_id}. Review the existing specs, then create or update \
-         the project's tasks until the task list is populated. This workflow is only for planning, \
-         not execution: do not run commands, do not execute tasks, do not transition task states, \
-         and do not mark tasks done/failed/blocked. Prefer actionable implementation tasks with \
-         concrete source files or acceptance evidence. Task descriptions for implementation work \
-         must tell the executor to briefly inspect, call `submit_plan` with the target files, and \
-         only then use `write_file`, `edit_file`, or `delete_file`. Fold inspection or verification \
-         into the implementation task when possible. If prior task output, build logs, or specs show \
-         compiler errors, create or update an implementation task that names the failing files/error \
-         codes and explicitly requires fixing the compile blocker before `task_done`; do not turn a \
-         compile failure into a documentation-only or verification-only task. Do not create a \
-         standalone verification-only task unless it genuinely requires no source edits; if you do, \
-         its description must explicitly tell the executor to call `task_done` with \
-         `no_changes_needed: true` and notes explaining why no file changes are needed. Never call \
-         the `extract_tasks` tool from inside this workflow because that would recursively restart \
-         task extraction. Use the spec and task CRUD/listing tools directly instead."
+        "Extract tasks for project {project_id}.\n\
+         \n\
+         Workflow:\n\
+         1. Call `list_specs` and then `get_spec` on every spec; read the full markdown body of \
+            each one before writing tasks. Use `read_file` / `list_files` / `search_code` to \
+            confirm any file paths or symbol names you intend to reference \u{2014} do not invent \
+            paths.\n\
+         2. Create or update tasks via `create_task` and `update_task` until the project's task \
+            list covers the work the specs describe. This workflow is for PLANNING ONLY: do not \
+            run commands, do not execute tasks, do not transition task states, and do not mark \
+            tasks done/failed/blocked. Never call the `extract_tasks` action from inside this \
+            workflow \u{2014} that would recursively restart extraction. Use the spec and task \
+            CRUD/listing tools directly instead.\n\
+         \n\
+         Task description content contract (REQUIRED):\n\
+         The executor agent that runs each task may not re-open the parent spec, so every \
+         `description` you pass to `create_task` (and any replacement `description` you pass to \
+         `update_task`) MUST be self-contained and MUST contain the following Markdown sections, \
+         in this order, with the headings spelled exactly as shown:\n\
+         - `## Goal` \u{2014} 1\u{2013}2 sentences naming the concrete change.\n\
+         - `## Context` \u{2014} quote 1\u{2013}3 lines from the parent spec (the relevant \
+           paragraph or bullet) verbatim so the executor has the rationale without re-reading \
+           the spec. Cite the spec title.\n\
+         - `## Files & Symbols` \u{2014} bullet list of concrete repository paths plus the \
+           function / type / test names to read or modify. Use real paths confirmed via the \
+           inspection tools above; never invent paths.\n\
+         - `## Approach` \u{2014} concrete steps. For implementation work, include: briefly \
+           inspect, call `submit_plan` with the target files, then use `write_file`, \
+           `edit_file`, or `delete_file`. Fold inspection and verification into the \
+           implementation task when possible.\n\
+         - `## Acceptance Criteria` \u{2014} 3\u{2013}5 observable bullets a reviewer can check \
+           without reading the diff.\n\
+         - `## Verification` \u{2014} the exact build, test, format, and lint commands the \
+           executor must run before `task_done`. Pull these from the parent spec's \
+           `## Definition of Done` section when present.\n\
+         \n\
+         Specific rules:\n\
+         - Prefer actionable implementation tasks anchored to concrete source files. Vague \
+           descriptions like \"implement the feature\" are rejected; name files and symbols.\n\
+         - If prior task output, build logs, or specs show compiler errors, create or update an \
+           implementation task that names the failing files and error codes under \
+           `## Files & Symbols` and explicitly requires fixing the compile blocker under \
+           `## Acceptance Criteria` before `task_done`. Do not turn a compile failure into a \
+           documentation-only or verification-only task.\n\
+         - Do not create a standalone verification-only task unless it genuinely requires no \
+           source edits. If you do, its `## Verification` section must explicitly tell the \
+           executor to call `task_done` with `no_changes_needed: true` and notes explaining why \
+           no file changes are needed."
     )
 }
 
@@ -284,17 +316,62 @@ mod tests {
         let prompt = task_extraction_prompt("project-123");
 
         assert!(prompt.contains("project project-123"));
-        assert!(prompt.contains("Fold inspection or verification into the implementation task"));
+        assert!(prompt.contains(
+            "Fold inspection and verification into the implementation task when possible"
+        ));
         assert!(prompt.contains("call `submit_plan` with the target files"));
         assert!(prompt.contains("`write_file`, `edit_file`, or `delete_file`"));
         assert!(prompt.contains("compiler errors"));
-        assert!(prompt.contains("names the failing files/error codes"));
-        assert!(prompt.contains("fixing the compile blocker before `task_done`"));
-        assert!(prompt.contains("do not turn a compile failure into a documentation-only"));
+        assert!(prompt.contains("names the failing files and error codes"));
+        assert!(prompt.contains("fixing the compile blocker"));
+        assert!(prompt.contains("Do not turn a compile failure into a documentation-only"));
         assert!(prompt.contains("standalone verification-only task"));
         assert!(prompt.contains("task_done"));
         assert!(prompt.contains("no_changes_needed: true"));
-        assert!(prompt.contains("Never call the `extract_tasks` tool"));
+        assert!(prompt.contains("Never call the `extract_tasks` action"));
+    }
+
+    /// Pin the structured task description contract: every required
+    /// heading must appear verbatim in the extraction prompt, and the
+    /// prompt must demand inspecting the repo before writing tasks
+    /// plus quoting the spec under `## Context`. The plan-mode suffix,
+    /// the agent-bootstrap rules, and the `create_task` tool schema
+    /// reference the same headings, so a drift here silently
+    /// desynchronises the pipeline.
+    #[test]
+    fn task_extraction_prompt_requires_structured_template() {
+        let prompt = task_extraction_prompt("project-123");
+
+        for heading in [
+            "`## Goal`",
+            "`## Context`",
+            "`## Files & Symbols`",
+            "`## Approach`",
+            "`## Acceptance Criteria`",
+            "`## Verification`",
+        ] {
+            assert!(
+                prompt.contains(heading),
+                "extraction prompt must require {heading:?}, got: {prompt}",
+            );
+        }
+
+        assert!(
+            prompt.contains("read the full markdown body of"),
+            "extraction prompt must tell the model to read each spec in full",
+        );
+        assert!(
+            prompt.contains("never invent paths"),
+            "extraction prompt must forbid invented paths",
+        );
+        assert!(
+            prompt.contains("quote 1\u{2013}3 lines from the parent spec"),
+            "extraction prompt must require Context to quote the parent spec",
+        );
+        assert!(
+            prompt.contains("`## Definition of Done`"),
+            "extraction prompt must point Verification at the spec's Definition of Done",
+        );
     }
 
     #[test]

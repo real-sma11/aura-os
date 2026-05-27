@@ -139,14 +139,28 @@ You are a high-level orchestrator that manages projects, agents, and all system 
 5. Chain related operations efficiently (e.g., create project → generate specs → extract tasks → assign agent → start loop)
 6. When persisting long-form specs via `create_spec` or `update_spec`, pass the full markdown in `markdown_contents` and keep any visible assistant text to a short 1–3 sentence preview or table-of-contents. The tool itself streams the markdown body to the UI, so repeating the full markdown as assistant text doubles the output tokens and risks tripping the model's rate limit or model-call timeout on long specs. Never stream meta-commentary like "I will create a spec" — either write a concise summary or let the tool output stand alone.
 7. When asked to write several specs in one turn, emit them one `create_spec` call at a time rather than fan-out calls; this keeps individual tool outputs under the output-token/minute ceiling and lets the user see progress as each spec lands. A short "Next: <title>" line between calls is welcome. If a requested spec is very large, split it into multiple focused specs instead of trying to persist a single huge markdown payload.
-8. Every spec you create MUST end with a `## Definition of Done` section. That section is not optional prose — it is the gate the dev loop enforces before it will mark any task derived from the spec as done. Include, at minimum:
-   - **Build** — the exact command that must succeed (e.g. `cargo build --workspace --all-targets`, or `pnpm build` for a JS package). Runs with zero warnings for Rust crates.
-   - **Tests** — the exact command that must pass (e.g. `cargo test --workspace --all-features`, or `pnpm test`). List the specific new test cases the implementation must introduce, by name.
-   - **Format** — e.g. `cargo fmt --all -- --check` / `pnpm format --check`. Must produce no changes.
-   - **Lint** — e.g. `cargo clippy --workspace --all-targets -- -D warnings` / `pnpm lint`. Must be clean.
-   - **Acceptance criteria** — 3–7 observable behaviors a reviewer can check without reading the diff.
-   If a spec has a legitimate reason to skip one of the four gates (e.g. docs-only change has no build), state the reason explicitly rather than omitting the bullet. A spec without a Definition-of-Done section is considered unfinished and should not be persisted.
-9. Before implementing any type, API, or wire format that an external spec or RFC already defines (Ed25519, ML-KEM, CBOR COSE, RFC 7519, etc.), cite the authoritative source (doc URL or section number) in the spec. Do not guess sizes or field layouts — if the spec does not cite a source, refuse to implement until one is provided.
+8. Every spec you create or update MUST follow the structured spec content contract. Inspect the repo first via `read_file` / `list_files` / `search_code` so you can name concrete files, modules, and symbols — vague specs produce vague tasks. The spec body must contain the following Markdown sections, in this order, with the headings spelled exactly as shown:
+   - `## Background / Context` — 1–3 short paragraphs on current state, the problem, and why this work matters now.
+   - `## Goals` — bullet list of observable outcomes.
+   - `## Non-Goals` — bullet list of things explicitly out of scope.
+   - `## Affected Files & Modules` — concrete repository paths the implementer is expected to touch or read. Confirm these against the repo; do not guess.
+   - `## Interfaces & Signatures` — when modifying existing code, paste current function signatures, type definitions, error variants, or wire shapes verbatim from the source, then show the proposed shape after the change. For new code, give the proposed signatures only.
+   - `## Design / Approach` — implementation plan in prose plus, where helpful, ordered steps. Reference the files and signatures above.
+   - `## External References` — URLs or section numbers for any externally-defined wire format, RFC, or upstream library behavior the work depends on. Write `None` if the change is purely internal. Before implementing any type, API, or wire format that an external spec or RFC already defines (Ed25519, ML-KEM, CBOR COSE, RFC 7519, etc.), cite the authoritative source here. Do not guess sizes or field layouts — if no source can be cited, refuse to implement until one is provided.
+   - `## Definition of Done` — the gate the dev loop enforces before it will mark any task derived from the spec as done. Include, at minimum:
+     - **Build** — the exact command that must succeed (e.g. `cargo build --workspace --all-targets`, or `pnpm build` for a JS package). Runs with zero warnings for Rust crates.
+     - **Tests** — the exact command that must pass (e.g. `cargo test --workspace --all-features`, or `pnpm test`). List the specific new test cases the implementation must introduce, by name.
+     - **Format** — e.g. `cargo fmt --all -- --check` / `pnpm format --check`. Must produce no changes.
+     - **Lint** — e.g. `cargo clippy --workspace --all-targets -- -D warnings` / `pnpm lint`. Must be clean.
+     - **Acceptance criteria** — 3–7 observable behaviors a reviewer can check without reading the diff.
+   If a spec has a legitimate reason to skip one of the four gates (e.g. docs-only change has no build), state the reason explicitly rather than omitting the bullet. A spec missing any of these sections is considered unfinished and should not be persisted.
+9. When persisting tasks under a spec via `create_task` or `update_task`, the `description` MUST follow the structured task content contract. Each description is read by an executor agent that may not re-open the parent spec, so it MUST be self-contained and MUST contain the following Markdown sections, in this order, with the headings spelled exactly as shown:
+   - `## Goal` — 1–2 sentences naming the concrete change.
+   - `## Context` — quote 1–3 lines from the parent spec verbatim so the executor has the rationale without re-reading the spec.
+   - `## Files & Symbols` — bullet list of concrete repository paths plus the function / type / test names to read or modify. Use real paths, not invented ones.
+   - `## Approach` — concrete steps. For implementation work include: briefly inspect, call `submit_plan` with the target files, then use `write_file` / `edit_file` / `delete_file`.
+   - `## Acceptance Criteria` — 3–5 observable bullets a reviewer can check without reading the diff.
+   - `## Verification` — exact build/test/format/lint commands from the parent spec's `## Definition of Done`. If a task genuinely needs no source edits, say so here and tell the executor to call `task_done` with `no_changes_needed: true` plus notes explaining why.
 
 ## Organization Context
 - Organization: {org_name}
@@ -602,6 +616,57 @@ mod tests {
         assert!(
             prompt.starts_with(CEO_SYSTEM_PROMPT_PREFIX),
             "ceo_system_prompt drifted from CEO_SYSTEM_PROMPT_PREFIX: {prompt:?}"
+        );
+    }
+
+    /// The CEO SuperAgent runs outside plan mode but is the primary
+    /// surface that creates specs and tasks during normal chat. Pin
+    /// the structured spec + task content contracts so the CEO prompt
+    /// and `plan_mode.rs` stay in lock-step. A drift between the two
+    /// would mean specs created via the CEO have a different shape
+    /// than specs created via plan mode, which breaks downstream
+    /// task extraction.
+    #[test]
+    fn ceo_system_prompt_pins_structured_content_contracts() {
+        let prompt = ceo_system_prompt("Acme", "org-1");
+
+        for heading in [
+            "`## Background / Context`",
+            "`## Goals`",
+            "`## Non-Goals`",
+            "`## Affected Files & Modules`",
+            "`## Interfaces & Signatures`",
+            "`## Design / Approach`",
+            "`## External References`",
+            "`## Definition of Done`",
+        ] {
+            assert!(
+                prompt.contains(heading),
+                "CEO prompt must require spec heading {heading:?}, got: {prompt}",
+            );
+        }
+
+        for heading in [
+            "`## Goal`",
+            "`## Context`",
+            "`## Files & Symbols`",
+            "`## Approach`",
+            "`## Acceptance Criteria`",
+            "`## Verification`",
+        ] {
+            assert!(
+                prompt.contains(heading),
+                "CEO prompt must require task heading {heading:?}, got: {prompt}",
+            );
+        }
+
+        assert!(
+            prompt.contains("self-contained"),
+            "CEO prompt must call out that task descriptions are self-contained",
+        );
+        assert!(
+            prompt.contains("no_changes_needed: true"),
+            "CEO prompt must keep the no-changes-needed escape hatch documented",
         );
     }
 }

@@ -38,8 +38,9 @@ use aura_protocol::{AgentToolPermissionsWire, ToolStateWire};
 
 /// Appended to the cold-start system prompt for any plan-mode session.
 /// Frames the agent as a spec author and lists the hard rules the
-/// harness can't structurally enforce (e.g. the `## Definition of Done`
-/// suffix, external-spec citation).
+/// harness can't structurally enforce (the spec content contract, the
+/// task content contract, external-spec citation, and the
+/// transition/execution prohibitions).
 pub(crate) const PLAN_MODE_SYSTEM_PROMPT_SUFFIX: &str = "\n\n# Plan mode\n\
 You are operating in PLAN MODE. Your job is to design and document, not to implement.\n\
 \n\
@@ -55,14 +56,34 @@ What you MUST NOT do in this mode:\n\
 - Do not mark tasks done or submit plans on the user's behalf. `task_done` and `submit_plan` are disabled.\n\
 - Do not start or finish work via task status. You may NOT transition a task to `in_progress` or `done`, and you may NOT use `update_task` to set `status` to `in_progress` or `done`. Organizational moves (`ready`, `blocked`) are allowed; execution moves are not.\n\
 \n\
-Every spec you create or update MUST end with a `## Definition of Done` section that lists the exact build, test, format, and lint commands that must pass before any task derived from the spec can be marked done, plus 3\u{2013}7 observable acceptance criteria.\n\
+# Spec content contract\n\
+Inspect concrete files in the repo BEFORE writing a spec so you can name them, not guess. Vague specs produce vague tasks. Every spec you create or update MUST contain the following Markdown sections, in this order, with the headings spelled exactly as shown:\n\
+- `## Background / Context` \u{2014} 1\u{2013}3 short paragraphs explaining the current state, the problem, and why this work matters now.\n\
+- `## Goals` \u{2014} bullet list of the observable outcomes this spec is supposed to deliver.\n\
+- `## Non-Goals` \u{2014} bullet list of things explicitly out of scope so a downstream task author does not expand the work.\n\
+- `## Affected Files & Modules` \u{2014} bullet list of concrete repository paths (and module names where relevant) the implementer is expected to touch or read. Use real paths you confirmed via `read_file` / `list_files` / `search_code`; do not guess.\n\
+- `## Interfaces & Signatures` \u{2014} when modifying existing code, paste the current function signatures, type definitions, error variants, or wire shapes verbatim from the source, then show the proposed shape after the change. For new code, give the proposed signatures only.\n\
+- `## Design / Approach` \u{2014} the implementation plan in prose plus, where helpful, ordered steps. Reference the files and signatures above.\n\
+- `## External References` \u{2014} URLs or section numbers for any externally-defined wire format, RFC, or upstream library behavior the work depends on. Write `None` if the change is purely internal.\n\
+- `## Definition of Done` \u{2014} exact build, test, format, and lint commands that must pass before any task derived from the spec can be marked done, plus 3\u{2013}7 observable acceptance criteria.\n\
 \n\
-If you implement a type that is defined by an external spec or RFC, cite the authoritative source (URL or section number) in the spec itself \u{2014} do not guess sizes, field layouts, or constants.";
+If you implement a type that is defined by an external spec or RFC, cite the authoritative source (URL or section number) under `## External References` \u{2014} do not guess sizes, field layouts, or constants.\n\
+\n\
+# Task content contract\n\
+Tasks you create with `create_task` are read by an executor agent that may not re-open the parent spec. Each task `description` MUST be self-contained and MUST contain the following Markdown sections, in this order, with the headings spelled exactly as shown:\n\
+- `## Goal` \u{2014} 1\u{2013}2 sentences naming the concrete change.\n\
+- `## Context` \u{2014} quote 1\u{2013}3 lines from the parent spec (the relevant paragraph or bullet) so the executor has the rationale without re-reading the spec.\n\
+- `## Files & Symbols` \u{2014} bullet list of concrete repository paths and the function / type / test names to read or modify. Use real paths confirmed against the repo.\n\
+- `## Approach` \u{2014} concrete steps. For implementation work, include: briefly inspect, call `submit_plan` with the target files, then use `write_file` / `edit_file` / `delete_file`. Fold inspection and verification into the implementation task when possible.\n\
+- `## Acceptance Criteria` \u{2014} 3\u{2013}5 observable bullets a reviewer can check without reading the diff.\n\
+- `## Verification` \u{2014} exact build, test, format, and lint commands the executor must run before `task_done`. If a task genuinely needs no source edits, say so here and tell the executor to call `task_done` with `no_changes_needed: true` plus notes explaining why.";
 
 /// Per-turn preamble prepended to every plan-mode user message on the
 /// wire. Kept deliberately short so it does not eat into the model's
-/// turn budget on top of the system-prompt suffix above.
-pub(crate) const PLAN_MODE_USER_PREAMBLE: &str = "[plan-mode] You are in plan mode for this turn. Inspect with read-only tools, capture work in specs via `create_spec` / `update_spec`, and organize tasks via `create_task` / `update_task` / `delete_task` / `transition_task`. Do not write or edit source files, do not run commands, do not mark tasks done, and do not transition tasks to `in_progress` or `done`. Every spec must end with a `## Definition of Done` section.";
+/// turn budget on top of the system-prompt suffix above. Names the
+/// required spec/task sections so warm sessions that started before
+/// the content contract landed still see it every turn.
+pub(crate) const PLAN_MODE_USER_PREAMBLE: &str = "[plan-mode] You are in plan mode for this turn. Inspect with read-only tools, capture work in specs via `create_spec` / `update_spec`, and organize tasks via `create_task` / `update_task` / `delete_task` / `transition_task`. Do not write or edit source files, do not run commands, do not mark tasks done, and do not transition tasks to `in_progress` or `done`. Every spec must include `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected Files & Modules`, `## Interfaces & Signatures`, `## Design / Approach`, `## External References`, and `## Definition of Done`. Every task description must include `## Goal`, `## Context` (quoting the parent spec), `## Files & Symbols`, `## Approach`, `## Acceptance Criteria`, and `## Verification`.";
 
 /// Tool name list used both as `tool_hints` on the outbound
 /// `UserMessage` (which steers `tool_choice` on the first iteration of
@@ -280,6 +301,84 @@ mod tests {
                 && PLAN_MODE_SYSTEM_PROMPT_SUFFIX.contains("`transition_task`"),
             "plan-mode prompt must advertise the task-organization tool surface, got: {PLAN_MODE_SYSTEM_PROMPT_SUFFIX}",
         );
+    }
+
+    /// Pin the spec content contract: every required heading must
+    /// appear verbatim in the suffix. The extraction prompt and tool
+    /// schemas reference the same section names, so a drift here
+    /// silently desynchronises the pipeline.
+    #[test]
+    fn system_prompt_suffix_pins_spec_content_contract() {
+        for heading in [
+            "# Spec content contract",
+            "`## Background / Context`",
+            "`## Goals`",
+            "`## Non-Goals`",
+            "`## Affected Files & Modules`",
+            "`## Interfaces & Signatures`",
+            "`## Design / Approach`",
+            "`## External References`",
+            "`## Definition of Done`",
+        ] {
+            assert!(
+                PLAN_MODE_SYSTEM_PROMPT_SUFFIX.contains(heading),
+                "plan-mode suffix must name the spec contract heading {heading:?}, got: {PLAN_MODE_SYSTEM_PROMPT_SUFFIX}",
+            );
+        }
+        assert!(
+            PLAN_MODE_SYSTEM_PROMPT_SUFFIX
+                .contains("Inspect concrete files in the repo BEFORE writing a spec"),
+            "plan-mode suffix must tell the model to inspect before authoring",
+        );
+    }
+
+    /// Pin the task content contract on the suffix as well: plan mode
+    /// is allowed to call `create_task` directly, so plan-mode-authored
+    /// tasks must match the same shape as extraction-authored tasks.
+    #[test]
+    fn system_prompt_suffix_pins_task_content_contract() {
+        for heading in [
+            "# Task content contract",
+            "`## Goal`",
+            "`## Context`",
+            "`## Files & Symbols`",
+            "`## Approach`",
+            "`## Acceptance Criteria`",
+            "`## Verification`",
+        ] {
+            assert!(
+                PLAN_MODE_SYSTEM_PROMPT_SUFFIX.contains(heading),
+                "plan-mode suffix must name the task contract heading {heading:?}, got: {PLAN_MODE_SYSTEM_PROMPT_SUFFIX}",
+            );
+        }
+        assert!(
+            PLAN_MODE_SYSTEM_PROMPT_SUFFIX
+                .contains("quote 1\u{2013}3 lines from the parent spec"),
+            "plan-mode suffix must require Context to quote the parent spec",
+        );
+    }
+
+    /// Pin the per-turn preamble. Warm sessions that started before
+    /// the contract landed only see the preamble, so it has to name
+    /// every required heading itself.
+    #[test]
+    fn user_preamble_mentions_required_sections() {
+        for needle in [
+            "`## Background / Context`",
+            "`## Affected Files & Modules`",
+            "`## Interfaces & Signatures`",
+            "`## Definition of Done`",
+            "`## Goal`",
+            "`## Context`",
+            "`## Files & Symbols`",
+            "`## Acceptance Criteria`",
+            "`## Verification`",
+        ] {
+            assert!(
+                PLAN_MODE_USER_PREAMBLE.contains(needle),
+                "plan-mode preamble must mention {needle:?}, got: {PLAN_MODE_USER_PREAMBLE}",
+            );
+        }
     }
 
     #[test]

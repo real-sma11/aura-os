@@ -41,7 +41,7 @@
         },
         "markdown_contents": {
           "type": "string",
-          "description": "Full markdown body of the spec that should be saved into Aura OS."
+          "description": "Full markdown body of the spec. Must follow the structured spec content contract: contains the sections `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected Files & Modules` (concrete repo paths), `## Interfaces & Signatures` (current and proposed shape pasted verbatim from source when modifying existing code), `## Design / Approach`, `## External References` (URLs / RFC sections, or `None`), and `## Definition of Done` (exact build/test/format/lint commands plus 3-7 acceptance criteria). Inspect the repo before authoring so the file paths and signatures are real."
         }
       },
       "required": ["title", "markdown_contents"]
@@ -67,7 +67,7 @@
         },
         "markdown_contents": {
           "type": "string",
-          "description": "Optional replacement markdown body."
+          "description": "Optional replacement markdown body. If supplied, it must follow the structured spec content contract: `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected Files & Modules`, `## Interfaces & Signatures`, `## Design / Approach`, `## External References`, and `## Definition of Done`."
         }
       },
       "required": ["spec_id"]
@@ -142,7 +142,7 @@
         },
         "description": {
           "type": "string",
-          "description": "Full task description that should be saved into Aura OS."
+          "description": "Full task description. The executor agent that runs this task may not re-open the parent spec, so the description must be self-contained and must follow the structured task content contract: contains the sections `## Goal` (1-2 sentences), `## Context` (quote 1-3 lines from the parent spec verbatim), `## Files & Symbols` (concrete repo paths plus function/type/test names; never invent paths), `## Approach` (for implementation work: inspect, call `submit_plan`, then `write_file` / `edit_file` / `delete_file`), `## Acceptance Criteria` (3-5 observable bullets), and `## Verification` (exact build/test/format/lint commands from the parent spec's Definition of Done; for no-source-edit tasks, instruct the executor to call `task_done` with `no_changes_needed: true`)."
         },
         "dependency_ids": {
           "type": "array",
@@ -173,7 +173,7 @@
         },
         "description": {
           "type": "string",
-          "description": "Optional replacement description."
+          "description": "Optional replacement description. If supplied, it must follow the structured task content contract: `## Goal`, `## Context` (quoting the parent spec), `## Files & Symbols`, `## Approach`, `## Acceptance Criteria`, and `## Verification`."
         },
         "status": {
           "type": "string",

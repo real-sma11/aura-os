@@ -168,7 +168,15 @@ async fn open_spec_gen_session(
     })?;
 
     let spec_gen_instruction = format!(
-        "Generate specs for project {project_id}. Inspect the project first, then create one or more concrete specs using the available project spec tools. Do not stop until the specs have been created."
+        "Generate specs for project {project_id}. Inspect the repo first via `read_file`, \
+         `list_files`, `find_files`, and `search_code` so you can name concrete files, modules, \
+         and symbols in the spec body \u{2014} do not invent paths. Then create one or more \
+         specs via `create_spec`. Each spec must follow the spec content contract from the \
+         system prompt: `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected \
+         Files & Modules`, `## Interfaces & Signatures` (current and proposed shape pasted \
+         verbatim from the source when modifying existing code), `## Design / Approach`, \
+         `## External References`, and `## Definition of Done`. Do not stop until the specs \
+         have been created."
     );
 
     session

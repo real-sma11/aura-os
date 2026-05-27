@@ -269,6 +269,53 @@ fn parse_explicit_line_count(lower: &str) -> Option<usize> {
     None
 }
 
+/// Build the skeleton-child description. Pure helper so the
+/// inheritance-of-contract reminder and the tool-flow guidance can be
+/// unit-tested without mocking [`TaskService`]. The string is
+/// consumed verbatim by [`spawn_skeleton_and_fill_children`].
+fn skeleton_child_description(
+    header: &str,
+    path: Option<&str>,
+    original_description: &str,
+) -> String {
+    let path_clause = match path {
+        Some(p) => format!("in `{p}`"),
+        None => "in ONE file of your choosing (pick a clear path)".to_string(),
+    };
+    format!(
+        "{header}\n\n\
+         Create ONLY a module doc + imports + one public stub {path_clause}.\n\
+         Call `write_file` exactly once, then `task_done`.\n\n\
+         Inherit `## Files & Symbols`, `## Acceptance Criteria`, and `## Verification` from the original description below; this skeleton step satisfies only the scaffolding portion of those sections.\n\n\
+         Original task description:\n\
+         {original_description}"
+    )
+}
+
+/// Build the fill-child description. Pure helper so the
+/// inheritance-of-contract reminder and the chunk-size guidance can
+/// be unit-tested without mocking [`TaskService`].
+fn fill_child_description(
+    header: &str,
+    path: Option<&str>,
+    chunk_bytes: usize,
+    original_description: &str,
+) -> String {
+    let path_clause = match path {
+        Some(p) => format!("The file `{p}` already exists as a skeleton."),
+        None => "The skeleton file was created by the previous task.".to_string(),
+    };
+    format!(
+        "{header} Depends on the skeleton task above.\n\n\
+         {path_clause} Use `edit_file` exclusively to add the\n\
+         remaining logic in chunks of <= {chunk_bytes} bytes per call,\n\
+         and aim for <= 3 edits total.\n\n\
+         Inherit `## Files & Symbols`, `## Acceptance Criteria`, and `## Verification` from the original description below \u{2014} this fill step must satisfy them in full before `task_done`.\n\n\
+         Original task description:\n\
+         {original_description}"
+    )
+}
+
 /// Create the shared skeleton + fill follow-up pair for the Phase 5
 /// preflight path.
 ///
@@ -292,35 +339,16 @@ pub(crate) async fn spawn_skeleton_and_fill_children(
     let original_title = parent.title.clone();
     let original_description = parent.description.clone();
 
-    let path_clause = match path {
-        Some(p) => format!("in `{p}`"),
-        None => "in ONE file of your choosing (pick a clear path)".to_string(),
-    };
     let skeleton_title = format!("{original_title} [skeleton]");
-    let skeleton_description = format!(
-        "{header}\n\n\
-         Create ONLY a module doc + imports + one public stub {path_clause}.\n\
-         Call `write_file` exactly once, then `task_done`.\n\n\
-         Original task description:\n\
-         {original_description}"
-    );
+    let skeleton_description =
+        skeleton_child_description(&header, path, &original_description);
     let skeleton = task_service
         .create_follow_up_task(parent, skeleton_title, skeleton_description, Vec::new())
         .await?;
 
     let fill_title = format!("{original_title} [fill]");
-    let fill_path_clause = match path {
-        Some(p) => format!("The file `{p}` already exists as a skeleton."),
-        None => "The skeleton file was created by the previous task.".to_string(),
-    };
-    let fill_description = format!(
-        "{header} Depends on the skeleton task above.\n\n\
-         {fill_path_clause} Use `edit_file` exclusively to add the\n\
-         remaining logic in chunks of <= {chunk_bytes} bytes per call,\n\
-         and aim for <= 3 edits total.\n\n\
-         Original task description:\n\
-         {original_description}"
-    );
+    let fill_description =
+        fill_child_description(&header, path, chunk_bytes, &original_description);
     let fill = task_service
         .create_follow_up_task(parent, fill_title, fill_description, vec![skeleton.task_id])
         .await?;
@@ -425,5 +453,55 @@ mod tests {
         };
         assert!(pre.header().contains("before execution"));
         assert!(pre.header().contains("full implementation"));
+    }
+
+    /// The skeleton child must remind the executor that the parent's
+    /// structured `## Files & Symbols`, `## Acceptance Criteria`, and
+    /// `## Verification` sections still apply; without this reminder
+    /// the decomposed children silently lose the task content
+    /// contract that the extraction prompt enforces on the parent.
+    #[test]
+    fn skeleton_child_description_inherits_parent_contract() {
+        let header = "AUTO-DECOMPOSED before execution due to phrase:full implementation.";
+        let original = "## Goal\nDo the thing.\n## Files & Symbols\n- `crates/foo/src/lib.rs`\n";
+        let desc = skeleton_child_description(header, Some("crates/foo/src/lib.rs"), original);
+
+        assert!(desc.starts_with(header));
+        assert!(desc.contains("in `crates/foo/src/lib.rs`"));
+        assert!(desc.contains("`write_file` exactly once"));
+        assert!(
+            desc.contains("Inherit `## Files & Symbols`, `## Acceptance Criteria`, and `## Verification`"),
+            "skeleton description must remind the executor that the parent's structured sections still apply, got: {desc}",
+        );
+        assert!(
+            desc.ends_with(original),
+            "skeleton description must end with the verbatim original description, got: {desc}",
+        );
+    }
+
+    /// Same contract reminder on the fill child, with the stronger
+    /// "must satisfy them in full before `task_done`" wording because
+    /// the fill step is where the work actually lands.
+    #[test]
+    fn fill_child_description_inherits_parent_contract() {
+        let header = "AUTO-DECOMPOSED before execution due to long_spec_with_write_hint.";
+        let original = "## Goal\nDo the thing.\n## Verification\nrun `cargo test`.\n";
+        let desc = fill_child_description(header, None, 6_000, original);
+
+        assert!(desc.starts_with(header));
+        assert!(desc.contains("Depends on the skeleton task above"));
+        assert!(desc.contains("chunks of <= 6000 bytes"));
+        assert!(
+            desc.contains("Inherit `## Files & Symbols`, `## Acceptance Criteria`, and `## Verification`"),
+            "fill description must remind the executor that the parent's structured sections still apply, got: {desc}",
+        );
+        assert!(
+            desc.contains("must satisfy them in full before `task_done`"),
+            "fill description must escalate the inheritance into a task_done gate, got: {desc}",
+        );
+        assert!(
+            desc.ends_with(original),
+            "fill description must end with the verbatim original description, got: {desc}",
+        );
     }
 }
