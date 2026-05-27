@@ -31,6 +31,7 @@ import {
   clearBootStatus,
   installBootErrorHandlers,
   markBootPhase,
+  markStoragePressure,
   reportBootError,
 } from "./lib/boot-diagnostics";
 import { purgeLegacyChatHistoryFallback } from "./shared/lib/browser-db";
@@ -44,6 +45,7 @@ import { initAnalytics, track } from "./lib/analytics";
 syncQueryHostOriginToStorage();
 installPreloadRecovery();
 installBootErrorHandlers();
+markStoragePressure();
 markBootPhase("frontend module loaded");
 // -webkit-app-region: drag works in WebView2 on Windows but is ignored by
 // WKWebView (macOS) and WebKitGTK (Linux). Install a JS fallback that

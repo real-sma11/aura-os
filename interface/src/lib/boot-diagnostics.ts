@@ -95,3 +95,50 @@ export function installBootErrorHandlers(): void {
     reportBootError("unhandled promise rejection", event.reason);
   });
 }
+
+const STORAGE_PRESSURE_THRESHOLD_BYTES = 3 * 1024 * 1024;
+const STORAGE_PRESSURE_TOP_N = 5;
+
+/**
+ * Boot-time diagnostic: surface localStorage pressure as a single
+ * `console.warn` (NOT `console.error` — `installBootErrorHandlers`
+ * promotes uncaught errors and unhandled rejections into a startup
+ * failure banner). Walks every key once, sums `key.length +
+ * value.length` (UTF-16 char counts, a fine byte-size proxy in
+ * practice), and only logs when total usage exceeds ~3 MB. Wrapped
+ * end-to-end in try/catch so a diagnostic can never break boot.
+ */
+export function markStoragePressure(): void {
+  try {
+    if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
+      return;
+    }
+    const storage = window.localStorage;
+    const entries: Array<{ key: string; bytes: number }> = [];
+    let total = 0;
+    const length = storage.length;
+    for (let i = 0; i < length; i += 1) {
+      try {
+        const key = storage.key(i);
+        if (key === null) continue;
+        const value = storage.getItem(key);
+        const bytes = key.length + (value?.length ?? 0);
+        total += bytes;
+        entries.push({ key, bytes });
+      } catch {
+        // Skip entries we cannot read; diagnostic must never throw.
+      }
+    }
+    if (total <= STORAGE_PRESSURE_THRESHOLD_BYTES) return;
+    const topKeys = entries
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, STORAGE_PRESSURE_TOP_N)
+      .map((entry) => ({ key: entry.key, kb: Math.round(entry.bytes / 1024) }));
+    console.warn("[aura-boot] localStorage pressure", {
+      totalKB: Math.round(total / 1024),
+      topKeys,
+    });
+  } catch {
+    // Diagnostics must never become another startup failure.
+  }
+}

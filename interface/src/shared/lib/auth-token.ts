@@ -125,19 +125,90 @@ function readSyncStoredSession(): AuthSession | null {
   return parseStoredSession(storage.getItem(AUTH_BROWSER_DB_FALLBACK_KEY), jwt);
 }
 
+/**
+ * Detect a localStorage quota-exhaustion failure across browser engines.
+ *
+ * Chromium/Safari throw a `DOMException` whose `name` is
+ * `"QuotaExceededError"` and whose legacy numeric `code` is `22`
+ * (`QUOTA_EXCEEDED_ERR`). Firefox historically uses
+ * `"NS_ERROR_DOM_QUOTA_REACHED"`. Accept all of these so the retry path
+ * in `writeSyncStoredSession` does not silently miss a quota hit on any
+ * supported browser.
+ */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const candidate = err as { name?: unknown; code?: unknown };
+  if (candidate.name === "QuotaExceededError") return true;
+  if (candidate.name === "NS_ERROR_DOM_QUOTA_REACHED") return true;
+  if (candidate.code === 22) return true;
+  return false;
+}
+
+/**
+ * Legacy task-subsystem localStorage keys. As of the Phase 1 IDB migration
+ * (commit `bcfc1209b`) these are redundant with the `taskOutputCache`,
+ * `taskOutputPanel`, and `taskTurns` IDB stores, so removing them is safe
+ * even if the per-cache migration hasn't yet run on a given client. We
+ * never touch `aura-session`, `aura-jwt`, `aura-force-logged-out`, the
+ * `aura-idb:auth:*` mirror keys, or capture tokens (`aura-capture:*`).
+ */
+const LEGACY_TASK_STORAGE_KEYS = [
+  "aura-task-output-cache-v1",
+  "aura-task-output-panel-tasks",
+  "aura-task-turns-v1",
+] as const;
+
+function evictNonAuthLargeKeys(storage: Storage): void {
+  for (const key of LEGACY_TASK_STORAGE_KEYS) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Eviction is best-effort; ignore failures on individual keys so a
+      // single broken entry cannot block the retry attempt.
+    }
+  }
+}
+
 function writeSyncStoredSession(session: AuthSession | null): void {
   const storage = getLocalStorage();
   if (!storage) return;
-  if (session) {
-    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-    if (session.access_token) {
-      storage.setItem(JWT_STORAGE_KEY, session.access_token);
+  // Safety net: if some unrelated localStorage key fills the ~5-10 MB
+  // browser quota, persisting auth must not silently die. On
+  // `QuotaExceededError`, evict the Phase-1-redundant legacy task keys
+  // and retry the write exactly once. `cachedSession` already holds the
+  // in-memory truth so an additional failure on retry is non-fatal.
+  try {
+    if (session) {
+      storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      if (session.access_token) {
+        storage.setItem(JWT_STORAGE_KEY, session.access_token);
+      } else {
+        storage.removeItem(JWT_STORAGE_KEY);
+      }
     } else {
       storage.removeItem(JWT_STORAGE_KEY);
+      storage.removeItem(SESSION_STORAGE_KEY);
     }
-  } else {
-    storage.removeItem(JWT_STORAGE_KEY);
-    storage.removeItem(SESSION_STORAGE_KEY);
+  } catch (err) {
+    if (!isQuotaExceededError(err)) throw err;
+    evictNonAuthLargeKeys(storage);
+    try {
+      if (session) {
+        storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+        if (session.access_token) {
+          storage.setItem(JWT_STORAGE_KEY, session.access_token);
+        } else {
+          storage.removeItem(JWT_STORAGE_KEY);
+        }
+      } else {
+        storage.removeItem(JWT_STORAGE_KEY);
+        storage.removeItem(SESSION_STORAGE_KEY);
+      }
+    } catch {
+      // Best-effort: persisting is a mirror of the in-memory cache.
+      // Swallowing here keeps auth restore alive even if the retry
+      // itself trips another quota error or storage glitch.
+    }
   }
 }
 

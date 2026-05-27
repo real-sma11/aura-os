@@ -135,6 +135,25 @@ describe("auth-token", () => {
     expect(getStoredSession()).toBeNull();
   });
 
+  it("recovers from QuotaExceededError by evicting legacy task keys and retrying once", async () => {
+    window.localStorage.setItem("aura-task-output-cache-v1", "cache-payload");
+    window.localStorage.setItem("aura-task-output-panel-tasks", "panel-payload");
+    window.localStorage.setItem("aura-task-turns-v1", "turns-payload");
+
+    const setItemMock = vi.mocked(window.localStorage.setItem);
+    setItemMock.mockImplementationOnce(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    });
+
+    await setStoredAuth(mockSession);
+
+    expect(window.localStorage.getItem("aura-task-output-cache-v1")).toBeNull();
+    expect(window.localStorage.getItem("aura-task-output-panel-tasks")).toBeNull();
+    expect(window.localStorage.getItem("aura-task-turns-v1")).toBeNull();
+    expect(window.localStorage.getItem("aura-session")).toBe(JSON.stringify(mockSession));
+    expect(window.localStorage.getItem("aura-jwt")).toBe(mockSession.access_token);
+  });
+
   describe("isLoggedInSync", () => {
     it("returns false when nothing is stored", () => {
       expect(isLoggedInSync()).toBe(false);
