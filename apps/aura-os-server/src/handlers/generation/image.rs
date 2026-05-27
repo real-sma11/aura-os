@@ -269,12 +269,26 @@ async fn run_image_upstream_task(
             if let Some((event, terminal, completed_payload)) =
                 router_frame_to_generation_event(&frame)
             {
+                // Deliver the SSE frame to the client BEFORE awaiting
+                // persistence. `persist_completion` does an HTTP POST
+                // to storage via `persist_event`; a slow / unreachable
+                // storage backend was holding this loop open
+                // indefinitely, blocking both the terminal
+                // `generation_completed` frame and the outer
+                // heartbeat tick. The user-visible symptom was
+                // "cooking forever, image never appears" in image
+                // mode against a healthy router but unhealthy storage.
+                // Persistence stays best-effort (the existing
+                // `warn!`-and-swallow contract in `persist.rs`) and is
+                // awaited AFTER the send so a late client disconnect
+                // still gets the assistant-history row written.
+                let send_result = tx.send(Ok(event)).await;
                 if let Some(payload) = completed_payload.as_ref() {
                     if let Some((ctx, event_bus, meta)) = persist.take() {
                         super::persist::persist_completion(&ctx, &event_bus, &meta, payload).await;
                     }
                 }
-                if tx.send(Ok(event)).await.is_err() {
+                if send_result.is_err() {
                     return;
                 }
                 if terminal {
@@ -323,6 +337,12 @@ async fn run_image_upstream_task(
                     if let Some((event, _terminal, completed_payload)) =
                         router_frame_to_generation_event(&frame)
                     {
+                        // Same ordering rule as the inner loop above:
+                        // deliver the SSE frame BEFORE awaiting
+                        // persistence so a slow storage backend
+                        // cannot delay (or eternally swallow) the
+                        // final `generation_completed` event.
+                        let _ = tx.send(Ok(event)).await;
                         if let Some(payload) = completed_payload.as_ref() {
                             if let Some((ctx, event_bus, meta)) = persist.take() {
                                 super::persist::persist_completion(
@@ -331,7 +351,6 @@ async fn run_image_upstream_task(
                                 .await;
                             }
                         }
-                        let _ = tx.send(Ok(event)).await;
                         return;
                     }
                 }
@@ -931,6 +950,108 @@ mod streaming_tests {
         assert_eq!(event_kind(&heartbeat), "generation_progress");
 
         mock_handle.abort();
+    }
+
+    /// Regression gate for the image-mode "cooking forever, image
+    /// never appears" hang: a slow / unreachable storage backend
+    /// (the user-reproducible local-dev failure) must not delay the
+    /// terminal `generation_completed` SSE frame. The pre-fix loop
+    /// awaited `persist_completion` BEFORE `tx.send(event)`, so a
+    /// wedged storage HTTP call held the SSE wire silent forever
+    /// — heartbeats stopped too because we were stuck inside the
+    /// inner `while` loop rather than the outer `timeout(...)`.
+    #[tokio::test]
+    async fn generation_completed_arrives_even_when_storage_hangs() {
+        use crate::handlers::agents::chat::ChatPersistCtx;
+        use aura_os_core::SessionId;
+        use aura_os_storage::StorageClient;
+        use std::sync::Arc;
+
+        // Router fires the `completed` frame immediately.
+        let body = format!(
+            "event: completed\ndata: {}\n\n",
+            json!({
+                "imageUrl": "https://cdn.example.com/cat.png",
+                "originalUrl": "https://cdn.example.com/cat-orig.png",
+                "artifactId": "art-cat",
+            }),
+        );
+        let (router_base_url, router_handle) = start_mock_upstream(body, 200, 0).await;
+        let router_url = format!("{router_base_url}/v1/generate-image/stream");
+
+        // Slow storage: accept the persist POST and never reply. We
+        // intentionally do NOT bound this with a timeout — the test's
+        // own `tokio::time::timeout` on `rx.recv()` is the guard.
+        let storage_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let storage_addr = storage_listener.local_addr().unwrap();
+        let storage_url = format!("http://{storage_addr}");
+        let storage_handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = storage_listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let _ = socket.read(&mut buf).await;
+                    std::future::pending::<()>().await;
+                });
+            }
+        });
+
+        let storage = Arc::new(StorageClient::with_base_url(&storage_url));
+        let session_id: SessionId = "11111111-2222-3333-4444-555555555555"
+            .parse()
+            .expect("valid UUID");
+        let ctx = ChatPersistCtx {
+            storage,
+            jwt: "jwt".to_string(),
+            session_id,
+            project_agent_id: "pa-test".to_string(),
+            project_id: "p-test".to_string(),
+            agent_id: Some("agent-test".to_string()),
+            originating_agent_id: None,
+            cross_agent_depth: 0,
+            from_agent_id: None,
+        };
+        let (event_bus, _rx_bus) = broadcast::channel::<Value>(8);
+        let meta = GenerationPersistMeta {
+            prompt: "a cat".to_string(),
+            model: Some("gpt-image-2".to_string()),
+            size: None,
+            tool_name: "generate_image",
+        };
+
+        let (tx, mut rx) = mpsc::channel::<Result<Event, Infallible>>(8);
+        tokio::spawn(run_image_upstream_task(
+            tx,
+            router_url,
+            "jwt".to_string(),
+            "agent-test".to_string(),
+            mk_identity(),
+            json!({ "prompt": "a cat" }),
+            "gen-test".to_string(),
+            Some((ctx, event_bus, meta)),
+        ));
+
+        // `generation_start` is the synthetic first frame; no awaits
+        // gate it.
+        let first = rx.recv().await.expect("first frame").expect("infallible");
+        assert_eq!(event_kind(&first), "generation_start");
+
+        // The `generation_completed` frame MUST land within a tight
+        // deadline even though `persist_completion`'s storage POST
+        // will never return. 2s comfortably covers the local TCP
+        // roundtrip while staying well below any realistic storage
+        // wait time. Pre-fix this assertion times out.
+        let second = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("generation_completed must land even when storage hangs")
+            .expect("channel open")
+            .expect("infallible");
+        assert_eq!(event_kind(&second), "generation_completed");
+
+        router_handle.abort();
+        storage_handle.abort();
     }
 
     /// Happy path: upstream emits a `completed` frame; the response
