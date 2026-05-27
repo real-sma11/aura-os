@@ -262,6 +262,175 @@ describe("ActivityTimeline tool-position data attributes", () => {
   });
 });
 
+// Phase 1 — when the model emits zero `thinking_delta` events on the
+// wire (Opus-4 in Adaptive mode default behaviour, and other
+// configurations where the API chooses not to surface reasoning) the
+// activity timeline must still render the standard Brain
+// "Thinking..." Block during streaming so the user sees that the
+// model is working. The placeholder must self-disengage the moment a
+// real thinking item arrives, must not appear on terminal/historical
+// turns, and must not appear on text-only chat replies that lack any
+// tool activity.
+describe("ActivityTimeline synthetic thinking placeholder", () => {
+  it("synthesizes a live ThinkingBlock when streaming with tools but no thinking events", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "src/main.rs" },
+        result: undefined,
+        pending: true,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        thinkingText=""
+        isStreaming
+      />,
+    );
+
+    // Exactly one Brain "Thinking..." header is rendered.
+    const thinkingLabels = screen.getAllByText("Thinking...");
+    expect(thinkingLabels).toHaveLength(1);
+
+    // It sits at the head of the timeline, before the tool row.
+    const dataKinds = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-kind]"),
+    ).map((el) => el.dataset.kind);
+    expect(dataKinds[0]).toBe("thinking");
+    expect(dataKinds[1]).toBe("tool");
+  });
+
+  it("uses the real thinking item once a thinking_delta arrives (no duplicate synthetic)", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "src/main.rs" },
+        result: undefined,
+        pending: true,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      {
+        kind: "thinking",
+        id: "th-real",
+        text: "Reasoning about the file…",
+        startMs: 1000,
+      },
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        thinkingText="Reasoning about the file…"
+        isStreaming
+      />,
+    );
+
+    // Exactly one ThinkingBlock — the real one, not duplicated by the
+    // synthesizer which must disengage on `hasRealThinking`.
+    const thinkingLabels = screen.getAllByText("Thinking...");
+    expect(thinkingLabels).toHaveLength(1);
+    expect(screen.getByText("Reasoning about the file…")).toBeInTheDocument();
+  });
+
+  it("does not synthesize on terminal/historical turns (isStreaming=false)", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "src/main.rs" },
+        result: "ok",
+        pending: false,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        thinkingText=""
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Thought/)).not.toBeInTheDocument();
+  });
+
+  it("does not synthesize on text-only streams without tools", () => {
+    const timeline: TimelineItem[] = [
+      { kind: "text", id: "tx-1", content: "Hello there, here's some prose." },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={[]}
+        thinkingText=""
+        isStreaming
+      />,
+    );
+
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+  });
+
+  // Substituted from the planned `task-stream-bootstrap.test.ts`
+  // integration test (#5 in the plan). The integration approach would
+  // require bootstrapping real stream-store subscriptions and mounting
+  // `ActiveTaskStream`, but every existing `ActiveTaskStream` test
+  // already mocks the stream hooks (see ActiveTaskStream.test.tsx), so
+  // the realistic end-state simulation belongs here instead. This test
+  // mirrors the exact wire shape that arrives when only
+  // `EventType.TaskStarted` + `EventType.ToolCallStarted` have fired:
+  // a synthetic transition card and one pending real tool, with no
+  // thinking text and no thinking timeline item.
+  it("renders Thinking block when only tool_use_start arrives (end-state of TaskStarted + ToolCallStarted)", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "synthetic-transition-1",
+        name: "transition_task",
+        input: { task_id: "t1", from_status: "ready", status: "in_progress" },
+        pending: false,
+        synthetic: true,
+      },
+      {
+        id: "call-1",
+        name: "read_file",
+        input: { path: "src/lib.rs" },
+        pending: true,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "synthetic-transition-1", id: "tl-syn" },
+      { kind: "tool", toolCallId: "call-1", id: "tl-real" },
+    ];
+
+    render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        thinkingText=""
+        isStreaming
+      />,
+    );
+
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+  });
+});
+
 describe("ActivityTimeline Phase 5 — adjacent identical tool grouping", () => {
   it("collapses N consecutive identical reads into one row carrying a xN badge", () => {
     const toolCalls: ToolCallEntry[] = [

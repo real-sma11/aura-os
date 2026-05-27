@@ -110,6 +110,29 @@ export function ActivityTimeline({
     mergedTimeline.push(item);
   }
 
+  // When the model emits zero `thinking_delta` blocks on the wire
+  // (Opus-4 Adaptive default, plus any other path where the API
+  // chooses not to surface reasoning) the user otherwise sees tool
+  // blocks appear with no narration above them. Inject an open
+  // placeholder thinking slot at the head of the merged timeline so
+  // the standard Brain "Thinking..." Block renders during streaming.
+  // Disengages automatically once a real thinking item arrives
+  // (`hasRealThinking`) or the turn terminates (`isStreaming=false`).
+  const SYNTHETIC_THINKING_ID = "thinking-live-synthetic";
+  const hasRealThinking = mergedTimeline.some((i) => i.kind === "thinking");
+  const hasAnyTool = mergedTimeline.some((i) => i.kind === "tool");
+  const shouldSynthesizeThinking =
+    isStreaming && !hasRealThinking && !thinkingText && hasAnyTool;
+  if (shouldSynthesizeThinking) {
+    mergedTimeline.unshift({
+      kind: "thinking",
+      id: SYNTHETIC_THINKING_ID,
+      text: undefined,
+      startMs: undefined,
+      durationMs: undefined,
+    } as TimelineItem);
+  }
+
   // Phase 5 — feed-wide path disambiguation. Walk the file-op tool
   // entries reachable from this turn's timeline and compute the shortest
   // right-anchored tail that uniquely identifies each path within the
@@ -175,7 +198,14 @@ export function ActivityTimeline({
       // the text that actually belongs to it. Fall back to the global
       // `thinkingText` for historical messages that predate per-segment text.
       const segmentText = item.text ?? thinkingText;
-      if (!segmentText) continue;
+      // Open live segments (no `durationMs` stamped, parent turn still
+      // streaming) must render even with empty text so the shimmering
+      // Brain "Thinking..." header is visible the instant a thinking
+      // slot opens (real or synthetic). Closed/historical segments
+      // without text still skip — this preserves the no-phantom-block
+      // behavior on hydrated terminal turns.
+      const isOpenLiveSegment = isStreaming && item.durationMs == null;
+      if (!segmentText && !isOpenLiveSegment) continue;
       // Derive a per-segment streaming flag instead of forwarding the
       // turn-level `isStreaming` to every block. Without this, a
       // multi-segment turn (thinking -> tool -> thinking) used to render
@@ -195,7 +225,7 @@ export function ActivityTimeline({
         toolPosition: null,
         node: (
           <ThinkingBlock
-            text={segmentText}
+            text={segmentText ?? ""}
             isStreaming={segmentIsStreaming}
             // Prefer the per-segment `durationMs` stamped by
             // `closeCurrentThinkingSegment`; fall back to the
