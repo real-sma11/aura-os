@@ -109,6 +109,28 @@ describe("isUserFacingAgentInstance", () => {
     ).toBe(false);
   });
 
+  it("hides system-stamped rows even if storage strips instance_role", () => {
+    // Defense-in-depth: the Rust `AgentInstanceService` helpers
+    // stamp `source = "system"` on every Loop / Executor row so
+    // role-defaulted Chat rows (storage 404 / missing column) still
+    // get filtered out and don't stack as duplicate sidebar entries.
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: undefined, source: "system" }),
+      ),
+    ).toBe(false);
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "executor", source: "system" }),
+      ),
+    ).toBe(false);
+    expect(
+      isUserFacingAgentInstance(
+        makeAgent({ instance_role: "loop", source: "system" }),
+      ),
+    ).toBe(false);
+  });
+
   it("hides unknown non-UI sources (forward-compat guard)", () => {
     expect(
       isUserFacingAgentInstance(

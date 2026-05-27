@@ -227,6 +227,25 @@ impl AgentInstanceService {
     ) -> Result<AgentInstance, AgentError> {
         let storage = self.require_storage()?;
         let jwt = self.get_jwt()?;
+        // Internal `AgentInstanceService` helpers are reached only
+        // from system-initiated paths (`ensure_default_loop_instance`,
+        // `spawn_ephemeral_executor`, `create_instance_from_agent`).
+        // User-driven creation goes through
+        // `handlers::agents::instances::create_agent_instance` and
+        // stamps an explicit `source` there.
+        //
+        // Loop and Executor rows always get `source = "system"` so the
+        // projects sidebar's `isUserFacingAgentInstance` filter hides
+        // them even when storage strips the `instance_role` column on
+        // `list_project_agents` responses (without this defense the
+        // role-defaulted-to-Chat rows leaked through and stacked up as
+        // duplicate sidebar entries on every `POST /tasks/:id/run`).
+        let source = match role {
+            AgentInstanceRole::Loop | AgentInstanceRole::Executor => {
+                Some(aura_os_core::AgentInstanceSource::System.as_wire_str().to_string())
+            }
+            AgentInstanceRole::Chat => None,
+        };
         let req = aura_os_storage::CreateProjectAgentRequest {
             agent_id: agent.agent_id.to_string(),
             name: agent.name.clone(),
@@ -238,12 +257,7 @@ impl AgentInstanceService {
             icon: agent.icon.clone(),
             harness: None,
             instance_role: Some(role.as_wire_str().to_string()),
-            // Internal `AgentInstanceService` helpers are reached only
-            // from system-initiated paths (`ensure_default_loop_instance`,
-            // `spawn_ephemeral_executor`). User-driven creation goes
-            // through `handlers::agents::instances::create_agent_instance`
-            // and stamps an explicit `source` there.
-            source: None,
+            source,
             permissions: Some(agent.permissions.clone()),
             intent_classifier: agent.intent_classifier.clone(),
         };

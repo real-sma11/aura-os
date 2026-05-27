@@ -57,16 +57,21 @@ export function resolveStatus(raw: string | undefined): string | undefined {
  *    clicked the "+" button in the sidebar / agent selector).
  *    Non-UI provenance — `"auto_home"` (per-org Home-project lazy
  *    bind), `"auto_project_default"` (Standard-Agent auto-attach on
- *    new project), `"sdk"` (benchmark / e2e / scripts) — are
- *    system-created bindings that exist purely so chat persistence /
- *    redirects have a row to land on. They were the source of the
- *    repeated "Summarize This Me" rows that piled up on every dev
- *    run because the auto-rename hook seeded them from the first
- *    prompt.
+ *    new project), `"sdk"` (benchmark / e2e / scripts), `"system"`
+ *    (Loop / Executor rows stamped by the Rust
+ *    `AgentInstanceService` helpers) — are system-created bindings
+ *    that exist purely so chat persistence / redirects have a row to
+ *    land on. They were the source of the repeated "Summarize This
+ *    Me" rows that piled up on every dev run because the auto-rename
+ *    hook seeded them from the first prompt.
  *
  * The `null`/`undefined` allowance is deliberate: it keeps existing
  * production rows that pre-date the column visible until a backfill
- * can stamp them; new writes always carry an explicit source.
+ * can stamp them; new writes always carry an explicit source. The
+ * server stamps `source = "system"` on Loop / Executor rows so the
+ * filter holds even when storage strips the `instance_role` column
+ * on `list_project_agents` responses (which would otherwise let
+ * those rows leak through as role-defaulted Chat rows).
  */
 export function isUserFacingAgentInstance(agent: AgentInstance): boolean {
   if ((agent.instance_role ?? "chat") !== "chat") return false;

@@ -120,6 +120,14 @@ impl AgentInstanceRole {
 /// * `Sdk` — SDK / benchmark / e2e fixture script created the row via
 ///   the storage REST API. Hidden so dev runs and load tests don't
 ///   pollute the user's sidebar between cleanup cycles.
+/// * `System` — server-internal infrastructure binding such as the
+///   per-project `Loop` instance or an ephemeral `Executor` minted for
+///   a `POST /tasks/:id/run` call. Stamping a non-null `source` on
+///   these rows defends against the case where storage strips the
+///   `instance_role` column on `list_project_agents` responses (which
+///   would otherwise let them slip through the sidebar filter as
+///   role-defaulted Chat rows and stack up as duplicate "Summarize
+///   This Me"-style entries on every run).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentInstanceSource {
@@ -127,11 +135,12 @@ pub enum AgentInstanceSource {
     AutoHome,
     AutoProjectDefault,
     Sdk,
+    System,
 }
 
 impl AgentInstanceSource {
     /// Stable wire string used in storage payloads and event JSON.
-    /// Mirrors the four string constants the frontend's
+    /// Mirrors the string constants the frontend's
     /// `isUserFacingAgentInstance` filter knows about.
     pub fn as_wire_str(&self) -> &'static str {
         match self {
@@ -139,6 +148,7 @@ impl AgentInstanceSource {
             Self::AutoHome => "auto_home",
             Self::AutoProjectDefault => "auto_project_default",
             Self::Sdk => "sdk",
+            Self::System => "system",
         }
     }
 }

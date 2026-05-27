@@ -99,6 +99,11 @@ export type AgentInstanceRole = "chat" | "loop" | "executor";
  * - `"auto_project_default"` — `AppShell.handleProjectCreated` auto-
  *   attached the Standard Agent on new-project creation.
  * - `"sdk"` — SDK / benchmark / e2e fixture script.
+ * - `"system"` — server-internal infrastructure binding (the per-
+ *   project `Loop` instance, or an ephemeral `Executor` minted for a
+ *   `POST /tasks/:id/run`). Stamped by the Rust
+ *   `AgentInstanceService` helpers so these rows still get hidden if
+ *   storage strips the `instance_role` column.
  *
  * Typed as a string union with a `string` fallback so a forward-compat
  * backend that introduces a new origin doesn't poison the type, and
@@ -108,7 +113,8 @@ export type AgentInstanceSource =
   | "ui"
   | "auto_home"
   | "auto_project_default"
-  | "sdk";
+  | "sdk"
+  | "system";
 
 export interface AgentInstance {
   agent_instance_id: AgentInstanceId;
