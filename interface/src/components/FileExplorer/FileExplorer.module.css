@@ -31,6 +31,20 @@
   width: 100%;
 }
 
+/* Sidekick.module.css flattens all Explorer rows to the same padding-left.
+   Restore depth-based indentation from ZUI Item inline styles. */
+:global(.sidekickBody) .explorerContainer [class*="itemContent"] {
+  padding-left: unset !important;
+}
+
+:global(.sidekickBody) .explorerContainer [class*="childrenInner"] [class*="itemContent"] {
+  padding-left: unset !important;
+}
+
+:global(.sidekickBody) .explorerContainer [class*="iconSpacer"] {
+  display: revert;
+}
+
 .pathHeader {
   display: flex;
   align-items: center;
