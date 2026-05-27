@@ -86,6 +86,32 @@ function contextForTask(taskId: string): TaskStreamContext {
   return { key, refs: meta.refs, setters, abortRef };
 }
 
+/** Resolve routing `project_id` from top-level or nested payload fields. */
+function resolveEventProjectId(event: AuraEvent): string | undefined {
+  const top = event.project_id?.trim();
+  if (top) return top;
+  const nested = parseEventContent(event).project_id;
+  if (typeof nested === "string" && nested.trim()) return nested.trim();
+  return undefined;
+}
+
+function handleLoopActivityChanged(
+  e: AuraEventOfType<typeof EventType.LoopActivityChanged>,
+): void {
+  const projectId = resolveEventProjectId(e);
+  const activity = e.content.activity;
+  const taskId = activity?.current_task_id;
+  if (!projectId || !taskId) return;
+  useTaskOutputPanelStore
+    .getState()
+    .hydrateActiveTask(
+      taskId,
+      projectId,
+      e.project_agent_id ?? e.agent_id ?? undefined,
+      e.session_id || undefined,
+    );
+}
+
 function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): void {
   const taskId = e.content.task_id;
   if (!taskId) return;
@@ -99,7 +125,7 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   // turn's percentage until the first AssistantMessageEnd lands.
   useContextUsageStore.getState().clearContextUtilization(taskStreamKey(taskId));
 
-  const projectId = e.project_id;
+  const projectId = resolveEventProjectId(e);
   if (projectId) {
     useTaskOutputPanelStore
       .getState()
@@ -113,13 +139,9 @@ function handleTaskStarted(e: AuraEventOfType<typeof EventType.TaskStarted>): vo
   } else if (import.meta.env.DEV) {
     // Diagnostic: when the Run pane stays empty during a live
     // automation run, one possibility is that `task_started` events
-    // are arriving over the WS but without a `project_id` (which the
-    // server-side `enrich_event` is supposed to stamp on every
-    // forwarder-routed event). Without this log the drop is silent —
-    // `addTask` is never called and no row appears in the panel, but
-    // there's no signal anywhere in the client that an event was
-    // received and discarded. Surface it in DEV builds so an operator
-    // can grep the console while reproducing the bug.
+    // are arriving over the WS but without a routable `project_id`.
+    // With the server-side enrich fix this should be rare; keep the
+    // log as a canary for wire-shape regressions.
     console.debug(
       "[task-stream-bootstrap] dropping task_started: missing project_id",
       { taskId, agentId: e.agent_id, sessionId: e.session_id },
@@ -748,6 +770,7 @@ const taskStreamSubscriptionGroup = createEventSubscriptionGroup(
   () => useEventStore.getState().subscribe,
   (subscribe) => [
     subscribe(EventType.TaskStarted, handleTaskStarted),
+    subscribe(EventType.LoopActivityChanged, handleLoopActivityChanged),
     subscribe(EventType.TextDelta, handleTextDeltaEvent),
     subscribe(EventType.ThinkingDelta, handleThinkingDeltaEvent),
     subscribe(EventType.ToolUseStart, handleToolUseStartEvent),

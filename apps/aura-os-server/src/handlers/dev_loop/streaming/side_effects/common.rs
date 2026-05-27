@@ -20,21 +20,21 @@ pub(super) fn enrich_event(
 ) -> serde_json::Value {
     let mut enriched = event;
     if let Some(object) = enriched.as_object_mut() {
-        object
-            .entry("project_id".to_string())
-            .or_insert_with(|| project_id.to_string().into());
-        object
-            .entry("agent_instance_id".to_string())
-            .or_insert_with(|| agent_instance_id.to_string().into());
+        // Unconditional overwrite: the harness occasionally emits empty
+        // routing keys; `or_insert_with` would preserve those and the
+        // frontend's `if (projectId)` guard would silently drop the row.
+        object.insert("project_id".to_string(), project_id.to_string().into());
+        object.insert(
+            "agent_instance_id".to_string(),
+            agent_instance_id.to_string().into(),
+        );
         if let Some(task_id) = task_id {
             object
                 .entry("task_id".to_string())
                 .or_insert_with(|| task_id.to_string().into());
         }
         if let Some(session_id) = session_id {
-            object
-                .entry("session_id".to_string())
-                .or_insert_with(|| session_id.to_string().into());
+            object.insert("session_id".to_string(), session_id.to_string().into());
         }
     }
     enriched

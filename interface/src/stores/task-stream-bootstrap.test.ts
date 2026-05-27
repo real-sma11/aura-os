@@ -921,3 +921,47 @@ describe("task-stream-bootstrap: task_updated synthetic blocks", () => {
     expect(transitions).toHaveLength(1);
   });
 });
+
+describe("task-stream-bootstrap: Run pane binding", () => {
+  it("adds a Run pane row when project_id is only present in content", () => {
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t1", task_title: "Task t1", project_id: "p1" },
+      project_id: "",
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore.getState().tasks.find((t) => t.taskId === "t1");
+    expect(row).toBeDefined();
+    expect(row!.projectId).toBe("p1");
+    expect(row!.status).toBe("active");
+  });
+
+  it("hydrates an active row from loop_activity_changed when current_task_id is set", () => {
+    dispatch({
+      type: EventType.LoopActivityChanged,
+      content: {
+        loop_id: {
+          instance: "loop-inst-1",
+          project_id: "p1",
+          agent_instance_id: "agent-loop",
+          agent_id: "agent-tmpl",
+          kind: "automation",
+        },
+        activity: {
+          status: "running",
+          started_at: new Date().toISOString(),
+          last_event_at: new Date().toISOString(),
+          current_task_id: "t-loop",
+          current_step: "thinking",
+        },
+      },
+      project_id: "p1",
+      project_agent_id: "agent-loop",
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore.getState().tasks.find((t) => t.taskId === "t-loop");
+    expect(row).toBeDefined();
+    expect(row!.projectId).toBe("p1");
+    expect(row!.status).toBe("active");
+  });
+});

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useParams } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 import { Text, ModalConfirm } from "@cypher-asi/zui";
 import { Trash2, Play, Pause, Square, Loader2 } from "lucide-react";
 import {
@@ -7,6 +8,7 @@ import {
   useTasksForProject,
 } from "../../stores/task-output-panel-store";
 import { useProjectActions } from "../../stores/project-action-store";
+import { selectProjectActivity, useLoopActivityStore } from "../../stores/loop-activity-store";
 import { useAutomationStatus } from "../AutomationBar/useAutomationStatus";
 import { AutomationModelPicker } from "../AutomationBar/AutomationModelPicker";
 import { useScrollAnchorV2 } from "../../shared/hooks/use-scroll-anchor-v2";
@@ -16,6 +18,7 @@ import { TerminalInstanceTabs } from "../TerminalInstanceTabs";
 import { ActiveTaskStream } from "./ActiveTaskStream";
 import { CompletedTaskOutput } from "./CompletedTaskOutput";
 import { PinnedTaskStreamingIndicator } from "./PinnedTaskStreamingIndicator";
+import { CookingIndicator } from "../CookingIndicator";
 import styles from "./TaskOutputPanel.module.css";
 
 function AutomationControls({ projectId }: { projectId: string }) {
@@ -163,6 +166,46 @@ function RunPaneCookingIndicator({
   );
 }
 
+function loopPlanningLabel(
+  status: ReturnType<typeof useAutomationStatus>["status"],
+  currentStep: string | null | undefined,
+): string {
+  if (currentStep === "thinking") return "Thinking…";
+  if (currentStep === "processing") return "Processing…";
+  if (currentStep?.startsWith("tool:")) {
+    return `Running ${currentStep.slice("tool:".length)}…`;
+  }
+  if (currentStep) return `${currentStep}…`;
+  if (status === "preparing") return "Preparing…";
+  return "Planning…";
+}
+
+/**
+ * Loop-level placeholder shown while automation is running but no backlog
+ * task has been claimed yet (harness planning / context-gather phase).
+ * Falls back to the static empty state when the loop is idle.
+ */
+function RunPaneEmptyState({ projectId }: { projectId: string }) {
+  const { status } = useAutomationStatus(projectId);
+  const loopWorking =
+    status === "starting" || status === "preparing" || status === "active";
+  const activity = useLoopActivityStore(
+    useShallow((s) => selectProjectActivity(s, projectId)),
+  );
+  if (loopWorking) {
+    return (
+      <div className={styles.emptyState} data-testid="run-pane-planning-placeholder">
+        <CookingIndicator label={loopPlanningLabel(status, activity?.current_step)} />
+      </div>
+    );
+  }
+  return (
+    <div className={styles.emptyState}>
+      <Text size="sm" className={styles.emptyText}>No tasks</Text>
+    </div>
+  );
+}
+
 export function RunSidekickPane() {
   const clearCompleted = useTaskOutputPanelStore((s) => s.clearCompleted);
   const ctx = useProjectActions();
@@ -217,9 +260,13 @@ export function RunSidekickPane() {
           onScroll={handleScroll}
         >
           {projectTasks.length === 0 ? (
-            <div className={styles.emptyState}>
-              <Text size="sm" className={styles.emptyText}>No tasks</Text>
-            </div>
+            projectId ? (
+              <RunPaneEmptyState projectId={projectId} />
+            ) : (
+              <div className={styles.emptyState}>
+                <Text size="sm" className={styles.emptyText}>No tasks</Text>
+              </div>
+            )
           ) : (
             projectTasks.map((entry) =>
               entry.status === "active" ? (

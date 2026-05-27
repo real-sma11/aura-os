@@ -17,8 +17,9 @@
 use aura_os_core::{AgentId, AgentInstanceId, ProjectId, TaskId, UserId};
 use aura_os_events::{EventHub, LoopId, LoopKind};
 use aura_os_loops::{LoopHandle, LoopRegistry};
+use serde_json::json;
 
-use super::push_loop_activity_task;
+use super::{enrich_event, push_loop_activity_task};
 
 fn make_handle() -> (LoopRegistry, LoopHandle) {
     let registry = LoopRegistry::new(EventHub::new());
@@ -31,6 +32,24 @@ fn make_handle() -> (LoopRegistry, LoopHandle) {
     );
     let handle = registry.open(loop_id);
     (registry, handle)
+}
+
+#[test]
+fn enrich_event_overwrites_empty_project_id() {
+    let project_id = ProjectId::new();
+    let agent_instance_id = AgentInstanceId::new();
+    let enriched = enrich_event(
+        json!({ "type": "task_started", "task_id": "abc", "project_id": "" }),
+        project_id,
+        agent_instance_id,
+        Some("abc"),
+        None,
+    );
+    assert_eq!(
+        enriched.get("project_id").and_then(|v| v.as_str()),
+        Some(project_id.to_string().as_str()),
+        "empty harness project_id must be overwritten so the frontend can bind Run pane rows",
+    );
 }
 
 #[tokio::test]

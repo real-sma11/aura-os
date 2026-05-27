@@ -137,7 +137,20 @@ fn merge_task_failure_context(enriched: &mut serde_json::Value) {
 /// (`event_hub`). Cloning is intentional: the broadcaster needs to
 /// keep its copy for the channel send, and the hub takes ownership
 /// for the typed-domain-event publish.
-fn broadcast_event(ctx: &SideEffectCtx<'_>, payload: serde_json::Value) {
+fn broadcast_event(ctx: &SideEffectCtx<'_>, mut payload: serde_json::Value) {
+    // Mirror `emit_domain_event_with_session`: guarantee top-level routing
+    // keys on every forwarder-routed frame so `/ws/events` consumers can
+    // bind rows without peeking into nested payload fields.
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("project_id".to_string(), ctx.project_id.to_string().into());
+        object.insert(
+            "agent_instance_id".to_string(),
+            ctx.agent_instance_id.to_string().into(),
+        );
+        if let Some(session_id) = ctx.session_id {
+            object.insert("session_id".to_string(), session_id.to_string().into());
+        }
+    }
     let _ = ctx.state.event_broadcast.send(payload.clone());
     ctx.state
         .event_hub

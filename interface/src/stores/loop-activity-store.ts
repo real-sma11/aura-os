@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { api } from "../api/client";
 import type { LoopsFilter } from "../shared/api/loop";
+import { syncRunPaneFromLoopActivity } from "./run-pane-sync";
 import {
   isLoopActivityActive,
   type LoopActivityPayload,
@@ -155,6 +156,7 @@ export const useLoopActivityStore = create<LoopActivityState>()((set, get) => ({
         activity: entry.activity,
       }));
       get().replaceSnapshot(rows, filter);
+      syncRunPaneFromLoopActivity(filter?.project_id);
     } catch (error) {
       if (import.meta.env.DEV) {
         console.warn("Failed to hydrate loop activity", error);
