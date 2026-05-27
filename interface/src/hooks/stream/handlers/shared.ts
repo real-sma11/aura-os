@@ -63,25 +63,23 @@ function buildDisplayedTimeline(
   refs: StreamRefs,
   visibleText: string,
 ): TimelineItem[] {
+  // Render the timeline in actual stream order. Text segments are still
+  // revealed character-by-character against the rAF cursor, but tool and
+  // thinking rows always appear at their real position the moment they
+  // land. The prior `textPending` short-circuit (hold back non-text rows
+  // behind any still-typing paragraph) caused two visible defects:
+  //   * pop-in — tool rows blocked by a typing paragraph appeared all
+  //     at once when the text finally caught up.
+  //   * blink-out — every `text_delta` that extended the trailing text
+  //     beyond the reveal cursor flipped textPending back on, hiding
+  //     already-visible tool rows below it for a frame.
+  // Letting tool rows render in real order is honest and stable; the
+  // word reveal still preserves the "typing" feel for prose.
   const displayedTimeline: TimelineItem[] = [];
   let remainingVisibleText = visibleText;
-  // Once we hit a text segment whose word-reveal hasn't caught up to the
-  // streamed content, hold back every later non-text item (tool / thinking
-  // cards) so they don't render below a paragraph that's still typing in.
-  // The reveal animation re-runs this builder on every rAF step
-  // (see applyDisplayedStreamingState), so deferred items pop into place
-  // as soon as the text catches up; finalizeStream's flushStreamingText
-  // reveals the full buffer in one shot so end-of-turn renders include
-  // everything.
-  let textPending = false;
 
   for (const item of refs.timeline.current) {
     if (item.kind === "text") {
-      if (!remainingVisibleText) {
-        textPending = true;
-        continue;
-      }
-
       const visibleSegment = remainingVisibleText.slice(
         0,
         Math.min(item.content.length, remainingVisibleText.length),
@@ -90,13 +88,9 @@ function buildDisplayedTimeline(
       if (visibleSegment.length > 0) {
         displayedTimeline.push({ ...item, content: visibleSegment });
       }
-      if (visibleSegment.length < item.content.length) {
-        textPending = true;
-      }
       continue;
     }
 
-    if (textPending) continue;
     displayedTimeline.push({ ...item });
   }
 

@@ -278,4 +278,48 @@ describe("pseudo-tool gate markers", () => {
       isError: false,
     });
   });
+
+  it("recognizes a post-task_done test run announcement", () => {
+    const segments = splitTextByToolMarkers(
+      "[post-task_done test run: cargo test --workspace --all-features (source: manifest auto-detect)]",
+    );
+
+    expect(segments).toEqual([
+      expect.objectContaining({
+        kind: "pseudo-tool",
+        gate: "post-task_done test run",
+        body: "cargo test --workspace --all-features (source: manifest auto-detect)",
+      }),
+    ]);
+  });
+
+  it("pairs a post-task_done test run announcement with its FAILED result", () => {
+    const timeline: TimelineItem[] = [
+      {
+        kind: "text",
+        id: "t1",
+        content:
+          "[post-task_done test run: cargo test --workspace --all-features (source: manifest auto-detect)]\n[post-task_done test run: FAILED — 59 passed, 2 failed]",
+      },
+    ];
+
+    const result = expandToolMarkersInTimeline(timeline);
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toMatchObject({
+      name: "run_command",
+      input: {
+        command:
+          "cargo test --workspace --all-features (source: manifest auto-detect)",
+      },
+      result: "FAILED — 59 passed, 2 failed",
+      isError: true,
+    });
+  });
+
+  it("trims an incomplete post-task_done test run tail while streaming", () => {
+    expect(
+      trimIncompleteToolMarkerTail("preamble [post-task_done test run: car"),
+    ).toBe("preamble");
+  });
 });

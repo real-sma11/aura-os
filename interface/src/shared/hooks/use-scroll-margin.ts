@@ -34,38 +34,64 @@ export function useScrollMargin(
       return;
     }
 
-    const measure = () => {
+    const measureNow = () => {
       const wrapperRect = wrapper.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
       const next = wrapperRect.top - scrollerRect.top + scroller.scrollTop;
       setMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
     };
 
-    measure();
+    // Coalesce bursts of ResizeObserver callbacks (one per observed
+    // node, fired back-to-back when many siblings reflow in the same
+    // frame) into a single rAF measurement. Without this, the previous
+    // implementation's per-callback `getBoundingClientRect()` work plus
+    // `setMargin` invocation churned the virtualizer's `translateY`
+    // math several times per layout pass during live streaming.
+    let rafId: number | null = null;
+    const scheduleMeasure = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        measureNow();
+      });
+    };
+
+    measureNow();
 
     if (typeof ResizeObserver === "undefined") {
       return;
     }
 
-    const observer = new ResizeObserver(() => {
-      measure();
-    });
+    // Observe only the wrapper and scroller. The previous
+    // implementation also observed every previous sibling of the
+    // wrapper (task meta / files / build / test / git / notes /
+    // verification sections) so the virtualizer's `scrollMargin`
+    // stayed in sync as those sections grew. That created a steady
+    // stream of ResizeObserver callbacks during live streaming (the
+    // elapsed timer in `TaskMetaSection` alone triggers per-second
+    // resize observations), each one re-running
+    // `getBoundingClientRect()` and re-translating every visible
+    // virtual row. The wrapper observer alone catches the cases that
+    // matter in practice: when content above grows, the wrapper's
+    // own bounding rect moves (its size doesn't change, but
+    // `ResizeObserver` does notify on `borderBoxSize`/`contentRect`
+    // changes from reflow propagation in modern browsers) AND any
+    // virtualizer remeasurement scrolls/repaints the affected
+    // window. For belt-and-suspenders coverage we also observe the
+    // wrapper's direct parent so layout changes one level up reach
+    // us without re-walking the full sibling chain.
+    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(wrapper);
     observer.observe(scroller);
-
-    // Sections above the wrapper inside the same scroll container (task
-    // meta, files, build / test / git collapsibles, notes) grow as the
-    // task progresses. Observing every previous sibling keeps the
-    // virtualizer's scrollMargin in sync as those rows reflow.
-    const observedSiblings: Element[] = [];
-    let sibling: Element | null = wrapper.previousElementSibling;
-    while (sibling) {
-      observer.observe(sibling);
-      observedSiblings.push(sibling);
-      sibling = sibling.previousElementSibling;
+    if (wrapper.parentElement && wrapper.parentElement !== scroller) {
+      observer.observe(wrapper.parentElement);
     }
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       observer.disconnect();
     };
   }, [wrapperRef, scrollRef]);

@@ -113,25 +113,18 @@ export function ActivityTimeline({
   // When the model emits zero `thinking_delta` blocks on the wire
   // (Opus-4 Adaptive default, plus any other path where the API
   // chooses not to surface reasoning) the user otherwise sees tool
-  // blocks appear with no narration above them. Inject an open
-  // placeholder thinking slot at the head of the merged timeline so
-  // the standard Brain "Thinking..." Block renders during streaming.
-  // Disengages automatically once a real thinking item arrives
-  // (`hasRealThinking`) or the turn terminates (`isStreaming=false`).
-  const SYNTHETIC_THINKING_ID = "thinking-live-synthetic";
+  // blocks appear with no narration above them. Render a single
+  // synthetic Brain "Thinking..." block as a stable sibling above
+  // the timeline (see the JSX at the bottom of this function) rather
+  // than `unshift`ing it into the items array. The previous approach
+  // caused every later row to shift up by one slot the moment a real
+  // thinking arrived (or `isStreaming` flipped off) and the synthetic
+  // disappeared. Keeping it out of the row list means the surrounding
+  // timeline positions stay stable across that transition.
   const hasRealThinking = mergedTimeline.some((i) => i.kind === "thinking");
   const hasAnyTool = mergedTimeline.some((i) => i.kind === "tool");
   const shouldSynthesizeThinking =
     isStreaming && !hasRealThinking && !thinkingText && hasAnyTool;
-  if (shouldSynthesizeThinking) {
-    mergedTimeline.unshift({
-      kind: "thinking",
-      id: SYNTHETIC_THINKING_ID,
-      text: undefined,
-      startMs: undefined,
-      durationMs: undefined,
-    } as TimelineItem);
-  }
 
   // Phase 5 — feed-wide path disambiguation. Walk the file-op tool
   // entries reachable from this turn's timeline and compute the shortest
@@ -198,25 +191,14 @@ export function ActivityTimeline({
       // the text that actually belongs to it. Fall back to the global
       // `thinkingText` for historical messages that predate per-segment text.
       const segmentText = item.text ?? thinkingText;
-      // The synthetic placeholder injected above lives only at render
-      // time and has no lifecycle handler that could stamp `durationMs`
-      // mid-turn, so it must NOT claim to be a live open segment.
-      // Render it as already-closed: a quiet Brain "Thought" header
-      // that the user can collapse. By the time it appears at least
-      // one tool has started (see `shouldSynthesizeThinking`), so the
-      // implicit pre-tool thought is genuinely done. The bottom
-      // `CookingIndicator` continues to surface active phase labels.
-      const isSynthetic = item.id === SYNTHETIC_THINKING_ID;
       // Open live segments (no `durationMs` stamped, parent turn still
       // streaming) must render even with empty text so the shimmering
       // Brain "Thinking..." header is visible the instant a thinking
-      // slot opens (real). Closed/historical segments without text
-      // still skip — this preserves the no-phantom-block behavior on
-      // hydrated terminal turns. The synthetic placeholder bypasses
-      // the skip rule below so the Brain marker stays at the head.
-      const isOpenLiveSegment =
-        !isSynthetic && isStreaming && item.durationMs == null;
-      if (!segmentText && !isOpenLiveSegment && !isSynthetic) continue;
+      // slot opens. Closed/historical segments without text still
+      // skip — this preserves the no-phantom-block behavior on
+      // hydrated terminal turns.
+      const isOpenLiveSegment = isStreaming && item.durationMs == null;
+      if (!segmentText && !isOpenLiveSegment) continue;
       // Derive a per-segment streaming flag instead of forwarding the
       // turn-level `isStreaming` to every block. Without this, a
       // multi-segment turn (thinking -> tool -> thinking) used to render
@@ -228,11 +210,8 @@ export function ActivityTimeline({
       // one), so "no `durationMs`" uniquely identifies the live segment
       // during a turn. Hydrated history rows have no `durationMs`
       // either, but the turn-level `isStreaming` is already `false`
-      // there, so this rule still resolves correctly. The synthetic
-      // placeholder is excluded so it never claims to be the active
-      // segment when a tool below it is the most recent activity.
-      const segmentIsStreaming =
-        !isSynthetic && isStreaming && item.durationMs == null;
+      // there, so this rule still resolves correctly.
+      const segmentIsStreaming = isStreaming && item.durationMs == null;
       items.push({
         key: item.id,
         kind: "thinking",
@@ -317,10 +296,36 @@ export function ActivityTimeline({
     items[i] = { ...items[i], toolPosition: pos };
   }
 
-  return scrollRef ? (
-    <VirtualizedTimeline items={items} scrollRef={scrollRef} />
-  ) : (
-    <PlainTimeline items={items} />
+  // Virtualization is only worth its cost on the *hydrated* terminal
+  // view, where row heights are stable and the list can be hundreds
+  // of items long. While `isStreaming` is true, rows are mounting,
+  // growing, and resolving (pending → done) every frame, which makes
+  // `useVirtualizer`'s `measureElement`-driven `translateY`
+  // recalculation visibly shift the entire list on every tick. We
+  // fall back to the plain flex layout for live streams and only
+  // engage the virtualizer once streaming ends OR the row count
+  // crosses a threshold that justifies the trade-off (chosen
+  // generously so most active runs stay in the stable code path).
+  const VIRTUALIZE_ROW_THRESHOLD = 60;
+  const shouldVirtualize =
+    !!scrollRef && (!isStreaming || items.length >= VIRTUALIZE_ROW_THRESHOLD);
+
+  return (
+    <>
+      {shouldSynthesizeThinking && (
+        <ThinkingBlock
+          text=""
+          isStreaming
+          durationMs={undefined}
+          defaultExpanded={defaultThinkingExpanded}
+        />
+      )}
+      {shouldVirtualize && scrollRef ? (
+        <VirtualizedTimeline items={items} scrollRef={scrollRef} />
+      ) : (
+        <PlainTimeline items={items} />
+      )}
+    </>
   );
 }
 

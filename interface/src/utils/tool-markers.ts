@@ -8,12 +8,23 @@ type ToolMarkerStatus = "ok" | "error";
  * to announce a build/test step or report its outcome. We recognize them
  * so they render through the shared Block registry as `run_command`
  * cards instead of falling through to `SegmentedContent` as raw markdown.
+ *
+ * `post-task_done test run` is emitted by the harness's
+ * `handle_task_done` flow (see `aura-harness/crates/aura-agent/src/
+ * task_executor/handlers.rs`) as a best-effort suite invocation that
+ * surfaces a PASSED/FAILED outcome but never gates completion. The
+ * announcement carries the resolved command and source; the trailing
+ * marker carries the result body.
  */
-type PseudoGateLabel = "auto-build" | "task_done test gate";
+type PseudoGateLabel =
+  | "auto-build"
+  | "task_done test gate"
+  | "post-task_done test run";
 
 const PSEUDO_GATE_LABELS: readonly PseudoGateLabel[] = [
   "auto-build",
   "task_done test gate",
+  "post-task_done test run",
 ];
 
 export type ToolMarkerSegment =
@@ -47,7 +58,7 @@ const TOOL_MARKER_RE =
 // `(source: manifest auto-detect)`) since the character class only
 // excludes `]` and newlines.
 const PSEUDO_TOOL_MARKER_RE =
-  /\[(auto-build|task_done test gate):\s*([^\]\r\n]+?)\s*\]/g;
+  /\[(auto-build|task_done test gate|post-task_done test run):\s*([^\]\r\n]+?)\s*\]/g;
 
 const PSEUDO_GATE_PREFIXES: readonly string[] = PSEUDO_GATE_LABELS.map(
   (label) => `[${label}:`,

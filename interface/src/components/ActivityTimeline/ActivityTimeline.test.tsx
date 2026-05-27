@@ -327,7 +327,7 @@ describe("ActivityTimeline block-row data attribute", () => {
 // turns, and must not appear on text-only chat replies that lack any
 // tool activity.
 describe("ActivityTimeline synthetic thinking placeholder", () => {
-  it("synthesizes a closed (collapsible) Brain placeholder when streaming with tools but no thinking events", () => {
+  it("synthesizes a streaming Brain placeholder when streaming with tools but no thinking events", () => {
     const toolCalls: ToolCallEntry[] = [
       {
         id: "tc-1",
@@ -350,31 +350,22 @@ describe("ActivityTimeline synthetic thinking placeholder", () => {
       />,
     );
 
-    // The placeholder is render-time only — it has no lifecycle to
-    // close it — so it must NOT claim to be the active segment.
-    // Instead it renders as a quiet "Thought" header that the user
-    // can collapse. The "Thinking..." active label belongs only to
-    // real `thinking_delta` segments (or, once they arrive, replaces
-    // the synthetic entirely via `hasRealThinking`).
-    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
-    expect(screen.getByText("Thought")).toBeInTheDocument();
+    // The placeholder is rendered as a *stable sibling* above the
+    // timeline (not as an `unshift`ed row), so removing it when a
+    // real thinking arrives or streaming ends does not shift the
+    // surrounding row positions. Because the placeholder is gated
+    // by `isStreaming && !hasRealThinking && !thinkingText && hasAnyTool`
+    // — which only flips off when something concrete replaces it —
+    // it can safely use the active "Thinking..." shimmer to signal
+    // that the model is working.
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
 
-    // It sits at the head of the timeline, before the tool row.
+    // The synthetic placeholder lives outside the [data-kind]
+    // timeline rows. The timeline itself contains only the tool row.
     const dataKinds = Array.from(
       container.querySelectorAll<HTMLElement>("[data-kind]"),
     ).map((el) => el.dataset.kind);
-    expect(dataKinds[0]).toBe("thinking");
-    expect(dataKinds[1]).toBe("tool");
-
-    // The synthetic header is collapsible (no `aria-disabled` from
-    // `forceExpanded`). Real "Thinking..." blocks block toggling via
-    // `aria-disabled="true"`; the synthetic must not.
-    const thinkingRow = container.querySelector<HTMLElement>(
-      '[data-kind="thinking"]',
-    );
-    const header = thinkingRow?.querySelector<HTMLElement>('[role="button"]');
-    expect(header).not.toBeNull();
-    expect(header?.getAttribute("aria-disabled")).toBeNull();
+    expect(dataKinds).toEqual(["tool"]);
   });
 
   it("uses the real thinking item once a thinking_delta arrives (no duplicate synthetic)", () => {
@@ -467,7 +458,7 @@ describe("ActivityTimeline synthetic thinking placeholder", () => {
   // `EventType.TaskStarted` + `EventType.ToolCallStarted` have fired:
   // a synthetic transition card and one pending real tool, with no
   // thinking text and no thinking timeline item.
-  it("renders closed Brain placeholder when only tool_use_start arrives (end-state of TaskStarted + ToolCallStarted)", () => {
+  it("renders streaming Brain placeholder when only tool_use_start arrives (end-state of TaskStarted + ToolCallStarted)", () => {
     const toolCalls: ToolCallEntry[] = [
       {
         id: "synthetic-transition-1",
@@ -497,10 +488,11 @@ describe("ActivityTimeline synthetic thinking placeholder", () => {
       />,
     );
 
-    // Synthetic placeholder is closed, not active — no shimmering
-    // "Thinking..." stuck above the tools for the entire turn.
-    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
-    expect(screen.getByText("Thought")).toBeInTheDocument();
+    // Synthetic placeholder uses the streaming shimmer to signal the
+    // model is working. It lives outside the row list (see the
+    // "synthesizes a streaming Brain placeholder" test) so its
+    // appearance and disappearance never shift surrounding rows.
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
   });
 
   // Only the most-recent thinking segment is active. When a real

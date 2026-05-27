@@ -220,11 +220,14 @@ describe("stream/handlers — shared snapshots and reset", () => {
       return writes![writes!.length - 1] as TimelineItem[];
     }
 
-    it("holds back trailing tool cards while the preceding text is still revealing", () => {
-      // Models the exact bug: the server has already moved on to the next
-      // tool call but the client's word-reveal hasn't caught up to the
-      // streamed sentence yet, so the projected timeline must NOT include
-      // the trailing tool card under a partially-revealed paragraph.
+    it("renders trailing tool cards immediately even when the preceding text is still revealing", () => {
+      // The previous behavior held back tool/thinking rows that arrived
+      // after a still-revealing text segment, producing two visible
+      // defects: pop-in (rows appeared all at once when the text caught
+      // up) and blink-out (a new text_delta extending content past the
+      // reveal cursor briefly hid every later row). The fix lets tools
+      // render in real stream order; only the text content within the
+      // text row itself is character-revealed.
       const refs = makeRefs();
       const setters = makeSetters();
 
@@ -241,10 +244,11 @@ describe("stream/handlers — shared snapshots and reset", () => {
       expect(lastPublishedTimeline(setters)).toEqual([
         { kind: "tool", toolCallId: "a", id: "tl-1" },
         { kind: "text", content: "hel", id: "tl-2" },
+        { kind: "tool", toolCallId: "b", id: "tl-3" },
       ]);
     });
 
-    it("publishes the deferred tool card once flushStreamingText reveals the buffer", () => {
+    it("publishes the full timeline once flushStreamingText reveals the buffer", () => {
       const refs = makeRefs();
       const setters = makeSetters();
 
@@ -265,10 +269,12 @@ describe("stream/handlers — shared snapshots and reset", () => {
       ]);
     });
 
-    it("only gates items after the unrevealed text segment, not items before it", () => {
-      // Earlier in the same turn: text "a" finished, tool A landed, then a
-      // second text "b" started streaming and a second tool B was queued.
-      // The first text + tool A must still show; only "b"'s tool is held.
+    it("publishes items both before and after the unrevealed text segment", () => {
+      // With the textPending deferral removed, a second still-revealing
+      // text item no longer hides the tool that follows it. The text
+      // row itself shows whatever portion the reveal cursor has reached
+      // (here: only "b" pending, so the second text segment renders
+      // empty and is dropped), but the trailing tool still renders.
       const refs = makeRefs();
       const setters = makeSetters();
 
@@ -286,10 +292,11 @@ describe("stream/handlers — shared snapshots and reset", () => {
       expect(lastPublishedTimeline(setters)).toEqual([
         { kind: "text", content: "a", id: "tl-1" },
         { kind: "tool", toolCallId: "a", id: "tl-2" },
+        { kind: "tool", toolCallId: "b", id: "tl-4" },
       ]);
     });
 
-    it("defers a thinking card that arrives after partially-revealed text", () => {
+    it("renders a thinking card that arrives after partially-revealed text", () => {
       const refs = makeRefs();
       const setters = makeSetters();
 
@@ -304,6 +311,7 @@ describe("stream/handlers — shared snapshots and reset", () => {
 
       expect(lastPublishedTimeline(setters)).toEqual([
         { kind: "text", content: "he", id: "tl-1" },
+        { kind: "thinking", id: "tl-2", text: "later thought" },
       ]);
     });
 

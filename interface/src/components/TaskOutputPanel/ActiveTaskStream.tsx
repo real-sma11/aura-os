@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { ChevronRight } from "lucide-react";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import {
@@ -12,7 +12,7 @@ import {
   useProgressText,
   useStreamEvents,
 } from "../../hooks/stream/hooks";
-import { LLMStreamOutput } from "../ChatOutput";
+import { LLMStreamOutput, MessageBubble } from "../ChatOutput";
 import { CookingIndicator } from "../CookingIndicator";
 import {
   useCooldownStatus,
@@ -68,6 +68,19 @@ export function ActiveTaskStream({
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
+  // Persisted turns for this task. `handleAssistantTurnBoundary` and
+  // `handleEventSaved` push each finished assistant turn into the
+  // stream store's `events[]` and reset the live timeline to `[]`.
+  // Without rendering these here, prior turns vanish from the preview
+  // the moment a new turn begins (only reappearing once the task
+  // reaches terminal state and `CompletedTaskOutput` mounts). Filter
+  // to assistant-role events; task streams don't emit user-role
+  // events but the type permits it so we guard defensively.
+  const priorTurns = useMemo(
+    () => events.filter((evt) => evt.role === "assistant"),
+    [events],
+  );
+
   // Only real (non-synthetic) tool calls count as "content". Synthetic
   // `transition_task` lifecycle cards land in `activeToolCalls` on
   // every TaskStarted, so they're filtered out to keep the body empty
@@ -76,7 +89,8 @@ export function ActiveTaskStream({
   // "cooking" signal for that empty window — see
   // `PinnedTaskStreamingIndicator`.
   const hasRealToolCalls = activeToolCalls.some((tc) => !tc.synthetic);
-  const hasContent = !!streamingText || !!thinkingText || hasRealToolCalls;
+  const hasLiveContent = !!streamingText || !!thinkingText || hasRealToolCalls;
+  const hasContent = priorTurns.length > 0 || hasLiveContent;
 
   const getCopyText = useCallback(
     () =>
@@ -165,18 +179,29 @@ export function ActiveTaskStream({
       {!collapsed && (hasContent || showCooldownLine) && (
         <div className={styles.taskBody}>
           {hasContent ? (
-            <LLMStreamOutput
-              isStreaming={isStreaming}
-              text={streamingText}
-              toolCalls={activeToolCalls}
-              thinkingText={thinkingText}
-              thinkingDurationMs={thinkingDurationMs}
-              timeline={timeline}
-              progressText={progressText}
-              isWriting={isWriting}
-              showPhaseIndicator={false}
-              scrollRef={scrollRef}
-            />
+            <>
+              {priorTurns.map((msg) => (
+                <MessageBubble
+                  key={msg.clientId ?? msg.id}
+                  message={msg}
+                  streamKey={streamKey}
+                />
+              ))}
+              {hasLiveContent && (
+                <LLMStreamOutput
+                  isStreaming={isStreaming}
+                  text={streamingText}
+                  toolCalls={activeToolCalls}
+                  thinkingText={thinkingText}
+                  thinkingDurationMs={thinkingDurationMs}
+                  timeline={timeline}
+                  progressText={progressText}
+                  isWriting={isWriting}
+                  showPhaseIndicator={false}
+                  scrollRef={scrollRef}
+                />
+              )}
+            </>
           ) : (
             <CookingIndicator label={renderCooldownMessage(cooldown)} />
           )}
