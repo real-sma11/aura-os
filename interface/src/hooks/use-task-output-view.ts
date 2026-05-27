@@ -107,10 +107,17 @@ export function useTaskOutputView(
     if (!taskId) return;
     if (!isTerminal) return;
     if (events.length > 0) return;
-    const cached = readTaskTurns(taskId, projectId);
-    if (cached.length > 0) {
-      seedStreamEventsFromCache(streamKey, cached);
-    }
+    let cancelled = false;
+    void (async () => {
+      const cached = await readTaskTurns(taskId, projectId);
+      if (cancelled) return;
+      if (cached.length > 0) {
+        seedStreamEventsFromCache(streamKey, cached);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [taskId, projectId, isTerminal, events.length, streamKey]);
 
   // 2. Hydrate text / build / test / git steps from localStorage +
@@ -125,13 +132,16 @@ export function useTaskOutputView(
     if (events.length > 0) return;
 
     let cancelled = false;
-    const existing = useEventStore.getState().taskOutputs[taskId];
-    if (!existing?.text) {
-      const cached = getCachedTaskOutputText(taskId, projectId);
-      if (cached) {
-        seedTaskOutput(taskId, cached, undefined, undefined, undefined, projectId);
+    void (async () => {
+      const existing = useEventStore.getState().taskOutputs[taskId];
+      if (!existing?.text) {
+        const cached = await getCachedTaskOutputText(taskId, projectId);
+        if (cancelled) return;
+        if (cached) {
+          seedTaskOutput(taskId, cached, undefined, undefined, undefined, projectId);
+        }
       }
-    }
+    })();
 
     void hydrateTaskOutputOnce(projectId, taskId, async () => {
       const current = useEventStore.getState().taskOutputs[taskId];
@@ -214,7 +224,8 @@ export function useTaskOutputView(
       // text-hydration path above (or a fresh WS event) already
       // populated the stream store between effect schedules.
       const liveEntry = useEventStore.getState().taskOutputs[taskId];
-      const cached = readTaskTurns(taskId, projectId);
+      const cached = await readTaskTurns(taskId, projectId);
+      if (cancelled) return "empty";
       if (cached.length > 0) {
         seedStreamEventsFromCache(streamKey, cached);
         return "loaded";

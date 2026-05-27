@@ -31,7 +31,7 @@ vi.mock("../../stores/event-store/index", () => ({
       getState: () => ({ taskOutputs: {}, seedTaskOutput: vi.fn() }),
     },
   ),
-  getCachedTaskOutputText: () => null,
+  getCachedTaskOutputText: () => Promise.resolve(""),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -66,7 +66,7 @@ vi.mock("../../stores/task-output-hydration-cache", () => ({
 
 vi.mock("../../stores/task-turn-cache", () => ({
   persistTaskTurns: vi.fn(),
-  readTaskTurns: vi.fn().mockReturnValue([]),
+  readTaskTurns: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../hooks/stream/store", () => ({

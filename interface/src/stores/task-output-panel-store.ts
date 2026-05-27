@@ -2,8 +2,19 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { invalidateTaskTurns } from "./task-turn-cache";
 import { removePersistedTaskOutputText } from "./event-store/task-output-cache";
+import {
+  BROWSER_DB_STORES,
+  browserDbGet,
+  browserDbSet,
+} from "../shared/lib/browser-db";
 
-const TASKS_STORAGE_KEY = "aura-task-output-panel-tasks";
+/**
+ * Legacy localStorage key. Read once during {@link hydratePanelStoreFromStorage}
+ * for the one-time migration on first hydration after deploy, then
+ * removed.
+ */
+const TASKS_LEGACY_STORAGE_KEY = "aura-task-output-panel-tasks";
+const PANEL_IDB_KEY = "tasks";
 const MAX_PERSISTED_TASKS = 20;
 const PERSIST_DEBOUNCE_MS = 150;
 
@@ -95,48 +106,69 @@ function sanitizeFailureContext(
   return next;
 }
 
-function loadPersistedTasks(): PanelTaskEntry[] {
+function normalizePersistedEntries(raw: unknown): PanelTaskEntry[] {
+  if (!Array.isArray(raw)) return [];
+  // Keep previously-active rows marked "active" on boot. A project-
+  // layout-level reconciliation (`reconcileStatuses`) promotes them
+  // to the authoritative server status once `/tasks` has loaded.
+  // The old behaviour ("demote everything to interrupted") flashed
+  // stale "Interrupted" badges on rows that the server still
+  // considered in-progress, and left genuinely-done rows showing
+  // "Interrupted" forever when the server never reported a final
+  // status through the panel (e.g. because the task completed
+  // while the UI was closed).
+  return (raw as PanelTaskEntry[])
+    .filter((t) => t && typeof t === "object" && t.taskId && t.projectId)
+    .map((t) => ({
+      ...t,
+      failureReason:
+        typeof t.failureReason === "string" && t.failureReason.length > 0
+          ? t.failureReason
+          : undefined,
+      failureContext: sanitizeFailureContext(t.failureContext),
+      sessionId:
+        typeof t.sessionId === "string" && t.sessionId.length > 0
+          ? t.sessionId
+          : undefined,
+      agentInstanceId:
+        typeof t.agentInstanceId === "string" && t.agentInstanceId.length > 0
+          ? t.agentInstanceId
+          : undefined,
+    }));
+}
+
+function readLegacyPersistedTasks(): PanelTaskEntry[] {
+  if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(TASKS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as PanelTaskEntry[];
-      // Keep previously-active rows marked "active" on boot. A project-
-      // layout-level reconciliation (`reconcileStatuses`) promotes them
-      // to the authoritative server status once `/tasks` has loaded.
-      // The old behaviour ("demote everything to interrupted") flashed
-      // stale "Interrupted" badges on rows that the server still
-      // considered in-progress, and left genuinely-done rows showing
-      // "Interrupted" forever when the server never reported a final
-      // status through the panel (e.g. because the task completed
-      // while the UI was closed).
-      return parsed
-        .filter((t) => t.taskId && t.projectId)
-        .map((t) => ({
-          ...t,
-          failureReason:
-            typeof t.failureReason === "string" && t.failureReason.length > 0
-              ? t.failureReason
-              : undefined,
-          failureContext: sanitizeFailureContext(t.failureContext),
-          sessionId:
-            typeof t.sessionId === "string" && t.sessionId.length > 0
-              ? t.sessionId
-              : undefined,
-          agentInstanceId:
-            typeof t.agentInstanceId === "string" && t.agentInstanceId.length > 0
-              ? t.agentInstanceId
-              : undefined,
-        }));
-    }
-  } catch { /* ignore */ }
-  return [];
+    const raw = window.localStorage.getItem(TASKS_LEGACY_STORAGE_KEY);
+    if (!raw) return [];
+    return normalizePersistedEntries(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function removeLegacyPersistedTasks(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(TASKS_LEGACY_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 function savePersistedTasks(tasks: PanelTaskEntry[]) {
-  try {
-    const trimmed = tasks.slice(-MAX_PERSISTED_TASKS);
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(trimmed));
-  } catch { /* ignore */ }
+  const trimmed = tasks.slice(-MAX_PERSISTED_TASKS);
+  // Fire-and-forget: IDB writes resolve in the background; the
+  // in-memory Zustand store is the source of truth during the
+  // session.
+  void browserDbSet(
+    BROWSER_DB_STORES.taskOutputPanel,
+    PANEL_IDB_KEY,
+    trimmed,
+  ).catch(() => {
+    // ignore — IDB write errors are non-fatal
+  });
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -285,10 +317,8 @@ interface TaskOutputPanelState {
   demoteStaleActive: (projectId: string, keepTaskIds: string[]) => void;
 }
 
-const restoredTasks = loadPersistedTasks();
-
 export const useTaskOutputPanelStore = create<TaskOutputPanelState>()((set, get) => ({
-  tasks: restoredTasks,
+  tasks: [],
 
   addTask: (taskId, projectId, title, agentInstanceId, sessionId) => {
     set((s) => {
@@ -570,6 +600,98 @@ useTaskOutputPanelStore.subscribe((state, prevState) => {
   if (state.tasks === prevState.tasks) return;
   schedulePersist(state.tasks);
 });
+
+let hydratePromise: Promise<void> | null = null;
+let legacyMigrationRan = false;
+
+function mergePersistedIntoCurrent(
+  current: PanelTaskEntry[],
+  persisted: PanelTaskEntry[],
+): PanelTaskEntry[] {
+  // Merge by `taskId`: prefer whichever row has the newer
+  // `updatedAt`. Rows added by live WS events during the hydration
+  // window must survive, but a persisted row with a fresher status
+  // (e.g. from a background loop completion the user reloaded into)
+  // should win over a stale in-memory row.
+  const byId = new Map<string, PanelTaskEntry>();
+  for (const row of current) {
+    byId.set(row.taskId, row);
+  }
+  for (const row of persisted) {
+    const existing = byId.get(row.taskId);
+    if (!existing || (row.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+      byId.set(row.taskId, row);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+/**
+ * Populate the Zustand store from persisted IDB rows (and migrate
+ * any legacy `localStorage["aura-task-output-panel-tasks"]` blob on
+ * the way through). Idempotent — concurrent callers share the same
+ * promise so a parallel hydrate path cannot double-merge.
+ */
+export function hydratePanelStoreFromStorage(): Promise<void> {
+  if (hydratePromise) return hydratePromise;
+  hydratePromise = (async () => {
+    let fromIdb: PanelTaskEntry[] = [];
+    try {
+      const raw = await browserDbGet<PanelTaskEntry[]>(
+        BROWSER_DB_STORES.taskOutputPanel,
+        PANEL_IDB_KEY,
+      );
+      fromIdb = normalizePersistedEntries(raw);
+    } catch {
+      // ignore — fall through to legacy / empty
+    }
+
+    let persisted = fromIdb;
+    let migrated = false;
+    if (!legacyMigrationRan) {
+      legacyMigrationRan = true;
+      const legacy = readLegacyPersistedTasks();
+      if (legacy.length > 0) {
+        const byId = new Map<string, PanelTaskEntry>();
+        for (const row of fromIdb) byId.set(row.taskId, row);
+        for (const row of legacy) {
+          const existing = byId.get(row.taskId);
+          if (!existing || (row.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+            byId.set(row.taskId, row);
+          }
+        }
+        persisted = Array.from(byId.values());
+        migrated = true;
+      }
+    }
+
+    if (persisted.length > 0) {
+      useTaskOutputPanelStore.setState((state) => ({
+        tasks: mergePersistedIntoCurrent(state.tasks, persisted),
+      }));
+    }
+
+    if (migrated) {
+      try {
+        await browserDbSet(
+          BROWSER_DB_STORES.taskOutputPanel,
+          PANEL_IDB_KEY,
+          persisted.slice(-MAX_PERSISTED_TASKS),
+        );
+      } catch {
+        // ignore — the subscribe-driven debounce will flush again on
+        // the next mutation
+      }
+      removeLegacyPersistedTasks();
+    }
+  })();
+  return hydratePromise;
+}
+
+// Kick hydration once at module import; tests and other callers can
+// await `hydratePanelStoreFromStorage()` to land on a deterministic
+// post-hydrate state.
+void hydratePanelStoreFromStorage();
 
 // One-time cleanup: earlier builds persisted the bottom panel's height
 // and collapsed flag under this key. The bottom panel has been

@@ -35,14 +35,39 @@ vi.hoisted(() => {
   }
 });
 
-import { useTaskOutputPanelStore, type PanelTaskEntry } from "./task-output-panel-store";
+// Back the IDB stores with an in-memory Map so the panel store can
+// hydrate and persist without a real IndexedDB. The map is shared
+// across imports so `vi.resetModules()` followed by a re-import still
+// sees previously-persisted rows (matching real cross-reload
+// behavior).
+const idbStorage = new Map<string, unknown>();
+vi.mock("../shared/lib/browser-db", () => ({
+  BROWSER_DB_STORES: new Proxy({}, { get: (_t, prop) => String(prop) }),
+  browserDbGet: vi.fn(async (store: string, key: string) =>
+    idbStorage.get(`${store}::${key}`) ?? null,
+  ),
+  browserDbSet: vi.fn(async (store: string, key: string, value: unknown) => {
+    idbStorage.set(`${store}::${key}`, value);
+  }),
+  browserDbDelete: vi.fn(async (store: string, key: string) => {
+    idbStorage.delete(`${store}::${key}`);
+  }),
+}));
+
+import {
+  useTaskOutputPanelStore,
+  hydratePanelStoreFromStorage,
+  type PanelTaskEntry,
+} from "./task-output-panel-store";
 import {
   persistTaskTurns,
   readTaskTurns,
   resetTaskTurnCache,
+  whenCacheReady as turnsWhenCacheReady,
 } from "./task-turn-cache";
 
 const TASKS_STORAGE_KEY = "aura-task-output-panel-tasks";
+const PANEL_IDB_FULL_KEY = "taskOutputPanel::tasks";
 
 function makeTask(overrides: Partial<PanelTaskEntry> = {}): PanelTaskEntry {
   return {
@@ -55,9 +80,11 @@ function makeTask(overrides: Partial<PanelTaskEntry> = {}): PanelTaskEntry {
   };
 }
 
-beforeEach(() => {
-  localStorage.removeItem(TASKS_STORAGE_KEY);
+beforeEach(async () => {
+  localStorage.clear();
+  idbStorage.clear();
   resetTaskTurnCache();
+  await turnsWhenCacheReady;
   useTaskOutputPanelStore.setState({
     tasks: [],
   });
@@ -225,16 +252,16 @@ describe("task-output-panel-store", () => {
       expect(useTaskOutputPanelStore.getState().tasks).toHaveLength(0);
     });
 
-    it("invalidates the persisted turn cache", () => {
+    it("invalidates the persisted turn cache", async () => {
       persistTaskTurns("t1", [
         { id: "e1", role: "assistant", content: "done" },
       ], "p1");
-      expect(readTaskTurns("t1", "p1")).toHaveLength(1);
+      await expect(readTaskTurns("t1", "p1")).resolves.toHaveLength(1);
 
       useTaskOutputPanelStore.getState().addTask("t1", "p1", "Task");
       useTaskOutputPanelStore.getState().dismissTask("t1");
 
-      expect(readTaskTurns("t1", "p1")).toEqual([]);
+      await expect(readTaskTurns("t1", "p1")).resolves.toEqual([]);
     });
   });
 
@@ -251,7 +278,7 @@ describe("task-output-panel-store", () => {
       expect(tasks[0].taskId).toBe("t2");
     });
 
-    it("invalidates persisted turn caches for every removed row", () => {
+    it("invalidates persisted turn caches for every removed row", async () => {
       persistTaskTurns("t1", [{ id: "e1", role: "assistant", content: "a" }], "p1");
       persistTaskTurns("t2", [{ id: "e2", role: "assistant", content: "b" }], "p1");
       persistTaskTurns("t3", [{ id: "e3", role: "assistant", content: "c" }], "p1");
@@ -263,9 +290,9 @@ describe("task-output-panel-store", () => {
       useTaskOutputPanelStore.getState().failTask("t3");
       useTaskOutputPanelStore.getState().clearCompleted();
 
-      expect(readTaskTurns("t1", "p1")).toEqual([]);
-      expect(readTaskTurns("t3", "p1")).toEqual([]);
-      expect(readTaskTurns("t2", "p1")).toHaveLength(1);
+      await expect(readTaskTurns("t1", "p1")).resolves.toEqual([]);
+      await expect(readTaskTurns("t3", "p1")).resolves.toEqual([]);
+      await expect(readTaskTurns("t2", "p1")).resolves.toHaveLength(1);
     });
   });
 
@@ -398,7 +425,8 @@ describe("task-output-panel-store", () => {
 
 describe("task-output-panel-store rehydration", () => {
   beforeEach(() => {
-    localStorage.removeItem(TASKS_STORAGE_KEY);
+    localStorage.clear();
+    idbStorage.clear();
     vi.resetModules();
   });
 
@@ -426,14 +454,96 @@ describe("task-output-panel-store rehydration", () => {
         updatedAt: Date.now(),
       },
     ];
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(persisted));
+    idbStorage.set(PANEL_IDB_FULL_KEY, persisted);
 
     const mod = await import("./task-output-panel-store");
+    await mod.hydratePanelStoreFromStorage();
     const tasks = mod.useTaskOutputPanelStore.getState().tasks;
     const byId = Object.fromEntries(tasks.map((t) => [t.taskId, t]));
 
     expect(byId.t1.status).toBe("active");
     expect(byId.t2.status).toBe("completed");
+  });
+
+  it("migrates legacy localStorage rows on first hydration and removes the legacy key", async () => {
+    // Existing users at quota: the legacy
+    // localStorage["aura-task-output-panel-tasks"] blob is read once
+    // during hydration, merged into the IDB read result, written
+    // through to IDB, and then the legacy key is removed so the
+    // browser budget is freed on first reload after deploy.
+    const persisted: PanelTaskEntry[] = [
+      {
+        taskId: "legacy-1",
+        title: "Legacy row",
+        status: "completed",
+        projectId: "p1",
+        updatedAt: Date.now(),
+      },
+    ];
+    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(persisted));
+
+    const mod = await import("./task-output-panel-store");
+    await mod.hydratePanelStoreFromStorage();
+
+    const tasks = mod.useTaskOutputPanelStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].taskId).toBe("legacy-1");
+    expect(localStorage.getItem(TASKS_STORAGE_KEY)).toBeNull();
+    // The migrated row should now live in IDB.
+    expect(idbStorage.get(PANEL_IDB_FULL_KEY)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: "legacy-1" })]),
+    );
+  });
+
+  it("merges live in-memory rows with persisted IDB rows during hydration", async () => {
+    // Cold-boot scenario: a WS event lands and inserts a row into the
+    // empty store before the asynchronous IDB hydration resolves. The
+    // hydrate step must NOT replace the live row when it merges in the
+    // persisted set — both rows have to survive.
+    //
+    // To make this deterministic in tests we hold the `browserDbGet`
+    // promise pending until we have a chance to inject the live row;
+    // the production timing is the same on a slow IndexedDB open.
+    const browserDb = await import("../shared/lib/browser-db");
+    let resolveGet: (v: PanelTaskEntry[]) => void = () => {};
+    const deferred = new Promise<PanelTaskEntry[]>((res) => {
+      resolveGet = res;
+    });
+    const mockGet = browserDb.browserDbGet as ReturnType<typeof vi.fn>;
+    const originalImpl = mockGet.getMockImplementation();
+    mockGet.mockImplementation(async () => deferred);
+
+    const mod = await import("./task-output-panel-store");
+    mod.useTaskOutputPanelStore.setState({
+      tasks: [
+        {
+          taskId: "from-live",
+          title: "Live row",
+          status: "active",
+          projectId: "p1",
+          updatedAt: 200,
+        },
+      ],
+    });
+
+    resolveGet([
+      {
+        taskId: "from-idb",
+        title: "Persisted row",
+        status: "completed",
+        projectId: "p1",
+        updatedAt: 100,
+      },
+    ]);
+
+    await mod.hydratePanelStoreFromStorage();
+    if (originalImpl) mockGet.mockImplementation(originalImpl);
+
+    const ids = mod.useTaskOutputPanelStore
+      .getState()
+      .tasks.map((t) => t.taskId)
+      .sort();
+    expect(ids).toEqual(["from-idb", "from-live"]);
   });
 
   it("reconcileStatuses patches the subset of provided entries", async () => {

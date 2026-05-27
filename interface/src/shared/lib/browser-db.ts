@@ -1,6 +1,6 @@
 const DB_NAME = "aura-browser-store";
 // Bump this when adding new object stores so `onupgradeneeded` creates them.
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const LOCAL_FALLBACK_PREFIX = "aura-idb";
 
 export const BROWSER_DB_STORES = {
@@ -14,6 +14,15 @@ export const BROWSER_DB_STORES = {
   // messages while the background refetch resolves, rather than flashing
   // a spinner on every app open.
   chatHistory: "chatHistory",
+  // Task subsystem caches. Same rationale as `chatHistory`: long
+  // automation transcripts routinely exceed the ~5 MB localStorage
+  // quota, which silently broke auth restore and panel persistence
+  // for any other key sharing the budget. Lives in IDB so the task
+  // subsystem never competes with auth/UI keys for the localStorage
+  // budget.
+  taskOutputCache: "taskOutputCache",
+  taskOutputPanel: "taskOutputPanel",
+  taskTurns: "taskTurns",
 } as const;
 
 export type BrowserDbStoreName =

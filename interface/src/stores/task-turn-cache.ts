@@ -1,4 +1,10 @@
 import type { DisplaySessionEvent } from "../shared/types/stream";
+import {
+  BROWSER_DB_STORES,
+  browserDbDelete,
+  browserDbGet,
+  browserDbSet,
+} from "../shared/lib/browser-db";
 
 /* ------------------------------------------------------------------ */
 /*  Task turn cache                                                    */
@@ -22,65 +28,159 @@ interface PersistedTaskTurns {
   updatedAt: number;
 }
 
-const TASK_TURN_CACHE_KEY = "aura-task-turns-v1";
+/**
+ * Legacy localStorage key. Read once during {@link hydrateFromStorage}
+ * for the one-time migration on first hydration after deploy, then
+ * removed.
+ */
+const TASK_TURN_CACHE_LEGACY_KEY = "aura-task-turns-v1";
+const TASK_TURN_CACHE_IDB_KEY = "entries";
 const TASK_TURN_CACHE_MAX_ENTRIES = 60;
 const TASK_TURN_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-// Per-entry cap to keep localStorage usage sane. The assistant turn
+// Per-entry cap to keep cache entries sane. The assistant turn
 // events can include very large tool results (e.g. read_file dumps)
 // so we truncate anything we cannot serialize within the budget.
 const TASK_TURN_MAX_SERIALIZED_BYTES = 256 * 1024;
 
-function getStorage(): Storage | null {
+let taskTurnCache: PersistedTaskTurns[] | null = null;
+let hydratePromise: Promise<void> | null = null;
+let legacyMigrationRan = false;
+
+function canUseLocalStorage(): boolean {
   try {
-    if (typeof globalThis !== "undefined") {
-      const g = globalThis as unknown as { localStorage?: Storage };
-      if (g.localStorage && typeof g.localStorage.getItem === "function") {
-        return g.localStorage;
-      }
-    }
+    return (
+      typeof globalThis !== "undefined" &&
+      !!(globalThis as unknown as { localStorage?: Storage }).localStorage
+    );
   } catch {
-    // Access can throw in restricted environments (Safari private mode).
+    return false;
   }
-  return null;
 }
 
-function loadCache(): PersistedTaskTurns[] {
-  const storage = getStorage();
-  if (!storage) return [];
+function readLegacyEntries(): PersistedTaskTurns[] {
+  if (!canUseLocalStorage()) return [];
   try {
-    const raw = storage.getItem(TASK_TURN_CACHE_KEY);
+    const storage = (globalThis as unknown as { localStorage: Storage }).localStorage;
+    const raw = storage.getItem(TASK_TURN_CACHE_LEGACY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PersistedTaskTurns[];
-    const now = Date.now();
-    return parsed.filter((entry) =>
-      !!entry?.taskId &&
-      Array.isArray(entry.events) &&
-      typeof entry.updatedAt === "number" &&
-      now - entry.updatedAt <= TASK_TURN_CACHE_TTL_MS,
-    );
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
   } catch {
     return [];
   }
 }
 
-function saveCache(entries: PersistedTaskTurns[]): void {
-  const storage = getStorage();
-  if (!storage) return;
+function removeLegacyEntries(): void {
+  if (!canUseLocalStorage()) return;
   try {
-    const now = Date.now();
-    const filtered = entries
-      .filter((entry) => now - entry.updatedAt <= TASK_TURN_CACHE_TTL_MS)
-      .sort((a, b) => a.updatedAt - b.updatedAt)
-      .slice(-TASK_TURN_CACHE_MAX_ENTRIES);
-    storage.setItem(TASK_TURN_CACHE_KEY, JSON.stringify(filtered));
+    const storage = (globalThis as unknown as { localStorage: Storage }).localStorage;
+    storage.removeItem(TASK_TURN_CACHE_LEGACY_KEY);
   } catch {
-    // Quota / serialization errors are non-fatal; the cache is a UX
-    // optimization, not a source of truth.
+    // ignore
+  }
+}
+
+function entriesAreValid(entries: PersistedTaskTurns[]): PersistedTaskTurns[] {
+  const now = Date.now();
+  return entries.filter(
+    (entry) =>
+      !!entry?.taskId &&
+      Array.isArray(entry.events) &&
+      typeof entry.updatedAt === "number" &&
+      now - entry.updatedAt <= TASK_TURN_CACHE_TTL_MS,
+  );
+}
+
+function trimEntries(entries: PersistedTaskTurns[]): PersistedTaskTurns[] {
+  return entriesAreValid(entries)
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+    .slice(-TASK_TURN_CACHE_MAX_ENTRIES);
+}
+
+function dedupeEntries(entries: PersistedTaskTurns[]): PersistedTaskTurns[] {
+  const byKey = new Map<string, PersistedTaskTurns>();
+  for (const entry of entries) {
+    const key = `${entry.taskId}::${entry.projectId ?? ""}`;
+    const existing = byKey.get(key);
+    if (!existing || entry.updatedAt > existing.updatedAt) {
+      byKey.set(key, entry);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+async function hydrateFromStorage(): Promise<void> {
+  let fromIdb: PersistedTaskTurns[] = [];
+  try {
+    const raw = await browserDbGet<PersistedTaskTurns[]>(
+      BROWSER_DB_STORES.taskTurns,
+      TASK_TURN_CACHE_IDB_KEY,
+    );
+    if (Array.isArray(raw)) fromIdb = raw;
+  } catch {
+    // ignore — fall through to legacy / empty
+  }
+
+  let merged = fromIdb;
+  let migrated = false;
+  if (!legacyMigrationRan) {
+    legacyMigrationRan = true;
+    const legacy = readLegacyEntries();
+    if (legacy.length > 0) {
+      merged = dedupeEntries([...fromIdb, ...legacy]);
+      migrated = true;
+    }
+  }
+
+  taskTurnCache = trimEntries(merged);
+
+  if (migrated) {
+    try {
+      await browserDbSet(
+        BROWSER_DB_STORES.taskTurns,
+        TASK_TURN_CACHE_IDB_KEY,
+        taskTurnCache,
+      );
+    } catch {
+      // ignore — next persist will pick the merged set up
+    }
+    removeLegacyEntries();
   }
 }
 
 /**
- * Serialize events down to a size that fits localStorage without
+ * Resolves when the in-memory cache has been populated from IDB (and
+ * any legacy localStorage migration has completed). Consumers that
+ * need a deterministic hydration point should `await` it; the public
+ * read API also awaits this internally.
+ */
+export const whenCacheReady: Promise<void> = (() => {
+  hydratePromise = hydrateFromStorage();
+  return hydratePromise;
+})();
+
+function ensureCache(): PersistedTaskTurns[] {
+  if (!taskTurnCache) taskTurnCache = [];
+  return taskTurnCache;
+}
+
+function persistCacheToIdb(entries: PersistedTaskTurns[]): void {
+  const trimmed = trimEntries(entries);
+  taskTurnCache = trimmed;
+  // Fire-and-forget: the in-memory mirror is the source of truth
+  // during the session; IDB writes resolve in the background.
+  void browserDbSet(
+    BROWSER_DB_STORES.taskTurns,
+    TASK_TURN_CACHE_IDB_KEY,
+    trimmed,
+  ).catch(() => {
+    // ignore — IDB write errors are non-fatal
+  });
+}
+
+/**
+ * Serialize events down to a size that fits the cache without
  * corrupting downstream renderers. We strip image data (which is the
  * most common cause of bloat) and truncate oversized tool results,
  * preserving enough context that `MessageBubble` / `LLMOutput` still
@@ -116,7 +216,7 @@ export function persistTaskTurns(
 ): void {
   if (!taskId || !events || events.length === 0) return;
   const compact = compactEvents(events);
-  const cache = loadCache();
+  const cache = ensureCache();
   const next: PersistedTaskTurns = {
     taskId,
     projectId,
@@ -131,15 +231,16 @@ export function persistTaskTurns(
   } else {
     cache.push(next);
   }
-  saveCache(cache);
+  persistCacheToIdb(cache);
 }
 
-export function readTaskTurns(
+export async function readTaskTurns(
   taskId: string,
   projectId?: string,
-): DisplaySessionEvent[] {
+): Promise<DisplaySessionEvent[]> {
   if (!taskId) return [];
-  const cache = loadCache();
+  await whenCacheReady;
+  const cache = ensureCache();
   const exact = cache.find(
     (entry) => entry.taskId === taskId && entry.projectId === projectId,
   );
@@ -150,18 +251,18 @@ export function readTaskTurns(
 
 export function invalidateTaskTurns(taskId: string): void {
   if (!taskId) return;
-  const cache = loadCache();
+  const cache = ensureCache();
   const next = cache.filter((entry) => entry.taskId !== taskId);
-  if (next.length !== cache.length) saveCache(next);
+  if (next.length !== cache.length) persistCacheToIdb(next);
 }
 
 /** Test-only: clear the entire cache between tests. */
 export function resetTaskTurnCache(): void {
-  const storage = getStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(TASK_TURN_CACHE_KEY);
-  } catch {
+  taskTurnCache = [];
+  void browserDbDelete(
+    BROWSER_DB_STORES.taskTurns,
+    TASK_TURN_CACHE_IDB_KEY,
+  ).catch(() => {
     // ignore
-  }
+  });
 }
