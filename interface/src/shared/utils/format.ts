@@ -17,6 +17,8 @@ export function formatTime(date: Date): string {
 
 const STRUCTURED_MD = /^(?:[-*+]\s|\d+\.\s|#{1,6}\s|\*\*)/;
 const BOLD_LABEL = /^\*\*(.+?)\*\*\s*$/;
+const FENCE_DELIM = /^(?:```|~~~)/;
+const TERMINATOR = /[.!?:;]$/;
 
 /**
  * Normalize text into a markdown bullet list.
@@ -28,11 +30,28 @@ const BOLD_LABEL = /^\*\*(.+?)\*\*\s*$/;
  * converted to a single bullet without sentence splitting, since periods
  * inside code would produce wrong breaks.  Plain-text lines are split at
  * sentence boundaries so each idea gets its own bullet.
+ *
+ * Fenced code blocks (``` or ~~~) are passed through verbatim — including
+ * blank lines — so a multi-line command listing renders as a single
+ * `<pre>` instead of an empty bordered rectangle followed by bullet-wrapped
+ * command lines (the previous per-line transform turned the fence delimiters
+ * into list items that opened unterminated `<pre>` blocks).
  */
 export function toBullets(text: string): string {
   const out: string[] = [];
+  let inFence = false;
 
   for (const line of text.split("\n")) {
+    if (FENCE_DELIM.test(line.trim())) {
+      out.push(line);
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
 
@@ -55,7 +74,11 @@ export function toBullets(text: string): string {
     const sentences = trimmed.split(/(?<=\.)\s+(?=[A-Z])/);
     for (const s of sentences) {
       const clean = s.replace(/\.\s*$/, "").trim();
-      if (clean.length > 0) out.push(`- ${clean}.`);
+      if (clean.length === 0) continue;
+      // Leave sentences that already end in punctuation alone so we don't
+      // produce things like `Files to change:.` for colon-terminated lines.
+      const suffix = TERMINATOR.test(clean) ? "" : ".";
+      out.push(`- ${clean}${suffix}`);
     }
   }
 

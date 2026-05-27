@@ -96,6 +96,59 @@ describe("toBullets", () => {
     expect(result).toContain("1. First");
     expect(result).toContain("2. Second");
   });
+
+  it("preserves fenced code blocks verbatim (no bullet prefix, no auto-periods)", () => {
+    const text = [
+      "The following must pass from the workspace root:",
+      "```",
+      "cargo fmt --all -- --check",
+      "cargo clippy -p zero-storage --all-targets -- -D warnings",
+      "cargo build -p zero-storage",
+      "cargo test -p zero-storage",
+      "```",
+      "When done, transition this task to `done`.",
+    ].join("\n");
+    const result = toBullets(text);
+    expect(result).toBe(
+      [
+        "- The following must pass from the workspace root:",
+        "```",
+        "cargo fmt --all -- --check",
+        "cargo clippy -p zero-storage --all-targets -- -D warnings",
+        "cargo build -p zero-storage",
+        "cargo test -p zero-storage",
+        "```",
+        "- When done, transition this task to `done`.",
+      ].join("\n"),
+    );
+  });
+
+  it("preserves tilde-delimited fenced code blocks", () => {
+    const text = ["Run these:", "~~~bash", "npm install", "npm test", "~~~"].join("\n");
+    const result = toBullets(text);
+    expect(result).toBe(
+      ["- Run these:", "~~~bash", "npm install", "npm test", "~~~"].join("\n"),
+    );
+  });
+
+  it("preserves empty fenced code blocks without producing stray bullets", () => {
+    const text = ["Before:", "```", "```", "After."].join("\n");
+    const result = toBullets(text);
+    expect(result).toBe(["- Before:", "```", "```", "- After."].join("\n"));
+  });
+
+  it("preserves blank lines inside fenced code blocks", () => {
+    const text = ["```", "line one", "", "line two", "```"].join("\n");
+    const result = toBullets(text);
+    expect(result).toBe(text);
+  });
+
+  it("does not append a trailing period to sentences already ending in punctuation", () => {
+    expect(toBullets("Files expected to change:")).toBe("- Files expected to change:");
+    expect(toBullets("Why not?")).toBe("- Why not?");
+    expect(toBullets("Wow!")).toBe("- Wow!");
+    expect(toBullets("Step one; step two")).toBe("- Step one; step two.");
+  });
 });
 
 describe("formatTokens", () => {
