@@ -1,7 +1,6 @@
 .timeline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 /* Virtualized variant: rows are absolutely positioned via
@@ -23,37 +22,60 @@
   box-sizing: border-box;
 }
 
-/* Extra spacing between different item kinds. The previous selectors
-   targeted `> .toolGroup + [data-kind]` wrappers; now that each tool
-   lives in its own row carrying `data-kind="tool"` we key on the row
-   data-kind directly. Only applied to the plain (non-virtual) variant
-   because the virtualized variant manages spacing per-row via
-   `.virtualRow`. */
+/*
+ * Inter-row spacing in the plain (non-virtual) variant.
+ *
+ * Implemented as per-row `margin-top` on each non-first child rather
+ * than as `gap` on the flex parent because adjacent tool rows inside a
+ * run need to overlap by 1px to collapse their borders, and `gap`
+ * cannot be negated. The cross-kind selectors below add a little extra
+ * breathing room between text/thinking and tool segments so the
+ * checklist of tool calls still reads as visually distinct from
+ * surrounding prose.
+ */
+.timeline:not(.timelineVirtual) > * + * {
+  margin-top: 8px;
+}
+
 .timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="text"],
 .timeline:not(.timelineVirtual) > [data-kind="text"] + [data-kind="tool"],
 .timeline:not(.timelineVirtual) > [data-kind="thinking"] + [data-kind="tool"],
 .timeline:not(.timelineVirtual) > [data-kind="tool"] + [data-kind="thinking"] {
-  margin-top: 4px;
+  margin-top: 12px;
 }
 
 /*
- * Grouped tool calls — flush stack so rows read as a dense checklist.
- * `data-tool-position` is set per-row by `ActivityTimeline.tsx` so the
- * wrapper div that previously enclosed each run is no longer required
- * (each row lives in its own virtualizer slot when the timeline is
- * windowed inside the task preview).
+ * Grouped tool calls — flush stack so a run of adjacent tools reads as
+ * a single dense checklist with one 1px divider between rows instead
+ * of an 8px gap and a doubled border.
  *
- * Border collapsing between adjacent rows is owned by Block.module.css
- * (`.block + .block`), which overlaps siblings by -1px so the bottom of
- * row N and the top of row N+1 render as a single 1px divider instead
- * of a doubled line.
+ * `data-tool-position` ("first" / "mid" / "last" / "solo") is set
+ * per-row by `ActivityTimeline.tsx`. The wrapper div that previously
+ * enclosed each run was removed so every row can live in its own
+ * virtualizer slot; this used to be the responsibility of the
+ * `.block + .block` rule in `Block.module.css`, but each Block is now
+ * nested inside a row wrapper and is never a true adjacent sibling of
+ * another Block, so the collapse must happen here.
+ *
+ * Works for both variants:
+ *   - Plain timeline: `margin-top: -1px` overrides the 8px from the
+ *     `* + *` rule above and pulls the row up so its top border lands
+ *     on top of the predecessor's bottom border.
+ *   - Virtual timeline: rows are absolutely positioned via
+ *     `transform: translateY(...)` by `@tanstack/react-virtual`.
+ *     `padding-bottom: 0` on the predecessor shortens its measured
+ *     height by 8px so the next row's accumulated start position sits
+ *     flush below it, and `margin-top: -1px` on the successor shifts
+ *     the visible box up by 1px to overlap the divider. Margins do
+ *     not affect `getBoundingClientRect()` dimensions, only position,
+ *     so the virtualizer's accumulated-size math stays correct.
  */
 .timeline > [data-tool-position="first"],
 .timeline > [data-tool-position="mid"] {
-  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
 .timeline > [data-tool-position="mid"],
 .timeline > [data-tool-position="last"] {
-  margin-top: 0;
+  margin-top: -1px;
 }

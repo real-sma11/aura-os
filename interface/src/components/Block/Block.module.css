@@ -20,18 +20,18 @@
   border-radius: 0;
   background: transparent;
   overflow: hidden;
-  margin-top: 4px;
   font-size: 12px;
 }
 
 /*
- * Collapse adjacent block borders: overlap by exactly 1px so the bottom
- * border of the previous block and the top border of the next one render
- * as a single 1px divider instead of a stacked "double border".
+ * Spacing between stacked blocks (and the 1px border-collapse trick that
+ * keeps adjacent siblings reading as a single divider instead of a
+ * doubled line) lives on the surface that owns the stack, not on the
+ * Block primitive itself. The chat / task-preview surfaces wrap each
+ * Block in a per-row container (so `@tanstack/react-virtual` can window
+ * the list), which means `.block + .block` is never a true adjacent-
+ * sibling selector anymore — see `ActivityTimeline.module.css`.
  */
-.block + .block {
-  margin-top: -1px;
-}
 
 /* ── Status variants ── */
 
