@@ -9,6 +9,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   [EventType.Progress]: "Message",
   [EventType.ToolCallStarted]: "Tool",
   [EventType.ToolCallSnapshot]: "Tool",
+  [EventType.ToolCallCompleted]: "Tool",
   [EventType.ToolCall]: "Tool",
   [EventType.ToolResult]: "Tool",
   [EventType.ToolCallRetrying]: "Tool",
