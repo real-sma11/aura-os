@@ -23,6 +23,7 @@ import {
 import { ComposePanel } from "../ComposePanel";
 import { CreateAgentButton } from "../CreateAgentButton";
 import { PersonaTickRail } from "../PersonaTickRail";
+import { PublicChatBubble } from "../PublicChatBubble";
 import { deriveChatPalette } from "../MockAuraApp/derive-chat-palette";
 import { PERSONAS, getPersonaAt, type Persona } from "../personas";
 import styles from "./PublicChatView.module.css";
@@ -109,11 +110,6 @@ function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] 
     }
     return [];
   });
-}
-
-function messageText(message: PublicMessage): string {
-  if ("content" in message) return message.content;
-  return `${message.mode} generated from: ${message.prompt}`;
 }
 
 export function PublicChatView(): React.ReactElement {
@@ -493,20 +489,28 @@ export function PublicChatView(): React.ReactElement {
         <div className={styles.chatSurface} aria-live="polite">
           {activeSession && activeSession.turns.length > 0 ? (
             <div className={styles.transcript} aria-label="Chat transcript">
-              {activeSession.turns.map((message) => (
-                <div
-                  key={message.id}
-                  className={`${styles.messageRow} ${
-                    message.role === "user"
-                      ? styles.messageRowUser
-                      : styles.messageRowAssistant
-                  }`}
-                >
-                  <div className={styles.messageBubble}>
-                    {messageText(message)}
-                  </div>
-                </div>
-              ))}
+              {activeSession.turns.map((message, idx) => {
+                // The in-flight assistant turn is identified by being
+                // the last assistant message in the turns array while
+                // `streamPublicChat` is still appending deltas. Pass
+                // `isStreaming` so `LLMOutput` / `ActivityTimeline`
+                // applies the live-streaming chrome (and, once the
+                // backend forwards `thinking_delta` for public chat,
+                // the Phase 1 synthetic Brain "Thinking..." Block will
+                // surface here automatically — see TODO(thinking) in
+                // `public-chat-store.ts`).
+                const isLastAssistantTurn =
+                  isSending &&
+                  message.role === "assistant" &&
+                  idx === activeSession.turns.length - 1;
+                return (
+                  <PublicChatBubble
+                    key={message.id}
+                    message={message}
+                    isStreaming={isLastAssistantTurn}
+                  />
+                );
+              })}
             </div>
           ) : null}
         </div>

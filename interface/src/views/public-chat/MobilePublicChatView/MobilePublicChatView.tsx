@@ -17,6 +17,7 @@ import {
   type PublicMessage,
   type PublicSession,
 } from "../../../stores/public-chat-store";
+import { PublicChatBubble } from "../PublicChatBubble";
 import styles from "./MobilePublicChatView.module.css";
 
 /**
@@ -65,11 +66,6 @@ function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] 
     }
     return [];
   });
-}
-
-function messageText(message: PublicMessage): string {
-  if ("content" in message) return message.content;
-  return `${message.mode} generated from: ${message.prompt}`;
 }
 
 const COMPOSER_PLACEHOLDER = "What do you want to create?";
@@ -210,20 +206,23 @@ export function MobilePublicChatView(): React.ReactElement {
           data-testid="mobile-public-chat-transcript"
         >
           {activeSession && activeSession.turns.length > 0 ? (
-            activeSession.turns.map((message) => (
-              <div
-                key={message.id}
-                className={`${styles.messageRow} ${
-                  message.role === "user"
-                    ? styles.messageRowUser
-                    : styles.messageRowAssistant
-                }`}
-              >
-                <div className={styles.messageBubble}>
-                  {messageText(message)}
-                </div>
-              </div>
-            ))
+            activeSession.turns.map((message, idx) => {
+              // Same in-flight detection as the desktop surface: the
+              // last assistant message while `streamPublicChat` is
+              // still appending deltas gets `isStreaming=true` so
+              // `LLMOutput` runs in live-stream mode.
+              const isLastAssistantTurn =
+                isSending &&
+                message.role === "assistant" &&
+                idx === activeSession.turns.length - 1;
+              return (
+                <PublicChatBubble
+                  key={message.id}
+                  message={message}
+                  isStreaming={isLastAssistantTurn}
+                />
+              );
+            })
           ) : (
             <div className={styles.transcriptEmpty} aria-hidden="true">
               {COMPOSER_PLACEHOLDER}

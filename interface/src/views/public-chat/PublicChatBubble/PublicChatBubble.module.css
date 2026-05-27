@@ -1,0 +1,59 @@
+/*
+ * PublicChatBubble — shared bubble chrome for the logged-out chat
+ * surfaces (desktop `PublicChatView`, mobile `MobilePublicChatView`).
+ * The styling here mirrors the previous inline `.messageBubble`
+ * rules that lived inside `PublicChatView.module.css` /
+ * `MobilePublicChatView.module.css` so the visual transition is a
+ * no-op for the user; the only behavioural change is that the
+ * assistant body now routes through `LLMOutput` rather than a plain
+ * `{messageText(message)}` string.
+ */
+.messageRow {
+  display: flex;
+}
+
+.messageRowUser {
+  justify-content: flex-end;
+}
+
+.messageRowAssistant {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  max-width: min(640px, 86%);
+  padding: 10px 14px;
+  border-radius: 18px;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-elevated, #111827) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #334155) 70%, transparent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.messageRowUser .messageBubble {
+  color: #fff;
+  background: color-mix(in srgb, #7c3aed 84%, transparent);
+  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
+  white-space: pre-wrap;
+}
+
+/*
+ * Drop `white-space: pre-wrap` from the assistant bubble body —
+ * `LLMOutput` already paints prose via ReactMarkdown, which wraps
+ * text in real `<p>` elements with normal whitespace handling.
+ * Leaving `pre-wrap` on the wrapper here would double-space lines
+ * after every `\n` in the model output.
+ */
+.messageRowAssistant .messageBubble {
+  white-space: normal;
+}
+
+.assistantOutput {
+  /* Reset the standard `LLMOutput` flex column gap so the bubble
+   * padding does the spacing instead. Without this, an assistant
+   * bubble with only a text segment gains an unnecessary 8px gap
+   * inside an already-padded bubble. */
+  gap: 0;
+}
