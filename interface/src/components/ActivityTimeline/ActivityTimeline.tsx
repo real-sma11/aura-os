@@ -198,14 +198,25 @@ export function ActivityTimeline({
       // the text that actually belongs to it. Fall back to the global
       // `thinkingText` for historical messages that predate per-segment text.
       const segmentText = item.text ?? thinkingText;
+      // The synthetic placeholder injected above lives only at render
+      // time and has no lifecycle handler that could stamp `durationMs`
+      // mid-turn, so it must NOT claim to be a live open segment.
+      // Render it as already-closed: a quiet Brain "Thought" header
+      // that the user can collapse. By the time it appears at least
+      // one tool has started (see `shouldSynthesizeThinking`), so the
+      // implicit pre-tool thought is genuinely done. The bottom
+      // `CookingIndicator` continues to surface active phase labels.
+      const isSynthetic = item.id === SYNTHETIC_THINKING_ID;
       // Open live segments (no `durationMs` stamped, parent turn still
       // streaming) must render even with empty text so the shimmering
       // Brain "Thinking..." header is visible the instant a thinking
-      // slot opens (real or synthetic). Closed/historical segments
-      // without text still skip — this preserves the no-phantom-block
-      // behavior on hydrated terminal turns.
-      const isOpenLiveSegment = isStreaming && item.durationMs == null;
-      if (!segmentText && !isOpenLiveSegment) continue;
+      // slot opens (real). Closed/historical segments without text
+      // still skip — this preserves the no-phantom-block behavior on
+      // hydrated terminal turns. The synthetic placeholder bypasses
+      // the skip rule below so the Brain marker stays at the head.
+      const isOpenLiveSegment =
+        !isSynthetic && isStreaming && item.durationMs == null;
+      if (!segmentText && !isOpenLiveSegment && !isSynthetic) continue;
       // Derive a per-segment streaming flag instead of forwarding the
       // turn-level `isStreaming` to every block. Without this, a
       // multi-segment turn (thinking -> tool -> thinking) used to render
@@ -217,8 +228,11 @@ export function ActivityTimeline({
       // one), so "no `durationMs`" uniquely identifies the live segment
       // during a turn. Hydrated history rows have no `durationMs`
       // either, but the turn-level `isStreaming` is already `false`
-      // there, so this rule still resolves correctly.
-      const segmentIsStreaming = isStreaming && item.durationMs == null;
+      // there, so this rule still resolves correctly. The synthetic
+      // placeholder is excluded so it never claims to be the active
+      // segment when a tool below it is the most recent activity.
+      const segmentIsStreaming =
+        !isSynthetic && isStreaming && item.durationMs == null;
       items.push({
         key: item.id,
         kind: "thinking",
