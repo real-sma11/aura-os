@@ -242,9 +242,14 @@ function handleTextDeltaEvent(e: AuraEvent): void {
   const c = parseEventContent(e);
   const taskId = c.task_id as string | undefined;
   if (!taskId) return;
+  ensureRunPaneTaskRow(e, taskId, c.task_title as string | undefined);
   const text = (c.text as string) ?? "";
   if (!text) return;
   const { key, refs, setters } = contextForTask(taskId);
+  if (!isStreamingByTask.get(taskId)) {
+    setters.setIsStreaming(true);
+    isStreamingByTask.set(taskId, true);
+  }
   handleTextDelta(refs, setters, getThinkingDurationMs(key), text);
   useContextUsageStore.getState().bumpEstimatedTokens(key, approxTokensFromText(text));
 }
@@ -260,16 +265,72 @@ function handleThinkingDeltaEvent(e: AuraEvent): void {
   useContextUsageStore.getState().bumpEstimatedTokens(key, approxTokensFromText(thinking));
 }
 
-function handleToolUseStartEvent(e: AuraEvent): void {
+function toolNameFromContent(c: Record<string, unknown>): string {
+  if (typeof c.name === "string" && c.name) return c.name;
+  if (typeof c.tool === "string" && c.tool) return c.tool;
+  if (typeof c.tool_name === "string" && c.tool_name) return c.tool_name;
+  return "unknown";
+}
+
+function handleToolCallStartedEvent(e: AuraEvent): void {
   const c = parseEventContent(e);
   const taskId = c.task_id as string | undefined;
   if (!taskId) return;
+  ensureRunPaneTaskRow(e, taskId, c.task_title as string | undefined);
   const { refs, setters } = contextForTask(taskId);
   const rawId = typeof c.id === "string" ? c.id.trim() : "";
   handleToolCallStarted(refs, setters, {
     id: rawId || crypto.randomUUID(),
-    name: (typeof c.name === "string" && c.name) || "unknown",
+    name: toolNameFromContent(c),
   });
+}
+
+function handleToolUseStartEvent(e: AuraEvent): void {
+  handleToolCallStartedEvent(e);
+}
+
+function handleToolCallCompletedEvent(e: AuraEvent): void {
+  const c = parseEventContent(e);
+  const taskId = c.task_id as string | undefined;
+  if (!taskId) return;
+  ensureRunPaneTaskRow(e, taskId, c.task_title as string | undefined);
+  const { key, refs, setters } = contextForTask(taskId);
+  const rawId = typeof c.id === "string" ? c.id.trim() : "";
+  const result =
+    (typeof c.result === "string" && c.result) ||
+    (typeof c.output === "string" && c.output) ||
+    "";
+  handleToolResult(refs, setters, {
+    id: rawId || undefined,
+    name: toolNameFromContent(c),
+    result,
+    is_error: (c.is_error as boolean) ?? false,
+  });
+  if (result.length > 0) {
+    useContextUsageStore
+      .getState()
+      .bumpEstimatedTokens(key, approxTokensFromText(result));
+  }
+}
+
+/** Ensure the Run pane has an active row before stream reducers run. */
+function ensureRunPaneTaskRow(
+  e: AuraEvent,
+  taskId: string,
+  title?: string,
+): void {
+  const projectId = resolveEventProjectId(e);
+  if (!projectId) return;
+  const panel = useTaskOutputPanelStore.getState();
+  const existing = panel.tasks.find((t) => t.taskId === taskId);
+  if (existing?.status === "active" && existing.projectId === projectId) return;
+  panel.addTask(
+    taskId,
+    projectId,
+    title,
+    e.project_agent_id ?? e.agent_id ?? undefined,
+    e.session_id || undefined,
+  );
 }
 
 function handleToolCallSnapshotEvent(e: AuraEvent): void {
@@ -774,6 +835,8 @@ const taskStreamSubscriptionGroup = createEventSubscriptionGroup(
     subscribe(EventType.TextDelta, handleTextDeltaEvent),
     subscribe(EventType.ThinkingDelta, handleThinkingDeltaEvent),
     subscribe(EventType.ToolUseStart, handleToolUseStartEvent),
+    subscribe(EventType.ToolCallStarted, handleToolCallStartedEvent),
+    subscribe(EventType.ToolCallCompleted, handleToolCallCompletedEvent),
     subscribe(EventType.ToolCallSnapshot, handleToolCallSnapshotEvent),
     subscribe(EventType.ToolResult, handleToolResultEvent),
     subscribe(EventType.ToolCallRetrying, handleToolCallRetryingEvent),

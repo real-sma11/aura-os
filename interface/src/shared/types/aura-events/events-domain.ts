@@ -45,14 +45,29 @@ export type DomainEventVariant =
     } }
   | { type: typeof EventType.ToolCallStarted; content: {
       message_id?: string;
-      id: string;
-      name: string;
+      task_id?: string;
+      id?: string;
+      name?: string;
+      tool?: string;
+      tool_name?: string;
     } }
   | { type: typeof EventType.ToolCallSnapshot; content: {
       message_id?: string;
+      task_id?: string;
       id: string;
       name: string;
       input: Record<string, unknown>;
+    } }
+  | { type: typeof EventType.ToolCallCompleted; content: {
+      message_id?: string;
+      task_id?: string;
+      id?: string;
+      name?: string;
+      tool?: string;
+      tool_name?: string;
+      result?: string;
+      output?: string;
+      is_error?: boolean;
     } }
   | { type: typeof EventType.ToolCall; content: {
       message_id?: string;

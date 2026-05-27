@@ -13,6 +13,7 @@ mod failure;
 mod files;
 mod git;
 mod health_gate;
+mod implicit_task;
 mod log_lines;
 mod retry;
 mod task_output;
@@ -85,6 +86,7 @@ pub(super) async fn record_event_side_effects(
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .or(fallback_task_id);
+    implicit_task::maybe_bind_implicit_task(ctx, event_type, task_id.as_deref()).await;
     let mut enriched = enrich_event(
         event.clone(),
         ctx.project_id,

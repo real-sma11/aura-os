@@ -30,7 +30,7 @@ pub(super) async fn apply_event_side_effect(
     event: &serde_json::Value,
 ) {
     match event_type {
-        "task_started" => task_started(ctx, task_id).await,
+        "task_started" => task_started_side_effects(ctx, task_id).await,
         "task_completed" => task_completed(ctx, task_id).await,
         "task_failed" => task_failed(ctx, task_id, event).await,
         "tool_call_completed" => tool_call_completed(ctx, task_id, event).await,
@@ -46,11 +46,9 @@ pub(super) async fn apply_event_side_effect(
     }
 }
 
-/// `task_started`: seed the task-output cache, bind the LoopHandle
-/// activity pointer, bump `tasks_worked_count` on the session, and
-/// kick off the workspace-health baseline snapshot. This arm is the
-/// single writer of `tasks.session_id`.
-async fn task_started(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
+/// Shared body for explicit `task_started` events and the implicit
+/// bind shim in [`super::implicit_task`].
+pub(super) async fn task_started_side_effects(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
     let Some(task_id) = task_id else { return };
     info!(
         target: "aura::automation",

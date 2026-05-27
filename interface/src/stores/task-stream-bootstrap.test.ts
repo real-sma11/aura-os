@@ -964,4 +964,45 @@ describe("task-stream-bootstrap: Run pane binding", () => {
     expect(row!.projectId).toBe("p1");
     expect(row!.status).toBe("active");
   });
+
+  it("renders tool_call_started into the per-task stream store", () => {
+    dispatch({
+      type: EventType.ToolCallStarted,
+      content: {
+        task_id: "t1",
+        id: "call-1",
+        name: "read_file",
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const row = useTaskOutputPanelStore.getState().tasks.find((t) => t.taskId === "t1");
+    expect(row).toBeDefined();
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    expect(entry?.activeToolCalls.some((c) => c.name === "read_file")).toBe(true);
+  });
+
+  it("renders tool_call_completed into the per-task stream store", () => {
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.ToolCallStarted,
+      content: { task_id: "t1", id: "call-1", name: "read_file" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+    dispatch({
+      type: EventType.ToolCallCompleted,
+      content: {
+        task_id: "t1",
+        id: "call-1",
+        name: "read_file",
+        result: "file contents",
+        is_error: false,
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t1")];
+    const tool = entry?.activeToolCalls.find((c) => c.id === "call-1");
+    expect(tool?.result).toBe("file contents");
+  });
 });

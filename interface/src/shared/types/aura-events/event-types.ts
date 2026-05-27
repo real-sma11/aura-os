@@ -31,6 +31,7 @@ export const EventType = {
   Progress:              "progress",
   ToolCallStarted:       "tool_call_started",
   ToolCallSnapshot:      "tool_call_snapshot",
+  ToolCallCompleted:     "tool_call_completed",
   ToolCall:              "tool_call",
   ToolResult:            "tool_result",
   /**
