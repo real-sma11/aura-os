@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
 import styles from "./PublicMarketingPanel.module.css";
 
@@ -61,6 +61,7 @@ const MARKETING_NAV_FG_COLOR_MUTED = "#c9c9cf";
  */
 export function PublicMarketingPanel(): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -74,6 +75,19 @@ export function PublicMarketingPanel(): React.ReactElement {
       root.style.removeProperty("--public-nav-fg-color-muted");
     };
   }, []);
+
+  // Reset the scroll column to the top whenever the visitor
+  // navigates between marketing pages. `PublicMarketingPanel` is a
+  // layout route that does NOT unmount when the `<Outlet />`
+  // content swaps (e.g. `/product` -> `/changelog`), so without
+  // this effect the previous page's scroll position would persist
+  // into the next page. The login overlay's background-location
+  // pattern stashes the marketing path in `routeLocation`, so
+  // `useLocation()` inside this panel still reads the marketing
+  // pathname when the modal is open and we won't fight the overlay.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname]);
 
   return (
     <div className={styles.root}>
