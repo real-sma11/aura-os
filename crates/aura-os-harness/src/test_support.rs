@@ -251,6 +251,7 @@ impl HarnessLink for FakeHarness {
         });
 
         Ok(HarnessSession {
+            run_id: session_id.clone(),
             session_id,
             events_tx,
             raw_events_tx,

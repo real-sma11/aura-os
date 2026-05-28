@@ -309,6 +309,7 @@ mod tests {
         let (commands_tx, _commands_rx) = mpsc::channel(16);
         HarnessSession {
             session_id: "sess-1".to_string(),
+            run_id: "run-1".to_string(),
             events_tx,
             raw_events_tx,
             commands_tx,

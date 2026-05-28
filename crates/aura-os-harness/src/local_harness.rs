@@ -120,17 +120,41 @@ impl HarnessLink for LocalHarness {
             return Err(anyhow::Error::new(err)
                 .context("local harness rejected runtime_request: identity preflight"));
         }
+        let auth_token = config.token.clone();
+        // `open_session` is now a thin convenience wrapper over the
+        // canonical `open_run`: it builds a Chat `RuntimeRequest` from
+        // the `SessionConfig` and submits it through the same two-step
+        // POST /v1/run + WS /stream/:run_id exchange every run type uses.
+        self.open_run(build_runtime_request(&config), auth_token.as_deref())
+            .await
+    }
 
+    async fn close_session(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl LocalHarness {
+    /// Canonical run-open path shared by chat (`open_session`) and
+    /// automaton (`DevLoop` / `TaskRun`) flows: submit a
+    /// [`RuntimeRequest`] to `POST /v1/run`, attach `WS /stream/:run_id`,
+    /// and return the live [`HarnessSession`] (typed + raw event
+    /// broadcasts, command sink, and the retained `run_id`). Applies the
+    /// shared connect-retry budget and the `503 -> CapacityExhausted`
+    /// short-circuit.
+    pub async fn open_run(
+        &self,
+        request_body: aura_protocol::RuntimeRequest,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<HarnessSession> {
         let max_attempts = read_connect_attempts_from_env();
         let per_attempt_timeout = read_connect_timeout_from_env();
-        let request_body = build_runtime_request(&config);
-        let auth_token = config.token.clone();
 
         let mut last_err: Option<anyhow::Error> = None;
         let mut session_opt: Option<HarnessSession> = None;
         for attempt in 1..=max_attempts {
             match self
-                .try_open_session_attempt(&request_body, auth_token.as_deref(), per_attempt_timeout)
+                .try_open_session_attempt(&request_body, auth_token, per_attempt_timeout)
                 .await
             {
                 Ok(session) => {
@@ -151,7 +175,7 @@ impl HarnessLink for LocalHarness {
                     max_attempts,
                     backoff_ms = backoff.as_millis() as u64,
                     error = ?last_err.as_ref().map(|e| e.to_string()),
-                    "local harness session open failed, retrying"
+                    "local harness run open failed, retrying"
                 );
                 // Phase 5 observability: every retry attempt past the
                 // first bumps the global counter aura-os-server reads
@@ -162,17 +186,68 @@ impl HarnessLink for LocalHarness {
         }
         let session = session_opt.ok_or_else(|| {
             last_err.unwrap_or_else(|| {
-                anyhow::anyhow!("local harness session open failed (no attempts ran)")
+                anyhow::anyhow!("local harness run open failed (no attempts ran)")
             })
         })?;
 
-        info!(session_id = %session.session_id, "Local harness session ready");
-
+        info!(session_id = %session.session_id, run_id = %session.run_id, "Local harness run ready");
         Ok(session)
     }
 
-    async fn close_session(&self, _session_id: &str) -> anyhow::Result<()> {
+    /// Build a lightweight HTTP client for a one-shot `/v1/run/:id/*`
+    /// lifecycle call. Mirrors the per-call client the open path builds
+    /// so a stale keep-alive socket never wedges a control request.
+    fn lifecycle_http_client() -> anyhow::Result<reqwest::Client> {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(3))
+            .timeout(Duration::from_secs(12))
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build lifecycle http client: {e}"))
+    }
+
+    async fn lifecycle_post(&self, run_id: &str, action: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        let url = format!("{}/v1/run/{run_id}/{action}", self.base_url);
+        let mut req = Self::lifecycle_http_client()?.post(&url);
+        if let Some(token) = auth_token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("POST /v1/run/{run_id}/{action} returned {status}: {body}");
+        }
         Ok(())
+    }
+
+    /// Pause a run via `POST /v1/run/:id/pause`.
+    pub async fn pause_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        self.lifecycle_post(run_id, "pause", auth_token).await
+    }
+
+    /// Stop a run via `POST /v1/run/:id/stop`.
+    pub async fn stop_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        self.lifecycle_post(run_id, "stop", auth_token).await
+    }
+
+    /// Get a run's status via `GET /v1/run/:id/status`.
+    pub async fn run_status(
+        &self,
+        run_id: &str,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let url = format!("{}/v1/run/{run_id}/status", self.base_url);
+        let mut req = Self::lifecycle_http_client()?.get(&url);
+        if let Some(token) = auth_token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        let body = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("GET /v1/run/{run_id}/status returned {status}: {body}");
+        }
+        Ok(serde_json::from_str(&body)?)
     }
 }
 
@@ -309,6 +384,7 @@ impl LocalHarness {
 
         Ok(HarnessSession {
             session_id,
+            run_id,
             events_tx,
             raw_events_tx,
             commands_tx,

@@ -373,6 +373,10 @@ impl SwarmHarness {
         send_session_init(&commands_tx, config)?;
         wait_for_session_ready(&mut ready_rx, &session_resp.session_id).await?;
         Ok(HarnessSession {
+            // The swarm gateway bootstraps via session-init handshake and
+            // does not expose a separate run_id, so the session id doubles
+            // as the run handle here.
+            run_id: session_resp.session_id.clone(),
             session_id: session_resp.session_id,
             events_tx,
             raw_events_tx,

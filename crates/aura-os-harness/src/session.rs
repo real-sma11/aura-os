@@ -120,6 +120,7 @@ mod tests {
             *self.commands_rx.lock().expect("commands receiver lock") = Some(commands_rx);
             Ok(HarnessSession {
                 session_id: "session-1".to_string(),
+                run_id: "run-1".to_string(),
                 events_tx,
                 raw_events_tx,
                 commands_tx,

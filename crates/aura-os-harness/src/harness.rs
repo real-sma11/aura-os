@@ -68,6 +68,14 @@ pub struct SessionConfig {
 
 pub struct HarnessSession {
     pub session_id: String,
+    /// Harness-allocated run identifier from `POST /v1/run` (the path
+    /// segment on `WS /stream/:run_id` and the `/v1/run/:id/*` lifecycle
+    /// endpoints). Retained so a caller can reattach to or control the
+    /// run by id — the canonical handle that unifies chat and automaton
+    /// flows. May be empty for transports that predate the run model
+    /// (e.g. the swarm session-init handshake), in which case it falls
+    /// back to `session_id`.
+    pub run_id: String,
     pub events_tx: broadcast::Sender<OutboundMessage>,
     /// Raw JSON events that did not match the typed `OutboundMessage`
     /// enum. This lets domain-level events from the harness pass
