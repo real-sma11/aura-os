@@ -50,10 +50,14 @@
  *     it painting above the unpositioned side phones, so the
  *     overlap reads as the hero IN FRONT of the side phones
  *     rather than slicing into them.
- *   - `align-items: flex-end` lines the bottom edges of the
- *     side phones up with the hero's baseline. The hero's own
- *     `translateY(-24px)` lift then visually pushes the hero
- *     up and forward.
+ *   - `align-items: center` lines up the vertical CENTERS of
+ *     all three phones — the hero is taller and wider than the
+ *     side phones, so center-alignment makes the side phones'
+ *     top edges sit just below the hero's top edge and their
+ *     bottom edges sit just above the hero's bottom edge, with
+ *     equal slivers of hero poking out on both ends. The hero's
+ *     own `translateY(-24px)` then nudges the whole composition
+ *     upward without breaking the centered alignment.
  *   - The negative margin is `clamp()`-driven so the overlap
  *     scales gracefully with viewport width without ever
  *     collapsing the side phones entirely behind the hero on
@@ -61,7 +65,7 @@
  */
 .agentChatSectionPhones {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   gap: 0;
   width: 100%;
