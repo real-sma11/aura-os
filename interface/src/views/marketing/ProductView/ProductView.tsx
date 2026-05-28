@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { AgentMarquee } from "../AgentMarquee";
 import { ChangelogPreview } from "../ChangelogPreview";
 import {
   CodeIcon,
@@ -67,6 +68,7 @@ export function ProductView(): ReactNode {
         centered
         backgroundVideoSrc="/AURA_visual_loop.mp4"
         headlineCta={<CreateAgentButton />}
+        videoOverlay={<AgentMarquee />}
       />
       <ProductScreenSection
         headline="A secure operating system to manage agentic swarms."

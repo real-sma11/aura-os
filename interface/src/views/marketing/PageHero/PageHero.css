@@ -436,10 +436,63 @@
    working on any older WebKit build that would otherwise fall
    back to the default `mask-composite: add` (union, not
    intersection) and paint the corners. */
-.pageHeroFlowVideo {
+/* Positioning wrapper around the flow video. Owns the relative
+   positioning context, z-index, and the negative `margin-top`
+   peek offset that used to live on `.pageHeroFlowVideo` itself.
+   The video moves into the wrapper as a child so an optional
+   `<div class="pageHeroVideoOverlay">` sibling can be absolutely
+   positioned over the video's box without escaping into the
+   centered headline column above (which is what would happen if
+   the overlay anchored against `.pageHero` instead). The
+   negative top margin matches the prior video offset value
+   exactly — see `.pageHeroFlowVideo` below for the math
+   explanation; only its host moved. */
+.pageHeroFlowVideoWrapper {
   display: block;
   position: relative;
   z-index: 1;
+  margin-top: calc(
+    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+  );
+  margin-top: calc(
+    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+  );
+}
+
+/* Slot for the optional `videoOverlay` ReactNode passed by the
+   consuming view. Currently used by `ProductView` to mount
+   `<AgentMarquee />` so the agent strip slides across the AURA
+   orb at the video's vertical centerline.
+   - `inset: 0` matches the parent `.pageHeroFlowVideoWrapper`'s
+     box, which the video sizes via `aspect-ratio`. So the
+     overlay's bounding box equals the video's bounding box and
+     `align-items: center` lands the overlay child on the orb's
+     midline (the orb's bright spot sits at ~50% Y of the source
+     loop).
+   - `pointer-events: none` on the wrapper avoids blocking
+     interaction with anything UNDER the video; direct children
+     re-enable pointer events so an interactive overlay (the
+     marquee strip) still gets cursor + keyboard input. */
+.pageHeroVideoOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* Sits above the masked video pixels but stays inside the
+     wrapper's z-index 1 so it never paints over the centered
+     headline / description / CTA column (which lives at z-index 2
+     on `.pageHeroContent`). */
+  z-index: 1;
+}
+
+.pageHeroVideoOverlay > * {
+  pointer-events: auto;
+}
+
+.pageHeroFlowVideo {
+  display: block;
   width: 100%;
   /* Reserve the video's intrinsic 1280×720 (16:9) box BEFORE the
      mp4 metadata loads, so the section's eventual rendered height
@@ -462,12 +515,12 @@
      respect `aspect-ratio` on replaced elements per CSS-Sizing-4). */
   aspect-ratio: 1280 / 720;
   height: auto;
-  margin-top: calc(
-    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
-  );
-  margin-top: calc(
-    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
-  );
+  /* The negative `margin-top` peek offset that used to live here
+     moved to `.pageHeroFlowVideoWrapper` above so the optional
+     `<div class="pageHeroVideoOverlay">` sibling can be absolutely
+     positioned over the video's box (with `position: relative`
+     also moved to the wrapper). The math is unchanged — see the
+     wrapper rule for the full body-third explanation. */
   pointer-events: none;
   mask-image:
     linear-gradient(

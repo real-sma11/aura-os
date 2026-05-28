@@ -53,6 +53,22 @@ interface PageHeroProps {
    * mount different CTA chrome without forking this component.
    */
   readonly headlineCta?: ReactNode;
+  /**
+   * Optional element rendered as an absolutely-positioned overlay
+   * inside the flow video's box (`.pageHeroFlowVideo`). The
+   * overlay's bounding box matches the video's bounding box, and
+   * the wrapper is a flex column with `align-items: center` so an
+   * overlay child centers vertically over the AURA orb's bright
+   * spot at the video's midline. Pointer events on the wrapper
+   * itself are disabled so a transparent overlay never blocks
+   * clicks on the video; pointer events are re-enabled on the
+   * direct children, so an interactive overlay (the
+   * `<AgentMarquee />` strip on the product page) still receives
+   * cursor + keyboard input. Only meaningful when `centered` is
+   * true and `backgroundVideoSrc` is set, since those are the two
+   * conditions that make the flow video render in the first place.
+   */
+  readonly videoOverlay?: ReactNode;
 }
 
 /**
@@ -84,6 +100,7 @@ export function PageHero({
   backgroundImageSrc,
   backgroundImageAlt = "",
   headlineCta,
+  videoOverlay,
 }: PageHeroProps): ReactNode {
   const pageHeroClassName = [
     "pageHero",
@@ -206,14 +223,24 @@ export function PageHero({
       </div>
       {renderFlowVideo ? (
         /*
-         * `width` / `height` attributes mirror the source video's
-         * intrinsic 1280×720 dimensions so the browser computes
-         * the aspect-ratio box from the FIRST render — before the
-         * mp4 metadata is fetched, before `loadedmetadata` fires,
-         * and before the `.pageHeroFlowVideo` stylesheet rule's
-         * `aspect-ratio: 1280 / 720` is necessarily applied. They
-         * are intentionally NOT used as sizing constraints; the
-         * `.pageHeroFlowVideo` rule still drives the rendered
+         * Flow video + optional overlay live inside a single
+         * positioning wrapper so an absolutely-positioned
+         * `videoOverlay` sibling tracks the video's box exactly
+         * (instead of the entire `.pageHero` section, which would
+         * include the centered headline column above it). The
+         * wrapper carries the video's old `position: relative;
+         * z-index: 1` so existing layering — content stack on top,
+         * video below the fold — is preserved.
+         *
+         * `width` / `height` attributes on the `<video>` mirror
+         * the source's intrinsic 1280×720 dimensions so the
+         * browser computes the aspect-ratio box from the FIRST
+         * render — before the mp4 metadata is fetched, before
+         * `loadedmetadata` fires, and before the
+         * `.pageHeroFlowVideo` stylesheet rule's
+         * `aspect-ratio: 1280 / 720` is necessarily applied.
+         * They are intentionally NOT used as sizing constraints;
+         * the `.pageHeroFlowVideo` rule still drives the rendered
          * width (`width: 100%`) and height (derived from
          * `aspect-ratio`). The attributes only exist to lock the
          * intrinsic ratio for the very first paint frame, which
@@ -221,17 +248,22 @@ export function PageHero({
          * `ProductScreenSection` directly below would snap down
          * the moment the browser learned the video's true height.
          */
-        <video
-          className="pageHeroFlowVideo"
-          src={backgroundVideoSrc}
-          width={1280}
-          height={720}
-          autoPlay
-          loop
-          muted
-          playsInline
-          aria-hidden="true"
-        />
+        <div className="pageHeroFlowVideoWrapper">
+          <video
+            className="pageHeroFlowVideo"
+            src={backgroundVideoSrc}
+            width={1280}
+            height={720}
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-hidden="true"
+          />
+          {videoOverlay ? (
+            <div className="pageHeroVideoOverlay">{videoOverlay}</div>
+          ) : null}
+        </div>
       ) : null}
       {preview !== null ? (
         <div className="pageHeroPreview">

@@ -187,6 +187,18 @@ export interface Persona {
   readonly id: string;
   /** Display label shown inside the rail's hover panel. */
   readonly name: string;
+  /**
+   * Short tagline rendered alongside `name` on surfaces that need a
+   * descriptor — e.g. the hover overlay on the product page's
+   * `<AgentMarquee />` row, where each card flips from a bare
+   * portrait into a "Name / Role" caption when hovered.
+   *
+   * Kept intentionally short (2–3 words) so the caption fits on a
+   * single line inside the marquee card without truncation. The
+   * field is required so every persona ships a label and the
+   * marquee never has to fall back to displaying just the name.
+   */
+  readonly role: string;
   /** Visual override applied when this persona is the active tick. */
   readonly theme: PersonaTheme;
 }
@@ -195,6 +207,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "vibecoder",
     name: "Vibecoder",
+    role: "Creative coder",
     theme: {
       // Cyberpunk portrait fills the mock desktop window's
       // wallpaper rectangle. The source is a 1024×1024 square
@@ -286,6 +299,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "solo-builder",
     name: "Solo Builder",
+    role: "Indie engineer",
     theme: {
       desktopBackgroundUrl: "/personas/solo-builder/desktop.png",
       // Position is irrelevant under `contain` (the image fits
@@ -347,6 +361,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "giga-brain",
     name: "Giga Brain",
+    role: "Research lead",
     theme: {
       // Chrome-visor figure on a soft cream studio field — a
       // woman in a cream hooded fleece zipper jacket, head
@@ -440,6 +455,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "coordinator",
     name: "Coordinator",
+    role: "Team orchestrator",
     theme: {
       desktopBackgroundUrl: "/personas/coordinator/desktop.png",
       // Position is irrelevant under `contain` (the image fits
@@ -524,6 +540,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "researcher",
     name: "Researcher",
+    role: "Research analyst",
     theme: {
       // Glossy black-and-gold researcher android on a warm studio
       // beige field. `contain` is intentional here: it preserves
@@ -551,6 +568,7 @@ export const PERSONAS: ReadonlyArray<Persona> = [
   {
     id: "cypher-punk",
     name: "Cypher Punk",
+    role: "Security operator",
     theme: {
       // Hooded operator with a green-lit neon visor on a pure-
       // black field. The source is a 1024×1024 square — same

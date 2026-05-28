@@ -1,0 +1,301 @@
+/*
+ * AgentMarquee — horizontal looping strip of agent portrait cards
+ * mounted as the `videoOverlay` slot on `<PageHero />` for the
+ * product page. The strip spans the full width of the flow video
+ * box and its vertical centerline lines up with the AURA orb
+ * inside `/AURA_visual_loop.mp4`, so the cards slide across the
+ * bright spot of the loop on first scroll-into-view.
+ *
+ * Stacking + pointer events
+ * --------------------------
+ * `.pageHeroVideoOverlay` (the slot wrapper added in PageHero.css)
+ * sets `pointer-events: none` so the overlay never blocks anything
+ * UNDER the video, then re-enables pointer events on its direct
+ * children. The marquee here is one of those children, so we don't
+ * need to redeclare `pointer-events: auto` — the parent rule
+ * already does it.
+ */
+.marquee {
+  position: relative;
+  width: 100%;
+  /* Mask the strip's left + right edges back to the video so cards
+     fade IN as they enter from the right and OUT as they exit to
+     the left, instead of popping at the section's edge. The
+     8% / 92% stops keep the bulk of the strip fully visible while
+     softening only the entry / exit zones. */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+  /* Allow the hovered card's `transform: scale(1.18)` to grow
+     past the strip's box without being clipped. Without this an
+     `overflow: hidden` would otherwise feel natural here for the
+     fade mask, but the mask-image already replaces that role and
+     `overflow: visible` lets the zoomed card breathe vertically. */
+  overflow: visible;
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  /* Each card is fixed-width (see `.card` below) and the gap is
+     part of the wrap math: the second copy of the list shares the
+     same per-card spacing as the first, so translating the track
+     by exactly `-50%` lands the second copy in the original
+     starting position with no visible seam. */
+  gap: 16px;
+  /* `width: max-content` lets the row size to its full intrinsic
+     width (12 cards + 11 gaps) instead of being capped by the
+     parent; the keyframe `translateX(-50%)` then sweeps half of
+     that width through the viewport per cycle. */
+  width: max-content;
+  animation: agent-marquee-scroll 60s linear infinite;
+  /* `will-change` hints the compositor to promote the track to its
+     own layer so the per-frame transform doesn't repaint the strip
+     each tick. The strip is permanently animating until hover, so
+     the hint is always relevant rather than a one-shot signal. */
+  will-change: transform;
+}
+
+/* Pause the loop the moment the cursor enters the strip OR a
+   keyboard user focuses any card via Tab. Using `:hover` plus
+   `:focus-within` on the same selector keeps mouse + keyboard
+   parity without doubling the rule. */
+.marquee:hover .track,
+.marquee:focus-within .track {
+  animation-play-state: paused;
+}
+
+@keyframes agent-marquee-scroll {
+  /* Cycle: slide the duplicated track exactly half its width to
+     the left, which lands the second copy of the persona list in
+     the position the first copy started in. The next iteration
+     starts from `0` again (transform animations restart at the
+     `from` value), so the visitor sees one continuous left-ward
+     drift with no jump. Duration is set on `.track` rather than
+     here so it stays in sync with related rules at one site. */
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.card {
+  position: relative;
+  /* Fixed pixel size (rather than vw-driven) so the hover zoom
+     scale factor produces a predictable 32px lift across viewports
+     instead of changing apparent intensity with the window width.
+     The strip is masked at the edges (see `.marquee` mask) so
+     wider viewports just reveal more cards, not bigger ones. */
+  flex: 0 0 auto;
+  width: 180px;
+  height: 252px;
+  border-radius: 18px;
+  overflow: hidden;
+  /* Subtle elevation so the card reads as a tile floating over
+     the orb video instead of merging into it. The `inset` ring
+     paints inside the rounded corner so the highlight tracks the
+     border-radius cleanly. */
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  /* Idle cards get a slight desaturate + dim so the row reads as
+     ambient until the visitor focuses one. The `filter` snaps to
+     `none` on hover so the focused card pops back to full color. */
+  filter: brightness(0.92) saturate(0.88);
+  transition:
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    filter 280ms ease,
+    box-shadow 280ms ease;
+  /* The card is keyboard-focusable (`tabIndex=0` in JSX) but the
+     UA focus ring would clash with the rounded portrait + the
+     hover zoom. We still want a clear focus indicator for keyboard
+     users; the `:focus-visible` rule below replaces the UA outline
+     with a thin warm ring that tracks the card's border-radius. */
+  outline: none;
+  /* Anchor the scale transform to the bottom-center of the card
+     so the zoom grows UPWARD without lifting the card's bottom
+     edge above its row siblings — the caption stays pinned to the
+     row baseline while the head zooms up into the video field. */
+  transform-origin: 50% 100%;
+  /* No-op default; the `:hover` rule below sets the scale and the
+     transition above interpolates between the two states. */
+  transform: scale(1);
+  background-color: #1a1a1d;
+}
+
+.card:hover,
+.card:focus-visible {
+  transform: scale(1.18);
+  filter: none;
+  /* Bumped shadow on the focused card amplifies the lift past the
+     idle elevation so the zoom reads as the card stepping forward
+     out of the row. */
+  box-shadow:
+    0 24px 56px rgba(0, 0, 0, 0.46),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.card:focus-visible {
+  /* Warm ring distinct from the inset white highlight so the
+     keyboard-focused card is unambiguously identifiable. The
+     `outline-offset` keeps the ring just outside the rounded
+     corner instead of cutting across it. */
+  outline: 2px solid #f7f8fb;
+  outline-offset: 3px;
+}
+
+/* Active / focused cards float ABOVE their neighbors so the
+   1.18× scale never gets clipped by the next card's box. The
+   selector list mirrors the hover/focus rule above. */
+.card:hover,
+.card:focus-visible {
+  z-index: 2;
+}
+
+.portrait {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `cover` fills the whole card while the JSX-set
+     `objectPosition` (sourced from the persona's
+     `avatarObjectPosition` hint, default `50% 18%`) keeps the
+     subject's head + shoulders centered in the visible window.
+     The portraits authored at 1024×1024 are upper-third headshots,
+     so the same crop hint that lands the head in the public
+     chat's 18px avatar dock works here for a 180×252 card. */
+  object-fit: cover;
+  /* Disable native UA dragging: a portrait <img> on a marquee
+     surface should feel like a styled tile, not a draggable asset. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Defensive fallback rendered only when a persona has no
+   `desktopBackgroundUrl`. Mirrors the no-theme initial-letter
+   treatment used elsewhere in the public chat surface so the
+   marquee never paints an empty card. */
+.portraitFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 64px;
+  font-weight: 300;
+  color: rgba(247, 248, 251, 0.78);
+  background: linear-gradient(180deg, #2a2a30 0%, #15151a 100%);
+}
+
+/* Bottom-left "Name / Role" caption — hidden on idle cards and
+   slid up + faded in on hover. Painted on a thin gradient so the
+   text reads cleanly even when the underlying portrait region is
+   bright (e.g. the Vibecoder hot-pink background). */
+.caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 14px 14px 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.65) 60%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  color: #f7f8fb;
+  /* Hidden by default; the `:hover` / `:focus-visible` siblings
+     of `.card` flip both opacity and translate-y so the caption
+     fades in while sliding up a few pixels into place. */
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 220ms ease,
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  pointer-events: none;
+}
+
+.card:hover .caption,
+.card:focus-visible .caption {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.captionName {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
+}
+
+.captionRole {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(247, 248, 251, 0.72);
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+/* Honor user motion preferences: visitors who opt out of motion
+   see a static strip with no scroll animation. Hover zoom is also
+   shortened to a near-instant snap so the focused card still
+   reads as a poster moment without sliding. The marquee keeps the
+   first copy of the persona list visible since that's the row a
+   reduced-motion visitor will actually scan. */
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    animation: none;
+    /* Center the (now static) row so the visible portion shows the
+       midsection of the duplicated list rather than starting at
+       the leftmost card and wasting half the viewport on cards
+       that scroll into view in motion mode. */
+    justify-content: center;
+    width: 100%;
+  }
+
+  .card,
+  .caption {
+    transition-duration: 0ms;
+  }
+}
+
+/* Phones: scale the cards down so 4-ish fit across the visible
+   window. The hover-to-zoom interaction is keyboard- + cursor-
+   gesture only, so the card sizing on touch screens is tuned for
+   a clean glance pattern more than for a hover target. */
+@media (max-width: 768px) {
+  .card {
+    width: 132px;
+    height: 184px;
+    border-radius: 14px;
+  }
+
+  .captionName {
+    font-size: 13px;
+  }
+
+  .captionRole {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    width: 108px;
+    height: 152px;
+  }
+
+  .track {
+    gap: 12px;
+  }
+}
