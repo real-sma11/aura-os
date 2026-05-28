@@ -266,7 +266,13 @@
 .authPillSecondary {
   background: transparent;
   color: var(--color-text-primary);
-  border-color: var(--color-border);
+  /*
+   * No visible outline: `.authPill` already declares a 1px
+   * transparent border in the base rule so the box geometry matches
+   * the primary pill, but the secondary variant doesn't paint its
+   * own border-color — Log In and Download read as borderless text
+   * pills next to the filled Sign Up CTA.
+   */
 }
 
 /*
