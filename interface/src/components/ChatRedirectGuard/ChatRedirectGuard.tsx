@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
+import { isChatPathname } from "../../utils/last-app-path";
 
 /**
  * Phase 4 `p4_simple_pin_chat`: redirect every non-`/chat` pathname
@@ -27,9 +28,13 @@ export function ChatRedirectGuard({
 }
 
 /**
- * Pure pathname predicate. Exported for tests so the redirect rule
- * can be exercised without spinning up a router.
+ * Pure pathname predicate. Re-exported from `utils/last-app-path` so
+ * the per-mode last-path tracking in `utils/storage` can share the
+ * same rule without a components -> utils import. The local function
+ * wrapper is preserved (rather than `export const`) so React Fast
+ * Refresh keeps working — the `react-refresh/only-export-components`
+ * rule disallows non-component value exports from a component file.
  */
 export function isChatPath(pathname: string): boolean {
-  return pathname === "/chat" || pathname.startsWith("/chat/");
+  return isChatPathname(pathname);
 }

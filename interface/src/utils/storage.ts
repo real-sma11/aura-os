@@ -2,11 +2,13 @@ import {
   AUTHED_SIDEBAR_COLLAPSED_KEY,
   COLLAPSED_PROJECTS_KEY,
   DEBUG_COLLAPSED_PROJECTS_KEY,
+  LAST_ADVANCED_PATH_KEY,
   LAST_AGENT_KEY,
   LAST_APP_KEY,
   LAST_DEBUG_PROJECT_KEY,
   LAST_DEBUG_RUN_KEY,
   LAST_PROJECT_KEY,
+  LAST_SIMPLE_PATH_KEY,
   PROJECT_ORDER_KEY,
   PUBLIC_SIDEBAR_COLLAPSED_KEY,
   TASKBAR_APP_ORDER_KEY,
@@ -14,6 +16,7 @@ import {
   TASKBAR_HIDDEN_APPS_KEY,
   TASKBAR_RIGHT_COLLAPSED_KEY,
 } from "../constants";
+import { getPathname, isChatPathname, sanitizeRestorePath } from "./last-app-path";
 
 type LastAgentMap = Record<string, string>;
 const LAST_STANDALONE_AGENT_KEY = "aura:lastAgentId";
@@ -55,6 +58,64 @@ export function getLastApp(): string | null {
 
 export function setLastApp(appId: string): void {
   localStorage.setItem(LAST_APP_KEY, appId);
+}
+
+/**
+ * Per-mode "last visited path" tracking — read by `ModeToggle` so the
+ * Simple <-> Advanced flip restores the URL the user had last seen in
+ * the destination mode. Writes happen in `AppProviders.AppSync` on
+ * every location change, keyed by URL (Simple = `/chat...`, Advanced =
+ * everything else) rather than by store mode so a brief mode-flip
+ * window can never misclassify the path.
+ *
+ * Both helpers run a defensive `sanitizeRestorePath` round-trip on
+ * read so a hand-edited / stale localStorage value (e.g. an
+ * `/api/...` route, or an Advanced path persisted under the Simple
+ * key) cannot drive `navigate()` to an invalid surface. Reads return
+ * `null` for any value that fails validation.
+ */
+export function getLastSimplePath(): string | null {
+  try {
+    const raw = localStorage.getItem(LAST_SIMPLE_PATH_KEY);
+    const sanitized = sanitizeRestorePath(raw);
+    if (!sanitized) return null;
+    return isChatPathname(getPathname(sanitized)) ? sanitized : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastSimplePath(path: string): void {
+  try {
+    const sanitized = sanitizeRestorePath(path);
+    if (!sanitized) return;
+    if (!isChatPathname(getPathname(sanitized))) return;
+    localStorage.setItem(LAST_SIMPLE_PATH_KEY, sanitized);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+export function getLastAdvancedPath(): string | null {
+  try {
+    const raw = localStorage.getItem(LAST_ADVANCED_PATH_KEY);
+    const sanitized = sanitizeRestorePath(raw);
+    if (!sanitized) return null;
+    return isChatPathname(getPathname(sanitized)) ? null : sanitized;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastAdvancedPath(path: string): void {
+  try {
+    const sanitized = sanitizeRestorePath(path);
+    if (!sanitized) return;
+    if (isChatPathname(getPathname(sanitized))) return;
+    localStorage.setItem(LAST_ADVANCED_PATH_KEY, sanitized);
+  } catch {
+    // ignore storage failures
+  }
 }
 
 export function getLastProject(): string | null {

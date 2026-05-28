@@ -11,8 +11,19 @@ export const LAST_APP_BASE_PATH: Record<string, string> = {
 
 export const DEFAULT_APP_PATH = "/agents";
 
-function getPathname(path: string): string {
+export function getPathname(path: string): string {
   return path.split(/[?#]/, 1)[0] ?? path;
+}
+
+/**
+ * Pure pathname predicate matching the canonical `/chat` route and any
+ * descendant subpath (e.g. `/chat/session-123`). Centralised here so
+ * `ChatRedirectGuard` (route element) and the per-mode last-path
+ * tracking in `storage.ts` can share a single rule without a
+ * components -> utils import.
+ */
+export function isChatPathname(pathname: string): boolean {
+  return pathname === "/chat" || pathname.startsWith("/chat/");
 }
 
 export function isValidRestorePath(path: string | null): path is string {

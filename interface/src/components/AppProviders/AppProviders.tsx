@@ -8,8 +8,8 @@ import { useLocation } from "react-router-dom";
 import { desktopApi } from "../../shared/api/desktop";
 import { preloadAppForPathname, resolveActiveApp } from "../../stores/app-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
-import { sanitizeRestorePath } from "../../utils/last-app-path";
-import { setLastApp } from "../../utils/storage";
+import { isChatPathname, sanitizeRestorePath } from "../../utils/last-app-path";
+import { setLastAdvancedPath, setLastApp, setLastSimplePath } from "../../utils/storage";
 
 function hasDesktopBridge(): boolean {
   return typeof window !== "undefined" && typeof window.ipc?.postMessage === "function";
@@ -27,6 +27,19 @@ function AppSync(): null {
       setPreviousPath(restorePath);
       if (hasDesktopBridge()) {
         void desktopApi.persistLastRoute(restorePath).catch(() => {});
+      }
+
+      // Per-mode "last visited path" tracking — read by `ModeToggle`
+      // so the Simple <-> Advanced flip restores the URL the user had
+      // last seen in the destination mode. Keyed off the URL itself
+      // (Simple = `/chat...`, Advanced = everything else) rather than
+      // the live store mode so a brief mode-flip window can never
+      // misclassify the path. The setters validate again internally
+      // and drop silently on mismatch as defense-in-depth.
+      if (isChatPathname(pathname)) {
+        setLastSimplePath(restorePath);
+      } else {
+        setLastAdvancedPath(restorePath);
       }
     }
 

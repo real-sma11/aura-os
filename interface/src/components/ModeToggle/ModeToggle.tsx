@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useUIModeStore, type UIMode } from "../../stores/ui-mode-store";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
+import { getLastAdvancedPath, getLastSimplePath } from "../../utils/storage";
 import { SlidingPills, type SlidingPillItem } from "../SlidingPills";
 import styles from "./ModeToggle.module.css";
 
@@ -41,6 +43,7 @@ export function ModeToggle(): React.ReactElement | null {
   const mode = useUIModeStore((s) => s.mode);
   const setMode = useUIModeStore((s) => s.setMode);
   const effectiveMode = useEffectiveMode();
+  const navigate = useNavigate();
 
   const items = useMemo(() => ITEMS, []);
   // The store's `mode` carries the full `UIMode` union (including
@@ -53,9 +56,31 @@ export function ModeToggle(): React.ReactElement | null {
 
   const handleChange = useCallback(
     (next: ToggleMode): void => {
+      const changed = next !== value;
       setMode(next);
+      // Restore the URL the user had last seen in the destination
+      // mode so flipping the toggle takes them back to the app + item
+      // they were on (Advanced) or the chat session they were in
+      // (Simple). Both stored values are validated by the storage
+      // helpers (Simple must be `/chat...`, Advanced must not be) so
+      // a hand-edited / stale entry can't drive `navigate()` to an
+      // invalid surface.
+      //
+      // Only navigate on an actual segment change — re-clicking the
+      // already-active segment is a no-op for the URL. No-op fallback
+      // when the destination bucket is empty: in Simple,
+      // `ChatRedirectGuard` already pulls non-chat paths to `/chat`;
+      // in Advanced, staying on the current URL (e.g. `/chat`) is
+      // the correct minimum-surprise default since `/chat` is also a
+      // valid Advanced surface.
+      if (!changed) return;
+      const target =
+        next === "advanced" ? getLastAdvancedPath() : getLastSimplePath();
+      if (target) {
+        navigate(target);
+      }
     },
-    [setMode],
+    [navigate, setMode, value],
   );
 
   if (effectiveMode === "public") return null;

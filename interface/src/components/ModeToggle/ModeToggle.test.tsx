@@ -1,10 +1,20 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ModeToggle } from "./ModeToggle";
 import { useUIModeStore } from "../../stores/ui-mode-store";
 import { useAuthStore } from "../../stores/auth-store";
+import {
+  LAST_ADVANCED_PATH_KEY,
+  LAST_SIMPLE_PATH_KEY,
+} from "../../constants";
 
 const TEST_USER = {
   user_id: "test-user",
@@ -33,9 +43,41 @@ afterEach(() => {
   useAuthStore.setState({ user: null });
 });
 
+/**
+ * Probe component that records the current `pathname + search` into
+ * a `data-testid="probe"` element so tests can assert that
+ * `ModeToggle.handleChange` navigated to the expected URL.
+ */
+function LocationProbe(): React.ReactElement {
+  const location = useLocation();
+  return (
+    <div data-testid="probe-location">
+      {`${location.pathname}${location.search}`}
+    </div>
+  );
+}
+
+function renderToggle(initialPath: string = "/chat"): ReturnType<typeof render> {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <>
+              <ModeToggle />
+              <LocationProbe />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("ModeToggle", () => {
   it("renders both segments labelled Simple and Advanced", () => {
-    render(<ModeToggle />);
+    renderToggle();
     // Built on `SlidingPills`, so segments expose `role="radio"`
     // (matches the chat input ModeSelector for a consistent feel).
     expect(screen.getByRole("radio", { name: "Simple" })).toBeInTheDocument();
@@ -44,7 +86,7 @@ describe("ModeToggle", () => {
 
   it("reflects the store's active mode via aria-checked", () => {
     useUIModeStore.setState({ mode: "simple" });
-    render(<ModeToggle />);
+    renderToggle();
     expect(
       screen.getByRole("radio", { name: "Simple", checked: true }),
     ).toBeInTheDocument();
@@ -55,7 +97,7 @@ describe("ModeToggle", () => {
 
   it("flips the store when a segment is clicked", async () => {
     const user = userEvent.setup();
-    render(<ModeToggle />);
+    renderToggle();
 
     expect(useUIModeStore.getState().mode).toBe("advanced");
     await user.click(screen.getByRole("radio", { name: "Simple" }));
@@ -66,7 +108,7 @@ describe("ModeToggle", () => {
 
   it("exposes a single sliding indicator that tracks the active segment", () => {
     useUIModeStore.setState({ mode: "advanced" });
-    const { container } = render(<ModeToggle />);
+    const { container } = renderToggle();
     const indicators = container.querySelectorAll(
       "[data-sliding-pills-indicator]",
     );
@@ -80,7 +122,7 @@ describe("ModeToggle", () => {
     // indicator should still pick a valid segment instead of
     // collapsing.
     useUIModeStore.setState({ mode: "public" });
-    const { container } = render(<ModeToggle />);
+    const { container } = renderToggle();
     const indicator = container.querySelector(
       "[data-sliding-pills-indicator]",
     );
@@ -96,13 +138,87 @@ describe("ModeToggle", () => {
     // (tests, future surfaces) get the same answer. The radiogroup
     // and the wrapper div should both be absent from the DOM.
     useAuthStore.setState({ user: null });
-    const { container } = render(<ModeToggle />);
+    const { container } = renderToggle();
     expect(
       screen.queryByRole("radiogroup", { name: "Interface mode" }),
     ).not.toBeInTheDocument();
     expect(
       container.querySelector("[data-agent-surface='ui-mode-toggle']"),
     ).toBeNull();
+  });
+
+  describe("per-mode last-path restore", () => {
+    it("flipping Advanced -> Simple navigates to the stored last simple path", async () => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(
+        LAST_SIMPLE_PATH_KEY,
+        "/chat?session=abc",
+      );
+      useUIModeStore.setState({ mode: "advanced" });
+      renderToggle("/notes/note-1");
+
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/notes/note-1",
+      );
+      await user.click(screen.getByRole("radio", { name: "Simple" }));
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/chat?session=abc",
+      );
+    });
+
+    it("flipping Simple -> Advanced navigates to the stored last advanced path", async () => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(LAST_ADVANCED_PATH_KEY, "/notes/note-2");
+      useUIModeStore.setState({ mode: "simple" });
+      renderToggle("/chat?session=abc");
+
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/chat?session=abc",
+      );
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/notes/note-2",
+      );
+    });
+
+    it("does NOT navigate when the destination bucket is empty (Simple fallback)", async () => {
+      const user = userEvent.setup();
+      // No LAST_SIMPLE_PATH_KEY persisted — the toggle should leave
+      // the URL untouched (ChatRedirectGuard, mounted in the real
+      // route tree, is what pulls the user to `/chat` in production).
+      useUIModeStore.setState({ mode: "advanced" });
+      renderToggle("/notes/note-1");
+
+      await user.click(screen.getByRole("radio", { name: "Simple" }));
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/notes/note-1",
+      );
+    });
+
+    it("does NOT navigate when the destination bucket is empty (Advanced fallback)", async () => {
+      const user = userEvent.setup();
+      useUIModeStore.setState({ mode: "simple" });
+      renderToggle("/chat?session=abc");
+
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/chat?session=abc",
+      );
+    });
+
+    it("re-clicking the active segment is a navigation no-op", async () => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(LAST_ADVANCED_PATH_KEY, "/notes/other");
+      useUIModeStore.setState({ mode: "advanced" });
+      renderToggle("/notes/note-1");
+
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+      // No flip happened, so the stored advanced path should NOT
+      // override the current URL.
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/notes/note-1",
+      );
+    });
   });
 
   // Phase 3 regression — the load-bearing invariant: when `mode` flips
@@ -140,7 +256,12 @@ describe("ModeToggle", () => {
 
     try {
       useUIModeStore.setState({ mode: "simple" });
-      const { rerender } = render(<ModeToggle />);
+      const wrapped = (
+        <MemoryRouter>
+          <ModeToggle />
+        </MemoryRouter>
+      );
+      const { rerender } = render(wrapped);
       const indicatorBefore = screen.getByTestId("ui-mode-indicator");
       const transformBefore = indicatorBefore.style.transform;
       // Initial mount uses the snap path (`transition: 'none'`); we
@@ -151,7 +272,11 @@ describe("ModeToggle", () => {
       await act(async () => {
         useUIModeStore.setState({ mode: "advanced" });
       });
-      rerender(<ModeToggle />);
+      rerender(
+        <MemoryRouter>
+          <ModeToggle />
+        </MemoryRouter>,
+      );
 
       const indicatorAfter = screen.getByTestId("ui-mode-indicator");
       // (a) same DOM node — no remount across the flip.
