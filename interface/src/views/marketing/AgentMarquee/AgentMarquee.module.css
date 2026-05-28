@@ -22,15 +22,17 @@
      row of cards so the hovered card's vertical overflow stays
      INSIDE the marquee's mask-clip box. Without this padding,
      `mask-image` (declared below) clips at the marquee's
-     border-box: a hovered card's `translateY(-8px) scale(1.25)`
-     transform extends ~46.5px above and ~30.5px below the row
+     border-box: a hovered card's `translateY(-8px) scale(1.10)`
+     transform extends ~23.4px above and ~7.4px below the row
      baseline (`(scale - 1) * card_h / 2 ± lift`), which would
      escape the mask box and get masked away even though
      `overflow: visible` is set — the mask determines the painted
      area regardless of overflow.
-     64px top/bottom comfortably accommodates the card's ~46.5px
-     max overflow at every breakpoint (the mobile cards are
-     shorter, so their overflow is smaller). The padding does NOT
+     64px top/bottom is generously oversized for the current
+     ~23.4px max overflow at every breakpoint (the mobile cards
+     are shorter, so their overflow is smaller); the extra
+     headroom also gives the soft hover drop shadow room to
+     fade out cleanly inside the mask. The padding does NOT
      change the row's visual position because the parent
      `.pageHeroVideoOverlay` flex-centers the marquee vertically
      in the video box; the padded marquee is still centered
@@ -77,18 +79,16 @@
      by exactly `-50%` lands the second copy in the original
      starting position with no visible seam.
 
-     Sized tight (~half the per-side hover overshoot) so the row
-     reads as a continuous band of portraits rather than as
-     widely-spaced floating tiles. The hovered card's
-     `scale(1.25)` half-extension is 27.5px at the 220px desktop
-     card width, so a 26px gap lets the zoom poke ~1.5px into
-     each neighbor's lane — which is harmless because the card's
-     `z-index: 2` on hover (declared below) paints the scaled
-     card cleanly over its neighbors. The visual result is the
-     hovered card visibly stepping forward over the strip
-     instead of being held back by an oversized gutter. The
-     per-breakpoint overrides at the bottom of this file scale
-     the gap proportionally with the card width. */
+     Sized tight so the row reads as a continuous band of
+     portraits rather than as widely-spaced floating tiles. The
+     hovered card's `scale(1.10)` half-extension is just 11px
+     at the 220px desktop card width, so a 26px gap leaves
+     ~15px clearance on each side — comfortably more than the
+     hover lift needs. The card's `z-index: 2` on hover
+     (declared below) keeps the scaled card painting cleanly
+     above its neighbors regardless. The per-breakpoint
+     overrides at the bottom of this file scale the gap
+     proportionally with the card width. */
   gap: 26px;
   /* `width: max-content` lets the row size to its full intrinsic
      width (12 cards + 11 gaps) instead of being capped by the
@@ -192,9 +192,9 @@
      matching the Anam reference where the lifted card visibly
      puffs out from its center rather than pinning at the bottom
      edge of the row. The strip's per-side gap (`.track` rule
-     above) is sized to absorb the half-extension at scale 1.25
-     plus an 8px clearance buffer, so neighbors never get clipped
-     by the growing card. */
+     above) comfortably absorbs the half-extension at scale 1.10
+     (~11px desktop / ~8.4px tablet / ~6.6px mobile), so
+     neighbors never get clipped by the growing card. */
   transform-origin: 50% 50%;
   /* No-op default; the `:hover` rule below sets the scale and the
      transition above interpolates between the two states.
@@ -215,30 +215,36 @@
 
 .card:hover,
 .card:focus-visible {
-  /* `translateY(-8px) scale(1.25)` — the rightmost transform
+  /* `translateY(-8px) scale(1.10)` — the rightmost transform
      applies first, so the card scales up around its center
      (`transform-origin: 50% 50%` above), then the entire scaled
      box translates 8 unscaled pixels upward. Combining the
      two means the bottom edge of the hovered card lifts off
-     the row baseline by `(scale - 1) * height / 2 + 8 = 0.125 *
-     308 + 8 ≈ 46.5px` while the visual center moves up 8px,
-     making the card unmistakably step OUT of the strip rather
-     than just having its image enlarge in place. */
-  transform: translateY(-8px) scale(1.25);
+     the row baseline by `(scale - 1) * height / 2 + 8 = 0.05 *
+     308 + 8 ≈ 23.4px` while the visual center moves up 8px,
+     making the card step OUT of the strip without ballooning
+     so much that it dominates its neighbors. (An earlier pass
+     used `scale(1.25)` which felt aggressive next to the much
+     softer hover shadow; the smaller pop reads as a confident
+     focus state rather than a poster zoom.) */
+  transform: translateY(-8px) scale(1.10);
   filter: none;
-  /* Hover chrome amplifies the lift well past the idle elevation
-     so the focused card reads as a card that has stepped forward,
-     not as an image that has been enlarged. The drop shadow more
-     than doubles in spread + alpha (so the surface beneath the
-     tile genuinely darkens as it lifts), and we deliberately
-     drop the idle inset white bezel — once the card is full-
-     color and floating well above the row, the rectangular
-     border read as a hard outline pasted onto the portrait
-     rather than a frame; removing it lets the photo itself
-     carry the lifted moment. The `:focus-visible` rule below
-     still paints a separate warm outline for keyboard users so
-     they don't lose their focus indicator. */
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
+  /* Hover chrome edges PAST the idle elevation just enough to
+     register the lift, intentionally staying soft + close to the
+     card. An earlier pass used `0 32px 80px rgba(0, 0, 0, 0.55)`
+     which read as a heavy poster shadow that competed with the
+     portrait itself; pulling the offset to 14px, the blur to
+     36px, and the alpha back near the idle value (0.30 vs. the
+     idle 0.32) keeps the lift subtle so the eye stays on the
+     full-color portrait rather than the dark halo behind it.
+     We deliberately drop the idle inset white bezel here too —
+     once the card is full-color and floating above the row,
+     the rectangular border reads as a hard outline pasted onto
+     the portrait rather than a frame; removing it lets the
+     photo itself carry the lifted moment. The `:focus-visible`
+     rule below still paints a separate warm outline for keyboard
+     users so they don't lose their focus indicator. */
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
 }
 
 .card:focus-visible {
@@ -251,8 +257,8 @@
 }
 
 /* Active / focused cards float ABOVE their neighbors so the
-   1.18× scale never gets clipped by the next card's box. The
-   selector list mirrors the hover/focus rule above. */
+   `scale(1.10)` zoom never gets clipped by the next card's box.
+   The selector list mirrors the hover/focus rule above. */
 .card:hover,
 .card:focus-visible {
   z-index: 2;
