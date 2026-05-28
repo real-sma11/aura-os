@@ -79,12 +79,24 @@
   margin-left: clamp(-80px, -6vw, -40px);
 }
 
+/*
+ * Match the hero description's larger type ramp. The PageHero
+ * centered-mode description (`.pageHeroDescription.pageHeroDescriptionInline`
+ * in `interface/src/views/marketing/PageHero/PageHero.css`) renders
+ * the "AURA agents run on a secure virtual machine..." copy at
+ * `calc(var(--text-lg) * 1.5)` — the larger paragraph size that
+ * the marketing surface uses immediately under the hero headline.
+ * We mirror it here so the agent-chat section's writing block
+ * reads at the same scale, with the same `#a3a3a8` secondary text
+ * tone the hero already publishes via `.productView`.
+ */
 .agentChatSectionDescription {
   margin: 0;
-  font-size: var(--text-base, 16px);
+  font-size: calc(var(--text-lg) * 1.5);
   line-height: var(--leading-relaxed, 1.6);
   color: var(--color-text-secondary);
-  max-width: 640px;
+  max-width: min(720px, 100%);
+  text-wrap: balance;
 }
 
 @media (max-width: 768px) {
