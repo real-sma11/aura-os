@@ -23,13 +23,13 @@
      INSIDE the marquee's mask-clip box. Without this padding,
      `mask-image` (declared below) clips at the marquee's
      border-box: a hovered card's `translateY(-8px) scale(1.10)`
-     transform extends ~23.4px above and ~7.4px below the row
+     transform extends ~27.25px above and ~11.25px below the row
      baseline (`(scale - 1) * card_h / 2 ± lift`), which would
      escape the mask box and get masked away even though
      `overflow: visible` is set — the mask determines the painted
      area regardless of overflow.
      64px top/bottom is generously oversized for the current
-     ~23.4px max overflow at every breakpoint (the mobile cards
+     ~27.25px max overflow at every breakpoint (the mobile cards
      are shorter, so their overflow is smaller); the extra
      headroom also gives the soft hover drop shadow room to
      fade out cleanly inside the mask. The padding does NOT
@@ -81,9 +81,9 @@
 
      Sized tight so the row reads as a continuous band of
      portraits rather than as widely-spaced floating tiles. The
-     hovered card's `scale(1.10)` half-extension is just 11px
-     at the 220px desktop card width, so a 26px gap leaves
-     ~15px clearance on each side — comfortably more than the
+     hovered card's `scale(1.10)` half-extension is ~13.75px
+     at the 275px desktop card width, so a 26px gap leaves
+     ~12px clearance on each side — comfortably more than the
      hover lift needs. The card's `z-index: 2` on hover
      (declared below) keeps the scaled card painting cleanly
      above its neighbors regardless. The per-breakpoint
@@ -96,9 +96,9 @@
      that width through the viewport per cycle. */
   width: max-content;
   /* 40s feels deliberate without crawling — at the desktop
-     track width (~2926px = 12 * 220 + 11 * 26 with the tightened
-     26px gap), the per-cycle `-50%` slide covers ~1463px in
-     40s ≈ 37px/s, in the same range as the prior cadence so
+     track width (~3586px = 12 * 275 + 11 * 26 with the tightened
+     26px gap), the per-cycle `-50%` slide covers ~1793px in
+     40s ≈ 45px/s, in the same range as the prior cadence so
      the strip's motion still reads on first scroll-into-view
      rather than feeling frozen. */
   animation: agent-marquee-scroll 40s linear infinite;
@@ -152,14 +152,17 @@
      The strip is masked at the edges (see `.marquee` mask) so
      wider viewports just reveal more cards, not bigger ones.
 
-     Sized as a poster-style portrait card — 220×308 keeps the
+     Sized as a poster-style portrait card — 275×385 keeps the
      existing ~5:7 aspect ratio so each persona's
      `avatarObjectPosition` crop (default `50% 18%`, an upper-third
      slice of the 1024×1024 source portrait) still lands the head
-     and shoulders inside the visible window without re-tuning. */
+     and shoulders inside the visible window without re-tuning.
+     Up 25% from the prior 220×308 baseline so the poster-card
+     row reads as the dominant decorative element across the
+     orb video at the hero's centerline. */
   flex: 0 0 auto;
-  width: 220px;
-  height: 308px;
+  width: 275px;
+  height: 385px;
   border-radius: 18px;
   overflow: hidden;
   /* Card chrome that has to read distinctly from the portrait so
@@ -193,8 +196,9 @@
      puffs out from its center rather than pinning at the bottom
      edge of the row. The strip's per-side gap (`.track` rule
      above) comfortably absorbs the half-extension at scale 1.10
-     (~11px desktop / ~8.4px tablet / ~6.6px mobile), so
-     neighbors never get clipped by the growing card. */
+     (~13.75px desktop / ~10.5px tablet / ~8.25px mobile after
+     the 25% card resize), so neighbors never get clipped by
+     the growing card. */
   transform-origin: 50% 50%;
   /* No-op default; the `:hover` rule below sets the scale and the
      transition above interpolates between the two states.
@@ -221,7 +225,7 @@
      box translates 8 unscaled pixels upward. Combining the
      two means the bottom edge of the hovered card lifts off
      the row baseline by `(scale - 1) * height / 2 + 8 = 0.05 *
-     308 + 8 ≈ 23.4px` while the visual center moves up 8px,
+     385 + 8 ≈ 27.25px` while the visual center moves up 8px,
      making the card step OUT of the strip without ballooning
      so much that it dominates its neighbors. (An earlier pass
      used `scale(1.25)` which felt aggressive next to the much
@@ -375,8 +379,8 @@
    neighbors. */
 @media (max-width: 768px) {
   .card {
-    width: 168px;
-    height: 236px;
+    width: 210px;
+    height: 295px;
     border-radius: 14px;
   }
 
@@ -400,8 +404,8 @@
    drifting band. */
 @media (max-width: 480px) {
   .card {
-    width: 132px;
-    height: 184px;
+    width: 165px;
+    height: 230px;
   }
 
   .track {

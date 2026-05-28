@@ -397,13 +397,17 @@
    overlay div.
 
    Layer 1 (linear, top-to-bottom fade-in + fade-out): symmetric
-   `transparent → opaque → transparent` ramp at 0% / 22% / 78% /
-   100%. The 22%-wide ramps at the top and bottom let the loop
+   `transparent → opaque → transparent` ramp at 0% / 30% / 70% /
+   100%. The 30%-wide ramps at the top and bottom let the loop
    materialize smoothly out of the page bg at the top and melt
    back into it at the bottom, with no horizontal seam where the
    video rectangle meets the empty space above or below. The two
    ramp widths are intentionally identical so the fade reads as
-   visually symmetric.
+   visually symmetric. The ramps were widened from 22% to 30%
+   so the orb's bright lower half melts cleanly into the section
+   bg below the video — the top ramp is naturally masked by the
+   centered headline / description / CTA content layered above
+   it, so the same 30% ramp at the top is unnoticed there.
 
    Layer 2 (radial corner vignette): an ellipse fit to the video
    box (the default `ellipse` is `farthest-corner`, so its ray
@@ -539,10 +543,12 @@
      also moved to the wrapper). The math is unchanged — see the
      wrapper rule for the full body-eighth explanation.
 
-     `transform: scale(1.2)` blows the rendered video up 20%
+     `transform: scale(1.44)` blows the rendered video up ~44%
      around the wrapper's geometric center so the AURA orb at
      the source's visual center reads larger on the marketing
-     surface. Two structural reasons make this safe:
+     surface. The factor is 20% bigger than the prior
+     `scale(1.2)` (1.2 × 1.2 = 1.44). Two structural reasons
+     make this safe:
        - The wrapper's box (and therefore the
          `.pageHeroVideoOverlay`'s `inset: 0` rectangle hosting
          the agent marquee) stays at the un-scaled video size.
@@ -550,22 +556,22 @@
          stays anchored at the wrapper's geometric center after
          the scale, so the marquee's vertical centerline still
          lines up with the orb's brightest point.
-       - The 20% extra width (~10% per side) slips past the
+       - The ~44% extra width (~22% per side) slips past the
          wrapper bounds and is harmlessly clipped by the
          `.pageHero { overflow: hidden }` section box, which
          already trims any decorative media that overflows the
          section. The radial mask (`#000 50%` -> transparent
          100%) makes the corner pixels transparent before the
          clip even matters, so the trim is invisible. */
-  transform: scale(1.2);
+  transform: scale(1.44);
   transform-origin: center;
   pointer-events: none;
   mask-image:
     linear-gradient(
       to bottom,
       transparent 0%,
-      #000 22%,
-      #000 78%,
+      #000 30%,
+      #000 70%,
       transparent 100%
     ),
     radial-gradient(
@@ -578,8 +584,8 @@
     linear-gradient(
       to bottom,
       transparent 0%,
-      #000 22%,
-      #000 78%,
+      #000 30%,
+      #000 70%,
       transparent 100%
     ),
     radial-gradient(
