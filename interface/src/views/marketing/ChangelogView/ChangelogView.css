@@ -171,6 +171,35 @@
   text-align: left;
 }
 
+/* The version-name value is a button so clicking it auto-downloads
+   the right installer for the visitor's OS. Strip the native button
+   chrome (background/border/padding) so it inherits the same look as
+   the static .changelogStatValue used elsewhere, and add an
+   underline-on-hover / focus-visible affordance + pink accent so it
+   reads as actionable. */
+.changelogStatValueButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  letter-spacing: inherit;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+
+.changelogStatValueButton:hover,
+.changelogStatValueButton:focus-visible {
+  color: #ff64c8;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 6px;
+  outline: none;
+}
+
 .changelogStatVersionMeta {
   margin: 4px 0 0;
   /* Stack the relative-time line above the action links so "Released X

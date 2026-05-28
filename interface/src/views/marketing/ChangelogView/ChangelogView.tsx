@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -10,10 +10,31 @@ import {
   AURA_PUBLIC_REPOS,
   fetchAuraCommitStats,
 } from "../../../api/marketing/github-commits";
+import {
+  type DesktopManifestChannel,
+  DESKTOP_MANIFEST_CHANNELS,
+  fetchDesktopManifest,
+  resolveAutoDownloadUrl,
+} from "../../../api/marketing/desktop-manifest";
+import {
+  detectDownloadPlatform,
+  type DownloadPlatform,
+} from "../../../lib/download-targets";
 import { useCountUp } from "../../../hooks/use-count-up";
 import { useRelativeTime } from "../../../hooks/use-relative-time";
 import { BannerCard } from "../BannerCard/BannerCard";
 import "./ChangelogView.css";
+
+const DOWNLOAD_FALLBACK_PATH = "/download";
+
+function normalizeManifestChannel(
+  channel: string | undefined,
+): DesktopManifestChannel {
+  if (channel && (DESKTOP_MANIFEST_CHANNELS as readonly string[]).includes(channel)) {
+    return channel as DesktopManifestChannel;
+  }
+  return "nightly";
+}
 
 /**
  * Cap on how high the loading ramp climbs while we wait for the live
@@ -319,6 +340,32 @@ export function ChangelogView(): ReactNode {
   const latestReleaseAgo = useRelativeTime(latestRelease?.generatedAt);
   const renderEmpty = !isLoading && !isError && entries.length === 0;
 
+  // Prefetch the desktop manifest for the latest release's channel so
+  // clicking the version-name auto-download button can resolve the
+  // OS-specific installer URL instantly. Falls back transparently to
+  // the entry's own `releaseUrl` when the manifest isn't reachable.
+  const manifestChannel = normalizeManifestChannel(latestRelease?.channel);
+  const { data: desktopManifest } = useQuery({
+    queryKey: ["marketing-changelog-desktop-manifest", manifestChannel],
+    queryFn: ({ signal }) => fetchDesktopManifest(manifestChannel, signal),
+    enabled: Boolean(latestRelease),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const handleVersionAutoDownload = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const platform: DownloadPlatform = detectDownloadPlatform();
+    const destination = resolveAutoDownloadUrl(
+      desktopManifest,
+      platform,
+      latestRelease?.releaseUrl ?? null,
+    );
+    window.location.href = destination ?? DOWNLOAD_FALLBACK_PATH;
+  }, [desktopManifest, latestRelease]);
+
   const stats = useMemo(
     () => computeStats(entries, getCurrentPstMonthKey()),
     [entries],
@@ -354,9 +401,19 @@ export function ChangelogView(): ReactNode {
             {(latestVersion || latestRelease) ? (
               <div className="changelogStat changelogStatVersion">
                 <span className="changelogStatLabel">Current version</span>
-                <span className="changelogStatValue">
-                  {latestVersion ?? "—"}
-                </span>
+                {latestVersion ? (
+                  <button
+                    type="button"
+                    className="changelogStatValue changelogStatValueButton"
+                    onClick={handleVersionAutoDownload}
+                    aria-label={`Download AURA ${latestVersion} for your operating system`}
+                    title="Click to download the build for your operating system"
+                  >
+                    {latestVersion}
+                  </button>
+                ) : (
+                  <span className="changelogStatValue">—</span>
+                )}
                 {latestRelease ? (
                   <div className="changelogStatVersionMeta">
                     <time

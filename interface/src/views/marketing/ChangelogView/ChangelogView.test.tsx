@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,6 +6,8 @@ import { ChangelogView } from "./ChangelogView";
 import * as githubCommits from "../../../api/marketing/github-commits";
 import * as changelogApi from "../../../api/marketing/changelog";
 import type { ChangelogEntry } from "../../../api/marketing/changelog";
+import * as desktopManifest from "../../../api/marketing/desktop-manifest";
+import type { DesktopManifest } from "../../../api/marketing/desktop-manifest";
 
 function renderChangelogView() {
   const queryClient = new QueryClient({
@@ -185,5 +187,113 @@ describe("ChangelogView", () => {
     expect(githubLink.getAttribute("rel") ?? "").toMatch(/noopener/);
     expect(githubLink.getAttribute("rel") ?? "").toMatch(/noreferrer/);
     expect(githubLink.textContent).toMatch(/GitHub/);
+  });
+
+  it("auto-downloads the platform-specific installer when the version button is clicked", async () => {
+    // Pretend the visitor is on Windows so detectDownloadPlatform()
+    // returns "windows" deterministically.
+    Object.defineProperty(window, "navigator", {
+      configurable: true,
+      writable: true,
+      value: new Proxy(window.navigator, {
+        get(target, prop) {
+          if (prop === "platform") return "Win32";
+          if (prop === "userAgent")
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+          if (prop === "userAgentData") return { platform: "Windows" };
+          return Reflect.get(target, prop, target);
+        },
+      }),
+    });
+
+    const generatedAt = new Date(
+      Date.now() - 2 * 60 * 60 * 1000,
+    ).toISOString();
+    const fakeEntry: ChangelogEntry = {
+      repo: "aura-os",
+      date: "2026-05-28",
+      channel: "nightly",
+      version: "0.1.0-nightly.562.1",
+      generatedAt,
+      releaseUrl:
+        "https://github.com/cypher-asi/aura-os/releases/tag/nightly-562.1",
+      rawCommitCount: 0,
+      filteredCommitCount: 0,
+      rendered: {
+        title: "Test release",
+        intro: "",
+        highlights: [],
+        entries: [],
+      },
+    };
+
+    const windowsInstallerUrl =
+      "https://github.com/cypher-asi/aura-os/releases/download/nightly-562.1/aura-os-desktop_0.1.0_x64-setup.exe";
+    const manifest: DesktopManifest = {
+      channel: "nightly",
+      version: "0.1.0-nightly.562.1",
+      release_url:
+        "https://github.com/cypher-asi/aura-os/releases/tag/nightly-562.1",
+      desktop: {
+        windows: { url: windowsInstallerUrl },
+        linux: { url: "https://example.invalid/linux" },
+        mac: {
+          "apple-silicon": { url: "https://example.invalid/mac-arm" },
+          intel: { url: "https://example.invalid/mac-intel" },
+        },
+      },
+    };
+
+    vi.spyOn(changelogApi, "fetchChangelogEntries").mockResolvedValue([
+      fakeEntry,
+    ]);
+    const fetchManifestSpy = vi
+      .spyOn(desktopManifest, "fetchDesktopManifest")
+      .mockResolvedValue(manifest);
+
+    // jsdom's `window.location` doesn't honor `href` assignments and
+    // logs a navigation warning. Capture the assignment via a Proxy so
+    // we can assert against it without crashing.
+    let navigatedTo: string | null = null;
+    const locationProxy = new Proxy(window.location, {
+      set(target, prop, value) {
+        if (prop === "href") {
+          navigatedTo = String(value);
+          return true;
+        }
+        return Reflect.set(target, prop, value);
+      },
+    });
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: locationProxy,
+    });
+
+    renderChangelogView();
+
+    const versionButton = (await screen.findByRole("button", {
+      name: /Download AURA 0\.1\.0-nightly\.562\.1/i,
+    })) as HTMLButtonElement;
+    expect(versionButton.tagName.toLowerCase()).toBe("button");
+
+    // Wait for the prefetched manifest to land before clicking, so the
+    // click handler reads the resolved manifest URL rather than the
+    // entry-level fallback.
+    await waitFor(() => {
+      expect(fetchManifestSpy).toHaveBeenCalledWith(
+        "nightly",
+        expect.anything(),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchManifestSpy.mock.results[0]?.value).toBeDefined();
+    });
+
+    fireEvent.click(versionButton);
+
+    await waitFor(() => {
+      expect(navigatedTo).toBe(windowsInstallerUrl);
+    });
   });
 });
