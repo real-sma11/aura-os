@@ -1,0 +1,35 @@
+/* Reusable elevated card chrome for marketing "banner" surfaces.
+   See `BannerCard.tsx` for the rationale behind each property; the
+   values here were lifted from the original `.changelogStatsCard`
+   rule in `ChangelogView.css` (which now consumes this component).
+
+   Square corners + no border are intentional — the marketing
+   surface treats banner cards as full-width slabs rather than
+   pill-shaped tiles. */
+.bannerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 32px;
+  /* Slight elevation above the off-black section bg, matching the
+     `#0f0f12 → #141417` ramp used by `.productScreenSectionImageFrame`
+     so the card reads as one notch above the surrounding surface
+     without introducing a new shade. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    #141417;
+  /* Floating drop shadow modeled on the landing-page `MockAuraApp`
+     desktop card (`0 30px 60px -20px rgba(0,0,0,0.55)`) but trimmed
+     down since this card is much smaller / sits closer to surrounding
+     content. */
+  box-shadow:
+    0 18px 40px -20px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+@media (max-width: 768px) {
+  .bannerCard {
+    padding: 22px 22px;
+    gap: 22px;
+  }
+}

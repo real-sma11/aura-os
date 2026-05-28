@@ -451,11 +451,28 @@
   display: block;
   position: relative;
   z-index: 1;
+  /* Negative margin-top of `-body/8` keeps a SHALLOW peek strip
+     of the orb visible above the fold while the centered headline
+     stack still owns ~7/8 of the visible body — which leaves the
+     bulk of the orb (and the agent marquee strip overlaid on its
+     centerline) below the fold for the visitor to scroll into.
+     Was previously `-body/3` (33% peek), which crowded the
+     headline + description + CTA stack: at the bigger AURA orb
+     size and the new poster-style agent cards, the orb's halo
+     and the top edge of the marquee bled into the same vertical
+     band as the description, leaving no breathing room between
+     the headline group and the decorative loop below.
+     `-body/8` (~12.5% peek) restores that breathing room while
+     keeping a clear "there's more here" affordance pointing the
+     visitor toward the fold.
+     The `100dvh` fallback handles browsers (Safari < 16) where
+     the dynamic viewport unit is unsupported and the constant
+     `100vh` is the only option. */
   margin-top: calc(
-    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+    (100vh - 2 * var(--shell-chrome-outer-height, 42px)) / -8
   );
   margin-top: calc(
-    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -3
+    (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -8
   );
 }
 
@@ -520,7 +537,28 @@
      `<div class="pageHeroVideoOverlay">` sibling can be absolutely
      positioned over the video's box (with `position: relative`
      also moved to the wrapper). The math is unchanged — see the
-     wrapper rule for the full body-third explanation. */
+     wrapper rule for the full body-eighth explanation.
+
+     `transform: scale(1.2)` blows the rendered video up 20%
+     around the wrapper's geometric center so the AURA orb at
+     the source's visual center reads larger on the marketing
+     surface. Two structural reasons make this safe:
+       - The wrapper's box (and therefore the
+         `.pageHeroVideoOverlay`'s `inset: 0` rectangle hosting
+         the agent marquee) stays at the un-scaled video size.
+         With `transform-origin: center`, the orb's bright spot
+         stays anchored at the wrapper's geometric center after
+         the scale, so the marquee's vertical centerline still
+         lines up with the orb's brightest point.
+       - The 20% extra width (~10% per side) slips past the
+         wrapper bounds and is harmlessly clipped by the
+         `.pageHero { overflow: hidden }` section box, which
+         already trims any decorative media that overflows the
+         section. The radial mask (`#000 50%` -> transparent
+         100%) makes the corner pixels transparent before the
+         clip even matters, so the trim is invisible. */
+  transform: scale(1.2);
+  transform-origin: center;
   pointer-events: none;
   mask-image:
     linear-gradient(
