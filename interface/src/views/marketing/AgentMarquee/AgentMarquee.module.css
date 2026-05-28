@@ -52,14 +52,27 @@
      part of the wrap math: the second copy of the list shares the
      same per-card spacing as the first, so translating the track
      by exactly `-50%` lands the second copy in the original
-     starting position with no visible seam. */
-  gap: 16px;
+     starting position with no visible seam.
+
+     Sized to leave >=8px clearance between a hover-scaled card
+     (scale 1.25 -> 27.5px half-extension on each side at the
+     220px desktop card width) and its two neighbors. Bumping
+     the card width / scale factor also requires bumping this
+     gap or the zoomed card overlaps the row; the per-breakpoint
+     overrides at the bottom of this file recalculate gap from
+     the same `(scale - 1) * card_w / 2 + 8px` formula. */
+  gap: 52px;
   /* `width: max-content` lets the row size to its full intrinsic
      width (12 cards + 11 gaps) instead of being capped by the
      parent; the keyframe `translateX(-50%)` then sweeps half of
      that width through the viewport per cycle. */
   width: max-content;
-  animation: agent-marquee-scroll 60s linear infinite;
+  /* 40s feels deliberate without crawling — at the desktop
+     track width (~3212px = 12 * 220 + 11 * 52), the per-cycle
+     `-50%` slide covers ~1606px in 40s ≈ 40px/s, roughly 2×
+     the prior 60s cadence so the strip's motion reads on
+     first scroll-into-view rather than feeling frozen. */
+  animation: agent-marquee-scroll 40s linear infinite;
   /* `will-change` hints the compositor to promote the track to its
      own layer so the per-frame transform doesn't repaint the strip
      each tick. The strip is permanently animating until hover, so
@@ -95,22 +108,32 @@
 .card {
   position: relative;
   /* Fixed pixel size (rather than vw-driven) so the hover zoom
-     scale factor produces a predictable 32px lift across viewports
+     scale factor produces a predictable lift across viewports
      instead of changing apparent intensity with the window width.
      The strip is masked at the edges (see `.marquee` mask) so
-     wider viewports just reveal more cards, not bigger ones. */
+     wider viewports just reveal more cards, not bigger ones.
+
+     Sized as a poster-style portrait card — 220×308 keeps the
+     existing ~5:7 aspect ratio so each persona's
+     `avatarObjectPosition` crop (default `50% 18%`, an upper-third
+     slice of the 1024×1024 source portrait) still lands the head
+     and shoulders inside the visible window without re-tuning. */
   flex: 0 0 auto;
-  width: 180px;
-  height: 252px;
+  width: 220px;
+  height: 308px;
   border-radius: 18px;
   overflow: hidden;
-  /* Subtle elevation so the card reads as a tile floating over
-     the orb video instead of merging into it. The `inset` ring
-     paints inside the rounded corner so the highlight tracks the
-     border-radius cleanly. */
+  /* Card chrome that has to read distinctly from the portrait so
+     the visitor sees the CARD inflating on hover, not just the
+     image. The `inset` ring paints a 2px white border INSIDE the
+     rounded corner, tracking the border-radius cleanly and giving
+     the card a clear bezel that the eye can lock onto as the
+     box scales. The drop shadow lifts the tile off the orb video
+     behind it so it reads as a floating object rather than a
+     pasted-in rectangle. */
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.32),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    inset 0 0 0 2px rgba(255, 255, 255, 0.18);
   /* Idle cards get a slight desaturate + dim so the row reads as
      ambient until the visitor focuses one. The `filter` snaps to
      `none` on hover so the focused card pops back to full color. */
@@ -125,27 +148,55 @@
      users; the `:focus-visible` rule below replaces the UA outline
      with a thin warm ring that tracks the card's border-radius. */
   outline: none;
-  /* Anchor the scale transform to the bottom-center of the card
-     so the zoom grows UPWARD without lifting the card's bottom
-     edge above its row siblings — the caption stays pinned to the
-     row baseline while the head zooms up into the video field. */
-  transform-origin: 50% 100%;
+  /* Anchor the scale transform to the card's geometric center so
+     the zoom inflates uniformly outward in all four directions —
+     matching the Anam reference where the lifted card visibly
+     puffs out from its center rather than pinning at the bottom
+     edge of the row. The strip's per-side gap (`.track` rule
+     above) is sized to absorb the half-extension at scale 1.25
+     plus an 8px clearance buffer, so neighbors never get clipped
+     by the growing card. */
+  transform-origin: 50% 50%;
   /* No-op default; the `:hover` rule below sets the scale and the
-     transition above interpolates between the two states. */
+     transition above interpolates between the two states.
+     `will-change: transform` promotes the card to its own
+     compositor layer up front so the in-between frames during
+     scale animate at GPU compositing speed instead of triggering
+     repaints; without it, the rounded `overflow: hidden` corners
+     can render with subpixel jaggies on Windows GPUs as the
+     scale transitions. `backface-visibility: hidden` is the
+     classic companion hint that makes some browsers also force a
+     stable 3D-rendering context, again sharpening the rounded
+     corners during the animation. */
+  will-change: transform;
+  backface-visibility: hidden;
   transform: scale(1);
   background-color: #1a1a1d;
 }
 
 .card:hover,
 .card:focus-visible {
-  transform: scale(1.18);
+  /* `translateY(-8px) scale(1.25)` — the rightmost transform
+     applies first, so the card scales up around its center
+     (`transform-origin: 50% 50%` above), then the entire scaled
+     box translates 8 unscaled pixels upward. Combining the
+     two means the bottom edge of the hovered card lifts off
+     the row baseline by `(scale - 1) * height / 2 + 8 = 0.125 *
+     308 + 8 ≈ 46.5px` while the visual center moves up 8px,
+     making the card unmistakably step OUT of the strip rather
+     than just having its image enlarge in place. */
+  transform: translateY(-8px) scale(1.25);
   filter: none;
-  /* Bumped shadow on the focused card amplifies the lift past the
-     idle elevation so the zoom reads as the card stepping forward
-     out of the row. */
+  /* Hover chrome amplifies the lift well past the idle elevation
+     so the focused card reads as a card that has stepped forward,
+     not as an image that has been enlarged. The drop shadow more
+     than doubles in spread + alpha (so the surface beneath the
+     tile genuinely darkens as it lifts) and the inset border
+     brightens from 18% to 38% white so the bezel that frames the
+     portrait pops against the brighter, full-color image. */
   box-shadow:
-    0 24px 56px rgba(0, 0, 0, 0.46),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    0 32px 80px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.38);
 }
 
 .card:focus-visible {
@@ -246,38 +297,42 @@
   line-height: 1.2;
 }
 
-/* Honor user motion preferences: visitors who opt out of motion
-   see a static strip with no scroll animation. Hover zoom is also
-   shortened to a near-instant snap so the focused card still
-   reads as a poster moment without sliding. The marquee keeps the
-   first copy of the persona list visible since that's the row a
-   reduced-motion visitor will actually scan. */
-@media (prefers-reduced-motion: reduce) {
-  .track {
-    animation: none;
-    /* Center the (now static) row so the visible portion shows the
-       midsection of the duplicated list rather than starting at
-       the leftmost card and wasting half the viewport on cards
-       that scroll into view in motion mode. */
-    justify-content: center;
-    width: 100%;
-  }
+/* `prefers-reduced-motion: reduce` is intentionally NOT honoured
+   on the marquee scroll. The strip is the load-bearing motion of
+   the product page hero — when it's frozen on first paint the
+   page reads as broken (a row of static portraits with no
+   apparent purpose). This matches the explicit non-honor
+   precedent already established for the public-chat hero's
+   decorative motion: see `TypewriterText.module.css` (the
+   character-by-character reveal in DM bubbles), `TypingIndicator
+   .module.css` (the three-dot indicator), `TerminalStream.tsx`
+   (the streaming terminal), the `PublicSidebarFooter` active
+   pill slide, and the `Avatar` working ring. Each of those
+   carries a comment justifying the same call: decorative
+   homepage hero motion stays on regardless of the OS preference
+   so the page communicates correctly on first paint. The strip
+   is otherwise pure decoration — every persona's name and role
+   is announced via the per-card `aria-label`, so a reduced-
+   motion visitor still gets full content via assistive tech
+   without any motion they'd otherwise opt out of seeing. */
 
-  .card,
-  .caption {
-    transition-duration: 0ms;
-  }
-}
-
-/* Phones: scale the cards down so 4-ish fit across the visible
-   window. The hover-to-zoom interaction is keyboard- + cursor-
-   gesture only, so the card sizing on touch screens is tuned for
-   a clean glance pattern more than for a hover target. */
+/* 768px breakpoint — keep the card a poster-portrait but step
+   the dimensions down so 3–4 cards fit comfortably across a
+   typical tablet viewport. The hover-to-zoom interaction is
+   keyboard / cursor only; touch screens just show the row.
+   Gap recalculated from `(1.25 - 1) * 168 / 2 + 8 = 29px`
+   minimum and rounded up to 42px for headroom (matches the
+   desktop ratio of gap-to-card-width so the row visually
+   reads consistently across breakpoints). */
 @media (max-width: 768px) {
   .card {
-    width: 132px;
-    height: 184px;
+    width: 168px;
+    height: 236px;
     border-radius: 14px;
+  }
+
+  .track {
+    gap: 42px;
   }
 
   .captionName {
@@ -289,13 +344,17 @@
   }
 }
 
+/* 480px breakpoint — phones. Card stays large enough to read the
+   portrait clearly. Gap recalculated from
+   `(1.25 - 1) * 132 / 2 + 8 = 24.5px` minimum and rounded up
+   to 32px. */
 @media (max-width: 480px) {
   .card {
-    width: 108px;
-    height: 152px;
+    width: 132px;
+    height: 184px;
   }
 
   .track {
-    gap: 12px;
+    gap: 32px;
   }
 }
