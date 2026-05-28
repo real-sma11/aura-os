@@ -111,9 +111,9 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
 
   // Publish the active sidebar width (the `<aside>` rather than just
   // the inner Lane) so that when the public Lane is collapsed and
-  // the public nav footer is the only thing keeping the aside visible,
-  // the chat surface's background video / vignette still re-centers
-  // around the actual chrome — not around 0.
+  // the top-mounted `PublicSidebarFooter` nav is the only thing
+  // keeping the aside visible, the chat surface's background video /
+  // vignette still re-centers around the actual chrome — not 0.
   useAuraSidebarWidthCssVar(asideRef);
 
   return (
@@ -129,6 +129,18 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
         !isPublic ? (authedCollapsed ? "true" : "false") : undefined
       }
     >
+      {/*
+        The public nav lives as a direct child of `<aside>`,
+        OUTSIDE the collapsible Lane, so the Product / Changelog /
+        Feedback / Pricing / Chat links remain visible even when the
+        Lane animates to width 0. Mounted BEFORE `.sidebarBody`
+        in the aside's column-flex layout so the nav anchors to the
+        TOP of the sidebar (above the search input + recent-chats
+        Lane) — the body's `flex: 1` then fills the remaining height
+        below. It also sets the aside's natural width when the Lane
+        is collapsed.
+      */}
+      {isPublic && <PublicSidebarFooter />}
       <div
         className={cn(
           shellStyles.sidebarBody,
@@ -170,15 +182,6 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
           <SidebarBody mode={mode} />
         </Lane>
       </div>
-      {/*
-        The public nav footer lives as a direct child of `<aside>`,
-        OUTSIDE the collapsible Lane, so the Product / Changelog /
-        Feedback / Pricing / Chat links remain visible even when the
-        Lane animates to width 0. The aside's column-flex layout
-        keeps the footer pinned at the bottom and lets it set the
-        aside's natural width when the Lane is collapsed.
-      */}
-      {isPublic && <PublicSidebarFooter />}
       {/*
         Authed-mode sidebar footer — pinned to the bottom of the
         `<aside>` via `position: absolute` (the aside owns

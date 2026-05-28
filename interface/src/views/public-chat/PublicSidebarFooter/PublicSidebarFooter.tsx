@@ -44,11 +44,19 @@ function isLinkActive(link: FooterLink, pathname: string): boolean {
 }
 
 /**
- * Sticky footer at the bottom of `PublicSessionsPanel`. Renders the
- * public sidebar links — Home, Product, Changelog, Feedback, Pricing,
- * and Chat — that swap the public-mode main panel content while
- * leaving the rest of the public shell (titlebar + sidebar + this
- * footer) mounted.
+ * Public sidebar nav, mounted at the TOP of the public `<aside>`
+ * (above the search input + `PublicSessionsPanel` recent-chats
+ * Lane). Renders the public sidebar links — Home, Product,
+ * Changelog, Feedback, Pricing, Models, and Chat — that swap the
+ * public-mode main panel content while leaving the rest of the
+ * public shell (titlebar + sidebar + this nav) mounted.
+ *
+ * Historically this strip lived as a sticky footer at the bottom
+ * of the sidebar (hence the `PublicSidebarFooter` /
+ * `.footer` / `.footerLink*` names retained for compat). It was
+ * relocated to the top-left for higher visibility while the
+ * underlying NavLink + sliding active-pill behaviour stayed
+ * unchanged — only the mount order inside `AuraSidebar` flipped.
  *
  * `NavLink` drives the active highlight: when the current route
  * matches one of the targets, the matching link picks up the
@@ -56,10 +64,10 @@ function isLinkActive(link: FooterLink, pathname: string): boolean {
  * currently in the main panel. Home defaults to active because the
  * public-mode entrypoint is `/`.
  *
- * Phase 4 product rule: this footer is **public-only**. It mounts
- * exclusively inside `PublicSidebarBody` (in `AuraSidebar`) so
- * logged-in Simple and Advanced users never see the public nav
- * strip in the sidebar.
+ * Phase 4 product rule: this nav is **public-only**. It mounts
+ * exclusively when `AuraSidebar`'s `mode === "public"` so logged-in
+ * Simple and Advanced users never see the public nav strip in the
+ * sidebar.
  */
 export function PublicSidebarFooter(): React.ReactElement {
   const { pathname } = useLocation();

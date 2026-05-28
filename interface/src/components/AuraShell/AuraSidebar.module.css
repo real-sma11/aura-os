@@ -65,8 +65,10 @@
 /*
  * Authed-mode sidebar footer wrapper — pins the referral pill
  * (`EarnCreditsButton`) to the bottom of `<aside>`, sibling to
- * the Lane (mirrors `PublicSidebarFooter`'s mount). The pill
- * itself stretches to fill the wrapper via `width: 100%`; the
+ * the Lane (the public `PublicSidebarFooter` nav is also a Lane
+ * sibling, but mounts at the TOP of the aside instead of the
+ * bottom). The pill itself stretches to fill the wrapper via
+ * `width: 100%`; the
  * wrapper owns the breathing room so the button stays layout-
  * agnostic.
  *

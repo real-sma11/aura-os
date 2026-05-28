@@ -1,18 +1,22 @@
 /*
  * PublicSidebarFooter — Phase 4 split-out from
- * `the legacy `LoggedOutShell.module.css``. Sticky footer at
- * the bottom of `PublicSessionsPanel` carrying the public sidebar
- * links (Product / Changelog / Feedback / Pricing / Chat). Logged-in users
- * never see this footer; the import-graph reachability matches the
- * runtime gate.
+ * `the legacy `LoggedOutShell.module.css``. Public sidebar nav now
+ * mounted at the TOP of the public `<aside>` (above the search
+ * input + recent-chats Lane) carrying the public sidebar links
+ * (Home / Product / Changelog / Feedback / Pricing / Models /
+ * Chat). The component / class names retain the historical
+ * `Footer` / `.footer*` naming for compat with the prior layout
+ * — only the mount position in `AuraSidebar.tsx` flipped from
+ * bottom to top. Logged-in users never see this nav; the
+ * import-graph reachability matches the runtime gate.
  */
 .footer {
   /*
-   * No `border-top`: the public nav strip should read as part of
-   * the same flat sidebar surface as the sessions list above it.
-   * The previous separator made the footer look like a docked
-   * second pane stacked on top of the sidebar; flush spacing keeps
-   * it as a quiet bottom-left footer instead.
+   * No `border-bottom`: the public nav strip should read as part
+   * of the same flat sidebar surface as the sessions list below
+   * it. A separator would make the nav look like a docked second
+   * pane stacked above the sidebar; flush spacing keeps it as a
+   * quiet top-left nav instead.
    */
   /*
    * Asymmetric left padding: the link's own `padding-left` is `10px`
