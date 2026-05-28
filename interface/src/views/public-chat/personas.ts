@@ -551,13 +551,19 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       desktopBackgroundPosition: null,
       desktopBackgroundFit: "contain",
       // Sampled mid-tone of the new asset's cool blue-gray field
-      // (~`#8b9da7` averaged across the upper expanse around the
-      // helmet). With `contain` fit it paints the horizontal
-      // letterbox bars on either side of the centered image; the
-      // source's own muted blue-gray bg then appears to extend
-      // seamlessly to the window edges instead of revealing the
-      // default near-black appFrame fill behind the bars.
-      desktopBackgroundColor: "#8b9da7",
+      // (`#809fb0`, picked directly off the source's upper expanse
+      // around the helmet — the prior `#8b9da7` guess sat noticeably
+      // more desaturated than the actual asset, leaving the letterbox
+      // bars looking gray next to the saturated cyan-blue image
+      // edges). The asset itself runs a gentle vertical gradient
+      // (~`#85a5b4` top → `~#6a8da0` bot), so this value lands at
+      // the top-strip mean and matches what shows beside the visible
+      // image columns at most heights. With `contain` fit it paints
+      // the horizontal letterbox bars on either side of the centered
+      // image; the source's own muted blue-gray bg then appears to
+      // extend seamlessly to the window edges instead of revealing
+      // the default near-black appFrame fill behind the bars.
+      desktopBackgroundColor: "#809fb0",
       // Zoom in 10% from the `contain` baseline — matches the
       // Vibecoder / Cypher Punk / Giga Brain / Coordinator scale
       // exactly so all five 1024×1024 character portraits render
