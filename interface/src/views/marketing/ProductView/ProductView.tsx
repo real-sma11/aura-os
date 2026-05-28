@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { AgentChatSection } from "../AgentChatSection";
 import { AgentMarquee } from "../AgentMarquee";
 import { ChangelogPreview } from "../ChangelogPreview";
 import {
@@ -82,6 +83,7 @@ export function ProductView(): ReactNode {
         imageSrc="/product-screens/aura-product-screen-superagent.png"
         imageAlt="AURA agents interface showing autonomous agents"
       />
+      <AgentChatSection />
       <ProductScreenSection
         headline="Ship complex software that improves autonomously."
         placeholderLabel="AURA software automation interface"

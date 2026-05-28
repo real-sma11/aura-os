@@ -71,6 +71,37 @@ describe("ProductView", () => {
     expect(screen.getByText("Your Personal Agent.")).toBeInTheDocument();
   });
 
+  it("inserts the AgentChatSection between the agents and software-shipping rows", () => {
+    // The agent-chat section was added between the "Spawn a team of
+    // agents..." row and the "Ship complex software..." row so it
+    // anchors the mobile-experience story at the same scroll depth
+    // as the agents narrative above it. The page is a static stack
+    // of `<h2>`s today, so we can compare DOM order on the headline
+    // heading nodes without coupling to internal markup of any one
+    // section component.
+    renderProductView();
+    const agentsRow = screen.getByRole("heading", {
+      name: /Spawn a team of agents/i,
+    });
+    const chatSection = screen.getByRole("heading", {
+      name: /Chat with your agents/i,
+    });
+    const shippingRow = screen.getByRole("heading", {
+      name: /Ship complex software/i,
+    });
+    // `compareDocumentPosition` returns `DOCUMENT_POSITION_FOLLOWING`
+    // (bit `0x04`) when the argument node appears AFTER the receiver
+    // in document order, which is the order we want here.
+    expect(
+      agentsRow.compareDocumentPosition(chatSection) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      chatSection.compareDocumentPosition(shippingRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("mounts the agent marquee over the hero video with one card per persona", () => {
     // The hero passes `<AgentMarquee />` as `videoOverlay`, so the
     // strip should be present on the rendered ProductView. The

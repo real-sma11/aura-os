@@ -1,0 +1,75 @@
+/*
+ * Internal layout for the agent-chat section. The outer chrome
+ * (background tint, padding, viewport-height reservation, column
+ * cap) is owned by the shared `<Section />` shell — this file only
+ * controls how the headline / phones / description stack inside
+ * that shell.
+ */
+.agentChatSectionInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+  text-align: center;
+}
+
+/*
+ * Headline type ramp matches `.productScreenSectionHeadline` in
+ * `interface/src/views/marketing/ProductScreenSection/ProductScreenSection.css`
+ * so the marketing rows on `/product` stay typographically aligned
+ * even though they sit in different section components. When the
+ * other rows are migrated onto the shared `<Section />` shell the
+ * shared type can hoist into a single rule; for now we duplicate it
+ * intentionally and keep the values in sync by convention.
+ */
+.agentChatSectionHeadline {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 44px);
+  font-weight: 300;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+  max-width: 720px;
+}
+
+/*
+ * Three-phone row. `align-items: flex-end` lines the bottom edges
+ * of the side phones up with the bottom of the hero phone — the
+ * hero's `translateY(-24px)` lift then naturally produces the
+ * Apple-style "middle phone forward" silhouette without the side
+ * phones drifting downward off the baseline.
+ */
+.agentChatSectionPhones {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(16px, 2vw, 32px);
+  width: 100%;
+}
+
+.agentChatSectionDescription {
+  margin: 0;
+  font-size: var(--text-base, 16px);
+  line-height: var(--leading-relaxed, 1.6);
+  color: var(--color-text-secondary);
+  max-width: 640px;
+}
+
+@media (max-width: 768px) {
+  .agentChatSectionInner {
+    gap: 32px;
+  }
+
+  /*
+   * Hide the two side phones on narrow viewports. The desktop
+   * 3-phone composition crushes at phone widths — each device
+   * would clamp to its `min` size and the three frames would
+   * touch, killing the silhouette. Showing only the centered
+   * hero phone keeps the section legible on mobile and matches
+   * the same approach used by similar marketing pages.
+   */
+  .agentChatSectionPhones > :first-child,
+  .agentChatSectionPhones > :last-child {
+    display: none;
+  }
+}

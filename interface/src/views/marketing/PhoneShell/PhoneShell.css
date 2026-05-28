@@ -1,0 +1,142 @@
+/*
+ * Phone device frame for the marketing page. Two visual variants
+ * triggered by the parent class (`.phoneShell` / `.phoneShellHero`):
+ *   - default (md) — side phone, smaller and slightly recessed
+ *   - hero (lg)    — centered phone, larger and lifted forward
+ *
+ * Both share the same notch + screen markup so the only difference
+ * is geometry: width clamp, vertical offset, and shadow depth. The
+ * `aspect-ratio: 9 / 19.5` matches the iPhone 14 Pro and newer
+ * physical ratio (2556 / 1179 ≈ 9 / 19.5), which is what the
+ * Apple iPhone 17 reference layout uses for its 3-phone row.
+ */
+.phoneShell {
+  flex-shrink: 0;
+  width: clamp(180px, 22vw, 240px);
+  aspect-ratio: 9 / 19.5;
+}
+
+.phoneShellHero {
+  width: clamp(220px, 26vw, 280px);
+  /* Lift the centered phone forward so it visually overlaps the
+     two side phones, matching the Apple iPhone 17 hero layout
+     where the middle device sits in front. The translateY pulls
+     it up by ~24px and the deeper shadow underneath sells the
+     forward depth. */
+  transform: translateY(-24px);
+  z-index: 1;
+  position: relative;
+}
+
+.phoneShellFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.01)
+  ), #0a0a0c;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.phoneShellHero .phoneShellFrame {
+  box-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/*
+ * Dynamic Island-style pill at the top of the screen. Absolutely
+ * positioned over the screen rectangle so the screen content
+ * underneath can paint full-bleed without leaving a notch cutout
+ * gap. Width ratio (~32% of frame width) approximates the real
+ * iPhone Dynamic Island proportion.
+ */
+.phoneShellNotch {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32%;
+  height: 22px;
+  border-radius: 999px;
+  background: #000;
+  z-index: 2;
+}
+
+.phoneShellScreen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 36px;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    #15151a 0%,
+    #0d0d10 100%
+  );
+}
+
+/*
+ * Default placeholder painted when no `children` are passed. Three
+ * faint rounded bars hint at message rows; the bottom "Mock UI"
+ * label makes the placeholder intent legible even at thumbnail
+ * sizes on initial page load. Once real mock chat content lands,
+ * callers pass `children` and this block is replaced entirely.
+ */
+.phoneShellPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+.phoneShellPlaceholderBar {
+  display: block;
+  width: 70%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.phoneShellPlaceholderBar:nth-child(2) {
+  width: 55%;
+}
+
+.phoneShellPlaceholderBar:nth-child(3) {
+  width: 62%;
+}
+
+.phoneShellPlaceholderLabel {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+@media (max-width: 768px) {
+  /*
+   * On narrow viewports the hero phone is typically rendered solo
+   * (the side phones are hidden by `AgentChatSection.css`), so we
+   * drop the translateY lift — there's nothing to overlap and the
+   * offset would otherwise push the phone into the headline above
+   * it. The shadow stays deeper to keep the hero treatment.
+   */
+  .phoneShellHero {
+    transform: none;
+    width: clamp(220px, 60vw, 280px);
+  }
+}

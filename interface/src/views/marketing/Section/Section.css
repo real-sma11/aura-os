@@ -1,0 +1,51 @@
+/*
+ * Standard marketing section shell. Background tint, vertical
+ * padding, inner-column cap, and (optionally) reserved viewport
+ * height. The padding ramp matches the existing per-section CSS
+ * (see `ProductScreenSection.css`, `FeaturePanel.css`,
+ * `ChangelogPreview.css`) so when individual themed sections are
+ * migrated onto this shell their outer rhythm stays unchanged.
+ */
+.section {
+  background: var(--marketing-section-bg, #000);
+  padding: 80px 32px;
+}
+
+/*
+ * Full-viewport mode — the default. Reserves at least one viewport
+ * height so the section reads as its own "page" in the scroll, then
+ * flex-centers the inner column vertically so short content lands
+ * mid-viewport like the Apple iPhone 17 reference layout instead of
+ * sitting flush against the top edge.
+ *
+ * `100dvh` over `100vh` because mobile browsers shrink the visible
+ * viewport when the URL bar appears. With `vh` the section would
+ * overflow the visible area by the bar's height; `dvh` tracks the
+ * dynamic viewport so the section is always exactly the visible
+ * height and never forces an extra scroll past the next section.
+ */
+.section[data-full-height="true"] {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+}
+
+.sectionInner {
+  width: 100%;
+  /* Track the public landing-page `MockAuraApp` wallpaper width; see
+     `--marketing-content-max-width` in `interface/src/index.css`. */
+  max-width: var(--marketing-content-max-width, 1200px);
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: 64px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .section {
+    padding: 48px 20px;
+  }
+}
