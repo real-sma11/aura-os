@@ -535,27 +535,55 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     name: "Researcher",
     role: "Research analyst",
     theme: {
-      // Glossy black-and-gold researcher android on a warm studio
-      // beige field. `contain` is intentional here: it preserves
-      // the portrait's top and bottom in the fixed 16:10 mock
-      // desktop. A larger uniform scale would crop vertically.
+      // Glossy black-and-gold researcher android (single amber-lens
+      // helmet, gold-trimmed chestplate, charcoal hoodie) on a cool
+      // blue-gray studio field. Source is a 1024×1024 square, same
+      // aspect as Vibecoder / Cypher Punk / Giga Brain / Coordinator,
+      // so the wallpaper framing inherits the same canonical
+      // `contain` + matching-frame-bg math: the figure renders
+      // end-to-end vertically and the sampled blue-gray paints the
+      // horizontal letterbox bars so the source's own backdrop
+      // appears to extend to the window edges with no visible seam.
       desktopBackgroundUrl: "/personas/researcher/desktop.png",
+      // Position is irrelevant under `contain` (the image fits
+      // entirely inside the frame and there is no crop axis to
+      // anchor). Same shape as the other character portraits.
       desktopBackgroundPosition: null,
       desktopBackgroundFit: "contain",
-      desktopBackgroundColor: "#c7b6a6",
-      desktopBackgroundScale: 1,
+      // Sampled mid-tone of the new asset's cool blue-gray field
+      // (~`#8b9da7` averaged across the upper expanse around the
+      // helmet). With `contain` fit it paints the horizontal
+      // letterbox bars on either side of the centered image; the
+      // source's own muted blue-gray bg then appears to extend
+      // seamlessly to the window edges instead of revealing the
+      // default near-black appFrame fill behind the bars.
+      desktopBackgroundColor: "#8b9da7",
+      // Zoom in 10% from the `contain` baseline — matches the
+      // Vibecoder / Cypher Punk / Giga Brain / Coordinator scale
+      // exactly so all five 1024×1024 character portraits render
+      // at the same visible 1100×1100 size, keeping cross-fades
+      // between them a clean dissolve with no size jump.
+      desktopBackgroundScale: 1.1,
+      // Default-centered crop is correct for this 1024×1024
+      // square portrait — no vertical nudge needed.
       desktopBackgroundOffsetY: null,
-      // Warm amber wash behind the mock desktop, matching the
-      // portrait's studio backdrop while giving the page its own
-      // soft texture.
+      // Warm amber wash behind the mock desktop, kept from the prior
+      // warm-beige portrait — the gold details on the helmet, lens,
+      // and chestplate still anchor a warm CTA accent and the amber
+      // page texture reads as a "studio gold" backdrop the figure's
+      // own gold trim picks up, even though the figure's local
+      // backdrop is now cool blue-gray inside the mock window.
       siteBackgroundUrl: "/personas/researcher/site.png",
       siteBackgroundColor: "#c7b6a6",
       siteForegroundColor: "#0a0a0a",
       siteForegroundColorMuted: "#1a1a1a",
       siteCtaGlowColor: "#d79a2e",
-      // Nudge the dock crop a touch higher so the single amber lens,
-      // rather than the hood or torso, lands in the avatar circle.
-      avatarObjectPosition: "50% 14%",
+      // Default `50% 18%` framing keeps the amber lens + helmet
+      // centered inside the 18px avatar circle once the dock zooms
+      // in 2x on the 1024×1024 source — the head sits in the upper
+      // third of the source like every other curated portrait, so
+      // no per-persona override is needed.
+      avatarObjectPosition: null,
     },
   },
   {
