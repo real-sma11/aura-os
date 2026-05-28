@@ -163,7 +163,13 @@ struct AttachState {
 
 /// SSE body that replays the buffered backlog from `since` and then
 /// streams live, ending when the stream reaches a terminal frame.
-fn attach_sse(
+///
+/// Exposed `pub(crate)` so flow handlers (spec gen, chat, media) can
+/// register their harness session with the [`crate::live_streams::LiveStreamRegistry`]
+/// and serve the very same resumable SSE body from their dedicated
+/// start endpoint, rather than owning the session inside a bespoke
+/// `stream::unfold`.
+pub(crate) fn attach_sse(
     stream: Arc<LiveStream>,
     since: u64,
 ) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {

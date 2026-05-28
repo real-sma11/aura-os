@@ -9,14 +9,12 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderValue;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
-use futures_util::stream;
-use tokio::sync::broadcast;
 use tracing::info;
 
 use aura_os_core::{AgentInstanceId, HarnessMode, ProjectId, Spec};
-use aura_os_harness::{
-    HarnessInbound, HarnessOutbound, HarnessSession, SessionConfig, UserMessage,
-};
+use aura_os_harness::{HarnessInbound, HarnessOutbound, SessionConfig, UserMessage};
+
+use crate::live_streams::{StreamKind, StreamScope};
 
 use crate::handlers::agents::chat::errors::map_harness_error_to_api;
 use crate::handlers::plan_mode::{
@@ -28,9 +26,6 @@ use super::super::projects_helpers::{project_tool_deadline, project_tool_session
 use super::{load_generated_specs, resolve_harness_mode, specs_changed_since, SpecQueryParams};
 use crate::error::{ApiError, ApiResult};
 use crate::state::{AppState, AuthJwt, AuthSession};
-
-const SSE_NO_BUFFERING_HEADERS: [(&str, HeaderValue); 1] =
-    [("X-Accel-Buffering", HeaderValue::from_static("no"))];
 
 /// Apply the shared plan-mode policy to a `SessionConfig` built by
 /// [`project_tool_session_config`]: append the plan-mode rules to the
@@ -290,7 +285,7 @@ pub(crate) async fn generate_specs_stream(
     Path(project_id): Path<ProjectId>,
     Query(params): Query<SpecQueryParams>,
 ) -> ApiResult<(
-    [(&'static str, HeaderValue); 1],
+    [(&'static str, HeaderValue); 2],
     Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>>,
 )> {
     info!(%project_id, "Streaming spec generation requested");
@@ -305,13 +300,43 @@ pub(crate) async fn generate_specs_stream(
     )
     .await?;
 
-    let rx = harness_session.events_tx.subscribe();
-    let stream = harness_specs_to_sse(harness_session, rx);
+    // Register the session with the live-stream registry so its
+    // lifetime is owned there rather than by this SSE response. The
+    // client can reconnect (or a reloaded tab can rediscover this run
+    // via `GET /api/streams/active`) and reattach with `?since=<seq>`
+    // without restarting generation. We serve the very same resumable
+    // SSE body that `GET /api/streams/:id` would.
+    let scope = spec_stream_scope(&session.user_id, &project_id, params.agent_instance_id);
+    let live = state
+        .live_streams
+        .register(StreamKind::SpecGen, scope, harness_session);
+    let attach_header = HeaderValue::from_str(&live.attach_id)
+        .unwrap_or_else(|_| HeaderValue::from_static("invalid"));
+    let stream = crate::handlers::streams::attach_sse(live, 0);
 
     Ok((
-        SSE_NO_BUFFERING_HEADERS,
+        [
+            ("X-Accel-Buffering", HeaderValue::from_static("no")),
+            ("X-Aura-Attach-Id", attach_header),
+        ],
         Sse::new(stream).keep_alive(KeepAlive::default()),
     ))
+}
+
+/// Build the live-stream scope for a spec-generation run so the owning
+/// user (and a project / agent-instance filter) can rediscover it via
+/// `GET /api/streams/active`.
+fn spec_stream_scope(
+    user_id: &str,
+    project_id: &ProjectId,
+    agent_instance_id: Option<AgentInstanceId>,
+) -> StreamScope {
+    StreamScope {
+        user_id: Some(user_id.to_string()),
+        project_id: Some(project_id.to_string()),
+        agent_instance_id: agent_instance_id.map(|a| a.to_string()),
+        session_id: None,
+    }
 }
 
 #[cfg(test)]
@@ -367,44 +392,3 @@ mod tests {
     }
 }
 
-/// SSE stream that owns the [`HarnessSession`] for its full lifetime.
-///
-/// The previous implementation built a [`tokio_stream::wrappers::BroadcastStream`]
-/// from `session.events_tx.subscribe()` and immediately let `session` go out
-/// of scope. Dropping `session` dropped its `commands_tx`, which made the
-/// `aura-os-harness` WS bridge writer close the upstream WebSocket sink the
-/// moment the SSE response was returned. The harness then tore the session
-/// down right after `Skill permissions resolved`, before the agent loop had
-/// produced anything, so callers (e.g. the SWE-bench driver) only ever saw
-/// an instantly-closed stream.
-///
-/// Holding `HarnessSession` inside the [`stream::unfold`] state pins
-/// `commands_tx` to the SSE response. The harness stays connected until the
-/// stream ends — either because we observe a terminal event
-/// ([`HarnessOutbound::AssistantMessageEnd`] / [`HarnessOutbound::Error`]) or
-/// because the broadcast receiver is closed — at which point dropping the
-/// state closes the upstream WS naturally.
-fn harness_specs_to_sse(
-    session: HarnessSession,
-    rx: broadcast::Receiver<HarnessOutbound>,
-) -> impl futures_core::Stream<Item = Result<Event, Infallible>> + Send {
-    stream::unfold((session, rx, false), |(session, mut rx, done)| async move {
-        if done {
-            return None;
-        }
-        loop {
-            match rx.recv().await {
-                Ok(evt) => {
-                    let terminal = matches!(
-                        evt,
-                        HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
-                    );
-                    let event = super::super::sse::harness_event_to_sse(&evt);
-                    return Some((event, (session, rx, terminal)));
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
-        }
-    })
-}
