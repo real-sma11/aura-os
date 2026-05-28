@@ -44,19 +44,21 @@ function isLinkActive(link: FooterLink, pathname: string): boolean {
 }
 
 /**
- * Public sidebar nav, mounted at the TOP of the public `<aside>`
- * (above the search input + `PublicSessionsPanel` recent-chats
- * Lane). Renders the public sidebar links — Home, Product,
- * Changelog, Feedback, Pricing, Models, and Chat — that swap the
- * public-mode main panel content while leaving the rest of the
- * public shell (titlebar + sidebar + this nav) mounted.
+ * Public sidebar nav, absolutely positioned at the VERTICAL
+ * CENTER of the public `<aside>` (left edge, mid-height of the
+ * body below the titlebar). It floats over the `.sidebarBody`
+ * Lane that still holds the search input + `PublicSessionsPanel`
+ * recent-chats list. Renders the public sidebar links — Home,
+ * Product, Changelog, Feedback, Pricing, Models, and Chat — that
+ * swap the public-mode main panel content while leaving the rest
+ * of the public shell (titlebar + sidebar + this nav) mounted.
  *
  * Historically this strip lived as a sticky footer at the bottom
  * of the sidebar (hence the `PublicSidebarFooter` /
  * `.footer` / `.footerLink*` names retained for compat). It was
- * relocated to the top-left for higher visibility while the
- * underlying NavLink + sliding active-pill behaviour stayed
- * unchanged — only the mount order inside `AuraSidebar` flipped.
+ * relocated to a vertically-centered overlay for higher
+ * visibility while the underlying NavLink + sliding active-pill
+ * behaviour stayed unchanged.
  *
  * `NavLink` drives the active highlight: when the current route
  * matches one of the targets, the matching link picks up the

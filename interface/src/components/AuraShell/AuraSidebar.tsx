@@ -133,12 +133,14 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
         The public nav lives as a direct child of `<aside>`,
         OUTSIDE the collapsible Lane, so the Product / Changelog /
         Feedback / Pricing / Chat links remain visible even when the
-        Lane animates to width 0. Mounted BEFORE `.sidebarBody`
-        in the aside's column-flex layout so the nav anchors to the
-        TOP of the sidebar (above the search input + recent-chats
-        Lane) — the body's `flex: 1` then fills the remaining height
-        below. It also sets the aside's natural width when the Lane
-        is collapsed.
+        Lane animates to width 0. The nav itself is absolutely
+        positioned at the vertical center of the aside (see
+        `.footer` in `PublicSidebarFooter.module.css`) so it sits
+        out of the column-flex flow and floats over the
+        `.sidebarBody` Lane without contesting its `flex: 1`
+        height. Rendered first so its DOM order keeps it paint-
+        BEFORE the body's contents within the same stacking
+        context.
       */}
       {isPublic && <PublicSidebarFooter />}
       <div

@@ -1,22 +1,46 @@
 /*
  * PublicSidebarFooter — Phase 4 split-out from
- * `the legacy `LoggedOutShell.module.css``. Public sidebar nav now
- * mounted at the TOP of the public `<aside>` (above the search
- * input + recent-chats Lane) carrying the public sidebar links
+ * `the legacy `LoggedOutShell.module.css``. Public sidebar nav,
+ * absolutely positioned at the VERTICAL CENTER of the public
+ * `<aside>` (left edge, half-height down), floating over the
+ * `.sidebarBody` Lane that still holds the search input +
+ * recent-chats list. Carries the public sidebar links
  * (Home / Product / Changelog / Feedback / Pricing / Models /
  * Chat). The component / class names retain the historical
- * `Footer` / `.footer*` naming for compat with the prior layout
- * — only the mount position in `AuraSidebar.tsx` flipped from
- * bottom to top. Logged-in users never see this nav; the
- * import-graph reachability matches the runtime gate.
+ * `Footer` / `.footer*` naming for compat with the prior bottom-
+ * pinned layout — only the positioning (and current placement)
+ * changed. Logged-in users never see this nav; the import-graph
+ * reachability matches the runtime gate.
  */
 .footer {
+  /*
+   * Vertically centered on the page. The host `<aside>` in
+   * `AuraSidebar` spans the full body height (in public mode
+   * it's `position: absolute; top: 0; bottom: 0`), so anchoring
+   * this nav to `top: 50%` + `translateY(-50%)` parks the link
+   * column at the vertical midpoint of the chrome below the
+   * titlebar. `left: 0` pins it to the left edge of the aside,
+   * matching the previous in-flow placement.
+   *
+   * Absolute positioning lifts the nav OUT of the aside's
+   * column-flex flow, so the `.sidebarBody` Lane below (search
+   * input + recent-chats list) is free to keep its full
+   * `flex: 1` height instead of being squeezed under or above
+   * the nav. `z-index: 1` keeps the nav on top of the
+   * (transparent in public mode) body without contesting the
+   * `.sidebar`'s own `z-index: 2` over the main panel.
+   */
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 1;
   /*
    * No `border-bottom`: the public nav strip should read as part
    * of the same flat sidebar surface as the sessions list below
    * it. A separator would make the nav look like a docked second
    * pane stacked above the sidebar; flush spacing keeps it as a
-   * quiet top-left nav instead.
+   * quiet left-edge nav instead.
    */
   /*
    * Asymmetric left padding: the link's own `padding-left` is `10px`
