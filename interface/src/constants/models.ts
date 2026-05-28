@@ -45,6 +45,12 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
   },
   {
+    id: "aura-claude-opus-4-8",
+    label: "Opus 4.8",
+    tier: "opus",
+    mode: "chat",
+  },
+  {
     id: "aura-claude-opus-4-7",
     label: "Opus 4.7",
     tier: "opus",
@@ -191,6 +197,8 @@ const KNOWN_MODELS: ModelOption[] = [
 
 const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "aura-claude-opus-4-6": "aura-claude-opus-4-6",
+  "claude-opus-4-8": "aura-claude-opus-4-8",
+  "aura-claude-opus-4-8": "aura-claude-opus-4-8",
   "claude-opus-4-7": "aura-claude-opus-4-7",
   "claude-opus-4-6": "aura-claude-opus-4-6",
   "aura-claude-sonnet-4-6": "aura-claude-sonnet-4-6",
