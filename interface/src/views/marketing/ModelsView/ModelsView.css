@@ -11,7 +11,12 @@
 
 .modelsPageContent {
   width: 100%;
-  max-width: 1200px;
+  /* Matches `.feedbackPageShell` (960px) so the catalog reads at the
+     same narrower column width as the sibling public marketing pages
+     (/feedback at 960px, /changelog at 940px, /product at the
+     ~`--marketing-content-max-width` band). Pricing keeps its wider
+     1200px cap because its 4-tier plan grid needs the extra room. */
+  max-width: 960px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -315,7 +320,10 @@
   overflow: hidden;
 }
 
-@media (max-width: 1080px) {
+/* At 960px column the 4-up featured row reads tight but works (~225px
+   per card); collapse to 2-up below 880px viewport where padding eats
+   enough room that 4 cards no longer fit comfortably. */
+@media (max-width: 880px) {
   .modelsFeaturedGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
