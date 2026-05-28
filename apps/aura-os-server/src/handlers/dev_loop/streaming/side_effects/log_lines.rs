@@ -69,20 +69,33 @@ pub(super) fn surface_log_lines_for_event(
 pub(crate) fn log_line_for_event(event_type: &str, event: &serde_json::Value) -> Option<String> {
     match event_type {
         "tool_call_started" | "tool_use_start" => {
-            Some(format!("Calling tool: {}", tool_name_for_log(event)))
+            let name = tool_name_for_log(event);
+            match super::super::tool_summary::tool_input_summary(event) {
+                Some(summary) if !summary.is_empty() => {
+                    Some(format!("Calling tool: {name} ({summary})"))
+                }
+                _ => Some(format!("Calling tool: {name}")),
+            }
         }
         "tool_call_completed" => {
             let name = tool_name_for_log(event);
-            let suffix = if event
+            let is_error = event
                 .get("is_error")
                 .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false)
-            {
-                " (error)"
+                .unwrap_or(false);
+            if is_error {
+                // Surface the failure text (e.g. "Tool timed out after
+                // 120000ms") so a timing-out command is legible in the
+                // panel instead of an opaque "(error)".
+                match super::super::tool_summary::tool_result_preview(event) {
+                    Some(reason) if !reason.is_empty() => {
+                        Some(format!("Tool failed: {name} ({reason})"))
+                    }
+                    _ => Some(format!("Tool completed: {name} (error)")),
+                }
             } else {
-                ""
-            };
-            Some(format!("Tool completed: {name}{suffix}"))
+                Some(format!("Tool completed: {name}"))
+            }
         }
         "text_delta" => Some("Streaming response...".to_string()),
         "assistant_message_end" => Some(match assistant_turn_tokens(event) {

@@ -18,6 +18,7 @@ mod activity;
 mod credits;
 mod forwarder;
 mod side_effects;
+mod tool_summary;
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId};
 use aura_os_events::{DomainEvent, LegacyJsonEvent};
@@ -175,11 +176,16 @@ mod tests {
     use super::side_effects::log_line_for_event;
 
     #[test]
-    fn log_line_for_tool_call_started_includes_name() {
+    fn log_line_for_tool_call_started_includes_name_and_input() {
         let event = json!({ "name": "edit_file", "input": {"path": "foo.rs"} });
         assert_eq!(
             log_line_for_event("tool_call_started", &event).as_deref(),
-            Some("Calling tool: edit_file"),
+            Some("Calling tool: edit_file (foo.rs)"),
+        );
+        let command = json!({ "name": "run_command", "input": {"command": "cargo test"} });
+        assert_eq!(
+            log_line_for_event("tool_call_started", &command).as_deref(),
+            Some("Calling tool: run_command (cargo test)"),
         );
     }
 
@@ -208,6 +214,15 @@ mod tests {
         assert_eq!(
             log_line_for_event("tool_call_completed", &err).as_deref(),
             Some("Tool completed: read_file (error)"),
+        );
+        let timed_out = json!({
+            "name": "run_command",
+            "is_error": true,
+            "reason": "Tool timed out after 120000ms",
+        });
+        assert_eq!(
+            log_line_for_event("tool_call_completed", &timed_out).as_deref(),
+            Some("Tool failed: run_command (Tool timed out after 120000ms)"),
         );
     }
 

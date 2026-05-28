@@ -182,13 +182,19 @@ async fn tool_call_completed(
     event: &serde_json::Value,
 ) {
     let Some(task_id) = task_id else { return };
+    let input_summary = super::super::tool_summary::tool_input_summary(event).unwrap_or_default();
+    let result_preview = super::super::tool_summary::tool_result_preview(event).unwrap_or_default();
+    let duration_ms = super::super::tool_summary::event_duration_ms(event);
     info!(
         target: "aura::automation",
         project_id = %ctx.project_id,
         agent_instance_id = %ctx.agent_instance_id,
         task_id = task_id,
         tool = %tool_name(event),
+        input = %input_summary,
         is_error = event.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
+        duration_ms = ?duration_ms,
+        result = %result_preview,
         "automation tool call completed"
     );
     task_output::record_test_pass_evidence(ctx.state, ctx.project_id, task_id, event).await;

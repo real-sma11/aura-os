@@ -467,12 +467,14 @@ fn trace_harness_event(
         "harness event"
     );
     if matches!(event_type, "tool_call_started" | "tool_use_start") {
+        let input_summary = super::tool_summary::tool_input_summary(event).unwrap_or_default();
         info!(
             target: "aura::automation",
             %project_id,
             %agent_instance_id,
             task_id = task_id,
             tool = %event_tool_name(event),
+            input = %input_summary,
             "automation tool call started"
         );
     }
