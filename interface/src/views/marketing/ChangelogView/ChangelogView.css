@@ -17,18 +17,117 @@
   margin: 0 auto;
 }
 
-.changelogPageHeader {
+.changelogStatsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 32px;
+  margin-bottom: 64px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Slight elevation above the off-black section bg, matching the
+     `#0f0f12 → #141417` ramp used by `.productScreenSectionImageFrame`
+     so the card reads as one notch above the surrounding surface
+     without introducing a new shade. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    #141417;
+  /* Floating drop shadow modeled on the landing-page `MockAuraApp`
+     desktop card (`0 30px 60px -20px rgba(0,0,0,0.55)`) but trimmed
+     down since this card is much smaller / sits closer to surrounding
+     content. */
+  box-shadow:
+    0 18px 40px -20px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.changelogStatsCardHeader {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
   align-items: baseline;
-  justify-content: center;
-  margin-bottom: 64px;
+  justify-content: space-between;
+}
+
+.changelogStatsCardBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  gap: 32px;
+  align-items: center;
+}
+
+.changelogStatsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 28px;
+  margin: 0;
+  padding: 0;
+}
+
+.changelogStat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.changelogStatLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.changelogStatValue {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.changelogStatsChartWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.changelogStatsChartCaption {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.changelogStatsChart {
+  display: block;
+  width: 100%;
+  height: 96px;
+  overflow: visible;
+}
+
+.changelogStatsChartBar {
+  fill: rgba(255, 255, 255, 0.32);
+  transition: fill 160ms ease;
+}
+
+.changelogStatsChartBar:hover {
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.changelogStatsChartBarLatest {
+  fill: rgba(255, 255, 255, 0.78);
 }
 
 .changelogPageTitle {
   margin: 0;
-  font-size: clamp(38px, 6vw, 64px);
+  font-size: clamp(32px, 5vw, 52px);
   line-height: 0.96;
   letter-spacing: -0.06em;
   font-weight: 400;
@@ -318,9 +417,27 @@
     gap: 48px;
   }
 
-  .changelogPageHeader {
-    justify-content: flex-start;
+  .changelogStatsCard {
+    padding: 22px 22px;
+    gap: 22px;
     margin-bottom: 48px;
+  }
+
+  .changelogStatsCardHeader {
+    justify-content: flex-start;
+  }
+
+  .changelogStatsCardBody {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .changelogStatsChart {
+    height: 72px;
+  }
+
+  .changelogStatValue {
+    font-size: 24px;
   }
 
   .changelogEntry {

@@ -1,12 +1,148 @@
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  type ChangelogEntry,
   type ChangelogTimelineMedia,
   fetchChangelogEntries,
 } from "../../../api/marketing/changelog";
 import "./ChangelogView.css";
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
+
+const PST_MONTH_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: CHANGELOG_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+});
+
+/**
+ * "Current month" key in `YYYY-MM` form, anchored to America/Los_Angeles
+ * so it lines up with the PST calendar dates the API helper bakes into
+ * `entry.date` (see `toPstCalendarDate` in `api/marketing/changelog.ts`).
+ * `en-CA` is used because it emits the ISO-like `YYYY-MM` literal we want
+ * out of the box.
+ */
+function getCurrentPstMonthKey(now: Date = new Date()): string {
+  return PST_MONTH_FORMATTER.format(now);
+}
+
+interface ChangelogStats {
+  readonly releasesThisMonth: number;
+  readonly commitsThisMonth: number;
+  readonly releasesAllTime: number;
+  readonly commitsAllTime: number;
+}
+
+interface ReleasesPerDayPoint {
+  readonly date: string;
+  readonly releases: number;
+}
+
+function entryCommits(entry: ChangelogEntry): number {
+  return entry.filteredCommitCount ?? entry.rawCommitCount;
+}
+
+function entryReleases(entry: ChangelogEntry): number {
+  return entry.rendered.entries.length;
+}
+
+function computeStats(
+  entries: readonly ChangelogEntry[],
+  monthKey: string,
+): ChangelogStats {
+  const thisMonth = entries.filter((entry) => entry.date.startsWith(monthKey));
+  return {
+    releasesThisMonth: thisMonth.reduce((n, e) => n + entryReleases(e), 0),
+    commitsThisMonth: thisMonth.reduce((n, e) => n + entryCommits(e), 0),
+    releasesAllTime: entries.reduce((n, e) => n + entryReleases(e), 0),
+    commitsAllTime: entries.reduce((n, e) => n + entryCommits(e), 0),
+  };
+}
+
+function computeReleasesPerDay(
+  entries: readonly ChangelogEntry[],
+): readonly ReleasesPerDayPoint[] {
+  return [...entries]
+    .map((entry) => ({ date: entry.date, releases: entryReleases(entry) }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
+const STAT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
+
+function formatStatLabel(date: string): string {
+  const parsed = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+interface ReleasesPerDayChartProps {
+  readonly series: readonly ReleasesPerDayPoint[];
+}
+
+/**
+ * Tiny inline-SVG bar chart of releases-per-day, chronological ascending.
+ * Avoids pulling in a charting dependency for what's essentially ~15 bars
+ * of context next to the stat grid. Bars normalize against the dataset's
+ * max release count; the most recent day gets a brighter accent fill so
+ * it reads as "today".
+ */
+function ReleasesPerDayChart({
+  series,
+}: ReleasesPerDayChartProps): ReactNode {
+  if (series.length === 0) {
+    return null;
+  }
+
+  const viewWidth = 260;
+  const viewHeight = 96;
+  const gap = 2;
+  const barWidth = Math.max((viewWidth - gap * (series.length - 1)) / series.length, 1);
+  const max = series.reduce((acc, point) => Math.max(acc, point.releases), 0);
+  const lastIndex = series.length - 1;
+
+  return (
+    <svg
+      className="changelogStatsChart"
+      viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Releases per day over time"
+    >
+      {series.map((point, index) => {
+        const ratio = max > 0 ? point.releases / max : 0;
+        const barHeight = Math.max(ratio * viewHeight, point.releases > 0 ? 2 : 0);
+        const x = index * (barWidth + gap);
+        const y = viewHeight - barHeight;
+        const isLatest = index === lastIndex;
+        return (
+          <rect
+            key={`${point.date}-${index}`}
+            x={x}
+            y={y}
+            width={barWidth}
+            height={barHeight}
+            rx={1}
+            className={
+              isLatest
+                ? "changelogStatsChartBar changelogStatsChartBarLatest"
+                : "changelogStatsChartBar"
+            }
+          >
+            <title>
+              {`${formatStatLabel(point.date)}: ${point.releases} release${
+                point.releases === 1 ? "" : "s"
+              }`}
+            </title>
+          </rect>
+        );
+      })}
+    </svg>
+  );
+}
 
 function formatDateLabel(value: string): string {
   const parsed = new Date(`${value}T12:00:00Z`);
@@ -71,21 +207,74 @@ export function ChangelogView(): ReactNode {
     queryFn: fetchChangelogEntries,
   });
 
-  const entries = data ?? [];
+  // Stabilize the empty fallback so memo deps below don't change every
+  // render (React Query keeps `data` referentially stable across renders
+  // until it refetches, but `?? []` would allocate a new array each time).
+  const entries = useMemo<readonly ChangelogEntry[]>(() => data ?? [], [data]);
   const latestVersion = entries.find((entry) => entry.version)?.version;
   const renderEmpty = !isLoading && !isError && entries.length === 0;
+
+  const stats = useMemo(
+    () => computeStats(entries, getCurrentPstMonthKey()),
+    [entries],
+  );
+  const releasesPerDay = useMemo(
+    () => computeReleasesPerDay(entries),
+    [entries],
+  );
 
   return (
     <section className="changelogPage">
       <div className="changelogPageShell">
-        <header className="changelogPageHeader">
-          <h1 className="changelogPageTitle">Changelog</h1>
-          {latestVersion ? (
-            <span className="changelogPageVersion">
-              Current version {latestVersion}
-            </span>
-          ) : null}
-        </header>
+        <section
+          className="changelogStatsCard"
+          aria-label="Changelog summary"
+        >
+          <header className="changelogStatsCardHeader">
+            <h1 className="changelogPageTitle">Changelog</h1>
+            {latestVersion ? (
+              <span className="changelogPageVersion">
+                Current version {latestVersion}
+              </span>
+            ) : null}
+          </header>
+
+          <div className="changelogStatsCardBody">
+            <dl className="changelogStatsGrid">
+              <div className="changelogStat">
+                <dt className="changelogStatLabel">Releases this month</dt>
+                <dd className="changelogStatValue">
+                  {STAT_NUMBER_FORMATTER.format(stats.releasesThisMonth)}
+                </dd>
+              </div>
+              <div className="changelogStat">
+                <dt className="changelogStatLabel">Commits this month</dt>
+                <dd className="changelogStatValue">
+                  {STAT_NUMBER_FORMATTER.format(stats.commitsThisMonth)}
+                </dd>
+              </div>
+              <div className="changelogStat">
+                <dt className="changelogStatLabel">All-time releases</dt>
+                <dd className="changelogStatValue">
+                  {STAT_NUMBER_FORMATTER.format(stats.releasesAllTime)}
+                </dd>
+              </div>
+              <div className="changelogStat">
+                <dt className="changelogStatLabel">All-time commits</dt>
+                <dd className="changelogStatValue">
+                  {STAT_NUMBER_FORMATTER.format(stats.commitsAllTime)}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="changelogStatsChartWrap" aria-hidden={releasesPerDay.length === 0}>
+              <span className="changelogStatsChartCaption">
+                Releases per day
+              </span>
+              <ReleasesPerDayChart series={releasesPerDay} />
+            </div>
+          </div>
+        </section>
 
         {entries.length > 0 ? (
           <div className="changelogEntries" aria-label="Aura changelog entries">
