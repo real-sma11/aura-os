@@ -80,12 +80,15 @@ export interface AuraTitlebarProps {
  *     plumbed through props). The referral CTA lives in the left
  *     sidebar footer (`AuraSidebar`'s `AuthedSidebarFooter`) — not
  *     in the titlebar.
- *   - Public: Log In / Sign Up pills + `WindowControls`. The day/
- *     night theme toggle is intentionally not in the public titlebar —
- *     it lives only in the bottom-right `BottomTaskbar` cluster so
- *     unauthenticated visitors aren't given two redundant affordances
- *     for the same control. The "Sign Up" pill is the
- *     primary CTA and inverts with theme via `.authPillPrimary`.
+ *   - Public: Log In / Sign Up / Download pills + `WindowControls`.
+ *     The day/night theme toggle is intentionally not in the public
+ *     titlebar — it lives only in the bottom-right `BottomTaskbar`
+ *     cluster so unauthenticated visitors aren't given two redundant
+ *     affordances for the same control. The "Sign Up" pill is the
+ *     primary CTA and inverts with theme via `.authPillPrimary`;
+ *     "Log In" and "Download" share the secondary outlined variant.
+ *     Download navigates to the `/download` marketing page (mounted
+ *     inside `PublicMarketingPanel` in `App.tsx`).
  */
 export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   const { mode } = props;
@@ -312,6 +315,13 @@ function PublicActions(): React.ReactElement {
         onClick={() => track("public_signup_clicked", { source: "titlebar" })}
       >
         Sign Up
+      </Link>
+      <Link
+        to="/download"
+        className={`${styles.authPill} ${styles.authPillSecondary}`}
+        onClick={() => track("public_download_clicked", { source: "titlebar" })}
+      >
+        Download
       </Link>
       <WindowControls />
     </div>

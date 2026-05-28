@@ -390,14 +390,19 @@ describe("AuraShell — Phase 3 unified shell", () => {
       within(titlebar).queryByRole("button", { name: /switch theme/i }),
     ).not.toBeInTheDocument();
 
-    // The Log In / Sign Up pills are the load-bearing public-mode
-    // CTAs and must remain in the trailing slot.
+    // The Log In / Sign Up / Download pills are the load-bearing
+    // public-mode CTAs and must remain in the trailing slot.
     expect(
       within(titlebar).getByRole("link", { name: "Log In" }),
     ).toBeInTheDocument();
     expect(
       within(titlebar).getByRole("link", { name: "Sign Up" }),
     ).toBeInTheDocument();
+    const downloadLink = within(titlebar).getByRole("link", {
+      name: "Download",
+    });
+    expect(downloadLink).toBeInTheDocument();
+    expect(downloadLink).toHaveAttribute("href", "/download");
   });
 
   it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public and Simple modes and mounts it only in Advanced", async () => {
