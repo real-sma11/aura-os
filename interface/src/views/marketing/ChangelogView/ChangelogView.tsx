@@ -1,10 +1,11 @@
-import { type ReactNode, useEffect, useId, useMemo } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   type ChangelogEntry,
   type ChangelogTimelineMedia,
   fetchChangelogEntries,
 } from "../../../api/marketing/changelog";
+import { BannerCard } from "../BannerCard/BannerCard";
 import "./ChangelogView.css";
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
@@ -93,11 +94,13 @@ interface ReleasesPerDayChartProps {
 function ReleasesPerDayChart({
   series,
 }: ReleasesPerDayChartProps): ReactNode {
-  // `useId` runs before the early return so hook order stays stable across
-  // renders regardless of whether the dataset is empty on first paint.
+  // `useId` / `useState` run before the early return so hook order stays
+  // stable across renders regardless of whether the dataset is empty on
+  // first paint.
   const reactId = useId();
   const gradientId = `${reactId}-bar-fill`;
   const glowId = `${reactId}-bar-glow`;
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   if (series.length === 0) {
     return null;
@@ -110,7 +113,33 @@ function ReleasesPerDayChart({
   const max = series.reduce((acc, point) => Math.max(acc, point.releases), 0);
   const lastIndex = series.length - 1;
 
+  const hoveredPoint =
+    hoveredIndex !== null && hoveredIndex >= 0 && hoveredIndex < series.length
+      ? series[hoveredIndex]
+      : null;
+
+  // When a bar is hovered the caption swaps to show that bar's release
+  // count + date so the user gets immediate textual feedback without the
+  // ~500ms delay the native SVG `<title>` tooltip imposes. The bar itself
+  // still brightens via `:hover` so the visual "which one" + textual
+  // "how many" channels reinforce each other.
+  const caption = hoveredPoint
+    ? `${hoveredPoint.releases} release${hoveredPoint.releases === 1 ? "" : "s"} · ${formatStatLabel(hoveredPoint.date)}`
+    : "Releases per day";
+
   return (
+    <div
+      className="changelogStatsChartWrap"
+      data-hovered={hoveredPoint !== null ? "true" : "false"}
+      onPointerLeave={() => setHoveredIndex(null)}
+    >
+      <span
+        className="changelogStatsChartCaption"
+        role="status"
+        aria-live="polite"
+      >
+        {caption}
+      </span>
     <svg
       className="changelogStatsChart"
       viewBox={`0 0 ${viewWidth} ${viewHeight}`}
@@ -179,6 +208,7 @@ function ReleasesPerDayChart({
                 ? "changelogStatsChartBar changelogStatsChartBarLatest"
                 : "changelogStatsChartBar"
             }
+            onPointerEnter={() => setHoveredIndex(index)}
           >
             <title>
               {`${formatStatLabel(point.date)}: ${point.releases} release${
@@ -189,6 +219,7 @@ function ReleasesPerDayChart({
         );
       })}
     </svg>
+    </div>
   );
 }
 
@@ -274,9 +305,9 @@ export function ChangelogView(): ReactNode {
   return (
     <section className="changelogPage">
       <div className="changelogPageShell">
-        <section
+        <BannerCard
+          ariaLabel="Changelog summary"
           className="changelogStatsCard"
-          aria-label="Changelog summary"
         >
           <header className="changelogStatsCardHeader">
             <h1 className="changelogPageTitle">Changelog</h1>
@@ -315,14 +346,9 @@ export function ChangelogView(): ReactNode {
               </div>
             </dl>
 
-            <div className="changelogStatsChartWrap" aria-hidden={releasesPerDay.length === 0}>
-              <span className="changelogStatsChartCaption">
-                Releases per day
-              </span>
-              <ReleasesPerDayChart series={releasesPerDay} />
-            </div>
+            <ReleasesPerDayChart series={releasesPerDay} />
           </div>
-        </section>
+        </BannerCard>
 
         {entries.length > 0 ? (
           <div className="changelogEntries" aria-label="Aura changelog entries">
