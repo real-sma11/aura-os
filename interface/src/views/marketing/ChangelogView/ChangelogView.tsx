@@ -376,11 +376,20 @@ export function ChangelogView(): ReactNode {
                       </time>
                       <Link
                         to="/download"
-                        className="changelogStatVersionDownload"
+                        className="changelogStatVersionLink"
                       >
                         Download
                         <span aria-hidden="true">&nbsp;&rarr;</span>
                       </Link>
+                      <a
+                        href="https://github.com/cypher-asi/aura-os"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="changelogStatVersionLink"
+                      >
+                        GitHub
+                        <span aria-hidden="true">&nbsp;&rarr;</span>
+                      </a>
                     </dd>
                   ) : null}
                 </div>

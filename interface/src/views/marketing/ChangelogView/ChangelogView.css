@@ -167,7 +167,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.changelogStatVersionDownload {
+.changelogStatVersionLink {
   color: #fff;
   text-decoration: none;
   font-weight: 600;
@@ -175,8 +175,8 @@
   transition: color 120ms ease;
 }
 
-.changelogStatVersionDownload:hover,
-.changelogStatVersionDownload:focus-visible {
+.changelogStatVersionLink:hover,
+.changelogStatVersionLink:focus-visible {
   color: #ff64c8;
 }
 

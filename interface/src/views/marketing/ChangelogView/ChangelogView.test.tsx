@@ -161,12 +161,24 @@ describe("ChangelogView", () => {
     expect(time?.textContent).toMatch(/Released 2 hours ago/);
     expect(time).toHaveAttribute("datetime", generatedAt);
 
-    // The Download link lives inside the Current Version stat block (not
-    // in the page header anymore) and routes to the marketing /download
-    // page.
-    const downloadLink = stat!.querySelector("a");
-    expect(downloadLink).not.toBeNull();
+    // The Current Version stat block hosts two links: an in-app
+    // /download link (router-handled) and an external GitHub link that
+    // opens the aura-os repo in a new tab.
+    const links = stat!.querySelectorAll<HTMLAnchorElement>("a");
+    expect(links.length).toBe(2);
+
+    const [downloadLink, githubLink] = Array.from(links);
     expect(downloadLink).toHaveAttribute("href", "/download");
-    expect(downloadLink?.textContent).toMatch(/Download/);
+    expect(downloadLink.textContent).toMatch(/Download/);
+    expect(downloadLink.getAttribute("target")).not.toBe("_blank");
+
+    expect(githubLink).toHaveAttribute(
+      "href",
+      "https://github.com/cypher-asi/aura-os",
+    );
+    expect(githubLink).toHaveAttribute("target", "_blank");
+    expect(githubLink.getAttribute("rel") ?? "").toMatch(/noopener/);
+    expect(githubLink.getAttribute("rel") ?? "").toMatch(/noreferrer/);
+    expect(githubLink.textContent).toMatch(/GitHub/);
   });
 });
