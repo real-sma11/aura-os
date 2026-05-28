@@ -457,62 +457,54 @@ export const PERSONAS: ReadonlyArray<Persona> = [
     name: "Coordinator",
     role: "Team orchestrator",
     theme: {
+      // Helmeted "WILDER WORLD / CYPHER / AURA" figure on a cool
+      // steel-blue studio field. Source is a 1024×1024 square,
+      // same aspect as the Vibecoder / Cypher Punk / Giga Brain
+      // portraits, so the wallpaper framing inherits the same
+      // canonical `contain` + matching-frame-bg math: the figure
+      // renders end-to-end vertically and the sampled steel-blue
+      // paints the horizontal letterbox bars so the source's own
+      // backdrop appears to extend to the window edges with no
+      // visible seam.
       desktopBackgroundUrl: "/personas/coordinator/desktop.png",
       // Position is irrelevant under `contain` (the image fits
-      // entirely within the frame on its constrained axis and
-      // there is no crop window to anchor). The prior
-      // `"center 35%"` was a `cover`-mode nudge that became a
-      // no-op when we switched to `contain`, so it's been dropped
-      // rather than left as misleading dead code.
+      // entirely inside the frame and there is no crop axis to
+      // anchor). Same shape as the other character portraits.
       desktopBackgroundPosition: null,
-      // `contain` keeps the figure pinned edge-to-edge vertically:
-      // for a 3:4 source inside the 16:10 frame, contain fits the
-      // source HEIGHT exactly (rendered 750×1000 at scale 1.0)
-      // and the leftover ~850px of frame width becomes horizontal
-      // letterbox bars. Switched here from the prior `cover` +
-      // `scale: 0.85` combo because that combo shrank both axes
-      // uniformly — the 15% zoom-out exposed slate-blue bars on
-      // top + bottom + sides, breaking the "full height" read.
-      // With `contain` + a scale > 1 the image fills the height
-      // again (vertical overflow gets cropped instead of bars
-      // appearing) while still rendering the figure smaller than
-      // the original `cover` view.
+      // `contain` shows the full source vertically: the
+      // 1024×1024 square fits to the frame's 1000px height and
+      // the leftover ~600px of frame width becomes horizontal
+      // letterbox bars. Matches Vibecoder / Cypher Punk / Giga
+      // Brain so the figure renders at the same visible size
+      // across all four square-source character portraits —
+      // cross-fading between them is a clean image dissolve
+      // with no size jump.
       desktopBackgroundFit: "contain",
-      // Sampled mid-tone of the source's steel-blue field
-      // (~`#6f7d8a` averaged across the upper expanse around the
-      // helmet). Painted behind the wallpaper `<img>` so any
-      // residual seam between the wallpaper rectangle and the
-      // appFrame fill blends with the figure's own backdrop
-      // instead of revealing the default near-black appFrame
-      // fill. At scale 2.4 the rendered image fully overflows
-      // the frame on every side, so this color is mostly a
-      // safety net for sub-pixel rounding rather than a visible
-      // letterbox fill.
-      desktopBackgroundColor: "#6f7d8a",
-      // Zoom in ~2× from the original 1.2 setting so the helmeted
-      // figure dominates the mock desktop. The `contain`
-      // baseline paints the 3:4 source at 750×1000 inside a
-      // 1600×1000 frame; multiplying by 2.4 around the frame
-      // center renders it at 1800×2400, which now overflows the
-      // frame on all four sides (~100px each horizontally,
-      // ~700px each vertically). The horizontal letterbox bars
-      // disappear entirely; the vertical crop is then biased by
-      // `desktopBackgroundOffsetY` below so the visible band
-      // lands on the helmet + upper chest rather than the dead
-      // center of the source.
-      desktopBackgroundScale: 2.4,
-      // Pull the wallpaper down 8% of frame height (~80px in the
-      // 1000px design frame) so the helmet/upper-torso slice
-      // sits centered in the visible window instead of pinned
-      // to the top. Composed as `translateY(8%) scale(2.4)` —
-      // CSS applies the rightmost transform first, so the 8%
-      // is screen-space (relative to the frame) rather than
-      // pre-scale source-space, and stays proportional at any
-      // viewport size. With this offset the visible source band
-      // shifts from y≈291–708 (default-centered) up to y≈258–675,
-      // exposing ~33 more source-px of the helmet/sky above the
-      // visor and trimming the same amount off the lower torso.
-      desktopBackgroundOffsetY: 8,
+      // Sampled mid-tone of the new asset's steel-blue field
+      // (~`#7c919a` averaged across the upper expanse around the
+      // helmet). With `contain` fit it paints the horizontal
+      // letterbox bars on either side of the centered image; the
+      // source's own muted blue-gray bg then appears to extend
+      // seamlessly to the window edges instead of revealing the
+      // default near-black appFrame fill behind the bars.
+      desktopBackgroundColor: "#7c919a",
+      // Zoom in 10% from the `contain` baseline — matches the
+      // Vibecoder / Cypher Punk / Giga Brain scale exactly so all
+      // four 1024×1024 character portraits render at the same
+      // visible 1100×1100 size, keeping cross-fades between them
+      // a clean dissolve with no size jump. The painted contain
+      // rectangle (1000×1000 inside a 1600×1000 frame) scales to
+      // 1100×1100 around the frame center: the figure grows 10%
+      // larger, the horizontal letterbox bars shrink from 300px
+      // to 250px each side, and a ~4.5% slice at the top / bottom
+      // of the source falls outside the frame and gets trimmed
+      // by `.appFrame`'s `overflow: hidden`. The matching
+      // steel-blue bg above still fills the (narrower) letterbox
+      // bars so the seam stays invisible.
+      desktopBackgroundScale: 1.1,
+      // Default-centered crop is correct for this 1024×1024
+      // square portrait — no vertical nudge needed.
+      desktopBackgroundOffsetY: null,
       // No surrounding site image — the page paints a solid lavender
       // wash behind the `MockAuraApp` rectangle so the helmeted
       // portrait sits on a flat saturated field.
@@ -530,10 +522,11 @@ export const PERSONAS: ReadonlyArray<Persona> = [
       // lavender page wash on the color wheel — the default neon
       // violet would disappear into the bg here.
       siteCtaGlowColor: "#5ce0ff",
-      // The portrait source is a tall 3:4 frame (helmet + upper
-      // torso) so the head naturally sits higher than on the
-      // square sources. Default `50% 18%` slice still lands the
-      // helmet centered in the 18px avatar circle.
+      // Default `50% 18%` framing keeps the helmet + visor
+      // centered inside the 18px avatar circle once the dock zooms
+      // in 2x on the 1024×1024 source — the head sits in the upper
+      // third of the source like every other curated portrait, so
+      // no per-persona override is needed.
       avatarObjectPosition: null,
     },
   },
