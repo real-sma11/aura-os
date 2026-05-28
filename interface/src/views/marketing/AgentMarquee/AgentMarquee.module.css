@@ -18,11 +18,33 @@
 .marquee {
   position: relative;
   width: 100%;
+  /* Vertical padding creates a buffer band around the un-scaled
+     row of cards so the hovered card's vertical overflow stays
+     INSIDE the marquee's mask-clip box. Without this padding,
+     `mask-image` (declared below) clips at the marquee's
+     border-box: a hovered card's `translateY(-8px) scale(1.25)`
+     transform extends ~46.5px above and ~30.5px below the row
+     baseline (`(scale - 1) * card_h / 2 ± lift`), which would
+     escape the mask box and get masked away even though
+     `overflow: visible` is set — the mask determines the painted
+     area regardless of overflow.
+     64px top/bottom comfortably accommodates the card's ~46.5px
+     max overflow at every breakpoint (the mobile cards are
+     shorter, so their overflow is smaller). The padding does NOT
+     change the row's visual position because the parent
+     `.pageHeroVideoOverlay` flex-centers the marquee vertically
+     in the video box; the padded marquee is still centered
+     around the orb's bright spot, just with hidden buffer rows
+     above and below the visible cards. */
+  padding: 64px 0;
   /* Mask the strip's left + right edges back to the video so cards
      fade IN as they enter from the right and OUT as they exit to
      the left, instead of popping at the section's edge. The
      8% / 92% stops keep the bulk of the strip fully visible while
-     softening only the entry / exit zones. */
+     softening only the entry / exit zones. The mask covers the
+     full padded box (the default `mask-clip: border-box` includes
+     padding), so the vertical buffer added above paints normally
+     under the horizontal gradient. */
   mask-image: linear-gradient(
     to right,
     transparent 0%,
@@ -37,11 +59,12 @@
     #000 92%,
     transparent 100%
   );
-  /* Allow the hovered card's `transform: scale(1.18)` to grow
-     past the strip's box without being clipped. Without this an
-     `overflow: hidden` would otherwise feel natural here for the
-     fade mask, but the mask-image already replaces that role and
-     `overflow: visible` lets the zoomed card breathe vertically. */
+  /* Belt-and-braces: even with the padding buffer above, leaving
+     overflow visible avoids any accidental clipping if a future
+     scale bump pushes the hover overflow past the 64px buffer.
+     The mask-image is the actual side-fade mechanism; this rule
+     just keeps the rendering tree from short-circuiting any
+     vertical overflow. */
   overflow: visible;
 }
 
