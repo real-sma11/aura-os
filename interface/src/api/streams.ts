@@ -121,6 +121,34 @@ function createSSEHandler<E extends string>(
   };
 }
 
+/* ── Resumable stream reattach ───────────────────────────────────── */
+
+/**
+ * Reattach to a registered harness stream (`GET /api/streams/:id`),
+ * replaying everything after `since` then streaming live. The request
+ * is idempotent (GET) so {@link streamSSE}'s resume path can transparently
+ * reconnect with an updated `?since=` cursor on a transient drop.
+ *
+ * Frames are forwarded as `AuraEvent`s through the same handler shape
+ * the chat stream uses, so callers can route them into the relevant UI
+ * surface (or through `handleEngineEvent`).
+ */
+export function attachToStream(
+  attachId: string,
+  since: number,
+  handler: StreamEventHandler,
+  signal?: AbortSignal,
+) {
+  const sinceParam = since > 0 ? `?since=${since}` : "";
+  return streamSSE<string>(
+    `${BASE_URL}/api/streams/${encodeURIComponent(attachId)}${sinceParam}`,
+    { method: "GET" },
+    createChatStreamHandler(handler),
+    signal,
+    { resumable: true },
+  );
+}
+
 function createChatStreamHandler(handler: StreamEventHandler): SSECallbacks<string> {
   return {
     onEvent(eventType: string, data: unknown) {

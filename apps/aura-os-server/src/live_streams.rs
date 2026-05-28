@@ -296,3 +296,108 @@ impl LiveStreamRegistry {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aura_os_harness::{ErrorMsg, HarnessSession, TextDelta};
+    use tokio::sync::mpsc;
+
+    fn fake_session() -> HarnessSession {
+        let (events_tx, _) = broadcast::channel(16);
+        let (raw_events_tx, _) = broadcast::channel(16);
+        let (commands_tx, _commands_rx) = mpsc::channel(16);
+        HarnessSession {
+            session_id: "sess-1".to_string(),
+            events_tx,
+            raw_events_tx,
+            commands_tx,
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarder_records_frames_and_marks_terminal() {
+        let registry = Arc::new(LiveStreamRegistry {
+            inner: DashMap::new(),
+            stream_capacity: 64,
+            ttl: Duration::from_secs(300),
+        });
+        let session = fake_session();
+        let events_tx = session.events_tx.clone();
+        let scope = StreamScope {
+            user_id: Some("u1".to_string()),
+            project_id: Some("p1".to_string()),
+            ..Default::default()
+        };
+        let stream = registry.register(StreamKind::SpecGen, scope, session);
+
+        // A non-terminal frame is recorded and the stream stays live.
+        events_tx
+            .send(HarnessOutbound::TextDelta(TextDelta {
+                text: "hello".to_string(),
+            }))
+            .unwrap();
+        // A terminal frame ends it.
+        events_tx
+            .send(HarnessOutbound::Error(ErrorMsg {
+                code: "boom".to_string(),
+                message: "boom".to_string(),
+                recoverable: false,
+                support_id: None,
+            }))
+            .unwrap();
+
+        // Let the forwarder drain.
+        for _ in 0..50 {
+            if stream.is_terminated() && stream.events.latest_seq() >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        assert!(stream.is_terminated(), "terminal frame should end stream");
+        assert_eq!(stream.events.latest_seq(), 2, "both frames recorded");
+
+        let summary = stream.summary();
+        assert_eq!(summary.kind, StreamKind::SpecGen);
+        assert!(summary.terminated);
+        assert_eq!(summary.latest_seq, 2);
+    }
+
+    #[tokio::test]
+    async fn list_for_scope_filters_by_user_and_project() {
+        let registry = Arc::new(LiveStreamRegistry {
+            inner: DashMap::new(),
+            stream_capacity: 64,
+            ttl: Duration::from_secs(300),
+        });
+        let s1 = registry.register(
+            StreamKind::SpecGen,
+            StreamScope {
+                user_id: Some("u1".to_string()),
+                project_id: Some("p1".to_string()),
+                ..Default::default()
+            },
+            fake_session(),
+        );
+        let _s2 = registry.register(
+            StreamKind::SpecGen,
+            StreamScope {
+                user_id: Some("u2".to_string()),
+                project_id: Some("p1".to_string()),
+                ..Default::default()
+            },
+            fake_session(),
+        );
+
+        let mine = registry.list_for_scope("u1", None, None);
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].attach_id, s1.attach_id);
+
+        let mine_p2 = registry.list_for_scope("u1", Some("p2"), None);
+        assert!(mine_p2.is_empty(), "project filter excludes p1 stream");
+
+        let mine_p1 = registry.list_for_scope("u1", Some("p1"), None);
+        assert_eq!(mine_p1.len(), 1);
+    }
+}
