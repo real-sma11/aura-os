@@ -11,12 +11,31 @@ use tracing::warn;
 use aura_os_core::{ProjectId, Spec, SpecId};
 
 use super::super::spec_disk::remove_spec_from_disk;
+use super::markdown::{append_block, replace_section};
 use super::{
-    mirror_spec_best_effort, resolve_spec_workspace, CreateSpecBody, SpecQueryParams,
-    UpdateSpecBody,
+    mirror_spec_best_effort, resolve_spec_workspace, spec_content_hash, AppendSpecBody,
+    CreateSpecBody, SpecQueryParams, SpecResponse, UpdateSpecBody, UpdateSpecSectionBody,
 };
 use crate::error::{map_storage_error, ApiError, ApiResult};
 use crate::state::{AppState, AuthJwt};
+
+/// Enforce an optimistic-concurrency `if_match` token against the spec's
+/// current `markdown_contents`. Returns 409 (with the current hash in the
+/// error details) when the caller's snapshot is stale. A `None` token is
+/// always accepted so legacy callers keep last-write-wins semantics.
+fn check_if_match(current_markdown: &str, if_match: Option<&str>) -> ApiResult<()> {
+    if let Some(expected) = if_match {
+        let actual = spec_content_hash(current_markdown);
+        if actual != expected {
+            return Err(ApiError::conflict_with_details(
+                "spec was modified since it was last read (if_match mismatch); \
+                 re-fetch it with get_spec and retry the edit",
+                actual,
+            ));
+        }
+    }
+    Ok(())
+}
 
 pub(crate) async fn list_specs(
     State(state): State<AppState>,
@@ -42,7 +61,7 @@ pub(crate) async fn create_spec(
     Path(project_id): Path<ProjectId>,
     Query(params): Query<SpecQueryParams>,
     Json(req): Json<CreateSpecBody>,
-) -> ApiResult<Json<Spec>> {
+) -> ApiResult<Json<SpecResponse>> {
     let storage = state.require_storage_client()?;
     let markdown_for_disk = req.markdown_contents.clone();
     let created = storage
@@ -73,14 +92,14 @@ pub(crate) async fn create_spec(
         "spec": spec,
         "spec_id": spec.spec_id.to_string(),
     }));
-    Ok(Json(spec))
+    Ok(Json(SpecResponse::new(spec)))
 }
 
 pub(crate) async fn get_spec(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
     Path((_project_id, spec_id)): Path<(ProjectId, SpecId)>,
-) -> ApiResult<Json<Spec>> {
+) -> ApiResult<Json<SpecResponse>> {
     let storage = state.require_storage_client()?;
     let storage_spec =
         storage
@@ -93,7 +112,7 @@ pub(crate) async fn get_spec(
                 _ => ApiError::internal(format!("fetching spec: {e}")),
             })?;
     let spec = Spec::try_from(storage_spec).map_err(ApiError::internal)?;
-    Ok(Json(spec))
+    Ok(Json(SpecResponse::new(spec)))
 }
 
 pub(crate) async fn update_spec(
@@ -102,15 +121,25 @@ pub(crate) async fn update_spec(
     Path((project_id, spec_id)): Path<(ProjectId, SpecId)>,
     Query(params): Query<SpecQueryParams>,
     Json(req): Json<UpdateSpecBody>,
-) -> ApiResult<Json<Spec>> {
+) -> ApiResult<Json<SpecResponse>> {
     let storage = state.require_storage_client()?;
 
-    let old_title = storage
+    let current = storage
         .get_spec(&spec_id.to_string(), &jwt)
         .await
         .ok()
-        .and_then(|s| Spec::try_from(s).ok())
-        .map(|s| s.title);
+        .and_then(|s| Spec::try_from(s).ok());
+
+    // Optimistic concurrency: a supplied `if_match` requires a reliable
+    // snapshot to compare against, so treat a missing/unreadable spec as a
+    // 404 rather than silently skipping the guard.
+    if req.if_match.is_some() {
+        let current = current
+            .as_ref()
+            .ok_or_else(|| ApiError::not_found("spec not found"))?;
+        check_if_match(&current.markdown_contents, req.if_match.as_deref())?;
+    }
+    let old_title = current.map(|s| s.title);
 
     let markdown_for_disk = req.markdown_contents.clone();
     storage
@@ -134,35 +163,188 @@ pub(crate) async fn update_spec(
             _ => ApiError::internal(format!("updating spec: {e}")),
         })?;
 
-    let storage_spec =
-        storage
-            .get_spec(&spec_id.to_string(), &jwt)
-            .await
-            .map_err(|e| match &e {
-                aura_os_storage::StorageError::Server { status: 404, .. } => {
-                    ApiError::not_found("spec not found")
-                }
-                _ => ApiError::internal(format!("fetching updated spec: {e}")),
-            })?;
+    finalize_spec_write(
+        &state,
+        &jwt,
+        &project_id,
+        &spec_id,
+        old_title.as_deref(),
+        markdown_for_disk,
+        params.agent_instance_id,
+    )
+    .await
+}
+
+/// Shared tail for every spec mutation: re-fetch the authoritative record,
+/// mirror the markdown to the local workspace, broadcast `spec_saved`, and
+/// return the `content_hash`-bearing response. `markdown_for_disk` is the
+/// caller's intended body (preferred for the disk mirror); when `None` the
+/// stored value is mirrored instead so a pure rename still rewrites disk.
+async fn finalize_spec_write(
+    state: &AppState,
+    jwt: &str,
+    project_id: &ProjectId,
+    spec_id: &SpecId,
+    old_title: Option<&str>,
+    markdown_for_disk: Option<String>,
+    agent_instance_id: Option<aura_os_core::AgentInstanceId>,
+) -> ApiResult<Json<SpecResponse>> {
+    let storage = state.require_storage_client()?;
+    let storage_spec = storage
+        .get_spec(&spec_id.to_string(), jwt)
+        .await
+        .map_err(|e| match &e {
+            aura_os_storage::StorageError::Server { status: 404, .. } => {
+                ApiError::not_found("spec not found")
+            }
+            _ => ApiError::internal(format!("fetching updated spec: {e}")),
+        })?;
     let spec = Spec::try_from(storage_spec).map_err(ApiError::internal)?;
 
     if let Some(workspace_root) =
-        resolve_spec_workspace(&state, &project_id, params.agent_instance_id).await
+        resolve_spec_workspace(state, project_id, agent_instance_id).await
     {
-        // Prefer the markdown from the update payload (the caller's intent);
-        // fall back to the authoritative stored value so the file contents are
-        // still rewritten on a pure rename.
         let markdown = markdown_for_disk.unwrap_or_else(|| spec.markdown_contents.clone());
-        mirror_spec_best_effort(
-            &workspace_root,
-            old_title.as_deref(),
-            &spec.title,
-            &markdown,
-        )
-        .await;
+        mirror_spec_best_effort(&workspace_root, old_title, &spec.title, &markdown).await;
     }
 
-    Ok(Json(spec))
+    let _ = state.event_broadcast.send(serde_json::json!({
+        "type": "spec_saved",
+        "project_id": project_id.to_string(),
+        "spec": spec,
+        "spec_id": spec.spec_id.to_string(),
+    }));
+
+    Ok(Json(SpecResponse::new(spec)))
+}
+
+/// Read-modify-write a single `## ` section of a spec's markdown.
+pub(crate) async fn update_spec_section(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path((project_id, spec_id)): Path<(ProjectId, SpecId)>,
+    Query(params): Query<SpecQueryParams>,
+    Json(req): Json<UpdateSpecSectionBody>,
+) -> ApiResult<Json<SpecResponse>> {
+    let storage = state.require_storage_client()?;
+    let current = storage
+        .get_spec(&spec_id.to_string(), &jwt)
+        .await
+        .map_err(|e| match &e {
+            aura_os_storage::StorageError::Server { status: 404, .. } => {
+                ApiError::not_found("spec not found")
+            }
+            _ => ApiError::internal(format!("fetching spec: {e}")),
+        })
+        .and_then(|s| Spec::try_from(s).map_err(ApiError::internal))?;
+
+    check_if_match(&current.markdown_contents, req.if_match.as_deref())?;
+
+    let new_markdown = replace_section(&current.markdown_contents, &req.section_heading, &req.new_body)
+        .map_err(|available| {
+            let headings = if available.is_empty() {
+                "(none)".to_string()
+            } else {
+                available.join(", ")
+            };
+            ApiError::bad_request(format!(
+                "section `{}` not found in spec; available `## ` sections: {headings}",
+                req.section_heading
+            ))
+        })?;
+
+    write_spec_markdown(
+        &state,
+        &jwt,
+        &project_id,
+        &spec_id,
+        &current.title,
+        new_markdown,
+        params.agent_instance_id,
+    )
+    .await
+}
+
+/// Append a markdown block to the end of a spec's body.
+pub(crate) async fn append_to_spec(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path((project_id, spec_id)): Path<(ProjectId, SpecId)>,
+    Query(params): Query<SpecQueryParams>,
+    Json(req): Json<AppendSpecBody>,
+) -> ApiResult<Json<SpecResponse>> {
+    let storage = state.require_storage_client()?;
+    let current = storage
+        .get_spec(&spec_id.to_string(), &jwt)
+        .await
+        .map_err(|e| match &e {
+            aura_os_storage::StorageError::Server { status: 404, .. } => {
+                ApiError::not_found("spec not found")
+            }
+            _ => ApiError::internal(format!("fetching spec: {e}")),
+        })
+        .and_then(|s| Spec::try_from(s).map_err(ApiError::internal))?;
+
+    check_if_match(&current.markdown_contents, req.if_match.as_deref())?;
+
+    let new_markdown = append_block(&current.markdown_contents, &req.markdown);
+
+    write_spec_markdown(
+        &state,
+        &jwt,
+        &project_id,
+        &spec_id,
+        &current.title,
+        new_markdown,
+        params.agent_instance_id,
+    )
+    .await
+}
+
+/// Persist a fully-rebuilt markdown body (section replace / append) by
+/// delegating to the storage `update_spec` write, then run the shared
+/// finalize tail.
+async fn write_spec_markdown(
+    state: &AppState,
+    jwt: &str,
+    project_id: &ProjectId,
+    spec_id: &SpecId,
+    old_title: &str,
+    new_markdown: String,
+    agent_instance_id: Option<aura_os_core::AgentInstanceId>,
+) -> ApiResult<Json<SpecResponse>> {
+    let storage = state.require_storage_client()?;
+    storage
+        .update_spec(
+            &spec_id.to_string(),
+            jwt,
+            &aura_os_storage::types::UpdateSpecRequest {
+                title: None,
+                order_index: None,
+                markdown_contents: Some(new_markdown.clone()),
+            },
+        )
+        .await
+        .map_err(|e| match &e {
+            aura_os_storage::StorageError::Server { status: 404, .. } => {
+                ApiError::not_found("spec not found")
+            }
+            aura_os_storage::StorageError::Server { status: 400, body } => {
+                ApiError::bad_request(body.clone())
+            }
+            _ => ApiError::internal(format!("updating spec: {e}")),
+        })?;
+
+    finalize_spec_write(
+        state,
+        jwt,
+        project_id,
+        spec_id,
+        Some(old_title),
+        Some(new_markdown),
+        agent_instance_id,
+    )
+    .await
 }
 
 pub(crate) async fn delete_spec(
@@ -256,7 +438,7 @@ pub(crate) async fn get_spec_flat(
     state: State<AppState>,
     jwt: AuthJwt,
     Path(spec_id): Path<SpecId>,
-) -> ApiResult<Json<Spec>> {
+) -> ApiResult<Json<SpecResponse>> {
     get_spec(state, jwt, Path((ProjectId::nil(), spec_id))).await
 }
 
@@ -289,9 +471,45 @@ pub(crate) async fn update_spec_flat(
     Path(spec_id): Path<SpecId>,
     Query(params): Query<SpecQueryParams>,
     body: Json<UpdateSpecBody>,
-) -> ApiResult<Json<Spec>> {
+) -> ApiResult<Json<SpecResponse>> {
     let project_id = lookup_spec_project_id(&state, &jwt, &spec_id).await?;
     update_spec(
+        State(state),
+        AuthJwt(jwt),
+        Path((project_id, spec_id)),
+        Query(params),
+        body,
+    )
+    .await
+}
+
+pub(crate) async fn update_spec_section_flat(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path(spec_id): Path<SpecId>,
+    Query(params): Query<SpecQueryParams>,
+    body: Json<UpdateSpecSectionBody>,
+) -> ApiResult<Json<SpecResponse>> {
+    let project_id = lookup_spec_project_id(&state, &jwt, &spec_id).await?;
+    update_spec_section(
+        State(state),
+        AuthJwt(jwt),
+        Path((project_id, spec_id)),
+        Query(params),
+        body,
+    )
+    .await
+}
+
+pub(crate) async fn append_to_spec_flat(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path(spec_id): Path<SpecId>,
+    Query(params): Query<SpecQueryParams>,
+    body: Json<AppendSpecBody>,
+) -> ApiResult<Json<SpecResponse>> {
+    let project_id = lookup_spec_project_id(&state, &jwt, &spec_id).await?;
+    append_to_spec(
         State(state),
         AuthJwt(jwt),
         Path((project_id, spec_id)),

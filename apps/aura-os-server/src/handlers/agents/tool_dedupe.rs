@@ -73,6 +73,8 @@ const HARNESS_NATIVE_TOOL_NAMES: &[&str] = &[
     "get_spec",
     "create_spec",
     "update_spec",
+    "update_spec_section",
+    "append_to_spec",
     "delete_spec",
     // chat_management_tools: task_tool_definitions
     "list_tasks",

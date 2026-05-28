@@ -50,7 +50,7 @@
   {
     "name": "update_spec",
     "description": "Update an existing persisted Aura spec",
-    "promptSignature": "update_spec(spec_id, title?, markdown_contents?)",
+    "promptSignature": "update_spec(spec_id, title?, order_index?, markdown_contents?, if_match?)",
     "savedEvent": "spec_saved",
     "savedPayloadKey": "spec",
     "inputSchema": {
@@ -65,12 +65,76 @@
           "type": "string",
           "description": "Optional replacement title."
         },
+        "order_index": {
+          "type": "integer",
+          "description": "Optional new sort position for the spec."
+        },
         "markdown_contents": {
           "type": "string",
-          "description": "Optional replacement markdown body. If supplied, it must follow the structured spec content contract: `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected Files & Modules`, `## Interfaces & Signatures`, `## Design / Approach`, `## External References`, and `## Definition of Done`."
+          "description": "Optional replacement markdown body. If supplied, it must follow the structured spec content contract: `## Background / Context`, `## Goals`, `## Non-Goals`, `## Affected Files & Modules`, `## Interfaces & Signatures`, `## Design / Approach`, `## External References`, and `## Definition of Done`. For small edits to large specs, prefer update_spec_section or append_to_spec."
+        },
+        "if_match": {
+          "type": "string",
+          "description": "Optional optimistic-concurrency token: the `content_hash` returned by get_spec. The write is refused with a conflict error if the spec's current body no longer matches."
         }
       },
       "required": ["spec_id"]
+    }
+  },
+  {
+    "name": "update_spec_section",
+    "description": "Replace the body of a single `## ` section of a spec without re-sending the whole document",
+    "promptSignature": "update_spec_section(spec_id, section_heading, new_body, if_match?)",
+    "savedEvent": "spec_saved",
+    "savedPayloadKey": "spec",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec_id": {
+          "type": "string",
+          "description": "UUID of the spec to update."
+        },
+        "section_heading": {
+          "type": "string",
+          "description": "Heading of the `## ` section to replace, e.g. `## Goals` or `Goals`. Matched case-insensitively, with or without the leading `## `."
+        },
+        "new_body": {
+          "type": "string",
+          "description": "Replacement markdown for that section's body. The heading line itself is preserved."
+        },
+        "if_match": {
+          "type": "string",
+          "description": "Optional optimistic-concurrency token (`content_hash` from get_spec)."
+        }
+      },
+      "required": ["spec_id", "section_heading", "new_body"]
+    }
+  },
+  {
+    "name": "append_to_spec",
+    "description": "Append a markdown block to the end of a spec without re-sending the existing body",
+    "promptSignature": "append_to_spec(spec_id, markdown, if_match?)",
+    "savedEvent": "spec_saved",
+    "savedPayloadKey": "spec",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec_id": {
+          "type": "string",
+          "description": "UUID of the spec to append to."
+        },
+        "markdown": {
+          "type": "string",
+          "description": "Markdown to append; separated from the existing body by a blank line."
+        },
+        "if_match": {
+          "type": "string",
+          "description": "Optional optimistic-concurrency token (`content_hash` from get_spec)."
+        }
+      },
+      "required": ["spec_id", "markdown"]
     }
   },
   {
@@ -155,8 +219,8 @@
   },
   {
     "name": "update_task",
-    "description": "Update an existing persisted Aura task",
-    "promptSignature": "update_task(task_id, title?, description?, status?)",
+    "description": "Update individual fields of an existing persisted Aura task",
+    "promptSignature": "update_task(task_id, title?, description?, status?, order_index?, dependency_ids?)",
     "savedEvent": "task_saved",
     "savedPayloadKey": "task",
     "inputSchema": {
@@ -178,6 +242,15 @@
         "status": {
           "type": "string",
           "description": "Optional replacement status."
+        },
+        "order_index": {
+          "type": "integer",
+          "description": "Optional new sort position within the spec."
+        },
+        "dependency_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional replacement list of task UUIDs this task depends on."
         }
       },
       "required": ["task_id"]

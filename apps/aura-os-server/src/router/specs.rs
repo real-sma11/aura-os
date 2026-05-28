@@ -1,4 +1,4 @@
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 
 use crate::handlers::specs;
@@ -28,6 +28,16 @@ pub(super) fn spec_routes() -> Router<AppState> {
                 .put(specs::update_spec)
                 .delete(specs::delete_spec),
         )
+        // Granular markdown edits: replace one `## ` section, or append a
+        // block, without re-sending the whole spec body.
+        .route(
+            "/api/projects/:project_id/specs/:spec_id/section",
+            put(specs::update_spec_section),
+        )
+        .route(
+            "/api/projects/:project_id/specs/:spec_id/append",
+            post(specs::append_to_spec),
+        )
         // Flat aliases that mirror aura-storage's `/api/specs/:id` route.
         // The harness's `HttpDomainApi` calls these directly when
         // `AURA_OS_SERVER_URL` is configured, so without these the
@@ -37,5 +47,13 @@ pub(super) fn spec_routes() -> Router<AppState> {
             get(specs::get_spec_flat)
                 .put(specs::update_spec_flat)
                 .delete(specs::delete_spec_flat),
+        )
+        .route(
+            "/api/specs/:spec_id/section",
+            put(specs::update_spec_section_flat),
+        )
+        .route(
+            "/api/specs/:spec_id/append",
+            post(specs::append_to_spec_flat),
         )
 }

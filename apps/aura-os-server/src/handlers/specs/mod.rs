@@ -10,6 +10,8 @@ use std::time::Duration;
 use serde::Deserialize;
 use tracing::{info, warn};
 
+use serde::Serialize;
+
 use aura_os_core::{AgentInstanceId, HarnessMode, ProjectId, Spec};
 
 use super::projects_helpers::resolve_project_tool_workspace_path;
@@ -19,10 +21,12 @@ use crate::state::AppState;
 
 mod crud;
 mod gen;
+mod markdown;
 
 pub(crate) use crud::{
-    create_spec, delete_spec, delete_spec_flat, get_spec, get_spec_flat, list_specs, update_spec,
-    update_spec_flat,
+    append_to_spec, append_to_spec_flat, create_spec, delete_spec, delete_spec_flat, get_spec,
+    get_spec_flat, list_specs, update_spec, update_spec_flat, update_spec_section,
+    update_spec_section_flat,
 };
 pub(crate) use gen::{generate_specs, generate_specs_stream, generate_specs_summary};
 
@@ -52,6 +56,62 @@ pub(crate) struct UpdateSpecBody {
     pub order_index: Option<i32>,
     #[serde(alias = "markdown_contents")]
     pub markdown_contents: Option<String>,
+    /// Optimistic-concurrency token: the `content_hash` the caller last
+    /// observed (from `get_spec` / a prior write). When supplied, the
+    /// write is refused with HTTP 409 if the spec's current
+    /// `markdown_contents` no longer hashes to this value.
+    #[serde(alias = "if_match")]
+    pub if_match: Option<String>,
+}
+
+/// Replace the body of a single `## ` section without re-sending the whole
+/// markdown blob. Section structure follows the prompt-enforced spec
+/// contract; matching is case-insensitive and tolerant of a missing
+/// `## ` prefix on `section_heading`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateSpecSectionBody {
+    #[serde(alias = "section_heading")]
+    pub section_heading: String,
+    #[serde(alias = "new_body")]
+    pub new_body: String,
+    #[serde(alias = "if_match")]
+    pub if_match: Option<String>,
+}
+
+/// Append a markdown block to the end of a spec without re-sending the
+/// existing body.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppendSpecBody {
+    pub markdown: String,
+    #[serde(alias = "if_match")]
+    pub if_match: Option<String>,
+}
+
+/// HTTP response wrapper that flattens a [`Spec`] and adds the
+/// `content_hash` optimistic-concurrency token. Kept here (instead of on
+/// the shared `Spec` entity) so the core type stays a pure storage
+/// record and only the HTTP surface advertises the hash.
+#[derive(Debug, Serialize)]
+pub(crate) struct SpecResponse {
+    #[serde(flatten)]
+    pub spec: Spec,
+    pub content_hash: String,
+}
+
+impl SpecResponse {
+    pub(super) fn new(spec: Spec) -> Self {
+        let content_hash = spec_content_hash(&spec.markdown_contents);
+        Self { spec, content_hash }
+    }
+}
+
+/// Stable content-hash token for a spec body. Uses `blake3` (the
+/// workspace-pinned content hash) so the value is deterministic across
+/// processes and restarts, unlike `std`'s `DefaultHasher`.
+pub(super) fn spec_content_hash(markdown: &str) -> String {
+    blake3::hash(markdown.as_bytes()).to_hex().to_string()
 }
 
 /// Resolve a local filesystem workspace root for disk-mirroring a spec.

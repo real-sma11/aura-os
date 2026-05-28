@@ -72,6 +72,9 @@ export interface UpdateSpecRequest {
   title?: string;
   order_index?: number;
   markdown_contents?: string;
+  /** Optimistic-concurrency token (`content_hash` from a prior read); the
+   * write is refused with HTTP 409 if the spec changed since. */
+  if_match?: string;
 }
 
 export interface ProjectStatsData {

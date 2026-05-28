@@ -263,14 +263,61 @@ async function updateSpec(args) {
   const specId = normalizeSpecId(args);
   const title = optionalTrimmedString(args?.title);
   const markdownContents = optionalTrimmedString(args?.markdown_contents ?? args?.markdownContents);
-  if (!title && !markdownContents) {
-    throw new Error("update_spec requires at least one of title or markdown_contents");
+  const orderIndex = args?.order_index ?? args?.orderIndex;
+  const ifMatch = optionalTrimmedString(args?.if_match ?? args?.ifMatch);
+  if (!title && !markdownContents && typeof orderIndex !== "number") {
+    throw new Error(
+      "update_spec requires at least one of title, markdown_contents, or order_index",
+    );
   }
   const spec = await api(`/api/projects/${projectId}/specs/${specId}`, {
     method: "PUT",
     body: JSON.stringify({
       ...(title ? { title } : {}),
       ...(markdownContents ? { markdownContents } : {}),
+      ...(typeof orderIndex === "number" ? { orderIndex } : {}),
+      ...(ifMatch ? { ifMatch } : {}),
+    }),
+  });
+  return { spec };
+}
+
+async function updateSpecSection(args) {
+  const specId = normalizeSpecId(args);
+  const sectionHeading = optionalTrimmedString(args?.section_heading ?? args?.sectionHeading);
+  const newBody = typeof (args?.new_body ?? args?.newBody) === "string"
+    ? (args.new_body ?? args.newBody)
+    : null;
+  const ifMatch = optionalTrimmedString(args?.if_match ?? args?.ifMatch);
+  if (!sectionHeading) {
+    throw new Error("update_spec_section requires a non-empty section_heading");
+  }
+  if (newBody === null) {
+    throw new Error("update_spec_section requires new_body");
+  }
+  const spec = await api(`/api/projects/${projectId}/specs/${specId}/section`, {
+    method: "PUT",
+    body: JSON.stringify({
+      sectionHeading,
+      newBody,
+      ...(ifMatch ? { ifMatch } : {}),
+    }),
+  });
+  return { spec };
+}
+
+async function appendToSpec(args) {
+  const specId = normalizeSpecId(args);
+  const markdown = typeof args?.markdown === "string" ? args.markdown : null;
+  const ifMatch = optionalTrimmedString(args?.if_match ?? args?.ifMatch);
+  if (markdown === null || !markdown.trim()) {
+    throw new Error("append_to_spec requires non-empty markdown");
+  }
+  const spec = await api(`/api/projects/${projectId}/specs/${specId}/append`, {
+    method: "POST",
+    body: JSON.stringify({
+      markdown,
+      ...(ifMatch ? { ifMatch } : {}),
     }),
   });
   return { spec };
@@ -346,8 +393,20 @@ async function updateTask(args) {
   const title = optionalTrimmedString(args?.title);
   const description = optionalTrimmedString(args?.description);
   const status = normalizeOptionalStatus(args);
-  if (!title && !description && !status) {
-    throw new Error("update_task requires at least one of title, description, or status");
+  const orderIndex = args?.order_index ?? args?.orderIndex;
+  const dependencyIds = Array.isArray(args?.dependency_ids ?? args?.dependencyIds)
+    ? (args.dependency_ids ?? args.dependencyIds)
+    : null;
+  if (
+    !title
+    && !description
+    && !status
+    && typeof orderIndex !== "number"
+    && dependencyIds === null
+  ) {
+    throw new Error(
+      "update_task requires at least one of title, description, status, order_index, or dependency_ids",
+    );
   }
   const task = await api(`/api/projects/${projectId}/tasks/${taskId}`, {
     method: "PUT",
@@ -355,6 +414,8 @@ async function updateTask(args) {
       ...(title ? { title } : {}),
       ...(description ? { description } : {}),
       ...(status ? { status } : {}),
+      ...(typeof orderIndex === "number" ? { order_index: orderIndex } : {}),
+      ...(dependencyIds !== null ? { dependency_ids: dependencyIds } : {}),
     }),
   });
   return { task };
@@ -468,6 +529,8 @@ const toolHandlers = {
   get_spec: getSpec,
   create_spec: createSpec,
   update_spec: updateSpec,
+  update_spec_section: updateSpecSection,
+  append_to_spec: appendToSpec,
   delete_spec: deleteSpec,
   list_tasks: listTasks,
   get_task: getTask,
