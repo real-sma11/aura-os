@@ -77,24 +77,30 @@
      by exactly `-50%` lands the second copy in the original
      starting position with no visible seam.
 
-     Sized to leave >=8px clearance between a hover-scaled card
-     (scale 1.25 -> 27.5px half-extension on each side at the
-     220px desktop card width) and its two neighbors. Bumping
-     the card width / scale factor also requires bumping this
-     gap or the zoomed card overlaps the row; the per-breakpoint
-     overrides at the bottom of this file recalculate gap from
-     the same `(scale - 1) * card_w / 2 + 8px` formula. */
-  gap: 52px;
+     Sized tight (~half the per-side hover overshoot) so the row
+     reads as a continuous band of portraits rather than as
+     widely-spaced floating tiles. The hovered card's
+     `scale(1.25)` half-extension is 27.5px at the 220px desktop
+     card width, so a 26px gap lets the zoom poke ~1.5px into
+     each neighbor's lane — which is harmless because the card's
+     `z-index: 2` on hover (declared below) paints the scaled
+     card cleanly over its neighbors. The visual result is the
+     hovered card visibly stepping forward over the strip
+     instead of being held back by an oversized gutter. The
+     per-breakpoint overrides at the bottom of this file scale
+     the gap proportionally with the card width. */
+  gap: 26px;
   /* `width: max-content` lets the row size to its full intrinsic
      width (12 cards + 11 gaps) instead of being capped by the
      parent; the keyframe `translateX(-50%)` then sweeps half of
      that width through the viewport per cycle. */
   width: max-content;
   /* 40s feels deliberate without crawling — at the desktop
-     track width (~3212px = 12 * 220 + 11 * 52), the per-cycle
-     `-50%` slide covers ~1606px in 40s ≈ 40px/s, roughly 2×
-     the prior 60s cadence so the strip's motion reads on
-     first scroll-into-view rather than feeling frozen. */
+     track width (~2926px = 12 * 220 + 11 * 26 with the tightened
+     26px gap), the per-cycle `-50%` slide covers ~1463px in
+     40s ≈ 37px/s, in the same range as the prior cadence so
+     the strip's motion still reads on first scroll-into-view
+     rather than feeling frozen. */
   animation: agent-marquee-scroll 40s linear infinite;
   /* `will-change` hints the compositor to promote the track to its
      own layer so the per-frame transform doesn't repaint the strip
@@ -103,11 +109,21 @@
   will-change: transform;
 }
 
-/* Pause the loop the moment the cursor enters the strip OR a
-   keyboard user focuses any card via Tab. Using `:hover` plus
-   `:focus-within` on the same selector keeps mouse + keyboard
-   parity without doubling the rule. */
-.marquee:hover .track,
+/* Pause the loop the moment the cursor lands on an actual card
+   OR a keyboard user focuses any card via Tab. Using
+   `.track:has(.card:hover)` for the mouse case (instead of a
+   plain `.marquee:hover` rule) means parking the cursor in the
+   GAPS between cards — or in the marquee's vertical buffer
+   padding above/below the row — keeps the strip drifting; only
+   engaging with a portrait freezes it, matching the behaviour
+   of strips like Anam's where the row stops the moment a
+   visitor actually mouses onto an agent. The `:focus-within`
+   half mirrors the keyboard case so Tab-stop pauses still work
+   regardless of the cursor's position. `:has()` is a Baseline
+   feature in every browser the public surface targets (the
+   marquee already relies on equally modern primitives like
+   `mask-image`), so no fallback is needed. */
+.track:has(.card:hover),
 .marquee:focus-within .track {
   animation-play-state: paused;
 }
@@ -214,12 +230,15 @@
      so the focused card reads as a card that has stepped forward,
      not as an image that has been enlarged. The drop shadow more
      than doubles in spread + alpha (so the surface beneath the
-     tile genuinely darkens as it lifts) and the inset border
-     brightens from 18% to 38% white so the bezel that frames the
-     portrait pops against the brighter, full-color image. */
-  box-shadow:
-    0 32px 80px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.38);
+     tile genuinely darkens as it lifts), and we deliberately
+     drop the idle inset white bezel — once the card is full-
+     color and floating well above the row, the rectangular
+     border read as a hard outline pasted onto the portrait
+     rather than a frame; removing it lets the photo itself
+     carry the lifted moment. The `:focus-visible` rule below
+     still paints a separate warm outline for keyboard users so
+     they don't lose their focus indicator. */
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
 }
 
 .card:focus-visible {
@@ -343,10 +362,11 @@
    the dimensions down so 3–4 cards fit comfortably across a
    typical tablet viewport. The hover-to-zoom interaction is
    keyboard / cursor only; touch screens just show the row.
-   Gap recalculated from `(1.25 - 1) * 168 / 2 + 8 = 29px`
-   minimum and rounded up to 42px for headroom (matches the
-   desktop ratio of gap-to-card-width so the row visually
-   reads consistently across breakpoints). */
+   Gap is set to ~half the desktop value scaled to this card
+   width (matches the ~12% gap-to-width ratio used at desktop)
+   so the strip reads as a continuous band; the hovered card's
+   `z-index: 2` paints any per-side overshoot cleanly over
+   neighbors. */
 @media (max-width: 768px) {
   .card {
     width: 168px;
@@ -355,7 +375,7 @@
   }
 
   .track {
-    gap: 42px;
+    gap: 21px;
   }
 
   .captionName {
@@ -368,9 +388,10 @@
 }
 
 /* 480px breakpoint — phones. Card stays large enough to read the
-   portrait clearly. Gap recalculated from
-   `(1.25 - 1) * 132 / 2 + 8 = 24.5px` minimum and rounded up
-   to 32px. */
+   portrait clearly. Gap follows the same tightened ratio as
+   the larger breakpoints; hover is mouse/keyboard-only on this
+   surface so a touch-first phone visitor just sees a steadily
+   drifting band. */
 @media (max-width: 480px) {
   .card {
     width: 132px;
@@ -378,6 +399,6 @@
   }
 
   .track {
-    gap: 32px;
+    gap: 16px;
   }
 }

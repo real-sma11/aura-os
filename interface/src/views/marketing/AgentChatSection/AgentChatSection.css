@@ -33,18 +33,46 @@
 }
 
 /*
- * Three-phone row. `align-items: flex-end` lines the bottom edges
- * of the side phones up with the bottom of the hero phone — the
- * hero's `translateY(-24px)` lift then naturally produces the
- * Apple-style "middle phone forward" silhouette without the side
- * phones drifting downward off the baseline.
+ * Three-phone row composed as an OVERLAPPING silhouette (Apple
+ * iPhone 17 reference). The two side phones tuck behind the
+ * center hero phone instead of sitting next to it with a gap.
+ *
+ * Mechanics:
+ *   - `gap: 0` plus negative margin on the side phones pulls
+ *     them inward so their inner edge sits ~60px past the hero's
+ *     outer edge. The hero is also 40px wider than each side
+ *     phone (see `PhoneShell.css` size clamps), so the overlap
+ *     reads as ~40-60px of the side phone slipping behind the
+ *     hero's body, matching the reference where you can see
+ *     about two-thirds of the side phones.
+ *   - The hero's `position: relative; z-index: 1` (declared in
+ *     `PhoneShell.css` for the `.phoneShellHero` modifier) keeps
+ *     it painting above the unpositioned side phones, so the
+ *     overlap reads as the hero IN FRONT of the side phones
+ *     rather than slicing into them.
+ *   - `align-items: flex-end` lines the bottom edges of the
+ *     side phones up with the hero's baseline. The hero's own
+ *     `translateY(-24px)` lift then visually pushes the hero
+ *     up and forward.
+ *   - The negative margin is `clamp()`-driven so the overlap
+ *     scales gracefully with viewport width without ever
+ *     collapsing the side phones entirely behind the hero on
+ *     very narrow viewports.
  */
 .agentChatSectionPhones {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: clamp(16px, 2vw, 32px);
+  gap: 0;
   width: 100%;
+}
+
+.agentChatSectionPhones > :first-child {
+  margin-right: clamp(-80px, -6vw, -40px);
+}
+
+.agentChatSectionPhones > :last-child {
+  margin-left: clamp(-80px, -6vw, -40px);
 }
 
 .agentChatSectionDescription {
