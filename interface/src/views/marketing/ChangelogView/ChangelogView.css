@@ -142,46 +142,32 @@
   color: #fff;
 }
 
-.changelogPageVersion {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.42);
+/* "Current version" promoted to the lead stat in the grid. It uses the
+   same label/value typography as the other stats so it reads as part of
+   the set, but spans the full width of the stats grid so the release
+   timestamp + download link can sit on a single line under the version
+   number without crowding the smaller, single-line stat blocks. */
+.changelogStatVersion {
+  grid-column: 1 / -1;
 }
 
-/* Right-aligned cluster of the header: stacks the current-version pill
-   above the "released X ago · download" line so both pieces of release
-   metadata read together while keeping the page title flushed left.
-   Falls back gracefully if either piece is missing (the wrapper is only
-   rendered when at least one is present). */
-.changelogStatsCardMeta {
+.changelogStatVersionMeta {
+  margin: 4px 0 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  text-align: right;
-}
-
-.changelogLatestRelease {
-  display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px;
-  font-size: 12px;
+  gap: 6px 14px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: rgba(255, 255, 255, 0.62);
 }
 
-.changelogLatestReleaseTime {
+.changelogStatVersionTime {
   font-variant-numeric: tabular-nums;
 }
 
-.changelogLatestReleaseSeparator {
-  color: rgba(255, 255, 255, 0.28);
-}
-
-.changelogLatestReleaseDownload {
+.changelogStatVersionDownload {
   color: #fff;
   text-decoration: none;
   font-weight: 600;
@@ -189,8 +175,8 @@
   transition: color 120ms ease;
 }
 
-.changelogLatestReleaseDownload:hover,
-.changelogLatestReleaseDownload:focus-visible {
+.changelogStatVersionDownload:hover,
+.changelogStatVersionDownload:focus-visible {
   color: #ff64c8;
 }
 

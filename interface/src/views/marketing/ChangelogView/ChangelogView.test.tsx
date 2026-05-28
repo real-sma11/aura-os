@@ -117,7 +117,7 @@ describe("ChangelogView", () => {
     expect(allTime).toHaveAttribute("aria-busy", "false");
   });
 
-  it("renders the latest-release relative time and a /download link in the header", async () => {
+  it("renders Current Version as a stat block with the version number, release age, and Download link", async () => {
     // Anchor the timestamp 2 hours before the actual test-runner clock
     // so the relative-time string is deterministic ("2 hours ago")
     // without us having to stand up a fake timer (which would interfere
@@ -148,11 +148,25 @@ describe("ChangelogView", () => {
 
     renderChangelogView();
 
-    const time = await screen.findByText(/Released 2 hours ago/);
-    expect(time.tagName.toLowerCase()).toBe("time");
+    // Label and value render in the same stat block as the other stats.
+    const label = await screen.findByText(/Current version/i);
+    const stat = label.closest(".changelogStat");
+    expect(stat).not.toBeNull();
+    expect(stat).toHaveClass("changelogStatVersion");
+
+    const value = stat!.querySelector(".changelogStatValue");
+    expect(value?.textContent).toBe("1.2.3");
+
+    const time = stat!.querySelector("time");
+    expect(time?.textContent).toMatch(/Released 2 hours ago/);
     expect(time).toHaveAttribute("datetime", generatedAt);
 
-    const downloadLink = screen.getByRole("link", { name: /Download/ });
+    // The Download link lives inside the Current Version stat block (not
+    // in the page header anymore) and routes to the marketing /download
+    // page.
+    const downloadLink = stat!.querySelector("a");
+    expect(downloadLink).not.toBeNull();
     expect(downloadLink).toHaveAttribute("href", "/download");
+    expect(downloadLink?.textContent).toMatch(/Download/);
   });
 });

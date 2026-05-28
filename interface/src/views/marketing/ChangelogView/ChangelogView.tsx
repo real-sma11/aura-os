@@ -351,52 +351,40 @@ export function ChangelogView(): ReactNode {
         >
           <header className="changelogStatsCardHeader">
             <h1 className="changelogPageTitle">Changelog</h1>
-            {(latestVersion || latestRelease) ? (
-              <div className="changelogStatsCardMeta">
-                {latestVersion ? (
-                  <span className="changelogPageVersion">
-                    Current version {latestVersion}
-                  </span>
-                ) : null}
-                {latestRelease ? (
-                  <span
-                    className="changelogLatestRelease"
-                    aria-label={`Most recent release was ${
-                      latestReleaseAgo || "recently"
-                    }`}
-                  >
-                    <time
-                      className="changelogLatestReleaseTime"
-                      dateTime={latestRelease.generatedAt}
-                      title={new Date(
-                        latestRelease.generatedAt,
-                      ).toLocaleString()}
-                    >
-                      {latestReleaseAgo
-                        ? `Released ${latestReleaseAgo}`
-                        : "Released recently"}
-                    </time>
-                    <span
-                      className="changelogLatestReleaseSeparator"
-                      aria-hidden="true"
-                    >
-                      {" · "}
-                    </span>
-                    <Link
-                      to="/download"
-                      className="changelogLatestReleaseDownload"
-                    >
-                      Download
-                      <span aria-hidden="true">&nbsp;&rarr;</span>
-                    </Link>
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
           </header>
 
           <div className="changelogStatsCardBody">
             <dl className="changelogStatsGrid">
+              {(latestVersion || latestRelease) ? (
+                <div className="changelogStat changelogStatVersion">
+                  <dt className="changelogStatLabel">Current version</dt>
+                  <dd className="changelogStatValue">
+                    {latestVersion ?? "—"}
+                  </dd>
+                  {latestRelease ? (
+                    <dd className="changelogStatVersionMeta">
+                      <time
+                        className="changelogStatVersionTime"
+                        dateTime={latestRelease.generatedAt}
+                        title={new Date(
+                          latestRelease.generatedAt,
+                        ).toLocaleString()}
+                      >
+                        {latestReleaseAgo
+                          ? `Released ${latestReleaseAgo}`
+                          : "Released recently"}
+                      </time>
+                      <Link
+                        to="/download"
+                        className="changelogStatVersionDownload"
+                      >
+                        Download
+                        <span aria-hidden="true">&nbsp;&rarr;</span>
+                      </Link>
+                    </dd>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="changelogStat">
                 <dt className="changelogStatLabel">Releases this month</dt>
                 <dd className="changelogStatValue">
