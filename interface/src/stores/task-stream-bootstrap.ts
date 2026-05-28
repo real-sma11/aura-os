@@ -746,8 +746,19 @@ function handleTaskCompletionGateEvent(
 function handleTaskUpdated(e: AuraEventOfType<typeof EventType.TaskUpdated>): void {
   const taskId = e.content.task_id;
   if (!taskId) return;
-  const isStatusEdge = !!e.content.status;
-  if (isStatusEdge) {
+  const statusEdge = e.content.status;
+  if (statusEdge) {
+    // Mirror the new status into the per-task live-status store so
+    // observers that read `useTaskStatus` (the task modal/preview,
+    // RunTaskButton) react to tool-driven status edges. These arrive
+    // as a `task_updated` { from, to } broadcast when an agent
+    // transitions a task via a tool call — a path that never produces
+    // a harness `task_completed` / `task_failed` lifecycle event, so
+    // without this the modal stays "in progress" + "Cooking..." until
+    // a manual refetch reloads the canonical row.
+    if (statusEdge.to) {
+      useTaskStatusStore.getState().setLiveStatus(taskId, statusEdge.to);
+    }
     // The lifecycle subscribers own status-edge blocks; skip the
     // synthetic update_task to avoid duplicate cards.
     return;

@@ -922,6 +922,28 @@ describe("task-stream-bootstrap: task_updated synthetic blocks", () => {
     );
     expect(transitions).toHaveLength(1);
   });
+
+  it("mirrors a status-edge task_updated into the live-status store", () => {
+    // Tool-driven completions (agent calling `transition_task`) arrive
+    // as a `task_updated` { from, to } broadcast with no harness
+    // `task_completed` lifecycle event. The handler must still flip
+    // `liveStatus` so the task modal/preview switches off "Cooking..."
+    // without a manual refresh.
+    seedActiveTask("t1");
+    dispatch({
+      type: EventType.TaskUpdated,
+      content: {
+        task_id: "t1",
+        changed_fields: ["status"],
+        status: { from: "in_progress", to: "done" },
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    expect(useTaskStatusStore.getState().byTaskId["t1"]?.liveStatus).toBe(
+      "done",
+    );
+  });
 });
 
 describe("task-stream-bootstrap: Run pane binding", () => {
