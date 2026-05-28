@@ -19,24 +19,31 @@ import { ActiveTaskStream } from "./ActiveTaskStream";
 import { CompletedTaskOutput } from "./CompletedTaskOutput";
 import { PinnedTaskStreamingIndicator } from "./PinnedTaskStreamingIndicator";
 import { CookingIndicator } from "../CookingIndicator";
+import { StatusBadge } from "../StatusBadge";
 import styles from "./TaskOutputPanel.module.css";
 
 function AutomationControls({ projectId }: { projectId: string }) {
   const {
-    canPlay, canPause, canStop, starting, preparing,
+    status, canPlay, canPause, canStop, starting, preparing,
     handleStart, handlePause, handleStop, handleStopConfirm,
     confirmStop, setConfirmStop,
     stopError, clearStopError,
   } = useAutomationStatus(projectId);
 
   const showStopPause = canPause || canStop;
+  // The loop is doing work across the same three sub-phases the
+  // AutomationBar's PlayLoopGlyph ring lights up for. We accent the
+  // Run button in this window so the running state stops reading as
+  // the same muted grey as idle.
+  const loopWorking =
+    status === "starting" || status === "preparing" || status === "active";
 
   return (
     <>
       {!showStopPause && (
         <button
           type="button"
-          className={styles.runBtnGroup}
+          className={loopWorking ? `${styles.runBtnGroup} ${styles.runBtnGroupActive}` : styles.runBtnGroup}
           onClick={handleStart}
           disabled={!canPlay}
           title="Run"
@@ -131,6 +138,26 @@ function RunPaneModelPicker({ projectId }: { projectId: string }) {
   return (
     <div className={styles.headerModelSlot}>
       <AutomationModelPicker projectId={projectId} disabled={disabled} />
+    </div>
+  );
+}
+
+/**
+ * Always-visible run-state badge for the Run pane header. The Run /
+ * Pause / Stop buttons alone can't communicate "the loop is alive":
+ * in the `active` state the "Run" label disappears entirely, leaving
+ * only two muted icons. This pulsing, color-coded badge (shared with
+ * the `AutomationBar` via `StatusBadge`) makes the running / preparing
+ * / paused state legible at a glance. Hidden while idle / stopped to
+ * keep the header uncluttered when nothing is running. Extracted so
+ * `useAutomationStatus` only mounts with a real `projectId`.
+ */
+function RunPaneStatus({ projectId }: { projectId: string }) {
+  const { status } = useAutomationStatus(projectId);
+  if (status === "idle" || status === "stopped") return null;
+  return (
+    <div className={styles.headerStatus}>
+      <StatusBadge status={status} />
     </div>
   );
 }
@@ -239,6 +266,7 @@ export function RunSidekickPane() {
       <div className={styles.sidekickPaneHeader}>
         <div className={styles.headerActions}>
           {projectId && <AutomationControls projectId={projectId} />}
+          {projectId && <RunPaneStatus projectId={projectId} />}
           {projectId && <RunPaneModelPicker projectId={projectId} />}
           {hasCompleted && (
             <button

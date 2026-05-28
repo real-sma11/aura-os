@@ -39,6 +39,16 @@
   overflow: hidden;
 }
 
+/* Always-visible run-state badge. Sits flush-left after the controls;
+   the right-aligned model picker keeps its own `margin-left: auto`, so
+   the badge stays grouped with the Run / Pause / Stop buttons. */
+.headerStatus {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 .runBtnGroup {
   display: inline-flex;
   align-items: center;
@@ -64,6 +74,22 @@
   opacity: 0.25;
   cursor: default;
   pointer-events: none;
+}
+
+/* Accent treatment while the loop is starting / preparing / active so
+   the running state stops reading as the same muted grey as idle.
+   Overrides the `:disabled` fade (the button is disabled while
+   starting) so the accent stays legible. Mirrors the accent-ring
+   convention used by `PlayLoopGlyph` in the AutomationBar / Run tab. */
+.runBtnGroupActive,
+.runBtnGroupActive:disabled {
+  opacity: 1;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.runBtnGroupActive .spinner {
+  color: var(--color-accent);
 }
 
 .headerBtn {
