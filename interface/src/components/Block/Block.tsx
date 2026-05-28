@@ -62,6 +62,15 @@ export interface BlockProps {
   className?: string;
   bodyClassName?: string;
   bodyRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Render only the header — no chevron, no body wrap, no expand/collapse
+   * affordance. Used by renderers (e.g. `ThinkingBlock` while a segment is
+   * streaming with no text yet) where the header alone is the entire UI:
+   * a non-interactive row that shimmers while the model works. Skips
+   * mounting `children` entirely so an empty body cannot paint a stray
+   * `border-top` between the header and the block's bottom edge.
+   */
+  headerOnly?: boolean;
 }
 
 function statusClass(status: BlockStatus): string {
@@ -108,6 +117,7 @@ export function Block({
   className,
   bodyClassName,
   bodyRef,
+  headerOnly = false,
 }: BlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded || forceExpanded);
 
@@ -172,16 +182,22 @@ export function Block({
 
   const bodyVisible = forceExpanded || expanded;
 
+  const headerInteractiveProps = headerOnly
+    ? {}
+    : {
+        role: "button" as const,
+        tabIndex: forceExpanded ? -1 : 0,
+        "aria-expanded": bodyVisible,
+        "aria-disabled": forceExpanded || undefined,
+        onClick: toggle,
+        onKeyDown: handleHeaderKeyDown,
+      };
+
   return (
     <div className={`${styles.block} ${statusClass(status)} ${className ?? ""}`}>
       <div
-        className={styles.blockHeader}
-        role="button"
-        tabIndex={forceExpanded ? -1 : 0}
-        aria-expanded={bodyVisible}
-        aria-disabled={forceExpanded || undefined}
-        onClick={toggle}
-        onKeyDown={handleHeaderKeyDown}
+        className={`${styles.blockHeader} ${headerOnly ? styles.blockHeaderStatic : ""}`}
+        {...headerInteractiveProps}
       >
         <span className={styles.statusDot} />
         {icon ? <span className={styles.blockIcon}>{icon}</span> : null}
@@ -199,23 +215,27 @@ export function Block({
             iconOnly
           />
         </span>
-        <span
-          className={`${styles.blockChevron} ${bodyVisible ? styles.blockChevronExpanded : ""}`}
-        >
-          <ChevronRight size={12} />
-        </span>
+        {headerOnly ? null : (
+          <span
+            className={`${styles.blockChevron} ${bodyVisible ? styles.blockChevronExpanded : ""}`}
+          >
+            <ChevronRight size={12} />
+          </span>
+        )}
       </div>
-      <div
-        className={`${styles.blockBodyWrap} ${bodyVisible ? styles.blockBodyWrapExpanded : ""}`}
-        aria-hidden={!bodyVisible}
-      >
+      {headerOnly ? null : (
         <div
-          ref={mergedBodyRef}
-          className={`${styles.blockBody} ${flushBody ? styles.blockBodyFlush : ""} ${bodyClassName ?? ""}`}
+          className={`${styles.blockBodyWrap} ${bodyVisible ? styles.blockBodyWrapExpanded : ""}`}
+          aria-hidden={!bodyVisible}
         >
-          {children}
+          <div
+            ref={mergedBodyRef}
+            className={`${styles.blockBody} ${flushBody ? styles.blockBodyFlush : ""} ${bodyClassName ?? ""}`}
+          >
+            {children}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

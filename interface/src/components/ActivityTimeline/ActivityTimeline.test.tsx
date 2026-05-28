@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ActivityTimeline } from "./ActivityTimeline";
 import type { TimelineItem, ToolCallEntry } from "../../shared/types/stream";
@@ -88,6 +88,35 @@ describe("ActivityTimeline thinking segments", () => {
     // 1 open thinking block (force-expanded) + 0 collapsed thinking block
     // visible as expanded + tool block collapsed = 1 expanded total.
     expect(expandedCount).toBe(1);
+  });
+
+  // While a thinking segment is actively streaming and has received
+  // text, the block auto-opens via `defaultExpanded` but must remain
+  // user-collapsible. Previously `forceExpanded={isStreaming}` locked
+  // the chevron and `aria-disabled`d the header, so the user could not
+  // hide a verbose live thinking trace mid-stream.
+  it("a streaming thinking segment with text is user-collapsible (no aria-disabled lock)", () => {
+    const timeline: TimelineItem[] = [
+      {
+        kind: "thinking",
+        id: "th-1",
+        text: "live thoughts streaming in",
+        startMs: 1000,
+      },
+    ];
+
+    render(<ActivityTimeline timeline={timeline} isStreaming />);
+
+    const header = screen
+      .getAllByRole("button")
+      .find((el) => el.hasAttribute("aria-expanded"));
+    expect(header).toBeDefined();
+    // Auto-open while streaming, but no force-lock.
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(header).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(header!);
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
   // Once the turn finishes, no thinking segment is streaming so neither
@@ -366,6 +395,58 @@ describe("ActivityTimeline synthetic thinking placeholder", () => {
       container.querySelectorAll<HTMLElement>("[data-kind]"),
     ).map((el) => el.dataset.kind);
     expect(dataKinds).toEqual(["tool"]);
+  });
+
+  // The synthetic placeholder has no thinking text yet, so the
+  // ThinkingBlock must render as `headerOnly`: no chevron, no
+  // body wrap, no expand/collapse affordance. Without this the empty
+  // body painted its own `border-top` and the block shell painted a
+  // bottom `border` with empty padding between them — the "double
+  // line" visible in the streaming chat lane.
+  it("renders the empty-text placeholder as a header-only row (no body wrap, no chevron)", () => {
+    const toolCalls: ToolCallEntry[] = [
+      {
+        id: "tc-1",
+        name: "read_file",
+        input: { path: "src/main.rs" },
+        result: undefined,
+        pending: true,
+      },
+    ];
+    const timeline: TimelineItem[] = [
+      { kind: "tool", toolCallId: "tc-1", id: "tl-1" },
+    ];
+
+    const { container } = render(
+      <ActivityTimeline
+        timeline={timeline}
+        toolCalls={toolCalls}
+        thinkingText=""
+        isStreaming
+      />,
+    );
+
+    // The placeholder header is present but renders no expand toggle.
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    const expandableHeaders = screen
+      .getAllByRole("button")
+      .filter((el) => el.hasAttribute("aria-expanded"));
+    // Only the tool row's expandable header — the synthetic thinking
+    // header is non-interactive in headerOnly mode.
+    expect(expandableHeaders).toHaveLength(1);
+
+    // No body wrap / chevron is mounted for the placeholder. Two
+    // chevrons would normally render (one per Block); after the fix
+    // only the tool row owns one. We grep by the bordered-body-wrap
+    // class which the headerOnly path skips.
+    const bodyWraps = container.querySelectorAll(".blockBodyWrap");
+    // The tool row may render its body wrap (it's still a regular
+    // Block); the headerOnly thinking placeholder must not. Count
+    // the headerOnly markers instead to assert directly.
+    expect(container.querySelector(".blockHeaderStatic")).not.toBeNull();
+    // The tool row contributes exactly one body wrap; before this fix
+    // the placeholder contributed a second one too.
+    expect(bodyWraps.length).toBeLessThanOrEqual(1);
   });
 
   it("uses the real thinking item once a thinking_delta arrives (no duplicate synthetic)", () => {

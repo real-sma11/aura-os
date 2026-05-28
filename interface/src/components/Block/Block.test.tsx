@@ -191,6 +191,46 @@ describe("Block primitive", () => {
     expect(header).toHaveAttribute("aria-expanded", "true");
   });
 
+  // `headerOnly` Blocks are used by renderers (e.g. a streaming
+  // `ThinkingBlock` whose segment hasn't received any text yet) where
+  // the row is the entire UI: a non-interactive header with shimmer.
+  // Verify that the body subtree, the chevron, and the expand-toggle
+  // affordance are all suppressed so an empty body cannot paint a
+  // stray `border-top` and the row does not pretend to be clickable.
+  it("renders no body, no chevron, and no aria-expanded affordance when headerOnly", () => {
+    const { container } = render(
+      <Block
+        title="Thinking..."
+        copy={{ getText: () => "Thinking..." }}
+        headerOnly
+      >
+        <div data-testid="hidden-body">should not render</div>
+      </Block>,
+    );
+
+    // The header row exists but is not interactive.
+    expect(container.querySelector(".blockHeader")).not.toBeNull();
+    const expandable = screen
+      .queryAllByRole("button")
+      .filter((el) => el.hasAttribute("aria-expanded"));
+    expect(expandable).toHaveLength(0);
+
+    // No chevron and no body subtree mounted.
+    expect(container.querySelector(".blockChevron")).toBeNull();
+    expect(container.querySelector(".blockBodyWrap")).toBeNull();
+    expect(container.querySelector(".blockBody")).toBeNull();
+    expect(screen.queryByTestId("hidden-body")).not.toBeInTheDocument();
+
+    // The static modifier is applied so the row drops `cursor: pointer`
+    // and the hover background tint.
+    const header = container.querySelector(".blockHeader");
+    expect(header?.className).toContain("blockHeaderStatic");
+
+    // The always-on copy slot still renders so the right edge stays
+    // consistent with regular Blocks.
+    expect(screen.getByTestId("copy-button")).toBeInTheDocument();
+  });
+
   // Defense against the previous fix overreaching: a block that was
   // never `forceExpanded` and whose user manually toggled open must not
   // be reset just because `defaultExpanded` later flips (e.g. the

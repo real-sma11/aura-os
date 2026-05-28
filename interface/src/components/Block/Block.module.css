@@ -88,6 +88,21 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+/*
+ * Header-only Blocks (e.g. a streaming `ThinkingBlock` whose segment
+ * has not received any text yet) drop the click affordance so the row
+ * does not pretend to be interactive. The hover tint and pointer
+ * cursor are suppressed; the row is still keyboard-focusable through
+ * the always-on `CopyButton` it renders inside `.blockCopy`.
+ */
+.blockHeaderStatic {
+  cursor: default;
+}
+
+.blockHeaderStatic:hover {
+  background: transparent;
+}
+
 .statusDot {
   display: inline-block;
   width: 6px;

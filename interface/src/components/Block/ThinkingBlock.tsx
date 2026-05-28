@@ -29,6 +29,34 @@ export function ThinkingBlock({
     </span>
   );
 
+  // When there's no thinking text yet (synthetic streaming placeholder, or
+  // an open segment whose first delta hasn't arrived) the body would
+  // otherwise paint an empty padded viewport bracketed by its own
+  // `border-top` and the block shell's bottom border — visually a "double
+  // line" beneath the header. Render the header on its own instead so
+  // the shimmering "Thinking..." label is the entire UI until content
+  // shows up. Once text arrives, the block expands by default while
+  // streaming but remains user-collapsible (no `forceExpanded` lock).
+  const cleanText = stripEmojis(text);
+
+  if (!cleanText) {
+    return (
+      <Block
+        className={`${styles.thinkingBlock} ${isStreaming ? styles.thinkingBlockStreaming : ""}`}
+        icon={<Brain size={12} />}
+        title={titleNode}
+        status={isStreaming ? "pending" : "done"}
+        headerOnly
+        copy={{
+          getText: () => title,
+          ariaLabel: "Copy thinking",
+        }}
+      >
+        {null}
+      </Block>
+    );
+  }
+
   return (
     <Block
       className={`${styles.thinkingBlock} ${isStreaming ? styles.thinkingBlockStreaming : ""}`}
@@ -36,14 +64,13 @@ export function ThinkingBlock({
       title={titleNode}
       status={isStreaming ? "pending" : "done"}
       defaultExpanded={defaultExpanded ?? isStreaming}
-      forceExpanded={isStreaming}
       autoScroll={isStreaming}
       copy={{
-        getText: () => stripEmojis(text) || title,
+        getText: () => cleanText,
         ariaLabel: "Copy thinking",
       }}
     >
-      <div className={styles.thinkingText}>{stripEmojis(text)}</div>
+      <div className={styles.thinkingText}>{cleanText}</div>
     </Block>
   );
 }
