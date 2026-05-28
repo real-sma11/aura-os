@@ -47,6 +47,29 @@ function resolveToolCallInEvents(
   });
 }
 
+/**
+ * Settle any tool calls still marked `pending` (other than `exceptId`).
+ *
+ * The harness runs tools sequentially, so a brand-new tool call starting
+ * means every earlier one has finished — yet a dropped/missing
+ * `tool_result` for an earlier call used to leave it `pending` forever,
+ * so the timeline rendered several rows pulsing as "active" at once. We
+ * flip stragglers to a settled state here; a late `tool_result` still
+ * attaches by id in `handleToolResult` (which matches regardless of the
+ * `pending` flag), so no real output is lost.
+ */
+function settlePriorPendingToolCalls(refs: StreamRefs, exceptId: string): void {
+  let changed = false;
+  refs.toolCalls.current = refs.toolCalls.current.map((tc) => {
+    if (tc.pending && tc.id !== exceptId) {
+      changed = true;
+      return { ...tc, pending: false, started: false };
+    }
+    return tc;
+  });
+  void changed;
+}
+
 function appendToolTimelineItem(refs: StreamRefs, setters: StreamSetters, toolCallId: string): void {
   const alreadyInTimeline = refs.timeline.current.some(
     (item) => item.kind === "tool" && item.toolCallId === toolCallId,
@@ -96,6 +119,7 @@ export function handleToolCallStarted(
     if (draftPreview) initialInput = { draft_preview: draftPreview };
   }
 
+  settlePriorPendingToolCalls(refs, info.id);
   const entry: ToolCallEntry = {
     id: info.id,
     name: info.name,

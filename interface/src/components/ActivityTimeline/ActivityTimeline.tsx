@@ -123,8 +123,29 @@ export function ActivityTimeline({
   // timeline positions stay stable across that transition.
   const hasRealThinking = mergedTimeline.some((i) => i.kind === "thinking");
   const hasAnyTool = mergedTimeline.some((i) => i.kind === "tool");
+  // Only paint the synthetic "Thinking..." while the turn is still in its
+  // opening reasoning-less burst: tools have appeared but none have
+  // resolved and no text has streamed yet. Previously this lingered for
+  // the entire streaming turn (any tool present + no thinking text), so
+  // it kept claiming "Thinking..." above rows that had already completed
+  // and while later tools ran — feedback the model was demonstrably past.
+  const hasResolvedTool = mergedTimeline.some((i) => {
+    if (i.kind !== "tool") return false;
+    const entry = toolCallMap.get(i.toolCallId);
+    // Synthetic `transition_task` lifecycle cards are always non-pending
+    // and seed on every TaskStarted, so they must not count as "real work
+    // finished" — otherwise the initial reasoning-less placeholder would
+    // never paint.
+    return entry != null && !entry.synthetic && entry.pending === false;
+  });
+  const hasTextItem = mergedTimeline.some((i) => i.kind === "text");
   const shouldSynthesizeThinking =
-    isStreaming && !hasRealThinking && !thinkingText && hasAnyTool;
+    isStreaming &&
+    !hasRealThinking &&
+    !thinkingText &&
+    hasAnyTool &&
+    !hasResolvedTool &&
+    !hasTextItem;
 
   // Phase 5 — feed-wide path disambiguation. Walk the file-op tool
   // entries reachable from this turn's timeline and compute the shortest

@@ -37,8 +37,15 @@ export function getStreamingPhaseLabel(state: {
   const realToolCalls = state.toolCalls.filter((tc) => !tc.synthetic);
   const pending = realToolCalls.find((tc) => tc.pending);
   if (pending) return TOOL_PHASE_LABELS[pending.name] ?? "Working...";
-  if (state.thinkingText && !state.streamingText) return "Thinking...";
+  // Once any tool has run, prefer the "assembling" phase over a bare
+  // "Thinking..." — `thinkingText` lingers from the turn's earlier
+  // reasoning and is not cleared when tools complete, so keying off it
+  // here showed a stale "Thinking..." while the model was clearly past
+  // that phase (tools already finished, nothing pending). The live
+  // thinking block in the timeline still shimmers for any genuinely
+  // open reasoning segment, so reasoning is never hidden.
   if (realToolCalls.length > 0) return "Putting it all together...";
+  if (state.thinkingText && !state.streamingText) return "Thinking...";
   if (state.progressText) {
     if (state.progressText.toLowerCase() === "connecting") {
       return pickConnectingLabel();

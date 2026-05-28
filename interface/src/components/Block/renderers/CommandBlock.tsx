@@ -45,6 +45,12 @@ export function CommandBlock({ entry, defaultExpanded }: CommandBlockProps) {
     </span>
   ) : null;
 
+  const emptyBodyLabel = entry.pending
+    ? "Running…"
+    : exitCode !== null
+      ? `Exited ${exitCode}${isError ? "" : " — no output"}`
+      : "No output captured.";
+
   return (
     <Block
       icon={<SquareTerminal size={12} />}
@@ -76,7 +82,11 @@ export function CommandBlock({ entry, defaultExpanded }: CommandBlockProps) {
       ) : entry.isError && entry.result ? (
         <div className={styles.inlineError}>{String(entry.result).slice(0, 240)}</div>
       ) : (
-        <div className={styles.listEmpty}>No output.</div>
+        // Never render a bare "No output." — that read as a broken card
+        // even when the command was still running or had simply finished
+        // cleanly. Differentiate the in-flight, clean-exit, and
+        // genuinely-empty cases so the row always says something useful.
+        <div className={styles.listEmpty}>{emptyBodyLabel}</div>
       )}
     </Block>
   );
