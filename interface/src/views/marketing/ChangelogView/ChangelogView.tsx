@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useId, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   type ChangelogEntry,
@@ -93,6 +93,12 @@ interface ReleasesPerDayChartProps {
 function ReleasesPerDayChart({
   series,
 }: ReleasesPerDayChartProps): ReactNode {
+  // `useId` runs before the early return so hook order stays stable across
+  // renders regardless of whether the dataset is empty on first paint.
+  const reactId = useId();
+  const gradientId = `${reactId}-bar-fill`;
+  const glowId = `${reactId}-bar-glow`;
+
   if (series.length === 0) {
     return null;
   }
@@ -112,6 +118,46 @@ function ReleasesPerDayChart({
       role="img"
       aria-label="Releases per day over time"
     >
+      <defs>
+        {/*
+         * Gradient is anchored to the CHART (userSpaceOnUse with y1 at the
+         * baseline and y2 at the top) instead of each rect's bounding box.
+         * That makes magnitude drive color naturally: short bars only sit
+         * in the deep-purple basement while tall bars rise into the bright
+         * pink crest. One definition, no per-bar color math.
+         */}
+        <linearGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          x1={0}
+          y1={viewHeight}
+          x2={0}
+          y2={0}
+        >
+          <stop offset="0%" stopColor="#3b0a5a" />
+          <stop offset="30%" stopColor="#6b1ea1" />
+          <stop offset="65%" stopColor="#c43c9a" />
+          <stop offset="100%" stopColor="#ff64c8" />
+        </linearGradient>
+        {/*
+         * Soft pink halo applied only to the latest bar so "today" still
+         * pops without resorting to a brighter fill that would break the
+         * gradient palette.
+         */}
+        <filter
+          id={glowId}
+          x="-50%"
+          y="-50%"
+          width="200%"
+          height="200%"
+        >
+          <feGaussianBlur stdDeviation="1.4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       {series.map((point, index) => {
         const ratio = max > 0 ? point.releases / max : 0;
         const barHeight = Math.max(ratio * viewHeight, point.releases > 0 ? 2 : 0);
@@ -126,6 +172,8 @@ function ReleasesPerDayChart({
             width={barWidth}
             height={barHeight}
             rx={1}
+            fill={`url(#${gradientId})`}
+            filter={isLatest ? `url(#${glowId})` : undefined}
             className={
               isLatest
                 ? "changelogStatsChartBar changelogStatsChartBarLatest"

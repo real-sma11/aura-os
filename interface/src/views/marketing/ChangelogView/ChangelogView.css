@@ -50,10 +50,34 @@
 }
 
 .changelogStatsCardBody {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
   gap: 32px;
   align-items: center;
+}
+
+/* Faint pink/purple halo painted behind the chart so the gradient bars
+   bloom out of a hint of brand color instead of pure neutral. Sits below
+   stat tiles via `z-index: 0` while the rest of the body content claims
+   `z-index: 1` (see `.changelogStatsGrid` / `.changelogStatsChartWrap`). */
+.changelogStatsCardBody::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 82% 60%,
+    rgba(196, 60, 154, 0.1),
+    transparent 58%
+  );
+  z-index: 0;
+}
+
+.changelogStatsGrid,
+.changelogStatsChartWrap {
+  position: relative;
+  z-index: 1;
 }
 
 .changelogStatsGrid {
@@ -113,16 +137,25 @@
 }
 
 .changelogStatsChartBar {
-  fill: rgba(255, 255, 255, 0.32);
-  transition: fill 160ms ease;
+  /* Fill comes from the SVG <linearGradient> in <defs>; tweaking
+     opacity/saturation here (rather than overriding `fill`) keeps the
+     gradient palette intact for hover and `prefers-reduced-motion`
+     users. */
+  transition:
+    opacity 160ms ease,
+    filter 160ms ease;
 }
 
 .changelogStatsChartBar:hover {
-  fill: rgba(255, 255, 255, 0.6);
+  /* Amplify the gradient color instead of swapping it for white. */
+  filter: brightness(1.18) saturate(1.1);
 }
 
 .changelogStatsChartBarLatest {
-  fill: rgba(255, 255, 255, 0.78);
+  /* The pink halo on the latest bar is applied via the SVG <filter>
+     so it survives `preserveAspectRatio="none"` scaling. This rule
+     stays available for future tweaks (e.g. animated emphasis) but
+     intentionally does NOT override the gradient fill. */
 }
 
 .changelogPageTitle {
