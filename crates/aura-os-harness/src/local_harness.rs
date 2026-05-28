@@ -7,12 +7,12 @@ use tracing::info;
 use crate::error::HarnessError;
 use crate::harness::{
     build_runtime_request, validate_runtime_request_identity, HarnessLink, HarnessSession,
-    SessionConfig,
+    RunHandle, SessionConfig,
 };
 use crate::harness_url::local_harness_base_url;
 use crate::stability_metrics;
 use crate::ws_bridge::spawn_ws_bridge;
-use aura_protocol::{OutboundMessage, RuntimeRunResponse};
+use aura_protocol::OutboundMessage;
 
 /// WebSocket close code 1013 ("Try Again Later") signals upstream
 /// capacity exhaustion before the upgrade completes. Detect it by
@@ -132,6 +132,55 @@ impl HarnessLink for LocalHarness {
     async fn close_session(&self, _session_id: &str) -> anyhow::Result<()> {
         Ok(())
     }
+
+    async fn submit_run(
+        &self,
+        request: aura_protocol::RuntimeRequest,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<RunHandle> {
+        self.submit_run_once(&request, auth_token).await
+    }
+
+    async fn attach_run(
+        &self,
+        run_id: &str,
+        auth_token: Option<&str>,
+        wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        let per_attempt_timeout = read_connect_timeout_from_env();
+        self.attach_run_once(run_id, auth_token, wait_for_ready, per_attempt_timeout)
+            .await
+            .map_err(|e| match e {
+                OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
+            })
+    }
+
+    async fn pause_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        self.lifecycle_post(run_id, "pause", auth_token).await
+    }
+
+    async fn stop_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        self.lifecycle_post(run_id, "stop", auth_token).await
+    }
+
+    async fn run_status(
+        &self,
+        run_id: &str,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let url = format!("{}/v1/run/{run_id}/status", self.base_url);
+        let mut req = Self::lifecycle_http_client()?.get(&url);
+        if let Some(token) = auth_token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        let body = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("GET /v1/run/{run_id}/status returned {status}: {body}");
+        }
+        Ok(serde_json::from_str(&body)?)
+    }
 }
 
 impl LocalHarness {
@@ -219,36 +268,6 @@ impl LocalHarness {
         }
         Ok(())
     }
-
-    /// Pause a run via `POST /v1/run/:id/pause`.
-    pub async fn pause_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
-        self.lifecycle_post(run_id, "pause", auth_token).await
-    }
-
-    /// Stop a run via `POST /v1/run/:id/stop`.
-    pub async fn stop_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
-        self.lifecycle_post(run_id, "stop", auth_token).await
-    }
-
-    /// Get a run's status via `GET /v1/run/:id/status`.
-    pub async fn run_status(
-        &self,
-        run_id: &str,
-        auth_token: Option<&str>,
-    ) -> anyhow::Result<serde_json::Value> {
-        let url = format!("{}/v1/run/{run_id}/status", self.base_url);
-        let mut req = Self::lifecycle_http_client()?.get(&url);
-        if let Some(token) = auth_token {
-            req = req.bearer_auth(token);
-        }
-        let resp = req.send().await?;
-        let status = resp.status();
-        let body = resp.text().await?;
-        if !status.is_success() {
-            anyhow::bail!("GET /v1/run/{run_id}/status returned {status}: {body}");
-        }
-        Ok(serde_json::from_str(&body)?)
-    }
 }
 
 /// Per-attempt failure mode for the two-step open exchange.
@@ -263,51 +282,81 @@ enum OpenAttemptError {
 }
 
 impl LocalHarness {
+    /// One attempt of the canonical open: submit a run then attach its
+    /// WS, waiting for `SessionReady`. Used by [`Self::open_run`]'s retry
+    /// loop. Splits into [`Self::submit_run_once`] (POST) and
+    /// [`Self::attach_run_once`] (WS) so the automaton path can use the
+    /// two halves independently.
     async fn try_open_session_attempt(
         &self,
         request_body: &aura_protocol::RuntimeRequest,
         auth_token: Option<&str>,
         per_attempt_timeout: Duration,
     ) -> Result<HarnessSession, OpenAttemptError> {
-        // Step 1: POST /v1/run.
+        let run_handle = self
+            .submit_run_once(request_body, auth_token)
+            .await
+            .map_err(classify_open_error)?;
+        self.attach_run_once(&run_handle.run_id, auth_token, true, per_attempt_timeout)
+            .await
+    }
+
+    /// `POST /v1/run` only. Maps `503 -> CapacityExhausted` and
+    /// `409 -> Conflict(run_id)` to typed [`HarnessError`] causes so
+    /// callers (chat retry loop, dev-loop adopt) can branch on them.
+    async fn submit_run_once(
+        &self,
+        request_body: &aura_protocol::RuntimeRequest,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<RunHandle> {
         let http_client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(3))
             .timeout(RUN_START_TIMEOUT)
             .build()
-            .map_err(|e| {
-                OpenAttemptError::Other(anyhow::anyhow!("failed to build reqwest client: {e}"))
-            })?;
+            .map_err(|e| anyhow::anyhow!("failed to build reqwest client: {e}"))?;
         let mut http_req = http_client
             .post(format!("{}/v1/run", self.base_url))
             .json(request_body);
         if let Some(token) = auth_token {
             http_req = http_req.bearer_auth(token);
         }
-        let resp = http_req.send().await.map_err(|e| {
-            OpenAttemptError::Other(anyhow::anyhow!("local harness POST /v1/run failed: {e}"))
-        })?;
+        let resp = http_req
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("local harness POST /v1/run failed: {e}"))?;
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         if !status.is_success() {
             if status.as_u16() == 503 {
-                return Err(OpenAttemptError::Capacity(
-                    anyhow::Error::new(HarnessError::CapacityExhausted)
-                        .context(format!("POST /v1/run rejected with 503: {body}")),
-                ));
+                return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
+                    .context(format!("POST /v1/run rejected with 503: {body}")));
             }
-            return Err(OpenAttemptError::Other(anyhow::anyhow!(
-                "POST /v1/run returned {status}: {body}"
-            )));
+            if status.as_u16() == 409 {
+                return Err(anyhow::Error::new(HarnessError::Conflict {
+                    run_id: extract_conflict_run_id(&body),
+                })
+                .context(format!("POST /v1/run rejected with 409: {body}")));
+            }
+            return Err(anyhow::anyhow!("POST /v1/run returned {status}: {body}"));
         }
-        let run_handle: RuntimeRunResponse = serde_json::from_str(&body).map_err(|e| {
-            OpenAttemptError::Other(anyhow::anyhow!(
-                "POST /v1/run response could not parse as RuntimeRunResponse: {e}, body: {body}"
-            ))
-        })?;
-        let run_id = run_handle.run_id;
+        let run_handle: RunHandle = serde_json::from_str(&body)
+            .map_err(|e| anyhow::anyhow!("POST /v1/run response parse failed: {e}, body: {body}"))?;
+        Ok(run_handle)
+    }
 
-        // Step 2: open WS /stream/:run_id.
-        let ws_url = self.ws_url_for_run(&run_id);
+    /// Attach `WS /stream/:run_id`, spawn the in-process bridge, and
+    /// return the live [`HarnessSession`]. When `wait_for_ready`, block
+    /// on the `SessionReady` frame (chat); otherwise run a short liveness
+    /// probe and use `run_id` as the session id (automaton runs never
+    /// emit `SessionReady`).
+    async fn attach_run_once(
+        &self,
+        run_id: &str,
+        auth_token: Option<&str>,
+        wait_for_ready: bool,
+        per_attempt_timeout: Duration,
+    ) -> Result<HarnessSession, OpenAttemptError> {
+        let ws_url = self.ws_url_for_run(run_id);
         let mut ws_req = ws_url.clone().into_client_request().map_err(|e| {
             OpenAttemptError::Other(anyhow::anyhow!("failed to build ws request: {e}"))
         })?;
@@ -345,51 +394,146 @@ impl LocalHarness {
             }
         };
 
-        // Step 3: spawn WS bridge + wait for SessionReady (no
-        // session-init frame is sent — the run was created on the
-        // HTTP side and SessionReady arrives unprompted).
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
-        let mut rx = events_tx.subscribe();
-        let session_id = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-            loop {
-                match rx.recv().await {
-                    Ok(OutboundMessage::SessionReady(ready)) => {
-                        break Ok::<String, anyhow::Error>(ready.session_id);
-                    }
-                    Ok(OutboundMessage::Error(err)) => {
-                        break Err(anyhow::anyhow!(
-                            "Harness error during init ({}): {}",
-                            err.code,
-                            err.message
-                        ));
-                    }
-                    Err(_) => {
-                        break Err(anyhow::anyhow!("Connection closed before session_ready"));
-                    }
-                    _ => continue,
-                }
-            }
-        })
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!("Timed out waiting for SessionReady from local harness (30s)")
-        });
 
-        let session_id = match session_id {
-            Ok(Ok(id)) => id,
-            Ok(Err(err)) | Err(err) => {
-                return Err(OpenAttemptError::Other(err));
+        let session_id = if wait_for_ready {
+            // Chat runs emit `SessionReady` unprompted once the run is
+            // created on the HTTP side; block on it to learn the
+            // session id.
+            let mut rx = events_tx.subscribe();
+            let resolved = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                loop {
+                    match rx.recv().await {
+                        Ok(OutboundMessage::SessionReady(ready)) => {
+                            break Ok::<String, anyhow::Error>(ready.session_id);
+                        }
+                        Ok(OutboundMessage::Error(err)) => {
+                            break Err(anyhow::anyhow!(
+                                "Harness error during init ({}): {}",
+                                err.code,
+                                err.message
+                            ));
+                        }
+                        Err(_) => {
+                            break Err(anyhow::anyhow!("Connection closed before session_ready"));
+                        }
+                        _ => continue,
+                    }
+                }
+            })
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!("Timed out waiting for SessionReady from local harness (30s)")
+            });
+            match resolved {
+                Ok(Ok(id)) => id,
+                Ok(Err(err)) | Err(err) => return Err(OpenAttemptError::Other(err)),
             }
+        } else {
+            // Automaton runs (DevLoop / TaskRun) stream domain events
+            // directly without a `SessionReady`. Do a brief liveness
+            // probe: if the bridge reports the WS closed/errored right
+            // away, fail so the caller can retry; otherwise proceed with
+            // `run_id` as the session id.
+            let mut rx = events_tx.subscribe();
+            match tokio::time::timeout(Duration::from_millis(250), rx.recv()).await {
+                Ok(Ok(OutboundMessage::Error(err)))
+                    if err.code == "harness_ws_closed" || err.code == "harness_ws_read_error" =>
+                {
+                    return Err(OpenAttemptError::Other(anyhow::anyhow!(
+                        "automaton event stream died immediately after connect: {}",
+                        err.message
+                    )));
+                }
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
+                    return Err(OpenAttemptError::Other(anyhow::anyhow!(
+                        "automaton event stream closed immediately after connect"
+                    )));
+                }
+                // Any other event, lag, or timeout: treat as alive.
+                _ => {}
+            }
+            run_id.to_string()
         };
 
         Ok(HarnessSession {
             session_id,
-            run_id,
+            run_id: run_id.to_string(),
             events_tx,
             raw_events_tx,
             commands_tx,
         })
     }
+}
+
+/// Collapse a `submit_run_once` error into the retry-loop's
+/// [`OpenAttemptError`], preserving the capacity short-circuit.
+fn classify_open_error(err: anyhow::Error) -> OpenAttemptError {
+    if HarnessError::is_capacity_exhausted(&err) {
+        OpenAttemptError::Capacity(err)
+    } else {
+        OpenAttemptError::Other(err)
+    }
+}
+
+/// Best-effort extraction of an existing `run_id` from a harness `409`
+/// body. Accepts the structured `{run_id|automaton_id|id}` (optionally
+/// nested under `data`) and the legacy `automaton_id: <id>` substring in
+/// a free-text `error` / `message` field.
+fn extract_conflict_run_id(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    fn id_field(v: &serde_json::Value) -> Option<String> {
+        let obj = v.as_object()?;
+        for key in ["run_id", "automaton_id", "id"] {
+            if let Some(s) = obj.get(key).and_then(|x| x.as_str()) {
+                let t = s.trim().trim_matches('"');
+                if !t.is_empty() {
+                    return Some(t.to_string());
+                }
+            }
+        }
+        None
+    }
+    fn substring_id(msg: &str) -> Option<String> {
+        for needle in ["run_id:", "automaton_id:"] {
+            if let Some(pos) = msg.find(needle) {
+                let tail = msg[pos + needle.len()..].trim_start();
+                let tail = tail.strip_prefix("Some(").unwrap_or(tail);
+                let tail = tail.trim_matches('"').trim_matches(')').trim_matches('"').trim();
+                let end = tail
+                    .find(|c: char| {
+                        c == ')' || c == ',' || c == '}' || c == '"' || c.is_whitespace()
+                    })
+                    .unwrap_or(tail.len());
+                let candidate = &tail[..end];
+                if !candidate.is_empty() {
+                    return Some(candidate.to_string());
+                }
+            }
+        }
+        None
+    }
+    if let Some(id) = id_field(&value) {
+        return Some(id);
+    }
+    if let Some(data) = value.get("data") {
+        if let Some(id) = id_field(data) {
+            return Some(id);
+        }
+    }
+    for key in ["error", "message"] {
+        if let Some(field) = value.get(key) {
+            if let Some(id) = id_field(field) {
+                return Some(id);
+            }
+            if let Some(s) = field.as_str() {
+                if let Some(id) = substring_id(s) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Returns `true` when the tungstenite connect error matches an

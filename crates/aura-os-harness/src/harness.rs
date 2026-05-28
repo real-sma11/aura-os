@@ -87,10 +87,75 @@ pub struct HarnessSession {
 
 pub type HarnessCommandSender = mpsc::Sender<InboundMessage>;
 
+/// Outcome of `POST /v1/run`: the harness-allocated `run_id` plus the
+/// relative WS path to attach to. Canonical handle returned by
+/// [`HarnessLink::submit_run`] and shared by chat and automaton flows.
+///
+/// Deserializes the harness response tolerantly: `run_id` accepts the
+/// `id` / `automaton_id` aliases older builds used, and
+/// `event_stream_url` accepts `ws_url` / `stream_url`.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RunHandle {
+    #[serde(alias = "id", alias = "automaton_id", alias = "run_id_v0")]
+    pub run_id: String,
+    #[serde(alias = "ws_url", alias = "stream_url")]
+    pub event_stream_url: String,
+}
+
 #[async_trait]
 pub trait HarnessLink: Send + Sync {
     async fn open_session(&self, config: SessionConfig) -> anyhow::Result<HarnessSession>;
     async fn close_session(&self, session_id: &str) -> anyhow::Result<()>;
+
+    /// Submit a run via `POST /v1/run` WITHOUT attaching the event
+    /// stream, returning the [`RunHandle`]. The canonical first step
+    /// shared by chat (`open_session` = submit + attach) and automaton
+    /// (submit, optionally adopt on conflict, then attach) flows.
+    /// Surfaces [`HarnessError::Conflict`] on `409` and
+    /// [`HarnessError::CapacityExhausted`] on `503`.
+    ///
+    /// Default: unsupported. Overridden by [`crate::LocalHarness`]; the
+    /// swarm gateway transport still uses its session-init handshake via
+    /// `open_session`.
+    async fn submit_run(
+        &self,
+        _request: RuntimeRequest,
+        _auth_token: Option<&str>,
+    ) -> anyhow::Result<RunHandle> {
+        anyhow::bail!("submit_run is not supported by this harness transport")
+    }
+
+    /// Attach (or reattach) to a run's `WS /stream/:run_id` event
+    /// stream. `wait_for_ready` waits for the `SessionReady` frame
+    /// (chat); when false a short liveness probe is used instead
+    /// (automaton runs, which never emit `SessionReady`).
+    async fn attach_run(
+        &self,
+        _run_id: &str,
+        _auth_token: Option<&str>,
+        _wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        anyhow::bail!("attach_run is not supported by this harness transport")
+    }
+
+    /// Pause a run via `POST /v1/run/:id/pause`.
+    async fn pause_run(&self, _run_id: &str, _auth_token: Option<&str>) -> anyhow::Result<()> {
+        anyhow::bail!("pause_run is not supported by this harness transport")
+    }
+
+    /// Stop a run via `POST /v1/run/:id/stop`.
+    async fn stop_run(&self, _run_id: &str, _auth_token: Option<&str>) -> anyhow::Result<()> {
+        anyhow::bail!("stop_run is not supported by this harness transport")
+    }
+
+    /// Get a run's status via `GET /v1/run/:id/status`.
+    async fn run_status(
+        &self,
+        _run_id: &str,
+        _auth_token: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        anyhow::bail!("run_status is not supported by this harness transport")
+    }
 }
 
 /// Canonical [`RuntimeRequest`] construction from a [`SessionConfig`].

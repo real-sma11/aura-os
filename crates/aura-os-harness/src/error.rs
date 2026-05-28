@@ -73,6 +73,13 @@ pub enum HarnessError {
         field: &'static str,
         context: &'static str,
     },
+
+    /// The harness rejected `POST /v1/run` with `409 Conflict` because a
+    /// run already occupies the requested per-`agent_id` slot. The
+    /// optional `run_id` is the existing run extracted from the harness
+    /// body when present, enabling the dev-loop adopt-or-restart path.
+    #[error("harness rejected new run: a run is already active{}", .run_id.as_ref().map(|id| format!(" (run_id: {id})")).unwrap_or_default())]
+    Conflict { run_id: Option<String> },
 }
 
 impl HarnessError {

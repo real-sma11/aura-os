@@ -136,12 +136,22 @@ fn forward_ws_text(
     reader_tx: &broadcast::Sender<OutboundMessage>,
     reader_raw_tx: &broadcast::Sender<serde_json::Value>,
 ) {
+    // Always publish the complete frame as a normalized JSON Value on
+    // the raw channel so a raw-only consumer (the dev-loop / task-run
+    // event forwarder, now sharing this single bridge) sees EVERY event
+    // — not just the ones that fail typed parsing. Chat-path consumers
+    // read the typed `reader_tx` and are unaffected. No-op normalization
+    // for non-milestone events.
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        let _ = reader_raw_tx.send(crate::event_normalization::normalize_automaton_event(value));
+    }
+
     match serde_json::from_str::<OutboundMessage>(text) {
         Ok(event) => {
             debug!("Parsed harness event");
             let _ = reader_tx.send(event);
         }
-        Err(err) => forward_untyped_ws_text(text, err, reader_tx, reader_raw_tx),
+        Err(err) => forward_untyped_ws_text(text, err, reader_tx),
     }
 }
 
@@ -149,9 +159,11 @@ fn forward_untyped_ws_text(
     text: &str,
     err: serde_json::Error,
     reader_tx: &broadcast::Sender<OutboundMessage>,
-    reader_raw_tx: &broadcast::Sender<serde_json::Value>,
 ) {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+    if serde_json::from_str::<serde_json::Value>(text).is_ok() {
+        // The complete (normalized) JSON Value was already published on
+        // the raw channel by `forward_ws_text`; here we only surface the
+        // typed-parse miss to chat consumers reading the typed channel.
         warn!(
             direction = "received",
             payload_len = text.len(),
@@ -160,14 +172,6 @@ fn forward_untyped_ws_text(
             "Forwarding untyped harness event"
         );
         stability_metrics::inc_protocol_mismatch();
-        // Canonicalize automaton/git milestone domain events on the
-        // unified raw path so consumers reading `raw_events_tx` (the
-        // dev-loop / task-run forwarders, once migrated onto this single
-        // bridge) see the same canonical git event shapes the dedicated
-        // automaton reader produced. No-op for non-milestone events, so
-        // chat-path untyped events pass through unchanged.
-        let value = crate::event_normalization::normalize_automaton_event(value);
-        let _ = reader_raw_tx.send(value);
         let _ = reader_tx.send(bridge_error(
             "harness_protocol_mismatch",
             format!("harness websocket emitted an unsupported event shape: {err}"),
