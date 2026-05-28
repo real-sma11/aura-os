@@ -266,13 +266,20 @@
 .authPillSecondary {
   background: transparent;
   color: var(--color-text-primary);
-  /*
-   * No visible outline: `.authPill` already declares a 1px
-   * transparent border in the base rule so the box geometry matches
-   * the primary pill, but the secondary variant doesn't paint its
-   * own border-color — Log In and Download read as borderless text
-   * pills next to the filled Sign Up CTA.
-   */
+  border-color: var(--color-border);
+}
+
+/*
+ * Ghost variant used for the public titlebar's "Log In" pill. Same
+ * geometry as `.authPillSecondary` (the base `.authPill` rule keeps
+ * its 1px transparent border so all three pills line up at the same
+ * height) but with no visible outline — gives the trailing cluster a
+ * three-tier visual hierarchy: ghost (Log In) → filled (Sign Up) →
+ * outlined (Download).
+ */
+.authPillGhost {
+  background: transparent;
+  color: var(--color-text-primary);
 }
 
 /*

@@ -84,11 +84,13 @@ export interface AuraTitlebarProps {
  *     The day/night theme toggle is intentionally not in the public
  *     titlebar — it lives only in the bottom-right `BottomTaskbar`
  *     cluster so unauthenticated visitors aren't given two redundant
- *     affordances for the same control. The "Sign Up" pill is the
- *     primary CTA and inverts with theme via `.authPillPrimary`;
- *     "Log In" and "Download" share the secondary outlined variant.
- *     Download navigates to the `/download` marketing page (mounted
- *     inside `PublicMarketingPanel` in `App.tsx`).
+ *     affordances for the same control. The three trailing pills
+ *     read as a deliberate visual hierarchy: "Log In" is the ghost
+ *     variant (`.authPillGhost`, no outline), "Sign Up" is the
+ *     filled primary CTA (`.authPillPrimary`), and "Download" is
+ *     the outlined secondary (`.authPillSecondary`). Download
+ *     navigates to the `/download` marketing page (mounted inside
+ *     `PublicMarketingPanel` in `App.tsx`).
  */
 export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
   const { mode } = props;
@@ -303,7 +305,7 @@ function PublicActions(): React.ReactElement {
       <Link
         to={{ pathname: "/login", search: signinSearch }}
         state={backgroundState}
-        className={`${styles.authPill} ${styles.authPillSecondary}`}
+        className={`${styles.authPill} ${styles.authPillGhost}`}
         onClick={() => track("public_login_clicked", { source: "titlebar" })}
       >
         Log In
