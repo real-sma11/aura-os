@@ -356,6 +356,10 @@ mod tests {
                 feedback_network_client: None,
                 storage_client: None,
                 integrations_client: None,
+                event_log: crate::event_log::EventLog::with_bridge(
+                    event_broadcast.subscribe(),
+                    crate::event_log::EventLog::capacity_from_env(),
+                ),
                 event_broadcast,
                 event_hub,
                 loop_registry,

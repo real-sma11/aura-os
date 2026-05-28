@@ -99,13 +99,23 @@ export function useTaskOutputView(
   const events = useStreamEvents(streamKey);
   const taskOutput = useTaskOutput(taskId);
   const seedTaskOutput = useEventStore((s) => s.seedTaskOutput);
+  const connected = useEventStore((s) => s.connected);
   const { sessionId, agentInstanceId } = useTaskAddressing(taskId);
+
+  // Reconnect support: an in-flight task whose stream store is empty
+  // (fresh page load mid-run, or after a `ws_resync_required` cleared
+  // local state) should still rehydrate its partial output from the
+  // server. We allow the server-hydration effects below to run for
+  // non-terminal tasks too, but only while the firehose is connected —
+  // each effect independently short-circuits once `events.length > 0`,
+  // so a live stream that is already flowing is never disturbed.
+  const canRehydrate = isTerminal || connected;
 
   // 1. Seed the stream-store events from the persisted turn cache the
   //    first time a terminal row mounts while the live entry is empty.
   useEffect(() => {
     if (!taskId) return;
-    if (!isTerminal) return;
+    if (!canRehydrate) return;
     if (events.length > 0) return;
     let cancelled = false;
     void (async () => {
@@ -118,13 +128,13 @@ export function useTaskOutputView(
     return () => {
       cancelled = true;
     };
-  }, [taskId, projectId, isTerminal, events.length, streamKey]);
+  }, [taskId, projectId, canRehydrate, events.length, streamKey]);
 
   // 2. Hydrate text / build / test / git steps from localStorage +
   //    server when nothing structured is available.
   useEffect(() => {
     if (!taskId || !projectId) return;
-    if (!isTerminal) return;
+    if (!canRehydrate) return;
     // If we already have structured events, skip the text hydration —
     // the events already contain the rendered turn. We still run the
     // text path when events are empty so the "raw text" fallback has
@@ -195,7 +205,7 @@ export function useTaskOutputView(
     return () => {
       cancelled = true;
     };
-  }, [taskId, projectId, isTerminal, events.length, seedTaskOutput]);
+  }, [taskId, projectId, canRehydrate, events.length, seedTaskOutput]);
 
   // 3. Server-side structured-turn rehydration. Authoritative fallback
   //    for tasks that completed outside the current UI session: a
@@ -213,7 +223,7 @@ export function useTaskOutputView(
   //    task even when multiple panels mount the same row.
   useEffect(() => {
     if (!taskId || !projectId) return;
-    if (!isTerminal) return;
+    if (!canRehydrate) return;
     if (events.length > 0) return;
     if (!sessionId || !agentInstanceId) return;
 
@@ -264,7 +274,7 @@ export function useTaskOutputView(
   }, [
     taskId,
     projectId,
-    isTerminal,
+    canRehydrate,
     events.length,
     sessionId,
     agentInstanceId,

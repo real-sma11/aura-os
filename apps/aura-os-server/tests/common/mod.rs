@@ -332,6 +332,10 @@ pub fn build_test_app_from_store(
         swarm_harness,
         chat_sessions: Arc::new(dashmap::DashMap::new()),
         credit_cache: Arc::new(Mutex::new(HashMap::new())),
+        event_log: aura_os_server::event_log::EventLog::with_bridge(
+            event_broadcast.subscribe(),
+            aura_os_server::event_log::EventLog::capacity_from_env(),
+        ),
         event_broadcast,
         event_hub,
         loop_registry,

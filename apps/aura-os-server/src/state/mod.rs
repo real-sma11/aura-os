@@ -304,6 +304,12 @@ pub struct AppState {
     /// through [`AppState::event_hub`] as a typed [`aura_os_events::DomainEvent`].
     /// New code MUST publish through `event_hub`.
     pub event_broadcast: broadcast::Sender<serde_json::Value>,
+    /// Sequenced, bounded replay log fed by a bridge task draining
+    /// `event_broadcast`. The `/ws/events` forwarder subscribes here so
+    /// it can replay a backlog on reconnect (`?since=N`) and stream
+    /// live events with stable sequence numbers. See
+    /// [`crate::event_log::EventLog`].
+    pub event_log: Arc<crate::event_log::EventLog>,
     /// Topic-scoped event hub. Use this for all new event production
     /// and consumption; subscribers receive only events whose
     /// [`aura_os_events::Topic`] matches their filter, eliminating the

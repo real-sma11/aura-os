@@ -7,6 +7,7 @@ mod capture_auth;
 pub(crate) mod channel_ext;
 pub(crate) mod dto;
 pub(crate) mod error;
+pub mod event_log;
 pub mod handlers;
 pub mod harness_client;
 pub(crate) mod harness_gateway;

@@ -237,6 +237,24 @@ export function useTaskOutput(taskId: string | undefined): TaskOutputEntry {
 
 let _ws: { close: () => void } | null = null;
 
+/**
+ * Highest `seq` we have processed off the `/ws/events` firehose. Sent
+ * back as `?since=<seq>` on every (re)connect so the server can replay
+ * the events we missed during the disconnect. `0` means "I have seen
+ * nothing" — the server then streams live only (legacy behaviour).
+ */
+let _lastSeq = 0;
+
+/** Reset the firehose cursor (e.g. on logout, before a fresh session). */
+export function resetEventSocketCursor(): void {
+  _lastSeq = 0;
+}
+
+/** Last seq processed off the firehose; exported for diagnostics/tests. */
+export function getEventSocketCursor(): number {
+  return _lastSeq;
+}
+
 /** Pending idle/timer handle for deferred connect (cancel on logout / disconnect). */
 let _deferredConnectHandle: number | undefined;
 let _engineEventFrame: number | null = null;
@@ -343,19 +361,49 @@ export function disconnectEventSocket() {
   flushQueuedEngineEvents();
   _ws?.close();
   _ws = null;
+  // Fresh login should start from a clean cursor; the next connect
+  // streams live and rehydrates via HTTP rather than replaying a stale
+  // seq from a previous session.
+  _lastSeq = 0;
+}
+
+/**
+ * Re-snapshot authoritative server state after the firehose reported a
+ * replay gap (`ws_resync_required`). We can't reconstruct the missed
+ * deltas, so we pull the current loop/run state over HTTP — the same
+ * rehydration the reconnect path runs — to guarantee the UI converges
+ * on the server's truth rather than presenting a stale partial view.
+ */
+async function resyncAfterGap(): Promise<void> {
+  // Drop any half-applied frame batch so the fresh snapshot wins.
+  cancelQueuedEngineEventFrame();
+  queuedEngineEvents.length = 0;
+  try {
+    await useLoopActivityStore.getState().hydrate();
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("ws resync hydrate failed", error);
+    }
+  }
 }
 
 export function connectEventSocket() {
   _ws?.close();
   _ws = createReconnectingWebSocket(
     {
-      url: (() => {
+      // Recomputed on every (re)connect attempt so `since` always
+      // reflects the newest event we processed before the drop and the
+      // server can replay the gap.
+      url: () => {
         const base = resolveWsUrl("/ws/events");
+        const params: string[] = [];
         const jwt = getStoredJwt();
-        if (!jwt) return base;
+        if (jwt) params.push(`token=${encodeURIComponent(jwt)}`);
+        if (_lastSeq > 0) params.push(`since=${_lastSeq}`);
+        if (params.length === 0) return base;
         const sep = base.includes("?") ? "&" : "?";
-        return `${base}${sep}token=${encodeURIComponent(jwt)}`;
-      })(),
+        return `${base}${sep}${params.join("&")}`;
+      },
       initialDelay: 1000,
       maxDelay: 30000,
       backoffMultiplier: 2,
@@ -363,6 +411,23 @@ export function connectEventSocket() {
     (data: string) => {
       try {
         const raw = JSON.parse(data) as Record<string, unknown>;
+        // Advance the firehose cursor whenever the server stamps a seq
+        // so a later reconnect can ask for exactly what we missed.
+        if (typeof raw.seq === "number" && raw.seq > _lastSeq) {
+          _lastSeq = raw.seq;
+        }
+        // The server emits `ws_resync_required` when our requested
+        // backlog was already evicted from its replay ring (we fell too
+        // far behind). Re-snapshot authoritative HTTP state instead of
+        // trying to stitch a delta, and adopt the server's cursor so we
+        // resume cleanly from here.
+        if (raw.type === "ws_resync_required") {
+          if (typeof raw.last_seq === "number") {
+            _lastSeq = raw.last_seq;
+          }
+          void resyncAfterGap();
+          return;
+        }
         // Phase 4 wire shape (server commit `83752884b`):
         //   `user_message` / `assistant_message_end` carry
         //   `{ session_id, project_id, project_agent_id, agent_id }`

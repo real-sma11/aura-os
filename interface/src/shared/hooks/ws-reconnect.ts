@@ -1,5 +1,10 @@
 export interface ReconnectConfig {
-  url: string;
+  /**
+   * The WebSocket URL. May be a function so callers can recompute it on
+   * every (re)connect attempt — e.g. to append a `?since=<seq>` cursor
+   * that reflects the newest event processed before the disconnect.
+   */
+  url: string | (() => string);
   initialDelay: number;
   maxDelay: number;
   backoffMultiplier: number;
@@ -18,7 +23,8 @@ export function createReconnectingWebSocket(
   function connect() {
     if (stopped) return;
     try {
-      ws = new WebSocket(config.url);
+      const url = typeof config.url === "function" ? config.url() : config.url;
+      ws = new WebSocket(url);
     } catch {
       scheduleReconnect();
       return;

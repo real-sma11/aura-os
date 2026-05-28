@@ -303,6 +303,13 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
     let domain = init_domain_services(&store, &network_client, &storage_client);
 
     let (event_broadcast, _) = broadcast::channel::<serde_json::Value>(4096);
+    // Sequenced replay log behind the firehose. A bridge task drains
+    // `event_broadcast` and stamps a monotonic seq on every event so
+    // the `/ws/events` forwarder can replay missed events on reconnect.
+    let event_log = crate::event_log::EventLog::with_bridge(
+        event_broadcast.subscribe(),
+        crate::event_log::EventLog::capacity_from_env(),
+    );
     let event_hub = aura_os_events::EventHub::new();
     let loop_registry = aura_os_loops::LoopRegistry::new(event_hub.clone());
     // Forward typed loop lifecycle + activity events from the hub into
@@ -390,6 +397,7 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         storage_client,
         integrations_client,
         event_broadcast,
+        event_log,
         event_hub,
         loop_registry,
         require_zero_pro: std::env::var("REQUIRE_ZERO_PRO")
