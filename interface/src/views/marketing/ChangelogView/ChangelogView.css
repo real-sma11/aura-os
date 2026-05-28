@@ -40,17 +40,19 @@
   }
 }
 
+/* The header mirrors the body's 2-column grid so the Current Version
+   stat block (in column 2 of the header) and the releases-per-day chart
+   (in column 2 of the body) share an identical left edge. Switching
+   away from `justify-content: space-between` was important: that
+   pushed the version block's left edge to wherever its content
+   happened to start, which left it visually offset from the chart
+   below. With matching grid templates both right-column sections now
+   left-align flush against the same x. */
 .changelogStatsCardHeader {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
   gap: 14px 32px;
-  /* Top-align so the multi-line Current Version stat block in the
-     top-right sits flush with the same baseline as the Changelog
-     title (the previous `align-items: baseline` aligned the label's
-     first-line baseline to the huge title baseline, pushing the stat
-     block visually downward). */
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: start;
 }
 
 .changelogStatsCardBody {
@@ -58,6 +60,17 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
   gap: 32px;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  /* On narrow screens the right column collapses to a row below the
+     left, both for the header and the body, so the title and Current
+     Version stat (and the stats grid + chart) stack instead of fighting
+     over a 280px column at <320px main column. */
+  .changelogStatsCardHeader,
+  .changelogStatsCardBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .changelogStatsGrid {
