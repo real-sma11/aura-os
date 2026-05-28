@@ -351,49 +351,49 @@ export function ChangelogView(): ReactNode {
         >
           <header className="changelogStatsCardHeader">
             <h1 className="changelogPageTitle">Changelog</h1>
+            {(latestVersion || latestRelease) ? (
+              <div className="changelogStat changelogStatVersion">
+                <span className="changelogStatLabel">Current version</span>
+                <span className="changelogStatValue">
+                  {latestVersion ?? "—"}
+                </span>
+                {latestRelease ? (
+                  <div className="changelogStatVersionMeta">
+                    <time
+                      className="changelogStatVersionTime"
+                      dateTime={latestRelease.generatedAt}
+                      title={new Date(
+                        latestRelease.generatedAt,
+                      ).toLocaleString()}
+                    >
+                      {latestReleaseAgo
+                        ? `Released ${latestReleaseAgo}`
+                        : "Released recently"}
+                    </time>
+                    <Link
+                      to="/download"
+                      className="changelogStatVersionLink"
+                    >
+                      Download
+                      <span aria-hidden="true">&nbsp;&rarr;</span>
+                    </Link>
+                    <a
+                      href="https://github.com/cypher-asi/aura-os"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="changelogStatVersionLink"
+                    >
+                      GitHub
+                      <span aria-hidden="true">&nbsp;&rarr;</span>
+                    </a>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </header>
 
           <div className="changelogStatsCardBody">
             <dl className="changelogStatsGrid">
-              {(latestVersion || latestRelease) ? (
-                <div className="changelogStat changelogStatVersion">
-                  <dt className="changelogStatLabel">Current version</dt>
-                  <dd className="changelogStatValue">
-                    {latestVersion ?? "—"}
-                  </dd>
-                  {latestRelease ? (
-                    <dd className="changelogStatVersionMeta">
-                      <time
-                        className="changelogStatVersionTime"
-                        dateTime={latestRelease.generatedAt}
-                        title={new Date(
-                          latestRelease.generatedAt,
-                        ).toLocaleString()}
-                      >
-                        {latestReleaseAgo
-                          ? `Released ${latestReleaseAgo}`
-                          : "Released recently"}
-                      </time>
-                      <Link
-                        to="/download"
-                        className="changelogStatVersionLink"
-                      >
-                        Download
-                        <span aria-hidden="true">&nbsp;&rarr;</span>
-                      </Link>
-                      <a
-                        href="https://github.com/cypher-asi/aura-os"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="changelogStatVersionLink"
-                      >
-                        GitHub
-                        <span aria-hidden="true">&nbsp;&rarr;</span>
-                      </a>
-                    </dd>
-                  ) : null}
-                </div>
-              ) : null}
               <div className="changelogStat">
                 <dt className="changelogStatLabel">Releases this month</dt>
                 <dd className="changelogStatValue">

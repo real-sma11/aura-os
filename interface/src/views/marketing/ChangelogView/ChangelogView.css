@@ -18,21 +18,38 @@
 }
 
 /* Page-level layout context for the changelog summary card. The
-   visual chrome (background, shadow, padding, gap, square corners,
-   no border) lives on `BannerCard` — see
-   `interface/src/views/marketing/BannerCard/BannerCard.css`. Only
-   the `margin-bottom` separating the card from the entries list
-   below stays here because that's a concern of the changelog page
-   layout, not of the reusable card component. */
+   visual chrome (background, shadow, square corners, no border) lives
+   on `BannerCard` — see
+   `interface/src/views/marketing/BannerCard/BannerCard.css`. The
+   padding is overridden here because this card hosts the multi-line
+   "Current version" stat in its top-right corner and we want the
+   distance from the card edge to the "CURRENT VERSION" label to feel
+   uniform with the left/right/bottom padding instead of the asymmetric
+   28px/32px BannerCard default. */
 .changelogStatsCard {
   margin-bottom: 64px;
+  padding: 32px;
+}
+
+@media (max-width: 768px) {
+  .changelogStatsCard {
+    /* Match BannerCard's mobile (max-width: 768px) fallback exactly so
+       we don't accidentally re-introduce the desktop asymmetry on
+       narrow screens. */
+    padding: 22px;
+  }
 }
 
 .changelogStatsCardHeader {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  align-items: baseline;
+  gap: 14px 32px;
+  /* Top-align so the multi-line Current Version stat block in the
+     top-right sits flush with the same baseline as the Changelog
+     title (the previous `align-items: baseline` aligned the label's
+     first-line baseline to the huge title baseline, pushing the stat
+     block visually downward). */
+  align-items: flex-start;
   justify-content: space-between;
 }
 
@@ -142,13 +159,16 @@
   color: #fff;
 }
 
-/* "Current version" promoted to the lead stat in the grid. It uses the
-   same label/value typography as the other stats so it reads as part of
-   the set, but spans the full width of the stats grid so the release
-   timestamp + download link can sit on a single line under the version
-   number without crowding the smaller, single-line stat blocks. */
+/* "Current version" lives in the top-right of the card header. It
+   keeps the same label/value typography as the stats grid below it so
+   the card reads as one consistent set of stats; the
+   `.changelogStat` base styling supplies the column layout, and we
+   only add `align-items: flex-start` here so the right-side block
+   doesn't get center-aligned by inherited rules on narrow screens
+   where the header wraps. */
 .changelogStatVersion {
-  grid-column: 1 / -1;
+  align-items: flex-start;
+  text-align: left;
 }
 
 .changelogStatVersionMeta {

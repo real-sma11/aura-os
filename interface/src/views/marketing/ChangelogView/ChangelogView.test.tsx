@@ -117,7 +117,7 @@ describe("ChangelogView", () => {
     expect(allTime).toHaveAttribute("aria-busy", "false");
   });
 
-  it("renders Current Version as a stat block with the version number, release age, and Download link", async () => {
+  it("renders Current Version as a stat block in the card header (top-right) with the version number, release age, Download and GitHub links", async () => {
     // Anchor the timestamp 2 hours before the actual test-runner clock
     // so the relative-time string is deterministic ("2 hours ago")
     // without us having to stand up a fake timer (which would interfere
@@ -148,11 +148,16 @@ describe("ChangelogView", () => {
 
     renderChangelogView();
 
-    // Label and value render in the same stat block as the other stats.
+    // Label and value render in the same stat block, which now lives
+    // in the top-right of the card header — confirm both the class and
+    // the parent `<header>` so future markup moves don't silently
+    // reintroduce the in-grid placement.
     const label = await screen.findByText(/Current version/i);
     const stat = label.closest(".changelogStat");
     expect(stat).not.toBeNull();
     expect(stat).toHaveClass("changelogStatVersion");
+    expect(stat!.closest("header")).not.toBeNull();
+    expect(stat!.closest("header")).toHaveClass("changelogStatsCardHeader");
 
     const value = stat!.querySelector(".changelogStatValue");
     expect(value?.textContent).toBe("1.2.3");
