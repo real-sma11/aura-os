@@ -1,0 +1,353 @@
+.modelsPage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--marketing-main-bottom-space));
+  min-height: calc(100dvh - var(--marketing-main-bottom-space));
+  padding: clamp(40px, 6vh, 72px) clamp(32px, 5vw, 72px);
+  box-sizing: border-box;
+  background: #16191d;
+}
+
+.modelsPageContent {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.modelsPageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modelsPageTitle {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  color: #f4f3ef;
+}
+
+.modelsPageSubtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.56);
+}
+
+/* Primary mode filter row (All / Text / Image / Video / 3D) */
+.modelsModeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  align-self: flex-start;
+  user-select: none;
+}
+
+.modelsModeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.modelsModeButton:hover {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.modelsModeButtonActive {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f7f5f0;
+}
+
+.modelsModeButtonIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Secondary axis: status pills + search input on the same row */
+.modelsControlsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.modelsStatusRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.modelsStatusButton {
+  min-height: 28px;
+  padding: 5px 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.modelsStatusButton + .modelsStatusButton {
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.modelsStatusButton:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.modelsStatusButtonActive {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f7f5f0;
+}
+
+.modelsSearch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-height: 32px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.modelsSearch:focus-within {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.modelsSearchInput {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f4f3ef;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.modelsSearchInput::placeholder {
+  color: rgba(255, 255, 255, 0.36);
+}
+
+/* Sections */
+.modelsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modelsSectionLabel {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.modelsFeaturedGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.modelsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modelsEmptyState {
+  margin: 0;
+  padding: 32px 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+/* Cards */
+.modelsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background-color 150ms ease;
+}
+
+.modelsCard:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.modelsCardFeatured {
+  min-height: 168px;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.modelsCardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.modelsCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* Mode-tinted icon backgrounds. Subtle hue per modality so the
+   grid scans quickly even when search collapses categories. */
+.modelsCardIconMode-text {
+  background: rgba(141, 168, 255, 0.16);
+  color: #bfd0ff;
+}
+
+.modelsCardIconMode-image {
+  background: rgba(255, 166, 121, 0.16);
+  color: #ffd1b3;
+}
+
+.modelsCardIconMode-video {
+  background: rgba(195, 141, 255, 0.16);
+  color: #dfc4ff;
+}
+
+.modelsCardIconMode-3d {
+  background: rgba(126, 222, 200, 0.16);
+  color: #b3edda;
+}
+
+.modelsCardHeading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.modelsCardName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #f2f0ec;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelsCardProvider {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.modelsStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid currentColor;
+  user-select: none;
+}
+
+.modelsStatusBadge-live {
+  color: #6fd09a;
+}
+
+.modelsStatusBadge-soon {
+  color: #f0c171;
+}
+
+.modelsCardDescription {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 1080px) {
+  .modelsFeaturedGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .modelsPage {
+    padding: 32px 28px calc(var(--marketing-taskbar-safe-offset, 0px) + 96px);
+  }
+
+  .modelsPageContent {
+    gap: 22px;
+  }
+
+  .modelsModeRow {
+    flex-wrap: wrap;
+  }
+
+  .modelsControlsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modelsSearch {
+    max-width: none;
+  }
+
+  .modelsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .modelsFeaturedGrid {
+    grid-template-columns: 1fr;
+  }
+}

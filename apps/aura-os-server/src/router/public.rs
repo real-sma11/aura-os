@@ -14,7 +14,7 @@
 use axum::routing::{get, post};
 use axum::Router;
 
-use crate::handlers::{feedback, public};
+use crate::handlers::{feedback, public, public_models};
 use crate::state::AppState;
 
 /// Env var that toggles the three public generation endpoints. When
@@ -47,7 +47,15 @@ pub(super) fn public_routes() -> Router<AppState> {
         // so the browser no longer needs `VITE_AURA_NETWORK_URL`; the upstream
         // `AURA_NETWORK_URL` stays a server-side env (mirrors the aura-web
         // `force-dynamic` RSC pattern at `src/app/roadmap/page.tsx`).
-        .route("/api/public/feedback", get(feedback::pub_list_feedback));
+        .route("/api/public/feedback", get(feedback::pub_list_feedback))
+        // Marketing `/models` page reads from this same-origin pass-through
+        // to aura-network's `/api/public/models`. Same graceful-degrade
+        // contract as `/api/public/feedback`: returns `[]` when no
+        // aura-network client is configured or the upstream call fails.
+        .route(
+            "/api/public/models",
+            get(public_models::pub_list_models),
+        );
     if public_generation_enabled() {
         router = router
             .route(

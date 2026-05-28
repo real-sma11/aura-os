@@ -22,6 +22,7 @@ const FOOTER_LINKS: ReadonlyArray<FooterLink> = [
   { label: "Changelog", to: "/changelog" },
   { label: "Feedback", to: "/feedback" },
   { label: "Pricing", to: "/pricing" },
+  { label: "Models", to: "/models" },
   { label: "Chat", to: "/chat" },
 ];
 

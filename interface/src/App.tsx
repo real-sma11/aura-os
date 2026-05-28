@@ -46,6 +46,9 @@ const FeedbackView = lazy(() =>
 const PricingView = lazy(() =>
   import("./views/marketing/PricingView").then((m) => ({ default: m.PricingView })),
 );
+const ModelsView = lazy(() =>
+  import("./views/marketing/ModelsView").then((m) => ({ default: m.ModelsView })),
+);
 
 const initiallyLoggedIn = isLoggedInSync();
 
@@ -356,6 +359,14 @@ function AppRoutes(): React.ReactElement {
               element={
                 <Suspense fallback={<RouteFallback />}>
                   <PricingView />
+                </Suspense>
+              }
+            />
+            <Route
+              path="models"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <ModelsView />
                 </Suspense>
               }
             />
