@@ -287,11 +287,11 @@
 .markdown p:last-child { margin-bottom: 0; }
 .markdown code {
   font-family: var(--font-mono);
-  background: var(--color-overlay-subtle);
+  background: var(--color-overlay-light);
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 .markdown pre {
   border: 1px solid var(--color-border);
@@ -303,6 +303,9 @@
   word-break: break-word;
   overflow-wrap: anywhere;
   max-width: 100%;
+}
+.markdown pre:empty {
+  display: none;
 }
 .markdown pre code {
   background: none;
@@ -341,9 +344,9 @@
 }
 .markdown li { margin-bottom: 2px; }
 .markdown blockquote {
-  border-left: 2px solid var(--color-accent);
+  border-left: 2px solid var(--color-text-muted);
   padding-left: 10px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
   font-size: 12.5px;
 }

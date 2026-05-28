@@ -15,7 +15,7 @@ export function formatTime(date: Date): string {
   });
 }
 
-const STRUCTURED_MD = /^(?:[-*+]\s|\d+\.\s|#{1,6}\s|\*\*)/;
+const STRUCTURED_MD = /^(?:[-*+]\s|\d+\.\s|#{1,6}\s|>\s?|\*\*)/;
 const BOLD_LABEL = /^\*\*(.+?)\*\*\s*$/;
 const FENCE_DELIM = /^(?:```|~~~)/;
 const TERMINATOR = /[.!?:;]$/;
@@ -26,7 +26,11 @@ const TERMINATOR = /[.!?:;]$/;
  * Standalone bold labels (`**Section:**`) are promoted to `### ` headings so
  * they act as visual section dividers rather than `<p>` elements that fragment
  * the surrounding `<ul>` lists.  Other structured markdown (bullets, numbered
- * items, headings) is preserved as-is.  Lines containing inline code are
+ * items, headings, blockquotes) is preserved as-is — blockquote lines (`>`,
+ * including bare `>` continuation lines) pass through verbatim so quoted spec
+ * context renders as a proper `<blockquote>` instead of being prefixed with a
+ * `- ` bullet (which produced a stray bullet plus an empty `.` line).  Lines
+ * containing inline code are
  * converted to a single bullet without sentence splitting, since periods
  * inside code would produce wrong breaks.  Plain-text lines are split at
  * sentence boundaries so each idea gets its own bullet.

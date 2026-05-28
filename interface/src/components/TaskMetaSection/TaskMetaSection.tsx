@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -11,6 +12,29 @@ import { toBullets, formatTokens, formatRelativeTime } from "../../shared/utils/
 import { extractErrorMessage } from "../../shared/utils/extract-error-message";
 import type { Task, AgentInstance } from "../../shared/types";
 import styles from "../Preview/Preview.module.css";
+
+/** Recursively collect the text content of a rendered markdown node. */
+function nodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (typeof node === "object" && "props" in node) {
+    return nodeText((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
+
+/**
+ * Drop fenced/indented code blocks whose body is only whitespace so the model
+ * occasionally emitting an empty ``` ``` fence doesn't paint a stray bordered
+ * rectangle in the task description.
+ */
+function PreBlock({ children }: { children?: ReactNode }) {
+  if (nodeText(children).trim().length === 0) return null;
+  return <pre>{children}</pre>;
+}
+
+const markdownComponents = { pre: PreBlock };
 
 function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -157,7 +181,7 @@ export function TaskMetaSection({
         <span className={styles.fieldLabel}>Description</span>
         {task.description ? (
           <div className={styles.markdown}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
               {toBullets(task.description)}
             </ReactMarkdown>
           </div>
