@@ -368,6 +368,44 @@ describe("stream/store", () => {
       seedStreamEventsFromCache("task:1", []);
       expect(getStreamEntry("task:1")).toBeUndefined();
     });
+
+    it("seeds a streaming-but-empty entry when allowWhileStreaming is set", () => {
+      // Active-task reconnect/refresh: useTaskStream(taskId, true) flips
+      // isStreaming on mount before any delta lands, so the default guard
+      // would block rehydration. The opt-in restores prior turns.
+      ensureEntry("task:1");
+      useStreamStore.setState((s) => ({
+        entries: {
+          ...s.entries,
+          "task:1": { ...s.entries["task:1"], isStreaming: true },
+        },
+      }));
+      seedStreamEventsFromCache("task:1", [makeEvent("cached-1", "cached")], {
+        allowWhileStreaming: true,
+      });
+      const entry = getStreamEntry("task:1");
+      expect(entry?.events).toHaveLength(1);
+      expect(entry?.events[0].id).toBe("cached-1");
+    });
+
+    it("does not seed a streaming entry that already has live content", () => {
+      ensureEntry("task:1");
+      useStreamStore.setState((s) => ({
+        entries: {
+          ...s.entries,
+          "task:1": {
+            ...s.entries["task:1"],
+            isStreaming: true,
+            streamingText: "partial live token",
+          },
+        },
+      }));
+      seedStreamEventsFromCache("task:1", [makeEvent("cached-1", "cached")], {
+        allowWhileStreaming: true,
+      });
+      const entry = getStreamEntry("task:1");
+      expect(entry?.events).toHaveLength(0);
+    });
   });
 
   describe("acquireSharedStreamSubscriptions", () => {

@@ -122,13 +122,15 @@ export function useTaskOutputView(
       const cached = await readTaskTurns(taskId, projectId);
       if (cancelled) return;
       if (cached.length > 0) {
-        seedStreamEventsFromCache(streamKey, cached);
+        seedStreamEventsFromCache(streamKey, cached, {
+          allowWhileStreaming: !isTerminal,
+        });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [taskId, projectId, canRehydrate, events.length, streamKey]);
+  }, [taskId, projectId, canRehydrate, events.length, streamKey, isTerminal]);
 
   // 2. Hydrate text / build / test / git steps from localStorage +
   //    server when nothing structured is available.
@@ -237,7 +239,9 @@ export function useTaskOutputView(
       const cached = await readTaskTurns(taskId, projectId);
       if (cancelled) return "empty";
       if (cached.length > 0) {
-        seedStreamEventsFromCache(streamKey, cached);
+        seedStreamEventsFromCache(streamKey, cached, {
+          allowWhileStreaming: !isTerminal,
+        });
         return "loaded";
       }
       // Short-circuit when we already have non-event content to
@@ -257,7 +261,9 @@ export function useTaskOutputView(
         if (cancelled) return "empty";
         const displayEvents = buildDisplayEvents(wireEvents);
         if (displayEvents.length === 0) return "empty";
-        seedStreamEventsFromCache(streamKey, displayEvents);
+        seedStreamEventsFromCache(streamKey, displayEvents, {
+          allowWhileStreaming: !isTerminal,
+        });
         // Mirror into the persistent turn cache so the next mount of
         // this row (or a sibling panel on the same page) skips the
         // server round-trip entirely.
@@ -279,6 +285,7 @@ export function useTaskOutputView(
     sessionId,
     agentInstanceId,
     streamKey,
+    isTerminal,
   ]);
 
   // 4. Mirror newly-materialized events back into the persistent turn

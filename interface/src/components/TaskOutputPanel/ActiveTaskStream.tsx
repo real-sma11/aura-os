@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { ChevronRight } from "lucide-react";
 import { useTaskStream } from "../../hooks/use-task-stream";
+import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import {
   useIsStreaming,
   useIsWriting,
@@ -53,6 +54,15 @@ export function ActiveTaskStream({
   showHeader = true,
 }: ActiveTaskStreamProps) {
   const { streamKey } = useTaskStream(taskId, true);
+  const ctx = useProjectActions();
+  // Rehydrate the structured stream store on mount when the live entry
+  // is empty (page refresh / WS reconnect mid-run). Without this the
+  // in-memory stream store is wiped on reload and the Live Output panel
+  // renders blank until the next assistant turn finalizes. `isTerminal`
+  // is `false` here so `useTaskOutputView` takes its non-terminal
+  // reconnect path (seeding `task-turn-cache` + `api.listSessionEvents`
+  // even while the entry is flagged streaming).
+  useTaskOutputView(taskId, ctx?.project.project_id, false);
   const isStreaming = useIsStreaming(streamKey);
   const isWriting = useIsWriting(streamKey);
   const streamingText = useStreamingText(streamKey);
@@ -63,7 +73,6 @@ export function ActiveTaskStream({
   const progressText = useProgressText(streamKey);
   const events = useStreamEvents(streamKey);
   const taskOutput = useTaskOutput(taskId);
-  const ctx = useProjectActions();
   const cooldown = useCooldownStatus(undefined, ctx?.project.project_id);
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);

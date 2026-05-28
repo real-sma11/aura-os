@@ -295,18 +295,38 @@ export function getStreamEntry(key: string): StreamEntryState | undefined {
  * renders the full structured turn history without a server round
  * trip. No-ops when the entry already has events or is streaming so
  * we never clobber live data.
+ *
+ * `allowWhileStreaming` opts into seeding an entry whose `isStreaming`
+ * flag is already set — the reconnect/refresh case for an *active*
+ * task, where `useTaskStream(taskId, true)` flips `isStreaming` on
+ * mount before any delta arrives. Even then we only seed when the
+ * entry has no events AND no live content has landed yet
+ * (`streamingText` / `thinkingText` / `activeToolCalls`), so a stream
+ * that is actually flowing is never clobbered.
  */
 export function seedStreamEventsFromCache(
   key: string,
   events: DisplaySessionEvent[],
+  options?: { allowWhileStreaming?: boolean },
 ): void {
   if (!key || !events || events.length === 0) return;
   ensureEntry(key);
   useStreamStore.setState((s) => {
     const existing = s.entries[key];
     if (!existing) return s;
-    if (existing.isStreaming) return s;
     if (existing.events.length > 0) return s;
+    if (existing.isStreaming) {
+      if (!options?.allowWhileStreaming) return s;
+      // Bail if real live content has already arrived for this active
+      // task so we never overwrite an in-flight turn with stale cache.
+      if (
+        existing.streamingText ||
+        existing.thinkingText ||
+        existing.activeToolCalls.length > 0
+      ) {
+        return s;
+      }
+    }
     return {
       entries: {
         ...s.entries,
