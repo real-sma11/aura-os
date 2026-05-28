@@ -5,8 +5,23 @@ import {
   type ChangelogTimelineMedia,
   fetchChangelogEntries,
 } from "../../../api/marketing/changelog";
+import {
+  AURA_PUBLIC_REPOS,
+  fetchAuraCommitStats,
+} from "../../../api/marketing/github-commits";
+import { useCountUp } from "../../../hooks/use-count-up";
 import { BannerCard } from "../BannerCard/BannerCard";
 import "./ChangelogView.css";
+
+/**
+ * Cap on how high the loading ramp climbs while we wait for the live
+ * commits fetch to resolve. The animation visibly counts up to this
+ * sentinel and then rapidly snaps to whatever the real total is once
+ * `fetchAuraCommitStats` returns.
+ */
+const COMMITS_LOADING_TARGET = 1000;
+const COMMITS_LOADING_RAMP_MS = 2500;
+const COMMITS_LIVE_TITLE = `Live total across ${AURA_PUBLIC_REPOS.length} AURA repositories`;
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
 
@@ -29,18 +44,12 @@ function getCurrentPstMonthKey(now: Date = new Date()): string {
 
 interface ChangelogStats {
   readonly releasesThisMonth: number;
-  readonly commitsThisMonth: number;
   readonly releasesAllTime: number;
-  readonly commitsAllTime: number;
 }
 
 interface ReleasesPerDayPoint {
   readonly date: string;
   readonly releases: number;
-}
-
-function entryCommits(entry: ChangelogEntry): number {
-  return entry.filteredCommitCount ?? entry.rawCommitCount;
 }
 
 function entryReleases(entry: ChangelogEntry): number {
@@ -54,9 +63,7 @@ function computeStats(
   const thisMonth = entries.filter((entry) => entry.date.startsWith(monthKey));
   return {
     releasesThisMonth: thisMonth.reduce((n, e) => n + entryReleases(e), 0),
-    commitsThisMonth: thisMonth.reduce((n, e) => n + entryCommits(e), 0),
     releasesAllTime: entries.reduce((n, e) => n + entryReleases(e), 0),
-    commitsAllTime: entries.reduce((n, e) => n + entryCommits(e), 0),
   };
 }
 
@@ -286,6 +293,16 @@ export function ChangelogView(): ReactNode {
     queryFn: fetchChangelogEntries,
   });
 
+  // Live commit totals across the 7 public AURA repos. Kept separate
+  // from the curated changelog query because the underlying GitHub REST
+  // calls are independent and shouldn't block the page on cold load.
+  const { data: liveCommitStats } = useQuery({
+    queryKey: ["marketing-changelog-live-commits"],
+    queryFn: ({ signal }) => fetchAuraCommitStats(undefined, signal),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   // Stabilize the empty fallback so memo deps below don't change every
   // render (React Query keeps `data` referentially stable across renders
   // until it refetches, but `?? []` would allocate a new array each time).
@@ -301,6 +318,20 @@ export function ChangelogView(): ReactNode {
     () => computeReleasesPerDay(entries),
     [entries],
   );
+
+  // Drive the two commit stats through a count-up animation: ramp from
+  // 0 toward COMMITS_LOADING_TARGET while the GitHub API is in flight,
+  // then snap rapidly to the real total once it resolves.
+  const commitsThisMonthDisplay = useCountUp({
+    target: liveCommitStats ? liveCommitStats.commitsThisMonth : null,
+    loadingTarget: COMMITS_LOADING_TARGET,
+    loadingRampMs: COMMITS_LOADING_RAMP_MS,
+  });
+  const commitsAllTimeDisplay = useCountUp({
+    target: liveCommitStats ? liveCommitStats.commitsAllTime : null,
+    loadingTarget: COMMITS_LOADING_TARGET,
+    loadingRampMs: COMMITS_LOADING_RAMP_MS,
+  });
 
   return (
     <section className="changelogPage">
@@ -328,8 +359,13 @@ export function ChangelogView(): ReactNode {
               </div>
               <div className="changelogStat">
                 <dt className="changelogStatLabel">Commits this month</dt>
-                <dd className="changelogStatValue">
-                  {STAT_NUMBER_FORMATTER.format(stats.commitsThisMonth)}
+                <dd
+                  className="changelogStatValue"
+                  aria-live="polite"
+                  aria-busy={liveCommitStats ? "false" : "true"}
+                  title={COMMITS_LIVE_TITLE}
+                >
+                  {STAT_NUMBER_FORMATTER.format(commitsThisMonthDisplay)}
                 </dd>
               </div>
               <div className="changelogStat">
@@ -340,8 +376,13 @@ export function ChangelogView(): ReactNode {
               </div>
               <div className="changelogStat">
                 <dt className="changelogStatLabel">All-time commits</dt>
-                <dd className="changelogStatValue">
-                  {STAT_NUMBER_FORMATTER.format(stats.commitsAllTime)}
+                <dd
+                  className="changelogStatValue"
+                  aria-live="polite"
+                  aria-busy={liveCommitStats ? "false" : "true"}
+                  title={COMMITS_LIVE_TITLE}
+                >
+                  {STAT_NUMBER_FORMATTER.format(commitsAllTimeDisplay)}
                 </dd>
               </div>
             </dl>
