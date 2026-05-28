@@ -70,4 +70,3 @@ pub(crate) async fn get_loop_status(
 ) -> ApiResult<Json<LoopStatusResponse>> {
     Ok(Json(status_response(&state, project_id, None).await))
 }
-

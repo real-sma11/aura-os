@@ -352,8 +352,7 @@ mod tests {
             );
         }
         assert!(
-            PLAN_MODE_SYSTEM_PROMPT_SUFFIX
-                .contains("quote 1\u{2013}3 lines from the parent spec"),
+            PLAN_MODE_SYSTEM_PROMPT_SUFFIX.contains("quote 1\u{2013}3 lines from the parent spec"),
             "plan-mode suffix must require Context to quote the parent spec",
         );
     }

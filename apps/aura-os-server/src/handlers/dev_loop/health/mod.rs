@@ -36,4 +36,6 @@ pub(crate) use delta::{
 #[allow(unused_imports)]
 pub(crate) use snapshot::{compute_signature, parse_cargo_check_json_output, Snapshot};
 pub(crate) use summary::format_health_summary;
-pub use types::{BuildStatus, HealthDelta, HealthError, HealthVerdict, TestStatus, WorkspaceHealth};
+pub use types::{
+    BuildStatus, HealthDelta, HealthError, HealthVerdict, TestStatus, WorkspaceHealth,
+};

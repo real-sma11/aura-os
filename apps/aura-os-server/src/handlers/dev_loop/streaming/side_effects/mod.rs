@@ -110,12 +110,7 @@ pub(super) async fn record_event_side_effects(
             None => (event_type, enriched),
         };
     broadcast_event(ctx, broadcast_payload);
-    log_lines::surface_log_lines_for_event(
-        ctx,
-        effective_event_type,
-        task_id.as_deref(),
-        &event,
-    );
+    log_lines::surface_log_lines_for_event(ctx, effective_event_type, task_id.as_deref(), &event);
     dispatch::apply_event_side_effect(ctx, effective_event_type, task_id.as_deref(), &event).await;
 }
 

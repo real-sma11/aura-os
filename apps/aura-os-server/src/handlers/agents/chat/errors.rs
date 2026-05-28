@@ -225,7 +225,7 @@ pub(crate) fn map_harness_error_to_api(
     } else if let Some((field, context)) =
         aura_os_harness::HarnessError::session_identity_missing(err)
     {
-        // Tier 2: the harness rejected our session_init payload
+        // Tier 2: the harness rejected our runtime_request payload
         // because one of the required `X-Aura-*` identity fields is
         // missing. Funnel into the same 422 shape Tier 1 emits so
         // server / harness drift stays observable as one error code
@@ -267,7 +267,7 @@ pub(super) fn map_harness_session_startup_error(message: &str) -> (StatusCode, J
         return ApiError::service_unavailable(format!("local harness is unavailable: {message}"));
     }
 
-    if normalized.contains("local harness session_init send failed")
+    if normalized.contains("local harness post /v1/run failed")
         || normalized.contains("harness error during init")
         || normalized.contains("connection closed before session_ready")
     {
@@ -423,9 +423,9 @@ mod tests {
     fn map_harness_error_to_api_session_identity_remaps_to_422() {
         let err = anyhow::Error::new(aura_os_harness::HarnessError::SessionIdentityMissing {
             field: "aura_org_id",
-            context: "session_init",
+            context: "runtime_request",
         })
-        .context("local harness rejected session_init: identity preflight");
+        .context("local harness rejected runtime_request: identity preflight");
         let (status, Json(body)) = map_harness_error_to_api(&err, 96, |_| {
             unreachable!("session_identity_missing must NOT hit the fallback");
         });
@@ -434,7 +434,7 @@ mod tests {
         let data = body.data.expect("structured data must be populated");
         assert_eq!(data["code"], "session_identity_missing");
         assert_eq!(data["field"], "aura_org_id");
-        assert_eq!(data["context"], "session_init");
+        assert_eq!(data["context"], "runtime_request");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-﻿//! Server-side signal helpers: classifier wrappers (typed via
+//! Server-side signal helpers: classifier wrappers (typed via
 //! `HarnessFailureKind`), failure-context extraction, completion
 //! predicates, and test-evidence detection.
 

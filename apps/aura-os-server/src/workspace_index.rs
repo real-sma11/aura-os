@@ -116,10 +116,7 @@ pub fn render_workspace_index_block(index: &WorkspaceIndex) -> String {
     out.push_str(&format!(
         "<workspace_index source=\"cached:{short_hash}\">\n"
     ));
-    out.push_str(&format!(
-        "  Workspace members ({}):\n",
-        index.members.len()
-    ));
+    out.push_str(&format!("  Workspace members ({}):\n", index.members.len()));
 
     let mut budget_left = MAX_DEP_NAMES;
     for member in &index.members {
@@ -496,8 +493,8 @@ serde = "1"
         let root = tmp.path();
         seed_workspace(root);
 
-        let block = build_workspace_index_block(root)
-            .expect("block renders for a well-formed workspace");
+        let block =
+            build_workspace_index_block(root).expect("block renders for a well-formed workspace");
 
         assert!(
             block.starts_with("<workspace_index source=\"cached:"),

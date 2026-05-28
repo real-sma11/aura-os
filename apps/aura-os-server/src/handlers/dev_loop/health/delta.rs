@@ -208,8 +208,8 @@ fn format_grouped_summary(errors: &[&HealthError]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::{BuildStatus, HealthError, TestStatus, WorkspaceHealth};
+    use super::*;
 
     fn err(file: &str, code: &str, kind: &str) -> HealthError {
         HealthError {

@@ -7,7 +7,7 @@ import type { CapabilityWire } from "./CapabilityWire";
  *
  * Mirrored here so `aura-protocol` stays decoupled from the harness-core
  * crates; the harness translates [`AgentPermissionsWire`] into its own
- * `aura_core::AgentPermissions` at `SessionInit` time. Additive /
+ * `aura_core::AgentPermissions` when a [`crate::RuntimeRequest`] lands. Additive /
  * forward-compatible: unknown capability variants deserialize into
  * [`CapabilityWire::Unknown`] rather than rejecting the session.
  */

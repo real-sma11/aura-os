@@ -1,17 +1,18 @@
-use anyhow::Context;
 use async_trait::async_trait;
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::info;
 
 use crate::error::HarnessError;
 use crate::harness::{
-    build_session_init, validate_session_init_identity, HarnessLink, HarnessSession, SessionConfig,
+    build_runtime_request, validate_runtime_request_identity, HarnessLink, HarnessSession,
+    SessionConfig,
 };
 use crate::harness_url::local_harness_base_url;
 use crate::stability_metrics;
 use crate::ws_bridge::spawn_ws_bridge;
-use aura_protocol::{InboundMessage, OutboundMessage};
+use aura_protocol::{OutboundMessage, RuntimeRunResponse};
 
 /// WebSocket close code 1013 ("Try Again Later") signals upstream
 /// capacity exhaustion before the upgrade completes. Detect it by
@@ -91,61 +92,56 @@ impl LocalHarness {
         Self::new(local_harness_base_url())
     }
 
-    fn ws_url(&self) -> String {
-        let base = self
-            .base_url
+    fn ws_base(&self) -> String {
+        self.base_url
             .replace("https://", "wss://")
-            .replace("http://", "ws://");
-        format!("{base}/stream")
+            .replace("http://", "ws://")
+    }
+
+    fn ws_url_for_run(&self, run_id: &str) -> String {
+        format!("{}/stream/{run_id}", self.ws_base())
     }
 }
+
+/// HTTP client timeout for the `POST /v1/run` step of the two-step
+/// chat session exchange. Mirrors the
+/// [`crate::automaton_client::client::AUTOMATON_START_TIMEOUT`]
+/// rationale: the harness's `prepare_chat_session` does identity /
+/// tool / skill resolution before returning, which can exceed the
+/// client-wide 12s default on a freshly-launched node.
+const RUN_START_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[async_trait]
 impl HarnessLink for LocalHarness {
     async fn open_session(&self, config: SessionConfig) -> anyhow::Result<HarnessSession> {
         // Tier 2 fail-fast: validate the minimum identity contract
-        // before any network work. Surfaces as a structured
-        // `HarnessError::SessionIdentityMissing` inside the returned
-        // `anyhow::Error` so the server's `map_harness_error_to_api`
-        // can funnel it into the same 422 response Tier 1 emits.
-        if let Err(err) = validate_session_init_identity(&config) {
+        // before any network work.
+        if let Err(err) = validate_runtime_request_identity(&config) {
             return Err(anyhow::Error::new(err)
-                .context("local harness rejected session_init: identity preflight"));
+                .context("local harness rejected runtime_request: identity preflight"));
         }
-        let ws_url = self.ws_url();
+
         let max_attempts = read_connect_attempts_from_env();
         let per_attempt_timeout = read_connect_timeout_from_env();
+        let request_body = build_runtime_request(&config);
+        let auth_token = config.token.clone();
+
         let mut last_err: Option<anyhow::Error> = None;
-        let mut ws_stream_opt = None;
+        let mut session_opt: Option<HarnessSession> = None;
         for attempt in 1..=max_attempts {
-            let connect_outcome = tokio::time::timeout(
-                per_attempt_timeout,
-                tokio_tungstenite::connect_async(&ws_url),
-            )
-            .await;
-            match connect_outcome {
-                Ok(Ok((ws_stream, _))) => {
-                    ws_stream_opt = Some(ws_stream);
+            match self
+                .try_open_session_attempt(&request_body, auth_token.as_deref(), per_attempt_timeout)
+                .await
+            {
+                Ok(session) => {
+                    session_opt = Some(session);
                     break;
                 }
-                Ok(Err(err)) => {
-                    // Capacity exhaustion is an authoritative upstream
-                    // rejection — retrying would only delay the
-                    // 503/1013 surface and waste a slot. Short-circuit
-                    // immediately so the existing capacity mapper in
-                    // the server keeps firing.
-                    if is_capacity_exhausted_ws_error(&err) {
-                        return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
-                            .context(format!("local harness websocket connect rejected: {err}")));
-                    }
-                    last_err = Some(
-                        anyhow::Error::new(err).context("local harness websocket connect failed"),
-                    );
+                Err(OpenAttemptError::Capacity(err)) => {
+                    return Err(err);
                 }
-                Err(_) => {
-                    last_err = Some(anyhow::anyhow!(
-                        "timed out connecting to local harness websocket: {ws_url}"
-                    ));
+                Err(OpenAttemptError::Other(err)) => {
+                    last_err = Some(err);
                 }
             }
             if attempt < max_attempts {
@@ -155,50 +151,130 @@ impl HarnessLink for LocalHarness {
                     max_attempts,
                     backoff_ms = backoff.as_millis() as u64,
                     error = ?last_err.as_ref().map(|e| e.to_string()),
-                    "local harness websocket connect failed, retrying"
+                    "local harness session open failed, retrying"
                 );
                 // Phase 5 observability: every retry attempt past the
                 // first bumps the global counter aura-os-server reads
                 // through `stability_metrics::initial_connect_retries()`.
-                // The first attempt failing on its own is not a retry —
-                // we count the *additional* attempts the loop spends.
                 stability_metrics::inc_initial_connect_retry();
                 tokio::time::sleep(backoff).await;
             }
         }
-        let ws_stream = match ws_stream_opt {
-            Some(stream) => stream,
-            None => {
-                return Err(last_err.unwrap_or_else(|| {
-                    anyhow::anyhow!("local harness websocket connect failed (no attempts ran)")
-                }));
+        let session = session_opt.ok_or_else(|| {
+            last_err.unwrap_or_else(|| {
+                anyhow::anyhow!("local harness session open failed (no attempts ran)")
+            })
+        })?;
+
+        info!(session_id = %session.session_id, "Local harness session ready");
+
+        Ok(session)
+    }
+
+    async fn close_session(&self, _session_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// Per-attempt failure mode for the two-step open exchange.
+///
+/// Capacity-class rejections short-circuit the retry loop so the
+/// upstream `503` surface is preserved verbatim instead of being
+/// retried (and inflated into a 60s+ stall). Everything else falls
+/// through to the retry budget.
+enum OpenAttemptError {
+    Capacity(anyhow::Error),
+    Other(anyhow::Error),
+}
+
+impl LocalHarness {
+    async fn try_open_session_attempt(
+        &self,
+        request_body: &aura_protocol::RuntimeRequest,
+        auth_token: Option<&str>,
+        per_attempt_timeout: Duration,
+    ) -> Result<HarnessSession, OpenAttemptError> {
+        // Step 1: POST /v1/run.
+        let http_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(3))
+            .timeout(RUN_START_TIMEOUT)
+            .build()
+            .map_err(|e| {
+                OpenAttemptError::Other(anyhow::anyhow!("failed to build reqwest client: {e}"))
+            })?;
+        let mut http_req = http_client
+            .post(format!("{}/v1/run", self.base_url))
+            .json(request_body);
+        if let Some(token) = auth_token {
+            http_req = http_req.bearer_auth(token);
+        }
+        let resp = http_req.send().await.map_err(|e| {
+            OpenAttemptError::Other(anyhow::anyhow!("local harness POST /v1/run failed: {e}"))
+        })?;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            if status.as_u16() == 503 {
+                return Err(OpenAttemptError::Capacity(
+                    anyhow::Error::new(HarnessError::CapacityExhausted)
+                        .context(format!("POST /v1/run rejected with 503: {body}")),
+                ));
+            }
+            return Err(OpenAttemptError::Other(anyhow::anyhow!(
+                "POST /v1/run returned {status}: {body}"
+            )));
+        }
+        let run_handle: RuntimeRunResponse = serde_json::from_str(&body).map_err(|e| {
+            OpenAttemptError::Other(anyhow::anyhow!(
+                "POST /v1/run response could not parse as RuntimeRunResponse: {e}, body: {body}"
+            ))
+        })?;
+        let run_id = run_handle.run_id;
+
+        // Step 2: open WS /stream/:run_id.
+        let ws_url = self.ws_url_for_run(&run_id);
+        let mut ws_req = ws_url.clone().into_client_request().map_err(|e| {
+            OpenAttemptError::Other(anyhow::anyhow!("failed to build ws request: {e}"))
+        })?;
+        if let Some(token) = auth_token {
+            let value = format!("Bearer {token}").parse().map_err(|e| {
+                OpenAttemptError::Other(anyhow::anyhow!("bad authorization header value: {e}"))
+            })?;
+            ws_req.headers_mut().insert(
+                tokio_tungstenite::tungstenite::http::header::AUTHORIZATION,
+                value,
+            );
+        }
+        let connect_outcome = tokio::time::timeout(
+            per_attempt_timeout,
+            tokio_tungstenite::connect_async(ws_req),
+        )
+        .await;
+        let ws_stream = match connect_outcome {
+            Ok(Ok((ws_stream, _))) => ws_stream,
+            Ok(Err(err)) => {
+                if is_capacity_exhausted_ws_error(&err) {
+                    return Err(OpenAttemptError::Capacity(
+                        anyhow::Error::new(HarnessError::CapacityExhausted)
+                            .context(format!("local harness websocket connect rejected: {err}")),
+                    ));
+                }
+                return Err(OpenAttemptError::Other(
+                    anyhow::Error::new(err).context("local harness websocket connect failed"),
+                ));
+            }
+            Err(_) => {
+                return Err(OpenAttemptError::Other(anyhow::anyhow!(
+                    "timed out connecting to local harness websocket: {ws_url}"
+                )));
             }
         };
 
+        // Step 3: spawn WS bridge + wait for SessionReady (no
+        // session-init frame is sent — the run was created on the
+        // HTTP side and SessionReady arrives unprompted).
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
-
-        // Subscribe BEFORE sending SessionInit so any OutboundMessage::Error
-        // emitted by the bridge in the microseconds between the send and the
-        // subscribe is not lost. The recv loop below is the only consumer of
-        // these events, so a missed Error here would mean the loop waits on
-        // a SessionReady that will never arrive.
         let mut rx = events_tx.subscribe();
-
-        commands_tx
-            .try_send(InboundMessage::SessionInit(Box::new(build_session_init(
-                &config,
-            ))))
-            .context("local harness session_init send failed")?;
-
-        // Bound the SessionReady wait with a 30s timeout. Without it, a
-        // harness binary that opens then immediately closes the WS (observed
-        // on warm cold-reopens, ~3.3ms WS lifecycle) causes rx.recv() to
-        // hang forever: the local `events_tx` above keeps the broadcast
-        // channel alive even after the bridge tasks drop their senders, so
-        // the recv never sees Err(Closed). The 30s ceiling sits comfortably
-        // under the server-side 60s outer timeout in
-        // apps/aura-os-server/src/handlers/agents/chat/streaming.rs so this
-        // surfaces first with the more informative error string.
         let session_id = tokio::time::timeout(std::time::Duration::from_secs(30), async {
             loop {
                 match rx.recv().await {
@@ -222,9 +298,14 @@ impl HarnessLink for LocalHarness {
         .await
         .map_err(|_| {
             anyhow::anyhow!("Timed out waiting for SessionReady from local harness (30s)")
-        })??;
+        });
 
-        info!(%session_id, "Local harness session ready");
+        let session_id = match session_id {
+            Ok(Ok(id)) => id,
+            Ok(Err(err)) | Err(err) => {
+                return Err(OpenAttemptError::Other(err));
+            }
+        };
 
         Ok(HarnessSession {
             session_id,
@@ -232,10 +313,6 @@ impl HarnessLink for LocalHarness {
             raw_events_tx,
             commands_tx,
         })
-    }
-
-    async fn close_session(&self, _session_id: &str) -> anyhow::Result<()> {
-        Ok(())
     }
 }
 

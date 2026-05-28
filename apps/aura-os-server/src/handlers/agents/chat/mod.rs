@@ -39,13 +39,13 @@ pub(crate) use events::{
 };
 pub(crate) use instance_route::send_event_stream;
 pub(crate) use persist::{persist_user_message, ChatPersistCtx, ChatPersistRequest};
-pub use typed_session::{
-    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
-};
 pub(crate) use persist_task::persist_event;
 pub(crate) use setup::{
     cancel_agent_turn, cancel_instance_turn, reset_agent_session, reset_instance_session,
     setup_agent_chat_persistence, setup_project_chat_persistence,
+};
+pub use typed_session::{
+    build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,
 };
 
 pub use busy::{evaluate_partition_busy, BusyMatch, BusyScope};

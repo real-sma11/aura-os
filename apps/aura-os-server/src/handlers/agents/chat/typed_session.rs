@@ -20,7 +20,7 @@
 //! [`SessionConfig::project_info`]: aura_os_harness::SessionConfig::project_info
 
 use aura_os_core::ProjectId;
-use aura_protocol::{AgentIdentityWire, ChatProjectInfoWire};
+use aura_protocol::{AgentPersona, ChatProjectInfoWire};
 
 use crate::handlers::plan_mode::PLAN_MODE_SYSTEM_PROMPT_SUFFIX;
 use crate::state::AppState;
@@ -35,7 +35,7 @@ use super::compaction::append_project_state_to_system_prompt;
 /// caller leaves the legacy `system_prompt: Option<String>` empty so
 /// the harness's chat path takes the typed-fields branch.
 pub struct TypedSessionFields {
-    pub agent_identity: Option<AgentIdentityWire>,
+    pub agent_identity: Option<AgentPersona>,
     pub agent_skills: Vec<String>,
     pub agent_system_prompt: Option<String>,
     pub project_info: Option<ChatProjectInfoWire>,
@@ -120,12 +120,12 @@ pub fn build_typed_session_fields(
     }
 }
 
-/// Project the operator identity prose onto [`AgentIdentityWire`].
+/// Project the operator identity prose onto [`AgentPersona`].
 /// Returns `None` (the harness then drops the section) when every
 /// field is blank, matching the legacy `build_identity_preamble`
 /// "all-empty ⇒ zero-byte preamble" semantics.
-fn build_agent_identity(name: &str, role: &str, personality: &str) -> Option<AgentIdentityWire> {
-    let wire = AgentIdentityWire {
+fn build_agent_identity(name: &str, role: &str, personality: &str) -> Option<AgentPersona> {
+    let wire = AgentPersona {
         name: name.to_string(),
         role: role.to_string(),
         personality: personality.to_string(),
@@ -146,7 +146,8 @@ fn build_agent_system_prompt(
     project_state_snapshot: Option<&str>,
     plan_mode: bool,
 ) -> Option<String> {
-    let mut out = append_project_state_to_system_prompt(agent_template_prompt, project_state_snapshot);
+    let mut out =
+        append_project_state_to_system_prompt(agent_template_prompt, project_state_snapshot);
     if plan_mode {
         out.push_str(PLAN_MODE_SYSTEM_PROMPT_SUFFIX);
     }

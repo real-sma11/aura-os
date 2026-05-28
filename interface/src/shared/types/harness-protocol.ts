@@ -36,25 +36,83 @@ export interface ConversationMessage {
   content: string;
 }
 
-export interface SessionInit {
+/**
+ * Phase A canonical wire shape for `POST /v1/run`. Replaces the
+ * previous `SessionInit` first-frame contract on `/stream`.
+ *
+ * Mirror of `aura_protocol::RuntimeRequest` in Rust.
+ */
+export interface RuntimeRequest {
+  type: RuntimeRequestType;
+  agent_identity: AgentIdentity;
+  model: ModelSelection;
+  workspace: WorkspaceLocation;
+  project?: ProjectContext | null;
+  agent_permissions: unknown;
+  tool_permissions?: unknown | null;
+  agent_capabilities: AgentCapabilities;
+  auth_jwt?: string | null;
+  user_id: string;
+}
+
+export type RuntimeRequestType =
+  | { kind: "chat"; params: { conversation_messages: ConversationMessage[] } }
+  | { kind: "dev_loop"; params: Record<string, never> }
+  | {
+      kind: "task_run";
+      params: {
+        task_id: string;
+        prior_failure?: string | null;
+        work_log: string[];
+      };
+    };
+
+export interface AgentIdentity {
+  template_id?: string | null;
+  partition_id?: string | null;
+  persona?: AgentPersona | null;
+  skills: string[];
   system_prompt?: string | null;
-  model?: string | null;
+}
+
+export interface AgentPersona {
+  name: string;
+  role: string;
+  personality: string;
+}
+
+export interface ModelSelection {
+  id?: string | null;
   max_tokens?: number | null;
-  temperature?: number | null;
   max_turns?: number | null;
-  installed_tools?: InstalledTool[] | null;
+  temperature?: number | null;
+  provider_overrides?: unknown | null;
+}
+
+export interface WorkspaceLocation {
   workspace?: string | null;
-  token?: string | null;
-  project_id?: string | null;
-  conversation_messages?: ConversationMessage[] | null;
-  agent_id?: string | null;
-  /**
-   * Phase 1a: stable Aura template id, kept distinct from `agent_id`
-   * which is now the partition key (`{template}::{instance}`) the
-   * harness uses for per-turn locking. The harness falls back to
-   * `agent_id` when this is omitted.
-   */
-  template_agent_id?: string | null;
+  project_path?: string | null;
+  git_repo_url?: string | null;
+  git_branch?: string | null;
+}
+
+export interface ProjectContext {
+  project_id: string;
+  project_info?: unknown | null;
+  aura_org_id?: string | null;
+  aura_session_id?: string | null;
+  aura_agent_id?: string | null;
+}
+
+export interface AgentCapabilities {
+  installed_tools: InstalledTool[];
+  installed_integrations: unknown[];
+  intent_classifier?: unknown | null;
+}
+
+export interface RuntimeRunResponse {
+  run_id: string;
+  event_stream_url: string;
 }
 
 export interface MessageAttachment {
@@ -75,11 +133,17 @@ export interface ApprovalResponse {
   approved: boolean;
 }
 
+/**
+ * Phase A: the harness no longer accepts a `session_init` first WS
+ * frame — sessions are created via `POST /v1/run` (body:
+ * [`RuntimeRequest`]) and the client then opens `WS /stream/:run_id`,
+ * which immediately emits `SessionReady` as the first server-side
+ * frame.
+ */
 export type InboundMessage =
-  | { type: "session_init" } & SessionInit
-  | { type: "user_message" } & UserMessage
+  | ({ type: "user_message" } & UserMessage)
   | { type: "cancel" }
-  | { type: "approval_response" } & ApprovalResponse;
+  | ({ type: "approval_response" } & ApprovalResponse);
 
 // ============================================================================
 // Outbound Messages (Server → Client)

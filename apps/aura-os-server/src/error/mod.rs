@@ -139,12 +139,10 @@ impl ApiError {
                 "A dev loop is already running on the harness (automaton {id}). \
                  Click Reset to stop it and start a fresh run."
             ),
-            None => {
-                "A dev loop is already running on the harness, but its id is \
+            None => "A dev loop is already running on the harness, but its id is \
                  unknown to this server. Click Reset to clear local state — \
                  if Play still fails after that, restart the harness process."
-                    .to_string()
-            }
+                .to_string(),
         };
         (
             StatusCode::CONFLICT,

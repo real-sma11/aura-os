@@ -1,9 +1,6 @@
-﻿//! `task_done`/file-edit predicates and workspace-health gate used by the dev-loop and the legacy phase7 test surface.
+//! `task_done`/file-edit predicates and workspace-health gate used by the dev-loop and the legacy phase7 test surface.
 
-pub(crate) fn is_empty_path_write_event(
-    event_type: &str,
-    event: &serde_json::Value,
-) -> bool {
+pub(crate) fn is_empty_path_write_event(event_type: &str, event: &serde_json::Value) -> bool {
     if event_type != "tool_call_completed" {
         return false;
     }

@@ -1,4 +1,4 @@
-﻿//! Shared helpers used by every adapter handler (loop-instance / user-id resolution).
+//! Shared helpers used by every adapter handler (loop-instance / user-id resolution).
 
 use std::str::FromStr;
 

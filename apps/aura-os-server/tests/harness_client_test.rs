@@ -29,6 +29,7 @@ struct MockRecorder {
     seen_authorizations: Vec<Option<String>>,
     last_tx_body: Option<serde_json::Value>,
     last_record_query: Option<RecordQuery>,
+    last_run_body: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -101,8 +102,9 @@ async fn record_handler(
     Json(entries)
 }
 
-async fn stream_handler(
+async fn run_stream_handler(
     State(rec): State<SharedRecorder>,
+    Path(run_id): Path<String>,
     ws: WebSocketUpgrade,
     headers: HeaderMap,
 ) -> impl IntoResponse {
@@ -111,9 +113,31 @@ async fn stream_handler(
         .and_then(|h| h.to_str().ok().map(str::to_string));
     rec.lock().await.seen_authorizations.push(auth);
 
+    let _ = run_id;
     ws.on_upgrade(move |socket| async move {
         let _ = serve_stream(socket).await;
     })
+}
+
+async fn run_start_handler(
+    State(rec): State<SharedRecorder>,
+    headers: HeaderMap,
+    body: Body,
+) -> impl IntoResponse {
+    let auth = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok().map(str::to_string));
+    let bytes = axum::body::to_bytes(body, usize::MAX)
+        .await
+        .unwrap_or_default();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+    let mut r = rec.lock().await;
+    r.seen_authorizations.push(auth);
+    r.last_run_body = Some(json);
+    Json(serde_json::json!({
+        "run_id": "fixed-run-id",
+        "event_stream_url": "/stream/fixed-run-id",
+    }))
 }
 
 async fn serve_stream(mut socket: WebSocket) -> Result<(), axum::Error> {
@@ -131,7 +155,8 @@ async fn start_mock_harness() -> (String, SharedRecorder, tokio::task::JoinHandl
         .route("/tx", post(tx_handler))
         .route("/agents/:agent_id/head", get(head_handler))
         .route("/agents/:agent_id/record", get(record_handler))
-        .route("/stream", get(stream_handler))
+        .route("/v1/run", post(run_start_handler))
+        .route("/stream/:run_id", get(run_stream_handler))
         .with_state(recorder.clone());
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -248,7 +273,7 @@ async fn subscribe_stream_receives_text_frame_and_forwards_jwt() {
     let client = HarnessClient::new(url);
 
     let mut stream = client
-        .subscribe_stream(Some("jwt-ws"))
+        .subscribe_stream("fixed-run-id", Some("jwt-ws"))
         .await
         .expect("ws connect succeeded");
 

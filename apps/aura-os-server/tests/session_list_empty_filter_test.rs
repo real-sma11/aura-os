@@ -181,7 +181,11 @@ async fn list_sessions_filters_sessions_with_no_events() {
 /// mock has no auth, so the StorageClient appends a `?user=<id>`
 /// query param when `AURA_STORAGE_TEST_USER_ID` is set and the mock
 /// reads ownership from this side map.
-async fn stamp_session_owner(db: &aura_os_storage::testutil::SharedDb, session_id: &str, user_id: &str) {
+async fn stamp_session_owner(
+    db: &aura_os_storage::testutil::SharedDb,
+    session_id: &str,
+    user_id: &str,
+) {
     db.lock()
         .await
         .session_users

@@ -31,7 +31,7 @@ pub(crate) async fn start_or_adopt(
     )?;
     match client.start(params.clone()).await {
         Ok(result) => Ok(StartedAutomaton {
-            automaton_id: result.automaton_id,
+            automaton_id: result.run_id,
             event_stream_url: Some(result.event_stream_url),
             adopted: false,
         }),
@@ -43,7 +43,7 @@ pub(crate) async fn start_or_adopt(
                     .await
                     .map_err(|e| map_start_error(client.base_url(), e, ws_slots_cap))?;
                 return Ok(StartedAutomaton {
-                    automaton_id: result.automaton_id,
+                    automaton_id: result.run_id,
                     event_stream_url: Some(result.event_stream_url),
                     adopted: false,
                 });

@@ -36,10 +36,7 @@ use tokio::sync::broadcast;
 /// the production `app_builder` wiring, so any test that asserts the
 /// `loop_opened` / `loop_activity_changed` / `loop_ended` JSON wire
 /// shape on `event_broadcast` needs to spawn this bridge itself.
-pub fn spawn_loop_events_bridge(
-    hub: EventHub,
-    broadcast: broadcast::Sender<serde_json::Value>,
-) {
+pub fn spawn_loop_events_bridge(hub: EventHub, broadcast: broadcast::Sender<serde_json::Value>) {
     let (guard, mut rx) = hub.subscribe_all();
     tokio::spawn(async move {
         // Keep the guard alive for the lifetime of the bridge task so

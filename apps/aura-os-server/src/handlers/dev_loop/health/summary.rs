@@ -76,8 +76,8 @@ pub(crate) fn format_health_summary(health: &WorkspaceHealth) -> String {
 mod tests {
     //! `format_health_summary` deterministic-output regression.
 
-    use super::*;
     use super::super::types::WorkspaceHealth;
+    use super::*;
 
     fn mk_err(file: &str, code: Option<&str>, kind: &str) -> HealthError {
         HealthError {

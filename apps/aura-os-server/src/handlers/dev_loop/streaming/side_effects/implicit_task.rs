@@ -13,9 +13,9 @@ use std::str::FromStr;
 use aura_os_core::TaskId;
 use tracing::info;
 
+use super::super::super::streaming::{emit_domain_event_with_session, DomainEventInputs};
 use super::dispatch;
 use super::SideEffectCtx;
-use super::super::super::streaming::{emit_domain_event_with_session, DomainEventInputs};
 
 /// Event kinds that imply an active task when they carry a UUID
 /// `task_id`. Terminal lifecycle events are excluded — they clear
@@ -44,7 +44,10 @@ pub(super) async fn maybe_bind_implicit_task(
     event_type: &str,
     task_id: Option<&str>,
 ) {
-    if matches!(event_type, "task_started" | "task_completed" | "task_failed") {
+    if matches!(
+        event_type,
+        "task_started" | "task_completed" | "task_failed"
+    ) {
         return;
     }
     if !IMPLICIT_BIND_KINDS.contains(&event_type) {

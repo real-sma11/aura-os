@@ -90,11 +90,11 @@ pub struct HarnessAutomatonStartParams {
     pub aura_session_id: Option<String>,
 }
 
-/// Response payload from `POST /automaton/start`.
+/// Response payload from `POST /v1/run`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HarnessAutomatonStartResponse {
-    #[serde(alias = "id")]
-    pub automaton_id: String,
+    #[serde(alias = "id", alias = "automaton_id")]
+    pub run_id: String,
     #[serde(alias = "ws_url", alias = "stream_url")]
     pub event_stream_url: String,
 }
@@ -179,17 +179,53 @@ impl HarnessClient {
             .await
     }
 
-    /// Start an automaton through the harness HTTP API.
+    /// Start a harness-owned automaton run via `POST /v1/run`.
+    ///
+    /// Phase A: the harness's start endpoint moved from
+    /// `POST /automaton/start` (with the bespoke
+    /// `HarnessAutomatonStartParams` shape) to `POST /v1/run` (with
+    /// the canonical [`aura_protocol::RuntimeRequest`] shape). This
+    /// method bridges the legacy aura-os-server "scheduled process"
+    /// path onto the new wire by translating
+    /// [`HarnessAutomatonStartParams`] into a
+    /// [`aura_protocol::RuntimeRequestType::DevLoop`] runtime request
+    /// at the call site. The `kind` / `process_id` / `input` fields
+    /// the legacy shape carried are not part of the canonical
+    /// request — they were never enforced by the harness's
+    /// `AutomatonStartRequest` either, just stored on the run config
+    /// JSON.
     #[instrument(skip(self, params, jwt), fields(kind = %params.kind, project_id = %params.project_id))]
     pub async fn start_automaton(
         &self,
         params: &HarnessAutomatonStartParams,
         jwt: Option<&str>,
     ) -> Result<HarnessAutomatonStartResponse, HarnessClientError> {
+        use aura_protocol::{
+            AgentCapabilities, AgentIdentity, AgentPermissionsWire, ModelSelection, ProjectContext,
+            RuntimeRequest, RuntimeRequestType, WorkspaceLocation,
+        };
+        let body = RuntimeRequest {
+            r#type: RuntimeRequestType::DevLoop {},
+            agent_identity: AgentIdentity::default(),
+            model: ModelSelection::default(),
+            workspace: WorkspaceLocation::default(),
+            project: Some(ProjectContext {
+                project_id: params.project_id.clone(),
+                project_info: None,
+                aura_org_id: params.aura_org_id.clone(),
+                aura_session_id: params.aura_session_id.clone(),
+                aura_agent_id: None,
+            }),
+            agent_permissions: AgentPermissionsWire::default(),
+            tool_permissions: None,
+            agent_capabilities: AgentCapabilities::default(),
+            auth_jwt: params.auth_token.clone(),
+            user_id: String::new(),
+        };
         let req = self
             .http
-            .post(format!("{}/automaton/start", self.base_url))
-            .json(params);
+            .post(format!("{}/v1/run", self.base_url))
+            .json(&body);
         let resp = apply_jwt(req, jwt)?.send().await?;
         json_response(resp).await
     }
@@ -248,15 +284,23 @@ impl HarnessClient {
         }
     }
 
-    /// Open the `/stream` WebSocket and forward JWT as bearer auth.
+    /// Open `WS /stream/:run_id` against the harness and forward JWT
+    /// as bearer auth.
+    ///
+    /// Phase A: the legacy bare `/stream` endpoint (which used to
+    /// accept an `InboundMessage::SessionInit` first frame) is gone;
+    /// callers now POST a [`aura_protocol::RuntimeRequest`] to
+    /// `/v1/run` to mint a `run_id` and then subscribe to that
+    /// run's event stream here.
     #[instrument(skip(self, jwt))]
     pub async fn subscribe_stream(
         &self,
+        run_id: &str,
         jwt: Option<&str>,
     ) -> Result<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, HarnessClientError> {
         let ws_url = http_to_ws(&self.base_url)
             .ok_or_else(|| HarnessClientError::InvalidBaseUrl(self.base_url.clone()))?;
-        let mut request = format!("{ws_url}/stream").into_client_request()?;
+        let mut request = format!("{ws_url}/stream/{run_id}").into_client_request()?;
         if let Some(jwt) = jwt {
             let value = WsHeaderValue::from_str(&format!("Bearer {jwt}"))
                 .map_err(|err| HarnessClientError::InvalidJwt(err.to_string()))?;

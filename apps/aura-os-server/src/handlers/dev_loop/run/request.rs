@@ -1,4 +1,4 @@
-﻿//! Inputs to the shared run controller [`super::run_automaton`].
+//! Inputs to the shared run controller [`super::run_automaton`].
 //!
 //! Adapter handlers translate their HTTP-extracted state into a
 //! [`RunRequest`] before dispatching here. The mode flag selects the

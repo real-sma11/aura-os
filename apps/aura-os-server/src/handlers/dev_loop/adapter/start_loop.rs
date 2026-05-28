@@ -1,4 +1,4 @@
-﻿//! `POST /v1/projects/:id/dev-loop` cold-start handler.
+//! `POST /v1/projects/:id/dev-loop` cold-start handler.
 //!
 //! After the Stage 2 unification this handler is a thin HTTP wrapper:
 //! it resolves the bound Loop instance id, builds a [`super::super::run::RunRequest`]

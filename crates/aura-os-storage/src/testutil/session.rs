@@ -51,10 +51,7 @@ fn session_last_event_at(db: &super::db::MockStorageDb, session_id: &str) -> Opt
 /// Stamp `event_count` and `last_event_at` on a clone for the response.
 /// Real aura-storage exposes these as columns; here we project them on
 /// the way out so the mock matches the wire shape.
-fn project_event_stats(
-    session: &StorageSession,
-    db: &super::db::MockStorageDb,
-) -> StorageSession {
+fn project_event_stats(session: &StorageSession, db: &super::db::MockStorageDb) -> StorageSession {
     let mut s = session.clone();
     s.event_count = Some(session_event_count(db, &session.id) as u32);
     s.last_event_at = session_last_event_at(db, &session.id);

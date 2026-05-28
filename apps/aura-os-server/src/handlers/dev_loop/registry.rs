@@ -9,7 +9,6 @@ use crate::state::AppState;
 use super::limits::FORWARDER_FRESHNESS_THRESHOLD;
 use super::streaming::current_millis;
 
-
 pub(super) async fn set_paused(
     state: &AppState,
     project_id: ProjectId,
@@ -188,7 +187,10 @@ mod tests {
     #[test]
     fn fresh_active_forwarder_can_be_reused() {
         let snap = snapshot(true, false, true, NOW_MS);
-        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Reuse
+        );
     }
 
     #[test]
@@ -212,7 +214,10 @@ mod tests {
         // "still fresh" half.
         let gap = FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64 - 1;
         let snap = snapshot(true, false, true, NOW_MS - gap);
-        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Reuse
+        );
     }
 
     #[test]
@@ -222,7 +227,10 @@ mod tests {
         // every Resume click and regress the pause/resume happy path.
         let stale = NOW_MS - (FORWARDER_FRESHNESS_THRESHOLD.as_millis() as i64) - 1_000;
         let snap = snapshot(true, true, true, stale);
-        assert_eq!(evaluate_forwarder_reuse(&snap, NOW_MS), ReuseDecision::Reuse);
+        assert_eq!(
+            evaluate_forwarder_reuse(&snap, NOW_MS),
+            ReuseDecision::Reuse
+        );
     }
 
     #[test]
@@ -295,12 +303,10 @@ async fn snapshot_active_and_paused(
 /// Carved out of [`status_response`] so its body stays inside the
 /// 50-line per-function budget.
 fn collect_active_loop_tasks(state: &AppState, project_id: ProjectId) -> Vec<ActiveLoopTask> {
-    let project_loops = state
-        .loop_registry
-        .snapshot_where(|loop_id| {
-            loop_id.project_id == Some(project_id)
-                && matches!(loop_id.kind, LoopKind::Automation | LoopKind::TaskRun)
-        });
+    let project_loops = state.loop_registry.snapshot_where(|loop_id| {
+        loop_id.project_id == Some(project_id)
+            && matches!(loop_id.kind, LoopKind::Automation | LoopKind::TaskRun)
+    });
     // Diagnostic: when the play button + cooking strip are lit but the
     // Run pane stays empty, the most common backend root cause is a
     // registered Automation loop whose `current_task_id` is still

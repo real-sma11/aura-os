@@ -56,20 +56,16 @@ async fn main() {
     aura_os_server::ensure_user_bins_on_path();
 
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // `aura::automation` is a synthetic tracing target used by
-                // the dev-loop streaming pipeline to surface automation
-                // lifecycle + per-event signals. Pinned to `info` by
-                // default so a standalone server run shows task and tool
-                // lifecycle; `RUST_LOG=aura::automation=debug` enables
-                // the per-harness-event firehose without flipping the
-                // rest of the server into debug.
-                EnvFilter::new(
-                    "aura::automation=info,aura_os_server=info,tower_http=warn,info",
-                )
-            }),
-        )
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            // `aura::automation` is a synthetic tracing target used by
+            // the dev-loop streaming pipeline to surface automation
+            // lifecycle + per-event signals. Pinned to `info` by
+            // default so a standalone server run shows task and tool
+            // lifecycle; `RUST_LOG=aura::automation=debug` enables
+            // the per-harness-event firehose without flipping the
+            // rest of the server into debug.
+            EnvFilter::new("aura::automation=info,aura_os_server=info,tower_http=warn,info")
+        }))
         .init();
 
     let data_dir = default_data_dir();

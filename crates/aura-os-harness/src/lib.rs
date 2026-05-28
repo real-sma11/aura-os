@@ -32,7 +32,7 @@ pub mod ws_bridge_config {
 
 pub use automaton_client::{
     validate_automaton_start_identity, AutomatonClient, AutomatonStartError, AutomatonStartParams,
-    AutomatonStartResult, WsReaderHandle,
+    RunHandle, WsReaderHandle,
 };
 pub use client::{
     bearer_headers, GetHeadResponse, HarnessAutomatonStartParams, HarnessAutomatonStartResponse,
@@ -40,7 +40,7 @@ pub use client::{
 };
 pub use error::HarnessError;
 pub use harness::{
-    build_remote_handshake, build_session_init, validate_session_init_identity,
+    build_remote_handshake, build_runtime_request, validate_runtime_request_identity,
     HarnessCommandSender, HarnessLink, HarnessSession, SessionConfig,
 };
 pub use harness_url::local_harness_base_url;
@@ -53,9 +53,7 @@ pub use runner::{
     RunCompletion, RunStartError,
 };
 pub use session::{SessionBridge, SessionBridgeError, SessionBridgeStarted, SessionBridgeTurn};
-pub use signals::{
-    synthesize_failure_reason, FailureContext, HarnessFailureKind, HarnessSignal,
-};
+pub use signals::{synthesize_failure_reason, FailureContext, HarnessFailureKind, HarnessSignal};
 pub use swarm_harness::{CreateAgentResponse, SwarmHarness};
 
 pub use aura_protocol::{
@@ -63,7 +61,7 @@ pub use aura_protocol::{
     FileOp, FilesChanged, InboundMessage as HarnessInbound, InstalledIntegration, InstalledTool,
     InstalledToolIntegrationRequirement, InstalledToolRuntimeAuth, InstalledToolRuntimeExecution,
     InstalledToolRuntimeIntegration, InstalledToolRuntimeProviderExecution, MessageAttachment,
-    OutboundMessage as HarnessOutbound, SessionInit, SessionModelOverrides, SessionReady,
-    SessionUsage, SkillInfo, TextDelta, ThinkingDelta, ToolAuth, ToolCallSnapshot, ToolInfo,
-    ToolResultMsg, ToolUseStart, UserMessage,
+    OutboundMessage as HarnessOutbound, RuntimeRequest, RuntimeRequestType, RuntimeRunResponse,
+    SessionModelOverrides, SessionReady, SessionUsage, SkillInfo, TextDelta, ThinkingDelta,
+    ToolAuth, ToolCallSnapshot, ToolInfo, ToolResultMsg, ToolUseStart, UserMessage,
 };

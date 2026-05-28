@@ -5,18 +5,14 @@
 //!
 //! * implements [`HarnessLink`] so it can be dropped into the server's
 //!   `AppState.local_harness` slot,
-//! * records every [`SessionInit`] it sees so tests can assert on the
-//!   `agent_id` partition key produced by [`crate::build_session_init`]
-//!   (and therefore by the upstream chat / loop / executor call sites),
+//! * records every [`RuntimeRequest`] it sees so tests can assert on
+//!   the `partition_id` produced by
+//!   [`crate::build_runtime_request`] (and therefore by the upstream
+//!   chat / loop / executor call sites),
 //! * replays a scripted sequence of [`HarnessOutbound`] events on a
 //!   configurable initial / per-chunk delay so timing-sensitive
 //!   concurrency tests can prove that two streams interleave instead
 //!   of serializing.
-//!
-//! This module is gated behind `cfg(any(test, feature = "test-support"))`
-//! — own-crate tests get it unconditionally, downstream crates opt in
-//! via their dev-dependencies entry. See
-//! `apps/aura-os-server/Cargo.toml` for an example consumer.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,10 +20,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc, Mutex, Notify};
 
-use aura_protocol::SessionInit;
+use aura_protocol::RuntimeRequest;
 
 use crate::error::HarnessError;
-use crate::harness::{build_session_init, HarnessLink, HarnessSession, SessionConfig};
+use crate::harness::{build_runtime_request, HarnessLink, HarnessSession, SessionConfig};
 use crate::{HarnessInbound, HarnessOutbound};
 
 /// Default broadcast capacity for a [`FakeHarness`] session. Sized
@@ -50,10 +46,10 @@ struct ResponseScript {
 }
 
 struct FakeInner {
-    /// Append-only log of every [`SessionInit`] this harness has seen,
-    /// one per `open_session` call. Tests assert on this to prove the
-    /// partition `agent_id` plumbing.
-    session_inits: Vec<SessionInit>,
+    /// Append-only log of every [`RuntimeRequest`] this harness has
+    /// seen, one per `open_session` call. Tests assert on this to
+    /// prove the partition `agent_identity.partition_id` plumbing.
+    session_inits: Vec<RuntimeRequest>,
     /// Script the producer task replays for every inbound
     /// `UserMessage`.
     script: ResponseScript,
@@ -137,12 +133,12 @@ impl FakeHarness {
         ResponseGate { notify }
     }
 
-    /// Snapshot of every [`SessionInit`] the harness has observed.
-    pub async fn session_inits(&self) -> Vec<SessionInit> {
+    /// Snapshot of every [`RuntimeRequest`] the harness has observed.
+    pub async fn session_inits(&self) -> Vec<RuntimeRequest> {
         self.inner.lock().await.session_inits.clone()
     }
 
-    /// Convenience: snapshot of the partitioned `agent_id`s observed
+    /// Convenience: snapshot of the partitioned `partition_id`s observed
     /// across all sessions, in arrival order.
     pub async fn observed_agent_ids(&self) -> Vec<Option<String>> {
         self.inner
@@ -150,7 +146,7 @@ impl FakeHarness {
             .await
             .session_inits
             .iter()
-            .map(|s| s.agent_id.clone())
+            .map(|s| s.agent_identity.partition_id.clone())
             .collect()
     }
 
@@ -198,7 +194,7 @@ impl ResponseGate {
 #[async_trait]
 impl HarnessLink for FakeHarness {
     async fn open_session(&self, config: SessionConfig) -> anyhow::Result<HarnessSession> {
-        let session_init = build_session_init(&config);
+        let session_init = build_runtime_request(&config);
         let (script, gate, session_id) = {
             let mut inner = self.inner.lock().await;
             // Phase-6 capacity-exhaustion stub. Refusing BEFORE we
@@ -320,8 +316,14 @@ mod tests {
 
         let inits = fake.session_inits().await;
         assert_eq!(inits.len(), 1);
-        assert_eq!(inits[0].agent_id.as_deref(), Some("template::partition-a"));
-        assert_eq!(inits[0].template_agent_id.as_deref(), Some("template"));
+        assert_eq!(
+            inits[0].agent_identity.partition_id.as_deref(),
+            Some("template::partition-a")
+        );
+        assert_eq!(
+            inits[0].agent_identity.template_id.as_deref(),
+            Some("template")
+        );
     }
 
     #[tokio::test]

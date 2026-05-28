@@ -1,4 +1,4 @@
-﻿use axum::Json;
+use axum::Json;
 use tracing::{error, warn};
 
 use aura_os_core::{AgentInstanceId, ProjectId};
@@ -120,12 +120,7 @@ async fn dispatch_control_action(
 /// dead). For `Stop` specifically, surface the failure at `error!`
 /// so the streaming debug log makes the state divergence visible
 /// instead of silently lying.
-fn log_control_failure(
-    action: &ControlAction,
-    automaton_id: &str,
-    base_url: &str,
-    message: &str,
-) {
+fn log_control_failure(action: &ControlAction, automaton_id: &str, base_url: &str, message: &str) {
     if matches!(action, ControlAction::Stop) {
         error!(
             %automaton_id,

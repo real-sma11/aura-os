@@ -16,7 +16,6 @@ import {
 const interfaceRoot = process.cwd();
 const resultsDir = path.resolve(interfaceRoot, process.env.AURA_EVAL_RESULTS_DIR ?? "test-results");
 const harnessBaseUrl = process.env.AURA_EVAL_HARNESS_URL?.trim() || "http://127.0.0.1:3404";
-const harnessWsUrl = `${harnessBaseUrl.replace(/^http/, "ws")}/stream`;
 const accessToken = process.env.AURA_EVAL_ACCESS_TOKEN?.trim() || "";
 const device = process.env.AURA_EVAL_SCENARIO_DEVICE?.trim() || "local";
 const scenarioId = process.env.AURA_EVAL_SCENARIO_ID?.trim() || "harness-context-static-site";
@@ -271,14 +270,14 @@ async function main() {
   const workspaceBeforeSession = await verifyPreparedWorkspace(workspaceDir, scenario);
   logStep("workspace prepared", { workspaceDir, harnessBaseUrl });
 
-  const session = await openHarnessSession();
+  const session = await openHarnessSession(harnessBaseUrl, {
+    workspacePath: workspaceDir,
+    accessToken,
+    maxTurns: 16,
+    maxTokens: Number.isFinite(sessionMaxTokens) ? sessionMaxTokens : 2048,
+  });
   try {
-    const ready = await waitForHarnessSessionReady(session, {
-      workspacePath: workspaceDir,
-      accessToken,
-      maxTurns: 16,
-      maxTokens: Number.isFinite(sessionMaxTokens) ? sessionMaxTokens : 2048,
-    });
+    const ready = await waitForHarnessSessionReady(session);
     logStep("session ready");
 
     const turns = [];

@@ -101,8 +101,9 @@ async fn latest_context_usage_for_task(
             if !raw.is_finite() {
                 return None;
             }
-            let estimated_context_tokens =
-                usage.get("estimated_context_tokens").and_then(|v| v.as_u64());
+            let estimated_context_tokens = usage
+                .get("estimated_context_tokens")
+                .and_then(|v| v.as_u64());
             let context_breakdown = usage
                 .get("context_breakdown")
                 .and_then(|cb| serde_json::from_value::<ContextBreakdown>(cb.clone()).ok())

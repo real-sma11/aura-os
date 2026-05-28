@@ -110,8 +110,8 @@ impl HealthBaselineTracker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::{BuildStatus, HealthError, TestStatus};
+    use super::*;
 
     fn failing_health() -> WorkspaceHealth {
         WorkspaceHealth {

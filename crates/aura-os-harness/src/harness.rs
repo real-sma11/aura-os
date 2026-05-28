@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use tokio::sync::{broadcast, mpsc};
 
 use aura_protocol::{
-    AgentIdentityWire, AgentPermissionsWire, AgentToolPermissionsWire, ChatProjectInfoWire,
-    ConversationMessage, InboundMessage, InstalledIntegration, IntentClassifierSpec,
-    OutboundMessage, SessionInit, SessionModelOverrides,
+    AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, AgentToolPermissionsWire,
+    ChatProjectInfoWire, ConversationMessage, InboundMessage, InstalledIntegration,
+    IntentClassifierSpec, ModelSelection, OutboundMessage, ProjectContext, RuntimeRequest,
+    RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
 };
 
 use crate::error::HarnessError;
@@ -19,7 +20,7 @@ pub struct SessionConfig {
     pub agent_id: Option<String>,
     /// Template agent id for harness skill / permissions / billing lookup
     /// when the partitioned `agent_id` is in use. See
-    /// `aura_protocol::SessionInit::template_agent_id`.
+    /// [`aura_protocol::AgentIdentity::template_id`].
     pub template_agent_id: Option<String>,
     /// Originating end-user id for harness-side tool defaults.
     pub user_id: Option<String>,
@@ -43,49 +44,35 @@ pub struct SessionConfig {
     /// harness env-default router config.
     pub provider_overrides: Option<SessionModelOverrides>,
     /// Capability + scope bundle the harness must enforce for this
-    /// session. Defaults to [`AgentPermissionsWire::default`] (empty
-    /// capabilities, universe scope) when the caller does not populate
-    /// it; callers on the unified agent chat path always pass the
-    /// agent's `permissions` through.
+    /// session.
     pub agent_permissions: AgentPermissionsWire,
     /// Optional per-turn intent classifier. CEO-style agents populate
     /// this so the harness narrows the visible tool set each turn.
     pub intent_classifier: Option<IntentClassifierSpec>,
-    /// Optional per-agent tool permission override stamped onto this session.
+    /// Optional per-agent tool permission override stamped onto this
+    /// session.
     pub tool_permissions: Option<AgentToolPermissionsWire>,
-    /// Chat-WS migration: typed agent identity (name / role /
-    /// personality). Forwarded onto [`SessionInit::agent_identity`] so
-    /// the harness's `SystemPromptBuilder` renders the
-    /// `<agent_identity>` section. Mirrors the dev-loop wire shape
-    /// established by PR B for `AutomatonStartParams`. `None` ⇒
-    /// `skip_serializing_if` keeps the wire shape unchanged for
-    /// callers that still pre-bake the system prompt server-side.
-    pub agent_identity: Option<AgentIdentityWire>,
-    /// Chat-WS migration: operator-curated skills list. Forwarded onto
-    /// [`SessionInit::agent_skills`] so the harness renders
-    /// `<agent_skills>`. Empty ⇒ `skip_serializing_if` drops the
-    /// field on the wire.
+    /// Chat-WS migration: typed agent persona (name / role /
+    /// personality). Forwarded onto
+    /// [`aura_protocol::AgentIdentity::persona`] so the harness's
+    /// `SystemPromptBuilder` renders the `<agent_identity>` section.
+    pub agent_identity: Option<AgentPersona>,
+    /// Chat-WS migration: operator-curated skills list.
     pub agent_skills: Vec<String>,
-    /// Chat-WS migration: operator-authored system prompt (and any
-    /// server-baked addenda — project-state snapshot, plan-mode suffix
-    /// — concatenated by the chat handler before send). Forwarded onto
-    /// [`SessionInit::agent_system_prompt`].
+    /// Chat-WS migration: operator-authored system prompt.
     pub agent_system_prompt: Option<String>,
     /// Chat-WS migration: typed project descriptor. Forwarded onto
-    /// [`SessionInit::project_info`] so the harness assembles
-    /// `<project_context>` from structured fields rather than reading
-    /// a server-baked prompt string. When populated, the harness's
-    /// chat session ignores the legacy
-    /// [`SessionConfig::system_prompt`] field.
+    /// [`aura_protocol::ProjectContext::project_info`].
     pub project_info: Option<ChatProjectInfoWire>,
 }
 
 pub struct HarnessSession {
     pub session_id: String,
     pub events_tx: broadcast::Sender<OutboundMessage>,
-    /// Raw JSON events that did not match the typed `OutboundMessage` enum.
-    /// This lets domain-level events from the harness pass through even when
-    /// the protocol crate has not been updated with those variants.
+    /// Raw JSON events that did not match the typed `OutboundMessage`
+    /// enum. This lets domain-level events from the harness pass
+    /// through even when the protocol crate has not been updated with
+    /// those variants.
     pub raw_events_tx: broadcast::Sender<serde_json::Value>,
     pub commands_tx: HarnessCommandSender,
 }
@@ -98,64 +85,66 @@ pub trait HarnessLink: Send + Sync {
     async fn close_session(&self, session_id: &str) -> anyhow::Result<()>;
 }
 
-/// Canonical [`SessionInit`] construction from a [`SessionConfig`].
+/// Canonical [`RuntimeRequest`] construction from a [`SessionConfig`].
 ///
 /// Both [`crate::LocalHarness::open_session`] and
-/// [`crate::SwarmHarness::open_session`] funnel through this helper so a
-/// new `SessionInit` field only has to be wired in one place. Historically
-/// each harness kept its own inline struct literal, which drifted when
-/// fields were added (e.g. `intent_classifier`, `agent_permissions`); that
-/// drift is exactly what this helper eliminates.
+/// [`crate::SwarmHarness::open_session`] funnel through this helper so
+/// a new wire-level field only has to be wired in one place.
 ///
-/// The `temperature` field is intentionally omitted from [`SessionConfig`]
-/// today and hard-coded to `None` here; if / when a caller needs to set
-/// it, add the field to `SessionConfig` and thread it through this
-/// single helper.
+/// Renamed from `build_session_init` in Phase A of the cross-repo
+/// gateway refactor: the harness no longer accepts a `SessionInit`
+/// first-frame, so chat sessions submit a [`RuntimeRequest`] over
+/// HTTP and the WS attaches to the returned `run_id`.
 #[must_use]
-pub fn build_session_init(cfg: &SessionConfig) -> SessionInit {
-    SessionInit {
-        system_prompt: cfg.system_prompt.clone(),
-        model: cfg.model.clone(),
-        max_tokens: cfg.max_tokens,
-        temperature: None,
-        max_turns: cfg.max_turns,
-        installed_tools: cfg.installed_tools.clone(),
-        installed_integrations: cfg.installed_integrations.clone(),
-        workspace: cfg.workspace.clone(),
-        project_path: cfg.project_path.clone(),
-        token: cfg.token.clone(),
-        project_id: cfg.project_id.clone(),
-        conversation_messages: cfg.conversation_messages.clone(),
-        // Billing aggregates per *agent*, not per partition. When the
-        // caller supplies `template_agent_id` (Phase 1b+ chat call
-        // sites), `agent_id` is the `{template}::{instance}` partition
-        // string used solely for the harness turn-lock; the billing
-        // header must stay on the stable template id. Pre-Phase-1b
-        // callers leave `template_agent_id` as `None` and we fall back
-        // to `agent_id` (which is still the bare template), preserving
-        // the historical billing semantics.
-        aura_agent_id: cfg
-            .template_agent_id
-            .clone()
-            .or_else(|| cfg.agent_id.clone()),
-        aura_session_id: cfg.aura_session_id.clone(),
-        aura_org_id: cfg.aura_org_id.clone(),
-        agent_id: cfg.agent_id.clone(),
-        template_agent_id: cfg.template_agent_id.clone(),
-        user_id: cfg.user_id.clone().unwrap_or_default(),
-        provider_overrides: cfg.provider_overrides.clone(),
-        intent_classifier: cfg.intent_classifier.clone(),
+pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
+    RuntimeRequest {
+        r#type: RuntimeRequestType::Chat {
+            conversation_messages: cfg.conversation_messages.clone().unwrap_or_default(),
+        },
+        agent_identity: AgentIdentity {
+            template_id: cfg.template_agent_id.clone(),
+            partition_id: cfg.agent_id.clone(),
+            persona: cfg.agent_identity.clone(),
+            skills: cfg.agent_skills.clone(),
+            system_prompt: cfg.agent_system_prompt.clone(),
+        },
+        model: ModelSelection {
+            id: cfg.model.clone(),
+            max_tokens: cfg.max_tokens,
+            max_turns: cfg.max_turns,
+            temperature: None,
+            provider_overrides: cfg.provider_overrides.clone(),
+        },
+        workspace: WorkspaceLocation {
+            workspace: cfg.workspace.clone(),
+            project_path: cfg.project_path.clone(),
+            git_repo_url: None,
+            git_branch: None,
+        },
+        project: cfg.project_id.as_ref().map(|pid| ProjectContext {
+            project_id: pid.clone(),
+            project_info: cfg.project_info.clone(),
+            aura_org_id: cfg.aura_org_id.clone(),
+            aura_session_id: cfg.aura_session_id.clone(),
+            // Billing aggregates per *agent*, not per partition. When
+            // the caller supplies `template_agent_id`, `agent_id` is
+            // the `{template}::{instance}` partition string used
+            // solely for the harness turn-lock; the billing header
+            // must stay on the stable template id.
+            aura_agent_id: cfg
+                .template_agent_id
+                .clone()
+                .or_else(|| cfg.agent_id.clone()),
+        }),
         agent_permissions: cfg.agent_permissions.clone(),
         tool_permissions: cfg.tool_permissions.clone(),
-        // Chat-WS migration: forward typed identity / project info
-        // fields so the harness's `SystemPromptBuilder` can produce
-        // the chat system prompt itself. Empty / `None` values cause
-        // the harness to fall back to the legacy `system_prompt`
-        // string above for backward compatibility.
-        agent_identity: cfg.agent_identity.clone(),
-        agent_skills: cfg.agent_skills.clone(),
-        agent_system_prompt: cfg.agent_system_prompt.clone(),
-        project_info: cfg.project_info.clone(),
+        agent_capabilities: AgentCapabilities {
+            installed_tools: cfg.installed_tools.clone().unwrap_or_default(),
+            installed_integrations: cfg.installed_integrations.clone().unwrap_or_default(),
+            intent_classifier: cfg.intent_classifier.clone(),
+        },
+        auth_jwt: cfg.token.clone(),
+        user_id: cfg.user_id.clone().unwrap_or_default(),
     }
 }
 
@@ -163,38 +152,24 @@ pub fn build_session_init(cfg: &SessionConfig) -> SessionInit {
 /// minimum required identity contract enforced by the server's
 /// `handlers::agents::session_identity::validate_session_identity`.
 ///
-/// The harness has no notion of "call site" (chat vs dev-loop vs
-/// project-tool), so we validate the *intersection* of fields that
-/// every real session-open path must populate so the upstream proxy
-/// can stamp the corresponding `X-Aura-*` header. `user_id` is left
-/// off this list intentionally: server-side Tier 1 enforces it for
-/// the chat / dev-loop / project-tool surfaces, but the harness
-/// must keep accepting non-user sessions (e.g. ad-hoc CLI runs in
-/// `aura-os-harness/runner.rs`).
-///
-/// Drift signal: if a server build forgets to call its Tier 1
-/// preflight, this Tier 2 check still surfaces the missing field as
-/// a structured [`HarnessError::SessionIdentityMissing`] inside the
-/// returned `anyhow::Error`, which the server's
-/// `map_harness_error_to_api` then funnels into the same
-/// `session_identity_missing` 422 response shape.
-pub fn validate_session_init_identity(cfg: &SessionConfig) -> Result<(), HarnessError> {
+/// Renamed from `validate_session_init_identity` in Phase A.
+pub fn validate_runtime_request_identity(cfg: &SessionConfig) -> Result<(), HarnessError> {
     if is_blank(cfg.aura_org_id.as_deref()) {
         return Err(HarnessError::SessionIdentityMissing {
             field: "aura_org_id",
-            context: "session_init",
+            context: "runtime_request",
         });
     }
     if is_blank(cfg.aura_session_id.as_deref()) {
         return Err(HarnessError::SessionIdentityMissing {
             field: "aura_session_id",
-            context: "session_init",
+            context: "runtime_request",
         });
     }
     if is_blank(cfg.template_agent_id.as_deref()) && is_blank(cfg.agent_id.as_deref()) {
         return Err(HarnessError::SessionIdentityMissing {
             field: "agent_id",
-            context: "session_init",
+            context: "runtime_request",
         });
     }
     // Token is optional for public-guest sessions (aura_org_id ==
@@ -209,7 +184,7 @@ pub fn validate_session_init_identity(cfg: &SessionConfig) -> Result<(), Harness
     if !is_public && is_blank(cfg.token.as_deref()) {
         return Err(HarnessError::SessionIdentityMissing {
             field: "auth_token",
-            context: "session_init",
+            context: "runtime_request",
         });
     }
     Ok(())
@@ -222,13 +197,6 @@ fn is_blank(value: Option<&str>) -> bool {
 /// Projection of [`SessionConfig`] used by
 /// [`crate::SwarmHarness::open_session`]'s HTTP bootstrap
 /// (`POST /v1/agents/:id/sessions`).
-///
-/// The gateway's `CreateSessionRequest` accepts only the subset of
-/// fields needed to allocate a remote session container — the full
-/// [`SessionInit`] (tools, permissions, classifier, …) is sent over
-/// the WebSocket once the container is up. Keep this projection in a
-/// single helper so the HTTP shape doesn't drift from the wire
-/// contract.
 #[must_use]
 pub fn build_remote_handshake(cfg: &SessionConfig) -> serde_json::Value {
     serde_json::json!({
@@ -258,14 +226,14 @@ mod tests {
 
     #[test]
     fn validate_accepts_fully_populated_config() {
-        assert!(validate_session_init_identity(&full_cfg()).is_ok());
+        assert!(validate_runtime_request_identity(&full_cfg()).is_ok());
     }
 
     #[test]
     fn validate_rejects_missing_org_id() {
         let mut cfg = full_cfg();
         cfg.aura_org_id = None;
-        let err = validate_session_init_identity(&cfg).unwrap_err();
+        let err = validate_runtime_request_identity(&cfg).unwrap_err();
         assert!(matches!(
             err,
             HarnessError::SessionIdentityMissing {
@@ -279,7 +247,7 @@ mod tests {
     fn validate_rejects_blank_session_id() {
         let mut cfg = full_cfg();
         cfg.aura_session_id = Some("   ".into());
-        let err = validate_session_init_identity(&cfg).unwrap_err();
+        let err = validate_runtime_request_identity(&cfg).unwrap_err();
         assert!(matches!(
             err,
             HarnessError::SessionIdentityMissing {
@@ -293,10 +261,7 @@ mod tests {
     fn validate_accepts_agent_id_when_template_missing() {
         let mut cfg = full_cfg();
         cfg.template_agent_id = None;
-        // bare `agent_id` is enough — the harness's `build_session_init`
-        // falls back from template_agent_id to agent_id for
-        // X-Aura-Agent-Id.
-        assert!(validate_session_init_identity(&cfg).is_ok());
+        assert!(validate_runtime_request_identity(&cfg).is_ok());
     }
 
     #[test]
@@ -304,7 +269,7 @@ mod tests {
         let mut cfg = full_cfg();
         cfg.template_agent_id = None;
         cfg.agent_id = None;
-        let err = validate_session_init_identity(&cfg).unwrap_err();
+        let err = validate_runtime_request_identity(&cfg).unwrap_err();
         assert!(matches!(
             err,
             HarnessError::SessionIdentityMissing {
@@ -318,7 +283,7 @@ mod tests {
     fn validate_rejects_missing_auth_token() {
         let mut cfg = full_cfg();
         cfg.token = None;
-        let err = validate_session_init_identity(&cfg).unwrap_err();
+        let err = validate_runtime_request_identity(&cfg).unwrap_err();
         assert!(matches!(
             err,
             HarnessError::SessionIdentityMissing {
@@ -330,10 +295,8 @@ mod tests {
 
     #[test]
     fn validate_does_not_require_user_id() {
-        // The harness must keep accepting non-user (CLI / runner)
-        // sessions; user_id is enforced server-side per call site.
         let mut cfg = full_cfg();
         cfg.user_id = None;
-        assert!(validate_session_init_identity(&cfg).is_ok());
+        assert!(validate_runtime_request_identity(&cfg).is_ok());
     }
 }

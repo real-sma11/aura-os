@@ -148,20 +148,19 @@ impl LoopLogWriter {
             if let Some(run) = state.get_mut(&(project_id, agent_instance_id)) {
                 run.metadata.counters.events_total += 1;
                 update_counters(&mut run.metadata.counters, &event_type, event);
-            if let Some(tid) = event.get("task_id").and_then(|v| v.as_str()) {
-                if let Some(entry) = run.metadata.tasks.iter_mut().find(|t| t.task_id == tid)
-                {
-                    if entry.task_name.is_none() {
-                        if let Some(name) = event_task_name(event) {
-                            entry.task_name = Some(name);
+                if let Some(tid) = event.get("task_id").and_then(|v| v.as_str()) {
+                    if let Some(entry) = run.metadata.tasks.iter_mut().find(|t| t.task_id == tid) {
+                        if entry.task_name.is_none() {
+                            if let Some(name) = event_task_name(event) {
+                                entry.task_name = Some(name);
+                            }
+                        }
+                        if matches!(event_type.as_str(), "task_completed" | "task_failed") {
+                            entry.ended_at = Some(Utc::now());
+                            entry.status = Some(event_type.clone());
                         }
                     }
-                    if matches!(event_type.as_str(), "task_completed" | "task_failed") {
-                        entry.ended_at = Some(Utc::now());
-                        entry.status = Some(event_type.clone());
-                    }
                 }
-            }
                 if let Err(error) = write_metadata(&run.run_dir, &run.metadata).await {
                     warn!(
                         path = %run.run_dir.display(),

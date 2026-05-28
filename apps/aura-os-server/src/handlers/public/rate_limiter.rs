@@ -193,7 +193,11 @@ impl RateLimiter {
     fn check_global_ceiling(&self, now: SystemTime) -> Result<(), RateLimitError> {
         // Check if the window has expired and reset if needed.
         {
-            let mut start = self.global.window_start.lock().unwrap_or_else(|e| e.into_inner());
+            let mut start = self
+                .global
+                .window_start
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             if let Ok(elapsed) = now.duration_since(*start) {
                 if elapsed >= BUCKET_TTL {
                     self.global.count.store(0, Ordering::Relaxed);

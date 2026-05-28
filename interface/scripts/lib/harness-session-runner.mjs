@@ -60,14 +60,103 @@ function toJsonMessage(type, payload = {}) {
   return JSON.stringify({ type, ...payload });
 }
 
-export function openHarnessSession(harnessWsUrl) {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(harnessWsUrl);
-    const state = {
-      socket,
-      sessionReady: false,
-    };
+function deriveWsBase(httpBase) {
+  return httpBase
+    .replace(/^https:\/\//, "wss://")
+    .replace(/^http:\/\//, "ws://")
+    .replace(/\/+$/, "");
+}
 
+/**
+ * Phase A two-step open exchange. Replaces the legacy single-step
+ * `WS /stream` + `session_init` first-frame handshake.
+ *
+ * @param {string} harnessBaseUrl  HTTP base URL of the harness node.
+ * @param {object} options
+ * @param {string} options.workspacePath
+ * @param {string} [options.accessToken]
+ * @param {string} [options.userId]
+ * @param {number} [options.maxTurns]
+ * @param {number} [options.maxTokens]
+ */
+export async function openHarnessSession(harnessBaseUrl, options = {}) {
+  const {
+    workspacePath,
+    accessToken = "",
+    userId = "",
+    maxTurns = 16,
+    maxTokens = 2048,
+  } = options;
+
+  // Step 1: POST /v1/run with the canonical RuntimeRequest body.
+  const runtimeRequest = {
+    type: {
+      kind: "chat",
+      params: { conversation_messages: [] },
+    },
+    agent_identity: {
+      template_id: null,
+      partition_id: null,
+      persona: null,
+      skills: [],
+      system_prompt: null,
+    },
+    model: {
+      id: null,
+      max_tokens: Number.isFinite(maxTokens) ? maxTokens : 2048,
+      max_turns: Number.isFinite(maxTurns) ? maxTurns : 16,
+      temperature: null,
+      provider_overrides: null,
+    },
+    workspace: {
+      workspace: null,
+      project_path: workspacePath ?? null,
+      git_repo_url: null,
+      git_branch: null,
+    },
+    project: null,
+    agent_permissions: { scope: { orgs: [], projects: [], agent_ids: [] }, capabilities: [] },
+    tool_permissions: null,
+    agent_capabilities: {
+      installed_tools: [],
+      installed_integrations: [],
+      intent_classifier: null,
+    },
+    auth_jwt: accessToken || null,
+    user_id: userId,
+  };
+
+  const httpBase = harnessBaseUrl.replace(/\/+$/, "");
+  const headers = { "Content-Type": "application/json" };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const startedAt = Date.now();
+  const res = await fetch(`${httpBase}/v1/run`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(runtimeRequest),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`POST /v1/run failed (${res.status}): ${body}`);
+  }
+  const runStart = await res.json();
+  const runId = runStart.run_id;
+  const eventStreamUrl = runStart.event_stream_url || `/stream/${runId}`;
+  const wsBase = deriveWsBase(httpBase);
+  const wsUrl = eventStreamUrl.startsWith("ws://") || eventStreamUrl.startsWith("wss://")
+    ? eventStreamUrl
+    : `${wsBase}${eventStreamUrl.startsWith("/") ? eventStreamUrl : `/${eventStreamUrl}`}`;
+
+  // Step 2: open WS /stream/:run_id.
+  const socket = new WebSocket(wsUrl);
+  const state = {
+    socket,
+    sessionReady: false,
+    runId,
+    runStartMs: Date.now() - startedAt,
+  };
+
+  return await new Promise((resolve, reject) => {
     socket.addEventListener("open", () => resolve(state));
     socket.addEventListener("error", (event) => {
       reject(event.error ?? new Error("WebSocket error"));
@@ -75,14 +164,12 @@ export function openHarnessSession(harnessWsUrl) {
   });
 }
 
-export async function waitForHarnessSessionReady(state, options) {
-  const {
-    workspacePath,
-    accessToken = "",
-    maxTurns = 16,
-    maxTokens = 2048,
-  } = options;
-
+/**
+ * Wait for the harness's `session_ready` frame. The WS no longer
+ * accepts a `session_init` send; the run was already created via
+ * `POST /v1/run` and `session_ready` arrives unprompted.
+ */
+export async function waitForHarnessSessionReady(state) {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
     const onMessage = (event) => {
@@ -101,12 +188,6 @@ export async function waitForHarnessSessionReady(state, options) {
     };
 
     state.socket.addEventListener("message", onMessage);
-    state.socket.send(toJsonMessage("session_init", {
-      project_path: workspacePath,
-      max_turns: maxTurns,
-      max_tokens: Number.isFinite(maxTokens) ? maxTokens : 2048,
-      token: accessToken || undefined,
-    }));
   });
 }
 

@@ -6,9 +6,8 @@ import type { MessageAttachment } from "./MessageAttachment";
  */
 export type UserMessage = { content: string, 
 /**
- * Optional list of tool names the user wants prioritized for this message.
- * When set, the agent loop will filter tools and set `tool_choice` on the
- * first iteration to explicitly direct the model toward these tools.
+ * Optional list of tool names the user wants prioritized for
+ * this message.
  */
 tool_hints: Array<string> | null, 
 /**

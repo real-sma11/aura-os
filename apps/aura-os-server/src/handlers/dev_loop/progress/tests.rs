@@ -15,7 +15,9 @@ use aura_os_events::{LoopActivity, LoopStatus};
 use chrono::Utc;
 
 use super::super::event_kinds as ek;
-use super::activity::{apply_loop_activity, LoopActivityTransition, STEP_PROCESSING, STEP_THINKING};
+use super::activity::{
+    apply_loop_activity, LoopActivityTransition, STEP_PROCESSING, STEP_THINKING,
+};
 
 fn starting_activity() -> LoopActivity {
     LoopActivity::starting(Utc::now())

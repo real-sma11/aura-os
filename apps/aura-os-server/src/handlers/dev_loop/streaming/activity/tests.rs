@@ -10,8 +10,8 @@ use aura_os_core::{AgentId, AgentInstanceId, ProjectId, UserId};
 use aura_os_events::{EventHub, LoopId, LoopKind, LoopStatus};
 use aura_os_loops::{LoopHandle, LoopRegistry};
 
-use super::apply_loop_activity_event;
 use super::super::super::event_kinds as ek;
+use super::apply_loop_activity_event;
 
 fn make_handle() -> (LoopRegistry, LoopHandle) {
     let registry = LoopRegistry::new(EventHub::new());

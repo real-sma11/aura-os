@@ -340,8 +340,7 @@ pub(crate) async fn spawn_skeleton_and_fill_children(
     let original_description = parent.description.clone();
 
     let skeleton_title = format!("{original_title} [skeleton]");
-    let skeleton_description =
-        skeleton_child_description(&header, path, &original_description);
+    let skeleton_description = skeleton_child_description(&header, path, &original_description);
     let skeleton = task_service
         .create_follow_up_task(parent, skeleton_title, skeleton_description, Vec::new())
         .await?;

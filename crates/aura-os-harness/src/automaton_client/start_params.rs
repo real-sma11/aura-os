@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use aura_protocol::{
-    AgentIdentityWire, AgentPermissionsWire, InstalledIntegration, InstalledTool,
-    IntentClassifierSpec, SessionModelOverrides,
+    AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, InstalledIntegration,
+    InstalledTool, IntentClassifierSpec, ModelSelection, ProjectContext, RuntimeRequest,
+    RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -126,7 +127,7 @@ pub struct AutomatonStartParams {
     /// at every call site, `skip_serializing_if` keeps the wire shape
     /// identical with PR A so the harness reads the field as default.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_identity: Option<AgentIdentityWire>,
+    pub agent_identity: Option<AgentPersona>,
     /// PR B (simplify-system-prompts): operator-curated skills list.
     /// Same default-empty / serialise-when-populated contract as
     /// [`AutomatonStartParams::agent_identity`].
@@ -156,10 +157,82 @@ pub enum AutomatonStartError {
     Other(#[from] anyhow::Error),
 }
 
+/// Outcome of `POST /v1/run`. Carries the harness-allocated `run_id`
+/// (used as the path segment on `WS /stream/:run_id` and on the
+/// `/v1/run/:id/*` lifecycle endpoints) plus a convenience
+/// `event_stream_url` mirroring `/stream/:run_id`.
+///
+/// Renamed from `AutomatonStartResult` in Phase A of the cross-repo
+/// gateway refactor.
 #[derive(Debug, Clone, Deserialize)]
-pub struct AutomatonStartResult {
-    #[serde(alias = "id")]
-    pub automaton_id: String,
+pub struct RunHandle {
+    /// Stable identifier for the spawned run.
+    #[serde(alias = "id", alias = "automaton_id", alias = "run_id_v0")]
+    pub run_id: String,
+    /// Convenience field — the relative WS path the client should
+    /// open. Always `/stream/:run_id`.
     #[serde(alias = "ws_url", alias = "stream_url")]
     pub event_stream_url: String,
+}
+
+/// Convert an [`AutomatonStartParams`] into the canonical
+/// [`RuntimeRequest`] body of `POST /v1/run`.
+///
+/// Maps `task_id` presence to [`RuntimeRequestType::TaskRun`] versus
+/// [`RuntimeRequestType::DevLoop`]. Chat-session kickoffs do not go
+/// through this builder — they construct a [`RuntimeRequest::r#type`]
+/// of [`RuntimeRequestType::Chat`] directly from
+/// [`crate::harness::build_runtime_request`].
+#[must_use]
+pub fn automaton_start_params_to_runtime_request(params: &AutomatonStartParams) -> RuntimeRequest {
+    let r#type = match params.task_id.clone() {
+        Some(task_id) => RuntimeRequestType::TaskRun {
+            task_id,
+            prior_failure: params.prior_failure.clone(),
+            work_log: params.work_log.clone(),
+        },
+        None => RuntimeRequestType::DevLoop {},
+    };
+    RuntimeRequest {
+        r#type,
+        agent_identity: AgentIdentity {
+            template_id: params.template_agent_id.clone(),
+            partition_id: params.agent_id.clone(),
+            persona: params.agent_identity.clone().filter(|p| !p.is_empty()),
+            skills: params.agent_skills.clone(),
+            system_prompt: params
+                .agent_system_prompt
+                .clone()
+                .filter(|s| !s.trim().is_empty()),
+        },
+        model: ModelSelection {
+            id: params.model.clone(),
+            max_tokens: None,
+            max_turns: params.max_turns,
+            temperature: None,
+            provider_overrides: params.provider_overrides.clone(),
+        },
+        workspace: WorkspaceLocation {
+            workspace: None,
+            project_path: params.workspace_root.clone(),
+            git_repo_url: params.git_repo_url.clone(),
+            git_branch: params.git_branch.clone(),
+        },
+        project: Some(ProjectContext {
+            project_id: params.project_id.clone(),
+            project_info: None,
+            aura_org_id: params.aura_org_id.clone(),
+            aura_session_id: params.aura_session_id.clone(),
+            aura_agent_id: params.aura_agent_id.clone(),
+        }),
+        agent_permissions: params.agent_permissions.clone(),
+        tool_permissions: None,
+        agent_capabilities: AgentCapabilities {
+            installed_tools: params.installed_tools.clone().unwrap_or_default(),
+            installed_integrations: params.installed_integrations.clone().unwrap_or_default(),
+            intent_classifier: params.intent_classifier.clone(),
+        },
+        auth_jwt: params.auth_token.clone(),
+        user_id: params.user_id.clone().unwrap_or_default(),
+    }
 }

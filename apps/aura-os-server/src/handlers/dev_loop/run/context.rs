@@ -1,4 +1,4 @@
-﻿//! Step 2 of the run pipeline: resolve the
+//! Step 2 of the run pipeline: resolve the
 //! [`super::super::types::StartContext`] (workspace, agent template,
 //! model, permissions) and clone the JWT for forwarder use.
 //!

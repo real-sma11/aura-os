@@ -19,8 +19,7 @@ pub use automaton_event_kinds::{
 pub use collector::{collect_automaton_events, CollectedOutput, RunCompletion};
 
 use crate::{
-    AutomatonClient, AutomatonStartError, AutomatonStartParams, AutomatonStartResult,
-    WsReaderHandle,
+    AutomatonClient, AutomatonStartError, AutomatonStartParams, RunHandle, WsReaderHandle,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +58,7 @@ pub async fn start_and_connect(
     stream_retries: u32,
 ) -> Result<
     (
-        AutomatonStartResult,
+        RunHandle,
         broadcast::Sender<serde_json::Value>,
         WsReaderHandle,
     ),
@@ -68,7 +67,7 @@ pub async fn start_and_connect(
     let result = client.start(params).await?;
     let (tx, ws_handle) = connect_with_retries(
         client,
-        &result.automaton_id,
+        &result.run_id,
         Some(&result.event_stream_url),
         stream_retries,
     )

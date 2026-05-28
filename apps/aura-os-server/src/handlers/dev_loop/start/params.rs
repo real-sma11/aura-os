@@ -2,7 +2,7 @@
 
 use aura_os_core::{harness_agent_id, AgentInstanceId, Project};
 use aura_os_harness::AutomatonStartParams;
-use aura_protocol::AgentIdentityWire;
+use aura_protocol::AgentPersona;
 
 use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
@@ -131,8 +131,7 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         // blank agent rows produce no `<agent_*>` bytes.
         agent_identity: start_agent_identity(ctx),
         agent_skills: ctx.agent_skills.clone(),
-        agent_system_prompt: Some(ctx.agent_system_prompt.clone())
-            .filter(|s| !s.trim().is_empty()),
+        agent_system_prompt: Some(ctx.agent_system_prompt.clone()).filter(|s| !s.trim().is_empty()),
     }
 }
 
@@ -141,8 +140,8 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
 /// `#[serde(skip_serializing_if = "Option::is_none")]` then drops from
 /// the JSON payload) when every field is blank, so the harness keeps
 /// `<agent_identity>` out of the assembled prompt for legacy rows.
-fn start_agent_identity(ctx: &StartContext) -> Option<AgentIdentityWire> {
-    let wire = AgentIdentityWire {
+fn start_agent_identity(ctx: &StartContext) -> Option<AgentPersona> {
+    let wire = AgentPersona {
         name: ctx.agent_name.clone(),
         role: ctx.agent_role.clone(),
         personality: ctx.agent_personality.clone(),
@@ -190,11 +189,7 @@ async fn resolve_installed_tools(
 ) -> Option<Vec<aura_os_harness::InstalledTool>> {
     let (jwt, org_id) = jwt.zip(ctx.project.as_ref().map(|p| &p.org_id))?;
     let mut tools = installed_workspace_app_tools(state, org_id, jwt).await;
-    dedupe_and_log_installed_tools(
-        "dev_loop_start",
-        &ctx.project_id.to_string(),
-        &mut tools,
-    );
+    dedupe_and_log_installed_tools("dev_loop_start", &ctx.project_id.to_string(), &mut tools);
     (!tools.is_empty()).then_some(tools)
 }
 

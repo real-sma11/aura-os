@@ -25,7 +25,9 @@ use tracing::info;
 const AUTOMATON_START_TIMEOUT: Duration = Duration::from_secs(60);
 
 use super::identity::validate_automaton_start_identity;
-use super::start_params::{AutomatonStartError, AutomatonStartParams, AutomatonStartResult};
+use super::start_params::{
+    automaton_start_params_to_runtime_request, AutomatonStartError, AutomatonStartParams, RunHandle,
+};
 use super::ws_reader::{probe_initial_event, spawn_automaton_reader};
 use super::ws_reader_handle::WsReaderHandle;
 
@@ -67,28 +69,36 @@ impl AutomatonClient {
         }
     }
 
-    /// Start a dev-loop or single-task automaton.
+    /// Start a dev-loop or single-task automaton via `POST /v1/run`.
+    ///
+    /// Phase A: the legacy `POST /automaton/start` endpoint and its
+    /// twin `AutomatonStartRequest` body shape are gone; the harness
+    /// now consumes a single canonical [`aura_protocol::RuntimeRequest`]
+    /// for chat / dev-loop / task-run kickoffs. The
+    /// [`AutomatonStartParams`] builder type stays in the client
+    /// surface (lots of aura-os call sites populate it), and we
+    /// translate it to the new wire shape via
+    /// [`automaton_start_params_to_runtime_request`] right before the
+    /// HTTP send.
     pub async fn start(
         &self,
         params: AutomatonStartParams,
-    ) -> Result<AutomatonStartResult, AutomatonStartError> {
-        // Tier 2 fail-fast: refuse to POST /automaton/start with a
-        // payload missing one of the required identity fields. The
-        // server's `start_or_adopt` / `run_single_task` already
-        // preflight in Tier 1, but this guard catches direct
-        // callers / outdated server builds and preserves the
-        // structured error shape via `HarnessError::SessionIdentityMissing`.
+    ) -> Result<RunHandle, AutomatonStartError> {
+        // Tier 2 fail-fast: refuse to POST /v1/run with a payload
+        // missing one of the required identity fields.
         if let Err(err) = validate_automaton_start_identity(&params) {
-            return Err(AutomatonStartError::Other(anyhow::Error::new(err).context(
-                "automaton client rejected /automaton/start: identity preflight",
-            )));
+            return Err(AutomatonStartError::Other(
+                anyhow::Error::new(err)
+                    .context("automaton client rejected /v1/run: identity preflight"),
+            ));
         }
-        let url = format!("{}/automaton/start", self.http_base);
+        let url = format!("{}/v1/run", self.http_base);
+        let body = automaton_start_params_to_runtime_request(&params);
         // Override the client-wide 12s budget for this single call —
         // see the doc comment on `AUTOMATON_START_TIMEOUT` above for
         // why the harness needs more headroom on the start path.
         let req = self
-            .apply_auth(self.http.post(&url).json(&params))
+            .apply_auth(self.http.post(&url).json(&body))
             .timeout(AUTOMATON_START_TIMEOUT);
         let resp = req.send().await.map_err(|e| AutomatonStartError::Request {
             message: format!("harness start request failed: {e}"),
@@ -113,9 +123,9 @@ impl AutomatonClient {
         serde_json::from_str(&body).map_err(|e| AutomatonStartError::Other(e.into()))
     }
 
-    /// Pause a running automaton.
-    pub async fn pause(&self, automaton_id: &str) -> anyhow::Result<()> {
-        let url = format!("{}/automaton/{automaton_id}/pause", self.http_base);
+    /// Pause a running run via `POST /v1/run/:id/pause`.
+    pub async fn pause(&self, run_id: &str) -> anyhow::Result<()> {
+        let url = format!("{}/v1/run/{run_id}/pause", self.http_base);
         let resp = self.apply_auth(self.http.post(&url)).send().await?;
         let status = resp.status();
         if !status.is_success() {
@@ -125,9 +135,9 @@ impl AutomatonClient {
         Ok(())
     }
 
-    /// Stop a running automaton.
-    pub async fn stop(&self, automaton_id: &str) -> anyhow::Result<()> {
-        let url = format!("{}/automaton/{automaton_id}/stop", self.http_base);
+    /// Stop a running run via `POST /v1/run/:id/stop`.
+    pub async fn stop(&self, run_id: &str) -> anyhow::Result<()> {
+        let url = format!("{}/v1/run/{run_id}/stop", self.http_base);
         let resp = self.apply_auth(self.http.post(&url)).send().await?;
         let status = resp.status();
         if !status.is_success() {
@@ -137,9 +147,14 @@ impl AutomatonClient {
         Ok(())
     }
 
-    /// Resume a paused automaton.
-    pub async fn resume(&self, automaton_id: &str) -> anyhow::Result<()> {
-        let url = format!("{}/automaton/{automaton_id}/resume", self.http_base);
+    /// Resume a paused run via `POST /v1/run/:id/resume`.
+    ///
+    /// (Note: the harness does not currently expose a resume endpoint
+    /// in the `/v1/run/*` surface; callers should treat resume as a
+    /// no-op or restart the run via `start`. The method is retained
+    /// for backwards-compat surface area.)
+    pub async fn resume(&self, run_id: &str) -> anyhow::Result<()> {
+        let url = format!("{}/v1/run/{run_id}/resume", self.http_base);
         let resp = self.apply_auth(self.http.post(&url)).send().await?;
         let status = resp.status();
         if !status.is_success() {
@@ -149,9 +164,9 @@ impl AutomatonClient {
         Ok(())
     }
 
-    /// Get the status of an automaton.
-    pub async fn status(&self, automaton_id: &str) -> anyhow::Result<serde_json::Value> {
-        let url = format!("{}/automaton/{automaton_id}/status", self.http_base);
+    /// Get the status of a run via `GET /v1/run/:id/status`.
+    pub async fn status(&self, run_id: &str) -> anyhow::Result<serde_json::Value> {
+        let url = format!("{}/v1/run/{run_id}/status", self.http_base);
         let resp = self.apply_auth(self.http.get(&url)).send().await?;
         let status = resp.status();
         let body = resp.text().await?;
@@ -192,23 +207,16 @@ impl AutomatonClient {
 
     /// Resolve the WebSocket URL for the automaton event stream.
     ///
-    /// When `event_stream_url` is provided (from the harness start response),
-    /// it is used -- either directly if already absolute, or prefixed with the
-    /// gateway WS base when relative.  This mirrors how `SwarmHarness` handles
-    /// the `ws_url` returned by session creation and is required because the
-    /// swarm gateway only routes WebSocket upgrades on paths it knows about.
-    ///
-    /// Falls back to `{ws_base}/stream/automaton/{automaton_id}` (the local-
-    /// harness convention) when no URL is supplied.
-    fn resolve_event_stream_url(
-        &self,
-        automaton_id: &str,
-        event_stream_url: Option<&str>,
-    ) -> String {
+    /// When `event_stream_url` is provided (from the harness start
+    /// response), it is used — either directly if already absolute,
+    /// or prefixed with the gateway WS base when relative. Falls back
+    /// to `{ws_base}/stream/{run_id}` (the Phase A `/stream/:run_id`
+    /// convention) when no URL is supplied.
+    fn resolve_event_stream_url(&self, run_id: &str, event_stream_url: Option<&str>) -> String {
         match event_stream_url {
             Some(u) if u.starts_with("ws://") || u.starts_with("wss://") => u.to_string(),
             Some(u) => format!("{}/{}", self.ws_base(), u.trim_start_matches('/')),
-            None => format!("{}/stream/automaton/{automaton_id}", self.ws_base()),
+            None => format!("{}/stream/{run_id}", self.ws_base()),
         }
     }
 
@@ -397,13 +405,19 @@ mod parser_tests {
     #[test]
     fn structured_top_level_automaton_id_is_extracted() {
         let body = r#"{"automaton_id":"auto-abc","error":"conflict"}"#;
-        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-abc"));
+        assert_eq!(
+            extract_conflict_automaton_id(body).as_deref(),
+            Some("auto-abc")
+        );
     }
 
     #[test]
     fn structured_nested_data_automaton_id_is_extracted() {
         let body = r#"{"error":"conflict","data":{"automaton_id":"auto-nested"}}"#;
-        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-nested"));
+        assert_eq!(
+            extract_conflict_automaton_id(body).as_deref(),
+            Some("auto-nested")
+        );
     }
 
     #[test]
@@ -411,19 +425,28 @@ mod parser_tests {
         // The harness's original `Display` impl serialises
         // `Conflict(Some("auto-legacy"))` as the substring below.
         let body = r#"{"error":"a dev loop is already running (automaton_id: \"auto-legacy\")"}"#;
-        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-legacy"));
+        assert_eq!(
+            extract_conflict_automaton_id(body).as_deref(),
+            Some("auto-legacy")
+        );
     }
 
     #[test]
     fn legacy_some_debug_format_is_extracted() {
         let body = r#"{"error":"conflict at automaton_id: Some(\"auto-some\")"}"#;
-        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-some"));
+        assert_eq!(
+            extract_conflict_automaton_id(body).as_deref(),
+            Some("auto-some")
+        );
     }
 
     #[test]
     fn bare_unquoted_substring_is_extracted() {
         let body = r#"{"message":"automaton_id: auto-bare blocked by upstream"}"#;
-        assert_eq!(extract_conflict_automaton_id(body).as_deref(), Some("auto-bare"));
+        assert_eq!(
+            extract_conflict_automaton_id(body).as_deref(),
+            Some("auto-bare")
+        );
     }
 
     #[test]

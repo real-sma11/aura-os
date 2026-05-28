@@ -33,8 +33,8 @@ use crate::state::{AppState, AuthGuestJwt};
 
 use super::gate::{enforce_public_turn, PublicGateCtx};
 use super::generation_common::{
-    caller_ip_from_headers, proxy_public_generation_stream,
-    PublicGenerationCall, PublicGenerationSse,
+    caller_ip_from_headers, proxy_public_generation_stream, PublicGenerationCall,
+    PublicGenerationSse,
 };
 use super::types::PublicModality;
 

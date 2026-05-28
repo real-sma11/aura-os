@@ -1,6 +1,6 @@
 use super::{
-    normalize_automaton_event, validate_automaton_start_identity, AutomatonStartParams,
-    AutomatonStartResult, WsReaderHandle,
+    normalize_automaton_event, validate_automaton_start_identity, AutomatonStartParams, RunHandle,
+    WsReaderHandle,
 };
 use crate::error::HarnessError;
 use aura_protocol::{AgentPermissionsWire, AgentScopeWire, CapabilityWire};
@@ -98,15 +98,27 @@ async fn ws_reader_handle_clone_keeps_task_alive_until_last_drop() {
 }
 
 #[test]
-fn automaton_start_result_accepts_ws_url_alias() {
-    let result: AutomatonStartResult = serde_json::from_value(serde_json::json!({
-        "id": "auto-123",
-        "ws_url": "/stream/automaton/auto-123",
+fn run_handle_accepts_ws_url_alias() {
+    let result: RunHandle = serde_json::from_value(serde_json::json!({
+        "run_id": "auto-123",
+        "ws_url": "/stream/auto-123",
     }))
-    .expect("start result should deserialize");
+    .expect("run handle should deserialize");
 
-    assert_eq!(result.automaton_id, "auto-123");
-    assert_eq!(result.event_stream_url, "/stream/automaton/auto-123");
+    assert_eq!(result.run_id, "auto-123");
+    assert_eq!(result.event_stream_url, "/stream/auto-123");
+}
+
+#[test]
+fn run_handle_accepts_legacy_automaton_id_alias() {
+    let result: RunHandle = serde_json::from_value(serde_json::json!({
+        "automaton_id": "auto-456",
+        "event_stream_url": "/stream/auto-456",
+    }))
+    .expect("legacy automaton_id alias should still deserialize");
+
+    assert_eq!(result.run_id, "auto-456");
+    assert_eq!(result.event_stream_url, "/stream/auto-456");
 }
 
 #[test]
@@ -225,7 +237,7 @@ fn automaton_start_params_serializes_pr_b_identity_fields_when_populated() {
         work_log: Vec::new(),
         aura_org_id: None,
         aura_session_id: None,
-        agent_identity: Some(aura_protocol::AgentIdentityWire {
+        agent_identity: Some(aura_protocol::AgentPersona {
             name: "Aura".into(),
             role: "engineer".into(),
             personality: "concise".into(),

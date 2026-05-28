@@ -16,7 +16,9 @@ mod tests;
 
 pub use client::AutomatonClient;
 pub use identity::validate_automaton_start_identity;
-pub use start_params::{AutomatonStartError, AutomatonStartParams, AutomatonStartResult};
+#[allow(unused_imports)]
+pub(crate) use start_params::automaton_start_params_to_runtime_request;
+pub use start_params::{AutomatonStartError, AutomatonStartParams, RunHandle};
 pub use ws_reader_handle::WsReaderHandle;
 
 // Brought into the `automaton_client` namespace so the `tests` submodule

@@ -419,8 +419,14 @@ async fn handle_forwarder_event(
         .on_json_event(project_id, agent_instance_id, &event)
         .await;
     record_loop_log_task_lifecycle(state, project_id, agent_instance_id, &event_type, &event).await;
-    maybe_emit_live_heuristics(state, project_id, agent_instance_id, live_analyzer, &event_type)
-        .await;
+    maybe_emit_live_heuristics(
+        state,
+        project_id,
+        agent_instance_id,
+        live_analyzer,
+        &event_type,
+    )
+    .await;
     activity::apply_loop_activity_event(loop_handle, &event_type, &event).await;
     let ctx = side_effects::SideEffectCtx {
         state,
@@ -663,7 +669,8 @@ fn emit_terminal_events(inputs: TerminalEventInputs<'_>) {
         succeeded,
         completion,
     } = inputs;
-    let terminal_outcome = terminal_outcome_label(insufficient_credits_reason, succeeded, completion);
+    let terminal_outcome =
+        terminal_outcome_label(insufficient_credits_reason, succeeded, completion);
     info!(
         target: "aura::automation",
         %project_id,
@@ -957,13 +964,22 @@ mod top_level_keys_tests {
         let joined = top_level_keys(&serde_json::Value::Object(payload));
         // 12 keys, comma-separated, followed by ",…" to signal truncation.
         assert_eq!(joined.matches(',').count(), 12);
-        assert!(joined.ends_with(",…"), "expected truncation marker, got {joined}");
+        assert!(
+            joined.ends_with(",…"),
+            "expected truncation marker, got {joined}"
+        );
     }
 
     #[test]
     fn event_tool_name_walks_aliases() {
-        assert_eq!(event_tool_name(&json!({ "tool": "edit_file" })), "edit_file");
-        assert_eq!(event_tool_name(&json!({ "name": "read_file" })), "read_file");
+        assert_eq!(
+            event_tool_name(&json!({ "tool": "edit_file" })),
+            "edit_file"
+        );
+        assert_eq!(
+            event_tool_name(&json!({ "name": "read_file" })),
+            "read_file"
+        );
         assert_eq!(
             event_tool_name(&json!({ "tool_name": "run_command" })),
             "run_command",

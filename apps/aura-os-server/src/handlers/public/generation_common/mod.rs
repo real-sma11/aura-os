@@ -41,9 +41,7 @@ mod completed;
 mod relay;
 mod request;
 
-pub(crate) use request::{
-    caller_ip_from_headers, PublicGenerationCall, PublicGenerationSse,
-};
+pub(crate) use request::{caller_ip_from_headers, PublicGenerationCall, PublicGenerationSse};
 
 use std::convert::Infallible;
 

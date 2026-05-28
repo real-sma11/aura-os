@@ -1,4 +1,4 @@
-﻿mod adapter;
+mod adapter;
 mod control;
 #[allow(dead_code)]
 mod event_kinds;

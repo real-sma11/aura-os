@@ -11,9 +11,9 @@ use std::str::FromStr;
 use aura_os_core::TaskId;
 use tracing::info;
 
-use super::common::{event_text, set_current_task};
 use super::super::super::session::{record_task_worked, RecordTaskWorkedInputs};
 use super::super::super::signals::snapshot_workspace_health;
+use super::common::{event_text, set_current_task};
 use super::{failure, files, git, retry, task_output, SideEffectCtx};
 use crate::handlers::projects_helpers::resolve_agent_instance_workspace_path;
 
@@ -88,9 +88,12 @@ async fn spawn_health_baseline_snapshot(ctx: &SideEffectCtx<'_>, task_id: &str) 
     let Ok(task_uuid) = TaskId::from_str(task_id) else {
         return;
     };
-    let Some(workspace_path) =
-        resolve_agent_instance_workspace_path(ctx.state, &ctx.project_id, Some(ctx.agent_instance_id))
-            .await
+    let Some(workspace_path) = resolve_agent_instance_workspace_path(
+        ctx.state,
+        &ctx.project_id,
+        Some(ctx.agent_instance_id),
+    )
+    .await
     else {
         return;
     };
@@ -141,11 +144,7 @@ async fn task_completed(ctx: &SideEffectCtx<'_>, task_id: Option<&str>) {
 /// whether to push the task back to `Ready` based on
 /// `HarnessFailureKind::is_retryable` and the persisted attempts
 /// counter.
-async fn task_failed(
-    ctx: &SideEffectCtx<'_>,
-    task_id: Option<&str>,
-    event: &serde_json::Value,
-) {
+async fn task_failed(ctx: &SideEffectCtx<'_>, task_id: Option<&str>, event: &serde_json::Value) {
     info!(
         target: "aura::automation",
         project_id = %ctx.project_id,
@@ -236,11 +235,7 @@ async fn git_lifecycle(
 /// live-output buffer so the dashboard's "Live Output" panel renders
 /// the LLM's running response without waiting for the assistant turn
 /// to end.
-async fn text_delta(
-    ctx: &SideEffectCtx<'_>,
-    task_id: Option<&str>,
-    event: &serde_json::Value,
-) {
+async fn text_delta(ctx: &SideEffectCtx<'_>, task_id: Option<&str>, event: &serde_json::Value) {
     if let Some((task_id, text)) = task_id.zip(event_text(event)) {
         task_output::append_task_output(ctx.state, ctx.project_id, task_id, text).await;
     }

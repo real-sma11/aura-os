@@ -182,7 +182,10 @@ fn build_public_session_config(
         // router without Authorization, and the router assigns
         // user_id "public-guest" with IP-based rate limiting.
         aura_org_id: Some("public".to_string()),
-        aura_session_id: body.session_id.clone().or_else(|| Some("public".to_string())),
+        aura_session_id: body
+            .session_id
+            .clone()
+            .or_else(|| Some("public".to_string())),
         ..Default::default()
     }
 }

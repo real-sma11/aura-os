@@ -1,5 +1,4 @@
-﻿//! Completion / recovery / restart gate decisions.
-
+//! Completion / recovery / restart gate decisions.
 
 #[test]
 fn completion_gate_failure_routes_tracked_transient_reason_to_retry() {

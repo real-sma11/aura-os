@@ -196,7 +196,10 @@ mod health_gate_synthesizer_tests {
         assert_eq!(synthetic["session_id"], "ses-456");
         assert_eq!(synthetic["extra"], "preserve me");
         assert_eq!(synthetic["timestamp"], "2026-05-19T22:00:00Z");
-        assert_eq!(synthetic["health_gate_reason"], "workspace_health_regressed");
+        assert_eq!(
+            synthetic["health_gate_reason"],
+            "workspace_health_regressed"
+        );
         assert_eq!(synthetic["health_gate_elapsed_ms"], 2_345);
         assert!(synthetic["health_gate_baseline_summary"]
             .as_str()

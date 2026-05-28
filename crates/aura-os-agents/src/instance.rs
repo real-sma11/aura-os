@@ -241,9 +241,11 @@ impl AgentInstanceService {
         // role-defaulted-to-Chat rows leaked through and stacked up as
         // duplicate sidebar entries on every `POST /tasks/:id/run`).
         let source = match role {
-            AgentInstanceRole::Loop | AgentInstanceRole::Executor => {
-                Some(aura_os_core::AgentInstanceSource::System.as_wire_str().to_string())
-            }
+            AgentInstanceRole::Loop | AgentInstanceRole::Executor => Some(
+                aura_os_core::AgentInstanceSource::System
+                    .as_wire_str()
+                    .to_string(),
+            ),
             AgentInstanceRole::Chat => None,
         };
         let req = aura_os_storage::CreateProjectAgentRequest {

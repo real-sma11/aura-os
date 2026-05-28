@@ -40,8 +40,6 @@ use super::session::recover_orphan_tasks;
 use super::streaming::emit_domain_event;
 use super::types::StartedAutomaton;
 
-
-
 /// Outcome of a run dispatch. Adapter handlers map this onto the
 /// HTTP shape their endpoint requires.
 pub(super) enum RunOutcome {

@@ -58,7 +58,10 @@ async fn adopt_shortcut_re_emit_lands_loop_opened_on_event_broadcast() {
         .expect("initial loop_opened JSON frame should land within 500ms")
         .expect("event_broadcast channel should yield a frame");
     assert_eq!(opened["type"], "loop_opened");
-    assert_eq!(opened["project_id"], loop_id.project_id.unwrap().to_string());
+    assert_eq!(
+        opened["project_id"],
+        loop_id.project_id.unwrap().to_string()
+    );
     assert_eq!(
         opened["agent_instance_id"],
         loop_id.agent_instance_id.unwrap().to_string()

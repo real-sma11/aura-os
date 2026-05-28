@@ -251,7 +251,9 @@ async fn re_emit_loop_opened_publishes_for_known_loop() {
 
     // Advance the live activity so we can assert the re-emit carries
     // the *current* snapshot rather than the original `Starting` seed.
-    handle.mark_running(Some(0.5), Some("re-emit test".into())).await;
+    handle
+        .mark_running(Some(0.5), Some("re-emit test".into()))
+        .await;
     let _ = rx.recv().await;
 
     assert!(registry.re_emit_loop_opened(&loop_id));
@@ -282,8 +284,7 @@ async fn re_emit_loop_opened_is_noop_for_unknown_loop() {
     let project = ProjectId::new();
     let (_g, mut rx) =
         hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
-    let unknown =
-        fresh_loop_id(project, AgentInstanceId::new(), LoopKind::Automation);
+    let unknown = fresh_loop_id(project, AgentInstanceId::new(), LoopKind::Automation);
 
     assert!(!registry.re_emit_loop_opened(&unknown));
     // Nothing should hit the bus — wait briefly to catch a stray publish.

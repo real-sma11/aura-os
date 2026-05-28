@@ -8,9 +8,7 @@ use tracing::{info, warn};
 use aura_os_core::{
     AgentId, AgentInstanceId, EnrichedSession, ProjectId, Session, SessionEvent, SessionId, Task,
 };
-use aura_os_sessions::{
-    storage_enriched_session_to_enriched_session, storage_session_to_session,
-};
+use aura_os_sessions::{storage_enriched_session_to_enriched_session, storage_session_to_session};
 use aura_os_storage::StorageClient;
 use aura_protocol::ContextBreakdown;
 

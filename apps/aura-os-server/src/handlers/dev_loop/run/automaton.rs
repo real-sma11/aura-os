@@ -114,7 +114,7 @@ async fn start_single_task_automaton(
     };
     Ok(StartOutcome::Cold {
         started: StartedAutomaton {
-            automaton_id: result.automaton_id,
+            automaton_id: result.run_id,
             event_stream_url: Some(result.event_stream_url),
             adopted: false,
         },

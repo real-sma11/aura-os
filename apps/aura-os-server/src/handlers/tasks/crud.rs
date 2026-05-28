@@ -67,22 +67,23 @@ pub(crate) async fn retry_task(
         .ok()
         .and_then(|t| storage_task_to_task(t).ok())
         .map(|t| t.status);
-    let task = aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
-        .await
-        .map_err(|e| match &e {
-            aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
-                status: 404,
-                ..
-            }) => ApiError::not_found("task not found"),
-            aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
-                status: 400,
-                body,
-            }) => ApiError::bad_request(body.clone()),
-            aura_os_tasks::TaskError::IllegalTransition { .. } => {
-                ApiError::bad_request(format!("retrying task: {e}"))
-            }
-            _ => ApiError::internal(format!("retrying task: {e}")),
-        })?;
+    let task =
+        aura_os_tasks::safe_transition(storage, &jwt, &task_id.to_string(), TaskStatus::Ready)
+            .await
+            .map_err(|e| match &e {
+                aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                    status: 404,
+                    ..
+                }) => ApiError::not_found("task not found"),
+                aura_os_tasks::TaskError::Storage(aura_os_storage::StorageError::Server {
+                    status: 400,
+                    body,
+                }) => ApiError::bad_request(body.clone()),
+                aura_os_tasks::TaskError::IllegalTransition { .. } => {
+                    ApiError::bad_request(format!("retrying task: {e}"))
+                }
+                _ => ApiError::internal(format!("retrying task: {e}")),
+            })?;
     broadcast_task_updated(
         &state,
         &project_id,
@@ -389,13 +390,7 @@ pub(crate) async fn update_task(
         broadcast_task_updated(&state, &project_id, &updated_task, &changed, None);
     }
     if let Some(edge) = status_change {
-        broadcast_task_updated(
-            &state,
-            &project_id,
-            &updated_task,
-            &["status"],
-            Some(edge),
-        );
+        broadcast_task_updated(&state, &project_id, &updated_task, &["status"], Some(edge));
     }
     Ok(Json(updated_task))
 }
@@ -615,10 +610,10 @@ mod tests {
     /// dedupe trigger).
     #[test]
     fn task_updated_payload_includes_status_edge_when_provided() {
-        use chrono::Utc;
         use aura_os_core::{
             AgentInstanceId, ProjectId, SessionId, SpecId, Task, TaskId, TaskStatus,
         };
+        use chrono::Utc;
         let _ = (AgentInstanceId::nil(), SessionId::nil());
         let project_id = ProjectId::nil();
         let task = Task {
@@ -674,8 +669,8 @@ mod tests {
     /// `execution_notes` write) to be silently swallowed.
     #[test]
     fn task_updated_payload_omits_status_for_non_status_edits() {
-        use chrono::Utc;
         use aura_os_core::{ProjectId, SpecId, Task, TaskId, TaskStatus};
+        use chrono::Utc;
         let project_id = ProjectId::nil();
         let task = Task {
             task_id: TaskId::nil(),
@@ -705,14 +700,13 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        let payload = super::build_task_updated_payload(
-            &project_id,
-            &task,
-            &["execution_notes"],
-            None,
-        );
+        let payload =
+            super::build_task_updated_payload(&project_id, &task, &["execution_notes"], None);
         assert_eq!(payload["type"], "task_updated");
-        assert_eq!(payload["changed_fields"], serde_json::json!(["execution_notes"]));
+        assert_eq!(
+            payload["changed_fields"],
+            serde_json::json!(["execution_notes"])
+        );
         assert!(
             payload.get("status").is_none(),
             "non-status edits must omit the `status` key, found: {payload}",

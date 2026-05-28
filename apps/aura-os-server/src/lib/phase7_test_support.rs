@@ -1,4 +1,4 @@
-﻿/// True when `reason` is classified as a truncation-style failure
+/// True when `reason` is classified as a truncation-style failure
 /// by Phase 3's `classify_failure`. Anything else -- auth errors,
 /// crashes, rate limits -- returns `false`.
 pub fn is_truncation_failure(reason: &str) -> bool {

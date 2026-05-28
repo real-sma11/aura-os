@@ -2,12 +2,21 @@
 
 /**
  * Payload for `generation_request`.
- *
- * Fields are mode-dependent:
- * - `mode == "image"`: uses `prompt` (required), `model`, `size`, `images`, `is_iteration`
- * - `mode == "3d"`:    uses `image_url` (required), `prompt` (optional hint)
- *
- * Both modes accept `project_id` for artifact storage. 3D generation also
- * accepts `parent_id` to link a generated model to a source image artifact.
  */
-export type GenerationRequest = { mode: string, prompt: string | null, model: string | null, size: string | null, image_url: string | null, images: Array<string> | null, project_id: string | null, parent_id: string | null, is_iteration: boolean | null, };
+export type GenerationRequest = { mode: string, prompt: string | null, model: string | null, size: string | null, image_url: string | null, images: Array<string> | null, project_id: string | null, parent_id: string | null, is_iteration: boolean | null, 
+/**
+ * Video generation: aspect ratio (e.g. "16:9", "9:16").
+ */
+aspect_ratio: string | null, 
+/**
+ * Video generation: duration in seconds (4, 6, or 8).
+ */
+duration_seconds: number | null, 
+/**
+ * Video generation: resolution (e.g. "720p", "1080p", "4k").
+ */
+resolution: string | null, 
+/**
+ * Video generation: whether to generate audio.
+ */
+generate_audio: boolean | null, };

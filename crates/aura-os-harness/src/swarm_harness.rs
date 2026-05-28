@@ -14,8 +14,8 @@ use aura_protocol::{InboundMessage, OutboundMessage};
 
 use crate::error::HarnessError;
 use crate::harness::{
-    build_remote_handshake, build_session_init, validate_session_init_identity, HarnessLink,
-    HarnessSession, SessionConfig,
+    build_remote_handshake, validate_runtime_request_identity, HarnessLink, HarnessSession,
+    SessionConfig,
 };
 use crate::local_harness::{
     CONNECT_ATTEMPTS_ENV, CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_ATTEMPTS,
@@ -507,15 +507,18 @@ fn is_capacity_exhausted_response(status: StatusCode, body: &str) -> bool {
     }
 }
 
+/// Phase A note: the harness no longer accepts a `SessionInit` first
+/// frame. SwarmHarness still relies on its own gateway-side
+/// `create_session` (HTTP) plus a runtime container that already
+/// applies the runtime request when the WS attaches. This is a no-op
+/// stub retained to keep the call site shape unchanged while the
+/// swarm gateway is migrated to the same two-step
+/// `POST /v1/run` + `WS /stream/:run_id` exchange in a follow-up.
 fn send_session_init(
-    commands_tx: &tokio::sync::mpsc::Sender<InboundMessage>,
-    config: &SessionConfig,
+    _commands_tx: &tokio::sync::mpsc::Sender<InboundMessage>,
+    _config: &SessionConfig,
 ) -> anyhow::Result<()> {
-    commands_tx
-        .try_send(InboundMessage::SessionInit(Box::new(build_session_init(
-            config,
-        ))))
-        .context("swarm session_init send failed")
+    Ok(())
 }
 
 async fn wait_for_session_ready(
@@ -616,10 +619,10 @@ fn format_error_suffix(message: Option<&str>) -> String {
 impl HarnessLink for SwarmHarness {
     async fn open_session(&self, config: SessionConfig) -> anyhow::Result<HarnessSession> {
         // Tier 2 fail-fast: identical contract to LocalHarness — see
-        // `validate_session_init_identity` for the rationale.
-        if let Err(err) = validate_session_init_identity(&config) {
+        // `validate_runtime_request_identity` for the rationale.
+        if let Err(err) = validate_runtime_request_identity(&config) {
             return Err(anyhow::Error::new(err)
-                .context("swarm harness rejected session_init: identity preflight"));
+                .context("swarm harness rejected runtime_request: identity preflight"));
         }
         let base_url = self.configured_base_url()?.to_string();
         let token = config.token.as_deref().or(self.auth_token.as_deref());

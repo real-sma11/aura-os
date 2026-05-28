@@ -57,9 +57,7 @@ async fn loop_stop_clears_registry_even_when_harness_unreachable() {
                 forwarder: None,
                 ws_reader_handle: None,
                 loop_handle: None,
-                last_forwarder_event_at: std::sync::Arc::new(
-                    std::sync::atomic::AtomicI64::new(0),
-                ),
+                last_forwarder_event_at: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
                 session_id: None,
             },
         );
@@ -159,9 +157,7 @@ async fn loop_stop_publishes_loop_ended_synchronously() {
                 forwarder: None,
                 ws_reader_handle: None,
                 loop_handle: Some(loop_handle.clone()),
-                last_forwarder_event_at: std::sync::Arc::new(
-                    std::sync::atomic::AtomicI64::new(0),
-                ),
+                last_forwarder_event_at: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
                 session_id: None,
             },
         );

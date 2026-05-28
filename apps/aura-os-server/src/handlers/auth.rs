@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use axum::extract::{Path, State};
-use dashmap::DashSet;
 use axum::http::StatusCode;
 use axum::Json;
 use base64::Engine;
+use dashmap::DashSet;
 use serde::Serialize;
 
 use aura_os_auth::AuthError;
