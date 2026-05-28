@@ -14,6 +14,7 @@ pub(crate) mod harness_gateway;
 mod network_bridge;
 pub mod orbit_guard;
 
+pub mod live_streams;
 pub(crate) mod log_throttle;
 pub mod loop_events_bridge;
 pub mod loop_log;

@@ -35,6 +35,7 @@ pub(crate) mod remote_terminal;
 pub(crate) mod spec_disk;
 pub(crate) mod specs;
 pub(crate) mod sse;
+pub(crate) mod streams;
 pub(crate) mod swarm;
 pub(crate) mod system;
 pub(crate) mod task_decompose;

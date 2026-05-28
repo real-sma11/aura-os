@@ -398,6 +398,7 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         integrations_client,
         event_broadcast,
         event_log,
+        live_streams: crate::live_streams::LiveStreamRegistry::from_env(),
         event_hub,
         loop_registry,
         require_zero_pro: std::env::var("REQUIRE_ZERO_PRO")

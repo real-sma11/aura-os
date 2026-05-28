@@ -27,6 +27,7 @@ mod public;
 mod runtime;
 mod social;
 mod specs;
+mod streams;
 mod tasks;
 mod users_orgs_billing;
 
@@ -56,6 +57,7 @@ use public::public_routes;
 use runtime::system_routes;
 use social::social_routes;
 use specs::spec_routes;
+use streams::stream_routes;
 use tasks::task_routes;
 use users_orgs_billing::{billing_routes, org_routes, user_routes};
 
@@ -76,6 +78,7 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
         .merge(billing_routes())
         .merge(project_routes())
         .merge(spec_routes())
+        .merge(stream_routes())
         .merge(task_routes())
         .merge(agent_routes())
         .merge(social_routes())

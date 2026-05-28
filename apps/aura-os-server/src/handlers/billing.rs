@@ -360,6 +360,7 @@ mod tests {
                     event_broadcast.subscribe(),
                     crate::event_log::EventLog::capacity_from_env(),
                 ),
+                live_streams: crate::live_streams::LiveStreamRegistry::from_env(),
                 event_broadcast,
                 event_hub,
                 loop_registry,

@@ -336,6 +336,7 @@ pub fn build_test_app_from_store(
             event_broadcast.subscribe(),
             aura_os_server::event_log::EventLog::capacity_from_env(),
         ),
+        live_streams: aura_os_server::live_streams::LiveStreamRegistry::from_env(),
         event_broadcast,
         event_hub,
         loop_registry,

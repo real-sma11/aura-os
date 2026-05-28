@@ -28,8 +28,13 @@ export class SSEIdleTimeoutError extends Error {
   }
 }
 
-function parseSSEFrame(frame: string): { eventType: string; data: string | null } {
+function parseSSEFrame(frame: string): {
+  eventType: string;
+  data: string | null;
+  id: string | null;
+} {
   let eventType = "";
+  let id: string | null = null;
   const dataLines: string[] = [];
 
   for (const rawLine of frame.split("\n")) {
@@ -38,6 +43,11 @@ function parseSSEFrame(frame: string): { eventType: string; data: string | null 
 
     if (line.startsWith("event:")) {
       eventType = line.slice(6).trim();
+      continue;
+    }
+
+    if (line.startsWith("id:")) {
+      id = line.slice(3).trim();
       continue;
     }
 
@@ -50,7 +60,26 @@ function parseSSEFrame(frame: string): { eventType: string; data: string | null 
   return {
     eventType: eventType || "message",
     data: dataLines.length > 0 ? dataLines.join("\n") : null,
+    id,
   };
+}
+
+/** Set or replace the `since` query parameter on an SSE attach URL. */
+function withSince(url: string, since: string): string {
+  try {
+    // `url` may be relative; resolve against a dummy base so URL parsing
+    // works, then strip the base back off.
+    const u = new URL(url, "http://_resolve_");
+    u.searchParams.set("since", since);
+    const out = `${u.pathname}${u.search}${u.hash}`;
+    return u.origin === "http://_resolve_" ? out : u.toString();
+  } catch {
+    const sep = url.includes("?") ? "&" : "?";
+    const stripped = url.replace(/([?&])since=[^&]*(&|$)/, "$1").replace(/[?&]$/, "");
+    const sep2 = stripped.includes("?") ? "&" : "?";
+    void sep;
+    return `${stripped}${sep2}since=${encodeURIComponent(since)}`;
+  }
 }
 
 function parseApiErrorBody(text: string): ApiError | null {
@@ -69,12 +98,35 @@ function parseApiErrorBody(text: string): ApiError | null {
   }
 }
 
-export async function streamSSE<T extends string>(
+/** Opt-in resume behaviour for {@link streamSSE}. */
+export interface StreamSSEOptions {
+  /**
+   * When true, a recoverable close (idle timeout or transport drop —
+   * NOT an HTTP error or an abort) is retried by re-issuing the request
+   * with `?since=<lastEventId>` appended, resuming the same `onEvent`
+   * stream without surfacing an error. Only safe for idempotent GET
+   * attach endpoints (`/api/streams/:id`), never for POST start calls
+   * that have side effects.
+   */
+  resumable?: boolean;
+  /** Max resume attempts before giving up and calling `onError`. */
+  maxRetries?: number;
+}
+
+type RunOutcome =
+  | { kind: "done" }
+  | { kind: "aborted" }
+  | { kind: "error"; error: Error; recoverable: boolean };
+
+/** A single fetch + read pass. Reports an outcome; never invokes
+ *  `onError` / `onDone` itself so the caller can orchestrate resume. */
+async function runSSEOnce<T extends string>(
   url: string,
   init: RequestInit,
-  callbacks: SSECallbacks<T>,
+  onEvent: SSECallbacks<T>["onEvent"],
+  onId: (id: string) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<RunOutcome> {
   let response: Response;
   const resolvedUrl = resolveApiUrl(url);
   try {
@@ -84,12 +136,13 @@ export async function streamSSE<T extends string>(
       signal,
     });
   } catch (err) {
-    if (signal?.aborted) return;
+    if (signal?.aborted) return { kind: "aborted" };
     const message = err instanceof Error ? err.message : String(err);
-    callbacks.onError?.(
-      new Error(`Failed to fetch SSE ${init.method ?? "GET"} ${resolvedUrl}: ${message}`),
-    );
-    return;
+    return {
+      kind: "error",
+      error: new Error(`Failed to fetch SSE ${init.method ?? "GET"} ${resolvedUrl}: ${message}`),
+      recoverable: true,
+    };
   }
 
   if (!response.ok) {
@@ -98,8 +151,7 @@ export async function streamSSE<T extends string>(
     const err = body
       ? new ApiClientError(response.status, body)
       : new Error(`SSE request failed (${response.status}): ${text}`);
-    callbacks.onError?.(err);
-    return;
+    return { kind: "error", error: err, recoverable: false };
   }
 
   const contentType = response.headers.get("content-type");
@@ -107,21 +159,33 @@ export async function streamSSE<T extends string>(
     const text = await response.text().catch(() => "");
     const preview = text.trim().slice(0, 200);
     const suffix = preview ? `: ${preview}` : "";
-    callbacks.onError?.(
-      new Error(`Expected an SSE response but received ${contentType}${suffix}`),
-    );
-    return;
+    return {
+      kind: "error",
+      error: new Error(`Expected an SSE response but received ${contentType}${suffix}`),
+      recoverable: false,
+    };
   }
 
   const body = response.body;
   if (!body) {
-    callbacks.onError?.(new Error("Response body is null"));
-    return;
+    return { kind: "error", error: new Error("Response body is null"), recoverable: false };
   }
 
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
+  const dispatchFrame = (frame: string) => {
+    if (!frame.trim()) return;
+    const { eventType, data, id } = parseSSEFrame(frame);
+    if (id) onId(id);
+    if (!data) return;
+    try {
+      onEvent(eventType as T, JSON.parse(data));
+    } catch {
+      onEvent(eventType as T, data);
+    }
+  };
 
   try {
     while (true) {
@@ -138,35 +202,67 @@ export async function streamSSE<T extends string>(
       buffer = frames.pop() ?? "";
 
       for (const frame of frames) {
-        if (!frame.trim()) continue;
-        const { eventType, data } = parseSSEFrame(frame);
-        if (!data) continue;
-
-        try {
-          callbacks.onEvent(eventType as T, JSON.parse(data));
-        } catch {
-          callbacks.onEvent(eventType as T, data);
-        }
+        dispatchFrame(frame);
       }
     }
   } catch (err) {
-    if (signal?.aborted) return;
-    callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+    if (signal?.aborted) return { kind: "aborted" };
     reader.cancel().catch(() => {});
-    return;
+    return {
+      kind: "error",
+      error: err instanceof Error ? err : new Error(String(err)),
+      // Idle timeout / mid-stream read failure: the run may still be
+      // alive server-side, so this is resumable for attach endpoints.
+      recoverable: true,
+    };
   }
 
   const trailingFrame = buffer.trim();
-  if (trailingFrame) {
-    const { eventType, data } = parseSSEFrame(trailingFrame);
-    if (data) {
-      try {
-        callbacks.onEvent(eventType as T, JSON.parse(data));
-      } catch {
-        callbacks.onEvent(eventType as T, data);
-      }
-    }
-  }
+  if (trailingFrame) dispatchFrame(trailingFrame);
 
-  callbacks.onDone?.();
+  return { kind: "done" };
+}
+
+export async function streamSSE<T extends string>(
+  url: string,
+  init: RequestInit,
+  callbacks: SSECallbacks<T>,
+  signal?: AbortSignal,
+  options?: StreamSSEOptions,
+): Promise<void> {
+  const resumable = options?.resumable ?? false;
+  const maxRetries = options?.maxRetries ?? 5;
+  let lastId: string | null = null;
+  let attempt = 0;
+
+  while (true) {
+    const target = resumable && lastId != null ? withSince(url, lastId) : url;
+    const outcome = await runSSEOnce<T>(
+      target,
+      init,
+      callbacks.onEvent,
+      (id) => {
+        lastId = id;
+      },
+      signal,
+    );
+
+    if (outcome.kind === "aborted") return;
+    if (outcome.kind === "done") {
+      callbacks.onDone?.();
+      return;
+    }
+
+    // outcome.kind === "error"
+    if (outcome.recoverable && resumable && attempt < maxRetries && !signal?.aborted) {
+      attempt += 1;
+      const backoffMs = Math.min(500 * attempt, 5000);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      if (signal?.aborted) return;
+      continue;
+    }
+
+    callbacks.onError?.(outcome.error);
+    return;
+  }
 }

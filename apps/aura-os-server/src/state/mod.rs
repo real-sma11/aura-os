@@ -310,6 +310,12 @@ pub struct AppState {
     /// live events with stable sequence numbers. See
     /// [`crate::event_log::EventLog`].
     pub event_log: Arc<crate::event_log::EventLog>,
+    /// Registry of resumable harness streams (spec gen, chat turns,
+    /// media generation). Decouples the harness session lifetime from
+    /// the SSE response so a reconnecting client can reattach with a
+    /// `?since=N` cursor instead of restarting the run. See
+    /// [`crate::live_streams::LiveStreamRegistry`].
+    pub live_streams: Arc<crate::live_streams::LiveStreamRegistry>,
     /// Topic-scoped event hub. Use this for all new event production
     /// and consumption; subscribers receive only events whose
     /// [`aura_os_events::Topic`] matches their filter, eliminating the
