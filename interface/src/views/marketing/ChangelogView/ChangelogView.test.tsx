@@ -4,6 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChangelogView } from "./ChangelogView";
 import * as githubCommits from "../../../api/marketing/github-commits";
+import * as changelogApi from "../../../api/marketing/changelog";
+import type { ChangelogEntry } from "../../../api/marketing/changelog";
 
 function renderChangelogView() {
   const queryClient = new QueryClient({
@@ -113,5 +115,44 @@ describe("ChangelogView", () => {
     const allTime = getCommitStatValueElement(/All-time commits/);
     expect(allTime.textContent).toBe("9,421");
     expect(allTime).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("renders the latest-release relative time and a /download link in the header", async () => {
+    // Anchor the timestamp 2 hours before the actual test-runner clock
+    // so the relative-time string is deterministic ("2 hours ago")
+    // without us having to stand up a fake timer (which would interfere
+    // with React Query's internal scheduling here).
+    const generatedAt = new Date(
+      Date.now() - 2 * 60 * 60 * 1000,
+    ).toISOString();
+    const fakeEntry: ChangelogEntry = {
+      repo: "aura-os",
+      date: "2026-05-28",
+      channel: "nightly",
+      version: "1.2.3",
+      generatedAt,
+      releaseUrl: "https://github.com/cypher-asi/aura-os/releases/tag/v1.2.3",
+      rawCommitCount: 0,
+      filteredCommitCount: 0,
+      rendered: {
+        title: "Test release",
+        intro: "",
+        highlights: [],
+        entries: [],
+      },
+    };
+
+    vi.spyOn(changelogApi, "fetchChangelogEntries").mockResolvedValue([
+      fakeEntry,
+    ]);
+
+    renderChangelogView();
+
+    const time = await screen.findByText(/Released 2 hours ago/);
+    expect(time.tagName.toLowerCase()).toBe("time");
+    expect(time).toHaveAttribute("datetime", generatedAt);
+
+    const downloadLink = screen.getByRole("link", { name: /Download/ });
+    expect(downloadLink).toHaveAttribute("href", "/download");
   });
 });

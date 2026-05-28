@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   type ChangelogEntry,
   type ChangelogTimelineMedia,
@@ -10,6 +11,7 @@ import {
   fetchAuraCommitStats,
 } from "../../../api/marketing/github-commits";
 import { useCountUp } from "../../../hooks/use-count-up";
+import { useRelativeTime } from "../../../hooks/use-relative-time";
 import { BannerCard } from "../BannerCard/BannerCard";
 import "./ChangelogView.css";
 
@@ -308,6 +310,13 @@ export function ChangelogView(): ReactNode {
   // until it refetches, but `?? []` would allocate a new array each time).
   const entries = useMemo<readonly ChangelogEntry[]>(() => data ?? [], [data]);
   const latestVersion = entries.find((entry) => entry.version)?.version;
+  // Entries are sorted by date descending in `fetchChangelogEntries`, so
+  // `entries[0]` is always the most recent release. Drive the relative
+  // time off `generatedAt` because it's the wall-clock timestamp of when
+  // the release was actually published, whereas `entry.date` is just
+  // the PST calendar bucket.
+  const latestRelease = entries[0];
+  const latestReleaseAgo = useRelativeTime(latestRelease?.generatedAt);
   const renderEmpty = !isLoading && !isError && entries.length === 0;
 
   const stats = useMemo(
@@ -342,10 +351,47 @@ export function ChangelogView(): ReactNode {
         >
           <header className="changelogStatsCardHeader">
             <h1 className="changelogPageTitle">Changelog</h1>
-            {latestVersion ? (
-              <span className="changelogPageVersion">
-                Current version {latestVersion}
-              </span>
+            {(latestVersion || latestRelease) ? (
+              <div className="changelogStatsCardMeta">
+                {latestVersion ? (
+                  <span className="changelogPageVersion">
+                    Current version {latestVersion}
+                  </span>
+                ) : null}
+                {latestRelease ? (
+                  <span
+                    className="changelogLatestRelease"
+                    aria-label={`Most recent release was ${
+                      latestReleaseAgo || "recently"
+                    }`}
+                  >
+                    <time
+                      className="changelogLatestReleaseTime"
+                      dateTime={latestRelease.generatedAt}
+                      title={new Date(
+                        latestRelease.generatedAt,
+                      ).toLocaleString()}
+                    >
+                      {latestReleaseAgo
+                        ? `Released ${latestReleaseAgo}`
+                        : "Released recently"}
+                    </time>
+                    <span
+                      className="changelogLatestReleaseSeparator"
+                      aria-hidden="true"
+                    >
+                      {" · "}
+                    </span>
+                    <Link
+                      to="/download"
+                      className="changelogLatestReleaseDownload"
+                    >
+                      Download
+                      <span aria-hidden="true">&nbsp;&rarr;</span>
+                    </Link>
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </header>
 
