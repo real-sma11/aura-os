@@ -71,33 +71,27 @@ describe("ProductView", () => {
     expect(screen.getByText("Your Personal Agent.")).toBeInTheDocument();
   });
 
-  it("inserts the AgentChatSection between the agents and software-shipping rows", () => {
-    // The agent-chat section was added between the "Spawn a team of
-    // agents..." row and the "Ship complex software..." row so it
-    // anchors the mobile-experience story at the same scroll depth
-    // as the agents narrative above it. The page is a static stack
-    // of `<h2>`s today, so we can compare DOM order on the headline
-    // heading nodes without coupling to internal markup of any one
-    // section component.
+  it("places the AgentChatSection directly above the secure-OS row", () => {
+    // The agent-chat section anchors the mobile-experience story
+    // immediately after the hero, ahead of the desktop OS screenshot
+    // row. Asserting the relative DOM order between the section
+    // headline and the "A secure operating system..." row headline
+    // pins this layout decision without coupling to any internal
+    // markup of the surrounding section components — both render
+    // their headline as the natural `<h2>` for the section, and the
+    // page is a static stack of `<h2>`s today.
     renderProductView();
-    const agentsRow = screen.getByRole("heading", {
-      name: /Spawn a team of agents/i,
-    });
     const chatSection = screen.getByRole("heading", {
       name: /Chat with your agents/i,
     });
-    const shippingRow = screen.getByRole("heading", {
-      name: /Ship complex software/i,
+    const secureOsRow = screen.getByRole("heading", {
+      name: /A secure operating system/i,
     });
     // `compareDocumentPosition` returns `DOCUMENT_POSITION_FOLLOWING`
     // (bit `0x04`) when the argument node appears AFTER the receiver
     // in document order, which is the order we want here.
     expect(
-      agentsRow.compareDocumentPosition(chatSection) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      chatSection.compareDocumentPosition(shippingRow) &
+      chatSection.compareDocumentPosition(secureOsRow) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

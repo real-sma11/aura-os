@@ -71,6 +71,7 @@ export function ProductView(): ReactNode {
         headlineCta={<CreateAgentButton />}
         videoOverlay={<AgentMarquee />}
       />
+      <AgentChatSection />
       <ProductScreenSection
         headline="A secure operating system to manage agentic swarms."
         placeholderLabel="AURA desktop interface"
@@ -83,7 +84,6 @@ export function ProductView(): ReactNode {
         imageSrc="/product-screens/aura-product-screen-superagent.png"
         imageAlt="AURA agents interface showing autonomous agents"
       />
-      <AgentChatSection />
       <ProductScreenSection
         headline="Ship complex software that improves autonomously."
         placeholderLabel="AURA software automation interface"
