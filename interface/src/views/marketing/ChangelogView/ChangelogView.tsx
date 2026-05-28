@@ -370,22 +370,24 @@ export function ChangelogView(): ReactNode {
                         ? `Released ${latestReleaseAgo}`
                         : "Released recently"}
                     </time>
-                    <Link
-                      to="/download"
-                      className="changelogStatVersionLink"
-                    >
-                      Download
-                      <span aria-hidden="true">&nbsp;&rarr;</span>
-                    </Link>
-                    <a
-                      href="https://github.com/cypher-asi/aura-os"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="changelogStatVersionLink"
-                    >
-                      GitHub
-                      <span aria-hidden="true">&nbsp;&rarr;</span>
-                    </a>
+                    <div className="changelogStatVersionActions">
+                      <Link
+                        to="/download"
+                        className="changelogStatVersionLink"
+                      >
+                        Download
+                        <span aria-hidden="true">&nbsp;&rarr;</span>
+                      </Link>
+                      <a
+                        href="https://github.com/cypher-asi/aura-os"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="changelogStatVersionLink"
+                      >
+                        GitHub
+                        <span aria-hidden="true">&nbsp;&rarr;</span>
+                      </a>
+                    </div>
                   </div>
                 ) : null}
               </div>

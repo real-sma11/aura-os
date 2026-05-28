@@ -173,14 +173,25 @@
 
 .changelogStatVersionMeta {
   margin: 4px 0 0;
+  /* Stack the relative-time line above the action links so "Released X
+     ago" reads as a subtitle to the version number, and the
+     Download / GitHub CTAs sit together as a separate action row
+     directly underneath. */
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: rgba(255, 255, 255, 0.62);
+}
+
+.changelogStatVersionActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
 }
 
 .changelogStatVersionTime {
