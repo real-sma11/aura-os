@@ -5,7 +5,6 @@
 //! old chat-session-based approach.
 
 mod client;
-mod event_normalization;
 mod identity;
 mod start_params;
 mod ws_reader;
@@ -25,4 +24,4 @@ pub use ws_reader_handle::WsReaderHandle;
 // can reach `normalize_automaton_event` through `super::normalize_automaton_event`
 // without exposing it as part of the crate's public API.
 #[cfg(test)]
-use event_normalization::normalize_automaton_event;
+use crate::event_normalization::normalize_automaton_event;

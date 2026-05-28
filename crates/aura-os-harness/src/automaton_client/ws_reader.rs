@@ -6,7 +6,7 @@ use tracing::{info, warn};
 
 use crate::runner::automaton_event_kinds::DONE;
 
-use super::event_normalization::normalize_automaton_event;
+use crate::event_normalization::normalize_automaton_event;
 
 pub(super) async fn probe_initial_event<R>(
     read: &mut R,

@@ -1,4 +1,18 @@
-﻿const GENERIC_MILESTONE_EVENT_TYPES: &[&str] =
+//! Canonicalization of harness "domain" events that arrive as untyped
+//! JSON on the raw event path (not part of the typed
+//! [`aura_protocol::OutboundMessage`] enum).
+//!
+//! Historically this lived under `automaton_client` because only the
+//! dev-loop / task-run event stream consumed it. As the chat and
+//! automaton transports converge on a single WS bridge
+//! ([`crate::ws_bridge`]), the same normalization runs on the unified
+//! raw path so any consumer reading `HarnessSession::raw_events_tx`
+//! sees canonical git/milestone event shapes regardless of which run
+//! type produced them. The function is a no-op for any event that is
+//! not a generic milestone wrapper, so it is safe to apply
+//! unconditionally.
+
+const GENERIC_MILESTONE_EVENT_TYPES: &[&str] =
     &["milestone", "sync_milestone", "git_sync_milestone"];
 const GIT_COMMITTED: &str = "git_committed";
 const GIT_COMMIT_FAILED: &str = "git_commit_failed";
@@ -81,7 +95,7 @@ fn copy_if_missing(target: &mut serde_json::Value, source: &serde_json::Value, k
     }
 }
 
-pub(super) fn normalize_automaton_event(mut event: serde_json::Value) -> serde_json::Value {
+pub(crate) fn normalize_automaton_event(mut event: serde_json::Value) -> serde_json::Value {
     let Some(event_type) = event.get("type").and_then(|t| t.as_str()) else {
         return event;
     };

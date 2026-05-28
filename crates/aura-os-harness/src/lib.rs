@@ -7,6 +7,7 @@
 mod automaton_client;
 pub mod client;
 mod error;
+mod event_normalization;
 mod harness;
 mod harness_url;
 mod local_harness;

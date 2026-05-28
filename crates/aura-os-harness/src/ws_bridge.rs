@@ -160,6 +160,13 @@ fn forward_untyped_ws_text(
             "Forwarding untyped harness event"
         );
         stability_metrics::inc_protocol_mismatch();
+        // Canonicalize automaton/git milestone domain events on the
+        // unified raw path so consumers reading `raw_events_tx` (the
+        // dev-loop / task-run forwarders, once migrated onto this single
+        // bridge) see the same canonical git event shapes the dedicated
+        // automaton reader produced. No-op for non-milestone events, so
+        // chat-path untyped events pass through unchanged.
+        let value = crate::event_normalization::normalize_automaton_event(value);
         let _ = reader_raw_tx.send(value);
         let _ = reader_tx.send(bridge_error(
             "harness_protocol_mismatch",
