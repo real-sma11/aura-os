@@ -181,9 +181,18 @@ function ReleasesPerDayChart({
         {/*
          * Gradient is anchored to the CHART (userSpaceOnUse with y1 at the
          * baseline and y2 at the top) instead of each rect's bounding box.
-         * That makes magnitude drive color naturally: short bars only sit
-         * in the deep-purple basement while tall bars rise into the bright
-         * pink crest. One definition, no per-bar color math.
+         * That makes magnitude drive color naturally: short bars sit in
+         * the basement purple while tall bars rise into the bright pink
+         * crest. One definition, no per-bar color math.
+         *
+         * The basement color is tuned to harmonize with the stats card's
+         * radial gradient backdrop (`#3e0e72` -> `#170338`, see
+         * `.changelogStatsCard` in ChangelogView.css) rather than fight
+         * it. The previous `#3b0a5a` leaned slightly more magenta than
+         * the card's bluer purples and visually clashed against the
+         * lower-left dark zone where the chart sits; `#55168a` matches
+         * the card hue family while staying bright enough to read
+         * against the `#220650`-ish backdrop.
          */}
         <linearGradient
           id={gradientId}
@@ -193,7 +202,7 @@ function ReleasesPerDayChart({
           x2={0}
           y2={0}
         >
-          <stop offset="0%" stopColor="#3b0a5a" />
+          <stop offset="0%" stopColor="#55168a" />
           <stop offset="30%" stopColor="#6b1ea1" />
           <stop offset="65%" stopColor="#c43c9a" />
           <stop offset="100%" stopColor="#ff64c8" />
