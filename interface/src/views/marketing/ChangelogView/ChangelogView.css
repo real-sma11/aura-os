@@ -18,17 +18,32 @@
 }
 
 /* Page-level layout context for the changelog summary card. The
-   visual chrome (background, shadow, square corners, no border) lives
-   on `BannerCard` — see
+   visual chrome (shadow, square corners, no border) lives on
+   `BannerCard` — see
    `interface/src/views/marketing/BannerCard/BannerCard.css`. The
    padding is overridden here because this card hosts the multi-line
    "Current version" stat in its top-right corner and we want the
    distance from the card edge to the "CURRENT VERSION" label to feel
    uniform with the left/right/bottom padding instead of the asymmetric
-   28px/32px BannerCard default. */
+   28px/32px BannerCard default.
+
+   The background overrides BannerCard's default near-black slab with a
+   deep-purple radial gradient (matches the swatch the design surfaced
+   from the marketing card refresh). Brightest point sits in the
+   upper-right so the Current Version block reads against the highest
+   contrast region, while the lower-left fades to nearly-black so the
+   stats grid + chart sit on the darker corner. */
 .changelogStatsCard {
   margin-bottom: 64px;
   padding: 32px;
+  background:
+    radial-gradient(
+      ellipse 120% 110% at 72% 38%,
+      #3e0e72 0%,
+      #310a62 35%,
+      #220650 65%,
+      #170338 100%
+    );
 }
 
 @media (max-width: 768px) {
