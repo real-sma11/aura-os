@@ -1,8 +1,15 @@
 import { useRef, useCallback, useEffect } from "react";
 import type { MutableRefObject } from "react";
 import { api } from "../api/client";
-import { generate3dStream, generateImageStream, generateVideoStream } from "../api/streams";
+import {
+  attachToStream,
+  generate3dStream,
+  generateImageStream,
+  generateVideoStream,
+  selectReattachableChatStream,
+} from "../api/streams";
 import type { ChatAttachment, StreamEventHandler } from "../api/streams";
+import type { ActiveStreamSummary } from "../shared/api/streams";
 import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { buildUserChatMessage } from "./attachment-helpers";
@@ -48,6 +55,7 @@ import { migrateChatPartition } from "./stream/migration";
 import {
   type AgentChatLastSendArgs,
   getOrCreatePartitionAgentReplay,
+  getPartitionSendControl,
   peekPartitionAgentReplay,
   _resetAllPartitionAgentReplay,
 } from "./stream/partition-state";
@@ -737,6 +745,268 @@ export function useAgentChatStream({
     },
     [agentId, core.key, refs],
   );
+
+  /**
+   * Standalone-agent mirror of the project-chat reattach: rejoin an
+   * in-flight chat turn for the pinned session by reattaching to the
+   * server's registered `chat_turn` stream and feeding the same core
+   * reducers a live turn uses. Discovery omits `agent_instance_id`
+   * (standalone agents have none) and matches purely on `session_id`.
+   *
+   * Dedup-safe: only runs on a clean partition buffer (fresh mount, or
+   * after `resetStreamBuffers`), so a replay-from-cursor cannot
+   * double-apply already-rendered content. Returns `true` when it
+   * attached to a live stream.
+   */
+  const tryReattachActiveTurn = useCallback(async (): Promise<boolean> => {
+    if (!agentId || inFlightRef.current) return false;
+    const currentSessionId = sessionIdRef.current;
+    if (!currentSessionId) return false;
+    const listFn = api.streams?.listActiveStreams;
+    if (!listFn) return false;
+    const key = core.key;
+    // Reuse the project-chat send-control map purely as a per-streamKey
+    // `reattaching` latch so `useChatHistorySync` can gate its
+    // firehose-driven refetch the same way for both surfaces.
+    const ctrl = getPartitionSendControl(key);
+    if (ctrl.reattaching) return false;
+
+    ctrl.reattaching = true;
+    let match: ActiveStreamSummary | null = null;
+    try {
+      const { streams } = await listFn({});
+      match = selectReattachableChatStream(streams, currentSessionId);
+    } catch {
+      ctrl.reattaching = false;
+      return false;
+    }
+    if (!match || inFlightRef.current) {
+      ctrl.reattaching = false;
+      return false;
+    }
+
+    inFlightRef.current = true;
+    const partitionState = { key };
+    const getPartitionKey = (): string => partitionState.key;
+    const partitionSetters = createSetters(getPartitionKey);
+    const partitionAbortRef: MutableRefObject<AbortController | null> = {
+      get current() { return streamMetaMap.get(getPartitionKey())?.abort ?? null; },
+      set current(v: AbortController | null) {
+        const m = streamMetaMap.get(getPartitionKey());
+        if (m) m.abort = v;
+      },
+    };
+    const breadcrumbContext: StreamCloseContext = {
+      get streamKey() { return partitionState.key; },
+      agentId,
+      sessionId: sessionIdRef.current ?? undefined,
+    };
+
+    const migrateToSession = (newSessionId: string): void => {
+      if (!agentId) return;
+      const newKey = keyForAgentSession(agentId, newSessionId);
+      if (newKey === partitionState.key) return;
+      migrateChatPartition(partitionState.key, newKey);
+      partitionState.key = newKey;
+    };
+
+    resetStreamBuffers(refs, partitionSetters);
+    partitionSetters.setIsStreaming(true);
+    partitionAbortRef.current?.abort();
+    const controller = new AbortController();
+    partitionAbortRef.current = controller;
+    partitionSetters.setProgressText("Reconnecting…");
+
+    const handler: StreamEventHandler = {
+      onEvent(event: AuraEvent) {
+        if (controller.signal.aborted) return;
+        switch (event.type) {
+          case EventType.Delta:
+          case EventType.TextDelta: {
+            const text = (event.content as { text: string }).text;
+            handleTextDelta(refs, partitionSetters, getThinkingDurationMs(getPartitionKey()), text);
+            useContextUsageStore
+              .getState()
+              .bumpEstimatedTokens(getPartitionKey(), approxTokensFromText(text));
+            break;
+          }
+          case EventType.ThinkingDelta: {
+            const tc = event.content as { text?: string; thinking?: string };
+            const text = tc.text ?? tc.thinking ?? "";
+            handleThinkingDelta(refs, partitionSetters, text);
+            useContextUsageStore
+              .getState()
+              .bumpEstimatedTokens(getPartitionKey(), approxTokensFromText(text));
+            break;
+          }
+          case EventType.Progress: {
+            const stage = event.content.stage;
+            if (stage === "heartbeat") {
+              markStreamProgress(getPartitionKey());
+              break;
+            }
+            if (stage === "forked_for_context" || stage === "auto_fork") {
+              const fork = event.content as {
+                stage: string;
+                previous_session_id?: string;
+                new_session_id?: string;
+                message?: string;
+              };
+              partitionSetters.setProgressText(
+                fork.message ?? "Continued from previous chat — context was filling up",
+              );
+              if (fork.new_session_id && fork.new_session_id !== lastNotifiedSessionIdRef.current) {
+                lastNotifiedSessionIdRef.current = fork.new_session_id;
+                migrateToSession(fork.new_session_id);
+                onSessionReadyRef.current?.(fork.new_session_id);
+                useSessionsListStore.getState().bumpVersion();
+              }
+              break;
+            }
+            partitionSetters.setProgressText(stage);
+            break;
+          }
+          case EventType.ToolCallStarted:
+          case EventType.ToolUseStart:
+            handleToolCallStarted(refs, partitionSetters, event.content as { id: string; name: string });
+            break;
+          case EventType.ToolCallSnapshot:
+            handleToolCallSnapshot(refs, partitionSetters, event.content);
+            break;
+          case EventType.ToolCall:
+            handleToolCall(refs, partitionSetters, event.content);
+            break;
+          case EventType.ToolResult: {
+            const tr = event.content as { id: string; name: string; result: string; is_error: boolean };
+            handleToolResult(refs, partitionSetters, tr);
+            if (typeof tr.result === "string" && tr.result.length > 0) {
+              useContextUsageStore
+                .getState()
+                .bumpEstimatedTokens(getPartitionKey(), approxTokensFromText(tr.result));
+            }
+            break;
+          }
+          case EventType.SpecSaved:
+            onSpecSavedRef.current?.(event.content.spec);
+            break;
+          case EventType.TaskSaved:
+            onTaskSavedRef.current?.(event.content.task);
+            break;
+          case EventType.MessageEnd:
+            handleEventSaved(refs, partitionSetters, event.content.event);
+            break;
+          case EventType.AssistantMessageEnd: {
+            handleAssistantTurnBoundary(refs, partitionSetters);
+            const amc = event.content as {
+              stop_reason?: string;
+              usage?: {
+                context_utilization?: number;
+                estimated_context_tokens?: number;
+                context_breakdown?: WireContextBreakdown;
+              };
+            };
+            if (amc.usage?.context_utilization != null) {
+              useContextUsageStore
+                .getState()
+                .setContextUtilization(
+                  getPartitionKey(),
+                  amc.usage.context_utilization,
+                  amc.usage.estimated_context_tokens,
+                  mapWireContextBreakdown(amc.usage.context_breakdown),
+                );
+            }
+            if (amc.stop_reason !== "tool_use") {
+              resetStreamBuffers(refs, partitionSetters);
+              inFlightRef.current = false;
+              partitionSetters.setIsStreaming(false);
+            }
+            break;
+          }
+          case EventType.SessionReady: {
+            const payload = event.content as { session_id?: string };
+            const newSessionId = payload?.session_id;
+            if (newSessionId && newSessionId !== lastNotifiedSessionIdRef.current) {
+              lastNotifiedSessionIdRef.current = newSessionId;
+              migrateToSession(newSessionId);
+              onSessionReadyRef.current?.(newSessionId);
+              useSessionsListStore.getState().bumpVersion();
+            }
+            break;
+          }
+          case EventType.Error:
+            inFlightRef.current = false;
+            handleStreamError(refs, partitionSetters, event.content.message, breadcrumbContext);
+            break;
+          case EventType.Done:
+            inFlightRef.current = false;
+            finalizeStream(refs, partitionSetters, partitionAbortRef, false, { breadcrumbContext });
+            break;
+        }
+      },
+      onError: (error) => {
+        if (controller.signal.aborted) return;
+        inFlightRef.current = false;
+        handleStreamError(refs, partitionSetters, error, breadcrumbContext);
+      },
+      onDone: () => {
+        if (controller.signal.aborted) return;
+        inFlightRef.current = false;
+        finalizeStream(refs, partitionSetters, partitionAbortRef, false, { breadcrumbContext });
+      },
+    };
+
+    try {
+      await attachToStream(
+        match.attach_id,
+        ctrl.attachLastSeq,
+        handler,
+        controller.signal,
+        {
+          onSeq: (seq) => {
+            if (seq > ctrl.attachLastSeq) ctrl.attachLastSeq = seq;
+          },
+          onResync: () => {
+            // Backlog evicted: drop the partial and converge via the
+            // post-stream history refetch fired by the isStreaming
+            // false transition below.
+            resetStreamBuffers(refs, partitionSetters);
+            ctrl.attachLastSeq = 0;
+            controller.abort();
+            if (partitionAbortRef.current === controller) {
+              partitionSetters.setIsStreaming(false);
+              partitionAbortRef.current = null;
+              inFlightRef.current = false;
+            }
+          },
+        },
+      );
+      return true;
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return true;
+      handleStreamError(refs, partitionSetters, err, breadcrumbContext);
+      return true;
+    } finally {
+      ctrl.reattaching = false;
+      if (partitionAbortRef.current === controller) {
+        partitionSetters.setIsStreaming(false);
+        controller.abort();
+        partitionAbortRef.current = null;
+        inFlightRef.current = false;
+      }
+    }
+  }, [agentId, core.key, refs]);
+
+  const tryReattachActiveTurnRef = useRef(tryReattachActiveTurn);
+  useEffect(() => { tryReattachActiveTurnRef.current = tryReattachActiveTurn; }, [tryReattachActiveTurn]);
+
+  // Mount / session-pin reattach (hard-reload case). See the matching
+  // effect in `useChatStream`. Skips when a local send is in flight or
+  // the partition is already streaming; best-effort otherwise.
+  useEffect(() => {
+    if (!agentId || !sessionIdRef.current) return;
+    if (inFlightRef.current || getIsStreaming(core.key)) return;
+    void tryReattachActiveTurnRef.current?.();
+  }, [agentId, sessionId, core.key]);
 
   // Register the live `sendMessage` callable into the replay map so
   // the Phase 2 stuck-stream pill can re-fire the cached args

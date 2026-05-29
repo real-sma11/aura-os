@@ -26,6 +26,7 @@ import { useChatHistoryStore, useChatHistory } from "../../stores/chat-history-s
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useIsStreaming } from "../stream/hooks";
 import { getIsStreaming, getStreamEntry } from "../stream/store";
+import { getIsReattaching } from "../stream/partition-state";
 import { useEventStore } from "../../stores/event-store/index";
 import { isAuraCaptureSessionActive } from "../../lib/screenshot-bridge";
 import { EventType } from "../../shared/types/aura-events";
@@ -321,6 +322,16 @@ export function useChatHistorySync({
       const matched = matchesChatEvent(event, watch);
       maybeLogCrossAgentEvent(event, watch, matched);
       if (!matched) return;
+      // Don't let a firehose-driven history refetch race an in-flight
+      // reattach. While the panel is rejoining a live turn via
+      // `/api/streams/:id`, that SSE is the source of truth for the
+      // turn's per-delta content; a `user_message` /
+      // `assistant_message_end` lifecycle frame arriving over the
+      // firehose mid-reattach would otherwise pull a server snapshot
+      // that lags the live deltas and momentarily reset `events[]`.
+      // The reattach's own finalize path triggers the post-stream
+      // refetch once it settles.
+      if (getIsReattaching(streamKey)) return;
       forceFetchHistory("history: WS-triggered refetch (UserMessage/AssistantEnd)", event);
       if (settleRefetchTimer !== undefined) {
         clearTimeout(settleRefetchTimer);

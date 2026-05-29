@@ -111,6 +111,16 @@ export interface StreamSSEOptions {
   resumable?: boolean;
   /** Max resume attempts before giving up and calling `onError`. */
   maxRetries?: number;
+  /**
+   * Invoked with the numeric value of each SSE `id:` line as it is
+   * parsed. The reattach path (`/api/streams/:id`) uses the harness
+   * frame `seq` as the `id:`, so this lets a caller persist the last
+   * delivered cursor (e.g. onto the partition send-control) and resume
+   * from exactly there on a later reattach. Non-numeric ids are
+   * ignored. Fired before resume bookkeeping, on the same tick the
+   * frame's `id:` is seen.
+   */
+  onSeq?: (seq: number) => void;
 }
 
 type RunOutcome =
@@ -243,6 +253,10 @@ export async function streamSSE<T extends string>(
       callbacks.onEvent,
       (id) => {
         lastId = id;
+        if (options?.onSeq) {
+          const seq = Number(id);
+          if (Number.isFinite(seq)) options.onSeq(seq);
+        }
       },
       signal,
     );

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ApiClientError } from "../shared/api/core";
 import {
+  attachToStream,
   generateSpecsStream,
+  selectReattachableChatStream,
   sendAgentEventStream,
   sendEventStream,
 } from "./streams";
@@ -9,6 +11,7 @@ import type {
   SpecGenStreamCallbacks,
   StreamEventHandler,
 } from "./streams";
+import type { ActiveStreamSummary } from "../shared/api/streams";
 import * as sseModule from "../shared/api/sse";
 import { handleEngineEvent } from "../stores/event-store/engine-event-handlers";
 
@@ -310,5 +313,107 @@ describe("sendEventStream", () => {
 
     await sendEventStream("p1" as string, "ai1", "x", null, undefined, undefined, handler, controller.signal);
     expect(streamSSE.mock.calls[0][3]).toBe(controller.signal);
+  });
+});
+
+function makeStream(over: Partial<ActiveStreamSummary> = {}): ActiveStreamSummary {
+  return {
+    attach_id: "att-1",
+    kind: "chat_turn",
+    scope: { user_id: "u1", project_id: "p1", agent_instance_id: "ai1", session_id: "s1" },
+    latest_seq: 3,
+    terminated: false,
+    started_at_ms: 0,
+    ...over,
+  };
+}
+
+describe("selectReattachableChatStream", () => {
+  it("returns null when no session id is pinned", () => {
+    expect(selectReattachableChatStream([makeStream()], null)).toBeNull();
+    expect(selectReattachableChatStream([makeStream()], undefined)).toBeNull();
+  });
+
+  it("matches a live chat_turn stream by session id", () => {
+    const match = makeStream({ scope: { session_id: "s1" } });
+    expect(selectReattachableChatStream([match], "s1")).toBe(match);
+  });
+
+  it("ignores terminated streams", () => {
+    const terminated = makeStream({ terminated: true, scope: { session_id: "s1" } });
+    expect(selectReattachableChatStream([terminated], "s1")).toBeNull();
+  });
+
+  it("ignores streams for a different session", () => {
+    const other = makeStream({ scope: { session_id: "s2" } });
+    expect(selectReattachableChatStream([other], "s1")).toBeNull();
+  });
+
+  it("ignores non-chat_turn kinds (e.g. media generation)", () => {
+    const media = makeStream({ kind: "image_gen", scope: { session_id: "s1" } });
+    expect(selectReattachableChatStream([media], "s1")).toBeNull();
+  });
+
+  it("picks the matching session out of a mixed list", () => {
+    const a = makeStream({ attach_id: "a", scope: { session_id: "s-other" } });
+    const b = makeStream({ attach_id: "b", scope: { session_id: "s1" } });
+    expect(selectReattachableChatStream([a, b], "s1")).toBe(b);
+  });
+});
+
+describe("attachToStream", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("targets the attach endpoint and resumes from `since`", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    await attachToStream("att 1", 12, handler);
+    const [url, init, , , options] = streamSSE.mock.calls[0] as [
+      string,
+      RequestInit,
+      unknown,
+      unknown,
+      { resumable?: boolean },
+    ];
+    expect(url).toBe("/api/streams/att%201?since=12");
+    expect(init.method).toBe("GET");
+    expect(options.resumable).toBe(true);
+  });
+
+  it("omits the since param when reattaching from 0", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    await attachToStream("att-1", 0, handler);
+    const [url] = streamSSE.mock.calls[0] as [string];
+    expect(url).toBe("/api/streams/att-1");
+  });
+
+  it("forwards normal chat frames to the handler", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    await attachToStream("att-1", 0, handler);
+    const callbacks = streamSSE.mock.calls[0][2] as {
+      onEvent: (type: string, data: unknown) => void;
+    };
+    callbacks.onEvent("delta", { text: "hi" });
+    expect(handler.onEvent).toHaveBeenCalledTimes(1);
+    expect((handler.onEvent as ReturnType<typeof vi.fn>).mock.calls[0][0].type).toBe("delta");
+  });
+
+  it("intercepts stream_resync_required and does not forward it as a chat event", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    const onResync = vi.fn();
+    await attachToStream("att-1", 0, handler, undefined, { onResync });
+    const callbacks = streamSSE.mock.calls[0][2] as {
+      onEvent: (type: string, data: unknown) => void;
+    };
+    callbacks.onEvent("stream_resync_required", { type: "stream_resync_required", last_seq: 42 });
+    expect(onResync).toHaveBeenCalledWith(42);
+    expect(handler.onEvent).not.toHaveBeenCalled();
+  });
+
+  it("threads onSeq through to streamSSE options", async () => {
+    const handler: StreamEventHandler = { onEvent: vi.fn(), onError: vi.fn() };
+    const onSeq = vi.fn();
+    await attachToStream("att-1", 0, handler, undefined, { onSeq });
+    const options = streamSSE.mock.calls[0][4] as { onSeq?: (n: number) => void };
+    expect(options.onSeq).toBe(onSeq);
   });
 });

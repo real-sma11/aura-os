@@ -113,6 +113,27 @@ export interface PartitionSendControl {
    * `streamMetaMap[currentKey]` and broke under panel-swap.
    */
   currentController: AbortController | null;
+  /**
+   * Reconnect/reload reattach state. When the panel rejoins an
+   * in-flight chat turn via `GET /api/streams/:id`, `activeAttachId`
+   * holds the server `attach_id` we are reattached to and
+   * `attachLastSeq` is the highest harness frame `seq` delivered so
+   * far (best-effort, fed by the SSE `id:` line). On a subsequent
+   * transient drop the reattach resumes from `attachLastSeq` instead
+   * of re-replaying the entire backlog. `attachLastSeq` stays at 0
+   * until the first frame; a replay-from-0 is dup-free because the
+   * reattach path only fires when the local partition buffer is clean.
+   */
+  activeAttachId: string | null;
+  /** Highest delivered harness frame `seq` for the active reattach. */
+  attachLastSeq: number;
+  /**
+   * True while a reattach is in flight (discovery + the live attach
+   * SSE). Used as a minimal latch so a firehose-driven
+   * `useChatHistorySync` refetch does not race the reattach and reset
+   * `events[]` out from under the live deltas.
+   */
+  reattaching: boolean;
 }
 
 /**
@@ -173,6 +194,9 @@ function defaultControl(): PartitionSendControl {
     pendingSpecIds: [],
     pendingTaskIds: [],
     currentController: null,
+    activeAttachId: null,
+    attachLastSeq: 0,
+    reattaching: false,
   };
 }
 
@@ -194,6 +218,17 @@ export function getPartitionSendControl(key: string): PartitionSendControl {
     partitionSendControlMap.set(key, ctrl);
   }
   return ctrl;
+}
+
+/**
+ * True when a reconnect/reload reattach is currently in flight on this
+ * partition. Read (non-reactively) by `useChatHistorySync` so a
+ * firehose-driven history refetch does not race the reattach and reset
+ * the live `events[]`. Peeks without minting an entry — an absent
+ * entry means "not reattaching".
+ */
+export function getIsReattaching(key: string): boolean {
+  return partitionSendControlMap.get(key)?.reattaching ?? false;
 }
 
 /**

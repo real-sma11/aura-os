@@ -1,7 +1,13 @@
 import { useRef, useCallback, useEffect } from "react";
 import type { MutableRefObject } from "react";
 import { api } from "../../api/client";
-import { generate3dStream, generateImageStream, generateVideoStream } from "../../api/streams";
+import {
+  attachToStream,
+  generate3dStream,
+  generateImageStream,
+  generateVideoStream,
+  selectReattachableChatStream,
+} from "../../api/streams";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
@@ -35,6 +41,7 @@ import {
   getPartitionSendControl,
   type LastSendArgs,
 } from "./partition-send-control";
+import type { ActiveStreamSummary } from "../../shared/api/streams";
 
 // Phase 2 auto-retry plumbing. When a chat turn dies mid-stream
 // because the harness WS dropped (or the SSE idle watchdog fires),
@@ -143,6 +150,15 @@ export function useChatStream({
       sidekickRef.current.setAgentStreaming(agentInstanceId, false);
     }
   }, [projectId, agentInstanceId, core.key]);
+
+  // Forward ref to `tryReattachActiveTurn` (defined after `performSend`
+  // so it can reference `performSendRef` for its re-POST fallback).
+  // `performSend`'s auto-retry timer reads this to prefer rejoining a
+  // still-live server turn before re-issuing the POST. Initialised to
+  // `null`; assigned via an effect once the callback exists.
+  const tryReattachActiveTurnRef = useRef<
+    ((captured: CapturedPartition) => Promise<boolean>) | null
+  >(null);
 
   /**
    * Core send routine. Always writes to the OWNING partition's slot
@@ -376,8 +392,18 @@ export function useChatStream({
         if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
         ctrl.retryTimer = setTimeout(() => {
           ctrl.retryTimer = null;
-          ctrl.inAutoRetry = true;
-          void performSendRef.current?.(replayArgs, captured);
+          void (async () => {
+            // Reconnect-first: the harness keeps the turn alive on a
+            // passive SSE drop (Part A drop-guard), so try to rejoin
+            // the still-live server stream before re-issuing the POST.
+            // `resetStreamBuffers` above left this partition clean, so a
+            // replay-from-cursor is dup-free. Only fall back to the
+            // re-POST when no live stream is found.
+            const reattached = await tryReattachActiveTurnRef.current?.(captured);
+            if (reattached) return;
+            ctrl.inAutoRetry = true;
+            void performSendRef.current?.(replayArgs, captured);
+          })();
         }, delayMs);
         return true;
       };
@@ -644,6 +670,249 @@ export function useChatStream({
   // `tryAutoRetry` was scheduled from an older invocation.
   const performSendRef = useRef(performSend);
   useEffect(() => { performSendRef.current = performSend; }, [performSend]);
+
+  /**
+   * Rejoin an in-flight chat (or chat-driven spec-gen) turn for this
+   * partition's pinned session by reattaching to the server's
+   * registered `chat_turn` stream and feeding the SAME reducer
+   * pipeline a live turn uses — so reattached deltas / tool cards /
+   * thinking render identically.
+   *
+   * Dedup-safe by construction: this only ever runs when the local
+   * partition buffer is clean (fresh mount, or right after
+   * `resetStreamBuffers` in the auto-retry path). Because the attach
+   * SSE is the SOLE source of per-delta content (the firehose carries
+   * lifecycle only), a clean-buffer replay-from-cursor cannot
+   * double-apply content the client already rendered. Returns `true`
+   * when it found and attached to a live stream (caller should skip
+   * any re-POST fallback), `false` otherwise.
+   */
+  const tryReattachActiveTurn = useCallback(
+    async (captured: CapturedPartition): Promise<boolean> => {
+      const {
+        key: capturedKey,
+        projectId: capturedProjectId,
+        instanceId: capturedInstanceId,
+      } = captured;
+      const ctrl = getPartitionSendControl(capturedKey);
+      // A local turn is already live / being sent on this partition, or
+      // a reattach is already in flight — leave it alone.
+      if (ctrl.inFlight || ctrl.reattaching) return false;
+      const currentSessionId = sessionIdRef.current;
+      // No pinned session id ⇒ nothing to match on (fresh canvas first
+      // send goes through `sendMessage`, not reattach).
+      if (!currentSessionId) return false;
+      const listFn = api.streams?.listActiveStreams;
+      if (!listFn) return false;
+
+      ctrl.reattaching = true;
+      let match: ActiveStreamSummary | null = null;
+      try {
+        const { streams } = await listFn({
+          project_id: capturedProjectId,
+          agent_instance_id: capturedInstanceId,
+        });
+        match = selectReattachableChatStream(streams, currentSessionId);
+      } catch {
+        ctrl.reattaching = false;
+        return false;
+      }
+      // A fresh local send may have raced the discovery round-trip.
+      if (!match || ctrl.inFlight) {
+        ctrl.reattaching = false;
+        return false;
+      }
+
+      const partitionState = { key: capturedKey };
+      const getPartitionKey = (): string => partitionState.key;
+      const partitionMeta = ensureEntry(capturedKey);
+      const partitionRefs = partitionMeta.refs;
+      const partitionSetters = createSetters(getPartitionKey);
+      const breadcrumbContext: StreamCloseContext = {
+        get streamKey() { return partitionState.key; },
+        agentId: capturedInstanceId,
+        sessionId: sessionIdRef.current ?? undefined,
+      };
+
+      ctrl.inFlight = true;
+      // Clean slate ⇒ dup-free replay. Do NOT re-append the user bubble
+      // (it's already in history/events — same guard as `isAutoRetry`).
+      resetStreamBuffers(partitionRefs, partitionSetters);
+      ctrl.pendingSpecIds = [];
+      ctrl.pendingTaskIds = [];
+      partitionSetters.setIsStreaming(true);
+      sidekickRef.current.setAgentStreaming(capturedInstanceId, true);
+      partitionSetters.setProgressText("Reconnecting…");
+
+      ctrl.currentController?.abort();
+      const controller = new AbortController();
+      ctrl.currentController = controller;
+      ctrl.activeAttachId = match.attach_id;
+
+      const partitionAbortRef: MutableRefObject<AbortController | null> = {
+        get current() { return ctrl.currentController; },
+        set current(v: AbortController | null) { ctrl.currentController = v; },
+      };
+      const pendingSpecIdsShim: MutableRefObject<string[]> = {
+        get current() { return ctrl.pendingSpecIds; },
+        set current(v: string[]) { ctrl.pendingSpecIds = v; },
+      };
+      const pendingTaskIdsShim: MutableRefObject<string[]> = {
+        get current() { return ctrl.pendingTaskIds; },
+        set current(v: string[]) { ctrl.pendingTaskIds = v; },
+      };
+
+      // If the reattached SSE itself gives up (after its own internal
+      // resume budget), recover the same way the live turn does:
+      // re-discover the live stream, else re-POST the captured args.
+      const onMaybeReconnect = (): boolean => {
+        if (controller.signal.aborted) return false;
+        if (ctrl.currentController?.signal.aborted) return false;
+        if (ctrl.autoRetryCount >= MAX_AUTO_RETRIES) return false;
+        ctrl.autoRetryCount += 1;
+        resetStreamBuffers(partitionRefs, partitionSetters);
+        partitionSetters.setProgressText("Reconnecting…");
+        const replayArgs = ctrl.lastSendArgs;
+        const delayMs = 1000 * ctrl.autoRetryCount;
+        if (ctrl.retryTimer != null) clearTimeout(ctrl.retryTimer);
+        ctrl.retryTimer = setTimeout(() => {
+          ctrl.retryTimer = null;
+          void (async () => {
+            const reattached = await tryReattachActiveTurnRef.current?.(captured);
+            if (reattached) return;
+            // No live stream remains; only the auto-retry path (which
+            // captured `lastSendArgs`) can re-issue. A bare mount-driven
+            // reattach with no captured send simply gives up here and
+            // lets the post-stream history refetch converge.
+            if (!replayArgs) return;
+            ctrl.inAutoRetry = true;
+            void performSendRef.current?.(replayArgs, captured);
+          })();
+        }, delayMs);
+        return true;
+      };
+
+      const innerHandler = buildStreamHandler({
+        projectId: capturedProjectId,
+        agentInstanceId: capturedInstanceId,
+        selectedModel: null,
+        refs: partitionRefs,
+        setters: partitionSetters,
+        abortRef: partitionAbortRef,
+        coreKey: capturedKey,
+        onPartitionMigrated: (newKey) => {
+          partitionState.key = newKey;
+        },
+        setProgressText: partitionSetters.setProgressText,
+        sidekickRef,
+        projectCtxRef,
+        pendingSpecIdsRef: pendingSpecIdsShim,
+        pendingTaskIdsRef: pendingTaskIdsShim,
+        onSessionReady: (id) => onSessionReadyRef.current?.(id),
+        onAssistantTurnCompleted: () => {
+          ctrl.autoRetryCount = 0;
+        },
+        onMaybeAutoRetry: onMaybeReconnect,
+        onStreamFinalized: () => {
+          ctrl.inFlight = false;
+        },
+        breadcrumbContext,
+      });
+      const handler: StreamEventHandler = {
+        onEvent: (event) => {
+          if (controller.signal.aborted) return;
+          innerHandler.onEvent(event);
+        },
+        onError: (error) => {
+          if (controller.signal.aborted) return;
+          innerHandler.onError(error);
+        },
+        onDone: innerHandler.onDone
+          ? () => {
+              if (controller.signal.aborted) return;
+              innerHandler.onDone?.();
+            }
+          : undefined,
+      };
+
+      try {
+        await attachToStream(
+          match.attach_id,
+          ctrl.attachLastSeq,
+          handler,
+          controller.signal,
+          {
+            onSeq: (seq) => {
+              if (seq > ctrl.attachLastSeq) ctrl.attachLastSeq = seq;
+            },
+            onResync: () => {
+              // The backlog we asked for was evicted server-side. Drop
+              // the partial and let the post-stream history refetch
+              // (fired by the isStreaming → false transition below)
+              // converge the panel instead of rendering a partial.
+              resetStreamBuffers(partitionRefs, partitionSetters);
+              ctrl.attachLastSeq = 0;
+              controller.abort();
+              if (ctrl.currentController === controller) {
+                partitionSetters.setIsStreaming(false);
+                sidekickRef.current.setAgentStreaming(capturedInstanceId, false);
+                ctrl.currentController = null;
+                ctrl.inFlight = false;
+              }
+            },
+          },
+        );
+        return true;
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return true;
+        handleStreamError(partitionRefs, partitionSetters, err, breadcrumbContext);
+        return true;
+      } finally {
+        ctrl.reattaching = false;
+        if (ctrl.currentController === controller) {
+          partitionSetters.setIsStreaming(false);
+          sidekickRef.current.setAgentStreaming(capturedInstanceId, false);
+          controller.abort();
+          ctrl.currentController = null;
+          ctrl.inFlight = false;
+        }
+        ctrl.activeAttachId = null;
+        for (const id of ctrl.pendingSpecIds) {
+          sidekickRef.current.removeSpec(id);
+        }
+        ctrl.pendingSpecIds = [];
+        for (const id of ctrl.pendingTaskIds) {
+          sidekickRef.current.removeTask(id);
+        }
+        ctrl.pendingTaskIds = [];
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    tryReattachActiveTurnRef.current = tryReattachActiveTurn;
+  }, [tryReattachActiveTurn]);
+
+  // Mount / session-pin reattach. On a fresh load or hard reload of a
+  // panel pinned to a real session id, the harness may still be running
+  // the last turn (Part A keeps it alive across passive SSE drops).
+  // Fresh-mount buffers are empty, so a replay-from-0 reattach is
+  // dup-free. Skips when a local turn is already in flight / streaming
+  // for the partition. Best-effort; failures are swallowed inside
+  // `tryReattachActiveTurn`.
+  useEffect(() => {
+    if (!projectId || !agentInstanceId) return;
+    if (!sessionIdRef.current) return;
+    const key = core.key;
+    const ctrl = getPartitionSendControl(key);
+    if (ctrl.inFlight || ctrl.reattaching || getIsStreaming(key)) return;
+    const captured: CapturedPartition = {
+      key,
+      projectId,
+      instanceId: agentInstanceId,
+    };
+    void tryReattachActiveTurnRef.current?.(captured);
+  }, [projectId, agentInstanceId, sessionId, core.key]);
 
   const sendMessage = useCallback(
     async (

@@ -99,6 +99,26 @@ describe("streamSSE", () => {
     expect(callbacks.onDone).toHaveBeenCalledOnce();
   });
 
+  it("reports numeric SSE ids via onSeq and ignores non-numeric ones", async () => {
+    const { fetchFn } = mockSSEFetch(200, [
+      'id: 7\nevent: delta\ndata: {"text":"a"}\n\n',
+      'event: delta\ndata: {"text":"b"}\n\n',
+      'id: abc\nevent: delta\ndata: {"text":"c"}\n\n',
+      'id: 9\nevent: done\ndata: {"ok":true}\n\n',
+    ]);
+    globalThis.fetch = fetchFn;
+
+    const onSeq = vi.fn();
+    const callbacks: SSECallbacks<"delta" | "done"> = {
+      onEvent: vi.fn(),
+      onDone: vi.fn(),
+    };
+
+    await streamSSE("/api/stream", {}, callbacks, undefined, { onSeq });
+
+    expect(onSeq.mock.calls.map((c) => c[0])).toEqual([7, 9]);
+  });
+
   it("handles split frames across chunks", async () => {
     const { fetchFn } = mockSSEFetch(200, [
       "event: delta\n",

@@ -8,6 +8,7 @@ import { EventType, isValidEventType, parseAuraEvent } from "../shared/types/aur
 import { handleEngineEvent } from "../stores/event-store/engine-event-handlers";
 import type { SSECallbacks } from "../shared/api/sse";
 import { streamSSE } from "../shared/api/sse";
+import type { ActiveStreamSummary } from "../shared/api/streams";
 
 export type { ChatAttachment } from "../shared/types/aura-events";
 import type { ChatAttachment } from "../shared/types/aura-events";
@@ -124,6 +125,50 @@ function createSSEHandler<E extends string>(
 /* ── Resumable stream reattach ───────────────────────────────────── */
 
 /**
+ * Pick the live chat-turn stream a reattaching/reloading panel should
+ * rejoin for a given storage `sessionId`. Plan-mode spec generation
+ * runs over the chat stream and registers as `chat_turn` too, so this
+ * single predicate covers both surfaces. Returns `null` when there is
+ * no session pin or no matching non-terminated stream.
+ *
+ * Kept as a pure function (no I/O) so the per-session selection logic
+ * the chat hooks rely on can be unit-tested in isolation.
+ */
+export function selectReattachableChatStream(
+  streams: ActiveStreamSummary[],
+  sessionId: string | null | undefined,
+): ActiveStreamSummary | null {
+  if (!sessionId) return null;
+  return (
+    streams.find(
+      (s) =>
+        s.kind === "chat_turn" &&
+        !s.terminated &&
+        s.scope.session_id === sessionId,
+    ) ?? null
+  );
+}
+
+/** Optional hooks for {@link attachToStream}. */
+export interface AttachToStreamOptions {
+  /**
+   * Invoked with the numeric `seq` of each delivered frame (the SSE
+   * `id:`). Callers persist this as the reattach cursor so a later
+   * reattach can replay from exactly here instead of re-streaming the
+   * whole backlog.
+   */
+  onSeq?: (seq: number) => void;
+  /**
+   * Invoked when the server reports the requested backlog was evicted
+   * (`stream_resync_required`, carrying `last_seq`). The caller should
+   * clear any partial buffers and converge via a fresh history fetch
+   * rather than render a partial. The live SSE keeps flowing after
+   * this frame, but the caller typically tears down and refetches.
+   */
+  onResync?: (lastSeq: number) => void;
+}
+
+/**
  * Reattach to a registered harness stream (`GET /api/streams/:id`),
  * replaying everything after `since` then streaming live. The request
  * is idempotent (GET) so {@link streamSSE}'s resume path can transparently
@@ -131,21 +176,46 @@ function createSSEHandler<E extends string>(
  *
  * Frames are forwarded as `AuraEvent`s through the same handler shape
  * the chat stream uses, so callers can route them into the relevant UI
- * surface (or through `handleEngineEvent`).
+ * surface (or through `handleEngineEvent`). The server's control frames
+ * (`stream_resync_required`) are intercepted and surfaced via
+ * {@link AttachToStreamOptions.onResync} rather than parsed as chat
+ * events; `stream_heartbeat` frames are dropped by the chat-event
+ * parser as before.
  */
 export function attachToStream(
   attachId: string,
   since: number,
   handler: StreamEventHandler,
   signal?: AbortSignal,
+  options?: AttachToStreamOptions,
 ) {
   const sinceParam = since > 0 ? `?since=${since}` : "";
+  const inner = createChatStreamHandler(handler);
+  const callbacks: SSECallbacks<string> = {
+    onEvent(eventType, data) {
+      const taggedType =
+        data && typeof data === "object" && "type" in data && typeof data.type === "string"
+          ? data.type
+          : null;
+      if (eventType === "stream_resync_required" || taggedType === "stream_resync_required") {
+        const lastSeq =
+          data && typeof data === "object" && "last_seq" in data
+            ? Number((data as { last_seq?: unknown }).last_seq)
+            : 0;
+        options?.onResync?.(Number.isFinite(lastSeq) ? lastSeq : 0);
+        return;
+      }
+      inner.onEvent(eventType, data);
+    },
+    onError: inner.onError,
+    onDone: inner.onDone,
+  };
   return streamSSE<string>(
     `${BASE_URL}/api/streams/${encodeURIComponent(attachId)}${sinceParam}`,
     { method: "GET" },
-    createChatStreamHandler(handler),
+    callbacks,
     signal,
-    { resumable: true },
+    { resumable: true, onSeq: options?.onSeq },
   );
 }
 
