@@ -160,7 +160,27 @@ fn forward_untyped_ws_text(
     err: serde_json::Error,
     reader_tx: &broadcast::Sender<OutboundMessage>,
 ) {
-    if serde_json::from_str::<serde_json::Value>(text).is_ok() {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        // Automaton/dev-loop events (`token_usage`, `tool_call_completed`,
+        // `debug.*`, git/sync milestones, ...) are intentionally absent
+        // from the typed `OutboundMessage` chat protocol. They were
+        // already published on the raw channel by `forward_ws_text`, so a
+        // failed typed parse here is expected — not protocol drift. Skip
+        // the warn, the `harness_protocol_mismatch` metric, and the typed
+        // error (which the client treats as a stream drop) for these.
+        if value
+            .get("type")
+            .and_then(|t| t.as_str())
+            .is_some_and(crate::runner::automaton_event_kinds::is_known_raw_only_event)
+        {
+            debug!(
+                direction = "received",
+                payload_len = text.len(),
+                payload = %debug_payload(text),
+                "Forwarding raw-only harness event (not in typed protocol)"
+            );
+            return;
+        }
         // The complete (normalized) JSON Value was already published on
         // the raw channel by `forward_ws_text`; here we only surface the
         // typed-parse miss to chat consumers reading the typed channel.
@@ -299,6 +319,29 @@ mod tests {
         ));
         let raw = raw_rx.try_recv().expect("raw diagnostic event");
         assert_eq!(raw["type"], "unknown_event");
+    }
+
+    #[test]
+    fn known_raw_only_event_does_not_emit_typed_protocol_error() {
+        for raw in [
+            "{\"type\":\"token_usage\",\"input_tokens\":1,\"output_tokens\":259}",
+            "{\"type\":\"tool_call_completed\",\"id\":\"abc\",\"name\":\"search_code\"}",
+            "{\"type\":\"debug.iteration\",\"index\":3,\"tool_calls\":2}",
+        ] {
+            let (typed_tx, mut typed_rx) = broadcast::channel(8);
+            let (raw_tx, mut raw_rx) = broadcast::channel(8);
+
+            forward_ws_text(raw, &typed_tx, &raw_tx);
+
+            // The event is still published on the raw channel ...
+            assert!(raw_rx.try_recv().is_ok(), "raw event missing for {raw}");
+            // ... but no spurious protocol-mismatch error reaches the typed
+            // chat channel.
+            assert!(
+                typed_rx.try_recv().is_err(),
+                "unexpected typed error for {raw}"
+            );
+        }
     }
 
     #[test]
