@@ -32,6 +32,7 @@
 //! scope + capability bundle the run is allowed to exercise.
 
 pub mod agent_identity;
+pub mod automaton;
 pub mod chat_project_info;
 pub mod client;
 pub mod common;
@@ -41,6 +42,7 @@ pub mod runtime_request;
 pub mod server;
 
 pub use agent_identity::AgentPersona;
+pub use automaton::AutomatonEvent;
 pub use chat_project_info::ChatProjectInfoWire;
 pub use client::{
     ApprovalResponse, ConversationMessage, GenerationRequest, InboundMessage, IntentClassifierRule,

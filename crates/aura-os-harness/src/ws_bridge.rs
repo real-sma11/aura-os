@@ -14,7 +14,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tracing::{debug, warn};
 
-use aura_protocol::{ErrorMsg, InboundMessage, OutboundMessage};
+use aura_protocol::{AutomatonEvent, ErrorMsg, InboundMessage, OutboundMessage};
 
 use crate::stability_metrics;
 
@@ -167,12 +167,10 @@ fn forward_untyped_ws_text(
         // already published on the raw channel by `forward_ws_text`, so a
         // failed typed parse here is expected — not protocol drift. Skip
         // the warn, the `harness_protocol_mismatch` metric, and the typed
-        // error (which the client treats as a stream drop) for these.
-        if value
-            .get("type")
-            .and_then(|t| t.as_str())
-            .is_some_and(crate::runner::automaton_event_kinds::is_known_raw_only_event)
-        {
+        // error (which the client treats as a stream drop) for these. A
+        // tag not recognized by `AutomatonEvent` deserializes to its
+        // `#[serde(other)]` fallback and falls through to the warn path.
+        if AutomatonEvent::is_recognized(&value) {
             debug!(
                 direction = "received",
                 payload_len = text.len(),
