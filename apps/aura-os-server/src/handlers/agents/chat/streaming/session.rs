@@ -45,13 +45,12 @@ pub(super) struct SessionForTurn {
     /// sentinel task that watches the broadcast for the terminal
     /// event and drops the guard there.
     pub(super) slot_guard: TurnSlotGuard,
-    /// Cloned harness inbound mpsc sender for the live session. The
-    /// SSE drop guard hands this to `spawn_turn_slot_release` via the
-    /// early-release oneshot so a client disconnect (Stop or refresh)
-    /// can forward `HarnessInbound::Cancel` and unstick the partition
-    /// instead of letting the turn slot stay held until the next
-    /// terminal event (which may never arrive on a cancelled
-    /// long-running plan-mode turn).
+    /// Cloned harness inbound mpsc sender for the live session. Handed
+    /// to the registered reattachable live stream so an explicit cancel
+    /// can forward `HarnessInbound::Cancel` to the upstream turn. (A
+    /// passive SSE disconnect no longer cancels the turn — see
+    /// `spawn_turn_slot_release`; explicit Stop cancels via
+    /// `setup/cancel.rs`.)
     pub(super) commands_tx: HarnessCommandSender,
 }
 

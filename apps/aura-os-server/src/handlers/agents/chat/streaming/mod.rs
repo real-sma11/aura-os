@@ -10,7 +10,6 @@ mod attachments;
 mod bridge;
 #[cfg(test)]
 mod bridge_tests;
-mod drop_guard;
 mod orchestrator;
 mod prefix;
 mod session;

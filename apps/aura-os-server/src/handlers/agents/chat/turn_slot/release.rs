@@ -1,78 +1,50 @@
-//! Release sentinel for the turn slot: spawns a tokio task that
-//! holds the `TurnSlotGuard` until either a terminal harness event
-//! arrives or the SSE drop guard signals an early release (client
-//! disconnect / Stop).
+//! Release sentinel for the turn slot: spawns a tokio task that holds
+//! the `TurnSlotGuard` until the harness emits a terminal event for the
+//! turn (or the broadcast closes).
 
-use aura_os_harness::{HarnessCommandSender, HarnessInbound, HarnessOutbound};
-use tokio::sync::{broadcast, oneshot};
-use tracing::warn;
+use aura_os_harness::HarnessOutbound;
+use tokio::sync::broadcast;
 
 use super::acquire::TurnSlotGuard;
 
-/// Spawn a sentinel that holds `guard` until either:
+/// Spawn a sentinel that holds `guard` until the broadcast emits a
+/// terminal event (`AssistantMessageEnd` / `Error`) or closes.
 ///
-/// 1. The broadcast emits a terminal event
-///    (`AssistantMessageEnd` / `Error`) or closes — the original
-///    happy-path release boundary.
-/// 2. The SSE handler signals an early release through
-///    `early_release_rx` because the client disconnected (Stop or
-///    refresh) before the harness reached a terminal event. In that
-///    case we forward `HarnessInbound::Cancel` so the harness aborts
-///    its in-flight turn and emits its own terminal event for the
-///    persist task — without this, the turn slot would stay held
-///    indefinitely (the stuck-after-Stop bug).
+/// Intelligent-reconnect behaviour change: a PASSIVE SSE disconnect
+/// (the UI closed the response body on Stop's `AbortController.abort()`
+/// or a browser refresh) no longer early-releases the slot, because the
+/// reused harness turn keeps running so a reconnecting UI can reattach
+/// to its registered live stream. The slot is therefore tied strictly
+/// to the turn's lifetime on the harness:
 ///
-/// `Lagged` is treated as a continue: the persist task already
-/// drains through lag and the SSE forwarder surfaces the synthetic
-/// "stream lagged" event. For the turn-slot we only care about the
-/// terminal boundary, and the broadcast `Closed` arm handles the
-/// catastrophic case where the harness dropped the channel before
-/// emitting one.
+/// - Normal completion releases here on the harness terminal event.
+/// - A genuinely stalled turn is bounded by `spawn_turn_watchdog`, which
+///   emits a synthetic terminal event on idle/first-event timeout that
+///   this sentinel observes — so the slot can never leak indefinitely.
+/// - Explicit Stop (`POST .../cancel-turn`) forwards
+///   `HarnessInbound::Cancel` and evicts the warm session via
+///   `setup/cancel.rs`; the harness then emits its own terminal event
+///   which this sentinel observes. That path is independent of the SSE
+///   body, so Stop still releases the slot promptly.
 ///
-/// Pass [`oneshot::channel`]'s receiver as `early_release_rx`. The
-/// sender side is held by the SSE stream's drop guard in
-/// `streaming.rs`; dropping the sender without firing it is harmless
-/// (the receiver yields `Err(_)` which the early-release arm treats
-/// like the "client disconnected" case but without a `commands_tx`,
-/// so we just release the slot).
+/// `Lagged` is treated as a continue: the persist task already drains
+/// through lag and the SSE forwarder surfaces the synthetic "stream
+/// lagged" event. For the turn-slot we only care about the terminal
+/// boundary, and the broadcast `Closed` arm handles the catastrophic
+/// case where the harness dropped the channel before emitting one.
 pub(crate) fn spawn_turn_slot_release(
     guard: TurnSlotGuard,
     mut events_rx: broadcast::Receiver<HarnessOutbound>,
-    early_release_rx: oneshot::Receiver<HarnessCommandSender>,
 ) {
     tokio::spawn(async move {
-        let mut early_release_rx = early_release_rx;
         loop {
-            tokio::select! {
-                // Bias toward the terminal-event arm so the happy
-                // path (harness completed normally before any drop
-                // signal could race in) releases the slot via the
-                // same arm regardless of drop-signal timing.
-                biased;
-                evt = events_rx.recv() => match evt {
-                    Ok(HarnessOutbound::AssistantMessageEnd(_)) | Ok(HarnessOutbound::Error(_)) => {
-                        break;
-                    }
-                    Ok(_) => continue,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => break,
-                },
-                signal = &mut early_release_rx => {
-                    // The SSE stream was dropped (client Stop or
-                    // refresh) before the harness reached a terminal
-                    // event. Forward Cancel so the harness aborts its
-                    // in-flight turn, then drop the guard regardless
-                    // of whether the send succeeded.
-                    if let Ok(commands_tx) = signal {
-                        if let Err(err) = commands_tx.try_send(HarnessInbound::Cancel) {
-                            warn!(
-                                error = %err,
-                                "turn_slot early release: failed to forward Cancel to harness; releasing slot anyway"
-                            );
-                        }
-                    }
+            match events_rx.recv().await {
+                Ok(HarnessOutbound::AssistantMessageEnd(_)) | Ok(HarnessOutbound::Error(_)) => {
                     break;
                 }
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
         drop(guard);
@@ -86,9 +58,9 @@ mod tests {
     use std::time::Duration;
 
     use aura_os_harness::{
-        AssistantMessageEnd, ErrorMsg, FilesChanged, HarnessInbound, HarnessOutbound, SessionUsage,
+        AssistantMessageEnd, ErrorMsg, FilesChanged, HarnessOutbound, SessionUsage,
     };
-    use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
+    use tokio::sync::{broadcast, Mutex};
 
     use super::super::acquire::acquire_turn_slot;
     use super::spawn_turn_slot_release;
@@ -120,9 +92,8 @@ mod tests {
             .await
             .expect("acquire");
         let (events_tx, events_rx) = broadcast::channel(8);
-        let (_release_tx, release_rx) = oneshot::channel();
 
-        spawn_turn_slot_release(acquired.guard, events_rx, release_rx);
+        spawn_turn_slot_release(acquired.guard, events_rx);
 
         events_tx
             .send(assistant_end())
@@ -149,9 +120,8 @@ mod tests {
             .await
             .expect("acquire");
         let (events_tx, events_rx) = broadcast::channel(8);
-        let (_release_tx, release_rx) = oneshot::channel();
 
-        spawn_turn_slot_release(acquired.guard, events_rx, release_rx);
+        spawn_turn_slot_release(acquired.guard, events_rx);
 
         events_tx.send(error_msg()).expect("send error event");
 
@@ -176,9 +146,8 @@ mod tests {
             .await
             .expect("acquire");
         let (events_tx, events_rx) = broadcast::channel::<HarnessOutbound>(8);
-        let (_release_tx, release_rx) = oneshot::channel();
 
-        spawn_turn_slot_release(acquired.guard, events_rx, release_rx);
+        spawn_turn_slot_release(acquired.guard, events_rx);
 
         drop(events_tx);
 
@@ -195,83 +164,50 @@ mod tests {
         drop(next);
     }
 
-    /// Phase 7 client-disconnect cleanup: the SSE stream's drop guard
-    /// fires the early-release oneshot with a clone of the harness
-    /// `commands_tx`. The sentinel must (a) forward
-    /// `HarnessInbound::Cancel` so the harness aborts its in-flight
-    /// turn, and (b) release the slot guard so the next user message
-    /// on the same partition can be accepted instead of timing out.
+    /// Intelligent-reconnect regression guard: a passive SSE disconnect
+    /// no longer early-releases the slot. With only non-terminal frames
+    /// observed (and no terminal event yet), the sentinel must keep the
+    /// guard held so the reused harness turn keeps running for reattach
+    /// and a back-to-back send still serializes behind it. The slot is
+    /// released only once a terminal event arrives (here, after we let
+    /// the turn "complete").
     #[tokio::test]
-    async fn spawn_turn_slot_release_forwards_cancel_and_releases_on_early_signal() {
-        let slot = Arc::new(Mutex::new(()));
-        let counter = Arc::new(AtomicUsize::new(0));
-        let acquired = acquire_turn_slot(Arc::clone(&slot), Arc::clone(&counter))
-            .await
-            .expect("acquire");
-        let (_events_tx, events_rx) = broadcast::channel::<HarnessOutbound>(8);
-        let (release_tx, release_rx) = oneshot::channel();
-
-        // Stand-in for the harness's inbound mpsc — capacity 4 mirrors
-        // the real `aura-os-harness` default so a Cancel never gets
-        // wedged behind a backed-up writer.
-        let (commands_tx, mut commands_rx) = mpsc::channel::<HarnessInbound>(4);
-
-        spawn_turn_slot_release(acquired.guard, events_rx, release_rx);
-
-        release_tx
-            .send(commands_tx)
-            .expect("early-release oneshot send");
-
-        let observed_cancel = tokio::time::timeout(Duration::from_millis(200), commands_rx.recv())
-            .await
-            .expect("early-release should forward Cancel before timeout")
-            .expect("commands_tx still open");
-        assert!(
-            matches!(observed_cancel, HarnessInbound::Cancel),
-            "early-release must forward HarnessInbound::Cancel, got {observed_cancel:?}",
-        );
-
-        let next = tokio::time::timeout(Duration::from_millis(200), async {
-            loop {
-                if let Ok(acquired) = Arc::clone(&slot).try_lock_owned() {
-                    return acquired;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .expect("slot should be released after early-release signal");
-        drop(next);
-    }
-
-    /// Companion to the early-release test: even if the SSE drop guard
-    /// fires the oneshot AFTER the harness has already shipped its
-    /// own terminal `Error`, the sentinel must not panic, must not
-    /// double-release, and must end up freeing the slot exactly once.
-    /// The `biased` select arm in `spawn_turn_slot_release` lets the
-    /// terminal-event branch win the race so the happy path stays
-    /// observably unchanged.
-    #[tokio::test]
-    async fn spawn_turn_slot_release_terminal_event_wins_over_late_early_signal() {
+    async fn spawn_turn_slot_release_holds_slot_until_terminal_event() {
         let slot = Arc::new(Mutex::new(()));
         let counter = Arc::new(AtomicUsize::new(0));
         let acquired = acquire_turn_slot(Arc::clone(&slot), Arc::clone(&counter))
             .await
             .expect("acquire");
         let (events_tx, events_rx) = broadcast::channel::<HarnessOutbound>(8);
-        let (release_tx, release_rx) = oneshot::channel();
 
-        spawn_turn_slot_release(acquired.guard, events_rx, release_rx);
+        spawn_turn_slot_release(acquired.guard, events_rx);
 
+        // Only a non-terminal frame so far: the slot must stay held even
+        // though a passive SSE disconnect would have happened by now.
+        events_tx
+            .send(HarnessOutbound::TextDelta(aura_os_harness::TextDelta {
+                text: "still working".to_string(),
+            }))
+            .expect("send non-terminal event");
+
+        let held = tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                if Arc::clone(&slot).try_lock_owned().is_ok() {
+                    return true; // unexpectedly released
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        assert!(
+            held.is_err(),
+            "slot must stay held while the turn is still in flight (no terminal event yet)",
+        );
+
+        // Now the turn completes: the slot must release.
         events_tx
             .send(assistant_end())
             .expect("send terminal event");
-
-        // Drop the oneshot sender without firing — simulates the
-        // common case where the SSE stream is dropped AFTER the
-        // harness already emitted its terminal event (so the drop
-        // guard never needs to take the early-release path).
-        drop(release_tx);
 
         let next = tokio::time::timeout(Duration::from_millis(200), async {
             loop {
@@ -282,7 +218,7 @@ mod tests {
             }
         })
         .await
-        .expect("slot should be released after terminal event");
+        .expect("slot should be released after the terminal event");
         drop(next);
     }
 }

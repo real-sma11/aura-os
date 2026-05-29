@@ -6,9 +6,8 @@
 use std::sync::Arc;
 
 use aura_os_core::HarnessMode;
-use aura_os_harness::{HarnessCommandSender, SessionBridgeTurn, SessionConfig};
+use aura_os_harness::{SessionBridgeTurn, SessionConfig};
 use axum::response::sse::{KeepAlive, Sse};
-use tokio::sync::oneshot;
 use tracing::{debug, error};
 
 use crate::dto::ChatAttachmentDto;
@@ -27,7 +26,6 @@ use super::super::turn_slot::{spawn_turn_slot_release, spawn_turn_watchdog};
 use super::super::types::{SseResponse, SseStream};
 
 use super::attachments::dto_attachments_to_protocol;
-use super::drop_guard::SseDropGuardStream;
 use super::prefix::build_sse_stream;
 use super::session::{get_or_create_delegated_chat_session, SessionForTurn};
 use super::title::spawn_session_title_task;
@@ -280,19 +278,25 @@ pub(in super::super) async fn open_harness_chat_stream(
         Arc::clone(&state.stability_metrics),
     );
 
-    // Phase 7 Stop / refresh cleanup: pair the slot-release sentinel
-    // with a oneshot that the SSE drop guard fires when axum drops
-    // the response body (Stop's `AbortController.abort()` or a
-    // browser refresh both close the HTTP connection, which drops
-    // the boxed SSE stream). Without this hook the slot stays held
-    // until a terminal harness event arrives, which on a long-running
-    // plan-mode turn full of `Progress` heartbeats could be never —
-    // and the next user send blocks on `acquire_turn_slot` until the
-    // 90s SSE idle timeout fires `SSEIdleTimeoutError` on the client.
-    let (early_release_tx, early_release_rx) = oneshot::channel::<HarnessCommandSender>();
-    spawn_turn_slot_release(slot_guard, release_rx, early_release_rx);
-    let drop_guard_session_key = session_key.clone();
-    let drop_guard_commands_tx = commands_tx.clone();
+    // Intelligent-reconnect behaviour change: the slot-release sentinel
+    // now releases the turn slot SOLELY on the harness's terminal event
+    // for this turn. A PASSIVE SSE disconnect (the UI closed the
+    // response body on a browser refresh / network drop) no longer
+    // cancels the turn or early-releases the slot, because the reused
+    // harness turn keeps running and is registered as a reattachable
+    // live stream (see `register_receiver` above) that the reconnecting
+    // UI can rejoin. There is therefore no SSE drop guard here anymore.
+    //
+    // Safety for turn-slot accounting:
+    // - `spawn_turn_watchdog` bounds a stalled turn by emitting a
+    //   synthetic terminal event on first-event / idle timeout, which
+    //   the sentinel observes — so the slot can never leak even if the
+    //   harness goes silent after a disconnect.
+    // - Explicit Stop (`POST .../cancel-turn`, `setup/cancel.rs`)
+    //   forwards `HarnessInbound::Cancel` and evicts the warm session
+    //   independently of the SSE body, so the harness emits a terminal
+    //   event that releases the slot promptly. That path is unchanged.
+    spawn_turn_slot_release(slot_guard, release_rx);
 
     let stream = build_sse_stream(
         rx,
@@ -302,38 +306,7 @@ pub(in super::super) async fn open_harness_chat_stream(
         Some(Arc::clone(&state.stability_metrics)),
     );
 
-    // Wrap the SSE stream so that whenever axum drops the response
-    // (normal turn-end OR client disconnect), we surface the disconnect
-    // to the slot-release sentinel exactly once. The `biased` arm in
-    // `spawn_turn_slot_release` makes the terminal-event branch win
-    // for normal turn-ends, so the only behaviour change here is that
-    // a mid-turn drop now triggers `HarnessInbound::Cancel` + immediate
-    // slot release instead of leaking the guard.
-    //
-    // The closure is `FnOnce` and captures `early_release_tx` and
-    // `drop_guard_commands_tx` by move; `SseDropGuardStream` calls
-    // it at most once via `Option::take()` in its `Drop` impl, so the
-    // `oneshot::Sender::send` consume-by-value contract is honoured.
-    let stream_with_drop_guard = SseDropGuardStream::new(stream, move || {
-        // `oneshot::Sender::send` consumes the sender; on success the
-        // sentinel forwards Cancel and releases the slot. On failure
-        // (sentinel already returned because a terminal event arrived
-        // first) the receiver is gone and we don't need to do anything
-        // — the slot has already been released by the happy path.
-        if early_release_tx.send(drop_guard_commands_tx).is_err() {
-            debug!(
-                session_key = %drop_guard_session_key,
-                "SSE drop guard: slot-release sentinel already finished — happy-path completion, no cancel needed"
-            );
-        } else {
-            debug!(
-                session_key = %drop_guard_session_key,
-                "SSE drop guard: client disconnected before terminal event — forwarded Cancel and released slot"
-            );
-        }
-    });
-
-    let boxed: SseStream = Box::pin(stream_with_drop_guard);
+    let boxed: SseStream = Box::pin(stream);
 
     Ok((
         sse_response_headers(persist_snapshot.as_ref()),

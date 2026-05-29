@@ -17,10 +17,10 @@ use crate::state::{AppState, AuthJwt};
 /// then evict the entries from the registry.
 ///
 /// Phase 7 cancel-turn flow: the explicit `/cancel-turn` HTTP routes
-/// land here, and the SSE drop guard in `streaming.rs` performs the
-/// equivalent cleanup directly through the slot-release sentinel
-/// (single live entry, no full registry sweep) — both paths
-/// converge on the same harness contract:
+/// land here. This is now the ONLY path that cancels an in-flight turn
+/// — a passive SSE disconnect intentionally keeps the turn running for
+/// reattach (intelligent reconnect), so there is no longer an SSE
+/// drop-guard equivalent. The harness contract here is:
 ///
 /// 1. **Forward `Cancel`** so the harness aborts its in-flight turn
 ///    and emits its own terminal event for the persist task. Without
