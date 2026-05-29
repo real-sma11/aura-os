@@ -14,13 +14,18 @@
  */
 .footer {
   /*
-   * Vertically centered on the page. The host `<aside>` in
-   * `AuraSidebar` spans the full body height (in public mode
-   * it's `position: absolute; top: 0; bottom: 0`), so anchoring
-   * this nav to `top: 50%` + `translateY(-50%)` parks the link
-   * column at the vertical midpoint of the chrome below the
-   * titlebar. `left: 0` pins it to the left edge of the aside,
-   * matching the previous in-flow placement.
+   * Default (side area CLOSED) anchor: vertically centered. The
+   * host `<aside>` in `AuraSidebar` spans the full body height (in
+   * public mode it's `position: absolute; top: 0; bottom: 0`), so
+   * `top: 50%` + `translateY(-50%)` parks the link column at the
+   * vertical midpoint of the chrome below the titlebar. When the
+   * side area (the Lane holding search + recent chats) OPENS, the
+   * `[data-public-sidebar-collapsed="false"] .footer` rule below
+   * slides this column down to the bottom of the aside; closing it
+   * slides it back to center. Both anchors are percentage-based
+   * (`top` of the aside, `translateY` of the element) so the move
+   * is a single smooth transition rather than an un-animatable
+   * `top`/`bottom: auto` jump. `left: 0` pins it to the left edge.
    *
    * Absolute positioning lifts the nav OUT of the aside's
    * column-flex flow, so the `.sidebarBody` Lane below (search
@@ -34,6 +39,15 @@
   top: 50%;
   left: 0;
   transform: translateY(-50%);
+  /*
+   * Slide between the centered (closed) and bottom (open) anchors.
+   * Both `top` and `transform` animate together so the column
+   * travels in one motion. 0.25s cubic-bezier matches the unhurried
+   * drawer feel without lagging the Lane's own 100ms width collapse.
+   */
+  transition:
+    top 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1;
   /*
    * No `border-bottom`: the public nav strip should read as part
@@ -79,6 +93,21 @@
    * value in both states.
    */
   width: max-content;
+}
+
+/*
+ * Side area OPEN: drop the nav to the bottom of the `<aside>`. The
+ * `data-public-sidebar-collapsed` attribute is published on the
+ * public `<aside>` by `AuraSidebar` ("false" === the Lane is
+ * expanded/open). `top: 100%` + `translateY(-100%)` pins the
+ * element's bottom edge to the aside's bottom; the footer's own
+ * `12px` bottom padding becomes the visual gap. The transition on
+ * `.footer` above animates the slide between this and the centered
+ * default.
+ */
+[data-public-sidebar-collapsed="false"] .footer {
+  top: 100%;
+  transform: translateY(-100%);
 }
 
 .footerLinks {
