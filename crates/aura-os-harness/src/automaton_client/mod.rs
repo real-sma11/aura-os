@@ -1,17 +1,18 @@
-//! HTTP + WebSocket client for the harness automaton REST API.
+//! Automaton run-request building + identity preflight.
 //!
-//! Provides typed methods for starting, stopping, pausing automatons and
-//! subscribing to their event streams -- used by `dev_loop.rs` instead of the
-//! old chat-session-based approach.
+//! Originally an HTTP + WebSocket client (`AutomatonClient`) for the
+//! harness automaton REST API. The transport collapsed onto the
+//! canonical [`crate::HarnessLink`] surface in the harness-unification
+//! refactor; what remains are the request-shaping
+//! ([`AutomatonStartParams`] → [`crate::RuntimeRequest`]) and
+//! identity-preflight helpers the dev-loop start path still builds on.
 
-mod client;
 mod identity;
 mod start_params;
 
 #[cfg(test)]
 mod tests;
 
-pub use client::AutomatonClient;
 pub use identity::validate_automaton_start_identity;
 #[allow(unused_imports)]
 pub(crate) use start_params::automaton_start_params_to_runtime_request;

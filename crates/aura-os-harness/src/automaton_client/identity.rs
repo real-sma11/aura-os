@@ -2,9 +2,10 @@ use crate::error::HarnessError;
 
 use super::start_params::AutomatonStartParams;
 
-/// Tier 2 fail-fast: harness-side preflight for
-/// [`AutomatonClient::start`] payloads, mirroring the contract on
-/// [`crate::validate_session_init_identity`] for the chat / direct
+/// Tier 2 fail-fast: harness-side preflight for automaton run-request
+/// payloads (now submitted through [`crate::HarnessLink::submit_run`]),
+/// mirroring the contract on
+/// [`crate::validate_runtime_request_identity`] for the chat / direct
 /// session path.
 ///
 /// Validates the *intersection* of fields every dev-loop /
@@ -13,8 +14,6 @@ use super::start_params::AutomatonStartParams;
 /// required at this layer because some scheduled-process flows
 /// genuinely have no signed-in user; server-side Tier 1 enforces it
 /// per call site for the dev-loop / single-task path.
-///
-/// [`AutomatonClient::start`]: super::AutomatonClient::start
 pub fn validate_automaton_start_identity(
     params: &AutomatonStartParams,
 ) -> Result<(), HarnessError> {

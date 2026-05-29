@@ -33,7 +33,7 @@ pub mod ws_bridge_config {
 }
 
 pub use automaton_client::{
-    validate_automaton_start_identity, AutomatonClient, AutomatonStartError, AutomatonStartParams,
+    validate_automaton_start_identity, AutomatonStartError, AutomatonStartParams,
 };
 pub use client::{
     bearer_headers, GetHeadResponse, HarnessAutomatonStartParams, HarnessAutomatonStartResponse,

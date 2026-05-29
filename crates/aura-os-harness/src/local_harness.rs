@@ -701,4 +701,53 @@ mod tests {
         // so a future direct-from-zero loop doesn't trip on a panic.
         assert_eq!(next_backoff(0), Duration::from_millis(500));
     }
+
+    // Conflict-id extraction coverage ported from the removed
+    // `automaton_client::client` parser tests: the dev-loop adopt path
+    // depends on pulling the existing `run_id` out of a harness `409`
+    // body across both the structured and legacy substring shapes.
+    #[test]
+    fn extract_conflict_run_id_reads_structured_top_level() {
+        let body = r#"{"run_id":"run-abc","error":"conflict"}"#;
+        assert_eq!(extract_conflict_run_id(body).as_deref(), Some("run-abc"));
+    }
+
+    #[test]
+    fn extract_conflict_run_id_reads_legacy_automaton_id_alias() {
+        let body = r#"{"automaton_id":"auto-legacy"}"#;
+        assert_eq!(
+            extract_conflict_run_id(body).as_deref(),
+            Some("auto-legacy")
+        );
+    }
+
+    #[test]
+    fn extract_conflict_run_id_reads_nested_data_object() {
+        let body = r#"{"error":"conflict","data":{"run_id":"run-nested"}}"#;
+        assert_eq!(
+            extract_conflict_run_id(body).as_deref(),
+            Some("run-nested")
+        );
+    }
+
+    #[test]
+    fn extract_conflict_run_id_reads_legacy_error_substring() {
+        let body = r#"{"error":"a dev loop is already running (automaton_id: \"auto-sub\")"}"#;
+        assert_eq!(extract_conflict_run_id(body).as_deref(), Some("auto-sub"));
+    }
+
+    #[test]
+    fn extract_conflict_run_id_reads_some_debug_substring() {
+        let body = r#"{"message":"conflict at run_id: Some(\"run-some\")"}"#;
+        assert_eq!(extract_conflict_run_id(body).as_deref(), Some("run-some"));
+    }
+
+    #[test]
+    fn extract_conflict_run_id_missing_returns_none() {
+        assert_eq!(
+            extract_conflict_run_id(r#"{"error":"a dev loop is already running"}"#),
+            None
+        );
+        assert_eq!(extract_conflict_run_id("not json at all"), None);
+    }
 }
