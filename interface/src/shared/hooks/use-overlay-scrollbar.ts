@@ -4,6 +4,7 @@ import type { CSSProperties, PointerEventHandler, RefObject } from "react";
 interface OverlayScrollbar {
   thumbStyle: CSSProperties;
   visible: boolean;
+  dragging: boolean;
   onThumbPointerDown: PointerEventHandler;
 }
 
@@ -117,5 +118,10 @@ export function useOverlayScrollbar(
     height: thumbHeight,
   };
 
-  return { thumbStyle, visible: needsScroll && (hovered || dragging), onThumbPointerDown };
+  return {
+    thumbStyle,
+    visible: needsScroll && (hovered || dragging),
+    dragging,
+    onThumbPointerDown,
+  };
 }

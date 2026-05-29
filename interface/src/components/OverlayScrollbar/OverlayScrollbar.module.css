@@ -15,23 +15,38 @@
   position: absolute;
   right: 0;
   width: 12px;
-  padding-left: 8px;
   box-sizing: border-box;
   min-height: 18px;
-  border-radius: 9999px;
-  background: var(--color-overlay-focus);
-  background-clip: content-box;
   opacity: 0;
   transition: opacity 0.2s ease;
   pointer-events: none;
   cursor: default;
 }
 
-.scrollThumb:hover {
-  background: var(--color-scrollbar-thumb-hover);
+/* The visible bar is a child of the transparent 12px hit area so that it
+   stays a fully rounded pill (both ends) at rest and can animate its width
+   when the cursor enters the hit area or while dragging. */
+.scrollThumb::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 2px;
+  width: 4px;
+  border-radius: 9999px;
+  background: var(--color-overlay-focus);
+  transition:
+    width 0.16s ease,
+    background 0.2s ease;
 }
 
 .scrollThumbVisible {
   opacity: 1;
   pointer-events: auto;
+}
+
+.scrollThumbVisible:hover::after,
+.scrollThumbDragging::after {
+  width: 10px;
+  background: var(--color-scrollbar-thumb-hover);
 }

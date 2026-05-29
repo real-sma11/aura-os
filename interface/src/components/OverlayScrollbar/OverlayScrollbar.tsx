@@ -17,7 +17,7 @@ export function OverlayScrollbar({
   trackClassName,
   thumbClassName,
 }: OverlayScrollbarProps) {
-  const { thumbStyle, visible, onThumbPointerDown } = useOverlayScrollbar(scrollRef);
+  const { thumbStyle, visible, dragging, onThumbPointerDown } = useOverlayScrollbar(scrollRef);
 
   return (
     <div className={joinClassNames(styles.scrollTrack, trackClassName)}>
@@ -25,6 +25,7 @@ export function OverlayScrollbar({
         className={joinClassNames(
           styles.scrollThumb,
           visible && styles.scrollThumbVisible,
+          dragging && styles.scrollThumbDragging,
           thumbClassName,
         )}
         style={thumbStyle}
