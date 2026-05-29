@@ -64,6 +64,14 @@ vi.mock("../api/streams", () => ({
   generateImageStream: vi.fn().mockResolvedValue(undefined),
   generate3dStream: vi.fn().mockResolvedValue(undefined),
   generateVideoStream: vi.fn().mockResolvedValue(undefined),
+  // `useChatStream` reattach imports + the transitive `shared/api/agents`
+  // re-export pull these named exports off the mocked module; they must
+  // be present or vitest throws "No <name> export is defined on the mock"
+  // at module-eval time (before any test runs).
+  attachToStream: vi.fn().mockResolvedValue(undefined),
+  selectReattachableChatStream: vi.fn(() => null),
+  sendAgentEventStream: vi.fn().mockResolvedValue(undefined),
+  sendEventStream: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { api } from "../api/client";
