@@ -104,6 +104,38 @@ describe("setupPublicSession", () => {
   });
 });
 
+describe("isGuestAuthError", () => {
+  it("matches a 401 ApiClientError", async () => {
+    const { isGuestAuthError } = await import("./public-chat");
+    const { ApiClientError } = await import("../shared/api/core");
+    const err = new ApiClientError(401, {
+      error: "invalid guest token",
+      code: "unauthorized",
+      details: null,
+    });
+    expect(isGuestAuthError(err)).toBe(true);
+  });
+
+  it("matches a plain Error whose message mentions a guest token", async () => {
+    const { isGuestAuthError } = await import("./public-chat");
+    expect(isGuestAuthError(new Error("SSE request failed (401): invalid guest token"))).toBe(true);
+    expect(isGuestAuthError(new Error("missing guest token"))).toBe(true);
+  });
+
+  it("does not match unrelated errors or non-401 statuses", async () => {
+    const { isGuestAuthError } = await import("./public-chat");
+    const { ApiClientError } = await import("../shared/api/core");
+    expect(isGuestAuthError(new Error("upstream blew up"))).toBe(false);
+    expect(
+      isGuestAuthError(
+        new ApiClientError(500, { error: "boom", code: "internal", details: null }),
+      ),
+    ).toBe(false);
+    expect(isGuestAuthError(null)).toBe(false);
+    expect(isGuestAuthError("invalid guest token")).toBe(false);
+  });
+});
+
 describe("streamPublicChat dispatch", () => {
   function captureCallbacks(): MockedStreamSSEArgs {
     const last = streamSSEMock.mock.calls[

@@ -275,4 +275,31 @@ describe("usePublicChatStore", () => {
     expect(state.turnCount).toBe(1);
     expect(state.limit).toBe(3);
   });
+
+  it("invalidateToken clears the cached token and re-persists", async () => {
+    const { usePublicChatStore } = await importStore();
+    usePublicChatStore.setState({ guestToken: "stale-token" });
+    usePublicChatStore.getState().invalidateToken();
+    expect(usePublicChatStore.getState().guestToken).toBeNull();
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { guestToken: string | null }) : null;
+    expect(parsed?.guestToken).toBeNull();
+  });
+
+  it("ensureToken re-mints a fresh token after invalidateToken discards a stale one", async () => {
+    const { usePublicChatStore } = await importStore();
+    const api = await import("../api/public-chat");
+    (api.setupPublicSession as ReturnType<typeof vi.fn>).mockClear();
+    usePublicChatStore.setState({ guestToken: "stale-token" });
+    usePublicChatStore.getState().invalidateToken();
+    (api.setupPublicSession as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      token: "minted-after-invalidate",
+      turn_count: 0,
+      limit: 3,
+    });
+    const tok = await usePublicChatStore.getState().ensureToken();
+    expect(tok).toBe("minted-after-invalidate");
+    expect(api.setupPublicSession).toHaveBeenCalledTimes(1);
+    expect(usePublicChatStore.getState().guestToken).toBe("minted-after-invalidate");
+  });
 });

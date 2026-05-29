@@ -8,6 +8,7 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUp } from "lucide-react";
 import {
+  isGuestAuthError,
   streamPublicChat,
   type PublicChatStreamHandle,
   type PublicChatTurn,
@@ -80,6 +81,7 @@ export function MobilePublicChatView(): React.ReactElement {
   const sessions = usePublicChatStore((s) => s.sessions);
   const createSession = usePublicChatStore((s) => s.createSession);
   const ensureToken = usePublicChatStore((s) => s.ensureToken);
+  const invalidateToken = usePublicChatStore((s) => s.invalidateToken);
   const appendUserTurn = usePublicChatStore((s) => s.appendUserTurn);
   const appendAssistantToken = usePublicChatStore((s) => s.appendAssistantToken);
   const commitAssistant = usePublicChatStore((s) => s.commitAssistant);
@@ -140,9 +142,12 @@ export function MobilePublicChatView(): React.ReactElement {
       setIsSending(true);
       navigate(publicChatRoute(targetSessionId), { replace: true });
 
-      try {
-        const token = await ensureToken();
-        appendUserTurn(targetSessionId, message);
+      // Open the SSE stream for this turn. On a guest-auth rejection
+      // (stale token after a server-side secret rotation) we discard
+      // the cached token, re-mint a fresh one, and retry the same turn
+      // exactly once — `didRetry` guards against an infinite loop if
+      // the freshly minted token is somehow rejected too.
+      const launchStream = (token: string, didRetry: boolean): void => {
         streamRef.current = streamPublicChat({
           token,
           sessionId: targetSessionId,
@@ -159,6 +164,21 @@ export function MobilePublicChatView(): React.ReactElement {
           },
           onLimit: setTurnCount,
           onError: (err) => {
+            if (!didRetry && isGuestAuthError(err)) {
+              invalidateToken();
+              ensureToken()
+                .then((fresh) => launchStream(fresh, true))
+                .catch((retryErr: unknown) => {
+                  setSendError(
+                    retryErr instanceof Error
+                      ? retryErr.message
+                      : "Unable to send message",
+                  );
+                  setIsSending(false);
+                  streamRef.current = null;
+                });
+              return;
+            }
             setSendError(err.message || "Unable to send message");
             setIsSending(false);
             streamRef.current = null;
@@ -169,6 +189,12 @@ export function MobilePublicChatView(): React.ReactElement {
             streamRef.current = null;
           },
         });
+      };
+
+      try {
+        const token = await ensureToken();
+        appendUserTurn(targetSessionId, message);
+        launchStream(token, false);
       } catch (err) {
         setSendError(err instanceof Error ? err.message : "Unable to send message");
         setIsSending(false);
@@ -182,6 +208,7 @@ export function MobilePublicChatView(): React.ReactElement {
       createSession,
       draft,
       ensureToken,
+      invalidateToken,
       isSending,
       navigate,
       setTurnCount,

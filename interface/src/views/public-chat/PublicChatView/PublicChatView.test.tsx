@@ -19,12 +19,16 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { streamPublicChatMock } = vi.hoisted(() => ({
+const { streamPublicChatMock, setupPublicSessionMock } = vi.hoisted(() => ({
   streamPublicChatMock: vi.fn(),
+  setupPublicSessionMock: vi.fn(),
 }));
 
 vi.mock("../../../api/public-chat", () => ({
   streamPublicChat: streamPublicChatMock,
+  setupPublicSession: setupPublicSessionMock,
+  isGuestAuthError: (err: unknown) =>
+    err instanceof Error && err.message.toLowerCase().includes("guest token"),
 }));
 
 // Stub `MockAuraApp` so the test surfaces just the wallpaper-prop
@@ -144,6 +148,7 @@ beforeEach(() => {
       return { close: vi.fn() };
     },
   );
+  setupPublicSessionMock.mockReset();
   usePublicChatStore.setState({
     sessions: {},
     sessionOrder: [],
@@ -156,6 +161,7 @@ beforeEach(() => {
 afterEach(() => {
   window.localStorage.clear();
   streamPublicChatMock.mockReset();
+  setupPublicSessionMock.mockReset();
   usePublicChatStore.setState({
     sessions: {},
     sessionOrder: [],
@@ -310,6 +316,55 @@ describe("PublicChatView", () => {
     );
     expect(screen.getByText("Can you help?")).toBeInTheDocument();
     expect(screen.getByText("Hello from Aura")).toBeInTheDocument();
+  });
+
+  it("re-mints a fresh guest token and retries once when the stream rejects a stale token", async () => {
+    // Simulates the post-deploy state: the cached guest token was
+    // signed with the previous server secret, so the first stream
+    // attempt is rejected with "invalid guest token". The view must
+    // discard the stale token, mint a fresh one, and replay the same
+    // turn without surfacing an error to the visitor.
+    const user = userEvent.setup();
+    let sessionId = "";
+    act(() => {
+      sessionId = usePublicChatStore.getState().createSession();
+    });
+    usePublicChatStore.setState({ guestToken: "stale-token" });
+    setupPublicSessionMock.mockResolvedValueOnce({
+      token: "fresh-token",
+      turn_count: 0,
+      limit: 3,
+    });
+    streamPublicChatMock
+      .mockImplementationOnce((args: { onError: (e: Error) => void }) => {
+        args.onError(new Error("SSE request failed (401): invalid guest token"));
+        return { close: vi.fn() };
+      })
+      .mockImplementationOnce(
+        (args: { onDelta: (t: string) => void; onDone?: () => void }) => {
+          args.onDelta("Recovered reply");
+          args.onDone?.();
+          return { close: vi.fn() };
+        },
+      );
+
+    renderView(`/chat?session=${sessionId}`);
+    await user.type(
+      screen.getByRole("textbox", { name: "Message Aura" }),
+      "Hi there",
+    );
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(streamPublicChatMock).toHaveBeenCalledTimes(2));
+    expect(setupPublicSessionMock).toHaveBeenCalledTimes(1);
+    expect(streamPublicChatMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ token: "stale-token" }),
+    );
+    expect(streamPublicChatMock.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ token: "fresh-token", message: "Hi there" }),
+    );
+    expect(await screen.findByText("Recovered reply")).toBeInTheDocument();
+    expect(usePublicChatStore.getState().guestToken).toBe("fresh-token");
   });
 
   it("renders 6 persona ticks AND 6 panel rows including the Solo Builder slot", () => {

@@ -11,12 +11,16 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { streamPublicChatMock } = vi.hoisted(() => ({
+const { streamPublicChatMock, setupPublicSessionMock } = vi.hoisted(() => ({
   streamPublicChatMock: vi.fn(),
+  setupPublicSessionMock: vi.fn(),
 }));
 
 vi.mock("../../../api/public-chat", () => ({
   streamPublicChat: streamPublicChatMock,
+  setupPublicSession: setupPublicSessionMock,
+  isGuestAuthError: (err: unknown) =>
+    err instanceof Error && err.message.toLowerCase().includes("guest token"),
 }));
 
 import { MobilePublicChatView } from "./MobilePublicChatView";
@@ -53,6 +57,7 @@ beforeEach(() => {
       return { close: vi.fn() };
     },
   );
+  setupPublicSessionMock.mockReset();
   usePublicChatStore.setState({
     sessions: {},
     sessionOrder: [],
@@ -65,6 +70,7 @@ beforeEach(() => {
 afterEach(() => {
   window.localStorage.clear();
   streamPublicChatMock.mockReset();
+  setupPublicSessionMock.mockReset();
   usePublicChatStore.setState({
     sessions: {},
     sessionOrder: [],
@@ -145,6 +151,46 @@ describe("MobilePublicChatView", () => {
     const order = usePublicChatStore.getState().sessionOrder;
     expect(order).toHaveLength(1);
     expect(probe.getAttribute("data-search")).toBe(`?session=${order[0]}`);
+  });
+
+  it("re-mints a fresh guest token and retries once when the stream rejects a stale token", async () => {
+    // Same post-deploy recovery contract as the desktop surface: a
+    // stale cached token gets one 401, then the view re-mints and
+    // replays the turn so the visitor never sees the auth error.
+    usePublicChatStore.setState({ guestToken: "stale-token" });
+    setupPublicSessionMock.mockResolvedValueOnce({
+      token: "fresh-token",
+      turn_count: 0,
+      limit: 3,
+    });
+    streamPublicChatMock
+      .mockImplementationOnce((args: { onError: (e: Error) => void }) => {
+        args.onError(new Error("SSE request failed (401): invalid guest token"));
+        return { close: vi.fn() };
+      })
+      .mockImplementationOnce(
+        (args: { onDelta: (t: string) => void; onDone?: () => void }) => {
+          args.onDelta("Recovered reply");
+          args.onDone?.();
+          return { close: vi.fn() };
+        },
+      );
+
+    renderView("/chat");
+    const input = screen.getByRole("textbox", { name: "Message Aura" });
+    fireEvent.change(input, { target: { value: "hello again" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(streamPublicChatMock).toHaveBeenCalledTimes(2));
+    expect(setupPublicSessionMock).toHaveBeenCalledTimes(1);
+    expect(streamPublicChatMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ token: "stale-token" }),
+    );
+    expect(streamPublicChatMock.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ token: "fresh-token", message: "hello again" }),
+    );
+    expect(await screen.findByText("Recovered reply")).toBeInTheDocument();
+    expect(usePublicChatStore.getState().guestToken).toBe("fresh-token");
   });
 
   it("does NOT render the desktop hero hooks (MockAuraApp, persona tick rail) on either route", () => {

@@ -34,6 +34,8 @@ vi.mock("../../api/public-chat", () => ({
     calls.push({ fn: "model3d", args });
     return { close: vi.fn() };
   },
+  isGuestAuthError: (err: unknown) =>
+    err instanceof Error && err.message.toLowerCase().includes("guest token"),
 }));
 
 import { dispatchMediaTurn, type MediaStreamSetters } from "./dispatch-media";
@@ -232,6 +234,65 @@ describe("dispatchMediaTurn", () => {
     });
     const captured = calls[0].args as { onError: (e: Error) => void };
     captured.onError(new Error("upstream blew up"));
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-mints and re-opens the stream once on a guest-auth error when reauth is provided", async () => {
+    const setters = buildSetters();
+    const onError = vi.fn();
+    const reauth = vi.fn().mockResolvedValue("fresh-token");
+    dispatchMediaTurn({
+      mode: "image",
+      token: "stale-token",
+      prompt: "a kite",
+      setters,
+      onCompleted: vi.fn(),
+      onLimit: vi.fn(),
+      onError,
+      onDone: vi.fn(),
+      reauth,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args.token).toBe("stale-token");
+
+    const firstError = calls[0].args as { onError: (e: Error) => void };
+    firstError.onError(new Error("invalid guest token"));
+
+    // reauth resolves on a microtask; flush it before asserting the
+    // second stream opened with the fresh token.
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(calls[1].args.token).toBe("fresh-token");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a guest-auth error a second time (one-shot guard)", async () => {
+    const setters = buildSetters();
+    const onError = vi.fn();
+    const reauth = vi.fn().mockResolvedValue("fresh-token");
+    dispatchMediaTurn({
+      mode: "image",
+      token: "stale-token",
+      prompt: "a kite",
+      setters,
+      onCompleted: vi.fn(),
+      onLimit: vi.fn(),
+      onError,
+      onDone: vi.fn(),
+      reauth,
+    });
+    (calls[0].args as { onError: (e: Error) => void }).onError(
+      new Error("invalid guest token"),
+    );
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+
+    // The retried stream is also rejected — this time it must fall
+    // through to onError rather than re-minting again.
+    (calls[1].args as { onError: (e: Error) => void }).onError(
+      new Error("invalid guest token"),
+    );
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(2);
     expect(onError).toHaveBeenCalledTimes(1);
   });
 

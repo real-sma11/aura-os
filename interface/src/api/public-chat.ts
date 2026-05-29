@@ -14,6 +14,21 @@
 
 import { resolveApiUrl } from "../shared/lib/host-config";
 import { streamSSE } from "../shared/api/sse";
+import { ApiClientError } from "../shared/api/core";
+
+/**
+ * True when `err` looks like the server rejecting a guest token —
+ * an HTTP 401 from the `/api/public/*` family, or any error whose
+ * message carries the `AuthGuestJwt` extractor wording ("invalid
+ * guest token" / "missing guest token"). Callers use this to drop
+ * the stale cached token and re-mint a fresh one rather than leaving
+ * the visitor permanently stuck after a server-side secret rotation.
+ */
+export function isGuestAuthError(err: unknown): boolean {
+  if (err instanceof ApiClientError) return err.status === 401;
+  const message = err instanceof Error ? err.message.toLowerCase() : "";
+  return message.includes("guest token");
+}
 
 /** Response shape of `POST /api/public/setup`. */
 export interface PublicSetupResponse {

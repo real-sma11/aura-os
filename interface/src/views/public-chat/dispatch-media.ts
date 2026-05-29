@@ -19,6 +19,7 @@
  */
 
 import {
+  isGuestAuthError,
   streamPublicImage,
   streamPublicModel3d,
   streamPublicVideo,
@@ -59,9 +60,17 @@ export interface DispatchMediaArgs {
   onLimit: (turnCount: number) => void;
   onError: (err: Error) => void;
   onDone: () => void;
+  /** Optional re-mint callback. When supplied, a guest-auth rejection
+   *  (stale token after a server-side secret rotation) discards the
+   *  cached token, mints a fresh one via this callback, and re-opens
+   *  the same media stream exactly once before falling through to
+   *  `onError`. Omit it to keep the legacy forward-error behaviour. */
+  reauth?: () => Promise<string>;
 }
 
-/** Open the media SSE stream and return its abort handle. */
+/** Open the media SSE stream and return its abort handle. The handle
+ *  delegates to whichever stream is currently live, so a one-shot
+ *  re-mint retry transparently rebinds `close()` to the new stream. */
 export function dispatchMediaTurn(args: DispatchMediaArgs): PublicMediaStreamHandle {
   const { mode, setters } = args;
   setters.setIsStreaming(true);
@@ -72,42 +81,69 @@ export function dispatchMediaTurn(args: DispatchMediaArgs): PublicMediaStreamHan
     if (message) setters.setProgressText(message);
   };
   const onCompleted = (url: string): void => args.onCompleted(mode, url);
-  if (mode === "image") {
-    return streamPublicImage({
-      token: args.token,
+
+  let current: PublicMediaStreamHandle = { close: () => {} };
+
+  const openStream = (token: string, didRetry: boolean): void => {
+    const onError = (err: Error): void => {
+      if (!didRetry && args.reauth && isGuestAuthError(err)) {
+        args
+          .reauth()
+          .then((fresh) => openStream(fresh, true))
+          .catch((retryErr: unknown) => {
+            args.onError(
+              retryErr instanceof Error
+                ? retryErr
+                : new Error("Unable to generate media"),
+            );
+          });
+        return;
+      }
+      args.onError(err);
+    };
+
+    if (mode === "image") {
+      current = streamPublicImage({
+        token,
+        prompt: args.prompt,
+        sourceUrl: args.sourceImage,
+        onProgress,
+        onCompleted,
+        onLimit: args.onLimit,
+        onError,
+        onDone: args.onDone,
+      });
+      return;
+    }
+    if (mode === "video") {
+      current = streamPublicVideo({
+        token,
+        prompt: args.prompt,
+        onProgress,
+        onCompleted,
+        onLimit: args.onLimit,
+        onError,
+        onDone: args.onDone,
+      });
+      return;
+    }
+    // model3d — required source image guarded by the hook before we
+    // get here, but fall back to an empty string so the runtime
+    // contract stays narrow rather than throwing.
+    current = streamPublicModel3d({
+      token,
       prompt: args.prompt,
-      sourceUrl: args.sourceImage,
+      sourceImage: args.sourceImage ?? "",
       onProgress,
       onCompleted,
       onLimit: args.onLimit,
-      onError: args.onError,
+      onError,
       onDone: args.onDone,
     });
-  }
-  if (mode === "video") {
-    return streamPublicVideo({
-      token: args.token,
-      prompt: args.prompt,
-      onProgress,
-      onCompleted,
-      onLimit: args.onLimit,
-      onError: args.onError,
-      onDone: args.onDone,
-    });
-  }
-  // model3d — required source image guarded by the hook before we
-  // get here, but fall back to an empty string so the runtime
-  // contract stays narrow rather than throwing.
-  return streamPublicModel3d({
-    token: args.token,
-    prompt: args.prompt,
-    sourceImage: args.sourceImage ?? "",
-    onProgress,
-    onCompleted,
-    onLimit: args.onLimit,
-    onError: args.onError,
-    onDone: args.onDone,
-  });
+  };
+
+  openStream(args.token, false);
+  return { close: () => current.close() };
 }
 
 function initialProgressMessage(mode: MediaDispatchMode): string {
