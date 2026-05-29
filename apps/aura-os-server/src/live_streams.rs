@@ -28,7 +28,7 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use aura_os_harness::{HarnessOutbound, HarnessSession};
+use aura_os_harness::{HarnessCommandSender, HarnessInbound, HarnessOutbound, HarnessSession};
 
 use crate::event_log::EventLog;
 
@@ -80,8 +80,19 @@ pub struct LiveStream {
     /// Held only to keep `commands_tx` (and therefore the upstream
     /// harness WS) alive while the run is in flight. Cleared by the
     /// forwarder once the stream terminates so the harness can release
-    /// the session.
+    /// the session. `None` for streams registered via
+    /// [`LiveStreamRegistry::register_receiver`], where the session is
+    /// owned elsewhere (e.g. chat turns whose session lives in
+    /// `chat_sessions`).
     session: Mutex<Option<HarnessSession>>,
+    /// Optional inbound command channel for streams that do NOT own the
+    /// harness session. When present, [`LiveStream::cancel`] forwards
+    /// `HarnessInbound::Cancel` so the upstream harness aborts the
+    /// in-flight turn in addition to firing the cancellation token.
+    /// `None` for the owned-session [`LiveStreamRegistry::register`]
+    /// path, where dropping the session is sufficient to tear the run
+    /// down.
+    cancel_tx: Option<HarnessCommandSender>,
     started_at_ms: i64,
     terminated_at: Mutex<Option<Instant>>,
     cancel: CancellationToken,
@@ -114,9 +125,24 @@ impl LiveStream {
     }
 
     /// Request cancellation of the underlying run. The forwarder emits a
-    /// synthetic `stream_cancelled` terminal frame and tears down.
+    /// synthetic `stream_cancelled` terminal frame and tears down. For
+    /// streams that do not own the harness session (registered via
+    /// [`LiveStreamRegistry::register_receiver`]), this additionally
+    /// forwards `HarnessInbound::Cancel` over the stored command channel
+    /// so the upstream harness aborts its in-flight turn — dropping the
+    /// (unowned) session is not enough in that case.
     pub fn cancel(&self) {
         self.cancel.cancel();
+        if let Some(tx) = &self.cancel_tx {
+            if let Err(err) = tx.try_send(HarnessInbound::Cancel) {
+                debug!(
+                    target: "aura::streams",
+                    attach_id = %self.attach_id,
+                    error = %err,
+                    "live stream cancel: failed to forward Cancel to harness"
+                );
+            }
+        }
     }
 
     /// Build the listing summary for `GET /api/streams/active`.
@@ -183,7 +209,7 @@ impl LiveStreamRegistry {
     ) -> Arc<LiveStream> {
         let attach_id = uuid::Uuid::new_v4().to_string();
         let events = EventLog::new(self.stream_capacity);
-        let mut rx = session.events_tx.subscribe();
+        let rx = session.events_tx.subscribe();
         let cancel = CancellationToken::new();
         let stream = Arc::new(LiveStream {
             attach_id: attach_id.clone(),
@@ -191,55 +217,55 @@ impl LiveStreamRegistry {
             scope,
             events,
             session: Mutex::new(Some(session)),
+            cancel_tx: None,
             started_at_ms: chrono::Utc::now().timestamp_millis(),
             terminated_at: Mutex::new(None),
             cancel: cancel.clone(),
         });
         self.inner.insert(attach_id.clone(), stream.clone());
 
-        let stream_for_task = stream.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        stream_for_task
-                            .events
-                            .append(serde_json::json!({ "type": "stream_cancelled" }));
-                        stream_for_task.mark_terminated();
-                        break;
-                    }
-                    res = rx.recv() => match res {
-                        Ok(evt) => {
-                            let terminal = matches!(
-                                evt,
-                                HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
-                            );
-                            if let Ok(value) = serde_json::to_value(&evt) {
-                                stream_for_task.events.append(value);
-                            }
-                            if terminal {
-                                stream_for_task.mark_terminated();
-                                break;
-                            }
-                        }
-                        // The forwarder is the only consumer that must
-                        // never lose frames; if it lags we cannot
-                        // recover the dropped ones, so just continue.
-                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(broadcast::error::RecvError::Closed) => {
-                            stream_for_task.mark_terminated();
-                            break;
-                        }
-                    }
-                }
-            }
-            debug!(
-                target: "aura::streams",
-                attach_id = %stream_for_task.attach_id,
-                latest_seq = stream_for_task.events.latest_seq(),
-                "live stream forwarder terminated"
-            );
+        spawn_forwarder(stream.clone(), rx, cancel);
+
+        stream
+    }
+
+    /// Register a stream that pumps an already-subscribed broadcast
+    /// receiver into a replay log WITHOUT owning the underlying
+    /// [`HarnessSession`]. Used for chat turns where the harness session
+    /// is reused across turns and lives in `chat_sessions`, not here —
+    /// so the live stream must observe the turn's frames without holding
+    /// (and therefore dropping/closing) the shared session.
+    ///
+    /// `cancel_tx` is the harness inbound command channel; when present,
+    /// [`LiveStream::cancel`] forwards `HarnessInbound::Cancel` over it
+    /// so an explicit cancel actually aborts the upstream turn (dropping
+    /// an unowned session would not). Terminal detection and TTL
+    /// retention match [`LiveStreamRegistry::register`] exactly via the
+    /// shared [`spawn_forwarder`].
+    pub fn register_receiver(
+        self: &Arc<Self>,
+        kind: StreamKind,
+        scope: StreamScope,
+        rx: broadcast::Receiver<HarnessOutbound>,
+        cancel_tx: Option<HarnessCommandSender>,
+    ) -> Arc<LiveStream> {
+        let attach_id = uuid::Uuid::new_v4().to_string();
+        let events = EventLog::new(self.stream_capacity);
+        let cancel = CancellationToken::new();
+        let stream = Arc::new(LiveStream {
+            attach_id: attach_id.clone(),
+            kind,
+            scope,
+            events,
+            session: Mutex::new(None),
+            cancel_tx,
+            started_at_ms: chrono::Utc::now().timestamp_millis(),
+            terminated_at: Mutex::new(None),
+            cancel: cancel.clone(),
         });
+        self.inner.insert(attach_id.clone(), stream.clone());
+
+        spawn_forwarder(stream.clone(), rx, cancel);
 
         stream
     }
@@ -295,6 +321,61 @@ impl LiveStreamRegistry {
             }
         });
     }
+}
+
+/// Shared forwarder body for [`LiveStreamRegistry::register`] and
+/// [`LiveStreamRegistry::register_receiver`]. Pumps every harness frame
+/// from `rx` into the stream's replay log, marking the stream terminal
+/// on `AssistantMessageEnd` / `Error` (or on cancellation / upstream
+/// close). Keeping this single source of truth ensures the owned-session
+/// and unowned-receiver paths stay in lockstep on terminal detection.
+fn spawn_forwarder(
+    stream: Arc<LiveStream>,
+    mut rx: broadcast::Receiver<HarnessOutbound>,
+    cancel: CancellationToken,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    stream
+                        .events
+                        .append(serde_json::json!({ "type": "stream_cancelled" }));
+                    stream.mark_terminated();
+                    break;
+                }
+                res = rx.recv() => match res {
+                    Ok(evt) => {
+                        let terminal = matches!(
+                            evt,
+                            HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
+                        );
+                        if let Ok(value) = serde_json::to_value(&evt) {
+                            stream.events.append(value);
+                        }
+                        if terminal {
+                            stream.mark_terminated();
+                            break;
+                        }
+                    }
+                    // The forwarder is the only consumer that must
+                    // never lose frames; if it lags we cannot
+                    // recover the dropped ones, so just continue.
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => {
+                        stream.mark_terminated();
+                        break;
+                    }
+                }
+            }
+        }
+        debug!(
+            target: "aura::streams",
+            attach_id = %stream.attach_id,
+            latest_seq = stream.events.latest_seq(),
+            "live stream forwarder terminated"
+        );
+    });
 }
 
 #[cfg(test)]
@@ -400,5 +481,140 @@ mod tests {
 
         let mine_p1 = registry.list_for_scope("u1", Some("p1"), None);
         assert_eq!(mine_p1.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn register_receiver_records_frames_and_marks_terminal() {
+        let registry = Arc::new(LiveStreamRegistry {
+            inner: DashMap::new(),
+            stream_capacity: 64,
+            ttl: Duration::from_secs(300),
+        });
+        // The receiver path does NOT own the session: the broadcast
+        // sender lives on the caller's side (here, the test), mirroring
+        // the reused chat session in `chat_sessions`.
+        let (events_tx, _rx0) = broadcast::channel::<HarnessOutbound>(16);
+        let scope = StreamScope {
+            user_id: Some("u1".to_string()),
+            project_id: Some("p1".to_string()),
+            session_id: Some("sess-1".to_string()),
+            ..Default::default()
+        };
+        let stream = registry.register_receiver(
+            StreamKind::ChatTurn,
+            scope,
+            events_tx.subscribe(),
+            None,
+        );
+
+        events_tx
+            .send(HarnessOutbound::TextDelta(TextDelta {
+                text: "hello".to_string(),
+            }))
+            .unwrap();
+        events_tx
+            .send(HarnessOutbound::Error(ErrorMsg {
+                code: "boom".to_string(),
+                message: "boom".to_string(),
+                recoverable: false,
+                support_id: None,
+            }))
+            .unwrap();
+
+        for _ in 0..50 {
+            if stream.is_terminated() && stream.events.latest_seq() >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        assert!(stream.is_terminated(), "terminal frame should end stream");
+        assert_eq!(stream.events.latest_seq(), 2, "both frames recorded");
+
+        let summary = stream.summary();
+        assert_eq!(summary.kind, StreamKind::ChatTurn);
+        assert!(summary.terminated);
+        assert_eq!(summary.latest_seq, 2);
+    }
+
+    #[tokio::test]
+    async fn register_receiver_lists_and_filters_by_scope() {
+        let registry = Arc::new(LiveStreamRegistry {
+            inner: DashMap::new(),
+            stream_capacity: 64,
+            ttl: Duration::from_secs(300),
+        });
+        let (tx1, _r1) = broadcast::channel::<HarnessOutbound>(16);
+        let (tx2, _r2) = broadcast::channel::<HarnessOutbound>(16);
+        let s1 = registry.register_receiver(
+            StreamKind::ChatTurn,
+            StreamScope {
+                user_id: Some("u1".to_string()),
+                project_id: Some("p1".to_string()),
+                session_id: Some("sess-a".to_string()),
+                ..Default::default()
+            },
+            tx1.subscribe(),
+            None,
+        );
+        let _s2 = registry.register_receiver(
+            StreamKind::ChatTurn,
+            StreamScope {
+                user_id: Some("u2".to_string()),
+                project_id: Some("p1".to_string()),
+                session_id: Some("sess-b".to_string()),
+                ..Default::default()
+            },
+            tx2.subscribe(),
+            None,
+        );
+
+        let mine = registry.list_for_scope("u1", None, None);
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].attach_id, s1.attach_id);
+
+        let mine_p2 = registry.list_for_scope("u1", Some("p2"), None);
+        assert!(mine_p2.is_empty(), "project filter excludes p1 stream");
+    }
+
+    /// The unowned-receiver path's `cancel()` must additionally forward
+    /// `HarnessInbound::Cancel` over the stored command channel (the
+    /// owned-session path relies on dropping the session instead).
+    #[tokio::test]
+    async fn register_receiver_cancel_forwards_harness_cancel() {
+        let registry = Arc::new(LiveStreamRegistry {
+            inner: DashMap::new(),
+            stream_capacity: 64,
+            ttl: Duration::from_secs(300),
+        });
+        let (events_tx, _rx0) = broadcast::channel::<HarnessOutbound>(16);
+        let (commands_tx, mut commands_rx) = mpsc::channel(4);
+        let stream = registry.register_receiver(
+            StreamKind::ChatTurn,
+            StreamScope::default(),
+            events_tx.subscribe(),
+            Some(commands_tx),
+        );
+
+        stream.cancel();
+
+        let observed = tokio::time::timeout(Duration::from_millis(200), commands_rx.recv())
+            .await
+            .expect("cancel should forward a command before timeout")
+            .expect("commands_tx still open");
+        assert!(
+            matches!(observed, HarnessInbound::Cancel),
+            "cancel must forward HarnessInbound::Cancel, got {observed:?}",
+        );
+
+        // The forwarder also observes the cancellation token and marks
+        // the stream terminal with a synthetic frame.
+        for _ in 0..50 {
+            if stream.is_terminated() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(stream.is_terminated(), "cancel should mark the stream terminal");
     }
 }
