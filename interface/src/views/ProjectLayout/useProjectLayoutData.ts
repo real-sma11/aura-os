@@ -13,6 +13,7 @@ import {
   projectQueryKeys,
   type ProjectLayoutBundle,
 } from "../../queries/project-queries";
+import { isTaskStatus } from "../../shared/utils/task-display-status";
 import { useProjectRegister } from "../../stores/project-action-store";
 import { useEventStore } from "../../stores/event-store/index";
 import { useSidekickStore } from "../../stores/sidekick-store";
@@ -150,6 +151,24 @@ export function useProjectLayoutData(): ProjectLayoutData {
         queryClient.setQueryData<ProjectLayoutBundle | undefined>(
           projectQueryKeys.layout(projectId),
           (current) => patchTaskStatusInProjectLayout(current, taskId, { status: "failed" }),
+        );
+      }),
+      // Tool-driven transitions (`transition_task` / `update_task`) used by
+      // the dev automation loop emit only a `task_updated` status edge — never
+      // a harness `task_completed` / `task_failed` lifecycle event. This hook
+      // stays mounted for the whole project regardless of the active sidekick
+      // tab, so patching the layout cache here keeps `initialTasks` (and thus
+      // the Tasks tab checkmarks on its next mount) authoritative even when the
+      // user is watching the Run tab. `useTaskListData` consumes the same edge
+      // for the live list while the Tasks tab is open.
+      subscribe(EventType.TaskUpdated, (e) => {
+        if (e.project_id !== projectId) return;
+        const { task_id, status } = e.content;
+        if (!task_id || !status?.to || !isTaskStatus(status.to)) return;
+        const nextStatus = status.to;
+        queryClient.setQueryData<ProjectLayoutBundle | undefined>(
+          projectQueryKeys.layout(projectId),
+          (current) => patchTaskStatusInProjectLayout(current, task_id, { status: nextStatus }),
         );
       }),
       subscribe(EventType.TaskBecameReady, (e) => {

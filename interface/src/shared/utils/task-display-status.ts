@@ -1,5 +1,22 @@
 import type { Task, TaskStatus } from "../types";
 
+const TASK_STATUS_VALUES: ReadonlySet<string> = new Set<TaskStatus>([
+  "backlog",
+  "to_do",
+  "pending",
+  "ready",
+  "in_progress",
+  "blocked",
+  "done",
+  "failed",
+]);
+
+// Narrow a `task_updated` wire `status.to` string (a serialized Rust
+// `TaskStatus`) to the frontend `TaskStatus` union before applying it.
+export function isTaskStatus(value: string): value is TaskStatus {
+  return TASK_STATUS_VALUES.has(value);
+}
+
 /**
  * Toggleable runtime debug logger for `getTaskDisplayStatus`. Off by
  * default; flip on from devtools with

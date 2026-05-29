@@ -7,6 +7,7 @@ import { useEventStore } from "../../stores/event-store/index";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useLiveTaskIdsForProject } from "../../stores/live-task-ids-store";
 import { useLoopActive } from "../../hooks/use-loop-active";
+import { isTaskStatus } from "../../shared/utils/task-display-status";
 import { mergeById, compareSpecs } from "../../utils/collections";
 
 interface TaskListData {
@@ -26,23 +27,6 @@ function upsertSpec(prev: Spec[], spec: Spec): Spec[] {
 
 function isTerminalTaskStatus(status: TaskStatus | undefined): boolean {
   return status === "done" || status === "failed";
-}
-
-const TASK_STATUS_VALUES: ReadonlySet<string> = new Set<TaskStatus>([
-  "backlog",
-  "to_do",
-  "pending",
-  "ready",
-  "in_progress",
-  "blocked",
-  "done",
-  "failed",
-]);
-
-// Narrow a `task_updated` wire `status.to` string (a serialized Rust
-// `TaskStatus`) to the frontend `TaskStatus` union before applying it.
-function isTaskStatus(value: string): value is TaskStatus {
-  return TASK_STATUS_VALUES.has(value);
 }
 
 // Merge an incoming task snapshot without allowing it to downgrade a task that
