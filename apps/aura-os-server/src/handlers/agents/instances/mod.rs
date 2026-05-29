@@ -288,6 +288,18 @@ pub(crate) async fn list_agent_instances(
 
     let project = state.project_service.get_project(&project_id).ok();
 
+    // System-minted `Loop` / `Executor` bindings are infrastructure and
+    // must never surface in the projects sidebar. The frontend's
+    // `isUserFacingAgentInstance` filter relies on `instance_role` /
+    // `source`, but `aura-storage` may strip those columns on read,
+    // letting ephemeral executor rows leak through as role-defaulted
+    // Chat rows that pile up on every dev run. Exclude them here using
+    // the storage-independent local ledger so the filter holds
+    // regardless of what storage echoes back.
+    let system_instance_ids = state
+        .agent_instance_service
+        .system_instance_ids(&project_id);
+
     let instances: Vec<AgentInstance> = storage_agents
         .iter()
         .map(|spa| {
@@ -296,6 +308,7 @@ pub(crate) async fn list_agent_instances(
             attach_workspace_path(&state, &project_id, project.as_ref(), &mut instance);
             instance
         })
+        .filter(|instance| !system_instance_ids.contains(&instance.agent_instance_id))
         .collect();
     Ok(Json(instances))
 }

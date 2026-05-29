@@ -5,6 +5,7 @@
 //!   2. Config from aura-network (agent template; name, role, personality, etc.) when available
 //!   3. Volatile runtime state from in-memory map (current_task_id, current_session_id)
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use aura_os_core::{
@@ -22,11 +23,25 @@ use crate::merge::merge_agent_instance;
 use crate::service::AgentService;
 use crate::RuntimeAgentStateMap;
 
+/// Settings key holding the storage-independent ledger of
+/// system-minted (`Loop` / `Executor`) instance IDs. See
+/// [`AgentInstanceService::record_system_instance`].
+const SYSTEM_INSTANCE_LEDGER_KEY: &str = "dev_loop/system_instances";
+
+/// Ledger payload: `instance_id -> (project_id, instance_role wire str)`.
+/// Stored as plain std types so the crate needs no direct `serde`
+/// dependency (the impls come transitively via `serde_json`).
+type SystemInstanceLedger = HashMap<String, (String, String)>;
+
 pub struct AgentInstanceService {
     store: Arc<SettingsStore>,
     storage_client: Option<Arc<StorageClient>>,
     network_client: Option<Arc<aura_os_network::NetworkClient>>,
     runtime_state: RuntimeAgentStateMap,
+    /// Serializes read-modify-write cycles on the system-instance
+    /// ledger so concurrent task runs don't clobber each other's
+    /// entries.
+    system_ledger_lock: tokio::sync::Mutex<()>,
 }
 
 impl AgentInstanceService {
@@ -41,6 +56,7 @@ impl AgentInstanceService {
             storage_client,
             network_client,
             runtime_state,
+            system_ledger_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -56,6 +72,96 @@ impl AgentInstanceService {
 
     fn agent_service(&self) -> AgentService {
         AgentService::new(self.store.clone(), self.network_client.clone())
+    }
+
+    /// Load the system-instance ledger from local settings. A missing
+    /// key (first run) or a corrupt blob degrades to an empty ledger
+    /// rather than erroring, so a flaky local store never blocks a run.
+    fn load_system_instance_ledger(&self) -> SystemInstanceLedger {
+        match self.store.get_setting(SYSTEM_INSTANCE_LEDGER_KEY) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+                tracing::warn!(%error, "system-instance ledger is corrupt; treating as empty");
+                SystemInstanceLedger::new()
+            }),
+            Err(aura_os_store::StoreError::NotFound(_)) => SystemInstanceLedger::new(),
+            Err(error) => {
+                tracing::warn!(%error, "failed to read system-instance ledger; treating as empty");
+                SystemInstanceLedger::new()
+            }
+        }
+    }
+
+    fn save_system_instance_ledger(&self, ledger: &SystemInstanceLedger) {
+        match serde_json::to_vec(ledger) {
+            Ok(bytes) => {
+                if let Err(error) = self.store.put_setting(SYSTEM_INSTANCE_LEDGER_KEY, &bytes) {
+                    tracing::warn!(%error, "failed to persist system-instance ledger");
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, "failed to serialize system-instance ledger");
+            }
+        }
+    }
+
+    /// Record a system-minted (`Loop` / `Executor`) binding so cleanup
+    /// and the projects-sidebar filter can identify it even when
+    /// `aura-storage` strips the `instance_role` / `source` columns on
+    /// `list_project_agents` responses. `Chat` rows are never recorded.
+    /// Best-effort: ledger failures only warn so they can't fail a run.
+    pub async fn record_system_instance(
+        &self,
+        project_id: &ProjectId,
+        agent_instance_id: &AgentInstanceId,
+        role: AgentInstanceRole,
+    ) {
+        if role == AgentInstanceRole::Chat {
+            return;
+        }
+        let _guard = self.system_ledger_lock.lock().await;
+        let mut ledger = self.load_system_instance_ledger();
+        ledger.insert(
+            agent_instance_id.to_string(),
+            (project_id.to_string(), role.as_wire_str().to_string()),
+        );
+        self.save_system_instance_ledger(&ledger);
+    }
+
+    /// Drop a binding from the system-instance ledger once its storage
+    /// row has been deleted (or confirmed gone). No-op for IDs that
+    /// were never recorded.
+    async fn forget_system_instance(&self, agent_instance_id: &AgentInstanceId) {
+        let key = agent_instance_id.to_string();
+        let _guard = self.system_ledger_lock.lock().await;
+        let mut ledger = self.load_system_instance_ledger();
+        if ledger.remove(&key).is_some() {
+            self.save_system_instance_ledger(&ledger);
+        }
+    }
+
+    /// IDs of every ledger-tracked system instance for a project,
+    /// regardless of role. Used to hide infrastructure rows from the
+    /// project sidebar even when storage stripped their provenance.
+    pub fn system_instance_ids(&self, project_id: &ProjectId) -> HashSet<AgentInstanceId> {
+        let target = project_id.to_string();
+        self.load_system_instance_ledger()
+            .into_iter()
+            .filter(|(_, (pid, _))| *pid == target)
+            .filter_map(|(id, _)| id.parse::<AgentInstanceId>().ok())
+            .collect()
+    }
+
+    /// IDs of ledger-tracked `Executor` instances for a project. These
+    /// are the ephemeral rows minted per ad-hoc task run that the
+    /// startup janitor must reclaim by ID (storage-independent).
+    fn ledger_executor_ids(&self, project_id: &ProjectId) -> Vec<AgentInstanceId> {
+        let target = project_id.to_string();
+        let executor_wire = AgentInstanceRole::Executor.as_wire_str();
+        self.load_system_instance_ledger()
+            .into_iter()
+            .filter(|(_, (pid, role))| *pid == target && role == executor_wire)
+            .filter_map(|(id, _)| id.parse::<AgentInstanceId>().ok())
+            .collect()
     }
 
     /// Resolve agent config from aura-network only. Returns None if
@@ -188,12 +294,33 @@ impl AgentInstanceService {
     /// run. Best-effort: row-level delete failures are logged and
     /// skipped so one transient storage error does not poison the
     /// whole sweep.
+    ///
+    /// Drains the local ledger first, deleting each tracked ephemeral
+    /// executor by ID. This reclaims orphans even when `aura-storage`
+    /// stripped the `instance_role` column on read (which would
+    /// otherwise hide them from the role-based scan below). The scan is
+    /// kept as a secondary pass for rows that storage *does* echo but
+    /// that predate the ledger.
     pub async fn purge_executor_instances_in_project(
         &self,
         project_id: &ProjectId,
     ) -> Result<usize, AgentError> {
-        let instances = self.list_instances(project_id).await?;
         let mut purged = 0usize;
+        for ledger_id in self.ledger_executor_ids(project_id) {
+            match self.delete_instance(&ledger_id).await {
+                Ok(()) | Err(AgentError::NotFound) => purged += 1,
+                Err(error) => {
+                    tracing::warn!(
+                        agent_instance_id = %ledger_id,
+                        project_id = %project_id,
+                        %error,
+                        "purge_executor_instances: failed to delete ledger-tracked executor row"
+                    );
+                }
+            }
+        }
+
+        let instances = self.list_instances(project_id).await?;
         for inst in instances
             .iter()
             .filter(|i| i.instance_role == AgentInstanceRole::Executor)
@@ -270,6 +397,12 @@ impl AgentInstanceService {
         // Older storage backends may not echo unknown columns yet; keep
         // the explicit role requested by this caller.
         instance.instance_role = role;
+        // Record Loop / Executor rows in the local ledger so the
+        // sidebar filter and the startup janitor can still identify
+        // them after storage drops the `instance_role` / `source`
+        // columns on subsequent `list_project_agents` reads.
+        self.record_system_instance(project_id, &instance.agent_instance_id, role)
+            .await;
         Ok(instance)
     }
 
@@ -343,15 +476,21 @@ impl AgentInstanceService {
     ) -> Result<(), AgentError> {
         let storage = self.require_storage()?;
         let jwt = self.get_jwt()?;
-        storage
+        let outcome = storage
             .delete_project_agent(&agent_instance_id.to_string(), &jwt)
             .await
             .map_err(|e| match &e {
                 aura_os_storage::StorageError::Server { status: 404, .. } => AgentError::NotFound,
                 _ => AgentError::Storage(e),
-            })?;
+            });
         self.runtime_state.lock().await.remove(agent_instance_id);
-        Ok(())
+        // Drop the ledger entry once the row is gone (deleted now, or
+        // already absent). A hard storage error keeps the entry so a
+        // later janitor sweep retries.
+        if matches!(outcome, Ok(()) | Err(AgentError::NotFound)) {
+            self.forget_system_instance(agent_instance_id).await;
+        }
+        outcome
     }
 
     pub async fn start_working(

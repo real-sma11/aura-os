@@ -77,3 +77,99 @@ fn pick_loop_template_prefers_chat_and_skips_executor() {
 fn pick_loop_template_returns_none_for_empty_slice() {
     assert!(pick_loop_template_from_instances(&[]).is_none());
 }
+
+fn service_with_temp_store() -> (AgentInstanceService, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let store = Arc::new(SettingsStore::open(dir.path()).expect("open settings store"));
+    let runtime: RuntimeAgentStateMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    (AgentInstanceService::new(store, None, runtime, None), dir)
+}
+
+#[tokio::test]
+async fn ledger_records_loop_and_executor_but_not_chat() {
+    let (svc, _dir) = service_with_temp_store();
+    let project = ProjectId::new();
+    let executor = AgentInstanceId::new();
+    let loop_id = AgentInstanceId::new();
+    let chat = AgentInstanceId::new();
+
+    svc.record_system_instance(&project, &executor, AgentInstanceRole::Executor)
+        .await;
+    svc.record_system_instance(&project, &loop_id, AgentInstanceRole::Loop)
+        .await;
+    // Chat rows are user-facing and must never be ledgered.
+    svc.record_system_instance(&project, &chat, AgentInstanceRole::Chat)
+        .await;
+
+    let ids = svc.system_instance_ids(&project);
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&executor));
+    assert!(ids.contains(&loop_id));
+    assert!(!ids.contains(&chat));
+
+    // Only the executor is a reclaimable ephemeral row; the loop is
+    // persistent and must not be swept.
+    assert_eq!(svc.ledger_executor_ids(&project), vec![executor]);
+}
+
+#[tokio::test]
+async fn ledger_is_scoped_per_project() {
+    let (svc, _dir) = service_with_temp_store();
+    let project_a = ProjectId::new();
+    let project_b = ProjectId::new();
+    let exec_a = AgentInstanceId::new();
+    let exec_b = AgentInstanceId::new();
+
+    svc.record_system_instance(&project_a, &exec_a, AgentInstanceRole::Executor)
+        .await;
+    svc.record_system_instance(&project_b, &exec_b, AgentInstanceRole::Executor)
+        .await;
+
+    let ids_a = svc.system_instance_ids(&project_a);
+    assert!(ids_a.contains(&exec_a));
+    assert!(!ids_a.contains(&exec_b));
+    assert_eq!(svc.ledger_executor_ids(&project_b), vec![exec_b]);
+}
+
+#[tokio::test]
+async fn ledger_forget_removes_only_the_target_entry() {
+    let (svc, _dir) = service_with_temp_store();
+    let project = ProjectId::new();
+    let executor = AgentInstanceId::new();
+    let loop_id = AgentInstanceId::new();
+
+    svc.record_system_instance(&project, &executor, AgentInstanceRole::Executor)
+        .await;
+    svc.record_system_instance(&project, &loop_id, AgentInstanceRole::Loop)
+        .await;
+
+    svc.forget_system_instance(&executor).await;
+
+    let ids = svc.system_instance_ids(&project);
+    assert!(!ids.contains(&executor));
+    assert!(ids.contains(&loop_id));
+
+    // Forgetting an untracked id is a no-op and must not error.
+    svc.forget_system_instance(&AgentInstanceId::new()).await;
+    assert_eq!(svc.system_instance_ids(&project).len(), 1);
+}
+
+#[tokio::test]
+async fn ledger_survives_reload_from_disk() {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let project = ProjectId::new();
+    let executor = AgentInstanceId::new();
+    {
+        let store = Arc::new(SettingsStore::open(dir.path()).expect("open store"));
+        let runtime: RuntimeAgentStateMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let svc = AgentInstanceService::new(store, None, runtime, None);
+        svc.record_system_instance(&project, &executor, AgentInstanceRole::Executor)
+            .await;
+    }
+    // Re-open the store: the ledger is persisted, so a server restart
+    // (which is what orphans dev-run executors) can still identify it.
+    let store = Arc::new(SettingsStore::open(dir.path()).expect("reopen store"));
+    let runtime: RuntimeAgentStateMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let svc = AgentInstanceService::new(store, None, runtime, None);
+    assert!(svc.system_instance_ids(&project).contains(&executor));
+}

@@ -18,9 +18,29 @@
 mod common;
 
 use aura_os_storage::CreateProjectAgentRequest;
+use axum::http::StatusCode;
 use common::*;
+use tower::ServiceExt;
 
 const JWT: &str = "test-token";
+
+fn make_agent_req(role: Option<&str>, name: &str) -> CreateProjectAgentRequest {
+    CreateProjectAgentRequest {
+        agent_id: uuid::Uuid::new_v4().to_string(),
+        name: name.into(),
+        org_id: None,
+        role: Some("developer".into()),
+        personality: None,
+        system_prompt: None,
+        skills: None,
+        icon: None,
+        harness: None,
+        instance_role: role.map(str::to_string),
+        source: None,
+        permissions: None,
+        intent_classifier: None,
+    }
+}
 
 #[tokio::test]
 async fn purge_executor_instances_keeps_persistent_roles_alive() {
@@ -111,4 +131,124 @@ async fn purge_executor_instances_is_idempotent_on_empty_project() {
         .await
         .expect("empty-project sweep should not error");
     assert_eq!(purged, 0);
+}
+
+#[tokio::test]
+async fn purge_reclaims_ledger_executor_even_when_storage_reports_chat() {
+    // Reproduces the dev-run pileup: storage dropped the `instance_role`
+    // column, so an ephemeral executor row comes back looking like a
+    // plain Chat row. The role-based scan can't see it; only the local
+    // ledger can. The janitor must still reclaim it while leaving a
+    // genuine Chat row untouched.
+    let (_app, state, storage, _db) = build_test_app_with_storage().await;
+    let project_id = uuid::Uuid::new_v4().to_string();
+    let pid: aura_os_core::ProjectId = project_id.parse().expect("parseable project id");
+
+    let chat = storage
+        .create_project_agent(&project_id, JWT, &make_agent_req(Some("chat"), "Real Chat"))
+        .await
+        .expect("seed chat instance");
+    let ghost = storage
+        .create_project_agent(
+            &project_id,
+            JWT,
+            // No `instance_role` / `source`: storage stripped them.
+            &make_agent_req(None, "Summarize This Me"),
+        )
+        .await
+        .expect("seed stripped executor");
+    let ghost_id: aura_os_core::AgentInstanceId = ghost.id.parse().expect("parseable ghost id");
+
+    state
+        .agent_instance_service
+        .record_system_instance(&pid, &ghost_id, aura_os_core::AgentInstanceRole::Executor)
+        .await;
+
+    let purged = state
+        .agent_instance_service
+        .purge_executor_instances_in_project(&pid)
+        .await
+        .expect("ledger-driven purge should succeed");
+    assert_eq!(
+        purged, 1,
+        "the ledger-tracked executor must be reclaimed even though storage reports it as Chat"
+    );
+
+    let remaining = storage
+        .list_project_agents(&project_id, JWT)
+        .await
+        .expect("list survivors")
+        .into_iter()
+        .map(|spa| spa.id)
+        .collect::<Vec<_>>();
+    assert!(
+        remaining.contains(&chat.id),
+        "a real chat row must survive the ledger sweep"
+    );
+    assert!(
+        !remaining.contains(&ghost.id),
+        "the stripped executor row must be deleted via the ledger"
+    );
+    assert!(
+        state
+            .agent_instance_service
+            .system_instance_ids(&pid)
+            .is_empty(),
+        "the ledger entry must be cleared once its row is deleted"
+    );
+}
+
+#[tokio::test]
+async fn list_agent_instances_excludes_ledger_tracked_system_rows() {
+    // Even before cleanup runs, the list endpoint must hide ledgered
+    // infrastructure rows so they never render in the projects sidebar,
+    // regardless of whether storage echoed `instance_role` / `source`.
+    let (app, state, storage, _db) = build_test_app_with_storage().await;
+    let project_id = uuid::Uuid::new_v4().to_string();
+    let pid: aura_os_core::ProjectId = project_id.parse().expect("parseable project id");
+
+    storage
+        .create_project_agent(&project_id, JWT, &make_agent_req(Some("chat"), "Real Chat"))
+        .await
+        .expect("seed chat instance");
+    let ghost = storage
+        .create_project_agent(
+            &project_id,
+            JWT,
+            &make_agent_req(None, "Summarize This Me"),
+        )
+        .await
+        .expect("seed stripped executor");
+    let ghost_id: aura_os_core::AgentInstanceId = ghost.id.parse().expect("parseable ghost id");
+    state
+        .agent_instance_service
+        .record_system_instance(&pid, &ghost_id, aura_os_core::AgentInstanceRole::Executor)
+        .await;
+
+    let response = app
+        .oneshot(json_request(
+            "GET",
+            &format!("/api/projects/{project_id}/agents"),
+            None,
+        ))
+        .await
+        .expect("list request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_json(response).await;
+    let names: Vec<String> = body
+        .as_array()
+        .expect("list returns an array")
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(|n| n.as_str()).map(String::from))
+        .collect();
+
+    assert!(
+        names.iter().any(|n| n == "Real Chat"),
+        "the genuine chat agent must remain visible: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n == "Summarize This Me"),
+        "the ledger-tracked executor must be filtered from the sidebar list: {names:?}"
+    );
 }
