@@ -6,11 +6,15 @@ use std::sync::Arc;
 
 use aura_os_core::{AgentId, AgentInstanceId, ProjectId};
 use aura_os_storage::StorageClient;
+use chrono::{DateTime, Utc};
+use futures_util::future::join_all;
 use tracing::{info, warn};
 
 use crate::state::AppState;
 
-use super::super::discovery::{find_matching_project_agents, invalidate_agent_discovery_cache};
+use super::super::discovery::{
+    find_matching_project_agents, invalidate_agent_discovery_cache, storage_session_sort_key,
+};
 use super::super::persist::{
     resolve_chat_session_with_pin, ChatPersistCtx, ChatPersistRequest, ChatSessionResolveDeps,
     ForkInfo,
@@ -139,7 +143,27 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     request: &ChatPersistRequest<'_>,
     deps: &ChatSessionResolveDeps<'_>,
 ) -> Option<(ChatPersistCtx, Option<ForkInfo>)> {
-    let (pai, pid) = if let Some(pa) = matching.first() {
+    // Choose which project binding this write lands on.
+    //
+    // For an unpinned write (no `session_id`, not `force_new`) we must
+    // mirror the UI's default-session selection, which picks the
+    // globally most-recent session across *all* of the agent's bindings
+    // (`findMostRecentRealSession` / `sortSessionsDesc` in
+    // `interface/src/stores/sessions-list-store.ts`). The historical
+    // `matching.first()` pick used project-list order instead, so a
+    // cross-agent `send_to_agent` delivery (which never carries a
+    // `session_id`) could persist onto a different binding than the one
+    // the recipient's chat panel opens — the message saved
+    // (`x-aura-chat-persisted: true`) yet the panel rendered empty. A
+    // pinned/force_new write already names its session, so it keeps the
+    // first-binding behavior (the pin is resolved per-binding downstream).
+    let selected = if !request.force_new && request.pinned_session_id.is_none() {
+        select_write_binding(storage, request.jwt, matching).await
+    } else {
+        matching.first()
+    };
+
+    let (pai, pid) = if let Some(pa) = selected {
         let pid = pa.project_id.clone().unwrap_or_default();
         if pid.is_empty() {
             warn!(%agent_id, "No project_id for agent; skipping chat persistence");
@@ -149,6 +173,7 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
             %agent_id,
             project_agent_id = %pa.id,
             %pid,
+            binding_count = matching.len(),
             "agent chat persistence: matched existing project agent"
         );
         (pa.id.clone(), pid)
@@ -194,6 +219,70 @@ pub(crate) async fn setup_agent_chat_persistence_with_matched(
     ))
 }
 
+/// Pick the project binding an unpinned write should land on: the one
+/// that owns the globally most-recent session across all of the agent's
+/// bindings. This is the server-side mirror of the UI default-session
+/// redirect, so a writer (notably the cross-agent reply/delivery path)
+/// and the reader can never diverge onto different bindings.
+///
+/// Single binding (or none) needs no disambiguation and skips the
+/// extra `list_sessions` fan-out. If no binding has any session yet,
+/// fall back to the first binding so a brand-new agent still self-heals
+/// by creating its first session there (matching the prior behavior).
+async fn select_write_binding<'a>(
+    storage: &Arc<StorageClient>,
+    jwt: &str,
+    matching: &'a [aura_os_storage::StorageProjectAgent],
+) -> Option<&'a aura_os_storage::StorageProjectAgent> {
+    if matching.len() <= 1 {
+        return matching.first();
+    }
+
+    let futs: Vec<_> = matching
+        .iter()
+        .map(|pa| storage.list_sessions(&pa.id, jwt))
+        .collect();
+    let keys: Vec<Option<DateTime<Utc>>> = join_all(futs)
+        .await
+        .into_iter()
+        .zip(matching.iter())
+        .map(|(result, pa)| match result {
+            Ok(sessions) => sessions.iter().map(storage_session_sort_key).max(),
+            Err(e) => {
+                warn!(
+                    project_agent_id = %pa.id,
+                    error = %e,
+                    "select_write_binding: failed to list sessions; binding treated as empty"
+                );
+                None
+            }
+        })
+        .collect();
+
+    let index = pick_newest_binding_index(&keys).unwrap_or(0);
+    matching.get(index).or_else(|| matching.first())
+}
+
+/// Pure helper: given each binding's newest-session recency key (or
+/// `None` when a binding has no sessions), return the index of the
+/// binding with the most-recent session. Ties resolve to the earliest
+/// index, so the choice stays stable and matches the legacy
+/// `matching.first()` pick when recency is indistinguishable. Returns
+/// `None` only when every binding is empty.
+fn pick_newest_binding_index(keys: &[Option<DateTime<Utc>>]) -> Option<usize> {
+    let mut best: Option<(usize, DateTime<Utc>)> = None;
+    for (i, key) in keys.iter().enumerate() {
+        if let Some(key) = key {
+            match best {
+                // `>=` keeps the earlier index on ties.
+                Some((_, best_key)) if best_key >= *key => {}
+                _ => best = Some((i, *key)),
+            }
+        }
+    }
+    best.map(|(index, _)| index)
+}
+
 #[cfg(test)]
 mod tests {
     //! Pin down the precondition that motivates the lazy
@@ -211,8 +300,47 @@ mod tests {
     use aura_os_storage::testutil::start_mock_storage;
     use aura_os_storage::{StorageClient, StorageProjectAgent};
 
+    use chrono::{DateTime, TimeZone, Utc};
+
     use super::super::super::persist::{ChatPersistRequest, ChatSessionResolveDeps};
-    use super::setup_agent_chat_persistence_with_matched;
+    use super::{pick_newest_binding_index, setup_agent_chat_persistence_with_matched};
+
+    fn ts(secs: i64) -> Option<DateTime<Utc>> {
+        Some(Utc.timestamp_opt(secs, 0).unwrap())
+    }
+
+    /// The cross-agent empty-chat bug: an unpinned write must land on
+    /// the binding owning the globally newest session, not the first
+    /// binding by project-list order. This pins the selection that
+    /// `select_write_binding` feeds into `setup_agent_chat_persistence_*`.
+    #[test]
+    fn picks_binding_with_globally_newest_session() {
+        // Binding 1 owns the newest session even though binding 0 is first.
+        assert_eq!(
+            pick_newest_binding_index(&[ts(100), ts(200), ts(150)]),
+            Some(1),
+        );
+    }
+
+    #[test]
+    fn newest_binding_ties_resolve_to_earliest_index() {
+        // On a recency tie the earliest binding wins, matching the
+        // legacy `matching.first()` behavior so we never reshuffle a
+        // stable single-newest pick.
+        assert_eq!(pick_newest_binding_index(&[ts(200), ts(200)]), Some(0));
+    }
+
+    #[test]
+    fn newest_binding_skips_empty_bindings() {
+        // A binding with no sessions (None) must never outrank one that
+        // has a real session.
+        assert_eq!(pick_newest_binding_index(&[None, ts(50), None]), Some(1));
+    }
+
+    #[test]
+    fn newest_binding_all_empty_is_none() {
+        assert_eq!(pick_newest_binding_index(&[None, None]), None);
+    }
 
     #[tokio::test]
     async fn empty_matching_returns_none_so_chat_hot_path_must_self_heal() {

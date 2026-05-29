@@ -326,6 +326,20 @@ async fn run_cross_agent_reply_callback(
     };
 
     let status = response.status();
+    // Read the persistence verdict off the response headers *before*
+    // consuming the body in the error branch. The receiving handler
+    // sets `x-aura-chat-persisted: true` only once the reply's
+    // `user_message` actually lands in a resolvable session for the
+    // originating agent. A 2xx with `false`/missing means the POST was
+    // accepted but the reply was NOT stored — A's chat would silently
+    // show nothing, which is precisely the cross-agent failure mode
+    // this hardening is meant to surface.
+    let persisted = response
+        .headers()
+        .get(super::constants::HEADER_CHAT_PERSISTED)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == "true");
+
     if !status.is_success() {
         let body_preview = response
             .text()
@@ -340,6 +354,25 @@ async fn run_cross_agent_reply_callback(
             status = %status,
             body = %body_preview,
             "cross-agent reply callback failed"
+        );
+        return;
+    }
+
+    if persisted == Some(true) {
+        debug!(
+            target: "aura::cross_agent",
+            originating_agent_id = %originating_agent_id,
+            "cross-agent reply callback delivered and persisted into originating session"
+        );
+    } else {
+        warn!(
+            target: "aura::cross_agent",
+            originating_agent_id = %originating_agent_id,
+            status = %status,
+            persisted = ?persisted,
+            "cross-agent reply was accepted but the originating session did not persist it; \
+             the originating agent (A) likely has no resolvable project binding/session, so \
+             A's chat will not show B's reply. Check A's project binding / Home auto-bind."
         );
     }
 }
