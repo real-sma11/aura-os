@@ -28,6 +28,23 @@ function isTerminalTaskStatus(status: TaskStatus | undefined): boolean {
   return status === "done" || status === "failed";
 }
 
+const TASK_STATUS_VALUES: ReadonlySet<string> = new Set<TaskStatus>([
+  "backlog",
+  "to_do",
+  "pending",
+  "ready",
+  "in_progress",
+  "blocked",
+  "done",
+  "failed",
+]);
+
+// Narrow a `task_updated` wire `status.to` string (a serialized Rust
+// `TaskStatus`) to the frontend `TaskStatus` union before applying it.
+function isTaskStatus(value: string): value is TaskStatus {
+  return TASK_STATUS_VALUES.has(value);
+}
+
 // Merge an incoming task snapshot without allowing it to downgrade a task that
 // the client already knows is terminal (done/failed). Storage snapshots from
 // `task_saved` broadcasts or `listTasks` refetches can arrive after the client
@@ -173,6 +190,20 @@ export function useTaskListData(): TaskListData {
       subscribe(EventType.TaskFailed, (e) => {
         const { task_id } = e.content;
         if (task_id) updateTaskStatus(task_id, "failed");
+      }),
+      // Tool-driven transitions (`transition_task` / `update_task`)
+      // emit only a `task_updated` status edge — never a harness
+      // `task_completed` / `task_failed` lifecycle event. The dev loop
+      // marks tasks done this way, so without consuming the edge here
+      // the Tasks tab kept rendering the finished task as in-progress
+      // (its stored status stayed `in_progress` from `task_started`
+      // while `getTaskDisplayStatus` re-upgraded it via the not-yet-
+      // cleared live-task set) until a manual refetch.
+      subscribe(EventType.TaskUpdated, (e) => {
+        const { task_id, status } = e.content;
+        if (!task_id || !status?.to) return;
+        if (!isTaskStatus(status.to)) return;
+        updateTaskStatus(task_id, status.to);
       }),
       subscribe(EventType.FileOpsApplied, (e) => {
         const { task_id, files } = e.content;

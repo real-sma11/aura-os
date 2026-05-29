@@ -24,6 +24,7 @@ import {
   finalizeStream,
 } from "../hooks/stream/handlers";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
+import type { PanelTaskFailureContext } from "./task-output-panel-store";
 import { useAutomationLoopStore } from "./automation-loop-store";
 import { useTaskStatusStore } from "./task-status-store";
 import {
@@ -566,10 +567,64 @@ function snapshotTaskTurns(taskId: string, projectId?: string): void {
   persistTaskTurns(taskId, entry.events, projectId);
 }
 
+/**
+ * Shared "task finished successfully" tail. Finalizes the per-task
+ * stream, flips the Run pane row to `completed`, mirrors the status
+ * into the per-task status store, and snapshots the turn cache.
+ *
+ * Called from both the harness `task_completed` lifecycle handler and
+ * the tool-driven `task_updated` status-edge path (`in_progress ->
+ * done`), so a task marked done by an agent tool call updates the Run
+ * pane live instead of lingering "active" until a manual refetch runs
+ * `reconcileStatuses`. Idempotent: a later real `task_completed` for
+ * the same task re-runs these (already no-op) calls harmlessly.
+ */
+function finalizeRunPaneCompleted(taskId: string, projectId?: string): void {
+  const { refs, setters, abortRef } = contextForTask(taskId);
+  finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
+    reason: "completed",
+  });
+  isStreamingByTask.delete(taskId);
+  useTaskOutputPanelStore.getState().completeTask(taskId);
+  useTaskStatusStore.getState().setLiveStatus(taskId, "done");
+  snapshotTaskTurns(taskId, projectId);
+}
+
+/**
+ * Shared "task finished with failure" tail. Mirror of
+ * {@link finalizeRunPaneCompleted} for the failure edge — finalizes
+ * the stream with the failure reason, flips the Run pane row to
+ * `failed`, records the reason on both stores, and snapshots the turn
+ * cache. Reused by the `task_failed` lifecycle handler and the
+ * tool-driven `task_updated` (`in_progress -> failed`) path.
+ */
+function finalizeRunPaneFailed(
+  taskId: string,
+  reason: string | null,
+  context: PanelTaskFailureContext | undefined,
+  projectId: string | undefined,
+  progressText?: string,
+): void {
+  const { refs, setters, abortRef } = contextForTask(taskId);
+  finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
+    reason: "failed",
+    message: reason ?? undefined,
+    progressText,
+  });
+  isStreamingByTask.delete(taskId);
+  useTaskOutputPanelStore.getState().failTask(taskId, reason, context);
+  const status = useTaskStatusStore.getState();
+  status.setLiveStatus(taskId, "failed");
+  if (reason) {
+    status.setLiveFailReason(taskId, reason);
+  }
+  snapshotTaskTurns(taskId, projectId);
+}
+
 function handleTaskCompleted(e: AuraEventOfType<typeof EventType.TaskCompleted>): void {
   const taskId = e.content.task_id;
   if (!taskId) return;
-  const { refs, setters, abortRef } = contextForTask(taskId);
+  const { refs } = contextForTask(taskId);
   mergeBufferedOutput(taskId, refs.streamBuffer.current, e.project_id);
   // Inject the closing `in_progress -> done` block BEFORE finalize so
   // it lands inside the same assistant turn that finalizeStream snapshots
@@ -592,19 +647,13 @@ function handleTaskCompleted(e: AuraEventOfType<typeof EventType.TaskCompleted>)
       console.warn("synthetic transition block emit failed; lifecycle continues", err);
     }
   }
-  finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
-    reason: "completed",
-  });
-  isStreamingByTask.delete(taskId);
-  useTaskOutputPanelStore.getState().completeTask(taskId);
-  useTaskStatusStore.getState().setLiveStatus(taskId, "done");
-  snapshotTaskTurns(taskId, e.project_id);
+  finalizeRunPaneCompleted(taskId, e.project_id);
 }
 
 function handleTaskFailed(e: AuraEventOfType<typeof EventType.TaskFailed>): void {
   const taskId = e.content.task_id;
   if (!taskId) return;
-  const { refs, setters, abortRef } = contextForTask(taskId);
+  const { refs } = contextForTask(taskId);
   mergeBufferedOutput(taskId, refs.streamBuffer.current, e.project_id);
   // Mirror the fallback chain in `useTaskStatus`: some synthetic /
   // legacy failure payloads use `error` or `message` instead of the
@@ -665,24 +714,12 @@ function handleTaskFailed(e: AuraEventOfType<typeof EventType.TaskFailed>): void
       console.warn("synthetic transition block emit failed; lifecycle continues", err);
     }
   }
-  finalizeStream(refs, setters, abortRef, isStreamingByTask.get(taskId) ?? false, {
-    reason: "failed",
-    message: reason ?? undefined,
-    progressText,
-  });
-  isStreamingByTask.delete(taskId);
-  useTaskOutputPanelStore.getState().failTask(taskId, reason, failureContext);
-  // Mirror the status into the per-task status store. A `null`
-  // reason intentionally leaves the existing `liveFailReason`
-  // untouched (matching the panel store's behaviour) so a synthetic
-  // `task_failed` with no reason can't wipe out a real reason an
-  // earlier event already recorded.
-  const status = useTaskStatusStore.getState();
-  status.setLiveStatus(taskId, "failed");
-  if (reason) {
-    status.setLiveFailReason(taskId, reason);
-  }
-  snapshotTaskTurns(taskId, e.project_id);
+  // `finalizeRunPaneFailed` mirrors the status into the per-task status
+  // store. A `null` reason intentionally leaves the existing
+  // `liveFailReason` untouched (matching the panel store's behaviour)
+  // so a synthetic `task_failed` with no reason can't wipe out a reason
+  // an earlier event already recorded.
+  finalizeRunPaneFailed(taskId, reason, failureContext, e.project_id, progressText);
 }
 
 /**
@@ -758,6 +795,25 @@ function handleTaskUpdated(e: AuraEventOfType<typeof EventType.TaskUpdated>): vo
     // a manual refetch reloads the canonical row.
     if (statusEdge.to) {
       useTaskStatusStore.getState().setLiveStatus(taskId, statusEdge.to);
+      // Tool-driven transitions (`transition_task` / `update_task` HTTP
+      // handlers) emit ONLY a `task_updated` status edge — never a
+      // harness `task_completed` / `task_failed` lifecycle event. The
+      // dev loop marks tasks done this way, so without routing the
+      // terminal edge into the Run pane panel store the row stayed
+      // "active" (green-dot `ActiveTaskStream`) until a manual refresh
+      // ran `reconcileStatuses`. Only flip rows the pane already shows;
+      // `complete`/`failTask` are no-ops for unknown ids, and a real
+      // lifecycle event arriving later re-runs these idempotently.
+      const hasRow = useTaskOutputPanelStore
+        .getState()
+        .tasks.some((t) => t.taskId === taskId);
+      if (hasRow) {
+        if (statusEdge.to === "done") {
+          finalizeRunPaneCompleted(taskId, e.project_id);
+        } else if (statusEdge.to === "failed") {
+          finalizeRunPaneFailed(taskId, null, undefined, e.project_id);
+        }
+      }
     }
     // The lifecycle subscribers own status-edge blocks; skip the
     // synthetic update_task to avoid duplicate cards.
