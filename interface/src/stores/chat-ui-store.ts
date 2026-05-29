@@ -6,9 +6,12 @@ import {
   hasAgentScopedModel,
   loadPersistedImageModel,
   loadPersistedModel,
+  loadPersistedModelEffort,
   loadPersistedThreeDModel,
   loadPersistedVideoModel,
   persistModel,
+  persistModelEffort,
+  type ModelEffort,
 } from "../constants/models";
 import {
   AGENT_MODE_DESCRIPTORS,
@@ -57,6 +60,12 @@ export interface PinnedSourceImage {
 interface StreamState {
   selectedMode: AgentMode;
   selectedModel: string | null;
+  /**
+   * Reasoning effort applied to `selectedModel`. `null` when the model
+   * exposes no effort tiers; otherwise the persisted/default tier for
+   * that model.
+   */
+  selectedEffort: ModelEffort | null;
   projectId: string | null;
   pinnedSourceImage: PinnedSourceImage | null;
 }
@@ -84,8 +93,15 @@ interface ChatUIActions {
     model: string,
     adapterType?: string,
     agentId?: string,
+    effort?: ModelEffort,
   ) => void;
   getSelectedModel: (streamKey: string) => string | null;
+  /**
+   * Set just the reasoning effort for the current model (used by the
+   * effort flyout when the active model is already selected).
+   */
+  setSelectedEffort: (streamKey: string, effort: ModelEffort) => void;
+  getSelectedEffort: (streamKey: string) => ModelEffort | null;
   setProjectId: (streamKey: string, id: string | null) => void;
   syncAvailableModels: (
     streamKey: string,
@@ -135,6 +151,7 @@ const getStream = (state: ChatUIState, key: string): StreamState =>
   state.streams[key] ?? {
     selectedMode: DEFAULT_AGENT_MODE,
     selectedModel: null,
+    selectedEffort: null,
     projectId: null,
     pinnedSourceImage: null,
   };
@@ -178,26 +195,50 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         [streamKey]: {
           ...getStream(s, streamKey),
           selectedModel: model,
+          selectedEffort: loadPersistedModelEffort(model),
           selectedMode: mode,
         },
       },
     }));
   },
 
-  setSelectedModel: (streamKey, model, adapterType, agentId) => {
+  setSelectedModel: (streamKey, model, adapterType, agentId, effort) => {
     persistModel(model, adapterType, agentId);
+    if (effort) persistModelEffort(model, effort);
+    // An explicit effort wins; otherwise restore the model's persisted /
+    // default effort so switching models lands on a sensible tier.
+    const nextEffort = effort ?? loadPersistedModelEffort(model);
     void import("../lib/analytics").then(({ track }) =>
-      track("model_selected", { model_name: model }),
+      track("model_selected", { model_name: model, effort: nextEffort }),
     );
     set((s) => ({
       streams: {
         ...s.streams,
-        [streamKey]: { ...getStream(s, streamKey), selectedModel: model },
+        [streamKey]: {
+          ...getStream(s, streamKey),
+          selectedModel: model,
+          selectedEffort: nextEffort,
+        },
       },
     }));
   },
 
   getSelectedModel: (streamKey) => getStream(get(), streamKey).selectedModel,
+
+  setSelectedEffort: (streamKey, effort) => {
+    set((s) => {
+      const current = getStream(s, streamKey);
+      if (current.selectedModel) persistModelEffort(current.selectedModel, effort);
+      return {
+        streams: {
+          ...s.streams,
+          [streamKey]: { ...current, selectedEffort: effort },
+        },
+      };
+    });
+  },
+
+  getSelectedEffort: (streamKey) => getStream(get(), streamKey).selectedEffort,
 
   setProjectId: (streamKey, id) => {
     set((s) => ({
@@ -249,6 +290,7 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
             ...current,
             selectedMode: mode,
             selectedModel: nextModel,
+            selectedEffort: loadPersistedModelEffort(nextModel),
             pinnedSourceImage: nextPinned,
           },
         },
@@ -299,7 +341,11 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: persistedImage },
+            [streamKey]: {
+              ...current,
+              selectedModel: persistedImage,
+              selectedEffort: loadPersistedModelEffort(persistedImage),
+            },
           },
         };
       }
@@ -313,7 +359,11 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: persistedThreeD },
+            [streamKey]: {
+              ...current,
+              selectedModel: persistedThreeD,
+              selectedEffort: loadPersistedModelEffort(persistedThreeD),
+            },
           },
         };
       }
@@ -325,7 +375,11 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: persistedVideo },
+            [streamKey]: {
+              ...current,
+              selectedModel: persistedVideo,
+              selectedEffort: loadPersistedModelEffort(persistedVideo),
+            },
           },
         };
       }
@@ -349,7 +403,11 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
         return {
           streams: {
             ...s.streams,
-            [streamKey]: { ...current, selectedModel: persisted },
+            [streamKey]: {
+              ...current,
+              selectedModel: persisted,
+              selectedEffort: loadPersistedModelEffort(persisted),
+            },
           },
         };
       }
@@ -359,12 +417,15 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
       // The current selection isn't valid for this adapter; fall back to
       // the persisted value (possibly adapter-scoped) or the adapter
       // default.
+      const fallbackModel =
+        persisted || defaultModelForAdapter(adapterType, defaultModel);
       return {
         streams: {
           ...s.streams,
           [streamKey]: {
             ...current,
-            selectedModel: persisted || defaultModelForAdapter(adapterType, defaultModel),
+            selectedModel: fallbackModel,
+            selectedEffort: loadPersistedModelEffort(fallbackModel),
           },
         },
       };
@@ -437,11 +498,15 @@ export function useChatUI(streamKey: string) {
     (s) => s.streams[streamKey]?.selectedMode ?? DEFAULT_AGENT_MODE,
   );
   const selectedModel = useChatUIStore((s) => s.streams[streamKey]?.selectedModel ?? null);
+  const selectedEffort = useChatUIStore(
+    (s) => s.streams[streamKey]?.selectedEffort ?? null,
+  );
   const projectId = useChatUIStore((s) => s.streams[streamKey]?.projectId ?? null);
   const pinnedSourceImage = useChatUIStore(
     (s) => s.streams[streamKey]?.pinnedSourceImage ?? null,
   );
   const setSelectedModel = useChatUIStore((s) => s.setSelectedModel);
+  const setSelectedEffort = useChatUIStore((s) => s.setSelectedEffort);
   const setProjectId = useChatUIStore((s) => s.setProjectId);
   const setSelectedMode = useChatUIStore((s) => s.setSelectedMode);
   const setPinnedSourceImage = useChatUIStore((s) => s.setPinnedSourceImage);
@@ -450,10 +515,12 @@ export function useChatUI(streamKey: string) {
   return {
     selectedMode,
     selectedModel,
+    selectedEffort,
     projectId,
     pinnedSourceImage,
     setSelectedMode,
     setSelectedModel,
+    setSelectedEffort,
     setProjectId,
     setPinnedSourceImage,
     init,

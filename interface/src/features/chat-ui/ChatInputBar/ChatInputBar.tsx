@@ -20,7 +20,7 @@ import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useFileAttachments } from "./useFileAttachments";
-import type { GenerationMode } from "../../../constants/models";
+import type { GenerationMode, ModelEffort } from "../../../constants/models";
 import {
   availableModelsForAdapter,
   modelLabel,
@@ -39,6 +39,7 @@ import {
   InputBarShell,
   inputBarShellStyles,
   ModelPicker,
+  ModelMenuRow,
   ModeSelector,
   type InputBarShellHandle,
 } from "../../../components/InputBarShell";
@@ -247,10 +248,11 @@ export const DesktopChatInputBar = memo(
     const isStreaming = isChatStreaming || isExternallyBusy;
     const chatUI = useChatUI(streamKey);
     const selectedModel = chatUI.selectedModel;
+    const selectedEffort = chatUI.selectedEffort;
     const selectedMode = chatUI.selectedMode;
     const onModelChange = useCallback(
-      (model: string) => {
-        chatUI.setSelectedModel(streamKey, model, adapterType, agentId);
+      (model: string, effort?: ModelEffort) => {
+        chatUI.setSelectedModel(streamKey, model, adapterType, agentId, effort);
       },
       [chatUI.setSelectedModel, streamKey, adapterType, agentId],
     );
@@ -637,19 +639,16 @@ export const DesktopChatInputBar = memo(
               data-agent-proof="chat-model-picker-visible"
             >
               {featuredModels.map((m) => (
-                <button
+                <ModelMenuRow
                   key={m.id}
-                  type="button"
-                  className={`${inputBarShellStyles.modelMenuItem} ${m.id === selectedModel ? inputBarShellStyles.modelMenuItemActive : ""}`}
-                  data-agent-model-id={m.id}
-                  data-agent-model-label={m.label}
-                  onClick={() => {
-                    onModelChange(m.id);
+                  model={m}
+                  isActive={m.id === selectedModel}
+                  activeEffort={selectedEffort}
+                  onSelect={(id, effort) => {
+                    onModelChange(id, effort);
                     close();
                   }}
-                >
-                  {m.label}
-                </button>
+                />
               ))}
               {hiddenModels.length > 0 ? (
                 <button
@@ -677,19 +676,16 @@ export const DesktopChatInputBar = memo(
                       {providerLabel(provider)}
                     </div>
                     {providerModels.map((m) => (
-                      <button
+                      <ModelMenuRow
                         key={m.id}
-                        type="button"
-                        className={`${inputBarShellStyles.modelMenuItem} ${m.id === selectedModel ? inputBarShellStyles.modelMenuItemActive : ""}`}
-                        data-agent-model-id={m.id}
-                        data-agent-model-label={m.label}
-                        onClick={() => {
-                          onModelChange(m.id);
+                        model={m}
+                        isActive={m.id === selectedModel}
+                        activeEffort={selectedEffort}
+                        onSelect={(id, effort) => {
+                          onModelChange(id, effort);
                           close();
                         }}
-                      >
-                        {m.label}
-                      </button>
+                      />
                     ))}
                   </div>
                 ),
@@ -706,22 +702,18 @@ export const DesktopChatInputBar = memo(
             {sortedModelsForMode.map((m) => {
               const isComingSoon = m.id.startsWith("dreamina-seedance");
               return (
-              <button
-                key={m.id}
-                type="button"
-                disabled={isComingSoon}
-                className={`${inputBarShellStyles.modelMenuItem} ${m.id === selectedModel ? inputBarShellStyles.modelMenuItemActive : ""}`}
-                data-agent-model-id={m.id}
-                data-agent-model-label={m.label}
-                style={isComingSoon ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-                onClick={() => {
-                  if (isComingSoon) return;
-                  onModelChange(m.id);
-                  close();
-                }}
-              >
-                {m.label}{isComingSoon ? " (coming soon)" : ""}
-              </button>
+                <ModelMenuRow
+                  key={m.id}
+                  model={m}
+                  isActive={m.id === selectedModel}
+                  activeEffort={selectedEffort}
+                  disabled={isComingSoon}
+                  labelSuffix={isComingSoon ? " (coming soon)" : undefined}
+                  onSelect={(id, effort) => {
+                    onModelChange(id, effort);
+                    close();
+                  }}
+                />
               );
             })}
           </div>
@@ -733,6 +725,7 @@ export const DesktopChatInputBar = memo(
         featuredModels,
         hiddenModels,
         selectedModel,
+        selectedEffort,
         onModelChange,
         groupedExpandedModels,
         sortedModelsForMode,

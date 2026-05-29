@@ -21,6 +21,7 @@ import type {
 import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
 import {
   availableModelsForAdapter,
+  formatCreditMultiplier,
   getModelsForMode,
   modelLabel,
   modelProviderGroup,
@@ -461,7 +462,14 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               }}
             >
               <span>{model.label}</span>
-              <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
+              <span className={styles.modelMeta}>
+                {formatCreditMultiplier(model.creditMultiplier) ? (
+                  <span className={styles.modelMultiplier}>
+                    {formatCreditMultiplier(model.creditMultiplier)}
+                  </span>
+                ) : null}
+                <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -478,7 +486,14 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           }}
         >
           <span>{model.label}</span>
-          <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
+          <span className={styles.modelMeta}>
+            {formatCreditMultiplier(model.creditMultiplier) ? (
+              <span className={styles.modelMultiplier}>
+                {formatCreditMultiplier(model.creditMultiplier)}
+              </span>
+            ) : null}
+            <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
+          </span>
         </button>
       ));
 

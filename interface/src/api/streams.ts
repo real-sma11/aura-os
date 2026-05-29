@@ -3,6 +3,7 @@ import type {
   Spec,
   Task,
 } from "../shared/types";
+import { loadPersistedModelEffort } from "../constants/models";
 import type { AuraEvent } from "../shared/types/aura-events";
 import { EventType, isValidEventType, parseAuraEvent } from "../shared/types/aura-events";
 import { handleEngineEvent } from "../stores/event-store/engine-event-handlers";
@@ -301,7 +302,15 @@ export function sendAgentEventStream(
   clientRetryAttempt?: number,
 ) {
   const body: Record<string, unknown> = { content, action };
-  if (model) body.model = model;
+  if (model) {
+    body.model = model;
+    // Reasoning effort is persisted per-model by the picker's effort
+    // flyout, so we resolve it from the model id here rather than
+    // threading it through the whole send pipeline. Omitted for models
+    // that expose no effort tiers.
+    const effort = loadPersistedModelEffort(model);
+    if (effort) body.reasoning_effort = effort;
+  }
   if (attachments && attachments.length > 0) {
     body.attachments = attachments;
   }
@@ -525,7 +534,13 @@ export function sendEventStream(
   clientRetryAttempt?: number,
 ) {
   const body: Record<string, unknown> = { content, action };
-  if (model) body.model = model;
+  if (model) {
+    body.model = model;
+    // See `sendAgentEventStream` — effort is resolved from the persisted
+    // per-model selection rather than threaded through the send path.
+    const effort = loadPersistedModelEffort(model);
+    if (effort) body.reasoning_effort = effort;
+  }
   if (attachments && attachments.length > 0) {
     body.attachments = attachments;
   }

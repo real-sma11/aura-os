@@ -1,11 +1,56 @@
 export type GenerationMode = "chat" | "image" | "3d" | "video";
 
+/**
+ * Reasoning-effort tiers a model can expose in the picker's hover
+ * flyout. Ordered low -> high; `xhigh`/`max` map to the "XHigh"/"Max"
+ * labels in the reference design.
+ */
+export type ModelEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export const EFFORT_ORDER: ModelEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+export const EFFORT_LABELS: Record<ModelEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "XHigh",
+  max: "Max",
+};
+
 export interface ModelOption {
   id: string;
   label: string;
   tier: "opus" | "sonnet" | "haiku" | "gpt" | "image" | "3d" | "video";
   mode: GenerationMode;
+  /**
+   * Credit multiplier shown next to the model in the picker. `0` renders
+   * as "Free"; `undefined` renders no badge (e.g. image/3d/video models
+   * that are billed differently).
+   */
+  creditMultiplier?: number;
+  /**
+   * Reasoning-effort tiers selectable from the hover flyout. When set,
+   * the model row reveals an effort submenu; when omitted the row is a
+   * plain selectable entry.
+   */
+  efforts?: ModelEffort[];
+  /** Effort applied when the user has not explicitly picked one. */
+  defaultEffort?: ModelEffort;
 }
+
+const STANDARD_EFFORTS: ModelEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 export type ModelProviderGroup =
   | "aura"
@@ -37,68 +82,111 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "Sonnet 4.6",
     tier: "sonnet",
     mode: "chat",
+    creditMultiplier: 6,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-claude-opus-4-6",
     label: "Opus 4.6",
     tier: "opus",
     mode: "chat",
+    creditMultiplier: 8,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-claude-opus-4-8",
     label: "Opus 4.8",
     tier: "opus",
     mode: "chat",
+    creditMultiplier: 15,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-claude-opus-4-7",
     label: "Opus 4.7",
     tier: "opus",
     mode: "chat",
+    creditMultiplier: 40,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
-  { id: "aura-gpt-5-5", label: "GPT-5.5", tier: "gpt", mode: "chat" },
-  { id: "aura-gpt-5-4", label: "GPT-5.4", tier: "gpt", mode: "chat" },
+  {
+    id: "aura-gpt-5-5",
+    label: "GPT-5.5",
+    tier: "gpt",
+    mode: "chat",
+    creditMultiplier: 10,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
+  },
+  {
+    id: "aura-gpt-5-4",
+    label: "GPT-5.4",
+    tier: "gpt",
+    mode: "chat",
+    creditMultiplier: 5,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
+  },
   {
     id: "aura-gpt-5-4-mini",
     label: "GPT-5.4 mini",
     tier: "gpt",
     mode: "chat",
+    creditMultiplier: 1,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-gpt-5-4-nano",
     label: "GPT-5.4 nano",
     tier: "gpt",
     mode: "chat",
+    creditMultiplier: 0.5,
   },
   {
     id: "aura-kimi-k2-5",
     label: "Kimi K2.5",
     tier: "sonnet",
     mode: "chat",
+    creditMultiplier: 1,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-kimi-k2-6",
     label: "Kimi K2.6",
     tier: "sonnet",
     mode: "chat",
+    creditMultiplier: 2,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-deepseek-v4-pro",
     label: "DeepSeek V4 Pro",
     tier: "opus",
     mode: "chat",
+    creditMultiplier: 2,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     tier: "sonnet",
     mode: "chat",
+    creditMultiplier: 0.5,
   },
   {
     id: "aura-oss-120b",
     label: "GPT-OSS 120B",
     tier: "haiku",
     mode: "chat",
+    creditMultiplier: 0,
   },
 ];
 
@@ -524,6 +612,64 @@ function versionWeight(label: string): number {
   const minor = Number(match[2] ?? 0);
   const patch = Number(match[3] ?? 0);
   return major * 1_000_000 + minor * 1_000 + patch;
+}
+
+/**
+ * Formats a credit multiplier for display next to a model. `0` -> "Free",
+ * other values -> e.g. "0.5x" / "15x". Returns `null` when the model has
+ * no multiplier so callers can omit the badge entirely.
+ */
+export function formatCreditMultiplier(
+  multiplier?: number | null,
+): string | null {
+  if (multiplier == null) return null;
+  if (multiplier === 0) return "Free";
+  // Whole numbers read "15x"; fractional rates keep their decimal ("0.5x").
+  const rounded = Math.round(multiplier * 100) / 100;
+  return `${rounded}x`;
+}
+
+export function getModelById(modelId?: string | null): ModelOption | undefined {
+  const normalized = normalizeManagedModelId(modelId);
+  if (!normalized) return undefined;
+  return KNOWN_MODELS.find((m) => m.id === normalized);
+}
+
+/** Effort tiers a model supports, or an empty array when it has none. */
+export function getModelEfforts(modelId?: string | null): ModelEffort[] {
+  return getModelById(modelId)?.efforts ?? [];
+}
+
+function modelEffortStorageKey(modelId: string): string {
+  return `aura-model-effort:${modelId}`;
+}
+
+export function persistModelEffort(modelId: string, effort: ModelEffort): void {
+  try {
+    localStorage.setItem(modelEffortStorageKey(modelId), effort);
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+/**
+ * Returns the persisted effort for a model, falling back to the model's
+ * `defaultEffort` and finally `null` when the model has no effort tiers.
+ */
+export function loadPersistedModelEffort(
+  modelId?: string | null,
+): ModelEffort | null {
+  const model = getModelById(modelId);
+  if (!model?.efforts || model.efforts.length === 0) return null;
+  try {
+    const stored = localStorage.getItem(modelEffortStorageKey(model.id));
+    if (stored && model.efforts.includes(stored as ModelEffort)) {
+      return stored as ModelEffort;
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
+  return model.defaultEffort ?? model.efforts[0] ?? null;
 }
 
 export function sortModelsForMenu(models: ModelOption[]): ModelOption[] {

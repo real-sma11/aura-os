@@ -527,6 +527,20 @@
   white-space: nowrap;
 }
 
+.modelMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.modelMultiplier {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .showAllModels {
   justify-content: center;
   color: #01f4cb;
