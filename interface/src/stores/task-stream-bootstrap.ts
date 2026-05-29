@@ -797,22 +797,21 @@ function handleTaskUpdated(e: AuraEventOfType<typeof EventType.TaskUpdated>): vo
       useTaskStatusStore.getState().setLiveStatus(taskId, statusEdge.to);
       // Tool-driven transitions (`transition_task` / `update_task` HTTP
       // handlers) emit ONLY a `task_updated` status edge — never a
-      // harness `task_completed` / `task_failed` lifecycle event. The
-      // dev loop marks tasks done this way, so without routing the
-      // terminal edge into the Run pane panel store the row stayed
-      // "active" (green-dot `ActiveTaskStream`) until a manual refresh
-      // ran `reconcileStatuses`. Only flip rows the pane already shows;
-      // `complete`/`failTask` are no-ops for unknown ids, and a real
-      // lifecycle event arriving later re-runs these idempotently.
-      const hasRow = useTaskOutputPanelStore
-        .getState()
-        .tasks.some((t) => t.taskId === taskId);
-      if (hasRow) {
-        if (statusEdge.to === "done") {
-          finalizeRunPaneCompleted(taskId, e.project_id);
-        } else if (statusEdge.to === "failed") {
-          finalizeRunPaneFailed(taskId, null, undefined, e.project_id);
-        }
+      // harness `task_completed` / `task_failed` lifecycle event. Both
+      // the dev loop AND single-task runs mark tasks done this way, so
+      // a terminal edge must run the SAME finalize tail the harness
+      // lifecycle handlers do — otherwise a task previewed but never
+      // pinned to the Run pane keeps its live stream `isStreaming`
+      // (the per-task "Cooking…" / Live Output block) until a manual
+      // refresh. We no longer gate on the Run pane already having a
+      // row: `finalizeStream` flips `isStreaming` off for the task
+      // stream regardless, while `completeTask`/`failTask` are no-ops
+      // for unknown Run-pane ids, and a real lifecycle event arriving
+      // later re-runs these idempotently.
+      if (statusEdge.to === "done") {
+        finalizeRunPaneCompleted(taskId, e.project_id);
+      } else if (statusEdge.to === "failed") {
+        finalizeRunPaneFailed(taskId, null, undefined, e.project_id);
       }
     }
     // The lifecycle subscribers own status-edge blocks; skip the

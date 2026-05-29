@@ -187,6 +187,61 @@ impl LoopRegistry {
     pub fn is_empty(&self) -> bool {
         self.inner.entries.is_empty()
     }
+
+    /// Clear the bound `current_task_id` for every live loop in
+    /// `project` that is currently pointing at `task_id`, publishing a
+    /// [`DomainEvent::LoopActivityChanged`] for each loop actually
+    /// changed.
+    ///
+    /// Why this exists: the dev loop AND single-task runs mark a task
+    /// `done` / `failed` via a tool-driven `transition_task` /
+    /// `update_task`, which emits only a `task_updated` status edge —
+    /// never the harness `task_completed` / `task_failed` lifecycle
+    /// event that the forwarder's side-effects pipeline uses to call
+    /// [`LoopHandle::set_current_task(None)`](LoopHandle::set_current_task).
+    /// Without clearing the pointer here, the loop's activity keeps
+    /// reporting the finished task as its current task, so every
+    /// per-task spinner / "Cooking" indicator the frontend binds via
+    /// `selectTaskActivity` (`row.activity.current_task_id === taskId`)
+    /// stays lit until a manual refresh re-hydrates `GET /api/loops`.
+    ///
+    /// Compare-and-clear: only loops whose pointer *still* equals
+    /// `task_id` are mutated, so a concurrent `task_started` that has
+    /// already rebound the loop to the next task is never clobbered.
+    /// Idempotent: a loop already cleared (or never bound to this task)
+    /// is left untouched and emits no event.
+    pub fn clear_current_task(&self, project: ProjectId, task_id: TaskId) {
+        // Collect the post-mutation snapshots while holding the per-shard
+        // locks, then publish AFTER the iteration so a subscriber
+        // callback can never re-enter the registry while we hold a lock.
+        let mut changed: Vec<(LoopId, LoopActivity)> = Vec::new();
+        for mut entry in self.inner.entries.iter_mut() {
+            if entry.key().project_id != Some(project) {
+                continue;
+            }
+            if entry.value().activity.current_task_id != Some(task_id) {
+                continue;
+            }
+            entry.value_mut().activity.current_task_id = None;
+            entry.value_mut().activity.touch(Utc::now());
+            // Keep the throttle clock consistent with `LoopHandle::transition`:
+            // a `current_task_id` change is a throttle-bypass event there, so
+            // reflect that we just published one here too.
+            entry
+                .value()
+                .last_published_ms
+                .store(Utc::now().timestamp_millis(), Ordering::Relaxed);
+            changed.push((entry.key().clone(), entry.value().activity.clone()));
+        }
+        for (loop_id, activity) in changed {
+            self.inner
+                .hub
+                .publish(DomainEvent::LoopActivityChanged(LoopActivityChanged {
+                    loop_id,
+                    activity,
+                }));
+        }
+    }
 }
 
 /// RAII handle for a single registered loop.

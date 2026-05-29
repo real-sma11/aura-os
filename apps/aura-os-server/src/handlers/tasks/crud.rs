@@ -52,6 +52,7 @@ pub(crate) async fn transition_task(
         &["status"],
         prev_status.map(|from| (from, task.status)),
     );
+    clear_loop_task_pointer_if_terminal(&state, project_id, task_id, task.status);
     Ok(Json(task))
 }
 
@@ -391,6 +392,7 @@ pub(crate) async fn update_task(
     }
     if let Some(edge) = status_change {
         broadcast_task_updated(&state, &project_id, &updated_task, &["status"], Some(edge));
+        clear_loop_task_pointer_if_terminal(&state, project_id, task_id, edge.1);
     }
     Ok(Json(updated_task))
 }
@@ -411,6 +413,37 @@ pub(crate) async fn delete_task(
             _ => ApiError::internal(format!("deleting task: {e}")),
         })?;
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Release the dev-loop / single-task activity pointer the instant a
+/// tool-driven transition marks a task terminal.
+///
+/// The harness completes a task by calling `transition_task` /
+/// `update_task` (this module's handlers), which emit only a
+/// `task_updated` status edge — never the harness `task_completed` /
+/// `task_failed` lifecycle event that the dev-loop forwarder's
+/// side-effects pipeline uses to call `LoopHandle::set_current_task(None)`
+/// (see
+/// `apps/aura-os-server/src/handlers/dev_loop/streaming/side_effects/dispatch.rs`).
+/// Without this, the loop keeps advertising the finished task as its
+/// `current_task_id`, so every per-task spinner / "Cooking" indicator
+/// the frontend binds via `selectTaskActivity` stays lit until a manual
+/// refresh re-hydrates `GET /api/loops`. Running it from the HTTP
+/// handler covers both the dev loop and ad-hoc single-task runs, since
+/// both drive completion through the same endpoints.
+///
+/// No-op for non-terminal transitions (e.g. retry/redo `-> Ready`) and
+/// for tasks no live loop is currently bound to (the registry method
+/// compare-and-clears by `task_id`).
+fn clear_loop_task_pointer_if_terminal(
+    state: &AppState,
+    project_id: ProjectId,
+    task_id: TaskId,
+    new_status: TaskStatus,
+) {
+    if matches!(new_status, TaskStatus::Done | TaskStatus::Failed) {
+        state.loop_registry.clear_current_task(project_id, task_id);
+    }
 }
 
 fn broadcast_task_saved(state: &AppState, project_id: &ProjectId, task: &Task) {

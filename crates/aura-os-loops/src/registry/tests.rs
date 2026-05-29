@@ -296,6 +296,126 @@ async fn re_emit_loop_opened_is_noop_for_unknown_loop() {
 }
 
 #[tokio::test]
+async fn clear_current_task_releases_pointer_and_publishes() {
+    use std::time::Duration as StdDuration;
+
+    // Tool-driven completion (`transition_task` -> done) never emits a
+    // harness `task_completed`, so the HTTP handler calls
+    // `clear_current_task` to release the loop's task pointer. It must
+    // publish a `LoopActivityChanged` with `current_task_id: None` so
+    // the per-task spinner / "Cooking" indicator settles live.
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let project = ProjectId::new();
+    let (_g, mut rx) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
+    let handle = registry.open(fresh_loop_id(
+        project,
+        AgentInstanceId::new(),
+        LoopKind::Automation,
+    ));
+    let _ = rx.recv().await; // LoopOpened
+
+    let task_id = TaskId::new();
+    handle.set_current_task(Some(task_id)).await;
+    let _ = rx.recv().await; // bind
+
+    registry.clear_current_task(project, task_id);
+    let evt = tokio::time::timeout(StdDuration::from_millis(50), rx.recv())
+        .await
+        .expect("clear_current_task must publish for a bound loop")
+        .expect("event");
+    match evt.as_ref() {
+        DomainEvent::LoopActivityChanged(p) => {
+            assert_eq!(p.activity.current_task_id, None);
+        }
+        other => panic!("expected LoopActivityChanged, got {other:?}"),
+    }
+
+    handle.mark_completed().await;
+    let _ = rx.recv().await;
+}
+
+#[tokio::test]
+async fn clear_current_task_does_not_clobber_a_rebound_loop() {
+    use std::time::Duration as StdDuration;
+
+    // Compare-and-clear: clearing task A must be a no-op once the loop
+    // has already moved on to task B (the dev loop's `task_started` for
+    // the next task rebinds `current_task_id` before the HTTP transition
+    // for the finished task lands). Without the `== task_id` guard this
+    // would wipe B's binding and stall the *next* task's spinner.
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let project = ProjectId::new();
+    let (_g, mut rx) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(project)));
+    let handle = registry.open(fresh_loop_id(
+        project,
+        AgentInstanceId::new(),
+        LoopKind::Automation,
+    ));
+    let _ = rx.recv().await; // LoopOpened
+
+    let task_a = TaskId::new();
+    let task_b = TaskId::new();
+    handle.set_current_task(Some(task_b)).await;
+    let _ = rx.recv().await; // bound to B
+
+    // Stale clear for the already-finished task A.
+    registry.clear_current_task(project, task_a);
+    let stray = tokio::time::timeout(StdDuration::from_millis(50), rx.recv()).await;
+    assert!(
+        stray.is_err(),
+        "clearing a task the loop is no longer bound to must not publish"
+    );
+    assert_eq!(
+        handle.snapshot().and_then(|a| a.current_task_id),
+        Some(task_b),
+        "the rebound task pointer must survive a stale clear"
+    );
+
+    handle.mark_completed().await;
+    let _ = rx.recv().await;
+}
+
+#[tokio::test]
+async fn clear_current_task_is_scoped_to_project() {
+    use std::time::Duration as StdDuration;
+
+    // A loop in a different project that happens to share the same
+    // task id (not possible in practice, but the guard must be explicit)
+    // must never be cleared by another project's transition.
+    let hub = EventHub::new();
+    let registry = LoopRegistry::new(hub.clone());
+    let p1 = ProjectId::new();
+    let p2 = ProjectId::new();
+    let (_g2, mut rx2) =
+        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(p2)));
+    let h2 = registry.open(fresh_loop_id(p2, AgentInstanceId::new(), LoopKind::Automation));
+    let _ = rx2.recv().await; // LoopOpened (p2)
+
+    let task_id = TaskId::new();
+    h2.set_current_task(Some(task_id)).await;
+    let _ = rx2.recv().await; // bound
+
+    // Clear scoped to p1 — must not touch the p2 loop.
+    registry.clear_current_task(p1, task_id);
+    let stray = tokio::time::timeout(StdDuration::from_millis(50), rx2.recv()).await;
+    assert!(
+        stray.is_err(),
+        "a clear scoped to another project must not publish for this loop"
+    );
+    assert_eq!(
+        h2.snapshot().and_then(|a| a.current_task_id),
+        Some(task_id),
+    );
+
+    h2.mark_completed().await;
+    let _ = rx2.recv().await;
+}
+
+#[tokio::test]
 async fn snapshot_filters_by_project() {
     let hub = EventHub::new();
     let registry = LoopRegistry::new(hub);

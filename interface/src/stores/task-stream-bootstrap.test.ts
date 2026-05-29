@@ -59,7 +59,7 @@ import type { AuraEvent } from "../shared/types/aura-events";
 import { EventType } from "../shared/types/aura-events";
 import { subscribers } from "./event-store/event-store";
 import { useEventStore } from "./event-store/index";
-import { useStreamStore, streamMetaMap } from "../hooks/stream/store";
+import { useStreamStore, streamMetaMap, ensureEntry } from "../hooks/stream/store";
 import {
   bootstrapTaskStreamSubscriptions,
   teardownTaskStreamBootstrap,
@@ -943,6 +943,44 @@ describe("task-stream-bootstrap: task_updated synthetic blocks", () => {
     expect(useTaskStatusStore.getState().byTaskId["t1"]?.liveStatus).toBe(
       "done",
     );
+  });
+
+  it("finalizes the live task stream on a terminal status edge even with no Run pane row", () => {
+    // Single-task runs AND the dev loop complete a task via the
+    // agent's `transition_task` tool, which emits only a `task_updated`
+    // status edge (never a harness `task_completed`). A task that was
+    // previewed but never pinned to the Run pane has its live stream
+    // `isStreaming` flag set (the "Cooking…" / Live Output block) but no
+    // panel row, so the handler must finalize the stream unconditionally
+    // — not only when a Run pane row exists.
+    const key = taskStreamKey("t-nopane");
+    ensureEntry(key);
+    useStreamStore.setState((s) => ({
+      entries: { ...s.entries, [key]: { ...s.entries[key]!, isStreaming: true } },
+    }));
+    // No seedActiveTask → deliberately no Run pane row for this task.
+    expect(
+      useTaskOutputPanelStore.getState().tasks.some((t) => t.taskId === "t-nopane"),
+    ).toBe(false);
+
+    dispatch({
+      type: EventType.TaskUpdated,
+      content: {
+        task_id: "t-nopane",
+        changed_fields: ["status"],
+        status: { from: "in_progress", to: "done" },
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    expect(useStreamStore.getState().entries[key]?.isStreaming).toBe(false);
+    expect(useTaskStatusStore.getState().byTaskId["t-nopane"]?.liveStatus).toBe(
+      "done",
+    );
+    // completeTask is a no-op for an unknown Run-pane id: still no row.
+    expect(
+      useTaskOutputPanelStore.getState().tasks.some((t) => t.taskId === "t-nopane"),
+    ).toBe(false);
   });
 });
 
