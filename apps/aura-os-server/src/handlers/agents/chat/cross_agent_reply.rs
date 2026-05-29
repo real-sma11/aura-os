@@ -157,6 +157,7 @@ pub(super) fn spawn_cross_agent_reply_callback(
     ctx: &ChatPersistCtx,
     reply_text: String,
     depth: u32,
+    model: Option<String>,
     http_client: reqwest::Client,
 ) {
     if !should_send_cross_agent_reply(ctx, depth) {
@@ -214,6 +215,7 @@ pub(super) fn spawn_cross_agent_reply_callback(
         reply_body: truncated,
         next_depth,
         from_agent_id,
+        model,
     };
     tokio::spawn(async move {
         run_cross_agent_reply_callback(http_client, args).await;
@@ -233,6 +235,13 @@ struct CrossAgentReplyCallbackArgs {
     reply_body: String,
     next_depth: u32,
     from_agent_id: Option<String>,
+    /// Model the replying agent's turn ran on. Forwarded so the
+    /// originating agent's turn (opened by this reply) runs on a real
+    /// model instead of `null`, which would fail with "model name must
+    /// not be empty" when the originator has no server-side configured
+    /// model. Mirrors the harness A->B leg, which forwards the caller's
+    /// model on the outbound delivery POST.
+    model: Option<String>,
 }
 
 async fn run_cross_agent_reply_callback(
@@ -247,6 +256,7 @@ async fn run_cross_agent_reply_callback(
         reply_body,
         next_depth,
         from_agent_id,
+        model,
     } = args;
     let base_url = aura_os_integrations::control_plane_api_base_url();
     if base_url.contains("127.0.0.1") || base_url.contains("localhost") {
@@ -272,7 +282,11 @@ async fn run_cross_agent_reply_callback(
     let body: Value = json!({
         "content": reply_body,
         "action": null,
-        "model": null,
+        // Forward the replying agent's model so the originating agent's
+        // reply-triggered turn runs on a real model. `null` here would
+        // re-introduce the empty-model failure when the originator has
+        // no server-side configured model.
+        "model": model,
         "commands": null,
         "project_id": null,
         "attachments": null,

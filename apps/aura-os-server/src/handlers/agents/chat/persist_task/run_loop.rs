@@ -119,6 +119,14 @@ pub(super) async fn run_persist_loop(
                                 &ctx,
                                 state.full_text.clone(),
                                 ctx.cross_agent_depth,
+                                // Carry the model this turn ran on back
+                                // into the originating agent's session so
+                                // the reply leg never re-introduces the
+                                // empty-model failure. Since the inbound
+                                // A->B leg forwards the caller's model,
+                                // this is the same model throughout the
+                                // cross-agent thread.
+                                model.clone(),
                                 extras.http_client.clone(),
                             );
                         }

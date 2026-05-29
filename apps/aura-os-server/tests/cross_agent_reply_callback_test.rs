@@ -539,6 +539,10 @@ async fn cross_agent_reply_callback_fires_on_assistant_message_end() {
         serde_json::json!({
             "content": "ping from A",
             "originating_agent_id": "agent-A",
+            // A forwards its model on the inbound leg; the reply
+            // callback must carry the same model back so A's
+            // reply-triggered turn never opens with an empty model.
+            "model": "aura-claude-sonnet-4-6",
         }),
         &[],
     )
@@ -638,6 +642,16 @@ async fn cross_agent_reply_callback_fires_on_assistant_message_end() {
         capture.body.get("new_session").and_then(Value::as_bool),
         Some(false),
         "callback must reuse A's chat session, not open a new one"
+    );
+    // The reply leg must carry the model B's turn ran on (which is
+    // the model A forwarded on the inbound leg) so A's
+    // reply-triggered turn runs on a real model instead of failing
+    // with "model name must not be empty".
+    assert_eq!(
+        capture.body.get("model").and_then(Value::as_str),
+        Some("aura-claude-sonnet-4-6"),
+        "callback body must carry the turn's model back into A's session; got {:?}",
+        capture.body.get("model")
     );
 }
 
