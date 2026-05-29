@@ -144,7 +144,9 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           : modeBehavior.kind === "generate_video"
             ? "video"
             : "chat";
-    const isLocalAgent = machineType === "local";
+    // On mobile all agents go through the server harness regardless
+    // of machine_type, so never block input for "local" agents.
+    const isLocalAgent = false;
     const isThreeDMode = generationMode === "3d";
     const pinnedSourceImage = chatUI.pinnedSourceImage;
     const has3DSource = isThreeDMode && pinnedSourceImage != null;

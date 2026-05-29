@@ -12,6 +12,8 @@ const MIXPANEL_TOKEN = import.meta.env.VITE_MIXPANEL_TOKEN?.trim() ?? "";
 const OPT_OUT_KEY = "aura-analytics-opt-out";
 
 let initialized = false;
+let identified = false;
+let lastSessionActiveDate = "";
 
 /** Check if the browser signals Do Not Track or Global Privacy Control. */
 function browserSignalsDNT(): boolean {
@@ -74,6 +76,16 @@ export function registerProperty(key: string, value: unknown): void {
 export function track(event: string, properties?: Record<string, unknown>): void {
   if (!initialized) return;
   try {
+    // Co-fire session_active once per calendar day for authenticated
+    // users so True DAU is always >= Engaged DAU. Any tracked event
+    // from an identified user guarantees a session_active that day.
+    if (event !== "session_active" && identified) {
+      const today = new Date().toDateString();
+      if (lastSessionActiveDate !== today) {
+        lastSessionActiveDate = today;
+        mixpanel.track("session_active");
+      }
+    }
     mixpanel.track(event, properties);
   } catch {
     // Silent fail.
@@ -86,6 +98,7 @@ export function identifyUser(userId: string): void {
   try {
     mixpanel.identify(userId);
     mixpanel.register({ is_authenticated: true });
+    identified = true;
   } catch {
     // Silent fail.
   }
@@ -97,6 +110,8 @@ export function resetUser(): void {
   try {
     mixpanel.reset();
     mixpanel.register({ is_authenticated: false });
+    identified = false;
+    lastSessionActiveDate = "";
   } catch {
     // Silent fail.
   }

@@ -75,6 +75,11 @@ pub(crate) async fn require_verified_session(
 
     enforce_zero_pro(&state, &session)?;
 
+    // Fire server-side session_active for True DAU tracking.
+    if let Some(ref mp) = state.mixpanel {
+        mp.track_session_active(&session.user_id);
+    }
+
     req.extensions_mut().insert(AuthJwt(token));
     req.extensions_mut().insert(AuthSession(session));
     req.extensions_mut().insert(AuthZeroProMeta {

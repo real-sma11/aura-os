@@ -1,6 +1,7 @@
 pub mod agent_events;
 mod app_builder;
 mod auth_guard;
+pub mod mixpanel;
 mod billing_bridge;
 pub(crate) mod billing_rollup;
 mod capture_auth;
