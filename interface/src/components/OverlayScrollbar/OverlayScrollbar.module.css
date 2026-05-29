@@ -5,7 +5,10 @@
   bottom: 0;
   width: 4px;
   pointer-events: none;
-  z-index: 2;
+  /* Host surfaces can lift the overlay scrollbar above their own
+     floating chrome (e.g. the chat input bar's bottom fade) by
+     setting `--overlay-scrollbar-z-index` on a scroll-area ancestor. */
+  z-index: var(--overlay-scrollbar-z-index, 2);
 }
 
 .scrollThumb {

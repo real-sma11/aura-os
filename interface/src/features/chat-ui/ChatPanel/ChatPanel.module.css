@@ -150,6 +150,10 @@
 .messageAreaShell {
   --chat-top-fade-background: var(--color-bg);
   --chat-top-fade-height: 13px;
+  /* Lift the overlay scrollbar above the input bar's bottom fade
+     (`.inputWrapper`, z-index: 10) so its thumb stays visible all the
+     way down instead of disappearing behind the gradient. */
+  --overlay-scrollbar-z-index: 11;
   position: relative;
   flex: 1;
   min-height: 0;
