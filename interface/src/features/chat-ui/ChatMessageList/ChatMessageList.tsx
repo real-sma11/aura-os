@@ -84,6 +84,8 @@ export function ChatMessageList({
     activeToolCalls,
     timeline,
     progressText,
+    generationKind,
+    generationPercent,
   } = useStreamStore(
     useShallow((state) => ({
       isStreaming: state.entries[streamKey]?.isStreaming ?? false,
@@ -94,6 +96,8 @@ export function ChatMessageList({
       activeToolCalls: state.entries[streamKey]?.activeToolCalls ?? EMPTY_TOOL_CALLS,
       timeline: state.entries[streamKey]?.timeline ?? EMPTY_TIMELINE,
       progressText: state.entries[streamKey]?.progressText ?? "",
+      generationKind: state.entries[streamKey]?.generationKind ?? null,
+      generationPercent: state.entries[streamKey]?.generationPercent ?? null,
     })),
   );
 
@@ -268,6 +272,8 @@ export function ChatMessageList({
             progressText={progressText}
             isWriting={isWriting}
             showPhaseIndicator={false}
+            generationKind={generationKind}
+            generationPercent={generationPercent}
           />
         </div>
       )}

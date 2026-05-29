@@ -1,0 +1,114 @@
+.frame {
+  position: relative;
+  width: 100%;
+  max-width: min(100%, 520px);
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.image {
+  aspect-ratio: 1 / 1;
+}
+
+.video {
+  aspect-ratio: 16 / 9;
+}
+
+/* Continuously moving background. Two stacked layers — a halftone dot grid
+   and a soft diagonal sheen — pan across the frame on independent infinite
+   loops so the whole surface reads as actively working, not a frozen box. */
+.motion {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(
+      115deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.07) 50%,
+      transparent 70%
+    ),
+    radial-gradient(
+      var(--color-text-muted, rgba(255, 255, 255, 0.18)) 1.4px,
+      transparent 1.6px
+    );
+  background-size: 220% 220%, 18px 18px;
+  background-repeat: no-repeat, repeat;
+  opacity: 0.5;
+  animation:
+    mediaSheen 2.4s ease-in-out infinite,
+    mediaDrift 6s linear infinite;
+}
+
+@keyframes mediaSheen {
+  0% {
+    background-position: 150% 0, 0 0;
+  }
+  100% {
+    background-position: -50% 0, 0 0;
+  }
+}
+
+@keyframes mediaDrift {
+  0% {
+    background-position: 150% 0, 0 0;
+  }
+  100% {
+    background-position: -50% 0, 36px 36px;
+  }
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: var(--space-3, 10px) var(--space-4, 12px);
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+  background: linear-gradient(
+    90deg,
+    var(--color-text-muted, #aaa) 0%,
+    var(--color-text, #fff) 40%,
+    var(--color-text-muted, #aaa) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: mediaLabelShimmer 2s ease-in-out infinite;
+}
+
+@keyframes mediaLabelShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.percent {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted, #888);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion {
+    animation: none;
+  }
+  .label {
+    animation: none;
+    -webkit-text-fill-color: var(--color-text-muted, #aaa);
+  }
+}
