@@ -13,6 +13,7 @@ use tracing::{debug, error};
 
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
+use crate::live_streams::{StreamKind, StreamScope};
 use crate::handlers::agents::chat::types::sse_response_headers;
 use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
@@ -161,6 +162,15 @@ pub(in super::super) async fn open_harness_chat_stream(
     let persist_model = requested_model
         .clone()
         .or_else(|| session_config.model.clone());
+
+    // Snapshot the scope fields for the reattachable live stream
+    // BEFORE `session_config` is moved into the session resolver below.
+    // `user_id` is authz-load-bearing (a missing user_id makes the
+    // stream world-visible in `streams::authorize`), and it is reliably
+    // set on `SessionConfig` at both chat routes.
+    let scope_user_id = session_config.user_id.clone();
+    let scope_project_id = session_config.project_id.clone();
+
     let SessionForTurn {
         is_new,
         was_queued,
@@ -177,6 +187,34 @@ pub(in super::super) async fn open_harness_chat_stream(
         turn,
     )
     .await?;
+
+    // Register this turn as a reattachable live stream so a
+    // reconnecting / reloading UI can rejoin the in-flight delta stream
+    // by `session_id` via `GET /api/streams/active` + `GET
+    // /api/streams/:id`. We subscribe a FRESH receiver from `events_tx`
+    // (NOT `rx`, which feeds the SSE body / persist / release / watchdog
+    // fan-out) so the registry observes the same turn without stealing
+    // frames. The turn slot serializes turns on this reused `events_tx`,
+    // so the forwarder captures exactly one turn and terminates at its
+    // `assistant_message_end`. Plan-mode spec-gen issued over chat is
+    // registered as `ChatTurn` too — that is intended.
+    //
+    // `agent_instance_id` is the 2nd `::`-separated segment of the
+    // session key (`template::instance::session`, see
+    // `aura_os_core::harness_id`); `None` when the key has no second
+    // segment (bare-template agent routes).
+    let live_scope = StreamScope {
+        user_id: scope_user_id,
+        project_id: scope_project_id.or_else(|| Some(ctx.project_id.clone())),
+        agent_instance_id: session_key.split("::").nth(1).map(str::to_string),
+        session_id: Some(ctx.session_id.to_string()),
+    };
+    let _live = state.live_streams.register_receiver(
+        StreamKind::ChatTurn,
+        live_scope,
+        events_tx.subscribe(),
+        Some(commands_tx.clone()),
+    );
 
     let persist_rx = rx.resubscribe();
     let release_rx = rx.resubscribe();
