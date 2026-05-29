@@ -181,17 +181,33 @@
   flex-direction: column;
   justify-content: flex-end;
   pointer-events: none;
-  padding: 48px min(8vw, 96px) 124px;
+  padding: 48px min(8vw, 96px) 0;
 }
 
 .transcript {
   width: min(760px, 100%);
   margin: 0 auto;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: min(58vh, 560px);
   overflow: auto;
+  /*
+   * Hide the native scrollbar — the transcript still scrolls, but
+   * the bar is suppressed so the public surface reads as a clean,
+   * chrome-free wallpaper. `::-webkit-scrollbar` covers Chromium /
+   * Safari; `scrollbar-width: none` covers Firefox.
+   */
+  scrollbar-width: none;
+  /*
+   * Let the last message clear the floating `.inputBarSlot` pill
+   * (`bottom: 32px`, ~62px tall) when scrolled to the bottom, while
+   * mid-scroll content still passes visually underneath the
+   * translucent, blurred bar instead of being cut off above it.
+   */
+  padding-bottom: 110px;
+  scroll-padding-bottom: 110px;
   pointer-events: auto;
   /*
    * `.chatView` above pins the whole public surface to `user-select:
@@ -202,6 +218,10 @@
    */
   user-select: text;
   -webkit-user-select: text;
+}
+
+.transcript::-webkit-scrollbar {
+  display: none;
 }
 
 .messageRow {
@@ -373,7 +393,12 @@
   }
 
   .chatSurface {
-    padding: 32px 16px 112px;
+    padding: 32px 16px 0;
+  }
+
+  .transcript {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 
   .inputBarSlot {
