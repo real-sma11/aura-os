@@ -19,6 +19,7 @@ mod swarm_harness;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod ws_bridge;
+mod ws_reader_handle;
 
 /// Re-exports for the harness WebSocket bridge tuning surface so
 /// downstream crates (currently `aura-os-server`'s `/api/admin/health`
@@ -33,7 +34,6 @@ pub mod ws_bridge_config {
 
 pub use automaton_client::{
     validate_automaton_start_identity, AutomatonClient, AutomatonStartError, AutomatonStartParams,
-    RunHandle, WsReaderHandle,
 };
 pub use client::{
     bearer_headers, GetHeadResponse, HarnessAutomatonStartParams, HarnessAutomatonStartResponse,
@@ -42,7 +42,7 @@ pub use client::{
 pub use error::HarnessError;
 pub use harness::{
     build_remote_handshake, build_runtime_request, validate_runtime_request_identity,
-    HarnessCommandSender, HarnessLink, HarnessSession, SessionConfig,
+    HarnessCommandSender, HarnessLink, HarnessSession, RunHandle, SessionConfig,
 };
 pub use harness_url::local_harness_base_url;
 pub use local_harness::LocalHarness;
@@ -50,12 +50,13 @@ pub use runner::automaton_event_kinds;
 pub use runner::{
     collect_automaton_events, connect_with_retries, is_git_sync_event,
     is_process_progress_broadcast_event, is_process_stream_forward_event,
-    normalize_process_tool_type_field, start_and_connect, CollectedOutput, GitSyncMilestone,
-    RunCompletion, RunStartError,
+    normalize_process_tool_type_field, start_and_connect, submit_automaton_run, CollectedOutput,
+    GitSyncMilestone, RunCompletion, RunStartError,
 };
 pub use session::{SessionBridge, SessionBridgeError, SessionBridgeStarted, SessionBridgeTurn};
 pub use signals::{synthesize_failure_reason, FailureContext, HarnessFailureKind, HarnessSignal};
 pub use swarm_harness::{CreateAgentResponse, SwarmHarness};
+pub use ws_reader_handle::WsReaderHandle;
 
 pub use aura_protocol::{
     ApprovalResponse, AssistantMessageEnd, AssistantMessageStart, ConversationMessage, ErrorMsg,

@@ -80,6 +80,29 @@ pub enum HarnessError {
     /// body when present, enabling the dev-loop adopt-or-restart path.
     #[error("harness rejected new run: a run is already active{}", .run_id.as_ref().map(|id| format!(" (run_id: {id})")).unwrap_or_default())]
     Conflict { run_id: Option<String> },
+
+    /// `POST /v1/run` reached the harness but it returned a non-success
+    /// status that isn't one of the recognised `409` / `503` shapes.
+    /// Carries the raw `status` and response `body` so the dev-loop
+    /// start path can preserve its structured `bad_gateway` taxonomy
+    /// (and the server-side body-preview log) instead of collapsing
+    /// every upstream error into a generic 500. Mirrors the legacy
+    /// `AutomatonStartError::Response { status, body }` shape.
+    #[error("harness POST /v1/run returned status {status}: {body}")]
+    UpstreamStatus { status: u16, body: String },
+
+    /// `POST /v1/run` failed at the transport layer (DNS, connection
+    /// refused, timeout) before the harness produced any response.
+    /// `is_connect` / `is_timeout` mirror `reqwest::Error::is_connect`
+    /// / `is_timeout` so the dev-loop start path can preserve the
+    /// "harness unavailable → 503 + autospawn" UX without scraping
+    /// flattened error strings.
+    #[error("harness POST /v1/run transport failure: {message}")]
+    Unreachable {
+        is_connect: bool,
+        is_timeout: bool,
+        message: String,
+    },
 }
 
 impl HarnessError {
@@ -110,6 +133,51 @@ impl HarnessError {
         err.chain().find_map(|cause| {
             cause.downcast_ref::<HarnessError>().and_then(|e| match e {
                 Self::SessionIdentityMissing { field, context } => Some((*field, *context)),
+                _ => None,
+            })
+        })
+    }
+
+    /// Returns the conflicting run id when the error chain carries a
+    /// [`HarnessError::Conflict`]. The outer `Some` signals "this was a
+    /// 409 conflict"; the inner `Option<String>` is the existing
+    /// `run_id` the harness body surfaced (if any). Used by the
+    /// dev-loop start path to drive its adopt-or-restart branch.
+    #[must_use]
+    pub fn conflict_run_id(err: &anyhow::Error) -> Option<Option<String>> {
+        err.chain().find_map(|cause| {
+            cause.downcast_ref::<HarnessError>().and_then(|e| match e {
+                Self::Conflict { run_id } => Some(run_id.clone()),
+                _ => None,
+            })
+        })
+    }
+
+    /// Returns the raw `(status, body)` when the error chain carries a
+    /// [`HarnessError::UpstreamStatus`]. Lets the dev-loop start path
+    /// reconstruct the structured upstream-status taxonomy.
+    #[must_use]
+    pub fn upstream_status(err: &anyhow::Error) -> Option<(u16, String)> {
+        err.chain().find_map(|cause| {
+            cause.downcast_ref::<HarnessError>().and_then(|e| match e {
+                Self::UpstreamStatus { status, body } => Some((*status, body.clone())),
+                _ => None,
+            })
+        })
+    }
+
+    /// Returns `(is_connect, is_timeout)` when the error chain carries a
+    /// [`HarnessError::Unreachable`]. Lets the dev-loop start path
+    /// preserve the "harness unavailable" 503 + autospawn UX.
+    #[must_use]
+    pub fn unreachable_cause(err: &anyhow::Error) -> Option<(bool, bool)> {
+        err.chain().find_map(|cause| {
+            cause.downcast_ref::<HarnessError>().and_then(|e| match e {
+                Self::Unreachable {
+                    is_connect,
+                    is_timeout,
+                    ..
+                } => Some((*is_connect, *is_timeout)),
                 _ => None,
             })
         })

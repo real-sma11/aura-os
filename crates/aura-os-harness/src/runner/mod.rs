@@ -3,6 +3,12 @@
 //! Provides [`start_and_connect`] and [`collect_automaton_events`] so both the
 //! dev-loop task pipeline and the process executor can reuse the same
 //! automaton start -> event-stream -> collection logic without duplication.
+//!
+//! The runner is transport-agnostic: it drives the canonical
+//! [`HarnessLink`] surface (`submit_run` + `attach_run_at_url`) instead
+//! of the removed bespoke `AutomatonClient`, so the same code path
+//! serves the local harness and the swarm gateway (both expressed as a
+//! [`crate::LocalHarness`] pointed at the relevant base URL).
 
 pub mod automaton_event_kinds;
 mod collector;
@@ -18,9 +24,68 @@ pub use automaton_event_kinds::{
 };
 pub use collector::{collect_automaton_events, CollectedOutput, RunCompletion};
 
-use crate::{
-    AutomatonClient, AutomatonStartError, AutomatonStartParams, RunHandle, WsReaderHandle,
+use crate::automaton_client::{
+    automaton_start_params_to_runtime_request, validate_automaton_start_identity,
 };
+use crate::{AutomatonStartError, AutomatonStartParams, HarnessError, HarnessLink, RunHandle, WsReaderHandle};
+
+/// Submit an automaton run via the canonical [`HarnessLink::submit_run`]
+/// surface, mapping the transport's typed `anyhow` causes back onto the
+/// dev-loop's [`AutomatonStartError`] taxonomy.
+///
+/// This replaces the bespoke `AutomatonClient::start`: the dev-loop
+/// adapter still branches on [`AutomatonStartError`] (conflict / capacity
+/// / connect-timeout / structured upstream status), so we reconstruct
+/// those variants from the typed [`HarnessError`] causes the canonical
+/// transport now threads through (`Conflict`, `CapacityExhausted`,
+/// `UpstreamStatus`, `Unreachable`).
+pub async fn submit_automaton_run(
+    harness: &dyn HarnessLink,
+    params: AutomatonStartParams,
+    auth_token: Option<&str>,
+) -> Result<RunHandle, AutomatonStartError> {
+    // Tier 2 fail-fast: refuse to submit a run whose payload is missing
+    // a required identity field before doing any network work.
+    if let Err(err) = validate_automaton_start_identity(&params) {
+        return Err(AutomatonStartError::Other(
+            anyhow::Error::new(err).context("harness rejected /v1/run: identity preflight"),
+        ));
+    }
+    let request = automaton_start_params_to_runtime_request(&params);
+    harness
+        .submit_run(request, auth_token)
+        .await
+        .map_err(map_submit_error)
+}
+
+/// Collapse a [`HarnessLink::submit_run`] `anyhow::Error` onto the
+/// dev-loop's [`AutomatonStartError`] taxonomy, preserving each
+/// operationally-distinct failure mode.
+fn map_submit_error(err: anyhow::Error) -> AutomatonStartError {
+    if let Some(run_id) = HarnessError::conflict_run_id(&err) {
+        return AutomatonStartError::Conflict(run_id);
+    }
+    if let Some((status, body)) = HarnessError::upstream_status(&err) {
+        return AutomatonStartError::Response { status, body };
+    }
+    // The canonical transport maps every harness `503` to
+    // `CapacityExhausted`; surface it as the structured 503 the dev-loop
+    // capacity branch keys on (an empty body reads as capacity).
+    if HarnessError::is_capacity_exhausted(&err) {
+        return AutomatonStartError::Response {
+            status: 503,
+            body: String::new(),
+        };
+    }
+    if let Some((is_connect, is_timeout)) = HarnessError::unreachable_cause(&err) {
+        return AutomatonStartError::Request {
+            message: err.to_string(),
+            is_connect,
+            is_timeout,
+        };
+    }
+    AutomatonStartError::Other(err)
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitSyncMilestone {
@@ -53,8 +118,9 @@ pub enum RunStartError {
 /// caller must keep the handle alive for as long as events should flow
 /// and drop / cancel it to release the harness's WS slot.
 pub async fn start_and_connect(
-    client: &AutomatonClient,
+    harness: &dyn HarnessLink,
     params: AutomatonStartParams,
+    auth_token: Option<&str>,
     stream_retries: u32,
 ) -> Result<
     (
@@ -64,11 +130,12 @@ pub async fn start_and_connect(
     ),
     RunStartError,
 > {
-    let result = client.start(params).await?;
+    let result = submit_automaton_run(harness, params, auth_token).await?;
     let (tx, ws_handle) = connect_with_retries(
-        client,
+        harness,
         &result.run_id,
         Some(&result.event_stream_url),
+        auth_token,
         stream_retries,
     )
     .await
@@ -101,9 +168,10 @@ pub async fn start_and_connect(
 /// won't free up in 500ms and retrying just delays the structured
 /// 503 the caller wants to surface.
 pub async fn connect_with_retries(
-    client: &AutomatonClient,
+    harness: &dyn HarnessLink,
     automaton_id: &str,
     event_stream_url: Option<&str>,
+    auth_token: Option<&str>,
     retries: u32,
 ) -> anyhow::Result<(broadcast::Sender<serde_json::Value>, WsReaderHandle)> {
     let total_attempts = retries + 1;
@@ -117,11 +185,21 @@ pub async fn connect_with_retries(
             );
             tokio::time::sleep(delay).await;
         }
-        match client
-            .connect_event_stream(automaton_id, event_stream_url)
+        // Automaton runs never emit `SessionReady`; attach with the
+        // short liveness probe (`wait_for_ready = false`) and hand the
+        // live session to a `WsReaderHandle` that owns it. The raw JSON
+        // broadcast (`raw_events_tx`) is the channel the dev-loop /
+        // task-run forwarder consumes; clone it out before the handle
+        // takes ownership of the session.
+        match harness
+            .attach_run_at_url(automaton_id, event_stream_url, auth_token, false)
             .await
         {
-            Ok(pair) => return Ok(pair),
+            Ok(session) => {
+                let raw_tx = session.raw_events_tx.clone();
+                let handle = WsReaderHandle::from_session(session);
+                return Ok((raw_tx, handle));
+            }
             Err(e) => {
                 warn!(
                     %automaton_id, attempt,

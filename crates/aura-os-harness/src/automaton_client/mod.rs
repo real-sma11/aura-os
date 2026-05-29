@@ -7,8 +7,6 @@
 mod client;
 mod identity;
 mod start_params;
-mod ws_reader;
-mod ws_reader_handle;
 
 #[cfg(test)]
 mod tests;
@@ -17,8 +15,7 @@ pub use client::AutomatonClient;
 pub use identity::validate_automaton_start_identity;
 #[allow(unused_imports)]
 pub(crate) use start_params::automaton_start_params_to_runtime_request;
-pub use start_params::{AutomatonStartError, AutomatonStartParams, RunHandle};
-pub use ws_reader_handle::WsReaderHandle;
+pub use start_params::{AutomatonStartError, AutomatonStartParams};
 
 // Brought into the `automaton_client` namespace so the `tests` submodule
 // can reach `normalize_automaton_event` through `super::normalize_automaton_event`

@@ -1,8 +1,4 @@
-use futures_util::StreamExt;
-use tokio::sync::broadcast;
 use tokio::time::Duration;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tracing::info;
 
 /// Per-call timeout for `POST /automaton/start`. Overrides the
 /// client-wide `timeout(12s)` default because the harness's
@@ -26,10 +22,9 @@ const AUTOMATON_START_TIMEOUT: Duration = Duration::from_secs(60);
 
 use super::identity::validate_automaton_start_identity;
 use super::start_params::{
-    automaton_start_params_to_runtime_request, AutomatonStartError, AutomatonStartParams, RunHandle,
+    automaton_start_params_to_runtime_request, AutomatonStartError, AutomatonStartParams,
 };
-use super::ws_reader::{probe_initial_event, spawn_automaton_reader};
-use super::ws_reader_handle::WsReaderHandle;
+use crate::harness::RunHandle;
 
 /// Client for the harness automaton REST + WebSocket API.
 #[derive(Debug, Clone)]
@@ -198,107 +193,6 @@ impl AutomatonClient {
             .ok_or_else(|| anyhow::anyhow!("workspace resolve response missing 'path' field"))
     }
 
-    /// Derive the WebSocket base URL from `http_base`.
-    fn ws_base(&self) -> String {
-        self.http_base
-            .replace("https://", "wss://")
-            .replace("http://", "ws://")
-    }
-
-    /// Resolve the WebSocket URL for the automaton event stream.
-    ///
-    /// When `event_stream_url` is provided (from the harness start
-    /// response), it is used — either directly if already absolute,
-    /// or prefixed with the gateway WS base when relative. Falls back
-    /// to `{ws_base}/stream/{run_id}` (the Phase A `/stream/:run_id`
-    /// convention) when no URL is supplied.
-    fn resolve_event_stream_url(&self, run_id: &str, event_stream_url: Option<&str>) -> String {
-        match event_stream_url {
-            Some(u) if u.starts_with("ws://") || u.starts_with("wss://") => u.to_string(),
-            Some(u) => format!("{}/{}", self.ws_base(), u.trim_start_matches('/')),
-            None => format!("{}/stream/{run_id}", self.ws_base()),
-        }
-    }
-
-    /// Connect to the automaton event WebSocket and forward events to a broadcast channel.
-    /// Returns the broadcast sender plus a [`WsReaderHandle`]; keep the
-    /// handle alive for as long as you want events to flow, and drop /
-    /// [`cancel`](WsReaderHandle::cancel) it to close the underlying
-    /// WebSocket (which releases the harness's WS slot).
-    ///
-    /// Spawns a background task that reads from the WebSocket and
-    /// forwards parsed events to the returned `broadcast::Sender`.
-    ///
-    /// After a successful WS handshake a brief liveness probe waits for the first
-    /// message or error.  If the connection is reset immediately (e.g. the harness
-    /// already finished the automaton) the method returns `Err` so the caller can
-    /// retry instead of silently spawning a dead reader task.
-    ///
-    /// Pass the `event_stream_url` returned by [`Self::start`] when available so
-    /// the connection uses the gateway-routable path instead of a hardcoded one.
-    pub async fn connect_event_stream(
-        &self,
-        automaton_id: &str,
-        event_stream_url: Option<&str>,
-    ) -> anyhow::Result<(broadcast::Sender<serde_json::Value>, WsReaderHandle)> {
-        let url = self.resolve_event_stream_url(automaton_id, event_stream_url);
-        info!(automaton_id, %url, "Connecting to automaton event stream");
-
-        let mut request = url
-            .clone()
-            .into_client_request()
-            .map_err(|e| anyhow::anyhow!("failed to build WS request: {e}"))?;
-        if let Some(ref token) = self.auth_token {
-            request.headers_mut().insert(
-                "Authorization",
-                format!("Bearer {token}")
-                    .parse()
-                    .map_err(|e| anyhow::anyhow!("bad auth header value: {e}"))?,
-            );
-        }
-        let connect_result = tokio::time::timeout(
-            Duration::from_secs(8),
-            tokio_tungstenite::connect_async(request),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("timed out connecting to automaton event stream: {url}"))?;
-        let (ws_stream, _) = match connect_result {
-            Ok(ok) => ok,
-            Err(err) => {
-                // Phase 4: surface upstream WS-slot exhaustion as the
-                // typed `HarnessError::CapacityExhausted` so the
-                // server's `map_harness_error_to_api` can funnel it
-                // into the structured 503 envelope instead of letting
-                // it inherit the generic `bad_gateway` mapping the
-                // dev-loop adapter previously applied. Mirrors the
-                // same detection used in `LocalHarness::open_session`.
-                if crate::local_harness::is_capacity_exhausted_ws_error(&err) {
-                    return Err(
-                        anyhow::Error::new(crate::error::HarnessError::CapacityExhausted)
-                            .context(format!("automaton event stream connect rejected: {err}")),
-                    );
-                }
-                return Err(
-                    anyhow::Error::new(err).context("automaton event stream connect failed")
-                );
-            }
-        };
-        info!(automaton_id, "Connected to automaton event stream");
-
-        let (_write, mut read) = ws_stream.split();
-        let buffered_event = probe_initial_event(&mut read).await?;
-        let (broadcast_tx, _) = broadcast::channel(4096);
-        let reader = spawn_automaton_reader(
-            automaton_id.to_string(),
-            _write,
-            read,
-            broadcast_tx.clone(),
-            buffered_event,
-        );
-
-        let handle = WsReaderHandle::new(reader.abort_handle());
-        Ok((broadcast_tx, handle))
-    }
 }
 
 /// Extract an `automaton_id` from a harness 409 response body.

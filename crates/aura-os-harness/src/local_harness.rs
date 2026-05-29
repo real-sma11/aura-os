@@ -101,6 +101,23 @@ impl LocalHarness {
     fn ws_url_for_run(&self, run_id: &str) -> String {
         format!("{}/stream/{run_id}", self.ws_base())
     }
+
+    /// Resolve the WebSocket URL for an automaton event stream.
+    ///
+    /// When `event_stream_url` is provided (from the `POST /v1/run`
+    /// response), it is used — verbatim if already absolute
+    /// (`ws://` / `wss://`), or joined onto the transport WS base when
+    /// relative. Falls back to `{ws_base}/stream/:run_id` when no URL is
+    /// supplied (e.g. when adopting an existing run whose start-time URL
+    /// is no longer available). Ported from the legacy automaton
+    /// client's `resolve_event_stream_url`.
+    fn resolve_event_stream_url(&self, run_id: &str, event_stream_url: Option<&str>) -> String {
+        match event_stream_url {
+            Some(u) if u.starts_with("ws://") || u.starts_with("wss://") => u.to_string(),
+            Some(u) => format!("{}/{}", self.ws_base(), u.trim_start_matches('/')),
+            None => self.ws_url_for_run(run_id),
+        }
+    }
 }
 
 /// HTTP client timeout for the `POST /v1/run` step of the two-step
@@ -148,7 +165,24 @@ impl HarnessLink for LocalHarness {
         wait_for_ready: bool,
     ) -> anyhow::Result<HarnessSession> {
         let per_attempt_timeout = read_connect_timeout_from_env();
-        self.attach_run_once(run_id, auth_token, wait_for_ready, per_attempt_timeout)
+        let ws_url = self.ws_url_for_run(run_id);
+        self.attach_run_at_ws_url(&ws_url, run_id, auth_token, wait_for_ready, per_attempt_timeout)
+            .await
+            .map_err(|e| match e {
+                OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
+            })
+    }
+
+    async fn attach_run_at_url(
+        &self,
+        run_id: &str,
+        event_stream_url: Option<&str>,
+        auth_token: Option<&str>,
+        wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        let per_attempt_timeout = read_connect_timeout_from_env();
+        let ws_url = self.resolve_event_stream_url(run_id, event_stream_url);
+        self.attach_run_at_ws_url(&ws_url, run_id, auth_token, wait_for_ready, per_attempt_timeout)
             .await
             .map_err(|e| match e {
                 OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
@@ -161,6 +195,35 @@ impl HarnessLink for LocalHarness {
 
     async fn stop_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
         self.lifecycle_post(run_id, "stop", auth_token).await
+    }
+
+    async fn resume_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+        self.lifecycle_post(run_id, "resume", auth_token).await
+    }
+
+    async fn resolve_workspace(
+        &self,
+        project_name: &str,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let url = format!("{}/workspace/resolve", self.base_url);
+        let mut req = Self::lifecycle_http_client()?
+            .get(&url)
+            .query(&[("project_name", project_name)]);
+        if let Some(token) = auth_token {
+            req = req.bearer_auth(token);
+        }
+        let resp = req.send().await?;
+        let status = resp.status();
+        let body = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("GET /workspace/resolve returned {status}: {body}");
+        }
+        let json: serde_json::Value = serde_json::from_str(&body)?;
+        json.get("path")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("workspace resolve response missing 'path' field"))
     }
 
     async fn run_status(
@@ -297,8 +360,15 @@ impl LocalHarness {
             .submit_run_once(request_body, auth_token)
             .await
             .map_err(classify_open_error)?;
-        self.attach_run_once(&run_handle.run_id, auth_token, true, per_attempt_timeout)
-            .await
+        let ws_url = self.ws_url_for_run(&run_handle.run_id);
+        self.attach_run_at_ws_url(
+            &ws_url,
+            &run_handle.run_id,
+            auth_token,
+            true,
+            per_attempt_timeout,
+        )
+        .await
     }
 
     /// `POST /v1/run` only. Maps `503 -> CapacityExhausted` and
@@ -320,10 +390,18 @@ impl LocalHarness {
         if let Some(token) = auth_token {
             http_req = http_req.bearer_auth(token);
         }
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("local harness POST /v1/run failed: {e}"))?;
+        let resp = http_req.send().await.map_err(|e| {
+            // Preserve the transport-failure taxonomy so the dev-loop
+            // start path can still map connect/timeout failures onto the
+            // "harness unavailable → 503 + autospawn" UX instead of a
+            // generic 500. Chat retry logic is unaffected: this is just
+            // an `Other`-class cause to the connect retry loop.
+            anyhow::Error::new(HarnessError::Unreachable {
+                is_connect: e.is_connect(),
+                is_timeout: e.is_timeout(),
+                message: format!("local harness POST /v1/run failed: {e}"),
+            })
+        })?;
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         if !status.is_success() {
@@ -337,7 +415,10 @@ impl LocalHarness {
                 })
                 .context(format!("POST /v1/run rejected with 409: {body}")));
             }
-            return Err(anyhow::anyhow!("POST /v1/run returned {status}: {body}"));
+            return Err(anyhow::Error::new(HarnessError::UpstreamStatus {
+                status: status.as_u16(),
+                body,
+            }));
         }
         let run_handle: RunHandle = serde_json::from_str(&body)
             .map_err(|e| anyhow::anyhow!("POST /v1/run response parse failed: {e}, body: {body}"))?;
@@ -349,15 +430,15 @@ impl LocalHarness {
     /// on the `SessionReady` frame (chat); otherwise run a short liveness
     /// probe and use `run_id` as the session id (automaton runs never
     /// emit `SessionReady`).
-    async fn attach_run_once(
+    async fn attach_run_at_ws_url(
         &self,
+        ws_url: &str,
         run_id: &str,
         auth_token: Option<&str>,
         wait_for_ready: bool,
         per_attempt_timeout: Duration,
     ) -> Result<HarnessSession, OpenAttemptError> {
-        let ws_url = self.ws_url_for_run(run_id);
-        let mut ws_req = ws_url.clone().into_client_request().map_err(|e| {
+        let mut ws_req = ws_url.to_string().into_client_request().map_err(|e| {
             OpenAttemptError::Other(anyhow::anyhow!("failed to build ws request: {e}"))
         })?;
         if let Some(token) = auth_token {

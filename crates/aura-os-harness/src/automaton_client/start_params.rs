@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use aura_protocol::{
     AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, InstalledIntegration,
@@ -155,24 +155,6 @@ pub enum AutomatonStartError {
     Response { status: u16, body: String },
     #[error("{0}")]
     Other(#[from] anyhow::Error),
-}
-
-/// Outcome of `POST /v1/run`. Carries the harness-allocated `run_id`
-/// (used as the path segment on `WS /stream/:run_id` and on the
-/// `/v1/run/:id/*` lifecycle endpoints) plus a convenience
-/// `event_stream_url` mirroring `/stream/:run_id`.
-///
-/// Renamed from `AutomatonStartResult` in Phase A of the cross-repo
-/// gateway refactor.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RunHandle {
-    /// Stable identifier for the spawned run.
-    #[serde(alias = "id", alias = "automaton_id", alias = "run_id_v0")]
-    pub run_id: String,
-    /// Convenience field — the relative WS path the client should
-    /// open. Always `/stream/:run_id`.
-    #[serde(alias = "ws_url", alias = "stream_url")]
-    pub event_stream_url: String,
 }
 
 /// Convert an [`AutomatonStartParams`] into the canonical

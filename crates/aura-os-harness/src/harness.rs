@@ -138,6 +138,27 @@ pub trait HarnessLink: Send + Sync {
         anyhow::bail!("attach_run is not supported by this harness transport")
     }
 
+    /// Attach (or reattach) to a run's event stream using the
+    /// harness-provided `event_stream_url` when available, falling back
+    /// to `WS /stream/:run_id`. The swarm gateway returns a routable
+    /// absolute (or gateway-relative) URL from `POST /v1/run` that does
+    /// not match the local `{ws_base}/stream/:run_id` convention, so the
+    /// automaton connect path threads it through here.
+    ///
+    /// Resolution semantics (ported from the legacy automaton client):
+    /// an absolute `ws://` / `wss://` URL is used verbatim; a relative
+    /// URL is joined onto the transport's WS base; `None` falls back to
+    /// `/stream/:run_id`.
+    async fn attach_run_at_url(
+        &self,
+        _run_id: &str,
+        _event_stream_url: Option<&str>,
+        _auth_token: Option<&str>,
+        _wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        anyhow::bail!("attach_run_at_url is not supported by this harness transport")
+    }
+
     /// Pause a run via `POST /v1/run/:id/pause`.
     async fn pause_run(&self, _run_id: &str, _auth_token: Option<&str>) -> anyhow::Result<()> {
         anyhow::bail!("pause_run is not supported by this harness transport")
@@ -146,6 +167,23 @@ pub trait HarnessLink: Send + Sync {
     /// Stop a run via `POST /v1/run/:id/stop`.
     async fn stop_run(&self, _run_id: &str, _auth_token: Option<&str>) -> anyhow::Result<()> {
         anyhow::bail!("stop_run is not supported by this harness transport")
+    }
+
+    /// Resume a paused run via `POST /v1/run/:id/resume`.
+    async fn resume_run(&self, _run_id: &str, _auth_token: Option<&str>) -> anyhow::Result<()> {
+        anyhow::bail!("resume_run is not supported by this harness transport")
+    }
+
+    /// Resolve the canonical workspace path for a project via
+    /// `GET /workspace/resolve?project_name=:name`. Used by the swarm
+    /// dev-loop start path to discover the gateway-side workspace
+    /// directory before kicking off a run.
+    async fn resolve_workspace(
+        &self,
+        _project_name: &str,
+        _auth_token: Option<&str>,
+    ) -> anyhow::Result<String> {
+        anyhow::bail!("resolve_workspace is not supported by this harness transport")
     }
 
     /// Get a run's status via `GET /v1/run/:id/status`.
@@ -371,5 +409,29 @@ mod tests {
         let mut cfg = full_cfg();
         cfg.user_id = None;
         assert!(validate_runtime_request_identity(&cfg).is_ok());
+    }
+
+    #[test]
+    fn run_handle_accepts_ws_url_alias() {
+        let result: RunHandle = serde_json::from_value(serde_json::json!({
+            "run_id": "auto-123",
+            "ws_url": "/stream/auto-123",
+        }))
+        .expect("run handle should deserialize");
+
+        assert_eq!(result.run_id, "auto-123");
+        assert_eq!(result.event_stream_url, "/stream/auto-123");
+    }
+
+    #[test]
+    fn run_handle_accepts_legacy_automaton_id_alias() {
+        let result: RunHandle = serde_json::from_value(serde_json::json!({
+            "automaton_id": "auto-456",
+            "event_stream_url": "/stream/auto-456",
+        }))
+        .expect("legacy automaton_id alias should still deserialize");
+
+        assert_eq!(result.run_id, "auto-456");
+        assert_eq!(result.event_stream_url, "/stream/auto-456");
     }
 }
