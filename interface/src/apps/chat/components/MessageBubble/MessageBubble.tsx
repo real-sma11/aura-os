@@ -54,6 +54,14 @@ interface Props {
   agentId?: string;
   /** Phase 5: optional session id forwarded to the inline `ReportBugButton`. */
   sessionId?: string;
+  /**
+   * Resend the most-recent prompt for this stream. When provided, error
+   * bubbles (server busy / agent busy / generic stream errors) render a
+   * manual "Retry" button. Omitted on read-only/historical surfaces, where
+   * the button does not render. The insufficient-credits variant never
+   * shows Retry — it keeps its "Buy credits" action instead.
+   */
+  onRetry?: () => void;
 }
 
 const FILE_PREFIX_RE = /^\[File:\s*(.+?)\]\n\n([\s\S]*)$/;
@@ -119,6 +127,7 @@ export const MessageBubble = memo(function MessageBubble({
   streamKey,
   agentId,
   sessionId,
+  onRetry,
 }: Props) {
   const openBuyCredits = useUIModalStore((state) => state.openBuyCredits);
   const { openGallery } = useGallery();
@@ -304,6 +313,15 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
         <div className={styles.errorMetaRow}>
+          {onRetry && !isInsufficientCreditsError && (
+            <button
+              type="button"
+              className={styles.inlineErrorLink}
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          )}
           {isInsufficientCreditsError && (
             <button
               type="button"

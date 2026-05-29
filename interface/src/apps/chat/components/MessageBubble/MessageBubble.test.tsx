@@ -167,6 +167,61 @@ describe("MessageBubble", () => {
     expect(screen.queryByRole("button", { name: "Buy credits" })).not.toBeInTheDocument();
   });
 
+  it("renders a Retry button on error bubbles and fires onRetry when clicked", () => {
+    const onRetry = vi.fn();
+    render(
+      <MessageBubble
+        message={{
+          id: "error-retry-1",
+          role: "assistant",
+          content: "",
+          errorMessage: "Server is busy — try again in 5 seconds.",
+          displayVariant: "harnessCapacityExhaustedError",
+        }}
+        onRetry={onRetry}
+      />,
+    );
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render Retry for the insufficient-credits variant even when onRetry is provided", () => {
+    render(
+      <MessageBubble
+        message={{
+          id: "error-retry-2",
+          role: "assistant",
+          content: "",
+          errorMessage: "You have no credits remaining. Buy more credits to continue.",
+          displayVariant: "insufficientCreditsError",
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    // The variant-specific action stays in place.
+    expect(screen.getByRole("button", { name: "Buy credits" })).toBeInTheDocument();
+  });
+
+  it("does not render Retry when no onRetry callback is supplied (read-only surfaces)", () => {
+    render(
+      <MessageBubble
+        message={{
+          id: "error-retry-3",
+          role: "assistant",
+          content: "",
+          errorMessage: "Model call timed out after 180s",
+          supportId: "abc123def456",
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("preserves the partial streaming prefix in LLMOutput while routing the error to the action row", () => {
     render(
       <MessageBubble

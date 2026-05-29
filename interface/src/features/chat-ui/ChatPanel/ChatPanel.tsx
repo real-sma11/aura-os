@@ -221,7 +221,12 @@ export function ChatPanel({
   // the chat hooks already wired through `onStop` / `onSend`.
   const streamHealth = useStreamHealth(streamKey);
 
-  const handleStuckStreamRetry = useCallback(() => {
+  // Resend the most-recent prompt for this stream. Shared by the
+  // stuck-stream pill's Retry action and the per-error-bubble Retry
+  // button (`MessageBubble` via `ChatMessageList`). Pulls the cached
+  // `lastSendArgs` from whichever surface owns this stream, stops any
+  // in-flight turn, then re-dispatches `onSend` with the same payload.
+  const handleRetryLastSend = useCallback(() => {
     // The standalone-agent branch caches via the agent-chat-stream
     // replay map; the project-chat branch caches via
     // `partition-send-control`. The streamKey uniquely identifies
@@ -634,6 +639,7 @@ export function ChatPanel({
                 isLoadingOlder={isLoadingOlder}
                 hasOlderMessages={hasOlderMessages}
                 onInitialAnchorReady={handleInitialAnchorReady}
+                onRetry={handleRetryLastSend}
                 isAutoFollowing={isAutoFollowing}
                 getUserUnpinnedAt={getUserUnpinnedAt}
                 density={isMobileLayout ? "mobile" : "desktop"}
@@ -672,7 +678,7 @@ export function ChatPanel({
         <ChatStreamingIndicator
           streamKey={streamKey}
           onStop={onStop}
-          onRetry={handleStuckStreamRetry}
+          onRetry={handleRetryLastSend}
         />
 
         {isThreadEmpty && !hasSentFirstMessage && (

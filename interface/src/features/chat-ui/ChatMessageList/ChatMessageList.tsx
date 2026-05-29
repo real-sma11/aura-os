@@ -24,6 +24,12 @@ interface ChatMessageListProps {
   isLoadingOlder?: boolean;
   hasOlderMessages?: boolean;
   onInitialAnchorReady?: () => void;
+  /**
+   * Resend the most-recent prompt for this stream. Forwarded to each
+   * `MessageBubble` so error bubbles can render a manual Retry button.
+   * Optional because read-only/historical surfaces don't supply it.
+   */
+  onRetry?: () => void;
   isAutoFollowing?: boolean;
   /** Returns a non-zero `performance.now()` timestamp once the user has
    * shown explicit upward scroll intent (wheel/touch/keyboard). When
@@ -65,6 +71,7 @@ export function ChatMessageList({
   isLoadingOlder,
   hasOlderMessages,
   onInitialAnchorReady,
+  onRetry,
   isAutoFollowing = true,
   getUserUnpinnedAt,
   density = "desktop",
@@ -254,6 +261,7 @@ export function ChatMessageList({
                   initialThinkingExpanded={msg.id === justFinalizedIdRef.current}
                   initialActivitiesExpanded={msg.id === justFinalizedIdRef.current}
                   streamKey={streamKey}
+                  onRetry={onRetry}
                 />
               </div>
             ))}
