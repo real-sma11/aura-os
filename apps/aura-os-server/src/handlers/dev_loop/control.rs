@@ -2,7 +2,7 @@ use axum::Json;
 use tracing::{error, warn};
 
 use aura_os_core::{AgentInstanceId, ProjectId};
-use aura_os_harness::AutomatonClient;
+use aura_os_harness::{HarnessLink, LocalHarness};
 
 use crate::dto::LoopStatusResponse;
 use crate::error::{ApiError, ApiResult};
@@ -82,7 +82,7 @@ async fn control_target(inputs: ControlTargetInputs<'_>) {
         base_url,
         action,
     } = inputs;
-    let client = AutomatonClient::new(&base_url);
+    let client = LocalHarness::new(base_url.clone());
     let harness_error = match dispatch_control_action(&client, &automaton_id, action).await {
         Ok(()) => None,
         Err(error) => {
@@ -100,14 +100,18 @@ async fn control_target(inputs: ControlTargetInputs<'_>) {
 /// string (used both for the structured log row and the
 /// `loop_*` event `harness_error` field).
 async fn dispatch_control_action(
-    client: &AutomatonClient,
+    client: &LocalHarness,
     automaton_id: &str,
     action: &ControlAction,
 ) -> anyhow::Result<()> {
+    // Control RPCs carry no bearer token: the pre-migration
+    // `AutomatonClient::new(base)` used here was constructed without
+    // `.with_auth`, so the local harness authorized lifecycle calls by
+    // request body / loopback rather than an Authorization header.
     match action {
-        ControlAction::Pause => client.pause(automaton_id).await,
-        ControlAction::Resume => client.resume(automaton_id).await,
-        ControlAction::Stop => client.stop(automaton_id).await,
+        ControlAction::Pause => client.pause_run(automaton_id, None).await,
+        ControlAction::Resume => client.resume_run(automaton_id, None).await,
+        ControlAction::Stop => client.stop_run(automaton_id, None).await,
     }
 }
 

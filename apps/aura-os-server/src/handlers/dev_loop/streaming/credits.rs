@@ -4,7 +4,7 @@
 use tracing::warn;
 
 use aura_os_core::{AgentInstanceId, ProjectId};
-use aura_os_harness::AutomatonClient;
+use aura_os_harness::{HarnessLink, LocalHarness};
 
 use crate::handlers::dev_loop::signals::is_insufficient_credits_failure;
 use crate::state::AppState;
@@ -24,7 +24,7 @@ pub(super) async fn stop_automaton_for_credit_exhaustion(
     let Some(base_url) = base_url else {
         return;
     };
-    if let Err(error) = AutomatonClient::new(&base_url).stop(automaton_id).await {
+    if let Err(error) = LocalHarness::new(base_url).stop_run(automaton_id, None).await {
         warn!(%automaton_id, %error, "failed to stop automaton after credits were exhausted");
     }
 }

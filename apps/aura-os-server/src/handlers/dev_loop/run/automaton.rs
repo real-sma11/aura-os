@@ -16,7 +16,7 @@
 //! trigger the same ephemeral-row cleanup the pre-refactor handler
 //! performed.
 
-use aura_os_harness::AutomatonStartParams;
+use aura_os_harness::{submit_automaton_run, AutomatonStartParams};
 
 use crate::error::ApiResult;
 use crate::handlers::agents::session_identity::{
@@ -67,7 +67,14 @@ async fn start_or_adopt_with_shortcut(
     prep: &RunContext,
     params: AutomatonStartParams,
 ) -> ApiResult<StartOutcome> {
-    let started = start_or_adopt(&prep.start.client, params, req.state.harness_ws_slots).await?;
+    let started = start_or_adopt(
+        prep.start.client.as_ref(),
+        &prep.start.harness_base_url,
+        prep.start.harness_auth_token.as_deref(),
+        params,
+        req.state.harness_ws_slots,
+    )
+    .await?;
     if started.adopted
         && super::super::registry::can_reuse_forwarder(
             &req.state,
@@ -101,12 +108,18 @@ async fn start_single_task_automaton(
         spawn_ephemeral_cleanup_if_single(req);
         return Err(err);
     }
-    let result = match prep.start.client.start(params).await {
+    let result = match submit_automaton_run(
+        prep.start.client.as_ref(),
+        params,
+        prep.start.harness_auth_token.as_deref(),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => {
             spawn_ephemeral_cleanup_if_single(req);
             return Err(map_start_error(
-                prep.start.client.base_url(),
+                &prep.start.harness_base_url,
                 error,
                 req.state.harness_ws_slots,
             ));

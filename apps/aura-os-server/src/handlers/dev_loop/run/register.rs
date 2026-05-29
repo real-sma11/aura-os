@@ -277,7 +277,7 @@ async fn finalize_registration(inputs: FinalizeInputs<'_>) {
             automaton_id: started.automaton_id.clone(),
             project_id: req.project_id,
             template_agent_id: prep.start.agent_id,
-            harness_base_url: prep.start.client.base_url().to_string(),
+            harness_base_url: prep.start.harness_base_url.clone(),
             paused: false,
             alive: handles.alive.clone(),
             forwarder: Some(forwarder),

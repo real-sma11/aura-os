@@ -27,9 +27,10 @@ pub(super) async fn connect_automaton_stream(
     started: &StartedAutomaton,
 ) -> ApiResult<(broadcast::Sender<serde_json::Value>, WsReaderHandle)> {
     connect_with_retries(
-        &prep.start.client,
+        prep.start.client.as_ref(),
         &started.automaton_id,
         started.event_stream_url.as_deref(),
+        prep.start.harness_auth_token.as_deref(),
         HARNESS_CONNECT_RETRIES,
     )
     .await

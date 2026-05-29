@@ -9,7 +9,7 @@ use tokio::sync::broadcast;
 
 use super::health::HealthBaselineTracker;
 use aura_os_core::{AgentId, AgentInstanceId, AgentPermissions, Project, ProjectId, SessionId};
-use aura_os_harness::{AutomatonClient, WsReaderHandle};
+use aura_os_harness::{HarnessLink, WsReaderHandle};
 use aura_os_loops::LoopHandle;
 use aura_protocol::IntentClassifierSpec;
 
@@ -22,7 +22,22 @@ pub(crate) struct LoopQueryParams {
 }
 
 pub(super) struct StartContext {
-    pub(super) client: Arc<AutomatonClient>,
+    /// Canonical harness transport for this run's mode. Local runs share
+    /// `state.local_harness`; swarm runs get a per-request
+    /// [`aura_os_harness::LocalHarness`] pointed at the gateway's
+    /// `/v1/agents/:id` base (the same POST `/v1/run` + WS `/stream`
+    /// surface, just a different base URL).
+    pub(super) client: Arc<dyn HarnessLink>,
+    /// Base URL the `client` talks to. Retained separately because the
+    /// `HarnessLink` trait is transport-only (no `base_url()` accessor);
+    /// stored on the `automaton_registry` entry so control / credit
+    /// teardown can rebuild a lifecycle client against the same harness.
+    pub(super) harness_base_url: String,
+    /// Bearer token applied to this transport's HTTP / WS calls. `None`
+    /// for local runs (the local harness reads identity from the request
+    /// body, matching the pre-migration no-auth `AutomatonClient`);
+    /// `Some(jwt)` for swarm gateway runs.
+    pub(super) harness_auth_token: Option<String>,
     pub(super) project_id: ProjectId,
     pub(super) project: Option<Project>,
     pub(super) model: Option<String>,

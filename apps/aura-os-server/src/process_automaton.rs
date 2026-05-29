@@ -128,7 +128,7 @@ async fn start_scheduled_process_automaton(
         .or_else(|| resolve_project_org_id(state, project_id));
     let aura_session_id = Some(stable_process_run_session_id(&process.id, run_id));
     let auth_token = Some(jwt.to_string());
-    let client = HarnessClient::new(state.automaton_client.base_url());
+    let client = HarnessClient::new(aura_os_harness::local_harness_base_url());
 
     client
         .start_automaton(

@@ -16,7 +16,7 @@ use aura_os_agents::{AgentInstanceService, AgentService};
 use aura_os_auth::AuthService;
 use aura_os_billing::BillingClient;
 use aura_os_core::*;
-use aura_os_harness::{AutomatonClient, HarnessLink, LocalHarness, SwarmHarness};
+use aura_os_harness::{HarnessLink, LocalHarness, SwarmHarness};
 use aura_os_network::NetworkClient;
 use aura_os_orgs::OrgService;
 use aura_os_projects::ProjectService;
@@ -281,7 +281,6 @@ pub fn build_test_app_from_store(
     let local_harness: Arc<dyn HarnessLink> = Arc::new(LocalHarness::new(harness_base.clone()));
 
     let (event_broadcast, _) = broadcast::channel::<serde_json::Value>(256);
-    let automaton_client = Arc::new(AutomatonClient::new(&harness_base));
     let harness_http = Arc::new(aura_os_server::HarnessHttpGateway::new(harness_base));
     let validation_cache = Arc::new(dashmap::DashMap::new());
     validation_cache.insert(
@@ -349,7 +348,6 @@ pub fn build_test_app_from_store(
         storage_client,
         integrations_client: None,
         require_zero_pro: false,
-        automaton_client,
         harness_http,
         automaton_registry: Arc::new(Mutex::new(HashMap::new())),
         swarm_base_url,

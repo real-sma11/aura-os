@@ -6,7 +6,7 @@ mod start_or_adopt;
 use std::sync::Arc;
 
 use aura_os_core::{AgentInstanceId, HarnessMode, Project, ProjectId};
-use aura_os_harness::AutomatonClient;
+use aura_os_harness::{HarnessLink, LocalHarness};
 
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::projects_helpers::{
@@ -29,10 +29,12 @@ pub(super) async fn resolve_start_context(
     let project = state.project_service.get_project(&project_id).ok();
     let agent_instance = load_agent_instance(state, &project_id, &agent_instance_id).await?;
     let mode = agent_instance.harness_mode();
-    let client = automaton_client_for_mode(state, mode, &agent_instance.agent_id.to_string(), jwt)?;
+    let (client, harness_base_url, harness_auth_token) =
+        automaton_client_for_mode(state, mode, &agent_instance.agent_id.to_string(), jwt)?;
     let workspace_root = resolve_workspace(ResolveWorkspaceInputs {
         state,
         client: &client,
+        auth_token: harness_auth_token.as_deref(),
         mode,
         project_id,
         project: project.as_ref(),
@@ -48,6 +50,8 @@ pub(super) async fn resolve_start_context(
     let permissions = normalize_permissions(&agent_instance, &project_id);
     Ok(StartContext {
         client,
+        harness_base_url,
+        harness_auth_token,
         project_id,
         project,
         model: Some(model),
@@ -138,26 +142,42 @@ fn normalize_permissions(
         .with_dev_loop_execution_caps()
 }
 
+/// Resolve the canonical harness transport for `mode`, plus the base
+/// URL and bearer token to drive it.
+///
+/// Both modes ride the canonical `POST /v1/run` + `WS /stream/:run_id`
+/// surface via [`LocalHarness`]; they differ only in base URL and
+/// auth. Local shares `state.local_harness` (identity travels in the
+/// request body, no Authorization header — matching the pre-migration
+/// no-auth `AutomatonClient`); swarm builds a per-request transport
+/// against the gateway's `/v1/agents/:id` base and bears the caller's
+/// JWT.
 fn automaton_client_for_mode(
     state: &AppState,
     mode: HarnessMode,
     swarm_agent_id: &str,
     jwt: &str,
-) -> ApiResult<Arc<AutomatonClient>> {
+) -> ApiResult<(Arc<dyn HarnessLink>, String, Option<String>)> {
     match mode {
-        HarnessMode::Local => Ok(state.automaton_client.clone()),
+        HarnessMode::Local => Ok((
+            state.local_harness.clone(),
+            aura_os_harness::local_harness_base_url(),
+            None,
+        )),
         HarnessMode::Swarm => {
             let base = state
                 .swarm_base_url
                 .as_deref()
                 .ok_or_else(|| ApiError::service_unavailable("swarm gateway is not configured"))?;
-            Ok(Arc::new(
-                AutomatonClient::new(&format!(
-                    "{}/v1/agents/{}",
-                    base.trim_end_matches('/'),
-                    swarm_agent_id
-                ))
-                .with_auth(Some(jwt.to_string())),
+            let agent_base = format!(
+                "{}/v1/agents/{}",
+                base.trim_end_matches('/'),
+                swarm_agent_id
+            );
+            Ok((
+                Arc::new(LocalHarness::new(agent_base.clone())),
+                agent_base,
+                Some(jwt.to_string()),
             ))
         }
     }
@@ -167,7 +187,8 @@ fn automaton_client_for_mode(
 /// stays inside the project's five-parameter ceiling.
 struct ResolveWorkspaceInputs<'a> {
     state: &'a AppState,
-    client: &'a AutomatonClient,
+    client: &'a Arc<dyn HarnessLink>,
+    auth_token: Option<&'a str>,
     mode: HarnessMode,
     project_id: ProjectId,
     project: Option<&'a Project>,
@@ -178,6 +199,7 @@ async fn resolve_workspace(inputs: ResolveWorkspaceInputs<'_>) -> ApiResult<Stri
     let ResolveWorkspaceInputs {
         state,
         client,
+        auth_token,
         mode,
         project_id,
         project,
@@ -185,7 +207,7 @@ async fn resolve_workspace(inputs: ResolveWorkspaceInputs<'_>) -> ApiResult<Stri
     } = inputs;
     if mode == HarnessMode::Swarm {
         let name = project.map(|p| p.name.as_str()).unwrap_or("");
-        if let Ok(path) = client.resolve_workspace(name).await {
+        if let Ok(path) = client.resolve_workspace(name, auth_token).await {
             return Ok(path);
         }
         return Ok(format!("/home/aura/{}", slugify(name)));

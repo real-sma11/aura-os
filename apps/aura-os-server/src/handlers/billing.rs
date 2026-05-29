@@ -231,7 +231,7 @@ mod tests {
     use aura_os_agents::{AgentInstanceService, AgentService};
     use aura_os_auth::AuthService;
     use aura_os_billing::BillingClient;
-    use aura_os_harness::{AutomatonClient, HarnessLink, LocalHarness, SwarmHarness};
+    use aura_os_harness::{HarnessLink, LocalHarness, SwarmHarness};
     use aura_os_orgs::OrgService;
     use aura_os_projects::ProjectService;
     use aura_os_sessions::SessionService;
@@ -328,7 +328,6 @@ mod tests {
         let (event_broadcast, _) = broadcast::channel::<serde_json::Value>(64);
         let event_hub = aura_os_events::EventHub::new();
         let loop_registry = aura_os_loops::LoopRegistry::new(event_hub.clone());
-        let automaton_client = Arc::new(AutomatonClient::new(&harness_base));
         let harness_http = Arc::new(HarnessHttpGateway::new(harness_base.clone()));
         let router_url = "http://localhost:19080".to_string();
         let agent_event_listener = Arc::new(crate::agent_events::AgentEventListener::new(100));
@@ -367,7 +366,6 @@ mod tests {
                 require_zero_pro: false,
                 chat_sessions: Arc::new(dashmap::DashMap::new()),
                 credit_cache: Arc::new(Mutex::new(HashMap::new())),
-                automaton_client,
                 harness_http,
                 automaton_registry: Arc::new(Mutex::new(HashMap::new())),
                 swarm_base_url: None,

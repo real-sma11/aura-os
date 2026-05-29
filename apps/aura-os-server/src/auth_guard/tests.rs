@@ -324,9 +324,6 @@ fn mock_app_state_with_cache(cache: crate::state::ValidationCache) -> AppState {
         require_zero_pro: false,
         chat_sessions: Arc::new(dashmap::DashMap::new()),
         credit_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-        automaton_client: Arc::new(aura_os_harness::AutomatonClient::new(
-            "http://localhost:9999",
-        )),
         harness_http: Arc::new(crate::HarnessHttpGateway::new("http://localhost:9999")),
         automaton_registry: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         swarm_base_url: None,

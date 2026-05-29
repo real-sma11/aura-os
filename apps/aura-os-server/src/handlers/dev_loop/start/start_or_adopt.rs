@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use tracing::warn;
 
-use aura_os_harness::{AutomatonClient, AutomatonStartError, AutomatonStartParams};
+use aura_os_harness::{submit_automaton_run, AutomatonStartError, AutomatonStartParams, HarnessLink};
 
 use crate::error::ApiError;
 use crate::handlers::agents::session_identity::{
@@ -14,34 +14,35 @@ use crate::handlers::agents::session_identity::{
 use super::super::types::StartedAutomaton;
 
 pub(crate) async fn start_or_adopt(
-    client: &AutomatonClient,
+    client: &dyn HarnessLink,
+    base_url: &str,
+    auth_token: Option<&str>,
     params: AutomatonStartParams,
     ws_slots_cap: usize,
 ) -> crate::error::ApiResult<StartedAutomaton> {
-    // Tier 1 fail-fast: refuse to POST /automaton/start with a payload
-    // missing one of the required X-Aura-* identity fields (org id,
-    // session id, template agent id, user id, JWT). Without this, the
-    // harness silently drops the missing header and the first LLM
-    // call eventually surfaces as a Cloudflare 403 / generic 5xx with
-    // no actionable signal. See `crate::handlers::agents::session_identity`.
+    // Tier 1 fail-fast: refuse to POST /v1/run with a payload missing
+    // one of the required X-Aura-* identity fields (org id, session id,
+    // template agent id, user id, JWT). Without this, the harness
+    // silently drops the missing header and the first LLM call
+    // eventually surfaces as a Cloudflare 403 / generic 5xx with no
+    // actionable signal. See `crate::handlers::agents::session_identity`.
     validate_automaton_identity(
         &params,
         SessionIdentityRequirements::DEV_LOOP,
         "dev_loop_automaton",
     )?;
-    match client.start(params.clone()).await {
+    match submit_automaton_run(client, params.clone(), auth_token).await {
         Ok(result) => Ok(StartedAutomaton {
             automaton_id: result.run_id,
             event_stream_url: Some(result.event_stream_url),
             adopted: false,
         }),
         Err(AutomatonStartError::Conflict(Some(existing))) => {
-            if !automaton_status_is_active(client, &existing).await {
-                let _ = client.stop(&existing).await;
-                let result = client
-                    .start(params)
+            if !automaton_status_is_active(client, &existing, auth_token).await {
+                let _ = client.stop_run(&existing, auth_token).await;
+                let result = submit_automaton_run(client, params, auth_token)
                     .await
-                    .map_err(|e| map_start_error(client.base_url(), e, ws_slots_cap))?;
+                    .map_err(|e| map_start_error(base_url, e, ws_slots_cap))?;
                 return Ok(StartedAutomaton {
                     automaton_id: result.run_id,
                     event_stream_url: Some(result.event_stream_url),
@@ -54,12 +55,16 @@ pub(crate) async fn start_or_adopt(
                 adopted: true,
             })
         }
-        Err(error) => Err(map_start_error(client.base_url(), error, ws_slots_cap)),
+        Err(error) => Err(map_start_error(base_url, error, ws_slots_cap)),
     }
 }
 
-async fn automaton_status_is_active(client: &AutomatonClient, automaton_id: &str) -> bool {
-    let Ok(status) = client.status(automaton_id).await else {
+async fn automaton_status_is_active(
+    client: &dyn HarnessLink,
+    automaton_id: &str,
+    auth_token: Option<&str>,
+) -> bool {
+    let Ok(status) = client.run_status(automaton_id, auth_token).await else {
         return false;
     };
     status

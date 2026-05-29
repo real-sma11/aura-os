@@ -18,9 +18,7 @@ use aura_os_core::{
     AgentId, AgentInstanceId, HarnessMode, ProjectId, SessionId, TaskId, ZeroAuthSession,
 };
 use aura_os_events::EventHub;
-use aura_os_harness::{
-    AutomatonClient, HarnessCommandSender, HarnessLink, HarnessOutbound, WsReaderHandle,
-};
+use aura_os_harness::{HarnessCommandSender, HarnessLink, HarnessOutbound, WsReaderHandle};
 use aura_os_integrations::IntegrationsClient;
 use aura_os_loops::{LoopHandle, LoopRegistry};
 
@@ -333,8 +331,6 @@ pub struct AppState {
     pub chat_sessions: ChatSessionRegistry,
     /// Cached billing credit check result.
     pub credit_cache: CreditCacheRef,
-    /// REST client for the harness automaton API.
-    pub automaton_client: Arc<AutomatonClient>,
     /// Shared JSON HTTP client for harness REST paths proxied by [`crate::handlers::harness_proxy`].
     pub harness_http: Arc<HarnessHttpGateway>,
     /// Active automatons (dev loops, task runs) per agent instance.

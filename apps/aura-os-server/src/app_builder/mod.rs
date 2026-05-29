@@ -325,7 +325,6 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
     };
 
     let harness_base = local_harness_base_url();
-    let automaton_client = Arc::new(aura_os_harness::AutomatonClient::new(&harness_base));
     let harness_http = Arc::new(HarnessHttpGateway::new(harness_base));
 
     // Dev-loop debug bundles are always captured so the Debug app and
@@ -404,7 +403,6 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         require_zero_pro: std::env::var("REQUIRE_ZERO_PRO")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false),
-        automaton_client,
         harness_http,
         automaton_registry: Arc::new(Mutex::new(HashMap::new())),
         swarm_base_url: env_opt("SWARM_BASE_URL"),
