@@ -478,25 +478,59 @@
   margin-top: calc(
     (100dvh - 2 * var(--shell-chrome-outer-height, 42px)) / -8
   );
+  /* Bottom breathing room so the flow video's mask fade-out can
+     fully render before `.pageHero { overflow: hidden }` clips it.
+     `transform: scale(1.44)` (see `.pageHeroFlowVideo`) blows the
+     video up around its center, pushing its bottom edge — and with
+     it the `70% -> 100%` fade-out ramp of the `mask-image` — about
+     22% of the video's rendered height (`(1.44 - 1) / 2`) BELOW the
+     wrapper's box. The video's intrinsic box is `width * 720 / 1280`
+     ≈ 56.25% of the section width, so 22% of that height ≈ 12.4% of
+     the section WIDTH — hence a width-relative `padding-bottom`.
+     Without this room the section clipped the video at the wrapper's
+     bottom while the mask was still ~50% opaque, leaving a hard
+     horizontal cut into `--marketing-section-bg` instead of the soft
+     fade the top edge gets. 13% gives the full ~12.4% overflow plus a
+     hair of slack so the orb melts completely into the page before
+     the next section (`AgentChatSection`, same bg) flows in.
+     The overlay slot below is re-anchored to the video's own box
+     (not this padded wrapper) so the agent marquee stays centered on
+     the orb's bright spot rather than being dragged down half the
+     padding. */
+  padding-bottom: 13%;
 }
 
 /* Slot for the optional `videoOverlay` ReactNode passed by the
    consuming view. Currently used by `ProductView` to mount
    `<AgentMarquee />` so the agent strip slides across the AURA
    orb at the video's vertical centerline.
-   - `inset: 0` matches the parent `.pageHeroFlowVideoWrapper`'s
-     box, which the video sizes via `aspect-ratio`. So the
-     overlay's bounding box equals the video's bounding box and
-     `align-items: center` lands the overlay child on the orb's
-     midline (the orb's bright spot sits at ~50% Y of the source
-     loop).
+   - The overlay box mirrors the video's intrinsic 1280/720 ratio
+     (pinned to `top: 0` + `aspect-ratio`, see the rule below) so
+     its bounding box equals the un-scaled video's box even though
+     the wrapper carries extra `padding-bottom`. `align-items:
+     center` then lands the overlay child on the orb's midline (the
+     orb's bright spot sits at ~50% Y of the source loop).
    - `pointer-events: none` on the wrapper avoids blocking
      interaction with anything UNDER the video; direct children
      re-enable pointer events so an interactive overlay (the
      marquee strip) still gets cursor + keyboard input. */
 .pageHeroVideoOverlay {
   position: absolute;
-  inset: 0;
+  /* Anchor to the VIDEO's box, not the wrapper's padded box. The
+     wrapper now carries a `padding-bottom` (see
+     `.pageHeroFlowVideoWrapper`) so the scaled video's bottom fade
+     isn't clipped; an `inset: 0` overlay would stretch into that
+     padding and `align-items: center` would land the marquee half
+     the padding BELOW the orb's bright spot. Pinning the overlay to
+     `top: 0` + the video's intrinsic 1280/720 ratio (matching
+     `.pageHeroFlowVideo`'s `aspect-ratio`) makes the overlay box
+     equal to the un-scaled video box, so its vertical center stays
+     locked on the orb's midline regardless of the wrapper padding. */
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 1280 / 720;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
