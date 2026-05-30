@@ -13,7 +13,7 @@ import { NATIVE_BILLING_MESSAGE } from "../../lib/billing";
 // Team-scoped sections (rendered against the active org).
 type OrgSection = "general" | "members" | "invites" | "billing" | "rewards" | "credit-history" | "privacy";
 // App-scoped sections (rendered independent of the active org).
-type AppSection = "appearance" | "about" | "notifications" | "keyboard" | "advanced";
+type AppSection = "you" | "appearance" | "about" | "notifications" | "keyboard" | "advanced";
 export type Section = OrgSection | AppSection;
 
 const ORG_SECTIONS: ReadonlySet<OrgSection> = new Set([
@@ -40,10 +40,10 @@ export function useOrgSettingsData(isOpen: boolean, initialSection?: Section) {
     })),
   );
   const { user } = useAuth();
-  const [section, setSection] = useState<Section>(initialSection ?? "general");
+  const [section, setSection] = useState<Section>(initialSection ?? "you");
   const [retryingOrg, setRetryingOrg] = useState(false);
 
-  useEffect(() => { if (isOpen) setSection(initialSection ?? "general"); }, [isOpen, initialSection]);
+  useEffect(() => { if (isOpen) setSection(initialSection ?? "you"); }, [isOpen, initialSection]);
 
   const [teamName, setTeamName] = useState(activeOrg?.name ?? "");
   const [teamAvatarUrl, setTeamAvatarUrl] = useState(activeOrg?.avatar_url ?? "");

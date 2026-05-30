@@ -131,10 +131,15 @@ vi.mock("lucide-react", () => {
     Bell: Stub,
     Keyboard: Stub,
     Settings: Stub,
+    User: Stub,
     ChevronRight: Stub,
     ArrowLeft: Stub,
   };
 });
+
+vi.mock("../../../components/SettingsProfile", () => ({
+  SettingsProfile: () => <div data-testid="settings-you-panel">You</div>,
+}));
 
 import { MobileSettingsView } from "./MobileSettingsView";
 
@@ -188,8 +193,9 @@ describe("MobileSettingsView", () => {
     renderAt("/projects/settings");
 
     expect(screen.getByTestId("mobile-settings-list")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-settings-row-you")).toHaveTextContent("You");
     expect(screen.getByTestId("mobile-settings-row-about")).toHaveTextContent("About");
-    expect(screen.getByTestId("mobile-settings-row-appearance")).toHaveTextContent("Appearance");
+    expect(screen.getByTestId("mobile-settings-row-appearance")).toHaveTextContent("Theme");
     expect(screen.getByTestId("mobile-settings-row-notifications")).toHaveTextContent("Notifications");
     expect(screen.getByTestId("mobile-settings-row-keyboard")).toHaveTextContent("Keyboard");
     expect(screen.getByTestId("mobile-settings-row-advanced")).toHaveTextContent("Advanced");

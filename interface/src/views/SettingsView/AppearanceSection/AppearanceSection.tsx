@@ -55,12 +55,12 @@ export function AppearanceSection() {
       data-testid="settings-appearance-panel"
     >
       <Text weight="semibold" size="sm">
-        Appearance
+        Theme
       </Text>
 
       <div className={styles.section}>
         <Text variant="muted" size="sm">
-          Theme
+          Mode
         </Text>
         <div className={styles.themeButtons}>
           {THEMES.map((mode) => {

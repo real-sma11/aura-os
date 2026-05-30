@@ -160,10 +160,15 @@ vi.mock("lucide-react", () => {
     Bell: Stub,
     Keyboard: Stub,
     Settings: Stub,
+    User: Stub,
     ChevronRight: Stub,
     ArrowLeft: Stub,
   };
 });
+
+vi.mock("../../components/SettingsProfile", () => ({
+  SettingsProfile: () => <div data-testid="settings-you-panel">You</div>,
+}));
 
 import { SettingsView } from "./SettingsView";
 
@@ -217,24 +222,25 @@ describe("SettingsView", () => {
     setCapabilities(true);
   });
 
-  it("redirects /projects/settings (no section) to the default about section", async () => {
+  it("redirects /projects/settings (no section) to the default you section", async () => {
     renderAt("/projects/settings");
 
-    expect(await screen.findByTestId("settings-about-panel")).toBeInTheDocument();
+    expect(await screen.findByTestId("settings-you-panel")).toBeInTheDocument();
   });
 
-  it("redirects an unknown section to the default about section", async () => {
+  it("redirects an unknown section to the default you section", async () => {
     renderAt("/projects/settings/not-a-real-section");
 
-    expect(await screen.findByTestId("settings-about-panel")).toBeInTheDocument();
+    expect(await screen.findByTestId("settings-you-panel")).toBeInTheDocument();
   });
 
   it("renders the navigator with every section label", () => {
     renderAt("/projects/settings/about");
 
     expect(screen.getByTestId("settings-navigator")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-item-you")).toHaveTextContent("You");
     expect(screen.getByTestId("nav-item-about")).toHaveTextContent("About");
-    expect(screen.getByTestId("nav-item-appearance")).toHaveTextContent("Appearance");
+    expect(screen.getByTestId("nav-item-appearance")).toHaveTextContent("Theme");
     expect(screen.getByTestId("nav-item-notifications")).toHaveTextContent("Notifications");
     expect(screen.getByTestId("nav-item-keyboard")).toHaveTextContent("Keyboard");
     expect(screen.getByTestId("nav-item-advanced")).toHaveTextContent("Advanced");

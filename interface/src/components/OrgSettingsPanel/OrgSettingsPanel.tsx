@@ -17,7 +17,9 @@ import {
   Info,
   Bell,
   Keyboard,
+  User,
 } from "lucide-react";
+import { SettingsProfile } from "../SettingsProfile";
 import { OrgSettingsGeneral } from "../OrgSettingsGeneral";
 import { OrgSettingsMembers } from "../OrgSettingsMembers";
 import { OrgSettingsInvites } from "../OrgSettingsInvites";
@@ -44,10 +46,14 @@ interface Props {
   initialSection?: Section;
 }
 
-// App-scoped sections — work without an active org. Listed first so users
-// looking for theme/appearance controls land here naturally.
+// Personal section — your profile (avatar, name, fields). Shown first.
+const YOU_NAV_ITEMS: NavigatorItemProps[] = [
+  { id: "you", label: "You", icon: <User size={14} /> },
+];
+
+// App-scoped sections — work without an active org.
 const APP_NAV_ITEMS: NavigatorItemProps[] = [
-  { id: "appearance", label: "Appearance", icon: <Paintbrush size={14} /> },
+  { id: "appearance", label: "Theme", icon: <Paintbrush size={14} /> },
   { id: "notifications", label: "Notifications", icon: <Bell size={14} /> },
   { id: "keyboard", label: "Keyboard", icon: <Keyboard size={14} /> },
   { id: "about", label: "About", icon: <Info size={14} /> },
@@ -172,10 +178,12 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
               <h3>{data.activeOrg?.name ?? "Settings"}</h3>
               <span>{data.activeOrg ? "Team settings" : "App settings"}</span>
             </div>
-            <div className={styles.navGroupLabel}>App</div>
-            <Navigator items={APP_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
+            <div className={styles.navGroupLabel}>You</div>
+            <Navigator items={YOU_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
             <div className={styles.navGroupLabel}>Team</div>
             <Navigator items={ORG_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
+            <div className={styles.navGroupLabel}>App</div>
+            <Navigator items={APP_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
             <div className={styles.navFooter}>
               <Button
                 variant="ghost"
@@ -192,7 +200,9 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
         </div>
         <div className={styles.settingsContent}>
           <div ref={contentScrollRef} className={styles.settingsContentScroll}>
-            {onOrgSection && orgUnavailable ? (
+            {data.section === "you" ? (
+              <SettingsProfile onClose={onClose} />
+            ) : onOrgSection && orgUnavailable ? (
               <div className={styles.unavailableState}>
                 <Text size="sm">{data.isLoading ? "Loading team settings..." : "Team settings are currently unavailable."}</Text>
                 <Text variant="muted" size="sm">Aura couldn't load your team from the current host. Check the host connection and try again.</Text>

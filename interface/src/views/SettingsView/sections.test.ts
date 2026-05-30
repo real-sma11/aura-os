@@ -8,6 +8,7 @@ import {
 describe("settings sections", () => {
   it("registers the expected ids in order", () => {
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
+      "you",
       "about",
       "appearance",
       "notifications",

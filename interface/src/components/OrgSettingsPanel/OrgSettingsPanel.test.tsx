@@ -115,6 +115,9 @@ vi.mock("../CreditsBadge", () => ({
   CREDITS_UPDATED_EVENT: "credits-updated",
 }));
 
+vi.mock("../SettingsProfile", () => ({
+  SettingsProfile: () => <div data-testid="section-you">You</div>,
+}));
 vi.mock("../OrgSettingsGeneral", () => ({
   OrgSettingsGeneral: ({ teamName }: { teamName: string }) => (
     <div data-testid="section-general">General: {teamName}</div>
@@ -196,8 +199,16 @@ describe("OrgSettingsPanel", () => {
     expect(screen.getByText("Team Aura")).toBeInTheDocument();
   });
 
-  it("shows General section by default", () => {
+  it("shows You section by default", () => {
     renderPanel();
+    expect(screen.getByTestId("section-you")).toBeInTheDocument();
+  });
+
+  it("switches to General (team) section", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByText("General"));
     expect(screen.getByTestId("section-general")).toHaveTextContent("General: Team Aura");
   });
 
@@ -242,18 +253,18 @@ describe("OrgSettingsPanel", () => {
 
   it("renders all app navigation items alongside team items", () => {
     renderPanel();
-    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByText("Theme")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Keyboard")).toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
     expect(screen.getByText("Advanced")).toBeInTheDocument();
   });
 
-  it("switches to Appearance section (app-scoped)", async () => {
+  it("switches to Theme section (app-scoped)", async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(screen.getByText("Appearance"));
+    await user.click(screen.getByText("Theme"));
     expect(screen.getByTestId("section-appearance")).toBeInTheDocument();
   });
 
@@ -294,22 +305,28 @@ describe("OrgSettingsPanel", () => {
   });
 
   describe("when no org available", () => {
-    it("shows unavailable message", () => {
+    it("shows unavailable message on a team section", async () => {
       mockOrgStore.activeOrg = null;
+      const user = userEvent.setup();
       renderPanel();
+      await user.click(screen.getByText("General"));
       expect(screen.getByText("Team settings are currently unavailable.")).toBeInTheDocument();
     });
 
-    it("shows loading message when isLoading", () => {
+    it("shows loading message when isLoading", async () => {
       mockOrgStore.activeOrg = null;
       mockOrgStore.isLoading = true;
+      const user = userEvent.setup();
       renderPanel();
+      await user.click(screen.getByText("General"));
       expect(screen.getByText("Loading team settings...")).toBeInTheDocument();
     });
 
-    it("shows retry and close buttons", () => {
+    it("shows retry and close buttons", async () => {
       mockOrgStore.activeOrg = null;
+      const user = userEvent.setup();
       renderPanel();
+      await user.click(screen.getByText("General"));
       expect(screen.getByText("Retry")).toBeInTheDocument();
       expect(screen.getByText("Close")).toBeInTheDocument();
     });
@@ -319,6 +336,7 @@ describe("OrgSettingsPanel", () => {
       const user = userEvent.setup();
       renderPanel();
 
+      await user.click(screen.getByText("General"));
       await user.click(screen.getByText("Retry"));
       expect(mockOrgStore.refreshOrgs).toHaveBeenCalled();
     });
@@ -328,16 +346,17 @@ describe("OrgSettingsPanel", () => {
       const user = userEvent.setup();
       renderPanel();
 
+      await user.click(screen.getByText("General"));
       await user.click(screen.getByText("Close"));
       expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it("still renders app sections (Appearance) when no org is loaded", async () => {
+    it("still renders app sections (Theme) when no org is loaded", async () => {
       mockOrgStore.activeOrg = null;
       const user = userEvent.setup();
       renderPanel();
 
-      await user.click(screen.getByText("Appearance"));
+      await user.click(screen.getByText("Theme"));
       expect(screen.getByTestId("section-appearance")).toBeInTheDocument();
       expect(screen.queryByText("Team settings are currently unavailable.")).not.toBeInTheDocument();
     });
