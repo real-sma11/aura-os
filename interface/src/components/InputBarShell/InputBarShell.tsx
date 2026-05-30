@@ -419,6 +419,7 @@ function InputBarShellInner(
         <div className={inputRowClassName}>
           {inputRowStart}
           <textarea
+            autoComplete="off"
             {...textareaProps}
             ref={textareaRef}
             className={styles.textarea}

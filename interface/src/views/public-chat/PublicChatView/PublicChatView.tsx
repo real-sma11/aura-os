@@ -558,7 +558,11 @@ export function PublicChatView(): React.ReactElement {
         </div>
       ) : null}
       {isChatPage ? (
-        <form className={styles.inputBarSlot} onSubmit={handleSubmit}>
+        <form
+          className={styles.inputBarSlot}
+          onSubmit={handleSubmit}
+          autoComplete="off"
+        >
           <label className={styles.inputLabel} htmlFor="public-chat-input">
             Message Aura
           </label>
@@ -569,6 +573,9 @@ export function PublicChatView(): React.ReactElement {
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Ask Aura anything..."
             disabled={isSending}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             autoFocus
           />
           <button
