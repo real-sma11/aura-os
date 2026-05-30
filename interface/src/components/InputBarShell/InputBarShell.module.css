@@ -601,8 +601,25 @@
   border-top: 1px solid var(--color-border);
 }
 
-.modelMenuGroupLabel {
+.modelMenuGroupHeader {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 4px 12px 6px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.modelMenuGroupHeader:hover {
+  background: var(--color-overlay-light);
+}
+
+.modelMenuGroupLabel {
   color: var(--color-text-muted);
   font-size: 10px;
   font-weight: 600;
@@ -610,21 +627,14 @@
   text-transform: uppercase;
 }
 
-.modelMenuShowMore {
-  display: block;
-  width: 100%;
-  padding: 8px 12px 6px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-primary);
-  font-family: inherit;
-  font-size: 11px;
-  text-align: left;
-  cursor: pointer;
+.modelMenuGroupChevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
 }
 
-.modelMenuShowMore:hover {
-  background: var(--color-overlay-light);
+.modelMenuGroupChevronCollapsed {
+  transform: rotate(-90deg);
 }
 
 .mobileModelBar {
@@ -690,8 +700,7 @@
     padding: 6px;
   }
 
-  .mobileModelMenuWrap .modelMenuItem,
-  .mobileModelMenuWrap .modelMenuShowMore {
+  .mobileModelMenuWrap .modelMenuItem {
     border-radius: 12px;
     padding: 10px 12px;
     font-size: 13px;
@@ -784,8 +793,7 @@
     padding: 6px;
   }
 
-  .inputInfoBar .modelMenuItem,
-  .inputInfoBar .modelMenuShowMore {
+  .inputInfoBar .modelMenuItem {
     border-radius: 12px;
     padding: 10px 12px;
     font-size: 13px;

@@ -289,7 +289,7 @@ describe("ChatInputBar", () => {
     render(<ChatInputBar {...makeProps()} />);
 
     await user.click(screen.getAllByText("Opus 4.6")[0]);
-    expect(screen.getAllByText("Show all models")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Anthropic")[0]).toBeInTheDocument();
 
     await user.click(screen.getAllByText("Sonnet 4.6")[0]);
     expect(mockSetSelectedModel).toHaveBeenCalledWith(
@@ -301,19 +301,39 @@ describe("ChatInputBar", () => {
     );
   });
 
-  it("shows all chat models grouped under Aura after expanding", async () => {
+  it("groups chat models by provider with every section expanded by default", async () => {
     const user = userEvent.setup();
     mockSelectedModel = "aura-gpt-5-4";
     render(<ChatInputBar {...makeProps()} />);
 
     await user.click(screen.getAllByText("GPT-5.4")[0]);
-    await user.click(screen.getAllByText("Show all models")[0]);
 
-    expect(screen.getAllByText("Aura")[0]).toBeInTheDocument();
-    expect(screen.queryByText("OpenAI")).not.toBeInTheDocument();
-    expect(screen.queryByText("Anthropic")).not.toBeInTheDocument();
-    expect(screen.queryByText("Open source")).not.toBeInTheDocument();
+    // Provider headers render immediately (no "Show all models" step).
+    expect(screen.getAllByText("Anthropic")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("OpenAI")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Open Source")[0]).toBeInTheDocument();
+    // Google has no chat model today, so its section is omitted.
+    expect(screen.queryByText("Google")).not.toBeInTheDocument();
+
+    // Models that used to be hidden behind "Show all" are visible now.
+    expect(screen.getAllByText("Kimi K2.6")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Haiku 4.5")[0]).toBeInTheDocument();
     expect(screen.getAllByText("GPT-OSS 120B")[0]).toBeInTheDocument();
+  });
+
+  it("collapses and expands a provider section when its header is clicked", async () => {
+    const user = userEvent.setup();
+    mockSelectedModel = "aura-gpt-5-4";
+    render(<ChatInputBar {...makeProps()} />);
+
+    await user.click(screen.getAllByText("GPT-5.4")[0]);
+    expect(screen.getAllByText("Opus 4.8")[0]).toBeInTheDocument();
+
+    await user.click(screen.getAllByText("Anthropic")[0]);
+    expect(screen.queryByText("Opus 4.8")).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByText("Anthropic")[0]);
+    expect(screen.getAllByText("Opus 4.8")[0]).toBeInTheDocument();
   });
 
   it("relocates the model picker into the bottom chrome row when the textarea wraps to multi-line", async () => {
@@ -654,7 +674,6 @@ describe("ChatInputBar", () => {
     render(<ChatInputBar {...makeProps()} />);
 
     await user.click(screen.getAllByText("GPT-5.4")[0]);
-    await user.click(screen.getAllByText("Show all models")[0]);
 
     expect(screen.queryByText("GPT Image 2")).not.toBeInTheDocument();
   });

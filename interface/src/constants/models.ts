@@ -468,7 +468,12 @@ export function getModelsForMode(mode: GenerationMode): ModelOption[] {
 }
 
 export function getDefaultModelForMode(mode: GenerationMode): ModelOption {
-  return getModelsForMode(mode)[0] ?? DEFAULT_MODEL;
+  const models = getModelsForMode(mode);
+  if (mode === "chat") {
+    const pinned = models.find((m) => m.id === DEFAULT_CHAT_MODEL_ID);
+    if (pinned) return pinned;
+  }
+  return models[0] ?? DEFAULT_MODEL;
 }
 
 export function getModelMode(modelId: string): GenerationMode {

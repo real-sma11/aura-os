@@ -489,15 +489,29 @@
   gap: 8px;
 }
 
-.modelGroupLabel {
+.modelGroupHeader {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 10px 2px 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.modelGroupLabel {
   color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.modelItem,
-.showAllModels {
+.modelItem {
   display: flex;
   width: 100%;
   min-height: 52px;
@@ -520,13 +534,6 @@
   background: color-mix(in srgb, #01f4cb 10%, #111213);
 }
 
-.modelProvider {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .modelMeta {
   display: flex;
   align-items: center;
@@ -539,11 +546,6 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.showAllModels {
-  justify-content: center;
-  color: #01f4cb;
 }
 
 @keyframes fadeIn {

@@ -9,5 +9,6 @@ export {
   type ModelOptionLike,
 } from "./ModelPicker";
 export { ModelMenuRow, type ModelMenuRowProps } from "./ModelMenuRow";
+export { ModelMenuGroup, type ModelMenuGroupProps } from "./ModelMenuGroup";
 export { ModeSelector, type ModeSelectorProps } from "./ModeSelector";
 export { inputBarShellStyles } from "./styles";

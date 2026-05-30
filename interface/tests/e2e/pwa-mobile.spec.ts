@@ -310,7 +310,7 @@ test("mobile project navigation opens shared agent, work, process, and stats rou
   const mobileModelButton = page.getByRole("button", { name: /Sonnet|Opus|GPT|Kimi|DeepSeek|OSS/i }).first();
   await expect(mobileModelButton).toBeVisible({ timeout: 10000 });
   await mobileModelButton.click();
-  await expect(page.getByRole("button", { name: /GPT-5\.4|Show all models|Sonnet 4\.6/i }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("button", { name: /GPT-5\.4|Anthropic|Sonnet 4\.6/i }).first()).toBeVisible({ timeout: 10000 });
 
   await tapPrimaryNav(page, "Tasks");
   await expect(page).toHaveURL(/\/projects\/proj-1\/tasks$/);
