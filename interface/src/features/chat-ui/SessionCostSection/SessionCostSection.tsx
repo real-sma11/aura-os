@@ -11,7 +11,15 @@ export interface SessionCostView {
   modelLabel: string;
   inputTokens: number;
   outputTokens: number;
-  /** Input + output tokens consumed this session. */
+  /** Cache-read tokens consumed this session. */
+  cacheReadTokens: number;
+  /** Cache-write (creation) tokens consumed this session. */
+  cacheCreationTokens: number;
+  /**
+   * All billed tokens consumed this session (input + output + cache).
+   * Matches the basis of {@link totalCostUsd} / {@link avgCostPerMillionUsd}
+   * so the displayed total reconciles with the cost.
+   */
   totalTokens: number;
   /** Weighted-average billed cost across token types, USD per 1M tokens. */
   avgCostPerMillionUsd: number;
@@ -71,6 +79,14 @@ export function SessionCostSection({ view }: SessionCostSectionProps): ReactElem
         <span className={styles.subLabel}>Output</span>
         <span className={styles.value}>{formatTokens(view.outputTokens)}</span>
       </div>
+      {(view.cacheReadTokens > 0 || view.cacheCreationTokens > 0) && (
+        <div className={styles.subRow}>
+          <span className={styles.subLabel}>Cache (read/write)</span>
+          <span className={styles.value}>
+            {formatTokens(view.cacheReadTokens)} / {formatTokens(view.cacheCreationTokens)}
+          </span>
+        </div>
+      )}
       <div className={styles.subRow}>
         <span className={styles.subLabel}>Total</span>
         <span className={styles.value}>{formatTokens(view.totalTokens)}</span>
@@ -78,7 +94,7 @@ export function SessionCostSection({ view }: SessionCostSectionProps): ReactElem
 
       <div className={styles.row}>
         <span className={styles.label}>Avg. Cost per Token</span>
-        <span className={styles.value}>
+        <span className={`${styles.value} ${styles.rateValue}`}>
           <CostPerTokenOverlay
             inputRatePerMillionUsd={view.inputRatePerMillionUsd}
             outputRatePerMillionUsd={view.outputRatePerMillionUsd}

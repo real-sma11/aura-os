@@ -593,9 +593,9 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin: 4px 0 8px;
-  padding: 4px 0 4px 2px;
-  border-bottom: 1px solid var(--color-border);
+  margin: 8px 0 4px;
+  padding: 6px 0 2px 2px;
+  border-top: 1px solid var(--color-border);
   font-size: 11px;
   color: var(--color-text-muted);
 }

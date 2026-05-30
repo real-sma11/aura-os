@@ -112,20 +112,24 @@ function buildSessionCostView(
   if (!model) return null;
   const inputTokens = props.cumulativeInputTokens ?? 0;
   const outputTokens = props.cumulativeOutputTokens ?? 0;
+  const cacheReadTokens = props.cumulativeCacheReadTokens ?? 0;
+  const cacheCreationTokens = props.cumulativeCacheCreationTokens ?? 0;
   if (inputTokens <= 0 && outputTokens <= 0) return null;
   const cost = computeSessionCost({
     model,
     provider: props.provider,
     inputTokens,
     outputTokens,
-    cacheReadTokens: props.cumulativeCacheReadTokens ?? 0,
-    cacheCreationTokens: props.cumulativeCacheCreationTokens ?? 0,
+    cacheReadTokens,
+    cacheCreationTokens,
   });
   return {
     modelLabel: modelLabel(model),
     inputTokens,
     outputTokens,
-    totalTokens: inputTokens + outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    totalTokens: cost.totalTokens,
     avgCostPerMillionUsd: cost.avgCostPerMillionUsd,
     totalCostUsd: cost.totalCostUsd,
     inputRatePerMillionUsd: cost.pricing.input,
@@ -314,32 +318,6 @@ export function ContextUsageIndicator({
               ~{formatTokensShort(usedTokens)} / {formatTokensShort(totalTokens)} Tokens
             </span>
           </div>
-          {(breakdown.cacheReadTokens > 0 || breakdown.cacheCreationTokens > 0) && (
-            <div className={styles.contextBreakdownCacheRow} data-cache-row>
-              <span className={styles.contextBreakdownRowLeft}>Cached this turn</span>
-              <span className={styles.contextBreakdownRowValue}>
-                {formatTokensShort(breakdown.cacheReadTokens)} read
-                {breakdown.cacheCreationTokens > 0 ? (
-                  <>
-                    {" "}/ {formatTokensShort(breakdown.cacheCreationTokens)} written
-                  </>
-                ) : null}
-                {(() => {
-                  const total =
-                    breakdown.cacheReadTokens + breakdown.cacheCreationTokens;
-                  if (total === 0) return null;
-                  const hitPct = Math.round(
-                    (breakdown.cacheReadTokens / total) * 100,
-                  );
-                  return (
-                    <>
-                      {" "}<span style={{ opacity: 0.7 }}>({hitPct}% hit)</span>
-                    </>
-                  );
-                })()}
-              </span>
-            </div>
-          )}
           <div
             className={styles.contextBreakdownBar}
             role="img"
@@ -372,6 +350,32 @@ export function ContextUsageIndicator({
               </div>
             ))}
           </div>
+          {(breakdown.cacheReadTokens > 0 || breakdown.cacheCreationTokens > 0) && (
+            <div className={styles.contextBreakdownCacheRow} data-cache-row>
+              <span className={styles.contextBreakdownRowLeft}>Cached this turn</span>
+              <span className={styles.contextBreakdownRowValue}>
+                {formatTokensShort(breakdown.cacheReadTokens)} read
+                {breakdown.cacheCreationTokens > 0 ? (
+                  <>
+                    {" "}/ {formatTokensShort(breakdown.cacheCreationTokens)} written
+                  </>
+                ) : null}
+                {(() => {
+                  const total =
+                    breakdown.cacheReadTokens + breakdown.cacheCreationTokens;
+                  if (total === 0) return null;
+                  const hitPct = Math.round(
+                    (breakdown.cacheReadTokens / total) * 100,
+                  );
+                  return (
+                    <>
+                      {" "}<span style={{ opacity: 0.7 }}>({hitPct}% hit)</span>
+                    </>
+                  );
+                })()}
+              </span>
+            </div>
+          )}
           {sessionCostView && <SessionCostSection view={sessionCostView} />}
         </div>
       )}

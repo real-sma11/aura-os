@@ -31,6 +31,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Avg-cost row: keep the Info trigger vertically centered on the line
+   and add a small gap before the "$.. / 1M" rate text. */
+.rateValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .groupLabel {
   color: var(--color-text-secondary);
   font-size: 11px;

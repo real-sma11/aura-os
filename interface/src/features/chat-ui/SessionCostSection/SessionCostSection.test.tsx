@@ -13,6 +13,8 @@ function fixtureView(overrides: Partial<SessionCostView> = {}): SessionCostView 
     modelLabel: "Opus 4.8",
     inputTokens: 1_240_500,
     outputTokens: 310_200,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
     totalTokens: 1_550_700,
     avgCostPerMillionUsd: 11.8,
     totalCostUsd: 9.62,

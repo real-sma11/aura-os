@@ -283,7 +283,13 @@
   bottom: var(--streaming-indicator-bottom, 108px);
   left: 0;
   right: 0;
-  z-index: 11;
+  /* Sit below the input bar (z-index 10) so the context popover, which
+     opens upward from the input bar's info row, is never covered by this
+     strip's full-width gradient backdrop. It still paints above the
+     scrolling chat content because `.messageArea` is earlier in the DOM
+     with no stacking context of its own. The queue (z-index 12) stays on
+     top of everything. */
+  z-index: 9;
   display: flex;
   justify-content: center;
   padding: var(--space-4) calc(var(--space-3) * 2) 0;
