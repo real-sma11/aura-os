@@ -17,47 +17,15 @@
   aspect-ratio: 16 / 9;
 }
 
-/* Continuously moving background. Two stacked layers — a halftone dot grid
-   and a soft diagonal sheen — pan across the frame on independent infinite
-   loops so the whole surface reads as actively working, not a frozen box. */
+/* Canvas-rendered halftone dot grid. Individual dots pulse in radius and
+   brightness in flowing ripple waves (see MediaGenerationPlaceholder.tsx) so
+   the surface reads as actively working, not a frozen box. */
 .motion {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(
-      115deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.07) 50%,
-      transparent 70%
-    ),
-    radial-gradient(
-      var(--color-text-muted, rgba(255, 255, 255, 0.18)) 1.4px,
-      transparent 1.6px
-    );
-  background-size: 220% 220%, 18px 18px;
-  background-repeat: no-repeat, repeat;
-  opacity: 0.5;
-  animation:
-    mediaSheen 2.4s ease-in-out infinite,
-    mediaDrift 6s linear infinite;
-}
-
-@keyframes mediaSheen {
-  0% {
-    background-position: 150% 0, 0 0;
-  }
-  100% {
-    background-position: -50% 0, 0 0;
-  }
-}
-
-@keyframes mediaDrift {
-  0% {
-    background-position: 150% 0, 0 0;
-  }
-  100% {
-    background-position: -50% 0, 36px 36px;
-  }
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .overlay {
@@ -104,9 +72,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .motion {
-    animation: none;
-  }
+  /* The canvas ripple loop also checks this query and renders a single static
+     frame; here we just freeze the label shimmer. */
   .label {
     animation: none;
     -webkit-text-fill-color: var(--color-text-muted, #aaa);
