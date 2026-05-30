@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useUIModeStore, type UIMode } from "../../stores/ui-mode-store";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
@@ -57,28 +58,41 @@ export function ModeToggle(): React.ReactElement | null {
   const handleChange = useCallback(
     (next: ToggleMode): void => {
       const changed = next !== value;
-      setMode(next);
+      // Re-clicking the already-active segment is a no-op for the URL,
+      // so the mode write can stand alone (it short-circuits in the
+      // store anyway when the value is unchanged).
+      if (!changed) {
+        setMode(next);
+        return;
+      }
       // Restore the URL the user had last seen in the destination
       // mode so flipping the toggle takes them back to the app + item
       // they were on (Advanced) or the chat session they were in
       // (Simple). Both stored values are validated by the storage
       // helpers (Simple must be `/chat...`, Advanced must not be) so
       // a hand-edited / stale entry can't drive `navigate()` to an
-      // invalid surface.
-      //
-      // Only navigate on an actual segment change — re-clicking the
-      // already-active segment is a no-op for the URL. No-op fallback
-      // when the destination bucket is empty: in Simple,
-      // `ChatRedirectGuard` already pulls non-chat paths to `/chat`;
-      // in Advanced, staying on the current URL (e.g. `/chat`) is
-      // the correct minimum-surprise default since `/chat` is also a
-      // valid Advanced surface.
-      if (!changed) return;
+      // invalid surface. No-op fallback when the destination bucket is
+      // empty: in Simple, `ChatRedirectGuard` already pulls non-chat
+      // paths to `/chat`; in Advanced, staying on the current URL
+      // (e.g. `/chat`) is the correct minimum-surprise default since
+      // `/chat` is also a valid Advanced surface.
       const target =
         next === "advanced" ? getLastAdvancedPath() : getLastSimplePath();
-      if (target) {
-        navigate(target);
-      }
+      // Commit the mode flip and the route change in a single render.
+      // `useActiveApp` derives the shell's active app from BOTH the
+      // mode store and the router pathname; updating them in separate
+      // commits leaves a one-frame window where `effectiveMode` is the
+      // new mode but `pathname` is stale, so `resolveActiveApp` misses
+      // and falls back to the first registered app — the visible
+      // "jump to the first app, then the real app" jank. `flushSync`
+      // forces both external-store updates into one commit so the
+      // chrome moves straight from the source app to the destination.
+      flushSync(() => {
+        setMode(next);
+        if (target) {
+          navigate(target);
+        }
+      });
     },
     [navigate, setMode, value],
   );
