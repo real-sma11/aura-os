@@ -8,8 +8,12 @@ import {
   type ModelMode,
   type ModelStatus,
 } from "../../../api/marketing/models";
+import { useCountUp } from "../../../hooks/use-count-up";
+import { BannerCard } from "../BannerCard/BannerCard";
 
 import "./ModelsView.css";
+
+const STAT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
 
 type ModeFilter = "all" | ModelMode;
 type StatusFilter = "all" | ModelStatus;
@@ -122,6 +126,25 @@ export function ModelsView(): ReactNode {
 
   const entries = useMemo(() => data ?? [], [data]);
 
+  // Banner totals are computed from the full, unfiltered catalog so they
+  // stay stable while the user changes the mode/status/search filters.
+  const stats = useMemo(
+    () => ({
+      total: entries.length,
+      text: entries.filter((entry) => entry.mode === "text").length,
+      video: entries.filter((entry) => entry.mode === "video").length,
+      image: entries.filter((entry) => entry.mode === "image").length,
+      threeD: entries.filter((entry) => entry.mode === "3d").length,
+    }),
+    [entries],
+  );
+
+  const totalDisplay = useCountUp({ target: data ? stats.total : null });
+  const textDisplay = useCountUp({ target: data ? stats.text : null });
+  const videoDisplay = useCountUp({ target: data ? stats.video : null });
+  const imageDisplay = useCountUp({ target: data ? stats.image : null });
+  const threeDDisplay = useCountUp({ target: data ? stats.threeD : null });
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return entries.filter((entry) => {
@@ -146,14 +169,52 @@ export function ModelsView(): ReactNode {
 
   return (
     <section className="modelsPage">
-      <div className="modelsPageContent">
-        <header className="modelsPageHeader">
-          <h1 className="modelsPageTitle">{MODE_TITLE[mode]}</h1>
-          <p className="modelsPageSubtitle">
-            The frontier models powering AURA, across text, image, video, and 3D.
-          </p>
-        </header>
+      <div className="modelsBannerWrap">
+        <BannerCard ariaLabel="Models summary" className="modelsStatsCard">
+          <header className="modelsStatsCardHeader">
+            <h1 className="modelsPageTitle">Models</h1>
+            <p className="modelsPageSubtitle">
+              The frontier models powering AURA, across text, image, video, and
+              3D.
+            </p>
+          </header>
 
+          <dl className="modelsStatsGrid">
+            <div className="modelsStat">
+              <dt className="modelsStatLabel">Total Models</dt>
+              <dd className="modelsStatValue">
+                {STAT_NUMBER_FORMATTER.format(totalDisplay)}
+              </dd>
+            </div>
+            <div className="modelsStat">
+              <dt className="modelsStatLabel">Text</dt>
+              <dd className="modelsStatValue">
+                {STAT_NUMBER_FORMATTER.format(textDisplay)}
+              </dd>
+            </div>
+            <div className="modelsStat">
+              <dt className="modelsStatLabel">Video</dt>
+              <dd className="modelsStatValue">
+                {STAT_NUMBER_FORMATTER.format(videoDisplay)}
+              </dd>
+            </div>
+            <div className="modelsStat">
+              <dt className="modelsStatLabel">Image</dt>
+              <dd className="modelsStatValue">
+                {STAT_NUMBER_FORMATTER.format(imageDisplay)}
+              </dd>
+            </div>
+            <div className="modelsStat">
+              <dt className="modelsStatLabel">3D</dt>
+              <dd className="modelsStatValue">
+                {STAT_NUMBER_FORMATTER.format(threeDDisplay)}
+              </dd>
+            </div>
+          </dl>
+        </BannerCard>
+      </div>
+
+      <div className="modelsPageContent">
         <div
           className="modelsModeRow"
           role="tablist"

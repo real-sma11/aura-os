@@ -4,9 +4,20 @@
   flex-direction: column;
   min-height: calc(100vh - var(--marketing-main-bottom-space));
   min-height: calc(100dvh - var(--marketing-main-bottom-space));
-  padding: clamp(40px, 6vh, 72px) clamp(32px, 5vw, 72px);
+  /* Flat 32px horizontal padding so the centered column lands in the
+     same place as the sibling marketing pages (/feedback, /changelog)
+     rather than the wider clamp the catalog used previously. */
+  padding: clamp(40px, 6vh, 72px) 32px 0;
   box-sizing: border-box;
   background: #16191d;
+}
+
+/* Mirror `.feedbackPage`'s public-mode offset: the logged-out shell
+   renders the sidebar as a floating overlay, so pad the page by the
+   live sidebar width to balance the centered column against the
+   visible region (body minus the overlay). */
+:where([data-ui-mode='public']) .modelsPage {
+  padding-inline-start: calc(32px + var(--aura-sidebar-width, 0px));
 }
 
 .modelsPageContent {
@@ -23,25 +34,102 @@
   gap: 28px;
 }
 
-.modelsPageHeader {
+/* Gradient summary banner. Mirrors the Changelog/Feedback BannerCard
+   pattern: shared `ellipse 120% 110% at 72% 38%` radial geometry,
+   here in the user-provided hot-pink swatch (~#ec2d7e) with white
+   text like the Changelog card. */
+.modelsBannerWrap {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto 48px;
+}
+
+.modelsStatsCard {
+  padding: 32px;
+  color: #fff;
+  background: radial-gradient(
+    ellipse 120% 110% at 72% 38%,
+    #f5549f 0%,
+    #ec2d7e 45%,
+    #d51f6c 100%
+  );
+}
+
+.modelsStatsCardHeader {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .modelsPageTitle {
   margin: 0;
-  font-size: clamp(32px, 4vw, 44px);
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  color: #f4f3ef;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 0.96;
+  letter-spacing: -0.06em;
+  font-weight: 400;
+  color: #fff;
 }
 
 .modelsPageSubtitle {
   margin: 0;
-  font-size: 14px;
+  max-width: 560px;
+  font-size: 15px;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.56);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.modelsStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px 28px;
+  margin: 0;
+  padding: 0;
+}
+
+.modelsStat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.modelsStatLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.modelsStatValue {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  .modelsBannerWrap {
+    margin-bottom: 32px;
+  }
+
+  .modelsStatsCard {
+    padding: 22px;
+  }
+
+  .modelsStatsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .modelsStatsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Primary mode filter row (All / Text / Image / Video / 3D) */
