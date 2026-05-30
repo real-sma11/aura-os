@@ -26,4 +26,20 @@ describe("FeedbackView", () => {
       screen.getByRole("complementary", { name: /Feedback filters/i }),
     ).toBeInTheDocument();
   });
+
+  it("renders the summary banner with title, subtitle, and metric labels", () => {
+    renderFeedbackView();
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Feedback" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Our users submit feedback and AURA autonomously improves itself.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Items Submitted")).toBeInTheDocument();
+    expect(screen.getByText("Items Resolved")).toBeInTheDocument();
+    expect(screen.getByText("Participants")).toBeInTheDocument();
+  });
 });

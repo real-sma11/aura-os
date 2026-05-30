@@ -40,6 +40,97 @@
   align-items: start;
 }
 
+/* Banner */
+.feedbackBannerWrap {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto 48px;
+}
+
+/* Slate-blue gradient banner with dark text. Mirrors the Changelog
+   summary card's gradient geometry (brightest in the upper-right,
+   fading darker toward the lower-left) but swaps the dark purple for
+   the user-provided #7DA2B4 swatch, so the card carries dark text
+   instead of the white text used on Changelog. */
+.feedbackStatsCard {
+  padding: 32px;
+  color: #13242c;
+  background:
+    radial-gradient(
+      ellipse 120% 110% at 72% 38%,
+      #9ab9c8 0%,
+      #7da2b4 45%,
+      #6b8fa1 100%
+    );
+}
+
+.feedbackStatsCardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feedbackPageTitle {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 0.96;
+  letter-spacing: -0.06em;
+  font-weight: 400;
+  color: #13242c;
+}
+
+.feedbackPageSubtitle {
+  margin: 0;
+  max-width: 560px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(15, 30, 38, 0.72);
+}
+
+.feedbackStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 28px;
+  margin: 0;
+  padding: 0;
+}
+
+.feedbackStat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.feedbackStatLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(15, 30, 38, 0.6);
+}
+
+.feedbackStatValue {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #13242c;
+}
+
+@media (max-width: 768px) {
+  .feedbackBannerWrap {
+    margin-bottom: 32px;
+  }
+
+  .feedbackStatsCard {
+    padding: 22px;
+  }
+}
+
 /* Sidebar */
 .feedbackSidebar {
   position: sticky;
