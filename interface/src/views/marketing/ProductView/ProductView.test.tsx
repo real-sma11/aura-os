@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe("ProductView", () => {
-  it("streams the 'Your Personal Agent.' hero headline via the typewriter", () => {
+  it("streams the 'Your Private Agent.' hero headline via the typewriter", () => {
     // The hero headline now renders through `<TypewriterText />`,
     // which reveals characters on a 45ms interval. The full literal
     // string only appears in the DOM after the interval has run for
@@ -68,7 +68,7 @@ describe("ProductView", () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(screen.getByText("Your Personal Agent.")).toBeInTheDocument();
+    expect(screen.getByText("Your Private Agent.")).toBeInTheDocument();
   });
 
   it("places the AgentChatSection directly above the secure-OS row", () => {

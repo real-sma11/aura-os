@@ -33,7 +33,7 @@ import styles from "./ProductView.module.css";
  * Pulling the literal into a constant means a future copy change
  * cannot drift the ghost and the streamed text out of sync.
  */
-const HERO_HEADLINE = "Your Personal Agent.";
+const HERO_HEADLINE = "Your Private Agent.";
 
 /**
  * Marketing `/product` page. Ported from
