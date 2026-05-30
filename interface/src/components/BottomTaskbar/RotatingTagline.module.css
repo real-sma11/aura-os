@@ -77,14 +77,12 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .wordEntering,
-  .wordLeaving {
-    animation: none;
-  }
-  /* Without motion, just hide the outgoing layer so the new word
-     snaps cleanly into place rather than stacking on top of it. */
-  .wordLeaving {
-    display: none;
-  }
-}
+/*
+ * Deliberately NO `prefers-reduced-motion: reduce` guard. This ticker
+ * is a directly-requested presentational effect, and the surrounding
+ * public shell already opts decorative motion out of the reduced-
+ * motion gate (see the comment in `TypewriterText.tsx`). Gating it
+ * here made the swap silently snap with no slide on systems where the
+ * OS "show animations" setting is off — which read as the animation
+ * being broken rather than a respectful no-motion fallback.
+ */
