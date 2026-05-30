@@ -87,6 +87,7 @@ mod tests {
             access_token: "the-jwt".into(),
             is_zero_pro: false,
             is_access_granted: false,
+            is_sys_admin: false,
             created_at: Utc::now(),
             validated_at: Utc::now(),
         }

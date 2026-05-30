@@ -3,6 +3,7 @@ mod app_builder;
 mod auth_guard;
 mod billing_bridge;
 pub(crate) mod billing_rollup;
+pub(crate) mod bug_report_store;
 mod capture_auth;
 pub(crate) mod channel_ext;
 pub(crate) mod dto;

@@ -94,6 +94,15 @@ pub(crate) async fn require_org_role(
     check_role_in_members(&members, &id_refs, org_id, min_role)
 }
 
+/// Check that the authenticated user is a system administrator.
+/// Returns 403 Forbidden when the session is not flagged `is_sys_admin`.
+pub(crate) fn require_sys_admin(session: &ZeroAuthSession) -> ApiResult<()> {
+    if !session.is_sys_admin {
+        return Err(ApiError::forbidden("requires system administrator access"));
+    }
+    Ok(())
+}
+
 /// Check that the user is either the process creator or has admin+ role in the org.
 /// Used for process update/delete and node/connection mutations.
 ///
@@ -149,6 +158,7 @@ mod tests {
             access_token: "jwt".into(),
             is_zero_pro: false,
             is_access_granted: false,
+            is_sys_admin: false,
             created_at: Utc::now(),
             validated_at: Utc::now(),
         }

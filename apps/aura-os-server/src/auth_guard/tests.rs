@@ -30,6 +30,7 @@ fn make_session(is_zero_pro: bool, validated_at: chrono::DateTime<Utc>) -> ZeroA
         access_token: "test-jwt-token".into(),
         is_zero_pro,
         is_access_granted: false,
+        is_sys_admin: false,
         created_at: validated_at,
         validated_at,
     }

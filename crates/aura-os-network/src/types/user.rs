@@ -25,6 +25,8 @@ pub struct NetworkUser {
     pub profile_id: Option<String>,
     #[serde(default)]
     pub is_access_granted: bool,
+    #[serde(default)]
+    pub is_sys_admin: bool,
     #[serde(default, alias = "created_at")]
     pub created_at: Option<String>,
     #[serde(default, alias = "updated_at")]

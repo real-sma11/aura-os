@@ -39,6 +39,7 @@ pub fn store_zero_auth_session(store: &SettingsStore) {
         access_token: "test-token".into(),
         is_zero_pro: true,
         is_access_granted: false,
+        is_sys_admin: false,
         created_at: chrono::Utc::now(),
         validated_at: chrono::Utc::now(),
     })
@@ -298,6 +299,7 @@ pub fn build_test_app_from_store(
                 access_token: TEST_JWT.into(),
                 is_zero_pro: true,
                 is_access_granted: false,
+                is_sys_admin: false,
                 created_at: chrono::Utc::now(),
                 validated_at: chrono::Utc::now(),
             },

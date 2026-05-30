@@ -280,6 +280,7 @@ fn build_capture_session(access_token: String) -> ZeroAuthSession {
         access_token,
         is_zero_pro: true,
         is_access_granted: true,
+        is_sys_admin: false,
         created_at: now,
         validated_at: now,
     }

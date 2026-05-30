@@ -322,6 +322,7 @@ impl AuthService {
             access_token: access_token.to_string(),
             is_zero_pro: false,
             is_access_granted: false,
+            is_sys_admin: false,
             created_at: now,
             validated_at: now,
         };

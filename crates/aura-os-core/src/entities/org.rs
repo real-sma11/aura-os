@@ -86,6 +86,8 @@ pub struct ZeroAuthSession {
     pub is_zero_pro: bool,
     #[serde(default)]
     pub is_access_granted: bool,
+    #[serde(default)]
+    pub is_sys_admin: bool,
     pub created_at: DateTime<Utc>,
     pub validated_at: DateTime<Utc>,
 }
