@@ -81,11 +81,14 @@ export interface AgentPersona {
   personality: string;
 }
 
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
+
 export interface ModelSelection {
   id?: string | null;
   max_tokens?: number | null;
   max_turns?: number | null;
   temperature?: number | null;
+  reasoning_effort?: ReasoningEffort | null;
   provider_overrides?: unknown | null;
 }
 

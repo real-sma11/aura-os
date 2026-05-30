@@ -231,7 +231,14 @@ pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
             max_tokens: cfg.max_tokens,
             max_turns: cfg.max_turns,
             temperature: None,
-            reasoning_effort: cfg.reasoning_effort.clone(),
+            // Parse the HTTP-edge string into the typed wire enum here so
+            // the cross-repo contract carries a strong type. Unknown /
+            // blank values resolve to `None`, letting the harness fall
+            // back to its internal effort taper.
+            reasoning_effort: cfg
+                .reasoning_effort
+                .as_deref()
+                .and_then(aura_protocol::ReasoningEffort::from_wire),
             provider_overrides: cfg.provider_overrides.clone(),
         },
         workspace: WorkspaceLocation {

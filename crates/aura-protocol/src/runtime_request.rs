@@ -154,6 +154,60 @@ pub struct AgentIdentity {
     pub system_prompt: Option<String>,
 }
 
+/// User-selected reasoning-effort tier carried end-to-end from the chat
+/// model picker to the router.
+///
+/// Provider-accurate **superset** — each model only exposes the subset
+/// it supports (gated in the aura-os model catalog). `Minimal` is
+/// OpenAI's lowest `reasoning_effort` tier; `Max` is Anthropic's largest
+/// thinking budget (OpenAI has no `max`, so the router clamps it to
+/// `high`). The harness maps these onto its internal Anthropic budget
+/// tiers and the router translates them into each provider's native
+/// control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Max,
+}
+
+impl ReasoningEffort {
+    /// Parse a wire string (snake_case, case-insensitive) into a tier.
+    ///
+    /// Returns `None` for unknown / empty input so HTTP-edge callers
+    /// fall back to the harness's internal effort heuristic rather than
+    /// failing the request. `xhigh` is accepted for backward
+    /// compatibility with clients persisted before the tier rename and
+    /// folds into [`Self::High`].
+    #[must_use]
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "minimal" => Some(Self::Minimal),
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" | "xhigh" => Some(Self::High),
+            "max" => Some(Self::Max),
+            _ => None,
+        }
+    }
+
+    /// The canonical snake_case wire string for this tier.
+    #[must_use]
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Max => "max",
+        }
+    }
+}
+
 /// "What model to drive the agent with."
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "typescript", derive(TS), ts(export))]
@@ -170,13 +224,12 @@ pub struct ModelSelection {
     /// Sampling temperature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
-    /// User-selected reasoning-effort tier
-    /// (`low`/`medium`/`high`/`xhigh`/`max`) from the chat model
-    /// picker's thinking-level flyout. The harness parses this into its
+    /// User-selected reasoning-effort tier from the chat model picker's
+    /// thinking-level flyout. The harness maps this into its
     /// `ThinkingEffort` enum and hard-pins it across the turn. Absent
     /// for models without effort tiers and for older clients.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     /// Optional per-session model overrides applied on top of the
     /// harness's env-default router config.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -251,4 +304,70 @@ pub struct RuntimeRunResponse {
     /// Convenience field — the relative WS path the client should
     /// open. Always `/stream/:run_id`.
     pub event_stream_url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_serializes_to_snake_case() {
+        for (tier, wire) in [
+            (ReasoningEffort::Minimal, "\"minimal\""),
+            (ReasoningEffort::Low, "\"low\""),
+            (ReasoningEffort::Medium, "\"medium\""),
+            (ReasoningEffort::High, "\"high\""),
+            (ReasoningEffort::Max, "\"max\""),
+        ] {
+            let json = serde_json::to_string(&tier).expect("serialize tier");
+            assert_eq!(json, wire);
+            let back: ReasoningEffort = serde_json::from_str(&json).expect("deserialize tier");
+            assert_eq!(back, tier);
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_from_wire_is_lenient() {
+        assert_eq!(
+            ReasoningEffort::from_wire("MINIMAL"),
+            Some(ReasoningEffort::Minimal)
+        );
+        assert_eq!(
+            ReasoningEffort::from_wire(" high "),
+            Some(ReasoningEffort::High)
+        );
+        // Legacy clients that persisted the pre-rename `xhigh` tier fold
+        // into `High` rather than dropping the selection.
+        assert_eq!(
+            ReasoningEffort::from_wire("xhigh"),
+            Some(ReasoningEffort::High)
+        );
+        assert_eq!(ReasoningEffort::from_wire("bogus"), None);
+        assert_eq!(ReasoningEffort::from_wire(""), None);
+    }
+
+    #[test]
+    fn model_selection_omits_absent_reasoning_effort() {
+        let model = ModelSelection {
+            id: Some("aura-gpt-5-5".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&model).expect("serialize selection");
+        assert!(
+            !json.contains("reasoning_effort"),
+            "absent tier must be skipped: {json}"
+        );
+
+        let with_effort = ModelSelection {
+            reasoning_effort: Some(ReasoningEffort::Max),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&with_effort).expect("serialize selection");
+        assert!(
+            json.contains("\"reasoning_effort\":\"max\""),
+            "tier must round-trip: {json}"
+        );
+        let back: ModelSelection = serde_json::from_str(&json).expect("deserialize selection");
+        assert_eq!(back.reasoning_effort, Some(ReasoningEffort::Max));
+    }
 }
