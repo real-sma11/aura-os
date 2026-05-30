@@ -138,14 +138,11 @@ function schedulePostFirstPaint(callback: () => void): void {
   raf(() => raf(callback));
 }
 
-function hideBootSplash(): void {
+function markAppReady(): void {
   if (typeof document === "undefined") return;
-  const splash = document.getElementById("aura-splash");
+  // Hides the fallback titlebar; the branded splash is no longer shown during
+  // a normal boot (it only renders the boot-error fallback now).
   document.documentElement.classList.add("aura-app-ready");
-  if (!splash) return;
-  window.setTimeout(() => {
-    splash.classList.add("aura-splash-hidden");
-  }, 220);
 }
 
 scheduleIdle(() => {
@@ -160,11 +157,11 @@ scheduleIdle(() => {
 
 schedulePostFirstPaint(() => {
   markBootPhase("first paint committed");
-  signalDesktopSplashReady();
 
-  // Keep the app-ready signal tied to the existing authenticated-shell preload
-  // gate. The native window can show the auth-neutral splash early, while the
-  // actual app frame is revealed only after the initial route module is ready.
+  // Reveal the native window only after the initial route module is ready, so
+  // the window appears showing real content instead of an intermediate
+  // loading frame. The native 15s fallback reveal still covers catastrophic
+  // bundle failures (and surfaces the boot-error fallback) if this never runs.
   void (async () => {
     try {
       markBootPhase("waiting for initial shell app");
@@ -173,8 +170,9 @@ schedulePostFirstPaint(() => {
     } catch (error) {
       reportBootError("initial shell app readiness", error);
     } finally {
-      hideBootSplash();
+      markAppReady();
       clearBootStatus();
+      signalDesktopSplashReady();
       signalDesktopReady();
     }
   })();
