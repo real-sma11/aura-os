@@ -217,7 +217,12 @@
   font-weight: 300;
   line-height: 1.05;
   letter-spacing: -0.035em;
-  color: #f7f8fb;
+  /*
+   * Match the left public nav items (`PublicSidebarFooter.module.css`
+   * `.footerLink`): the persona-published muted foreground, falling
+   * back to the secondary text token then a neutral gray.
+   */
+  color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
 }
 
 .heroHeadline::before {
