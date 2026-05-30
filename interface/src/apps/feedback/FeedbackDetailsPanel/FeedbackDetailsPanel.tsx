@@ -61,11 +61,14 @@ export function FeedbackDetailsPanel() {
     !!item?.author.profileId &&
     viewerProfileId === item.author.profileId;
 
-  // Admins can resolve any item (even ones they don't own) without creating a
-  // task — this just flips the feedback to `done` via the existing status
-  // path. Hidden once the item is already resolved/deployed.
-  const canAdminResolve =
-    isSysAdmin && !!item && item.status !== "done" && item.status !== "deployed";
+  // One-click resolve flips the feedback to `done` via the existing status
+  // path (no task created). Authors can resolve their own submissions; sys
+  // admins can resolve any item. Hidden once already resolved/deployed.
+  const canResolve =
+    (isSysAdmin || isAuthor) &&
+    !!item &&
+    item.status !== "done" &&
+    item.status !== "deployed";
 
   const sortedComments = useMemo(
     () =>
@@ -154,14 +157,14 @@ export function FeedbackDetailsPanel() {
                     {statusLabel(item.status)}
                   </span>
                 )}
-                {canAdminResolve ? (
+                {canResolve ? (
                   <Button
                     className={styles.resolveButton}
                     variant="secondary"
                     size="sm"
                     icon={<CheckCircle2 size={14} />}
                     data-agent-action="resolve-feedback"
-                    data-agent-proof="feedback-details-admin-resolve"
+                    data-agent-proof="feedback-details-resolve"
                     onClick={() => setStatus(item.id, "done")}
                   >
                     Resolve
