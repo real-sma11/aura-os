@@ -23,11 +23,24 @@ export const EFFORT_LABELS: Record<ModelEffort, string> = {
   max: "Max",
 };
 
+/**
+ * Vendor a chat model is attributed to in the picker's collapsible
+ * provider sections. Distinct from {@link ModelProviderGroup} (which
+ * separates chat/image/3d) — this is the human-facing brand grouping.
+ */
+export type ModelVendor = "anthropic" | "openai" | "google" | "open-source";
+
 export interface ModelOption {
   id: string;
   label: string;
   tier: "opus" | "sonnet" | "haiku" | "gpt" | "image" | "3d" | "video";
   mode: GenerationMode;
+  /**
+   * Brand the model is grouped under in the chat picker. Only set on
+   * chat models; image/3D/video models render as a flat list and omit
+   * it.
+   */
+  vendor?: ModelVendor;
   /**
    * Credit multiplier shown next to the model in the picker. `0` renders
    * as "Free"; `undefined` renders no badge (e.g. image/3d/video models
@@ -59,12 +72,6 @@ export type ModelProviderGroup =
   | "other";
 
 const LEGACY_HIDDEN_CHAT_MODELS: ModelOption[] = [
-  {
-    id: "aura-claude-haiku-4-5",
-    label: "Haiku 4.5",
-    tier: "haiku",
-    mode: "chat",
-  },
   { id: "aura-gpt-4.1", label: "GPT-4.1", tier: "gpt", mode: "chat" },
   { id: "aura-o3", label: "o3", tier: "gpt", mode: "chat" },
   { id: "aura-o4-mini", label: "o4-mini", tier: "gpt", mode: "chat" },
@@ -76,30 +83,21 @@ const LEGACY_HIDDEN_CHAT_MODELS: ModelOption[] = [
   },
 ];
 
+/**
+ * Chat models, ordered by vendor (Anthropic, OpenAI, Open Source) and
+ * newest-first within each vendor so the picker's grouped sections read
+ * cleanly without re-sorting. The default chat model is pinned via
+ * {@link DEFAULT_CHAT_MODEL_ID} rather than this array's first element,
+ * so the display order here is independent of the default.
+ */
 export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
-  {
-    id: "aura-claude-sonnet-4-6",
-    label: "Sonnet 4.6",
-    tier: "sonnet",
-    mode: "chat",
-    creditMultiplier: 6,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
-  },
-  {
-    id: "aura-claude-opus-4-6",
-    label: "Opus 4.6",
-    tier: "opus",
-    mode: "chat",
-    creditMultiplier: 8,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
-  },
+  // ── Anthropic ───────────────────────────────────────────────
   {
     id: "aura-claude-opus-4-8",
     label: "Opus 4.8",
     tier: "opus",
     mode: "chat",
+    vendor: "anthropic",
     creditMultiplier: 15,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
@@ -109,15 +107,48 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "Opus 4.7",
     tier: "opus",
     mode: "chat",
+    vendor: "anthropic",
     creditMultiplier: 40,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
   },
   {
+    id: "aura-claude-opus-4-6",
+    label: "Opus 4.6",
+    tier: "opus",
+    mode: "chat",
+    vendor: "anthropic",
+    creditMultiplier: 8,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
+  },
+  {
+    id: "aura-claude-sonnet-4-6",
+    label: "Sonnet 4.6",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "anthropic",
+    creditMultiplier: 6,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
+  },
+  {
+    id: "aura-claude-haiku-4-5",
+    label: "Haiku 4.5",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "anthropic",
+    creditMultiplier: 1,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
+  },
+  // ── OpenAI ──────────────────────────────────────────────────
+  {
     id: "aura-gpt-5-5",
     label: "GPT-5.5",
     tier: "gpt",
     mode: "chat",
+    vendor: "openai",
     creditMultiplier: 10,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
@@ -127,6 +158,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "GPT-5.4",
     tier: "gpt",
     mode: "chat",
+    vendor: "openai",
     creditMultiplier: 5,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
@@ -136,6 +168,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "GPT-5.4 mini",
     tier: "gpt",
     mode: "chat",
+    vendor: "openai",
     creditMultiplier: 1,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
@@ -145,23 +178,27 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "GPT-5.4 nano",
     tier: "gpt",
     mode: "chat",
+    vendor: "openai",
     creditMultiplier: 0.5,
+  },
+  // ── Open Source ─────────────────────────────────────────────
+  {
+    id: "aura-kimi-k2-6",
+    label: "Kimi K2.6",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "open-source",
+    creditMultiplier: 2,
+    efforts: STANDARD_EFFORTS,
+    defaultEffort: "medium",
   },
   {
     id: "aura-kimi-k2-5",
     label: "Kimi K2.5",
     tier: "sonnet",
     mode: "chat",
+    vendor: "open-source",
     creditMultiplier: 1,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
-  },
-  {
-    id: "aura-kimi-k2-6",
-    label: "Kimi K2.6",
-    tier: "sonnet",
-    mode: "chat",
-    creditMultiplier: 2,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
   },
@@ -170,6 +207,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "DeepSeek V4 Pro",
     tier: "opus",
     mode: "chat",
+    vendor: "open-source",
     creditMultiplier: 2,
     efforts: STANDARD_EFFORTS,
     defaultEffort: "medium",
@@ -179,6 +217,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "DeepSeek V4 Flash",
     tier: "sonnet",
     mode: "chat",
+    vendor: "open-source",
     creditMultiplier: 0.5,
   },
   {
@@ -186,9 +225,65 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "GPT-OSS 120B",
     tier: "haiku",
     mode: "chat",
+    vendor: "open-source",
     creditMultiplier: 0,
   },
 ];
+
+/**
+ * Vendor grouping metadata for the chat picker. Kept module-private:
+ * {@link groupChatModelsByVendor} already returns the display label, so
+ * no consumer needs the raw order/label maps.
+ */
+const MODEL_VENDOR_ORDER: readonly ModelVendor[] = [
+  "anthropic",
+  "openai",
+  "google",
+  "open-source",
+];
+
+const MODEL_VENDOR_LABELS: Record<ModelVendor, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  "open-source": "Open Source",
+};
+
+export interface ModelVendorGroup {
+  vendor: ModelVendor;
+  label: string;
+  models: ModelOption[];
+}
+
+/**
+ * Default chat model used when nothing is persisted and no explicit
+ * default is supplied. Pinned by id (rather than relying on the first
+ * element of {@link AURA_MANAGED_CHAT_MODELS}) so the picker's display
+ * order can change freely without shifting the default.
+ */
+export const DEFAULT_CHAT_MODEL_ID = "aura-claude-sonnet-4-6";
+
+/**
+ * Groups chat models into ordered, non-empty vendor sections for the
+ * picker. Preserves each vendor's array order (already curated
+ * newest-first) and drops vendors with no models (e.g. Google today).
+ */
+export function groupChatModelsByVendor(
+  models: ModelOption[],
+): ModelVendorGroup[] {
+  const byVendor = new Map<ModelVendor, ModelOption[]>();
+  for (const model of models) {
+    if (!model.vendor) continue;
+    const existing = byVendor.get(model.vendor) ?? [];
+    existing.push(model);
+    byVendor.set(model.vendor, existing);
+  }
+  return MODEL_VENDOR_ORDER.map((vendor) => ({
+    vendor,
+    label: MODEL_VENDOR_LABELS[vendor],
+    models: byVendor.get(vendor) ?? [],
+  })).filter((group) => group.models.length > 0);
+}
 
 export const IMAGE_MODELS: ModelOption[] = [
   { id: "gpt-image-2", label: "GPT Image 2", tier: "image", mode: "image" },
@@ -204,6 +299,44 @@ export const IMAGE_MODELS: ModelOption[] = [
 ];
 
 export const DEFAULT_IMAGE_MODEL_ID: string = IMAGE_MODELS[0]?.id ?? "gpt-image-2";
+
+/**
+ * Selectable image-quality tiers for GPT Image models. `high` is the
+ * slowest/most-detailed tier (OpenAI's previous hardcoded default);
+ * `auto` lets the provider choose. Lower tiers render meaningfully
+ * faster, which is the point of exposing this control.
+ */
+export type ImageQuality = "auto" | "low" | "medium" | "high";
+
+export interface ImageQualityOption {
+  id: ImageQuality;
+  label: string;
+}
+
+export const IMAGE_QUALITY_OPTIONS: ImageQualityOption[] = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "auto", label: "Auto" },
+];
+
+/**
+ * Default quality for new Image-mode sessions. Deliberately below the
+ * old hardcoded `high` so generations are faster out of the box; users
+ * can still bump it back up per-session via the quality dropdown.
+ */
+export const DEFAULT_IMAGE_QUALITY: ImageQuality = "medium";
+
+/**
+ * Models that accept a `quality` parameter we expose in the UI. Only the
+ * GPT Image family is wired up today (router validates `low`/`medium`/
+ * `high`/`auto` for these); DALL-E/Gemini hide the control.
+ */
+export function modelSupportsQuality(modelId?: string | null): boolean {
+  if (!modelId) return false;
+  const normalized = normalizeManagedModelId(modelId) ?? modelId;
+  return normalized === "gpt-image-1" || normalized === "gpt-image-2";
+}
 
 /**
  * Per-model fallback estimate (ms) for "how long does this image
@@ -357,6 +490,12 @@ function imageModelStorageKey(agentId?: string): string {
     : `aura-selected-model:image:default`;
 }
 
+function imageQualityStorageKey(agentId?: string): string {
+  return agentId
+    ? `aura-image-quality:agent:${agentId}`
+    : `aura-image-quality:default`;
+}
+
 function videoModelStorageKey(agentId?: string): string {
   return agentId
     ? `aura-selected-model:video:agent:${agentId}`
@@ -388,6 +527,12 @@ export function defaultModelForAdapter(
     KNOWN_MODELS.some((m) => m.id === normalizedExplicit)
   ) {
     return normalizedExplicit;
+  }
+  // Prefer the pinned default so the picker's display order can change
+  // without shifting which model new/untouched agents land on; fall
+  // back to the first available model only if the pin is ever removed.
+  if (models.some((m) => m.id === DEFAULT_CHAT_MODEL_ID)) {
+    return DEFAULT_CHAT_MODEL_ID;
   }
   return models[0]?.id ?? DEFAULT_MODEL.id;
 }
@@ -498,6 +643,43 @@ export function loadPersistedImageModel(agentId?: string): string {
     // localStorage may be unavailable
   }
   return DEFAULT_IMAGE_MODEL_ID;
+}
+
+function isImageQuality(value: unknown): value is ImageQuality {
+  return (
+    value === "auto" || value === "low" || value === "medium" || value === "high"
+  );
+}
+
+/**
+ * Returns the persisted Image-mode quality for this agent (or the shared
+ * default), falling back to {@link DEFAULT_IMAGE_QUALITY}. Mirrors
+ * {@link loadPersistedImageModel}'s agent-then-default precedence.
+ */
+export function loadPersistedImageQuality(agentId?: string): ImageQuality {
+  try {
+    const fromAgent = agentId
+      ? localStorage.getItem(imageQualityStorageKey(agentId))
+      : null;
+    if (isImageQuality(fromAgent)) return fromAgent;
+    const fromDefault = localStorage.getItem(imageQualityStorageKey());
+    if (isImageQuality(fromDefault)) return fromDefault;
+  } catch {
+    // localStorage may be unavailable
+  }
+  return DEFAULT_IMAGE_QUALITY;
+}
+
+/** Persists an Image-mode quality pick to both the agent and default slots. */
+export function persistImageQuality(quality: ImageQuality, agentId?: string): void {
+  try {
+    if (agentId) {
+      localStorage.setItem(imageQualityStorageKey(agentId), quality);
+    }
+    localStorage.setItem(imageQualityStorageKey(), quality);
+  } catch {
+    // localStorage may be unavailable
+  }
 }
 
 /**

@@ -131,6 +131,9 @@ describe("useAgentChatStream", () => {
       // their resting "no override" values.
       false,
       null,
+      // gpt-image-2 exposes a quality knob, so the persisted/default
+      // Image-mode quality ("medium") rides along on the request.
+      "medium",
     );
   });
 
@@ -893,6 +896,7 @@ describe("useAgentChatStream", () => {
       { agentId: "agent-1", projectId: "p-1" },
       true,
       null,
+      "medium",
     );
   });
 

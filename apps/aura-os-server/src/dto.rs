@@ -343,6 +343,10 @@ pub(crate) struct GenerateImageRequest {
     pub prompt: String,
     pub model: Option<String>,
     pub size: Option<String>,
+    /// Caller-requested image quality (e.g. `low` / `medium` / `high` /
+    /// `auto` for GPT Image). Forwarded verbatim to aura-router, which
+    /// validates it per model.
+    pub quality: Option<String>,
     #[serde(default)]
     pub images: Option<Vec<String>>,
     #[serde(rename = "projectId")]

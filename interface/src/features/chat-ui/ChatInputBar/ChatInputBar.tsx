@@ -20,12 +20,18 @@ import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useFileAttachments } from "./useFileAttachments";
-import type { GenerationMode, ModelEffort } from "../../../constants/models";
+import type {
+  GenerationMode,
+  ImageQuality,
+  ModelEffort,
+} from "../../../constants/models";
 import {
   availableModelsForAdapter,
+  IMAGE_QUALITY_OPTIONS,
   modelLabel,
   getModelsForMode,
   modelProviderGroup,
+  modelSupportsQuality,
   sortModelsForMenu,
 } from "../../../constants/models";
 import { isGenerationCommand } from "../../../constants/commands";
@@ -250,11 +256,18 @@ export const DesktopChatInputBar = memo(
     const selectedModel = chatUI.selectedModel;
     const selectedEffort = chatUI.selectedEffort;
     const selectedMode = chatUI.selectedMode;
+    const imageQuality = chatUI.imageQuality;
     const onModelChange = useCallback(
       (model: string, effort?: ModelEffort) => {
         chatUI.setSelectedModel(streamKey, model, adapterType, agentId, effort);
       },
       [chatUI.setSelectedModel, streamKey, adapterType, agentId],
+    );
+    const onImageQualityChange = useCallback(
+      (quality: ImageQuality) => {
+        chatUI.setImageQuality(streamKey, quality, agentId);
+      },
+      [chatUI.setImageQuality, streamKey, agentId],
     );
     const onModeChange = useCallback(
       (mode: AgentMode) => {
@@ -873,8 +886,57 @@ export const DesktopChatInputBar = memo(
         className={styles.inlineModelPicker}
       />
     ) : null;
-    const showPickerInline = hasModelPicker && !isMultiLine;
-    const showPickerInBottomRow = hasModelPicker && isMultiLine;
+
+    // Image-quality picker: only meaningful in Image mode for models
+    // that expose a quality knob (GPT Image). Sits next to the model
+    // picker and reuses the same dropdown chrome.
+    const showQualityPicker =
+      generationMode === "image" && modelSupportsQuality(selectedModel);
+    const activeQualityLabel =
+      IMAGE_QUALITY_OPTIONS.find((q) => q.id === imageQuality)?.label ??
+      imageQuality;
+    const renderQualityMenuItems = useCallback(
+      (close: () => void) => (
+        <div
+          className={inputBarShellStyles.modelMenu}
+          data-agent-surface="image-quality-picker"
+          data-agent-proof="image-quality-picker-visible"
+        >
+          {IMAGE_QUALITY_OPTIONS.map((q) => (
+            <button
+              key={q.id}
+              type="button"
+              className={`${inputBarShellStyles.modelMenuItem} ${
+                q.id === imageQuality
+                  ? inputBarShellStyles.modelMenuItemActive
+                  : ""
+              }`}
+              onClick={() => {
+                onImageQualityChange(q.id);
+                close();
+              }}
+            >
+              <span className={inputBarShellStyles.modelMenuItemLabel}>
+                {q.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ),
+      [imageQuality, onImageQualityChange],
+    );
+    const qualityPickerNode = showQualityPicker ? (
+      <ModelPicker
+        selectedLabel={`Quality: ${activeQualityLabel}`}
+        isInteractive
+        renderMenu={renderQualityMenuItems}
+        triggerProps={{ "data-agent-action": "open-quality-picker" }}
+        className={styles.inlineModelPicker}
+      />
+    ) : null;
+    const hasPicker = hasModelPicker || showQualityPicker;
+    const showPickerInline = hasPicker && !isMultiLine;
+    const showPickerInBottomRow = hasPicker && isMultiLine;
     const hasInputRowEnd = selectedCommands.length > 0 || showPickerInline;
     const inputRowEnd = hasInputRowEnd ? (
       <>
@@ -886,10 +948,14 @@ export const DesktopChatInputBar = memo(
           />
         ) : null}
         {showPickerInline ? modelPickerNode : null}
+        {showPickerInline ? qualityPickerNode : null}
       </>
     ) : null;
     const containerBottom = showPickerInBottomRow ? (
-      <div className={styles.bottomChromeRow}>{modelPickerNode}</div>
+      <div className={styles.bottomChromeRow}>
+        {modelPickerNode}
+        {qualityPickerNode}
+      </div>
     ) : null;
 
     // Only render the "·" divider when the orbit indicator on the

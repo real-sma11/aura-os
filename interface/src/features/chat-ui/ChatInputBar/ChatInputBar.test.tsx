@@ -297,6 +297,7 @@ describe("ChatInputBar", () => {
       "aura-claude-sonnet-4-6",
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -672,6 +673,7 @@ describe("ChatInputBar", () => {
     expect(mockSetSelectedModel).toHaveBeenCalledWith(
       "test-stream",
       "gpt-image-1",
+      undefined,
       undefined,
       undefined,
     );

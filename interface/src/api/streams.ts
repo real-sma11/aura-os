@@ -384,9 +384,16 @@ export function generateImageStream(
    * true (force-new wins server-side too).
    */
   sessionId?: string | null,
+  /**
+   * Optional image-quality tier (e.g. `low` / `medium` / `high` / `auto`
+   * for GPT Image). Forwarded as `quality`; the server/router validate
+   * it per model and ignore unsupported values.
+   */
+  quality?: string | null,
 ) {
   const body: Record<string, unknown> = { prompt };
   if (model) body.model = model;
+  if (quality) body.quality = quality;
   if (scope?.projectId) body.projectId = scope.projectId;
   if (scope?.agentId) body.agentId = scope.agentId;
   if (scope?.agentInstanceId) body.agentInstanceId = scope.agentInstanceId;

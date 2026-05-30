@@ -23,10 +23,13 @@ import {
   availableModelsForAdapter,
   formatCreditMultiplier,
   getModelsForMode,
+  IMAGE_QUALITY_OPTIONS,
   modelLabel,
   modelProviderGroup,
+  modelSupportsQuality,
   sortModelsForMenu,
   type GenerationMode,
+  type ImageQuality,
 } from "../../../constants/models";
 import {
   AGENT_MODE_DESCRIPTORS,
@@ -115,10 +118,12 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const chatUI = useChatUI(streamKey);
     const selectedModel = chatUI.selectedModel;
     const selectedMode = chatUI.selectedMode;
+    const imageQuality = chatUI.imageQuality;
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const slashStartRef = useRef<number | null>(null);
     const [modelSheetOpen, setModelSheetOpen] = useState(false);
+    const [qualitySheetOpen, setQualitySheetOpen] = useState(false);
     const [showAllModels, setShowAllModels] = useState(false);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashQuery, setSlashQuery] = useState("");
@@ -216,6 +221,17 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       },
       [adapterType, agentId, chatUI, streamKey],
     );
+    const onImageQualityChange = useCallback(
+      (quality: ImageQuality) => {
+        chatUI.setImageQuality(streamKey, quality, agentId);
+      },
+      [agentId, chatUI, streamKey],
+    );
+    const showQualityPicker =
+      generationMode === "image" && modelSupportsQuality(selectedModel);
+    const selectedQualityLabel =
+      IMAGE_QUALITY_OPTIONS.find((q) => q.id === imageQuality)?.label ??
+      imageQuality;
 
     const onModeChange = useCallback(
       (mode: AgentMode) => {
@@ -497,7 +513,8 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
         </button>
       ));
 
-    const shouldCenterComposer = isCentered && !isTextInputFocused && !modelSheetOpen;
+    const shouldCenterComposer =
+      isCentered && !isTextInputFocused && !modelSheetOpen && !qualitySheetOpen;
 
     return (
       <>
@@ -525,6 +542,56 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
                     Show all models
                   </button>
                 ) : null}
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {qualitySheetOpen ? (
+          <>
+            <button
+              type="button"
+              className={styles.sheetBackdrop}
+              aria-label="Close quality picker"
+              onClick={() => setQualitySheetOpen(false)}
+            />
+            <div
+              className={styles.modelSheet}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Select image quality"
+              data-agent-surface="image-quality-picker"
+            >
+              <div className={styles.sheetGrabber} aria-hidden="true" />
+              <div className={styles.sheetHeader}>
+                <div>
+                  <div className={styles.sheetTitle}>Quality</div>
+                  <div className={styles.sheetSubtitle}>
+                    Lower quality renders faster.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.sheetDone}
+                  onClick={() => setQualitySheetOpen(false)}
+                >
+                  Done
+                </button>
+              </div>
+              <div className={styles.modelList}>
+                {IMAGE_QUALITY_OPTIONS.map((q) => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    className={`${styles.modelItem} ${q.id === imageQuality ? styles.modelItemActive : ""}`}
+                    onClick={() => {
+                      onImageQualityChange(q.id);
+                      setQualitySheetOpen(false);
+                    }}
+                  >
+                    <span>{q.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </>
@@ -710,6 +777,22 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               >
                 <span>{selectedModelLabel}</span>
                 {modelsForMode.length > 1 ? <ChevronDown size={13} /> : null}
+              </button>
+            ) : null}
+            {showQualityPicker ? (
+              <button
+                type="button"
+                className={styles.modelButton}
+                data-agent-action="open-quality-picker"
+                aria-haspopup="dialog"
+                aria-expanded={qualitySheetOpen}
+                onClick={() => {
+                  textareaRef.current?.blur();
+                  setQualitySheetOpen(true);
+                }}
+              >
+                <span>{`Quality: ${selectedQualityLabel}`}</span>
+                <ChevronDown size={13} />
               </button>
             ) : null}
           </div>

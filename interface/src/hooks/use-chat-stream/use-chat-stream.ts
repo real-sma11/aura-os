@@ -12,7 +12,11 @@ import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useChatUIStore } from "../../stores/chat-ui-store";
 import type { ChatAttachment, StreamEventHandler } from "../../api/streams";
-import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../../constants/models";
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  modelSupportsQuality,
+  type GenerationMode,
+} from "../../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../../constants/generation";
 import { EventType } from "../../shared/types/aura-events";
 import {
@@ -484,6 +488,13 @@ export function useChatStream({
           // resolve the project chat session and persist this turn
           // into history — without it the synthesized `generate_image`
           // tool turn is in-memory only and is lost on hard reload.
+          // Mirror the standalone-agent hook: pull the persisted
+          // Image-mode quality from the chat-ui store under this
+          // partition's key, forwarding it only for models that expose
+          // a quality knob (DALL-E / Gemini keep provider defaults).
+          const imageQuality = modelSupportsQuality(selectedModel)
+            ? useChatUIStore.getState().getImageQuality(getPartitionKey())
+            : null;
           await generateImageStream(
             userMsg.content,
             selectedModel,
@@ -493,6 +504,7 @@ export function useChatStream({
             { projectId: capturedProjectId, agentInstanceId: capturedInstanceId },
             shouldStartNewSession,
             shouldStartNewSession ? null : sessionIdRef.current,
+            imageQuality,
           );
           return;
         }

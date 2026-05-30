@@ -10,7 +10,11 @@ import {
 } from "../api/streams";
 import type { ChatAttachment, StreamEventHandler } from "../api/streams";
 import type { ActiveStreamSummary } from "../shared/api/streams";
-import { DEFAULT_IMAGE_MODEL_ID, type GenerationMode } from "../constants/models";
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  modelSupportsQuality,
+  type GenerationMode,
+} from "../constants/models";
 import { STYLE_LOCK_SUFFIX } from "../constants/generation";
 import { buildUserChatMessage } from "./attachment-helpers";
 import type { Spec, Task } from "../shared/types";
@@ -596,6 +600,14 @@ export function useAgentChatStream({
           // this turn into history — without it the synthesized
           // `generate_image` tool turn is in-memory only and is lost
           // on hard reload.
+          // Read the persisted Image-mode quality from the chat-ui
+          // store using the same partition key the store is written
+          // under (mirrors the `pinnedSourceImage` reads in this hook).
+          // Only forward it for models that expose a quality knob so
+          // DALL-E / Gemini sends stay on their provider defaults.
+          const imageQuality = modelSupportsQuality(selectedModel)
+            ? useChatUIStore.getState().getImageQuality(getPartitionKey())
+            : null;
           await generateImageStream(
             userMsg.content,
             selectedModel,
@@ -605,6 +617,7 @@ export function useAgentChatStream({
             { agentId, projectId },
             shouldStartNewSession,
             shouldStartNewSession ? null : sessionIdRef.current,
+            imageQuality,
           );
           return;
         }

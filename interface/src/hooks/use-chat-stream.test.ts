@@ -265,6 +265,9 @@ describe("useChatStream", () => {
       // their resting "no override" values.
       false,
       null,
+      // gpt-image-2 supports a quality knob, so the hook forwards the
+      // persisted/default Image-mode quality ("medium").
+      "medium",
     );
   });
 
@@ -677,6 +680,7 @@ describe("useChatStream", () => {
       // `null` because force-new wins over a pin even if `?session=`
       // were set; here no pin is set either way.
       null,
+      "medium",
     );
   });
 
@@ -929,6 +933,7 @@ describe("useChatStream", () => {
       { projectId: "p-1", agentInstanceId: "ai-1" },
       false,
       "s-old",
+      "medium",
     );
   });
 });

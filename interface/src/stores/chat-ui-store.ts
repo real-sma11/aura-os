@@ -3,14 +3,18 @@ import { create } from "zustand";
 import {
   availableModelsForAdapter,
   defaultModelForAdapter,
+  DEFAULT_IMAGE_QUALITY,
   hasAgentScopedModel,
   loadPersistedImageModel,
+  loadPersistedImageQuality,
   loadPersistedModel,
   loadPersistedModelEffort,
   loadPersistedThreeDModel,
   loadPersistedVideoModel,
+  persistImageQuality,
   persistModel,
   persistModelEffort,
+  type ImageQuality,
   type ModelEffort,
 } from "../constants/models";
 import {
@@ -66,6 +70,12 @@ interface StreamState {
    * that model.
    */
   selectedEffort: ModelEffort | null;
+  /**
+   * Quality tier for Image-mode generations (GPT Image models only).
+   * Persisted per agent + globally; only consulted when the active mode
+   * is Image and the model supports a quality knob.
+   */
+  imageQuality: ImageQuality;
   projectId: string | null;
   pinnedSourceImage: PinnedSourceImage | null;
 }
@@ -102,6 +112,16 @@ interface ChatUIActions {
    */
   setSelectedEffort: (streamKey: string, effort: ModelEffort) => void;
   getSelectedEffort: (streamKey: string) => ModelEffort | null;
+  /**
+   * Set the Image-mode quality tier for a stream and persist it (per
+   * agent + global default).
+   */
+  setImageQuality: (
+    streamKey: string,
+    quality: ImageQuality,
+    agentId?: string,
+  ) => void;
+  getImageQuality: (streamKey: string) => ImageQuality;
   setProjectId: (streamKey: string, id: string | null) => void;
   syncAvailableModels: (
     streamKey: string,
@@ -152,6 +172,7 @@ const getStream = (state: ChatUIState, key: string): StreamState =>
     selectedMode: DEFAULT_AGENT_MODE,
     selectedModel: null,
     selectedEffort: null,
+    imageQuality: DEFAULT_IMAGE_QUALITY,
     projectId: null,
     pinnedSourceImage: null,
   };
@@ -196,6 +217,7 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           ...getStream(s, streamKey),
           selectedModel: model,
           selectedEffort: loadPersistedModelEffort(model),
+          imageQuality: loadPersistedImageQuality(agentId),
           selectedMode: mode,
         },
       },
@@ -240,6 +262,18 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
 
   getSelectedEffort: (streamKey) => getStream(get(), streamKey).selectedEffort,
 
+  setImageQuality: (streamKey, quality, agentId) => {
+    persistImageQuality(quality, agentId);
+    set((s) => ({
+      streams: {
+        ...s.streams,
+        [streamKey]: { ...getStream(s, streamKey), imageQuality: quality },
+      },
+    }));
+  },
+
+  getImageQuality: (streamKey) => getStream(get(), streamKey).imageQuality,
+
   setProjectId: (streamKey, id) => {
     set((s) => ({
       streams: {
@@ -267,9 +301,11 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
       // video, 3D, chat), not whatever happened to be in the chat
       // input bar last.
       let nextModel = current.selectedModel;
+      let nextImageQuality = current.imageQuality;
       const behavior = AGENT_MODE_DESCRIPTORS[mode].behavior;
       if (behavior.kind === "generate_image") {
         nextModel = loadPersistedImageModel(agentId);
+        nextImageQuality = loadPersistedImageQuality(agentId);
       } else if (behavior.kind === "generate_3d") {
         nextModel = loadPersistedThreeDModel(agentId);
       } else if (behavior.kind === "generate_video") {
@@ -291,6 +327,7 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
             selectedMode: mode,
             selectedModel: nextModel,
             selectedEffort: loadPersistedModelEffort(nextModel),
+            imageQuality: nextImageQuality,
             pinnedSourceImage: nextPinned,
           },
         },
@@ -501,12 +538,16 @@ export function useChatUI(streamKey: string) {
   const selectedEffort = useChatUIStore(
     (s) => s.streams[streamKey]?.selectedEffort ?? null,
   );
+  const imageQuality = useChatUIStore(
+    (s) => s.streams[streamKey]?.imageQuality ?? DEFAULT_IMAGE_QUALITY,
+  );
   const projectId = useChatUIStore((s) => s.streams[streamKey]?.projectId ?? null);
   const pinnedSourceImage = useChatUIStore(
     (s) => s.streams[streamKey]?.pinnedSourceImage ?? null,
   );
   const setSelectedModel = useChatUIStore((s) => s.setSelectedModel);
   const setSelectedEffort = useChatUIStore((s) => s.setSelectedEffort);
+  const setImageQuality = useChatUIStore((s) => s.setImageQuality);
   const setProjectId = useChatUIStore((s) => s.setProjectId);
   const setSelectedMode = useChatUIStore((s) => s.setSelectedMode);
   const setPinnedSourceImage = useChatUIStore((s) => s.setPinnedSourceImage);
@@ -516,11 +557,13 @@ export function useChatUI(streamKey: string) {
     selectedMode,
     selectedModel,
     selectedEffort,
+    imageQuality,
     projectId,
     pinnedSourceImage,
     setSelectedMode,
     setSelectedModel,
     setSelectedEffort,
+    setImageQuality,
     setProjectId,
     setPinnedSourceImage,
     init,

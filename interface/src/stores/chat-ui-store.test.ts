@@ -13,6 +13,7 @@ const mockLoadPersistedVideoModel = vi.fn(
 const mockLoadPersistedThreeDModel = vi.fn(
   (_agentId?: string) => "tripo-v2",
 );
+const mockLoadPersistedImageQuality = vi.fn((_agentId?: string) => "medium");
 
 vi.mock("../constants/models", () => ({
   availableModelsForAdapter: (_adapterType?: string) => [
@@ -31,6 +32,12 @@ vi.mock("../constants/models", () => ({
     mockLoadPersistedVideoModel(agentId),
   loadPersistedThreeDModel: (agentId?: string) =>
     mockLoadPersistedThreeDModel(agentId),
+  loadPersistedModelEffort: (_modelId?: string | null) => null,
+  persistModelEffort: vi.fn(),
+  DEFAULT_IMAGE_QUALITY: "medium",
+  loadPersistedImageQuality: (agentId?: string) =>
+    mockLoadPersistedImageQuality(agentId),
+  persistImageQuality: vi.fn(),
   persistModel: vi.fn(),
   hasAgentScopedModel: (agentId: string) => mockHasAgentScopedModel(agentId),
 }));
@@ -57,6 +64,7 @@ describe("chat-ui-store", () => {
       () => "veo-3.1-fast-generate-preview",
     );
     mockLoadPersistedThreeDModel.mockImplementation(() => "tripo-v2");
+    mockLoadPersistedImageQuality.mockImplementation(() => "medium");
   });
 
   it("init populates selectedModel from persisted value", () => {

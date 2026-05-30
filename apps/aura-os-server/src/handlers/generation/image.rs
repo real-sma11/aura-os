@@ -106,6 +106,9 @@ fn router_image_payload(body: &GenerateImageRequest) -> serde_json::Value {
     if let Some(size) = body.size.as_deref() {
         payload["size"] = json!(size);
     }
+    if let Some(quality) = body.quality.as_deref() {
+        payload["quality"] = json!(quality);
+    }
     if let Some(project_id) = body.project_id.as_deref() {
         payload["projectId"] = json!(project_id);
     }
