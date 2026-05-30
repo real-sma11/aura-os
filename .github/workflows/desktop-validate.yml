@@ -131,9 +131,8 @@ jobs:
           sudo apt-get install -y build-essential clang pkg-config libatomic1 libssl-dev libdbus-1-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev xvfb
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: ./.github/actions/setup-node
         with:
-          node-version: 25.9.0
           cache: npm
           cache-dependency-path: interface/package-lock.json
 

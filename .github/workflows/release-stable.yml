@@ -82,9 +82,7 @@ jobs:
           sudo apt-get install -y build-essential clang pkg-config libatomic1 libssl-dev libdbus-1-dev
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 25.9.0
+        uses: ./.github/actions/setup-node
 
       - name: Verify runner architecture
         if: matrix.target == 'linux'
@@ -198,9 +196,8 @@ jobs:
           sudo apt-get install -y build-essential clang pkg-config libatomic1 libssl-dev libdbus-1-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: ./.github/actions/setup-node
         with:
-          node-version: 25.9.0
           cache: npm
           cache-dependency-path: interface/package-lock.json
 
@@ -362,9 +359,7 @@ jobs:
           sudo apt-get install -y build-essential clang pkg-config libatomic1 libssl-dev libdbus-1-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 25.9.0
+        uses: ./.github/actions/setup-node
 
       - name: Verify runner architecture
         if: matrix.target == 'linux'
@@ -821,9 +816,7 @@ jobs:
           path: pages
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 25.9.0
+        uses: ./.github/actions/setup-node
 
       - name: Determine version
         id: version
