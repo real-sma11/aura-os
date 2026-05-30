@@ -54,6 +54,7 @@ vi.mock("../api/client", () => ({
   api: {
     follows: mockApi.follows,
   },
+  INSUFFICIENT_CREDITS_EVENT: "insufficient-credits",
 }));
 
 vi.mock("../shared/api/core", () => ({
@@ -86,6 +87,7 @@ const sessionWithZeroProError: AuthSession = {
 };
 
 import { useAuthStore } from "./auth-store";
+import { useUIModalStore } from "./ui-modal-store";
 import { ApiClientError } from "../shared/api/core";
 import { clearStoredAuth } from "../shared/lib/auth-token";
 
@@ -320,6 +322,17 @@ describe("auth-store", () => {
       await useAuthStore.getState().logout();
 
       expect(window.localStorage.getItem("aura-force-logged-out")).toBe("1");
+    });
+
+    it("closes any open modal so it doesn't linger over the public page", async () => {
+      useAuthStore.setState({ user: expectedUser(mockSession) });
+      useUIModalStore.setState({ orgSettingsOpen: true, orgInitialSection: "billing" });
+      mockApi.logout.mockResolvedValue(undefined);
+
+      await useAuthStore.getState().logout();
+
+      expect(useUIModalStore.getState().orgSettingsOpen).toBe(false);
+      expect(useUIModalStore.getState().orgInitialSection).toBeUndefined();
     });
   });
 });

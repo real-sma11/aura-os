@@ -279,6 +279,12 @@ export const useAuthStore = create<AuthState>()((set) => ({
       const { useBillingStore } = await import("./billing-store");
       useBillingStore.getState().reset();
     } catch {}
+    // Close any open modal (e.g. the settings panel the user clicked Logout
+    // from) so it doesn't linger over the public page after the redirect.
+    try {
+      const { useUIModalStore } = await import("./ui-modal-store");
+      useUIModalStore.getState().reset();
+    } catch {}
     // Setting `hasResolvedInitialSession: true` flips the App.tsx gate so
     // `showShell` immediately follows the live (`user === null`) state
     // instead of the sticky `initiallyLoggedIn` boot snapshot. React Router

@@ -81,4 +81,27 @@ describe("ui-modal-store", () => {
       expect(useUIModalStore.getState().appsModalOpen).toBe(false);
     });
   });
+
+  describe("reset", () => {
+    it("closes every open modal and clears initialSection", () => {
+      useUIModalStore.setState({
+        orgSettingsOpen: true,
+        orgInitialSection: "billing",
+        buyCreditsOpen: true,
+        hostSettingsOpen: true,
+        appsModalOpen: true,
+        inviteModalOpen: true,
+      });
+
+      useUIModalStore.getState().reset();
+
+      const s = useUIModalStore.getState();
+      expect(s.orgSettingsOpen).toBe(false);
+      expect(s.orgInitialSection).toBeUndefined();
+      expect(s.buyCreditsOpen).toBe(false);
+      expect(s.hostSettingsOpen).toBe(false);
+      expect(s.appsModalOpen).toBe(false);
+      expect(s.inviteModalOpen).toBe(false);
+    });
+  });
 });

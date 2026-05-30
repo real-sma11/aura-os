@@ -20,15 +20,20 @@ interface UIModalState {
   closeAppsModal: () => void;
   openInviteModal: () => void;
   closeInviteModal: () => void;
+  reset: () => void;
 }
 
-export const useUIModalStore = create<UIModalState>()((set) => ({
+const CLOSED_MODAL_STATE = {
   orgSettingsOpen: false,
   orgInitialSection: undefined,
   buyCreditsOpen: false,
   hostSettingsOpen: false,
   appsModalOpen: false,
   inviteModalOpen: false,
+} as const;
+
+export const useUIModalStore = create<UIModalState>()((set) => ({
+  ...CLOSED_MODAL_STATE,
 
   openOrgSettings: () => set({ orgSettingsOpen: true }),
   closeOrgSettings: () => set({ orgSettingsOpen: false, orgInitialSection: undefined }),
@@ -41,6 +46,9 @@ export const useUIModalStore = create<UIModalState>()((set) => ({
   closeAppsModal: () => set({ appsModalOpen: false }),
   openInviteModal: () => set({ inviteModalOpen: true }),
   closeInviteModal: () => set({ inviteModalOpen: false }),
+  // Closes every modal at once. Used on logout so an open overlay (e.g. the
+  // settings panel) doesn't linger over the public page after the session ends.
+  reset: () => set({ ...CLOSED_MODAL_STATE }),
 }));
 
 if (typeof window !== "undefined") {
