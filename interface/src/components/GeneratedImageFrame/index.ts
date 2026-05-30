@@ -1,0 +1,1 @@
+export { GeneratedImageFrame } from "./GeneratedImageFrame";

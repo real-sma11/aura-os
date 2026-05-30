@@ -1,0 +1,28 @@
+.frame {
+  position: relative;
+  display: inline-flex;
+  max-width: min(100%, 520px);
+}
+
+/* While the bitmap is still decoding, the loader box reserves a definite
+   square so surrounding layout doesn't grow downward as the image streams
+   in. The image overlays the box (absolute) so it never defines layout
+   until ready, then takes over normal flow at its natural ratio. */
+.loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 320px;
+  height: 320px;
+  max-width: 100%;
+  background: var(--color-bg-elevated, rgba(255, 255, 255, 0.03));
+  border-radius: 4px;
+}
+
+.frame:not(.frameReady) img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

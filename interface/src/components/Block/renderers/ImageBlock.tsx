@@ -2,7 +2,7 @@ import { Image as ImageIcon } from "lucide-react";
 import type { ToolCallEntry } from "../../../shared/types/stream";
 import { Block } from "../Block";
 import { useGallery, useSessionGalleryItems } from "../../Gallery";
-import { FadeInImage } from "../../FadeInImage";
+import { GeneratedImageFrame } from "../../GeneratedImageFrame";
 import styles from "./renderers.module.css";
 
 function parseResult(result: string | null | undefined): Record<string, unknown> | null {
@@ -89,7 +89,7 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
           onClick={openInGallery}
           aria-label="Open generated image in gallery"
         >
-          <FadeInImage
+          <GeneratedImageFrame
             src={imageUrl}
             alt={prompt ?? "Generated image"}
             className={styles.generatedImage}
@@ -119,7 +119,7 @@ export function ImageBlock({ entry, defaultExpanded }: ImageBlockProps) {
             onClick={openInGallery}
             aria-label="Open generated image in gallery"
           >
-            <FadeInImage src={imageUrl} alt={prompt ?? "Generated"} className={styles.mediaImage} />
+            <GeneratedImageFrame src={imageUrl} alt={prompt ?? "Generated"} className={styles.mediaImage} />
           </button>
         ) : entry.pending ? (
           <div className={styles.listEmpty}>Generating…</div>

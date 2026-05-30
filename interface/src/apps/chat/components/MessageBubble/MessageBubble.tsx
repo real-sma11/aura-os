@@ -27,6 +27,7 @@ import styles from "./MessageBubble.module.css";
 import { ResponseBlock } from "../../../../components/ResponseBlock";
 import { CopyButton } from "../../../../components/CopyButton";
 import { FadeInImage } from "../../../../components/FadeInImage";
+import { GeneratedImageFrame } from "../../../../components/GeneratedImageFrame";
 import {
   useGallery,
   useSessionGalleryItems,
@@ -530,7 +531,7 @@ export const MessageBubble = memo(function MessageBubble({
               }}
               aria-label="Open generated image in gallery"
             >
-              <FadeInImage
+              <GeneratedImageFrame
                 src={imageBlockSrc(block)}
                 alt="Generated image"
                 className={styles.generatedImageInline}
