@@ -101,30 +101,39 @@ export function PublicSidebarFooter(): React.ReactElement {
     [pathname],
   );
 
-  useLayoutEffect(() => {
-    const update = (): void => {
-      if (activeIndex < 0) {
-        setPill((prev) => ({ ...prev, visible: false }));
-        return;
-      }
-      const node = linkRefs.current[activeIndex];
-      if (node === null || node === undefined) {
-        return;
-      }
-      setPill({
-        top: node.offsetTop,
-        height: node.offsetHeight,
-        visible: true,
-      });
-    };
-
-    if (typeof window.requestAnimationFrame === "function") {
-      const frame = window.requestAnimationFrame(update);
-      return () => window.cancelAnimationFrame(frame);
+  /*
+   * Snap the pill to a measured row immediately. Used both by the
+   * click handler (optimistic, fires on `pointerdown` before the
+   * route/lazy chunk resolves) and the route-driven layout effect
+   * below.
+   */
+  const moveToNode = (node: HTMLAnchorElement | null | undefined): void => {
+    if (node === null || node === undefined) {
+      return;
     }
+    setPill({
+      top: node.offsetTop,
+      height: node.offsetHeight,
+      visible: true,
+    });
+  };
 
-    const timeout = window.setTimeout(update, 0);
-    return () => window.clearTimeout(timeout);
+  /*
+   * Source-of-truth correction for non-click navigations (back /
+   * forward, programmatic redirects, initial mount). Measured
+   * SYNCHRONOUSLY in the layout effect — it runs before the browser
+   * paints, so the pill is positioned in the same frame as the route
+   * commit with no extra `requestAnimationFrame` hop or second render.
+   * Click-driven slides are handled optimistically by `onPointerDown`
+   * on each NavLink so the motion starts on the press itself, never
+   * gated behind the clicked view's lazy chunk load.
+   */
+  useLayoutEffect(() => {
+    if (activeIndex < 0) {
+      setPill((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+    moveToNode(linkRefs.current[activeIndex]);
   }, [activeIndex]);
 
   return (
@@ -159,6 +168,9 @@ export function PublicSidebarFooter(): React.ReactElement {
             end={link.end}
             ref={(el) => {
               linkRefs.current[index] = el;
+            }}
+            onPointerDown={(event) => {
+              moveToNode(event.currentTarget);
             }}
             className={({ isActive }) =>
               `${styles.footerLink} ${isActive ? styles.footerLinkActive : ""}`
