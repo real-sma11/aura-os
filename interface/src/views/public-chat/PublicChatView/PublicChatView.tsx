@@ -483,15 +483,15 @@ export function PublicChatView(): React.ReactElement {
        */}
       {!isChatPage ? (
         <div className={styles.heroSlot}>
-          <div className={styles.heroHeadlineZone} aria-hidden={false}>
-            <span
-              className={styles.heroHeadline}
-              data-text="Your Private Agent."
-            >
-              <TypewriterText text="Your Private Agent." speedMs={45} />
-            </span>
-          </div>
           <div className={styles.heroStage}>
+            <div className={styles.heroHeadlineZone}>
+              <span
+                className={styles.heroHeadline}
+                data-text="Your Private Agent."
+              >
+                <TypewriterText text="Your Private Agent." speedMs={45} />
+              </span>
+            </div>
             <ComposePanel
               desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
             desktopBackgroundPosition={

@@ -169,20 +169,22 @@
 }
 
 /*
- * Tagline overlay. The mock widget (`.heroStage`) sizes itself off its
- * container via `cqw`/`cqh`, so stealing flow height for the headline
- * would shrink the widget. Instead the headline is absolutely overlaid
- * on the TOP HALF of the hero — the band of empty space between the
- * shell top bar and the (vertically centered) widget — and centered
- * within it, leaving the widget at its full size. `pointer-events:
- * none` keeps the decorative text from intercepting widget hovers.
+ * Tagline overlay. The mock widget sizes itself off `.heroStage` via
+ * `cqw`/`cqh` and is vertically centered with `max-height: 75cqh`, so
+ * it always leaves at least a `(100 - 75) / 2 = 12.5cqh` slack of empty
+ * space above its top edge. The headline is overlaid on exactly that
+ * top slack and centered within it, so it reads as vertically centered
+ * in the band between the shell top bar and the widget — without
+ * stealing flow height (which would shrink the container-sized widget)
+ * and without ever overlapping the widget. `pointer-events: none` keeps
+ * the decorative text from intercepting widget hovers.
  */
 .heroHeadlineZone {
   position: absolute;
-  top: 24px;
-  left: 16px;
-  right: 16px;
-  height: 50%;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12.5cqh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,6 +235,7 @@
   width: 100%;
   display: grid;
   place-items: center;
+  position: relative;
 }
 
 .chatSurface {
