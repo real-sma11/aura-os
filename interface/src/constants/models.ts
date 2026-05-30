@@ -2,24 +2,27 @@ export type GenerationMode = "chat" | "image" | "3d" | "video";
 
 /**
  * Reasoning-effort tiers a model can expose in the picker's hover
- * flyout. Ordered low -> high; `xhigh`/`max` map to the "XHigh"/"Max"
- * labels in the reference design.
+ * flyout. This is the provider-accurate superset: `minimal` maps to
+ * OpenAI's lowest reasoning tier, `max` to Anthropic's largest thinking
+ * budget. Each model exposes only the subset it actually supports (see
+ * the per-model `efforts` arrays). The wire enum carried end-to-end
+ * (aura-protocol `ReasoningEffort`) mirrors these snake_case values.
  */
-export type ModelEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export type ModelEffort = "minimal" | "low" | "medium" | "high" | "max";
 
 export const EFFORT_ORDER: ModelEffort[] = [
+  "minimal",
   "low",
   "medium",
   "high",
-  "xhigh",
   "max",
 ];
 
 export const EFFORT_LABELS: Record<ModelEffort, string> = {
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
-  xhigh: "XHigh",
   max: "Max",
 };
 
@@ -57,13 +60,30 @@ export interface ModelOption {
   defaultEffort?: ModelEffort;
 }
 
-const STANDARD_EFFORTS: ModelEffort[] = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
+/**
+ * Anthropic extended-thinking tiers. Claude exposes a thinking budget
+ * (mapped per tier in the router), so the flagship models offer the
+ * full low→max ladder.
+ */
+const ANTHROPIC_EFFORTS: ModelEffort[] = ["low", "medium", "high", "max"];
+
+/**
+ * Lighter Anthropic tier for Haiku — capable of extended thinking but
+ * not the multi-minute `max` budget the flagships expose.
+ */
+const ANTHROPIC_LITE_EFFORTS: ModelEffort[] = ["low", "medium", "high"];
+
+/**
+ * OpenAI `reasoning_effort` tiers. The native API accepts
+ * `minimal`/`low`/`medium`/`high` (there is no `max`).
+ */
+const OPENAI_EFFORTS: ModelEffort[] = ["minimal", "low", "medium", "high"];
+
+/**
+ * Open-weight reasoning tiers (e.g. GPT-OSS) — `reasoning_effort`
+ * accepts `low`/`medium`/`high` only.
+ */
+const OSS_REASONING_EFFORTS: ModelEffort[] = ["low", "medium", "high"];
 
 export type ModelProviderGroup =
   | "aura"
@@ -98,8 +118,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "opus",
     mode: "chat",
     vendor: "anthropic",
-    creditMultiplier: 15,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 5,
+    efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -108,8 +128,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "opus",
     mode: "chat",
     vendor: "anthropic",
-    creditMultiplier: 40,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 5,
+    efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -118,8 +138,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "opus",
     mode: "chat",
     vendor: "anthropic",
-    creditMultiplier: 8,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 5,
+    efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -128,8 +148,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "sonnet",
     mode: "chat",
     vendor: "anthropic",
-    creditMultiplier: 6,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 3,
+    efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -139,8 +159,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 1,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
+    efforts: ANTHROPIC_LITE_EFFORTS,
+    defaultEffort: "low",
   },
   // ── OpenAI ──────────────────────────────────────────────────
   {
@@ -149,8 +169,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "gpt",
     mode: "chat",
     vendor: "openai",
-    creditMultiplier: 10,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 6,
+    efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -159,8 +179,8 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "gpt",
     mode: "chat",
     vendor: "openai",
-    creditMultiplier: 5,
-    efforts: STANDARD_EFFORTS,
+    creditMultiplier: 3,
+    efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
   },
   {
@@ -169,9 +189,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "gpt",
     mode: "chat",
     vendor: "openai",
-    creditMultiplier: 1,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
+    creditMultiplier: 0.9,
+    efforts: OPENAI_EFFORTS,
+    defaultEffort: "low",
   },
   {
     id: "aura-gpt-5-4-nano",
@@ -179,7 +199,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "gpt",
     mode: "chat",
     vendor: "openai",
-    creditMultiplier: 0.5,
+    creditMultiplier: 0.25,
+    efforts: OPENAI_EFFORTS,
+    defaultEffort: "minimal",
   },
   // ── Open Source ─────────────────────────────────────────────
   {
@@ -188,9 +210,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "sonnet",
     mode: "chat",
     vendor: "open-source",
-    creditMultiplier: 2,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
+    creditMultiplier: 0.8,
   },
   {
     id: "aura-kimi-k2-5",
@@ -198,9 +218,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "sonnet",
     mode: "chat",
     vendor: "open-source",
-    creditMultiplier: 1,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
+    creditMultiplier: 0.6,
   },
   {
     id: "aura-deepseek-v4-pro",
@@ -208,9 +226,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "opus",
     mode: "chat",
     vendor: "open-source",
-    creditMultiplier: 2,
-    efforts: STANDARD_EFFORTS,
-    defaultEffort: "medium",
+    creditMultiplier: 0.7,
   },
   {
     id: "aura-deepseek-v4-flash",
@@ -218,7 +234,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "sonnet",
     mode: "chat",
     vendor: "open-source",
-    creditMultiplier: 0.5,
+    creditMultiplier: 0.06,
   },
   {
     id: "aura-oss-120b",
@@ -226,7 +242,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     tier: "haiku",
     mode: "chat",
     vendor: "open-source",
-    creditMultiplier: 0,
+    creditMultiplier: 0.12,
+    efforts: OSS_REASONING_EFFORTS,
+    defaultEffort: "medium",
   },
 ];
 
@@ -786,7 +804,7 @@ export function modelLabel(
 
 /**
  * Like {@link modelLabel}, but appends the selected reasoning-effort tier
- * (e.g. `"Opus 4.8 XHigh"`) when an effort is active and the model exposes
+ * (e.g. `"Opus 4.8 Max"`) when an effort is active and the model exposes
  * effort tiers. Falls back to the plain label otherwise, so models without
  * efforts (or with no selection) read exactly as before.
  */
@@ -832,6 +850,66 @@ export function formatCreditMultiplier(
   // Whole numbers read "15x"; fractional rates keep their decimal ("0.5x").
   const rounded = Math.round(multiplier * 100) / 100;
   return `${rounded}x`;
+}
+
+/**
+ * Approximate thinking-token budget per reasoning-effort tier. Thinking
+ * tokens are billed at the output-token rate, so a larger budget means a
+ * proportionally more expensive turn. Anthropic does not publish an exact
+ * effort->token mapping; these values are anchored on the documented
+ * minimum budget (1024) and the canonical 10k example, and capped near
+ * 32k because the docs note budgets above that are rarely fully spent.
+ */
+export const THINKING_BUDGET_TOKENS: Record<ModelEffort, number> = {
+  minimal: 1_024,
+  low: 4_096,
+  medium: 10_000,
+  high: 24_000,
+  max: 32_000,
+};
+
+/**
+ * Assumed non-thinking visible output (tokens) billed every turn
+ * regardless of effort. Used to dampen the effort->credit factor so the
+ * cheapest tier doesn't read as near-free: the fixed output keeps costing
+ * even when the thinking budget shrinks. This is the single tuning knob
+ * for how aggressively effort scales the displayed multiplier.
+ */
+export const BASE_OUTPUT_TOKENS = 2_000;
+
+/**
+ * Relative credit factor for a reasoning-effort tier, normalized so a
+ * model evaluated at its own `defaultEffort` reads exactly `1`. Built
+ * from {@link THINKING_BUDGET_TOKENS} blended with {@link BASE_OUTPUT_TOKENS}
+ * so the factor reflects total billed output (fixed response + thinking),
+ * not the thinking budget alone.
+ */
+export function effortCreditFactor(
+  effort: ModelEffort,
+  defaultEffort?: ModelEffort | null,
+): number {
+  const base = defaultEffort ?? "medium";
+  const numerator = BASE_OUTPUT_TOKENS + THINKING_BUDGET_TOKENS[effort];
+  const denominator = BASE_OUTPUT_TOKENS + THINKING_BUDGET_TOKENS[base];
+  return numerator / denominator;
+}
+
+/**
+ * Effort-adjusted credit multiplier for a model. Returns `null` when the
+ * model has no `creditMultiplier` (image/3D/video) so callers omit the
+ * badge. Models without effort tiers (or when `effort` is nullish) keep
+ * their static multiplier; otherwise the base is scaled by
+ * {@link effortCreditFactor} for the chosen tier.
+ */
+export function effectiveCreditMultiplier(
+  model: ModelOption,
+  effort?: ModelEffort | null,
+): number | null {
+  if (model.creditMultiplier == null) return null;
+  if (!effort || !model.efforts || model.efforts.length === 0) {
+    return model.creditMultiplier;
+  }
+  return model.creditMultiplier * effortCreditFactor(effort, model.defaultEffort);
 }
 
 export function getModelById(modelId?: string | null): ModelOption | undefined {
