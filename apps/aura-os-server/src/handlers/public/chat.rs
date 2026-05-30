@@ -42,7 +42,9 @@ use crate::handlers::plan_mode::{
 };
 use crate::state::{AppState, AuthGuestJwt};
 
-use super::demo_agent::{ensure_public_demo_agent, PUBLIC_DEMO_SYSTEM_PROMPT, SYSTEM_DEMO_USER_ID};
+use super::demo_agent::{
+    ensure_public_demo_agent, PUBLIC_DEMO_MODEL, PUBLIC_DEMO_SYSTEM_PROMPT, SYSTEM_DEMO_USER_ID,
+};
 use super::gate::{
     emit_limit_frame, enforce_public_turn, record_completion, PublicGateCtx, TurnGuard,
 };
@@ -149,6 +151,10 @@ fn action_for_mode(mode: PublicChatMode) -> Option<&'static str> {
 /// [`aura_os_core::AgentPermissions::full_access`] but the session
 /// scope is intentionally tiny.
 ///
+/// The model is pinned to [`PUBLIC_DEMO_MODEL`]: the public surface
+/// has no client-side model picker and the router rejects an empty
+/// model name, so the id must be supplied here.
+///
 /// When `is_plan_mode` is set, the cold-start system prompt is
 /// suffixed with the shared plan-mode rules and `tool_permissions`
 /// hard-disables the code-writing tools so the public demo agent
@@ -170,6 +176,7 @@ fn build_public_session_config(
     let tool_permissions = is_plan_mode.then(plan_mode_tool_permissions);
     SessionConfig {
         system_prompt: Some(system_prompt),
+        model: Some(PUBLIC_DEMO_MODEL.to_string()),
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(agent_id.to_string()),
         user_id: Some(SYSTEM_DEMO_USER_ID.to_string()),
@@ -397,6 +404,11 @@ mod tests {
             action_for_mode(body.mode),
             /* is_plan_mode */ true,
         );
+        assert_eq!(
+            config.model.as_deref(),
+            Some(PUBLIC_DEMO_MODEL),
+            "plan mode must still pin the public demo model",
+        );
         let prompt = config.system_prompt.expect("system prompt set");
         assert!(prompt.starts_with(PUBLIC_DEMO_SYSTEM_PROMPT));
         assert!(
@@ -429,6 +441,11 @@ mod tests {
             &body,
             action_for_mode(body.mode),
             /* is_plan_mode */ false,
+        );
+        assert_eq!(
+            config.model.as_deref(),
+            Some(PUBLIC_DEMO_MODEL),
+            "code mode must pin a non-empty model so the router accepts the run",
         );
         assert_eq!(
             config.system_prompt.as_deref(),

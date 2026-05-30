@@ -52,6 +52,15 @@ Briefly help the visitor explore what AURA can do. Stay friendly and concise. \
 If the visitor asks for anything that requires a sign-in (saving work, running long \
 jobs, deploying), tell them they can sign in at any time to unlock the full surface.";
 
+/// Model the public demo runs on. The router requires an explicit,
+/// non-empty model id (it no longer falls back to an env default), and
+/// the public chat surface has no client-side model picker — so the id
+/// must be pinned server-side or every public turn fails with
+/// `model name must not be empty`. Haiku keeps the anonymous,
+/// IP-rate-limited, operator-funded surface inexpensive while staying
+/// capable enough for a teaser.
+pub(crate) const PUBLIC_DEMO_MODEL: &str = "aura-claude-haiku-4-5";
+
 /// Idempotently provision the system-owned demo agent and return its
 /// stable [`AgentId`].
 ///
