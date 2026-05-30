@@ -49,8 +49,7 @@ impl MixpanelTracker {
         // Evict stale entries from previous days to prevent unbounded
         // growth. Runs inline but is O(n) with a small n (active users
         // today). Only runs when we actually insert a new entry.
-        self.seen_today
-            .retain(|k, _| k.ends_with(&today));
+        self.seen_today.retain(|k, _| k.ends_with(&today));
 
         let client = self.client.clone();
         let token = self.token.clone();

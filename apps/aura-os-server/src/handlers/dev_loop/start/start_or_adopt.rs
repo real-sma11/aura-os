@@ -4,7 +4,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use tracing::warn;
 
-use aura_os_harness::{submit_automaton_run, AutomatonStartError, AutomatonStartParams, HarnessLink};
+use aura_os_harness::{
+    submit_automaton_run, AutomatonStartError, AutomatonStartParams, HarnessLink,
+};
 
 use crate::error::ApiError;
 use crate::handlers::agents::session_identity::{

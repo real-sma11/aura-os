@@ -118,10 +118,7 @@ impl LiveStream {
         }
         // Dropping the session closes the upstream harness WS now that
         // we have all the frames buffered for replay.
-        *self
-            .session
-            .lock()
-            .expect("live stream session poisoned") = None;
+        *self.session.lock().expect("live stream session poisoned") = None;
     }
 
     /// Request cancellation of the underlying run. The forwarder emits a
@@ -500,12 +497,8 @@ mod tests {
             session_id: Some("sess-1".to_string()),
             ..Default::default()
         };
-        let stream = registry.register_receiver(
-            StreamKind::ChatTurn,
-            scope,
-            events_tx.subscribe(),
-            None,
-        );
+        let stream =
+            registry.register_receiver(StreamKind::ChatTurn, scope, events_tx.subscribe(), None);
 
         events_tx
             .send(HarnessOutbound::TextDelta(TextDelta {
@@ -615,6 +608,9 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert!(stream.is_terminated(), "cancel should mark the stream terminal");
+        assert!(
+            stream.is_terminated(),
+            "cancel should mark the stream terminal"
+        );
     }
 }

@@ -212,11 +212,7 @@ async fn list_agent_instances_excludes_ledger_tracked_system_rows() {
         .await
         .expect("seed chat instance");
     let ghost = storage
-        .create_project_agent(
-            &project_id,
-            JWT,
-            &make_agent_req(None, "Summarize This Me"),
-        )
+        .create_project_agent(&project_id, JWT, &make_agent_req(None, "Summarize This Me"))
         .await
         .expect("seed stripped executor");
     let ghost_id: aura_os_core::AgentInstanceId = ghost.id.parse().expect("parseable ghost id");

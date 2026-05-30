@@ -97,7 +97,8 @@ mod tests {
 
     #[test]
     fn input_summary_prefers_command() {
-        let event = json!({ "name": "run_command", "input": { "command": "cargo test --workspace" } });
+        let event =
+            json!({ "name": "run_command", "input": { "command": "cargo test --workspace" } });
         assert_eq!(
             tool_input_summary(&event).as_deref(),
             Some("cargo test --workspace")
@@ -106,7 +107,8 @@ mod tests {
 
     #[test]
     fn input_summary_falls_back_to_path() {
-        let event = json!({ "name": "edit_file", "input": { "path": "src/lib.rs", "new_text": "x" } });
+        let event =
+            json!({ "name": "edit_file", "input": { "path": "src/lib.rs", "new_text": "x" } });
         assert_eq!(tool_input_summary(&event).as_deref(), Some("src/lib.rs"));
     }
 
@@ -164,7 +166,10 @@ mod tests {
 
     #[test]
     fn duration_ms_reads_numeric_field() {
-        assert_eq!(event_duration_ms(&json!({ "duration_ms": 120000 })), Some(120000));
+        assert_eq!(
+            event_duration_ms(&json!({ "duration_ms": 120000 })),
+            Some(120000)
+        );
         assert_eq!(event_duration_ms(&json!({})), None);
     }
 }

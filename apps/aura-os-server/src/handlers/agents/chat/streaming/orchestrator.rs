@@ -12,11 +12,11 @@ use tracing::{debug, error};
 
 use crate::dto::ChatAttachmentDto;
 use crate::error::{ApiError, ApiResult};
-use crate::live_streams::{StreamKind, StreamScope};
 use crate::handlers::agents::chat::types::sse_response_headers;
 use crate::handlers::agents::session_identity::{
     validate_session_identity, SessionIdentityRequirements,
 };
+use crate::live_streams::{StreamKind, StreamScope};
 use crate::state::AppState;
 
 use super::super::event_bus::publish_user_message_event;

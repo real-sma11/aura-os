@@ -201,8 +201,7 @@ async fn finalize_spec_write(
         })?;
     let spec = Spec::try_from(storage_spec).map_err(ApiError::internal)?;
 
-    if let Some(workspace_root) =
-        resolve_spec_workspace(state, project_id, agent_instance_id).await
+    if let Some(workspace_root) = resolve_spec_workspace(state, project_id, agent_instance_id).await
     {
         let markdown = markdown_for_disk.unwrap_or_else(|| spec.markdown_contents.clone());
         mirror_spec_best_effort(&workspace_root, old_title, &spec.title, &markdown).await;
@@ -240,18 +239,22 @@ pub(crate) async fn update_spec_section(
 
     check_if_match(&current.markdown_contents, req.if_match.as_deref())?;
 
-    let new_markdown = replace_section(&current.markdown_contents, &req.section_heading, &req.new_body)
-        .map_err(|available| {
-            let headings = if available.is_empty() {
-                "(none)".to_string()
-            } else {
-                available.join(", ")
-            };
-            ApiError::bad_request(format!(
-                "section `{}` not found in spec; available `## ` sections: {headings}",
-                req.section_heading
-            ))
-        })?;
+    let new_markdown = replace_section(
+        &current.markdown_contents,
+        &req.section_heading,
+        &req.new_body,
+    )
+    .map_err(|available| {
+        let headings = if available.is_empty() {
+            "(none)".to_string()
+        } else {
+            available.join(", ")
+        };
+        ApiError::bad_request(format!(
+            "section `{}` not found in spec; available `## ` sections: {headings}",
+            req.section_heading
+        ))
+    })?;
 
     write_spec_markdown(
         &state,

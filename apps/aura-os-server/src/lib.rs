@@ -1,7 +1,6 @@
 pub mod agent_events;
 mod app_builder;
 mod auth_guard;
-pub mod mixpanel;
 mod billing_bridge;
 pub(crate) mod billing_rollup;
 mod capture_auth;
@@ -12,6 +11,7 @@ pub mod event_log;
 pub mod handlers;
 pub mod harness_client;
 pub(crate) mod harness_gateway;
+pub mod mixpanel;
 mod network_bridge;
 pub mod orbit_guard;
 

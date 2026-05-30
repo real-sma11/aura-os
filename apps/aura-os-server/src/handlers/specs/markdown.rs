@@ -11,10 +11,7 @@
 /// surrounding whitespace, then lowercase. Accepts both `"## Goals"` and
 /// `"Goals"` so callers don't have to know whether to include the prefix.
 fn normalize_heading(raw: &str) -> String {
-    raw.trim()
-        .trim_start_matches('#')
-        .trim()
-        .to_lowercase()
+    raw.trim().trim_start_matches('#').trim().to_lowercase()
 }
 
 /// If `line` is a level-2 (`## `) markdown heading, return its title text
@@ -118,10 +115,7 @@ mod tests {
     #[test]
     fn replaces_a_middle_section_keeping_others() {
         let out = replace_section(SAMPLE, "## Goals", "New goal.").unwrap();
-        assert_eq!(
-            out,
-            "## Goals\nNew goal.\n\n## Non-Goals\nNot this.\n"
-        );
+        assert_eq!(out, "## Goals\nNew goal.\n\n## Non-Goals\nNot this.\n");
     }
 
     #[test]

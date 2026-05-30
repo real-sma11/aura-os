@@ -52,10 +52,7 @@ pub(super) fn public_routes() -> Router<AppState> {
         // to aura-network's `/api/public/models`. Same graceful-degrade
         // contract as `/api/public/feedback`: returns `[]` when no
         // aura-network client is configured or the upstream call fails.
-        .route(
-            "/api/public/models",
-            get(public_models::pub_list_models),
-        );
+        .route("/api/public/models", get(public_models::pub_list_models));
     if public_generation_enabled() {
         router = router
             .route(

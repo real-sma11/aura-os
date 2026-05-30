@@ -23,10 +23,10 @@ use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+use crate::error::{ApiError, ApiResult};
 use crate::event_log::{ReplayResult, SeqEvent};
 use crate::live_streams::{ActiveStreamSummary, LiveStream};
 use crate::state::{AppState, AuthSession};
-use crate::error::{ApiError, ApiResult};
 use std::sync::Arc;
 
 const SSE_NO_BUFFERING_HEADERS: [(&str, HeaderValue); 1] =
