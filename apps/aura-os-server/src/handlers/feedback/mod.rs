@@ -301,12 +301,38 @@ pub(crate) async fn get_feedback(
 pub(crate) async fn update_feedback_status(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
+    AuthSession(session): AuthSession,
     Path(post_id): Path<String>,
     Json(req): Json<UpdateStatusRequest>,
 ) -> ApiResult<Json<FeedbackItemResponse>> {
     validate_status(&req.status)?;
 
     let client = state.require_feedback_network_client()?;
+
+    // Authorize before mutating: aura-network's `patch_metadata` updates by
+    // `post_id` with no ownership check, so without this gate any authenticated
+    // user could change any item's status. Allow the post's author (matched by
+    // profile id) or any system administrator.
+    if !session.is_sys_admin {
+        let existing = client
+            .get_post(&post_id, &jwt)
+            .await
+            .map_err(map_network_error)?;
+        if existing.event_type != FEEDBACK_EVENT_TYPE {
+            return Err(ApiError::not_found("feedback item not found"));
+        }
+        let viewer_profile_id = session.profile_id.map(|id| id.to_string());
+        let is_author = match viewer_profile_id {
+            Some(ref pid) => pid == &existing.profile_id,
+            None => false,
+        };
+        if !is_author {
+            return Err(ApiError::forbidden(
+                "only the author or an administrator can change this item's status",
+            ));
+        }
+    }
+
     let patch = serde_json::json!({ "feedbackStatus": req.status });
     let post = client
         .patch_post_metadata(&post_id, &patch, &jwt)

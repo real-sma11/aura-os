@@ -1,0 +1,1 @@
+export { BugReportsList } from "./BugReportsList";

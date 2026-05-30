@@ -21,6 +21,7 @@ import {
   GitCommitVertical,
   MessageSquare,
   Plug,
+  ShieldAlert,
   Store,
 } from "lucide-react";
 import type { AuraApp, AuraAppModule } from "./types";
@@ -33,6 +34,7 @@ import { processRoutes } from "./process/routes";
 import { feedRoutes } from "./feed/routes";
 import { notesRoutes } from "./notes/routes";
 import { feedbackRoutes } from "./feedback/routes";
+import { bugReportsRoutes } from "./bug-reports/routes";
 import { integrationsRoutes } from "./integrations/routes";
 import { debugRoutes } from "./debug/routes";
 import { profileRoutes } from "./profile/routes";
@@ -67,7 +69,7 @@ function wrapLazyAppComponent<Props extends object>(
 }
 
 function createAppDefinition(
-  metadata: Pick<AuraApp, "id" | "label" | "agentDescription" | "agentKeywords" | "icon" | "basePath" | "searchPlaceholder" | "defaultHidden"> & {
+  metadata: Pick<AuraApp, "id" | "label" | "agentDescription" | "agentKeywords" | "icon" | "basePath" | "searchPlaceholder" | "defaultHidden" | "adminOnly"> & {
     routes: RouteObject[];
     bareMainPanel?: boolean;
   },
@@ -176,6 +178,8 @@ const loadFeedApp = () =>
   import("./feed/FeedApp").then((module) => module.FeedApp);
 const loadFeedbackApp = () =>
   import("./feedback/FeedbackApp").then((module) => module.FeedbackApp);
+const loadBugReportsApp = () =>
+  import("./bug-reports/BugReportsApp").then((module) => module.BugReportsApp);
 const loadIntegrationsApp = () =>
   import("./integrations/IntegrationsApp").then((module) => module.IntegrationsApp);
 const loadDebugApp = () =>
@@ -365,6 +369,20 @@ export const apps: AuraApp[] = [
       hasSidekickPanel: true,
       hasSidekickTaskbar: true,
     },
+  ),
+  createAppDefinition(
+    {
+      id: "bug-reports",
+      label: "Bug Reports",
+      agentDescription: "Admin-only viewer for private bug reports and their diagnostics.",
+      agentKeywords: ["bug", "report", "diagnostics", "admin", "triage", "crash"],
+      icon: ShieldAlert,
+      basePath: "/bug-reports",
+      searchPlaceholder: "Search bug reports",
+      routes: bugReportsRoutes,
+      adminOnly: true,
+    },
+    loadBugReportsApp,
   ),
   createAppDefinition(
     {

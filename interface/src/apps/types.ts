@@ -49,6 +49,14 @@ export interface AuraApp {
    */
   defaultHidden?: boolean;
   /**
+   * When true, this app's entry points (taskbar/nav rail launcher and the
+   * Apps manager modal) only render for system administrators
+   * (`useIsSysAdmin()`). Routes stay registered for everyone — the backend is
+   * the authoritative gate (admin endpoints return 403) — but non-admins never
+   * see a way in. Used by the private Bug Reports viewer.
+   */
+  adminOnly?: boolean;
+  /**
    * Routes owned by this app. `App.tsx` flattens these under the shell layout,
    * making the app module the single source of truth for which pathnames it
    * handles. Each route's `path` should be absolute (relative to the shell

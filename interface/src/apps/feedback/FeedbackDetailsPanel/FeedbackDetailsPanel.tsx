@@ -1,9 +1,10 @@
 import { useMemo, useRef } from "react";
-import { Info } from "lucide-react";
+import { CheckCircle2, Info } from "lucide-react";
+import { Button } from "@cypher-asi/zui";
 import { Avatar } from "../../../components/Avatar";
 import { EmptyState } from "../../../components/EmptyState";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
-import { useAuthStore } from "../../../stores/auth-store";
+import { useAuthStore, useIsSysAdmin } from "../../../stores/auth-store";
 import {
   useFeedback,
   useFeedbackComments,
@@ -52,12 +53,19 @@ export function FeedbackDetailsPanel() {
   const item = useFeedbackItem(selectedId);
   const comments = useFeedbackComments(selectedId);
   const viewerProfileId = useAuthStore((s) => s.user?.profile_id);
+  const isSysAdmin = useIsSysAdmin();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isAuthor =
     !!viewerProfileId &&
     !!item?.author.profileId &&
     viewerProfileId === item.author.profileId;
+
+  // Admins can resolve any item (even ones they don't own) without creating a
+  // task — this just flips the feedback to `done` via the existing status
+  // path. Hidden once the item is already resolved/deployed.
+  const canAdminResolve =
+    isSysAdmin && !!item && item.status !== "done" && item.status !== "deployed";
 
   const sortedComments = useMemo(
     () =>
@@ -146,6 +154,19 @@ export function FeedbackDetailsPanel() {
                     {statusLabel(item.status)}
                   </span>
                 )}
+                {canAdminResolve ? (
+                  <Button
+                    className={styles.resolveButton}
+                    variant="secondary"
+                    size="sm"
+                    icon={<CheckCircle2 size={14} />}
+                    data-agent-action="resolve-feedback"
+                    data-agent-proof="feedback-details-admin-resolve"
+                    onClick={() => setStatus(item.id, "done")}
+                  >
+                    Resolve
+                  </Button>
+                ) : null}
               </dd>
             </div>
             <div className={styles.metaRow}>

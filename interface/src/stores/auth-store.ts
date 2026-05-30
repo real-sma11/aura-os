@@ -31,6 +31,7 @@ function sessionToUser(session: AuthSession): ZeroUser {
     wallets: session.wallets,
     is_zero_pro: session.is_zero_pro,
     is_access_granted: session.is_access_granted,
+    is_sys_admin: session.is_sys_admin,
   };
 }
 
@@ -307,4 +308,15 @@ export function useAuth() {
       logout: s.logout,
     })),
   );
+}
+
+/**
+ * Selector hook returning whether the current user is a system
+ * administrator (`is_sys_admin`, sourced from aura-network). Gates
+ * admin-only UI such as the bug-report viewer and the feedback
+ * "Resolve" button. The server remains authoritative — this is
+ * defense-in-depth for hiding entry points from non-admins.
+ */
+export function useIsSysAdmin(): boolean {
+  return useAuthStore((s) => s.user?.is_sys_admin ?? false);
 }

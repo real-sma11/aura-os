@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { EyeOff, GripVertical } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { getOrderedTaskbarApps, useAppStore } from "../../stores/app-store";
+import { useIsSysAdmin } from "../../stores/auth-store";
 import styles from "./AppsModal.module.css";
 
 interface Props {
@@ -42,6 +43,7 @@ interface AppRowData {
 
 export function AppsModal({ isOpen, onClose }: Props) {
   const apps = useAppStore((s) => s.apps);
+  const isSysAdmin = useIsSysAdmin();
   const taskbarAppOrder = useAppStore((s) => s.taskbarAppOrder);
   const taskbarHiddenAppIds = useAppStore((s) => s.taskbarHiddenAppIds);
   const saveTaskbarAppsLayout = useAppStore((s) => s.saveTaskbarAppsLayout);
@@ -50,13 +52,15 @@ export function AppsModal({ isOpen, onClose }: Props) {
 
   // Reorderable (non-pinned) apps sorted by the stored taskbar order. Pinned
   // apps (desktop, profile) are excluded from this modal; they live outside
-  // the reorderable strip and are always visible.
+  // the reorderable strip and are always visible. Admin-only apps are hidden
+  // from non-admins entirely.
   const rows = useMemo<AppRowData[]>(() => {
     const ordered = getOrderedTaskbarApps(apps, taskbarAppOrder);
     return ordered
       .filter((app) => app.id !== "desktop" && app.id !== "profile")
+      .filter((app) => !app.adminOnly || isSysAdmin)
       .map((app) => ({ id: app.id, label: app.label, Icon: app.icon }));
-  }, [apps, taskbarAppOrder]);
+  }, [apps, taskbarAppOrder, isSysAdmin]);
 
   const hiddenSet = useMemo(
     () => new Set(taskbarHiddenAppIds),

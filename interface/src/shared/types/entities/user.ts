@@ -9,6 +9,7 @@ export interface ZeroUser {
   wallets: string[];
   is_zero_pro?: boolean;
   is_access_granted?: boolean;
+  is_sys_admin?: boolean;
 }
 
 export interface AuthSession {
@@ -22,6 +23,7 @@ export interface AuthSession {
   wallets: string[];
   is_zero_pro?: boolean;
   is_access_granted?: boolean;
+  is_sys_admin?: boolean;
   zero_pro_refresh_error?: string;
   access_token?: string;
   created_at: string;

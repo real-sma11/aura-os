@@ -474,6 +474,7 @@ pub(crate) struct AuthSessionResponse {
     pub wallets: Vec<String>,
     pub is_zero_pro: bool,
     pub is_access_granted: bool,
+    pub is_sys_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zero_pro_refresh_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -588,6 +589,7 @@ impl From<ZeroAuthSession> for AuthSessionResponse {
             wallets: s.wallets,
             is_zero_pro: s.is_zero_pro,
             is_access_granted: s.is_access_granted,
+            is_sys_admin: s.is_sys_admin,
             zero_pro_refresh_error: None,
             access_token: Some(token),
             created_at: s.created_at,

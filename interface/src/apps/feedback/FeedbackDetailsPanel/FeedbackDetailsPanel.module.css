@@ -157,6 +157,12 @@
   color: var(--color-accent, #7ca4e2);
 }
 
+.resolveButton {
+  display: flex;
+  width: fit-content;
+  margin-top: var(--space-2);
+}
+
 .commentsSection {
   display: flex;
   flex-direction: column;

@@ -13,6 +13,7 @@ import { createPortal, flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import type { AuraApp } from "../../apps/types";
 import { getOrderedTaskbarApps, useAppStore } from "../../stores/app-store";
+import { useIsSysAdmin } from "../../stores/auth-store";
 import { useActiveApp } from "../../hooks/use-active-app";
 import {
   getLastAgent,
@@ -239,6 +240,7 @@ export function AppNavRail({
   allowReorder = false,
 }: AppNavRailProps) {
   const apps = useAppStore((s) => s.apps);
+  const isSysAdmin = useIsSysAdmin();
   const activeApp = useActiveApp();
   const taskbarAppOrder = useAppStore((s) => s.taskbarAppOrder);
   const taskbarHiddenAppIds = useAppStore((s) => s.taskbarHiddenAppIds);
@@ -253,6 +255,7 @@ export function AppNavRail({
   );
   const primaryApps = orderedApps.filter((app) => {
     if (app.id === "desktop") return false;
+    if (app.adminOnly && !isSysAdmin) return false;
     if (excludeSet.has(app.id)) return false;
     if (includeSet && !includeSet.has(app.id)) return false;
     if (layout === "taskbar" && hiddenSet.has(app.id)) return false;
