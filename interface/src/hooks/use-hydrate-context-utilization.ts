@@ -17,6 +17,15 @@ export interface HydrateContextUtilizationFetcher {
      * immediately on chat mount instead of falling back to the legacy
      * Used/Total card until the next assistant turn arrives. */
     context_breakdown?: WireContextBreakdown;
+    /** Session-cumulative usage for the Context popover's Session Cost
+     * section. Optional so older harness builds / endpoints simply hide
+     * the section after reload. */
+    cumulative_input_tokens?: number;
+    cumulative_output_tokens?: number;
+    cumulative_cache_read_input_tokens?: number;
+    cumulative_cache_creation_input_tokens?: number;
+    model?: string;
+    provider?: string;
   }>;
 }
 
@@ -89,6 +98,16 @@ export function useHydrateContextUtilization(
           // `ContextUsageIndicator` without further guards here.
           mapWireContextBreakdown(response.context_breakdown),
         );
+        // Seed Session Cost so it survives a page reload instead of
+        // appearing only after the next assistant turn.
+        latest.setSessionUsage(streamKey, {
+          model: response.model,
+          provider: response.provider,
+          cumulativeInputTokens: response.cumulative_input_tokens,
+          cumulativeOutputTokens: response.cumulative_output_tokens,
+          cumulativeCacheReadTokens: response.cumulative_cache_read_input_tokens,
+          cumulativeCacheCreationTokens: response.cumulative_cache_creation_input_tokens,
+        });
       })
       .catch((err) => {
         if (cancelled || (err instanceof DOMException && err.name === "AbortError")) {

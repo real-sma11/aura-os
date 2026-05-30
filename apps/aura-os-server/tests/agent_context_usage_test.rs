@@ -270,3 +270,56 @@ async fn context_usage_endpoint_omits_breakdown_when_event_lacks_it() {
         "missing breakdown field should yield no `context_breakdown` in the response",
     );
 }
+
+#[tokio::test]
+async fn context_usage_endpoint_forwards_session_cost_fields() {
+    // The Session Cost widget hydrates from cumulative token / model /
+    // provider fields embedded in the latest `assistant_message_end`
+    // usage payload. Verify they survive the round-trip so the cost
+    // breakdown is available after a page reload (not just live SSE).
+    let (app, state, storage, _db) = build_test_app_with_storage().await;
+
+    let project = state
+        .project_service
+        .create_project(CreateProjectInput {
+            org_id: OrgId::new(),
+            name: "Session Cost Hydrate".into(),
+            description: "Cumulative tokens + model must reach the Session Cost widget".into(),
+            build_command: None,
+            test_command: None,
+            local_workspace_path: None,
+        })
+        .expect("create project");
+
+    let agent_id = AgentId::new();
+    let pa = seed_project_agent(&storage, &project.project_id.to_string(), &agent_id).await;
+
+    seed_session_with_assistant_end(
+        &storage,
+        &pa.id,
+        &project.project_id.to_string(),
+        json!({
+            "context_utilization": 0.42_f64,
+            "estimated_context_tokens": 84_000_u64,
+            "cumulative_input_tokens": 1_240_500_u64,
+            "cumulative_output_tokens": 310_200_u64,
+            "cumulative_cache_read_input_tokens": 512_000_u64,
+            "cumulative_cache_creation_input_tokens": 64_000_u64,
+            "model": "aura-claude-opus-4-8",
+            "provider": "anthropic",
+        }),
+    )
+    .await;
+
+    let body = fetch_context_usage(&app, &agent_id).await;
+
+    assert_eq!(body["cumulative_input_tokens"], json!(1_240_500));
+    assert_eq!(body["cumulative_output_tokens"], json!(310_200));
+    assert_eq!(body["cumulative_cache_read_input_tokens"], json!(512_000));
+    assert_eq!(
+        body["cumulative_cache_creation_input_tokens"],
+        json!(64_000)
+    );
+    assert_eq!(body["model"], json!("aura-claude-opus-4-8"));
+    assert_eq!(body["provider"], json!("anthropic"));
+}

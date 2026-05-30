@@ -76,10 +76,44 @@ export function mapWireContextBreakdown(
   };
 }
 
+/**
+ * Session-cumulative usage used by the Context popover's "Session Cost"
+ * section. Sourced from `assistant_message_end.usage` (live SSE) and the
+ * `context-usage` GET response (reload hydration). All fields optional so
+ * the section is simply hidden when the harness/endpoint omit them.
+ */
+export interface SessionUsageUpdate {
+  model?: string;
+  provider?: string;
+  cumulativeInputTokens?: number;
+  cumulativeOutputTokens?: number;
+  cumulativeCacheReadTokens?: number;
+  cumulativeCacheCreationTokens?: number;
+}
+
 export interface ContextUsageEntry {
   utilization: number;
   estimatedTokens?: number;
   breakdown?: ContextBreakdown;
+  model?: string;
+  provider?: string;
+  cumulativeInputTokens?: number;
+  cumulativeOutputTokens?: number;
+  cumulativeCacheReadTokens?: number;
+  cumulativeCacheCreationTokens?: number;
+}
+
+/** Pick just the session-cost fields off an entry (for preservation). */
+function pickSessionUsage(entry: ContextUsageEntry | undefined): SessionUsageUpdate {
+  if (!entry) return {};
+  return {
+    model: entry.model,
+    provider: entry.provider,
+    cumulativeInputTokens: entry.cumulativeInputTokens,
+    cumulativeOutputTokens: entry.cumulativeOutputTokens,
+    cumulativeCacheReadTokens: entry.cumulativeCacheReadTokens,
+    cumulativeCacheCreationTokens: entry.cumulativeCacheCreationTokens,
+  };
 }
 
 interface ContextUsageState {
@@ -123,6 +157,14 @@ interface ContextUsageState {
    * cannot change between turns.
    */
   bumpEstimatedTokens: (key: string, tokensDelta: number) => void;
+  /**
+   * Merge session-cumulative usage (model, provider, cumulative token
+   * counts) into the entry for `key`, preserving the context-window
+   * fields (`utilization` / `estimatedTokens` / `breakdown`). Only
+   * defined fields on `update` overwrite; `undefined` leaves the prior
+   * value intact so a partial payload never clears known data.
+   */
+  setSessionUsage: (key: string, update: SessionUsageUpdate) => void;
   clearContextUtilization: (key: string) => void;
   markResetPending: (key: string) => void;
   isResetPending: (key: string) => boolean;
@@ -148,7 +190,13 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
   setContextUtilization: (key, utilization, estimatedTokens, breakdown) =>
     set((state) => {
       const { [key]: _, ...resetRest } = state.resetPendingByStreamKey;
-      const entry: ContextUsageEntry = { utilization };
+      // Preserve any session-cost fields already captured for this stream
+      // so a fresh authoritative utilization update doesn't wipe the
+      // Session Cost section between turns.
+      const entry: ContextUsageEntry = {
+        utilization,
+        ...pickSessionUsage(state.usageByStreamKey[key]),
+      };
       let nextRatios = state.utilPerTokenByStreamKey;
       if (
         typeof estimatedTokens === "number" &&
@@ -202,6 +250,7 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
         usageByStreamKey: {
           ...state.usageByStreamKey,
           [key]: {
+            ...prev,
             utilization: nextUtil,
             estimatedTokens: nextTokens,
             breakdown: nextBreakdown,
@@ -210,6 +259,28 @@ export const useContextUsageStore = create<ContextUsageState>((set, get) => ({
       };
     });
   },
+  setSessionUsage: (key, update) =>
+    set((state) => {
+      const prev = state.usageByStreamKey[key];
+      // Only overwrite fields the caller actually provided; `undefined`
+      // falls back to the prior value so partial payloads never clear data.
+      const entry: ContextUsageEntry = {
+        utilization: prev?.utilization ?? 0,
+        estimatedTokens: prev?.estimatedTokens,
+        breakdown: prev?.breakdown,
+        model: update.model ?? prev?.model,
+        provider: update.provider ?? prev?.provider,
+        cumulativeInputTokens: update.cumulativeInputTokens ?? prev?.cumulativeInputTokens,
+        cumulativeOutputTokens: update.cumulativeOutputTokens ?? prev?.cumulativeOutputTokens,
+        cumulativeCacheReadTokens:
+          update.cumulativeCacheReadTokens ?? prev?.cumulativeCacheReadTokens,
+        cumulativeCacheCreationTokens:
+          update.cumulativeCacheCreationTokens ?? prev?.cumulativeCacheCreationTokens,
+      };
+      return {
+        usageByStreamKey: { ...state.usageByStreamKey, [key]: entry },
+      };
+    }),
   clearContextUtilization: (key) =>
     set((state) => {
       const { [key]: _usage, ...rest } = state.usageByStreamKey;

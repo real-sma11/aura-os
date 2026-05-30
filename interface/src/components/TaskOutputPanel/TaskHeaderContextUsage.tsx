@@ -79,6 +79,12 @@ export function TaskHeaderContextUsage({ taskId, projectId }: TaskHeaderContextU
         utilization={usage.utilization}
         estimatedTokens={usage.estimatedTokens}
         breakdown={usage.breakdown}
+        model={usage.model}
+        provider={usage.provider}
+        cumulativeInputTokens={usage.cumulativeInputTokens}
+        cumulativeOutputTokens={usage.cumulativeOutputTokens}
+        cumulativeCacheReadTokens={usage.cumulativeCacheReadTokens}
+        cumulativeCacheCreationTokens={usage.cumulativeCacheCreationTokens}
       />
     </span>
   );

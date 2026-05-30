@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import type { ContextBreakdown } from "../../../stores/context-usage-store";
+import { computeSessionCost } from "../../../constants/model-pricing";
+import { modelLabel } from "../../../constants/models";
+import { SessionCostSection, type SessionCostView } from "../SessionCostSection";
 import styles from "./ChatInputBar.module.css";
 
 export interface ContextUsageIndicatorProps {
@@ -16,6 +19,17 @@ export interface ContextUsageIndicatorProps {
    * regresses.
    */
   breakdown?: ContextBreakdown;
+  /**
+   * Session-cumulative usage for the "Session Cost" section. When
+   * `model` plus a positive input/output count is present, the popover
+   * renders cost; otherwise the section is omitted.
+   */
+  model?: string;
+  provider?: string;
+  cumulativeInputTokens?: number;
+  cumulativeOutputTokens?: number;
+  cumulativeCacheReadTokens?: number;
+  cumulativeCacheCreationTokens?: number;
 }
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
@@ -78,6 +92,50 @@ function buildBucketRows(b: ContextBreakdown): BucketRow[] {
 }
 
 /**
+ * Build the presentational view for the Session Cost section from the
+ * cumulative usage props, or `null` when there isn't enough data yet
+ * (no model, or no tokens consumed). Cost math is delegated to the pure
+ * `model-pricing` util so this stays a thin adapter.
+ */
+function buildSessionCostView(
+  props: Pick<
+    ContextUsageIndicatorProps,
+    | "model"
+    | "provider"
+    | "cumulativeInputTokens"
+    | "cumulativeOutputTokens"
+    | "cumulativeCacheReadTokens"
+    | "cumulativeCacheCreationTokens"
+  >,
+): SessionCostView | null {
+  const { model } = props;
+  if (!model) return null;
+  const inputTokens = props.cumulativeInputTokens ?? 0;
+  const outputTokens = props.cumulativeOutputTokens ?? 0;
+  if (inputTokens <= 0 && outputTokens <= 0) return null;
+  const cost = computeSessionCost({
+    model,
+    provider: props.provider,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens: props.cumulativeCacheReadTokens ?? 0,
+    cacheCreationTokens: props.cumulativeCacheCreationTokens ?? 0,
+  });
+  return {
+    modelLabel: modelLabel(model),
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    avgCostPerMillionUsd: cost.avgCostPerMillionUsd,
+    totalCostUsd: cost.totalCostUsd,
+    inputRatePerMillionUsd: cost.pricing.input,
+    outputRatePerMillionUsd: cost.pricing.output,
+    cachedRatePerMillionUsd: cost.pricing.cacheRead,
+    unknown: cost.unknown,
+  };
+}
+
+/**
  * Click-toggle popover for the bottom-bar context-window indicator.
  * The visible trigger is a tiny progress ring + lowercase "NN% context"
  * label; clicking it toggles the popover, and clicks outside dismiss
@@ -99,9 +157,24 @@ export function ContextUsageIndicator({
   utilization,
   estimatedTokens,
   breakdown,
+  model,
+  provider,
+  cumulativeInputTokens,
+  cumulativeOutputTokens,
+  cumulativeCacheReadTokens,
+  cumulativeCacheCreationTokens,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
+
+  const sessionCostView = buildSessionCostView({
+    model,
+    provider,
+    cumulativeInputTokens,
+    cumulativeOutputTokens,
+    cumulativeCacheReadTokens,
+    cumulativeCacheCreationTokens,
+  });
 
   const handleClick = useCallback(() => {
     setOpen((prev) => !prev);
@@ -221,7 +294,7 @@ export function ContextUsageIndicator({
           data-agent-surface="chat-context-breakdown"
         >
           <div className={styles.contextBreakdownHeader}>
-            <span className={styles.contextBreakdownTitle}>Context</span>
+            <span className={styles.contextBreakdownTitle}>Context Composition</span>
             <button
               type="button"
               className={styles.contextBreakdownClose}
@@ -299,6 +372,7 @@ export function ContextUsageIndicator({
               </div>
             ))}
           </div>
+          {sessionCostView && <SessionCostSection view={sessionCostView} />}
         </div>
       )}
 
@@ -331,6 +405,7 @@ export function ContextUsageIndicator({
               Token counts appear after the next assistant turn.
             </div>
           )}
+          {sessionCostView && <SessionCostSection view={sessionCostView} />}
         </div>
       )}
     </span>

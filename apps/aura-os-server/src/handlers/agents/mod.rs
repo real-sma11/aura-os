@@ -1,4 +1,5 @@
 pub(crate) mod chat;
+pub(crate) mod context_usage;
 mod control;
 mod conversions;
 mod crud;
@@ -19,6 +20,7 @@ pub(crate) use chat::{
     list_agent_session_events, list_events, reset_agent_session, reset_instance_session,
     send_agent_event_stream, send_event_stream,
 };
+pub(crate) use context_usage::{get_agent_context_usage, get_instance_context_usage};
 pub(crate) use control::{delegate_agent_task, get_agent_state_snapshot};
 pub(crate) use crud::{
     create_agent, delete_agent, get_agent, list_agent_project_bindings, list_agents,
@@ -32,9 +34,8 @@ pub(crate) use instances::{
 };
 pub(crate) use runtime::{session_model_overrides_with_cache, test_agent_runtime};
 pub(crate) use sessions::{
-    delete_session, get_agent_context_usage, get_instance_context_usage, get_session,
-    list_my_sessions, list_project_sessions, list_session_events, list_session_tasks,
-    list_sessions, summarize_session,
+    delete_session, get_session, list_my_sessions, list_project_sessions, list_session_events,
+    list_session_tasks, list_sessions, summarize_session,
 };
 
 pub mod conversions_pub {

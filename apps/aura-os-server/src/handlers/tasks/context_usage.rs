@@ -20,10 +20,11 @@ use axum::Json;
 use tracing::warn;
 
 use aura_os_core::{ProjectId, TaskId};
-use aura_protocol::ContextBreakdown;
 
 use crate::error::ApiResult;
-use crate::handlers::agents::sessions::ContextUsageResponse;
+use crate::handlers::agents::context_usage::{
+    session_usage_from_event_content, ContextUsageResponse,
+};
 use crate::state::{AppState, AuthJwt};
 
 /// Resolve the storage session id for `task_id`, preferring the in-memory
@@ -94,26 +95,8 @@ async fn latest_context_usage_for_task(
                 .and_then(|v| v.as_str())
                 .is_some_and(|id| id == task_id_str)
         })
-        .find_map(|evt| {
-            let content = evt.content.as_ref()?;
-            let usage = content.get("usage")?;
-            let raw = usage.get("context_utilization").and_then(|v| v.as_f64())?;
-            if !raw.is_finite() {
-                return None;
-            }
-            let estimated_context_tokens = usage
-                .get("estimated_context_tokens")
-                .and_then(|v| v.as_u64());
-            let context_breakdown = usage
-                .get("context_breakdown")
-                .and_then(|cb| serde_json::from_value::<ContextBreakdown>(cb.clone()).ok())
-                .filter(|cb| !cb.is_empty());
-            Some(ContextUsageResponse {
-                context_utilization: raw as f32,
-                estimated_context_tokens,
-                context_breakdown,
-            })
-        })
+        .find_map(|evt| session_usage_from_event_content(evt.content.as_ref()?))
+        .map(ContextUsageResponse::from)
 }
 
 /// Empty response used when storage is unavailable, the task has no
@@ -121,11 +104,7 @@ async fn latest_context_usage_for_task(
 /// frontend's `utilization <= 0` "no value" guard so the pill stays
 /// hidden client-side without special-casing nullability.
 fn empty_response() -> ContextUsageResponse {
-    ContextUsageResponse {
-        context_utilization: 0.0,
-        estimated_context_tokens: None,
-        context_breakdown: None,
-    }
+    ContextUsageResponse::default()
 }
 
 pub(crate) async fn get_task_context_usage(

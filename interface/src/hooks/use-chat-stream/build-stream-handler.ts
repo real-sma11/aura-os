@@ -413,17 +413,30 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
             // treats an undefined or all-zero breakdown as "fall back
             // to the legacy used/total view".
             context_breakdown?: WireContextBreakdown;
+            cumulative_input_tokens?: number;
+            cumulative_output_tokens?: number;
+            cumulative_cache_read_input_tokens?: number;
+            cumulative_cache_creation_input_tokens?: number;
+            model?: string;
+            provider?: string;
           };
         };
         if (amc.usage?.context_utilization != null) {
-          useContextUsageStore
-            .getState()
-            .setContextUtilization(
-              activeKey,
-              amc.usage.context_utilization,
-              amc.usage.estimated_context_tokens,
-              mapWireContextBreakdown(amc.usage.context_breakdown),
-            );
+          const ctxStore = useContextUsageStore.getState();
+          ctxStore.setContextUtilization(
+            activeKey,
+            amc.usage.context_utilization,
+            amc.usage.estimated_context_tokens,
+            mapWireContextBreakdown(amc.usage.context_breakdown),
+          );
+          ctxStore.setSessionUsage(activeKey, {
+            model: amc.usage.model,
+            provider: amc.usage.provider,
+            cumulativeInputTokens: amc.usage.cumulative_input_tokens,
+            cumulativeOutputTokens: amc.usage.cumulative_output_tokens,
+            cumulativeCacheReadTokens: amc.usage.cumulative_cache_read_input_tokens,
+            cumulativeCacheCreationTokens: amc.usage.cumulative_cache_creation_input_tokens,
+          });
         }
         if (amc.stop_reason !== "tool_use") {
           resetStreamBuffers(refs, setters);

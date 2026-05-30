@@ -23,19 +23,21 @@ import {
   availableModelsForAdapter,
   formatCreditMultiplier,
   getModelsForMode,
+  groupChatModelsByVendor,
   IMAGE_QUALITY_OPTIONS,
   modelLabel,
-  modelProviderGroup,
   modelSupportsQuality,
   sortModelsForMenu,
   type GenerationMode,
   type ImageQuality,
+  type ModelOption,
+  type ModelVendor,
 } from "../../../constants/models";
 import {
   AGENT_MODE_DESCRIPTORS,
   type AgentMode,
 } from "../../../constants/modes";
-import { ModeSelector } from "../../../components/InputBarShell";
+import { ModeSelector, ModelMenuGroup } from "../../../components/InputBarShell";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useChatUI } from "../../../stores/chat-ui-store";
 import styles from "./MobileChatInputBar.module.css";
@@ -70,19 +72,6 @@ function AttachmentPreviews({
       ))}
     </div>
   );
-}
-
-function providerLabel(provider: string): string {
-  switch (provider) {
-    case "openai":
-      return "OpenAI";
-    case "anthropic":
-      return "Anthropic";
-    case "open_source":
-      return "Open source";
-    default:
-      return "Other";
-  }
 }
 
 export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarProps>(
@@ -124,7 +113,11 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const slashStartRef = useRef<number | null>(null);
     const [modelSheetOpen, setModelSheetOpen] = useState(false);
     const [qualitySheetOpen, setQualitySheetOpen] = useState(false);
-    const [showAllModels, setShowAllModels] = useState(false);
+    // Collapsed vendor sections in the chat model sheet. Empty = all
+    // expanded (the default whenever the sheet opens).
+    const [collapsedVendors, setCollapsedVendors] = useState<Set<ModelVendor>>(
+      () => new Set(),
+    );
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashQuery, setSlashQuery] = useState("");
     const [isDragOver, setIsDragOver] = useState(false);
@@ -184,36 +177,24 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       () => sortModelsForMenu(modelsForMode),
       [modelsForMode],
     );
-    const featuredModelIds = useMemo(
-      () => new Set([
-        "aura-gpt-5-5",
-        "aura-gpt-5-4",
-        "aura-gpt-5-4-mini",
-        "aura-claude-opus-4-7",
-        "aura-claude-sonnet-4-6",
-      ]),
-      [],
-    );
     const shouldUseCondensedAuraMenu =
       generationMode === "chat" && (!adapterType || adapterType === "aura_harness");
-    const featuredModels = useMemo(
-      () => sortedModelsForMode.filter((model) => featuredModelIds.has(model.id)),
-      [featuredModelIds, sortedModelsForMode],
+    // Ordered, non-empty vendor sections for the collapsible chat sheet.
+    const vendorGroups = useMemo(
+      () => groupChatModelsByVendor(modelsForMode),
+      [modelsForMode],
     );
-    const hiddenModels = useMemo(
-      () => sortedModelsForMode.filter((model) => !featuredModelIds.has(model.id)),
-      [featuredModelIds, sortedModelsForMode],
-    );
-    const groupedExpandedModels = useMemo(() => {
-      const groups = new Map<string, typeof sortedModelsForMode>();
-      for (const model of sortedModelsForMode) {
-        const key = modelProviderGroup(model);
-        const existing = groups.get(key) ?? [];
-        existing.push(model);
-        groups.set(key, existing);
-      }
-      return groups;
-    }, [sortedModelsForMode]);
+    const toggleVendor = useCallback((vendor: ModelVendor) => {
+      setCollapsedVendors((prev) => {
+        const next = new Set(prev);
+        if (next.has(vendor)) {
+          next.delete(vendor);
+        } else {
+          next.add(vendor);
+        }
+        return next;
+      });
+    }, []);
 
     const onModelChange = useCallback(
       (model: string) => {
@@ -279,10 +260,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     useEffect(() => {
       autoResizeTextarea();
     }, [autoResizeTextarea, input]);
-
-    useEffect(() => {
-      if (!modelSheetOpen) setShowAllModels(false);
-    }, [modelSheetOpen]);
 
     useEffect(() => {
       const root = document.documentElement;
@@ -460,37 +437,10 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
 
     const excludeIds = new Set(selectedCommands.map((command) => command.id));
     const selectedModelLabel = modelLabel(selectedModel ?? "", adapterType, defaultModel);
-    const visibleModels = shouldUseCondensedAuraMenu && !showAllModels ? featuredModels : sortedModelsForMode;
 
-    const modelList = shouldUseCondensedAuraMenu && showAllModels
-      ? Array.from(groupedExpandedModels.entries()).map(([provider, providerModels]) => (
-        <div key={provider} className={styles.modelGroup}>
-          <div className={styles.modelGroupLabel}>{providerLabel(provider)}</div>
-          {providerModels.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              className={`${styles.modelItem} ${model.id === selectedModel ? styles.modelItemActive : ""}`}
-              data-agent-model-id={model.id}
-              onClick={() => {
-                onModelChange(model.id);
-                setModelSheetOpen(false);
-              }}
-            >
-              <span>{model.label}</span>
-              <span className={styles.modelMeta}>
-                {formatCreditMultiplier(model.creditMultiplier) ? (
-                  <span className={styles.modelMultiplier}>
-                    {formatCreditMultiplier(model.creditMultiplier)}
-                  </span>
-                ) : null}
-                <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      ))
-      : visibleModels.map((model) => (
+    const renderModelButton = (model: ModelOption) => {
+      const multiplierText = formatCreditMultiplier(model.creditMultiplier);
+      return (
         <button
           key={model.id}
           type="button"
@@ -503,15 +453,29 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
         >
           <span>{model.label}</span>
           <span className={styles.modelMeta}>
-            {formatCreditMultiplier(model.creditMultiplier) ? (
-              <span className={styles.modelMultiplier}>
-                {formatCreditMultiplier(model.creditMultiplier)}
-              </span>
+            {multiplierText ? (
+              <span className={styles.modelMultiplier}>{multiplierText}</span>
             ) : null}
-            <span className={styles.modelProvider}>{providerLabel(modelProviderGroup(model))}</span>
           </span>
         </button>
-      ));
+      );
+    };
+
+    const modelList = shouldUseCondensedAuraMenu
+      ? vendorGroups.map((group) => (
+        <ModelMenuGroup
+          key={group.vendor}
+          label={group.label}
+          collapsed={collapsedVendors.has(group.vendor)}
+          onToggle={() => toggleVendor(group.vendor)}
+          className={styles.modelGroup}
+          headerClassName={styles.modelGroupHeader}
+          labelClassName={styles.modelGroupLabel}
+        >
+          {group.models.map(renderModelButton)}
+        </ModelMenuGroup>
+      ))
+      : sortedModelsForMode.map(renderModelButton);
 
     const shouldCenterComposer =
       isCentered && !isTextInputFocused && !modelSheetOpen && !qualitySheetOpen;
@@ -537,11 +501,6 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               </div>
               <div className={styles.modelList}>
                 {modelList}
-                {shouldUseCondensedAuraMenu && !showAllModels && hiddenModels.length > 0 ? (
-                  <button type="button" className={styles.showAllModels} onClick={() => setShowAllModels(true)}>
-                    Show all models
-                  </button>
-                ) : null}
               </div>
             </div>
           </>
@@ -760,6 +719,12 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
                 utilization={contextUsage.utilization}
                 estimatedTokens={contextUsage.estimatedTokens}
                 breakdown={contextUsage.breakdown}
+                model={contextUsage.model}
+                provider={contextUsage.provider}
+                cumulativeInputTokens={contextUsage.cumulativeInputTokens}
+                cumulativeOutputTokens={contextUsage.cumulativeOutputTokens}
+                cumulativeCacheReadTokens={contextUsage.cumulativeCacheReadTokens}
+                cumulativeCacheCreationTokens={contextUsage.cumulativeCacheCreationTokens}
               />
             ) : null}
             {modelsForMode.length > 0 ? (
@@ -772,6 +737,9 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
                 onClick={() => {
                   if (modelsForMode.length <= 1) return;
                   textareaRef.current?.blur();
+                  // Expand every vendor section on each open so a user
+                  // who collapsed sections last time sees the full list.
+                  setCollapsedVendors(new Set());
                   setModelSheetOpen(true);
                 }}
               >

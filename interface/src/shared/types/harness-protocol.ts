@@ -194,6 +194,15 @@ export interface SessionUsage {
   output_tokens: number;
   cumulative_input_tokens: number;
   cumulative_output_tokens: number;
+  /**
+   * Session-cumulative cache token counts (Anthropic
+   * `cache_creation_input_tokens` / `cache_read_input_tokens` summed
+   * across turns). Optional because older harness builds omit them; the
+   * Session Cost widget treats missing values as 0. Mirrors the
+   * `cumulative_cache_*` fields on `aura-protocol`'s `SessionUsage`.
+   */
+  cumulative_cache_read_input_tokens?: number;
+  cumulative_cache_creation_input_tokens?: number;
   context_utilization: number;
   model: string;
   provider: string;

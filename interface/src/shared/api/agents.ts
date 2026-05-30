@@ -55,6 +55,18 @@ export interface ContextUsageResponse {
    * renders immediately on chat mount instead of waiting for the next
    * assistant turn. */
   context_breakdown?: WireContextBreakdown;
+  /** Session-cumulative token counts and the model/provider that
+   * produced them, mirrored from `assistant_message_end.usage`. Plumbed
+   * through `useHydrateContextUtilization` so the Session Cost section of
+   * the Context popover survives a page reload instead of waiting for the
+   * next assistant turn. All optional: older harness builds omit them and
+   * the frontend simply hides the Session Cost section. */
+  cumulative_input_tokens?: number;
+  cumulative_output_tokens?: number;
+  cumulative_cache_read_input_tokens?: number;
+  cumulative_cache_creation_input_tokens?: number;
+  model?: string;
+  provider?: string;
 }
 
 export const agentTemplatesApi = {

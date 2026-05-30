@@ -24,13 +24,14 @@ import type {
   GenerationMode,
   ImageQuality,
   ModelEffort,
+  ModelVendor,
 } from "../../../constants/models";
 import {
   availableModelsForAdapter,
+  groupChatModelsByVendor,
   IMAGE_QUALITY_OPTIONS,
   modelLabel,
   getModelsForMode,
-  modelProviderGroup,
   modelSupportsQuality,
   sortModelsForMenu,
 } from "../../../constants/models";
@@ -46,6 +47,7 @@ import {
   inputBarShellStyles,
   ModelPicker,
   ModelMenuRow,
+  ModelMenuGroup,
   ModeSelector,
   type InputBarShellHandle,
 } from "../../../components/InputBarShell";
@@ -296,7 +298,11 @@ export const DesktopChatInputBar = memo(
       ],
     );
     const [isDragOver, setIsDragOver] = useState(false);
-    const [showAllModels, setShowAllModels] = useState(false);
+    // Collapsed vendor sections in the chat model picker. Empty = all
+    // expanded (the default whenever the picker opens).
+    const [collapsedVendors, setCollapsedVendors] = useState<Set<ModelVendor>>(
+      () => new Set(),
+    );
     const [projectMenuOpen, setProjectMenuOpen] = useState(false);
     // Driven by `<InputBarShell onMultiLineChange>` — flips to true the
     // moment the textarea wraps to a second visual row. Used to relocate
@@ -444,38 +450,23 @@ export const DesktopChatInputBar = memo(
     const shouldUseCondensedAuraMenu =
       generationMode === "chat" &&
       (!adapterType || adapterType === "aura_harness");
-    const featuredModelIds = useMemo(
-      () =>
-        new Set([
-          "aura-gpt-5-5",
-          "aura-gpt-5-4",
-          "aura-gpt-5-4-mini",
-          "aura-claude-opus-4-8",
-          "aura-claude-opus-4-7",
-          "aura-claude-sonnet-4-6",
-        ]),
-      [],
+    // Ordered, non-empty vendor sections (Anthropic / OpenAI / Open
+    // Source today) for the collapsible chat picker.
+    const vendorGroups = useMemo(
+      () => groupChatModelsByVendor(modelsForMode),
+      [modelsForMode],
     );
-    const featuredModels = useMemo(
-      () =>
-        sortedModelsForMode.filter((model) => featuredModelIds.has(model.id)),
-      [featuredModelIds, sortedModelsForMode],
-    );
-    const hiddenModels = useMemo(
-      () =>
-        sortedModelsForMode.filter((model) => !featuredModelIds.has(model.id)),
-      [featuredModelIds, sortedModelsForMode],
-    );
-    const groupedExpandedModels = useMemo(() => {
-      const groups = new Map<string, typeof sortedModelsForMode>();
-      for (const model of sortedModelsForMode) {
-        const key = modelProviderGroup(model);
-        const existing = groups.get(key) ?? [];
-        existing.push(model);
-        groups.set(key, existing);
-      }
-      return groups;
-    }, [sortedModelsForMode]);
+    const toggleVendor = useCallback((vendor: ModelVendor) => {
+      setCollapsedVendors((prev) => {
+        const next = new Set(prev);
+        if (next.has(vendor)) {
+          next.delete(vendor);
+        } else {
+          next.add(vendor);
+        }
+        return next;
+      });
+    }, []);
 
     const excludeIds = new Set(selectedCommands.map((c) => c.id));
 
@@ -629,52 +620,8 @@ export const DesktopChatInputBar = memo(
       onSend(input, undefined, undefined);
     }, [input, onSend, selectedModel, selectedMode]);
 
-    const providerLabel = (provider: string): string => {
-      switch (provider) {
-        case "aura":
-          return "Aura";
-        case "image":
-          return "Image";
-        case "3d":
-          return "3D";
-        default:
-          return "Other";
-      }
-    };
-
     const renderModelMenuItems = useCallback(
       (close: () => void) => {
-        if (shouldUseCondensedAuraMenu && !showAllModels) {
-          return (
-            <div
-              className={inputBarShellStyles.modelMenu}
-              data-agent-surface="model-picker"
-              data-agent-proof="chat-model-picker-visible"
-            >
-              {featuredModels.map((m) => (
-                <ModelMenuRow
-                  key={m.id}
-                  model={m}
-                  isActive={m.id === selectedModel}
-                  activeEffort={selectedEffort}
-                  onSelect={(id, effort) => {
-                    onModelChange(id, effort);
-                    close();
-                  }}
-                />
-              ))}
-              {hiddenModels.length > 0 ? (
-                <button
-                  type="button"
-                  className={inputBarShellStyles.modelMenuShowMore}
-                  onClick={() => setShowAllModels(true)}
-                >
-                  Show all models
-                </button>
-              ) : null}
-            </div>
-          );
-        }
         if (shouldUseCondensedAuraMenu) {
           return (
             <div
@@ -682,27 +629,27 @@ export const DesktopChatInputBar = memo(
               data-agent-surface="model-picker"
               data-agent-proof="chat-model-picker-visible"
             >
-              {Array.from(groupedExpandedModels.entries()).map(
-                ([provider, providerModels]) => (
-                  <div key={provider} className={inputBarShellStyles.modelMenuGroup}>
-                    <div className={inputBarShellStyles.modelMenuGroupLabel}>
-                      {providerLabel(provider)}
-                    </div>
-                    {providerModels.map((m) => (
-                      <ModelMenuRow
-                        key={m.id}
-                        model={m}
-                        isActive={m.id === selectedModel}
-                        activeEffort={selectedEffort}
-                        onSelect={(id, effort) => {
-                          onModelChange(id, effort);
-                          close();
-                        }}
-                      />
-                    ))}
-                  </div>
-                ),
-              )}
+              {vendorGroups.map((group) => (
+                <ModelMenuGroup
+                  key={group.vendor}
+                  label={group.label}
+                  collapsed={collapsedVendors.has(group.vendor)}
+                  onToggle={() => toggleVendor(group.vendor)}
+                >
+                  {group.models.map((m) => (
+                    <ModelMenuRow
+                      key={m.id}
+                      model={m}
+                      isActive={m.id === selectedModel}
+                      activeEffort={selectedEffort}
+                      onSelect={(id, effort) => {
+                        onModelChange(id, effort);
+                        close();
+                      }}
+                    />
+                  ))}
+                </ModelMenuGroup>
+              ))}
             </div>
           );
         }
@@ -734,26 +681,25 @@ export const DesktopChatInputBar = memo(
       },
       [
         shouldUseCondensedAuraMenu,
-        showAllModels,
-        featuredModels,
-        hiddenModels,
+        vendorGroups,
+        collapsedVendors,
+        toggleVendor,
         selectedModel,
         selectedEffort,
         onModelChange,
-        groupedExpandedModels,
         sortedModelsForMode,
       ],
     );
 
     const isModelPickerInteractive = modelsForMode.length > 1;
-    // Reset the condensed-menu state every time the picker reopens so a
-    // user who clicked "Show all models" last time still lands on the
-    // featured list first. `ModelPicker` itself keeps the caret focused
-    // in the textarea via mousedown preventDefault, so we deliberately
-    // do NOT blur the shell here — switching models should leave the
-    // user's typing position intact.
+    // Expand every vendor section each time the picker reopens, so a
+    // user who collapsed sections last time still sees the full list.
+    // `ModelPicker` itself keeps the caret focused in the textarea via
+    // mousedown preventDefault, so we deliberately do NOT blur the
+    // shell here — switching models should leave the user's typing
+    // position intact.
     const handleModelPickerOpen = useCallback(() => {
-      setShowAllModels(false);
+      setCollapsedVendors(new Set());
     }, []);
 
     const containerTop = (
@@ -1043,6 +989,12 @@ export const DesktopChatInputBar = memo(
             utilization={contextUsage.utilization}
             estimatedTokens={contextUsage.estimatedTokens}
             breakdown={contextUsage.breakdown}
+            model={contextUsage.model}
+            provider={contextUsage.provider}
+            cumulativeInputTokens={contextUsage.cumulativeInputTokens}
+            cumulativeOutputTokens={contextUsage.cumulativeOutputTokens}
+            cumulativeCacheReadTokens={contextUsage.cumulativeCacheReadTokens}
+            cumulativeCacheCreationTokens={contextUsage.cumulativeCacheCreationTokens}
           />
         ) : null}
       </>
