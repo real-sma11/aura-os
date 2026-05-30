@@ -95,18 +95,33 @@ export function ChatAppRoute() {
     return chatAgent;
   }, [agentIdParam, agentById, sessionId, sessions, agentByInstance, chatAgent]);
 
+  // The agent id the chat surface actually fetches events under.
+  // `?agent=<id>` is written by `ChatAppLeftPanel` straight from the
+  // session row's server-authoritative `_agentId`, so it is the
+  // source of truth even when that agent isn't in the active-org
+  // `useAgents()` snapshot (`agentById` misses it). Resolving the
+  // chat fetch off `effectiveAgent?.agent_id` instead would fall back
+  // to `chatAgent` for any out-of-org session and 404 the per-session
+  // events read ("session not found") because the session belongs to
+  // a different agent. Honour `agentIdParam` first; fall back to the
+  // resolved `Agent` (legacy `?session=` form / fresh canvas).
+  const effectiveAgentId = agentIdParam ?? effectiveAgent?.agent_id;
+
   // Mirror the effective agent into the shared selected-agent slot so
   // the sidekick (`AgentInfoPanel` / `AgentSidekickTaskbar`) renders
   // the right agent's profile, memory, skills, etc. for every
-  // selected conversation.
+  // selected conversation. Prefer the URL agent id even before its
+  // `Agent` object lands in the store (the left panel hydrates it in
+  // the background) so the sidekick converges on the right agent.
   useEffect(() => {
-    if (effectiveAgent) {
-      setSelectedAgent(effectiveAgent.agent_id);
+    const selectedId = effectiveAgentId ?? effectiveAgent?.agent_id;
+    if (selectedId) {
+      setSelectedAgent(selectedId);
     }
-  }, [effectiveAgent, setSelectedAgent]);
+  }, [effectiveAgentId, effectiveAgent, setSelectedAgent]);
 
   const sharedChatProps = useChatAppChat(
-    effectiveAgent?.agent_id,
+    effectiveAgentId,
     sessionId,
   );
 

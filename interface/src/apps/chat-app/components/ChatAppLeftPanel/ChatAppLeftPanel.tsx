@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { api, STANDALONE_AGENT_HISTORY_LIMIT } from "../../../../api/client";
@@ -137,6 +137,68 @@ export function ChatAppLeftPanel() {
     [agentsByTemplateId, chatAgent],
   );
 
+  // The agent id the destination chat surface will actually fetch
+  // events under. `/api/me/sessions` stamps every row with its
+  // server-authoritative owning `_agentId`, so we navigate by that id
+  // directly -- NOT by the `Agent` object `resolveSessionAgent`
+  // returns. `useAgents()` is scoped to the active org, so a session
+  // owned by an agent the active org doesn't surface (a different
+  // org, a personal agent, an executor instance) resolves to no
+  // `Agent` and `resolveSessionAgent` falls back to `chatAgent`.
+  // Navigating with that fallback wrote `agent=<chatAgent>` into the
+  // URL and the per-session events read
+  // (`GET /api/agents/:agent_id/sessions/:session_id/events`) 404'd
+  // its ownership check ("session not found") because the session
+  // belongs to a different agent. Falling back to `chatAgent` only
+  // when the row has no `_agentId` at all keeps the fresh-canvas /
+  // legacy paths working. The avatar + stream-key resolvers keep
+  // using `resolveSessionAgent` (a missing avatar is cosmetic).
+  const resolveSessionAgentId = useCallback(
+    (target: AnnotatedSession): string | null => {
+      if (target._agentId) return target._agentId;
+      return chatAgent?.agent_id ?? null;
+    },
+    [chatAgent],
+  );
+
+  // Lazily pull an agent that owns a listed session but isn't in the
+  // active-org `useAgents()` snapshot into `useAgentStore`, so the
+  // row avatar, the sidekick (`AgentInfoPanel`), and `ChatAppRoute`'s
+  // `agentById` lookup all converge on the right agent without
+  // re-introducing the per-agent fan-out we collapsed. Fired on
+  // click / hover only (not on first paint) so we fetch exactly the
+  // agents the user actually opens. Deduped via `hydratingAgentIdsRef`
+  // so a burst of hovers can't fan out duplicate `GET /api/agents/:id`
+  // calls for the same id.
+  const hydratingAgentIdsRef = useRef<Set<string>>(new Set());
+  const ensureAgentHydrated = useCallback((agentId: string) => {
+    const store = useAgentStore.getState();
+    if (store.agents.some((a) => a.agent_id === agentId)) return;
+    if (hydratingAgentIdsRef.current.has(agentId)) return;
+    hydratingAgentIdsRef.current.add(agentId);
+    api.agents
+      .get(agentId)
+      .then((agent) => {
+        const s = useAgentStore.getState();
+        if (s.agents.some((a) => a.agent_id === agent.agent_id)) {
+          s.patchAgent(agent);
+        } else {
+          useAgentStore.setState((prev) => ({
+            agents: [...prev.agents, agent],
+          }));
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to hydrate session agent into store", {
+          agentId,
+          err,
+        });
+      })
+      .finally(() => {
+        hydratingAgentIdsRef.current.delete(agentId);
+      });
+  }, []);
+
   const renderRowSuffix = useCallback(
     (target: AnnotatedSession) => {
       const agent = resolveSessionAgent(target);
@@ -270,16 +332,26 @@ export function ChatAppLeftPanel() {
 
   const handleSessionClick = useCallback(
     (target: AnnotatedSession) => {
-      const agent = resolveSessionAgent(target);
+      const agentId = resolveSessionAgentId(target);
       const params = new URLSearchParams({
         project: target._projectId,
         instance: target._agentInstanceId,
         session: target.session_id,
       });
-      if (agent) params.set("agent", agent.agent_id);
+      if (agentId) {
+        params.set("agent", agentId);
+      }
+      // Heal the store so the destination route's `agentById` lookup
+      // and the sidekick resolve the right agent instead of falling
+      // back to the CEO chat agent. Only the row's own `_agentId`
+      // needs hydration -- the `chatAgent` fallback is already a
+      // fully-resolved `Agent` object in the store.
+      if (target._agentId) {
+        ensureAgentHydrated(target._agentId);
+      }
       navigate(`/chat?${params.toString()}`);
     },
-    [navigate, resolveSessionAgent],
+    [navigate, resolveSessionAgentId, ensureAgentHydrated],
   );
 
   // Hover-warm the chat-history-store entry the destination panel will
@@ -297,9 +369,15 @@ export function ChatAppLeftPanel() {
   // click lands.
   const handleSessionHover = useCallback(
     (target: AnnotatedSession) => {
-      const agent = resolveSessionAgent(target);
-      if (!agent) return;
-      const key = `agent:${agent.agent_id}:session:${target.session_id}`;
+      // Warm the exact key + endpoint the destination panel reads, so
+      // we must key by the row's true `_agentId` (the same id
+      // `handleSessionClick` navigates with). Keying by
+      // `resolveSessionAgent`'s `chatAgent` fallback warmed the wrong
+      // cache slot and fetched against the wrong agent for any row
+      // owned by an out-of-active-org agent.
+      const agentId = resolveSessionAgentId(target);
+      if (!agentId) return;
+      const key = `agent:${agentId}:session:${target.session_id}`;
       const store = useChatHistoryStore.getState();
       store.pinKey(key);
       // Release the pin after a window long enough to bridge typical
@@ -309,12 +387,12 @@ export function ChatAppLeftPanel() {
         useChatHistoryStore.getState().unpinKey(key);
       }, 30_000);
       void store.fetchHistory(key, () =>
-        api.agents.listSessionEvents(agent.agent_id, target.session_id, {
+        api.agents.listSessionEvents(agentId, target.session_id, {
           limit: STANDALONE_AGENT_HISTORY_LIMIT,
         }),
       );
     },
-    [resolveSessionAgent],
+    [resolveSessionAgentId],
   );
 
   // The chat-app left panel renders rows out of the user-scoped
