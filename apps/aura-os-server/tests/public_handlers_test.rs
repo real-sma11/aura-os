@@ -16,10 +16,11 @@
 //!   [`enforce_public_turn`]; the 4th call short-circuits to a
 //!   429 before any upstream work happens.
 //!
-//! The 4th-call 429 test sets the harness connect timeout to 1
-//! second and the attempt count to 1 so the first three (slot-
-//! consuming but harness-failing) calls fail-fast on TCP refused
-//! rather than burning the default 8s × 3 attempts each.
+//! Public chat proxies directly to aura-router's `/v1/messages`
+//! (no harness). In the test fixture `router_url` points at
+//! `http://localhost:19080`, where nothing is listening, so the
+//! first three slot-consuming calls fail-fast on TCP refused
+//! (sub-millisecond) and never reach the open timeout.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -168,23 +169,18 @@ async fn image_route_requires_guest_token() {
 
 /// End-to-end 4th-call rejection. The first three chat calls
 /// consume their slot in [`enforce_public_turn`] *before* the
-/// upstream harness call runs (slot-then-await ordering); the
-/// upstream call then fails because no harness is bound in the
-/// test fixture, but the slot stays consumed (the gate is
-/// intentionally non-refundable). On the 4th call the gate trips
-/// with `ApiError::public_limit_reached`, which serialises as
-/// `429 { error: "limit_reached", limit: 3 }`.
+/// upstream router call runs (slot-then-await ordering); the
+/// router POST then fails because nothing is bound at the test
+/// fixture's `router_url` (`http://localhost:19080`), but the slot
+/// stays consumed (the gate is intentionally non-refundable). On
+/// the 4th call the gate trips with `ApiError::public_limit_reached`,
+/// which serialises as `429 { error: "limit_reached", limit: 3 }`.
 ///
-/// `AURA_HARNESS_CONNECT_ATTEMPTS=1` and `_TIMEOUT_SECS=1` keep
-/// the first-three slot-consuming calls under 1s each (TCP refused
-/// is sub-millisecond; the timeout never trips). These vars are
-/// only read from the harness path, so the parallel tests in this
-/// binary are unaffected.
+/// The router POST fails on TCP refused (sub-millisecond on
+/// loopback), so the first three slot-consuming calls return fast
+/// without ever reaching the `PUBLIC_CHAT_OPEN_TIMEOUT`.
 #[tokio::test]
 async fn chat_returns_429_after_third_turn() {
-    std::env::set_var("AURA_HARNESS_CONNECT_ATTEMPTS", "1");
-    std::env::set_var("AURA_HARNESS_CONNECT_TIMEOUT_SECS", "1");
-
     let (app, _state, _store_dir) = build_test_app();
 
     let setup_response = app
