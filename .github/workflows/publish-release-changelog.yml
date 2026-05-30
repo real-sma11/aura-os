@@ -104,7 +104,9 @@ jobs:
 
       - name: Install Node.js
         if: steps.release-check.outputs.released == 'true'
-        uses: ./.github/actions/setup-node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 25.9.0
 
       - name: Download release artifacts from the triggering run
         if: steps.release-check.outputs.released == 'true'

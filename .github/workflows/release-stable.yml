@@ -816,7 +816,9 @@ jobs:
           path: pages
 
       - name: Install Node.js
-        uses: ./.github/actions/setup-node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 25.9.0
 
       - name: Determine version
         id: version
