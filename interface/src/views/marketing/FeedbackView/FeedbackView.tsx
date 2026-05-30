@@ -16,9 +16,7 @@ import { FeedbackFilters } from "./FeedbackFilters";
 import "./FeedbackView.css";
 
 const STAT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
-const BANNER_COUNT_UP_DURATION_MS = 700;
-const BANNER_LOADING_TARGET = 99;
-const BANNER_LOADING_RAMP_MS = 1800;
+const BANNER_COUNT_UP_DURATION_MS = 1000;
 
 /**
  * Marketing `/feedback` page. Ported from
@@ -81,22 +79,16 @@ export function FeedbackView(): ReactNode {
   const submittedDisplay = useCountUp({
     target: statsPending ? null : stats.submitted,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const resolvedDisplay = useCountUp({
     target: statsPending ? null : stats.resolved,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const participantsDisplay = useCountUp({
     target: statsPending ? null : stats.participants,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
 

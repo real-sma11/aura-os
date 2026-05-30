@@ -77,27 +77,20 @@ describe("useCountUp", () => {
     raf.reset();
   });
 
-  it("ramps toward the loading target while the real target is null", () => {
-    const { result } = renderHook(() =>
-      useCountUp({
-        target: null,
-        loadingTarget: 99,
-        loadingRampMs: 900,
-      }),
-    );
+  it("holds at 0 while the target is null", () => {
+    const { result } = renderHook(() => useCountUp({ target: null }));
 
     expect(result.current).toBe(0);
 
     act(() => {
       raf.step(450);
     });
-    expect(result.current).toBeGreaterThan(0);
-    expect(result.current).toBeLessThan(99);
+    expect(result.current).toBe(0);
 
     act(() => {
       raf.step(450);
     });
-    expect(result.current).toBe(99);
+    expect(result.current).toBe(0);
   });
 
   it("eases the displayed value from 0 up to the target over durationMs", () => {
@@ -119,30 +112,24 @@ describe("useCountUp", () => {
     expect(result.current).toBe(1000);
   });
 
-  it("counts up from the loading ramp once the target transitions from null to a finite value", () => {
+  it("counts up from 0 once the target transitions from null to a finite value", () => {
     const { result, rerender } = renderHook(
       ({ target }: { target: number | null }) =>
-        useCountUp({
-          target,
-          durationMs: 400,
-          loadingTarget: 99,
-          loadingRampMs: 900,
-        }),
+        useCountUp({ target, durationMs: 400 }),
       { initialProps: { target: null as number | null } },
     );
 
     act(() => {
       raf.step(900);
     });
-    expect(result.current).toBe(99);
+    expect(result.current).toBe(0);
 
     rerender({ target: 142 });
-    expect(result.current).toBe(99);
 
     act(() => {
       raf.step(200);
     });
-    expect(result.current).toBeGreaterThan(99);
+    expect(result.current).toBeGreaterThan(0);
     expect(result.current).toBeLessThan(142);
 
     act(() => {
@@ -177,6 +164,11 @@ describe("useCountUp", () => {
     expect(result.current).toBe(500);
 
     rerender({ resetKey: "visit-2" });
+
+    // The replay restarts from 0 on the next frame (progress 0 -> 0).
+    act(() => {
+      raf.step(0);
+    });
     expect(result.current).toBe(0);
 
     act(() => {
@@ -185,7 +177,7 @@ describe("useCountUp", () => {
     expect(result.current).toBe(500);
   });
 
-  it("snaps to the target without animating when prefers-reduced-motion is set", () => {
+  it("still counts up over a short window when prefers-reduced-motion is set", () => {
     stubMatchMedia(true);
     const { result, rerender } = renderHook(
       ({ target }: { target: number | null }) => useCountUp({ target }),
@@ -195,11 +187,18 @@ describe("useCountUp", () => {
     expect(result.current).toBe(0);
 
     rerender({ target: 1234 });
-    // Reduced-motion path defers the single setState to a rAF callback
-    // so it doesn't synchronously cascade out of the effect. A single
-    // frame tick is enough to observe the resolved value.
+
+    // Reduced-motion uses a brief (~350ms) count-up rather than an
+    // instant snap, so partway through there is a visible intermediate
+    // value before it settles on the target.
     act(() => {
-      raf.step(16);
+      raf.step(100);
+    });
+    expect(result.current).toBeGreaterThan(0);
+    expect(result.current).toBeLessThan(1234);
+
+    act(() => {
+      raf.step(350);
     });
     expect(result.current).toBe(1234);
   });

@@ -39,10 +39,19 @@ function getCommitStatValueElement(label: RegExp): HTMLElement {
 
 describe("ChangelogView", () => {
   beforeEach(() => {
-    // Force prefers-reduced-motion so the count-up snaps to the resolved
-    // value in a single tick. This keeps the assertion deterministic
-    // without needing a fake-RAF clock here — `useCountUp.test.ts` has
-    // dedicated animation-clock coverage already.
+    // Collapse the count-up animation to a single frame so the resolved
+    // value is observable immediately. The rAF callback is invoked with a
+    // timestamp far in the future, which drives the hook's progress to 1
+    // and lands it on the exact target in one tick — keeping these
+    // assertions deterministic without a fake clock. `useCountUp.test.ts`
+    // has the dedicated animation-timing coverage.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (cb: FrameRequestCallback): number => {
+        cb(performance.now() + 1_000_000);
+        return 0;
+      },
+    );
+
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query.includes("prefers-reduced-motion"),
       media: query,

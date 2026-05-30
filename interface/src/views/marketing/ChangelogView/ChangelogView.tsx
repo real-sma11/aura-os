@@ -37,9 +37,7 @@ function normalizeManifestChannel(
 }
 
 const COMMITS_LIVE_TITLE = `Live total across ${AURA_PUBLIC_REPOS.length} AURA repositories`;
-const BANNER_COUNT_UP_DURATION_MS = 700;
-const BANNER_LOADING_TARGET = 99;
-const BANNER_LOADING_RAMP_MS = 1800;
+const BANNER_COUNT_UP_DURATION_MS = 1000;
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
 
@@ -382,35 +380,26 @@ export function ChangelogView(): ReactNode {
   );
 
   // Count every summary stat up from 0 on each visit. Targets stay null
-  // while their query is pending so the loading ramp runs during fetch;
-  // once a finite total arrives the displayed value eases from wherever
-  // the ramp left off up to the real number.
+  // while their query is pending so the value holds at 0 during fetch;
+  // once a finite total arrives it counts up from 0 to the real number.
   const releasesThisMonthDisplay = useCountUp({
     target: isLoading ? null : stats.releasesThisMonth,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const releasesAllTimeDisplay = useCountUp({
     target: isLoading ? null : stats.releasesAllTime,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsThisMonthDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsThisMonth : null,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsAllTimeDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsAllTime : null,
     resetKey: visitKey,
-    loadingTarget: BANNER_LOADING_TARGET,
-    loadingRampMs: BANNER_LOADING_RAMP_MS,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
 
