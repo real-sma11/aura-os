@@ -30,7 +30,7 @@ import {
   availableModelsForAdapter,
   groupChatModelsByVendor,
   IMAGE_QUALITY_OPTIONS,
-  modelLabel,
+  modelLabelWithEffort,
   getModelsForMode,
   modelSupportsQuality,
   sortModelsForMenu,
@@ -48,6 +48,7 @@ import {
   ModelPicker,
   ModelMenuRow,
   ModelMenuGroup,
+  ModelMenuScroll,
   ModeSelector,
   type InputBarShellHandle,
 } from "../../../components/InputBarShell";
@@ -624,8 +625,8 @@ export const DesktopChatInputBar = memo(
       (close: () => void) => {
         if (shouldUseCondensedAuraMenu) {
           return (
-            <div
-              className={inputBarShellStyles.modelMenu}
+            <ModelMenuScroll
+              lockWidth
               data-agent-surface="model-picker"
               data-agent-proof="chat-model-picker-visible"
             >
@@ -650,12 +651,11 @@ export const DesktopChatInputBar = memo(
                   ))}
                 </ModelMenuGroup>
               ))}
-            </div>
+            </ModelMenuScroll>
           );
         }
         return (
-          <div
-            className={inputBarShellStyles.modelMenu}
+          <ModelMenuScroll
             data-agent-surface="model-picker"
             data-agent-proof="chat-model-picker-visible"
           >
@@ -676,7 +676,7 @@ export const DesktopChatInputBar = memo(
                 />
               );
             })}
-          </div>
+          </ModelMenuScroll>
         );
       },
       [
@@ -756,7 +756,12 @@ export const DesktopChatInputBar = memo(
           <div className={inputBarShellStyles.mobileModelBar}>
             <span className={inputBarShellStyles.mobileModelLabel}>Model</span>
             <ModelPicker
-              selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
+              selectedLabel={modelLabelWithEffort(
+                selectedModel ?? "",
+                selectedEffort,
+                adapterType,
+                defaultModel,
+              )}
               isInteractive={isModelPickerInteractive}
               renderMenu={renderModelMenuItems}
               className={inputBarShellStyles.mobileModelMenuWrap}
@@ -824,7 +829,12 @@ export const DesktopChatInputBar = memo(
     const hasModelPicker = modelsForMode.length > 0;
     const modelPickerNode = hasModelPicker ? (
       <ModelPicker
-        selectedLabel={modelLabel(selectedModel ?? "", adapterType, defaultModel)}
+        selectedLabel={modelLabelWithEffort(
+          selectedModel ?? "",
+          selectedEffort,
+          adapterType,
+          defaultModel,
+        )}
         isInteractive={isModelPickerInteractive}
         renderMenu={renderModelMenuItems}
         onOpen={handleModelPickerOpen}

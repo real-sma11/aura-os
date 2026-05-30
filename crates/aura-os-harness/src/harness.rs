@@ -64,6 +64,13 @@ pub struct SessionConfig {
     /// Chat-WS migration: typed project descriptor. Forwarded onto
     /// [`aura_protocol::ProjectContext::project_info`].
     pub project_info: Option<ChatProjectInfoWire>,
+    /// User-selected reasoning-effort tier
+    /// (`low`/`medium`/`high`/`xhigh`/`max`) from the chat model
+    /// picker. Forwarded to the harness via
+    /// [`crate::automaton_client::start_params::AutomatonStartParams::reasoning_effort`]
+    /// so the agent loop hard-pins the requested thinking level instead
+    /// of relying solely on its internal taper heuristic.
+    pub reasoning_effort: Option<String>,
 }
 
 pub struct HarnessSession {
@@ -224,6 +231,7 @@ pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
             max_tokens: cfg.max_tokens,
             max_turns: cfg.max_turns,
             temperature: None,
+            reasoning_effort: cfg.reasoning_effort.clone(),
             provider_overrides: cfg.provider_overrides.clone(),
         },
         workspace: WorkspaceLocation {

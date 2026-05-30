@@ -192,6 +192,9 @@ pub fn automaton_start_params_to_runtime_request(params: &AutomatonStartParams) 
             max_tokens: None,
             max_turns: params.max_turns,
             temperature: None,
+            // Dev-loop / automaton runs keep the harness's internal
+            // effort taper; no user-selected thinking level applies.
+            reasoning_effort: None,
             provider_overrides: params.provider_overrides.clone(),
         },
         workspace: WorkspaceLocation {

@@ -499,6 +499,31 @@
   overflow-y: auto;
 }
 
+/* Variant used by `ModelMenuScroll`: the chrome stays on `.modelMenu`
+   but scrolling moves to the inner `.modelMenuScroll` so the shared
+   `OverlayScrollbar` can mount as a sibling. `overflow: hidden` keeps
+   the overlay thumb clipped to the rounded corners; `padding: 0` hands
+   the inner scroller the vertical padding so it scrolls with content. */
+.modelMenuOverlayHost {
+  position: relative;
+  overflow: hidden;
+  max-height: none;
+  padding: 0;
+}
+
+.modelMenuScroll {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px 0;
+  /* Hide the native scrollbar; the overlay scrollbar is the only one
+     shown. */
+  scrollbar-width: none;
+}
+
+.modelMenuScroll::-webkit-scrollbar {
+  display: none;
+}
+
 .modelMenuRowWrap {
   position: relative;
 }
@@ -797,5 +822,23 @@
     border-radius: 12px;
     padding: 10px 12px;
     font-size: 13px;
+  }
+
+  /* Overlay-host variant on mobile: keep the rounded chrome + min-width
+     on the outer `.modelMenu`, but move the mobile `max-height`/`padding`
+     onto the inner scroller so the native scrollbar stays hidden and the
+     overlay thumb tracks correctly. Higher specificity
+     (`.modelMenu.modelMenuOverlayHost`) than the plain `.modelMenu`
+     mobile rules above so it wins. */
+  .mobileModelMenuWrap .modelMenu.modelMenuOverlayHost,
+  .inputInfoBar .modelMenu.modelMenuOverlayHost {
+    max-height: none;
+    padding: 0;
+  }
+
+  .mobileModelMenuWrap .modelMenu.modelMenuOverlayHost .modelMenuScroll,
+  .inputInfoBar .modelMenu.modelMenuOverlayHost .modelMenuScroll {
+    max-height: min(46vh, 340px);
+    padding: 6px;
   }
 }

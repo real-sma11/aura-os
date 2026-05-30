@@ -287,6 +287,7 @@ pub(crate) async fn send_agent_event_stream(
         agent_skills,
         agent_system_prompt,
         project_info,
+        reasoning_effort: body.reasoning_effort.clone(),
         ..Default::default()
     };
 

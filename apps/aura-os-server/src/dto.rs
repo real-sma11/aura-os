@@ -336,6 +336,15 @@ pub(crate) struct SendChatRequest {
     /// message, the pre-fix behavior).
     #[serde(default)]
     pub from_agent_id: Option<String>,
+    /// User-selected reasoning-effort tier for this turn
+    /// (`low`/`medium`/`high`/`xhigh`/`max`). The chat client sends
+    /// it from the model picker's thinking-level flyout; the server
+    /// forwards it to the harness via [`aura_os_harness::SessionConfig`]
+    /// so the agent loop can hard-pin the requested effort. Omitted by
+    /// models without effort tiers and by older clients —
+    /// `#[serde(default)]` keeps wire compat.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

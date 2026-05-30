@@ -784,6 +784,24 @@ export function modelLabel(
   );
 }
 
+/**
+ * Like {@link modelLabel}, but appends the selected reasoning-effort tier
+ * (e.g. `"Opus 4.8 XHigh"`) when an effort is active and the model exposes
+ * effort tiers. Falls back to the plain label otherwise, so models without
+ * efforts (or with no selection) read exactly as before.
+ */
+export function modelLabelWithEffort(
+  modelId: string,
+  effort?: ModelEffort | null,
+  adapterType?: string,
+  explicitDefault?: string | null,
+): string {
+  const base = modelLabel(modelId, adapterType, explicitDefault);
+  if (!effort) return base;
+  if (getModelEfforts(modelId).length === 0) return base;
+  return `${base} ${EFFORT_LABELS[effort]}`;
+}
+
 export function modelProviderGroup(model: ModelOption): ModelProviderGroup {
   if (model.mode === "image") return "image";
   if (model.mode === "3d") return "3d";

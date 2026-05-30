@@ -25,7 +25,7 @@ import {
   getModelsForMode,
   groupChatModelsByVendor,
   IMAGE_QUALITY_OPTIONS,
-  modelLabel,
+  modelLabelWithEffort,
   modelSupportsQuality,
   sortModelsForMenu,
   type GenerationMode,
@@ -106,6 +106,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     const isStreaming = isChatStreaming || isExternallyBusy;
     const chatUI = useChatUI(streamKey);
     const selectedModel = chatUI.selectedModel;
+    const selectedEffort = chatUI.selectedEffort;
     const selectedMode = chatUI.selectedMode;
     const imageQuality = chatUI.imageQuality;
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -436,7 +437,12 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
     );
 
     const excludeIds = new Set(selectedCommands.map((command) => command.id));
-    const selectedModelLabel = modelLabel(selectedModel ?? "", adapterType, defaultModel);
+    const selectedModelLabel = modelLabelWithEffort(
+      selectedModel ?? "",
+      selectedEffort,
+      adapterType,
+      defaultModel,
+    );
 
     const renderModelButton = (model: ModelOption) => {
       const multiplierText = formatCreditMultiplier(model.creditMultiplier);

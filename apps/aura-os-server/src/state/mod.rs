@@ -175,15 +175,42 @@ pub struct ChatSessionKey {
     /// for the same `session_key` get separate registry entries and
     /// run in parallel.
     pub model: Option<String>,
+    /// Optional reasoning-effort tier pinned by the chat model picker
+    /// (`low`/`medium`/`high`/`xhigh`/`max`). Folded into the registry
+    /// key so changing the thinking level — like changing the model —
+    /// cold-opens a fresh harness session that rebuilds its
+    /// `AgentLoopConfig` with the new effort, rather than silently
+    /// reusing a session pinned to the previous level. `None` for
+    /// requests without an effort selection.
+    pub reasoning_effort: Option<String>,
 }
 
 impl ChatSessionKey {
-    /// Build a `(session_key, model)` key in one call.
+    /// Build a `(session_key, model)` key with no effort axis. Callers
+    /// that don't pin a reasoning effort (cancellation lookups, tests,
+    /// non-chat paths) use this; it leaves `reasoning_effort: None`.
     #[must_use]
     pub fn new(session_key: impl Into<String>, model: Option<String>) -> Self {
         Self {
             session_key: session_key.into(),
             model,
+            reasoning_effort: None,
+        }
+    }
+
+    /// Build a full `(session_key, model, reasoning_effort)` key. Used
+    /// by the chat streaming path so an effort change is a distinct
+    /// registry entry.
+    #[must_use]
+    pub fn with_effort(
+        session_key: impl Into<String>,
+        model: Option<String>,
+        reasoning_effort: Option<String>,
+    ) -> Self {
+        Self {
+            session_key: session_key.into(),
+            model,
+            reasoning_effort,
         }
     }
 }

@@ -62,7 +62,14 @@ pub(super) async fn get_or_create_delegated_chat_session(
     requested_model: Option<String>,
     turn: SessionBridgeTurn,
 ) -> ApiResult<SessionForTurn> {
-    if let Some(reused) = try_reuse_session(state, key, &requested_model).await {
+    // Snapshot the effort before `session_config` is moved into the
+    // cold-open path: it joins `(session_key, model)` as the third
+    // axis of the registry key so an effort change re-opens the
+    // session instead of reusing one pinned to the prior level.
+    let requested_effort = session_config.reasoning_effort.clone();
+    if let Some(reused) =
+        try_reuse_session(state, key, &requested_model, &requested_effort).await
+    {
         return reuse_with_turn_slot(
             reused,
             turn,
@@ -108,6 +115,7 @@ pub(super) async fn get_or_create_delegated_chat_session(
         state,
         key,
         requested_model,
+        requested_effort,
         session_agent_id,
         session_template_agent_id,
         started,
@@ -163,14 +171,20 @@ async fn try_reuse_session(
     state: &AppState,
     key: &str,
     requested_model: &Option<String>,
+    requested_effort: &Option<String>,
 ) -> Option<ReusedSessionHandles> {
     // Phase 4: the registry is now keyed on `(session_key, model)`,
     // so two clients on the same partition picking different models
     // each get their own entry and never evict each other. The
     // `model_changed(...)` helper that used to wipe the resident
     // session whenever the requested model drifted is gone — its
-    // job is taken over by the composite key lookup.
-    let composite_key = ChatSessionKey::new(key, requested_model.clone());
+    // job is taken over by the composite key lookup. The
+    // reasoning-effort tier is folded in as a third axis so a
+    // thinking-level change also lands on its own entry (and
+    // cold-opens with the new effort) rather than reusing a session
+    // pinned to the previous level.
+    let composite_key =
+        ChatSessionKey::with_effort(key, requested_model.clone(), requested_effort.clone());
     let entry = state.chat_sessions.get(&composite_key)?;
     if !entry.is_alive() {
         // Drop the `Ref` BEFORE removing the same key: DashMap shard
@@ -198,6 +212,7 @@ async fn insert_delegated_chat_session(
     state: &AppState,
     key: &str,
     requested_model: Option<String>,
+    requested_effort: Option<String>,
     session_agent_id: Option<String>,
     session_template_agent_id: Option<String>,
     started: SessionBridgeStarted,
@@ -220,7 +235,8 @@ async fn insert_delegated_chat_session(
     let rx = started.events_rx;
     let events_tx = started.session.events_tx.clone();
     let commands_tx = started.session.commands_tx.clone();
-    let composite_key = ChatSessionKey::new(key, requested_model.clone());
+    let composite_key =
+        ChatSessionKey::with_effort(key, requested_model.clone(), requested_effort);
     state.chat_sessions.insert(
         composite_key,
         ChatSession {
