@@ -157,9 +157,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
   padding: 24px 16px;
-  gap: 24px;
   /*
    * Sit above the `.siteBackground` layers. Without an explicit
    * stacking position the in-flow `.heroSlot` would paint UNDER
@@ -171,19 +169,42 @@
 }
 
 /*
- * Centered tagline above the mock desktop widget, matching the
- * `/product` hero headline (`PageHero.css` `.pageHeroHeadline`). The
- * `data-text` reserve (see `.heroHeadline::before`) holds final width
- * so the `TypewriterText` animation does not shift layout as it types.
+ * Tagline overlay. The mock widget (`.heroStage`) sizes itself off its
+ * container via `cqw`/`cqh`, so stealing flow height for the headline
+ * would shrink the widget. Instead the headline is absolutely overlaid
+ * on the TOP HALF of the hero — the band of empty space between the
+ * shell top bar and the (vertically centered) widget — and centered
+ * within it, leaving the widget at its full size. `pointer-events:
+ * none` keeps the decorative text from intercepting widget hovers.
+ */
+.heroHeadlineZone {
+  position: absolute;
+  top: 24px;
+  left: 16px;
+  right: 16px;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/*
+ * Matches the `/product` centered hero headline
+ * (`PageHero.css` `.pageHeroHeadline` + `.pageHeroContentCentered`):
+ * light weight, tight tracking, near-white. The `data-text` reserve
+ * (see `.heroHeadline::before`) holds the final width so the
+ * `TypewriterText` animation does not shift layout as it types.
  */
 .heroHeadline {
   display: inline-block;
   position: relative;
-  flex: 0 0 auto;
   text-align: center;
   font-size: clamp(26px, 4.3vw, 48px);
+  font-weight: 300;
   line-height: 1.05;
-  font-weight: 600;
+  letter-spacing: -0.035em;
   color: #f7f8fb;
 }
 
@@ -201,10 +222,9 @@
 }
 
 /*
- * Holds the mock desktop widget below the tagline. `container-type:
- * size` lives here (rather than on `.heroSlot`) so `MockAuraApp`'s
- * `cqw`/`cqh` wallpaper sizing measures the area left after the
- * headline, keeping the widget within the remaining space.
+ * Holds the mock desktop widget. `container-type: size` lives here so
+ * `MockAuraApp`'s `cqw`/`cqh` wallpaper sizing measures the full hero
+ * area, keeping the widget at full size; the headline overlays it.
  */
 .heroStage {
   container-type: size;
