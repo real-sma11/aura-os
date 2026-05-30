@@ -170,21 +170,27 @@
 
 /*
  * Tagline overlay. The mock widget sizes itself off `.heroStage` via
- * `cqw`/`cqh` and is vertically centered with `max-height: 75cqh`, so
- * it always leaves at least a `(100 - 75) / 2 = 12.5cqh` slack of empty
- * space above its top edge. The headline is overlaid on exactly that
- * top slack and centered within it, so it reads as vertically centered
- * in the band between the shell top bar and the widget — without
- * stealing flow height (which would shrink the container-sized widget)
- * and without ever overlapping the widget. `pointer-events: none` keeps
- * the decorative text from intercepting widget hovers.
+ * `cqw`/`cqh`, so its top edge moves with viewport size/aspect. To keep
+ * the tagline vertically centered in the band between the shell top bar
+ * and the widget at every size, `PublicChatView` measures both top
+ * edges on resize and writes the midpoint into `--hero-headline-center`
+ * (relative to `.heroStage`); `transform: translateY(-50%)` centers the
+ * text on that point. The fallback resolves the same midpoint in pure
+ * CSS for the first paint: the widget is `min(46.875cqw, 75cqh)` tall
+ * and vertically centered, so the empty slack above it is
+ * `(100cqh - widgetHeight) / 2` and its center is half of that. Overlay
+ * (rather than flow) layout avoids shrinking the container-sized
+ * widget; `pointer-events: none` keeps the text from blocking hovers.
  */
 .heroHeadlineZone {
   position: absolute;
-  top: 0;
   left: 0;
   right: 0;
-  height: 12.5cqh;
+  top: var(
+    --hero-headline-center,
+    calc((100cqh - min(46.875cqw, 75cqh)) / 4)
+  );
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;

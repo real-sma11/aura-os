@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -135,6 +136,8 @@ export function PublicChatView(): React.ReactElement {
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const streamRef = useRef<PublicChatStreamHandle | null>(null);
+  const heroSlotRef = useRef<HTMLDivElement | null>(null);
+  const heroStageRef = useRef<HTMLDivElement | null>(null);
 
   const [swap, setSwap] = useState<PersonaSwapState>(() => ({
     committedIndex: 0,
@@ -153,6 +156,56 @@ export function PublicChatView(): React.ReactElement {
   // they land back on `/chat` with an empty composer rather than
   // watching a fresh "New chat" row spawn on top of the one they
   // just removed.
+
+  // Vertically center the "Your Private Agent." tagline in the band
+  // between the shell top bar (the hero slot's top edge) and the top of
+  // the mock desktop widget. The widget is sized off its container via
+  // container queries, so its top edge moves with viewport size/aspect
+  // (height-bound on wide screens, width-bound on tall ones). A static
+  // CSS offset can only match one regime, so we measure the live top
+  // edges and recenter on every resize, writing the midpoint into a
+  // CSS var the overlay reads. Runs layout-effect + rAF so the value is
+  // applied before paint (no flash) and after the widget has laid out.
+  useLayoutEffect(() => {
+    if (isChatPage) return;
+    const slot = heroSlotRef.current;
+    const stage = heroStageRef.current;
+    if (!slot || !stage) return;
+
+    let raf = 0;
+    const measure = (): void => {
+      const widget = stage.querySelector<HTMLElement>('[class*="appFrame"]');
+      if (!widget) return;
+      const slotTop = slot.getBoundingClientRect().top;
+      const stageTop = stage.getBoundingClientRect().top;
+      const widgetTop = widget.getBoundingClientRect().top;
+      // Midpoint between the top bar (slot top) and the widget top,
+      // expressed relative to the stage (the overlay's containing block).
+      const centerWithinStage = (slotTop + widgetTop) / 2 - stageTop;
+      stage.style.setProperty(
+        "--hero-headline-center",
+        `${Math.round(centerWithinStage)}px`
+      );
+    };
+    const schedule = (): void => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+
+    schedule();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(slot);
+    ro.observe(stage);
+    const widget = stage.querySelector<HTMLElement>('[class*="appFrame"]');
+    if (widget) ro.observe(widget);
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [isChatPage]);
 
   useEffect(() => {
     return () => {
@@ -482,8 +535,8 @@ export function PublicChatView(): React.ReactElement {
        * focused on chatting.
        */}
       {!isChatPage ? (
-        <div className={styles.heroSlot}>
-          <div className={styles.heroStage}>
+        <div className={styles.heroSlot} ref={heroSlotRef}>
+          <div className={styles.heroStage} ref={heroStageRef}>
             <div className={styles.heroHeadlineZone}>
               <span
                 className={styles.heroHeadline}
