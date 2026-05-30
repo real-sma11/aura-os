@@ -36,7 +36,7 @@ export function ProfilePill({
       aria-label="Open settings"
       title={name || "Settings"}
     >
-      <Avatar type="user" size={24} avatarUrl={avatarUrl} name={name} />
+      <Avatar type="user" size={20} avatarUrl={avatarUrl} name={name} />
       <span className={styles.name}>{name || "Sign in"}</span>
       {isPaidPlan(plan) && <PlanBadge plan={plan} />}
     </button>
