@@ -55,6 +55,16 @@ export interface ModelPickerProps {
    * not blur the textarea here.
    */
   onOpen?: () => void;
+  /**
+   * Optional controlled open state. When provided, the picker no longer
+   * manages its own open/closed state and instead reflects this value,
+   * notifying the consumer via `onOpenChange`. Use this to coordinate
+   * multiple pickers so only one menu is open at a time. When omitted,
+   * the picker manages its own state (uncontrolled).
+   */
+  open?: boolean;
+  /** Called with the next open state whenever the picker wants to open/close. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface MenuPosition {
@@ -89,6 +99,8 @@ export const ModelPicker = memo(function ModelPicker({
   buttonClassName,
   menuClassName,
   onOpen,
+  open: controlledOpen,
+  onOpenChange,
 }: ModelPickerProps) {
   // Estimate of the menu's max rendered height, used to decide whether
   // to flip from "open up" (the natural direction for a bottom-anchored
@@ -113,9 +125,18 @@ export const ModelPicker = memo(function ModelPicker({
   };
 
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [pos, setPos] = useState<MenuPosition | null>(null);
-  const close = useCallback(() => setOpen(false), []);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (!isControlled) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
+  const close = useCallback(() => setOpen(false), [setOpen]);
 
   // Subscribe to scroll/resize while open so the portal tracks the
   // trigger when ancestor scroll containers (the chat transcript, a
@@ -150,22 +171,23 @@ export const ModelPicker = memo(function ModelPicker({
     };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
+  }, [open, setOpen]);
 
   const handleClick = useCallback(() => {
     if (!isInteractive) return;
-    setOpen((v) => {
-      if (v) return false;
-      // Read the trigger's bounding rect at click time so the portaled
-      // menu has accurate coordinates on its very first paint — no
-      // useLayoutEffect-driven setState pass needed, which means we
-      // don't trip `react-hooks/set-state-in-effect`.
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setPos(computePosFromRect(rect));
-      onOpen?.();
-      return true;
-    });
-  }, [isInteractive, onOpen]);
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    // Read the trigger's bounding rect at click time so the portaled
+    // menu has accurate coordinates on its very first paint — no
+    // useLayoutEffect-driven setState pass needed, which means we
+    // don't trip `react-hooks/set-state-in-effect`.
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setPos(computePosFromRect(rect));
+    onOpen?.();
+    setOpen(true);
+  }, [isInteractive, open, onOpen, setOpen]);
 
   const wrapperClass = [styles.modelMenuWrap, className].filter(Boolean).join(" ");
   const buttonClass = [styles.modelButton, buttonClassName].filter(Boolean).join(" ");

@@ -305,6 +305,12 @@ export const DesktopChatInputBar = memo(
       () => new Set(),
     );
     const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+    // Which inline picker (model vs image-quality) is currently open.
+    // Holding a single value here keeps the two dropdowns mutually
+    // exclusive so opening one closes the other.
+    const [openPicker, setOpenPicker] = useState<"model" | "quality" | null>(
+      null,
+    );
     // Driven by `<InputBarShell onMultiLineChange>` — flips to true the
     // moment the textarea wraps to a second visual row. Used to relocate
     // the model picker from the inline `inputRowEnd` slot (next to the
@@ -838,6 +844,8 @@ export const DesktopChatInputBar = memo(
         isInteractive={isModelPickerInteractive}
         renderMenu={renderModelMenuItems}
         onOpen={handleModelPickerOpen}
+        open={openPicker === "model"}
+        onOpenChange={(o) => setOpenPicker(o ? "model" : null)}
         triggerProps={{ "data-agent-action": "open-model-picker" }}
         className={styles.inlineModelPicker}
       />
@@ -886,6 +894,8 @@ export const DesktopChatInputBar = memo(
         selectedLabel={`Quality: ${activeQualityLabel}`}
         isInteractive
         renderMenu={renderQualityMenuItems}
+        open={openPicker === "quality"}
+        onOpenChange={(o) => setOpenPicker(o ? "quality" : null)}
         triggerProps={{ "data-agent-action": "open-quality-picker" }}
         className={styles.inlineModelPicker}
       />
