@@ -19,9 +19,9 @@ describe("PricingView", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders all four plan names", () => {
+  it("renders all three plan names", () => {
     renderPricingView();
-    for (const name of ["Mortal", "Pro", "Crusader", "Sage"]) {
+    for (const name of ["Free", "Pro", "Sage"]) {
       expect(
         screen.getByRole("heading", { level: 2, name }),
       ).toBeInTheDocument();

@@ -20,9 +20,9 @@ interface Plan {
 
 const PLANS: readonly Plan[] = [
   {
-    name: "Mortal",
-    monthlyPrice: "Free",
-    yearlyPrice: "Free",
+    name: "Free",
+    monthlyPrice: "$0",
+    yearlyPrice: "$0",
     description: "Get started for free:",
     features: [
       "No credit card required",
@@ -37,26 +37,16 @@ const PLANS: readonly Plan[] = [
     monthlyPrice: "$20",
     yearlyPrice: "$192",
     priceNote: "$10/mo for Zero Pro OG subscribers",
-    description: "Everything in Mortal, plus:",
+    description: "Everything in Free, plus:",
     features: ["$20 worth of monthly credits", "Remote agents"],
     ctaLabel: "Download",
     href: "/download",
   },
   {
-    name: "Crusader",
-    monthlyPrice: "$60",
-    yearlyPrice: "$576",
-    description: "Everything in Pro, plus:",
-    features: ["3x the amount of credits for frontier models"],
-    ctaLabel: "Download",
-    href: "/download",
-    recommended: true,
-  },
-  {
     name: "Sage",
     monthlyPrice: "$200",
     yearlyPrice: "$1,920",
-    description: "Everything in Crusader, plus:",
+    description: "Everything in Pro, plus:",
     features: [
       "20x usage on frontier models",
       "Priority access to new features",
