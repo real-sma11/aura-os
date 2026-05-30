@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
-const DEFAULT_DURATION_MS = 1200;
+/**
+ * When no explicit `durationMs` is given the animation length is derived
+ * from how many integer steps it has to traverse, so small counts still
+ * get a perceptible window instead of finishing in a few frames. Each
+ * step is paced at `MS_PER_STEP`, clamped between `MIN_DURATION_MS` and
+ * `MAX_DURATION_MS`.
+ */
+const MS_PER_STEP = 80;
+const MIN_DURATION_MS = 900;
+const MAX_DURATION_MS = 2200;
 
 export interface UseCountUpOptions {
   /**
@@ -10,13 +19,32 @@ export interface UseCountUpOptions {
    * eases from where it is now up to `target`.
    */
   readonly target: number | null;
-  /** Duration of the count-up animation. Defaults to 1200ms. */
+  /**
+   * Duration of the count-up animation. When omitted the duration is
+   * derived from the magnitude of the change (see `MS_PER_STEP`) so
+   * small counts animate over a visible window rather than snapping.
+   */
   readonly durationMs?: number;
 }
 
-function easeOutCubic(t: number): number {
+/**
+ * Gentle deceleration. Unlike a cubic ease-out (velocity 3 at the start)
+ * this quadratic curve keeps the motion flatter, so the handful of
+ * integer steps in a small count are spread across the whole duration
+ * instead of being front-loaded into the first moments and then sitting
+ * motionless at the final value.
+ */
+function easeOutQuad(t: number): number {
   const clamped = Math.min(1, Math.max(0, t));
-  return 1 - Math.pow(1 - clamped, 3);
+  return 1 - (1 - clamped) * (1 - clamped);
+}
+
+function resolveDuration(delta: number, durationMs: number | undefined): number {
+  if (durationMs !== undefined) {
+    return durationMs;
+  }
+  const paced = Math.abs(delta) * MS_PER_STEP;
+  return Math.min(MAX_DURATION_MS, Math.max(MIN_DURATION_MS, paced));
 }
 
 function prefersReducedMotion(): boolean {
@@ -40,7 +68,7 @@ function prefersReducedMotion(): boolean {
  */
 export function useCountUp({
   target,
-  durationMs = DEFAULT_DURATION_MS,
+  durationMs,
 }: UseCountUpOptions): number {
   const [displayed, setDisplayed] = useState<number>(0);
   const displayedRef = useRef<number>(displayed);
@@ -83,11 +111,12 @@ export function useCountUp({
     if (delta === 0) {
       return cancel;
     }
+    const effectiveDuration = resolveDuration(delta, durationMs);
     const startTime = performance.now();
 
     const step = (timestamp: number) => {
-      const linear = Math.min(1, (timestamp - startTime) / durationMs);
-      const eased = easeOutCubic(linear);
+      const linear = Math.min(1, (timestamp - startTime) / effectiveDuration);
+      const eased = easeOutQuad(linear);
       const next = Math.round(startValue + delta * eased);
       if (next !== displayedRef.current) {
         setDisplayed(next);
