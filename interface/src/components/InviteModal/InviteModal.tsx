@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Modal } from "@cypher-asi/zui";
-import { Check, Copy, Gift } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { useAuth } from "../../stores/auth-store";
 import { useInviteCodeStore } from "../../stores/invite-code-store";
 import { track } from "../../lib/analytics";
@@ -42,8 +42,16 @@ export function InviteModal({ isOpen, onClose }: Props) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="" size="sm">
       <div className={styles.body}>
-        <div className={styles.iconWrap}>
-          <Gift size={48} strokeWidth={1.2} />
+        <div className={styles.videoBanner}>
+          <video
+            className={styles.bannerVideo}
+            src="/AURA_visual_loop.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-hidden="true"
+          />
         </div>
 
         <h2 className={styles.heading}>INVITE FRIENDS</h2>
