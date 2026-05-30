@@ -29,17 +29,20 @@
 }
 
 /*
- * Shared base for both word layers. Each is absolutely centered in
- * the window so the outgoing and incoming words occupy the same
- * resting position and only the vertical slide separates them.
+ * Shared base for both word layers. Each layer fills the FULL window
+ * (top/bottom/left/right: 0) and centers its word with flex, so the
+ * box height equals the window height. That matters for the slide:
+ * `translateY(100%)` then moves a word a full window-height, carrying
+ * it completely out of the clipped band rather than the few pixels a
+ * text-height box would travel.
  */
 .wordLeaving,
 .wordEntering {
   position: absolute;
-  left: 0;
-  right: 0;
-  display: inline-block;
-  text-align: center;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wordEntering {
