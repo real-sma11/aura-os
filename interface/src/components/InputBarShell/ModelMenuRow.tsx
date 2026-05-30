@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import {
   EFFORT_LABELS,
+  effectiveCreditMultiplier,
   formatCreditMultiplier,
   type ModelEffort,
   type ModelOption,
@@ -66,7 +67,14 @@ export const ModelMenuRow = memo(function ModelMenuRow({
   const [flyoutPos, setFlyoutPos] = useState<FlyoutPosition | null>(null);
 
   const hasEfforts = !disabled && !!model.efforts && model.efforts.length > 0;
-  const multiplierText = formatCreditMultiplier(model.creditMultiplier);
+  // The active model's badge tracks the chosen effort so the displayed
+  // cost reflects the effort-scaled thinking budget; every other row
+  // shows its static base multiplier.
+  const multiplierText = formatCreditMultiplier(
+    isActive && hasEfforts
+      ? effectiveCreditMultiplier(model, activeEffort)
+      : model.creditMultiplier,
+  );
 
   const clearCloseTimer = useCallback(() => {
     if (closeTimer.current) {
@@ -152,6 +160,9 @@ export const ModelMenuRow = memo(function ModelMenuRow({
             >
               {model.efforts!.map((effort) => {
                 const selected = isActive && activeEffort === effort;
+                const effortMultiplier = formatCreditMultiplier(
+                  effectiveCreditMultiplier(model, effort),
+                );
                 return (
                   <button
                     key={effort}
@@ -160,7 +171,12 @@ export const ModelMenuRow = memo(function ModelMenuRow({
                     data-agent-effort={effort}
                     onClick={() => onSelect(model.id, effort)}
                   >
-                    {EFFORT_LABELS[effort]}
+                    <span>{EFFORT_LABELS[effort]}</span>
+                    {effortMultiplier ? (
+                      <span className={styles.modelEffortOptionMultiplier}>
+                        {effortMultiplier}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   availableModelsForAdapter,
+  effectiveCreditMultiplier,
+  effortCreditFactor,
   getModelsForMode,
   hasAgentScopedModel,
   loadPersistedImageModel,
@@ -9,6 +11,7 @@ import {
   loadPersistedThreeDModel,
   loadPersistedVideoModel,
   persistModel,
+  type ModelOption,
 } from "./models";
 
 describe("model persistence", () => {
@@ -230,6 +233,98 @@ describe("model persistence", () => {
       expect(loadPersistedVideoModel("agent-A")).toBe(
         "veo-3.1-fast-generate-preview",
       );
+    });
+  });
+});
+
+describe("effort-scaled credits", () => {
+  describe("effortCreditFactor", () => {
+    it("returns 1 at the model's default effort tier", () => {
+      expect(effortCreditFactor("medium", "medium")).toBe(1);
+      expect(effortCreditFactor("low", "low")).toBe(1);
+      expect(effortCreditFactor("minimal", "minimal")).toBe(1);
+    });
+
+    it("defaults the baseline tier to medium when none is supplied", () => {
+      expect(effortCreditFactor("medium")).toBe(1);
+    });
+
+    it("increases monotonically across tiers for a fixed baseline", () => {
+      const factors = (
+        ["minimal", "low", "medium", "high", "max"] as const
+      ).map((e) => effortCreditFactor(e, "medium"));
+      for (let i = 1; i < factors.length; i++) {
+        expect(factors[i]).toBeGreaterThan(factors[i - 1]);
+      }
+    });
+
+    it("scales the budget table blended with the base output tokens", () => {
+      // (2000 + 4096) / (2000 + 10000) = 6096 / 12000.
+      expect(effortCreditFactor("low", "medium")).toBeCloseTo(6096 / 12000, 6);
+      // (2000 + 24000) / (2000 + 10000) = 26000 / 12000.
+      expect(effortCreditFactor("high", "medium")).toBeCloseTo(26000 / 12000, 6);
+    });
+  });
+
+  describe("effectiveCreditMultiplier", () => {
+    const withEfforts: ModelOption = {
+      id: "test-model",
+      label: "Test",
+      tier: "opus",
+      mode: "chat",
+      creditMultiplier: 15,
+      efforts: ["low", "medium", "high", "max"],
+      defaultEffort: "medium",
+    };
+
+    it("returns null when the model has no credit multiplier", () => {
+      const noMultiplier: ModelOption = {
+        id: "img",
+        label: "Img",
+        tier: "image",
+        mode: "image",
+      };
+      expect(effectiveCreditMultiplier(noMultiplier, "high")).toBeNull();
+    });
+
+    it("returns the static multiplier when the model has no effort tiers", () => {
+      const noEfforts: ModelOption = {
+        id: "kimi",
+        label: "Kimi",
+        tier: "sonnet",
+        mode: "chat",
+        creditMultiplier: 2,
+      };
+      expect(effectiveCreditMultiplier(noEfforts, "high")).toBe(2);
+    });
+
+    it("returns the static multiplier when no effort is selected", () => {
+      expect(effectiveCreditMultiplier(withEfforts, null)).toBe(15);
+    });
+
+    it("scales the multiplier by the effort factor", () => {
+      expect(effectiveCreditMultiplier(withEfforts, "medium")).toBe(15);
+      expect(effectiveCreditMultiplier(withEfforts, "low")).toBeCloseTo(
+        15 * (6096 / 12000),
+        6,
+      );
+      expect(effectiveCreditMultiplier(withEfforts, "high")).toBeCloseTo(
+        15 * (26000 / 12000),
+        6,
+      );
+    });
+
+    it("keeps a free (0x) model free at every effort tier", () => {
+      const free: ModelOption = {
+        id: "oss",
+        label: "OSS",
+        tier: "haiku",
+        mode: "chat",
+        creditMultiplier: 0,
+        efforts: ["low", "medium", "high"],
+        defaultEffort: "medium",
+      };
+      expect(effectiveCreditMultiplier(free, "high")).toBe(0);
     });
   });
 });
