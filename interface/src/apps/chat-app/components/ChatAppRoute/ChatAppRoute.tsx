@@ -118,9 +118,9 @@ export function ChatAppRoute() {
   // null` immediately. The remaining cold-cache path (very first ever
   // visit, or a wipe of localStorage + agents-list cache) flows
   // through the `historyResolved` short-circuit below: we render the
-  // panel chrome with an empty transcript and a "Starting chat…" hint
-  // so the user sees the familiar surface instead of a centered
-  // PageEmptyState that swaps out the entire route.
+  // panel chrome with an empty transcript (no loading hint) so the user
+  // sees the familiar surface instead of a centered PageEmptyState that
+  // swaps out the entire route.
   const panelProps: ChatPanelProps = effectiveAgent
     ? { ...sharedChatProps, scrollToBottomOnReset: false }
     : {
@@ -134,15 +134,15 @@ export function ChatAppRoute() {
         isLoading: false,
         emptyMessage: status === "error"
           ? error ?? "Couldn't start chat. Try again in a moment."
-          : "Starting chat\u2026",
+          : undefined,
       };
 
   // Hard error fallback — shown only when there is genuinely nothing
   // to chat with (no warm seed AND `setup()` has failed). The hook
   // surfaces `status === "error"` only after both have struck out; in
-  // every other case the panel chrome stays mounted with the
-  // `emptyMessage` hint above so the user still sees their input bar
-  // / sidekick chrome instead of a centered route swap.
+  // every other case the panel chrome stays mounted (with an empty
+  // transcript) so the user still sees their input bar / sidekick
+  // chrome instead of a centered route swap.
   if (!effectiveAgent && status === "error") {
     return (
       <PageEmptyState
