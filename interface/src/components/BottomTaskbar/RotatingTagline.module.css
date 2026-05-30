@@ -5,8 +5,14 @@
  * `min-width` + centered layout pin the pill width so swapping
  * between the short ("Secure.") and long ("Decentralized.") words
  * doesn't reflow the left cluster.
+ *
+ * The window is `position: relative` + `overflow: hidden` so the
+ * absolutely-positioned word layers can cross vertically (outgoing
+ * slides up and out the top, incoming slides in from the bottom)
+ * while anything outside the single-line band is clipped.
  */
 .tagline {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -22,15 +28,34 @@
   overflow: hidden;
 }
 
-.word {
+/*
+ * Shared base for both word layers. Each is absolutely centered in
+ * the window so the outgoing and incoming words occupy the same
+ * resting position and only the vertical slide separates them.
+ */
+.wordLeaving,
+.wordEntering {
+  position: absolute;
+  left: 0;
+  right: 0;
   display: inline-block;
-  animation: taglineFadeIn 360ms ease;
+  text-align: center;
 }
 
-@keyframes taglineFadeIn {
+.wordEntering {
+  animation: taglineSlideInFromBottom var(--tagline-slide-ms, 420ms)
+    cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wordLeaving {
+  animation: taglineSlideOutToTop var(--tagline-slide-ms, 420ms)
+    cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes taglineSlideInFromBottom {
   from {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateY(100%);
   }
   to {
     opacity: 1;
@@ -38,8 +63,25 @@
   }
 }
 
+@keyframes taglineSlideOutToTop {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .word {
+  .wordEntering,
+  .wordLeaving {
     animation: none;
+  }
+  /* Without motion, just hide the outgoing layer so the new word
+     snaps cleanly into place rather than stacking on top of it. */
+  .wordLeaving {
+    display: none;
   }
 }
