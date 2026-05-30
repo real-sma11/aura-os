@@ -281,7 +281,7 @@ fn debug_payload(text: &str) -> String {
 //
 // Phase 2 of the chat reliability plan deliberately handles WS death via
 // initial-connect retry (see `LocalHarness::open_session` and
-// `SwarmHarness::open_session_socket`) plus client-side auto-retry of the
+// `SwarmHarness::open_run_socket`) plus client-side auto-retry of the
 // last user message on `streamDropped`, since true mid-turn resume blocks
 // on `session_resume` semantics in aura-node that are not yet on the wire.
 

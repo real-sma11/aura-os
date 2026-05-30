@@ -27,7 +27,7 @@ static HARNESS_WS_READ_ERROR: AtomicU64 = AtomicU64::new(0);
 static HARNESS_PROTOCOL_MISMATCH: AtomicU64 = AtomicU64::new(0);
 
 /// Bumped once per *retry* attempt past the first inside
-/// `LocalHarness::open_session` / `SwarmHarness::open_session_socket`.
+/// `LocalHarness::open_session` / `SwarmHarness::open_run_socket`.
 /// The first attempt is not counted; the second / third attempts that
 /// the Phase 2 retry loop schedules are.
 pub fn inc_initial_connect_retry() {

@@ -320,21 +320,6 @@ fn is_blank(value: Option<&str>) -> bool {
     value.map(|v| v.trim().is_empty()).unwrap_or(true)
 }
 
-/// Projection of [`SessionConfig`] used by
-/// [`crate::SwarmHarness::open_session`]'s HTTP bootstrap
-/// (`POST /v1/agents/:id/sessions`).
-#[must_use]
-pub fn build_remote_handshake(cfg: &SessionConfig) -> serde_json::Value {
-    serde_json::json!({
-        "config": {
-            "system_prompt": cfg.system_prompt,
-            "model": cfg.model,
-            "max_tokens": cfg.max_tokens,
-            "max_turns": cfg.max_turns,
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

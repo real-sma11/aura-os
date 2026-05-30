@@ -10,12 +10,12 @@ use tokio::sync::{broadcast, Mutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{info, warn};
 
-use aura_protocol::{InboundMessage, OutboundMessage};
+use aura_protocol::OutboundMessage;
 
 use crate::error::HarnessError;
 use crate::harness::{
-    build_remote_handshake, validate_runtime_request_identity, HarnessLink, HarnessSession,
-    SessionConfig,
+    build_runtime_request, validate_runtime_request_identity, HarnessLink, HarnessSession,
+    RunHandle, SessionConfig,
 };
 use crate::local_harness::{
     CONNECT_ATTEMPTS_ENV, CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_ATTEMPTS,
@@ -77,7 +77,18 @@ pub struct SwarmHarness {
     /// from `SessionConfig.token` take priority when available.
     auth_token: Option<String>,
     client: reqwest::Client,
-    session_tokens: Arc<Mutex<HashMap<String, String>>>,
+    /// Per-run close metadata remembered at `open_session` time so
+    /// `close_session` can target the run-scoped stop endpoint
+    /// (`POST /v1/agents/:agent_id/run/:run_id/stop`), which needs both
+    /// the agent id and the run's auth token. Keyed by `run_id`.
+    run_sessions: Arc<Mutex<HashMap<String, RunSession>>>,
+}
+
+/// Close-time metadata for an open swarm run.
+#[derive(Debug, Clone)]
+struct RunSession {
+    agent_id: String,
+    token: Option<String>,
 }
 
 impl SwarmHarness {
@@ -102,7 +113,7 @@ impl SwarmHarness {
             base_url,
             auth_token,
             client,
-            session_tokens: Arc::new(Mutex::new(HashMap::new())),
+            run_sessions: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -257,44 +268,63 @@ impl SwarmHarness {
         parse_lifecycle_response(response, action).await
     }
 
-    async fn create_session(
+    /// Start a run on the swarm gateway via the migrated two-step
+    /// contract: `POST /v1/agents/:agent_id/run` with a
+    /// [`build_runtime_request`]-shaped body, returning the
+    /// harness-allocated [`RunHandle`] (`run_id` + relative
+    /// `event_stream_url`). The legacy per-session
+    /// `POST /v1/agents/:id/sessions` + `ws_url` exchange is gone.
+    async fn submit_run(
         &self,
         base_url: &str,
         agent_id: &str,
         headers: HeaderMap,
         config: &SessionConfig,
-    ) -> anyhow::Result<CreateSessionResponse> {
+    ) -> anyhow::Result<RunHandle> {
         let response = self
             .client
-            .post(format!("{base_url}/v1/agents/{agent_id}/sessions"))
+            .post(format!("{base_url}/v1/agents/{agent_id}/run"))
             .headers(headers)
-            .json(&build_remote_handshake(config))
+            .json(&build_runtime_request(config))
             .send()
             .await
-            .context("swarm create session request failed")?;
-        parse_create_session_response(response).await
+            .context("swarm run start request failed")?;
+        parse_run_start_response(response).await
     }
 
-    async fn remember_session_token(&self, session_id: &str, token: Option<&str>) {
-        if let Some(t) = token {
-            self.session_tokens
-                .lock()
-                .await
-                .insert(session_id.to_string(), t.to_string());
+    async fn remember_run(&self, run_id: &str, agent_id: &str, token: Option<&str>) {
+        self.run_sessions.lock().await.insert(
+            run_id.to_string(),
+            RunSession {
+                agent_id: agent_id.to_string(),
+                token: token.map(ToOwned::to_owned),
+            },
+        );
+    }
+
+    /// Resolve the WebSocket URL for a run's event stream from the
+    /// `event_stream_url` returned by `POST /v1/agents/:id/run`. An
+    /// absolute `ws(s)://` URL is used verbatim; a relative path (the
+    /// gateway returns `/v1/agents/{id}/stream/{run_id}`) is joined onto
+    /// the transport WS base. Mirrors
+    /// [`crate::LocalHarness`]'s `resolve_event_stream_url`.
+    fn resolve_event_stream_url(&self, event_stream_url: &str) -> anyhow::Result<String> {
+        if event_stream_url.starts_with("ws://") || event_stream_url.starts_with("wss://") {
+            return Ok(event_stream_url.to_string());
         }
-    }
-
-    async fn open_session_socket(
-        &self,
-        session_resp: CreateSessionResponse,
-        config: &SessionConfig,
-        token: Option<&str>,
-    ) -> anyhow::Result<HarnessSession> {
-        let ws_url = format!(
+        Ok(format!(
             "{}/{}",
             self.ws_base_url()?,
-            session_resp.ws_url.trim_start_matches('/')
-        );
+            event_stream_url.trim_start_matches('/')
+        ))
+    }
+
+    async fn open_run_socket(
+        &self,
+        run_handle: RunHandle,
+        token: Option<&str>,
+    ) -> anyhow::Result<HarnessSession> {
+        let ws_url = self.resolve_event_stream_url(&run_handle.event_stream_url)?;
         let max_attempts = read_connect_attempts_from_env();
         let per_attempt_timeout = read_connect_timeout_from_env();
         let mut last_err: Option<anyhow::Error> = None;
@@ -370,14 +400,17 @@ impl SwarmHarness {
         };
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
         let mut ready_rx = events_tx.subscribe();
-        send_session_init(&commands_tx, config)?;
-        wait_for_session_ready(&mut ready_rx, &session_resp.session_id).await?;
+        // Phase A: the gateway proxies a run that was already created on
+        // the HTTP side (`POST /v1/agents/:id/run`), so the harness driver
+        // emits `session_ready` unprompted. No session-init first frame.
+        wait_for_session_ready(&mut ready_rx, &run_handle.run_id).await?;
         Ok(HarnessSession {
-            // The swarm gateway bootstraps via session-init handshake and
-            // does not expose a separate run_id, so the session id doubles
-            // as the run handle here.
-            run_id: session_resp.session_id.clone(),
-            session_id: session_resp.session_id,
+            // The swarm gateway keys ownership / idle detection on the
+            // harness-allocated `run_id`, so it doubles as the session id
+            // here (the runtime's own `session_ready.session_id` is logged
+            // for correlation but not used as the control handle).
+            session_id: run_handle.run_id.clone(),
+            run_id: run_handle.run_id,
             events_tx,
             raw_events_tx,
             commands_tx,
@@ -398,12 +431,6 @@ struct AgentStateResponse {
     state: String,
     #[serde(default)]
     error_message: Option<String>,
-}
-
-#[derive(serde::Deserialize)]
-struct CreateSessionResponse {
-    session_id: String,
-    ws_url: String,
 }
 
 async fn parse_create_agent_response(
@@ -448,26 +475,22 @@ async fn parse_lifecycle_response(response: reqwest::Response, action: &str) -> 
     Ok(())
 }
 
-async fn parse_create_session_response(
-    response: reqwest::Response,
-) -> anyhow::Result<CreateSessionResponse> {
+async fn parse_run_start_response(response: reqwest::Response) -> anyhow::Result<RunHandle> {
     let status = response.status();
     let body = response.text().await?;
     if !status.is_success() {
-        // TODO(phase 0.5): when the gateway returns 4xx with a body
-        // containing "turn is currently in progress" (or a structured
-        // `turn_in_progress` code), surface that as a typed error
-        // variant — e.g. by parsing the body into an `ErrorMsg`-shaped
-        // struct here and bubbling it as a dedicated error so the
-        // server can call `remap_harness_error_to_api` instead of
-        // pattern-matching on this flattened anyhow string.
+        // The gateway forwards the pod's 503 verbatim when the harness
+        // WS-slot semaphore (or pod) is saturated; surface it as the
+        // typed capacity error so the server maps it to a structured
+        // 503 instead of a raw bad_gateway.
         if is_capacity_exhausted_response(status, &body) {
             return Err(anyhow::Error::new(HarnessError::CapacityExhausted)
-                .context(format!("swarm create session failed with {status}: {body}")));
+                .context(format!("swarm run start failed with {status}: {body}")));
         }
-        anyhow::bail!("swarm create session failed with {}: {}", status, body);
+        anyhow::bail!("swarm run start failed with {}: {}", status, body);
     }
-    serde_json::from_str(&body).map_err(Into::into)
+    serde_json::from_str(&body)
+        .with_context(|| format!("swarm run start response parse failed, body: {body}"))
 }
 
 /// Detect the upstream "all WS slots in use" rejection.
@@ -509,20 +532,6 @@ fn is_capacity_exhausted_response(status: StatusCode, body: &str) -> bool {
         Some(_) => false,
         None => true,
     }
-}
-
-/// Phase A note: the harness no longer accepts a `SessionInit` first
-/// frame. SwarmHarness still relies on its own gateway-side
-/// `create_session` (HTTP) plus a runtime container that already
-/// applies the runtime request when the WS attaches. This is a no-op
-/// stub retained to keep the call site shape unchanged while the
-/// swarm gateway is migrated to the same two-step
-/// `POST /v1/run` + `WS /stream/:run_id` exchange in a follow-up.
-fn send_session_init(
-    _commands_tx: &tokio::sync::mpsc::Sender<InboundMessage>,
-    _config: &SessionConfig,
-) -> anyhow::Result<()> {
-    Ok(())
 }
 
 async fn wait_for_session_ready(
@@ -634,31 +643,42 @@ impl HarnessLink for SwarmHarness {
         let agent_id = self
             .create_or_get_agent(&base_url, &config, headers.clone(), token)
             .await?;
-        let session_resp = self
-            .create_session(&base_url, &agent_id, headers, &config)
+        let run_handle = self
+            .submit_run(&base_url, &agent_id, headers, &config)
             .await?;
-        self.remember_session_token(&session_resp.session_id, token)
+        self.remember_run(&run_handle.run_id, &agent_id, token)
             .await;
         info!(
-            session_id = %session_resp.session_id,
+            run_id = %run_handle.run_id,
             agent_id = %agent_id,
-            "Swarm session created"
+            "Swarm run created"
         );
-        self.open_session_socket(session_resp, &config, token).await
+        self.open_run_socket(run_handle, token).await
     }
 
     async fn close_session(&self, session_id: &str) -> anyhow::Result<()> {
+        // `session_id` is the harness-allocated `run_id` (see
+        // `open_run_socket`). Stop it through the run-scoped lifecycle
+        // endpoint, which needs the owning agent id resolved at open time.
         let base_url = self.configured_base_url()?.to_string();
-        let token = self
-            .session_tokens
-            .lock()
-            .await
-            .remove(session_id)
-            .or_else(|| self.auth_token.clone());
+        let run = self.run_sessions.lock().await.remove(session_id);
+        let Some(run) = run else {
+            // Unknown run (e.g. process restarted since open): nothing we
+            // can address. The gateway reaps idle runs on its own.
+            warn!(
+                run_id = %session_id,
+                "swarm close_session called for an unknown run; relying on gateway idle reaping"
+            );
+            return Ok(());
+        };
+        let token = run.token.or_else(|| self.auth_token.clone());
         let headers = self.bearer_headers(token.as_deref());
 
         self.client
-            .delete(format!("{base_url}/v1/sessions/{session_id}"))
+            .post(format!(
+                "{base_url}/v1/agents/{}/run/{session_id}/stop",
+                run.agent_id
+            ))
             .headers(headers)
             .send()
             .await?
