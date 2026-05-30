@@ -1,4 +1,4 @@
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::handlers::bug_reports;
@@ -15,4 +15,8 @@ pub(super) fn bug_reports_routes() -> Router<AppState> {
             get(bug_reports::list_my_bug_reports),
         )
         .route("/api/bug-reports/:id", get(bug_reports::get_bug_report))
+        .route(
+            "/api/bug-reports/:id/fix-task",
+            post(bug_reports::create_fix_task),
+        )
 }

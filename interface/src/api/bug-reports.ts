@@ -1,4 +1,5 @@
 import { apiFetch } from "../shared/api/core";
+import type { Task } from "../shared/types";
 import type { BugDiagnostics } from "../shared/observability/collect-bug-diagnostics";
 
 /**
@@ -48,6 +49,25 @@ export interface BugReportDto {
   consent: boolean;
   consentVersion?: string | null;
   consentedAt?: string | null;
+  feedbackPostId?: string | null;
+  linkedTaskId?: string | null;
+  linkedProjectId?: string | null;
+}
+
+export interface CreateFixTaskInput {
+  projectId: string;
+  agentInstanceId?: string;
+}
+
+/**
+ * Result of `POST /api/bug-reports/:id/fix-task`: the freshly created
+ * fix task plus the project it was created under (so the admin UI can
+ * immediately offer "Run now" against `tasksApi.runTask`).
+ */
+export interface CreateFixTaskResponse {
+  task: Task;
+  projectId: string;
+  bugReportId: string;
 }
 
 export const bugReportsApi = {
@@ -65,4 +85,13 @@ export const bugReportsApi = {
 
   listMine: (): Promise<BugReportDto[]> =>
     apiFetch<BugReportDto[]>("/api/bug-reports/mine"),
+
+  createFixTask: (
+    id: string,
+    input: CreateFixTaskInput,
+  ): Promise<CreateFixTaskResponse> =>
+    apiFetch<CreateFixTaskResponse>(`/api/bug-reports/${id}/fix-task`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };

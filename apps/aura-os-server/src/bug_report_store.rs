@@ -25,6 +25,18 @@ pub(crate) struct BugReport {
     pub consent: bool,
     pub consent_version: Option<String>,
     pub consented_at: Option<DateTime<Utc>>,
+    /// Public feedback post this report is associated with, if the user
+    /// also filed a public Feedback item. Drives the feedback status
+    /// reflection on fix-task create / completion.
+    #[serde(default)]
+    pub feedback_post_id: Option<String>,
+    /// Fix task created from this report (Phase 4), resolvable from both
+    /// sides: the task carries a `bug_report_id` marker in its
+    /// description and the report carries the task id here.
+    #[serde(default)]
+    pub linked_task_id: Option<String>,
+    #[serde(default)]
+    pub linked_project_id: Option<String>,
 }
 
 pub(crate) struct BugReportStore {

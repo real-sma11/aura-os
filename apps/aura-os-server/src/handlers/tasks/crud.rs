@@ -53,6 +53,19 @@ pub(crate) async fn transition_task(
         prev_status.map(|from| (from, task.status)),
     );
     clear_loop_task_pointer_if_terminal(&state, project_id, task_id, task.status);
+    // Best-effort: a fix task created from an admin bug report carries a
+    // back-link on the report record; when it lands on `Done` we mark the
+    // report resolved and flip any associated feedback post to `done`.
+    // Runs here so harness-driven completions (which complete via this
+    // handler) trigger it too. Never unwinds the transition.
+    if task.status == TaskStatus::Done {
+        crate::handlers::bug_reports::resolve_linked_bug_report_on_done(
+            &state,
+            &jwt,
+            &task_id.to_string(),
+        )
+        .await;
+    }
     Ok(Json(task))
 }
 
