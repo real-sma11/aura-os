@@ -40,20 +40,27 @@ export function InviteModal({ isOpen, onClose }: Props) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="" size="sm">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title=""
+      size="sm"
+      noPadding
+      className={styles.modalRoot}
+      headerClassName={styles.floatingHeader}
+    >
+      <div className={styles.videoBanner}>
+        <video
+          className={styles.bannerVideo}
+          src="/AURA_visual_loop.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+        />
+      </div>
       <div className={styles.body}>
-        <div className={styles.videoBanner}>
-          <video
-            className={styles.bannerVideo}
-            src="/AURA_visual_loop.mp4"
-            autoPlay
-            loop
-            muted
-            playsInline
-            aria-hidden="true"
-          />
-        </div>
-
         <h2 className={styles.heading}>INVITE FRIENDS</h2>
         <p className={styles.subtext}>
           Share your code with a friend to get them started on AURA.

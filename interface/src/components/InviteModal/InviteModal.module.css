@@ -1,24 +1,52 @@
+.modalRoot {
+  position: relative;
+}
+
+.floatingHeader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: auto;
+  padding: var(--space-2);
+  border-bottom: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+.floatingHeader button {
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity var(--transition-fast, 0.15s) ease;
+}
+
+.modalRoot:hover .floatingHeader button,
+.floatingHeader button:focus-visible {
+  opacity: 1;
+}
+
 .body {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: var(--space-4) var(--space-2) var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
   gap: var(--space-3);
 }
 
 .videoBanner {
-  width: 25%;
-  border-radius: 8px;
+  width: 100%;
+  height: 25vh;
   overflow: hidden;
-  border: 1.5px solid rgba(1, 244, 203, 0.3);
   line-height: 0;
 }
 
 .bannerVideo {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
 }
 
 .heading {
