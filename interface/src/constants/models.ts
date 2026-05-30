@@ -64,6 +64,21 @@ export interface ModelOption {
   efforts?: ModelEffort[];
   /** Effort applied when the user has not explicitly picked one. */
   defaultEffort?: ModelEffort;
+  /**
+   * Human-facing brand shown on the marketing `/models` page (e.g.
+   * "Anthropic", "OpenAI", "Google"). When omitted, the page derives it
+   * from {@link vendor} and finally falls back to "AURA".
+   */
+  provider?: string;
+  /** One-line blurb shown on the marketing `/models` page card. */
+  description?: string;
+  /**
+   * Availability shown on the marketing `/models` page. Defaults to
+   * `"live"` when omitted.
+   */
+  marketingStatus?: "live" | "soon";
+  /** Highlights the model in the marketing page's Featured row. */
+  featured?: boolean;
 }
 
 /**
@@ -128,6 +143,10 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
+    provider: "Anthropic",
+    description:
+      "Anthropic's most capable model for deep reasoning, agentic coding, and long-context work.",
+    featured: true,
   },
   {
     id: "aura-claude-opus-4-7",
@@ -139,6 +158,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
+    provider: "Anthropic",
+    description:
+      "Previous-generation Opus flagship with frontier reasoning and a 1M-token context window.",
   },
   {
     id: "aura-claude-opus-4-6",
@@ -150,6 +172,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 200_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
+    provider: "Anthropic",
+    description:
+      "High-capability Opus tier balancing extended thinking with a 200K context window.",
   },
   {
     id: "aura-claude-sonnet-4-6",
@@ -161,6 +186,10 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
+    provider: "Anthropic",
+    description:
+      "The default everyday model: fast, sharp, and great at coding with a 1M-token context window.",
+    featured: true,
   },
   {
     id: "aura-claude-haiku-4-5",
@@ -172,6 +201,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 200_000,
     efforts: ANTHROPIC_LITE_EFFORTS,
     defaultEffort: "low",
+    provider: "Anthropic",
+    description:
+      "Lightweight Claude tier for snappy responses and high-volume tasks at low cost.",
   },
   // ── OpenAI ──────────────────────────────────────────────────
   {
@@ -184,6 +216,10 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "OpenAI's flagship reasoning model with a 400K context window and selectable effort tiers.",
+    featured: true,
   },
   {
     id: "aura-gpt-5-4",
@@ -195,6 +231,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "Well-rounded GPT-5 tier for general reasoning and coding with a 400K context window.",
   },
   {
     id: "aura-gpt-5-4-mini",
@@ -206,6 +245,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "low",
+    provider: "OpenAI",
+    description:
+      "Cost-efficient GPT-5 tier tuned for fast, everyday tasks with a 400K context window.",
   },
   {
     id: "aura-gpt-5-4-nano",
@@ -217,6 +259,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "minimal",
+    provider: "OpenAI",
+    description:
+      "The smallest, fastest GPT-5 tier for cheap, high-throughput workloads.",
   },
   // ── Open Source ─────────────────────────────────────────────
   {
@@ -227,6 +272,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "open-source",
     creditMultiplier: 0.8,
     contextWindow: 256_000,
+    provider: "Moonshot AI",
+    description:
+      "Open-weight mixture-of-experts model with strong agentic performance and a 256K context window.",
   },
   {
     id: "aura-kimi-k2-5",
@@ -236,6 +284,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "open-source",
     creditMultiplier: 0.6,
     contextWindow: 256_000,
+    provider: "Moonshot AI",
+    description:
+      "Previous-generation Kimi MoE model with a 256K context window at a lower price.",
   },
   {
     id: "aura-deepseek-v4-pro",
@@ -245,6 +296,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "open-source",
     creditMultiplier: 0.7,
     contextWindow: 128_000,
+    provider: "DeepSeek",
+    description:
+      "Open-weight reasoning model tuned for code and math with a 128K context window.",
   },
   {
     id: "aura-deepseek-v4-flash",
@@ -254,6 +308,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "open-source",
     creditMultiplier: 0.06,
     contextWindow: 128_000,
+    provider: "DeepSeek",
+    description:
+      "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 128K context window.",
   },
   {
     id: "aura-oss-120b",
@@ -265,6 +322,9 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     contextWindow: 131_072,
     efforts: OSS_REASONING_EFFORTS,
     defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "Open-weight 120B reasoning model with selectable effort tiers and a 128K context window.",
   },
 ];
 
@@ -324,15 +384,47 @@ export function groupChatModelsByVendor(
 }
 
 export const IMAGE_MODELS: ModelOption[] = [
-  { id: "gpt-image-2", label: "GPT Image 2", tier: "image", mode: "image" },
-  { id: "gpt-image-1", label: "GPT Image 1", tier: "image", mode: "image" },
-  { id: "dall-e-3", label: "DALL-E 3", tier: "image", mode: "image" },
-  { id: "dall-e-2", label: "DALL-E 2", tier: "image", mode: "image" },
+  {
+    id: "gpt-image-2",
+    label: "GPT Image 2",
+    tier: "image",
+    mode: "image",
+    provider: "OpenAI",
+    description:
+      "OpenAI's latest high-fidelity image model with strong prompt adherence and text rendering.",
+    featured: true,
+  },
+  {
+    id: "gpt-image-1",
+    label: "GPT Image 1",
+    tier: "image",
+    mode: "image",
+    provider: "OpenAI",
+    description: "Previous-generation GPT image model for fast, detailed generations.",
+  },
+  {
+    id: "dall-e-3",
+    label: "DALL-E 3",
+    tier: "image",
+    mode: "image",
+    provider: "OpenAI",
+    description: "Creative image generation with strong natural-language prompt understanding.",
+  },
+  {
+    id: "dall-e-2",
+    label: "DALL-E 2",
+    tier: "image",
+    mode: "image",
+    provider: "OpenAI",
+    description: "Earlier DALL-E model for quick, low-cost image generation.",
+  },
   {
     id: "gemini-nano-banana",
     label: "Gemini Flash Image",
     tier: "image",
     mode: "image",
+    provider: "Google",
+    description: "Google's fast image model for rapid, conversational image generation and editing.",
   },
 ];
 
@@ -425,17 +517,60 @@ export function getImageModelEstimateMs(modelId?: string | null): number {
  * cleanly via {@link getModelsForMode}.
  */
 export const MODEL_3D_MODELS: ModelOption[] = [
-  { id: "tripo-v2", label: "Tripo v2", tier: "3d", mode: "3d" },
+  {
+    id: "tripo-v2",
+    label: "Tripo v2",
+    tier: "3d",
+    mode: "3d",
+    provider: "Tripo AI",
+    description: "Image-to-3D generation that turns a single reference image into a textured mesh.",
+  },
 ];
 
 export const DEFAULT_3D_MODEL_ID: string = MODEL_3D_MODELS[0]?.id ?? "tripo-v2";
 
 export const VIDEO_MODELS: ModelOption[] = [
-  { id: "veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", tier: "video", mode: "video" },
-  { id: "veo-3.1-generate-preview", label: "Veo 3.1 Standard", tier: "video", mode: "video" },
-  { id: "veo-3.1-lite-generate-preview", label: "Veo 3.1 Lite", tier: "video", mode: "video" },
-  { id: "dreamina-seedance-2-0-260128", label: "Seedance 2.0", tier: "video", mode: "video" },
-  { id: "dreamina-seedance-2-0-fast-260128", label: "Seedance 2.0 Fast", tier: "video", mode: "video" },
+  {
+    id: "veo-3.1-fast-generate-preview",
+    label: "Veo 3.1 Fast",
+    tier: "video",
+    mode: "video",
+    provider: "Google",
+    description: "Sub-minute video generation from Google's Veo family for quick iterations.",
+    featured: true,
+  },
+  {
+    id: "veo-3.1-generate-preview",
+    label: "Veo 3.1 Standard",
+    tier: "video",
+    mode: "video",
+    provider: "Google",
+    description: "Higher-fidelity Veo generation for polished, detailed video clips.",
+  },
+  {
+    id: "veo-3.1-lite-generate-preview",
+    label: "Veo 3.1 Lite",
+    tier: "video",
+    mode: "video",
+    provider: "Google",
+    description: "Lightweight Veo tier for fast, low-cost video drafts.",
+  },
+  {
+    id: "dreamina-seedance-2-0-260128",
+    label: "Seedance 2.0",
+    tier: "video",
+    mode: "video",
+    provider: "ByteDance",
+    description: "ByteDance's Seedance model for expressive, motion-rich video generation.",
+  },
+  {
+    id: "dreamina-seedance-2-0-fast-260128",
+    label: "Seedance 2.0 Fast",
+    tier: "video",
+    mode: "video",
+    provider: "ByteDance",
+    description: "Faster Seedance variant trading some fidelity for quicker turnaround.",
+  },
 ];
 
 export const DEFAULT_VIDEO_MODEL_ID: string = VIDEO_MODELS[0]?.id ?? "veo-3.1-fast-generate-preview";
@@ -448,6 +583,61 @@ export const AVAILABLE_MODELS: ModelOption[] = [
 ];
 
 const CHAT_MODELS: ModelOption[] = AVAILABLE_MODELS.filter((m) => m.mode === "chat");
+
+/**
+ * Modality used by the marketing `/models` page. Chat models are
+ * surfaced as `"text"` there (the page has no `"chat"` tab); the other
+ * three modes map 1:1.
+ */
+export type MarketingModelMode = "text" | "image" | "video" | "3d";
+
+export type MarketingModelStatus = "live" | "soon";
+
+/**
+ * Catalog entry shape consumed by the marketing `/models` page. Derived
+ * entirely from {@link AVAILABLE_MODELS} so the page shows exactly the
+ * models the rest of the app ships with — no network catalog required.
+ */
+export interface MarketingModelEntry {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly description: string;
+  readonly mode: MarketingModelMode;
+  readonly status: MarketingModelStatus;
+  readonly featured: boolean;
+  readonly sortOrder: number;
+}
+
+function marketingMode(mode: GenerationMode): MarketingModelMode {
+  return mode === "chat" ? "text" : mode;
+}
+
+function marketingProvider(model: ModelOption): string {
+  if (model.provider) return model.provider;
+  if (model.vendor) return MODEL_VENDOR_LABELS[model.vendor];
+  return "AURA";
+}
+
+/**
+ * Maps the bundled {@link AVAILABLE_MODELS} into the marketing-page
+ * catalog shape. This is the single source of truth for the `/models`
+ * page, so it always reflects the models actually wired into the app.
+ */
+export function buildMarketingModelEntries(): MarketingModelEntry[] {
+  return AVAILABLE_MODELS.map((model, index) => ({
+    id: model.id,
+    slug: model.id,
+    name: model.label,
+    provider: marketingProvider(model),
+    description: model.description ?? "",
+    mode: marketingMode(model.mode),
+    status: model.marketingStatus ?? "live",
+    featured: model.featured ?? false,
+    sortOrder: index,
+  }));
+}
 
 const KNOWN_MODELS: ModelOption[] = [
   ...AVAILABLE_MODELS,

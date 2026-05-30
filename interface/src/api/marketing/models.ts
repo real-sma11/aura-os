@@ -1,32 +1,25 @@
 /**
- * Browser-side client for the marketing `/models` page.
+ * Catalog source for the marketing `/models` page.
  *
- * Talks to the aura-os-server same-origin pass-through at
- * `/api/public/models`, which proxies to aura-network's
- * `/api/public/models`. Same shape and graceful-degrade contract as
- * the sibling `/api/public/feedback` client at
- * `interface/src/api/marketing/feedback.ts` — upstream errors and
- * missing-config scenarios all surface as an empty array so the
- * marketing page renders an empty catalog instead of an error.
+ * The page is driven entirely by the model constants bundled into the
+ * app (`interface/src/constants/models.ts`) — the same list chat, image,
+ * video, and 3D surfaces use. There is no network fetch: every model the
+ * app ships with is known at build time, so the page always renders the
+ * full catalog regardless of auth state or backend availability.
  */
 
-import { resolveApiUrl } from "../../shared/lib/host-config";
+import {
+  buildMarketingModelEntries,
+  type MarketingModelEntry,
+  type MarketingModelMode,
+  type MarketingModelStatus,
+} from "../../constants/models";
 
-export type ModelMode = "text" | "image" | "video" | "3d";
+export type ModelMode = MarketingModelMode;
 
-export type ModelStatus = "live" | "soon";
+export type ModelStatus = MarketingModelStatus;
 
-export interface ModelEntry {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly provider: string;
-  readonly description: string;
-  readonly mode: ModelMode;
-  readonly status: ModelStatus;
-  readonly featured: boolean;
-  readonly sortOrder: number;
-}
+export type ModelEntry = MarketingModelEntry;
 
 export interface ListModelsParams {
   readonly mode?: ModelMode | null;
@@ -49,66 +42,27 @@ export function normalizeStatus(
     : null;
 }
 
-interface PublicModelEntryResponse {
-  readonly id: string;
-  readonly slug: string;
-  readonly name: string;
-  readonly provider: string;
-  readonly description: string;
-  readonly mode: string;
-  readonly status: string;
-  readonly featured: boolean;
-  readonly sortOrder: number;
-}
-
-function coerceEntry(raw: PublicModelEntryResponse): ModelEntry {
-  // The server-side CHECK constraint guarantees `mode` and `status`
-  // are in the allow-list, but we still narrow with a fallback so a
-  // future server change can't break this client at parse time.
-  return {
-    id: raw.id,
-    slug: raw.slug,
-    name: raw.name,
-    provider: raw.provider,
-    description: raw.description ?? "",
-    mode: (normalizeMode(raw.mode) ?? "text") as ModelMode,
-    status: (normalizeStatus(raw.status) ?? "live") as ModelStatus,
-    featured: Boolean(raw.featured),
-    sortOrder: Number(raw.sortOrder) || 0,
-  };
-}
-
+/**
+ * Returns the bundled model catalog, optionally narrowed by mode,
+ * status, and free-text search. Kept `async` so the marketing page can
+ * keep loading it through React Query without special-casing a
+ * synchronous source.
+ */
 export async function listModels(
   params: ListModelsParams = {},
 ): Promise<readonly ModelEntry[]> {
   const mode = normalizeMode(params.mode ?? null);
   const status = normalizeStatus(params.status ?? null);
-  const search = (params.search ?? "").trim();
+  const needle = (params.search ?? "").trim().toLowerCase();
 
-  const query = new URLSearchParams();
-  if (mode) query.set("mode", mode);
-  if (status) query.set("status", status);
-  if (search.length > 0) query.set("q", search);
-
-  const qs = query.toString();
-  const url = `${resolveApiUrl("/api/public/models")}${qs ? `?${qs}` : ""}`;
-
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      console.error(
-        `[models] GET ${url} failed: ${res.status} ${res.statusText}`,
-      );
-      return [];
-    }
-    const json = (await res.json()) as PublicModelEntryResponse[];
-    if (!Array.isArray(json)) {
-      console.error("[models] expected array response, got:", typeof json);
-      return [];
-    }
-    return json.map(coerceEntry);
-  } catch (err) {
-    console.error("[models] listModels failed", err);
-    return [];
-  }
+  return buildMarketingModelEntries().filter((entry) => {
+    if (mode && entry.mode !== mode) return false;
+    if (status && entry.status !== status) return false;
+    if (needle.length === 0) return true;
+    return (
+      entry.name.toLowerCase().includes(needle) ||
+      entry.provider.toLowerCase().includes(needle) ||
+      entry.description.toLowerCase().includes(needle)
+    );
+  });
 }
