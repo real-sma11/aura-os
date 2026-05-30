@@ -1,0 +1,100 @@
+.formColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fieldLabel {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-size-xs, 11px);
+}
+
+.bodyInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 96px;
+  outline: none;
+}
+
+.bodyInput::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.bodyInput:focus {
+  border-color: var(--color-text-secondary);
+}
+
+.severityField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 220px;
+}
+
+.summaryBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.summaryTitle {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--font-size-xs, 11px);
+}
+
+.summaryList {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.6;
+}
+
+.consentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.consentRow input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.consentCopy {
+  color: var(--color-text);
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+}
+
+.errorText {
+  color: var(--color-danger, #e27c7c);
+}

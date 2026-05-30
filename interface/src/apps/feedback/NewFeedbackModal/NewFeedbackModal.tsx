@@ -9,7 +9,7 @@ import {
   getRecent,
   useStreamBreadcrumbsStore,
 } from "../../../stores/stream-breadcrumbs-store";
-import { buildReportBugBody } from "../../../components/ReportBugButton/ReportBugButton";
+import { buildReportBugBody } from "../../../components/ReportBugButton/build-report-bug-body";
 import {
   DEFAULT_FEEDBACK_PRODUCT,
   FEEDBACK_CATEGORY_OPTIONS,
