@@ -209,7 +209,11 @@
   display: inline-block;
   position: relative;
   text-align: center;
-  font-size: clamp(26px, 4.3vw, 48px);
+  /*
+   * 0.75x the `/product` centered hero ramp (`clamp(26px, 4.3vw, 48px)`)
+   * — the landing tagline reads 25% smaller than the product header.
+   */
+  font-size: clamp(19.5px, 3.225vw, 36px);
   font-weight: 300;
   line-height: 1.05;
   letter-spacing: -0.035em;
