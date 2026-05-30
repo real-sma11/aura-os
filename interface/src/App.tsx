@@ -344,7 +344,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="changelog"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <ChangelogView />
                 </Suspense>
               }
@@ -352,7 +352,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="feedback"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <FeedbackView />
                 </Suspense>
               }
@@ -360,7 +360,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="pricing"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <PricingView />
                 </Suspense>
               }
@@ -368,7 +368,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="models"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <ModelsView />
                 </Suspense>
               }
@@ -376,7 +376,7 @@ function AppRoutes(): React.ReactElement {
             <Route
               path="download"
               element={
-                <Suspense fallback={<RouteFallback />}>
+                <Suspense fallback={null}>
                   <DownloadView />
                 </Suspense>
               }
