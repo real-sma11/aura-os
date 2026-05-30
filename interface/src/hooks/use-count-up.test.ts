@@ -77,15 +77,27 @@ describe("useCountUp", () => {
     raf.reset();
   });
 
-  it("holds at 0 while the target is null", () => {
-    const { result } = renderHook(() => useCountUp({ target: null }));
+  it("ramps toward the loading target while the real target is null", () => {
+    const { result } = renderHook(() =>
+      useCountUp({
+        target: null,
+        loadingTarget: 99,
+        loadingRampMs: 900,
+      }),
+    );
 
     expect(result.current).toBe(0);
 
     act(() => {
-      raf.step(1000);
+      raf.step(450);
     });
-    expect(result.current).toBe(0);
+    expect(result.current).toBeGreaterThan(0);
+    expect(result.current).toBeLessThan(99);
+
+    act(() => {
+      raf.step(450);
+    });
+    expect(result.current).toBe(99);
   });
 
   it("eases the displayed value from 0 up to the target over durationMs", () => {
@@ -107,31 +119,36 @@ describe("useCountUp", () => {
     expect(result.current).toBe(1000);
   });
 
-  it("counts up from 0 once the target transitions from null to a finite value", () => {
+  it("counts up from the loading ramp once the target transitions from null to a finite value", () => {
     const { result, rerender } = renderHook(
       ({ target }: { target: number | null }) =>
-        useCountUp({ target, durationMs: 400 }),
+        useCountUp({
+          target,
+          durationMs: 400,
+          loadingTarget: 99,
+          loadingRampMs: 900,
+        }),
       { initialProps: { target: null as number | null } },
     );
 
     act(() => {
-      raf.step(1000);
+      raf.step(900);
     });
-    expect(result.current).toBe(0);
+    expect(result.current).toBe(99);
 
-    rerender({ target: 42 });
-    expect(result.current).toBe(0);
-
-    act(() => {
-      raf.step(200);
-    });
-    expect(result.current).toBeGreaterThan(0);
-    expect(result.current).toBeLessThan(42);
+    rerender({ target: 142 });
+    expect(result.current).toBe(99);
 
     act(() => {
       raf.step(200);
     });
-    expect(result.current).toBe(42);
+    expect(result.current).toBeGreaterThan(99);
+    expect(result.current).toBeLessThan(142);
+
+    act(() => {
+      raf.step(200);
+    });
+    expect(result.current).toBe(142);
   });
 
   it("animates from 0 even when the target is already known on mount (cached load)", () => {
@@ -145,6 +162,27 @@ describe("useCountUp", () => {
       raf.step(400);
     });
     expect(result.current).toBe(6120);
+  });
+
+  it("replays from 0 when resetKey changes", () => {
+    const { result, rerender } = renderHook(
+      ({ resetKey }: { resetKey: string }) =>
+        useCountUp({ target: 500, durationMs: 400, resetKey }),
+      { initialProps: { resetKey: "visit-1" } },
+    );
+
+    act(() => {
+      raf.step(400);
+    });
+    expect(result.current).toBe(500);
+
+    rerender({ resetKey: "visit-2" });
+    expect(result.current).toBe(0);
+
+    act(() => {
+      raf.step(400);
+    });
+    expect(result.current).toBe(500);
   });
 
   it("snaps to the target without animating when prefers-reduced-motion is set", () => {

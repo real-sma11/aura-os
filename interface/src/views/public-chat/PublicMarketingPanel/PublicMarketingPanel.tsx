@@ -92,7 +92,7 @@ export function PublicMarketingPanel(): React.ReactElement {
   return (
     <div className={styles.root}>
       <div ref={scrollRef} className={styles.scrollColumn}>
-        <Outlet />
+        <Outlet key={pathname} />
       </div>
       <OverlayScrollbar scrollRef={scrollRef} />
     </div>

@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   type ChangelogEntry,
   type ChangelogTimelineMedia,
@@ -37,6 +37,9 @@ function normalizeManifestChannel(
 }
 
 const COMMITS_LIVE_TITLE = `Live total across ${AURA_PUBLIC_REPOS.length} AURA repositories`;
+const BANNER_COUNT_UP_DURATION_MS = 700;
+const BANNER_LOADING_TARGET = 99;
+const BANNER_LOADING_RAMP_MS = 1800;
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
 
@@ -303,6 +306,8 @@ function getMediaAltText(title: string, alt: string | undefined): string {
  * parent route.
  */
 export function ChangelogView(): ReactNode {
+  const { key: visitKey } = useLocation();
+
   useEffect(() => {
     const previousTitle = document.title;
     document.title = "AURA - Changelog";
@@ -376,22 +381,37 @@ export function ChangelogView(): ReactNode {
     [entries],
   );
 
-  // Count every summary stat up from 0 to its final value once it's
-  // known. The release counts come from the changelog query (0 while
-  // loading, then their real totals); the commit counts come from the
-  // separate live GitHub query and hold at 0 (target null) until it
-  // resolves.
+  // Count every summary stat up from 0 on each visit. Targets stay null
+  // while their query is pending so the loading ramp runs during fetch;
+  // once a finite total arrives the displayed value eases from wherever
+  // the ramp left off up to the real number.
   const releasesThisMonthDisplay = useCountUp({
-    target: stats.releasesThisMonth,
+    target: isLoading ? null : stats.releasesThisMonth,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const releasesAllTimeDisplay = useCountUp({
-    target: stats.releasesAllTime,
+    target: isLoading ? null : stats.releasesAllTime,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsThisMonthDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsThisMonth : null,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsAllTimeDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsAllTime : null,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
 
   return (

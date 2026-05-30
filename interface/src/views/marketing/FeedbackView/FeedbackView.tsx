@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -16,6 +16,9 @@ import { FeedbackFilters } from "./FeedbackFilters";
 import "./FeedbackView.css";
 
 const STAT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
+const BANNER_COUNT_UP_DURATION_MS = 700;
+const BANNER_LOADING_TARGET = 99;
+const BANNER_LOADING_RAMP_MS = 1800;
 
 /**
  * Marketing `/feedback` page. Ported from
@@ -31,6 +34,8 @@ const STAT_NUMBER_FORMATTER = new Intl.NumberFormat("en-US");
  * upstream URL directly.
  */
 export function FeedbackView(): ReactNode {
+  const { key: visitKey } = useLocation();
+
   useEffect(() => {
     const previousTitle = document.title;
     document.title = "AURA - Feedback";
@@ -54,7 +59,7 @@ export function FeedbackView(): ReactNode {
   // totals stay stable while the user changes the list filters. The
   // public endpoint caps results at 200 and exposes no aggregate-stats
   // route, so these are approximations over the most recent items.
-  const { data: statsData } = useQuery({
+  const { data: statsData, isPending: statsPending } = useQuery({
     queryKey: ["marketing-feedback-stats"],
     queryFn: () => listFeedback({ limit: 200 }),
     staleTime: 5 * 60 * 1000,
@@ -74,13 +79,25 @@ export function FeedbackView(): ReactNode {
   }, [statsData]);
 
   const submittedDisplay = useCountUp({
-    target: statsData ? stats.submitted : null,
+    target: statsPending ? null : stats.submitted,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const resolvedDisplay = useCountUp({
-    target: statsData ? stats.resolved : null,
+    target: statsPending ? null : stats.resolved,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const participantsDisplay = useCountUp({
-    target: statsData ? stats.participants : null,
+    target: statsPending ? null : stats.participants,
+    resetKey: visitKey,
+    loadingTarget: BANNER_LOADING_TARGET,
+    loadingRampMs: BANNER_LOADING_RAMP_MS,
+    durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
 
   const entries = data ?? [];
