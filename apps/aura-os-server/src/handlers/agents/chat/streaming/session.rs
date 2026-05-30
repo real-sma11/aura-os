@@ -67,9 +67,7 @@ pub(super) async fn get_or_create_delegated_chat_session(
     // axis of the registry key so an effort change re-opens the
     // session instead of reusing one pinned to the prior level.
     let requested_effort = session_config.reasoning_effort.clone();
-    if let Some(reused) =
-        try_reuse_session(state, key, &requested_model, &requested_effort).await
-    {
+    if let Some(reused) = try_reuse_session(state, key, &requested_model, &requested_effort).await {
         return reuse_with_turn_slot(
             reused,
             turn,
@@ -235,8 +233,7 @@ async fn insert_delegated_chat_session(
     let rx = started.events_rx;
     let events_tx = started.session.events_tx.clone();
     let commands_tx = started.session.commands_tx.clone();
-    let composite_key =
-        ChatSessionKey::with_effort(key, requested_model.clone(), requested_effort);
+    let composite_key = ChatSessionKey::with_effort(key, requested_model.clone(), requested_effort);
     state.chat_sessions.insert(
         composite_key,
         ChatSession {

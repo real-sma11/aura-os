@@ -109,7 +109,10 @@ mod tests {
     /// `None`/closed is our proxy for "the WS writer task would now
     /// shut down and release the slot", since dropping the session is
     /// what drops the only `commands_tx` sender.
-    fn fake_session() -> (HarnessSession, mpsc::Receiver<aura_protocol::InboundMessage>) {
+    fn fake_session() -> (
+        HarnessSession,
+        mpsc::Receiver<aura_protocol::InboundMessage>,
+    ) {
         let (events_tx, _) = broadcast::channel(8);
         let (raw_events_tx, _) = broadcast::channel(8);
         let (commands_tx, commands_rx) = mpsc::channel(8);
@@ -133,10 +136,7 @@ mod tests {
         // Dropping the session dropped the sole `commands_tx`, so the
         // receiver now observes a closed channel — the signal that the
         // ws-bridge writer ends and the slot is released.
-        assert!(matches!(
-            commands_rx.recv().await,
-            None
-        ));
+        assert!(matches!(commands_rx.recv().await, None));
     }
 
     #[tokio::test]

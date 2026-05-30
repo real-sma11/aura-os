@@ -1,4 +1,4 @@
-﻿//! Shared automaton lifecycle runner.
+//! Shared automaton lifecycle runner.
 //!
 //! Provides [`start_and_connect`] and [`collect_automaton_events`] so both the
 //! dev-loop task pipeline and the process executor can reuse the same
@@ -27,7 +27,9 @@ pub use collector::{collect_automaton_events, CollectedOutput, RunCompletion};
 use crate::automaton_client::{
     automaton_start_params_to_runtime_request, validate_automaton_start_identity,
 };
-use crate::{AutomatonStartError, AutomatonStartParams, HarnessError, HarnessLink, RunHandle, WsReaderHandle};
+use crate::{
+    AutomatonStartError, AutomatonStartParams, HarnessError, HarnessLink, RunHandle, WsReaderHandle,
+};
 
 /// Submit an automaton run via the canonical [`HarnessLink::submit_run`]
 /// surface, mapping the transport's typed `anyhow` causes back onto the

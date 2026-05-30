@@ -166,11 +166,17 @@ impl HarnessLink for LocalHarness {
     ) -> anyhow::Result<HarnessSession> {
         let per_attempt_timeout = read_connect_timeout_from_env();
         let ws_url = self.ws_url_for_run(run_id);
-        self.attach_run_at_ws_url(&ws_url, run_id, auth_token, wait_for_ready, per_attempt_timeout)
-            .await
-            .map_err(|e| match e {
-                OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
-            })
+        self.attach_run_at_ws_url(
+            &ws_url,
+            run_id,
+            auth_token,
+            wait_for_ready,
+            per_attempt_timeout,
+        )
+        .await
+        .map_err(|e| match e {
+            OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
+        })
     }
 
     async fn attach_run_at_url(
@@ -182,11 +188,17 @@ impl HarnessLink for LocalHarness {
     ) -> anyhow::Result<HarnessSession> {
         let per_attempt_timeout = read_connect_timeout_from_env();
         let ws_url = self.resolve_event_stream_url(run_id, event_stream_url);
-        self.attach_run_at_ws_url(&ws_url, run_id, auth_token, wait_for_ready, per_attempt_timeout)
-            .await
-            .map_err(|e| match e {
-                OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
-            })
+        self.attach_run_at_ws_url(
+            &ws_url,
+            run_id,
+            auth_token,
+            wait_for_ready,
+            per_attempt_timeout,
+        )
+        .await
+        .map_err(|e| match e {
+            OpenAttemptError::Capacity(err) | OpenAttemptError::Other(err) => err,
+        })
     }
 
     async fn pause_run(&self, run_id: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
@@ -317,7 +329,12 @@ impl LocalHarness {
             .map_err(|e| anyhow::anyhow!("failed to build lifecycle http client: {e}"))
     }
 
-    async fn lifecycle_post(&self, run_id: &str, action: &str, auth_token: Option<&str>) -> anyhow::Result<()> {
+    async fn lifecycle_post(
+        &self,
+        run_id: &str,
+        action: &str,
+        auth_token: Option<&str>,
+    ) -> anyhow::Result<()> {
         let url = format!("{}/v1/run/{run_id}/{action}", self.base_url);
         let mut req = Self::lifecycle_http_client()?.post(&url);
         if let Some(token) = auth_token {
@@ -420,8 +437,9 @@ impl LocalHarness {
                 body,
             }));
         }
-        let run_handle: RunHandle = serde_json::from_str(&body)
-            .map_err(|e| anyhow::anyhow!("POST /v1/run response parse failed: {e}, body: {body}"))?;
+        let run_handle: RunHandle = serde_json::from_str(&body).map_err(|e| {
+            anyhow::anyhow!("POST /v1/run response parse failed: {e}, body: {body}")
+        })?;
         Ok(run_handle)
     }
 
@@ -580,7 +598,11 @@ fn extract_conflict_run_id(body: &str) -> Option<String> {
             if let Some(pos) = msg.find(needle) {
                 let tail = msg[pos + needle.len()..].trim_start();
                 let tail = tail.strip_prefix("Some(").unwrap_or(tail);
-                let tail = tail.trim_matches('"').trim_matches(')').trim_matches('"').trim();
+                let tail = tail
+                    .trim_matches('"')
+                    .trim_matches(')')
+                    .trim_matches('"')
+                    .trim();
                 let end = tail
                     .find(|c: char| {
                         c == ')' || c == ',' || c == '}' || c == '"' || c.is_whitespace()
@@ -724,10 +746,7 @@ mod tests {
     #[test]
     fn extract_conflict_run_id_reads_nested_data_object() {
         let body = r#"{"error":"conflict","data":{"run_id":"run-nested"}}"#;
-        assert_eq!(
-            extract_conflict_run_id(body).as_deref(),
-            Some("run-nested")
-        );
+        assert_eq!(extract_conflict_run_id(body).as_deref(), Some("run-nested"));
     }
 
     #[test]
