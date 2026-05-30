@@ -153,16 +153,13 @@
 }
 
 .heroSlot {
-  /*
-   * `container-type: size` lets `MockAuraApp.module.css` size the
-   * wallpaper rectangle with `cqw`/`cqh` units scoped to this slot.
-   */
-  container-type: size;
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   padding: 24px 16px;
+  gap: 24px;
   /*
    * Sit above the `.siteBackground` layers. Without an explicit
    * stacking position the in-flow `.heroSlot` would paint UNDER
@@ -171,6 +168,51 @@
    */
   position: relative;
   z-index: 1;
+}
+
+/*
+ * Centered tagline above the mock desktop widget, matching the
+ * `/product` hero headline (`PageHero.css` `.pageHeroHeadline`). The
+ * `data-text` reserve (see `.heroHeadline::before`) holds final width
+ * so the `TypewriterText` animation does not shift layout as it types.
+ */
+.heroHeadline {
+  display: inline-block;
+  position: relative;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: clamp(26px, 4.3vw, 48px);
+  line-height: 1.05;
+  font-weight: 600;
+  color: #f7f8fb;
+}
+
+.heroHeadline::before {
+  content: attr(data-text);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.heroHeadline > span {
+  position: absolute;
+  inset: 0;
+  display: block;
+  text-align: inherit;
+}
+
+/*
+ * Holds the mock desktop widget below the tagline. `container-type:
+ * size` lives here (rather than on `.heroSlot`) so `MockAuraApp`'s
+ * `cqw`/`cqh` wallpaper sizing measures the area left after the
+ * headline, keeping the widget within the remaining space.
+ */
+.heroStage {
+  container-type: size;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  place-items: center;
 }
 
 .chatSurface {

@@ -25,6 +25,7 @@ import { ComposePanel } from "../ComposePanel";
 import { CreateAgentButton } from "../CreateAgentButton";
 import { PersonaTickRail } from "../PersonaTickRail";
 import { PublicChatBubble } from "../PublicChatBubble";
+import { TypewriterText } from "../TypewriterText";
 import { deriveChatPalette } from "../MockAuraApp/derive-chat-palette";
 import { PERSONAS, getPersonaAt, type Persona } from "../personas";
 import styles from "./PublicChatView.module.css";
@@ -482,8 +483,15 @@ export function PublicChatView(): React.ReactElement {
        */}
       {!isChatPage ? (
         <div className={styles.heroSlot}>
-          <ComposePanel
-            desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
+          <span
+            className={styles.heroHeadline}
+            data-text="Your Private Agent."
+          >
+            <TypewriterText text="Your Private Agent." speedMs={45} />
+          </span>
+          <div className={styles.heroStage}>
+            <ComposePanel
+              desktopBackgroundUrl={committedPersona.theme.desktopBackgroundUrl}
             desktopBackgroundPosition={
               committedPersona.theme.desktopBackgroundPosition
             }
@@ -509,7 +517,8 @@ export function PublicChatView(): React.ReactElement {
             chatPalette={chatPalette}
             activePersonaIndex={activeIndex}
             onPersonaSelect={handleActiveIndexChange}
-          />
+            />
+          </div>
         </div>
       ) : null}
       {isChatPage ? (
