@@ -51,6 +51,12 @@ export interface ModelOption {
    */
   creditMultiplier?: number;
   /**
+   * Context window in tokens, shown in the picker's hover submenu header
+   * (formatted via {@link formatContextWindow}, e.g. "200K context" /
+   * "1M context"). Omitted on models without a meaningful window.
+   */
+  contextWindow?: number;
+  /**
    * Reasoning-effort tiers selectable from the hover flyout. When set,
    * the model row reveals an effort submenu; when omitted the row is a
    * plain selectable entry.
@@ -119,6 +125,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 5,
+    contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
@@ -129,6 +136,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 5,
+    contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
@@ -139,6 +147,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 5,
+    contextWindow: 200_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
@@ -149,6 +158,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 3,
+    contextWindow: 1_000_000,
     efforts: ANTHROPIC_EFFORTS,
     defaultEffort: "medium",
   },
@@ -159,6 +169,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "anthropic",
     creditMultiplier: 1,
+    contextWindow: 200_000,
     efforts: ANTHROPIC_LITE_EFFORTS,
     defaultEffort: "low",
   },
@@ -170,6 +181,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "openai",
     creditMultiplier: 6,
+    contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
   },
@@ -180,6 +192,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "openai",
     creditMultiplier: 3,
+    contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "medium",
   },
@@ -190,6 +203,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "openai",
     creditMultiplier: 0.9,
+    contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "low",
   },
@@ -200,6 +214,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "openai",
     creditMultiplier: 0.25,
+    contextWindow: 400_000,
     efforts: OPENAI_EFFORTS,
     defaultEffort: "minimal",
   },
@@ -211,6 +226,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.8,
+    contextWindow: 256_000,
   },
   {
     id: "aura-kimi-k2-5",
@@ -219,6 +235,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.6,
+    contextWindow: 256_000,
   },
   {
     id: "aura-deepseek-v4-pro",
@@ -227,6 +244,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.7,
+    contextWindow: 128_000,
   },
   {
     id: "aura-deepseek-v4-flash",
@@ -235,6 +253,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.06,
+    contextWindow: 128_000,
   },
   {
     id: "aura-oss-120b",
@@ -243,6 +262,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.12,
+    contextWindow: 131_072,
     efforts: OSS_REASONING_EFFORTS,
     defaultEffort: "medium",
   },
@@ -850,6 +870,21 @@ export function formatCreditMultiplier(
   // Whole numbers read "15x"; fractional rates keep their decimal ("0.5x").
   const rounded = Math.round(multiplier * 100) / 100;
   return `${rounded}x`;
+}
+
+/**
+ * Formats a context window (in tokens) for the picker's hover submenu,
+ * e.g. `1_000_000` -> "1M context", `200_000` -> "200K context". Returns
+ * `null` for nullish/non-positive values so callers can omit the line.
+ */
+export function formatContextWindow(tokens?: number | null): string | null {
+  if (!tokens || tokens <= 0) return null;
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    const value = Number.isInteger(millions) ? millions : millions.toFixed(1);
+    return `${value}M context`;
+  }
+  return `${Math.round(tokens / 1000)}K context`;
 }
 
 /**

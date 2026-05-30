@@ -11,6 +11,7 @@ import { ChevronRight } from "lucide-react";
 import {
   EFFORT_LABELS,
   effectiveCreditMultiplier,
+  formatContextWindow,
   formatCreditMultiplier,
   type ModelEffort,
   type ModelOption,
@@ -44,15 +45,17 @@ interface FlyoutPosition {
   right?: number;
 }
 
-const FLYOUT_WIDTH = 132;
+const FLYOUT_WIDTH = 184;
 const CLOSE_DELAY_MS = 120;
 
 /**
  * One row of the chat model picker. Renders the model label plus a credit
- * multiplier badge, and — for models that declare `efforts` — reveals a
- * reasoning-effort flyout on hover. The flyout is rendered through a
- * `document.body` portal (anchored to the row's bounding rect) because the
- * scrolling `.modelMenu` container clips any sideways child.
+ * multiplier badge, and reveals a hover flyout describing the model: a
+ * header with the name, cost multiple, and context window, followed by a
+ * reasoning-effort selector for models that declare `efforts`. The flyout
+ * is rendered through a `document.body` portal (anchored to the row's
+ * bounding rect) because the scrolling `.modelMenu` container clips any
+ * sideways child.
  */
 export const ModelMenuRow = memo(function ModelMenuRow({
   model,
@@ -75,6 +78,10 @@ export const ModelMenuRow = memo(function ModelMenuRow({
       ? effectiveCreditMultiplier(model, activeEffort)
       : model.creditMultiplier,
   );
+  const contextText = formatContextWindow(model.contextWindow);
+  // The flyout opens for every (enabled) row now that it carries a model
+  // header; the effort selector is just an optional section within it.
+  const hasFlyout = !disabled;
 
   const clearCloseTimer = useCallback(() => {
     if (closeTimer.current) {
@@ -84,7 +91,7 @@ export const ModelMenuRow = memo(function ModelMenuRow({
   }, []);
 
   const openFlyout = useCallback(() => {
-    if (!hasEfforts) return;
+    if (!hasFlyout) return;
     clearCloseTimer();
     const rect = rowRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -94,7 +101,7 @@ export const ModelMenuRow = memo(function ModelMenuRow({
         ? { top: rect.top, left: rect.right + 2 }
         : { top: rect.top, right: window.innerWidth - rect.left + 2 };
     setFlyoutPos(pos);
-  }, [clearCloseTimer, hasEfforts]);
+  }, [clearCloseTimer, hasFlyout]);
 
   const scheduleClose = useCallback(() => {
     clearCloseTimer();
@@ -143,13 +150,13 @@ export const ModelMenuRow = memo(function ModelMenuRow({
           {multiplierText ? (
             <span className={styles.modelMultiplier}>{multiplierText}</span>
           ) : null}
-          {hasEfforts ? (
+          {hasFlyout ? (
             <ChevronRight size={11} className={styles.modelMenuItemChevron} />
           ) : null}
         </span>
       </button>
 
-      {hasEfforts && flyoutPos && typeof document !== "undefined"
+      {hasFlyout && flyoutPos && typeof document !== "undefined"
         ? createPortal(
             <div
               data-model-menu-root="true"
@@ -158,28 +165,40 @@ export const ModelMenuRow = memo(function ModelMenuRow({
               onMouseEnter={clearCloseTimer}
               onMouseLeave={scheduleClose}
             >
-              {model.efforts!.map((effort) => {
-                const selected = isActive && activeEffort === effort;
-                const effortMultiplier = formatCreditMultiplier(
-                  effectiveCreditMultiplier(model, effort),
-                );
-                return (
-                  <button
-                    key={effort}
-                    type="button"
-                    className={`${styles.modelEffortOption} ${selected ? styles.modelEffortOptionActive : ""}`}
-                    data-agent-effort={effort}
-                    onClick={() => onSelect(model.id, effort)}
-                  >
-                    <span>{EFFORT_LABELS[effort]}</span>
-                    {effortMultiplier ? (
-                      <span className={styles.modelEffortOptionMultiplier}>
-                        {effortMultiplier}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+              <div className={styles.modelFlyoutHeader}>
+                <span className={styles.modelFlyoutName}>{model.label}</span>
+                {multiplierText || contextText ? (
+                  <span className={styles.modelFlyoutMeta}>
+                    {[multiplierText, contextText].filter(Boolean).join(" · ")}
+                  </span>
+                ) : null}
+              </div>
+              {hasEfforts ? (
+                <div className={styles.modelFlyoutEfforts}>
+                  {model.efforts!.map((effort) => {
+                    const selected = isActive && activeEffort === effort;
+                    const effortMultiplier = formatCreditMultiplier(
+                      effectiveCreditMultiplier(model, effort),
+                    );
+                    return (
+                      <button
+                        key={effort}
+                        type="button"
+                        className={`${styles.modelEffortOption} ${selected ? styles.modelEffortOptionActive : ""}`}
+                        data-agent-effort={effort}
+                        onClick={() => onSelect(model.id, effort)}
+                      >
+                        <span>{EFFORT_LABELS[effort]}</span>
+                        {effortMultiplier ? (
+                          <span className={styles.modelEffortOptionMultiplier}>
+                            {effortMultiplier}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>,
             document.body,
           )
