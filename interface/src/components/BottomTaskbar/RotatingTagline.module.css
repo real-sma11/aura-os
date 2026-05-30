@@ -1,0 +1,45 @@
+/*
+ * Public-mode rotating value-prop text. Sized + colored to match the
+ * surrounding muted taskbar chrome (`.poweredByGrid` / `.clock`) so
+ * it reads as quiet chrome text rather than an actionable control.
+ * `min-width` + centered layout pin the pill width so swapping
+ * between the short ("Secure.") and long ("Decentralized.") words
+ * doesn't reflow the left cluster.
+ */
+.tagline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: var(--taskbar-item-size);
+  padding: 0 6px;
+  font-size: var(--public-pill-font-size, var(--text-2xs));
+  font-weight: var(--public-pill-font-weight, 600);
+  line-height: 1;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  user-select: none;
+  overflow: hidden;
+}
+
+.word {
+  display: inline-block;
+  animation: taglineFadeIn 360ms ease;
+}
+
+@keyframes taglineFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word {
+    animation: none;
+  }
+}

@@ -29,6 +29,7 @@ import { ProfilePill } from "./ProfilePill";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PoweredByGridButton } from "./PoweredByGridButton";
+import { RotatingTagline } from "./RotatingTagline";
 import styles from "./BottomTaskbar.module.css";
 
 const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
@@ -102,6 +103,7 @@ function PublicBottomTaskbar(): React.ReactElement {
     >
       <div className={styles.left}>
         <ThemeToggleButton />
+        <RotatingTagline />
       </div>
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
