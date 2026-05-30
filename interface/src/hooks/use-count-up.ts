@@ -1,23 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-const DEFAULT_LOADING_TARGET = 1000;
-const DEFAULT_LOADING_RAMP_MS = 2500;
-const DEFAULT_SNAP_MS = 350;
+const DEFAULT_DURATION_MS = 1200;
 
 export interface UseCountUpOptions {
   /**
-   * When `null`, the hook is in the "loading" phase and ramps the
-   * displayed value linearly from 0 up to `loadingTarget`. As soon as a
-   * finite number is provided, it transitions to the "resolved" phase
-   * and rapidly snaps the displayed value to the new target.
+   * The final value to count up to. While `null` (data still loading)
+   * the displayed value holds at its current position (0 on first
+   * paint). As soon as a finite number arrives the displayed value
+   * eases from where it is now up to `target`.
    */
   readonly target: number | null;
-  /** Value the loading ramp climbs toward. Defaults to 1000. */
-  readonly loadingTarget?: number;
-  /** Duration of the 0 -> loadingTarget ramp. Defaults to 2500ms. */
-  readonly loadingRampMs?: number;
-  /** Duration of the resolved-phase snap. Defaults to 350ms. */
-  readonly snapMs?: number;
+  /** Duration of the count-up animation. Defaults to 1200ms. */
+  readonly durationMs?: number;
 }
 
 function easeOutCubic(t: number): number {
@@ -37,20 +31,18 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * Animated count-up used by the `/changelog` summary card. While the
- * live-commits query is pending the displayed value climbs from 0 to
- * `loadingTarget` (default 1000) over `loadingRampMs`; once the real
- * count arrives the value rapidly eases from wherever it is now to the
- * final target over `snapMs`. Respects `prefers-reduced-motion` by
+ * Animated count-up used by the `/changelog` summary card. The displayed
+ * value always starts at 0 and eases up to `target` over `durationMs`
+ * once a finite number is available — including on cached revisits where
+ * the value is already known on mount. While `target` is `null` (query
+ * pending) the value holds at 0. Respects `prefers-reduced-motion` by
  * short-circuiting to the final value with no animation.
  */
 export function useCountUp({
   target,
-  loadingTarget = DEFAULT_LOADING_TARGET,
-  loadingRampMs = DEFAULT_LOADING_RAMP_MS,
-  snapMs = DEFAULT_SNAP_MS,
+  durationMs = DEFAULT_DURATION_MS,
 }: UseCountUpOptions): number {
-  const [displayed, setDisplayed] = useState<number>(() => target ?? 0);
+  const [displayed, setDisplayed] = useState<number>(0);
   const displayedRef = useRef<number>(displayed);
   const frameRef = useRef<number | null>(null);
 
@@ -68,57 +60,21 @@ export function useCountUp({
 
     cancel();
 
-    // Reduced-motion users skip the ramp/snap animation. We still go
-    // through a single rAF tick so the lint rule against synchronous
-    // setState-in-effect stays happy and the state update lands on the
-    // next paint instead of cascading into the same render.
-    if (prefersReducedMotion()) {
-      const finalValue = target ?? 0;
-      frameRef.current = window.requestAnimationFrame(() => {
-        if (displayedRef.current !== finalValue) {
-          setDisplayed(finalValue);
-        }
-        frameRef.current = null;
-      });
+    // Hold the current value while the underlying data is still loading.
+    if (target === null) {
       return cancel;
     }
 
-    if (target === null) {
-      const startValue = displayedRef.current;
-      const startTime = performance.now();
-      const totalDelta = loadingTarget - startValue;
-
-      if (totalDelta <= 0) {
-        // Already at or past the loading cap; defer the parity-check
-        // setState to a microtask so we don't synchronously kick a
-        // second render from the effect body.
-        frameRef.current = window.requestAnimationFrame(() => {
-          if (displayedRef.current !== loadingTarget) {
-            setDisplayed(loadingTarget);
-          }
-          frameRef.current = null;
-        });
-        return cancel;
-      }
-
-      const remainingMs = Math.max(
-        16,
-        (loadingRampMs * totalDelta) / loadingTarget,
-      );
-
-      const step = (timestamp: number) => {
-        const progress = Math.min(1, (timestamp - startTime) / remainingMs);
-        const next = Math.round(startValue + totalDelta * progress);
-        if (next !== displayedRef.current) {
-          setDisplayed(next);
+    // Reduced-motion users skip the animation. We still go through a
+    // single rAF tick so the state update lands on the next paint
+    // instead of cascading synchronously out of the effect body.
+    if (prefersReducedMotion()) {
+      frameRef.current = window.requestAnimationFrame(() => {
+        if (displayedRef.current !== target) {
+          setDisplayed(target);
         }
-        if (progress < 1) {
-          frameRef.current = window.requestAnimationFrame(step);
-        } else {
-          frameRef.current = null;
-        }
-      };
-      frameRef.current = window.requestAnimationFrame(step);
+        frameRef.current = null;
+      });
       return cancel;
     }
 
@@ -130,7 +86,7 @@ export function useCountUp({
     const startTime = performance.now();
 
     const step = (timestamp: number) => {
-      const linear = Math.min(1, (timestamp - startTime) / snapMs);
+      const linear = Math.min(1, (timestamp - startTime) / durationMs);
       const eased = easeOutCubic(linear);
       const next = Math.round(startValue + delta * eased);
       if (next !== displayedRef.current) {
@@ -147,7 +103,7 @@ export function useCountUp({
     };
     frameRef.current = window.requestAnimationFrame(step);
     return cancel;
-  }, [target, loadingTarget, loadingRampMs, snapMs]);
+  }, [target, durationMs]);
 
   return displayed;
 }

@@ -36,14 +36,6 @@ function normalizeManifestChannel(
   return "nightly";
 }
 
-/**
- * Cap on how high the loading ramp climbs while we wait for the live
- * commits fetch to resolve. The animation visibly counts up to this
- * sentinel and then rapidly snaps to whatever the real total is once
- * `fetchAuraCommitStats` returns.
- */
-const COMMITS_LOADING_TARGET = 1000;
-const COMMITS_LOADING_RAMP_MS = 2500;
 const COMMITS_LIVE_TITLE = `Live total across ${AURA_PUBLIC_REPOS.length} AURA repositories`;
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
@@ -384,18 +376,22 @@ export function ChangelogView(): ReactNode {
     [entries],
   );
 
-  // Drive the two commit stats through a count-up animation: ramp from
-  // 0 toward COMMITS_LOADING_TARGET while the GitHub API is in flight,
-  // then snap rapidly to the real total once it resolves.
+  // Count every summary stat up from 0 to its final value once it's
+  // known. The release counts come from the changelog query (0 while
+  // loading, then their real totals); the commit counts come from the
+  // separate live GitHub query and hold at 0 (target null) until it
+  // resolves.
+  const releasesThisMonthDisplay = useCountUp({
+    target: stats.releasesThisMonth,
+  });
+  const releasesAllTimeDisplay = useCountUp({
+    target: stats.releasesAllTime,
+  });
   const commitsThisMonthDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsThisMonth : null,
-    loadingTarget: COMMITS_LOADING_TARGET,
-    loadingRampMs: COMMITS_LOADING_RAMP_MS,
   });
   const commitsAllTimeDisplay = useCountUp({
     target: liveCommitStats ? liveCommitStats.commitsAllTime : null,
-    loadingTarget: COMMITS_LOADING_TARGET,
-    loadingRampMs: COMMITS_LOADING_RAMP_MS,
   });
 
   return (
@@ -465,7 +461,7 @@ export function ChangelogView(): ReactNode {
               <div className="changelogStat">
                 <dt className="changelogStatLabel">Releases this month</dt>
                 <dd className="changelogStatValue">
-                  {STAT_NUMBER_FORMATTER.format(stats.releasesThisMonth)}
+                  {STAT_NUMBER_FORMATTER.format(releasesThisMonthDisplay)}
                 </dd>
               </div>
               <div className="changelogStat">
@@ -482,7 +478,7 @@ export function ChangelogView(): ReactNode {
               <div className="changelogStat">
                 <dt className="changelogStatLabel">All-time releases</dt>
                 <dd className="changelogStatValue">
-                  {STAT_NUMBER_FORMATTER.format(stats.releasesAllTime)}
+                  {STAT_NUMBER_FORMATTER.format(releasesAllTimeDisplay)}
                 </dd>
               </div>
               <div className="changelogStat">
