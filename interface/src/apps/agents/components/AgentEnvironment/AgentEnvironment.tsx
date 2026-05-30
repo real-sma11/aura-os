@@ -137,6 +137,7 @@ export function AgentEnvironment({ machineType, agentId, workspacePath }: AgentE
           ref={statusCardRef}
           isLocal={isLocal}
           isRemote={isRemote}
+          agentId={agentId}
           statusCardStyle={statusCardStyle}
           handleMouseEnter={handleMouseEnter}
           handleStatusCardMouseLeave={handleStatusCardMouseLeave}

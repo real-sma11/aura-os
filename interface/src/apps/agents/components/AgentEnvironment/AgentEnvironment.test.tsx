@@ -187,6 +187,25 @@ describe("AgentEnvironment", () => {
     expect(screen.getByText("Error")).toBeInTheDocument()
   })
 
+  it("offers the standard Report bug flow when the remote machine is in an error state", async () => {
+    const user = userEvent.setup()
+
+    render(<AgentEnvironment machineType="remote" agentId="a1" />)
+
+    await waitFor(() => {
+      expect(swarmApiMocks.getRemoteAgentState).toHaveBeenCalledWith("a1")
+    })
+
+    await user.click(screen.getByRole("button", { name: "Remote" }))
+
+    // Default fixture resolves the VM into an `error` state, so the
+    // status card must surface the same consent-gated Report bug
+    // affordance used by the chat error surfaces.
+    expect(
+      await screen.findByRole("button", { name: "Report bug" }),
+    ).toBeInTheDocument()
+  })
+
   it("subscribes to WS events for real-time recovery updates", async () => {
     render(<AgentEnvironment machineType="remote" agentId="a1" />)
 

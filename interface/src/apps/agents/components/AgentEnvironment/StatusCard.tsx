@@ -8,6 +8,7 @@ import {
 import type { RemoteVmState } from "../../../../shared/types"
 import type { LifecycleAction } from "../../../../shared/api/swarm"
 import { VmStatusBadge } from "../../../../components/VmStatusBadge"
+import { ReportBugButton } from "../../../../components/ReportBugButton"
 import styles from "./AgentEnvironment.module.css"
 import {
   formatUptime,
@@ -18,6 +19,7 @@ import {
 interface StatusCardProps {
   isLocal: boolean
   isRemote: boolean
+  agentId?: string
   statusCardStyle: CSSProperties | null
   handleMouseEnter: () => void
   handleStatusCardMouseLeave: (event: ReactMouseEvent) => void
@@ -113,6 +115,7 @@ function RemoteActions({
 }
 
 interface RemoteStatusContentProps {
+  agentId?: string
   vmState: RemoteVmState | null
   remoteStateError: string | null
   remoteErrorMessage: string | undefined
@@ -127,6 +130,7 @@ interface RemoteStatusContentProps {
 }
 
 function RemoteStatusContent({
+  agentId,
   vmState,
   remoteStateError,
   remoteErrorMessage,
@@ -139,6 +143,7 @@ function RemoteStatusContent({
   setShowActions,
   handleAction,
 }: RemoteStatusContentProps) {
+  const hasRemoteError = !!remoteStateError || !!remoteErrorMessage
   return (
     <>
       <div className={styles.statusRow}>
@@ -224,6 +229,15 @@ function RemoteStatusContent({
           handleAction={handleAction}
         />
       )}
+      {hasRemoteError && (
+        <div className={styles.actionsRow}>
+          <ReportBugButton
+            agentId={agentId}
+            compact
+            titleSuffix="remote agent error"
+          />
+        </div>
+      )}
     </>
   )
 }
@@ -264,6 +278,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
   {
     isLocal,
     isRemote,
+    agentId,
     statusCardStyle,
     handleMouseEnter,
     handleStatusCardMouseLeave,
@@ -293,6 +308,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
     >
       {isRemote ? (
         <RemoteStatusContent
+          agentId={agentId}
           vmState={vmState}
           remoteStateError={remoteStateError}
           remoteErrorMessage={remoteErrorMessage}

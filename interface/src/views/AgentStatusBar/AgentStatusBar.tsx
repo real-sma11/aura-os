@@ -5,6 +5,7 @@ import { Panel, Badge, Text, Item } from "@cypher-asi/zui";
 import { ChevronDown } from "lucide-react";
 import { formatRelativeTime } from "../../shared/utils/format";
 import { Select } from "../../components/Select";
+import { ReportBugButton } from "../../components/ReportBugButton";
 import { useAgentStatusBarData } from "./useAgentStatusBarData";
 import styles from "./AgentStatusBar.module.css";
 
@@ -30,6 +31,13 @@ export function AgentStatusBar({ projectId }: AgentStatusBarProps) {
         <Badge variant={connected ? "running" : "error"} pulse={connected}>
           {connected ? "Connected" : "Disconnected"}
         </Badge>
+        {!connected && (
+          <ReportBugButton
+            compact
+            agentId={selectedAgent?.agent_instance_id}
+            titleSuffix="connection lost"
+          />
+        )}
       </div>
 
       <div className={styles.inlineRow}>
