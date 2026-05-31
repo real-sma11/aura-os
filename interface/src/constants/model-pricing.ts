@@ -23,6 +23,7 @@ export type PricingProvider =
   | "openai"
   | "fireworks"
   | "deepseek"
+  | "google"
   | "unknown";
 
 /** Base provider rates, USD per 1M tokens. */
@@ -86,6 +87,18 @@ const DEEPSEEK_PRICING: Readonly<Record<string, ModelRates>> = {
   "deepseek-v4-flash": { input: 0.14, output: 0.28, cacheWrite: 0.14, cacheRead: 0.028 },
 } as const;
 
+// Gemini chat models. Pro tiers use the flat (<=200k prompt) rate; cached
+// input is ~10% of the base input rate (no separate cache-write charge).
+const GOOGLE_PRICING: Readonly<Record<string, ModelRates>> = {
+  "gemini-3.1-pro": { input: 2.0, output: 12.0, cacheWrite: 2.0, cacheRead: 0.2 },
+  "gemini-3.5-flash": { input: 1.5, output: 9.0, cacheWrite: 1.5, cacheRead: 0.15 },
+  "gemini-3-flash": { input: 0.5, output: 3.0, cacheWrite: 0.5, cacheRead: 0.05 },
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.5, cacheWrite: 0.25, cacheRead: 0.025 },
+  "gemini-2.5-pro": { input: 1.25, output: 10.0, cacheWrite: 1.25, cacheRead: 0.125 },
+  "gemini-2.5-flash": { input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.03 },
+  "gemini-2.5-flash-lite": { input: 0.1, output: 0.4, cacheWrite: 0.1, cacheRead: 0.01 },
+} as const;
+
 const PROVIDER_TABLES: Readonly<
   Record<Exclude<PricingProvider, "unknown">, Readonly<Record<string, ModelRates>>>
 > = {
@@ -93,6 +106,7 @@ const PROVIDER_TABLES: Readonly<
   openai: OPENAI_PRICING,
   fireworks: FIREWORKS_PRICING,
   deepseek: DEEPSEEK_PRICING,
+  google: GOOGLE_PRICING,
 } as const;
 
 const ZERO_RATES: ModelRates = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
@@ -115,6 +129,17 @@ export function normalizePricingKey(model: string): string {
     "aura-qwen3-6-plus": "qwen3p6-plus",
     "aura-gemma-4-31b": "gemma-4-31b-it",
     "aura-gemma-4-26b-a4b": "gemma-4-26b-a4b-it",
+    "aura-gemini-3-1-pro": "gemini-3.1-pro",
+    "aura-gemini-3-5-flash": "gemini-3.5-flash",
+    "aura-gemini-3-flash": "gemini-3-flash",
+    "aura-gemini-3-1-flash-lite": "gemini-3.1-flash-lite",
+    "aura-gemini-2-5-pro": "gemini-2.5-pro",
+    "aura-gemini-2-5-flash": "gemini-2.5-flash",
+    "aura-gemini-2-5-flash-lite": "gemini-2.5-flash-lite",
+    // Upstream preview strings the router may report fold onto the flat
+    // (stable) pricing key.
+    "gemini-3.1-pro-preview": "gemini-3.1-pro",
+    "gemini-3-flash-preview": "gemini-3-flash",
   };
   if (directAura[key]) return directAura[key];
   const auraClaude = key.match(/^aura-(claude-.+)$/);
@@ -128,9 +153,12 @@ function inferProvider(model: string, provider?: string): PricingProvider {
   const explicit = provider?.trim().toLowerCase();
   if (explicit === "anthropic" || explicit === "openai") return explicit;
   if (explicit === "fireworks" || explicit === "deepseek") return explicit;
+  if (explicit === "google") return explicit;
   const key = normalizePricingKey(model);
   if (key.startsWith("claude")) return "anthropic";
   if (key.startsWith("deepseek")) return "deepseek";
+  // `gemini` resolves to Google; `gemma` (open-weight) stays on Fireworks.
+  if (key.startsWith("gemini")) return "google";
   if (
     key.startsWith("kimi") ||
     key.startsWith("gpt-oss") ||
@@ -197,8 +225,12 @@ export interface SessionCostBreakdown {
 export function computeSessionCost(usage: SessionTokenUsage): SessionCostBreakdown {
   const pricing = getBilledPricing(usage.model, usage.provider);
   const cacheTokens = usage.cacheCreationTokens + usage.cacheReadTokens;
+  // DeepSeek and Google report the cached tokens *within* the prompt token
+  // count, so subtract them to avoid charging the full input rate twice.
+  const inputIncludesCacheTokens =
+    pricing.provider === "deepseek" || pricing.provider === "google";
   const billedInputTokens =
-    pricing.provider === "deepseek" && cacheTokens > 0
+    inputIncludesCacheTokens && cacheTokens > 0
       ? Math.max(0, usage.inputTokens - cacheTokens)
       : usage.inputTokens;
 

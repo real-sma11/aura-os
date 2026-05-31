@@ -114,6 +114,18 @@ const OPENAI_EFFORTS: ModelEffort[] = ["minimal", "low", "medium", "high"];
  */
 const OSS_REASONING_EFFORTS: ModelEffort[] = ["low", "medium", "high"];
 
+/**
+ * Gemini thinking tiers for the Pro models. The router maps each tier to a
+ * `thinkingConfig.thinkingBudget`, with `max` requesting a dynamic budget.
+ */
+const GEMINI_EFFORTS: ModelEffort[] = ["low", "medium", "high", "max"];
+
+/**
+ * Lighter Gemini ladder for the Flash / Flash-Lite tiers, whose thinking
+ * budgets top out below the Pro models'.
+ */
+const GEMINI_FLASH_EFFORTS: ModelEffort[] = ["low", "medium", "high"];
+
 export type ModelProviderGroup =
   | "aura"
   | "image"
@@ -375,6 +387,106 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     provider: "Qwen",
     description:
       "Open-weight Qwen model with vision support and a 256K context window.",
+  },
+  // ── Google (Gemini) ─────────────────────────────────────────
+  {
+    id: "aura-gemini-3-1-pro",
+    label: "Gemini 3.1 Pro",
+    tier: "opus",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 2.4,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_EFFORTS,
+    defaultEffort: "medium",
+    provider: "Google",
+    description:
+      "Google's most capable Gemini model for advanced reasoning, multimodal understanding, and agentic coding with a 1M-token context window.",
+    featured: true,
+  },
+  {
+    id: "aura-gemini-3-5-flash",
+    label: "Gemini 3.5 Flash",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 1.8,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_FLASH_EFFORTS,
+    defaultEffort: "medium",
+    provider: "Google",
+    description:
+      "Fast, high-quality Gemini Flash model balancing speed and reasoning across a 1M-token context window.",
+  },
+  {
+    id: "aura-gemini-3-flash",
+    label: "Gemini 3 Flash",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.6,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_FLASH_EFFORTS,
+    defaultEffort: "medium",
+    provider: "Google",
+    description:
+      "Workhorse Gemini Flash model for everyday tasks with strong throughput and a 1M-token context window.",
+  },
+  {
+    id: "aura-gemini-3-1-flash-lite",
+    label: "Gemini 3.1 Flash-Lite",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.3,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_FLASH_EFFORTS,
+    defaultEffort: "low",
+    provider: "Google",
+    description:
+      "Cost-efficient, low-latency Gemini model for high-volume tasks with a 1M-token context window.",
+  },
+  {
+    id: "aura-gemini-2-5-pro",
+    label: "Gemini 2.5 Pro",
+    tier: "opus",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 2,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_EFFORTS,
+    defaultEffort: "medium",
+    provider: "Google",
+    description:
+      "Previous-generation Gemini flagship with strong reasoning, multimodal input, and a 1M-token context window.",
+  },
+  {
+    id: "aura-gemini-2-5-flash",
+    label: "Gemini 2.5 Flash",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.5,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_FLASH_EFFORTS,
+    defaultEffort: "medium",
+    provider: "Google",
+    description:
+      "Fast, affordable Gemini Flash model with thinking support and a 1M-token context window.",
+  },
+  {
+    id: "aura-gemini-2-5-flash-lite",
+    label: "Gemini 2.5 Flash-Lite",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.08,
+    contextWindow: 1_000_000,
+    efforts: GEMINI_FLASH_EFFORTS,
+    defaultEffort: "low",
+    provider: "Google",
+    description:
+      "Lowest-cost Gemini model for high-throughput, latency-sensitive workloads with a 1M-token context window.",
   },
   // ── Google (Gemma) ──────────────────────────────────────────
   {
@@ -770,6 +882,20 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "gemma-4-31b-it": "aura-gemma-4-31b",
   "aura-gemma-4-26b-a4b": "aura-gemma-4-26b-a4b",
   "gemma-4-26b-a4b-it": "aura-gemma-4-26b-a4b",
+  "aura-gemini-3-1-pro": "aura-gemini-3-1-pro",
+  "gemini-3.1-pro-preview": "aura-gemini-3-1-pro",
+  "aura-gemini-3-5-flash": "aura-gemini-3-5-flash",
+  "gemini-3.5-flash": "aura-gemini-3-5-flash",
+  "aura-gemini-3-flash": "aura-gemini-3-flash",
+  "gemini-3-flash-preview": "aura-gemini-3-flash",
+  "aura-gemini-3-1-flash-lite": "aura-gemini-3-1-flash-lite",
+  "gemini-3.1-flash-lite": "aura-gemini-3-1-flash-lite",
+  "aura-gemini-2-5-pro": "aura-gemini-2-5-pro",
+  "gemini-2.5-pro": "aura-gemini-2-5-pro",
+  "aura-gemini-2-5-flash": "aura-gemini-2-5-flash",
+  "gemini-2.5-flash": "aura-gemini-2-5-flash",
+  "aura-gemini-2-5-flash-lite": "aura-gemini-2-5-flash-lite",
+  "gemini-2.5-flash-lite": "aura-gemini-2-5-flash-lite",
   "chatgpt-image-latest": "gpt-image-2",
   "accounts/fireworks/models/kimi-k2p5": "aura-kimi-k2-5",
   "accounts/fireworks/models/kimi-k2p6": "aura-kimi-k2-6",

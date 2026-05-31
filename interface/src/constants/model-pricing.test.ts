@@ -15,6 +15,38 @@ describe("normalizePricingKey", () => {
     expect(normalizePricingKey("aura-gpt-5-4-mini")).toBe("gpt-5.4-mini");
     expect(normalizePricingKey("aura-kimi-k2-6")).toBe("kimi-k2p6");
     expect(normalizePricingKey("aura-deepseek-v4-pro")).toBe("deepseek-v4-pro");
+    expect(normalizePricingKey("aura-gemini-2-5-pro")).toBe("gemini-2.5-pro");
+    expect(normalizePricingKey("aura-gemini-3-1-flash-lite")).toBe("gemini-3.1-flash-lite");
+    expect(normalizePricingKey("gemini-3.1-pro-preview")).toBe("gemini-3.1-pro");
+  });
+});
+
+describe("resolvePricing for Google Gemini", () => {
+  it("resolves gemini aliases and raw names to the google table", () => {
+    const viaAlias = resolvePricing("aura-gemini-2-5-pro");
+    expect(viaAlias.provider).toBe("google");
+    expect(viaAlias.input).toBe(1.25);
+    expect(viaAlias.output).toBe(10);
+
+    const viaRaw = resolvePricing("gemini-2.5-pro", "google");
+    expect(viaRaw.input).toBe(viaAlias.input);
+    expect(viaRaw.output).toBe(viaAlias.output);
+  });
+
+  it("treats cached prompt tokens as already counted in input", () => {
+    // gemini-2.5-pro billed: input $1.5/M, output $12/M, cacheRead $0.15/M.
+    // 1M prompt incl. 400k cached -> 600k new input + 400k cache read.
+    const result = computeSessionCost({
+      model: "aura-gemini-2-5-pro",
+      provider: "google",
+      inputTokens: 1_000_000,
+      outputTokens: 500_000,
+      cacheReadTokens: 400_000,
+      cacheCreationTokens: 0,
+    });
+    // 0.6 * 1.5 + 0.5 * 12 + 0.4 * 0.15 = 0.9 + 6 + 0.06 = 6.96
+    expect(result.totalCostUsd).toBeCloseTo(6.96, 6);
+    expect(result.unknown).toBe(false);
   });
 });
 

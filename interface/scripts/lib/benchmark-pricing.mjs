@@ -218,6 +218,53 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
   },
 };
 
+// Gemini chat models. Pro tiers use the flat (<=200k prompt) rate; cached
+// input is ~10% of the base input rate (no separate cache-write charge).
+const GOOGLE_MODEL_PRICING_PER_MTOK = {
+  "gemini-3.1-pro": {
+    input: 2.0,
+    output: 12.0,
+    cacheWrite: 2.0,
+    cacheRead: 0.2,
+  },
+  "gemini-3.5-flash": {
+    input: 1.5,
+    output: 9.0,
+    cacheWrite: 1.5,
+    cacheRead: 0.15,
+  },
+  "gemini-3-flash": {
+    input: 0.5,
+    output: 3.0,
+    cacheWrite: 0.5,
+    cacheRead: 0.05,
+  },
+  "gemini-3.1-flash-lite": {
+    input: 0.25,
+    output: 1.5,
+    cacheWrite: 0.25,
+    cacheRead: 0.025,
+  },
+  "gemini-2.5-pro": {
+    input: 1.25,
+    output: 10.0,
+    cacheWrite: 1.25,
+    cacheRead: 0.125,
+  },
+  "gemini-2.5-flash": {
+    input: 0.3,
+    output: 2.5,
+    cacheWrite: 0.3,
+    cacheRead: 0.03,
+  },
+  "gemini-2.5-flash-lite": {
+    input: 0.1,
+    output: 0.4,
+    cacheWrite: 0.1,
+    cacheRead: 0.01,
+  },
+};
+
 const DEEPSEEK_MODEL_PRICING_PER_MTOK = {
   "deepseek-v4-pro": {
     input: 1.74,
@@ -272,6 +319,16 @@ function normalizeModelKey(model) {
     "aura-deepseek-v4-flash": "deepseek-v4-flash",
   };
   if (auraDeepSeekModels[unprefixed]) return auraDeepSeekModels[unprefixed];
+  const auraGoogleModels = {
+    "aura-gemini-3-1-pro": "gemini-3.1-pro",
+    "aura-gemini-3-5-flash": "gemini-3.5-flash",
+    "aura-gemini-3-flash": "gemini-3-flash",
+    "aura-gemini-3-1-flash-lite": "gemini-3.1-flash-lite",
+    "aura-gemini-2-5-pro": "gemini-2.5-pro",
+    "aura-gemini-2-5-flash": "gemini-2.5-flash",
+    "aura-gemini-2-5-flash-lite": "gemini-2.5-flash-lite",
+  };
+  if (auraGoogleModels[unprefixed]) return auraGoogleModels[unprefixed];
   const auraGptMatch = unprefixed.match(/^aura-gpt-(\d+)-(\d+)(.*)$/);
   if (auraGptMatch) {
     return `gpt-${auraGptMatch[1]}.${auraGptMatch[2]}${auraGptMatch[3]}`;
@@ -286,6 +343,8 @@ function inferProvider(model, provider) {
   if (modelKey.startsWith("deepseek-v4") || modelKey === "deepseek-chat" || modelKey === "deepseek-reasoner") {
     return "deepseek";
   }
+  // `gemini` resolves to Google; `gemma` (open-weight) stays on Fireworks.
+  if (modelKey.startsWith("gemini")) return "google";
   if (
     modelKey.startsWith("kimi") ||
     modelKey.startsWith("gpt-oss") ||
@@ -394,6 +453,31 @@ function findDeepSeekPricing(modelKey) {
   };
 }
 
+function findGooglePricing(modelKey) {
+  const exactMatch = GOOGLE_MODEL_PRICING_PER_MTOK[modelKey];
+  if (exactMatch) {
+    return {
+      model: modelKey,
+      source: "google-pricing",
+      ...exactMatch,
+    };
+  }
+
+  // Preview strings (e.g. `gemini-3.1-pro-preview`) fold onto the flat
+  // stable pricing key via this prefix match.
+  const partialEntry = Object.entries(GOOGLE_MODEL_PRICING_PER_MTOK).find(([candidate]) =>
+    modelKey.startsWith(candidate) || candidate.startsWith(modelKey),
+  );
+  if (!partialEntry) return null;
+
+  const [matchedModel, pricing] = partialEntry;
+  return {
+    model: matchedModel,
+    source: "google-pricing-family-match",
+    ...pricing,
+  };
+}
+
 export function resolvePricing(model, provider) {
   const inferredProvider = inferProvider(model, provider);
   const modelKey = normalizeModelKey(model);
@@ -437,6 +521,16 @@ export function resolvePricing(model, provider) {
     }
   }
 
+  if (inferredProvider === "google") {
+    const pricing = findGooglePricing(modelKey);
+    if (pricing) {
+      return {
+        provider: inferredProvider,
+        ...pricing,
+      };
+    }
+  }
+
   return {
     provider: inferredProvider ?? "unknown",
     model: modelKey,
@@ -452,8 +546,11 @@ export function calculateEstimatedCostUsd(usage) {
   const pricing = resolvePricing(usage.model, usage.provider);
   const cacheInputTokens =
     usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
+  // DeepSeek and Google report cached tokens within the prompt token count.
+  const inputIncludesCacheTokens =
+    pricing.provider === "deepseek" || pricing.provider === "google";
   const inputTokens =
-    pricing.provider === "deepseek" && cacheInputTokens > 0
+    inputIncludesCacheTokens && cacheInputTokens > 0
       ? Math.max(0, usage.inputTokens - cacheInputTokens)
       : usage.inputTokens;
 

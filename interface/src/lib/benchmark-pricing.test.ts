@@ -52,6 +52,51 @@ describe("benchmark pricing", () => {
     expect(estimatedCostUsd).toBeCloseTo(1.885, 6);
   });
 
+  it("does not double-charge Google cache-hit input tokens", () => {
+    const { estimatedCostUsd, pricing } = calculateEstimatedCostUsd({
+      model: "aura-gemini-2-5-pro",
+      provider: "google",
+      inputTokens: 1_000_000,
+      outputTokens: 500_000,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 400_000,
+    });
+
+    expect(pricing.source).toBe("google-pricing");
+    // base: 0.6M * 1.25 + 0.5M * 10 + 0.4M * 0.125 = 0.75 + 5 + 0.05 = 5.8
+    expect(estimatedCostUsd).toBeCloseTo(5.8, 6);
+  });
+
+  it.each([
+    ["aura-gemini-3-1-pro", "gemini-3.1-pro", 2, 0.2, 12],
+    ["aura-gemini-3-5-flash", "gemini-3.5-flash", 1.5, 0.15, 9],
+    ["aura-gemini-3-flash", "gemini-3-flash", 0.5, 0.05, 3],
+    ["aura-gemini-3-1-flash-lite", "gemini-3.1-flash-lite", 0.25, 0.025, 1.5],
+    ["aura-gemini-2-5-pro", "gemini-2.5-pro", 1.25, 0.125, 10],
+    ["aura-gemini-2-5-flash", "gemini-2.5-flash", 0.3, 0.03, 2.5],
+    ["aura-gemini-2-5-flash-lite", "gemini-2.5-flash-lite", 0.1, 0.01, 0.4],
+    ["gemini-2.5-pro", "gemini-2.5-pro", 1.25, 0.125, 10],
+  ])(
+    "resolves Google Gemini pricing for %s",
+    (modelId, expectedModel, input, cacheRead, output) => {
+      const pricing = resolvePricing(modelId);
+
+      expect(pricing.provider).toBe("google");
+      expect(pricing.model).toBe(expectedModel);
+      expect(pricing.input).toBe(input);
+      expect(pricing.cacheRead).toBe(cacheRead);
+      expect(pricing.output).toBe(output);
+    },
+  );
+
+  it("folds Gemini preview model names onto the stable pricing key", () => {
+    const pricing = resolvePricing("gemini-3.1-pro-preview", "google");
+    expect(pricing.provider).toBe("google");
+    expect(pricing.source).toBe("google-pricing-family-match");
+    expect(pricing.model).toBe("gemini-3.1-pro");
+    expect(pricing.output).toBe(12);
+  });
+
   it("resolves OpenAI codex pricing when the model is known", () => {
     const pricing = resolvePricing("gpt-5.3-codex", "openai");
 
