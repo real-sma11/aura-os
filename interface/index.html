@@ -86,6 +86,15 @@
         font-weight: 700;
       }
 
+      #aura-splash .aura-splash-logo {
+        display: block;
+        height: 22px;
+        width: auto;
+        user-select: none;
+        -webkit-user-select: none;
+        pointer-events: none;
+      }
+
       #aura-splash .aura-splash-pulse {
         width: 116px;
         height: 2px;
@@ -148,6 +157,10 @@
 
       [data-theme='light'] #aura-splash .aura-splash-pulse {
         background: rgba(15, 23, 42, 0.12);
+      }
+
+      [data-theme='light'] #aura-splash .aura-splash-logo {
+        filter: invert(1);
       }
 
       [data-theme='light'] #aura-splash .aura-boot-error {
@@ -254,7 +267,7 @@
   <body>
     <div id="aura-splash" aria-hidden="true">
       <div class="aura-splash-mark">
-        <div>AURA</div>
+        <img class="aura-splash-logo" src="/AURA_logo_text_mark.png" alt="AURA" draggable="false" />
         <div class="aura-splash-pulse"></div>
         <div class="aura-boot-error" role="status" aria-live="polite">
           <div class="aura-boot-error-title" id="aura-boot-error-title">
