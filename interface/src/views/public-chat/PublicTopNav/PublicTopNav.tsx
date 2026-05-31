@@ -51,12 +51,42 @@ export function PublicTopNav(): React.ReactElement {
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
 
   const resourcesActive = RESOURCE_LINKS.some(
     (link) => pathname === link.to || pathname.startsWith(`${link.to}/`),
   );
 
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const clearCloseTimer = useCallback((): void => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const openMenu = useCallback((): void => {
+    clearCloseTimer();
+    setMenuOpen(true);
+  }, [clearCloseTimer]);
+
+  const closeMenu = useCallback((): void => {
+    clearCloseTimer();
+    setMenuOpen(false);
+  }, [clearCloseTimer]);
+
+  // Hover-out closes after a short grace period so the pointer can
+  // cross the small gap between the trigger and the portal menu without
+  // the dropdown collapsing mid-travel. Re-entering either element
+  // (`openMenu` / `clearCloseTimer`) cancels the pending close.
+  const scheduleClose = useCallback((): void => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setMenuOpen(false);
+    }, 140);
+  }, [clearCloseTimer]);
+
+  useEffect(() => clearCloseTimer, [clearCloseTimer]);
 
   // Outside-click + Escape close the dropdown.
   useEffect(() => {
@@ -114,7 +144,15 @@ export function PublicTopNav(): React.ReactElement {
         }`}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        onClick={() => setMenuOpen((open) => !open)}
+        // Hover (mouseenter) already opens the menu; an explicit
+        // click/tap should keep it open rather than toggle it shut
+        // (touch devices that don't hover still get an open path).
+        // The menu closes on hover-out, Escape, outside-click, or
+        // selecting an item.
+        onClick={openMenu}
+        onMouseEnter={openMenu}
+        onMouseLeave={scheduleClose}
+        onFocus={openMenu}
       >
         Resources
         <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
@@ -127,6 +165,8 @@ export function PublicTopNav(): React.ReactElement {
             aria-label="Resources"
             className={styles.menu}
             style={{ top: menuPos.top, left: menuPos.left }}
+            onMouseEnter={clearCloseTimer}
+            onMouseLeave={scheduleClose}
           >
             {RESOURCE_LINKS.map((link) => (
               <NavLink

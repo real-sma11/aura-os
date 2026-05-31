@@ -77,6 +77,25 @@ describe("PublicTopNav", () => {
     ).toHaveAttribute("href", "/models");
   });
 
+  it("opens the Resources dropdown on hover", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/agents"]}>
+        <PublicTopNav />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByRole("menuitem", { name: "Changelog" }),
+    ).not.toBeInTheDocument();
+
+    await user.hover(screen.getByRole("button", { name: /Resources/i }));
+
+    expect(
+      screen.getByRole("menuitem", { name: "Changelog" }),
+    ).toBeInTheDocument();
+  });
+
   it("marks Resources active when on one of its grouped routes", () => {
     render(
       <MemoryRouter initialEntries={["/changelog"]}>
