@@ -364,6 +364,15 @@ export function ChatPanel({
   const hasBridgeFrame = bridgeMessages.length > 0;
   const renderedMessages = messages.length > 0 ? messages : bridgeMessages;
 
+  // Mirror `isStreaming` so the thread-reset effect can read the latest
+  // streaming state without listing it as a dependency (we only want
+  // that effect to fire on genuine `scrollResetKey` / `initialHandoff`
+  // changes, not on every stream toggle).
+  const isStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
   const initialHandoffReadyRef = useRef(false);
   const inputFocusReadyRef = useRef(false);
   const hasHandledThreadResetRef = useRef(false);
@@ -423,7 +432,15 @@ export function ChatPanel({
       revealAnimationFrameRef.current = null;
     }
 
-    if (!shouldArmColdLoad) {
+    // Never re-arm the cold-load reveal while a turn is actively
+    // streaming on this stream key. `scrollResetKey` flips mid-turn
+    // when `SessionReady` (fresh-canvas first send) or `auto_fork`
+    // migrates the lane to the real session id; arming here would
+    // clear the reveal latch and flash `.messageContentHidden`
+    // (visibility: hidden) over the live transcript for ~2 frames.
+    // The content is owned by this panel during a stream, so keep it
+    // revealed via the same "already warm" branch.
+    if (!shouldArmColdLoad || isStreamingRef.current) {
       initialColdLoadRef.current = false;
       hasInitiallyRevealedRef.current = true;
       setIsInitialThreadRevealReady(true);
