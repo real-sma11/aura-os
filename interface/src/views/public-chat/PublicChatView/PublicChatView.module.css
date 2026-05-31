@@ -218,11 +218,14 @@
   line-height: 1.05;
   letter-spacing: -0.035em;
   /*
-   * Match the left public nav items (`PublicSidebarFooter.module.css`
-   * `.footerLink`): the persona-published muted foreground, falling
-   * back to the secondary text token then a neutral gray.
+   * Follows the left public nav's light/dark polarity at full contrast:
+   * `PublicChatView` publishes `--hero-headline-color` per active
+   * persona — pure white when the nav foreground reads light (dark site
+   * bg), or the persona's dark foreground when the nav reads dark (light
+   * site bg). So the tagline is white whenever the nav text is light and
+   * dark whenever the nav text is dark.
    */
-  color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
+  color: var(--hero-headline-color, #fff);
 }
 
 .heroHeadline::before {

@@ -87,6 +87,29 @@ const FADE_MS = 550;
 const WHEEL_DELTA_THRESHOLD = 4;
 const PUBLIC_CHAT_PATH = "/chat";
 
+/**
+ * Perceived-luminance test for a `#rgb` / `#rrggbb` hex color. Used to
+ * decide the hero tagline's polarity from the active persona's nav
+ * foreground: a light foreground (or none) means the site bg is dark,
+ * so the tagline should be pure white; a dark foreground means a light
+ * site bg, so the tagline should stay dark.
+ */
+function isLightColor(hex: string): boolean {
+  const raw = hex.trim().replace("#", "");
+  const full =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw;
+  if (full.length < 6) return true;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
+}
+
 function publicChatRoute(sessionId: string): string {
   return `${PUBLIC_CHAT_PATH}?session=${encodeURIComponent(sessionId)}`;
 }
@@ -420,9 +443,18 @@ export function PublicChatView(): React.ReactElement {
     };
     apply("--public-nav-fg-color", siteForegroundColor);
     apply("--public-nav-fg-color-muted", siteForegroundColorMuted);
+    // Hero tagline color: pure white when the nav foreground reads light
+    // (or is unset → dark site bg), else the persona's dark foreground so
+    // the tagline matches the nav's light/dark polarity at full contrast.
+    const headlineColor =
+      !siteForegroundColor || isLightColor(siteForegroundColor)
+        ? "#ffffff"
+        : siteForegroundColor;
+    apply("--hero-headline-color", headlineColor);
     return () => {
       root.style.removeProperty("--public-nav-fg-color");
       root.style.removeProperty("--public-nav-fg-color-muted");
+      root.style.removeProperty("--hero-headline-color");
     };
   }, [activePersona]);
 
