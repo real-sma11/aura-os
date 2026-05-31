@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Circle,
   CreditCard,
   ChevronRight,
   ChevronLeft,
   LayoutGrid,
+  MessageSquare,
   Settings,
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
@@ -88,10 +89,11 @@ export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement 
  * `--shell-chrome-outer-height` row in every mode) wrapping two
  * independent floating-pill clusters split to opposite edges by the
  * bar's `justify-content: space-between`. The left cluster
- * (`.publicLeft`) carries the theme toggle (`.themePill`) and the
- * rotating tagline bubble (`.taglineBubble`); the right cluster
- * (`.publicRight`) carries the "Powered by THE GRID" chip
- * (`.poweredPill`). Deliberately does NOT call any
+ * (`.publicLeft`) carries the Chat link (`.chatPill`, far left), the
+ * theme toggle (`.themePill`) and the rotating tagline bubble
+ * (`.taglineBubble`); the right cluster (`.publicRight`) carries the
+ * "Powered by THE GRID" chip (`.poweredPill`). Deliberately does NOT
+ * call any
  * auth-required hooks (`useUIModalStore`, `useActiveApp`,
  * `useAppUIStore`, `useDesktopContextMenu`, `useNavigate`-driven
  * navigation handlers, etc.) — those stores either don't apply or
@@ -107,6 +109,16 @@ function PublicBottomTaskbar(): React.ReactElement {
       data-ui-mode="public"
     >
       <div className={styles.publicLeft}>
+        <div className={styles.chatPill}>
+          <Link
+            to="/chat"
+            className={styles.chatLink}
+            title="Chat"
+            aria-label="Chat"
+          >
+            <MessageSquare size={TASKBAR_ICON_SIZE} />
+          </Link>
+        </div>
         <div className={styles.themePill}>
           <ThemeToggleButton />
         </div>

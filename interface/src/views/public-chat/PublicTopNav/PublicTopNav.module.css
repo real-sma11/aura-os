@@ -1,0 +1,107 @@
+/*
+ * PublicTopNav — centered marketing nav mounted in the title slot of
+ * `AuraTitlebar`. Replaces the old vertically-centered left-edge
+ * `PublicSidebarFooter`. Reads the same persona-driven
+ * `--public-nav-fg-color*` tokens the old footer used so the links
+ * stay readable over both dark and light persona backgrounds.
+ */
+.nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.link:hover {
+  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
+  background: var(--color-surface-hover);
+}
+
+.linkActive,
+.linkActive:hover {
+  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
+  background: color-mix(
+    in srgb,
+    var(--public-nav-fg-color, var(--color-text-primary)) 10%,
+    transparent
+  );
+}
+
+.resourcesTrigger {
+  /* The chevron nudges down 0.5px so it sits optically centered with
+     the label's x-height rather than its cap line. */
+}
+
+.resourcesTrigger svg {
+  margin-top: 0.5px;
+}
+
+/*
+ * Portal dropdown anchored under the Resources trigger via inline
+ * `top` / `left`. Rendered to `document.body` so the titlebar's own
+ * overflow / stacking context can't clip it.
+ */
+.menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 6px;
+  background: var(
+    --shell-chrome-background,
+    color-mix(in srgb, var(--color-bg) 92%, transparent)
+  );
+  backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  -webkit-backdrop-filter: var(
+    --shell-chrome-backdrop-filter,
+    blur(40px) saturate(1.4)
+  );
+  border: 1px solid var(--color-border-chrome);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.menuItem {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--color-text-secondary, #c9c9cf);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.menuItem:hover {
+  color: var(--color-text-primary, inherit);
+  background: var(--color-surface-hover);
+}
+
+.menuItemActive,
+.menuItemActive:hover {
+  color: var(--color-text-primary, inherit);
+  background: var(--color-surface-active, var(--color-surface-hover));
+}

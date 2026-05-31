@@ -324,14 +324,15 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(inputAfter.value).toBe("hello");
   });
 
-  it("(d) gates public nav footer links behind public mode and hides them when logged in", async () => {
+  it("(d) gates public nav links behind public mode and hides them when logged in", async () => {
     setLoggedOut();
 
     renderAuraShell();
 
-    // `PublicSidebarFooter` exposes public-only links. They must be
-    // present for unauthenticated visitors and absent the moment the
-    // user signs in.
+    // `PublicTopNav` (titlebar) exposes the Pricing link and the
+    // bottom taskbar carries the Chat link. Both are public-only and
+    // must be present for unauthenticated visitors and absent the
+    // moment the user signs in.
     expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute(
       "href",
       "/pricing",
@@ -665,18 +666,19 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     expect(getActiveAppId(container)).toBe("projects");
   });
 
-  it("public mode still renders the public chat surface (PublicSidebarFooter pricing link present)", () => {
+  it("public mode still renders the public chat surface (PublicTopNav pricing link present)", () => {
     setLoggedOut();
     renderAuraShell("/");
 
-    // `PublicSidebarFooter` is the public-only nav footer. In public mode it must mount
-    // alongside the public sidebar body — its absence would mean
-    // the shell mistakenly resolved to an authed surface.
+    // `PublicTopNav` is the public-only marketing nav (titlebar) and
+    // the bottom taskbar carries the Chat link. In public mode they
+    // must mount — their absence would mean the shell mistakenly
+    // resolved to an authed surface.
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });
 
-  it("sign-in transition (public -> simple) tears down the public footer and mounts ChatAppLeftPanel", async () => {
+  it("sign-in transition (public -> simple) tears down the public nav and mounts ChatAppLeftPanel", async () => {
     setLoggedOut();
     const { container } = renderAuraShell("/");
 
@@ -702,16 +704,16 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
  * drawer (`PanelRight` in `WindowControls.tsx`) on the left so a
  * logged-out visitor sees a ChatGPT-style collapsed sessions panel
  * by default and can flip it open via a single titlebar button. The
- * public nav footer (Product / Changelog / Feedback / Pricing /
- * Chat) lives outside the collapsing Lane so it stays visible in
- * both states.
+ * public marketing nav (Agents / Code / Pricing / Resources) lives
+ * in the titlebar (`PublicTopNav`), independent of the sidebar
+ * collapse state, so it stays visible in both states.
  *
  * `aria-pressed` mirrors the sidekick toggle's contract (true when
  * the drawer is open, false when collapsed) so AT users get a
  * symmetric experience on both sides of the window chrome.
  */
 describe("AuraShell — public left drawer", () => {
-  it("renders the left drawer toggle in public mode and starts collapsed (aria-pressed=false), with the public nav footer still visible", () => {
+  it("renders the left drawer toggle in public mode and starts collapsed (aria-pressed=false), with the public top nav still visible", () => {
     setLoggedOut();
     renderAuraShell("/");
 
@@ -721,12 +723,17 @@ describe("AuraShell — public left drawer", () => {
     const sidebar = screen.getByTestId("aura-sidebar");
     expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "true");
 
-    // The public nav footer must remain in the DOM at the bottom-left
-    // even when the sessions panel above it is collapsed.
+    // The public marketing nav lives in the titlebar, independent of
+    // the sidebar collapse state, so its links stay in the DOM even
+    // when the sessions panel is collapsed.
+    expect(screen.getByRole("link", { name: "Agents" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Code" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Product" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Changelog" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Feedback" })).toBeInTheDocument();
+    // Resources is a dropdown trigger (button), collapsed by default.
+    expect(
+      screen.getByRole("button", { name: /Resources/i }),
+    ).toBeInTheDocument();
+    // Chat lives in the bottom taskbar.
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
   });
 

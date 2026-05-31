@@ -5,6 +5,7 @@ import { ShellTitlebar } from "../ShellTitlebar";
 import { MenuBar, MenuShortcuts } from "../MenuBar";
 import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
+import { PublicTopNav } from "../../views/public-chat/PublicTopNav";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { track } from "../../lib/analytics";
 import type { UIMode } from "../../stores/ui-mode-store";
@@ -51,10 +52,11 @@ export interface AuraTitlebarProps {
  * (trailing) slot children swap based on `mode`. The `title` slot's
  * outer `<span className="titlebar-center">` wrapper is also stable
  * across modes; only its inner content swaps — authenticated modes
- * render the AURA wordmark `<img>`, public mode leaves the slot
- * empty so logged-out visitors aren't shown the brand twice (the
- * marketing surfaces already carry the wordmark) and the center
- * drag region reads as clean window chrome.
+ * render the AURA wordmark `<img>`, public mode renders the
+ * centered marketing nav (`PublicTopNav`: Agents / Code / Pricing /
+ * Resources). The home affordance moved to the clickable AURA logo
+ * in the public leading slot, so the nav itself carries no Home
+ * link.
  *
  * Layout:
  * - Leading slot (all modes): `<PanelLeft />` drawer toggle that
@@ -115,7 +117,9 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
       }
       title={
         <span className={`titlebar-center ${styles.titleCenter}`}>
-          {!isPublic && (
+          {isPublic ? (
+            <PublicTopNav />
+          ) : (
             <img
               src="/AURA_logo_text_mark.png"
               alt="AURA"
@@ -191,13 +195,15 @@ function PublicLeading({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
-      <img
-        src="/AURA_logo_text_mark.png"
-        alt="AURA"
-        draggable={false}
-        className={styles.titleLogo}
-        data-aura-wordmark
-      />
+      <Link to="/" aria-label="AURA home" className={styles.titleLogoLink}>
+        <img
+          src="/AURA_logo_text_mark.png"
+          alt="AURA"
+          draggable={false}
+          className={styles.titleLogo}
+          data-aura-wordmark
+        />
+      </Link>
     </span>
   );
 }

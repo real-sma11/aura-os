@@ -1,0 +1,18 @@
+/*
+ * CodeView — wrapper for the public `/code` route. Mirrors
+ * `ProductView.module.css`: narrows the stacked marketing sections to
+ * the same `--marketing-content-max-width` and pins the shared
+ * off-black `--marketing-section-bg` + light text tokens so the
+ * `ProductScreenSection`, `ChangelogPreview`, and `ProductCallToAction`
+ * components render identically to the Agents page. `display: contents`
+ * lets the custom properties cascade into each section without adding a
+ * layout box of its own.
+ */
+.codeView {
+  --marketing-content-max-width: 63.75%;
+  --marketing-section-bg: #0f0f12;
+  --color-text-primary: #f7f8fb;
+  --color-text-secondary: #a3a3a8;
+  --color-text-muted: rgba(255, 255, 255, 0.52);
+  display: contents;
+}

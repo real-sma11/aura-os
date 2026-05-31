@@ -43,10 +43,12 @@ interface NavRow {
 
 const NAV_ROWS: ReadonlyArray<NavRow> = [
   { label: "Chat", to: "/chat" },
-  { label: "Product", to: "/product" },
+  { label: "Agents", to: "/agents" },
+  { label: "Code", to: "/code" },
+  { label: "Pricing", to: "/pricing" },
   { label: "Changelog", to: "/changelog" },
   { label: "Feedback", to: "/feedback" },
-  { label: "Pricing", to: "/pricing" },
+  { label: "Models", to: "/models" },
 ];
 
 const PUBLIC_CHAT_PATH = "/chat";

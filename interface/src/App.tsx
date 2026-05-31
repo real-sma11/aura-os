@@ -37,6 +37,9 @@ const IdeView = lazy(() => import("./views/IdeView").then((m) => ({ default: m.I
 const ProductView = lazy(() =>
   import("./views/marketing/ProductView").then((m) => ({ default: m.ProductView })),
 );
+const CodeView = lazy(() =>
+  import("./views/marketing/CodeView").then((m) => ({ default: m.CodeView })),
+);
 const ChangelogView = lazy(() =>
   import("./views/marketing/ChangelogView").then((m) => ({ default: m.ChangelogView })),
 );
@@ -296,11 +299,11 @@ function AppRoutes(): React.ReactElement {
   // boot, modals, CaptureBridge) and renders `<AuraShell>` for
   // desktop (or `<MobileShell>` on mobile layouts). AuraShell uses
   // `<Outlet />` to mount per-route content in its `<main>` slot.
-  // Public subpages (`/product`, `/changelog`, `/feedback`,
-  // `/pricing`) also mount in this tree under
+  // Public subpages (`/agents`, `/code`, `/changelog`, `/feedback`,
+  // `/pricing`, `/models`) also mount in this tree under
   // `<PublicMarketingPanel>`, so they share the same public-mode
-  // chrome (titlebar + sidebar + `PublicSidebarFooter`) as the
-  // public chat surface — only the middle panel content swaps.
+  // chrome (titlebar + `PublicTopNav` + sidebar) as the public chat
+  // surface — only the middle panel content swaps.
   //
   // `LoginOverlay` is mounted as a sibling of `<Routes>` (see
   // `showLoginOverlay` above) so it overlays whichever underlying
@@ -326,21 +329,34 @@ function AppRoutes(): React.ReactElement {
             Public subpages mount inside the public-mode `AuraShell`
             main `<Outlet />` via
             `PublicMarketingPanel`, a thin scroll-column wrapper. Same
-            sidebar / titlebar / footer as the public chat surface —
-            just the middle panel content swaps when the visitor
-            clicks Product / Changelog / Feedback / Pricing in
-            `PublicSidebarFooter`. Replaces the standalone
-            `MarketingShell` chrome that previously owned these paths.
+            sidebar / titlebar as the public chat surface — just the
+            middle panel content swaps when the visitor clicks
+            Agents / Code / Pricing / Resources in `PublicTopNav`.
+            Replaces the standalone `MarketingShell` chrome that
+            previously owned these paths.
           */}
           <Route element={<PublicMarketingPanel />}>
             <Route
-              path="product"
+              path="agents"
               element={
                 <Suspense fallback={null}>
                   <ProductView />
                 </Suspense>
               }
             />
+            <Route
+              path="code"
+              element={
+                <Suspense fallback={null}>
+                  <CodeView />
+                </Suspense>
+              }
+            />
+            {/*
+              `/product` was renamed to `/agents`. Keep a permanent
+              redirect so old links / bookmarks still resolve.
+            */}
+            <Route path="product" element={<Navigate to="/agents" replace />} />
             <Route
               path="changelog"
               element={

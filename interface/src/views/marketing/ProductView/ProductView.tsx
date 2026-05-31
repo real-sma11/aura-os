@@ -12,7 +12,6 @@ import { CreateAgentButton } from "../../public-chat/CreateAgentButton";
 import { TypewriterText } from "../../public-chat/TypewriterText";
 import { PageHero } from "../PageHero";
 import { ProductCallToAction } from "../ProductCallToAction";
-import { ProductScreenSection } from "../ProductScreenSection";
 import styles from "./ProductView.module.css";
 
 /*
@@ -36,17 +35,20 @@ import styles from "./ProductView.module.css";
 const HERO_HEADLINE = "Your Private Agent.";
 
 /**
- * Marketing `/product` page. Ported from
- * `aura-web/src/app/product/page.tsx` as a pure JSX composition of the
- * shared marketing components. The page-level chrome (titlebar /
- * sidebar / footer / scrollable column) is owned by the public-mode
- * `AuraShell` + `PublicMarketingPanel`, so this component only
- * renders the section stack.
+ * Marketing `/agents` page (formerly `/product`). A pure JSX
+ * composition of the shared marketing components that tell the
+ * agent story — hero, mobile-chat section, and the "Private by
+ * Design" panel — plus the shared Changelog + Download footer. The
+ * four product-screen sections (secure OS / swarm / autonomous
+ * shipping / per-workflow process) moved to `CodeView` (`/code`).
+ * Page-level chrome (titlebar / sidebar / scrollable column) is
+ * owned by the public-mode `AuraShell` + `PublicMarketingPanel`, so
+ * this component only renders the section stack.
  */
 export function ProductView(): ReactNode {
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = "AURA - Product";
+    document.title = "AURA - Agents";
 
     return () => {
       document.title = previousTitle;
@@ -72,30 +74,6 @@ export function ProductView(): ReactNode {
         videoOverlay={<AgentMarquee />}
       />
       <AgentChatSection />
-      <ProductScreenSection
-        headline="A secure operating system to manage agentic swarms."
-        placeholderLabel="AURA desktop interface"
-        imageSrc="/product-screens/aura-product-screen-desktop.png"
-        imageAlt="AURA desktop interface showing an operating system workspace"
-      />
-      <ProductScreenSection
-        headline="Spawn a team of agents that run your company while you sleep."
-        placeholderLabel="AURA agents interface"
-        imageSrc="/product-screens/aura-product-screen-superagent.png"
-        imageAlt="AURA agents interface showing autonomous agents"
-      />
-      <ProductScreenSection
-        headline="Ship complex software that improves autonomously."
-        placeholderLabel="AURA software automation interface"
-        imageSrc="/product-screens/aura-product-screen-automation.png"
-        imageAlt="AURA software automation interface showing autonomous development workflows"
-      />
-      <ProductScreenSection
-        headline="Deploy agentic processes for every workflow."
-        placeholderLabel="AURA process interface"
-        imageSrc="/product-screens/aura-product-screen-process.png"
-        imageAlt="AURA process interface showing agentic workflow processes"
-      />
       <FeaturePanel
         label="SOVEREIGN"
         headline="Private by Design."

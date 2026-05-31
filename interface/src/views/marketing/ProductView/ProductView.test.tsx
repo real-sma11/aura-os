@@ -71,29 +71,19 @@ describe("ProductView", () => {
     expect(screen.getByText("Your Private Agent.")).toBeInTheDocument();
   });
 
-  it("places the AgentChatSection directly above the secure-OS row", () => {
-    // The agent-chat section anchors the mobile-experience story
-    // immediately after the hero, ahead of the desktop OS screenshot
-    // row. Asserting the relative DOM order between the section
-    // headline and the "A secure operating system..." row headline
-    // pins this layout decision without coupling to any internal
-    // markup of the surrounding section components — both render
-    // their headline as the natural `<h2>` for the section, and the
-    // page is a static stack of `<h2>`s today.
+  it("keeps the AgentChatSection and moves the product-screen rows to the Code page", () => {
+    // The agent-chat section stays on the Agents page (anchoring the
+    // mobile-experience story after the hero). The four
+    // `ProductScreenSection` rows — led by "A secure operating
+    // system..." — were split out to `CodeView` (`/code`), so they
+    // must NOT render here anymore.
     renderProductView();
-    const chatSection = screen.getByRole("heading", {
-      name: /Chat with your agents/i,
-    });
-    const secureOsRow = screen.getByRole("heading", {
-      name: /A secure operating system/i,
-    });
-    // `compareDocumentPosition` returns `DOCUMENT_POSITION_FOLLOWING`
-    // (bit `0x04`) when the argument node appears AFTER the receiver
-    // in document order, which is the order we want here.
     expect(
-      chatSection.compareDocumentPosition(secureOsRow) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.getByRole("heading", { name: /Chat with your agents/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /A secure operating system/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("mounts the agent marquee over the hero video with one card per persona", () => {

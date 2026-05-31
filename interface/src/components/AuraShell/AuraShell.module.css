@@ -197,6 +197,19 @@
   pointer-events: none;
 }
 
+/*
+ * Wraps the public leading-slot wordmark in a home link. The `<img>`
+ * keeps `pointer-events: none` so the click target is the link box
+ * itself; the inline-flex display collapses the link to the
+ * wordmark's intrinsic size so the hit area stays tight to the logo.
+ */
+.titleLogoLink {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 6px;
+}
+
 .titleActions {
   display: flex;
   align-items: center;

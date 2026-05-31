@@ -7,7 +7,6 @@ import { PanelSearch } from "../PanelSearch";
 import { ModeToggle } from "../ModeToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
-import { PublicSidebarFooter } from "../../views/public-chat/PublicSidebarFooter";
 import { EarnCreditsButton } from "../EarnCreditsButton";
 import { useActiveApp } from "../../hooks/use-active-app";
 import { useAppUIStore } from "../../stores/app-ui-store";
@@ -110,10 +109,9 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
   const hasAuthedFooter = !isPublic && !isDesktop;
 
   // Publish the active sidebar width (the `<aside>` rather than just
-  // the inner Lane) so that when the public Lane is collapsed and
-  // the top-mounted `PublicSidebarFooter` nav is the only thing
-  // keeping the aside visible, the chat surface's background video /
-  // vignette still re-centers around the actual chrome — not 0.
+  // the inner Lane) so that when the public Lane is collapsed, the
+  // chat surface's background video / vignette still re-centers
+  // around the actual chrome width — not 0.
   useAuraSidebarWidthCssVar(asideRef);
 
   return (
@@ -130,19 +128,12 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
       }
     >
       {/*
-        The public nav lives as a direct child of `<aside>`,
-        OUTSIDE the collapsible Lane, so the Product / Changelog /
-        Feedback / Pricing / Chat links remain visible even when the
-        Lane animates to width 0. The nav itself is absolutely
-        positioned at the vertical center of the aside (see
-        `.footer` in `PublicSidebarFooter.module.css`) so it sits
-        out of the column-flex flow and floats over the
-        `.sidebarBody` Lane without contesting its `flex: 1`
-        height. Rendered first so its DOM order keeps it paint-
-        BEFORE the body's contents within the same stacking
-        context.
+        The public marketing nav (Agents / Code / Pricing /
+        Resources) now lives in the centered title slot of
+        `AuraTitlebar` (`PublicTopNav`), not in this sidebar. The
+        public `<aside>` keeps only its search + recent-chats body
+        (`PublicSessionsPanel`).
       */}
-      {isPublic && <PublicSidebarFooter />}
       <div
         className={cn(
           shellStyles.sidebarBody,
