@@ -25,6 +25,37 @@ import styles from "./PublicMarketingPanel.module.css";
 const MARKETING_NAV_FG_COLOR = "#e6e8eb";
 const MARKETING_NAV_FG_COLOR_MUTED = "#c9c9cf";
 
+/*
+ * Per-route background for the scroll column, keyed off the
+ * destination pathname. The marketing views are lazy-loaded under
+ * `<Suspense fallback={null}>` (see `App.tsx`), so on the FIRST visit
+ * to a page — before its chunk is cached — the fallback renders
+ * nothing and the only visible surface is this column. Painting the
+ * column the destination page's own background color (instead of the
+ * `#000` CSS default) means the lazy gap blends into the page that is
+ * about to paint, killing the black blink. `pathname` updates
+ * synchronously on navigation, so the correct color is already in
+ * place while the chunk loads.
+ *
+ * These values mirror each view's first painted surface and must stay
+ * in sync with their CSS:
+ *   /agents, /code, /changelog, /feedback -> `--marketing-section-bg`
+ *     (`#0f0f12`)
+ *   /pricing -> `.pricingPage` (`#22272e`)
+ *   /models  -> `.modelsPage` (`#16191d`)
+ *   /download is transparent, so it keeps the `#000` default.
+ */
+const MARKETING_PATH_BG: Readonly<Record<string, string>> = {
+  "/agents": "#0f0f12",
+  "/code": "#0f0f12",
+  "/changelog": "#0f0f12",
+  "/feedback": "#0f0f12",
+  "/pricing": "#22272e",
+  "/models": "#16191d",
+};
+
+const DEFAULT_MARKETING_BG = "#000";
+
 /**
  * Layout route that mounts inside `AuraShell`'s `<main>` outlet for
  * the four public marketing pages (`/product`, `/changelog`,
@@ -89,9 +120,15 @@ export function PublicMarketingPanel(): React.ReactElement {
     scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname]);
 
+  const columnBackground = MARKETING_PATH_BG[pathname] ?? DEFAULT_MARKETING_BG;
+
   return (
     <div className={styles.root}>
-      <div ref={scrollRef} className={styles.scrollColumn}>
+      <div
+        ref={scrollRef}
+        className={styles.scrollColumn}
+        style={{ background: columnBackground }}
+      >
         <Outlet key={pathname} />
       </div>
       <OverlayScrollbar scrollRef={scrollRef} />
