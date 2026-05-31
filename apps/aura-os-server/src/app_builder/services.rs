@@ -18,12 +18,19 @@ pub(super) fn init_core_services(store: &Arc<SettingsStore>) -> CoreServices {
 /// emails. Listed users are always treated as system administrators,
 /// independent of aura-network. Empty/unset yields an empty set.
 fn sys_admin_emails_from_env() -> std::collections::HashSet<String> {
-    std::env::var("SYS_ADMIN_EMAILS")
+    let emails: std::collections::HashSet<String> = std::env::var("SYS_ADMIN_EMAILS")
         .unwrap_or_default()
         .split(',')
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
-        .collect()
+        .collect();
+    // Log only the count, never the addresses — this confirms whether the
+    // env var actually reached the process without leaking PII.
+    info!(
+        sys_admin_email_count = emails.len(),
+        "Loaded SYS_ADMIN_EMAILS allowlist"
+    );
+    emails
 }
 
 pub(super) struct DomainServices {

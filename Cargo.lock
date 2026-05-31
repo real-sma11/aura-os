@@ -431,6 +431,7 @@ name = "aura-os-auth"
 version = "0.1.0"
 dependencies = [
  "aura-os-core",
+ "base64",
  "chrono",
  "reqwest 0.12.28",
  "serde",

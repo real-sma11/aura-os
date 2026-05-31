@@ -4,10 +4,11 @@ pub use error::AuthError;
 use std::collections::HashSet;
 use std::time::Duration;
 
+use base64::Engine;
 use chrono::Utc;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use aura_os_core::ZeroAuthSession;
 
@@ -97,6 +98,52 @@ fn normalize_login_email(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
+/// Mask an email for logging so we never write a full address to logs:
+/// `n3o@zero.tech` -> `n***@zero.tech`. Non-email-ish strings are reduced
+/// to a leading char plus `***`.
+fn mask_email_for_log(email: &str) -> String {
+    match email.split_once('@') {
+        Some((local, domain)) => {
+            let head = local.chars().next().map(String::from).unwrap_or_default();
+            format!("{head}***@{domain}")
+        }
+        None => {
+            let head = email.chars().next().map(String::from).unwrap_or_default();
+            format!("{head}***")
+        }
+    }
+}
+
+/// Claims we attempt to read out of the zOS access token (a JWT) when the
+/// `/api/users/current` response does not carry an email. The token has
+/// already been validated by zOS at this point, so we only read claims
+/// (no signature verification).
+#[derive(Debug, Deserialize)]
+struct JwtEmailClaims {
+    email: Option<String>,
+    #[serde(rename = "preferred_username")]
+    preferred_username: Option<String>,
+    #[serde(rename = "primaryEmail")]
+    primary_email: Option<String>,
+}
+
+/// Best-effort extraction of an email from a JWT payload. Returns `None`
+/// if the token is malformed or carries no email-like claim. The value
+/// returned is whatever the claim holds (not yet normalized).
+fn email_from_jwt_claims(token: &str) -> Option<String> {
+    let payload_b64 = token.split('.').nth(1)?;
+    let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload_b64.as_bytes())
+        .ok()?;
+    let claims: JwtEmailClaims = serde_json::from_slice(&payload_bytes).ok()?;
+    claims
+        .email
+        .or(claims.primary_email)
+        .or(claims.preferred_username)
+        .map(|e| e.trim().to_string())
+        .filter(|e| e.contains('@'))
+}
+
 pub struct AuthService {
     http: Client,
     /// Emails (normalized lowercase/trimmed) that are always granted
@@ -157,7 +204,7 @@ impl AuthService {
         }
 
         let login_data: ZosLoginResponse = res.json().await.map_err(AuthError::Http)?;
-        self.build_session_from_token(&login_data.access_token)
+        self.build_session_from_token(&login_data.access_token, Some(&normalized_email))
             .await
     }
 
@@ -229,7 +276,9 @@ impl AuthService {
         }
 
         // Step 4: Build session from the token (re-fetches user with completed profile)
-        let mut result = self.build_session_from_token(token).await?;
+        let mut result = self
+            .build_session_from_token(token, Some(&normalize_login_email(email)))
+            .await?;
         result.inviter_user_id = inviter_user_id;
         Ok(result)
     }
@@ -239,7 +288,7 @@ impl AuthService {
         access_token: &str,
     ) -> Result<AuthSessionResult, AuthError> {
         debug!("Importing existing zOS access token");
-        self.build_session_from_token(access_token).await
+        self.build_session_from_token(access_token, None).await
     }
 
     pub async fn request_password_reset(&self, email: &str) -> Result<(), AuthError> {
@@ -321,17 +370,42 @@ impl AuthService {
     /// by `sync_user_to_network` on the server side.
     pub async fn validate_token(&self, token: &str) -> Result<AuthSessionResult, AuthError> {
         debug!("Validating token against zOS-api");
-        self.build_session_from_token(token).await
+        self.build_session_from_token(token, None).await
     }
 
     /// Build a `ZeroAuthSession` from a token by fetching user info and Pro status from zOS.
+    ///
+    /// `known_email`, when provided (e.g. the address the user typed at
+    /// login/register), is the most reliable source for the
+    /// `SYS_ADMIN_EMAILS` allowlist match. We fall back to the email
+    /// embedded in the JWT claims and then to whatever
+    /// `/api/users/current` returns, because that endpoint does not
+    /// reliably carry an email field across all zOS account shapes.
     async fn build_session_from_token(
         &self,
         access_token: &str,
+        known_email: Option<&str>,
     ) -> Result<AuthSessionResult, AuthError> {
         let user = self.fetch_user_info(access_token).await?;
         let now = Utc::now();
-        let is_allowlisted_admin = self.is_allowlisted_admin(user.email.as_deref());
+
+        let (admin_email, email_source) = known_email
+            .map(|e| (e.to_string(), "login"))
+            .or_else(|| email_from_jwt_claims(access_token).map(|e| (e, "jwt")))
+            .or_else(|| user.email.clone().map(|e| (e, "zos_user")))
+            .map(|(email, source)| (Some(email), source))
+            .unwrap_or((None, "none"));
+
+        let is_allowlisted_admin = self.is_allowlisted_admin(admin_email.as_deref());
+        info!(
+            user_id = %user.id,
+            email_source,
+            email = admin_email.as_deref().map(mask_email_for_log).as_deref().unwrap_or("<none>"),
+            is_sys_admin = is_allowlisted_admin,
+            allowlist_size = self.sys_admin_emails.len(),
+            "Resolved sys-admin allowlist grant for session"
+        );
+
         let mut session = ZeroAuthSession {
             user_id: user.id,
             network_user_id: None,
@@ -406,8 +480,48 @@ fn build_display_name(profile: &Option<ZosProfileSummary>, primary_zid: &Option<
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_login_email, AuthService};
+    use super::{
+        email_from_jwt_claims, mask_email_for_log, normalize_login_email, AuthService,
+    };
+    use base64::Engine;
     use std::collections::HashSet;
+
+    /// Build a fake (unsigned) JWT with the given JSON payload so we can
+    /// exercise the claims extractor without a real zOS token.
+    fn fake_jwt(payload: &serde_json::Value) -> String {
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        let header = b64(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let body = b64(payload.to_string().as_bytes());
+        format!("{header}.{body}.sig")
+    }
+
+    #[test]
+    fn mask_email_keeps_domain_and_hides_local() {
+        assert_eq!(mask_email_for_log("n3o@zero.tech"), "n***@zero.tech");
+        assert_eq!(mask_email_for_log("weird-no-at"), "w***");
+        assert_eq!(mask_email_for_log(""), "***");
+    }
+
+    #[test]
+    fn jwt_email_extraction_prefers_email_then_primary_then_username() {
+        let token = fake_jwt(&serde_json::json!({ "email": "a@zero.tech" }));
+        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("a@zero.tech"));
+
+        let token = fake_jwt(&serde_json::json!({ "primaryEmail": "b@zero.tech" }));
+        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("b@zero.tech"));
+
+        let token = fake_jwt(&serde_json::json!({ "preferred_username": "c@zero.tech" }));
+        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("c@zero.tech"));
+    }
+
+    #[test]
+    fn jwt_email_extraction_rejects_non_email_and_malformed() {
+        // Non-email username claim is dropped (no '@').
+        let token = fake_jwt(&serde_json::json!({ "preferred_username": "just-a-handle" }));
+        assert_eq!(email_from_jwt_claims(&token), None);
+        // Garbage token with no payload segment.
+        assert_eq!(email_from_jwt_claims("not-a-jwt"), None);
+    }
 
     #[test]
     fn normalize_login_email_trims_and_lowercases() {
