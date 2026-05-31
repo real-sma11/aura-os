@@ -1,9 +1,15 @@
 /*
  * PublicTopNav — centered marketing nav mounted in the title slot of
  * `AuraTitlebar`. Replaces the old vertically-centered left-edge
- * `PublicSidebarFooter`. Reads the same persona-driven
- * `--public-nav-fg-color*` tokens the old footer used so the links
- * stay readable over both dark and light persona backgrounds.
+ * `PublicSidebarFooter`.
+ *
+ * Unlike that old footer, the nav uses a FIXED light foreground pair
+ * rather than the persona-driven `--public-nav-fg-color*` tokens. The
+ * nav now lives on the dark top-bar chrome, so its color must stay
+ * constant and never shift as the persona background rotates or as the
+ * landing surface scrolls. The pair matches MARKETING_NAV_FG_COLOR(
+ * _MUTED) in `PublicMarketingPanel` so the nav reads identically across
+ * `/`, the marketing pages, and every persona.
  */
 .nav {
   display: inline-flex;
@@ -11,6 +17,8 @@
   gap: 2px;
   user-select: none;
   -webkit-user-select: none;
+  --topnav-fg: #e6e8eb;
+  --topnav-fg-muted: #c9c9cf;
 }
 
 .link {
@@ -27,23 +35,19 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--public-nav-fg-color-muted, var(--color-text-secondary, #c9c9cf));
+  color: var(--topnav-fg-muted);
   transition: color 120ms ease, background-color 120ms ease;
 }
 
 .link:hover {
-  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
-  background: var(--color-surface-hover);
+  color: var(--topnav-fg);
+  background: color-mix(in srgb, var(--topnav-fg) 8%, transparent);
 }
 
 .linkActive,
 .linkActive:hover {
-  color: var(--public-nav-fg-color, var(--color-text-primary, inherit));
-  background: color-mix(
-    in srgb,
-    var(--public-nav-fg-color, var(--color-text-primary)) 10%,
-    transparent
-  );
+  color: var(--topnav-fg);
+  background: color-mix(in srgb, var(--topnav-fg) 14%, transparent);
 }
 
 .resourcesTrigger {
