@@ -1,6 +1,7 @@
 mod error;
 pub use error::AuthError;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -63,6 +64,8 @@ struct ZosWallet {
 #[derive(Debug, Deserialize)]
 struct ZosUserResponse {
     id: String,
+    #[serde(default, alias = "primaryEmail", alias = "emailAddress")]
+    email: Option<String>,
     #[serde(rename = "profileSummary")]
     profile_summary: Option<ZosProfileSummary>,
     #[serde(rename = "primaryZID")]
@@ -96,16 +99,43 @@ fn normalize_login_email(email: &str) -> String {
 
 pub struct AuthService {
     http: Client,
+    /// Emails (normalized lowercase/trimmed) that are always granted
+    /// `is_sys_admin` regardless of what aura-network reports. Sourced
+    /// from the `SYS_ADMIN_EMAILS` env var at construction.
+    sys_admin_emails: HashSet<String>,
 }
 
 impl AuthService {
     pub fn new() -> Self {
+        Self::with_sys_admin_emails(HashSet::new())
+    }
+
+    /// Construct an `AuthService` with a set of always-admin emails.
+    /// Each entry is normalized (trimmed + lowercased) for matching.
+    pub fn with_sys_admin_emails(emails: HashSet<String>) -> Self {
+        let sys_admin_emails = emails
+            .into_iter()
+            .map(|e| normalize_login_email(&e))
+            .filter(|e| !e.is_empty())
+            .collect();
         Self {
             http: Client::builder()
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(60))
                 .build()
                 .expect("failed to build auth http client"),
+            sys_admin_emails,
+        }
+    }
+
+    /// Returns true if the given (optional) email is in the configured
+    /// system-admin allowlist.
+    fn is_allowlisted_admin(&self, email: Option<&str>) -> bool {
+        match email {
+            Some(e) => self
+                .sys_admin_emails
+                .contains(&normalize_login_email(e)),
+            None => false,
         }
     }
 
@@ -301,6 +331,7 @@ impl AuthService {
     ) -> Result<AuthSessionResult, AuthError> {
         let user = self.fetch_user_info(access_token).await?;
         let now = Utc::now();
+        let is_allowlisted_admin = self.is_allowlisted_admin(user.email.as_deref());
         let mut session = ZeroAuthSession {
             user_id: user.id,
             network_user_id: None,
@@ -322,7 +353,7 @@ impl AuthService {
             access_token: access_token.to_string(),
             is_zero_pro: false,
             is_access_granted: false,
-            is_sys_admin: false,
+            is_sys_admin: is_allowlisted_admin,
             created_at: now,
             validated_at: now,
         };
@@ -375,7 +406,8 @@ fn build_display_name(profile: &Option<ZosProfileSummary>, primary_zid: &Option<
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_login_email;
+    use super::{normalize_login_email, AuthService};
+    use std::collections::HashSet;
 
     #[test]
     fn normalize_login_email_trims_and_lowercases() {
@@ -383,5 +415,29 @@ mod tests {
             normalize_login_email("  ShahRozAli@Gmail.Com "),
             "shahrozali@gmail.com"
         );
+    }
+
+    #[test]
+    fn allowlist_matches_case_and_whitespace_insensitively() {
+        let svc = AuthService::with_sys_admin_emails(HashSet::from([
+            "  N3O@Zero.Tech ".to_string(),
+        ]));
+        assert!(svc.is_allowlisted_admin(Some("n3o@zero.tech")));
+        assert!(svc.is_allowlisted_admin(Some("  N3O@ZERO.TECH ")));
+    }
+
+    #[test]
+    fn allowlist_rejects_unknown_or_missing_email() {
+        let svc = AuthService::with_sys_admin_emails(HashSet::from([
+            "n3o@zero.tech".to_string(),
+        ]));
+        assert!(!svc.is_allowlisted_admin(Some("someone@else.com")));
+        assert!(!svc.is_allowlisted_admin(None));
+    }
+
+    #[test]
+    fn empty_allowlist_grants_nobody() {
+        let svc = AuthService::new();
+        assert!(!svc.is_allowlisted_admin(Some("n3o@zero.tech")));
     }
 }

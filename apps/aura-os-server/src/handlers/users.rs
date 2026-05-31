@@ -405,7 +405,10 @@ pub(crate) async fn sync_user_to_network(
                 session.network_user_id = user.user_id_typed();
                 session.profile_id = user.profile_id_typed();
                 session.is_access_granted = user.is_access_granted;
-                session.is_sys_admin = user.is_sys_admin;
+                // OR-in rather than overwrite: the session may already have
+                // been granted sys-admin via the SYS_ADMIN_EMAILS allowlist
+                // at build time, which aura-network has no knowledge of.
+                session.is_sys_admin = user.is_sys_admin || session.is_sys_admin;
 
                 // Auto-grant access for Pro users who don't have it yet
                 if session.is_zero_pro && !user.is_access_granted {

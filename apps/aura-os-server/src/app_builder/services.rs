@@ -9,9 +9,21 @@ pub(super) struct CoreServices {
 pub(super) fn init_core_services(store: &Arc<SettingsStore>) -> CoreServices {
     CoreServices {
         org_service: Arc::new(OrgService::new(store.clone())),
-        auth_service: Arc::new(AuthService::new()),
+        auth_service: Arc::new(AuthService::with_sys_admin_emails(sys_admin_emails_from_env())),
         billing_client: Arc::new(BillingClient::new()),
     }
+}
+
+/// Parse the comma-separated `SYS_ADMIN_EMAILS` env var into a set of
+/// emails. Listed users are always treated as system administrators,
+/// independent of aura-network. Empty/unset yields an empty set.
+fn sys_admin_emails_from_env() -> std::collections::HashSet<String> {
+    std::env::var("SYS_ADMIN_EMAILS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 pub(super) struct DomainServices {
