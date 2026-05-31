@@ -790,7 +790,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Public mode", () => {
-    it("renders the theme toggle in its own floating pill and the tagline in its own bubble within the public right cluster", () => {
+    it("renders the theme toggle in its own floating pill and the tagline in its own bubble within the public left cluster", () => {
       const { container } = render(<BottomTaskbar mode="public" />);
 
       const bar = container.querySelector(
@@ -801,24 +801,33 @@ describe("BottomTaskbar", () => {
 
       // The theme toggle now sits in its own standalone `.themePill`
       // floating panel, with the rotating tagline in a separate
-      // `.taglineBubble` next to it — both inside the right-anchored
-      // `.publicRight` cluster. Credits, Settings, Apps, Desktop, the
-      // profile rail, and the clock are all gated behind
+      // `.taglineBubble` next to it — both inside the left-anchored
+      // `.publicLeft` cluster (the "Powered by THE GRID" chip is the
+      // sole occupant of `.publicRight`). Credits, Settings, Apps,
+      // Desktop, the profile rail, and the clock are all gated behind
       // `AuthedBottomTaskbar` which doesn't mount.
       const themeToggle = screen.getByRole("button", { name: /switch theme/i });
       expect(themeToggle).toBeInTheDocument();
 
-      const publicRight = container.querySelector(".publicRight");
-      expect(publicRight).not.toBeNull();
+      const publicLeft = container.querySelector(".publicLeft");
+      expect(publicLeft).not.toBeNull();
 
       const themePill = container.querySelector(".themePill");
       expect(themePill).not.toBeNull();
       expect(themePill).toContainElement(themeToggle);
-      expect(publicRight).toContainElement(themePill as HTMLElement);
+      expect(publicLeft).toContainElement(themePill as HTMLElement);
 
       const taglineBubble = container.querySelector(".taglineBubble");
       expect(taglineBubble).not.toBeNull();
-      expect(publicRight).toContainElement(taglineBubble as HTMLElement);
+      expect(publicLeft).toContainElement(taglineBubble as HTMLElement);
+
+      // The "Powered by THE GRID" chip stays anchored on the right in
+      // its own `.poweredPill` inside `.publicRight`.
+      const publicRight = container.querySelector(".publicRight");
+      expect(publicRight).not.toBeNull();
+      const poweredPill = container.querySelector(".poweredPill");
+      expect(poweredPill).not.toBeNull();
+      expect(publicRight).toContainElement(poweredPill as HTMLElement);
 
       // The theme toggle must not be wrapped inside the tagline bubble.
       expect(taglineBubble).not.toContainElement(themeToggle);

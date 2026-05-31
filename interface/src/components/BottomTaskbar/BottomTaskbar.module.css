@@ -75,11 +75,26 @@
 }
 
 /*
+ * Public-mode left cluster — mirrors `.publicRight` (transparent flex
+ * container of independent floating pills), but anchored to the start
+ * of the bar. `margin-right: auto` pushes the right cluster to the
+ * far edge; combined with the bar's `justify-content: space-between`
+ * this seats the theme toggle + tagline on the far left.
+ */
+.publicLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-right: auto;
+}
+
+/*
  * Public-mode right cluster — a transparent flex container (no chrome
  * of its own) so the floating pills inside it read as separate
  * bubbles with the page background showing through the gaps, rather
  * than one continuous pill. `margin-left: auto` anchors the cluster
- * to the right edge of the bar (it is the sole flex child).
+ * to the right edge of the bar.
  */
 .publicRight {
   display: flex;
