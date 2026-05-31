@@ -48,9 +48,12 @@
   pointer-events: none;
 }
 
-.sidekickTabBar button:not(:disabled)[aria-pressed="true"],
 .sidekickTabBar button:not(:disabled):hover {
   color: var(--color-text-primary);
+}
+
+.sidekickTabBar button:not(:disabled)[aria-pressed="true"] {
+  color: var(--color-accent);
 }
 
 .sidekickTabBar button:focus-visible {
@@ -76,13 +79,13 @@
 }
 
 .moreButtonWrap > button[class*="selected"] {
-  color: var(--color-text-primary);
+  color: var(--color-accent);
   text-shadow: none;
 }
 
 .moreMenu [class*="menuItem"][class*="selected"],
 .moreMenu [class*="menuItem"][class*="selected"]:hover {
-  color: var(--color-text-primary);
+  color: var(--color-accent);
 }
 
 .sidekickBody {
