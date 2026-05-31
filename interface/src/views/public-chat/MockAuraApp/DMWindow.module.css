@@ -119,19 +119,30 @@
   }
 }
 
+/*
+ * Maximized state — the visitor maximized the window via the
+ * titlebar control. `DMWindow.tsx` supplies the full-frame inline
+ * style (inset 0 + 100% size); here we only drop the corner radius
+ * so the window reads edge-to-edge against the mock frame.
+ */
+.dmWindow[data-maximized="true"] {
+  border-radius: 0;
+}
+
 /* Responsive clamps. The inline `width` / `maxHeight` supplied by
    `DMWindow.tsx` is the authoring intent; at narrow viewports we
    override it with `!important` so a small wallpaper area never
-   gets a window wider than itself. */
+   gets a window wider than itself. A maximized window opts out of
+   these clamps so it can fill the frame at any viewport width. */
 @media (max-width: 720px) {
-  .dmWindow {
+  .dmWindow:not([data-maximized="true"]) {
     width: 220px !important;
     max-height: 260px !important;
   }
 }
 
 @media (max-width: 540px) {
-  .dmWindow {
+  .dmWindow:not([data-maximized="true"]) {
     width: 190px !important;
     max-height: 220px !important;
   }
@@ -196,6 +207,13 @@
   justify-content: center;
   width: 22px;
   height: 22px;
+  /* These are real <button>s now (so the controls work), so reset
+     the UA chrome — border, padding, and inherited font — to keep
+     the glyph-only look the decorative <span> version had. */
+  padding: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--color-text-muted);

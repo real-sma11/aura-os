@@ -114,6 +114,19 @@ interface DMWindowProps {
   readonly isFocused: boolean;
   readonly onFocus: (threadId: ThreadId) => void;
   /**
+   * True when the visitor has maximized this window. The chrome then
+   * paints full-frame (see `containerStyle`) and the maximize
+   * control flips to "Restore". Drag + resize are disabled while
+   * maximized, mirroring the live `AgentWindow`.
+   */
+  readonly maximized: boolean;
+  /** Minimize the window — hides it for the rest of the loop. */
+  readonly onMinimize: (threadId: ThreadId) => void;
+  /** Close the window — same hide-until-reset outcome as minimize. */
+  readonly onClose: (threadId: ThreadId) => void;
+  /** Toggle the maximized / restored pose. */
+  readonly onToggleMaximize: (threadId: ThreadId) => void;
+  /**
    * The manager flips this true once the script has finished its
    * loop and the cascade is collapsing back to empty. While set,
    * the window paints with `data-state="closing"` so the stylesheet
@@ -144,6 +157,14 @@ interface UserRect {
 const MIN_W = 180;
 const MIN_H = 140;
 
+/**
+ * Z-index for a maximized window. The manager assigns the live
+ * cascade z-indexes from a base of 10 (one per window), so this sits
+ * comfortably above any realistic stack while staying below the
+ * decorative top/bottom chrome overlays in `MockAuraApp`.
+ */
+const MAXIMIZED_Z = 50;
+
 export function DMWindow({
   threadId,
   participants,
@@ -152,6 +173,10 @@ export function DMWindow({
   position,
   isFocused,
   onFocus,
+  maximized,
+  onMinimize,
+  onClose,
+  onToggleMaximize,
   isClosing,
   closeDelayMs,
 }: DMWindowProps): ReactNode {
@@ -442,6 +467,10 @@ export function DMWindow({
       // controls would start dragging the window.
       const target = e.target as HTMLElement;
       if (target.closest(`.${styles.dmControl}`)) return;
+      // A maximized window fills the frame, so dragging it would be
+      // meaningless (and would commit a stale `userRect`). Mirror the
+      // live `AgentWindow` and ignore titlebar drags while maximized.
+      if (maximized) return;
       e.preventDefault();
       e.stopPropagation();
       onFocus(threadId);
@@ -455,7 +484,7 @@ export function DMWindow({
       };
       dragPointerIdRef.current = e.pointerId;
     },
-    [captureBaseline, onFocus, threadId],
+    [captureBaseline, maximized, onFocus, threadId],
   );
 
   const handleResizePointerDown = useCallback(
@@ -489,23 +518,38 @@ export function DMWindow({
   // we switch to pixel `left/top/width/height` from `userRect` —
   // the conversion happens in `captureBaseline` on the first
   // pointerdown.
-  const baseStyle: CSSProperties = userRect
-    ? {
-        zIndex,
-        left: userRect.x,
-        top: userRect.y,
-        width: userRect.width,
-        height: userRect.height,
+  const baseStyle: CSSProperties = maximized
+    ? // Full-frame pose: ignore both the authored anchors and any
+      // dragged `userRect` and pin to all four edges of the
+      // `.windowManager` parent. A z-index above the 10+N cascade
+      // range keeps the maximized window on top of its peers.
+      {
+        zIndex: MAXIMIZED_Z,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100%",
+        height: "100%",
+        maxHeight: "100%",
       }
-    : {
-        zIndex,
-        top: position.top,
-        left: position.left,
-        right: position.right,
-        bottom: position.bottom,
-        width: position.width,
-        maxHeight: position.maxHeight,
-      };
+    : userRect
+      ? {
+          zIndex,
+          left: userRect.x,
+          top: userRect.y,
+          width: userRect.width,
+          height: userRect.height,
+        }
+      : {
+          zIndex,
+          top: position.top,
+          left: position.left,
+          right: position.right,
+          bottom: position.bottom,
+          width: position.width,
+          maxHeight: position.maxHeight,
+        };
 
   // When the manager is closing the cascade we override `animation-
   // delay` inline so each window's `dmWindowCollapse` starts at its
@@ -543,6 +587,7 @@ export function DMWindow({
       data-testid={`dm-window-${threadId}`}
       data-focused={isFocused ? "true" : undefined}
       data-user-positioned={userRect ? "true" : undefined}
+      data-maximized={maximized ? "true" : undefined}
       data-state={isClosing ? "closing" : isOpen ? "open" : "opening"}
       onMouseDown={handleFocus}
     >
@@ -555,16 +600,46 @@ export function DMWindow({
           <ParticipantDot agentId={titleAgent} />
           <span className={styles.dmTitleName}>{titleMeta.name}</span>
         </div>
+        {/*
+         * Real `<button>`s so the controls work, but `tabIndex={-1}`
+         * keeps them out of the keyboard tab order — the whole
+         * manager is `aria-hidden`, so exposing focusable controls to
+         * the tab sequence would leak this decorative demo into the
+         * a11y/keyboard flow. Same pattern as the persona dock
+         * buttons. They keep the `dmControl` class so the titlebar
+         * drag guard (`closest('.dmControl')`) still skips them.
+         */}
         <div className={styles.dmControls}>
-          <span className={styles.dmControl}>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            className={styles.dmControl}
+            data-testid={`dm-window-${threadId}-minimize`}
+            onClick={() => onMinimize(threadId)}
+          >
             <Minus size={12} strokeWidth={2} />
-          </span>
-          <span className={styles.dmControl}>
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            className={styles.dmControl}
+            data-testid={`dm-window-${threadId}-maximize`}
+            onClick={() => onToggleMaximize(threadId)}
+          >
             <Square size={10} strokeWidth={2} />
-          </span>
-          <span className={`${styles.dmControl} ${styles.dmControlClose}`}>
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            className={`${styles.dmControl} ${styles.dmControlClose}`}
+            data-testid={`dm-window-${threadId}-close`}
+            onClick={() => onClose(threadId)}
+          >
             <X size={12} strokeWidth={2} />
-          </span>
+          </button>
         </div>
       </div>
 
@@ -582,14 +657,16 @@ export function DMWindow({
         </div>
       </div>
 
-      {resizeHandles.map((dir) => (
-        <div
-          key={dir}
-          className={resizeClassMap[dir]}
-          data-testid={`dm-window-${threadId}-resize-${dir}`}
-          onPointerDown={handleResizePointerDown(dir)}
-        />
-      ))}
+      {maximized
+        ? null
+        : resizeHandles.map((dir) => (
+            <div
+              key={dir}
+              className={resizeClassMap[dir]}
+              data-testid={`dm-window-${threadId}-resize-${dir}`}
+              onPointerDown={handleResizePointerDown(dir)}
+            />
+          ))}
     </div>
   );
 }

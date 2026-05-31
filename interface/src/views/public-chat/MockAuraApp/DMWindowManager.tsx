@@ -72,6 +72,20 @@ interface ThreadWindowState {
    * focus when a thread receives a new frame.
    */
   readonly lastTouchedAt: number;
+  /**
+   * Set true when the visitor minimizes or closes the window. There
+   * is no taskbar/dock to restore from on the mock desktop, so both
+   * controls collapse to the same outcome: the window stops
+   * rendering for the rest of the current loop and reappears when
+   * the script `reset`s and rebuilds the cascade from scratch.
+   */
+  readonly hidden: boolean;
+  /**
+   * Set true when the visitor maximizes the window. The window then
+   * fills the mock frame (see `DMWindow`'s maximized style override)
+   * and the control flips to "Restore". Cleared on `reset`.
+   */
+  readonly maximized: boolean;
 }
 
 /**
@@ -100,6 +114,8 @@ type ManagerState = {
 type ManagerAction =
   | { type: "advance" }
   | { type: "focus"; threadId: ThreadId }
+  | { type: "hide"; threadId: ThreadId }
+  | { type: "toggleMaximize"; threadId: ThreadId }
   | { type: "beginClose" }
   | { type: "reset" };
 
@@ -142,6 +158,8 @@ function managerReducer(
                 threadId: frame.thread,
                 frames: [keyed],
                 lastTouchedAt: tick,
+                hidden: false,
+                maximized: false,
               },
             ]
           : state.windows.map((w, i) =>
@@ -185,6 +203,31 @@ function managerReducer(
         i === idx ? { ...w, lastTouchedAt: tick } : w,
       );
       return { ...state, windows: nextWindows, tick };
+    }
+    case "hide": {
+      // Minimize / close — the visitor dismissed the window. There's
+      // no taskbar to restore from on the mock desktop, so we mark
+      // it hidden and stop rendering it until the loop `reset`s.
+      const idx = state.windows.findIndex(
+        (w) => w.threadId === action.threadId,
+      );
+      if (idx === -1 || state.windows[idx].hidden) return state;
+      const nextWindows = state.windows.map((w, i) =>
+        i === idx ? { ...w, hidden: true } : w,
+      );
+      return { ...state, windows: nextWindows };
+    }
+    case "toggleMaximize": {
+      // Flip the window between its authored/dragged footprint and a
+      // full-frame maximized pose. Cleared implicitly on `reset`.
+      const idx = state.windows.findIndex(
+        (w) => w.threadId === action.threadId,
+      );
+      if (idx === -1) return state;
+      const nextWindows = state.windows.map((w, i) =>
+        i === idx ? { ...w, maximized: !w.maximized } : w,
+      );
+      return { ...state, windows: nextWindows };
     }
     case "beginClose": {
       // Idempotent: a `beginClose` while already closing is a no-op
@@ -330,6 +373,16 @@ export function DMWindowManager(): ReactNode {
     dispatch({ type: "focus", threadId });
   }, []);
 
+  // Minimize and close both collapse to the same outcome here (no
+  // taskbar to restore from), so they share one `hide` dispatch.
+  const hideThread = useCallback((threadId: ThreadId) => {
+    dispatch({ type: "hide", threadId });
+  }, []);
+
+  const toggleMaximizeThread = useCallback((threadId: ThreadId) => {
+    dispatch({ type: "toggleMaximize", threadId });
+  }, []);
+
   // Pre-compute the z-index ordering for the current windows array.
   // Higher `lastTouchedAt` -> higher z-index. Z bumps in steps of 1
   // starting at a base of 10 so the wallpaper (0) and vignette (1)
@@ -387,6 +440,11 @@ export function DMWindowManager(): ReactNode {
       aria-hidden="true"
     >
       {state.windows.map((win) => {
+        // Minimized / closed windows drop out of the render until the
+        // loop resets. They stay in `state.windows` (and in the z /
+        // focus maps) so the script can keep advancing frames into
+        // them invisibly without reshuffling the surviving stack.
+        if (win.hidden) return null;
         const meta = THREADS[win.threadId];
         const position = THREAD_POSITIONS[win.threadId];
         const z = zByThread.get(win.threadId) ?? 10;
@@ -403,6 +461,10 @@ export function DMWindowManager(): ReactNode {
             position={position}
             isFocused={win.threadId === focusedThreadId}
             onFocus={focusThread}
+            maximized={win.maximized}
+            onMinimize={hideThread}
+            onClose={hideThread}
+            onToggleMaximize={toggleMaximizeThread}
             isClosing={isClosing}
             closeDelayMs={closeDelayByThread.get(win.threadId) ?? 0}
           />

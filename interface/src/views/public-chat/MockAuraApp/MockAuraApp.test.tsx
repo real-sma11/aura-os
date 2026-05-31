@@ -232,6 +232,115 @@ describe("MockAuraApp", () => {
     expect(manager).toHaveAttribute("aria-hidden", "true");
   });
 
+  /*
+   * Window controls — minimize, maximize, and close on each DM
+   * window's titlebar now drive per-thread manager state. Minimize
+   * and close both hide the window for the rest of the loop (there's
+   * no taskbar to restore from); maximize toggles a full-frame pose.
+   * The controls are real <button>s but stay `tabIndex={-1}` so the
+   * `aria-hidden` manager never leaks into the keyboard/focus order.
+   */
+  describe("DM window controls", () => {
+    // Advance the scripted timers far enough for the first
+    // (architect_frontend) window to mount.
+    const mountFirstWindow = (): void => {
+      for (let i = 0; i < 6; i += 1) {
+        act(() => {
+          vi.advanceTimersByTime(1500);
+        });
+      }
+    };
+
+    it("renders the controls as tabIndex=-1 buttons so they stay out of the focus order", () => {
+      vi.useFakeTimers();
+      render(<MockAuraApp />);
+      mountFirstWindow();
+
+      for (const control of ["minimize", "maximize", "close"] as const) {
+        const button = screen.getByTestId(
+          `dm-window-architect_frontend-${control}`,
+        );
+        expect(button.tagName).toBe("BUTTON");
+        expect(button).toHaveAttribute("tabindex", "-1");
+      }
+    });
+
+    it("hides the window when its close control is clicked", () => {
+      vi.useFakeTimers();
+      render(<MockAuraApp />);
+      mountFirstWindow();
+
+      expect(
+        screen.getByTestId("dm-window-architect_frontend"),
+      ).toBeInTheDocument();
+
+      act(() => {
+        fireEvent.click(
+          screen.getByTestId("dm-window-architect_frontend-close"),
+        );
+      });
+
+      expect(
+        screen.queryByTestId("dm-window-architect_frontend"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("hides the window when its minimize control is clicked", () => {
+      vi.useFakeTimers();
+      render(<MockAuraApp />);
+      mountFirstWindow();
+
+      expect(
+        screen.getByTestId("dm-window-architect_frontend"),
+      ).toBeInTheDocument();
+
+      act(() => {
+        fireEvent.click(
+          screen.getByTestId("dm-window-architect_frontend-minimize"),
+        );
+      });
+
+      expect(
+        screen.queryByTestId("dm-window-architect_frontend"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("toggles a full-frame maximized pose when the maximize control is clicked", () => {
+      vi.useFakeTimers();
+      render(<MockAuraApp />);
+      mountFirstWindow();
+
+      const win = screen.getByTestId("dm-window-architect_frontend");
+      expect(win).not.toHaveAttribute("data-maximized");
+
+      act(() => {
+        fireEvent.click(
+          screen.getByTestId("dm-window-architect_frontend-maximize"),
+        );
+      });
+
+      expect(win).toHaveAttribute("data-maximized", "true");
+      expect(win.style.width).toBe("100%");
+      expect(win.style.height).toBe("100%");
+      // Resize handles are not rendered while maximized.
+      expect(
+        screen.queryByTestId("dm-window-architect_frontend-resize-se"),
+      ).not.toBeInTheDocument();
+
+      // Clicking again restores the windowed pose.
+      act(() => {
+        fireEvent.click(
+          screen.getByTestId("dm-window-architect_frontend-maximize"),
+        );
+      });
+
+      expect(win).not.toHaveAttribute("data-maximized");
+      expect(
+        screen.getByTestId("dm-window-architect_frontend-resize-se"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("leaves the frame un-themed (no data attribute, no inline mock vars) when no chatPalette is supplied", () => {
     render(<MockAuraApp />);
     const frame = screen.getByTestId("mock-aura-app");
