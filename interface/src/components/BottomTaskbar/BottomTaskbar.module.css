@@ -136,30 +136,13 @@
 }
 
 /*
- * Chat affordance for the public bottom-left cluster. Rendered as a
- * router `<Link>` (not a `TaskbarIconButton`, which is a `<button>`)
- * so a logged-out visitor can middle-click / open the chat surface in
- * a new tab, while still reading as the same square icon control as
- * the adjacent theme toggle. Sized to `--taskbar-item-size` so it
- * matches the `ThemeToggleButton` glyph box exactly.
+ * The public Chat affordance (`.chatPill`) hosts a `TaskbarIconButton`
+ * exactly like `.themePill`, so the inner glyph box, hover surface,
+ * and `--taskbar-item-size` sizing are inherited from `.taskbarBtn`
+ * with no per-control overrides needed here. See
+ * `PublicChatTaskbarButton.tsx` for the chat <-> previous-page toggle
+ * behavior.
  */
-.chatLink {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--taskbar-item-size, 22px);
-  height: var(--taskbar-item-size, 22px);
-  border-radius: 8px;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  transition: color 120ms ease, background-color 120ms ease;
-}
-
-.chatLink:hover,
-.chatLink:focus-visible {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
 
 .center {
   position: absolute;
@@ -317,11 +300,11 @@
 .poweredByGridBoltSpark {
   fill: none;
   stroke: #ffffff;
-  stroke-width: 0.75;
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 16 84;
-  filter: drop-shadow(0 0 2px #ffffff);
+  stroke-dasharray: 20 80;
+  filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 4px #ffffff);
   animation: gridZapBoltSpark 2.4s linear infinite;
 }
 
