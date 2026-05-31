@@ -80,6 +80,12 @@ struct ZosUserResponse {
 struct ZosProfileResponse {
     #[serde(rename = "isZeroProSubscriber", default)]
     is_zero_pro: bool,
+    /// The richer v2 `/api/v2/users/me` payload usually carries an email
+    /// even when `/api/users/current` and the JWT claims omit it. This is
+    /// the most reliable source for the `SYS_ADMIN_EMAILS` allowlist match
+    /// on the token-validation path (where no login email is available).
+    #[serde(default, alias = "primaryEmail", alias = "emailAddress")]
+    email: Option<String>,
 }
 
 pub struct AuthSessionResult {
@@ -343,7 +349,10 @@ impl AuthService {
         res.json().await.map_err(AuthError::Http)
     }
 
-    async fn fetch_is_zero_pro(&self, token: &str) -> Result<bool, AuthError> {
+    /// Fetch the v2 `/api/v2/users/me` profile. Carries ZERO Pro status and,
+    /// crucially, an email used to back-fill the `SYS_ADMIN_EMAILS` allowlist
+    /// match when no login email is in hand (the token-validation path).
+    async fn fetch_zero_pro_profile(&self, token: &str) -> Result<ZosProfileResponse, AuthError> {
         let res = self
             .http
             .get(format!("{ZOS_API_URL}/api/v2/users/me"))
@@ -358,10 +367,7 @@ impl AuthService {
             return Err(parse_zos_error(status, &body));
         }
 
-        res.json::<ZosProfileResponse>()
-            .await
-            .map(|p| p.is_zero_pro)
-            .map_err(AuthError::Http)
+        res.json::<ZosProfileResponse>().await.map_err(AuthError::Http)
     }
 
     /// Validate a JWT token against zOS without relying on local disk persistence.
@@ -389,10 +395,35 @@ impl AuthService {
         let user = self.fetch_user_info(access_token).await?;
         let now = Utc::now();
 
+        // Fetch the v2 profile up-front: it carries ZERO Pro status and an
+        // email that `/api/users/current` and the JWT often omit. We need
+        // that email *before* resolving the sys-admin allowlist so the grant
+        // survives the token-validation path (app restart / stored token),
+        // where no login email is available.
+        let (is_zero_pro, zos_me_email, zero_pro_refresh_error) =
+            match self.fetch_zero_pro_profile(access_token).await {
+                Ok(profile) => (profile.is_zero_pro, profile.email, None),
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        user_id = %user.id,
+                        "authenticated session but could not verify ZERO Pro entitlement"
+                    );
+                    (false, None, Some(zero_pro_refresh_error_message()))
+                }
+            };
+
         let (admin_email, email_source) = known_email
             .map(|e| (e.to_string(), "login"))
             .or_else(|| email_from_jwt_claims(access_token).map(|e| (e, "jwt")))
             .or_else(|| user.email.clone().map(|e| (e, "zos_user")))
+            .or_else(|| {
+                zos_me_email
+                    .clone()
+                    .map(|e| e.trim().to_string())
+                    .filter(|e| e.contains('@'))
+                    .map(|e| (e, "zos_me"))
+            })
             .map(|(email, source)| (Some(email), source))
             .unwrap_or((None, "none"));
 
@@ -406,7 +437,7 @@ impl AuthService {
             "Resolved sys-admin allowlist grant for session"
         );
 
-        let mut session = ZeroAuthSession {
+        let session = ZeroAuthSession {
             user_id: user.id,
             network_user_id: None,
             profile_id: None,
@@ -425,27 +456,12 @@ impl AuthService {
                 .map(|w| w.public_address)
                 .collect(),
             access_token: access_token.to_string(),
-            is_zero_pro: false,
+            is_zero_pro,
             is_access_granted: false,
             is_sys_admin: is_allowlisted_admin,
             created_at: now,
             validated_at: now,
         };
-        let mut zero_pro_refresh_error = None;
-
-        match self.fetch_is_zero_pro(access_token).await {
-            Ok(is_zero_pro) => {
-                session.is_zero_pro = is_zero_pro;
-            }
-            Err(err) => {
-                zero_pro_refresh_error = Some(zero_pro_refresh_error_message());
-                warn!(
-                    error = %err,
-                    user_id = %session.user_id,
-                    "authenticated session but could not verify ZERO Pro entitlement"
-                );
-            }
-        }
 
         Ok(AuthSessionResult {
             session,

@@ -16,6 +16,7 @@ const DEFAULT_SWARM_BASE_URL: &str =
 const DEFAULT_REQUIRE_ZERO_PRO: &str = "false";
 const DEFAULT_Z_BILLING_API_KEY: &str = "";
 const DEFAULT_DISABLE_LOCAL_HARNESS_AUTOSPAWN: &str = "true";
+const DEFAULT_SYS_ADMIN_EMAILS: &str = "";
 
 fn npm() -> Command {
     if cfg!(target_os = "windows") {
@@ -320,6 +321,11 @@ fn main() {
         "AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN",
         "AURA_DESKTOP_DEFAULT_DISABLE_LOCAL_HARNESS_AUTOSPAWN",
         DEFAULT_DISABLE_LOCAL_HARNESS_AUTOSPAWN,
+    );
+    emit_runtime_default(
+        "SYS_ADMIN_EMAILS",
+        "AURA_DESKTOP_DEFAULT_SYS_ADMIN_EMAILS",
+        DEFAULT_SYS_ADMIN_EMAILS,
     );
     println!("cargo:rerun-if-env-changed=AURA_DESKTOP_USE_PREBUILT_FRONTEND");
     println!("cargo:rerun-if-env-changed=AURA_DESKTOP_FRONTEND_DEV_URL");

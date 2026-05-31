@@ -71,6 +71,10 @@ pub(crate) fn apply_desktop_runtime_defaults() {
         "AURA_DISABLE_LOCAL_HARNESS_AUTOSPAWN",
         env!("AURA_DESKTOP_DEFAULT_DISABLE_LOCAL_HARNESS_AUTOSPAWN"),
     );
+    set_env_default(
+        "SYS_ADMIN_EMAILS",
+        env!("AURA_DESKTOP_DEFAULT_SYS_ADMIN_EMAILS"),
+    );
 }
 
 #[cfg(test)]
