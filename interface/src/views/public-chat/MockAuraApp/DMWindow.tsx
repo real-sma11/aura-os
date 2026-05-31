@@ -519,18 +519,22 @@ export function DMWindow({
   // the conversion happens in `captureBaseline` on the first
   // pointerdown.
   const baseStyle: CSSProperties = maximized
-    ? // Full-frame pose: ignore both the authored anchors and any
-      // dragged `userRect` and pin to all four edges of the
-      // `.windowManager` parent. A z-index above the 10+N cascade
-      // range keeps the maximized window on top of its peers.
+    ? // Maximized pose: ignore both the authored anchors and any
+      // dragged `userRect` and pin to the left/right/bottom edges of
+      // the `.windowManager` parent. The top is inset by the mock
+      // top-chrome bar's height (`--shell-chrome-outer-height`) so
+      // the maximized window tucks under the titlebar instead of
+      // covering it — keeping its own titlebar (and the restore
+      // control) visible. A z-index above the 10+N cascade range
+      // keeps it on top of its peers.
       {
         zIndex: MAXIMIZED_Z,
-        top: 0,
+        top: "var(--shell-chrome-outer-height)",
         left: 0,
         right: 0,
         bottom: 0,
         width: "100%",
-        height: "100%",
+        height: "calc(100% - var(--shell-chrome-outer-height))",
         maxHeight: "100%",
       }
     : userRect

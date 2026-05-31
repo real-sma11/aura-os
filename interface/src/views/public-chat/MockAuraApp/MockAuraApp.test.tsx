@@ -321,7 +321,12 @@ describe("MockAuraApp", () => {
 
       expect(win).toHaveAttribute("data-maximized", "true");
       expect(win.style.width).toBe("100%");
-      expect(win.style.height).toBe("100%");
+      // Top is inset by the mock top-chrome bar so the maximized
+      // window tucks under the titlebar rather than covering it.
+      expect(win.style.top).toBe("var(--shell-chrome-outer-height)");
+      expect(win.style.height).toBe(
+        "calc(100% - var(--shell-chrome-outer-height))",
+      );
       // Resize handles are not rendered while maximized.
       expect(
         screen.queryByTestId("dm-window-architect_frontend-resize-se"),
