@@ -185,8 +185,11 @@
        * Fallback titlebar shown over the splash / boot-error overlay so the
        * frameless desktop window stays draggable and closable even when the
        * React bundle never mounts (e.g. dev server unreachable, Vite import
-       * error). React's DesktopTitlebar / WindowControls take over once
-       * `html.aura-app-ready` is set in main.tsx#hideBootSplash.
+       * error). Desktop-only: gated behind `html.aura-desktop-shell` (added by
+       * the bottom-of-body inline script when the native `window.ipc` bridge
+       * exists), so the browser build never paints it. React's
+       * DesktopTitlebar / WindowControls take over once `html.aura-app-ready`
+       * is set in main.tsx#markAppReady.
        */
       #aura-fallback-titlebar {
         position: fixed;
@@ -195,7 +198,16 @@
         right: 0;
         height: 32px;
         z-index: 2147483647;
-        display: flex;
+        /*
+         * Hidden by default so the browser (web) build never paints these
+         * window controls — they only make sense for the frameless desktop
+         * window. The bottom-of-body inline script adds `aura-desktop-shell`
+         * to <html> when the native `window.ipc` bridge is present, which
+         * flips the rule below to `display: flex`. Previously this defaulted
+         * to `flex`, so on web the buttons flashed in until React set
+         * `aura-app-ready`.
+         */
+        display: none;
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         color: rgba(248, 250, 252, 0.86);
@@ -243,6 +255,17 @@
       #aura-fallback-titlebar .aura-ftb-close:hover {
         background: #c42b1c;
         color: #fff;
+      }
+
+      /*
+       * Native desktop shell only: show the fallback titlebar during boot so
+       * the frameless window stays draggable/closable before React's
+       * WindowControls mount. Placed BEFORE the `aura-app-ready` rule so that
+       * (equal specificity, last-wins) app-ready still hides it once React
+       * takes over.
+       */
+      html.aura-desktop-shell #aura-fallback-titlebar {
+        display: flex;
       }
 
       html.aura-app-ready #aura-fallback-titlebar {
@@ -376,6 +399,15 @@
           if (ipc && typeof ipc.postMessage === "function") {
             ipc.postMessage(cmd);
           }
+        }
+
+        // Mark the native desktop shell so the fallback titlebar's CSS opts
+        // into `display: flex`. On web `window.ipc` is undefined, the class is
+        // never added, and the fallback window controls never paint (no flash
+        // on refresh). Runs independently of the React bundle, so the
+        // bundle-never-loads desktop fallback is preserved.
+        if (window.ipc && typeof window.ipc.postMessage === "function") {
+          document.documentElement.classList.add("aura-desktop-shell");
         }
 
         var fallbackBar = document.getElementById("aura-fallback-titlebar");
