@@ -38,7 +38,7 @@ pub(crate) async fn ws_events(
     Query(query): Query<WsEventsQuery>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    info!(target: "aura::ws", since = ?query.since, "ws upgrade requested");
+    info!(target: "aura::ws", since = query.since.map(|s| s as i64).unwrap_or(-1), "ws upgrade requested");
     ws.on_upgrade(move |socket| handle_ws(socket, state, query.since))
 }
 

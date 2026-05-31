@@ -518,8 +518,8 @@ pub(crate) async fn sync_user_to_network(
 
                 tracing::info!(
                     network_user_id = %user.id,
-                    profile_id = ?user.profile_id,
-                    display_name = ?user.display_name,
+                    profile_id = user.profile_id.as_deref().unwrap_or("-"),
+                    display_name = user.display_name.as_deref().unwrap_or("-"),
                     "User synced to aura-network"
                 );
             }
