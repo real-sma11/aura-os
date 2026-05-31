@@ -33,7 +33,6 @@
 #![allow(dead_code)]
 
 pub(crate) mod chat;
-pub(crate) mod commit_stats;
 pub(crate) mod demo_agent;
 pub(crate) mod gate;
 pub(crate) mod generation_common;
@@ -51,7 +50,6 @@ pub(crate) mod video;
 // avoids the warning churn that an over-broad `pub(crate) use`
 // produced in phase 1.
 pub(crate) use chat::public_chat_stream;
-pub(crate) use commit_stats::pub_commit_stats;
 pub(crate) use image::public_image_stream;
 pub(crate) use jwt::{decode_guest_token, extract_bearer_from_headers, is_guest_token};
 pub(crate) use model3d::public_model3d_stream;

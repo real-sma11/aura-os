@@ -1,27 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  type LiveCommitStats,
-  fetchAuraCommitStats,
-  pstMonthStartIso,
-} from "./github-commits";
+import { type LiveCommitStats, fetchAuraCommitStats } from "./github-commits";
 
 const originalFetch = globalThis.fetch;
-
-describe("pstMonthStartIso", () => {
-  it("returns the UTC instant matching midnight PST on the first of the month", () => {
-    const fixed = new Date("2026-05-28T16:22:00Z");
-    const iso = pstMonthStartIso(fixed);
-    // May 2026: PDT (UTC-7) so May 1 00:00 PDT == May 1 07:00 UTC.
-    expect(iso).toBe("2026-05-01T07:00:00.000Z");
-  });
-
-  it("handles the PST winter offset", () => {
-    const fixed = new Date("2026-01-15T20:00:00Z");
-    const iso = pstMonthStartIso(fixed);
-    // January 2026: PST (UTC-8) so Jan 1 00:00 PST == Jan 1 08:00 UTC.
-    expect(iso).toBe("2026-01-01T08:00:00.000Z");
-  });
-});
 
 describe("fetchAuraCommitStats", () => {
   beforeEach(() => {
@@ -33,7 +13,7 @@ describe("fetchAuraCommitStats", () => {
     vi.restoreAllMocks();
   });
 
-  it("reads the aggregate from the same-origin proxy with the PST since param", async () => {
+  it("reads the published snapshot from the static gh-pages URL", async () => {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     const payload: LiveCommitStats = {
       commitsThisMonth: 88,
@@ -41,6 +21,7 @@ describe("fetchAuraCommitStats", () => {
       perRepo: {
         "aura-os": { thisMonth: 42, allTime: 1234 },
       },
+      monthKey: "2026-05",
       fetchedAt: "2026-05-28T16:22:00.000Z",
       partial: false,
     };
@@ -51,28 +32,58 @@ describe("fetchAuraCommitStats", () => {
       }),
     );
 
-    const stats = await fetchAuraCommitStats(new Date("2026-05-28T16:22:00Z"));
+    const stats = await fetchAuraCommitStats();
 
     expect(stats).toEqual(payload);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [calledUrl] = fetchMock.mock.calls[0];
     const url = typeof calledUrl === "string" ? calledUrl : calledUrl.toString();
-    expect(url).toContain("/api/public/commit-stats");
-    expect(url).toContain(`since=${encodeURIComponent("2026-05-01T07:00:00.000Z")}`);
+    expect(url).toContain("commit-stats.json");
   });
 
-  it("propagates a non-2xx response as a rejection", async () => {
+  it("drops malformed per-repo entries but keeps valid totals", async () => {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ error: "boom", code: "unknown" }), {
-        status: 503,
+      new Response(
+        JSON.stringify({
+          commitsThisMonth: 10,
+          commitsAllTime: 100,
+          monthKey: "2026-05",
+          fetchedAt: "2026-05-28T16:22:00.000Z",
+          partial: true,
+          perRepo: {
+            "aura-os": { thisMonth: 5, allTime: 50 },
+            "aura-broken": { thisMonth: "nope" },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const stats = await fetchAuraCommitStats();
+
+    expect(stats.commitsAllTime).toBe(100);
+    expect(stats.perRepo["aura-os"]).toEqual({ thisMonth: 5, allTime: 50 });
+    expect(stats.perRepo["aura-broken"]).toBeUndefined();
+  });
+
+  it("rejects on a non-2xx response", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
+
+    await expect(fetchAuraCommitStats()).rejects.toBeTruthy();
+  });
+
+  it("rejects when the body is missing required totals", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ nope: true }), {
+        status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
 
-    await expect(
-      fetchAuraCommitStats(new Date("2026-05-28T16:22:00Z")),
-    ).rejects.toBeTruthy();
+    await expect(fetchAuraCommitStats()).rejects.toBeTruthy();
   });
 });

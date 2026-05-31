@@ -9,6 +9,15 @@ import type { ChangelogEntry } from "../../../api/marketing/changelog";
 import * as desktopManifest from "../../../api/marketing/desktop-manifest";
 import type { DesktopManifest } from "../../../api/marketing/desktop-manifest";
 
+// Mirrors `getCurrentPstMonthKey` in ChangelogView so mocked snapshots
+// line up with the current PST month and the this-month figure renders
+// (a mismatch would intentionally fall back to a dash).
+const CURRENT_PST_MONTH_KEY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Los_Angeles",
+  year: "numeric",
+  month: "2-digit",
+}).format(new Date());
+
 function renderChangelogView() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -110,6 +119,7 @@ describe("ChangelogView", () => {
           { thisMonth: 0, allTime: 0 },
         ]),
       ),
+      monthKey: CURRENT_PST_MONTH_KEY,
       fetchedAt: new Date().toISOString(),
       partial: false,
     });
@@ -164,6 +174,7 @@ describe("ChangelogView", () => {
           { thisMonth: 0, allTime: 0 },
         ]),
       ),
+      monthKey: CURRENT_PST_MONTH_KEY,
       fetchedAt: new Date().toISOString(),
       partial: true,
     });
@@ -182,8 +193,12 @@ describe("ChangelogView", () => {
 
   it("falls back to the last-known cached totals when a later fetch degrades", async () => {
     window.localStorage.setItem(
-      "aura.changelog.commitStats.v1",
-      JSON.stringify({ commitsThisMonth: 12, commitsAllTime: 3456 }),
+      "aura.changelog.commitStats.v2",
+      JSON.stringify({
+        commitsThisMonth: 12,
+        commitsAllTime: 3456,
+        monthKey: CURRENT_PST_MONTH_KEY,
+      }),
     );
     vi.spyOn(githubCommits, "fetchAuraCommitStats").mockRejectedValue(
       new Error("rate limited"),
@@ -198,6 +213,35 @@ describe("ChangelogView", () => {
     });
     expect(getCommitStatValueElement(/Commits this month/).textContent).toBe(
       "12",
+    );
+  });
+
+  it("shows a dash for this-month (but keeps all-time) when the snapshot is from a previous month", async () => {
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockResolvedValue({
+      commitsThisMonth: 999,
+      commitsAllTime: 9421,
+      perRepo: Object.fromEntries(
+        githubCommits.AURA_PUBLIC_REPOS.map((repo) => [
+          repo,
+          { thisMonth: 0, allTime: 0 },
+        ]),
+      ),
+      // A month key that can never equal the current PST month so the
+      // this-month figure is treated as stale across the rollover.
+      monthKey: "1999-01",
+      fetchedAt: new Date().toISOString(),
+      partial: false,
+    });
+
+    renderChangelogView();
+
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/All-time commits/).textContent,
+      ).toBe("9,421");
+    });
+    expect(getCommitStatValueElement(/Commits this month/).textContent).toBe(
+      "\u2014",
     );
   });
 

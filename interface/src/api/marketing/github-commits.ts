@@ -1,31 +1,24 @@
 /**
- * Live commit-count aggregation for the marketing `/changelog` page.
+ * Commit-count totals for the marketing `/changelog` page.
  *
- * The curated changelog index published by
- * `infra/scripts/release/generate-daily-changelog.mjs` only covers the
- * `aura-os` repo. To populate the changelog summary card's
- * "commits this month" / "all-time commits" totals across the broader
- * AURA codebase, the SPA reads aggregate commit counts from the
- * same-origin `GET /api/public/commit-stats` endpoint.
+ * The card's "commits this month" / "all-time commits" numbers come from
+ * a static `commit-stats.json` snapshot published to the `gh-pages`
+ * branch by `infra/scripts/release/generate-commit-stats.mjs` during the
+ * release/changelog CI run (same host as the changelog `index.json`).
  *
- * That endpoint used to live in the browser as a direct fan-out to the
- * GitHub REST API (`per_page=1` + `Link: rel="last"`), but 14
- * unauthenticated requests per cold load reliably exhausted GitHub's
- * 60 req/hr/IP budget (shared across every visitor behind a NAT plus
- * reloads), so the card rendered `0`. The fan-out now happens
- * server-side where it can attach an optional token (5000 req/hr) and
- * cache the aggregate; the browser issues a single same-origin request.
+ * Why a published snapshot instead of a live fetch: the previous
+ * approaches (browser fan-out, then a Render server proxy) both issued
+ * unauthenticated GitHub requests from a shared egress IP and reliably
+ * tripped GitHub's 60 req/hr/IP limit, so the card rendered `0`. The CI
+ * job runs with the workflow's authenticated `GITHUB_TOKEN`, and a
+ * committed file is durable: a throttled refresh simply keeps the prior
+ * numbers and the next successful run updates them. The browser now just
+ * reads one static, CORS-friendly JSON file.
  *
- * The PST month boundary stays client-side (see `pstMonthStartIso`) and
- * is passed to the server as the `since` query param so "commits this
- * month" lines up with the PST month anchor the rest of the changelog
- * UI already uses.
- *
- * Failures are absorbed per-repo server-side and surfaced via
- * `partial: true` so the UI can still render whatever totals resolved.
+ * The `monthKey` (PST `YYYY-MM`) the snapshot was generated for travels
+ * with it so the UI can avoid showing last month's count as "this month"
+ * right after a month rollover (see `ChangelogView.tsx`).
  */
-
-import { apiFetch } from "../../shared/api/core";
 
 export const AURA_PUBLIC_REPOS = [
   "aura-os",
@@ -48,83 +41,103 @@ export interface LiveCommitStats {
   readonly commitsThisMonth: number;
   readonly commitsAllTime: number;
   readonly perRepo: Readonly<Record<string, RepoCommitCounts>>;
+  /**
+   * PST `YYYY-MM` the `commitsThisMonth` figure belongs to. The UI gates
+   * its "commits this month" display on this matching the current PST
+   * month so a stale snapshot never reports last month's count as the
+   * current one.
+   */
+  readonly monthKey: string;
   readonly fetchedAt: string;
   /**
-   * True when at least one per-repo fetch failed. The totals still
-   * reflect the successful ones; callers can choose whether to surface
-   * the partial state to the user.
+   * True when at least one per-repo count in the published snapshot fell
+   * back to a previously-committed value (a fetch failed during that CI
+   * run). Totals still reflect the best-known numbers.
    */
   readonly partial: boolean;
 }
 
-const COMMIT_STATS_PATH = "/api/public/commit-stats";
-const PST_TIME_ZONE = "America/Los_Angeles";
+const DEFAULT_COMMIT_STATS_URL =
+  "https://cypher-asi.github.io/aura-os/commit-stats.json";
 
-const PST_MONTH_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: PST_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-/**
- * Resolve the ISO timestamp that marks the start of the current
- * calendar month in `America/Los_Angeles`. Used as the `since=` query
- * param so "commits this month" matches the PST month anchor the rest
- * of the changelog UI already uses (see `getCurrentPstMonthKey` in
- * `ChangelogView.tsx`).
- */
-export function pstMonthStartIso(now: Date = new Date()): string {
-  const parts = PST_MONTH_PARTS_FORMATTER.formatToParts(now);
-  const lookup: Record<string, string> = {};
-  for (const part of parts) {
-    if (part.type !== "literal") {
-      lookup[part.type] = part.value;
+function getCommitStatsUrl(): string {
+  const raw = import.meta.env.VITE_COMMIT_STATS_URL;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
     }
   }
+  return DEFAULT_COMMIT_STATS_URL;
+}
 
-  const year = Number(lookup.year);
-  const month = Number(lookup.month);
-  const day = Number(lookup.day);
-  const hour = Number(lookup.hour);
-  const minute = Number(lookup.minute);
-  const second = Number(lookup.second);
-
-  // The PST wall-clock offset varies with DST. Reconstruct the offset
-  // by diffing the wall clock against the UTC clock of the same instant
-  // — `now.getTime() - asUtc` gives the local offset in ms, which we
-  // then apply to the month-start wall clock to land on the right UTC
-  // instant.
-  const asUtcEpoch = Date.UTC(year, month - 1, day, hour, minute, second);
-  const offsetMs = asUtcEpoch - now.getTime();
-
-  const monthStartUtc = Date.UTC(year, month - 1, 1, 0, 0, 0);
-  return new Date(monthStartUtc - offsetMs).toISOString();
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /**
- * Fetch aggregate commit counts (this-month and all-time) across the
- * AURA public repos from the same-origin `GET /api/public/commit-stats`
- * proxy. The PST month boundary is computed client-side and passed as
- * `since` so "commits this month" matches the changelog UI's PST anchor.
- *
- * The server absorbs per-repo failures and caches the aggregate, so a
- * single 404 / rate-limit doesn't blank the entire stats card; the
- * `partial` flag indicates whether any repo dropped out of the totals.
+ * Normalize an untrusted parsed snapshot into `LiveCommitStats`, dropping
+ * malformed per-repo entries. Returns `null` when the payload isn't a
+ * usable object so callers can treat it like a failed fetch.
+ */
+function normalizeSnapshot(raw: unknown): LiveCommitStats | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+
+  if (
+    !isFiniteNumber(record.commitsThisMonth) ||
+    !isFiniteNumber(record.commitsAllTime)
+  ) {
+    return null;
+  }
+
+  const perRepo: Record<string, RepoCommitCounts> = {};
+  if (record.perRepo && typeof record.perRepo === "object") {
+    for (const [repo, counts] of Object.entries(
+      record.perRepo as Record<string, unknown>,
+    )) {
+      if (counts && typeof counts === "object") {
+        const { thisMonth, allTime } = counts as Record<string, unknown>;
+        if (isFiniteNumber(thisMonth) && isFiniteNumber(allTime)) {
+          perRepo[repo] = { thisMonth, allTime };
+        }
+      }
+    }
+  }
+
+  return {
+    commitsThisMonth: record.commitsThisMonth,
+    commitsAllTime: record.commitsAllTime,
+    perRepo,
+    monthKey: typeof record.monthKey === "string" ? record.monthKey : "",
+    fetchedAt:
+      typeof record.fetchedAt === "string" ? record.fetchedAt : "",
+    partial: record.partial === true,
+  };
+}
+
+/**
+ * Fetch the published commit-count snapshot from the `gh-pages` static
+ * host. Throws on a non-2xx response or a malformed body so React Query
+ * surfaces the failure and the changelog card falls back to its
+ * last-known cached totals.
  */
 export async function fetchAuraCommitStats(
-  now: Date = new Date(),
   signal?: AbortSignal,
 ): Promise<LiveCommitStats> {
-  const sinceIso = pstMonthStartIso(now);
-  const query = new URLSearchParams({ since: sinceIso });
-  return apiFetch<LiveCommitStats>(`${COMMIT_STATS_PATH}?${query.toString()}`, {
+  const response = await fetch(getCommitStatsUrl(), {
     method: "GET",
     signal,
-    timeoutMs: 15_000,
+    headers: { Accept: "application/json" },
   });
+
+  if (!response.ok) {
+    throw new Error(`commit-stats fetch failed: HTTP ${response.status}`);
+  }
+
+  const snapshot = normalizeSnapshot(await response.json());
+  if (!snapshot) {
+    throw new Error("commit-stats fetch returned a malformed snapshot");
+  }
+  return snapshot;
 }

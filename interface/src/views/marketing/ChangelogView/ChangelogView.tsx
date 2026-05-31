@@ -44,11 +44,13 @@ const BANNER_COUNT_UP_DURATION_MS = 1000;
  *  last-known value is cached, so the card never reports a bogus `0`. */
 const STAT_UNAVAILABLE = "\u2014";
 
-const COMMIT_STATS_STORAGE_KEY = "aura.changelog.commitStats.v1";
+const COMMIT_STATS_STORAGE_KEY = "aura.changelog.commitStats.v2";
 
 interface CommitTotals {
   readonly commitsThisMonth: number;
   readonly commitsAllTime: number;
+  /** PST `YYYY-MM` the `commitsThisMonth` figure belongs to. */
+  readonly monthKey: string;
 }
 
 /**
@@ -77,6 +79,7 @@ function readStoredCommitTotals(): CommitTotals | null {
       return {
         commitsThisMonth: parsed.commitsThisMonth,
         commitsAllTime: parsed.commitsAllTime,
+        monthKey: typeof parsed.monthKey === "string" ? parsed.monthKey : "",
       };
     }
   } catch {
@@ -378,16 +381,16 @@ export function ChangelogView(): ReactNode {
     queryFn: fetchChangelogEntries,
   });
 
-  // Live commit totals across the 7 public AURA repos, read from the
-  // same-origin `/api/public/commit-stats` proxy. Kept separate from the
-  // curated changelog query because it's independent and shouldn't block
-  // the page on cold load.
+  // Commit totals across the 7 public AURA repos, read from the static
+  // `commit-stats.json` snapshot published to gh-pages by the release CI
+  // run. Kept separate from the curated changelog query because it's
+  // independent and shouldn't block the page on cold load.
   const {
     data: liveCommitStats,
     isLoading: commitStatsLoading,
   } = useQuery({
     queryKey: ["marketing-changelog-live-commits"],
-    queryFn: ({ signal }) => fetchAuraCommitStats(undefined, signal),
+    queryFn: ({ signal }) => fetchAuraCommitStats(signal),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -405,6 +408,7 @@ export function ChangelogView(): ReactNode {
     const totals: CommitTotals = {
       commitsThisMonth: liveCommitStats.commitsThisMonth,
       commitsAllTime: liveCommitStats.commitsAllTime,
+      monthKey: liveCommitStats.monthKey,
     };
     writeStoredCommitTotals(totals);
     setStoredCommitTotals(totals);
@@ -418,6 +422,7 @@ export function ChangelogView(): ReactNode {
     ? {
         commitsThisMonth: liveCommitStats.commitsThisMonth,
         commitsAllTime: liveCommitStats.commitsAllTime,
+        monthKey: liveCommitStats.monthKey,
       }
     : storedCommitTotals;
 
@@ -426,6 +431,18 @@ export function ChangelogView(): ReactNode {
   // data and there's no cached fallback, render a dash instead of 0.
   const commitStatsUnavailable =
     !effectiveCommitTotals && !commitStatsLoading;
+
+  // "Commits this month" is only meaningful when the snapshot's PST month
+  // matches the current PST month. After a month rollover (before the
+  // first new-month CI run republishes the snapshot) the carried-over
+  // figure is last month's, so we render a dash for this-month rather
+  // than a misleading number. All-time is always safe to show.
+  const currentMonthKey = getCurrentPstMonthKey();
+  const thisMonthIsCurrent = Boolean(
+    effectiveCommitTotals && effectiveCommitTotals.monthKey === currentMonthKey,
+  );
+  const commitsThisMonthUnavailable =
+    !commitStatsLoading && Boolean(effectiveCommitTotals) && !thisMonthIsCurrent;
 
   // Stabilize the empty fallback so memo deps below don't change every
   // render (React Query keeps `data` referentially stable across renders
@@ -490,7 +507,10 @@ export function ChangelogView(): ReactNode {
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsThisMonthDisplay = useCountUp({
-    target: effectiveCommitTotals ? effectiveCommitTotals.commitsThisMonth : null,
+    target:
+      thisMonthIsCurrent && effectiveCommitTotals
+        ? effectiveCommitTotals.commitsThisMonth
+        : null,
     resetKey: visitKey,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
@@ -578,7 +598,7 @@ export function ChangelogView(): ReactNode {
                   aria-busy={commitStatsLoading ? "true" : "false"}
                   title={COMMITS_LIVE_TITLE}
                 >
-                  {commitStatsUnavailable
+                  {commitStatsUnavailable || commitsThisMonthUnavailable
                     ? STAT_UNAVAILABLE
                     : STAT_NUMBER_FORMATTER.format(commitsThisMonthDisplay)}
                 </dd>

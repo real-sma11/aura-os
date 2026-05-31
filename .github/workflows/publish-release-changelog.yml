@@ -259,6 +259,15 @@ jobs:
             --version "${{ steps.metadata.outputs.version }}" \
             --release-url "${{ steps.metadata.outputs.release_url }}"
 
+      - name: Refresh changelog commit-count snapshot
+        if: steps.release-check.outputs.released == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node repo/infra/scripts/release/generate-commit-stats.mjs \
+            --pages-dir pages
+
       - name: Attach changelog summary
         if: steps.release-check.outputs.released == 'true'
         shell: bash
@@ -325,7 +334,8 @@ jobs:
           bash workflow/infra/scripts/release/commit-gh-pages-with-retry.sh \
             pages \
             "Update ${{ steps.metadata.outputs.channel }} changelog for ${{ steps.metadata.outputs.version }}" \
-            "changelog/${{ steps.metadata.outputs.channel }}"
+            "changelog/${{ steps.metadata.outputs.channel }}" \
+            "commit-stats.json"
 
       - name: Note changelog media handoff
         if: steps.release-check.outputs.released == 'true'
