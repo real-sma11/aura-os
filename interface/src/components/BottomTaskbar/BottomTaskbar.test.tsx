@@ -399,14 +399,16 @@ describe("BottomTaskbar", () => {
     expect(screen.getAllByTestId("chevron-right").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
 
+    // With the right cluster collapsed by default, the profile rail is
+    // hidden, so only the reorderable center rail remains mounted.
     const navRails = screen.getAllByTestId("app-nav-rail");
+    expect(navRails).toHaveLength(1);
     const leftNavRail = navRails[0];
     expect(leftNavRail).toHaveAttribute(
       "data-include-ids",
       JSON.stringify(["agents", "projects"]),
     );
     expect(leftNavRail).toHaveAttribute("data-allow-reorder", "true");
-    expect(navRails[1]).toHaveAttribute("data-allow-reorder", "false");
   });
 
   it("restores the expanded state from storage", () => {
@@ -421,16 +423,27 @@ describe("BottomTaskbar", () => {
     expect(leftNavRail).toHaveAttribute("data-include-ids", "null");
   });
 
-  it("hides Credits/Theme/Help when the right cluster is collapsed by default, but keeps Settings and the profile rail visible", () => {
+  it("hides Credits/Theme/Help and the profile rail when the right cluster is collapsed by default, but keeps Settings visible", () => {
     render(<BottomTaskbar mode="advanced" />);
 
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
-    // Settings is now rendered outside the collapsible secondary
-    // cluster so it remains one click away regardless of
-    // `rightCollapsed`. The right-cluster collapse only hides
-    // Credits / Theme / Help now.
+    // Settings is rendered outside the collapsible secondary cluster
+    // so it remains one click away regardless of `rightCollapsed`.
+    // The profile shortcut, however, now collapses with the secondary
+    // cluster so a collapsed right cluster reads as Settings only.
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+
+    const profileNavRail = screen.queryAllByTestId("app-nav-rail").find((rail) =>
+      rail.getAttribute("data-include-ids") === JSON.stringify(["profile"]),
+    );
+    expect(profileNavRail).toBeUndefined();
+  });
+
+  it("restores the profile rail when the right cluster is expanded", () => {
+    getTaskbarRightCollapsed.mockReturnValue(false);
+
+    render(<BottomTaskbar mode="advanced" />);
 
     const profileNavRail = screen.getAllByTestId("app-nav-rail").find((rail) =>
       rail.getAttribute("data-include-ids") === JSON.stringify(["profile"]),

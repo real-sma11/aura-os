@@ -167,9 +167,9 @@ function PublicBottomTaskbar(): React.ReactElement {
  *       behind the right-cluster collapse — Simple has no collapse
  *       affordance so they always show)
  *     - HelpButton (Advanced only)
- *     - Profile AppNavRail (Advanced only — Simple drops the profile
- *       shortcut so the right cluster reads as Credits / Theme /
- *       Settings only)
+ *     - Profile AppNavRail (Advanced only, and hidden when the right
+ *       cluster is collapsed — Simple drops the profile shortcut so
+ *       the right cluster reads as Credits / Theme / Settings only)
  *     - Settings (both modes, always visible — rendered last inside
  *       `.rightPrimary` so it sits directly to the left of the
  *       Advanced `<ClockReadout />` and at the end of the Simple
@@ -339,7 +339,7 @@ function AuthedBottomTaskbar({
               {isAdvanced && <HelpButton />}
             </>
           )}
-          {isAdvanced && (
+          {isAdvanced && showSecondaryCluster && (
             <AppNavRail
               layout="taskbar"
               includeIds={["profile"]}
