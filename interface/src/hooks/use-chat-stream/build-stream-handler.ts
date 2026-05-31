@@ -50,6 +50,7 @@ import {
   markStreamProgress,
 } from "../stream/store";
 import { migrateChatPartition } from "../stream/migration";
+import { registerSpawnedSubagent, applySubagentStatus } from "./subagent-cards";
 
 export interface DispatchDeps {
   projectId: string;
@@ -460,6 +461,15 @@ export function buildStreamHandler(deps: DispatchDeps): StreamEventHandler {
       }
       case EventType.AgentInstanceUpdated:
         sidekickRef.current.notifyAgentInstanceUpdate(event.content.agent_instance);
+        break;
+      case EventType.SubagentSpawned:
+        // Register the spawned child run against its `task` tool card so
+        // the `SubAgentBlock` can open the live thread modal.
+        registerSpawnedSubagent(refs, setters, event.content);
+        break;
+      case EventType.SubagentStatus:
+        // Fold the latest lifecycle state into the matching card's pill.
+        applySubagentStatus(refs, setters, event.content);
         break;
       case EventType.AssistantMessageStart:
         break;

@@ -91,7 +91,25 @@ export const TOOL_LABELS: Record<string, string> = {
   generate_video: "Generate video",
   get_3d_status: "3D generation status",
   load_domain_tools: "Load tools",
+  task: "Subagent",
 };
+
+/**
+ * Display names for the `subagent_type` carried on a `task` tool call /
+ * `subagent_spawned` event. Unknown types fall back to the raw id via
+ * {@link subagentTypeLabel}.
+ */
+export const SUBAGENT_TYPE_LABELS: Record<string, string> = {
+  general_purpose: "Agent",
+  explore: "Explore",
+  shell: "Shell",
+  code_reviewer: "Code Reviewer",
+};
+
+export function subagentTypeLabel(type: string | undefined): string {
+  if (!type) return "Subagent";
+  return SUBAGENT_TYPE_LABELS[type] ?? type;
+}
 
 export const TOOL_PHASE_LABELS: Record<string, string> = {
   read_file: "Reading files...",

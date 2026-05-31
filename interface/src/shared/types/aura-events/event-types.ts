@@ -81,6 +81,13 @@ export const EventType = {
   AgentInstanceUpdated:      "agent_instance_updated",
   RemoteAgentStateChanged:   "remote_agent_state_changed",
 
+  // Live subagent threads (parent-stream pass-through). The parent
+  // chat SSE forwards these so the UI can render a clickable card per
+  // spawned child run and reflect its lifecycle. See
+  // `crates/aura-protocol` `SubagentSpawned` / `SubagentStatus`.
+  SubagentSpawned:           "subagent_spawned",
+  SubagentStatus:            "subagent_status",
+
   // Spec generation
   SpecSaved:             "spec_saved",
   SpecsTitle:            "specs_title",

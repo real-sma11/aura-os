@@ -18,6 +18,8 @@ export const EVENT_LABELS: Record<EventType, string> = {
   [EventType.Done]: "Message",
   [EventType.AgentInstanceUpdated]: "Agent",
   [EventType.RemoteAgentStateChanged]: "Agent",
+  [EventType.SubagentSpawned]: "Subagent",
+  [EventType.SubagentStatus]: "Subagent",
   [EventType.SpecSaved]: "Spec",
   [EventType.SpecsTitle]: "Spec",
   [EventType.SpecsSummary]: "Spec",

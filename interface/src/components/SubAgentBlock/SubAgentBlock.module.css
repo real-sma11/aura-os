@@ -1,0 +1,64 @@
+.trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.openButton {
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.openButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.openButton:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.openButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.prompt {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--color-text-secondary);
+}
+
+.muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+.reason {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 2px solid var(--color-border);
+  padding-left: 10px;
+  color: var(--color-text-secondary);
+}

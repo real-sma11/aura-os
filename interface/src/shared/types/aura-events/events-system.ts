@@ -4,6 +4,8 @@ import type {
   AssistantMessageEnd as HarnessAssistantMessageEnd,
   TextDelta as HarnessTextDelta,
   ToolUseStart as HarnessToolUseStart,
+  SubagentSpawned as HarnessSubagentSpawned,
+  SubagentStatus as HarnessSubagentStatus,
 } from "../harness-protocol";
 import type { EventType } from "./event-types";
 
@@ -142,6 +144,10 @@ export type SystemEventVariant =
       agent_instance_id?: string;
       agent_id?: string;
     } }
+
+  // ── Live subagent threads ───────────────────────────────────
+  | { type: typeof EventType.SubagentSpawned; content: HarnessSubagentSpawned }
+  | { type: typeof EventType.SubagentStatus; content: HarnessSubagentStatus }
   | { type: typeof EventType.SessionSummaryUpdated; content: {
       session_id: string;
       summary: string;

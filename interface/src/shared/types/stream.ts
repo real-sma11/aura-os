@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction, MutableRefObject } from "react";
+import type { SubagentState } from "./harness-protocol";
 
 /* ------------------------------------------------------------------ */
 /*  Display types used across stream hooks and UI components           */
@@ -184,6 +185,42 @@ export interface ToolCallEntry {
    * stream renderer stays unmounted until there's real content.
    */
   synthetic?: boolean;
+  /**
+   * For `task` tool calls only — the child run id of the subagent this
+   * tool spawned, captured from the parent stream's `subagent_spawned`
+   * event (`SubagentSpawned.child_run_id`). The `SubAgentBlock` uses it
+   * to attach to the child's live thread
+   * (`POST /api/streams/subagents/:subagentRunId/attach`). Absent until
+   * the spawn event lands (and on history-reopened cards — see the
+   * TODO in `SubAgentBlock`).
+   */
+  subagentRunId?: string;
+  /**
+   * Storage session id of the subagent thread, when known. Reserved for
+   * the history-reopen path (listing + replaying a finished thread);
+   * unset on the live spawn+watch path.
+   */
+  subagentSessionId?: string;
+  /**
+   * Latest lifecycle state for the spawned subagent, folded in from the
+   * parent stream's `subagent_status` events. Drives the card's status
+   * pill. Absent until the first status (or spawn) event lands.
+   */
+  subagentStatus?: SubagentState;
+  /**
+   * Subagent kind (`general_purpose` / `explore` / `shell` /
+   * `code_reviewer` / …) carried on `subagent_spawned`. Used for the
+   * card's type label; falls back to the `task` tool input when absent.
+   */
+  subagentType?: string;
+  /** Spawn prompt carried on `subagent_spawned`, for the card summary. */
+  subagentPrompt?: string;
+  /**
+   * Failure/rejection detail from the latest `subagent_status` (e.g. a
+   * depth/quota rejection reason). Rendered in the card's rejected /
+   * failed state.
+   */
+  subagentReason?: string;
 }
 
 /* ------------------------------------------------------------------ */

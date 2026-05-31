@@ -10,6 +10,7 @@ import { Model3DBlock } from "./renderers/Model3DBlock";
 import { VideoBlock } from "./renderers/VideoBlock";
 import { StatusReadoutBlock } from "./renderers/StatusReadoutBlock";
 import { GenericToolBlock } from "./renderers/GenericToolBlock";
+import { SubAgentBlock } from "../SubAgentBlock";
 
 /**
  * Phase 5 — extra hints the parent feed (`ActivityTimeline`) can hand
@@ -103,6 +104,10 @@ const REGISTRY: Record<string, BlockRenderer> = {
 
   create_spec: (entry, def) => <SpecBlock entry={entry} defaultExpanded={def} />,
   update_spec: (entry, def) => <SpecBlock entry={entry} defaultExpanded={def} />,
+
+  // `task` spawns a live subagent thread — NOT project-task CRUD
+  // (that's `create_task` etc. below, rendered by `TaskBlock`).
+  task: (entry, def) => <SubAgentBlock entry={entry} defaultExpanded={def} />,
 
   create_task: (entry, def) => <TaskBlock entry={entry} defaultExpanded={def} />,
   update_task: (entry, def) => <TaskBlock entry={entry} defaultExpanded={def} />,

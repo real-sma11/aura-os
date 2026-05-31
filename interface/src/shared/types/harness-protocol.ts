@@ -268,6 +268,52 @@ export interface ErrorMsg {
   recoverable: boolean;
 }
 
+/**
+ * Terminal/transitional lifecycle states a spawned subagent run can be
+ * in. Mirrors the `state` field on the backend `subagent_status` event
+ * (`aura-protocol` `SubagentStatus`). Kept as a string-literal union so
+ * the UI status pill can switch exhaustively without an enum.
+ */
+export type SubagentState =
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timeout"
+  | "rejected";
+
+/**
+ * `subagent_spawned` — announces a child subagent run on the parent
+ * stream. `child_run_id` is the run id the client attaches to via
+ * `POST /api/streams/subagents/:child_run_id/attach`;
+ * `parent_tool_use_id` ties the thread back to the originating `task`
+ * tool-use block so the UI can render the live thread under that card.
+ *
+ * Hand-maintained mirror of the generated
+ * `crates/aura-protocol/bindings/SubagentSpawned.ts`.
+ */
+export interface SubagentSpawned {
+  child_run_id: string;
+  parent_tool_use_id: string | null;
+  subagent_type: string;
+  prompt: string;
+}
+
+/**
+ * `subagent_status` — most recent lifecycle state for a spawned child
+ * run. `reason` carries the failure/rejection detail when applicable
+ * (depth/quota rejections surface here).
+ *
+ * Hand-maintained mirror of the generated
+ * `crates/aura-protocol/bindings/SubagentStatus.ts` (the generated
+ * `state` is a bare `string`; we narrow it to {@link SubagentState}).
+ */
+export interface SubagentStatus {
+  child_run_id: string;
+  state: SubagentState;
+  reason: string | null;
+}
+
 export type OutboundMessage =
   | { type: "session_ready" } & SessionReady
   | { type: "assistant_message_start" } & AssistantMessageStart
@@ -276,4 +322,6 @@ export type OutboundMessage =
   | { type: "tool_use_start" } & ToolUseStart
   | { type: "tool_result" } & ToolResultMsg
   | { type: "assistant_message_end" } & AssistantMessageEnd
+  | { type: "subagent_spawned" } & SubagentSpawned
+  | { type: "subagent_status" } & SubagentStatus
   | { type: "error" } & ErrorMsg;
