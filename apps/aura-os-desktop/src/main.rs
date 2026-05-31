@@ -145,10 +145,17 @@ fn main() {
     );
 
     let initial_frontend_base_url = server.frontend_target.url.clone();
-    let initial_frontend_url = apply_restore_route(
-        &initial_frontend_base_url,
-        pre_bind.route_state.current_route().as_deref(),
-    );
+    // Only restore the persisted route when a baked session exists on disk.
+    // A logged-out launch must land on the public surface ("/") instead of
+    // a protected path; otherwise `RequireAuth` bounces the webview to
+    // `/login` and the login overlay covers the public page on startup.
+    let restore_route = if bootstrapped_auth.is_some() {
+        pre_bind.route_state.current_route()
+    } else {
+        None
+    };
+    let initial_frontend_url =
+        apply_restore_route(&initial_frontend_base_url, restore_route.as_deref());
 
     let main_webview = create_main_webview(
         &window,

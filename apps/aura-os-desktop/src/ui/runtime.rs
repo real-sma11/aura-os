@@ -262,10 +262,16 @@ impl LoopState {
             return;
         }
 
-        let next_main_url = apply_restore_route(
-            &next_frontend_url,
-            self.ctx.route_state.current_route().as_deref(),
-        );
+        // Mirror the launch-time gating: only carry the persisted route over
+        // to the Vite dev frontend when a baked session exists on disk. A
+        // logged-out attach must reload at the public surface ("/") so the
+        // login overlay does not cover the public page after the swap.
+        let restore_route = if load_bootstrapped_auth_literals(&self.ctx.store_path).is_some() {
+            self.ctx.route_state.current_route()
+        } else {
+            None
+        };
+        let next_main_url = apply_restore_route(&next_frontend_url, restore_route.as_deref());
 
         info!(
             frontend = %next_main_url,
