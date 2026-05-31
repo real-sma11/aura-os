@@ -133,6 +133,15 @@
  * list's last row reaching the page nav links unmasked).
  */
 .sidebarBodyFadeAboveFooter {
+  /* Reserve clearance equal to the floating referral pill's footprint
+     (32px button + var(--space-2) top + var(--shell-chrome-inset)
+     bottom ~= 45px) plus a little breathing room, so every authed
+     list's scroll viewport ends ABOVE the pill and the last row can
+     scroll fully into the clear instead of staying covered by it. The
+     mask band below still overshoots this clearance, so the bottom
+     content edge keeps its soft dissolve. */
+  --aura-authed-footer-clearance: 48px;
+  padding-bottom: var(--aura-authed-footer-clearance);
   -webkit-mask-image: linear-gradient(
     to bottom,
     black calc(100% - 64px),
