@@ -91,28 +91,6 @@ fn non_empty_string(value: &str) -> Option<String> {
 /// the prefix on the upstream provider. `retention` defaults to the
 /// shorter in-memory TTL when `None`; pass `Some("24h")` for long-lived
 /// project agents whose context survives idle gaps.
-/// OpenAI rejects `prompt_cache_key` strings longer than 64 chars.
-const MAX_PROMPT_CACHE_KEY_LEN: usize = 64;
-
-/// Clamp a prompt cache key to OpenAI's 64-char limit.
-///
-/// Short keys pass through untouched. Long keys keep their namespace
-/// prefix (the segment before the first `:`) and gain a stable blake3
-/// digest, so caching stays deterministic per identity while never
-/// exceeding the provider limit. Hashing (rather than truncating)
-/// avoids collisions between distinct long identities.
-fn clamp_prompt_cache_key(key: String) -> String {
-    if key.len() <= MAX_PROMPT_CACHE_KEY_LEN {
-        return key;
-    }
-    let hash = blake3::hash(key.as_bytes()).to_hex();
-    let digest = &hash[..32];
-    let prefix = key.split(':').next().unwrap_or("");
-    let max_prefix = MAX_PROMPT_CACHE_KEY_LEN - digest.len() - 1;
-    let prefix: String = prefix.chars().take(max_prefix).collect();
-    format!("{prefix}:{digest}")
-}
-
 pub(crate) fn session_model_overrides_with_cache(
     model: Option<&str>,
     cache_key: Option<String>,
@@ -122,10 +100,12 @@ pub(crate) fn session_model_overrides_with_cache(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
+    // The key is forwarded to the harness, which owns the single
+    // length-clamp chokepoint (OpenAI's 64-char `prompt_cache_key`
+    // limit) before the value reaches aura-router / OpenAI.
     let cache_key = cache_key
         .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .map(clamp_prompt_cache_key);
+        .filter(|v| !v.is_empty());
     let retention = retention
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
@@ -278,48 +258,13 @@ mod tests {
     }
 
     #[test]
-    fn clamp_prompt_cache_key_passes_short_keys_through() {
-        let key = "agent:abc-123".to_string();
-        assert_eq!(clamp_prompt_cache_key(key.clone()), key);
-    }
-
-    #[test]
-    fn clamp_prompt_cache_key_shortens_long_keys_to_limit() {
-        let long = format!("agent:{}", "a".repeat(200));
-        assert!(long.len() > MAX_PROMPT_CACHE_KEY_LEN);
-        let clamped = clamp_prompt_cache_key(long);
-        assert!(
-            clamped.len() <= MAX_PROMPT_CACHE_KEY_LEN,
-            "clamped key must fit OpenAI's limit, got {}",
-            clamped.len()
-        );
-        assert!(clamped.starts_with("agent:"));
-    }
-
-    #[test]
-    fn clamp_prompt_cache_key_is_deterministic() {
-        let long = format!("instance:{}", "x".repeat(150));
-        assert_eq!(
-            clamp_prompt_cache_key(long.clone()),
-            clamp_prompt_cache_key(long)
-        );
-    }
-
-    #[test]
-    fn clamp_prompt_cache_key_distinguishes_distinct_long_keys() {
-        let a = clamp_prompt_cache_key(format!("agent:{}", "a".repeat(150)));
-        let b = clamp_prompt_cache_key(format!("agent:{}", "b".repeat(150)));
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    fn session_model_overrides_with_cache_clamps_oversized_key() {
+    fn session_model_overrides_with_cache_forwards_key_verbatim() {
+        // aura-os no longer clamps; it forwards the raw semantic key and
+        // the harness owns the single length-clamp chokepoint.
         let long = format!("agent:{}", "z".repeat(200));
         let overrides =
-            session_model_overrides_with_cache(Some("aura-gpt-5-5"), Some(long), Some("24h"))
+            session_model_overrides_with_cache(Some("aura-gpt-5-5"), Some(long.clone()), Some("24h"))
                 .expect("model + key should produce overrides");
-        let key = overrides.prompt_cache_key.expect("cache key present");
-        assert!(key.len() <= MAX_PROMPT_CACHE_KEY_LEN);
-        assert!(key.starts_with("agent:"));
+        assert_eq!(overrides.prompt_cache_key.as_deref(), Some(long.as_str()));
     }
 }
