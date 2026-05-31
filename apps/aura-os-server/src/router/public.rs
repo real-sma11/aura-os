@@ -52,7 +52,14 @@ pub(super) fn public_routes() -> Router<AppState> {
         // to aura-network's `/api/public/models`. Same graceful-degrade
         // contract as `/api/public/feedback`: returns `[]` when no
         // aura-network client is configured or the upstream call fails.
-        .route("/api/public/models", get(public_models::pub_list_models));
+        .route("/api/public/models", get(public_models::pub_list_models))
+        // Marketing `/changelog` page reads aggregate commit counts from
+        // this cached, optionally-token-authenticated GitHub proxy so the
+        // browser no longer fans out unauthenticated requests straight to
+        // api.github.com (which reliably tripped the 60 req/hr/IP limit
+        // and rendered `0`). Same graceful-degrade contract as the other
+        // marketing pass-throughs.
+        .route("/api/public/commit-stats", get(public::pub_commit_stats));
     if public_generation_enabled() {
         router = router
             .route(

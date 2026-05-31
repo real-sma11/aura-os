@@ -9,6 +9,7 @@ import {
 import {
   AURA_PUBLIC_REPOS,
   fetchAuraCommitStats,
+  type LiveCommitStats,
 } from "../../../api/marketing/github-commits";
 import {
   type DesktopManifestChannel,
@@ -38,6 +39,63 @@ function normalizeManifestChannel(
 
 const COMMITS_LIVE_TITLE = `Live total across ${AURA_PUBLIC_REPOS.length} AURA repositories`;
 const BANNER_COUNT_UP_DURATION_MS = 1000;
+
+/** Placeholder shown when commit totals can't be resolved and no
+ *  last-known value is cached, so the card never reports a bogus `0`. */
+const STAT_UNAVAILABLE = "\u2014";
+
+const COMMIT_STATS_STORAGE_KEY = "aura.changelog.commitStats.v1";
+
+interface CommitTotals {
+  readonly commitsThisMonth: number;
+  readonly commitsAllTime: number;
+}
+
+/**
+ * Live commit stats are usable only when the all-time total resolved to
+ * a positive number. A zero all-time across every public repo means the
+ * upstream fetch degraded (rate limit / outage) rather than a real
+ * count, so we treat it as "unavailable" and fall back to the last-known
+ * cached value instead of rendering 0.
+ */
+function commitStatsUsable(
+  stats: LiveCommitStats | undefined,
+): stats is LiveCommitStats {
+  return Boolean(stats && stats.commitsAllTime > 0);
+}
+
+function readStoredCommitTotals(): CommitTotals | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(COMMIT_STATS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CommitTotals>;
+    if (
+      typeof parsed.commitsThisMonth === "number" &&
+      typeof parsed.commitsAllTime === "number"
+    ) {
+      return {
+        commitsThisMonth: parsed.commitsThisMonth,
+        commitsAllTime: parsed.commitsAllTime,
+      };
+    }
+  } catch {
+    // Corrupt JSON or storage disabled (privacy mode) — no cached value.
+  }
+  return null;
+}
+
+function writeStoredCommitTotals(totals: CommitTotals): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      COMMIT_STATS_STORAGE_KEY,
+      JSON.stringify(totals),
+    );
+  } catch {
+    // Quota exceeded / privacy mode — caching is best-effort, skip.
+  }
+}
 
 const CHANGELOG_TIME_ZONE = "America/Los_Angeles";
 
@@ -320,15 +378,54 @@ export function ChangelogView(): ReactNode {
     queryFn: fetchChangelogEntries,
   });
 
-  // Live commit totals across the 7 public AURA repos. Kept separate
-  // from the curated changelog query because the underlying GitHub REST
-  // calls are independent and shouldn't block the page on cold load.
-  const { data: liveCommitStats } = useQuery({
+  // Live commit totals across the 7 public AURA repos, read from the
+  // same-origin `/api/public/commit-stats` proxy. Kept separate from the
+  // curated changelog query because it's independent and shouldn't block
+  // the page on cold load.
+  const {
+    data: liveCommitStats,
+    isLoading: commitStatsLoading,
+  } = useQuery({
     queryKey: ["marketing-changelog-live-commits"],
     queryFn: ({ signal }) => fetchAuraCommitStats(undefined, signal),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // Last-known-good totals persisted across visits so a transient
+  // upstream outage shows the previous real numbers instead of dropping
+  // back to a placeholder. Seeded synchronously from localStorage on
+  // mount.
+  const [storedCommitTotals, setStoredCommitTotals] = useState<
+    CommitTotals | null
+  >(() => readStoredCommitTotals());
+
+  useEffect(() => {
+    if (!commitStatsUsable(liveCommitStats)) return;
+    const totals: CommitTotals = {
+      commitsThisMonth: liveCommitStats.commitsThisMonth,
+      commitsAllTime: liveCommitStats.commitsAllTime,
+    };
+    writeStoredCommitTotals(totals);
+    setStoredCommitTotals(totals);
+  }, [liveCommitStats]);
+
+  // Prefer fresh usable stats; otherwise fall back to the last-known
+  // cached totals. Null only when we have neither.
+  const effectiveCommitTotals: CommitTotals | null = commitStatsUsable(
+    liveCommitStats,
+  )
+    ? {
+        commitsThisMonth: liveCommitStats.commitsThisMonth,
+        commitsAllTime: liveCommitStats.commitsAllTime,
+      }
+    : storedCommitTotals;
+
+  // While the first fetch is in flight (and nothing cached) the count
+  // holds at 0 with `aria-busy`. Once the query settles without usable
+  // data and there's no cached fallback, render a dash instead of 0.
+  const commitStatsUnavailable =
+    !effectiveCommitTotals && !commitStatsLoading;
 
   // Stabilize the empty fallback so memo deps below don't change every
   // render (React Query keeps `data` referentially stable across renders
@@ -393,12 +490,12 @@ export function ChangelogView(): ReactNode {
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsThisMonthDisplay = useCountUp({
-    target: liveCommitStats ? liveCommitStats.commitsThisMonth : null,
+    target: effectiveCommitTotals ? effectiveCommitTotals.commitsThisMonth : null,
     resetKey: visitKey,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const commitsAllTimeDisplay = useCountUp({
-    target: liveCommitStats ? liveCommitStats.commitsAllTime : null,
+    target: effectiveCommitTotals ? effectiveCommitTotals.commitsAllTime : null,
     resetKey: visitKey,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
@@ -478,10 +575,12 @@ export function ChangelogView(): ReactNode {
                 <dd
                   className="changelogStatValue"
                   aria-live="polite"
-                  aria-busy={liveCommitStats ? "false" : "true"}
+                  aria-busy={commitStatsLoading ? "true" : "false"}
                   title={COMMITS_LIVE_TITLE}
                 >
-                  {STAT_NUMBER_FORMATTER.format(commitsThisMonthDisplay)}
+                  {commitStatsUnavailable
+                    ? STAT_UNAVAILABLE
+                    : STAT_NUMBER_FORMATTER.format(commitsThisMonthDisplay)}
                 </dd>
               </div>
               <div className="changelogStat">
@@ -495,10 +594,12 @@ export function ChangelogView(): ReactNode {
                 <dd
                   className="changelogStatValue"
                   aria-live="polite"
-                  aria-busy={liveCommitStats ? "false" : "true"}
+                  aria-busy={commitStatsLoading ? "true" : "false"}
                   title={COMMITS_LIVE_TITLE}
                 >
-                  {STAT_NUMBER_FORMATTER.format(commitsAllTimeDisplay)}
+                  {commitStatsUnavailable
+                    ? STAT_UNAVAILABLE
+                    : STAT_NUMBER_FORMATTER.format(commitsAllTimeDisplay)}
                 </dd>
               </div>
             </dl>

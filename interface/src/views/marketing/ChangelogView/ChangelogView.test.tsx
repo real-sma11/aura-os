@@ -39,6 +39,12 @@ function getCommitStatValueElement(label: RegExp): HTMLElement {
 
 describe("ChangelogView", () => {
   beforeEach(() => {
+    // The commit-stats card persists last-known-good totals in
+    // localStorage so a transient outage shows the previous numbers
+    // instead of a placeholder. Clear it between tests so each case
+    // starts from a known-empty cache and assertions stay deterministic.
+    window.localStorage.clear();
+
     // Collapse the count-up animation to a single frame so the resolved
     // value is observable immediately. The rAF callback is invoked with a
     // timestamp far in the future, which drives the hook's progress to 1
@@ -126,6 +132,73 @@ describe("ChangelogView", () => {
     const allTime = getCommitStatValueElement(/All-time commits/);
     expect(allTime.textContent).toBe("9,421");
     expect(allTime).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("renders a dash instead of 0 when the commit stats fetch fails and nothing is cached", async () => {
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockRejectedValue(
+      new Error("rate limited"),
+    );
+
+    renderChangelogView();
+
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/Commits this month/).textContent,
+      ).toBe("\u2014");
+    });
+
+    const thisMonth = getCommitStatValueElement(/Commits this month/);
+    expect(thisMonth).toHaveAttribute("aria-busy", "false");
+    expect(getCommitStatValueElement(/All-time commits/).textContent).toBe(
+      "\u2014",
+    );
+  });
+
+  it("treats a partial all-time-zero aggregate as unavailable (dash, not 0)", async () => {
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockResolvedValue({
+      commitsThisMonth: 0,
+      commitsAllTime: 0,
+      perRepo: Object.fromEntries(
+        githubCommits.AURA_PUBLIC_REPOS.map((repo) => [
+          repo,
+          { thisMonth: 0, allTime: 0 },
+        ]),
+      ),
+      fetchedAt: new Date().toISOString(),
+      partial: true,
+    });
+
+    renderChangelogView();
+
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/All-time commits/).textContent,
+      ).toBe("\u2014");
+    });
+    expect(getCommitStatValueElement(/Commits this month/).textContent).toBe(
+      "\u2014",
+    );
+  });
+
+  it("falls back to the last-known cached totals when a later fetch degrades", async () => {
+    window.localStorage.setItem(
+      "aura.changelog.commitStats.v1",
+      JSON.stringify({ commitsThisMonth: 12, commitsAllTime: 3456 }),
+    );
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockRejectedValue(
+      new Error("rate limited"),
+    );
+
+    renderChangelogView();
+
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/All-time commits/).textContent,
+      ).toBe("3,456");
+    });
+    expect(getCommitStatValueElement(/Commits this month/).textContent).toBe(
+      "12",
+    );
   });
 
   it("renders Current Version as a stat block in the card header (top-right) with the version number, release age, Download and GitHub links", async () => {
