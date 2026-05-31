@@ -373,6 +373,7 @@ mod tests {
                 orbit_client: None,
                 orbit_capacity_guard: Arc::new(crate::orbit_guard::OrbitCapacityGuard::new()),
                 validation_cache: Arc::new(dashmap::DashMap::new()),
+                ws_ticket_store: Arc::new(dashmap::DashMap::new()),
                 agent_discovery_cache: Arc::new(dashmap::DashMap::new()),
                 router_url,
                 http_client: reqwest::Client::new(),

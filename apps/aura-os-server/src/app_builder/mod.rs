@@ -324,6 +324,12 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         cache
     };
 
+    let ws_ticket_store = {
+        let store = Arc::new(dashmap::DashMap::new());
+        crate::state::spawn_ws_ticket_eviction(store.clone());
+        store
+    };
+
     let harness_base = local_harness_base_url();
     let harness_http = Arc::new(HarnessHttpGateway::new(harness_base));
 
@@ -410,6 +416,7 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         orbit_client,
         orbit_capacity_guard,
         validation_cache,
+        ws_ticket_store,
         agent_discovery_cache: Arc::new(dashmap::DashMap::new()),
         router_url,
         http_client,

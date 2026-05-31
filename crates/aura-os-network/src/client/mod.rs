@@ -82,6 +82,16 @@ impl NetworkClient {
     }
 
     /// Returns the WebSocket URL for the aura-network events stream.
+    ///
+    /// NOTE: this is a server-to-server (aura-os-server -> aura-network)
+    /// connection, so the `?token=` here leaks only into aura-network's
+    /// own access logs, not this server's. Browser-facing endpoints use
+    /// the short-lived `?ticket=` flow instead (see
+    /// `aura-os-server` `handlers::auth::mint_ws_ticket`). Moving this
+    /// outbound link off `?token=` (e.g. an `Authorization` handshake
+    /// header) requires aura-network to accept header auth on
+    /// `/ws/events`; tracked as a follow-up that must land on the
+    /// receiving service first to avoid breaking the bridge.
     pub fn ws_events_url(&self, jwt: &str) -> String {
         let ws_base = self
             .base_url

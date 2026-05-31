@@ -1,5 +1,6 @@
-import { authHeaders, getStoredJwt } from "../../shared/lib/auth-token";
+import { authHeaders } from "../../shared/lib/auth-token";
 import { resolveApiUrl, resolveWsUrl } from "../../shared/lib/host-config";
+import { appendWsTicket } from "../../shared/lib/ws-ticket";
 import { ApiClientError } from "./core";
 import type { ApiError } from "../types";
 
@@ -291,13 +292,6 @@ export async function triggerBrowserDetect(
   return body.detected;
 }
 
-function appendWsToken(url: string): string {
-  const jwt = getStoredJwt();
-  if (!jwt) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}token=${encodeURIComponent(jwt)}`;
-}
-
-export function browserWsUrl(id: string): string {
-  return appendWsToken(resolveWsUrl(`/ws/browser/${id}`));
+export function browserWsUrl(id: string): Promise<string> {
+  return appendWsTicket(resolveWsUrl(`/ws/browser/${id}`));
 }

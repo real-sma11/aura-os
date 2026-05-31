@@ -147,7 +147,7 @@ export function useTerminal(opts: UseTerminalOptions = {}): UseTerminalReturn {
         idRef.current = resp.id;
         setTerminalId(resp.id);
 
-        const socket = new WebSocket(terminalWsUrl(resp.id));
+        const socket = new WebSocket(await terminalWsUrl(resp.id));
         wireWs(socket, false);
 
         socket.onopen = () => {
@@ -155,8 +155,8 @@ export function useTerminal(opts: UseTerminalOptions = {}): UseTerminalReturn {
         };
       };
 
-      const initRemote = (agentId: string) => {
-        const socket = new WebSocket(remoteTerminalWsUrl(agentId));
+      const initRemote = async (agentId: string) => {
+        const socket = new WebSocket(await remoteTerminalWsUrl(agentId));
         wireWs(socket, true);
 
         socket.onopen = () => {
@@ -180,7 +180,7 @@ export function useTerminal(opts: UseTerminalOptions = {}): UseTerminalReturn {
       const run = async () => {
         try {
           if (remote) {
-            initRemote(remote);
+            await initRemote(remote);
           } else {
             await initLocal();
           }

@@ -99,9 +99,12 @@ describe("killTerminal", () => {
 });
 
 describe("terminalWsUrl", () => {
-  it("returns ws URL with terminal id", () => {
-    const url = terminalWsUrl("term-1");
+  it("returns ws URL with terminal id (no ticket when mint fails)", async () => {
+    // No ws-ticket fetch is mocked here, so mintWsTicket resolves null
+    // and the URL comes back ticketless — but always with the right path.
+    const url = await terminalWsUrl("term-1");
     expect(url).toContain("/ws/terminal/term-1");
     expect(url).toMatch(/^wss?:\/\//);
+    expect(url).not.toContain("token=");
   });
 });

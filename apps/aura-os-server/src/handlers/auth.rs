@@ -17,7 +17,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::handlers::users::{clear_user_network_sync_dedupe, sync_user_to_network};
 use crate::state::{
     clear_zero_auth_session, persist_zero_auth_session, AppState, AuthJwt, AuthSession,
-    AuthZeroProMeta, CachedSession,
+    AuthZeroProMeta, CachedSession, WsTicketEntry, WS_TICKET_TTL,
 };
 
 fn auth_token_import_enabled_from_var(value: Option<&str>) -> bool {
@@ -387,6 +387,57 @@ pub(crate) async fn get_session(
     let mut response = AuthSessionResponse::from(session);
     response.zero_pro_refresh_error = zero_pro_refresh_error;
     Ok(Json(response))
+}
+
+/// Response for `POST /api/auth/ws-ticket`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WsTicketResponse {
+    /// Opaque, single-use ticket the client appends as `?ticket=` when
+    /// opening a WebSocket or loading a token-gated `<img>`.
+    pub ticket: String,
+    /// Lifetime hint (ms) so clients can mint a fresh ticket just before
+    /// connecting rather than caching a stale one.
+    pub expires_in_ms: u64,
+}
+
+/// Generate an opaque, unguessable connect ticket. Two v4 UUIDs (each
+/// 122 bits of CSPRNG entropy via `getrandom`) concatenated as hex give
+/// 64 chars / ~244 bits — far beyond what a 30s single-use token needs.
+fn generate_ws_ticket() -> String {
+    let mut ticket = String::with_capacity(64);
+    ticket.push_str(&uuid::Uuid::new_v4().simple().to_string());
+    ticket.push_str(&uuid::Uuid::new_v4().simple().to_string());
+    ticket
+}
+
+/// POST /api/auth/ws-ticket — mint a short-lived, single-use connect
+/// ticket for URL-based auth.
+///
+/// Native `WebSocket` handshakes and `<img>` GETs can't carry an
+/// `Authorization` header, so clients used to append the long-lived JWT
+/// as `?token=<jwt>` — which lands verbatim in proxy/platform access
+/// logs (Render records the full request line) and is replayable until
+/// it expires. This endpoint is bearer-authenticated (the JWT travels in
+/// a header, never a URL); it returns an opaque ticket bound to the
+/// caller's token that expires in [`WS_TICKET_TTL`] and is burned on
+/// first use, so even a logged ticket is useless to replay.
+pub(crate) async fn mint_ws_ticket(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+) -> ApiResult<Json<WsTicketResponse>> {
+    let ticket = generate_ws_ticket();
+    state.ws_ticket_store.insert(
+        ticket.clone(),
+        WsTicketEntry {
+            jwt,
+            created_at: Instant::now(),
+        },
+    );
+    Ok(Json(WsTicketResponse {
+        ticket,
+        expires_in_ms: WS_TICKET_TTL.as_millis() as u64,
+    }))
 }
 
 /// POST /api/auth/validate — force-refresh the session against zOS (middleware bypasses TTL cache)

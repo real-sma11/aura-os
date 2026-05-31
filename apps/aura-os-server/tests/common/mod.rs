@@ -356,6 +356,7 @@ pub fn build_test_app_from_store(
         task_output_cache: Arc::new(Mutex::new(HashMap::new())),
         orbit_client: None,
         validation_cache,
+        ws_ticket_store: Arc::new(dashmap::DashMap::new()),
         agent_discovery_cache: Arc::new(dashmap::DashMap::new()),
         router_url,
         http_client: reqwest::Client::new(),

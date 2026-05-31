@@ -64,6 +64,25 @@ describe("createReconnectingWebSocket", () => {
     expect(MockWebSocket.instances[0].url).toBe("ws://test");
   });
 
+  it("supports an async url builder (ticket minting)", async () => {
+    vi.useRealTimers();
+    createReconnectingWebSocket(
+      {
+        url: () => Promise.resolve("ws://test?ticket=abc"),
+        initialDelay: 100,
+        maxDelay: 5000,
+        backoffMultiplier: 2,
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    // The socket opens only after the async URL resolves.
+    expect(MockWebSocket.instances).toHaveLength(0);
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    expect(MockWebSocket.instances[0].url).toBe("ws://test?ticket=abc");
+  });
+
   it("calls onStatusChange(true) on open", () => {
     const onStatus = vi.fn();
     createReconnectingWebSocket(

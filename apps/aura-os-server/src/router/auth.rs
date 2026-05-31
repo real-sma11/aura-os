@@ -37,6 +37,7 @@ pub(super) fn protected_auth_routes() -> Router<AppState> {
     Router::new()
         .route("/api/auth/session", get(auth::get_session))
         .route("/api/auth/validate", post(auth::validate))
+        .route("/api/auth/ws-ticket", post(auth::mint_ws_ticket))
         .route("/api/auth/jwt-issuer", get(auth::get_jwt_issuer))
         .route("/api/invite/me", post(auth::get_my_invite_code))
 }

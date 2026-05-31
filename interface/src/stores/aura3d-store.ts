@@ -15,11 +15,18 @@ export { STYLE_LOCK_SUFFIX };
 
 /**
  * Append the current JWT to a URL as a `?token=` query param so a
- * bare `<img src=...>` (or any browser-driven GET that can't set an
- * `Authorization` header) can authenticate against
- * `protected_api_router`. The server's `extract_request_token`
- * already accepts this fallback — it was added for WebSockets, and
- * the same constraint applies to `<img>` requests for thumbnails.
+ * bare `<img src=...>` can authenticate against `protected_api_router`.
+ *
+ * KNOWN REMAINING SURFACE (token-in-URL): unlike the WebSocket
+ * endpoints — which moved to short-lived, single-use `?ticket=` auth
+ * (see `mintWsTicket` / `POST /api/auth/ws-ticket`) so the JWT never
+ * lands in proxy/access logs — these thumbnail `<img>` URLs still carry
+ * the long-lived JWT. The ticket model does not fit here: the URL is
+ * stored in state and re-rendered (and cache-busted with `?v=`), so a
+ * single-use 30s ticket would 401 on the second load and break the
+ * thumbnail. Removing the token from these URLs requires a different
+ * mechanism (an authenticated blob fetch into an object URL, or a
+ * per-artifact signed read URL) and is tracked as a follow-up.
  *
  * No-op when no JWT is cached (logged-out boot, tests). Callers
  * still get a usable URL; the `<img onError>` chain in

@@ -49,9 +49,10 @@ pub(crate) use auth_extractors::{AuthJwt, AuthSession, AuthZeroProMeta};
 #[cfg(test)]
 pub(crate) use caches::CACHE_ENTRY_MAX_AGE;
 pub(crate) use caches::{
-    clear_zero_auth_session, persist_zero_auth_session, spawn_cache_eviction, AgentDiscoveryCache,
-    CachedAgentDiscovery, CreditCache, CreditCacheRef, TaskOutputCache, TaskOutputKey,
-    ValidationCache, AGENT_DISCOVERY_TTL,
+    clear_zero_auth_session, persist_zero_auth_session, spawn_cache_eviction,
+    spawn_ws_ticket_eviction, AgentDiscoveryCache, CachedAgentDiscovery, CreditCache,
+    CreditCacheRef, TaskOutputCache, TaskOutputKey, ValidationCache, WsTicketEntry, WsTicketStore,
+    AGENT_DISCOVERY_TTL, WS_TICKET_TTL,
 };
 pub use caches::{CachedSession, CachedTaskOutput, TestPassEvidence};
 
@@ -379,6 +380,11 @@ pub struct AppState {
     pub orbit_capacity_guard: Arc<crate::orbit_guard::OrbitCapacityGuard>,
     /// Per-JWT validation cache. Avoids calling zOS on every request.
     pub validation_cache: ValidationCache,
+    /// Short-lived, single-use connect tickets for URL-based auth
+    /// (native `WebSocket` / `<img>`), keyed by the opaque ticket string.
+    /// Lets clients keep the long-lived JWT out of URLs (and thus out of
+    /// proxy/access logs). See [`WsTicketStore`].
+    pub ws_ticket_store: WsTicketStore,
     /// Per-(JWT,agent_id) cache of matched project-agent bindings.
     /// Short-TTL wrapper around `find_matching_project_agents` that
     /// eliminates the orgs/projects/project_agents fan-out on repeat

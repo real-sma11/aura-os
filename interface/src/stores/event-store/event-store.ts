@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AuraEvent, AuraEventOfType } from "../../shared/types/aura-events";
 import { EventType, parseAuraEvent } from "../../shared/types/aura-events";
-import { getStoredJwt } from "../../shared/lib/auth-token";
+import { mintWsTicket } from "../../shared/lib/ws-ticket";
 import { createReconnectingWebSocket } from "../../shared/hooks/ws-reconnect";
 import { resolveWsUrl } from "../../shared/lib/host-config";
 import { persistTaskOutputText } from "./task-output-cache";
@@ -394,11 +394,14 @@ export function connectEventSocket() {
       // Recomputed on every (re)connect attempt so `since` always
       // reflects the newest event we processed before the drop and the
       // server can replay the gap.
-      url: () => {
+      url: async () => {
         const base = resolveWsUrl("/ws/events");
         const params: string[] = [];
-        const jwt = getStoredJwt();
-        if (jwt) params.push(`token=${encodeURIComponent(jwt)}`);
+        // Mint a short-lived, single-use ticket per (re)connect so the
+        // long-lived JWT never travels in the URL (and never lands in
+        // proxy/access logs). See `mintWsTicket`.
+        const ticket = await mintWsTicket();
+        if (ticket) params.push(`ticket=${encodeURIComponent(ticket)}`);
         if (_lastSeq > 0) params.push(`since=${_lastSeq}`);
         if (params.length === 0) return base;
         const sep = base.includes("?") ? "&" : "?";

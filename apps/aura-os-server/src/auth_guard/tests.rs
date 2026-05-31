@@ -71,21 +71,29 @@ fn extract_token_missing_bearer_prefix() {
 }
 
 #[test]
-fn extract_token_from_query_param() {
+fn extract_token_ignores_raw_jwt_query_param() {
+    // Raw `?token=<jwt>` is no longer accepted: long-lived tokens must
+    // never travel in a URL (they leak into proxy/access logs).
     let req = request_with_query("token=ws-jwt-token");
-    assert_eq!(extract_request_token(&req).unwrap(), "ws-jwt-token");
+    assert!(extract_request_token(&req).is_none());
 }
 
 #[test]
-fn extract_token_from_query_with_other_params() {
-    let req = request_with_query("foo=bar&token=my-token&baz=1");
-    assert_eq!(extract_request_token(&req).unwrap(), "my-token");
+fn extract_ws_ticket_from_query_param() {
+    let req = request_with_query("ticket=abc123");
+    assert_eq!(extract_ws_ticket(&req).unwrap(), "abc123");
+}
+
+#[test]
+fn extract_ws_ticket_from_query_with_other_params() {
+    let req = request_with_query("foo=bar&ticket=tok&since=9");
+    assert_eq!(extract_ws_ticket(&req).unwrap(), "tok");
 }
 
 #[test]
 fn extract_token_prefers_header_over_query() {
     let req = axum::http::Request::builder()
-        .uri("/api/test?token=query-token")
+        .uri("/api/test?ticket=query-ticket")
         .header("Authorization", "Bearer header-token")
         .body(axum::body::Body::empty())
         .unwrap();
@@ -96,6 +104,43 @@ fn extract_token_prefers_header_over_query() {
 fn extract_token_returns_none_when_absent() {
     let req = request_bare();
     assert!(extract_request_token(&req).is_none());
+    assert!(extract_ws_ticket(&req).is_none());
+}
+
+#[test]
+fn redeem_ws_ticket_is_single_use() {
+    let store: crate::state::WsTicketStore = Arc::new(dashmap::DashMap::new());
+    store.insert(
+        "tok".to_string(),
+        crate::state::WsTicketEntry {
+            jwt: "bound-jwt".to_string(),
+            created_at: Instant::now(),
+        },
+    );
+    // First redeem returns the bound JWT and burns the ticket.
+    assert_eq!(redeem_ws_ticket(&store, "tok").unwrap(), "bound-jwt");
+    // Second redeem of the same ticket fails (single-use).
+    assert!(redeem_ws_ticket(&store, "tok").is_none());
+}
+
+#[test]
+fn redeem_ws_ticket_rejects_expired() {
+    let store: crate::state::WsTicketStore = Arc::new(dashmap::DashMap::new());
+    let stale = Instant::now() - (crate::state::WS_TICKET_TTL + std::time::Duration::from_secs(1));
+    store.insert(
+        "old".to_string(),
+        crate::state::WsTicketEntry {
+            jwt: "bound-jwt".to_string(),
+            created_at: stale,
+        },
+    );
+    assert!(redeem_ws_ticket(&store, "old").is_none());
+}
+
+#[test]
+fn redeem_ws_ticket_rejects_unknown() {
+    let store: crate::state::WsTicketStore = Arc::new(dashmap::DashMap::new());
+    assert!(redeem_ws_ticket(&store, "nope").is_none());
 }
 
 #[test]
@@ -332,6 +377,7 @@ fn mock_app_state_with_cache(cache: crate::state::ValidationCache) -> AppState {
         orbit_client: None,
         orbit_capacity_guard: std::sync::Arc::new(crate::orbit_guard::OrbitCapacityGuard::new()),
         validation_cache: cache,
+        ws_ticket_store: Arc::new(dashmap::DashMap::new()),
         agent_discovery_cache: Arc::new(dashmap::DashMap::new()),
         router_url,
         http_client: reqwest::Client::new(),

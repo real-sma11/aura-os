@@ -59,6 +59,55 @@ pub(crate) fn spawn_cache_eviction(cache: ValidationCache) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// WebSocket connect tickets — short-lived, single-use auth for URL-based
+// connections (native `WebSocket`, `<img>`) that cannot send an
+// `Authorization` header.
+// ---------------------------------------------------------------------------
+//
+// Browsers can't attach a bearer header to a native `WebSocket` handshake
+// or an `<img>` GET, so historically the long-lived JWT was appended as
+// `?token=<jwt>`. That writes the token verbatim into every proxy /
+// platform access log (Render logs the full request line), where it is
+// fully replayable until it expires.
+//
+// Instead the client mints an opaque ticket over an authenticated POST
+// (`/api/auth/ws-ticket`, bearer header — never logged in a URL), then
+// connects with `?ticket=<opaque>`. The ticket is random, expires within
+// [`WS_TICKET_TTL`], and is burned on first redeem, so even if it lands
+// in a log it is useless to replay.
+
+/// A minted connect ticket bound to the JWT it stands in for. On redeem
+/// the bound `jwt` is substituted back into the normal auth flow, so no
+/// downstream session logic needs to know tickets exist.
+pub struct WsTicketEntry {
+    pub jwt: String,
+    pub created_at: Instant,
+}
+
+/// Single-use connect-ticket store keyed by the opaque ticket string.
+pub type WsTicketStore = Arc<DashMap<String, WsTicketEntry>>;
+
+/// How long a freshly-minted connect ticket stays valid. Deliberately
+/// short: a ticket only needs to survive the round-trip between minting
+/// it and opening the socket.
+pub const WS_TICKET_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How often the background sweep removes unredeemed (expired) tickets.
+const WS_TICKET_EVICTION_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Spawn a background task that periodically removes expired connect
+/// tickets. Redeemed tickets are removed eagerly on use; this only mops
+/// up tickets that were minted but never connected.
+pub(crate) fn spawn_ws_ticket_eviction(store: WsTicketStore) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(WS_TICKET_EVICTION_INTERVAL).await;
+            store.retain(|_, entry| entry.created_at.elapsed() < WS_TICKET_TTL);
+        }
+    });
+}
+
 /// Accumulated live output for a running or recently completed task.
 #[derive(Clone, Default)]
 pub struct CachedTaskOutput {

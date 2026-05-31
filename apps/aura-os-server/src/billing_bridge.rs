@@ -23,6 +23,13 @@ fn wrap_balance_event(text: &str) -> Option<serde_json::Value> {
 }
 
 /// Convert an HTTP(S) base URL to a WebSocket URL for the balance endpoint.
+///
+/// NOTE: server-to-server link (aura-os-server -> z-billing), so this
+/// `?token=` only reaches z-billing's own access logs, not this
+/// server's. Browser-facing sockets use the short-lived `?ticket=` flow
+/// (`handlers::auth::mint_ws_ticket`). Switching this outbound link to a
+/// header requires z-billing to accept header auth on `/ws/balance`
+/// first; tracked as a follow-up on the receiving service.
 fn build_ws_url(base_url: &str, jwt: &str) -> String {
     let ws_base = base_url
         .replace("https://", "wss://")

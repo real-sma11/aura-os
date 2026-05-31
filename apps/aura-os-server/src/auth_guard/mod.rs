@@ -39,15 +39,27 @@ mod token;
 use pro::enforce_zero_pro;
 use sensitive_paths::is_sensitive_auth_path;
 use session_resolve::resolve_session_from_jwt;
-use token::extract_request_token;
+use token::{extract_request_token, extract_ws_ticket, redeem_ws_ticket};
 
 pub(crate) async fn require_verified_session(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
-    let token = extract_request_token(&req)
-        .ok_or_else(|| ApiError::unauthorized("missing authorization token"))?;
+    // Primary: `Authorization: Bearer` header. Fallback for URL-based
+    // clients that can't set headers (native `WebSocket`, `<img>`): a
+    // short-lived, single-use `?ticket=` minted via
+    // `POST /api/auth/ws-ticket`, redeemed (and burned) here for the
+    // bound JWT. The long-lived token never travels in a URL.
+    let token = match extract_request_token(&req) {
+        Some(token) => token,
+        None => {
+            let ticket = extract_ws_ticket(&req)
+                .ok_or_else(|| ApiError::unauthorized("missing authorization token"))?;
+            redeem_ws_ticket(&state.ws_ticket_store, &ticket)
+                .ok_or_else(|| ApiError::unauthorized("invalid or expired connect ticket"))?
+        }
+    };
     // Defense-in-depth: guest tokens are valid only on `/api/public/*`
     // routes. Reject them up front so the zOS validator never sees a
     // token it would refuse for the wrong reason (and so the

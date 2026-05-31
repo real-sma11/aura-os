@@ -51,8 +51,8 @@ export function useBrowser(opts: UseBrowserOptions): UseBrowserReturn {
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
-  const openSocket = useCallback((id: string) => {
-    const ws = new WebSocket(browserWsUrl(id));
+  const openSocket = useCallback(async (id: string) => {
+    const ws = new WebSocket(await browserWsUrl(id));
     ws.binaryType = "arraybuffer";
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
@@ -106,7 +106,7 @@ export function useBrowser(opts: UseBrowserOptions): UseBrowserReturn {
       setInitialUrl(result.initial_url);
       setFocusAddressBar(result.focus_address_bar);
       optsRef.current.onSpawned?.(result);
-      openSocket(result.id);
+      await openSocket(result.id);
       return result;
     } catch (err) {
       optsRef.current.onError?.(err instanceof Error ? err : new Error(String(err)));
