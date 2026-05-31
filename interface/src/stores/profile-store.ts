@@ -269,6 +269,43 @@ useOrgStore.subscribe((state) => {
   loadProfileProjects(useProfileStore.setState, orgId);
 });
 
+/**
+ * Keep the profile store in lock-step with the auth user. The store seeds
+ * `profile.name` from the auth user once at creation time, but when a visitor
+ * signs in through the `LoginOverlay` (no page reload) the auth user flips
+ * from `null` to populated *after* this store was already created empty —
+ * leaving `ProfilePill` stuck on "Sign in" until a refresh. Subscribing here
+ * mirrors the new session into the profile identity fields immediately (only
+ * filling empties so a user-edited name is never clobbered) and kicks off the
+ * network enrich via `init()`. Recording the null id on logout ensures a
+ * same-user re-login re-syncs.
+ */
+let _prevProfileUserId: string | null = null;
+function syncProfileIdentityFromAuth(
+  user: ReturnType<typeof useAuthStore.getState>["user"],
+): void {
+  const userId = user?.user_id ?? null;
+  if (userId === _prevProfileUserId) return;
+  _prevProfileUserId = userId;
+  if (!user) return;
+
+  const zid = user.primary_zid || "";
+  useProfileStore.setState((s) => ({
+    profile: {
+      ...s.profile,
+      name: s.profile.name || user.display_name || "",
+      avatarUrl: s.profile.avatarUrl ?? (user.profile_image || undefined),
+      handle: s.profile.handle || (zid ? `@${zid}` : ""),
+      id: s.profile.id ?? user.profile_id,
+      networkUserId: s.profile.networkUserId ?? user.network_user_id,
+    },
+  }));
+  useProfileStore.getState().init();
+}
+
+useAuthStore.subscribe((state) => syncProfileIdentityFromAuth(state.user));
+syncProfileIdentityFromAuth(useAuthStore.getState().user);
+
 /* ── derived selectors ── */
 
 export function useProfileEvents(): FeedEvent[] {
