@@ -16,6 +16,17 @@ use crate::state::{AppState, AuthJwt, AuthSession};
 
 const BUG_REPORT_MODEL: &str = "aura-claude-opus-4-8";
 const BUG_REPORT_MAX_TOKENS: u32 = 2048;
+
+/// Feedback-post shape used when a bug report is mirrored into the public
+/// Feedback app. Only the user's free-text description is published — the
+/// private diagnostics bundle and the Opus triage summary stay in the
+/// admin-only `BugReportStore`, honoring the consent boundary the user
+/// agreed to (share prompt/conversation data with the dev team only).
+const BUG_FEEDBACK_EVENT_TYPE: &str = "feedback";
+const BUG_FEEDBACK_POST_TYPE: &str = "post";
+const BUG_FEEDBACK_CATEGORY: &str = "bug";
+const BUG_FEEDBACK_STATUS: &str = "not_started";
+const BUG_FEEDBACK_PRODUCT: &str = "aura";
 const BUG_REPORT_SYSTEM_PROMPT: &str = "You are an expert software engineer triaging a private bug report for the AURA dev team. \
 You are given a free-text description of an issue plus a JSON bundle of diagnostics (prompt/conversation context, model, agent/session identity, error details, and machine/environment info). \
 Respond in GitHub-flavoured markdown with exactly three sections: \
@@ -46,6 +57,11 @@ pub(crate) struct CreateBugReportRequest {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CreateBugReportResponse {
     pub id: Uuid,
+    /// Public Feedback post the report was mirrored into, when one was
+    /// created. Lets the client confirm/link the submission in the
+    /// Feedback section. `None` when the feedback-network call failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_post_id: Option<String>,
 }
 
 /// Generate the Opus 4.8 triage summary by calling aura-router's
@@ -112,6 +128,96 @@ async fn generate_bug_report_summary(
     Ok(text)
 }
 
+/// Derive a concise feedback-post title from the report description: the
+/// first non-empty line, trimmed to 80 chars. Falls back to a generic
+/// label so the mirrored post always has a title.
+fn feedback_title_from_description(description: &str) -> String {
+    let head = description
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("Reported issue");
+    head.chars().take(80).collect()
+}
+
+/// Publish the user's bug description as a public Feedback "bug" post and
+/// return the new post id. Only the description is shared; the private
+/// diagnostics bundle never leaves the admin-only `BugReportStore`.
+async fn create_feedback_bug_post(
+    state: &AppState,
+    jwt: &str,
+    profile_id: Option<&str>,
+    description: &str,
+) -> Result<String, String> {
+    let client = state
+        .require_feedback_network_client()
+        .map_err(|_| "aura-network is not configured".to_string())?;
+    let body = description.trim();
+    let title = feedback_title_from_description(body);
+    let metadata = json!({
+        "feedbackCategory": BUG_FEEDBACK_CATEGORY,
+        "feedbackStatus": BUG_FEEDBACK_STATUS,
+        "feedbackProduct": BUG_FEEDBACK_PRODUCT,
+        "body": body,
+    });
+    let post = client
+        .create_post(&aura_os_network::client::CreatePostParams {
+            title: &title,
+            event_type: BUG_FEEDBACK_EVENT_TYPE,
+            summary: Some(body),
+            post_type: Some(BUG_FEEDBACK_POST_TYPE),
+            metadata: Some(metadata),
+            profile_id,
+            project_id: None,
+            agent_id: None,
+            user_id: None,
+            org_id: None,
+            push_id: None,
+            commit_ids: None,
+            jwt,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(post.id)
+}
+
+/// Generate the Opus triage summary off the request path and attach it to
+/// the stored report once it lands. Kept out of `create_bug_report` so
+/// "Send report" returns immediately instead of blocking on a multi-second
+/// LLM generation. The summary is admin-only triage metadata; every failure
+/// is logged and swallowed because the report is already fully persisted.
+fn spawn_bug_report_summary(
+    state: AppState,
+    jwt: String,
+    report_id: Uuid,
+    description: String,
+    diagnostics: serde_json::Value,
+) {
+    tokio::spawn(async move {
+        let summary =
+            match generate_bug_report_summary(&state, &jwt, &description, &diagnostics).await {
+                Ok(summary) => summary,
+                Err(error) => {
+                    warn!(%report_id, %error, "bug report LLM summary failed; report persisted without summary");
+                    return;
+                }
+            };
+        let store = BugReportStore::new(state.store.clone());
+        match store.get(&report_id) {
+            Ok(Some(mut report)) => {
+                report.llm_summary = Some(summary);
+                if let Err(error) = store.put(&report) {
+                    warn!(%report_id, %error, "bug report: failed to persist llm summary");
+                }
+            }
+            Ok(None) => warn!(%report_id, "bug report: vanished before summary could attach"),
+            Err(error) => {
+                warn!(%report_id, %error, "bug report: failed to reload for summary attach")
+            }
+        }
+    });
+}
+
 pub(crate) async fn create_bug_report(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
@@ -127,14 +233,29 @@ pub(crate) async fn create_bug_report(
         return Err(ApiError::bad_request("description is required"));
     }
 
-    let llm_summary =
-        match generate_bug_report_summary(&state, &jwt, &req.description, &req.diagnostics).await {
-            Ok(summary) => Some(summary),
+    // Route every bug report into the public Feedback app as a Bug post so
+    // the reporter actually sees it land in the Feedback section. Best-effort:
+    // a feedback-network failure must never lose the private report or block
+    // the user, so we warn and fall back to no linked post. An explicit
+    // `feedbackPostId` from the client (rare) wins over creating a new one.
+    let profile_id_str = session.profile_id.clone().map(|id| id.to_string());
+    let feedback_post_id = match req.feedback_post_id.clone() {
+        Some(existing) if !existing.trim().is_empty() => Some(existing),
+        _ => match create_feedback_bug_post(
+            &state,
+            &jwt,
+            profile_id_str.as_deref(),
+            &req.description,
+        )
+        .await
+        {
+            Ok(post_id) => Some(post_id),
             Err(error) => {
-                warn!(%error, "bug report LLM summary failed; persisting report without summary");
+                warn!(%error, "bug report: failed to create linked feedback post; continuing");
                 None
             }
-        };
+        },
+    };
 
     let now = Utc::now();
     let report = BugReport {
@@ -143,16 +264,16 @@ pub(crate) async fn create_bug_report(
         user_id: session.user_id.clone(),
         network_user_id: session.network_user_id.map(|id| id.to_string()),
         display_name: session.display_name.clone(),
-        description: req.description,
+        description: req.description.clone(),
         category: req.category,
         severity: req.severity,
-        diagnostics: req.diagnostics,
-        llm_summary,
+        diagnostics: req.diagnostics.clone(),
+        llm_summary: None,
         status: "new".to_string(),
         consent: req.consent,
         consent_version: req.consent_version,
         consented_at: Some(now),
-        feedback_post_id: req.feedback_post_id,
+        feedback_post_id: feedback_post_id.clone(),
         linked_task_id: None,
         linked_project_id: None,
     };
@@ -160,9 +281,20 @@ pub(crate) async fn create_bug_report(
     let store = BugReportStore::new(state.store.clone());
     store.put(&report).map_err(ApiError::internal)?;
 
+    spawn_bug_report_summary(
+        state.clone(),
+        jwt,
+        report.id,
+        req.description,
+        req.diagnostics,
+    );
+
     Ok((
         StatusCode::CREATED,
-        Json(CreateBugReportResponse { id: report.id }),
+        Json(CreateBugReportResponse {
+            id: report.id,
+            feedback_post_id,
+        }),
     ))
 }
 

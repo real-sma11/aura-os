@@ -211,28 +211,77 @@ export function dispatchInsufficientCredits(): void {
   window.dispatchEvent(new CustomEvent(INSUFFICIENT_CREDITS_EVENT));
 }
 
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(resolveApiUrl(path), {
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    ...options,
-  });
-  if (!res.ok) {
-    const err: ApiError = await res.json().catch(() => ({
-      error: res.statusText,
-      code: "unknown",
-      details: null,
-    }));
-    throw new ApiClientError(res.status, err);
+/**
+ * `RequestInit` plus an optional `timeoutMs`. When set, the request is
+ * aborted after that many milliseconds and `apiFetch` throws a clear
+ * "timed out" error instead of hanging forever — a defensive guard so a
+ * stalled endpoint never leaves the UI stuck in a pending state. Opt-in
+ * per call so endpoints that legitimately run long are unaffected.
+ */
+export interface ApiFetchOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options?: ApiFetchOptions,
+): Promise<T> {
+  const { timeoutMs, signal: callerSignal, ...rest } = options ?? {};
+
+  let timedOut = false;
+  const controller = timeoutMs != null ? new AbortController() : undefined;
+  const timeoutId =
+    controller != null && timeoutMs != null
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+
+  // When the caller also passed a signal, chain it into our controller so
+  // either source can abort the in-flight request.
+  if (controller && callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
   }
-  const contentLength = res.headers.get("content-length");
-  if (
-    res.status === 204 ||
-    contentLength === "0" ||
-    (contentLength === null && res.status === 202)
-  ) {
-    return undefined as T;
+  const signal = controller ? controller.signal : callerSignal;
+
+  try {
+    const res = await fetch(resolveApiUrl(path), {
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      ...rest,
+      signal,
+    });
+    if (!res.ok) {
+      const err: ApiError = await res.json().catch(() => ({
+        error: res.statusText,
+        code: "unknown",
+        details: null,
+      }));
+      throw new ApiClientError(res.status, err);
+    }
+    const contentLength = res.headers.get("content-length");
+    if (
+      res.status === 204 ||
+      contentLength === "0" ||
+      (contentLength === null && res.status === 202)
+    ) {
+      return undefined as T;
+    }
+    return res.json();
+  } catch (err) {
+    if (timedOut) {
+      throw new Error("The request timed out. Please try again.");
+    }
+    throw err;
+  } finally {
+    if (timeoutId != null) clearTimeout(timeoutId);
   }
-  return res.json();
 }
 
 export async function apiFetchText(path: string, options?: RequestInit): Promise<string> {

@@ -10,6 +10,7 @@
 #[allow(dead_code)]
 mod common;
 
+mod bug_reports;
 mod comments;
 mod create;
 mod list;

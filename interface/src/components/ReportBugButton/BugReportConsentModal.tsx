@@ -71,6 +71,7 @@ export function BugReportConsentModal({
   const [severity, setSeverity] = useState(DEFAULT_SEVERITY);
   const [consentGiven, setConsentGiven] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,9 +80,18 @@ export function BugReportConsentModal({
       setSeverity(DEFAULT_SEVERITY);
       setConsentGiven(false);
       setIsSubmitting(false);
+      setSubmitted(false);
       setError(null);
     }
   }, [isOpen]);
+
+  // Auto-dismiss shortly after a successful send so the user gets a clear
+  // "it worked" beat without having to click again.
+  useEffect(() => {
+    if (!submitted) return;
+    const id = setTimeout(() => onClose(), 1600);
+    return () => clearTimeout(id);
+  }, [submitted, onClose]);
 
   const canSubmit =
     consentGiven && description.trim().length > 0 && !isSubmitting;
@@ -109,7 +119,8 @@ export function BugReportConsentModal({
       void import("../../lib/analytics").then(({ track }) =>
         track("bug_report_created", { severity }),
       );
-      onClose();
+      setIsSubmitting(false);
+      setSubmitted(true);
     } catch (err) {
       setError(
         err instanceof Error
@@ -134,28 +145,52 @@ export function BugReportConsentModal({
       fullHeight={isMobileLayout}
       initialFocusRef={initialFocusRef}
       footer={
-        <>
-          <Button
-            variant="ghost"
-            onClick={handleClose}
-            disabled={isSubmitting}
-            aria-label="Cancel bug report"
-            data-agent-action="cancel-bug-report"
-          >
-            Cancel
-          </Button>
+        submitted ? (
           <Button
             variant="primary"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            aria-label="Send bug report"
-            data-agent-action="submit-bug-report"
+            onClick={onClose}
+            aria-label="Close bug report confirmation"
+            data-agent-action="close-bug-report"
           >
-            {isSubmitting ? "Sending..." : "Send report"}
+            Done
           </Button>
-        </>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              onClick={handleClose}
+              disabled={isSubmitting}
+              aria-label="Cancel bug report"
+              data-agent-action="cancel-bug-report"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              aria-label="Send bug report"
+              data-agent-action="submit-bug-report"
+            >
+              {isSubmitting ? "Sending..." : "Send report"}
+            </Button>
+          </>
+        )
       }
     >
+      {submitted ? (
+        <div
+          className={styles.successBox}
+          data-agent-proof="bug-report-sent"
+          role="status"
+        >
+          <span className={styles.successTitle}>Report sent</span>
+          <Text size="sm">
+            Thanks — your report was added to the Feedback section, where you
+            can track its progress.
+          </Text>
+        </div>
+      ) : (
       <div
         className={styles.formColumn}
         data-agent-surface="bug-report-composer"
@@ -212,6 +247,7 @@ export function BugReportConsentModal({
           </Text>
         ) : null}
       </div>
+      )}
     </Modal>
   );
 }

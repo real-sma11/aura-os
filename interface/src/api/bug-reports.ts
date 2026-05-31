@@ -26,6 +26,12 @@ export interface CreateBugReportInput {
 
 export interface CreateBugReportResponse {
   id: string;
+  /**
+   * Public Feedback post the report was mirrored into, when one was created
+   * server-side. Present unless the feedback-network call failed; lets the
+   * UI confirm the submission landed in the Feedback section.
+   */
+  feedbackPostId?: string;
 }
 
 /**
@@ -75,6 +81,10 @@ export const bugReportsApi = {
     apiFetch<CreateBugReportResponse>("/api/bug-reports", {
       method: "POST",
       body: JSON.stringify(input),
+      // The summary now runs server-side off the request path, so create
+      // returns quickly; cap it so a stalled request surfaces an error
+      // instead of leaving the modal stuck on "Sending...".
+      timeoutMs: 30_000,
     }),
 
   list: (): Promise<BugReportDto[]> =>
