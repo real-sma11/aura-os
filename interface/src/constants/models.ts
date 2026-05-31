@@ -295,7 +295,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.7,
-    contextWindow: 128_000,
+    contextWindow: 1_000_000,
     provider: "DeepSeek",
     description:
       "Open-weight reasoning model tuned for code and math with a 128K context window.",
@@ -307,7 +307,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     mode: "chat",
     vendor: "open-source",
     creditMultiplier: 0.06,
-    contextWindow: 128_000,
+    contextWindow: 1_000_000,
     provider: "DeepSeek",
     description:
       "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 128K context window.",
