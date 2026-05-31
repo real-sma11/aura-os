@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type {
   DesktopUpdateBundleInfo,
+  DesktopUpdateChannel,
   DesktopUpdateStatusResponse,
 } from "../../shared/api/desktop";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
@@ -32,6 +33,10 @@ export interface UpdateStatusState {
   status: UpdateStatusValue;
   currentVersion: string | null;
   availableVersion: string | null;
+  /** Active update channel reported by the backend (defaults to nightly). */
+  channel: DesktopUpdateChannel;
+  /** Updater manifest base URL (e.g. `https://<owner>.github.io/<repo>`). */
+  updateBaseUrl: string | null;
   error: string | null;
   lastStep: string | null;
   lastCheckedAt: number | null;
@@ -209,6 +214,8 @@ export function useUpdateStatus(): UpdateStatusState {
   const status = (data?.update.status ?? "unknown") as UpdateStatusValue;
   const availableVersion = data?.update.version ?? null;
   const currentVersion = data?.current_version ?? null;
+  const channel = data?.channel ?? "nightly";
+  const updateBaseUrl = data?.update_base_url ?? null;
   const error = data?.update.error ?? null;
   const lastStep =
     data?.update.last_step ?? data?.last_persisted_state?.step ?? null;
@@ -242,6 +249,8 @@ export function useUpdateStatus(): UpdateStatusState {
     status,
     currentVersion,
     availableVersion,
+    channel,
+    updateBaseUrl,
     error,
     lastStep,
     lastCheckedAt,

@@ -1,0 +1,72 @@
+/*
+ * Full-screen, hard-blocking upgrade gate. Sits above every app surface
+ * (desktop window layer is z-index 1000; modals portal higher) but below
+ * the catastrophic boot splash. Opaque so nothing behind it is usable.
+ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--color-bg, #0b0b0d);
+  animation: forcedUpgradeFadeIn 200ms ease-out;
+}
+
+@keyframes forcedUpgradeFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay {
+    animation: none;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 460px;
+  width: 100%;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-warning-fg, #f5a623);
+  margin-bottom: 4px;
+}
+
+.title {
+  margin: 0;
+}
+
+.body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.versions {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-error-fg, #ff5d5d);
+}
+
+.action {
+  margin-top: 10px;
+}

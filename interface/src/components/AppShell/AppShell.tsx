@@ -17,6 +17,7 @@ import { useOnboardingStore } from "../../features/onboarding/onboarding-store";
 import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardingTaskWatcher";
 import { useShallow } from "zustand/react/shallow";
 import { AuraShell } from "../AuraShell";
+import { ForcedUpgradeOverlay } from "../ForcedUpgrade";
 import { MobileShell, MobilePublicShell } from "../../mobile/shell";
 import { useUIModeStore } from "../../stores/ui-mode-store";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
@@ -458,6 +459,7 @@ function AppContent() {
           </LazyModalBoundary>
         </>
       )}
+      <ForcedUpgradeOverlay />
     </>
   );
 }
