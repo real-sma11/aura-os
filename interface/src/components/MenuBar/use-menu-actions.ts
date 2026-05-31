@@ -6,6 +6,7 @@ import { useProjectsListStore } from "../../stores/projects-list-store";
 import { useAppUIStore } from "../../stores/app-ui-store";
 import { useOnboardingStore } from "../../features/onboarding/onboarding-store";
 import { useAuth } from "../../stores/auth-store";
+import { useLogout } from "../../stores/use-logout";
 import { windowCommand } from "../../lib/windowCommand";
 import { zoomIn, zoomOut, resetZoom } from "../../lib/zoom";
 import { track } from "../../lib/analytics";
@@ -101,7 +102,8 @@ export function useMenuActions(): {
 } {
   const navigate = useNavigate();
   const agentContext = useAgentNavigationContext();
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const logout = useLogout();
 
   const handleNewAgent = useCallback(() => {
     useAgentStore.getState().openCreateAgentModal();

@@ -33,7 +33,7 @@ import { NotificationsSection } from "../../views/SettingsView/NotificationsSect
 import { KeyboardSection } from "../../views/SettingsView/KeyboardSection";
 import { AdvancedSection } from "../../views/SettingsView/AdvancedSection";
 import { TierSubscriptionModal } from "../TierSubscriptionModal";
-import { useAuth } from "../../stores/auth-store";
+import { useLogout } from "../../stores/use-logout";
 import { track } from "../../lib/analytics";
 import { useBillingStore } from "../../stores/billing-store";
 import { useDeferredModalOpen } from "../../shared/hooks/use-deferred-modal-open";
@@ -134,7 +134,7 @@ function AppSectionContent({ section }: { section: Section }) {
 
 export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
   const data = useOrgSettingsData(isOpen, initialSection);
-  const { logout } = useAuth();
+  const logout = useLogout();
   const navigate = useNavigate();
   const [tierModalRequested, setTierModalRequested] = useState(false);
   const navScrollRef = useRef<HTMLDivElement>(null);
