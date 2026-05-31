@@ -191,6 +191,13 @@ function PublicLeading({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
+      <img
+        src="/AURA_logo_text_mark.png"
+        alt="AURA"
+        draggable={false}
+        className={styles.titleLogo}
+        data-aura-wordmark
+      />
     </span>
   );
 }
