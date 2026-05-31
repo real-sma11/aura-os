@@ -1,3 +1,14 @@
+/*
+ * Animatable angle driving the bolt's perimeter pulse. Registering it
+ * with `@property` lets the conic-gradient `from` angle interpolate
+ * smoothly instead of snapping at keyframe boundaries.
+ */
+@property --gridZapAngle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .bar {
   --taskbar-item-size: 30px;
   position: relative;
@@ -111,6 +122,7 @@
  * pills use, plus the public-mode height + item-size overrides so the
  * icon button and text inside render at the compact public scale.
  */
+.chatPill,
 .themePill,
 .taglineBubble,
 .poweredPill {
@@ -127,10 +139,37 @@
   padding: 0 var(--space-2);
 }
 
+.bar[data-ui-mode="public"] .chatPill,
 .bar[data-ui-mode="public"] .themePill,
 .bar[data-ui-mode="public"] .taglineBubble,
 .bar[data-ui-mode="public"] .poweredPill {
   --taskbar-item-size: var(--public-pill-item-size, 22px);
+}
+
+/*
+ * Chat affordance for the public bottom-left cluster. Rendered as a
+ * router `<Link>` (not a `TaskbarIconButton`, which is a `<button>`)
+ * so a logged-out visitor can middle-click / open the chat surface in
+ * a new tab, while still reading as the same square icon control as
+ * the adjacent theme toggle. Sized to `--taskbar-item-size` so it
+ * matches the `ThemeToggleButton` glyph box exactly.
+ */
+.chatLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--taskbar-item-size, 22px);
+  height: var(--taskbar-item-size, 22px);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.chatLink:hover,
+.chatLink:focus-visible {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
 }
 
 .center {
@@ -263,6 +302,54 @@
   flex-shrink: 0;
   filter: drop-shadow(0 0 3px var(--color-success, #2ecc71));
   animation: boltGlowPulse 1.8s ease-in-out infinite;
+}
+
+/*
+ * Box hosting the bolt glyph so the perimeter pulse has an edge to
+ * travel around — an SVG glyph alone has no border to chase. Tiny
+ * padding insets the 0.75px ring just off the lightning mark.
+ */
+.poweredByGridBoltWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 5px;
+}
+
+/*
+ * Traveling perimeter pulse: a bright `--color-success` arc swept
+ * around a conic-gradient and masked down to a 0.75px ring, so a spark
+ * appears to "blast" around the edges of the bolt box. Runs at 2.6s
+ * linear — deliberately out of phase with the 1.8s ease-in-out glow
+ * ("bg") pulse so the two never visually sync.
+ */
+.poweredByGridBoltWrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 0.75px;
+  background: conic-gradient(
+    from var(--gridZapAngle),
+    transparent 0deg,
+    transparent 280deg,
+    var(--color-success, #2ecc71) 330deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: gridZapBorderSweep 2.6s linear infinite;
+}
+
+@keyframes gridZapBorderSweep {
+  to {
+    --gridZapAngle: 360deg;
+  }
 }
 
 /*

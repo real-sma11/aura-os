@@ -25,11 +25,13 @@ export function PoweredByGridButton(): React.ReactElement {
       title="Powered by THE GRID — opens GitHub in a new tab"
       aria-label="Powered by THE GRID. Opens GitHub in a new tab."
     >
-      <Zap
-        size={POWERED_ICON_SIZE}
-        aria-hidden="true"
-        className={styles.poweredByGridBolt}
-      />
+      <span className={styles.poweredByGridBoltWrap}>
+        <Zap
+          size={POWERED_ICON_SIZE}
+          aria-hidden="true"
+          className={styles.poweredByGridBolt}
+        />
+      </span>
       <span>
         by <strong>THE GRID</strong>
       </span>
