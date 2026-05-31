@@ -19,6 +19,29 @@
   -webkit-user-select: none;
   --topnav-fg: #e6e8eb;
   --topnav-fg-muted: #c9c9cf;
+  /*
+   * The parent `.titlebar-center` slot sets `pointer-events: none` so
+   * the empty drag region around the centered title stays draggable,
+   * and only re-enables `<a>` descendants (`.titlebar-center a`). The
+   * Resources control is a `<button>`, so without re-enabling pointer
+   * events here it received NO hover/click events at all (root cause
+   * of the dropdown never opening). Re-enable for the whole nav box —
+   * it only spans the nav's intrinsic width, so the surrounding center
+   * space stays drag-through.
+   */
+  pointer-events: auto;
+}
+
+/*
+ * Light mode: the top-bar chrome becomes a near-white surface, so the
+ * fixed light foreground pair above turns near-invisible. Override with
+ * a dark pair (matching the light-mode text tokens) so the centered nav
+ * keeps a legible contrast. `[data-theme]` lives on `:root`, so this
+ * tracks the active theme without any JS theme reads.
+ */
+:global([data-theme='light']) .nav {
+  --topnav-fg: #1f2937;
+  --topnav-fg-muted: #374151;
 }
 
 .link {
