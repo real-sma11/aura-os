@@ -203,4 +203,24 @@
   fill: var(--color-success, #2ecc71);
   flex-shrink: 0;
   filter: drop-shadow(0 0 3px var(--color-success, #2ecc71));
+  animation: boltGlowPulse 1.8s ease-in-out infinite;
+}
+
+/*
+ * Pulsing halo for the bolt — the glow blur radius and the glyph's own
+ * opacity ramp up and back down so the mark reads as "live energy"
+ * breathing rather than a static drop-shadow. Purely decorative public
+ * chrome; matches the no-reduced-motion-guard precedent set by the
+ * sibling `RotatingTagline.module.css` in this folder.
+ */
+@keyframes boltGlowPulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    filter: drop-shadow(0 0 2px var(--color-success, #2ecc71));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 7px var(--color-success, #2ecc71));
+  }
 }
