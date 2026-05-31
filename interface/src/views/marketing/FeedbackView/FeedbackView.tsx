@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -32,7 +32,13 @@ const BANNER_COUNT_UP_DURATION_MS = 1000;
  * upstream URL directly.
  */
 export function FeedbackView(): ReactNode {
-  const { key: visitKey } = useLocation();
+  // Freeze the reset key at mount so the banner count-up replays only when
+  // the user navigates *to* the page (a fresh mount), not on in-page filter
+  // changes. Filters update the search params via `navigate(..., { replace })`,
+  // which assigns a new `location.key` on every call; capturing it once keeps
+  // it stable across those updates.
+  const { key: locationKey } = useLocation();
+  const [visitKey] = useState(() => locationKey);
 
   useEffect(() => {
     const previousTitle = document.title;
