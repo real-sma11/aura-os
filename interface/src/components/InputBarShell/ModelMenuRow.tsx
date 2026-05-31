@@ -48,6 +48,13 @@ interface FlyoutPosition {
 const FLYOUT_WIDTH = 184;
 const CLOSE_DELAY_MS = 120;
 
+// Only one effort flyout should ever be mounted. Each row registers an
+// immediate-close callback here while its flyout is open; opening a new row's
+// flyout synchronously closes the previous one so the two portals never
+// overlap (which otherwise renders a brief "ghost" of the prior submenu
+// during the CLOSE_DELAY_MS window).
+let closeActiveFlyout: (() => void) | null = null;
+
 /**
  * One row of the chat model picker. Renders the model label plus a credit
  * multiplier badge, and reveals a hover flyout describing the model: a
@@ -90,9 +97,31 @@ export const ModelMenuRow = memo(function ModelMenuRow({
     }
   }, []);
 
+  // Synchronously hide this row's flyout and release the shared slot if it
+  // belongs to us. Used both by the delayed close and by another row taking
+  // over the slot.
+  const immediateClose = useCallback(() => {
+    clearCloseTimer();
+    setFlyoutPos(null);
+    if (closeActiveFlyout === immediateCloseRef.current) {
+      closeActiveFlyout = null;
+    }
+  }, [clearCloseTimer]);
+
+  // Keep a stable identity for the slot comparison above even though
+  // immediateClose is recreated when its deps change.
+  const immediateCloseRef = useRef(immediateClose);
+  immediateCloseRef.current = immediateClose;
+
   const openFlyout = useCallback(() => {
     if (!hasFlyout) return;
     clearCloseTimer();
+    // Close any other row's open flyout before showing ours so only one is
+    // ever mounted at a time.
+    if (closeActiveFlyout && closeActiveFlyout !== immediateCloseRef.current) {
+      closeActiveFlyout();
+    }
+    closeActiveFlyout = immediateCloseRef.current;
     const rect = rowRef.current?.getBoundingClientRect();
     if (!rect) return;
     const spaceRight = window.innerWidth - rect.right;
@@ -105,10 +134,10 @@ export const ModelMenuRow = memo(function ModelMenuRow({
 
   const scheduleClose = useCallback(() => {
     clearCloseTimer();
-    closeTimer.current = setTimeout(() => setFlyoutPos(null), CLOSE_DELAY_MS);
+    closeTimer.current = setTimeout(() => immediateCloseRef.current(), CLOSE_DELAY_MS);
   }, [clearCloseTimer]);
 
-  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+  useEffect(() => () => immediateCloseRef.current(), []);
 
   const handleRowClick = useCallback(() => {
     if (disabled) return;
