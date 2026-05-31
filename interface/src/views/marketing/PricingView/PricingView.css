@@ -5,7 +5,14 @@
   justify-content: flex-start;
   min-height: calc(100vh - var(--marketing-main-bottom-space));
   min-height: calc(100dvh - var(--marketing-main-bottom-space));
-  padding: clamp(48px, 8vh, 88px) clamp(32px, 5vw, 72px);
+  /*
+   * Horizontal padding tracks the sibling public marketing pages
+   * (/feedback uses a flat 32px) so the centered 960px column reads at
+   * the same width once the viewport drops below the cap. The previous
+   * `clamp(32px, 5vw, 72px)` grew the gutter to ~51px at ~1024px, which
+   * squeezed the column ~38px narrower than /feedback at the same size.
+   */
+  padding: clamp(48px, 8vh, 88px) 32px;
   box-sizing: border-box;
   background: #22272e;
 }
@@ -252,7 +259,7 @@
 
 @media (max-width: 768px) {
   .pricingPage {
-    padding: 40px 64px calc(var(--marketing-taskbar-safe-offset) + 96px);
+    padding: 40px 20px calc(var(--marketing-taskbar-safe-offset) + 96px);
   }
 
   .pricingPageContent {
@@ -285,7 +292,7 @@
 
 @media (max-width: 480px) {
   .pricingPage {
-    padding: 32px 56px calc(var(--marketing-taskbar-safe-offset) + 88px);
+    padding: 32px 16px calc(var(--marketing-taskbar-safe-offset) + 88px);
   }
 
   .pricingPlanCard {
