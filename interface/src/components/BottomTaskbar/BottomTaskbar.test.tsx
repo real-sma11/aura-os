@@ -790,7 +790,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Public mode", () => {
-    it("renders the theme toggle in the left slot and `data-ui-mode='public'` on the bar", () => {
+    it("renders the theme toggle in its own floating pill and the tagline in its own bubble within the public right cluster", () => {
       const { container } = render(<BottomTaskbar mode="public" />);
 
       const bar = container.querySelector(
@@ -799,15 +799,29 @@ describe("BottomTaskbar", () => {
       expect(bar).not.toBeNull();
       expect(bar).toHaveAttribute("data-ui-mode", "public");
 
-      // Theme toggle moved to the left slot in public mode (paired
-      // with the 'Powered by THE GRID' link on the right). Credits,
-      // Settings, Apps, Desktop, the profile rail, and the clock are
-      // all gated behind `AuthedBottomTaskbar` which doesn't mount.
+      // The theme toggle now sits in its own standalone `.themePill`
+      // floating panel, with the rotating tagline in a separate
+      // `.taglineBubble` next to it — both inside the right-anchored
+      // `.publicRight` cluster. Credits, Settings, Apps, Desktop, the
+      // profile rail, and the clock are all gated behind
+      // `AuthedBottomTaskbar` which doesn't mount.
       const themeToggle = screen.getByRole("button", { name: /switch theme/i });
       expect(themeToggle).toBeInTheDocument();
-      const leftSlot = container.querySelector(".left");
-      expect(leftSlot).not.toBeNull();
-      expect(leftSlot).toContainElement(themeToggle);
+
+      const publicRight = container.querySelector(".publicRight");
+      expect(publicRight).not.toBeNull();
+
+      const themePill = container.querySelector(".themePill");
+      expect(themePill).not.toBeNull();
+      expect(themePill).toContainElement(themeToggle);
+      expect(publicRight).toContainElement(themePill as HTMLElement);
+
+      const taglineBubble = container.querySelector(".taglineBubble");
+      expect(taglineBubble).not.toBeNull();
+      expect(publicRight).toContainElement(taglineBubble as HTMLElement);
+
+      // The theme toggle must not be wrapped inside the tagline bubble.
+      expect(taglineBubble).not.toContainElement(themeToggle);
 
       expect(
         screen.queryByRole("button", { name: "Credits" }),

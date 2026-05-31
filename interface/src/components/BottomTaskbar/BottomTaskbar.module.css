@@ -74,6 +74,50 @@
   min-width: 0;
 }
 
+/*
+ * Public-mode right cluster — a transparent flex container (no chrome
+ * of its own) so the floating pills inside it read as separate
+ * bubbles with the page background showing through the gaps, rather
+ * than one continuous pill. `margin-left: auto` anchors the cluster
+ * to the right edge of the bar (it is the sole flex child).
+ */
+.publicRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-left: auto;
+}
+
+/*
+ * Standalone floating-panel pills for the public bottom-right cluster.
+ * Each wraps a single control (theme toggle / tagline / attribution
+ * chip) and carries the same chrome the `.left` / `.center` / `.right`
+ * pills use, plus the public-mode height + item-size overrides so the
+ * icon button and text inside render at the compact public scale.
+ */
+.themePill,
+.taglineBubble,
+.poweredPill {
+  display: inline-flex;
+  align-items: center;
+  height: var(--public-pill-height, 24px);
+  min-height: var(--public-pill-height, 24px);
+  background: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
+  border: 1px solid var(--color-border-chrome);
+  border-radius: var(--shell-chrome-radius, 20px);
+  box-sizing: border-box;
+  padding: 0 var(--space-2);
+}
+
+.bar[data-ui-mode="public"] .themePill,
+.bar[data-ui-mode="public"] .taglineBubble,
+.bar[data-ui-mode="public"] .poweredPill {
+  --taskbar-item-size: var(--public-pill-item-size, 22px);
+}
+
 .center {
   position: absolute;
   left: 50%;

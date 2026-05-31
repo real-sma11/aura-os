@@ -85,8 +85,11 @@ export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement 
 
 /**
  * Public-mode taskbar render path: outer `.bar` (preserves the
- * `--shell-chrome-outer-height` row in every mode) wrapping only a
- * theme toggle in the right cluster. Deliberately does NOT call any
+ * `--shell-chrome-outer-height` row in every mode) wrapping a
+ * right-anchored cluster of three independent floating pills — the
+ * theme toggle (`.themePill`), the rotating tagline bubble
+ * (`.taglineBubble`), and the "Powered by THE GRID" chip
+ * (`.poweredPill`). Deliberately does NOT call any
  * auth-required hooks (`useUIModalStore`, `useActiveApp`,
  * `useAppUIStore`, `useDesktopContextMenu`, `useNavigate`-driven
  * navigation handlers, etc.) — those stores either don't apply or
@@ -101,12 +104,14 @@ function PublicBottomTaskbar(): React.ReactElement {
       data-agent-context-anchor="desktop-shell-bottom-taskbar"
       data-ui-mode="public"
     >
-      <div className={styles.left}>
-        <ThemeToggleButton />
-        <RotatingTagline />
-      </div>
-      <div className={styles.right}>
-        <div className={styles.rightPrimary}>
+      <div className={styles.publicRight}>
+        <div className={styles.themePill}>
+          <ThemeToggleButton />
+        </div>
+        <div className={styles.taglineBubble}>
+          <RotatingTagline />
+        </div>
+        <div className={styles.poweredPill}>
           <PoweredByGridButton />
         </div>
       </div>
