@@ -283,7 +283,7 @@
 .poweredByGridBoltBase {
   fill: var(--color-success, #2ecc71);
   stroke: var(--color-success, #2ecc71);
-  stroke-width: 2;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
