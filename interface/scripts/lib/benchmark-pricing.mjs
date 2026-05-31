@@ -185,6 +185,37 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 0.15,
     cacheRead: 0.01,
   },
+  "minimax-m2p7": {
+    input: 0.3,
+    output: 1.2,
+    cacheWrite: 0.3,
+    cacheRead: 0.06,
+  },
+  "glm-5p1": {
+    input: 1.4,
+    output: 4.4,
+    cacheWrite: 1.4,
+    cacheRead: 0.26,
+  },
+  "qwen3p6-plus": {
+    input: 0.5,
+    output: 3.0,
+    cacheWrite: 0.5,
+    cacheRead: 0.1,
+  },
+  // Gemma is tier-priced (uniform input/output, no cached-input discount).
+  "gemma-4-31b-it": {
+    input: 0.9,
+    output: 0.9,
+    cacheWrite: 0.9,
+    cacheRead: 0.9,
+  },
+  "gemma-4-26b-a4b-it": {
+    input: 0.5,
+    output: 0.5,
+    cacheWrite: 0.5,
+    cacheRead: 0.5,
+  },
 };
 
 const DEEPSEEK_MODEL_PRICING_PER_MTOK = {
@@ -229,6 +260,11 @@ function normalizeModelKey(model) {
     "aura-kimi-k2-6": "kimi-k2p6",
     "aura-kimi-k2-5": "kimi-k2p5",
     "aura-oss-120b": "gpt-oss-120b",
+    "aura-minimax-m2-7": "minimax-m2p7",
+    "aura-glm-5-1": "glm-5p1",
+    "aura-qwen3-6-plus": "qwen3p6-plus",
+    "aura-gemma-4-31b": "gemma-4-31b-it",
+    "aura-gemma-4-26b-a4b": "gemma-4-26b-a4b-it",
   };
   if (auraFireworksModels[unprefixed]) return auraFireworksModels[unprefixed];
   const auraDeepSeekModels = {
@@ -252,7 +288,11 @@ function inferProvider(model, provider) {
   }
   if (
     modelKey.startsWith("kimi") ||
-    modelKey.startsWith("gpt-oss")
+    modelKey.startsWith("gpt-oss") ||
+    modelKey.startsWith("minimax") ||
+    modelKey.startsWith("glm") ||
+    modelKey.startsWith("qwen") ||
+    modelKey.startsWith("gemma")
   ) {
     return "fireworks";
   }

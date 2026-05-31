@@ -311,14 +311,22 @@ describe("ChatInputBar", () => {
     // Provider headers render immediately (no "Show all models" step).
     expect(screen.getAllByText("Anthropic")[0]).toBeInTheDocument();
     expect(screen.getAllByText("OpenAI")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Open Source")[0]).toBeInTheDocument();
-    // Google has no chat model today, so its section is omitted.
-    expect(screen.queryByText("Google")).not.toBeInTheDocument();
+    expect(screen.getAllByText("DeepSeek")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Moonshot AI")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("MiniMax")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("z.ai")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Qwen")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Google")[0]).toBeInTheDocument();
+    // The single "Open Source" header is now split per provider.
+    expect(screen.queryByText("Open Source")).not.toBeInTheDocument();
 
     // Models that used to be hidden behind "Show all" are visible now.
     expect(screen.getAllByText("Kimi K2.6")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Haiku 4.5")[0]).toBeInTheDocument();
+    // GPT-OSS 120B now lives in the OpenAI section.
     expect(screen.getAllByText("GPT-OSS 120B")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("GLM 5.1")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Gemma 4 31B IT")[0]).toBeInTheDocument();
   });
 
   it("collapses and expands a provider section when its header is clicked", async () => {

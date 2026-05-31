@@ -31,7 +31,15 @@ export const EFFORT_LABELS: Record<ModelEffort, string> = {
  * provider sections. Distinct from {@link ModelProviderGroup} (which
  * separates chat/image/3d) — this is the human-facing brand grouping.
  */
-export type ModelVendor = "anthropic" | "openai" | "google" | "open-source";
+export type ModelVendor =
+  | "anthropic"
+  | "openai"
+  | "google"
+  | "deepseek"
+  | "moonshot"
+  | "minimax"
+  | "zai"
+  | "qwen";
 
 export interface ModelOption {
   id: string;
@@ -125,8 +133,9 @@ const LEGACY_HIDDEN_CHAT_MODELS: ModelOption[] = [
 ];
 
 /**
- * Chat models, ordered by vendor (Anthropic, OpenAI, Open Source) and
- * newest-first within each vendor so the picker's grouped sections read
+ * Chat models, ordered by vendor (Anthropic, OpenAI, DeepSeek, Moonshot
+ * AI, MiniMax, z.ai, Qwen, Google) and newest-first within each vendor so
+ * the picker's grouped sections read
  * cleanly without re-sorting. The default chat model is pinned via
  * {@link DEFAULT_CHAT_MODEL_ID} rather than this array's first element,
  * so the display order here is independent of the default.
@@ -263,15 +272,55 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     description:
       "The smallest, fastest GPT-5 tier for cheap, high-throughput workloads.",
   },
-  // ── Open Source ─────────────────────────────────────────────
+  // ── OpenAI (open-weight) ────────────────────────────────────
+  {
+    id: "aura-oss-120b",
+    label: "GPT-OSS 120B",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "openai",
+    creditMultiplier: 0.12,
+    contextWindow: 131_072,
+    efforts: OSS_REASONING_EFFORTS,
+    defaultEffort: "medium",
+    provider: "OpenAI",
+    description:
+      "Open-weight 120B reasoning model with selectable effort tiers and a 128K context window.",
+  },
+  // ── DeepSeek ────────────────────────────────────────────────
+  {
+    id: "aura-deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    tier: "opus",
+    mode: "chat",
+    vendor: "deepseek",
+    creditMultiplier: 0.7,
+    contextWindow: 1_048_576,
+    provider: "DeepSeek",
+    description:
+      "Open-weight reasoning model tuned for code and math with a 1M context window.",
+  },
+  {
+    id: "aura-deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "deepseek",
+    creditMultiplier: 0.06,
+    contextWindow: 1_048_576,
+    provider: "DeepSeek",
+    description:
+      "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 1M context window.",
+  },
+  // ── Moonshot AI ─────────────────────────────────────────────
   {
     id: "aura-kimi-k2-6",
     label: "Kimi K2.6",
     tier: "sonnet",
     mode: "chat",
-    vendor: "open-source",
+    vendor: "moonshot",
     creditMultiplier: 0.8,
-    contextWindow: 256_000,
+    contextWindow: 262_144,
     provider: "Moonshot AI",
     description:
       "Open-weight mixture-of-experts model with strong agentic performance and a 256K context window.",
@@ -281,50 +330,76 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     label: "Kimi K2.5",
     tier: "sonnet",
     mode: "chat",
-    vendor: "open-source",
+    vendor: "moonshot",
     creditMultiplier: 0.6,
-    contextWindow: 256_000,
+    contextWindow: 262_144,
     provider: "Moonshot AI",
     description:
       "Previous-generation Kimi MoE model with a 256K context window at a lower price.",
   },
+  // ── MiniMax ─────────────────────────────────────────────────
   {
-    id: "aura-deepseek-v4-pro",
-    label: "DeepSeek V4 Pro",
-    tier: "opus",
-    mode: "chat",
-    vendor: "open-source",
-    creditMultiplier: 0.7,
-    contextWindow: 1_000_000,
-    provider: "DeepSeek",
-    description:
-      "Open-weight reasoning model tuned for code and math with a 128K context window.",
-  },
-  {
-    id: "aura-deepseek-v4-flash",
-    label: "DeepSeek V4 Flash",
-    tier: "sonnet",
-    mode: "chat",
-    vendor: "open-source",
-    creditMultiplier: 0.06,
-    contextWindow: 1_000_000,
-    provider: "DeepSeek",
-    description:
-      "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 128K context window.",
-  },
-  {
-    id: "aura-oss-120b",
-    label: "GPT-OSS 120B",
+    id: "aura-minimax-m2-7",
+    label: "MiniMax M2.7",
     tier: "haiku",
     mode: "chat",
-    vendor: "open-source",
-    creditMultiplier: 0.12,
-    contextWindow: 131_072,
-    efforts: OSS_REASONING_EFFORTS,
-    defaultEffort: "medium",
-    provider: "OpenAI",
+    vendor: "minimax",
+    creditMultiplier: 0.15,
+    contextWindow: 196_608,
+    provider: "MiniMax",
     description:
-      "Open-weight 120B reasoning model with selectable effort tiers and a 128K context window.",
+      "Open-weight MiniMax model offering low-cost, high-throughput generation with a 196K context window.",
+  },
+  // ── z.ai ────────────────────────────────────────────────────
+  {
+    id: "aura-glm-5-1",
+    label: "GLM 5.1",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "zai",
+    creditMultiplier: 0.7,
+    contextWindow: 202_752,
+    provider: "z.ai",
+    description:
+      "Open-weight GLM reasoning model with strong agentic and tool-use performance and a 202K context window.",
+  },
+  // ── Qwen ────────────────────────────────────────────────────
+  {
+    id: "aura-qwen3-6-plus",
+    label: "Qwen3.6 Plus",
+    tier: "sonnet",
+    mode: "chat",
+    vendor: "qwen",
+    creditMultiplier: 0.4,
+    contextWindow: 262_144,
+    provider: "Qwen",
+    description:
+      "Open-weight Qwen model with vision support and a 256K context window.",
+  },
+  // ── Google (Gemma) ──────────────────────────────────────────
+  {
+    id: "aura-gemma-4-31b",
+    label: "Gemma 4 31B IT",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.3,
+    contextWindow: 262_144,
+    provider: "Google",
+    description:
+      "Open-weight Gemma instruction-tuned model with vision support and a 256K context window.",
+  },
+  {
+    id: "aura-gemma-4-26b-a4b",
+    label: "Gemma 4 26B A4B IT",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "google",
+    creditMultiplier: 0.2,
+    contextWindow: 262_144,
+    provider: "Google",
+    description:
+      "Open-weight Gemma mixture-of-experts (4B active) model with vision support and a 256K context window.",
   },
 ];
 
@@ -336,15 +411,23 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
 const MODEL_VENDOR_ORDER: readonly ModelVendor[] = [
   "anthropic",
   "openai",
+  "deepseek",
+  "moonshot",
+  "minimax",
+  "zai",
+  "qwen",
   "google",
-  "open-source",
 ];
 
 const MODEL_VENDOR_LABELS: Record<ModelVendor, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
+  deepseek: "DeepSeek",
+  moonshot: "Moonshot AI",
+  minimax: "MiniMax",
+  zai: "z.ai",
+  qwen: "Qwen",
   google: "Google",
-  "open-source": "Open Source",
 };
 
 export interface ModelVendorGroup {
@@ -677,11 +760,26 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "deepseek/deepseek-v4-flash": "aura-deepseek-v4-flash",
   "aura-oss-120b": "aura-oss-120b",
   "aura-qwen2-5-coder-7b": "aura-qwen2-5-coder-7b",
+  "aura-minimax-m2-7": "aura-minimax-m2-7",
+  "minimax-m2p7": "aura-minimax-m2-7",
+  "aura-glm-5-1": "aura-glm-5-1",
+  "glm-5p1": "aura-glm-5-1",
+  "aura-qwen3-6-plus": "aura-qwen3-6-plus",
+  "qwen3p6-plus": "aura-qwen3-6-plus",
+  "aura-gemma-4-31b": "aura-gemma-4-31b",
+  "gemma-4-31b-it": "aura-gemma-4-31b",
+  "aura-gemma-4-26b-a4b": "aura-gemma-4-26b-a4b",
+  "gemma-4-26b-a4b-it": "aura-gemma-4-26b-a4b",
   "chatgpt-image-latest": "gpt-image-2",
   "accounts/fireworks/models/kimi-k2p5": "aura-kimi-k2-5",
   "accounts/fireworks/models/kimi-k2p6": "aura-kimi-k2-6",
   "accounts/fireworks/models/gpt-oss-120b": "aura-oss-120b",
   "accounts/fireworks/models/qwen2p5-coder-7b": "aura-qwen2-5-coder-7b",
+  "accounts/fireworks/models/minimax-m2p7": "aura-minimax-m2-7",
+  "accounts/fireworks/models/glm-5p1": "aura-glm-5-1",
+  "accounts/fireworks/models/qwen3p6-plus": "aura-qwen3-6-plus",
+  "accounts/fireworks/models/gemma-4-31b-it": "aura-gemma-4-31b",
+  "accounts/fireworks/models/gemma-4-26b-a4b-it": "aura-gemma-4-26b-a4b",
 };
 
 function normalizeManagedModelId(modelId?: string | null): string | null {

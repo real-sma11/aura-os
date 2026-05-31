@@ -141,6 +141,22 @@ describe("benchmark pricing", () => {
     ["accounts/fireworks/models/kimi-k2p5", "kimi-k2p5", 0.6, 0.1, 3],
     ["accounts/fireworks/models/kimi-k2p6", "kimi-k2p6", 0.95, 0.16, 4],
     ["accounts/fireworks/models/gpt-oss-120b", "gpt-oss-120b", 0.15, 0.01, 0.6],
+    ["aura-minimax-m2-7", "minimax-m2p7", 0.3, 0.06, 1.2],
+    ["aura-glm-5-1", "glm-5p1", 1.4, 0.26, 4.4],
+    ["aura-qwen3-6-plus", "qwen3p6-plus", 0.5, 0.1, 3],
+    ["aura-gemma-4-31b", "gemma-4-31b-it", 0.9, 0.9, 0.9],
+    ["aura-gemma-4-26b-a4b", "gemma-4-26b-a4b-it", 0.5, 0.5, 0.5],
+    ["accounts/fireworks/models/minimax-m2p7", "minimax-m2p7", 0.3, 0.06, 1.2],
+    ["accounts/fireworks/models/glm-5p1", "glm-5p1", 1.4, 0.26, 4.4],
+    ["accounts/fireworks/models/qwen3p6-plus", "qwen3p6-plus", 0.5, 0.1, 3],
+    ["accounts/fireworks/models/gemma-4-31b-it", "gemma-4-31b-it", 0.9, 0.9, 0.9],
+    [
+      "accounts/fireworks/models/gemma-4-26b-a4b-it",
+      "gemma-4-26b-a4b-it",
+      0.5,
+      0.5,
+      0.5,
+    ],
   ])(
     "resolves explicit Fireworks pricing for %s",
     (modelId, expectedModel, input, cacheRead, output) => {

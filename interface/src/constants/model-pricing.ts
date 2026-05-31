@@ -73,6 +73,12 @@ const FIREWORKS_PRICING: Readonly<Record<string, ModelRates>> = {
   "kimi-k2p6": { input: 0.95, output: 4.0, cacheWrite: 0.95, cacheRead: 0.16 },
   "kimi-k2p5": { input: 0.6, output: 3.0, cacheWrite: 0.6, cacheRead: 0.1 },
   "gpt-oss-120b": { input: 0.15, output: 0.6, cacheWrite: 0.15, cacheRead: 0.01 },
+  "minimax-m2p7": { input: 0.3, output: 1.2, cacheWrite: 0.3, cacheRead: 0.06 },
+  "glm-5p1": { input: 1.4, output: 4.4, cacheWrite: 1.4, cacheRead: 0.26 },
+  "qwen3p6-plus": { input: 0.5, output: 3.0, cacheWrite: 0.5, cacheRead: 0.1 },
+  // Gemma is tier-priced (uniform input/output, no cached-input discount).
+  "gemma-4-31b-it": { input: 0.9, output: 0.9, cacheWrite: 0.9, cacheRead: 0.9 },
+  "gemma-4-26b-a4b-it": { input: 0.5, output: 0.5, cacheWrite: 0.5, cacheRead: 0.5 },
 } as const;
 
 const DEEPSEEK_PRICING: Readonly<Record<string, ModelRates>> = {
@@ -104,6 +110,11 @@ export function normalizePricingKey(model: string): string {
     "aura-oss-120b": "gpt-oss-120b",
     "aura-deepseek-v4-pro": "deepseek-v4-pro",
     "aura-deepseek-v4-flash": "deepseek-v4-flash",
+    "aura-minimax-m2-7": "minimax-m2p7",
+    "aura-glm-5-1": "glm-5p1",
+    "aura-qwen3-6-plus": "qwen3p6-plus",
+    "aura-gemma-4-31b": "gemma-4-31b-it",
+    "aura-gemma-4-26b-a4b": "gemma-4-26b-a4b-it",
   };
   if (directAura[key]) return directAura[key];
   const auraClaude = key.match(/^aura-(claude-.+)$/);
@@ -120,7 +131,16 @@ function inferProvider(model: string, provider?: string): PricingProvider {
   const key = normalizePricingKey(model);
   if (key.startsWith("claude")) return "anthropic";
   if (key.startsWith("deepseek")) return "deepseek";
-  if (key.startsWith("kimi") || key.startsWith("gpt-oss")) return "fireworks";
+  if (
+    key.startsWith("kimi") ||
+    key.startsWith("gpt-oss") ||
+    key.startsWith("minimax") ||
+    key.startsWith("glm") ||
+    key.startsWith("qwen") ||
+    key.startsWith("gemma")
+  ) {
+    return "fireworks";
+  }
   if (key.startsWith("gpt") || key.startsWith("o1") || key.startsWith("o3")) {
     return "openai";
   }
