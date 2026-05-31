@@ -10,6 +10,7 @@ mod marketplace_fields;
 mod runtime;
 pub(crate) mod session_identity;
 pub(crate) mod sessions;
+pub(crate) mod subagents;
 #[allow(dead_code)]
 mod task_context;
 pub(crate) mod tool_dedupe;
@@ -37,6 +38,7 @@ pub(crate) use sessions::{
     delete_session, get_session, list_my_sessions, list_project_sessions, list_session_events,
     list_session_tasks, list_sessions, summarize_session,
 };
+pub(crate) use subagents::{attach_subagent_stream, list_session_subagents};
 
 pub mod conversions_pub {
     pub(crate) use super::conversions::agent_from_network;

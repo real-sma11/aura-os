@@ -367,6 +367,8 @@ fn harness_outbound_kind(evt: &HarnessOutbound) -> &'static str {
         HarnessOutbound::GenerationPartialImage(_) => "generation_partial_image",
         HarnessOutbound::GenerationCompleted(_) => "generation_completed",
         HarnessOutbound::GenerationError(_) => "generation_error",
+        HarnessOutbound::SubagentSpawned(_) => "subagent_spawned",
+        HarnessOutbound::SubagentStatus(_) => "subagent_status",
     }
 }
 

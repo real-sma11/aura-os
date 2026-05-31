@@ -57,6 +57,12 @@ pub enum StreamKind {
     ImageGen,
     VideoGen,
     Mesh3dGen,
+    /// A child subagent run spawned by a parent chat turn's `task`
+    /// tool. Registered when a client attaches to the child run's
+    /// live stream via the subagent-attach endpoint so the existing
+    /// `GET /api/streams/:attach_id` replay/tail surface serves the
+    /// child thread without a bespoke SSE body.
+    SubagentTurn,
 }
 
 /// Ownership / addressing metadata used for authz filtering and to let
@@ -67,6 +73,12 @@ pub struct StreamScope {
     pub project_id: Option<String>,
     pub agent_instance_id: Option<String>,
     pub session_id: Option<String>,
+    /// Originating parent `task` tool-use id for a
+    /// [`StreamKind::SubagentTurn`] stream. Lets the client match a
+    /// reattached subagent thread back to the tool card that spawned
+    /// it. `None` for all non-subagent streams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
 }
 
 /// A single registered, resumable harness stream.

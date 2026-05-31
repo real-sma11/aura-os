@@ -144,6 +144,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::list_session_events),
         )
         .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/subagents",
+            get(agents::list_session_subagents),
+        )
+        .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/summarize",
             post(agents::summarize_session),
         )

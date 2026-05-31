@@ -12,12 +12,14 @@ use super::persist_task::PersistTaskState;
 
 mod message;
 mod normalize;
+mod subagent;
 mod tool;
 
 use message::{
     handle_error, handle_message_end, handle_message_start, handle_text_delta,
     handle_thinking_delta,
 };
+use subagent::{handle_subagent_spawned, handle_subagent_status};
 use tool::{handle_tool_call_snapshot, handle_tool_result, handle_tool_use_start};
 
 // Re-export so the cancel-finalize sweep in
@@ -85,6 +87,29 @@ pub(super) async fn handle_outbound(
         HarnessOutbound::Error(err) => {
             handle_error(state, ctx, event_bus, err, model).await;
             false
+        }
+        HarnessOutbound::SubagentSpawned(spawned) => {
+            handle_subagent_spawned(
+                state,
+                ctx,
+                &spawned.child_run_id,
+                spawned.parent_tool_use_id.as_deref(),
+                &spawned.subagent_type,
+                &spawned.prompt,
+            )
+            .await;
+            true
+        }
+        HarnessOutbound::SubagentStatus(status) => {
+            handle_subagent_status(
+                state,
+                ctx,
+                &status.child_run_id,
+                &status.state,
+                status.reason.as_deref(),
+            )
+            .await;
+            true
         }
         HarnessOutbound::SessionReady(_)
         | HarnessOutbound::GenerationStart(_)
