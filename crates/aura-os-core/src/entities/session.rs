@@ -156,6 +156,17 @@ pub enum ChatContentBlock {
         id: String,
         name: String,
         input: serde_json::Value,
+        /// Additive metadata that producers may stamp onto a `tool_use`
+        /// block without a storage migration or a new variant. The
+        /// live-subagent-thread path stamps `child_run_id`,
+        /// `parent_tool_use_id`, `subagent_type`, `prompt`,
+        /// `subagent_status`, and `subagent_reason` here onto the
+        /// originating `task` block so a history reopen can re-attach to
+        /// (and label) the spawned child thread. Captured generically
+        /// with `flatten` so the field set stays forward-compatible and
+        /// round-trips unknown keys instead of dropping them on read.
+        #[serde(flatten, default, skip_serializing_if = "serde_json::Map::is_empty")]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     ToolResult {
         tool_use_id: String,
@@ -171,4 +182,59 @@ pub enum ChatContentBlock {
         spec_id: String,
         title: String,
     },
+}
+
+#[cfg(test)]
+mod chat_content_block_tests {
+    use super::ChatContentBlock;
+    use serde_json::json;
+
+    #[test]
+    fn tool_use_round_trips_extra_subagent_fields() {
+        // A `task` tool_use block stamped by the subagent dispatch must
+        // round-trip its extra linkage fields (e.g. `child_run_id`)
+        // through (de)serialization so a history reopen can re-attach.
+        let raw = json!({
+            "type": "tool_use",
+            "id": "toolu_task_1",
+            "name": "Task",
+            "input": {"prompt": "explore"},
+            "child_run_id": "child-run-123",
+            "subagent_type": "explore",
+            "subagent_status": "completed",
+        });
+        let block: ChatContentBlock =
+            serde_json::from_value(raw).expect("tool_use with extras deserializes");
+        let back = serde_json::to_value(&block).expect("serializes");
+        assert_eq!(
+            back.get("child_run_id").and_then(|v| v.as_str()),
+            Some("child-run-123"),
+            "child_run_id must survive the round-trip",
+        );
+        assert_eq!(
+            back.get("subagent_type").and_then(|v| v.as_str()),
+            Some("explore"),
+        );
+        assert_eq!(back.get("type").and_then(|v| v.as_str()), Some("tool_use"));
+        assert_eq!(back.get("id").and_then(|v| v.as_str()), Some("toolu_task_1"));
+        // The internal tag must not leak into the flattened extras.
+        assert!(
+            !back.get("input").is_none(),
+            "core tool_use fields remain intact alongside extras",
+        );
+    }
+
+    #[test]
+    fn tool_use_without_extras_serializes_without_empty_keys() {
+        let raw = json!({
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "read_file",
+            "input": {"path": "src/lib.rs"},
+        });
+        let block: ChatContentBlock = serde_json::from_value(raw).expect("deserializes");
+        let back = serde_json::to_value(&block).expect("serializes");
+        let obj = back.as_object().expect("object");
+        assert_eq!(obj.len(), 4, "no stray extra keys when nothing was stamped");
+    }
 }

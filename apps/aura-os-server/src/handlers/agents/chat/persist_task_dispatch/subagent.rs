@@ -34,7 +34,15 @@ pub(super) async fn handle_subagent_spawned(
             b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                 && b.get("id").and_then(|i| i.as_str()) == Some(parent_id)
         }) {
+            // Stamp the full linkage onto the originating `task` block so
+            // a replay of the persisted history can both re-attach to the
+            // child thread (`child_run_id`) and label the card
+            // (`subagent_type` / `prompt`) without consulting the
+            // separate `subagent_spawned` linkage event.
             block["child_run_id"] = json!(child_run_id);
+            block["parent_tool_use_id"] = json!(parent_id);
+            block["subagent_type"] = json!(subagent_type);
+            block["prompt"] = json!(prompt);
         }
     }
 
@@ -67,6 +75,25 @@ pub(super) async fn handle_subagent_status(
     child_state: &str,
     reason: Option<&str>,
 ) {
+    // Fold the latest lifecycle state onto the originating `task` block
+    // (located by the `child_run_id` stamped at spawn time) so a history
+    // reopen renders the terminal status (completed / failed / rejected)
+    // instead of inferring it from the tool result.
+    if let Some(block) = state.content_blocks.iter_mut().rev().find(|b| {
+        b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+            && b.get("child_run_id").and_then(|c| c.as_str()) == Some(child_run_id)
+    }) {
+        block["subagent_status"] = json!(child_state);
+        match reason {
+            Some(reason) => block["subagent_reason"] = json!(reason),
+            None => {
+                if let Some(map) = block.as_object_mut() {
+                    map.remove("subagent_reason");
+                }
+            }
+        }
+    }
+
     if persist_event(
         ctx,
         "subagent_status",
@@ -139,6 +166,59 @@ mod tests {
             block.get("child_run_id").and_then(Value::as_str),
             Some("child-run-123"),
             "spawn must link the child run id onto the originating tool_use block",
+        );
+        assert_eq!(
+            block.get("subagent_type").and_then(Value::as_str),
+            Some("explore"),
+            "spawn must label the originating tool_use block with the subagent type",
+        );
+        assert_eq!(
+            block.get("prompt").and_then(Value::as_str),
+            Some("explore the repo"),
+        );
+        assert_eq!(
+            block.get("parent_tool_use_id").and_then(Value::as_str),
+            Some("toolu_task_1"),
+        );
+    }
+
+    #[tokio::test]
+    async fn subagent_status_stamps_state_on_linked_tool_use_block() {
+        // A prior spawn stamped `child_run_id` onto the `task` block; a
+        // terminal status must fold its state (+ reason) onto the same
+        // block so a history reopen renders the terminal pill.
+        let mut state = PersistTaskState::new();
+        state.message_id = "msg-task".to_string();
+        state.content_blocks.push(json!({
+            "type": "tool_use",
+            "id": "toolu_task_1",
+            "name": "Task",
+            "input": json!({"prompt": "explore"}),
+            "child_run_id": "child-run-123",
+        }));
+
+        let ctx = test_ctx();
+        handle_subagent_status(
+            &mut state,
+            &ctx,
+            "child-run-123",
+            "failed",
+            Some("depth limit exceeded"),
+        )
+        .await;
+
+        let block = state
+            .content_blocks
+            .iter()
+            .find(|b| b.get("id").and_then(Value::as_str) == Some("toolu_task_1"))
+            .expect("task tool_use block present");
+        assert_eq!(
+            block.get("subagent_status").and_then(Value::as_str),
+            Some("failed"),
+        );
+        assert_eq!(
+            block.get("subagent_reason").and_then(Value::as_str),
+            Some("depth limit exceeded"),
         );
     }
 

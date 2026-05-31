@@ -38,6 +38,7 @@ fn agent_history_heals_legacy_null_tool_use_input_to_empty_object() {
                 id: "toolu_cancelled".into(),
                 name: "create_spec".into(),
                 input: serde_json::Value::Null,
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_cancelled".into(),
@@ -92,6 +93,7 @@ fn agent_history_heals_legacy_string_tool_use_input_to_empty_object() {
                 id: "toolu_partial".into(),
                 name: "create_spec".into(),
                 input: serde_json::Value::String(r#"{"title":"Phase"#.to_string()),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_partial".into(),
@@ -117,6 +119,7 @@ fn agent_history_heals_legacy_array_tool_use_input_to_empty_object() {
                 id: "toolu_array".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!(["not", "an", "object"]),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_array".into(),
@@ -145,6 +148,7 @@ fn agent_history_drops_dangling_tool_use_with_null_input() {
             id: "toolu_dangling".into(),
             name: "create_spec".into(),
             input: serde_json::Value::Null,
+            extra: Default::default(),
         }]),
     );
 
@@ -185,6 +189,7 @@ fn agent_history_paired_synthetic_cancellation_round_trips_cleanly() {
                 id: "toolu_post_fix".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_post_fix".into(),

@@ -1,6 +1,7 @@
 import type { ChatContentBlock } from "../shared/types";
 import type { ToolCallEntry, ArtifactRef } from "../shared/types/stream";
 import { normalizeToolInput } from "./tool-input";
+import { isSubagentState } from "../shared/utils/subagent";
 
 export function extractToolCalls(blocks: ChatContentBlock[]): ToolCallEntry[] | undefined {
   const toolUseBlocks = blocks.filter(
@@ -27,6 +28,17 @@ export function extractToolCalls(blocks: ChatContentBlock[]): ToolCallEntry[] | 
       result: res?.result,
       isError: res?.isError,
       pending: false,
+      // Rehydrate the subagent linkage the server stamps onto a `task`
+      // tool_use block so a history-reopened card can re-attach to the
+      // child thread and render its terminal status. Undefined keys are
+      // omitted so non-`task` tool calls keep their plain shape.
+      ...(b.child_run_id ? { subagentRunId: b.child_run_id } : {}),
+      ...(b.subagent_type ? { subagentType: b.subagent_type } : {}),
+      ...(b.prompt ? { subagentPrompt: b.prompt } : {}),
+      ...(isSubagentState(b.subagent_status)
+        ? { subagentStatus: b.subagent_status }
+        : {}),
+      ...(b.subagent_reason ? { subagentReason: b.subagent_reason } : {}),
     };
   });
 }

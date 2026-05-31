@@ -48,6 +48,10 @@ export function SubAgentModal({
   const isConnecting = view.status === "attaching" && !hasTranscript;
   const showFailureReason =
     !!reason && (state === "failed" || state === "rejected" || state === "cancelled");
+  // A finished run whose harness session was already reaped fails the
+  // attach with no transcript. Surface that as a calm empty state rather
+  // than a connection-error banner — there's simply nothing left to tail.
+  const threadUnavailable = view.status === "error" && !hasTranscript;
 
   return (
     <Modal
@@ -76,6 +80,15 @@ export function SubAgentModal({
               Connecting to subagent…
             </Text>
           </div>
+        ) : threadUnavailable ? (
+          <div className={styles.center}>
+            <Text variant="muted" size="sm">
+              This subagent thread is no longer available.
+            </Text>
+            <Text variant="muted" size="sm">
+              Its live transcript was cleaned up after the run finished.
+            </Text>
+          </div>
         ) : (
           <ActivityTimeline
             timeline={view.timeline}
@@ -87,7 +100,7 @@ export function SubAgentModal({
             scrollRef={scrollRef}
           />
         )}
-        {view.status === "error" && (
+        {view.status === "error" && hasTranscript && (
           <Text variant="muted" size="sm" className={styles.error}>
             {view.errorMessage ?? "Lost connection to the subagent thread."}
           </Text>

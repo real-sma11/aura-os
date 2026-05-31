@@ -212,6 +212,7 @@ fn apply_tool_use_start(parts: &mut AssistantParts, content: Option<&serde_json:
         id,
         name,
         input: serde_json::json!({}),
+        extra: Default::default(),
     });
 }
 
@@ -285,6 +286,7 @@ fn apply_tool_call_snapshot(parts: &mut AssistantParts, content: Option<&serde_j
             id: snap_id,
             name: snap_name,
             input: snap_input,
+            extra: Default::default(),
         });
     }
 }

@@ -29,6 +29,7 @@ fn agent_history_dedupes_duplicate_tool_results_by_tool_use_id() {
                 id: "toolu_dup".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({"title": "spec-1"}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_dup".into(),
@@ -91,16 +92,19 @@ fn agent_history_preserves_distinct_tool_use_ids_in_order() {
                 id: "A".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolUse {
                 id: "B".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolUse {
                 id: "C".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "A".into(),
@@ -158,6 +162,7 @@ fn corrupted_session_recovers_across_subsequent_user_sends() {
             id: (*id).to_string(),
             name: "create_spec".into(),
             input: serde_json::json!({"title": format!("spec-{id}")}),
+            extra: Default::default(),
         })
         .collect();
     for id in parallel_ids {
@@ -235,6 +240,7 @@ fn dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace(
                 id: "toolu_plan_001".into(),
                 name: "submit_plan".into(),
                 input: serde_json::json!({"summary": "edit src/lib.rs"}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_plan_001".into(),
@@ -248,6 +254,7 @@ fn dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace(
                     "path": "src/lib.rs",
                     "patch": "<elided>",
                 }),
+                extra: Default::default(),
             },
             // The edit_file tool's own result.
             ChatContentBlock::ToolResult {

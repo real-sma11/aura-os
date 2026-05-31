@@ -33,6 +33,7 @@ fn conversation_history_renders_tool_only_assistant_turn_to_text() {
                 id: "tool-1".into(),
                 name: "create_spec".into(),
                 input: serde_json::json!({ "title": "hello" }),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "tool-1".into(),
@@ -73,6 +74,7 @@ fn conversation_history_preserves_text_plus_tool_turns() {
             id: "tool-1".into(),
             name: "create_spec".into(),
             input: serde_json::json!({ "title": "hello" }),
+            extra: Default::default(),
         }]),
     );
     let tool_result = assistant_event(

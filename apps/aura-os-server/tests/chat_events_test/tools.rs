@@ -50,11 +50,13 @@ async fn test_agent_harness_history_strips_dangling_tool_use_block() {
                 id: matched_id.into(),
                 name: "do_thing".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolUse {
                 id: dangling_id.into(),
                 name: "crashed_thing".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
         ]),
         make_assistant_event_with_blocks(vec![ChatContentBlock::ToolResult {
@@ -89,11 +91,13 @@ async fn conversation_history_strips_dangling_tool_use_block() {
                 id: matched_id.into(),
                 name: "ok_tool".into(),
                 input: serde_json::json!({"a": 1}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolUse {
                 id: dangling_id.into(),
                 name: "crashed_tool".into(),
                 input: serde_json::json!({"b": 2}),
+                extra: Default::default(),
             },
         ]),
         make_assistant_event_with_blocks(vec![ChatContentBlock::ToolResult {

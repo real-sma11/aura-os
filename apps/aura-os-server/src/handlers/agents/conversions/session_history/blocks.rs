@@ -64,12 +64,17 @@ pub(super) fn sanitize_assistant_content_blocks(
 
     for block in blocks {
         match block {
-            ChatContentBlock::ToolUse { id, name, input }
+            ChatContentBlock::ToolUse { id, name, input, .. }
                 if is_incomplete_write_tool_use(&name, &input) =>
             {
                 suppressed_tool_use_ids.insert(id);
             }
-            ChatContentBlock::ToolUse { id, name, input } => {
+            ChatContentBlock::ToolUse {
+                id,
+                name,
+                input,
+                extra,
+            } => {
                 let healed_input = if input.is_object() {
                     input
                 } else {
@@ -81,10 +86,14 @@ pub(super) fn sanitize_assistant_content_blocks(
                     );
                     serde_json::json!({})
                 };
+                // Preserve any stamped extras (e.g. the subagent
+                // `child_run_id` linkage) through the heal-on-load pass so
+                // a history reopen can still re-attach to the child thread.
                 sanitized.push(ChatContentBlock::ToolUse {
                     id,
                     name,
                     input: healed_input,
+                    extra,
                 });
             }
             ChatContentBlock::ToolResult { tool_use_id, .. }
@@ -139,6 +148,7 @@ mod tests {
             id: "toolu_cancelled".into(),
             name: "create_spec".into(),
             input: serde_json::Value::Null,
+            extra: Default::default(),
         }];
         let sanitized = sanitize_assistant_content_blocks(blocks);
         assert_eq!(sanitized.len(), 1);
@@ -162,6 +172,7 @@ mod tests {
             id: "toolu_partial".into(),
             name: "list_files".into(),
             input: serde_json::Value::String(r#"{"path":"src/"#.to_string()),
+            extra: Default::default(),
         }];
         let sanitized = sanitize_assistant_content_blocks(blocks);
         match &sanitized[0] {
@@ -179,6 +190,7 @@ mod tests {
             id: "toolu_ok".into(),
             name: "read_file".into(),
             input: original.clone(),
+            extra: Default::default(),
         }];
         let sanitized = sanitize_assistant_content_blocks(blocks);
         match &sanitized[0] {
@@ -196,6 +208,7 @@ mod tests {
             id: "toolu_array".into(),
             name: "create_spec".into(),
             input: serde_json::json!([1, 2, 3]),
+            extra: Default::default(),
         }];
         let sanitized = sanitize_assistant_content_blocks(blocks);
         match &sanitized[0] {
@@ -216,6 +229,7 @@ mod tests {
                 id: "toolu_write".into(),
                 name: "write_file".into(),
                 input: serde_json::Value::Null,
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_write".into(),

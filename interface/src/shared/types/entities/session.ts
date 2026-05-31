@@ -27,7 +27,26 @@ export interface Session {
 export type ChatContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; media_type: string; data: string; source_url?: string }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      /**
+       * Additive subagent linkage stamped onto a `task` tool_use block by
+       * the server (`handle_subagent_spawned` / `handle_subagent_status`)
+       * and round-tripped through the session-history GET. Lets a
+       * history-reopened card re-attach to (and label) the spawned child
+       * thread without a live `subagent_spawned` event. All optional —
+       * absent on every non-`task` tool call and on pre-fix history.
+       */
+      child_run_id?: string;
+      parent_tool_use_id?: string;
+      subagent_type?: string;
+      prompt?: string;
+      subagent_status?: string;
+      subagent_reason?: string;
+    }
   | { type: "tool_result"; tool_use_id: string; content: string;
       is_error?: boolean }
   | { type: "task_ref"; task_id: string; title: string }

@@ -21,6 +21,7 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
                 id: "tool-old".into(),
                 name: "list_agents".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "tool-old".into(),
@@ -49,6 +50,7 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
                 id: "tool-new".into(),
                 name: "list_agents".into(),
                 input: serde_json::json!({}),
+                extra: Default::default(),
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "tool-new".into(),

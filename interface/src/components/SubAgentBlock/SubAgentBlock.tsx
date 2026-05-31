@@ -126,14 +126,6 @@ export function SubAgentBlock({ entry, defaultExpanded }: SubAgentBlockProps) {
           {reason && (
             <p className={styles.reason}>{reason}</p>
           )}
-          {/*
-            TODO(history-reopen): a `task` card hydrated from persisted
-            history has no `subagentRunId` (the server does not store the
-            child run id on the tool call), so "Open" is disabled. Wiring
-            the list endpoint
-            (GET /api/projects/:p/agents/:a/sessions/:s/subagents) to
-            backfill `subagentRunId` would let finished threads reopen.
-          */}
         </div>
       </Block>
       {open && childRunId && (

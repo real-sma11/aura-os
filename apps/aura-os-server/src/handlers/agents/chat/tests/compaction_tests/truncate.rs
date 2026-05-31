@@ -36,6 +36,7 @@ fn render_conversation_text_truncates_oversized_tool_result() {
             id: "tool-1".into(),
             name: "list_agents".into(),
             input: serde_json::json!({}),
+            extra: Default::default(),
         },
         ChatContentBlock::ToolResult {
             tool_use_id: "tool-1".into(),

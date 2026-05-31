@@ -166,7 +166,7 @@ fn render_block_into(
             }
             parts.push(text.clone());
         }
-        ChatContentBlock::ToolUse { id, name, input } => {
+        ChatContentBlock::ToolUse { id, name, input, .. } => {
             if !referenced_tool_use_ids.contains(id) {
                 warn!(tool_use_id = %id, %name, "skipping dangling tool_use (no matching tool_result)");
                 return;
@@ -498,7 +498,7 @@ fn assistant_blocks_to_api(
                     "text": text,
                 }));
             }
-            ChatContentBlock::ToolUse { id, name, input } => {
+            ChatContentBlock::ToolUse { id, name, input, .. } => {
                 if !referenced_tool_use_ids.contains(id) {
                     warn!(
                         tool_use_id = %id,
