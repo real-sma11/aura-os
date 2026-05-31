@@ -8,6 +8,12 @@
   background: var(--color-surface-elevated, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--color-border-muted, rgba(255, 255, 255, 0.08));
   border-radius: var(--radius-md, 8px);
+  /* The pinned-indicator strip that hosts this pill is `pointer-events:
+     none` (so the cooking shimmer never blocks the input/content beneath).
+     Re-enable hit testing on the pill itself so its Stop / Retry / Report
+     buttons are clickable; the surrounding transparent strip stays
+     click-through. */
+  pointer-events: auto;
 }
 
 .stuckStreamMessage {

@@ -283,13 +283,14 @@
   bottom: var(--streaming-indicator-bottom, 108px);
   left: 0;
   right: 0;
-  /* Sit below the input bar (z-index 10) so the context popover, which
-     opens upward from the input bar's info row, is never covered by this
-     strip's full-width gradient backdrop. It still paints above the
-     scrolling chat content because `.messageArea` is earlier in the DOM
-     with no stacking context of its own. The queue (z-index 12) stays on
-     top of everything. */
-  z-index: 9;
+  /* Sit above the input bar (z-index 10) and its `::before` top-fade
+     gradient so the streaming-phase content (the "Cooking..." shimmer and
+     the stuck-stream pill) is never painted over by that gradient, and the
+     stuck pill's Stop / Retry / Report buttons stay reachable. Kept below
+     the queue / new-messages pill (z-index 12). Tradeoff: an open
+     context-usage popover (opens upward from the input bar's info row
+     during streaming) can be partially covered by this strip's backdrop. */
+  z-index: 11;
   display: flex;
   justify-content: center;
   padding: var(--space-4) calc(var(--space-3) * 2) 0;
