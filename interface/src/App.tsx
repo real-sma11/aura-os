@@ -224,6 +224,7 @@ export function App(): React.ReactElement {
 function AppRoutes(): React.ReactElement {
   const location = useLocation();
   const { isNativeApp } = useAuraCapabilities();
+  const isAuthenticated = useAuthStore((s) => s.user !== null);
 
   // "Background location" pattern: when a public-mode visitor opens
   // the login modal from a public page,
@@ -245,8 +246,17 @@ function AppRoutes(): React.ReactElement {
   // `RequireAuth`'s `state.from` redirect, etc.) we fall through to
   // the real location and the route table behaves as before — the
   // `/login` path resolves to `<PublicChatView />` underneath.
+  // Once authenticated we deliberately drop the stashed background
+  // location so the underlying `<Routes>` matcher resolves against the
+  // real URL (which the post-login navigate moves into the app). This
+  // tears down the public surface the visitor opened the modal from
+  // immediately, instead of leaving it mounted under the overlay for a
+  // frame while the redirect settles.
   const navState = location.state as { backgroundLocation?: Location } | null;
-  const routeLocation = navState?.backgroundLocation ?? location;
+  const routeLocation =
+    !isAuthenticated && navState?.backgroundLocation
+      ? navState.backgroundLocation
+      : location;
   const showLoginOverlay = location.pathname === "/login";
 
   if (isCaptureLoginRoute(location)) {
@@ -324,80 +334,93 @@ function AppRoutes(): React.ReactElement {
         <Route element={<ShellOutletSuspense />}>
           <Route index element={<LandingRoute />} />
           <Route path="chat" element={<ChatRouteSwitch />} />
-          <Route path="login" element={<PublicChatView />} />
           {/*
+            Public-only routes. Gated on `!isAuthenticated` so they are
+            absent from the route table once logged in — this both
+            destroys the public surfaces (PublicChatView SSE / persona
+            animations, marketing pages) for efficiency AND prevents the
+            marketing `/agents` route from shadowing the authenticated
+            Agents app's `/agents` index (both share the same path; with
+            both present React Router's tie-break would otherwise resolve
+            `/agents` to the marketing `ProductView`, hiding the agent
+            selection that `AgentIndexRedirect` performs).
+
             Public subpages mount inside the public-mode `AuraShell`
-            main `<Outlet />` via
-            `PublicMarketingPanel`, a thin scroll-column wrapper. Same
-            sidebar / titlebar as the public chat surface — just the
-            middle panel content swaps when the visitor clicks
-            Agents / Code / Pricing / Resources in `PublicTopNav`.
-            Replaces the standalone `MarketingShell` chrome that
-            previously owned these paths.
+            main `<Outlet />` via `PublicMarketingPanel`, a thin
+            scroll-column wrapper. Same sidebar / titlebar as the public
+            chat surface — just the middle panel content swaps when the
+            visitor clicks Agents / Code / Pricing / Resources in
+            `PublicTopNav`. Replaces the standalone `MarketingShell`
+            chrome that previously owned these paths.
           */}
-          <Route element={<PublicMarketingPanel />}>
-            <Route
-              path="agents"
-              element={
-                <Suspense fallback={null}>
-                  <ProductView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="code"
-              element={
-                <Suspense fallback={null}>
-                  <CodeView />
-                </Suspense>
-              }
-            />
-            {/*
-              `/product` was renamed to `/agents`. Keep a permanent
-              redirect so old links / bookmarks still resolve.
-            */}
-            <Route path="product" element={<Navigate to="/agents" replace />} />
-            <Route
-              path="changelog"
-              element={
-                <Suspense fallback={null}>
-                  <ChangelogView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="feedback"
-              element={
-                <Suspense fallback={null}>
-                  <FeedbackView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="pricing"
-              element={
-                <Suspense fallback={null}>
-                  <PricingView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="models"
-              element={
-                <Suspense fallback={null}>
-                  <ModelsView />
-                </Suspense>
-              }
-            />
-            <Route
-              path="download"
-              element={
-                <Suspense fallback={null}>
-                  <DownloadView />
-                </Suspense>
-              }
-            />
-          </Route>
+          {!isAuthenticated && (
+            <Route path="login" element={<PublicChatView />} />
+          )}
+          {!isAuthenticated && (
+            <Route element={<PublicMarketingPanel />}>
+              <Route
+                path="agents"
+                element={
+                  <Suspense fallback={null}>
+                    <ProductView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="code"
+                element={
+                  <Suspense fallback={null}>
+                    <CodeView />
+                  </Suspense>
+                }
+              />
+              {/*
+                `/product` was renamed to `/agents`. Keep a permanent
+                redirect so old links / bookmarks still resolve.
+              */}
+              <Route path="product" element={<Navigate to="/agents" replace />} />
+              <Route
+                path="changelog"
+                element={
+                  <Suspense fallback={null}>
+                    <ChangelogView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="feedback"
+                element={
+                  <Suspense fallback={null}>
+                    <FeedbackView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="pricing"
+                element={
+                  <Suspense fallback={null}>
+                    <PricingView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="models"
+                element={
+                  <Suspense fallback={null}>
+                    <ModelsView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="download"
+                element={
+                  <Suspense fallback={null}>
+                    <DownloadView />
+                  </Suspense>
+                }
+              />
+            </Route>
+          )}
           <Route element={<RequireAuth />}>
             <Route element={<SimpleModeChatRedirectLayout />}>
               {renderRoutes(shellAppRoutes)}
