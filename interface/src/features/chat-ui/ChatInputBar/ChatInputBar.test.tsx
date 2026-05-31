@@ -311,11 +311,11 @@ describe("ChatInputBar", () => {
     // Provider headers render immediately (no "Show all models" step).
     expect(screen.getAllByText("Anthropic")[0]).toBeInTheDocument();
     expect(screen.getAllByText("OpenAI")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("DeepSeek")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("DeepSeek AI")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Moonshot AI")[0]).toBeInTheDocument();
     expect(screen.getAllByText("MiniMax")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("z.ai")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Qwen")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Z.ai")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Alibaba Cloud")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Google")[0]).toBeInTheDocument();
     // The single "Open Source" header is now split per provider.
     expect(screen.queryByText("Open Source")).not.toBeInTheDocument();

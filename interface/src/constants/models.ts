@@ -145,12 +145,14 @@ const LEGACY_HIDDEN_CHAT_MODELS: ModelOption[] = [
 ];
 
 /**
- * Chat models, ordered by vendor (Anthropic, OpenAI, DeepSeek, Moonshot
- * AI, MiniMax, z.ai, Qwen, Google) and newest-first within each vendor so
- * the picker's grouped sections read
- * cleanly without re-sorting. The default chat model is pinned via
- * {@link DEFAULT_CHAT_MODEL_ID} rather than this array's first element,
- * so the display order here is independent of the default.
+ * Chat models, grouped by vendor (Anthropic, OpenAI, DeepSeek AI, Moonshot
+ * AI, MiniMax, Z.ai, Alibaba Cloud, Google) and newest-first within each
+ * vendor. The picker's section order is controlled separately by
+ * {@link MODEL_VENDOR_ORDER} (which surfaces Google ahead of DeepSeek), so
+ * this array's grouping need not match the on-screen order. The default
+ * chat model is pinned via {@link DEFAULT_CHAT_MODEL_ID} rather than this
+ * array's first element, so the display order here is independent of the
+ * default.
  */
 export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
   // ── Anthropic ───────────────────────────────────────────────
@@ -308,7 +310,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "deepseek",
     creditMultiplier: 0.7,
     contextWindow: 1_048_576,
-    provider: "DeepSeek",
+    provider: "DeepSeek AI",
     description:
       "Open-weight reasoning model tuned for code and math with a 1M context window.",
   },
@@ -320,7 +322,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "deepseek",
     creditMultiplier: 0.06,
     contextWindow: 1_048_576,
-    provider: "DeepSeek",
+    provider: "DeepSeek AI",
     description:
       "Fast, ultra-low-cost DeepSeek variant for high-volume tasks with a 1M context window.",
   },
@@ -371,7 +373,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "zai",
     creditMultiplier: 0.7,
     contextWindow: 202_752,
-    provider: "z.ai",
+    provider: "Z.ai",
     description:
       "Open-weight GLM reasoning model with strong agentic and tool-use performance and a 202K context window.",
   },
@@ -384,7 +386,7 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     vendor: "qwen",
     creditMultiplier: 0.4,
     contextWindow: 262_144,
-    provider: "Qwen",
+    provider: "Alibaba Cloud",
     description:
       "Open-weight Qwen model with vision support and a 256K context window.",
   },
@@ -523,22 +525,22 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
 const MODEL_VENDOR_ORDER: readonly ModelVendor[] = [
   "anthropic",
   "openai",
+  "google",
   "deepseek",
   "moonshot",
   "minimax",
   "zai",
   "qwen",
-  "google",
 ];
 
 const MODEL_VENDOR_LABELS: Record<ModelVendor, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
-  deepseek: "DeepSeek",
+  deepseek: "DeepSeek AI",
   moonshot: "Moonshot AI",
   minimax: "MiniMax",
-  zai: "z.ai",
-  qwen: "Qwen",
+  zai: "Z.ai",
+  qwen: "Alibaba Cloud",
   google: "Google",
 };
 
@@ -559,7 +561,7 @@ export const DEFAULT_CHAT_MODEL_ID = "aura-claude-sonnet-4-6";
 /**
  * Groups chat models into ordered, non-empty vendor sections for the
  * picker. Preserves each vendor's array order (already curated
- * newest-first) and drops vendors with no models (e.g. Google today).
+ * newest-first) and drops any vendor that currently has no models.
  */
 export function groupChatModelsByVendor(
   models: ModelOption[],
