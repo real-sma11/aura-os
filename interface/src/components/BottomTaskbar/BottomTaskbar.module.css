@@ -111,6 +111,7 @@
  * pills use, plus the public-mode height + item-size overrides so the
  * icon button and text inside render at the compact public scale.
  */
+.togglePill,
 .chatPill,
 .themePill,
 .taglineBubble,
@@ -128,11 +129,26 @@
   padding: 0 var(--space-2);
 }
 
+.bar[data-ui-mode="public"] .togglePill,
 .bar[data-ui-mode="public"] .chatPill,
 .bar[data-ui-mode="public"] .themePill,
 .bar[data-ui-mode="public"] .taglineBubble,
 .bar[data-ui-mode="public"] .poweredPill {
   --taskbar-item-size: var(--public-pill-item-size, 22px);
+}
+
+/* Public-mode center cluster — absolutely centered so the rotating
+   tagline bubble sits in the horizontal middle of the bar, independent
+   of the left/right pill clusters. Mirrors `.center`'s centering. */
+.publicCenter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 
 /*

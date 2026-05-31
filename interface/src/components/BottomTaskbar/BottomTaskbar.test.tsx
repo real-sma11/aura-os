@@ -76,6 +76,7 @@ vi.mock("lucide-react", () => ({
   Sun: () => <svg data-testid="theme-icon-sun" />,
   Moon: () => <svg data-testid="theme-icon-moon" />,
   Zap: () => <svg data-testid="icon-zap" />,
+  PanelLeft: () => <svg data-testid="panel-left" />,
 }));
 
 interface MockMenuItem {
@@ -791,7 +792,7 @@ describe("BottomTaskbar", () => {
   });
 
   describe("Public mode", () => {
-    it("renders the theme toggle in its own floating pill and the tagline in its own bubble within the public left cluster", () => {
+    it("renders the sidebar toggle and theme toggle in the public left cluster and the tagline centered in the bar", () => {
       const { container } = render(<BottomTaskbar mode="public" />);
 
       const bar = container.querySelector(
@@ -800,27 +801,33 @@ describe("BottomTaskbar", () => {
       expect(bar).not.toBeNull();
       expect(bar).toHaveAttribute("data-ui-mode", "public");
 
-      // The theme toggle now sits in its own standalone `.themePill`
-      // floating panel, with the rotating tagline in a separate
-      // `.taglineBubble` next to it — both inside the left-anchored
-      // `.publicLeft` cluster (the "Powered by THE GRID" chip is the
-      // sole occupant of `.publicRight`). Credits, Settings, Apps,
-      // Desktop, the profile rail, and the clock are all gated behind
-      // `AuthedBottomTaskbar` which doesn't mount.
+      // The left cluster (`.publicLeft`) now leads with the sidebar
+      // drawer toggle (relocated from the titlebar) followed by the
+      // theme toggle in its own `.themePill`. The rotating tagline
+      // lives in the absolutely-centered `.publicCenter` wrapper, and
+      // the "Powered by THE GRID" chip is the sole occupant of
+      // `.publicRight`. Credits, Settings, Apps, Desktop, the profile
+      // rail, and the clock are all gated behind `AuthedBottomTaskbar`
+      // which doesn't mount.
       const themeToggle = screen.getByRole("button", { name: /switch theme/i });
       expect(themeToggle).toBeInTheDocument();
 
       const publicLeft = container.querySelector(".publicLeft");
       expect(publicLeft).not.toBeNull();
 
+      const sidebarToggle = screen.getByRole("button", { name: "Toggle sidebar" });
+      expect(publicLeft).toContainElement(sidebarToggle);
+
       const themePill = container.querySelector(".themePill");
       expect(themePill).not.toBeNull();
       expect(themePill).toContainElement(themeToggle);
       expect(publicLeft).toContainElement(themePill as HTMLElement);
 
+      const publicCenter = container.querySelector(".publicCenter");
+      expect(publicCenter).not.toBeNull();
       const taglineBubble = container.querySelector(".taglineBubble");
       expect(taglineBubble).not.toBeNull();
-      expect(publicLeft).toContainElement(taglineBubble as HTMLElement);
+      expect(publicCenter).toContainElement(taglineBubble as HTMLElement);
 
       // The "Powered by THE GRID" chip stays anchored on the right in
       // its own `.poweredPill` inside `.publicRight`.

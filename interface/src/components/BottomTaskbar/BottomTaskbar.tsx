@@ -31,6 +31,7 @@ import { ThemeToggleButton } from "./ThemeToggleButton";
 import { PublicChatTaskbarButton } from "./PublicChatTaskbarButton";
 import { PoweredByGridButton } from "./PoweredByGridButton";
 import { RotatingTagline } from "./RotatingTagline";
+import { SidebarDrawerToggle } from "../AuraShell/SidebarDrawerToggle";
 import styles from "./BottomTaskbar.module.css";
 
 const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
@@ -100,6 +101,8 @@ export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement 
  * would noisily report missing context for unauthenticated visitors.
  */
 function PublicBottomTaskbar(): React.ReactElement {
+  const publicSidebarCollapsed = useAppUIStore((s) => s.publicSidebarCollapsed);
+  const togglePublicSidebar = useAppUIStore((s) => s.togglePublicSidebar);
   return (
     <div
       className={styles.bar}
@@ -109,12 +112,20 @@ function PublicBottomTaskbar(): React.ReactElement {
       data-ui-mode="public"
     >
       <div className={styles.publicLeft}>
+        <div className={styles.togglePill}>
+          <SidebarDrawerToggle
+            collapsed={publicSidebarCollapsed}
+            onToggle={togglePublicSidebar}
+          />
+        </div>
         <div className={styles.chatPill}>
           <PublicChatTaskbarButton />
         </div>
         <div className={styles.themePill}>
           <ThemeToggleButton />
         </div>
+      </div>
+      <div className={styles.publicCenter}>
         <div className={styles.taglineBubble}>
           <RotatingTagline />
         </div>

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
-import { PanelLeft, Server } from "lucide-react";
+import { Server } from "lucide-react";
 import { Button } from "@cypher-asi/zui";
+import { SidebarDrawerToggle } from "./SidebarDrawerToggle";
 import { ShellTitlebar } from "../ShellTitlebar";
 import { MenuBar, MenuShortcuts } from "../MenuBar";
 import { WindowControls } from "../WindowControls";
@@ -103,10 +104,7 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
       data-testid="aura-titlebar"
       icon={
         isPublic ? (
-          <PublicLeading
-            collapsed={props.publicSidebarCollapsed ?? true}
-            onToggle={props.onTogglePublicSidebar}
-          />
+          <PublicLeading />
         ) : (
           <AuthedLeading
             mode={mode}
@@ -181,20 +179,12 @@ function AuthedLeading({
   );
 }
 
-function PublicLeading({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle?: () => void;
-}): React.ReactElement | null {
-  if (!onToggle) return null;
+function PublicLeading(): React.ReactElement {
   return (
     <span
       className={`${styles.titleLeading} titlebar-no-drag`}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
       <Link to="/" aria-label="AURA home" className={styles.titleLogoLink}>
         <img
           src="/AURA_logo_text_mark.png"
@@ -205,43 +195,6 @@ function PublicLeading({
         />
       </Link>
     </span>
-  );
-}
-
-/**
- * The shared `<PanelLeft />` drawer toggle used across every mode
- * (public / simple / advanced). Mirrors the right-side sidekick
- * toggle in `WindowControls.tsx` 1:1 so the two drawers feel like a
- * symmetric affordance pair — same ZUI `Button` props, same
- * `aria-pressed` contract (open=true, collapsed=false), and the
- * same `[aria-pressed="true"]` neutral-text override defined in
- * `AuraShell.module.css` under `.publicSidebarToggle`. The class
- * name is shared (and therefore "public" in name only) because the
- * styling rule is identical regardless of which collapse state
- * field the caller is bound to.
- */
-function SidebarDrawerToggle({
-  collapsed,
-  onToggle,
-}: {
-  collapsed: boolean;
-  onToggle: () => void;
-}): React.ReactElement {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      rounded="md"
-      iconOnly
-      selected={!collapsed}
-      title="Toggle sidebar"
-      aria-label="Toggle sidebar"
-      aria-pressed={!collapsed}
-      className={styles.publicSidebarToggle}
-      onClick={onToggle}
-    >
-      <PanelLeft size={14} strokeWidth={2} />
-    </Button>
   );
 }
 
