@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Circle,
   CreditCard,
   ChevronRight,
   ChevronLeft,
   LayoutGrid,
-  MessageSquare,
   Settings,
 } from "lucide-react";
 import { useUIModalStore } from "../../stores/ui-modal-store";
@@ -29,6 +28,7 @@ import { FavoriteAgentsStrip } from "./FavoriteAgentsStrip";
 import { ProfilePill } from "./ProfilePill";
 import { HelpButton } from "../../features/onboarding/HelpButton/HelpButton";
 import { ThemeToggleButton } from "./ThemeToggleButton";
+import { PublicChatTaskbarButton } from "./PublicChatTaskbarButton";
 import { PoweredByGridButton } from "./PoweredByGridButton";
 import { RotatingTagline } from "./RotatingTagline";
 import styles from "./BottomTaskbar.module.css";
@@ -110,14 +110,7 @@ function PublicBottomTaskbar(): React.ReactElement {
     >
       <div className={styles.publicLeft}>
         <div className={styles.chatPill}>
-          <Link
-            to="/chat"
-            className={styles.chatLink}
-            title="Chat"
-            aria-label="Chat"
-          >
-            <MessageSquare size={TASKBAR_ICON_SIZE} />
-          </Link>
+          <PublicChatTaskbarButton />
         </div>
         <div className={styles.themePill}>
           <ThemeToggleButton />

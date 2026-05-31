@@ -337,10 +337,11 @@ describe("AuraShell — Phase 3 unified shell", () => {
       "href",
       "/pricing",
     );
-    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
-      "href",
-      "/chat",
-    );
+    // Chat is now a bottom-taskbar toggle button (chat <-> previous
+    // page), not a link, so it carries no href.
+    expect(
+      screen.getByRole("button", { name: "Chat" }),
+    ).toBeInTheDocument();
 
     await act(async () => {
       setLoggedIn();
@@ -350,7 +351,9 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Chat" }),
+    ).not.toBeInTheDocument();
   });
 
   it("(e) hides the Simple/Advanced ModeToggle in public mode and remounts it on sign-in", async () => {
@@ -675,7 +678,7 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     // must mount — their absence would mean the shell mistakenly
     // resolved to an authed surface.
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
   });
 
   it("sign-in transition (public -> simple) tears down the public nav and mounts ChatAppLeftPanel", async () => {
@@ -683,7 +686,7 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     const { container } = renderAuraShell("/");
 
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
     expect(getActiveAppId(container)).toBeNull();
 
     await act(async () => {
@@ -694,7 +697,9 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     expect(
       screen.queryByRole("link", { name: "Pricing" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Chat" }),
+    ).not.toBeInTheDocument();
     expect(getActiveAppId(container)).toBe("chat");
   });
 });
@@ -733,8 +738,8 @@ describe("AuraShell — public left drawer", () => {
     expect(
       screen.getByRole("button", { name: /Resources/i }),
     ).toBeInTheDocument();
-    // Chat lives in the bottom taskbar.
-    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    // Chat lives in the bottom taskbar as a toggle button.
+    expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
   });
 
   it("clicking the drawer toggle flips aria-pressed and the sidebar collapse data attribute, then collapses again on a second click", async () => {
@@ -752,7 +757,7 @@ describe("AuraShell — public left drawer", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(sidebar).toHaveAttribute("data-public-sidebar-collapsed", "false");
     expect(screen.getByRole("link", { name: "Pricing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
 
     await user.click(toggle);
 

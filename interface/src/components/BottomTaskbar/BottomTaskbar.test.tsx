@@ -51,6 +51,7 @@ const favoriteAgents = [
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
+  useLocation: () => ({ pathname: "/", search: "", hash: "", state: null, key: "test" }),
 }));
 
 vi.mock("lucide-react", () => ({
