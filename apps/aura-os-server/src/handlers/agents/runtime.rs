@@ -6,11 +6,11 @@ use tokio::time::timeout;
 
 use aura_os_core::{Agent, AgentId};
 use aura_os_harness::{
-    HarnessInbound, HarnessOutbound, SessionConfig, SessionModelOverrides, SessionUsage,
-    UserMessage,
+    CouncilMemberConfig, HarnessInbound, HarnessOutbound, SessionConfig, SessionModelOverrides,
+    SessionUsage, UserMessage,
 };
 
-use crate::dto::AgentRuntimeTestResponse;
+use crate::dto::{AgentRuntimeTestResponse, CouncilRequestBody};
 use crate::error::{ApiError, ApiResult};
 use crate::handlers::agents::chat::errors::map_harness_error_to_api;
 use crate::handlers::agents::workspace_tools::{
@@ -68,6 +68,56 @@ pub(crate) fn effective_model(agent: &Agent, override_model: Option<String>) -> 
                 .clone()
                 .filter(|value| !value.trim().is_empty())
         })
+}
+
+/// Resolve an AURA Council request body into the per-member config the
+/// harness needs to build wire [`aura_protocol::CouncilMember`]s.
+///
+/// Each member reuses the single-model resolution path: its requested
+/// model id flows through [`effective_model`] (override → agent
+/// default) and its provider overrides through
+/// [`session_model_overrides_with_cache`], with a member-scoped cache
+/// key suffix so the council members don't clobber each other's prompt
+/// cache. `members[0]` is the synthesizer.
+///
+/// Validation mirrors the single-model path: an empty `models` list is
+/// a structured 400 (the same `bad_request` shape the route uses for an
+/// invalid model); an unknown / blank member id resolves exactly as the
+/// single-model path does via [`effective_model`].
+pub(crate) fn resolve_council_members(
+    agent: &Agent,
+    council: &CouncilRequestBody,
+    cache_key: Option<&str>,
+    retention: Option<&str>,
+) -> ApiResult<Vec<CouncilMemberConfig>> {
+    if council.models.is_empty() {
+        return Err(ApiError::bad_request(
+            "council.models must contain at least one model",
+        ));
+    }
+
+    Ok(council
+        .models
+        .iter()
+        .enumerate()
+        .map(|(index, member)| {
+            let model = effective_model(agent, Some(member.id.clone()));
+            // Suffix the shared cache key per member so each council
+            // model keeps its own upstream prompt-cache prefix.
+            let member_cache_key =
+                cache_key.map(|key| format!("{key}:council:{index}"));
+            let provider_overrides = session_model_overrides_with_cache(
+                model.as_deref(),
+                member_cache_key,
+                retention,
+            );
+            CouncilMemberConfig {
+                model,
+                reasoning_effort: member.reasoning_effort.clone(),
+                provider_overrides,
+            }
+        })
+        .collect())
 }
 
 fn non_empty_string(value: &str) -> Option<String> {
@@ -262,9 +312,12 @@ mod tests {
         // aura-os no longer clamps; it forwards the raw semantic key and
         // the harness owns the single length-clamp chokepoint.
         let long = format!("agent:{}", "z".repeat(200));
-        let overrides =
-            session_model_overrides_with_cache(Some("aura-gpt-5-5"), Some(long.clone()), Some("24h"))
-                .expect("model + key should produce overrides");
+        let overrides = session_model_overrides_with_cache(
+            Some("aura-gpt-5-5"),
+            Some(long.clone()),
+            Some("24h"),
+        )
+        .expect("model + key should produce overrides");
         assert_eq!(overrides.prompt_cache_key.as_deref(), Some(long.as_str()));
     }
 }

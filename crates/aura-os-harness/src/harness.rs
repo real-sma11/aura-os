@@ -3,7 +3,7 @@ use tokio::sync::{broadcast, mpsc};
 
 use aura_protocol::{
     AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, AgentToolPermissionsWire,
-    ChatProjectInfoWire, ConversationMessage, InboundMessage, InstalledIntegration,
+    ChatProjectInfoWire, ConversationMessage, CouncilMember, InboundMessage, InstalledIntegration,
     IntentClassifierSpec, ModelSelection, OutboundMessage, ProjectContext, RuntimeRequest,
     RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
 };
@@ -70,6 +70,31 @@ pub struct SessionConfig {
     /// so the agent loop hard-pins the requested thinking level instead
     /// of relying solely on its internal taper heuristic.
     pub reasoning_effort: Option<String>,
+    /// Optional AURA Council membership. When present with >= 2 members
+    /// [`build_runtime_request`] emits
+    /// [`RuntimeRequestType::Council`] instead of
+    /// [`RuntimeRequestType::Chat`]: the query fans across every member
+    /// in parallel and `council[0]` synthesizes the combined answer.
+    /// `None` (or a single member) keeps the ordinary single-model chat
+    /// path unchanged.
+    pub council: Option<Vec<CouncilMemberConfig>>,
+}
+
+/// Resolved AURA Council member ready to build a wire
+/// [`CouncilMember`]. The server resolves each requested model id into
+/// an effective model + reasoning-effort tier + per-member provider
+/// overrides before constructing the [`SessionConfig`].
+#[derive(Debug, Clone, Default)]
+pub struct CouncilMemberConfig {
+    /// Resolved effective model id for this member.
+    pub model: Option<String>,
+    /// Per-member reasoning-effort tier (same wire strings as
+    /// [`SessionConfig::reasoning_effort`]). Parsed into the typed wire
+    /// enum in [`build_runtime_request`].
+    pub reasoning_effort: Option<String>,
+    /// Per-member provider overrides (default model + prompt-cache
+    /// key/retention) layered on the harness env defaults.
+    pub provider_overrides: Option<SessionModelOverrides>,
 }
 
 pub struct HarnessSession {
@@ -214,9 +239,42 @@ pub trait HarnessLink: Send + Sync {
 /// HTTP and the WS attaches to the returned `run_id`.
 #[must_use]
 pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
+    // AURA Council is active only when >= 2 members are resolved; a
+    // single member (or an absent council) falls through to the
+    // ordinary single-model `Chat` request unchanged.
+    let council_members = cfg
+        .council
+        .as_ref()
+        .filter(|members| members.len() >= 2)
+        .map(|members| {
+            members
+                .iter()
+                .enumerate()
+                .map(|(index, member)| CouncilMember {
+                    id: index.to_string(),
+                    model: ModelSelection {
+                        id: member.model.clone(),
+                        reasoning_effort: member
+                            .reasoning_effort
+                            .as_deref()
+                            .and_then(aura_protocol::ReasoningEffort::from_wire),
+                        provider_overrides: member.provider_overrides.clone(),
+                        ..Default::default()
+                    },
+                })
+                .collect::<Vec<_>>()
+        });
+
     RuntimeRequest {
-        r#type: RuntimeRequestType::Chat {
-            conversation_messages: cfg.conversation_messages.clone().unwrap_or_default(),
+        r#type: match council_members {
+            // `members[0]` is the synthesizer (first selected model).
+            Some(members) => RuntimeRequestType::Council {
+                members,
+                conversation_messages: cfg.conversation_messages.clone().unwrap_or_default(),
+            },
+            None => RuntimeRequestType::Chat {
+                conversation_messages: cfg.conversation_messages.clone().unwrap_or_default(),
+            },
         },
         agent_identity: AgentIdentity {
             template_id: cfg.template_agent_id.clone(),

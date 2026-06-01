@@ -345,6 +345,31 @@ pub(crate) struct SendChatRequest {
     /// `#[serde(default)]` keeps wire compat.
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Optional AURA Council config. When present with >= 2 models the
+    /// turn fans the query across every member in parallel (one
+    /// subagent child run each) and `models[0]` synthesizes the
+    /// combined answer. A single model (or an absent field) is treated
+    /// as ordinary single-model chat. Mirrors the frontend POST body
+    /// `council: { models: [{ id, reasoning_effort }] }`.
+    #[serde(default)]
+    pub council: Option<CouncilRequestBody>,
+}
+
+/// AURA Council selection from the chat client. See
+/// [`SendChatRequest::council`].
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CouncilRequestBody {
+    pub models: Vec<CouncilModelRequestBody>,
+}
+
+/// One council member from the chat client: a model id plus its
+/// optional reasoning-effort tier (same wire strings as
+/// [`SendChatRequest::reasoning_effort`]).
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CouncilModelRequestBody {
+    pub id: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

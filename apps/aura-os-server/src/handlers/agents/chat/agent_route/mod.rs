@@ -23,7 +23,9 @@ use super::tools::{build_session_installed_tools, InstalledToolsCtx};
 use super::typed_session::TypedSessionFields;
 use super::types::SseResponse;
 
-use super::super::runtime::{effective_model, session_model_overrides_with_cache};
+use super::super::runtime::{
+    effective_model, resolve_council_members, session_model_overrides_with_cache,
+};
 
 mod helpers;
 mod persistence;
@@ -198,6 +200,22 @@ pub(crate) async fn send_agent_event_stream(
         effective_project_id.as_deref(),
     );
     let model = effective_model(&agent, body.model.clone());
+
+    // AURA Council: only active when the client sends >= 2 models. A
+    // single model (or an absent `council`) leaves the single-model
+    // path below 100% unchanged. Each member is resolved through the
+    // same `effective_model` / override-cache path the single model
+    // uses, sharing the per-agent cache-key prefix + 24h retention.
+    let council = match body.council.as_ref().filter(|c| c.models.len() >= 2) {
+        Some(council_body) => Some(resolve_council_members(
+            &agent,
+            council_body,
+            Some(&format!("agent:{agent_id}")),
+            Some("24h"),
+        )?),
+        None => None,
+    };
+
     let org_integrations = fetch_org_integrations(&state, effective_org_id.as_ref(), &jwt).await;
     let normalized_perms = normalize_agent_perms(&agent, effective_project_id.as_deref());
 
@@ -289,6 +307,7 @@ pub(crate) async fn send_agent_event_stream(
         agent_system_prompt,
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
+        council,
         ..Default::default()
     };
 
