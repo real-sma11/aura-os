@@ -208,6 +208,28 @@
   align-items: center;
   text-decoration: none;
   border-radius: 6px;
+  /*
+   * Pad the hit area so the theme-aware hover surface isn't cropped
+   * tight to the wordmark glyphs; the matching negative margin keeps
+   * the logo's visual left-alignment unchanged.
+   */
+  padding: 2px 6px;
+  margin: 0 -6px;
+  transition: background-color 120ms ease;
+}
+
+/*
+ * Theme-aware hover: reuses the same `--color-surface-hover` token the
+ * adjacent public nav (`PublicTopNav`) paints, so the logo's hover
+ * background reads correctly in both light and dark themes.
+ */
+.titleLogoLink:hover {
+  background: var(--color-surface-hover);
+}
+
+.titleLogoLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring, #6e8cff);
+  outline-offset: 2px;
 }
 
 .titleActions {
