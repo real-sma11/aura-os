@@ -275,6 +275,37 @@ impl AgentPermissions {
         }
         self
     }
+
+    /// Splice the capabilities a chat agent needs to spawn and observe
+    /// subagents into this bundle if they aren't already present:
+    /// [`Capability::SpawnAgent`] (gate for the harness `task` /
+    /// `spawn_agent` tools) and [`Capability::ReadAgent`] (so the parent
+    /// can inspect the live state of the children it spawns). Idempotent.
+    ///
+    /// # Why
+    ///
+    /// Subagents are a core chat capability (parity with Cursor / Codex):
+    /// every project/instance chat agent should be able to fan a turn out
+    /// into foreground subagents. The harness only surfaces `task` /
+    /// `spawn_agent` to a session whose bundle satisfies
+    /// `Capability::SpawnAgent` (`visible_tools_with_permissions`), and a
+    /// project-bound bundle carries spliced `ReadProject` / `WriteProject`
+    /// grants — so it is non-empty and never promoted to the full-access
+    /// fallback. Without this splice the subagent tools are silently
+    /// hidden from every non-CEO agent. Splicing at chat-open time is
+    /// narrower than promoting to a preset: it adds exactly the two caps,
+    /// only for the in-memory bundle handed to the harness (the persisted
+    /// storage row is untouched).
+    #[must_use]
+    pub fn with_subagent_caps(mut self) -> Self {
+        if !self.capabilities.contains(&Capability::SpawnAgent) {
+            self.capabilities.push(Capability::SpawnAgent);
+        }
+        if !self.capabilities.contains(&Capability::ReadAgent) {
+            self.capabilities.push(Capability::ReadAgent);
+        }
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------

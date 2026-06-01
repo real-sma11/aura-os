@@ -46,12 +46,16 @@ pub(super) async fn load_project_state_for_agent(
     }
 }
 
-/// When the turn is project-bound (either explicitly via the body or
-/// implicitly via the persistence context), splice the self-project
-/// `ReadProject` / `WriteProject` caps into the agent's normalized
-/// bundle so the harness receives `SessionConfig.agent_permissions`
-/// that let `visible_tools_with_permissions` expose the matching
-/// project-scoped native tools.
+/// Normalize the agent's persisted permission bundle for a chat
+/// session. Splices the subagent caps (`SpawnAgent` + `ReadAgent`) so
+/// every chat agent can fan a turn out into foreground subagents (the
+/// harness only surfaces `task` / `spawn_agent` when the bundle
+/// satisfies `SpawnAgent`). When the turn is project-bound (either
+/// explicitly via the body or implicitly via the persistence context),
+/// also splice the self-project `ReadProject` / `WriteProject` caps so
+/// the harness receives `SessionConfig.agent_permissions` that let
+/// `visible_tools_with_permissions` expose the matching project-scoped
+/// native tools.
 pub(super) fn normalize_agent_perms(
     agent: &aura_os_core::Agent,
     effective_project_id: Option<&str>,
@@ -59,7 +63,8 @@ pub(super) fn normalize_agent_perms(
     let base_perms = agent
         .permissions
         .clone()
-        .normalized_for_identity(&agent.name, Some(agent.role.as_str()));
+        .normalized_for_identity(&agent.name, Some(agent.role.as_str()))
+        .with_subagent_caps();
     match effective_project_id {
         Some(pid) => base_perms.with_project_self_caps(pid),
         None => base_perms,

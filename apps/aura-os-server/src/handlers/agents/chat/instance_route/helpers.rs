@@ -140,6 +140,7 @@ pub(super) async fn normalize_instance_perms(
     let effective = fresh_parent_permissions.unwrap_or_else(|| instance.permissions.clone());
     effective
         .normalized_for_identity(&instance.name, Some(instance.role.as_str()))
+        .with_subagent_caps()
         .with_project_self_caps(pid_str)
 }
 

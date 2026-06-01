@@ -91,6 +91,55 @@ fn normalized_for_identity_preserves_already_correct_preset() {
 }
 
 #[test]
+fn with_subagent_caps_splices_spawn_and_read_for_empty_bundle() {
+    let perms = AgentPermissions::empty().with_subagent_caps();
+    assert!(perms.capabilities.contains(&Capability::SpawnAgent));
+    assert!(perms.capabilities.contains(&Capability::ReadAgent));
+}
+
+#[test]
+fn with_subagent_caps_is_idempotent() {
+    let perms = AgentPermissions::empty()
+        .with_subagent_caps()
+        .with_subagent_caps();
+    let spawn = perms
+        .capabilities
+        .iter()
+        .filter(|c| matches!(c, Capability::SpawnAgent))
+        .count();
+    let read = perms
+        .capabilities
+        .iter()
+        .filter(|c| matches!(c, Capability::ReadAgent))
+        .count();
+    assert_eq!(spawn, 1);
+    assert_eq!(read, 1);
+}
+
+#[test]
+fn with_subagent_caps_preserves_existing_caps() {
+    let before = AgentPermissions {
+        scope: AgentScope::default(),
+        capabilities: vec![Capability::ReadProject {
+            id: "proj-7".into(),
+        }],
+    };
+    let after = before.with_subagent_caps();
+    assert!(after.capabilities.contains(&Capability::ReadProject {
+        id: "proj-7".into(),
+    }));
+    assert!(after.capabilities.contains(&Capability::SpawnAgent));
+    assert!(after.capabilities.contains(&Capability::ReadAgent));
+}
+
+#[test]
+fn with_subagent_caps_is_noop_for_ceo_preset() {
+    let preset = AgentPermissions::ceo_preset();
+    let after = preset.clone().with_subagent_caps();
+    assert_eq!(after, preset);
+}
+
+#[test]
 fn with_project_self_caps_splices_both_read_and_write_for_empty_bundle() {
     let perms = AgentPermissions::empty().with_project_self_caps("proj-42");
     assert!(perms.capabilities.contains(&Capability::ReadProject {
