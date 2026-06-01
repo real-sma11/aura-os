@@ -189,6 +189,17 @@ export function FeedbackDetailsPanel() {
                 {item.voteScore} ({item.upvotes} up &middot; {item.downvotes} down)
               </dd>
             </div>
+            {isSysAdmin ? (
+              <div className={styles.metaRow}>
+                <dt className={styles.metaLabel}>App version</dt>
+                <dd
+                  className={styles.metaValue}
+                  data-agent-proof="feedback-details-app-version-visible"
+                >
+                  {item.appVersion || "—"}
+                </dd>
+              </div>
+            ) : null}
           </dl>
 
           <section
