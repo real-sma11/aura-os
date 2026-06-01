@@ -8,16 +8,6 @@ import { syncPulseKeyframes } from "./logo-pulse-keyframes";
 // so they're per-device and reset on a storage clear. Server-backed
 // cross-install persistence is intentionally out of scope here and can
 // be layered on later as a separate change.
-//
-// TODO(aura-logo titlebar integration): the wordmark render target,
-// DesktopShell/DesktopTitlebar.tsx, was deleted by the AuraShell
-// unification refactor. The wordmark now lives in
-// components/AuraShell/AuraTitlebar.tsx as a PNG `<img ... data-aura-wordmark>`.
-// Re-integration is a design decision (a PNG `<img>` can't be recolored
-// via the --desktop-logo-color CSS var the inline-SVG path relied on;
-// either swap to the inline SVG in public/AURA_logo_text_mark.svg, or
-// apply color via an SVG mask / CSS filter). Until then this feature is
-// settable + persisted locally but not yet visually applied.
 
 const STORAGE_KEY = "aura-desktop-preferences";
 const LEGACY_COLOR_KEY = "aura-desktop-logo-color";
