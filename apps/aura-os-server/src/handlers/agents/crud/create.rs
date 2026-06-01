@@ -12,16 +12,19 @@ use crate::handlers::agents::marketplace_fields::{
 use crate::state::{AppState, AuthJwt};
 
 use super::swarm::provision_remote_agent;
-use super::validation::{build_runtime_config, ensure_supported_agent_name, RuntimeConfigInputs};
+use super::validation::{
+    build_runtime_config, ensure_remote_runtime_create_allowed, ensure_supported_agent_name,
+    RuntimeConfigInputs,
+};
 
 /// Bundle of validated inputs derived from a [`CreateAgentRequest`]. Splitting
 /// the request prep out of [`create_agent`] keeps the handler body under the
 /// 50-line cap while still giving the orchestrator one cohesive call.
-struct PreparedCreate {
-    runtime_config: AgentRuntimeConfig,
-    net_req: aura_os_network::CreateAgentRequest,
-    machine_type: Option<String>,
-    submitted_local_path: Option<String>,
+pub(crate) struct PreparedCreate {
+    pub(crate) runtime_config: AgentRuntimeConfig,
+    pub(crate) net_req: aura_os_network::CreateAgentRequest,
+    pub(crate) machine_type: Option<String>,
+    pub(crate) submitted_local_path: Option<String>,
 }
 
 pub(crate) async fn create_agent(
@@ -30,27 +33,22 @@ pub(crate) async fn create_agent(
     Json(body): Json<CreateAgentRequest>,
 ) -> ApiResult<Json<Agent>> {
     ensure_supported_agent_name(body.name.trim())?;
-    let client = state.require_network_client()?;
     let prepared = prepare_create(body)?;
-
-    let net_agent = client
-        .create_agent(&jwt, &prepared.net_req)
-        .await
-        .map_err(map_network_error)?;
-
-    let mut agent = hydrate_local_state(&state, &net_agent, &prepared)?;
+    ensure_remote_runtime_create_allowed(state.remote_only, &prepared.runtime_config)?;
+    let client = state.require_network_client()?;
 
     let is_remote =
         HarnessMode::from_machine_type(prepared.machine_type.as_deref().unwrap_or("remote"))
             == HarnessMode::Swarm;
-    if is_remote {
-        let reprovisioned = provision_remote_agent(&state, client, &jwt, &net_agent).await?;
-        agent = reprovisioned.agent;
-        // Preserve the user-supplied local override even though it doesn't
-        // apply to remote agents today — keeps the value stable if the user
-        // later converts the agent back to local.
-        agent.local_workspace_path = prepared.submitted_local_path;
-    }
+    let agent = if is_remote {
+        create_and_provision_remote_agent(&state, client, &jwt, &prepared).await?
+    } else {
+        let net_agent = client
+            .create_agent(&jwt, &prepared.net_req)
+            .await
+            .map_err(map_network_error)?;
+        hydrate_local_state(&state, &net_agent, &prepared)?
+    };
 
     let _ = state.agent_service.save_agent_shadow(&agent);
 
@@ -64,6 +62,26 @@ pub(crate) async fn create_agent(
     .await;
 
     Ok(Json(agent))
+}
+
+pub(crate) async fn create_and_provision_remote_agent(
+    state: &AppState,
+    client: &aura_os_network::NetworkClient,
+    jwt: &str,
+    prepared: &PreparedCreate,
+) -> ApiResult<Agent> {
+    let net_agent = client
+        .create_agent(jwt, &prepared.net_req)
+        .await
+        .map_err(map_network_error)?;
+    hydrate_local_state(state, &net_agent, prepared)?;
+    let reprovisioned = provision_remote_agent(state, client, jwt, &net_agent).await?;
+    let mut agent = reprovisioned.agent;
+    // Preserve the user-supplied local override even though it doesn't
+    // apply to remote agents today — keeps the value stable if the user
+    // later converts the agent back to local.
+    agent.local_workspace_path = prepared.submitted_local_path.clone();
+    Ok(agent)
 }
 
 fn hydrate_local_state(
@@ -85,7 +103,7 @@ fn hydrate_local_state(
     Ok(agent)
 }
 
-fn prepare_create(body: CreateAgentRequest) -> ApiResult<PreparedCreate> {
+pub(crate) fn prepare_create(body: CreateAgentRequest) -> ApiResult<PreparedCreate> {
     let runtime_config = build_runtime_config(RuntimeConfigInputs {
         adapter_type: body.adapter_type.clone(),
         environment: body.environment.clone(),

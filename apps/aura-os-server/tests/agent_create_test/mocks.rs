@@ -220,13 +220,24 @@ pub(crate) fn build_app_with_swarm(
     network_url: &str,
     swarm_url: Option<String>,
 ) -> axum::Router {
-    let (app, _state) = build_test_app_from_store(
+    build_app_with_swarm_and_remote_only(store, data_dir, network_url, swarm_url, false)
+}
+
+pub(crate) fn build_app_with_swarm_and_remote_only(
+    store: Arc<SettingsStore>,
+    data_dir: std::path::PathBuf,
+    network_url: &str,
+    swarm_url: Option<String>,
+    remote_only: bool,
+) -> axum::Router {
+    let (app, _state) = build_test_app_from_store_with_remote_only(
         store,
         data_dir,
         Some(Arc::new(NetworkClient::with_base_url(network_url))),
         None,
         swarm_url,
         None,
+        remote_only,
     );
     app
 }

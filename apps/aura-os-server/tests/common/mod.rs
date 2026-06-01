@@ -251,6 +251,27 @@ pub fn build_test_app_from_store(
     swarm_base_url: Option<String>,
     billing_client: Option<Arc<BillingClient>>,
 ) -> (Router, AppState) {
+    build_test_app_from_store_with_remote_only(
+        store,
+        data_dir,
+        network_client,
+        storage_client,
+        swarm_base_url,
+        billing_client,
+        false,
+    )
+}
+
+#[allow(dead_code)]
+pub fn build_test_app_from_store_with_remote_only(
+    store: Arc<SettingsStore>,
+    data_dir: std::path::PathBuf,
+    network_client: Option<Arc<NetworkClient>>,
+    storage_client: Option<Arc<StorageClient>>,
+    swarm_base_url: Option<String>,
+    billing_client: Option<Arc<BillingClient>>,
+    remote_only: bool,
+) -> (Router, AppState) {
     let billing_client = billing_client.unwrap_or_else(|| Arc::new(BillingClient::new()));
     let org_service = Arc::new(OrgService::new(store.clone()));
     let auth_service = Arc::new(AuthService::new());
@@ -350,6 +371,7 @@ pub fn build_test_app_from_store(
         storage_client,
         integrations_client: None,
         require_zero_pro: false,
+        remote_only,
         harness_http,
         automaton_registry: Arc::new(Mutex::new(HashMap::new())),
         swarm_base_url,

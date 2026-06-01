@@ -106,8 +106,8 @@ export function useAgentEditorForm(
   closeOnSave = true,
   forceRemoteOnlyCreate = false,
 ): AgentEditorFormResult {
-  const { isMobileLayout, isMobileClient } = useAuraCapabilities();
-  const restrictCreateToAuraRuntimes = forceRemoteOnlyCreate || (isMobileClient && !agent);
+  const { isMobileLayout, remoteOnly } = useAuraCapabilities();
+  const restrictCreateToAuraRuntimes = forceRemoteOnlyCreate || (remoteOnly && !agent);
   const simplifyForMobileCreate = restrictCreateToAuraRuntimes && isMobileLayout;
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -200,7 +200,7 @@ export function useAgentEditorForm(
       setDefaultModel("");
     }
 
-    if (environment !== "local_host" && environment !== "swarm_microvm") {
+    if (environment !== "swarm_microvm") {
       setEnvironment(defaultEnvironmentForContext(restrictCreateToAuraRuntimes));
     }
   }, [

@@ -99,6 +99,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
       isCentered = false,
       contextUsage,
       onNewChat,
+      sendDisabled = false,
     },
     ref,
   ) {
@@ -144,9 +145,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
           : modeBehavior.kind === "generate_video"
             ? "video"
             : "chat";
-    // On mobile all agents go through the server harness regardless
-    // of machine_type, so never block input for "local" agents.
-    const isLocalAgent = false;
+    const isLocalAgent = sendDisabled;
     const isThreeDMode = generationMode === "3d";
     const pinnedSourceImage = chatUI.pinnedSourceImage;
     const has3DSource = isThreeDMode && pinnedSourceImage != null;
@@ -658,7 +657,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
                 type="button"
                 className={styles.attachButton}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!canAddMore}
+                disabled={!canAddMore || sendDisabled}
                 aria-label="Attach file"
               >
                 <Plus size={18} strokeWidth={1.8} />
@@ -677,6 +676,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               onBlur={() => setIsTextInputFocused(false)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
+              disabled={sendDisabled}
               placeholder={
                 isLocalAgent
                   ? "Remote agent required"

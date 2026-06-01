@@ -355,6 +355,9 @@ pub struct AppState {
     pub loop_registry: LoopRegistry,
     /// When true, non-Pro users are blocked from API access.
     pub require_zero_pro: bool,
+    /// Hosted web/mobile deployments set this to refuse new local-agent
+    /// execution while still allowing desktop's embedded server to offer both.
+    pub remote_only: bool,
     /// Reusable chat sessions keyed by agent_id or agent_instance_id.
     pub chat_sessions: ChatSessionRegistry,
     /// Cached billing credit check result.

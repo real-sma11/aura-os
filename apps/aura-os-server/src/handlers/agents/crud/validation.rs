@@ -2,6 +2,9 @@ use aura_os_core::{effective_auth_source, AgentRuntimeConfig};
 
 use crate::error::{ApiError, ApiResult};
 
+pub(super) const REMOTE_ONLY_LOCAL_AGENT_MESSAGE: &str =
+    "local agents are not supported on this deployment; use a remote agent";
+
 pub(super) fn agent_name_has_supported_format(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -68,6 +71,36 @@ pub(super) fn build_runtime_config(inputs: RuntimeConfigInputs) -> ApiResult<Age
     })
 }
 
+pub(super) fn ensure_remote_runtime_create_allowed(
+    remote_only: bool,
+    runtime_config: &AgentRuntimeConfig,
+) -> ApiResult<()> {
+    if remote_only && runtime_config.environment == "local_host" {
+        return Err(ApiError::bad_request(REMOTE_ONLY_LOCAL_AGENT_MESSAGE));
+    }
+    Ok(())
+}
+
+pub(super) fn ensure_remote_runtime_update_allowed(
+    remote_only: bool,
+    requested_machine_type: Option<&str>,
+    requested_environment: Option<&str>,
+    existing_machine_type: &str,
+    existing_environment: &str,
+) -> ApiResult<()> {
+    if !remote_only {
+        return Ok(());
+    }
+    let existing_is_local =
+        existing_machine_type == "local" || existing_environment == "local_host";
+    let requested_local =
+        requested_machine_type == Some("local") || requested_environment == Some("local_host");
+    if requested_local && !existing_is_local {
+        return Err(ApiError::bad_request(REMOTE_ONLY_LOCAL_AGENT_MESSAGE));
+    }
+    Ok(())
+}
+
 fn ensure_supported_adapter(adapter_type: Option<String>) -> ApiResult<String> {
     let adapter_type = adapter_type.unwrap_or_else(|| "aura_harness".to_string());
     if adapter_type != "aura_harness" {
@@ -102,7 +135,11 @@ fn resolve_integration_id(
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_name_has_supported_format, build_runtime_config, RuntimeConfigInputs};
+    use super::{
+        agent_name_has_supported_format, build_runtime_config,
+        ensure_remote_runtime_create_allowed, ensure_remote_runtime_update_allowed,
+        RuntimeConfigInputs,
+    };
 
     fn aura_harness_inputs() -> RuntimeConfigInputs {
         RuntimeConfigInputs {
@@ -169,5 +206,35 @@ mod tests {
         assert!(!agent_name_has_supported_format("Aura Local"));
         assert!(!agent_name_has_supported_format("Aura!"));
         assert!(!agent_name_has_supported_format(""));
+    }
+
+    #[test]
+    fn remote_only_create_rejects_local_runtime() {
+        let config = build_runtime_config(aura_harness_inputs()).expect("runtime config");
+
+        let error = ensure_remote_runtime_create_allowed(true, &config)
+            .expect_err("remote-only create should reject local runtime");
+
+        assert!(format!("{error:?}").contains("local agents are not supported"));
+    }
+
+    #[test]
+    fn remote_only_update_allows_metadata_only_existing_local_agent() {
+        ensure_remote_runtime_update_allowed(true, None, None, "local", "local_host")
+            .expect("metadata-only update should stay allowed");
+    }
+
+    #[test]
+    fn remote_only_update_rejects_explicit_local_runtime() {
+        let error = ensure_remote_runtime_update_allowed(
+            true,
+            Some("local"),
+            None,
+            "remote",
+            "swarm_microvm",
+        )
+        .expect_err("explicit local conversion should be rejected");
+
+        assert!(format!("{error:?}").contains("local agents are not supported"));
     }
 }

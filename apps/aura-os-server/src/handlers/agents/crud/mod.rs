@@ -10,7 +10,7 @@
 //! * [`update`]     — `PUT /agents/{id}`
 //! * [`delete`]     — `DELETE /agents/{id}`, project-binding helpers
 
-mod create;
+pub(crate) mod create;
 mod delete;
 mod list;
 mod swarm;

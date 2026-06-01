@@ -174,6 +174,8 @@ export interface ChatInputBarProps {
    */
   compact?: boolean;
   contextUsage?: ContextUsageEntry;
+  sendDisabled?: boolean;
+  sendDisabledReason?: string;
   /**
    * Optional handler for the "+" new-chat button rendered at the
    * right end of the mode row (directly above the send button).
@@ -250,6 +252,8 @@ export const DesktopChatInputBar = memo(
       isStatic = false,
       contextUsage,
       onNewChat,
+      sendDisabled = false,
+      sendDisabledReason,
     },
     ref,
   ) {
@@ -621,11 +625,12 @@ export const DesktopChatInputBar = memo(
     }, [setPinnedSourceImage, streamKey]);
 
     const handleSubmit = useCallback(() => {
+      if (sendDisabled) return;
       track("chat_message_sent", { model: selectedModel, mode: selectedMode });
       // Mode is read from the store inside `useChatPanelState.handleSend`;
       // we no longer need to thread `generationMode` through here.
       onSend(input, undefined, undefined);
-    }, [input, onSend, selectedModel, selectedMode]);
+    }, [input, onSend, selectedModel, selectedMode, sendDisabled]);
 
     const renderModelMenuItems = useCallback(
       (close: () => void) => {
@@ -758,6 +763,18 @@ export const DesktopChatInputBar = memo(
             </span>
           </div>
         ) : null}
+        {sendDisabled ? (
+          <div
+            className={styles.queuedHint}
+            role="status"
+            aria-live="polite"
+            data-agent-surface="chat-input-disabled-hint"
+          >
+            <span className={styles.queuedHintLabel}>
+              {sendDisabledReason ?? "This is a local agent and can only be used in the desktop app."}
+            </span>
+          </div>
+        ) : null}
         {modelsForMode.length > 0 ? (
           <div className={inputBarShellStyles.mobileModelBar}>
             <span className={inputBarShellStyles.mobileModelLabel}>Model</span>
@@ -814,7 +831,7 @@ export const DesktopChatInputBar = memo(
           type="button"
           className={inputBarShellStyles.attachButton}
           onClick={() => fileInputRef.current?.click()}
-          disabled={!canAddMore}
+          disabled={!canAddMore || sendDisabled}
           aria-label="Attach file"
         >
           <Plus size={16} strokeWidth={1} />
@@ -1076,8 +1093,8 @@ export const DesktopChatInputBar = memo(
         onSubmit={handleSubmit}
         onStop={onStop}
         isStreaming={isStreaming}
-        disabled={isUploading}
-        isSendEnabled={isSendEnabled}
+        disabled={isUploading || sendDisabled}
+        isSendEnabled={!sendDisabled && isSendEnabled}
         isVisible={isVisible}
         isCentered={isCentered}
         isStatic={isStatic}

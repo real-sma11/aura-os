@@ -924,6 +924,27 @@ describe("ChatInputBar", () => {
     );
   });
 
+  it("uses sendDisabled to block mobile local-agent sends", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <MobileChatInputBar
+        {...makeProps({
+          input: "hello",
+          machineType: "local",
+          onSend,
+          sendDisabled: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText("Remote agent required")).toBeDisabled();
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await user.click(send);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("renders attachment previews", () => {
     const attachment: AttachmentItem = {
       id: "a1",
@@ -1015,6 +1036,30 @@ describe("ChatInputBar", () => {
     render(<ChatInputBar {...makeProps({ input: "", attachments: [attachment] })} />);
 
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("disables local remote-only agents with a desktop-app banner", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatInputBar
+        {...makeProps({
+          input: "hello",
+          machineType: "local",
+          onSend,
+          sendDisabled: true,
+          sendDisabledReason: "This is a local agent and can only be used in the desktop app.",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("This is a local agent and can only be used in the desktop app."),
+    ).toBeInTheDocument();
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    await user.click(send);
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("intercepts image pastes even when the clipboard includes text formats", () => {

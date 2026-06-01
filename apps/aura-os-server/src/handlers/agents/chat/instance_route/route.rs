@@ -21,6 +21,7 @@ use super::super::cross_agent_reply::read_cross_agent_depth;
 use super::super::persist::{
     build_chat_partition, try_pin_session, ChatPersistRequest, PinnedSessionOutcome,
 };
+use super::super::runtime_gate::ensure_chat_runtime_allowed;
 use super::super::setup::setup_project_chat_persistence;
 use super::super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::super::tools::{build_session_installed_tools, InstalledToolsCtx};
@@ -63,6 +64,7 @@ pub(crate) async fn send_event_stream(
         .get_instance(&project_id, &agent_instance_id)
         .await
         .map_err(|e| ApiError::internal(format!("looking up agent instance: {e}")))?;
+    ensure_chat_runtime_allowed(&state, instance.harness_mode())?;
     require_credits_for_auth_source(&state, &jwt, &instance.auth_source).await?;
     info!(%project_id, %agent_instance_id, action = ?body.action, "Message stream requested");
 

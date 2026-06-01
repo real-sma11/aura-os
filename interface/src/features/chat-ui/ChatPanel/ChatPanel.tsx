@@ -137,6 +137,8 @@ export interface ChatPanelProps {
    * compact-mode tweaks.
    */
   compact?: boolean;
+  sendDisabled?: boolean;
+  sendDisabledReason?: string;
 }
 
 export function ChatPanel({
@@ -173,6 +175,8 @@ export function ChatPanel({
   contextUsage,
   onNewChat,
   compact = false,
+  sendDisabled = false,
+  sendDisabledReason,
 }: ChatPanelProps) {
   const {
     input,
@@ -214,6 +218,7 @@ export function ChatPanel({
     selectedProjectId,
     llmProjectId,
     agentId,
+    sendDisabled,
   });
 
   // Phase 2 stuck-stream actions. The pill in `ChatStreamingIndicator`
@@ -227,6 +232,7 @@ export function ChatPanel({
   // `lastSendArgs` from whichever surface owns this stream, stops any
   // in-flight turn, then re-dispatches `onSend` with the same payload.
   const handleRetryLastSend = useCallback(() => {
+    if (sendDisabled) return;
     // The standalone-agent branch caches via the agent-chat-stream
     // replay map; the project-chat branch caches via
     // `partition-send-control`. The streamKey uniquely identifies
@@ -262,7 +268,7 @@ export function ChatPanel({
         partitionArgs.sourceImageUrl,
       );
     }
-  }, [onSend, onStop, streamKey]);
+  }, [onSend, onStop, sendDisabled, streamKey]);
 
   const handleStuckStreamAutoTimeout = useCallback(() => {
     onStop();
@@ -698,7 +704,7 @@ export function ChatPanel({
           onRetry={handleRetryLastSend}
         />
 
-        {isThreadEmpty && !hasSentFirstMessage && (
+        {isThreadEmpty && !hasSentFirstMessage && !sendDisabled && (
           <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
         )}
 
@@ -732,6 +738,8 @@ export function ChatPanel({
           compact={compact}
           contextUsage={contextUsage}
           onNewChat={onNewChat ? handleNewChat : undefined}
+          sendDisabled={sendDisabled}
+          sendDisabledReason={sendDisabledReason}
         />
       </div>
     </div>

@@ -12,7 +12,10 @@ use crate::handlers::agents::marketplace_fields::{
 };
 use crate::state::{AppState, AuthJwt};
 
-use super::validation::{build_runtime_config, ensure_supported_agent_name, RuntimeConfigInputs};
+use super::validation::{
+    build_runtime_config, ensure_remote_runtime_update_allowed, ensure_supported_agent_name,
+    RuntimeConfigInputs,
+};
 
 pub(crate) async fn update_agent(
     State(state): State<AppState>,
@@ -25,6 +28,13 @@ pub(crate) async fn update_agent(
     validate_renamed_agent(&body, &existing)?;
 
     let prepared = prepare_update(&body, &existing)?;
+    ensure_remote_runtime_update_allowed(
+        state.remote_only,
+        body.machine_type.as_deref(),
+        body.environment.as_deref(),
+        &existing.machine_type,
+        &existing.environment,
+    )?;
     let submitted_permissions = body.permissions.clone();
 
     let net_agent = client

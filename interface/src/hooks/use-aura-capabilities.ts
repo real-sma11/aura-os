@@ -21,6 +21,7 @@ export interface AuraFeatureAvailability {
 
 export interface AuraCapabilities {
   hasDesktopBridge: boolean;
+  remoteOnly: boolean;
   isMobileClient: boolean;
   isMobileLayout: boolean;
   isPhoneLayout: boolean;
@@ -49,6 +50,7 @@ function readCapabilities(): AuraCapabilities {
     const features = buildFeatureAvailability(false, false);
     return {
       hasDesktopBridge: false,
+      remoteOnly: true,
       isMobileClient: false,
       isMobileLayout: false,
       isPhoneLayout: false,
@@ -86,6 +88,7 @@ function readCapabilities(): AuraCapabilities {
 
   return {
     hasDesktopBridge,
+    remoteOnly: !hasDesktopBridge,
     isMobileClient,
     isMobileLayout,
     isPhoneLayout,
@@ -113,6 +116,7 @@ function featuresEqual(a: AuraFeatureAvailability, b: AuraFeatureAvailability): 
 function capabilitiesEqual(a: AuraCapabilities, b: AuraCapabilities): boolean {
   return (
     a.hasDesktopBridge === b.hasDesktopBridge &&
+    a.remoteOnly === b.remoteOnly &&
     a.isMobileClient === b.isMobileClient &&
     a.isMobileLayout === b.isMobileLayout &&
     a.isPhoneLayout === b.isPhoneLayout &&

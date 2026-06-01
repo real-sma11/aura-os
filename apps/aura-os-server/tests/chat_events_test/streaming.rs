@@ -164,6 +164,87 @@ async fn agent_chat_stream_returns_424_when_no_project_binding() {
     assert!(data["project_agent_id"].is_null());
 }
 
+#[tokio::test]
+async fn remote_only_agent_chat_rejects_local_agent_before_persistence() {
+    let net_app = Router::new().route(
+        "/api/agents/:agent_id",
+        get(|| async {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({ "error": "not found" })),
+            )
+        }),
+    );
+    let net_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let net_url = format!("http://{}", net_listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(net_listener, net_app).await.ok() });
+
+    let store_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(aura_os_store::SettingsStore::open(store_dir.path()).unwrap());
+    store_zero_auth_session(&store);
+    let network = Arc::new(aura_os_network::NetworkClient::with_base_url(&net_url));
+    let (app, state) = build_test_app_from_store_with_remote_only(
+        store,
+        store_dir.path().to_path_buf(),
+        Some(network),
+        None,
+        None,
+        None,
+        true,
+    );
+
+    let agent_id = AgentId::new();
+    let now = chrono::Utc::now();
+    state
+        .agent_service
+        .save_agent_shadow(&Agent {
+            agent_id,
+            user_id: "u1".into(),
+            org_id: None,
+            name: "Local".into(),
+            role: "dev".into(),
+            personality: String::new(),
+            system_prompt: String::new(),
+            skills: vec![],
+            icon: None,
+            machine_type: "local".into(),
+            adapter_type: "aura_harness".into(),
+            environment: "local_host".into(),
+            auth_source: "aura_managed".into(),
+            integration_id: None,
+            default_model: None,
+            vm_id: None,
+            network_agent_id: None,
+            profile_id: None,
+            tags: vec![],
+            is_pinned: false,
+            listing_status: Default::default(),
+            expertise: vec![],
+            jobs: 0,
+            revenue_usd: 0.0,
+            reputation: 0.0,
+            local_workspace_path: None,
+            permissions: AgentPermissions::empty(),
+            intent_classifier: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .unwrap();
+
+    let req = json_request(
+        "POST",
+        &format!("/api/agents/{agent_id}/events/stream"),
+        Some(serde_json::json!({ "content": "ping" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body = response_json(resp).await;
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("desktop app"));
+}
+
 /// Chat-WS migration shape pin: aura-os no longer bakes the
 /// `<project_context>` block into the outgoing
 /// `SessionConfig.system_prompt`. Instead the chat handlers populate

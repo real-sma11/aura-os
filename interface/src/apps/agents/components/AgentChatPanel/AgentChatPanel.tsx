@@ -72,7 +72,7 @@ export function AgentChatPanel({
 }: AgentChatPanelProps) {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
-  const { isMobileLayout } = useAuraCapabilities();
+  const { isMobileLayout, remoteOnly } = useAuraCapabilities();
   const currentProject = useProjectsListStore(useShallow(selectCurrentProject(projectId)));
   const projectName = currentProject[0]?.name ?? "";
   const projectAgents = useProjectsListStore(
@@ -88,6 +88,10 @@ export function AgentChatPanel({
 
   const { agentName, machineType, templateAgentId, adapterType, defaultModel } =
     useAgentChatMeta("project", { projectId, agentInstanceId });
+  const sendDisabled = remoteOnly && machineType === "local";
+  const sendDisabledReason = sendDisabled
+    ? "This is a local agent and can only be used in the desktop app."
+    : undefined;
 
   // Resolves the project's workspace path (and remote-agent id when
   // the project's agent runs on a remote VM). Same hook the file
@@ -304,6 +308,8 @@ export function AgentChatPanel({
     templateAgentId,
     adapterType,
     defaultModel,
+    sendDisabled,
+    sendDisabledReason,
     agentId: agentInstanceId,
     isLoading: deferredLoading,
     historyResolved,

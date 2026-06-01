@@ -73,7 +73,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
 describe("useAgentEditorForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false, isMobileClient: false });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false, remoteOnly: false });
     mockOrgState.activeOrg = null;
     mockOrgState.integrations = [];
     vi.mocked(api.agents.create).mockResolvedValue(makeAgent());
@@ -92,7 +92,7 @@ describe("useAgentEditorForm", () => {
   });
 
   it("defaults new mobile agents to swarm microvm", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, remoteOnly: true });
 
     const { result } = renderHook(() =>
       useAgentEditorForm(true, undefined, vi.fn(), vi.fn()),
@@ -103,8 +103,34 @@ describe("useAgentEditorForm", () => {
     expect(result.current.showAdvancedRuntime).toBe(false);
   });
 
+  it("defaults new web agents without the desktop bridge to swarm microvm", async () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false, remoteOnly: true });
+    const onSaved = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAgentEditorForm(true, undefined, vi.fn(), onSaved),
+    );
+
+    expect(result.current.environment).toBe("swarm_microvm");
+
+    act(() => {
+      result.current.setName("atlas");
+      result.current.setRole("builder");
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(api.agents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: "swarm_microvm",
+        machine_type: "remote",
+      }),
+    );
+  });
+
   it("preserves an existing agent environment while editing on mobile", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, remoteOnly: true });
 
     const { result } = renderHook(() =>
       useAgentEditorForm(true, makeAgent({ machine_type: "local", environment: "local_host" }), vi.fn(), vi.fn()),
@@ -114,7 +140,7 @@ describe("useAgentEditorForm", () => {
   });
 
   it("keeps narrow desktop layouts on local_host when the client is not mobile", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: false });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, remoteOnly: false });
 
     const { result } = renderHook(() =>
       useAgentEditorForm(true, undefined, vi.fn(), vi.fn()),
@@ -126,7 +152,7 @@ describe("useAgentEditorForm", () => {
   });
 
   it("keeps retrying mobile project creation on remote-only guardrails even when an agent already exists", () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, remoteOnly: true });
 
     const { result } = renderHook(() =>
       useAgentEditorForm(
@@ -195,7 +221,7 @@ describe("useAgentEditorForm", () => {
   });
 
   it("keeps new agents pinned to Aura-managed billing and Aura runtimes", async () => {
-    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, isMobileClient: true });
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: true, remoteOnly: true });
 
     const { result } = renderHook(() =>
       useAgentEditorForm(true, undefined, vi.fn(), vi.fn()),

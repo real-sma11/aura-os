@@ -197,6 +197,46 @@ describe("useChatPanelState", () => {
     expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks direct, queued, and send-now paths when sending is disabled", () => {
+    mockIsStreaming = true;
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    const { result, rerender } = renderHook(() =>
+      useChatPanelState({
+        streamKey: "stream-1",
+        onSend,
+        onStop,
+        sendDisabled: true,
+      }),
+    );
+
+    act(() => result.current.handleSend("Blocked direct"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(mockEnqueue).not.toHaveBeenCalled();
+
+    act(() =>
+      result.current.handleQueueSendNow({
+        id: "q-1",
+        content: "Blocked queued",
+        action: null,
+      }),
+    );
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(onStop).not.toHaveBeenCalled();
+
+    mockDequeue.mockReturnValueOnce({
+      id: "q-2",
+      content: "Blocked dequeue",
+      action: null,
+    });
+    mockIsStreaming = false;
+    act(() => {
+      rerender();
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("keeps image mode active after an idle send", () => {
     mockChatUI.selectedModel = "gpt-image-2";
     const onSend = vi.fn();

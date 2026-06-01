@@ -55,7 +55,7 @@ describe("AgentEditorForm", () => {
 
     expect(screen.getByText("Environment")).toBeInTheDocument();
     expect(screen.getByText("Remote")).toBeInTheDocument();
-    expect(screen.getByText("Local")).toBeInTheDocument();
+    expect(screen.queryByText("Local")).not.toBeInTheDocument();
     expect(screen.queryByText("Default Model")).not.toBeInTheDocument();
     expect(screen.queryByText("Claude Code")).not.toBeInTheDocument();
   });

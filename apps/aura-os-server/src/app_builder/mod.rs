@@ -45,6 +45,15 @@ fn env_opt(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|s| !s.trim().is_empty())
 }
 
+fn env_truthy(key: &str) -> bool {
+    std::env::var(key)
+        .map(|value| {
+            let normalized = value.trim();
+            normalized == "1" || normalized.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 /// Default upstream WS-slot cap, mirroring the doc-comment on
 /// `crates/aura-os-harness/src/automaton_client.rs` lines 33-34.
 /// `aura-node` caps concurrent WS sessions per harness process at
@@ -409,6 +418,7 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         require_zero_pro: std::env::var("REQUIRE_ZERO_PRO")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false),
+        remote_only: env_truthy("AURA_REMOTE_ONLY"),
         harness_http,
         automaton_registry: Arc::new(Mutex::new(HashMap::new())),
         swarm_base_url: env_opt("SWARM_BASE_URL"),

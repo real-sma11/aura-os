@@ -12,7 +12,7 @@ use aura_os_core::{
 use crate::capture_auth::{
     demo_agent_instance, demo_agent_instance_id, demo_project_id, is_capture_access_token,
 };
-use crate::dto::{CreateAgentInstanceRequest, UpdateAgentInstanceRequest};
+use crate::dto::{CreateAgentInstanceRequest, CreateAgentRequest, UpdateAgentInstanceRequest};
 use crate::error::{map_storage_error, ApiError, ApiResult};
 use crate::handlers::projects_helpers::ensure_canonical_workspace_dir;
 use crate::state::{AppState, AuthJwt, AuthSession};
@@ -20,6 +20,7 @@ use crate::state::{AppState, AuthJwt, AuthSession};
 use super::conversions::{
     get_user_id, resolve_merge_agents_for_ids, resolve_single_agent, resolve_workspace_path,
 };
+use super::crud::create::{create_and_provision_remote_agent, prepare_create};
 
 const GENERAL_AGENT_KIND: &str = "general";
 const GENERAL_AGENT_NAME: &str = "New Agent";
@@ -125,6 +126,36 @@ fn general_agent_runtime_config() -> AgentRuntimeConfig {
     }
 }
 
+async fn create_remote_general_agent(
+    state: &AppState,
+    jwt: &str,
+    project: Option<&aura_os_core::Project>,
+) -> ApiResult<Agent> {
+    let client = state.require_network_client()?;
+    let prepared = prepare_create(CreateAgentRequest {
+        org_id: project.map(|entry| entry.org_id),
+        name: GENERAL_AGENT_NAME.to_string(),
+        role: "general".to_string(),
+        personality: String::new(),
+        system_prompt: GENERAL_AGENT_SYSTEM_PROMPT.to_string(),
+        skills: Vec::new(),
+        icon: None,
+        machine_type: Some("remote".to_string()),
+        adapter_type: Some("aura_harness".to_string()),
+        environment: Some("swarm_microvm".to_string()),
+        auth_source: Some("aura_managed".to_string()),
+        integration_id: None,
+        default_model: None,
+        tags: Some(vec![PROJECT_LOCAL_GENERAL_AGENT_TAG.to_string()]),
+        listing_status: None,
+        expertise: None,
+        local_workspace_path: None,
+        permissions: aura_os_core::AgentPermissions::empty(),
+        intent_classifier: None,
+    })?;
+    create_and_provision_remote_agent(state, client, jwt, &prepared).await
+}
+
 fn attach_workspace_path(
     state: &AppState,
     project_id: &ProjectId,
@@ -189,17 +220,23 @@ pub(crate) async fn create_agent_instance(
                 _ => ApiError::internal(format!("looking up agent template: {e}")),
             })?,
         (None, Some(GENERAL_AGENT_KIND)) => {
-            let agent = build_general_agent(&user_id, project.as_ref());
-            state.agent_service.save_agent_shadow(&agent).map_err(|e| {
-                ApiError::internal(format!("saving project-local agent shadow: {e}"))
-            })?;
-            state
-                .agent_service
-                .save_agent_runtime_config(&agent.agent_id, &general_agent_runtime_config())
-                .map_err(|e| {
-                    ApiError::internal(format!("saving project-local agent runtime config: {e}"))
+            if state.remote_only {
+                create_remote_general_agent(&state, &jwt, project.as_ref()).await?
+            } else {
+                let agent = build_general_agent(&user_id, project.as_ref());
+                state.agent_service.save_agent_shadow(&agent).map_err(|e| {
+                    ApiError::internal(format!("saving project-local agent shadow: {e}"))
                 })?;
-            agent
+                state
+                    .agent_service
+                    .save_agent_runtime_config(&agent.agent_id, &general_agent_runtime_config())
+                    .map_err(|e| {
+                        ApiError::internal(format!(
+                            "saving project-local agent runtime config: {e}"
+                        ))
+                    })?;
+                agent
+            }
         }
         (None, Some(other)) => {
             return Err(ApiError::bad_request(format!(

@@ -20,6 +20,7 @@ mod persist;
 mod persist_task;
 mod persist_task_dispatch;
 mod request;
+mod runtime_gate;
 mod setup;
 mod streaming;
 mod tools;

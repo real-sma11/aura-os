@@ -16,6 +16,7 @@ use crate::state::{AppState, AuthJwt};
 use super::busy::{reject_if_partition_busy, BusyScope};
 use super::cross_agent_reply::read_cross_agent_depth;
 use super::persist::{build_chat_partition, ChatPersistRequest};
+use super::runtime_gate::ensure_chat_runtime_allowed;
 use super::setup::has_live_session;
 use super::streaming::{open_harness_chat_stream, OpenChatStreamArgs};
 use super::tools::{build_session_installed_tools, InstalledToolsCtx};
@@ -61,6 +62,7 @@ pub(crate) async fn send_agent_event_stream(
     }
 
     let agent = resolve_agent_for_chat(&state, &agent_id, &jwt).await?;
+    ensure_chat_runtime_allowed(&state, agent.harness_mode())?;
     require_credits_for_auth_source(&state, &jwt, &agent.auth_source).await?;
     info!(%agent_id, action = ?body.action, "Agent message stream requested");
 

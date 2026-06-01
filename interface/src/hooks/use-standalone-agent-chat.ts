@@ -24,6 +24,7 @@ import type { AnnotatedSession } from "../components/SessionsList";
 import { useContextUsage, useContextUsageStore } from "../stores/context-usage-store";
 import { useMessageQueueStore } from "../stores/message-queue-store";
 import { useHydrateContextUtilization } from "./use-hydrate-context-utilization";
+import { useAuraCapabilities } from "./use-aura-capabilities";
 import type { ChatPanelProps } from "../apps/chat/components/ChatPanel";
 import type { AgentInstance, Project } from "../shared/types";
 
@@ -108,6 +109,7 @@ export function useStandaloneAgentChat(
   pinnedSessionId: string | null = null,
   opts: { freshCanvasPending?: boolean } = {},
 ): ChatPanelProps {
+  const { remoteOnly } = useAuraCapabilities();
   const agentProjects = useProjectsListStore(useShallow(selectProjectsForAgent(agentId)));
   const [, setSearchParams] = useSearchParams();
 
@@ -297,6 +299,10 @@ export function useStandaloneAgentChat(
 
   const { agentName, machineType, templateAgentId, adapterType, defaultModel } =
     useStandaloneAgentMeta(agentId);
+  const sendDisabled = remoteOnly && machineType === "local";
+  const sendDisabledReason = sendDisabled
+    ? "This is a local agent and can only be used in the desktop app."
+    : undefined;
 
   const contextUsage = useContextUsage(streamKey);
   const [freshChatNonce, setFreshChatNonce] = useState(0);
@@ -548,6 +554,8 @@ export function useStandaloneAgentChat(
     onStop: stopStreaming,
     agentName,
     machineType,
+    sendDisabled,
+    sendDisabledReason,
     adapterType,
     defaultModel,
     templateAgentId,

@@ -72,10 +72,26 @@ describe("useAuraCapabilities", () => {
     expect(result.current.isPhoneLayout).toBe(false);
     expect(result.current.isTabletLayout).toBe(false);
     expect(result.current.hasDesktopBridge).toBe(false);
+    expect(result.current.remoteOnly).toBe(true);
     expect(result.current.isNativeApp).toBe(false);
     expect(result.current.features.hostRetargeting).toBe(true);
     expect(document.documentElement.dataset.mobileClient).toBe("false");
     expect(document.documentElement.dataset.mobileLayout).toBe("false");
+  });
+
+  it("keeps desktop bridge clients out of remote-only mode", () => {
+    const { matchMedia } = createMockMatchMedia();
+    window.matchMedia = matchMedia as unknown as typeof window.matchMedia;
+    (window as Window & { ipc?: { postMessage: () => void } }).ipc = {
+      postMessage: vi.fn(),
+    };
+
+    const { result } = renderHook(() => useAuraCapabilities());
+
+    expect(result.current.hasDesktopBridge).toBe(true);
+    expect(result.current.remoteOnly).toBe(false);
+
+    delete (window as Window & { ipc?: { postMessage: () => void } }).ipc;
   });
 
   it("detects phone layout", () => {

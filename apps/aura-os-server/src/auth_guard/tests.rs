@@ -368,6 +368,7 @@ fn mock_app_state_with_cache(cache: crate::state::ValidationCache) -> AppState {
         event_hub,
         loop_registry,
         require_zero_pro: false,
+        remote_only: false,
         chat_sessions: Arc::new(dashmap::DashMap::new()),
         credit_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         harness_http: Arc::new(crate::HarnessHttpGateway::new("http://localhost:9999")),

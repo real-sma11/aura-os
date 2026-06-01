@@ -174,6 +174,7 @@ export function AgentEditorForm({
         <CompactEnvironmentPicker
           environment={environment}
           setEnvironment={setEnvironment}
+          allowLocal={false}
         />
       ) : !showAdvancedRuntime ? (
         <>
@@ -204,6 +205,7 @@ export function AgentEditorForm({
           <RunsOnFields
             environment={environment}
             setEnvironment={setEnvironment}
+            allowLocal={!restrictCreateToAuraRuntimes}
           />
 
           <ListingStatusField
@@ -313,9 +315,11 @@ function ListingStatusField({
 function RunsOnFields({
   environment,
   setEnvironment,
+  allowLocal = true,
 }: {
   environment: string;
   setEnvironment: (v: string) => void;
+  allowLocal?: boolean;
 }) {
   return (
     <div className={styles.fieldGroup}>
@@ -332,17 +336,19 @@ function RunsOnFields({
         </span>
       </label>
       <div className={styles.choiceGrid}>
-        <button
-          type="button"
-          className={`${styles.choiceCard} ${environment === "local_host" ? styles.choiceCardActive : ""}`}
-          onClick={() => setEnvironment("local_host")}
-        >
-          <span className={styles.choiceTitle}>
-            <Monitor size={14} />
-            This Machine
-            <ChoiceInfo hint="Run on the local host where Aura OS and your local tools are available." />
-          </span>
-        </button>
+        {allowLocal ? (
+          <button
+            type="button"
+            className={`${styles.choiceCard} ${environment === "local_host" ? styles.choiceCardActive : ""}`}
+            onClick={() => setEnvironment("local_host")}
+          >
+            <span className={styles.choiceTitle}>
+              <Monitor size={14} />
+              This Machine
+              <ChoiceInfo hint="Run on the local host where Aura OS and your local tools are available." />
+            </span>
+          </button>
+        ) : null}
         <button
           type="button"
           className={`${styles.choiceCard} ${environment === "swarm_microvm" ? styles.choiceCardActive : ""}`}

@@ -69,6 +69,7 @@ export interface UseChatPanelStateOptions {
    */
   llmProjectId?: string;
   agentId?: string;
+  sendDisabled?: boolean;
 }
 
 export function useChatPanelState({
@@ -84,6 +85,7 @@ export function useChatPanelState({
   selectedProjectId,
   llmProjectId,
   agentId,
+  sendDisabled = false,
 }: UseChatPanelStateOptions) {
   const wireProjectId = llmProjectId ?? selectedProjectId;
   const [input, setInput] = useChatDraft(streamKey);
@@ -251,6 +253,11 @@ export function useChatPanelState({
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
+  const sendDisabledRef = useRef(sendDisabled);
+  useEffect(() => {
+    sendDisabledRef.current = sendDisabled;
+  }, [sendDisabled]);
+
   const scrollToBottomRef = useRef(scrollToBottom);
   useEffect(() => {
     scrollToBottomRef.current = scrollToBottom;
@@ -267,6 +274,9 @@ export function useChatPanelState({
       // send only — the store remains the persistent source of truth.
       genMode?: GenerationMode,
     ) => {
+      if (sendDisabledRef.current) {
+        return;
+      }
       setInput("");
       const apiAttachments = buildApiAttachments(atts) ?? [];
       const userCommandIds = commandsRef.current.map((c) => c.id);
@@ -362,6 +372,10 @@ export function useChatPanelState({
     if (prevStreamingRef.current && !isStreaming) {
       const next = useMessageQueueStore.getState().dequeue(streamKey);
       if (next) {
+        if (sendDisabledRef.current) {
+          prevStreamingRef.current = isStreaming;
+          return;
+        }
         onSendRef.current(
           next.content,
           next.action,
@@ -407,6 +421,9 @@ export function useChatPanelState({
   // competing replay.
   const handleQueueSendNow = useCallback(
     (item: QueuedMessage) => {
+      if (sendDisabledRef.current) {
+        return;
+      }
       useMessageQueueStore.getState().remove(streamKey, item.id);
       const stop = onStopRef.current;
       if (stop) stop();
