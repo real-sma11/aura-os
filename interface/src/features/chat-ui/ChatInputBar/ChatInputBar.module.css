@@ -187,6 +187,32 @@
   margin-left: 0;
 }
 
+/* AURA Council fan-out: the bottom row holds one model picker per
+   member, wrapping to additional lines when the strip runs out of
+   width so up to four slots stay usable on a narrow chat surface. */
+.councilSlotsRow {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.councilSlot {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.councilSlot .inlineModelPicker {
+  margin-left: 0;
+}
+
+/* Subtle "synthesizes" affordance on slot 0 (the council synthesizer). */
+.councilSlotBadge {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .threeDHintFlash {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   animation: threeDHintShake 280ms ease;

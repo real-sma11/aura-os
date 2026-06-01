@@ -55,6 +55,7 @@ import {
   ModelMenuRow,
   ModelMenuGroup,
   ModelMenuScroll,
+  CouncilCountRow,
   ModeSelector,
   type InputBarShellHandle,
 } from "../../../components/InputBarShell";
@@ -289,6 +290,10 @@ export const DesktopChatInputBar = memo(
     const selectedEffort = chatUI.selectedEffort;
     const selectedMode = chatUI.selectedMode;
     const imageQuality = chatUI.imageQuality;
+    const councilCount = chatUI.councilCount;
+    const councilModels = chatUI.councilModels;
+    const setCouncilCount = chatUI.setCouncilCount;
+    const setCouncilModel = chatUI.setCouncilModel;
     const onModelChange = useCallback(
       (model: string, effort?: ModelEffort) => {
         chatUI.setSelectedModel(streamKey, model, adapterType, agentId, effort);
@@ -368,6 +373,10 @@ export const DesktopChatInputBar = memo(
     const [openPicker, setOpenPicker] = useState<"model" | "quality" | null>(
       null,
     );
+    // Which AURA Council slot picker (if any) is open, so only one slot
+    // menu is mounted at a time when the council fans out into multiple
+    // bottom-row pickers (Task B). `null` = none open.
+    const [openCouncilSlot, setOpenCouncilSlot] = useState<number | null>(null);
     // Driven by `<InputBarShell onMultiLineChange>` — flips to true the
     // moment the textarea wraps to a second visual row. Used to relocate
     // the model picker from the inline `inputRowEnd` slot (next to the
@@ -685,8 +694,29 @@ export const DesktopChatInputBar = memo(
       onSend(input, undefined, undefined);
     }, [input, onSend, selectedModel, selectedMode, sendDisabled]);
 
-    const renderModelMenuItems = useCallback(
-      (close: () => void) => {
+    // Parametrized model-menu renderer shared by the single model
+    // picker and (Task B) the per-slot council pickers. `activeModelId`
+    // / `activeEffort` drive the row highlight, `onSelect` writes the
+    // pick, and `includeCouncilRow` prepends the AURA Council count row
+    // at the very top of the menu (single picker only — slot menus are
+    // single-select and must not recurse the count row into themselves).
+    const renderModelMenuList = useCallback(
+      (
+        close: () => void,
+        cfg: {
+          activeModelId: string | null;
+          activeEffort: ModelEffort | null;
+          onSelect: (modelId: string, effort?: ModelEffort) => void;
+          includeCouncilRow: boolean;
+        },
+      ) => {
+        const councilRow = cfg.includeCouncilRow ? (
+          <CouncilCountRow
+            key="__council_count__"
+            count={councilCount}
+            onSelect={(n) => setCouncilCount(streamKey, n)}
+          />
+        ) : null;
         if (shouldUseCondensedAuraMenu) {
           return (
             <ModelMenuScroll
@@ -694,6 +724,7 @@ export const DesktopChatInputBar = memo(
               data-agent-surface="model-picker"
               data-agent-proof="chat-model-picker-visible"
             >
+              {councilRow}
               {vendorGroups.map((group) => (
                 <ModelMenuGroup
                   key={group.vendor}
@@ -705,10 +736,10 @@ export const DesktopChatInputBar = memo(
                     <ModelMenuRow
                       key={m.id}
                       model={m}
-                      isActive={m.id === selectedModel}
-                      activeEffort={selectedEffort}
+                      isActive={m.id === cfg.activeModelId}
+                      activeEffort={cfg.activeEffort}
                       onSelect={(id, effort) => {
-                        onModelChange(id, effort);
+                        cfg.onSelect(id, effort);
                         close();
                       }}
                     />
@@ -723,18 +754,19 @@ export const DesktopChatInputBar = memo(
             data-agent-surface="model-picker"
             data-agent-proof="chat-model-picker-visible"
           >
+            {councilRow}
             {sortedModelsForMode.map((m) => {
               const isComingSoon = m.id.startsWith("dreamina-seedance");
               return (
                 <ModelMenuRow
                   key={m.id}
                   model={m}
-                  isActive={m.id === selectedModel}
-                  activeEffort={selectedEffort}
+                  isActive={m.id === cfg.activeModelId}
+                  activeEffort={cfg.activeEffort}
                   disabled={isComingSoon}
                   labelSuffix={isComingSoon ? " (coming soon)" : undefined}
                   onSelect={(id, effort) => {
-                    onModelChange(id, effort);
+                    cfg.onSelect(id, effort);
                     close();
                   }}
                 />
@@ -748,11 +780,22 @@ export const DesktopChatInputBar = memo(
         vendorGroups,
         collapsedVendors,
         toggleVendor,
-        selectedModel,
-        selectedEffort,
-        onModelChange,
         sortedModelsForMode,
+        councilCount,
+        setCouncilCount,
+        streamKey,
       ],
+    );
+
+    const renderModelMenuItems = useCallback(
+      (close: () => void) =>
+        renderModelMenuList(close, {
+          activeModelId: selectedModel,
+          activeEffort: selectedEffort,
+          onSelect: (id, effort) => onModelChange(id, effort),
+          includeCouncilRow: true,
+        }),
+      [renderModelMenuList, selectedModel, selectedEffort, onModelChange],
     );
 
     const isModelPickerInteractive = modelsForMode.length > 1;
@@ -971,8 +1014,56 @@ export const DesktopChatInputBar = memo(
       />
     ) : null;
     const hasPicker = hasModelPicker || showQualityPicker;
-    const showPickerInline = hasPicker && !isMultiLine;
-    const showPickerInBottomRow = hasPicker && isMultiLine;
+    // When the council fans out (>1 member) we always drop the pickers
+    // into the bottom row so the N model slots get a full-width strip to
+    // sit in, regardless of textarea height.
+    const councilActive = councilCount > 1;
+    const showPickerInline = hasPicker && !isMultiLine && !councilActive;
+    const showPickerInBottomRow = hasPicker && (isMultiLine || councilActive);
+    // One ModelPicker per council member, each bound to its own slot.
+    // Slot 0 is the synthesizer and carries a subtle affordance; every
+    // slot reuses `renderModelMenuList` minus the council count row.
+    const councilSlotNodes =
+      councilActive && hasModelPicker
+        ? Array.from({ length: councilCount }, (_, slot) => {
+            const member = councilModels[slot];
+            const slotModelId = member?.id ?? selectedModel ?? "";
+            const slotEffort = member?.effort ?? null;
+            return (
+              <div key={slot} className={styles.councilSlot}>
+                {slot === 0 ? (
+                  <span className={styles.councilSlotBadge}>1st · synthesizes</span>
+                ) : null}
+                <ModelPicker
+                  selectedLabel={modelLabelWithEffort(
+                    slotModelId,
+                    slotEffort,
+                    adapterType,
+                    defaultModel,
+                  )}
+                  isInteractive={isModelPickerInteractive}
+                  renderMenu={(close) =>
+                    renderModelMenuList(close, {
+                      activeModelId: slotModelId,
+                      activeEffort: slotEffort,
+                      onSelect: (id, effort) =>
+                        setCouncilModel(streamKey, slot, id, effort),
+                      includeCouncilRow: false,
+                    })
+                  }
+                  onOpen={handleModelPickerOpen}
+                  open={openCouncilSlot === slot}
+                  onOpenChange={(o) => setOpenCouncilSlot(o ? slot : null)}
+                  triggerProps={{
+                    "data-agent-action": "open-council-slot",
+                    "data-council-slot": slot,
+                  }}
+                  className={styles.inlineModelPicker}
+                />
+              </div>
+            );
+          })
+        : null;
     const hasInputRowEnd = selectedCommands.length > 0 || showPickerInline;
     const inputRowEnd = hasInputRowEnd ? (
       <>
@@ -988,8 +1079,15 @@ export const DesktopChatInputBar = memo(
       </>
     ) : null;
     const containerBottom = showPickerInBottomRow ? (
-      <div className={styles.bottomChromeRow}>
-        {modelPickerNode}
+      <div
+        className={
+          councilActive
+            ? `${styles.bottomChromeRow} ${styles.councilSlotsRow}`
+            : styles.bottomChromeRow
+        }
+        data-agent-surface={councilActive ? "council-slots" : undefined}
+      >
+        {councilActive ? councilSlotNodes : modelPickerNode}
         {qualityPickerNode}
       </div>
     ) : null;
