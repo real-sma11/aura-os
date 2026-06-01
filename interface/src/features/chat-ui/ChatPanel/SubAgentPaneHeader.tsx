@@ -48,7 +48,7 @@ export function SubAgentPaneHeader({
           onClick={onBack}
           aria-label="Back to parent thread"
         >
-          <ChevronLeft size={18} />
+          <ChevronLeft size={16} />
         </button>
         <div className={styles.breadcrumb}>
           {agentName ? (
@@ -62,7 +62,7 @@ export function SubAgentPaneHeader({
           ) : (
             <span className={styles.parentLink}>Agent</span>
           )}
-          <ChevronRight size={14} className={styles.sep} aria-hidden />
+          <ChevronRight size={13} className={styles.sep} aria-hidden />
           <span className={styles.current}>{label}</span>
         </div>
         <Badge variant={subagentBadgeVariant(state)} pulse={state === "running"}>

@@ -1,8 +1,10 @@
 .bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px;
+  justify-content: center;
+  /* Match the sidekick top-nav height: the taskbar row is
+     `--control-height-sm` (32px) with no vertical padding. */
+  padding: 0 var(--space-3, 12px);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg);
 }
@@ -10,28 +12,28 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
+  gap: var(--space-2, 8px);
+  min-height: var(--control-height-sm, 32px);
 }
 
 .back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-overlay-subtle);
-  color: var(--color-text);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .back:hover {
-  background: var(--color-overlay);
-  border-color: var(--color-text-muted);
+  background: var(--color-overlay-subtle);
+  color: var(--color-text);
 }
 
 .breadcrumb {
@@ -47,7 +49,7 @@
   background: transparent;
   padding: 0;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
   white-space: nowrap;
@@ -67,7 +69,7 @@
 }
 
 .current {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
@@ -77,8 +79,8 @@
 
 .reason {
   margin: 0;
-  padding-left: 42px;
-  font-size: 12px;
+  padding: 0 0 var(--space-2, 8px) 32px;
+  font-size: var(--text-xs, 12px);
   line-height: 1.4;
   color: var(--color-text-muted);
 }
