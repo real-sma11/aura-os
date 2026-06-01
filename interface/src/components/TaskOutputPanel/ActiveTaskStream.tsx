@@ -1,6 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { Item } from "@cypher-asi/zui";
-import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import {
@@ -185,9 +184,6 @@ export function ActiveTaskStream({
           <Item.Label>{title || taskId}</Item.Label>
           <TaskHeaderContextUsage taskId={taskId} projectId={ctx?.project.project_id} />
           <CopyTaskOutputButton getCopyText={getCopyText} />
-          <span className={styles.taskSuffix}>
-            <TaskStatusIcon status="active" />
-          </span>
         </Item>
       )}
       {!collapsed && (hasContent || showCooldownLine) && (

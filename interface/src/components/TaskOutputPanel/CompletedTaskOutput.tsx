@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { X as XIcon } from "lucide-react";
 import { Item } from "@cypher-asi/zui";
-import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 import {
@@ -334,9 +333,6 @@ export function CompletedTaskOutput({
               <XIcon size={10} />
             </span>
           )}
-          <span className={styles.taskSuffix}>
-            <TaskStatusIcon status={status} />
-          </span>
         </Item>
       )}
       {!collapsed && (
