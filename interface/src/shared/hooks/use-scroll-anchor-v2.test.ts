@@ -206,6 +206,48 @@ describe("useScrollAnchorV2", () => {
     expect(result.current.getUserUnpinnedAt()).toBe(0);
   });
 
+  it("unpins on a scrollbar-drag upward (scroll event only, no wheel/touch/key)", () => {
+    // Regression: dragging the scrollbar up emits only a `scroll` event. While
+    // still inside the exit band, follow stayed engaged and the streaming
+    // tail-pin snapped the viewport back to the bottom every token — the chat
+    // "fought" the drag. An upward scrollTop delta must now count as intent.
+    // scrollHeight=2000, clientHeight=400, scrollTop=1600 → at bottom.
+    const container = makeContainer({ scrollTop: 1600, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1", scrollToBottomOnReset: false }),
+    );
+
+    expect(result.current.isAutoFollowing).toBe(true);
+
+    // User drags the scrollbar up ~50px, well inside the exit band.
+    act(() => {
+      (container as unknown as { scrollTop: number }).scrollTop = 1550;
+      result.current.handleScroll();
+    });
+
+    expect(result.current.isAutoFollowing).toBe(false);
+    expect(result.current.getUserUnpinnedAt()).toBeGreaterThan(0);
+  });
+
+  it("does NOT unpin on a downward scroll toward the bottom", () => {
+    const container = makeContainer({ scrollTop: 1550, scrollHeight: 2000, clientHeight: 400 });
+    const ref = { current: container };
+
+    const { result } = renderHook(() =>
+      useScrollAnchorV2(ref, { resetKey: "thread-1", scrollToBottomOnReset: false }),
+    );
+
+    act(() => {
+      (container as unknown as { scrollTop: number }).scrollTop = 1580;
+      result.current.handleScroll();
+    });
+
+    expect(result.current.isAutoFollowing).toBe(true);
+    expect(result.current.getUserUnpinnedAt()).toBe(0);
+  });
+
   it("clears userUnpinnedAt when scrollToBottom is called", () => {
     const container = makeContainer({ scrollTop: 1000, scrollHeight: 1000, clientHeight: 400 });
     const ref = { current: container };

@@ -11,6 +11,12 @@ const UPWARD_SCROLL_KEYS = new Set([
   "Home",
 ]);
 
+// Minimum upward `scrollTop` delta (px) within a single scroll event that we
+// treat as deliberate user intent. Small enough to catch a gentle scrollbar
+// nudge, large enough to ignore sub-pixel jitter from layout/scrollHeight
+// changes on high-DPI displays.
+const UPWARD_INTENT_EPSILON_PX = 2;
+
 export interface UseScrollAnchorV2Return {
   handleScroll: () => void;
   scrollToBottom: () => void;
@@ -50,6 +56,7 @@ export function useScrollAnchorV2(
   const guardRef = useRef(false);
   const userUnpinnedAtRef = useRef(0);
   const lastTouchYRef = useRef<number | null>(null);
+  const lastScrollTopRef = useRef(0);
   const [isAutoFollowing, setIsAutoFollowing] = useState(true);
 
   const syncFollowState = useCallback(() => {
@@ -61,9 +68,16 @@ export function useScrollAnchorV2(
     const el = ref.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distFromBottom <= 1) return;
+    if (distFromBottom <= 1) {
+      // Already pinned; still refresh the baseline so the next genuine scroll
+      // event measures its upward delta against the true bottom rather than a
+      // stale value (e.g. the initial 0).
+      lastScrollTopRef.current = el.scrollTop;
+      return;
+    }
     guardRef.current = true;
     el.scrollTop = el.scrollHeight;
+    lastScrollTopRef.current = el.scrollTop;
     requestAnimationFrame(() => {
       guardRef.current = false;
     });
@@ -72,11 +86,12 @@ export function useScrollAnchorV2(
   useLayoutEffect(() => {
     pinnedRef.current = true;
     userUnpinnedAtRef.current = 0;
+    lastScrollTopRef.current = ref.current?.scrollTop ?? 0;
     syncFollowState();
     if (scrollToBottomOnReset) {
       guardedScrollToBottom();
     }
-  }, [resetKey, guardedScrollToBottom, scrollToBottomOnReset, syncFollowState]);
+  }, [ref, resetKey, guardedScrollToBottom, scrollToBottomOnReset, syncFollowState]);
 
   const markUserUnpinned = useCallback(() => {
     userUnpinnedAtRef.current =
@@ -88,9 +103,28 @@ export function useScrollAnchorV2(
   }, [syncFollowState]);
 
   const handleScroll = useCallback(() => {
-    if (guardRef.current) return;
     const el = ref.current;
     if (!el) return;
+
+    if (guardRef.current) {
+      // Our own scrollToBottom write. Keep the baseline current so the next
+      // genuine scroll event measures its delta against the right position.
+      lastScrollTopRef.current = el.scrollTop;
+      return;
+    }
+
+    // Any upward movement of scrollTop is deliberate user intent (scrollbar
+    // drag, track click, middle-click autoscroll, etc.). The unguarded pin
+    // writes — ChatMessageList's tail-pin layout effect and useImageScrollPin
+    // — only ever push scrollTop *down* toward the bottom, so a real decrease
+    // here can only come from the user. Funnel it into the same unpin path as
+    // wheel/touch/keyboard so streaming flushes stop fighting the drag.
+    const upwardDelta = lastScrollTopRef.current - el.scrollTop;
+    lastScrollTopRef.current = el.scrollTop;
+    if (upwardDelta > UPWARD_INTENT_EPSILON_PX && userUnpinnedAtRef.current === 0) {
+      markUserUnpinned();
+      return;
+    }
 
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 
@@ -119,7 +153,7 @@ export function useScrollAnchorV2(
       pinnedRef.current = nextPinned;
       syncFollowState();
     }
-  }, [ref, syncFollowState]);
+  }, [ref, syncFollowState, markUserUnpinned]);
 
   const scrollToBottom = useCallback(() => {
     pinnedRef.current = true;
