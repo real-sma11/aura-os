@@ -16,6 +16,10 @@ pub(super) fn stream_routes() -> Router<AppState> {
             "/api/streams/subagents/:child_run_id/attach",
             post(agents::attach_subagent_stream),
         )
+        .route(
+            "/api/streams/subagents/:child_run_id/send",
+            post(agents::send_subagent_message),
+        )
         .route("/api/streams/:attach_id", get(streams::attach_stream))
         .route(
             "/api/streams/:attach_id/cancel",

@@ -223,6 +223,30 @@
   pointer-events: none;
 }
 
+/* iOS-style push-in for the subagent sub-pane. The message shell is
+   keyed on the active stream so entering a subagent remounts it and
+   plays this slide; the shared input bar (a sibling) is untouched. */
+.subagentSlideIn {
+  animation: subagentSlideIn 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes subagentSlideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subagentSlideIn {
+    animation: none;
+  }
+}
+
 .emptyState {
   display: flex;
   flex-direction: column;

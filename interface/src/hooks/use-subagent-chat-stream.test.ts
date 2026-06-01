@@ -3,10 +3,11 @@ import { EventType, type AuraEvent } from "../shared/types/aura-events";
 import type { StreamEventHandler } from "../api/streams";
 
 const mockAttach = vi.hoisted(() => vi.fn());
+const mockSend = vi.hoisted(() => vi.fn());
 const mockAttachToStream = vi.hoisted(() => vi.fn());
 
 vi.mock("../shared/api/subagents", () => ({
-  subagentsApi: { attach: mockAttach },
+  subagentsApi: { attach: mockAttach, send: mockSend },
 }));
 
 vi.mock(import("../api/streams"), async (importOriginal) => {
@@ -131,5 +132,51 @@ describe("useSubagentChatStream", () => {
     );
     expect(result.current.status).toBe("idle");
     expect(mockAttach).not.toHaveBeenCalled();
+  });
+
+  it("prompts a live subagent and echoes the user message into the partition", async () => {
+    const childRunId = "child-prompt";
+    const key = subagentStreamKey(childRunId);
+    mockAttach.mockResolvedValue({ attach_id: "att-1", child_run_id: childRunId });
+    mockAttachToStream.mockImplementation(
+      (_id: string, _since: number, handler: StreamEventHandler) => {
+        streamTurn(handler, "Working", "tool_use");
+      },
+    );
+    mockSend.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true),
+    );
+    await act(async () => {});
+
+    const before = getStreamEntry(key)?.events.length ?? 0;
+    act(() => {
+      result.current.onSend("follow up question");
+    });
+
+    expect(mockSend).toHaveBeenCalledWith(childRunId, "follow up question", undefined);
+    const after = getStreamEntry(key)?.events ?? [];
+    expect(after.length).toBe(before + 1);
+    expect(after[after.length - 1]).toMatchObject({
+      role: "user",
+      content: "follow up question",
+    });
+  });
+
+  it("ignores blank prompts", async () => {
+    const childRunId = "child-blank";
+    mockAttach.mockResolvedValue({ attach_id: "att-1", child_run_id: childRunId });
+    mockAttachToStream.mockImplementation(() => {});
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true),
+    );
+    await act(async () => {});
+
+    act(() => {
+      result.current.onSend("   ");
+    });
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });

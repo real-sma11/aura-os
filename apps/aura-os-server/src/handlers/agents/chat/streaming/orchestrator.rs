@@ -207,6 +207,7 @@ pub(in super::super) async fn open_harness_chat_stream(
         agent_instance_id: session_key.split("::").nth(1).map(str::to_string),
         session_id: Some(ctx.session_id.to_string()),
         parent_tool_use_id: None,
+        child_run_id: None,
     };
     let _live = state.live_streams.register_receiver(
         StreamKind::ChatTurn,

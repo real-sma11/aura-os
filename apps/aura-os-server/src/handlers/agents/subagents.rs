@@ -104,6 +104,10 @@ pub(crate) async fn attach_subagent_stream(
         agent_instance_id: None,
         session_id: None,
         parent_tool_use_id: query.parent_tool_use_id,
+        // Stamp the child run id so the prompt-into-subagent endpoint can
+        // locate this registered live stream (and its retained session)
+        // to deliver a follow-up turn.
+        child_run_id: Some(child_run_id.clone()),
     };
     let live = state
         .live_streams
@@ -113,6 +117,64 @@ pub(crate) async fn attach_subagent_stream(
         attach_id: live.attach_id.clone(),
         child_run_id,
     }))
+}
+
+/// Request body for the prompt-into-subagent endpoint.
+#[derive(Debug, Deserialize)]
+pub(crate) struct SubagentSendRequest {
+    /// Follow-up user message to deliver into the running child thread.
+    pub content: String,
+    /// Optional attachments, forwarded verbatim onto the harness turn.
+    #[serde(default)]
+    pub attachments: Option<Vec<aura_os_harness::MessageAttachment>>,
+}
+
+/// Response from the prompt-into-subagent endpoint.
+#[derive(Debug, Serialize)]
+pub(crate) struct SubagentSendResponse {
+    pub child_run_id: String,
+}
+
+/// `POST /api/streams/subagents/:child_run_id/send`.
+///
+/// Delivers a follow-up user turn into a still-running subagent child
+/// thread, making the live subagent surface promptable rather than
+/// read-only. Resolves the registered [`StreamKind::SubagentTurn`] live
+/// stream (which retains the child run's [`aura_os_harness::HarnessSession`])
+/// and forwards the message over its inbound command channel; the
+/// resulting frames flow back over the same `attach_id` the client is
+/// already tailing. Fails with a clear error if the child run has
+/// already terminated (its session was reaped) — the caller must attach
+/// first so a live stream is registered.
+pub(crate) async fn send_subagent_message(
+    State(state): State<AppState>,
+    AuthSession(_session): AuthSession,
+    Path(child_run_id): Path<String>,
+    Json(body): Json<SubagentSendRequest>,
+) -> ApiResult<Json<SubagentSendResponse>> {
+    info!(%child_run_id, "Subagent follow-up prompt requested");
+
+    let content = body.content.trim();
+    if content.is_empty() {
+        return Err(ApiError::bad_request("subagent message content is empty"));
+    }
+
+    let stream = state
+        .live_streams
+        .get_subagent(&child_run_id)
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                "subagent thread is not live — re-open it before sending a message",
+            )
+        })?;
+
+    stream
+        .send_user_message(body.content.clone(), body.attachments)
+        .map_err(|e| {
+            ApiError::bad_request(format!("could not prompt subagent {child_run_id}: {e}"))
+        })?;
+
+    Ok(Json(SubagentSendResponse { child_run_id }))
 }
 
 /// `GET /api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/subagents`.

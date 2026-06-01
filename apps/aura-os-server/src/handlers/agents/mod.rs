@@ -39,7 +39,9 @@ pub(crate) use sessions::{
     delete_session, get_session, list_my_sessions, list_project_sessions, list_session_events,
     list_session_tasks, list_sessions, summarize_session,
 };
-pub(crate) use subagents::{attach_subagent_stream, list_session_subagents};
+pub(crate) use subagents::{
+    attach_subagent_stream, list_session_subagents, send_subagent_message,
+};
 
 pub mod conversions_pub {
     pub(crate) use super::conversions::agent_from_network;

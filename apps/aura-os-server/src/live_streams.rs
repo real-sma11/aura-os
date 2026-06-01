@@ -28,7 +28,10 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use aura_os_harness::{HarnessCommandSender, HarnessInbound, HarnessOutbound, HarnessSession};
+use aura_os_harness::{
+    HarnessCommandSender, HarnessInbound, HarnessOutbound, HarnessSession, MessageAttachment,
+    SessionBridge, SessionBridgeTurn,
+};
 
 use crate::event_log::EventLog;
 
@@ -79,6 +82,13 @@ pub struct StreamScope {
     /// it. `None` for all non-subagent streams.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_tool_use_id: Option<String>,
+    /// Child harness run id for a [`StreamKind::SubagentTurn`] stream.
+    /// Lets the prompt-into-subagent endpoint find the registered live
+    /// stream (and its retained [`HarnessSession`]) without the client
+    /// having to round-trip the opaque `attach_id`. `None` for all
+    /// non-subagent streams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_run_id: Option<String>,
 }
 
 /// A single registered, resumable harness stream.
@@ -152,6 +162,33 @@ impl LiveStream {
                 );
             }
         }
+    }
+
+    /// Send a follow-up user message into the underlying run. Only
+    /// possible while this stream still owns a live [`HarnessSession`]
+    /// (i.e. it was registered via [`LiveStreamRegistry::register`] and
+    /// has not yet terminated). Used to prompt a still-running subagent
+    /// thread so it is no longer a read-only surface. Returns an error
+    /// string when the run has already terminated (session reaped) or
+    /// the inbound command channel is full / closed.
+    pub fn send_user_message(
+        &self,
+        content: String,
+        attachments: Option<Vec<MessageAttachment>>,
+    ) -> Result<(), String> {
+        let guard = self.session.lock().expect("live stream session poisoned");
+        let session = guard
+            .as_ref()
+            .ok_or_else(|| "run is no longer active".to_string())?;
+        SessionBridge::send_user_message(
+            &session.commands_tx,
+            SessionBridgeTurn {
+                content,
+                tool_hints: None,
+                attachments,
+            },
+        )
+        .map_err(|err| err.to_string())
     }
 
     /// Build the listing summary for `GET /api/streams/active`.
@@ -282,6 +319,30 @@ impl LiveStreamRegistry {
     /// Look up a stream by attach id.
     pub fn get(&self, attach_id: &str) -> Option<Arc<LiveStream>> {
         self.inner.get(attach_id).map(|e| e.value().clone())
+    }
+
+    /// Find the most recently-registered, still-live subagent stream for
+    /// a child run id. Used by the prompt-into-subagent endpoint to send
+    /// a follow-up turn into a running child thread. Prefers a
+    /// non-terminated stream (one that still owns its harness session)
+    /// so a stale terminated entry lingering in the TTL window does not
+    /// shadow a fresh re-attach.
+    pub fn get_subagent(&self, child_run_id: &str) -> Option<Arc<LiveStream>> {
+        let mut fallback: Option<Arc<LiveStream>> = None;
+        for entry in self.inner.iter() {
+            let stream = entry.value();
+            if stream.kind != StreamKind::SubagentTurn {
+                continue;
+            }
+            if stream.scope.child_run_id.as_deref() != Some(child_run_id) {
+                continue;
+            }
+            if !stream.is_terminated() {
+                return Some(stream.clone());
+            }
+            fallback = Some(stream.clone());
+        }
+        fallback
     }
 
     /// All streams visible to `user_id`, optionally narrowed to a

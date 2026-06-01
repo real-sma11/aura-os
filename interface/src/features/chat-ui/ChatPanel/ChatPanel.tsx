@@ -15,9 +15,17 @@ import { MessageQueue } from "../MessageQueue";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
 import { PromptSuggestions } from "../PromptSuggestions/PromptSuggestions";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
+import { SubAgentPaneHeader } from "./SubAgentPaneHeader";
+import { ChatPanelStreamContext } from "./chat-panel-context";
 import { useChatPanelState } from "./useChatPanelState";
 import { findLatestGeneratedImage } from "./latest-generated-image";
 import { useChatUIStore } from "../../../stores/chat-ui-store";
+import {
+  useSubAgentPane,
+  useSubAgentPaneActions,
+} from "../../../stores/subagent-pane-store";
+import { useSubagentChatStream } from "../../../hooks/use-subagent-chat-stream";
+import { useStreamEvents, useIsStreaming } from "../../../hooks/stream/hooks";
 import { useMessageQueueStore } from "../../../stores/message-queue-store";
 import { useOnboardingStore, selectHasSentFirstMessage } from "../../../features/onboarding/onboarding-store";
 import {
@@ -42,6 +50,9 @@ import styles from "./ChatPanel.module.css";
 
 type ChatPanelHandoffMode = "create-agent";
 const LOADING_OVERLAY_FADE_MS = 120;
+const SUBAGENT_EMPTY_MESSAGE = "This subagent has not produced any output yet.";
+const SUBAGENT_UNAVAILABLE_MESSAGE =
+  "This subagent thread is no longer available. Its live transcript was cleaned up after the run finished.";
 // How long after the cold-load reveal we keep image-load pinning active.
 // Covers the typical browser image decode tail (a few hundred ms for
 // dataURL attachments) so reopening a thread with images doesn't leave
@@ -142,10 +153,10 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel({
-  streamKey,
-  transcriptKey,
-  onSend,
-  onStop,
+  streamKey: parentStreamKey,
+  transcriptKey: transcriptKeyProp,
+  onSend: onSendProp,
+  onStop: onStopProp,
   isExternallyBusy = false,
   externalBusyMessage,
   agentName,
@@ -154,14 +165,14 @@ export function ChatPanel({
   defaultModel,
   templateAgentId,
   agentId,
-  isLoading = false,
-  historyResolved = true,
-  errorMessage,
-  emptyMessage,
-  scrollResetKey,
+  isLoading: isLoadingProp = false,
+  historyResolved: historyResolvedProp = true,
+  errorMessage: errorMessageProp,
+  emptyMessage: emptyMessageProp,
+  scrollResetKey: scrollResetKeyProp,
   scrollToBottomOnReset,
   focusInputOnThreadReady = true,
-  historyMessages,
+  historyMessages: historyMessagesProp,
   projects,
   selectedProjectId,
   llmProjectId,
@@ -175,9 +186,60 @@ export function ChatPanel({
   contextUsage,
   onNewChat,
   compact = false,
-  sendDisabled = false,
-  sendDisabledReason,
+  sendDisabled: sendDisabledProp = false,
+  sendDisabledReason: sendDisabledReasonProp,
 }: ChatPanelProps) {
+  // Subagent sub-pane: when a `task` card on this panel opens a child
+  // thread, the panel retargets its message list + the shared input
+  // bar at the subagent's stream partition (iOS-style push navigation)
+  // instead of spawning a separate modal/chat. Keyed by THIS panel's
+  // parent `streamKey` so independent surfaces never collide.
+  const subagentPane = useSubAgentPane(parentStreamKey);
+  const { closePane } = useSubAgentPaneActions();
+  const isSubagentView = !!subagentPane?.childRunId;
+  const subagentThread = useSubagentChatStream(
+    subagentPane?.childRunId,
+    subagentPane?.parentToolUseId,
+    isSubagentView,
+  );
+  const subStreamKey = subagentThread.streamKey;
+  const subEvents = useStreamEvents(subStreamKey);
+  const subIsStreaming = useIsStreaming(subStreamKey);
+  const subHasTranscript = subEvents.length > 0;
+  const subConnecting =
+    isSubagentView &&
+    subagentThread.status === "attaching" &&
+    !subHasTranscript &&
+    !subIsStreaming;
+  const subUnavailable =
+    isSubagentView && subagentThread.status === "error" && !subHasTranscript;
+
+  const handleCloseSubagent = useCallback(() => {
+    closePane(parentStreamKey);
+  }, [closePane, parentStreamKey]);
+
+  // Resolve the active target by shadowing the incoming props. The
+  // entire panel below (message list, scroll, reveal machinery,
+  // streaming indicator, the single shared input bar) binds to these
+  // names, so the same machinery drives either the parent thread or the
+  // open subagent — no duplicate panel, no re-rendered input bar.
+  const streamKey = isSubagentView ? subStreamKey : parentStreamKey;
+  const transcriptKey = isSubagentView ? subStreamKey : transcriptKeyProp;
+  const onSend = isSubagentView ? subagentThread.onSend : onSendProp;
+  const onStop = isSubagentView ? subagentThread.onStop : onStopProp;
+  const historyResolved = isSubagentView ? true : historyResolvedProp;
+  const isLoading = isSubagentView ? subConnecting : isLoadingProp;
+  const errorMessage = isSubagentView
+    ? subUnavailable
+      ? SUBAGENT_UNAVAILABLE_MESSAGE
+      : null
+    : errorMessageProp;
+  const emptyMessage = isSubagentView ? SUBAGENT_EMPTY_MESSAGE : emptyMessageProp;
+  const scrollResetKey = isSubagentView ? subStreamKey : scrollResetKeyProp;
+  const sendDisabled = isSubagentView ? false : sendDisabledProp;
+  const sendDisabledReason = isSubagentView ? undefined : sendDisabledReasonProp;
+  const historyMessages = isSubagentView ? undefined : historyMessagesProp;
+
   const {
     input,
     setInput,
@@ -641,10 +703,28 @@ export function ChatPanel({
   ) : null;
 
   return (
+    <ChatPanelStreamContext.Provider value={parentStreamKey}>
     <div className={styles.container}>
-      {header}
+      {isSubagentView && subagentPane ? (
+        <SubAgentPaneHeader
+          agentName={agentName}
+          subagentType={subagentPane.subagentType}
+          state={subagentPane.state}
+          reason={subagentPane.reason}
+          onBack={handleCloseSubagent}
+        />
+      ) : (
+        header
+      )}
       <div className={styles.chatArea}>
-        <div className={styles.messageAreaShell}>
+        {/* Keyed only across the parent<->subagent boundary so normal
+            agent/session switches (streamKey changes with the same view)
+            don't remount the shell, while pushing into a subagent does —
+            triggering the iOS-style slide-in. */}
+        <div
+          key={isSubagentView ? subStreamKey : "parent-thread"}
+          className={`${styles.messageAreaShell}${isSubagentView ? ` ${styles.subagentSlideIn}` : ""}`}
+        >
           <div
             className={`${styles.messageArea}${isAutoFollowing ? ` ${styles.messageAreaFollowing}` : ` ${styles.messageAreaReading}`}`}
             ref={messageAreaRef}
@@ -737,11 +817,12 @@ export function ChatPanel({
           isCentered={isThreadEmpty}
           compact={compact}
           contextUsage={contextUsage}
-          onNewChat={onNewChat ? handleNewChat : undefined}
+          onNewChat={!isSubagentView && onNewChat ? handleNewChat : undefined}
           sendDisabled={sendDisabled}
           sendDisabledReason={sendDisabledReason}
         />
       </div>
     </div>
+    </ChatPanelStreamContext.Provider>
   );
 }

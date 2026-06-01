@@ -337,6 +337,7 @@ fn spec_stream_scope(
         agent_instance_id: agent_instance_id.map(|a| a.to_string()),
         session_id: None,
         parent_tool_use_id: None,
+        child_run_id: None,
     }
 }
 

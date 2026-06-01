@@ -1,5 +1,6 @@
 import { apiFetch } from "./core";
 import type { SubagentState } from "../types/harness-protocol";
+import type { ChatAttachment } from "../types/aura-events/payloads";
 import { isSubagentState } from "../utils/subagent";
 
 /**
@@ -80,6 +81,31 @@ export const subagentsApi = {
       { method: "POST" },
     );
     return validateAttachResponse(raw);
+  },
+
+  /**
+   * Deliver a follow-up user turn into a still-running subagent child
+   * thread. The subagent must already be attached (a live stream
+   * registered) so the server can resolve its retained harness session;
+   * the resulting frames stream back over the same `attach_id` the
+   * subagent thread is tailing. Rejects with a descriptive error when
+   * the run has already terminated.
+   */
+  send: async (
+    childRunId: string,
+    content: string,
+    attachments?: ChatAttachment[],
+  ): Promise<void> => {
+    await apiFetch<unknown>(
+      `/api/streams/subagents/${encodeURIComponent(childRunId)}/send`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content,
+          attachments: attachments && attachments.length > 0 ? attachments : undefined,
+        }),
+      },
+    );
   },
 
   /** List the subagent threads spawned in a chat session. */

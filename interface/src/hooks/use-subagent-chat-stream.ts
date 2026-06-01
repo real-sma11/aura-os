@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { AuraEvent } from "../shared/types/aura-events";
+import type { ChatAttachment } from "../shared/types/aura-events/payloads";
 import { EventType } from "../shared/types/aura-events";
 import type { StreamEventHandler } from "../api/streams";
 import { attachToStream } from "../api/streams";
@@ -61,6 +62,22 @@ export interface SubagentChatThread {
   streamKey: string;
   status: SubagentAttachStatus;
   errorMessage?: string;
+  /**
+   * Deliver a follow-up user turn into the (still-running) child thread.
+   * Mirrors the `ChatPanelProps.onSend` arity so it can be wired
+   * straight into the shared input bar; only `content` and
+   * `attachments` are forwarded to the subagent send endpoint. Optimis-
+   * tically echoes the user bubble into the partition so the transcript
+   * reflects the message immediately.
+   */
+  onSend: (
+    content: string,
+    action?: string | null,
+    selectedModel?: string | null,
+    attachments?: ChatAttachment[],
+  ) => void;
+  /** No-op stop today: a child run is cancelled via its own lifecycle. */
+  onStop: () => void;
 }
 
 interface SubagentHandlerCallbacks {
@@ -279,5 +296,59 @@ export function useSubagentChatStream(
     };
   }, [active, childRunId, parentToolUseId, streamKey]);
 
-  return { streamKey, status, errorMessage };
+  const onSend = useCallback(
+    (
+      content: string,
+      _action?: string | null,
+      _selectedModel?: string | null,
+      attachments?: ChatAttachment[],
+    ) => {
+      const trimmed = content.trim();
+      if (!childRunId || trimmed.length === 0) return;
+
+      const setters = createSetters(streamKey);
+      const id = `subagent-user-${Date.now()}`;
+      // Optimistically echo the user's message so the transcript shows
+      // it immediately; the harness reply streams back over the existing
+      // attach.
+      setters.setEvents((prev) => [
+        ...prev,
+        { id, clientId: id, role: "user", content: trimmed },
+      ]);
+      setters.setIsStreaming(true);
+
+      void subagentsApi
+        .send(childRunId, trimmed, attachments)
+        .then(() => {
+          if (!terminallyStreamed.has(streamKey)) return;
+          // A previously-terminal thread will not emit fresh frames over
+          // the (now-closed) attach; surface a calm system note instead
+          // of a spinner that never resolves.
+          setters.setIsStreaming(false);
+        })
+        .catch((error: unknown) => {
+          setters.setIsStreaming(false);
+          const noteId = `subagent-send-error-${Date.now()}`;
+          setters.setEvents((prev) => [
+            ...prev,
+            {
+              id: noteId,
+              clientId: noteId,
+              role: "system",
+              content:
+                error instanceof Error
+                  ? error.message
+                  : "Could not deliver the message to this subagent.",
+            },
+          ]);
+        });
+    },
+    [childRunId, streamKey],
+  );
+
+  const onStop = useCallback(() => {
+    if (childRunId) createSetters(subagentStreamKey(childRunId)).setIsStreaming(false);
+  }, [childRunId]);
+
+  return { streamKey, status, errorMessage, onSend, onStop };
 }
