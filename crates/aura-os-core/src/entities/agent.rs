@@ -98,6 +98,15 @@ pub struct Agent {
     pub role: String,
     pub personality: String,
     pub system_prompt: String,
+    /// Operator-curated skill *names* forwarded on the wire as
+    /// `agent_identity.skills` and rendered verbatim as the harness's
+    /// `<agent_skills>` prompt hint. This is intentionally distinct from
+    /// the harness's per-agent skill *install* store (keyed by the
+    /// agent's UUID via `POST /api/harness/agents/:id/skills`), which is
+    /// what actually resolves SKILL.md content, tools, and permissions
+    /// at runtime and drives `SessionReady.skills`. Installing a skill
+    /// in the UI updates the harness store, not this list; the two are
+    /// not auto-synced by design.
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
@@ -177,6 +186,15 @@ pub struct AgentInstance {
     pub role: String,
     pub personality: String,
     pub system_prompt: String,
+    /// Operator-curated skill *names* forwarded on the wire as
+    /// `agent_identity.skills` and rendered verbatim as the harness's
+    /// `<agent_skills>` prompt hint. This is intentionally distinct from
+    /// the harness's per-agent skill *install* store (keyed by the
+    /// agent's UUID via `POST /api/harness/agents/:id/skills`), which is
+    /// what actually resolves SKILL.md content, tools, and permissions
+    /// at runtime and drives `SessionReady.skills`. Installing a skill
+    /// in the UI updates the harness store, not this list; the two are
+    /// not auto-synced by design.
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
