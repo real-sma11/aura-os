@@ -216,7 +216,7 @@ describe("ChangelogView", () => {
     );
   });
 
-  it("shows a dash for this-month (but keeps all-time) when the snapshot is from a previous month", async () => {
+  it("shows 0 for this-month (but keeps all-time) when the snapshot is from a previous month", async () => {
     vi.spyOn(githubCommits, "fetchAuraCommitStats").mockResolvedValue({
       commitsThisMonth: 999,
       commitsAllTime: 9421,
@@ -240,8 +240,11 @@ describe("ChangelogView", () => {
         getCommitStatValueElement(/All-time commits/).textContent,
       ).toBe("9,421");
     });
+    // Stale-month snapshots no longer carry last month's count into the
+    // current month; this-month resets to 0 (matching "releases this
+    // month") until the next release refreshes the snapshot.
     expect(getCommitStatValueElement(/Commits this month/).textContent).toBe(
-      "\u2014",
+      "0",
     );
   });
 

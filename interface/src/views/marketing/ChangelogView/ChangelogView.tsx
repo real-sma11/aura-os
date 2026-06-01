@@ -434,15 +434,15 @@ export function ChangelogView(): ReactNode {
 
   // "Commits this month" is only meaningful when the snapshot's PST month
   // matches the current PST month. After a month rollover (before the
-  // first new-month CI run republishes the snapshot) the carried-over
-  // figure is last month's, so we render a dash for this-month rather
-  // than a misleading number. All-time is always safe to show.
+  // first new-month release republishes the snapshot) the carried-over
+  // figure is last month's, so we show 0 for this-month instead of the
+  // stale count — mirroring "releases this month", which is likewise 0
+  // until the first push of the month lands and updates the snapshot.
+  // All-time is always safe to show.
   const currentMonthKey = getCurrentPstMonthKey();
   const thisMonthIsCurrent = Boolean(
     effectiveCommitTotals && effectiveCommitTotals.monthKey === currentMonthKey,
   );
-  const commitsThisMonthUnavailable =
-    !commitStatsLoading && Boolean(effectiveCommitTotals) && !thisMonthIsCurrent;
 
   // Stabilize the empty fallback so memo deps below don't change every
   // render (React Query keeps `data` referentially stable across renders
@@ -598,7 +598,7 @@ export function ChangelogView(): ReactNode {
                   aria-busy={commitStatsLoading ? "true" : "false"}
                   title={COMMITS_LIVE_TITLE}
                 >
-                  {commitStatsUnavailable || commitsThisMonthUnavailable
+                  {commitStatsUnavailable
                     ? STAT_UNAVAILABLE
                     : STAT_NUMBER_FORMATTER.format(commitsThisMonthDisplay)}
                 </dd>
