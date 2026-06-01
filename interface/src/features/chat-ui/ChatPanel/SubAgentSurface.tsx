@@ -8,7 +8,6 @@ import type { SubAgentPaneDescriptor } from "../../../stores/subagent-pane-store
 import type { Project } from "../../../shared/types";
 import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 
-const SUBAGENT_EMPTY_MESSAGE = "This subagent has not produced any output yet.";
 const SUBAGENT_UNAVAILABLE_MESSAGE =
   "This subagent thread is no longer available. Its live transcript was cleaned up after the run finished.";
 
@@ -102,7 +101,6 @@ export function SubAgentSurface({
       historyResolved
       isLoading={subConnecting}
       errorMessage={subUnavailable ? SUBAGENT_UNAVAILABLE_MESSAGE : null}
-      emptyMessage={SUBAGENT_EMPTY_MESSAGE}
       scrollResetKey={subStreamKey}
       centerInputWhenEmpty={false}
       agentName={agentName}
