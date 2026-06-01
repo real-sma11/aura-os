@@ -79,7 +79,7 @@ export interface MobileConversation {
  */
 const ACCENT_CYAN = "#01f4cb";
 const ACCENT_BLUE = "#3b82f6";
-const ACCENT_GREEN = "#00e676";
+const ACCENT_PURPLE = "#a855f7";
 
 /**
  * Helper so frame literals below stay terse — `thread`/`agent` from
@@ -231,7 +231,7 @@ const REVIEWER_CHAT: MobileConversation = {
   id: "reviewer",
   agentId: "reviewer",
   subtitle: "online · on your VM",
-  accent: ACCENT_GREEN,
+  accent: ACCENT_PURPLE,
   frames: [
     userMessage("Ship the release once CI is green", 1400),
     agentMessage("reviewer", "Watching the pipeline now.", 1100, 1800),

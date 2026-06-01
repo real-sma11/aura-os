@@ -44,7 +44,14 @@ interface KeyedFrame {
   readonly frame: MobileFrame;
 }
 
-type Phase = "running" | "fadingOut" | "resetting";
+/**
+ * The loop opens on `composing`: the bottom input bar types the
+ * thread's first user prompt and pulses send. Only once that "send"
+ * lands does the prompt get committed to the transcript and playback
+ * flip to `running` for the agent's replies — so the input only ever
+ * writes before a run starts, never mid-thread.
+ */
+type Phase = "composing" | "running" | "fadingOut" | "resetting";
 
 interface PlaybackState {
   readonly visible: ReadonlyArray<KeyedFrame>;
@@ -56,6 +63,7 @@ interface PlaybackState {
 }
 
 type PlaybackAction =
+  | { type: "sendComposed"; frames: ReadonlyArray<MobileFrame> }
   | { type: "advance"; frames: ReadonlyArray<MobileFrame> }
   | { type: "beginFadeOut" }
   | { type: "markExit" }
@@ -67,7 +75,7 @@ const INITIAL_STATE: PlaybackState = {
   visible: [],
   cursor: 0,
   nextKey: 0,
-  phase: "running",
+  phase: "composing",
   exitingKey: null,
 };
 
@@ -76,6 +84,21 @@ function playbackReducer(
   action: PlaybackAction,
 ): PlaybackState {
   switch (action.type) {
+    case "sendComposed": {
+      // The composed prompt was "sent": commit the first frame (the
+      // user's message) to the transcript and start the run.
+      if (state.phase !== "composing" || action.frames.length === 0) {
+        return state;
+      }
+      const frame = action.frames[0];
+      return {
+        ...state,
+        visible: [{ key: state.nextKey, frame }],
+        cursor: 1,
+        nextKey: state.nextKey + 1,
+        phase: "running",
+      };
+    }
     case "advance": {
       if (state.phase !== "running" || state.cursor >= action.frames.length) {
         return state;
@@ -121,7 +144,7 @@ function playbackReducer(
         visible: [],
         cursor: 0,
         nextKey: state.nextKey + 1,
-        phase: "running",
+        phase: "composing",
         exitingKey: null,
       };
     }
@@ -162,6 +185,12 @@ export function MockMobileChat({
   const inputPrompt = firstUserPrompt(conversation);
 
   useEffect(() => {
+    if (state.phase === "composing") {
+      // The input bar owns this beat: it types the first prompt and,
+      // on "send", dispatches `sendComposed` to start the run. Nothing
+      // to schedule here.
+      return;
+    }
     if (state.phase === "resetting") {
       timerRef.current = setTimeout(() => {
         dispatch({ type: "reset" });
@@ -248,7 +277,11 @@ export function MockMobileChat({
         ))}
       </div>
 
-      <ComposeInput prompt={inputPrompt} />
+      <ComposeInput
+        prompt={inputPrompt}
+        active={state.phase === "composing"}
+        onSent={() => dispatch({ type: "sendComposed", frames })}
+      />
     </div>
   );
 }
@@ -268,65 +301,89 @@ function firstUserPrompt(conversation: MobileConversation): string {
   return "Message your agent…";
 }
 
-/** Phases the decorative compose bar cycles through forever. */
-type ComposePhase = "idle" | "typing" | "sending";
-
-const COMPOSE_IDLE_MS = 900;
+/** Idle beat before the input starts typing the next prompt. */
+const COMPOSE_IDLE_MS = 700;
+/** Per-character type speed in the compose bar. */
 const COMPOSE_TYPE_MS = 55;
+/** Hold the finished line before "pressing enter". */
 const COMPOSE_HOLD_MS = 650;
+/** Send-button pulse duration before the prompt is committed. */
 const COMPOSE_SEND_MS = 420;
 
 interface ComposeInputProps {
   readonly prompt: string;
+  /**
+   * True only during the loop's `composing` phase. When it flips true
+   * the bar types `prompt`, holds, pulses send, then calls `onSent`;
+   * when false the bar sits at the placeholder (the run is playing /
+   * the transcript is clearing).
+   */
+  readonly active: boolean;
+  /** Fired after the send pulse — commits the prompt + starts the run. */
+  readonly onSent: () => void;
 }
 
 /**
- * Decorative input bar that loops through a "write then send" beat:
- * it types `prompt` one character at a time, holds the finished line,
- * pulses the send button (the "sent" beat), then clears back to the
- * placeholder and starts over. Purely atmospheric — the whole chat
- * subtree is `aria-hidden`.
+ * The phone's input bar, gated to the loop's `composing` beat. While
+ * `active` it plays one "write then send" pass — type `prompt` a
+ * character at a time, hold the finished line, pulse the send button,
+ * then fire `onSent` (which the parent uses to drop the prompt into
+ * the transcript and start the agent's run) and clear back to the
+ * placeholder. It never types again until the parent returns to
+ * `composing` (after every bubble has faded out). Purely decorative —
+ * the whole chat subtree is `aria-hidden`.
  */
-function ComposeInput({ prompt }: ComposeInputProps): ReactNode {
-  const [phase, setPhase] = useState<ComposePhase>("idle");
+function ComposeInput({ prompt, active, onSent }: ComposeInputProps): ReactNode {
   const [shown, setShown] = useState<number>(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSending, setIsSending] = useState<boolean>(false);
+  // Keep the latest callback without retriggering the typing effect.
+  const onSentRef = useRef(onSent);
+  useEffect(() => {
+    onSentRef.current = onSent;
+  }, [onSent]);
 
   useEffect(() => {
-    if (phase === "idle") {
-      timerRef.current = setTimeout(() => {
-        setShown(0);
-        setPhase("typing");
-      }, COMPOSE_IDLE_MS);
-    } else if (phase === "typing") {
-      if (shown >= prompt.length) {
-        timerRef.current = setTimeout(() => setPhase("sending"), COMPOSE_HOLD_MS);
-      } else {
-        timerRef.current = setTimeout(
-          () => setShown((n) => n + 1),
-          COMPOSE_TYPE_MS,
-        );
+    // Only the `composing` beat drives the bar. The send flow below
+    // already clears `shown`/`isSending` before `active` flips false,
+    // so there's nothing to reset synchronously here.
+    if (!active) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let typed = 0;
+
+    const typeNext = (): void => {
+      if (cancelled) return;
+      if (typed < prompt.length) {
+        typed += 1;
+        setShown(typed);
+        timer = setTimeout(typeNext, COMPOSE_TYPE_MS);
+        return;
       }
-    } else {
-      // sending — pulse the button, then clear and loop.
-      timerRef.current = setTimeout(() => {
-        setShown(0);
-        setPhase("idle");
-      }, COMPOSE_SEND_MS);
-    }
+      // Fully typed — hold, then "press enter".
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        setIsSending(true);
+        timer = setTimeout(() => {
+          if (cancelled) return;
+          setIsSending(false);
+          setShown(0);
+          onSentRef.current();
+        }, COMPOSE_SEND_MS);
+      }, COMPOSE_HOLD_MS);
+    };
+
+    timer = setTimeout(typeNext, COMPOSE_IDLE_MS);
 
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      cancelled = true;
+      clearTimeout(timer);
     };
-  }, [phase, shown, prompt]);
+  }, [active, prompt]);
 
   const typed = prompt.slice(0, shown);
-  const isTyping = phase === "typing";
-  const isSending = phase === "sending";
   const hasText = typed.length > 0;
+  const showCaret = active && hasText && !isSending;
 
   return (
     <div className={styles.inputBar}>
@@ -334,7 +391,7 @@ function ComposeInput({ prompt }: ComposeInputProps): ReactNode {
         className={`${styles.inputField} ${hasText ? styles.inputFieldActive : ""}`}
       >
         {hasText ? typed : "Message your agent…"}
-        {isTyping ? <span className={styles.composeCaret} /> : null}
+        {showCaret ? <span className={styles.composeCaret} /> : null}
       </span>
       <span
         className={`${styles.sendButton} ${isSending ? styles.sendButtonActive : ""}`}

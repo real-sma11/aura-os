@@ -132,7 +132,7 @@
   border-radius: 14px;
   line-height: 1.35;
   word-break: break-word;
-  animation: bubbleIn 220ms ease-out;
+  animation: bubbleIn 360ms ease-out;
 }
 
 .bubbleUser {
@@ -166,7 +166,7 @@
   border-radius: 8px;
   padding: 6px 8px;
   background: rgba(255, 255, 255, 0.04);
-  animation: bubbleIn 220ms ease-out;
+  animation: bubbleIn 360ms ease-out;
 }
 
 .toolHeader {
@@ -262,7 +262,10 @@
 @keyframes bubbleIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
+  }
+  60% {
+    opacity: 1;
   }
   to {
     opacity: 1;
