@@ -91,6 +91,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
             get(agents::get_agent_context_usage),
         )
         .route(
+            "/api/agents/:agent_id/context-contents",
+            get(agents::get_agent_context_contents),
+        )
+        .route(
             "/api/agents/:agent_id/installed-tools",
             get(agents::get_installed_tools_diagnostic),
         )
@@ -126,6 +130,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/context-usage",
             get(agents::get_instance_context_usage),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/context-contents",
+            get(agents::get_instance_context_contents),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions",

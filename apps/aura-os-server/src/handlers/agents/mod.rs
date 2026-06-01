@@ -1,4 +1,5 @@
 pub(crate) mod chat;
+pub(crate) mod context_contents;
 pub(crate) mod context_usage;
 mod control;
 mod conversions;
@@ -21,6 +22,7 @@ pub(crate) use chat::{
     list_agent_session_events, list_events, reset_agent_session, reset_instance_session,
     send_agent_event_stream, send_event_stream,
 };
+pub(crate) use context_contents::{get_agent_context_contents, get_instance_context_contents};
 pub(crate) use context_usage::{get_agent_context_usage, get_instance_context_usage};
 pub(crate) use control::{delegate_agent_task, get_agent_state_snapshot};
 pub(crate) use crud::create::{create_and_provision_remote_agent, prepare_create};
