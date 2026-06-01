@@ -48,6 +48,50 @@
   pointer-events: none;
 }
 
+/* Inline title shown next to the icon of the active section. Animating
+   a grid column from 0fr to 1fr expands the label to its *real* content
+   width over the full duration, so the icons to the right slide along
+   smoothly instead of snapping (which happens when animating a fixed
+   max-width that the short title reaches almost instantly). */
+.tabLabel {
+  display: grid;
+  grid-template-columns: 0fr;
+  /* Cancel the button's flex gap while collapsed so the icon stays
+     perfectly square at the start/end of the animation. */
+  margin-left: calc(-1 * var(--space-2));
+}
+
+.tabLabelInner {
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.tabLabelEnter {
+  animation: tabLabelExpand 200ms ease-out forwards;
+}
+
+/* The outgoing label collapses over the same duration as the incoming
+   one expands, so neighbouring icons slide straight to their new
+   position instead of snapping to the no-label baseline first. No
+   opacity fade — only the width animates. */
+.tabLabelExit {
+  animation: tabLabelCollapse 200ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes tabLabelExpand {
+  from { grid-template-columns: 0fr; margin-left: calc(-1 * var(--space-2)); }
+  to   { grid-template-columns: 1fr; margin-left: 0; }
+}
+
+@keyframes tabLabelCollapse {
+  from { grid-template-columns: 1fr; margin-left: 0; }
+  to   { grid-template-columns: 0fr; margin-left: calc(-1 * var(--space-2)); }
+}
+
 .sidekickTabBar button:not(:disabled):hover {
   color: var(--color-text-primary);
 }
