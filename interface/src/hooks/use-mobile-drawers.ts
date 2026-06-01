@@ -19,6 +19,8 @@ function previewItemKey(item: PreviewItem | null): string | null {
       return `session:${item.session.session_id}`;
     case "log":
       return `log:${item.entry.timestamp}:${item.entry.summary}`;
+    case "context_bucket":
+      return `context_bucket:${item.bucketId}:${item.streamKey}`;
   }
 }
 
