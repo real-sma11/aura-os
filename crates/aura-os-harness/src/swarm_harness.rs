@@ -325,6 +325,36 @@ impl SwarmHarness {
         token: Option<&str>,
     ) -> anyhow::Result<HarnessSession> {
         let ws_url = self.resolve_event_stream_url(&run_handle.event_stream_url)?;
+        // The `open_session` path always waits for the proxied
+        // `session_ready` frame (the gateway emits it unprompted after
+        // `POST /v1/agents/:id/run`).
+        self.connect_run_stream(&ws_url, &run_handle.run_id, token, true)
+            .await
+    }
+
+    /// WS base for the gateway's run-only stream proxy
+    /// (`{ws_base}/stream/:run_id`). Mirrors
+    /// [`crate::LocalHarness`]'s `ws_url_for_run`; used by `attach_run`
+    /// when no explicit `event_stream_url` is available (e.g. attaching
+    /// to a council child run spawned on the pod directly).
+    fn ws_url_for_run(&self, run_id: &str) -> anyhow::Result<String> {
+        Ok(format!("{}/stream/{run_id}", self.ws_base_url()?))
+    }
+
+    /// Connect (with the shared retry budget) to a run's WS event
+    /// stream at `ws_url`, spawn the in-process bridge, and return the
+    /// live [`HarnessSession`]. `wait_for_ready` blocks on the
+    /// `session_ready` frame (chat open); when false a short liveness
+    /// probe is used instead (run reattach / council child runs, which
+    /// never re-emit `session_ready`). Mirrors
+    /// [`crate::LocalHarness`]'s `attach_run_at_ws_url`.
+    async fn connect_run_stream(
+        &self,
+        ws_url: &str,
+        run_id: &str,
+        token: Option<&str>,
+        wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
         let max_attempts = read_connect_attempts_from_env();
         let per_attempt_timeout = read_connect_timeout_from_env();
         let mut last_err: Option<anyhow::Error> = None;
@@ -334,7 +364,6 @@ impl SwarmHarness {
             // consumes the URL; cheap, and keeps the auth header fresh
             // in case a future change rotates the token between retries.
             let mut ws_request = ws_url
-                .clone()
                 .into_client_request()
                 .context("swarm websocket request build failed")?;
             if let Some(t) = token {
@@ -399,18 +428,43 @@ impl SwarmHarness {
             }
         };
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
-        let mut ready_rx = events_tx.subscribe();
-        // Phase A: the gateway proxies a run that was already created on
-        // the HTTP side (`POST /v1/agents/:id/run`), so the harness driver
-        // emits `session_ready` unprompted. No session-init first frame.
-        wait_for_session_ready(&mut ready_rx, &run_handle.run_id).await?;
+        if wait_for_ready {
+            // Phase A: the gateway proxies a run that was already created
+            // on the HTTP side (`POST /v1/agents/:id/run`), so the harness
+            // driver emits `session_ready` unprompted. No session-init
+            // first frame.
+            let mut ready_rx = events_tx.subscribe();
+            wait_for_session_ready(&mut ready_rx, run_id).await?;
+        } else {
+            // Reattach / council child runs stream domain events directly
+            // and never re-emit `session_ready`. Do a brief liveness probe
+            // (mirroring `LocalHarness::attach_run_at_ws_url`): if the
+            // bridge reports the WS closed/errored immediately, fail so the
+            // caller can retry; otherwise proceed.
+            let mut rx = events_tx.subscribe();
+            match tokio::time::timeout(Duration::from_millis(250), rx.recv()).await {
+                Ok(Ok(OutboundMessage::Error(err)))
+                    if err.code == "harness_ws_closed" || err.code == "harness_ws_read_error" =>
+                {
+                    anyhow::bail!(
+                        "swarm child event stream died immediately after connect: {}",
+                        err.message
+                    );
+                }
+                Ok(Err(broadcast::error::RecvError::Closed)) => {
+                    anyhow::bail!("swarm child event stream closed immediately after connect");
+                }
+                // Any other event, lag, or timeout: treat as alive.
+                _ => {}
+            }
+        }
         Ok(HarnessSession {
             // The swarm gateway keys ownership / idle detection on the
             // harness-allocated `run_id`, so it doubles as the session id
             // here (the runtime's own `session_ready.session_id` is logged
             // for correlation but not used as the control handle).
-            session_id: run_handle.run_id.clone(),
-            run_id: run_handle.run_id,
+            session_id: run_id.to_string(),
+            run_id: run_id.to_string(),
             events_tx,
             raw_events_tx,
             commands_tx,
@@ -654,6 +708,42 @@ impl HarnessLink for SwarmHarness {
             "Swarm run created"
         );
         self.open_run_socket(run_handle, token).await
+    }
+
+    async fn attach_run(
+        &self,
+        run_id: &str,
+        auth_token: Option<&str>,
+        wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        // Per-request token wins, falling back to the harness-wide token —
+        // same precedence `open_session` uses. The child-run stream is the
+        // gateway's run-only proxy `{ws_base}/stream/:run_id`, mirroring
+        // `LocalHarness::attach_run`.
+        let token = auth_token.or(self.auth_token.as_deref());
+        let ws_url = self.ws_url_for_run(run_id)?;
+        self.connect_run_stream(&ws_url, run_id, token, wait_for_ready)
+            .await
+    }
+
+    async fn attach_run_at_url(
+        &self,
+        run_id: &str,
+        event_stream_url: Option<&str>,
+        auth_token: Option<&str>,
+        wait_for_ready: bool,
+    ) -> anyhow::Result<HarnessSession> {
+        // Prefer the gateway-provided `event_stream_url` (the
+        // agent-scoped `/v1/agents/:id/stream/:run_id` route returned by
+        // `POST /v1/agents/:id/run`); fall back to the run-only proxy.
+        // Mirrors `LocalHarness::attach_run_at_url`.
+        let token = auth_token.or(self.auth_token.as_deref());
+        let ws_url = match event_stream_url {
+            Some(url) => self.resolve_event_stream_url(url)?,
+            None => self.ws_url_for_run(run_id)?,
+        };
+        self.connect_run_stream(&ws_url, run_id, token, wait_for_ready)
+            .await
     }
 
     async fn close_session(&self, session_id: &str) -> anyhow::Result<()> {
