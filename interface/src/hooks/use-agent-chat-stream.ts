@@ -735,6 +735,32 @@ export function useAgentChatStream({
         }
 
         const modelForTurn = _generationMode ? null : selectedModel;
+        // AURA Council fan-out. Resolved here from the per-stream
+        // chat-ui slice (read under the same partition key the store is
+        // written with — mirrors the `getImageQuality` read above) so a
+        // queued / replayed send reflects the live council state at send
+        // time, exactly like the single-model `reasoning_effort` is
+        // re-resolved at the bottom of `sendAgentEventStream`. Only built
+        // for the regular chat path (no generation mode) when council is
+        // active (`councilCount > 1`) and at least two slots resolve to a
+        // model id; otherwise left `undefined` so the single-model path is
+        // byte-for-byte unchanged. `slot.effort` (a `ModelEffort | null`)
+        // is the per-slot mirror of `selectedEffort` and is already the
+        // wire `reasoning_effort` string — null means "no effort tiers",
+        // matching how the single pick omits the field.
+        const council = ((): { models: { id: string; reasoning_effort?: string }[] } | undefined => {
+          if (_generationMode) return undefined;
+          const uiState = useChatUIStore.getState();
+          if (uiState.getCouncilCount(getPartitionKey()) <= 1) return undefined;
+          const models = uiState
+            .getCouncilModels(getPartitionKey())
+            .filter((slot) => typeof slot.id === "string" && slot.id.length > 0)
+            .map((slot) => ({
+              id: slot.id,
+              ...(slot.effort ? { reasoning_effort: slot.effort } : {}),
+            }));
+          return models.length >= 2 ? { models } : undefined;
+        })();
         await api.agents.sendEventStream(
           agentId,
           userMsg.content,
@@ -747,6 +773,8 @@ export function useAgentChatStream({
           projectId,
           shouldStartNewSession,
           shouldStartNewSession ? null : sessionIdRef.current,
+          undefined,
+          council,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

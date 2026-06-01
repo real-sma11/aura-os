@@ -300,6 +300,17 @@ export function sendAgentEventStream(
    * `undefined` (or 0) on first sends to skip the header entirely.
    */
   clientRetryAttempt?: number,
+  /**
+   * AURA Council fan-out. Set only when the user has council active
+   * (`councilCount > 1`); `models[0]` is the synthesizer slot. The
+   * server treats this as a Council runtime request only when
+   * `models.length >= 2`, otherwise it falls back to `body.model` /
+   * `body.reasoning_effort`. Each `reasoning_effort` is the same wire
+   * string the single-model path emits (omitted for slots whose model
+   * exposes no effort tiers). Left `undefined` for single-model sends
+   * so that path is byte-for-byte unchanged.
+   */
+  council?: { models: { id: string; reasoning_effort?: string }[] },
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) {
@@ -311,6 +322,7 @@ export function sendAgentEventStream(
     const effort = loadPersistedModelEffort(model);
     if (effort) body.reasoning_effort = effort;
   }
+  if (council) body.council = council;
   if (attachments && attachments.length > 0) {
     body.attachments = attachments;
   }
