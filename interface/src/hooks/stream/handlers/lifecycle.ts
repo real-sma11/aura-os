@@ -354,10 +354,30 @@ export function handleEventSaved(
 
   setters.setEvents((prev) => {
     const lastMessage = prev[prev.length - 1];
-    if (
-      lastMessage &&
-      isAssistantBoundaryPlaceholder(lastMessage)
-    ) {
+    const lastIsPlaceholder =
+      !!lastMessage && isAssistantBoundaryPlaceholder(lastMessage);
+
+    // Re-delivery guard: a resumable replay (reopening a still-streaming
+    // subagent, or a reconnect tail) can re-emit a turn we already
+    // committed under the same `event_id`. Replace it in place instead of
+    // appending a duplicate, dropping a trailing placeholder that the
+    // re-streamed deltas just rebuilt for this same turn. No-op for the
+    // normal single-commit path (the id isn't present yet), so live chat
+    // behaviour is unchanged — and it lets the subagent attach skip the
+    // destructive `setEvents([])` clear that used to blank the transcript.
+    const existingIdx = prev.findIndex(
+      (e) => e.id === savedMessage.id && !isAssistantBoundaryPlaceholder(e),
+    );
+    if (existingIdx !== -1) {
+      const base = lastIsPlaceholder ? prev.slice(0, -1) : prev;
+      const next = base.slice();
+      if (existingIdx < next.length) {
+        next[existingIdx] = mergeSavedAssistantMessage(savedMessage, next[existingIdx]);
+      }
+      return next;
+    }
+
+    if (lastIsPlaceholder) {
       return [...prev.slice(0, -1), mergeSavedAssistantMessage(savedMessage, lastMessage)];
     }
 

@@ -709,5 +709,36 @@ describe("stream/handlers — lifecycle (error / finalize / boundary / saved)", 
         content: "full streamed reply",
       });
     });
+
+    it("replaces a re-delivered turn in place instead of appending a duplicate", () => {
+      const refs = makeRefs();
+      const setters = makeSetters();
+
+      handleEventSaved(refs, setters, {
+        event_id: "evt-1",
+        content: "first turn",
+        content_blocks: [],
+      } as never);
+
+      const setEvents = setters.calls.setEvents?.[0] as
+        | ((prev: unknown[]) => Array<{ id: string; content: string }>)
+        | undefined;
+      expect(setEvents).toBeDefined();
+
+      // Partition already holds this committed turn (from a prior attach)
+      // plus a trailing placeholder the replay's re-streamed deltas just
+      // rebuilt for the same turn. The re-delivery must reconcile in place
+      // rather than stack a duplicate — this is what lets the subagent
+      // attach skip the blanking `setEvents([])`.
+      const result = setEvents?.([
+        { id: "evt-1", clientId: "evt-1", role: "assistant", content: "first turn" },
+        { id: "evt-2", clientId: "evt-2", role: "assistant", content: "second turn" },
+        { id: "stream-xyz", clientId: "stream-xyz", role: "assistant", content: "first tur" },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result?.map((event) => event.id)).toEqual(["evt-1", "evt-2"]);
+      expect(result?.[0]).toMatchObject({ id: "evt-1", content: "first turn" });
+    });
   });
 });

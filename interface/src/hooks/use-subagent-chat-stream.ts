@@ -337,19 +337,21 @@ export function useSubagentChatStream(
       try {
         const res = await subagentsApi.attach(childRunId, parentToolUseId);
         if (cancelled || controller.signal.aborted) return;
-        // Attach succeeded — a fresh replay from seq 0 is incoming.
-        // Clear the partition first so the replayed turns don't stack
-        // on top of any previously-accumulated events. (Store writes,
-        // not React setState, so they apply synchronously before the
-        // first SSE frame lands.)
-        setters.setEvents([]);
+        // Attach succeeded — a fresh replay from seq 0 is incoming. We no
+        // longer blank the partition first: that made the whole transcript
+        // flash empty before the replay rebuilt it (visible when reopening
+        // a still-streaming subagent). `handleEventSaved` now dedupes
+        // re-delivered turns by `event_id` and replaces them in place, so
+        // the replay reconciles against the existing events without
+        // stacking duplicates and without the blink. Only the partial
+        // streaming buffer is reset so a half-streamed turn doesn't double.
         resetStreamBuffers(meta.refs, setters);
         setters.setIsStreaming(true);
         setStatus("live");
         attachToStream(res.attach_id, 0, handler, controller.signal, {
           onResync: () => {
-            // Backlog evicted: clear and let the live tail repopulate.
-            setters.setEvents([]);
+            // Backlog evicted: reset only the partial streaming buffer and
+            // let the live tail repopulate; committed turns dedupe by id.
             resetStreamBuffers(meta.refs, setters);
           },
         });
