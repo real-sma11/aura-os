@@ -59,7 +59,7 @@ test("capture desktop projects root and execution chrome", async ({ page }, test
 
   await page.goto("/projects/proj-1/execution");
   await expect(page.getByText("Demo Project")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Specs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Plans" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tasks" }).first()).toBeVisible();
   await page.screenshot({
     path: `test-artifacts/review-shots/${projectName}-desktop-project-execution.png`,
@@ -130,7 +130,7 @@ test("capture desktop agents, feed, and profile views", async ({ page }, testInf
 
   await page.goto("/projects/proj-1/agents/agent-inst-1");
   await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Specs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Plans" })).toBeVisible();
   await page.screenshot({
     path: `test-artifacts/review-shots/${projectName}-desktop-project-agent-chat.png`,
     fullPage: true,

@@ -54,7 +54,7 @@ test("desktop browser project execution keeps desktop chrome and hides workspace
 
   await expect(page.getByText("Demo Project")).toBeVisible();
   await expect(page.getByRole("button", { name: "Chat" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Specs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Plans" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tasks" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Files" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open navigation" })).toHaveCount(0);

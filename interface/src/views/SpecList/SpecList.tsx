@@ -9,6 +9,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useDelayedEmpty } from "../../shared/hooks/use-delayed-empty";
 import { mergeById, compareSpecs } from "../../utils/collections";
+import { groupSpecsByPlan } from "../../utils/plan-grouping";
+import { usePlanStore } from "../../stores/plan-store";
 import { filterExplorerNodes } from "../../shared/utils/filterExplorerNodes";
 import { Explorer } from "@cypher-asi/zui";
 import { EmptyState } from "../../components/EmptyState";
@@ -38,6 +40,7 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
   );
   const pushPreview = useSidekickStore((s) => s.pushPreview);
   const viewSpec = useSidekickStore((s) => s.viewSpec);
+  const plansByProject = usePlanStore((s) => s.plansByProject);
   const sidekickRef = useRef(useSidekickStore.getState());
   const ctxRef = useRef(ctx);
 
@@ -78,26 +81,22 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
 
   const prevSpecIdsRef = useRef<string>("");
   const specIds = useMemo(() => mergedSpecs.map((s) => s.spec_id).join(","), [mergedSpecs]);
-  useEffect(() => {
-    const sk = sidekickRef.current;
-    if (sk.previewItem?.kind !== "specs_overview") return;
-    if (specIds === prevSpecIdsRef.current) return;
-    prevSpecIdsRef.current = specIds;
-    sk.updatePreviewSpecs(mergedSpecs);
-  }, [specIds, mergedSpecs]);
 
   useEffect(() => {
+    const planStore = usePlanStore.getState();
     const unsubs = [
       subscribe(EventType.SpecGenStarted, (e: AuraEvent) => {
         if (e.project_id === projectId) {
           setLocalSpecs([]);
           setSelectedId(null);
           sidekickRef.current.clearDeletedSpecs();
+          if (projectId) planStore.beginRun(projectId);
         }
       }),
       subscribe(EventType.SpecSaved, (e) => {
         const spec = e.content.spec;
         if (e.project_id === projectId && spec) {
+          if (projectId) planStore.recordSpec(projectId, spec.spec_id);
           setLocalSpecs((prev) => {
             if (prev.some((s) => s.spec_id === spec.spec_id)) return prev;
             return [...prev, spec].sort(compareSpecs);
@@ -106,6 +105,13 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
       }),
       subscribe(EventType.SpecGenCompleted, (e: AuraEvent) => {
         if (e.project_id === projectId) {
+          if (projectId) {
+            const project = ctxRef.current?.project;
+            planStore.finalizeRun(projectId, {
+              title: project?.specs_title,
+              summary: project?.specs_summary,
+            });
+          }
           fetchSpecs(true);
         }
       }),
@@ -118,22 +124,54 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
     [mergedSpecs],
   );
 
+  const planTitle = ctx?.project?.specs_title || "Plan";
+  const plans = useMemo(
+    () => (projectId ? plansByProject[projectId] ?? [] : []),
+    [plansByProject, projectId],
+  );
+  const planGroups = useMemo(
+    () => groupSpecsByPlan(mergedSpecs, plans, planTitle),
+    [mergedSpecs, plans, planTitle],
+  );
+
   const explorerData: ExplorerNode[] = useMemo(
-    () => [
-      {
-        id: "__specs_root__",
-        label: ctx?.project?.specs_title || "Spec",
-        children: mergedSpecs.map((spec) => ({
+    () =>
+      planGroups.map((group) => ({
+        id: `plan:${group.plan_id}`,
+        label: group.title,
+        metadata: { type: "plan" },
+        children: group.specs.map((spec) => ({
           id: spec.spec_id,
           label: spec.title || "Spec",
           metadata: { type: "spec" },
         })),
-      },
-    ],
-    [mergedSpecs, ctx?.project?.specs_title],
+      })),
+    [planGroups],
   );
 
-  const defaultExpandedIds = useMemo(() => ["__specs_root__"], []);
+  const defaultExpandedIds = useMemo(
+    () => planGroups.map((group) => `plan:${group.plan_id}`),
+    [planGroups],
+  );
+
+  // Keep an open plan overview preview in sync as specs stream in. When a
+  // plan node is selected we refresh that group's specs; otherwise we fall
+  // back to the full set.
+  useEffect(() => {
+    const sk = sidekickRef.current;
+    if (sk.previewItem?.kind !== "specs_overview") return;
+    if (specIds === prevSpecIdsRef.current) return;
+    prevSpecIdsRef.current = specIds;
+    if (selectedId?.startsWith("plan:")) {
+      const planId = selectedId.slice("plan:".length);
+      const group = planGroups.find((g) => g.plan_id === planId);
+      if (group) {
+        sk.updatePreviewSpecs(group.specs);
+        return;
+      }
+    }
+    sk.updatePreviewSpecs(mergedSpecs);
+  }, [specIds, mergedSpecs, planGroups, selectedId]);
 
   const defaultSelectedIds = useMemo(
     () => (selectedId ? [selectedId] : []),
@@ -141,11 +179,16 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
   );
 
   const handleSelect = (ids: string[]) => {
-    const id = [...ids].reverse().find((candidate) => candidate === "__specs_root__" || specById.has(candidate));
+    const id = [...ids]
+      .reverse()
+      .find((candidate) => candidate.startsWith("plan:") || specById.has(candidate));
     if (!id) return;
-    if (id === "__specs_root__") {
+    if (id.startsWith("plan:")) {
+      const planId = id.slice("plan:".length);
+      const group = planGroups.find((g) => g.plan_id === planId);
+      if (!group) return;
       setSelectedId(id);
-      pushPreview({ kind: "specs_overview", specs: mergedSpecs });
+      pushPreview({ kind: "specs_overview", specs: group.specs, title: group.title });
       return;
     }
     const spec = specById.get(id);
@@ -228,7 +271,7 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
 
   if (isEmpty) {
     if (!showEmpty) return null;
-    return <EmptyState>No specs yet</EmptyState>;
+    return <EmptyState>No plans yet</EmptyState>;
   }
 
   return (

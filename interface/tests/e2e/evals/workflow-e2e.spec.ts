@@ -80,7 +80,7 @@ for (const scenario of scenarios) {
     ));
 
     await timed("open_workbench", () => page.goto(`/projects/${project.project_id}/work`));
-    await expect(page.getByRole("button", { name: "Specs", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Plans", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Tasks", exact: true }).last()).toBeVisible();
     await expect(page.getByRole("button", { name: "Stats", exact: true })).toBeVisible();
 

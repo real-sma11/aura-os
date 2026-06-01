@@ -320,7 +320,7 @@ test("mobile project navigation opens shared agent, work, process, and stats rou
   await tapPrimaryNav(page, "Execution");
   await expect(page).toHaveURL(/\/projects\/proj-1\/work$/);
   await expect(page.getByRole("button", { name: "Start remote work" })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("Specs")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Plans")).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole("main").getByRole("button", { name: "Tasks" })).toHaveCount(0);
 
   await tapPrimaryNav(page, "Files");
@@ -445,7 +445,7 @@ test("mobile execution keeps the summary, activity, and specs sections stacked b
 
   const executionSection = page.getByRole("region", { name: "Execution" });
   const activitySection = page.getByRole("region", { name: "Recent activity" });
-  const specsSection = page.getByRole("region", { name: "Specs" });
+  const specsSection = page.getByRole("region", { name: "Plans" });
   const startButton = page.getByRole("button", { name: "Start remote work" });
   const projectTabs = page.getByRole("navigation", { name: "Project sections" });
   const workScroller = page.getByTestId("mobile-project-work");

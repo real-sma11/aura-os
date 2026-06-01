@@ -284,10 +284,10 @@ export function ProjectWorkView() {
         </div>
       </section>
 
-      <section className={styles.section} aria-label="Specs">
+      <section className={styles.section} aria-label="Plans">
         <div className={`${styles.sectionCard} ${styles.sectionBody}`}>
           <div className={styles.sectionCardHeader}>
-            <div className={styles.sectionLabel}>Specs</div>
+            <div className={styles.sectionLabel}>Plans</div>
             <Text size="sm" variant="muted" className={styles.sectionHint}>
               Review the latest planning outputs and jump into details when you need them.
             </Text>

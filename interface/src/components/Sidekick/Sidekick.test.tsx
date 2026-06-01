@@ -183,7 +183,7 @@ describe("SidekickTaskbar", () => {
       "Terminal",
       "Browser",
       "Run",
-      "Specs",
+      "Plans",
       "Tasks",
       "Stats",
       "Log",

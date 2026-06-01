@@ -39,7 +39,7 @@ function isSidekickTab(value: string): value is SidekickTab {
 
 export type PreviewItem =
   | { kind: "spec"; spec: Spec }
-  | { kind: "specs_overview"; specs: Spec[] }
+  | { kind: "specs_overview"; specs: Spec[]; title?: string }
   | { kind: "task"; task: Task }
   | { kind: "session"; session: Session }
   | { kind: "log"; entry: LogEntry };
@@ -422,7 +422,7 @@ export const useSidekickStore = create<SidekickState>()((set, get) => ({
   updatePreviewSpecs: (specs) => {
     const { previewItem } = get();
     if (previewItem?.kind !== "specs_overview") return;
-    set({ previewItem: { kind: "specs_overview", specs } });
+    set({ previewItem: { kind: "specs_overview", specs, title: previewItem.title } });
   },
 }));
 

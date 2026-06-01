@@ -244,13 +244,13 @@ test("project work route uses the combined mobile work view while desktop keeps 
   if (factor === "desktop") {
     await expect(page.getByRole("textbox", { name: "Search" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Demo Project" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Specs" })).toBeVisible();
-    await page.getByRole("button", { name: "Specs" }).click();
+    await expect(page.getByRole("button", { name: "Plans" })).toBeVisible();
+    await page.getByRole("button", { name: "Plans" }).click();
     await expect(page.getByText("Mobile parity spec")).toBeVisible();
   } else {
     await expect(page.getByRole("button", { name: "Start remote work" })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("Recent activity")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("Specs")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Plans")).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("button", { name: "Open spec Mobile parity spec" })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("treeitem", { name: "Demo Project" })).toHaveCount(0);
     await page

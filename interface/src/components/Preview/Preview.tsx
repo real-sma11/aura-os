@@ -107,7 +107,7 @@ function SpecPreview({ spec }: { spec: Spec }) {
 function previewTitle(item: PreviewItem): string {
   switch (item.kind) {
     case "spec": return "Spec";
-    case "specs_overview": return "Specs";
+    case "specs_overview": return "Plan";
     case "task": return "Task";
     case "session": return `Session ${item.session.session_id.slice(0, 8)}`;
     case "log": return "Log";
@@ -130,7 +130,7 @@ export function PreviewHeader() {
 
   const title =
     displayItem.kind === "specs_overview"
-      ? (ctx?.project?.specs_title || "Specs")
+      ? (displayItem.title || ctx?.project?.specs_title || "Plan")
       : displayItem.kind === "spec"
         ? (displayItem.spec.title || "Spec")
         : previewTitle(displayItem);

@@ -73,7 +73,7 @@ export function SidekickTaskbar() {
       { id: "sessions", icon: <MessageSquare size={16} />, title: "Sessions" },
       { id: "terminal", icon: <SquareTerminal size={16} />, title: "Terminal" },
       { id: "browser", icon: <Globe size={16} />, title: "Browser" },
-      { id: "specs", icon: <File size={16} />, title: "Specs" },
+      { id: "specs", icon: <File size={16} />, title: "Plans" },
       {
         id: "run",
         // `PlayLoopGlyph` keeps the Play affordance recognisable AND

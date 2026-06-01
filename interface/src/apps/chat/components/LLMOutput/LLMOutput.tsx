@@ -2,23 +2,22 @@ import { useMemo, type RefObject } from "react";
 import type { ArtifactRef, TimelineItem, ToolCallEntry } from "../../../../shared/types/stream";
 import { expandToolMarkersInTimeline } from "../../../../utils/tool-markers";
 import { ActivityTimeline } from "../../../../components/ActivityTimeline";
+import { ReviewPlanCard } from "../../../../components/ReviewPlanCard";
 import styles from "./LLMOutput.module.css";
 
 interface ArtifactRefsListProps {
   refs: ArtifactRef[];
+  isStreaming?: boolean;
 }
 
-function ArtifactRefsList({ refs }: ArtifactRefsListProps) {
+function ArtifactRefsList({ refs, isStreaming }: ArtifactRefsListProps) {
   const tasks = refs.filter((r) => r.kind === "task");
   const specs = refs.filter((r) => r.kind === "spec");
   return (
     <div className={styles.artifactRefs}>
-      {specs.map((ref) => (
-        <div key={ref.id} className={styles.artifactRef}>
-          <span className={styles.artifactRefIcon}>spec</span>
-          <span className={styles.artifactRefTitle}>{ref.title}</span>
-        </div>
-      ))}
+      {specs.length > 0 && (
+        <ReviewPlanCard specRefs={specs} isStreaming={isStreaming} />
+      )}
       {tasks.map((ref) => (
         <div key={ref.id} className={styles.artifactRef}>
           <span className={styles.artifactRefIcon}>task</span>
@@ -121,7 +120,7 @@ export function LLMOutput({
         />
       )}
       {hasArtifactRefs && artifactRefs && (
-        <ArtifactRefsList refs={artifactRefs} />
+        <ArtifactRefsList refs={artifactRefs} isStreaming={isStreaming} />
       )}
     </div>
   );

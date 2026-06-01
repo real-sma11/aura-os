@@ -143,7 +143,7 @@ describe("ProjectWorkView", () => {
     render(<ProjectWorkView />);
 
     expect(screen.getByText("Recent activity")).toBeInTheDocument();
-    expect(screen.getByText("Specs")).toBeInTheDocument();
+    expect(screen.getByText("Plans")).toBeInTheDocument();
     expect(screen.queryByText("Log panel")).not.toBeInTheDocument();
     expect(screen.queryByText("Task Feed")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Patch auth flow" })).toBeInTheDocument();
