@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { Text, ModalConfirm } from "@cypher-asi/zui";
@@ -247,6 +247,13 @@ export function RunSidekickPane() {
   // instance, not the chat one — the exact regression where the pane sits
   // on "No tasks" forever after Run is pressed.
   const projectTasks = useTasksForProject(projectId);
+  // Render runs most-recent-last so the newest activity (and the pinned
+  // cooking indicator that lives at the bottom of the pane) sits at the
+  // end of the list.
+  const orderedTasks = useMemo(
+    () => [...projectTasks].sort((a, b) => a.updatedAt - b.updatedAt),
+    [projectTasks],
+  );
   const hasCompleted = projectTasks.some((t) => t.status !== "active");
   // After `demoteStaleActive`, at most one row should be "active" per
   // pane. Pick it (the newest wins if a brief window ever produces
@@ -296,7 +303,7 @@ export function RunSidekickPane() {
               </div>
             )
           ) : (
-            projectTasks.map((entry) =>
+            orderedTasks.map((entry) =>
               entry.status === "active" ? (
                 <ActiveTaskStream
                   key={entry.taskId}
