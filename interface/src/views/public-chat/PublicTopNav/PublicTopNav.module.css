@@ -60,6 +60,19 @@
   cursor: pointer;
   color: var(--topnav-fg-muted);
   transition: color 120ms ease, background-color 120ms ease;
+  /*
+   * The nav sits inside the titlebar `.blur` chrome
+   * (`backdrop-filter: blur(40px)`). Without isolation, a hover
+   * background-color change invalidates a region inside that
+   * filtered layer, forcing an expensive re-raster of the blur
+   * (expanded by the 40px radius) before the highlight paints —
+   * which reads as laggy hover feedback. Promoting each link to its
+   * own composited layer keeps the hover paint off the backdrop
+   * layer so the highlight appears instantly.
+   */
+  transform: translateZ(0);
+  isolation: isolate;
+  will-change: background-color;
 }
 
 .link:hover {
