@@ -368,32 +368,36 @@ export const MessageBubble = memo(function MessageBubble({
       || hasThinking || hasArtifactRefs || hasTimeline;
 
     if (isStreamDropped) {
+      // Render any partial content exactly like a successful turn so the
+      // interruption notice doesn't swallow the whole message in the
+      // warning box. The banner below carries only the "interrupted"
+      // notice + recovery actions.
       return (
-        <div
-          className={styles.streamDroppedBanner}
-          role="status"
-          aria-live="polite"
-        >
-          <span className={styles.streamDroppedTitle}>
-            Chat stream interrupted
-          </span>
+        <>
           {hasRenderableContent && (
-            <div className={styles.streamDroppedMeta}>
-              <LLMOutput
-                content={message.content}
-                timeline={message.timeline}
-                toolCalls={message.toolCalls}
-                thinkingText={message.thinkingText}
-                thinkingDurationMs={message.thinkingDurationMs}
-                artifactRefs={message.artifactRefs}
-                isStreaming={isStreaming}
-                defaultThinkingExpanded={initialThinkingExpanded}
-                defaultActivitiesExpanded={initialActivitiesExpanded}
-              />
-            </div>
+            <LLMOutput
+              content={message.content}
+              timeline={message.timeline}
+              toolCalls={message.toolCalls}
+              thinkingText={message.thinkingText}
+              thinkingDurationMs={message.thinkingDurationMs}
+              artifactRefs={message.artifactRefs}
+              isStreaming={isStreaming}
+              defaultThinkingExpanded={initialThinkingExpanded}
+              defaultActivitiesExpanded={initialActivitiesExpanded}
+            />
           )}
-          {renderErrorActions()}
-        </div>
+          <div
+            className={styles.streamDroppedBanner}
+            role="status"
+            aria-live="polite"
+          >
+            <span className={styles.streamDroppedTitle}>
+              Chat stream interrupted
+            </span>
+            {renderErrorActions()}
+          </div>
+        </>
       );
     }
 

@@ -431,10 +431,6 @@
   color: var(--color-text-primary);
 }
 
-.streamDroppedMeta {
-  margin-top: 2px;
-}
-
 /* Shared chrome at the bottom of every error variant. Renders
    as two stacked lines:
      line 1 (`errorMessageLine`): full, wrapping error message +
