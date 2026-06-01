@@ -19,6 +19,14 @@ function isValidHex(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value.trim());
 }
 
+// Compact duration label: seconds under a minute, m/s above.
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+
 const THEME_LABELS: Record<Theme, string> = {
   dark: "Dark",
   light: "Light",
@@ -293,16 +301,16 @@ export function AppearanceSection() {
               <input
                 type="range"
                 min="0"
-                max="60"
+                max="600"
                 step="0.5"
                 value={pauseDuration}
                 onChange={(e) => setPauseDuration(parseFloat(e.target.value))}
                 className={styles.pulseSpeedSlider}
                 aria-label="Pause duration"
               />
-              <Text variant="muted" size="xs">60s</Text>
+              <Text variant="muted" size="xs">10m</Text>
               <Text variant="muted" size="xs" className={styles.pulseSpeedValue}>
-                {pauseDuration.toFixed(1)}s
+                {formatDuration(pauseDuration)}
               </Text>
             </div>
 
@@ -359,19 +367,21 @@ export function AppearanceSection() {
               } as React.CSSProperties}
             />
           ) : (
-            <div className={styles.logoPreviewWrapper} role="img" aria-label="AURA logo preview">
-              <div
-                className={styles.logoPreviewMark}
-                style={{ backgroundColor: effectiveFromColor }}
-              />
-              <div
-                className={`${styles.logoPreviewMark} ${sweepReversed ? styles.logoPreviewSweepOverlayReversed : styles.logoPreviewSweepOverlay}`}
-                style={{
-                  backgroundColor: effectiveToColor,
-                  animation: `${sweepReversed ? "aura-logo-sweep-rev" : "aura-logo-sweep"} ${pulseSpeed + pauseDuration}s ease-in-out infinite`,
-                } as React.CSSProperties}
-              />
-            </div>
+            // Sweep: one masked element backed by a `from | to | from`
+            // band gradient (300% width) slid one direction so the "to"
+            // band travels across and loops seamlessly. Single mask = no
+            // hairline bleed between layers. Mirrors AuraWordmark exactly.
+            <div
+              className={styles.logoPreviewMark}
+              role="img"
+              aria-label="AURA logo preview"
+              style={{
+                backgroundImage: `linear-gradient(90deg, ${effectiveFromColor} 0 33.333%, ${effectiveToColor} 33.333% 66.667%, ${effectiveFromColor} 66.667% 100%)`,
+                backgroundSize: "300% 100%",
+                backgroundRepeat: "no-repeat",
+                animation: `${sweepReversed ? "aura-logo-sweep-rev" : "aura-logo-sweep"} ${pulseSpeed + pauseDuration}s ease-in-out infinite`,
+              } as React.CSSProperties}
+            />
           )}
         </div>
       </div>

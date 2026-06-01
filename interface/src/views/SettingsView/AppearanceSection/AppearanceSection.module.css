@@ -168,25 +168,6 @@
   -webkit-mask-position: center;
 }
 
-.logoPreviewWrapper {
-  position: relative;
-  height: 14px;
-  aspect-ratio: 3322 / 421;
-  display: block;
-}
-
-.logoPreviewWrapper .logoPreviewMark {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-}
-
-.logoPreviewSweepOverlay,
-.logoPreviewSweepOverlayReversed {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-}
 
 /* Pulse toggle */
 .pulseToggleRow {
