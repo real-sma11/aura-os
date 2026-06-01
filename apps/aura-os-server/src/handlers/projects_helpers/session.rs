@@ -271,7 +271,26 @@ pub(crate) async fn project_tool_session_config(
     let template_agent_id_field = agent_instance
         .as_ref()
         .map(|instance| instance.agent_id.to_string());
-    let model = effective_project_tool_model(agent_instance.as_ref());
+    // Resolve the model this project-tool session runs on. Agent
+    // *instances* frequently carry no model of their own — the chat
+    // surface supplies one per turn via the client model picker — so
+    // fall back to the parent Agent template's default, and finally to a
+    // pinned default. Without this, non-interactive endpoints like
+    // `/specs/summary` and `/specs/generate` fail the harness turn with
+    // "model name must not be empty".
+    let model = effective_project_tool_model(agent_instance.as_ref())
+        .or_else(|| {
+            agent_instance.as_ref().and_then(|instance| {
+                state
+                    .agent_service
+                    .get_agent_local(&instance.agent_id)
+                    .ok()
+                    .and_then(|agent| {
+                        agent.default_model.filter(|value| !value.trim().is_empty())
+                    })
+            })
+        })
+        .or_else(|| Some(DEFAULT_PROJECT_TOOL_MODEL.to_string()));
     let agent_permissions = agent_instance
         .as_ref()
         .map(|instance| {
@@ -385,6 +404,14 @@ pub(crate) async fn project_tool_session_config(
 
     Ok(cfg)
 }
+
+/// Pinned fallback model for non-interactive project-tool sessions
+/// (spec generation/summary, etc.) when neither the agent instance nor
+/// its parent template pins one. Mirrors the client's default chat
+/// model so these server-driven turns never fail with "model name must
+/// not be empty" — same pinned-id strategy as `BUG_REPORT_MODEL` and
+/// `PUBLIC_DEMO_MODEL`.
+const DEFAULT_PROJECT_TOOL_MODEL: &str = "aura-claude-sonnet-4-6";
 
 fn effective_project_tool_model(instance: Option<&AgentInstance>) -> Option<String> {
     instance.and_then(|instance| {
