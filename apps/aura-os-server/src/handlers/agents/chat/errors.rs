@@ -231,8 +231,34 @@ pub(crate) fn map_harness_error_to_api(
         // server / harness drift stays observable as one error code
         // regardless of which side caught it.
         ApiError::session_identity_missing(field, context)
+    } else if let Some((status, _body)) = aura_os_harness::HarnessError::upstream_status(err) {
+        // The harness answered `POST /v1/run` with a non-2xx status.
+        // A 404 means the route is missing (stale/incompatible harness
+        // build or a misrouted base URL); other statuses mean the
+        // harness rejected the run. Map both to a clear 502 so
+        // non-chat callers (runtime test, spec gen) get the same
+        // actionable wording instead of a generic 500.
+        map_harness_upstream_status(status)
     } else {
         fallback(err)
+    }
+}
+
+/// Shared 502 wording for a harness `POST /v1/run` non-2xx open
+/// failure. A 404 is special-cased because it almost always means the
+/// harness is unreachable or running a build that predates the
+/// `/v1/run` route (or the base URL points at the wrong service);
+/// every other status is surfaced verbatim so operators can see what
+/// the harness actually returned.
+fn map_harness_upstream_status(status: u16) -> (StatusCode, Json<ApiError>) {
+    if status == 404 {
+        ApiError::bad_gateway(
+            "agent runtime endpoint not found (404): the harness is unreachable or \
+             running an incompatible version. Verify the harness deployment and the \
+             LOCAL_HARNESS_URL / SWARM_BASE_URL configuration.",
+        )
+    } else {
+        ApiError::bad_gateway(format!("agent runtime returned status {status}"))
     }
 }
 
@@ -272,6 +298,24 @@ pub(super) fn map_harness_session_startup_error(message: &str) -> (StatusCode, J
         || normalized.contains("connection closed before session_ready")
     {
         return ApiError::bad_gateway(format!("local harness startup failed: {message}"));
+    }
+
+    // The harness HTTP server answered the `POST /v1/run` open with a
+    // non-2xx status (the `HarnessError::UpstreamStatus` Display).
+    // A 404 means a server is listening at the harness base URL but
+    // has no `/v1/run` route — almost always a stale/incompatible
+    // harness build (predating the `/v1/run` migration) or a
+    // misrouted `LOCAL_HARNESS_URL`/`SWARM_BASE_URL`. Surface a clear
+    // 502 instead of letting it fall through to a generic 500.
+    if normalized.contains("returned status") && normalized.contains("/v1/run") {
+        if normalized.contains("status 404") {
+            return ApiError::bad_gateway(
+                "agent runtime endpoint not found (404): the harness is unreachable or \
+                 running an incompatible version. Verify the harness deployment and the \
+                 LOCAL_HARNESS_URL / SWARM_BASE_URL configuration.",
+            );
+        }
+        return ApiError::bad_gateway(format!("agent runtime rejected the session: {message}"));
     }
 
     ApiError::internal(format!("opening harness session: {message}"))

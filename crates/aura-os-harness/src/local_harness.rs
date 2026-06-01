@@ -432,6 +432,16 @@ impl LocalHarness {
                 })
                 .context(format!("POST /v1/run rejected with 409: {body}")));
             }
+            // A non-2xx here (typically 404) means a server is
+            // listening at `base_url` but does not serve `/v1/run` —
+            // a stale/incompatible harness build or a misrouted
+            // `LOCAL_HARNESS_URL`. Log the resolved endpoint so the
+            // 404 is self-diagnosing in operator logs.
+            tracing::warn!(
+                base_url = %self.base_url,
+                status = status.as_u16(),
+                "local harness POST /v1/run returned non-success status"
+            );
             return Err(anyhow::Error::new(HarnessError::UpstreamStatus {
                 status: status.as_u16(),
                 body,
