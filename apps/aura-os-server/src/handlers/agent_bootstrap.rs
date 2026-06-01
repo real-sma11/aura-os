@@ -8,9 +8,12 @@ use aura_os_network::NetworkAgent;
 
 use crate::agent_events::AgentEvent;
 use crate::capture_auth::{demo_agent, is_capture_access_token};
+use crate::dto::CreateAgentRequest;
 use crate::error::{map_network_error, ApiError, ApiResult};
 use crate::handlers::agents::conversions_pub::agent_from_network;
-use crate::handlers::agents::ensure_agent_home_project_and_binding;
+use crate::handlers::agents::{
+    create_and_provision_remote_agent, ensure_agent_home_project_and_binding, prepare_create,
+};
 use crate::harness_client::HarnessClient;
 use crate::orchestration_store::OrchestrationStore;
 use crate::state::{AppState, AuthJwt, AuthSession};
@@ -345,30 +348,56 @@ pub(crate) async fn setup_ceo_agent(
 
     let template = ceo_agent_template(&org_name, &org_id);
 
-    let net_req = aura_os_network::CreateAgentRequest {
-        name: template.name,
-        role: Some(template.role),
-        personality: Some(template.personality),
-        system_prompt: Some(template.system_prompt),
-        skills: None,
-        icon: None,
-        harness: None,
-        machine_type: Some("local".to_string()),
-        org_id: Some(org_id),
-        tags: None,
-        listing_status: None,
-        expertise: None,
-        permissions: template.permissions,
-        intent_classifier: None,
+    let agent = if state.remote_only {
+        let prepared = prepare_create(CreateAgentRequest {
+            org_id: org_id.parse().ok(),
+            name: template.name,
+            role: template.role,
+            personality: template.personality,
+            system_prompt: template.system_prompt,
+            skills: Vec::new(),
+            icon: None,
+            machine_type: Some("remote".to_string()),
+            adapter_type: Some("aura_harness".to_string()),
+            environment: Some("swarm_microvm".to_string()),
+            auth_source: Some("aura_managed".to_string()),
+            integration_id: None,
+            default_model: None,
+            tags: None,
+            listing_status: None,
+            expertise: None,
+            local_workspace_path: None,
+            permissions: template.permissions,
+            intent_classifier: None,
+        })?;
+        create_and_provision_remote_agent(&state, network, &jwt, &prepared).await?
+    } else {
+        let net_req = aura_os_network::CreateAgentRequest {
+            name: template.name,
+            role: Some(template.role),
+            personality: Some(template.personality),
+            system_prompt: Some(template.system_prompt),
+            skills: None,
+            icon: None,
+            harness: None,
+            machine_type: Some("local".to_string()),
+            org_id: Some(org_id),
+            tags: None,
+            listing_status: None,
+            expertise: None,
+            permissions: template.permissions,
+            intent_classifier: None,
+        };
+
+        let net_agent = network
+            .create_agent(&jwt, &net_req)
+            .await
+            .map_err(map_network_error)?;
+
+        let mut agent = agent_from_network(&net_agent);
+        let _ = state.agent_service.apply_runtime_config(&mut agent);
+        agent
     };
-
-    let net_agent = network
-        .create_agent(&jwt, &net_req)
-        .await
-        .map_err(map_network_error)?;
-
-    let mut agent = agent_from_network(&net_agent);
-    let _ = state.agent_service.apply_runtime_config(&mut agent);
     // Stamp the freshly-created CEO `agent_id` into settings so the
     // read-time reconciler can still recognise this agent as the CEO
     // after the user renames it — see

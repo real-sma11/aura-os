@@ -25,6 +25,8 @@ use super::crud::create::{create_and_provision_remote_agent, prepare_create};
 const GENERAL_AGENT_KIND: &str = "general";
 const GENERAL_AGENT_NAME: &str = "New Agent";
 const PROJECT_LOCAL_GENERAL_AGENT_TAG: &str = "project_local_general";
+const REMOTE_ONLY_LOCAL_BINDING_MESSAGE: &str =
+    "local agents are not supported on this deployment; use a remote agent";
 const GENERAL_AGENT_SYSTEM_PROMPT: &str =
     "You are a helpful general-purpose agent working inside this project. Assist with planning, implementation, debugging, research, and execution as needed.";
 
@@ -254,6 +256,10 @@ pub(crate) async fn create_agent_instance(
             ));
         }
     };
+
+    if state.remote_only && agent.machine_type == "local" {
+        return Err(ApiError::bad_request(REMOTE_ONLY_LOCAL_BINDING_MESSAGE));
+    }
 
     if agent.machine_type == "local" {
         ensure_canonical_workspace_dir(&state.data_dir, &project_id)?;

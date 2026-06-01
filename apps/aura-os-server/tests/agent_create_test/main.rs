@@ -6,4 +6,5 @@ mod create_local;
 mod create_remote;
 mod mocks;
 mod recover;
+mod remote_only;
 mod serde_contract;
