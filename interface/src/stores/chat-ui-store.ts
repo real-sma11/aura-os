@@ -3,6 +3,7 @@ import { create } from "zustand";
 import {
   availableModelsForAdapter,
   defaultModelForAdapter,
+  DEFAULT_CHAT_MODEL_ID,
   DEFAULT_IMAGE_QUALITY,
   hasAgentScopedModel,
   loadPersistedImageModel,
@@ -61,6 +62,114 @@ export interface PinnedSourceImage {
   prompt: string;
 }
 
+/**
+ * Number of AURA Council members (model pickers) for a conversation.
+ * `1` means council off (a single model, the normal chat path); `2`–`4`
+ * fan the prompt out to that many models with slot 0 acting as the
+ * synthesizer.
+ */
+export type CouncilCount = 1 | 2 | 3 | 4;
+
+/**
+ * One AURA Council slot. Mirrors the `selectedModel` + `selectedEffort`
+ * pairing the single-model path uses (model id plus its reasoning
+ * effort), bundled per slot so the send path can map each council
+ * member to a model + effort the same way it does the single pick.
+ * `effort` is `null` when the model exposes no effort tiers.
+ */
+export interface CouncilSlot {
+  id: string;
+  effort: ModelEffort | null;
+}
+
+const DEFAULT_COUNCIL_COUNT: CouncilCount = 1;
+
+/**
+ * Stable empty slot list so the `useChatUI` selector returns a
+ * referentially-stable value for streams with no council state yet
+ * (mirrors `selectedModel`'s `?? null` — a fresh `[]` each render would
+ * thrash zustand's `Object.is` snapshot check).
+ */
+const EMPTY_COUNCIL_MODELS: CouncilSlot[] = [];
+
+function isCouncilCount(value: unknown): value is CouncilCount {
+  return value === 1 || value === 2 || value === 3 || value === 4;
+}
+
+function isModelEffort(value: unknown): value is ModelEffort {
+  return (
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "max"
+  );
+}
+
+// Council state persists per `streamKey` under the same `aura-…`
+// localStorage namespace the selected-model helpers use, and is
+// rehydrated in `init` exactly like `selectedModel`.
+function councilCountStorageKey(streamKey: string): string {
+  return `aura-council-count:${streamKey}`;
+}
+
+function councilModelsStorageKey(streamKey: string): string {
+  return `aura-council-models:${streamKey}`;
+}
+
+function persistCouncilCount(streamKey: string, count: CouncilCount): void {
+  try {
+    localStorage.setItem(councilCountStorageKey(streamKey), String(count));
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+function loadPersistedCouncilCount(streamKey: string): CouncilCount {
+  try {
+    const parsed = Number(localStorage.getItem(councilCountStorageKey(streamKey)));
+    if (isCouncilCount(parsed)) return parsed;
+  } catch {
+    // localStorage may be unavailable
+  }
+  return DEFAULT_COUNCIL_COUNT;
+}
+
+function persistCouncilModels(streamKey: string, models: CouncilSlot[]): void {
+  try {
+    localStorage.setItem(councilModelsStorageKey(streamKey), JSON.stringify(models));
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+function loadPersistedCouncilModels(streamKey: string): CouncilSlot[] {
+  try {
+    const stored = localStorage.getItem(councilModelsStorageKey(streamKey));
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    const slots: CouncilSlot[] = [];
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof (item as { id?: unknown }).id === "string"
+      ) {
+        const effort = (item as { effort?: unknown }).effort;
+        slots.push({
+          id: (item as { id: string }).id,
+          effort: isModelEffort(effort) ? effort : null,
+        });
+      }
+    }
+    return slots;
+  } catch {
+    // localStorage may be unavailable / malformed
+    return [];
+  }
+}
+
 interface StreamState {
   selectedMode: AgentMode;
   selectedModel: string | null;
@@ -78,6 +187,18 @@ interface StreamState {
   imageQuality: ImageQuality;
   projectId: string | null;
   pinnedSourceImage: PinnedSourceImage | null;
+  /**
+   * Number of active AURA Council members. `1` (the default) is council
+   * off — the single-model path. Read by the model menu's count flyout.
+   */
+  councilCount: CouncilCount;
+  /**
+   * Per-slot council picks, length tracking `councilCount`. Index 0 is
+   * the first/synthesizer slot. Each entry mirrors the
+   * `selectedModel`/`selectedEffort` pairing (model id + reasoning
+   * effort) so the send path can reuse it per member.
+   */
+  councilModels: CouncilSlot[];
 }
 
 interface ChatUIState {
@@ -112,6 +233,28 @@ interface ChatUIActions {
    */
   setSelectedEffort: (streamKey: string, effort: ModelEffort) => void;
   getSelectedEffort: (streamKey: string) => ModelEffort | null;
+  /**
+   * Set the AURA Council member count for a stream. Growing the count
+   * fills new slots with the current `selectedModel` (or
+   * {@link DEFAULT_CHAT_MODEL_ID} when none is set); shrinking truncates
+   * `councilModels` to the new length. Slot 0 defaults to the current
+   * `selectedModel` when empty. Persists count + models like
+   * `selectedModel`.
+   */
+  setCouncilCount: (streamKey: string, count: CouncilCount) => void;
+  getCouncilCount: (streamKey: string) => CouncilCount;
+  /**
+   * Set the model (and optional reasoning effort) for a single council
+   * slot. Out-of-range slots are ignored. Omitting `effort` restores the
+   * model's persisted/default tier, matching `setSelectedModel`.
+   */
+  setCouncilModel: (
+    streamKey: string,
+    slot: number,
+    modelId: string,
+    effort?: ModelEffort,
+  ) => void;
+  getCouncilModels: (streamKey: string) => CouncilSlot[];
   /**
    * Set the Image-mode quality tier for a stream and persist it (per
    * agent + global default).
@@ -175,6 +318,8 @@ const getStream = (state: ChatUIState, key: string): StreamState =>
     imageQuality: DEFAULT_IMAGE_QUALITY,
     projectId: null,
     pinnedSourceImage: null,
+    councilCount: DEFAULT_COUNCIL_COUNT,
+    councilModels: EMPTY_COUNCIL_MODELS,
   };
 
 export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
@@ -219,6 +364,8 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           selectedEffort: loadPersistedModelEffort(model),
           imageQuality: loadPersistedImageQuality(agentId),
           selectedMode: mode,
+          councilCount: loadPersistedCouncilCount(streamKey),
+          councilModels: loadPersistedCouncilModels(streamKey),
         },
       },
     }));
@@ -261,6 +408,52 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
   },
 
   getSelectedEffort: (streamKey) => getStream(get(), streamKey).selectedEffort,
+
+  setCouncilCount: (streamKey, count) => {
+    set((s) => {
+      const current = getStream(s, streamKey);
+      // Truncate when shrinking; seed new slots from the current single
+      // pick (slot 0 included) so growing the council never lands on an
+      // empty/invalid model id.
+      const seed = current.selectedModel ?? DEFAULT_CHAT_MODEL_ID;
+      const councilModels = current.councilModels.slice(0, count);
+      while (councilModels.length < count) {
+        councilModels.push({ id: seed, effort: loadPersistedModelEffort(seed) });
+      }
+      persistCouncilCount(streamKey, count);
+      persistCouncilModels(streamKey, councilModels);
+      return {
+        streams: {
+          ...s.streams,
+          [streamKey]: { ...current, councilCount: count, councilModels },
+        },
+      };
+    });
+  },
+
+  getCouncilCount: (streamKey) => getStream(get(), streamKey).councilCount,
+
+  setCouncilModel: (streamKey, slot, modelId, effort) => {
+    set((s) => {
+      const current = getStream(s, streamKey);
+      if (slot < 0 || slot >= current.councilModels.length) return s;
+      // An explicit effort wins; otherwise restore the model's
+      // persisted/default tier, matching `setSelectedModel`.
+      const nextEffort = effort ?? loadPersistedModelEffort(modelId);
+      const councilModels = current.councilModels.map((member, index) =>
+        index === slot ? { id: modelId, effort: nextEffort } : member,
+      );
+      persistCouncilModels(streamKey, councilModels);
+      return {
+        streams: {
+          ...s.streams,
+          [streamKey]: { ...current, councilModels },
+        },
+      };
+    });
+  },
+
+  getCouncilModels: (streamKey) => getStream(get(), streamKey).councilModels,
 
   setImageQuality: (streamKey, quality, agentId) => {
     persistImageQuality(quality, agentId);
@@ -545,7 +738,15 @@ export function useChatUI(streamKey: string) {
   const pinnedSourceImage = useChatUIStore(
     (s) => s.streams[streamKey]?.pinnedSourceImage ?? null,
   );
+  const councilCount = useChatUIStore(
+    (s) => s.streams[streamKey]?.councilCount ?? DEFAULT_COUNCIL_COUNT,
+  );
+  const councilModels = useChatUIStore(
+    (s) => s.streams[streamKey]?.councilModels ?? EMPTY_COUNCIL_MODELS,
+  );
   const setSelectedModel = useChatUIStore((s) => s.setSelectedModel);
+  const setCouncilCount = useChatUIStore((s) => s.setCouncilCount);
+  const setCouncilModel = useChatUIStore((s) => s.setCouncilModel);
   const setSelectedEffort = useChatUIStore((s) => s.setSelectedEffort);
   const setImageQuality = useChatUIStore((s) => s.setImageQuality);
   const setProjectId = useChatUIStore((s) => s.setProjectId);
@@ -560,8 +761,12 @@ export function useChatUI(streamKey: string) {
     imageQuality,
     projectId,
     pinnedSourceImage,
+    councilCount,
+    councilModels,
     setSelectedMode,
     setSelectedModel,
+    setCouncilCount,
+    setCouncilModel,
     setSelectedEffort,
     setImageQuality,
     setProjectId,
