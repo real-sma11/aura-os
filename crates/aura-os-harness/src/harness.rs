@@ -12,7 +12,6 @@ use crate::error::HarnessError;
 
 #[derive(Default)]
 pub struct SessionConfig {
-    pub system_prompt: Option<String>,
     pub model: Option<String>,
     pub max_tokens: Option<u32>,
     pub max_turns: Option<u32>,

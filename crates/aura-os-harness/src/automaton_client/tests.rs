@@ -32,6 +32,7 @@ fn automaton_start_params_serializes_agent_permissions() {
         agent_identity: None,
         agent_skills: Vec::new(),
         agent_system_prompt: None,
+        project_info: None,
     };
 
     let value = serde_json::to_value(params).expect("serialize params");
@@ -73,6 +74,7 @@ fn automaton_start_params_skips_pr_b_identity_fields_when_empty() {
         agent_identity: None,
         agent_skills: Vec::new(),
         agent_system_prompt: None,
+        project_info: None,
     };
 
     let value = serde_json::to_value(&params).expect("serialize params");
@@ -125,6 +127,7 @@ fn automaton_start_params_serializes_pr_b_identity_fields_when_populated() {
         }),
         agent_skills: vec!["rust".into(), "frontend".into()],
         agent_system_prompt: Some("Be terse.".into()),
+        project_info: None,
     };
 
     let value = serde_json::to_value(&params).expect("serialize params");
@@ -170,6 +173,7 @@ fn automaton_start_params_serializes_proxy_identity_context() {
         agent_identity: None,
         agent_skills: Vec::new(),
         agent_system_prompt: None,
+        project_info: None,
     };
 
     let value = serde_json::to_value(params).expect("serialize params");
@@ -217,6 +221,7 @@ fn full_valid_params() -> AutomatonStartParams {
         agent_identity: None,
         agent_skills: Vec::new(),
         agent_system_prompt: None,
+        project_info: None,
     }
 }
 

@@ -248,7 +248,7 @@ fn log_session_shape(cfg: &SessionConfig, context: &'static str) {
         has_intent_classifier = cfg.intent_classifier.is_some(),
         has_project_id = cfg.project_id.is_some(),
         has_project_path = cfg.project_path.is_some(),
-        system_prompt_len = cfg.system_prompt.as_deref().map(str::len).unwrap_or(0),
+        system_prompt_len = cfg.agent_system_prompt.as_deref().map(str::len).unwrap_or(0),
         installed_tools_count = cfg.installed_tools.as_ref().map(Vec::len).unwrap_or(0),
         installed_integrations_count = cfg
             .installed_integrations
@@ -350,6 +350,7 @@ mod tests {
             agent_identity: None,
             agent_skills: Vec::new(),
             agent_system_prompt: None,
+            project_info: None,
         }
     }
 

@@ -262,7 +262,6 @@ pub(crate) async fn send_agent_event_stream(
     .await;
 
     let config = SessionConfig {
-        system_prompt: None,
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(agent_id.to_string()),
         user_id: Some(auth_session.user_id.clone()),

@@ -31,9 +31,9 @@ use super::compaction::append_project_state_to_system_prompt;
 ///
 /// All four are surfaced on
 /// [`aura_os_harness::SessionConfig`] as `agent_identity`,
-/// `agent_skills`, `agent_system_prompt`, and `project_info`. The
-/// caller leaves the legacy `system_prompt: Option<String>` empty so
-/// the harness's chat path takes the typed-fields branch.
+/// `agent_skills`, `agent_system_prompt`, and `project_info`, which
+/// `build_runtime_request` forwards to the harness's typed-fields chat
+/// path.
 pub struct TypedSessionFields {
     pub agent_identity: Option<AgentPersona>,
     pub agent_skills: Vec<String>,

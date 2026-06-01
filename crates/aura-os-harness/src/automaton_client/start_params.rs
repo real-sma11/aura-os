@@ -1,9 +1,9 @@
 use serde::Serialize;
 
 use aura_protocol::{
-    AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, InstalledIntegration,
-    InstalledTool, IntentClassifierSpec, ModelSelection, ProjectContext, RuntimeRequest,
-    RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
+    AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, ChatProjectInfoWire,
+    InstalledIntegration, InstalledTool, IntentClassifierSpec, ModelSelection, ProjectContext,
+    RuntimeRequest, RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +139,16 @@ pub struct AutomatonStartParams {
     /// [`AutomatonStartParams::agent_identity`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_system_prompt: Option<String>,
+    /// Typed project descriptor surfaced into the harness
+    /// `SystemPromptBuilder`'s `<project_context>` section, mirroring
+    /// the chat path's [`crate::SessionConfig::project_info`]. Carries
+    /// the `workspace_root` the harness's `agents_md_from_workspace()`
+    /// uses to locate `AGENTS.md`, so autonomous runs render the same
+    /// project context (and pick up `AGENTS.md`) as interactive chat.
+    /// Skipped on the wire when `None` so pre-existing harnesses keep
+    /// accepting the payload via `#[serde(default)]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_info: Option<ChatProjectInfoWire>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -205,7 +215,7 @@ pub fn automaton_start_params_to_runtime_request(params: &AutomatonStartParams) 
         },
         project: Some(ProjectContext {
             project_id: params.project_id.clone(),
-            project_info: None,
+            project_info: params.project_info.clone(),
             aura_org_id: params.aura_org_id.clone(),
             aura_session_id: params.aura_session_id.clone(),
             aura_agent_id: params.aura_agent_id.clone(),

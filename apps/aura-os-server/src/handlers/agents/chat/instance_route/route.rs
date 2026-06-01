@@ -238,9 +238,8 @@ pub(crate) async fn send_event_stream(
     // operator-prompt / project_info on the wire and let the harness
     // assemble the `<chat_capabilities>` + `<agent_identity>` +
     // `<agent_skills>` + `<agent_system_prompt>` + `<project_context>`
-    // + `<agents_md>` envelope via `SystemPromptBuilder`. The legacy
-    // `system_prompt: Option<String>` field stays empty so the
-    // harness picks the typed-fields branch.
+    // + `<agents_md>` envelope via `SystemPromptBuilder` from the typed
+    // identity / project-info wire fields.
     let TypedSessionFields {
         agent_identity,
         agent_skills,
@@ -264,7 +263,6 @@ pub(crate) async fn send_event_stream(
     );
 
     let config = SessionConfig {
-        system_prompt: None,
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(instance.agent_id.to_string()),
         user_id: Some(auth_session.user_id.clone()),

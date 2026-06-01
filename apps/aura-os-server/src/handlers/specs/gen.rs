@@ -34,8 +34,13 @@ use crate::state::{AppState, AuthJwt, AuthSession};
 /// `generate_specs_summary` so the dedicated `/specs/generate*`
 /// endpoints stay in lock-step with chat plan mode.
 fn apply_plan_mode_policy(mut config: SessionConfig) -> SessionConfig {
-    let base_prompt = config.system_prompt.unwrap_or_default();
-    config.system_prompt = Some(append_plan_mode_suffix(&base_prompt));
+    // Append the plan-mode suffix onto `agent_system_prompt` — the field
+    // `build_runtime_request` actually forwards to the harness as
+    // `<agent_system_prompt>`. The legacy `system_prompt` field this used
+    // to mutate was dropped on the wire, so the plan-mode rules never
+    // reached the spec-generation session.
+    let base_prompt = config.agent_system_prompt.unwrap_or_default();
+    config.agent_system_prompt = Some(append_plan_mode_suffix(&base_prompt));
     config.tool_permissions = Some(plan_mode_tool_permissions());
     config
 }
@@ -373,11 +378,11 @@ mod tests {
     #[test]
     fn apply_plan_mode_policy_suffixes_prompt_and_stamps_tool_permissions() {
         let mut config = SessionConfig {
-            system_prompt: Some("base prompt".to_string()),
+            agent_system_prompt: Some("base prompt".to_string()),
             ..Default::default()
         };
         config = apply_plan_mode_policy(config);
-        let prompt = config.system_prompt.expect("system prompt set");
+        let prompt = config.agent_system_prompt.expect("system prompt set");
         assert!(prompt.starts_with("base prompt"));
         assert!(prompt.ends_with(PLAN_MODE_SYSTEM_PROMPT_SUFFIX));
 

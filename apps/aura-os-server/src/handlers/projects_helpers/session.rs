@@ -343,7 +343,6 @@ pub(crate) async fn project_tool_session_config(
                 .map(|project| project.org_id.to_string())
         });
     let cfg = SessionConfig {
-        system_prompt: None,
         agent_id: agent_id_field,
         template_agent_id: template_agent_id_field,
         agent_name: Some(

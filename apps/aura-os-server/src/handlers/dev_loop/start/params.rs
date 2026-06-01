@@ -2,7 +2,7 @@
 
 use aura_os_core::{harness_agent_id, AgentInstanceId, Project};
 use aura_os_harness::AutomatonStartParams;
-use aura_protocol::AgentPersona;
+use aura_protocol::{AgentPersona, ChatProjectInfoWire};
 
 use crate::handlers::agents::session_model_overrides_with_cache;
 use crate::handlers::agents::tool_dedupe::dedupe_and_log_installed_tools;
@@ -132,7 +132,34 @@ fn assemble_automaton_start_params(inputs: AssembleInputs<'_>) -> AutomatonStart
         agent_identity: start_agent_identity(ctx),
         agent_skills: ctx.agent_skills.clone(),
         agent_system_prompt: Some(ctx.agent_system_prompt.clone()).filter(|s| !s.trim().is_empty()),
+        // Forward the typed project descriptor so dev-loop / task-run
+        // automata render the same `<project_context>` as chat and the
+        // harness's `agents_md_from_workspace()` can locate `AGENTS.md`
+        // from `workspace_root`. Chat carries this via
+        // `SessionConfig::project_info`; the automaton path went
+        // without it (hardcoded `project_info: None`) until now.
+        project_info: start_project_info(ctx),
     }
+}
+
+/// Build the typed [`ChatProjectInfoWire`] descriptor off the resolved
+/// [`StartContext`], mirroring the chat path's
+/// `build_typed_session_fields` project block. Returns `None` when the
+/// project record is unavailable so the harness skips
+/// `<project_context>` rather than emitting an empty envelope. The
+/// `workspace_root` is the dev-loop run's resolved workspace path —
+/// the same value forwarded as `WorkspaceLocation::project_path` — so
+/// the harness reads `AGENTS.md` from the run's actual checkout.
+fn start_project_info(ctx: &StartContext) -> Option<ChatProjectInfoWire> {
+    let project = ctx.project.as_ref()?;
+    Some(ChatProjectInfoWire {
+        id: ctx.project_id.to_string(),
+        name: project.name.clone(),
+        description: project.description.clone(),
+        workspace_root: ctx.workspace_root.clone(),
+        build_command: project.build_command.clone().unwrap_or_default(),
+        test_command: project.test_command.clone().unwrap_or_default(),
+    })
 }
 
 /// Project the per-agent identity prose off the resolved
