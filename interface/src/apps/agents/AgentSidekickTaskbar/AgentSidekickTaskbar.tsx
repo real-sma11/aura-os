@@ -8,7 +8,7 @@ import {
   Check,
   Cpu,
   ScrollText,
-  BarChart3,
+  ChartNoAxesColumnIncreasing,
   Database,
   Pencil,
   ShieldCheck,
@@ -31,7 +31,7 @@ const TAB_ICONS: TabItem[] = [
   { id: "tasks", icon: <Check size={16} />, title: "Tasks" },
   { id: "processes", icon: <Cpu size={16} />, title: "Processes" },
   { id: "logs", icon: <ScrollText size={16} />, title: "Logs" },
-  { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
+  { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
 ];
 
 interface AgentSidekickTaskbarProps {

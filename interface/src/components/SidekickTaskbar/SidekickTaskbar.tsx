@@ -6,7 +6,7 @@ import {
   Info,
   File,
   ScrollText,
-  BarChart3,
+  ChartNoAxesColumnIncreasing,
   MessageSquare,
   FolderClosed,
   SquareTerminal,
@@ -95,7 +95,7 @@ export function SidekickTaskbar() {
       },
       { id: "log", icon: <ScrollText size={16} />, title: "Log" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
-      { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
+      { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
     ],
     [tasksActive, runActive],
   );

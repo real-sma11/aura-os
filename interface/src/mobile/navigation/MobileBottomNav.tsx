@@ -1,5 +1,5 @@
 import {
-  BarChart3,
+  ChartNoAxesColumnIncreasing,
   Brain,
   Cpu,
   FolderClosed,
@@ -26,7 +26,7 @@ export const MOBILE_MORE_NAV_ITEMS: Array<{
   icon: typeof Brain;
 }> = [
   { id: "process", label: "Process", icon: Cpu },
-  { id: "stats", label: "Stats", icon: BarChart3 },
+  { id: "stats", label: "Stats", icon: ChartNoAxesColumnIncreasing },
 ];
 
 export function MobileBottomNav({

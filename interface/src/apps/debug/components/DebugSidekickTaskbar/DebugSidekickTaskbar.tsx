@@ -1,7 +1,7 @@
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
+  ChartNoAxesColumnIncreasing,
   Brain,
   ClipboardList,
   Repeat,
@@ -24,7 +24,7 @@ const TABS: TabItem[] = [
   { id: "iterations", icon: <Repeat size={16} />, title: "Iterations" },
   { id: "blockers", icon: <AlertTriangle size={16} />, title: "Blockers" },
   { id: "retries", icon: <RotateCcw size={16} />, title: "Retries" },
-  { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
+  { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
   { id: "tasks", icon: <ScrollText size={16} />, title: "Tasks" },
 ];
 
