@@ -218,6 +218,19 @@
   line-height: 1.05;
   letter-spacing: -0.035em;
   /*
+   * Keep the looping tagline on a single line. The `data-text` ghost
+   * reserves the width of the WIDEST phrase ("Your Private Agent."),
+   * and once that phrase is fully typed the trailing typewriter caret
+   * (an inline-block ~0.5em wide) overflows the reserved box and would
+   * wrap onto a second line. `nowrap` (inherited by the absolutely-
+   * positioned stream span and the caret below it) holds the text +
+   * caret on one line; the half-em caret simply overhangs the box edge
+   * instead of breaking. Scoped here rather than on the shared
+   * `.typewriter` class so the DM bubbles + product hero that reuse
+   * `TypewriterText` keep their normal wrapping.
+   */
+  white-space: nowrap;
+  /*
    * Follows the left public nav's light/dark polarity at full contrast:
    * `PublicChatView` publishes `--hero-headline-color` per active
    * persona — pure white when the nav foreground reads light (dark site
