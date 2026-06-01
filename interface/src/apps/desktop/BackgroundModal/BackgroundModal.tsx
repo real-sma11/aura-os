@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { Modal, Heading, Button, Text } from "@cypher-asi/zui";
+import { Modal, Heading, Button, Text, useTheme } from "@cypher-asi/zui";
 import { Upload } from "lucide-react";
 import {
   useDesktopBackgroundStore,
@@ -158,23 +158,28 @@ export function BackgroundModal({
 }) {
   const light = useDesktopBackgroundStore((s) => s.light);
   const dark = useDesktopBackgroundStore((s) => s.dark);
+  const { resolvedTheme } = useTheme();
+
+  const isLight = resolvedTheme === "light";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Desktop Background" size="md">
       <div className={styles.content}>
-        <BackgroundConfigSection
-          title="Light Mode"
-          theme="light"
-          config={light}
-          defaultCustomColor="#ffffff"
-        />
-        <div className={styles.divider} />
-        <BackgroundConfigSection
-          title="Dark Mode"
-          theme="dark"
-          config={dark}
-          defaultCustomColor="#000000"
-        />
+        {isLight ? (
+          <BackgroundConfigSection
+            title="Light Mode"
+            theme="light"
+            config={light}
+            defaultCustomColor="#ffffff"
+          />
+        ) : (
+          <BackgroundConfigSection
+            title="Dark Mode"
+            theme="dark"
+            config={dark}
+            defaultCustomColor="#000000"
+          />
+        )}
       </div>
     </Modal>
   );
