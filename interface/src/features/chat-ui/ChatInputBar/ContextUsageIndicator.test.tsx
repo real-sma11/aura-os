@@ -149,6 +149,34 @@ describe("ContextUsageIndicator", () => {
     expect(dialog).not.toHaveTextContent("MCP");
   });
 
+  // Phase 4: each bucket row is a real <button> with an accessible
+  // "View {label} context" label, and clicking it hands the bucket id
+  // to `onOpenBucket` (which the chat input bar wires to the Sidekick
+  // preview) then closes the popover.
+  it("renders bucket rows as buttons and fires onOpenBucket on click", async () => {
+    const user = userEvent.setup();
+    const onOpenBucket = vi.fn();
+    render(
+      <ContextUsageIndicator
+        utilization={0.39}
+        estimatedTokens={105_141}
+        breakdown={fixtureBreakdown()}
+        onOpenBucket={onOpenBucket}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /39%/ }));
+
+    const toolsRow = screen.getByRole("button", { name: /view tools context/i });
+    await user.click(toolsRow);
+
+    expect(onOpenBucket).toHaveBeenCalledWith("tools");
+    // Handing off to the preview closes the popover.
+    expect(
+      screen.queryByRole("dialog", { name: /context breakdown/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("closes the breakdown popover when the close button is clicked", async () => {
     const user = userEvent.setup();
     render(
