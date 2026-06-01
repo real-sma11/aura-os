@@ -194,16 +194,19 @@ beforeEach(() => {
 });
 
 describe("RunSidekickPane", () => {
-  it("renders run controls inside the run section", async () => {
-    const user = userEvent.setup();
+  it("renders run controls inside the run section", () => {
     render(<RunSidekickPane />);
 
     expect(screen.getByRole("button", { name: "Run automation" })).toBeInTheDocument();
     expect(screen.getByTestId("active-task")).toHaveTextContent("Active task");
     expect(screen.getByTestId("completed-task")).toHaveTextContent("Completed task");
+  });
 
-    await user.click(screen.getByRole("button", { name: "Clear completed task output" }));
-    expect(clearCompleted).toHaveBeenCalled();
+  it("filters run rows by the inline search query", () => {
+    render(<RunSidekickPane searchQuery="Completed" />);
+
+    expect(screen.queryByTestId("active-task")).not.toBeInTheDocument();
+    expect(screen.getByTestId("completed-task")).toHaveTextContent("Completed task");
   });
 
   it("wires scrollRef and initial auto-follow state down to active task streams", () => {

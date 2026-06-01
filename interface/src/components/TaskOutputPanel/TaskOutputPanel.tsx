@@ -2,11 +2,8 @@ import { useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { Text, ModalConfirm } from "@cypher-asi/zui";
-import { Trash2, Play, Pause, Square, Loader2 } from "lucide-react";
-import {
-  useTaskOutputPanelStore,
-  useTasksForProject,
-} from "../../stores/task-output-panel-store";
+import { Play, Pause, Square, Loader2 } from "lucide-react";
+import { useTasksForProject } from "../../stores/task-output-panel-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { selectProjectActivity, useLoopActivityStore } from "../../stores/loop-activity-store";
 import { useAutomationStatus } from "../AutomationBar/useAutomationStatus";
@@ -233,8 +230,7 @@ function RunPaneEmptyState({ projectId }: { projectId: string }) {
   );
 }
 
-export function RunSidekickPane() {
-  const clearCompleted = useTaskOutputPanelStore((s) => s.clearCompleted);
+export function RunSidekickPane({ searchQuery = "" }: { searchQuery?: string }) {
   const ctx = useProjectActions();
   const projectId = ctx?.project.project_id;
   const { agentInstanceId } = useParams<{ agentInstanceId?: string }>();
@@ -254,7 +250,19 @@ export function RunSidekickPane() {
     () => [...projectTasks].sort((a, b) => a.updatedAt - b.updatedAt),
     [projectTasks],
   );
-  const hasCompleted = projectTasks.some((t) => t.status !== "active");
+  // Inline search mirrors the Tasks / Specs panels: filter the rendered
+  // run rows by title (falling back to the task id) so the floating
+  // controls and cooking indicator keep tracking the real loop state.
+  const query = searchQuery.trim().toLowerCase();
+  const filteredTasks = useMemo(
+    () =>
+      query
+        ? orderedTasks.filter((t) =>
+            (t.title || t.taskId).toLowerCase().includes(query),
+          )
+        : orderedTasks,
+    [orderedTasks, query],
+  );
   // After `demoteStaleActive`, at most one row should be "active" per
   // pane. Pick it (the newest wins if a brief window ever produces
   // two) so we can pin its cooking indicator above the sidekick fade.
@@ -270,24 +278,6 @@ export function RunSidekickPane() {
 
   return (
     <div className={styles.sidekickPane}>
-      <div className={styles.sidekickPaneHeader}>
-        <div className={styles.headerActions}>
-          {projectId && <AutomationControls projectId={projectId} />}
-          {projectId && <RunPaneStatus projectId={projectId} />}
-          {projectId && <RunPaneModelPicker projectId={projectId} />}
-          {hasCompleted && (
-            <button
-              type="button"
-              className={styles.headerBtn}
-              onClick={clearCompleted}
-              title="Clear completed"
-              aria-label="Clear completed task output"
-            >
-              <Trash2 size={11} />
-            </button>
-          )}
-        </div>
-      </div>
       <div className={styles.contentShell}>
         <div
           className={styles.content}
@@ -302,8 +292,12 @@ export function RunSidekickPane() {
                 <Text size="sm" className={styles.emptyText}>No tasks</Text>
               </div>
             )
+          ) : filteredTasks.length === 0 ? (
+            <div className={styles.emptyState}>
+              <Text size="sm" className={styles.emptyText}>No matching runs</Text>
+            </div>
           ) : (
-            orderedTasks.map((entry) =>
+            filteredTasks.map((entry) =>
               entry.status === "active" ? (
                 <ActiveTaskStream
                   key={entry.taskId}
@@ -331,6 +325,13 @@ export function RunSidekickPane() {
             projectId={projectId}
             taskId={activeTask?.taskId}
           />
+        )}
+        {projectId && (
+          <div className={styles.runControlBar}>
+            <AutomationControls projectId={projectId} />
+            <RunPaneStatus projectId={projectId} />
+            <RunPaneModelPicker projectId={projectId} />
+          </div>
         )}
         <OverlayScrollbar scrollRef={contentRef} />
       </div>

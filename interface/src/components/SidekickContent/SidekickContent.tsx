@@ -38,6 +38,7 @@ const SEARCH_PLACEHOLDERS: Record<string, string> = {
   sessions: "Search",
   files: "Search",
   log: "Search",
+  run: "Search",
 };
 
 export function SidekickContent() {
@@ -110,7 +111,6 @@ export function SidekickContent() {
 
   const searchable =
     activeTab !== "stats" &&
-    activeTab !== "run" &&
     activeTab !== "terminal" &&
     activeTab !== "browser";
 
@@ -141,7 +141,7 @@ export function SidekickContent() {
       </Suspense>
     ) : activeTab === "run" ? (
       <Suspense fallback={sidekickPaneFallback}>
-        <RunSidekickPane />
+        <RunSidekickPane searchQuery={searchQuery} />
       </Suspense>
     ) : activeTab === "specs" ? (
       <SpecList searchQuery={searchQuery} />

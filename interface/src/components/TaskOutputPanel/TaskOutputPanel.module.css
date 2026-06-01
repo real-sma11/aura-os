@@ -6,42 +6,46 @@
   overflow: hidden;
 }
 
-.sidekickPaneHeader {
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-3, 12px);
-  height: var(--control-height-sm, 32px);
-  min-height: var(--control-height-sm, 32px);
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.headerActions {
+/* Floating run-control pill. Lives at the bottom of the Run pane
+   (inside `.contentShell`, a sibling of `.content`) and groups the
+   Run/Pause/Stop controls, the run-state badge, and the model picker
+   into one centered chrome pill — mirroring the chrome-pill family used
+   by `PanelSearch` / the shell titlebar so the Run pane reads as part of
+   the same chrome. Centered via `left: 50%` + `translateX(-50%)`;
+   `max-width` keeps it from overrunning a narrow sidekick (the model
+   picker's own clamp then truncates the label). */
+.runControlBar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3, 12px);
+  transform: translateX(-50%);
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1;
-  min-width: 0;
+  max-width: calc(100% - 2 * var(--space-3, 12px));
+  padding: 0 var(--space-2, 8px);
+  height: var(--shell-chrome-height, var(--control-height-sm, 32px));
+  box-sizing: border-box;
+  border-radius: var(--shell-chrome-radius, 20px);
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+  border: 1px solid color-mix(in srgb, var(--color-border-chrome) 30%, transparent);
 }
 
-/* Pushes the inline model picker to the far right of the Run pane
-   header so the Run/Pause/Stop controls stay flush-left and the
-   picker visually mirrors the "controls on the left, status on the
-   right" pattern used by the SidekickHeader's `AutomationBar`. The
-   `min-width: 0` lets the picker's text truncate via the
-   AutomationModelPicker's own clamp when the sidekick gets narrow. */
+/* Model picker slot inside the floating pill. `min-width: 0` lets the
+   picker's text truncate via the AutomationModelPicker's own clamp when
+   the sidekick gets narrow. */
 .headerModelSlot {
-  margin-left: auto;
   display: flex;
   align-items: center;
   min-width: 0;
   overflow: hidden;
 }
 
-/* Always-visible run-state badge. Sits flush-left after the controls;
-   the right-aligned model picker keeps its own `margin-left: auto`, so
-   the badge stays grouped with the Run / Pause / Stop buttons. */
+/* Always-visible run-state badge, grouped with the Run / Pause / Stop
+   controls inside the floating pill. */
 .headerStatus {
   display: inline-flex;
   align-items: center;
@@ -142,11 +146,15 @@
      that the old MutationObserver + rAF + scrollIntoView pattern caused. */
   overflow-anchor: auto;
   scrollbar-width: none;
-  /* Reserve room for the pinned `CookingIndicator` strip (see
-     `.pinnedStreamingIndicator` below) so the last streamed rows never
-     scroll underneath the shimmering phase label. Matches indicator
-     height (~40px) + its `bottom: var(--space-3)` offset. */
-  padding-bottom: calc(var(--space-6) + var(--space-4) + var(--space-3));
+  /* Reserve room for both the floating `.runControlBar` pill and the
+     pinned `CookingIndicator` strip stacked above it (see below) so the
+     last streamed rows never scroll underneath either floating element.
+     Covers the pill height + the cooking strip height (~40px) + the
+     `bottom: var(--space-3)` offset. */
+  padding-bottom: calc(
+    var(--shell-chrome-height, var(--control-height-sm, 32px)) +
+    var(--space-6) + var(--space-4) + var(--space-3)
+  );
 }
 
 .content::-webkit-scrollbar {
@@ -174,7 +182,13 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: var(--space-3, 12px);
+  /* Stack just above the floating `.runControlBar` pill so the shimmer
+     and the run controls never overlap. */
+  bottom: calc(
+    var(--space-3, 12px) +
+    var(--shell-chrome-height, var(--control-height-sm, 32px)) +
+    var(--space-2, 8px)
+  );
   z-index: 2;
   display: flex;
   justify-content: flex-start;
