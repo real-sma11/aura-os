@@ -25,16 +25,6 @@ vi.mock("../../stores/project-action-store", () => ({
   }),
 }));
 
-vi.mock("../../stores/terminal-panel-store", () => ({
-  useTerminalPanelStore: (selector: (state: { addTerminal: () => void }) => unknown) =>
-    selector({ addTerminal: vi.fn() }),
-}));
-
-vi.mock("../../stores/browser-panel-store", () => ({
-  useBrowserPanelStore: (selector: (state: { addInstance: () => void }) => unknown) =>
-    selector({ addInstance: vi.fn() }),
-}));
-
 vi.mock("../SidekickTabBar", () => ({
   SidekickTabBar: ({
     tabs,

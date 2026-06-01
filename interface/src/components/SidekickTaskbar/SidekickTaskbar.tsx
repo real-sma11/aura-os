@@ -9,7 +9,6 @@ import {
   BarChart3,
   MessageSquare,
   FolderClosed,
-  Plus,
   SquareTerminal,
   Globe,
 } from "lucide-react";
@@ -18,8 +17,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useProjectActions } from "../../stores/project-action-store";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { useTerminalTarget } from "../../hooks/use-terminal-target";
-import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
-import { useBrowserPanelStore } from "../../stores/browser-panel-store";
 import { SidekickTabBar, type TabItem } from "../SidekickTabBar";
 import { CheckLoopGlyph } from "../CheckLoopGlyph";
 import { PlayLoopGlyph } from "../PlayLoopGlyph";
@@ -41,8 +38,6 @@ export function SidekickTaskbar() {
   );
   const ctx = useProjectActions();
   const { features } = useAuraCapabilities();
-  const addTerminal = useTerminalPanelStore((s) => s.addTerminal);
-  const addBrowserInstance = useBrowserPanelStore((s) => s.addInstance);
   const { projectId, agentInstanceId } = useParams<{ projectId: string; agentInstanceId: string }>();
   const { remoteAgentId, remoteWorkspacePath, workspacePath } = useTerminalTarget({ projectId, agentInstanceId });
   const canBrowseLocal = features.linkedWorkspace && !remoteAgentId && Boolean(workspacePath);
@@ -101,8 +96,6 @@ export function SidekickTaskbar() {
       { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
       { id: "log", icon: <ScrollText size={16} />, title: "Log" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
-      { id: "new-terminal", icon: <Plus size={16} />, title: "New terminal", kind: "action" },
-      { id: "new-browser", icon: <Plus size={16} />, title: "New browser", kind: "action" },
     ],
     [tasksActive, runActive],
   );
@@ -125,24 +118,11 @@ export function SidekickTaskbar() {
     if (id === "info") toggleInfo("Project Info", null);
   };
 
-  const handleInlineAction = (id: string) => {
-    if (id === "new-terminal") {
-      addTerminal();
-      setActiveTab("terminal");
-      return;
-    }
-    if (id === "new-browser") {
-      addBrowserInstance();
-      setActiveTab("browser");
-    }
-  };
-
   return (
     <SidekickTabBar
       tabs={visibleTabs}
       activeTab={activeTab}
       onTabChange={(id) => setActiveTab(id as SidekickTab)}
-      onInlineAction={handleInlineAction}
       actions={actions}
       onAction={handleAction}
       alwaysShowMore={!!project}
