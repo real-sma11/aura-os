@@ -142,6 +142,12 @@ export const projectsApi = {
       method: "POST",
     });
   },
+  generateSpecsSummary: (projectId: ProjectId, agentInstanceId?: string | null) => {
+    const params = agentInstanceId ? `?agent_instance_id=${encodeURIComponent(agentInstanceId)}` : "";
+    return apiFetch<Project>(`/api/projects/${projectId}/specs/summary${params}`, {
+      method: "POST",
+    });
+  },
   generateSpecsStream,
   getProjectStats: (projectId: ProjectId) =>
     apiFetch<ProjectStatsData>(`/api/projects/${projectId}/stats`),

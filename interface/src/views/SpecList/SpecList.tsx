@@ -140,11 +140,18 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
         id: `plan:${group.plan_id}`,
         label: group.title,
         metadata: { type: "plan" },
-        children: group.specs.map((spec) => ({
-          id: spec.spec_id,
-          label: spec.title || "Spec",
-          metadata: { type: "spec" },
-        })),
+        children: [
+          {
+            id: `summary:${group.plan_id}`,
+            label: "Summary",
+            metadata: { type: "summary" },
+          },
+          ...group.specs.map((spec) => ({
+            id: spec.spec_id,
+            label: spec.title || "Spec",
+            metadata: { type: "spec" },
+          })),
+        ],
       })),
     [planGroups],
   );
@@ -162,8 +169,12 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
     if (sk.previewItem?.kind !== "specs_overview") return;
     if (specIds === prevSpecIdsRef.current) return;
     prevSpecIdsRef.current = specIds;
-    if (selectedId?.startsWith("plan:")) {
-      const planId = selectedId.slice("plan:".length);
+    const sel = selectedId;
+    const planId =
+      sel?.startsWith("summary:") ? sel.slice("summary:".length)
+      : sel?.startsWith("plan:") ? sel.slice("plan:".length)
+      : null;
+    if (planId) {
       const group = planGroups.find((g) => g.plan_id === planId);
       if (group) {
         sk.updatePreviewSpecs(group.specs);
@@ -181,14 +192,30 @@ export function SpecList({ searchQuery }: { searchQuery: string }) {
   const handleSelect = (ids: string[]) => {
     const id = [...ids]
       .reverse()
-      .find((candidate) => candidate.startsWith("plan:") || specById.has(candidate));
+      .find(
+        (candidate) =>
+          candidate.startsWith("summary:") ||
+          candidate.startsWith("plan:") ||
+          specById.has(candidate),
+      );
     if (!id) return;
-    if (id.startsWith("plan:")) {
-      const planId = id.slice("plan:".length);
+    if (id.startsWith("summary:")) {
+      const planId = id.slice("summary:".length);
       const group = planGroups.find((g) => g.plan_id === planId);
       if (!group) return;
       setSelectedId(id);
-      pushPreview({ kind: "specs_overview", specs: group.specs, title: group.title });
+      pushPreview({
+        kind: "specs_overview",
+        specs: group.specs,
+        title: group.title,
+        summary: group.summary,
+        planId: group.plan_id,
+      });
+      return;
+    }
+    if (id.startsWith("plan:")) {
+      // Header click toggles collapse/expand via the Explorer itself; do
+      // not open the overview preview here.
       return;
     }
     const spec = specById.get(id);

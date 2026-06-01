@@ -39,7 +39,7 @@ function isSidekickTab(value: string): value is SidekickTab {
 
 export type PreviewItem =
   | { kind: "spec"; spec: Spec }
-  | { kind: "specs_overview"; specs: Spec[]; title?: string }
+  | { kind: "specs_overview"; specs: Spec[]; title?: string; summary?: string; planId?: string }
   | { kind: "task"; task: Task }
   | { kind: "session"; session: Session }
   | { kind: "log"; entry: LogEntry };
@@ -102,6 +102,7 @@ interface SidekickState extends SidekickSliceState<SidekickTab, PreviewItem> {
   patchTask: (taskId: string, patch: Partial<Task>) => void;
   updatePreviewTask: (patch: Partial<Task> & { task_id: string }) => void;
   updatePreviewSpecs: (specs: Spec[]) => void;
+  updatePreviewSummary: (summary: string) => void;
 }
 
 function isTerminalTaskStatus(status: Task["status"] | undefined): boolean {
@@ -422,7 +423,13 @@ export const useSidekickStore = create<SidekickState>()((set, get) => ({
   updatePreviewSpecs: (specs) => {
     const { previewItem } = get();
     if (previewItem?.kind !== "specs_overview") return;
-    set({ previewItem: { kind: "specs_overview", specs, title: previewItem.title } });
+    set({ previewItem: { kind: "specs_overview", specs, title: previewItem.title, summary: previewItem.summary, planId: previewItem.planId } });
+  },
+
+  updatePreviewSummary: (summary) => {
+    const { previewItem } = get();
+    if (previewItem?.kind !== "specs_overview") return;
+    set({ previewItem: { ...previewItem, summary } });
   },
 }));
 

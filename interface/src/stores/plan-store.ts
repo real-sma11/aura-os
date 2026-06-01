@@ -57,6 +57,8 @@ interface PlanState {
     projectId: string,
     meta?: { title?: string; summary?: string },
   ) => void;
+  /** Update a recorded plan's summary text and persist. No-op for the synthetic default plan. */
+  setPlanSummary: (projectId: string, planId: string, summary: string) => void;
   getPlans: (projectId: string) => Plan[];
 }
 
@@ -127,6 +129,26 @@ export const usePlanStore = create<PlanState>()((set, get) => ({
       };
       persist(nextPlans);
       return { plansByProject: nextPlans, draftByProject: nextDraft };
+    });
+  },
+
+  setPlanSummary: (projectId, planId, summary) => {
+    if (!projectId || !planId) return;
+    set((s) => {
+      const plans = s.plansByProject[projectId];
+      if (!plans) return s;
+      let changed = false;
+      const next = plans.map((p) => {
+        if (p.plan_id === planId && p.summary !== summary) {
+          changed = true;
+          return { ...p, summary };
+        }
+        return p;
+      });
+      if (!changed) return s;
+      const nextPlans = { ...s.plansByProject, [projectId]: next };
+      persist(nextPlans);
+      return { plansByProject: nextPlans };
     });
   },
 

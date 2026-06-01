@@ -1,4 +1,4 @@
-import { useRef, useCallback, useLayoutEffect, useState } from "react";
+import { useRef, useCallback, useLayoutEffect, useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -6,6 +6,8 @@ import { Button, Text, GroupCollapsible, Item } from "@cypher-asi/zui";
 import { X, ArrowLeft, FileText } from "lucide-react";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
+import { api } from "../../api/client";
+import { usePlanStore } from "../../stores/plan-store";
 import { TaskPreview } from "../TaskPreview";
 import { TaskHeaderContextUsage } from "../TaskOutputPanel/TaskHeaderContextUsage";
 import { RunTaskButton } from "../RunTaskButton";
@@ -16,12 +18,59 @@ import type { PreviewItem } from "../../stores/sidekick-store";
 import type { Spec } from "../../shared/types";
 import styles from "./Preview.module.css";
 
-function SpecsOverviewPreview({ specs }: { specs: Spec[] }) {
+const attemptedSummaryKeys = new Set<string>();
+
+function SpecsOverviewPreview({
+  specs,
+  summary,
+  planId,
+}: {
+  specs: Spec[];
+  summary?: string;
+  planId?: string;
+}) {
   const pushPreview = useSidekickStore((s) => s.pushPreview);
+  const updatePreviewSummary = useSidekickStore((s) => s.updatePreviewSummary);
   const ctx = useProjectActions();
   const project = ctx?.project;
+  const projectId = project?.project_id;
 
-  const summaryText = project?.specs_summary ?? null;
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  const summaryText = summary ?? project?.specs_summary ?? null;
+
+  const runGenerate = useCallback(() => {
+    if (!projectId || generating) return;
+    setGenerating(true);
+    setGenError(null);
+    api
+      .generateSpecsSummary(projectId)
+      .then((updated) => {
+        const next = updated?.specs_summary ?? "";
+        if (next) {
+          ctx?.setProject((p) => ({ ...p, specs_summary: next }));
+          if (planId) usePlanStore.getState().setPlanSummary(projectId, planId, next);
+          updatePreviewSummary(next);
+        }
+      })
+      .catch((e) =>
+        setGenError(e instanceof Error ? e.message : "Failed to generate summary"),
+      )
+      .finally(() => setGenerating(false));
+  }, [projectId, planId, generating, ctx, updatePreviewSummary]);
+
+  // Auto-generate once per (project, plan) when there is no summary yet.
+  useEffect(() => {
+    if (summaryText || !projectId || specs.length === 0) return;
+    const key = `${projectId}:${planId ?? "default"}`;
+    if (attemptedSummaryKeys.has(key)) return;
+    attemptedSummaryKeys.add(key);
+    // Drives an async summary-generation request (external system), not
+    // derived render state; the setState inside runGenerate gates loading UI.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    runGenerate();
+  }, [summaryText, projectId, planId, specs.length, runGenerate]);
 
   const firstCreated = specs.length > 0
     ? specs.reduce((a, s) => (s.created_at < a ? s.created_at : a), specs[0].created_at)
@@ -37,12 +86,22 @@ function SpecsOverviewPreview({ specs }: { specs: Spec[] }) {
           <span className={styles.fieldLabel}>Summary</span>
           <div className={styles.summaryRow}>
             <div className={styles.summaryContent}>
-              {summaryText ? (
+              {generating ? (
+                <Text variant="secondary" size="sm">Generating summary…</Text>
+              ) : summaryText ? (
                 <Text variant="secondary" size="sm" className={`${styles.preWrapText} ${styles.specSummaryParagraph}`}>
                   {summaryText}
                 </Text>
               ) : (
-                <Text variant="secondary" size="sm">No specs yet.</Text>
+                <Text variant="secondary" size="sm">No summary yet.</Text>
+              )}
+              {genError && (
+                <Text variant="secondary" size="sm">{genError}</Text>
+              )}
+              {!generating && (
+                <Button variant="ghost" size="sm" onClick={runGenerate}>
+                  {summaryText ? "Regenerate" : "Generate summary"}
+                </Button>
               )}
             </div>
           </div>
@@ -227,7 +286,9 @@ export function PreviewContent() {
       onScroll={handleScroll}
     >
       {displayItem?.kind === "spec" && <SpecPreview spec={displayItem.spec} />}
-      {displayItem?.kind === "specs_overview" && <SpecsOverviewPreview specs={displayItem.specs} />}
+      {displayItem?.kind === "specs_overview" && (
+        <SpecsOverviewPreview specs={displayItem.specs} summary={displayItem.summary} planId={displayItem.planId} />
+      )}
       {displayItem?.kind === "task" && (
         <TaskPreview
           task={displayItem.task}
