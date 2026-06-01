@@ -65,7 +65,27 @@ export type RuntimeRequestType =
         prior_failure?: string | null;
         work_log: string[];
       };
+    }
+  | {
+      kind: "council";
+      params: {
+        members: CouncilMember[];
+        conversation_messages: ConversationMessage[];
+      };
     };
+
+/**
+ * One member of an AURA Council run: a model to fan the shared query
+ * out to. `id` is a stable per-member slot id the runtime echoes back
+ * on the member's `SubagentSpawned` so the UI can correlate columns.
+ *
+ * Hand-maintained mirror of the generated
+ * `crates/aura-protocol/bindings/CouncilMember.ts`.
+ */
+export interface CouncilMember {
+  id: string;
+  model: ModelSelection;
+}
 
 export interface AgentIdentity {
   template_id?: string | null;
@@ -297,6 +317,16 @@ export interface SubagentSpawned {
   parent_tool_use_id: string | null;
   subagent_type: string;
   prompt: string;
+  /**
+   * Model id driving this child run. Set for AURA Council members so the
+   * UI can label each column; `null` for ordinary `task` spawns.
+   */
+  model?: string | null;
+  /**
+   * Zero-based council slot index for AURA Council members (ordering the
+   * columns); `null` for ordinary `task` spawns.
+   */
+  council_index?: number | null;
 }
 
 /**
