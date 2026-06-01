@@ -96,6 +96,8 @@ pub(super) async fn handle_outbound(
                 spawned.parent_tool_use_id.as_deref(),
                 &spawned.subagent_type,
                 &spawned.prompt,
+                spawned.model.as_deref(),
+                spawned.council_index,
             )
             .await;
             true

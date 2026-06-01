@@ -21,6 +21,10 @@ use super::super::persist_task::{persist_event, PersistTaskState};
 /// known) and persist a `subagent_spawned` linkage event carrying the
 /// parent session id, parent tool-use id, child run id, subagent type,
 /// and spawn prompt.
+///
+/// `model` / `council_index` are set only for AURA Council members
+/// (`None` for ordinary `task` spawns). They are stamped additively so a
+/// reloaded turn can group council member threads into a council panel.
 pub(super) async fn handle_subagent_spawned(
     state: &mut PersistTaskState,
     ctx: &ChatPersistCtx,
@@ -28,6 +32,8 @@ pub(super) async fn handle_subagent_spawned(
     parent_tool_use_id: Option<&str>,
     subagent_type: &str,
     prompt: &str,
+    model: Option<&str>,
+    council_index: Option<u32>,
 ) {
     if let Some(parent_id) = parent_tool_use_id.filter(|s| !s.is_empty()) {
         if let Some(block) = state.content_blocks.iter_mut().rev().find(|b| {
@@ -43,6 +49,12 @@ pub(super) async fn handle_subagent_spawned(
             block["parent_tool_use_id"] = json!(parent_id);
             block["subagent_type"] = json!(subagent_type);
             block["prompt"] = json!(prompt);
+            if let Some(model) = model {
+                block["model"] = json!(model);
+            }
+            if let Some(council_index) = council_index {
+                block["council_index"] = json!(council_index);
+            }
         }
     }
 
@@ -56,6 +68,8 @@ pub(super) async fn handle_subagent_spawned(
             "child_run_id": child_run_id,
             "subagent_type": subagent_type,
             "prompt": prompt,
+            "model": model,
+            "council_index": council_index,
             "seq": state.seq,
         }),
     )
@@ -154,6 +168,8 @@ mod tests {
             Some("toolu_task_1"),
             "explore",
             "explore the repo",
+            None,
+            None,
         )
         .await;
 
@@ -229,10 +245,50 @@ mod tests {
         let mut state = PersistTaskState::new();
         state.message_id = "msg-task".to_string();
         let ctx = test_ctx();
-        handle_subagent_spawned(&mut state, &ctx, "child-run-x", None, "explore", "go").await;
+        handle_subagent_spawned(&mut state, &ctx, "child-run-x", None, "explore", "go", None, None)
+            .await;
         assert!(
             state.content_blocks.is_empty(),
             "no tool_use block to stamp when parent id is absent",
         );
+    }
+
+    #[tokio::test]
+    async fn subagent_spawned_stamps_council_model_and_index_on_parent_tool_use_block() {
+        // AURA Council members carry `model` + `council_index`; both must
+        // be stamped onto the originating tool_use block so a reloaded
+        // turn can group the member threads into a council panel.
+        let mut state = PersistTaskState::new();
+        state.message_id = "msg-council".to_string();
+        state.content_blocks.push(json!({
+            "type": "tool_use",
+            "id": "toolu_council_1",
+            "name": "Task",
+            "input": json!({"prompt": "deliberate"}),
+        }));
+
+        let ctx = test_ctx();
+        handle_subagent_spawned(
+            &mut state,
+            &ctx,
+            "child-run-council",
+            Some("toolu_council_1"),
+            "council-member",
+            "deliberate on the answer",
+            Some("anthropic/claude"),
+            Some(2),
+        )
+        .await;
+
+        let block = state
+            .content_blocks
+            .iter()
+            .find(|b| b.get("id").and_then(Value::as_str) == Some("toolu_council_1"))
+            .expect("council tool_use block present");
+        assert_eq!(
+            block.get("model").and_then(Value::as_str),
+            Some("anthropic/claude"),
+        );
+        assert_eq!(block.get("council_index").and_then(Value::as_u64), Some(2));
     }
 }
