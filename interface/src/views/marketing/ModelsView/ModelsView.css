@@ -6,8 +6,10 @@
   min-height: calc(100dvh - var(--marketing-main-bottom-space));
   /* Flat 32px horizontal padding so the centered column lands in the
      same place as the sibling marketing pages (/feedback, /changelog)
-     rather than the wider clamp the catalog used previously. */
-  padding: clamp(40px, 6vh, 72px) 32px 0;
+     rather than the wider clamp the catalog used previously. Top padding
+     matches `.feedbackPage`/`.changelogPage` (120px) so the banner card
+     starts at the same vertical position as those siblings. */
+  padding: 120px 32px 0;
   box-sizing: border-box;
   background: #16191d;
 }
@@ -419,7 +421,7 @@
 
 @media (max-width: 768px) {
   .modelsPage {
-    padding: 32px 28px calc(var(--marketing-taskbar-safe-offset, 0px) + 96px);
+    padding: 88px 28px calc(var(--marketing-taskbar-safe-offset, 0px) + 96px);
   }
 
   .modelsPageContent {
