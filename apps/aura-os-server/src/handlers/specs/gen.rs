@@ -94,41 +94,75 @@ pub(crate) async fn generate_specs_summary(
 
     let mut rx = session.events_tx.subscribe();
     let deadline = project_tool_deadline();
+    // The model has only read tools here — it produces the summary as
+    // its final assistant *message text*, not via a tool call — so we
+    // accumulate the latest assistant message and treat it as the
+    // summary. `tool_use` stops mean another (tool-calling) turn is
+    // coming, so we keep waiting for the model's final message.
     let summary_loop = async {
+        let mut latest_text = String::new();
+        let mut captured = String::new();
         while let Ok(event) = rx.recv().await {
             match event {
-                HarnessOutbound::AssistantMessageEnd(_) => return SpecSummaryOutcome::Completed,
+                HarnessOutbound::AssistantMessageStart(_) => latest_text.clear(),
+                HarnessOutbound::TextDelta(delta) => latest_text.push_str(&delta.text),
+                HarnessOutbound::AssistantMessageEnd(end) => {
+                    if !latest_text.trim().is_empty() {
+                        captured = latest_text.clone();
+                    }
+                    if end.stop_reason != "tool_use" {
+                        return SpecSummaryOutcome::Completed(captured);
+                    }
+                }
                 HarnessOutbound::Error(err) => {
                     return SpecSummaryOutcome::HarnessError(err.message);
                 }
                 _ => continue,
             }
         }
-        SpecSummaryOutcome::StreamEnded
+        SpecSummaryOutcome::StreamEnded(captured)
     };
 
-    match tokio::time::timeout(deadline, summary_loop).await {
-        Ok(SpecSummaryOutcome::Completed) | Ok(SpecSummaryOutcome::StreamEnded) => {}
+    let summary = match tokio::time::timeout(deadline, summary_loop).await {
+        Ok(SpecSummaryOutcome::Completed(text)) | Ok(SpecSummaryOutcome::StreamEnded(text)) => text,
         Ok(SpecSummaryOutcome::HarnessError(message)) => {
             return Err(ApiError::internal(message));
         }
         Err(_) => {
-            // Wall-clock deadline exceeded — the project may still have
-            // a partial summary persisted, so return it instead of
-            // letting the JS client trip Node's default `headersTimeout`.
+            // Wall-clock deadline exceeded — return the project as-is so
+            // the JS client doesn't trip Node's default `headersTimeout`.
             tracing::warn!(
                 project_id = %project_id,
                 deadline_secs = deadline.as_secs(),
                 "spec summary deadline exceeded; returning best-effort project"
             );
+            String::new()
         }
-    }
+    };
 
-    let project = state
+    let mut project = state
         .project_service
         .get_project_async(&project_id)
         .await
         .map_err(|_e| ApiError::not_found("project not found"))?;
+
+    // `specs_summary` is a local-shadow-only field (it is not part of
+    // the network project payload — see `network_project_to_core`), so
+    // we persist the generated text by writing the merged project back
+    // through `save_project_shadow`. Without this the harness produced a
+    // summary that was never stored, and the client kept seeing "No
+    // summary yet."
+    let summary = summary.trim().to_string();
+    if !summary.is_empty() {
+        project.specs_summary = Some(summary);
+        if let Err(e) = state.project_service.save_project_shadow(&project) {
+            tracing::warn!(
+                project_id = %project_id,
+                error = %e,
+                "failed to persist generated specs summary"
+            );
+        }
+    }
     Ok(Json(project))
 }
 
@@ -278,9 +312,9 @@ enum SpecGenOutcome {
 }
 
 enum SpecSummaryOutcome {
-    Completed,
+    Completed(String),
     HarnessError(String),
-    StreamEnded,
+    StreamEnded(String),
 }
 
 pub(crate) async fn generate_specs_stream(
