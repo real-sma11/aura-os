@@ -26,7 +26,12 @@ vi.mock(import("../api/streams"), async (importOriginal) => {
   return { ...actual, attachToStream: mockAttachToStream };
 });
 
-import { useSubagentChatStream, subagentStreamKey } from "./use-subagent-chat-stream";
+import {
+  useSubagentChatStream,
+  subagentStreamKey,
+  reconcileOptimisticUserEchoes,
+} from "./use-subagent-chat-stream";
+import type { DisplaySessionEvent } from "../shared/types/stream";
 import { useStreamStore, streamMetaMap, getStreamEntry } from "./stream/store";
 
 function evt(type: EventType, content: Record<string, unknown>): AuraEvent {
@@ -232,5 +237,60 @@ describe("useSubagentChatStream", () => {
       result.current.onSend("   ");
     });
     expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("reconcileOptimisticUserEchoes", () => {
+  const userEcho = (content: string, ts = 1): DisplaySessionEvent =>
+    ({
+      id: `subagent-user-${ts}`,
+      clientId: `subagent-user-${ts}`,
+      role: "user",
+      content,
+    }) as DisplaySessionEvent;
+
+  const recorded = (id: string, role: string, content: string): DisplaySessionEvent =>
+    ({ id, clientId: id, role, content }) as DisplaySessionEvent;
+
+  it("returns the authoritative list unchanged when there are no echoes", () => {
+    const authoritative = [recorded("evt-1", "assistant", "hi")];
+    expect(reconcileOptimisticUserEchoes(authoritative, [])).toBe(authoritative);
+  });
+
+  it("drops an echo the recorded transcript already represents", () => {
+    const authoritative = [
+      recorded("u-1", "user", "do the thing"),
+      recorded("a-1", "assistant", "done"),
+    ];
+    const prev = [...authoritative, userEcho("do the thing")];
+
+    const result = reconcileOptimisticUserEchoes(authoritative, prev);
+
+    expect(result).toBe(authoritative);
+    expect(result.filter((e) => e.role === "user")).toHaveLength(1);
+  });
+
+  it("preserves an echo that has not been persisted yet", () => {
+    const authoritative = [recorded("u-1", "user", "earlier message")];
+    const pending = userEcho("not yet saved", 99);
+
+    const result = reconcileOptimisticUserEchoes(authoritative, [
+      ...authoritative,
+      pending,
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[result.length - 1]).toMatchObject({ content: "not yet saved" });
+  });
+
+  it("reconciles repeated identical messages one-for-one", () => {
+    // Two echoes of the same text, but only one recorded turn so far.
+    const authoritative = [recorded("u-1", "user", "again")];
+    const prev = [authoritative[0], userEcho("again", 1), userEcho("again", 2)];
+
+    const result = reconcileOptimisticUserEchoes(authoritative, prev);
+
+    // One echo reconciled away, one still pending.
+    expect(result.filter((e) => e.role === "user")).toHaveLength(2);
   });
 });

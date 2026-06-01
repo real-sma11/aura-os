@@ -106,6 +106,51 @@ interface CachedSubagentHistory {
   events: DisplaySessionEvent[];
 }
 
+/** Marks a client-side optimistic user echo added by `onSend`. */
+const OPTIMISTIC_USER_PREFIX = "subagent-user-";
+
+function isOptimisticUserEcho(event: DisplaySessionEvent): boolean {
+  return event.role === "user" && event.id.startsWith(OPTIMISTIC_USER_PREFIX);
+}
+
+/**
+ * Reconcile an authoritative transcript against any optimistic user
+ * echoes already in the partition. An echo whose content the authoritative
+ * list already represents (the send was persisted) is dropped so the
+ * recorded user turn wins instead of doubling up; an echo with no matching
+ * recorded turn yet (send not persisted at fetch time) is preserved and
+ * appended so the user's just-sent message is never lost. Counts matches
+ * so repeating the same message twice still reconciles one-for-one.
+ */
+export function reconcileOptimisticUserEchoes(
+  authoritative: DisplaySessionEvent[],
+  prev: DisplaySessionEvent[],
+): DisplaySessionEvent[] {
+  const echoes = prev.filter(isOptimisticUserEcho);
+  if (echoes.length === 0) return authoritative;
+
+  const remaining = new Map<string, number>();
+  for (const event of authoritative) {
+    if (event.role === "user") {
+      const key = event.content.trim();
+      remaining.set(key, (remaining.get(key) ?? 0) + 1);
+    }
+  }
+
+  const unreconciled: DisplaySessionEvent[] = [];
+  for (const echo of echoes) {
+    const key = echo.content.trim();
+    const matches = remaining.get(key) ?? 0;
+    if (matches > 0) {
+      remaining.set(key, matches - 1);
+    } else {
+      unreconciled.push(echo);
+    }
+  }
+
+  return unreconciled.length > 0 ? [...authoritative, ...unreconciled] : authoritative;
+}
+
 /**
  * Best-effort instant paint of a reopened subagent thread from the
  * IndexedDB transcript cache, while the authoritative server fetch (or a
@@ -123,7 +168,7 @@ async function hydrateSubagentCache(
       key,
     );
     if (cached && Array.isArray(cached.events) && cached.events.length > 0) {
-      setters.setEvents(cached.events);
+      setters.setEvents((prev) => reconcileOptimisticUserEchoes(cached.events, prev));
     }
   } catch {
     // Ignore cache read failures; the server fetch is authoritative.
@@ -146,7 +191,7 @@ async function loadSubagentHistory(
     const events = await subagentsApi.listSessionEvents(subagentSessionId);
     const display = buildDisplayEvents(events);
     if (display.length === 0) return false;
-    setters.setEvents(display);
+    setters.setEvents((prev) => reconcileOptimisticUserEchoes(display, prev));
     void browserDbSet(BROWSER_DB_STORES.chatHistory, key, {
       events: display,
     } satisfies CachedSubagentHistory).catch(() => {});
@@ -396,7 +441,7 @@ export function useSubagentChatStream(
       if (!childRunId || trimmed.length === 0) return;
 
       const setters = createSetters(streamKey);
-      const id = `subagent-user-${Date.now()}`;
+      const id = `${OPTIMISTIC_USER_PREFIX}${Date.now()}`;
       // Optimistically echo the user's message so the transcript shows
       // it immediately; the harness reply streams back over the existing
       // attach.
