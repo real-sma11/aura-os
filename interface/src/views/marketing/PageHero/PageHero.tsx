@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import "./PageHero.css";
 
 interface PageHeroProps {
@@ -102,6 +102,8 @@ export function PageHero({
   headlineCta,
   videoOverlay,
 }: PageHeroProps): ReactNode {
+  const [flowVideoReady, setFlowVideoReady] = useState(false);
+
   const pageHeroClassName = [
     "pageHero",
     preview === null ? "pageHeroNoPreview" : null,
@@ -250,7 +252,9 @@ export function PageHero({
          */
         <div className="pageHeroFlowVideoWrapper">
           <video
-            className="pageHeroFlowVideo"
+            className={`pageHeroFlowVideo${
+              flowVideoReady ? " pageHeroFlowVideoReady" : ""
+            }`}
             src={backgroundVideoSrc}
             width={1280}
             height={720}
@@ -259,6 +263,7 @@ export function PageHero({
             muted
             playsInline
             aria-hidden="true"
+            onCanPlay={() => setFlowVideoReady(true)}
           />
           {videoOverlay ? (
             <div className="pageHeroVideoOverlay">{videoOverlay}</div>

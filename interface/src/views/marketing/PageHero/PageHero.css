@@ -600,6 +600,11 @@
   transform: scale(1.44);
   transform-origin: center;
   pointer-events: none;
+  /* Start hidden and fade in once the browser signals the loop can
+     play (`onCanPlay` toggles `.pageHeroFlowVideoReady`), so the
+     video eases in instead of snapping into view on first paint. */
+  opacity: 0;
+  transition: opacity 600ms ease;
   mask-image:
     linear-gradient(
       to bottom,
@@ -628,6 +633,10 @@
       transparent 100%
     );
   -webkit-mask-composite: source-in;
+}
+
+.pageHeroFlowVideoReady {
+  opacity: 1;
 }
 
 @media (max-width: 768px) {
