@@ -234,58 +234,14 @@
   transform: rotate(90deg);
 }
 
-.taskDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-success);
-  flex-shrink: 0;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.taskDotCompleted {
+/* Right-aligned status indicator, mirroring the Tasks Explorer row
+   suffix (`TaskStatusIcon`) so a run row reads as "chevron + title +
+   subtle status circle" rather than a colored dot + bold DONE badge. */
+.taskSuffix {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--color-success);
   flex-shrink: 0;
-}
-
-.taskDotFailed {
-  composes: taskDotCompleted;
-  color: var(--color-danger);
-}
-
-.taskDotInterrupted {
-  composes: taskDotCompleted;
-  color: var(--color-text-muted);
-}
-
-.taskStatusBadge {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--color-success) 10%, transparent);
-  color: var(--color-success);
-}
-
-.taskStatusBadge[data-status="failed"] {
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  color: var(--color-danger);
-}
-
-.taskStatusBadge[data-status="interrupted"] {
-  background: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
-  color: var(--color-text-muted);
+  margin-left: var(--space-2, 8px);
 }
 
 .dismissBtn {

@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
 import { ChevronRight } from "lucide-react";
+import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import {
@@ -177,12 +178,14 @@ export function ActiveTaskStream({
           aria-expanded={!collapsed}
         >
           <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-            <ChevronRight size={10} />
+            <ChevronRight size={14} />
           </span>
-          <span className={styles.taskDot} />
           <span className={styles.taskTitle}>{title || taskId}</span>
           <TaskHeaderContextUsage taskId={taskId} projectId={ctx?.project.project_id} />
           <CopyTaskOutputButton getCopyText={getCopyText} />
+          <span className={styles.taskSuffix}>
+            <TaskStatusIcon status="active" />
+          </span>
         </button>
       )}
       {!collapsed && (hasContent || showCooldownLine) && (

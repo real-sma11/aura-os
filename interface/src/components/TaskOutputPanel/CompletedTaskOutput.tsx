@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { Check, X as XIcon, AlertTriangle, CircleDashed, ChevronRight } from "lucide-react";
+import { X as XIcon, ChevronRight } from "lucide-react";
+import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 import {
@@ -289,21 +290,6 @@ export function CompletedTaskOutput({
   // hydration finishing) do not yank the body closed.
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
-  const statusIcon =
-    status === "failed" ? <AlertTriangle size={10} />
-    : status === "interrupted" ? <CircleDashed size={10} />
-    : <Check size={10} />;
-
-  const dotClass =
-    status === "failed" ? styles.taskDotFailed
-    : status === "interrupted" ? styles.taskDotInterrupted
-    : styles.taskDotCompleted;
-
-  const statusLabel =
-    status === "failed" ? "Failed"
-    : status === "interrupted" ? "Interrupted"
-    : "Done";
-
   return (
     <div className={styles.taskSection}>
       {showHeader && (
@@ -314,11 +300,9 @@ export function CompletedTaskOutput({
           aria-expanded={!collapsed}
         >
           <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-            <ChevronRight size={10} />
+            <ChevronRight size={14} />
           </span>
-          <span className={dotClass}>{statusIcon}</span>
           <span className={styles.taskTitle}>{title || taskId}</span>
-          <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
           <CopyTaskOutputButton getCopyText={getCopyText} />
           <TaskHeaderContextUsage taskId={taskId} projectId={projectId} />
           {showDismiss && (
@@ -343,6 +327,9 @@ export function CompletedTaskOutput({
               <XIcon size={10} />
             </span>
           )}
+          <span className={styles.taskSuffix}>
+            <TaskStatusIcon status={status} />
+          </span>
         </button>
       )}
       {!collapsed && (
