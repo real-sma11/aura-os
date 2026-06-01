@@ -3,44 +3,23 @@ import {
   useEffect,
   useRef,
   useState,
+  type AnimationEvent as ReactAnimationEvent,
   type ForwardRefExoticComponent,
   type ReactNode,
   type RefAttributes,
 } from "react";
-import { MessageSquare, AlertCircle } from "lucide-react";
-import { Text } from "@cypher-asi/zui";
-import { ChatMessageList } from "../ChatMessageList";
-import { DesktopChatInputBar, type ChatInputBarHandle, type ChatInputBarProps } from "../ChatInputBar";
-import { MessageQueue } from "../MessageQueue";
-import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
-import { PromptSuggestions } from "../PromptSuggestions/PromptSuggestions";
-import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
-import { SubAgentPaneHeader } from "./SubAgentPaneHeader";
+import { ChatSurface } from "./ChatSurface";
+import { SubAgentSurface } from "./SubAgentSurface";
 import { ChatPanelStreamContext } from "./chat-panel-context";
-import { useChatPanelState } from "./useChatPanelState";
-import { findLatestGeneratedImage } from "./latest-generated-image";
-import { useChatUIStore } from "../../../stores/chat-ui-store";
+import {
+  DesktopChatInputBar,
+  type ChatInputBarHandle,
+  type ChatInputBarProps,
+} from "../ChatInputBar";
 import {
   useSubAgentPane,
   useSubAgentPaneActions,
 } from "../../../stores/subagent-pane-store";
-import { useSubagentChatStream } from "../../../hooks/use-subagent-chat-stream";
-import { useStreamEvents, useIsStreaming } from "../../../hooks/stream/hooks";
-import { useMessageQueueStore } from "../../../stores/message-queue-store";
-import { useOnboardingStore, selectHasSentFirstMessage } from "../../../features/onboarding/onboarding-store";
-import {
-  useStreamHealth,
-  useStuckStreamAutoTimeout,
-} from "../../../hooks/stream/use-stream-health";
-import {
-  createSetters,
-  ensureEntry,
-} from "../../../hooks/stream/store";
-import {
-  getLastSendArgs as getLastAgentChatSendArgs,
-} from "../../../hooks/use-agent-chat-stream";
-import { getPartitionSendControl } from "../../../hooks/use-chat-stream/partition-send-control";
-import { recordStreamCloseReason } from "../../../shared/observability/stream-breadcrumbs";
 import type { ChatAttachment } from "../../../api/streams";
 import type { Project } from "../../../shared/types";
 import type { GenerationMode } from "../../../constants/models";
@@ -49,22 +28,11 @@ import type { ContextUsageEntry } from "../../../stores/context-usage-store";
 import styles from "./ChatPanel.module.css";
 
 type ChatPanelHandoffMode = "create-agent";
-const LOADING_OVERLAY_FADE_MS = 120;
-const SUBAGENT_EMPTY_MESSAGE = "This subagent has not produced any output yet.";
-const SUBAGENT_UNAVAILABLE_MESSAGE =
-  "This subagent thread is no longer available. Its live transcript was cleaned up after the run finished.";
-// How long after the cold-load reveal we keep image-load pinning active.
-// Covers the typical browser image decode tail (a few hundred ms for
-// dataURL attachments) so reopening a thread with images doesn't leave
-// the viewport drifting above the last bubble.
-const IMAGE_PIN_AFTER_REVEAL_MS = 800;
-// How long after a stream ends we keep the image-pin window alive.
-// Image generation finishes the SSE turn slightly before the browser
-// finishes decoding the returned URL, so the bubble's intrinsic
-// height grows after `isStreaming` flips back to false. The window
-// lets `useImageScrollPin` re-pin on that late layout shift even if
-// the user happened to nudge auto-follow off mid-generation.
-const IMAGE_PIN_AFTER_STREAM_MS = 6000;
+
+// Fallback for clearing the exiting overlay if the slide-out
+// `animationend` never fires (e.g. the layer is detached before the
+// keyframe completes). Slightly longer than the CSS duration.
+const SUBAGENT_EXIT_FALLBACK_MS = 360;
 
 export interface ChatPanelProps {
   streamKey: string;
@@ -108,18 +76,14 @@ export interface ChatPanelProps {
    * Project id sent as `body.project_id` on the wire. Defaults to
    * `selectedProjectId` when omitted. The agents-app passes a
    * different value here so the picker's static "Home" label can
-   * stay while the LLM still receives the correct context project
-   * (Home for fresh canvases, the originating session's project for
-   * an existing session). See `useChatPanelState` for the full
-   * rationale.
+   * stay while the LLM still receives the correct context project.
    */
   llmProjectId?: string;
   onProjectChange?: (projectId: string) => void;
   /**
    * Workspace path of the active project (or remote agent). Forwarded
    * to the input bar so `@`-typed file mentions can resolve against
-   * the project's file tree. Standalone (project-less) agents leave
-   * this unset and the mention menu stays dormant.
+   * the project's file tree.
    */
   workspacePath?: string;
   /**
@@ -128,35 +92,38 @@ export interface ChatPanelProps {
    */
   remoteAgentId?: string;
   header?: ReactNode;
-  InputBarComponent?: ForwardRefExoticComponent<ChatInputBarProps & RefAttributes<ChatInputBarHandle>>;
+  InputBarComponent?: ForwardRefExoticComponent<
+    ChatInputBarProps & RefAttributes<ChatInputBarHandle>
+  >;
   initialHandoff?: ChatPanelHandoffMode;
   onInitialHandoffReady?: () => void;
   contextUsage?: ContextUsageEntry;
   /**
    * Optional ChatGPT-style "+" new-chat handler. When set, the input
-   * bar shows a small Plus button at the right end of the mode row
-   * that wipes the visible transcript and arms the next send to
-   * create a fresh session. This is the only "reset / new
-   * conversation" affordance the panel exposes — the previous
-   * RotateCcw inline context-reset button has been removed.
+   * bar shows a small Plus button that wipes the visible transcript and
+   * arms the next send to create a fresh session.
    */
   onNewChat?: () => void;
-  /**
-   * Forwarded to the input bar as a compact-layout flag (e.g. inside
-   * floating desktop agent windows). Currently a no-op now that the
-   * info-bar slash hint has been removed; reserved for future
-   * compact-mode tweaks.
-   */
+  /** Forwarded to the input bar as a compact-layout flag. */
   compact?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
 }
 
+/**
+ * Layered chat surface. The parent thread renders as a persistent base
+ * layer; opening a `task` card's subagent pushes a second `ChatSurface`
+ * over it as an absolutely-positioned slide-over (iOS-style push
+ * navigation). The base layer never remounts or resizes, so the parent
+ * content stays put underneath while the subagent slides in and back
+ * out. Keyed by THIS panel's `streamKey` via the pane store so
+ * independent surfaces never collide.
+ */
 export function ChatPanel({
   streamKey: parentStreamKey,
-  transcriptKey: transcriptKeyProp,
-  onSend: onSendProp,
-  onStop: onStopProp,
+  transcriptKey,
+  onSend,
+  onStop,
   isExternallyBusy = false,
   externalBusyMessage,
   agentName,
@@ -165,14 +132,14 @@ export function ChatPanel({
   defaultModel,
   templateAgentId,
   agentId,
-  isLoading: isLoadingProp = false,
-  historyResolved: historyResolvedProp = true,
-  errorMessage: errorMessageProp,
-  emptyMessage: emptyMessageProp,
-  scrollResetKey: scrollResetKeyProp,
+  isLoading = false,
+  historyResolved = true,
+  errorMessage,
+  emptyMessage,
+  scrollResetKey,
   scrollToBottomOnReset,
   focusInputOnThreadReady = true,
-  historyMessages: historyMessagesProp,
+  historyMessages,
   projects,
   selectedProjectId,
   llmProjectId,
@@ -186,643 +153,135 @@ export function ChatPanel({
   contextUsage,
   onNewChat,
   compact = false,
-  sendDisabled: sendDisabledProp = false,
-  sendDisabledReason: sendDisabledReasonProp,
+  sendDisabled = false,
+  sendDisabledReason,
 }: ChatPanelProps) {
-  // Subagent sub-pane: when a `task` card on this panel opens a child
-  // thread, the panel retargets its message list + the shared input
-  // bar at the subagent's stream partition (iOS-style push navigation)
-  // instead of spawning a separate modal/chat. Keyed by THIS panel's
-  // parent `streamKey` so independent surfaces never collide.
   const subagentPane = useSubAgentPane(parentStreamKey);
   const { closePane } = useSubAgentPaneActions();
-  const isSubagentView = !!subagentPane?.childRunId;
-  const subagentThread = useSubagentChatStream(
-    subagentPane?.childRunId,
-    subagentPane?.parentToolUseId,
-    isSubagentView,
-  );
-  const subStreamKey = subagentThread.streamKey;
-  const subEvents = useStreamEvents(subStreamKey);
-  const subIsStreaming = useIsStreaming(subStreamKey);
-  const subHasTranscript = subEvents.length > 0;
-  const subConnecting =
-    isSubagentView &&
-    subagentThread.status === "attaching" &&
-    !subHasTranscript &&
-    !subIsStreaming;
-  const subUnavailable =
-    isSubagentView && subagentThread.status === "error" && !subHasTranscript;
 
-  const handleCloseSubagent = useCallback(() => {
-    closePane(parentStreamKey);
-  }, [closePane, parentStreamKey]);
+  // Closing keeps the pane in the store (so the overlay stays mounted)
+  // while the slide-out plays; the store entry is dropped on the
+  // animation's `animationend` (or a fallback timer). All state writes
+  // happen in event handlers, never in an effect.
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
 
-  // Resolve the active target by shadowing the incoming props. The
-  // entire panel below (message list, scroll, reveal machinery,
-  // streaming indicator, the single shared input bar) binds to these
-  // names, so the same machinery drives either the parent thread or the
-  // open subagent — no duplicate panel, no re-rendered input bar.
-  const streamKey = isSubagentView ? subStreamKey : parentStreamKey;
-  const transcriptKey = isSubagentView ? subStreamKey : transcriptKeyProp;
-  const onSend = isSubagentView ? subagentThread.onSend : onSendProp;
-  const onStop = isSubagentView ? subagentThread.onStop : onStopProp;
-  const historyResolved = isSubagentView ? true : historyResolvedProp;
-  const isLoading = isSubagentView ? subConnecting : isLoadingProp;
-  const errorMessage = isSubagentView
-    ? subUnavailable
-      ? SUBAGENT_UNAVAILABLE_MESSAGE
-      : null
-    : errorMessageProp;
-  const emptyMessage = isSubagentView ? SUBAGENT_EMPTY_MESSAGE : emptyMessageProp;
-  const scrollResetKey = isSubagentView ? subStreamKey : scrollResetKeyProp;
-  const sendDisabled = isSubagentView ? false : sendDisabledProp;
-  const sendDisabledReason = isSubagentView ? undefined : sendDisabledReasonProp;
-  const historyMessages = isSubagentView ? undefined : historyMessagesProp;
-
-  const {
-    input,
-    setInput,
-    attachments,
-    setAttachments,
-    commands,
-    setCommands,
-    messageAreaRef,
-    inputBarRef,
-    isMobileLayout,
-    handleScroll,
-    isAutoFollowing,
-    getUserUnpinnedAt,
-    isStreaming,
-    queue,
-    messages,
-    bridgeMessages,
-    scrollToBottom,
-    handleRemoveAttachment,
-    handleSend,
-    handleQueueEdit,
-    handleQueueRemove,
-    handleQueueSendNow,
-    loadOlder,
-    isLoadingOlder,
-    hasOlderMessages,
-    unreadCount,
-  } = useChatPanelState({
-    streamKey,
-    transcriptKey,
-    onSend,
-    onStop,
-    adapterType,
-    defaultModel,
-    scrollResetKey,
-    scrollToBottomOnReset,
-    historyMessages,
-    selectedProjectId,
-    llmProjectId,
-    agentId,
-    sendDisabled,
-  });
-
-  // Phase 2 stuck-stream actions. The pill in `ChatStreamingIndicator`
-  // owns the rendering; ChatPanel composes the three callbacks against
-  // the chat hooks already wired through `onStop` / `onSend`.
-  const streamHealth = useStreamHealth(streamKey);
-
-  // Resend the most-recent prompt for this stream. Shared by the
-  // stuck-stream pill's Retry action and the per-error-bubble Retry
-  // button (`MessageBubble` via `ChatMessageList`). Pulls the cached
-  // `lastSendArgs` from whichever surface owns this stream, stops any
-  // in-flight turn, then re-dispatches `onSend` with the same payload.
-  const handleRetryLastSend = useCallback(() => {
-    if (sendDisabled) return;
-    // The standalone-agent branch caches via the agent-chat-stream
-    // replay map; the project-chat branch caches via
-    // `partition-send-control`. The streamKey uniquely identifies
-    // which map owns the args, so we check both and use whichever is
-    // populated.
-    const agentArgs = getLastAgentChatSendArgs(streamKey);
-    const partitionArgs = agentArgs
-      ? null
-      : getPartitionSendControl(streamKey).lastSendArgs;
-    onStop();
-    if (agentArgs) {
-      onSend(
-        agentArgs.content,
-        agentArgs.action ?? null,
-        agentArgs.selectedModel ?? null,
-        agentArgs.attachments,
-        agentArgs.commands,
-        agentArgs.projectId,
-        agentArgs.generationMode,
-        agentArgs.sourceImageUrl,
-      );
-      return;
-    }
-    if (partitionArgs) {
-      onSend(
-        partitionArgs.content,
-        partitionArgs.action ?? null,
-        partitionArgs.selectedModel ?? null,
-        partitionArgs.attachments,
-        partitionArgs.commands,
-        partitionArgs.projectIdOverride,
-        partitionArgs.generationMode,
-        partitionArgs.sourceImageUrl,
-      );
-    }
-  }, [onSend, onStop, sendDisabled, streamKey]);
-
-  const handleStuckStreamAutoTimeout = useCallback(() => {
-    onStop();
-    ensureEntry(streamKey);
-    const setters = createSetters(streamKey);
-    const id = `assistant-stuck-${Date.now()}`;
-    setters.setEvents((prev) => [
-      ...prev,
-      {
-        id,
-        clientId: id,
-        role: "assistant",
-        content:
-          "*Agent stopped responding. Local timeout reached — try sending again or press the Report button to send diagnostics.*",
-        displayVariant: "streamDropped",
-      },
-    ]);
-    recordStreamCloseReason({
-      classified: "disconnected",
-      message: "client_auto_timeout",
-    });
-  }, [onStop, streamKey]);
-
-  useStuckStreamAutoTimeout(streamHealth, handleStuckStreamAutoTimeout);
-
-  const handleNewChat = useCallback(() => {
-    setInput("");
-    setAttachments([]);
-    setCommands([]);
-    useMessageQueueStore.getState().clear(streamKey);
-    onNewChat?.();
-    // Place the cursor back in the input on the fresh canvas. The
-    // standing focus effect below only re-fires when `inputFocusReadyRef`
-    // is `false`, but the new-chat flow doesn't flip `historyResolved`
-    // so that ref stays latched from the initial mount. Skip on mobile
-    // to avoid popping the on-screen keyboard unprompted, matching the
-    // guard on the thread-ready focus effect.
-    if (!isMobileLayout) {
-      requestAnimationFrame(() => inputBarRef.current?.focus());
-    }
-  }, [
-    inputBarRef,
-    isMobileLayout,
-    onNewChat,
-    setAttachments,
-    setCommands,
-    setInput,
-    streamKey,
-  ]);
-
-  // Phase 3 server emits `progress { stage: "queued" }` as the first
-  // SSE event when our turn is waiting behind another on the same
-  // upstream agent partition. The pinned `ChatStreamingIndicator`
-  // surfaces this state as the "Queued..." shimmer (see
-  // `getStreamingPhaseLabel`); we no longer derive a separate
-  // `isQueued` flag here because the input bar's queued pill would
-  // duplicate the pinned indicator.
-
-  // One-shot pin seeding for chat 3D mode: the moment the user
-  // enters 3D mode, if the chat thread already contains a generated
-  // image and the per-stream pin slot is empty, auto-pin the most
-  // recent one. Preserves the historical "generate in Image mode →
-  // switch to 3D → send" power-user shortcut. After this initial
-  // seed, the pin is owned exclusively by `chat-ui-store` (cleared by
-  // the input bar's X button, the 3D-step `GenerationCompleted`
-  // handler, or `setSelectedMode` switching away from 3D).
-  const selectedMode = useChatUIStore(
-    (s) => s.streams[streamKey]?.selectedMode,
-  );
-  const seededFor3DKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (selectedMode !== "3d") {
-      // Reset the latch so re-entering 3D later re-runs the seed
-      // (the pin may have since been cleared by the user / a
-      // completed 3D step / a mode switch).
-      seededFor3DKeyRef.current = null;
-      return;
-    }
-    if (seededFor3DKeyRef.current === streamKey) return;
-    seededFor3DKeyRef.current = streamKey;
-    const existing = useChatUIStore.getState().getPinnedSourceImage(streamKey);
-    if (existing) return;
-    const latest = findLatestGeneratedImage(messages);
-    if (!latest) return;
-    useChatUIStore.getState().setPinnedSourceImage(streamKey, {
-      imageUrl: latest.imageUrl,
-      originalUrl: latest.originalUrl,
-      prompt: latest.prompt ?? "",
-    });
-  }, [streamKey, messages, selectedMode]);
-
-  // Bridge frame: a single trailing-message preview surfaced from
-  // `chat-history-store.previewLastMessages` for this transcript key.
-  // Lets cold opens of recently-visited sessions paint a real bubble
-  // immediately while the full history fetch is still in flight,
-  // instead of staring at an overlay + `visibility: hidden` reveal
-  // gate. Empty when there's no preview or history has already
-  // resolved. See `useConversationSnapshot` for the read.
-  const hasBridgeFrame = bridgeMessages.length > 0;
-  const renderedMessages = messages.length > 0 ? messages : bridgeMessages;
-
-  // Mirror `isStreaming` so the thread-reset effect can read the latest
-  // streaming state without listing it as a dependency (we only want
-  // that effect to fire on genuine `scrollResetKey` / `initialHandoff`
-  // changes, not on every stream toggle).
-  const isStreamingRef = useRef(isStreaming);
-  useEffect(() => {
-    isStreamingRef.current = isStreaming;
-  }, [isStreaming]);
-
-  const initialHandoffReadyRef = useRef(false);
-  const inputFocusReadyRef = useRef(false);
-  const hasHandledThreadResetRef = useRef(false);
-  // Treat a bridge-frame mount as "already warm": skip cold-load
-  // arming entirely so the bubble we just painted doesn't get hidden
-  // by the reveal cycle the moment real history lands. The swap from
-  // bridge → full history happens in-place and the user never sees
-  // the `visibility: hidden` flash.
-  const initialColdLoadRef = useRef(!historyResolved && !hasBridgeFrame);
-  // Latches `true` once we've completed the initial reveal for the current
-  // chat (warm mount, cold-load anchor-ready, or empty-thread short circuit).
-  // Subsequent transient `historyResolved=false` flips MUST NOT re-arm the
-  // cold-load machinery, otherwise the next flip back to `true` re-applies
-  // `.messageContentHidden` and the entire transcript flashes
-  // `visibility: hidden` for ~2 frames mid-turn. `historyResolved` flaps
-  // during normal chat whenever the chat-history-store evicts our entry
-  // (`MAX_HISTORY_ENTRIES = 8`) and a follow-up WS event re-creates it via
-  // `fetchHistory`, which transitions status `"loading"` → `"ready"`.
-  // Reset only on real chat switches via the `[initialHandoff, scrollResetKey]`
-  // effect below.
-  const hasInitiallyRevealedRef = useRef(historyResolved || hasBridgeFrame);
-  const revealAnimationFrameRef = useRef<number | null>(null);
-  const loadingOverlayTimeoutRef = useRef<number | null>(null);
-  const [isInitialThreadRevealReady, setIsInitialThreadRevealReady] = useState(
-    () => historyResolved || hasBridgeFrame,
-  );
-  const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(
-    () => !historyResolved && !hasBridgeFrame,
-  );
-  const [isLoadingOverlayFadingOut, setIsLoadingOverlayFadingOut] = useState(false);
-  // Deadline for the image-load auto-pin window. Updated on every
-  // thread switch (`scrollResetKey`) and again after the reveal so
-  // late-decoding images keep the viewport anchored to the bottom
-  // for `IMAGE_PIN_AFTER_REVEAL_MS` after the reveal completes.
-  const [imagePinUntil, setImagePinUntil] = useState<number>(
-    () => Date.now() + IMAGE_PIN_AFTER_REVEAL_MS,
-  );
-
-  const contentReady = (historyResolved && !isLoading) || hasBridgeFrame;
-  const shouldArmColdLoad = !historyResolved && !hasBridgeFrame;
-  const shouldHideThreadForInitialReveal =
-    initialColdLoadRef.current && historyResolved && messages.length > 0 && !isInitialThreadRevealReady;
-  const shouldShowColdLoadOverlay =
-    !errorMessage && initialColdLoadRef.current && (!historyResolved || shouldHideThreadForInitialReveal);
-  const threadReady = contentReady && !shouldHideThreadForInitialReveal;
-
-  useEffect(() => {
-    hasHandledThreadResetRef.current = true;
-    initialHandoffReadyRef.current = false;
-    // Re-arm focus on every thread reset (agent switch, session switch,
-    // fresh-canvas reset, create-agent handoff) so the cursor lands in
-    // the chat input automatically. The focus effect below is guarded
-    // on `isMobileLayout` so this won't pop the on-screen keyboard.
-    inputFocusReadyRef.current = false;
-    if (revealAnimationFrameRef.current != null) {
-      cancelAnimationFrame(revealAnimationFrameRef.current);
-      revealAnimationFrameRef.current = null;
-    }
-
-    // Never re-arm the cold-load reveal while a turn is actively
-    // streaming on this stream key. `scrollResetKey` flips mid-turn
-    // when `SessionReady` (fresh-canvas first send) or `auto_fork`
-    // migrates the lane to the real session id; arming here would
-    // clear the reveal latch and flash `.messageContentHidden`
-    // (visibility: hidden) over the live transcript for ~2 frames.
-    // The content is owned by this panel during a stream, so keep it
-    // revealed via the same "already warm" branch.
-    if (!shouldArmColdLoad || isStreamingRef.current) {
-      initialColdLoadRef.current = false;
-      hasInitiallyRevealedRef.current = true;
-      setIsInitialThreadRevealReady(true);
-      setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
-      return;
-    }
-
-    initialColdLoadRef.current = true;
-    hasInitiallyRevealedRef.current = false;
-    setIsInitialThreadRevealReady(false);
-    if (loadingOverlayTimeoutRef.current != null) {
-      clearTimeout(loadingOverlayTimeoutRef.current);
-      loadingOverlayTimeoutRef.current = null;
-    }
-    setIsLoadingOverlayVisible(true);
-    setIsLoadingOverlayFadingOut(false);
-    setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
-  }, [initialHandoff, scrollResetKey]);
-
-  useEffect(() => {
-    if (hasInitiallyRevealedRef.current) {
-      return;
-    }
-
-    if (!historyResolved) {
-      initialColdLoadRef.current = true;
-      setIsInitialThreadRevealReady(false);
-      return;
-    }
-
-    if (messages.length === 0) {
-      initialColdLoadRef.current = false;
-      hasInitiallyRevealedRef.current = true;
-      setIsInitialThreadRevealReady(true);
-      return;
-    }
-
-    // historyResolved && messages.length > 0 with cold-load active.
-    // Trigger the reveal directly via the same double-rAF that
-    // `handleInitialAnchorReady` would have done, instead of waiting on
-    // ChatMessageList's `onInitialAnchorReady` callback. The child's
-    // `useLayoutEffect` is keyed by `streamKey` and fires only ONCE per
-    // (streamKey, hasMessages=true) pair: if `messages.length > 0` was
-    // already true on first commit because the persisted `message-store`
-    // thread for this `streamKey` carried over from a prior visit while
-    // `historyResolved` was still false, the child's gate latches on a
-    // no-op call (handleInitialAnchorReady bails on `!historyResolved`)
-    // and never re-fires once history finally arrives -- leaving
-    // `.messageContentHidden` (`visibility: hidden`) permanently applied
-    // and rendering the chat panel as a black rectangle even though the
-    // data is present (sidebar previews still show correctly because
-    // `previewLastMessages` has its own 100-entry bound). This branch
-    // closes that gap so the reveal is robust to either ordering of
-    // `historyResolved` vs `messages.length > 0`.
-    if (!initialColdLoadRef.current) return;
-    if (revealAnimationFrameRef.current != null) {
-      cancelAnimationFrame(revealAnimationFrameRef.current);
-    }
-    revealAnimationFrameRef.current = requestAnimationFrame(() => {
-      revealAnimationFrameRef.current = requestAnimationFrame(() => {
-        revealAnimationFrameRef.current = null;
-        initialColdLoadRef.current = false;
-        hasInitiallyRevealedRef.current = true;
-        setIsInitialThreadRevealReady(true);
-        setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
-      });
-    });
-  }, [historyResolved, messages.length]);
-
-  useEffect(() => () => {
-    if (revealAnimationFrameRef.current != null) {
-      cancelAnimationFrame(revealAnimationFrameRef.current);
-    }
-    if (loadingOverlayTimeoutRef.current != null) {
-      clearTimeout(loadingOverlayTimeoutRef.current);
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
     }
   }, []);
 
-  useEffect(() => {
-    if (errorMessage) {
-      if (loadingOverlayTimeoutRef.current != null) {
-        clearTimeout(loadingOverlayTimeoutRef.current);
-        loadingOverlayTimeoutRef.current = null;
-      }
-      setIsLoadingOverlayVisible(false);
-      setIsLoadingOverlayFadingOut(false);
+  const finishClose = useCallback(() => {
+    clearCloseTimer();
+    setIsClosing(false);
+    closePane(parentStreamKey);
+  }, [clearCloseTimer, closePane, parentStreamKey]);
+
+  const handleCloseSubagent = useCallback(() => {
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      closePane(parentStreamKey);
       return;
     }
+    setIsClosing(true);
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(
+      finishClose,
+      SUBAGENT_EXIT_FALLBACK_MS,
+    );
+  }, [clearCloseTimer, closePane, finishClose, parentStreamKey]);
 
-    if (shouldShowColdLoadOverlay) {
-      if (loadingOverlayTimeoutRef.current != null) {
-        clearTimeout(loadingOverlayTimeoutRef.current);
-        loadingOverlayTimeoutRef.current = null;
-      }
-      setIsLoadingOverlayVisible(true);
-      setIsLoadingOverlayFadingOut(false);
-      return;
-    }
+  const handleOverlayAnimationEnd = useCallback(
+    (event: ReactAnimationEvent<HTMLDivElement>) => {
+      // Ignore animations bubbling up from descendants (badge pulse,
+      // streaming shimmer, etc.); only the surface root's own slide-out
+      // signals the transition is complete.
+      if (event.target !== event.currentTarget) return;
+      if (isClosing) finishClose();
+    },
+    [isClosing, finishClose],
+  );
 
-    if (!isLoadingOverlayVisible || isLoadingOverlayFadingOut) {
-      return;
-    }
+  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
 
-    setIsLoadingOverlayFadingOut(true);
-    loadingOverlayTimeoutRef.current = window.setTimeout(() => {
-      loadingOverlayTimeoutRef.current = null;
-      setIsLoadingOverlayVisible(false);
-      setIsLoadingOverlayFadingOut(false);
-    }, LOADING_OVERLAY_FADE_MS);
-  }, [errorMessage, isLoadingOverlayFadingOut, isLoadingOverlayVisible, shouldShowColdLoadOverlay]);
-
-  const handleInitialAnchorReady = useCallback(() => {
-    if (!initialColdLoadRef.current || !historyResolved || messages.length === 0) {
-      return;
-    }
-    if (revealAnimationFrameRef.current != null) {
-      cancelAnimationFrame(revealAnimationFrameRef.current);
-    }
-
-    revealAnimationFrameRef.current = requestAnimationFrame(() => {
-      revealAnimationFrameRef.current = requestAnimationFrame(() => {
-        revealAnimationFrameRef.current = null;
-        initialColdLoadRef.current = false;
-        hasInitiallyRevealedRef.current = true;
-        setIsInitialThreadRevealReady(true);
-        setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_REVEAL_MS);
-      });
-    });
-  }, [historyResolved, messages.length]);
-
-  // Refresh the image-pin window every time `isStreaming` toggles.
-  // - When a turn starts, an image-mode generation may finish many
-  //   seconds later; the window covers that whole interval.
-  // - When the turn ends, the window covers the post-stream image
-  //   decode so the final bubble lands at the bottom even if the
-  //   user lost auto-follow during generation.
-  useEffect(() => {
-    setImagePinUntil(Date.now() + IMAGE_PIN_AFTER_STREAM_MS);
-  }, [isStreaming]);
-
-  useEffect(() => {
-    if (!focusInputOnThreadReady || isMobileLayout || !threadReady || inputFocusReadyRef.current) {
-      return;
-    }
-    inputFocusReadyRef.current = true;
-    requestAnimationFrame(() => inputBarRef.current?.focus());
-  }, [
-    focusInputOnThreadReady,
-    inputBarRef,
-    initialHandoff,
-    isMobileLayout,
-    scrollResetKey,
-    threadReady,
-  ]);
-
-  useEffect(() => {
-    if (!initialHandoff || !threadReady || initialHandoffReadyRef.current) {
-      return;
-    }
-    initialHandoffReadyRef.current = true;
-    onInitialHandoffReady?.();
-  }, [initialHandoff, onInitialHandoffReady, threadReady]);
-
-  const isThreadEmpty =
-    historyResolved &&
-    !errorMessage &&
-    messages.length === 0 &&
-    !isStreaming &&
-    queue.length === 0 &&
-    !shouldHideThreadForInitialReveal;
-
-  // Onboarding-only affordance: the prompt suggestion chips appear on
-  // the empty-thread canvas to give brand-new users something to click.
-  // Once the user has sent any message ever (latched in the
-  // onboarding-store's `send_message` task by useOnboardingTaskWatcher
-  // and persisted per user), they're past onboarding and the chips
-  // should not reappear when opening fresh empty chats.
-  const hasSentFirstMessage = useOnboardingStore(selectHasSentFirstMessage);
-
-  const emptyState = errorMessage ? (
-    <div className={styles.emptyState}>
-      <AlertCircle size={40} />
-      <Text variant="muted" size="sm">{errorMessage}</Text>
-    </div>
-  ) : historyResolved && emptyMessage ? (
-    <div className={styles.emptyState}>
-      <MessageSquare size={40} />
-      <Text variant="muted" size="sm">
-        {emptyMessage}
-      </Text>
-    </div>
-  ) : null;
+  const paneToRender = subagentPane;
+  const isExiting = isClosing && !!subagentPane;
+  const overlayClassName = `${styles.subagentLayer} ${
+    isExiting ? styles.subagentSlideOut : styles.subagentSlideIn
+  }`;
+  const baseClassName = `${styles.baseLayer}${
+    subagentPane && !isClosing ? ` ${styles.baseLayerPushed}` : ""
+  }`;
 
   return (
     <ChatPanelStreamContext.Provider value={parentStreamKey}>
-    <div className={styles.container}>
-      {isSubagentView && subagentPane ? (
-        <SubAgentPaneHeader
-          agentName={agentName}
-          subagentType={subagentPane.subagentType}
-          state={subagentPane.state}
-          reason={subagentPane.reason}
-          onBack={handleCloseSubagent}
-        />
-      ) : (
-        header
-      )}
-      <div className={styles.chatArea}>
-        {/* Keyed only across the parent<->subagent boundary so normal
-            agent/session switches (streamKey changes with the same view)
-            don't remount the shell, while pushing into a subagent does —
-            triggering the iOS-style slide-in. */}
-        <div
-          key={isSubagentView ? subStreamKey : "parent-thread"}
-          className={`${styles.messageAreaShell}${isSubagentView ? ` ${styles.subagentSlideIn}` : ""}`}
-        >
-          <div
-            className={`${styles.messageArea}${isAutoFollowing ? ` ${styles.messageAreaFollowing}` : ` ${styles.messageAreaReading}`}`}
-            ref={messageAreaRef}
-            onScroll={handleScroll}
-          >
-            <div
-              className={`${styles.messageContent}${shouldHideThreadForInitialReveal ? ` ${styles.messageContentHidden}` : ""}`}
-            >
-              <ChatMessageList
-                messages={renderedMessages}
-                streamKey={streamKey}
-                scrollRef={messageAreaRef}
-                emptyState={emptyState}
-                onLoadOlder={loadOlder}
-                isLoadingOlder={isLoadingOlder}
-                hasOlderMessages={hasOlderMessages}
-                onInitialAnchorReady={handleInitialAnchorReady}
-                onRetry={handleRetryLastSend}
-                isAutoFollowing={isAutoFollowing}
-                getUserUnpinnedAt={getUserUnpinnedAt}
-                density={isMobileLayout ? "mobile" : "desktop"}
-                imagePinUntil={imagePinUntil}
-              />
-            </div>
-          </div>
-          {isLoadingOverlayVisible && (
-            <div
-              className={`${styles.initialRevealOverlay}${isLoadingOverlayFadingOut ? ` ${styles.initialRevealOverlayFading}` : ""}`}
-            />
-          )}
-          <OverlayScrollbar scrollRef={messageAreaRef} />
-          {!isAutoFollowing && unreadCount > 0 && (
-            <button
-              type="button"
-              className={styles.newMessagesPill}
-              onClick={scrollToBottom}
-            >
-              {unreadCount} new message{unreadCount !== 1 ? "s" : ""} ↓
-            </button>
-          )}
-        </div>
-
-        {queue.length > 0 && (
-          <div className={styles.queueSection}>
-            <MessageQueue
-              streamKey={streamKey}
-              onEdit={handleQueueEdit}
-              onRemove={handleQueueRemove}
-              onSendNow={handleQueueSendNow}
-            />
-          </div>
-        )}
-
-        <ChatStreamingIndicator
-          streamKey={streamKey}
+      <div className={styles.container}>
+        <ChatSurface
+          className={baseClassName}
+          header={header}
+          streamKey={parentStreamKey}
+          transcriptKey={transcriptKey}
+          onSend={onSend}
           onStop={onStop}
-          onRetry={handleRetryLastSend}
-        />
-
-        {isThreadEmpty && !hasSentFirstMessage && !sendDisabled && (
-          <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
-        )}
-
-        <InputBarComponent
-          ref={inputBarRef}
-          input={input}
-          onInputChange={setInput}
-          onSend={handleSend}
-          onStop={onStop}
-          streamKey={streamKey}
           isExternallyBusy={isExternallyBusy}
           externalBusyMessage={externalBusyMessage}
-          adapterType={adapterType}
-          defaultModel={defaultModel}
           agentName={agentName}
           machineType={machineType}
+          adapterType={adapterType}
+          defaultModel={defaultModel}
           templateAgentId={templateAgentId}
           agentId={agentId}
-          attachments={attachments}
-          onAttachmentsChange={setAttachments}
-          onRemoveAttachment={handleRemoveAttachment}
-          selectedCommands={commands}
-          onCommandsChange={setCommands}
+          isLoading={isLoading}
+          historyResolved={historyResolved}
+          errorMessage={errorMessage}
+          emptyMessage={emptyMessage}
+          scrollResetKey={scrollResetKey}
+          scrollToBottomOnReset={scrollToBottomOnReset}
+          focusInputOnThreadReady={focusInputOnThreadReady}
+          historyMessages={historyMessages}
           projects={projects}
           selectedProjectId={selectedProjectId}
+          llmProjectId={llmProjectId}
           onProjectChange={onProjectChange}
           workspacePath={workspacePath}
           remoteAgentId={remoteAgentId}
-          isVisible
-          isCentered={isThreadEmpty}
-          compact={compact}
+          InputBarComponent={InputBarComponent}
+          initialHandoff={initialHandoff}
+          onInitialHandoffReady={onInitialHandoffReady}
           contextUsage={contextUsage}
-          onNewChat={!isSubagentView && onNewChat ? handleNewChat : undefined}
+          onNewChat={onNewChat}
+          compact={compact}
           sendDisabled={sendDisabled}
           sendDisabledReason={sendDisabledReason}
         />
+        {paneToRender && (
+          <SubAgentSurface
+            key={paneToRender.childRunId}
+            descriptor={paneToRender}
+            agentName={agentName}
+            onBack={handleCloseSubagent}
+            className={overlayClassName}
+            onAnimationEnd={handleOverlayAnimationEnd}
+            adapterType={adapterType}
+            defaultModel={defaultModel}
+            agentId={agentId}
+            templateAgentId={templateAgentId}
+            machineType={machineType}
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onProjectChange={onProjectChange}
+            workspacePath={workspacePath}
+            remoteAgentId={remoteAgentId}
+            contextUsage={contextUsage}
+            compact={compact}
+            InputBarComponent={InputBarComponent}
+          />
+        )}
       </div>
-    </div>
     </ChatPanelStreamContext.Provider>
   );
 }

@@ -5,6 +5,11 @@ import { ChatPanel } from "./ChatPanel";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { useMessageStore } from "../../../stores/message-store";
 import { useChatViewStore } from "../../../stores/chat-view-store";
+import { useSubAgentPaneStore } from "../../../stores/subagent-pane-store";
+import type { SubAgentPaneDescriptor } from "../../../stores/subagent-pane-store";
+
+const mockSubagentOnSend = vi.hoisted(() => vi.fn());
+const mockSubagentOnStop = vi.hoisted(() => vi.fn());
 
 const mockUseAuraCapabilities = vi.fn();
 const mockClearQueue = vi.hoisted(() => vi.fn());
@@ -16,6 +21,17 @@ const sampleHistoryMessages: DisplaySessionEvent[] = [
 
 vi.mock("@cypher-asi/zui", () => ({
   Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+  Badge: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+}));
+
+vi.mock("../../../hooks/use-subagent-chat-stream", () => ({
+  subagentStreamKey: (childRunId: string) => `subagent:${childRunId}`,
+  useSubagentChatStream: () => ({
+    streamKey: "subagent:child-1",
+    status: "live",
+    onSend: mockSubagentOnSend,
+    onStop: mockSubagentOnStop,
+  }),
 }));
 
 vi.mock("../../../hooks/stream/hooks", () => ({
@@ -169,8 +185,11 @@ describe("ChatPanel", () => {
     autoSignalInitialAnchorReady = false;
     resetInputBarRenderCount();
     mockClearQueue.mockReset();
+    mockSubagentOnSend.mockReset();
+    mockSubagentOnStop.mockReset();
     useMessageStore.setState({ messages: {}, orderedIds: {} });
     useChatViewStore.setState({ threads: {} });
+    useSubAgentPaneStore.setState({ panes: {} });
     requestAnimationFrameSpy = vi
       .spyOn(globalThis, "requestAnimationFrame")
       .mockImplementation((callback: FrameRequestCallback) => {
@@ -786,5 +805,49 @@ describe("ChatPanel", () => {
     // resets, `handleSend`'s identity, etc.) is held stable per
     // streamKey.
     expect(inputBarRenderProbe.count).toBe(initialRenders);
+  });
+
+  it("mounts the subagent slide-over on open and unmounts it after the slide-out", () => {
+    mockUseAuraCapabilities.mockReturnValue({ isMobileLayout: false });
+
+    const descriptor: SubAgentPaneDescriptor = {
+      childRunId: "child-1",
+      parentToolUseId: "tool-1",
+      subagentType: "explore",
+      prompt: "Look around the repo",
+      state: "running",
+    };
+
+    renderPanel({ historyResolved: true, isLoading: false });
+
+    // No pane yet: the slide-over and its back button are absent.
+    expect(
+      screen.queryByRole("button", { name: "Back to parent thread" }),
+    ).not.toBeInTheDocument();
+
+    // Opening a pane pushes the subagent slide-over over the parent.
+    act(() => {
+      useSubAgentPaneStore.getState().openPane("stream-1", descriptor);
+    });
+    expect(
+      screen.getByRole("button", { name: "Back to parent thread" }),
+    ).toBeInTheDocument();
+
+    // Closing keeps the layer mounted while the slide-out plays...
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to parent thread" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Back to parent thread" }),
+    ).toBeInTheDocument();
+
+    // ...then the fallback timer (animationend never fires in jsdom)
+    // drops it, restoring the parent thread alone.
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Back to parent thread" }),
+    ).not.toBeInTheDocument();
   });
 });

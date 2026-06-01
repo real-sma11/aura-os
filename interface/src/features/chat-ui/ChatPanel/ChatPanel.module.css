@@ -4,6 +4,40 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  position: relative;
+}
+
+/* A single chat thread's full surface (header + chat area + input bar).
+   `ChatPanel` stacks two: the parent thread as the base layer and the
+   subagent as an absolute slide-over. */
+.surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Base (parent) layer. Stays mounted and never resizes; a subtle
+   parallax push gives the iOS depth cue while the subagent is open. */
+.baseLayer {
+  transition:
+    transform 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    filter 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.baseLayerPushed {
+  transform: translateX(-24px);
+  filter: brightness(0.82);
+}
+
+/* Subagent slide-over. Absolutely covers the parent (opaque bg hides the
+   parent's input bar underneath) and sits above every in-flow z-index in
+   the base layer (input bar 10, pinned indicator 11, scrollbar 12). */
+.subagentLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--color-bg);
 }
 
 .projectAgentBar {
@@ -223,27 +257,49 @@
   pointer-events: none;
 }
 
-/* iOS-style push-in for the subagent sub-pane. The message shell is
-   keyed on the active stream so entering a subagent remounts it and
-   plays this slide; the shared input bar (a sibling) is untouched. */
+/* iOS-style push for the subagent slide-over. The whole surface (nav
+   bar + chat) slides as a unit over the persistent parent layer. */
 .subagentSlideIn {
-  animation: subagentSlideIn 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: subagentSlideIn 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.subagentSlideOut {
+  /* `forwards` holds the layer off-screen until the coordinator
+     unmounts it on `animationend`, avoiding a snap back to center. */
+  animation: subagentSlideOut 260ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
 @keyframes subagentSlideIn {
   from {
-    transform: translateX(24px);
-    opacity: 0;
+    transform: translateX(100%);
   }
   to {
     transform: translateX(0);
-    opacity: 1;
+  }
+}
+
+@keyframes subagentSlideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .subagentSlideIn {
+  .subagentSlideIn,
+  .subagentSlideOut {
     animation: none;
+  }
+
+  .baseLayer {
+    transition: none;
+  }
+
+  .baseLayerPushed {
+    transform: none;
+    filter: none;
   }
 }
 
