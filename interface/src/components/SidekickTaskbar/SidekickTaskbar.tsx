@@ -93,9 +93,9 @@ export function SidekickTaskbar() {
         icon: <CheckLoopGlyph active={tasksActive} size={16} />,
         title: "Tasks",
       },
-      { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
       { id: "log", icon: <ScrollText size={16} />, title: "Log" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
+      { id: "stats", icon: <BarChart3 size={16} />, title: "Stats" },
     ],
     [tasksActive, runActive],
   );
