@@ -106,6 +106,14 @@ export interface ChatSurfaceProps {
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   /**
+   * ChatGPT-style empty-canvas affordance: center the input (and show
+   * prompt suggestions) while the thread is empty, docking it to the
+   * bottom on the first message. Disabled for the subagent slide-over,
+   * whose input must stay docked so it doesn't jump down when the child
+   * transcript streams in mid-slide.
+   */
+  centerInputWhenEmpty?: boolean;
+  /**
    * Extra class names applied to the surface root. The layered
    * `ChatPanel` uses this to position the subagent surface as an
    * absolute slide-over and to drive the parent's parallax push.
@@ -159,6 +167,7 @@ export function ChatSurface({
   compact = false,
   sendDisabled = false,
   sendDisabledReason,
+  centerInputWhenEmpty = true,
   className,
   onAnimationEnd,
 }: ChatSurfaceProps) {
@@ -613,9 +622,12 @@ export function ChatSurface({
           onRetry={handleRetryLastSend}
         />
 
-        {isThreadEmpty && !hasSentFirstMessage && !sendDisabled && (
-          <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
-        )}
+        {centerInputWhenEmpty &&
+          isThreadEmpty &&
+          !hasSentFirstMessage &&
+          !sendDisabled && (
+            <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
+          )}
 
         <InputBarComponent
           ref={inputBarRef}
@@ -643,7 +655,7 @@ export function ChatSurface({
           workspacePath={workspacePath}
           remoteAgentId={remoteAgentId}
           isVisible
-          isCentered={isThreadEmpty}
+          isCentered={centerInputWhenEmpty && isThreadEmpty}
           compact={compact}
           contextUsage={contextUsage}
           onNewChat={onNewChat ? handleNewChat : undefined}

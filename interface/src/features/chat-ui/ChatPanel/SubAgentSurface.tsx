@@ -104,6 +104,7 @@ export function SubAgentSurface({
       errorMessage={subUnavailable ? SUBAGENT_UNAVAILABLE_MESSAGE : null}
       emptyMessage={SUBAGENT_EMPTY_MESSAGE}
       scrollResetKey={subStreamKey}
+      centerInputWhenEmpty={false}
       agentName={agentName}
       machineType={machineType}
       adapterType={adapterType}
