@@ -1,9 +1,14 @@
 import { useCallback, useMemo } from "react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useUIModeStore, type UIMode } from "../../stores/ui-mode-store";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
 import { getLastAdvancedPath, getLastSimplePath } from "../../utils/storage";
+import {
+  agentSessionHistoryKey,
+  sessionHistoryKey,
+  useChatHistoryStore,
+} from "../../stores/chat-history-store";
 import { SlidingPills, type SlidingPillItem } from "../SlidingPills";
 import styles from "./ModeToggle.module.css";
 
@@ -18,6 +23,62 @@ const ITEMS: ReadonlyArray<SlidingPillItem<ToggleMode>> = [
   { id: "simple", label: "Simple", title: "Simplified chat surface" },
   { id: "advanced", label: "Advanced", title: "Full app shell" },
 ];
+
+interface CrossSurfaceTarget {
+  /** Destination URL for the same conversation on the other surface. */
+  path: string;
+  /** Transcript key the current surface reads. */
+  fromKey: string;
+  /** Transcript key the destination surface will read. */
+  toKey: string;
+}
+
+/**
+ * When the user is viewing a specific chat conversation, resolve the
+ * URL + transcript keys for the SAME conversation on the destination
+ * surface. Simple `/chat` and Advanced `/agents/...` render the same
+ * conversation through different orchestrators with different
+ * `chat-history-store` keys (`agent:<id>:session:<sid>` vs
+ * `session:<proj>:<inst>:<sid>`). Returning the destination key lets
+ * the toggle pre-warm it so the destination paints immediately
+ * instead of re-running ChatPanel's cold-load reveal.
+ *
+ * Returns `null` when the location isn't a resolvable conversation
+ * (e.g. a fresh canvas with no `?session=`, or a non-chat Advanced
+ * app), in which case the caller falls back to last-path restore.
+ */
+function resolveCrossSurfaceTarget(
+  next: ToggleMode,
+  pathname: string,
+  search: string,
+): CrossSurfaceTarget | null {
+  const params = new URLSearchParams(search);
+  const project = params.get("project");
+  const instance = params.get("instance");
+  const session = params.get("session");
+  if (!project || !instance || !session) return null;
+
+  if (next === "advanced") {
+    if (!pathname.startsWith("/chat")) return null;
+    const agent = params.get("agent");
+    if (!agent) return null;
+    const destParams = new URLSearchParams({ project, instance, session });
+    return {
+      path: `/agents/${agent}?${destParams.toString()}`,
+      fromKey: agentSessionHistoryKey(agent, session),
+      toKey: sessionHistoryKey(project, instance, session),
+    };
+  }
+
+  const agent = pathname.match(/^\/agents\/([^/?]+)/)?.[1];
+  if (!agent) return null;
+  const destParams = new URLSearchParams({ agent, project, instance, session });
+  return {
+    path: `/chat?${destParams.toString()}`,
+    fromKey: sessionHistoryKey(project, instance, session),
+    toKey: agentSessionHistoryKey(agent, session),
+  };
+}
 
 /**
  * Two-segment pill toggle for the global UI complexity mode. Lives at
@@ -45,6 +106,7 @@ export function ModeToggle(): React.ReactElement | null {
   const setMode = useUIModeStore((s) => s.setMode);
   const effectiveMode = useEffectiveMode();
   const navigate = useNavigate();
+  const { pathname, search } = useLocation();
 
   const items = useMemo(() => ITEMS, []);
   // The store's `mode` carries the full `UIMode` union (including
@@ -76,8 +138,21 @@ export function ModeToggle(): React.ReactElement | null {
       // paths to `/chat`; in Advanced, staying on the current URL
       // (e.g. `/chat`) is the correct minimum-surprise default since
       // `/chat` is also a valid Advanced surface.
+      //
+      // When the user is mid-conversation, prefer keeping that exact
+      // conversation across the surface swap and pre-warm the
+      // destination's transcript cache, so the chat paints the same
+      // content immediately instead of re-running ChatPanel's cold-load
+      // reveal + reflow. Falls back to last-path restore otherwise.
+      const crossSurface = resolveCrossSurfaceTarget(next, pathname, search);
+      if (crossSurface) {
+        useChatHistoryStore
+          .getState()
+          .aliasHistoryEntry(crossSurface.fromKey, crossSurface.toKey);
+      }
       const target =
-        next === "advanced" ? getLastAdvancedPath() : getLastSimplePath();
+        crossSurface?.path ??
+        (next === "advanced" ? getLastAdvancedPath() : getLastSimplePath());
       // Commit the mode flip and the route change in a single render.
       // `useActiveApp` derives the shell's active app from BOTH the
       // mode store and the router pathname; updating them in separate
@@ -94,7 +169,7 @@ export function ModeToggle(): React.ReactElement | null {
         }
       });
     },
-    [navigate, setMode, value],
+    [navigate, pathname, search, setMode, value],
   );
 
   if (effectiveMode === "public") return null;

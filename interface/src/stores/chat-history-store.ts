@@ -59,6 +59,18 @@ type ChatHistoryState = {
    * cold browser reload.
    */
   hydrateFromCache: (key: string) => Promise<void>;
+  /**
+   * Copy a warm `"ready"` entry (events + preview bridge frame) to a
+   * second key, marking it fresh so the destination surface resolves
+   * `historyResolved === true` on its first render. Used when the same
+   * conversation is rendered under two different transcript keys (the
+   * Simple `/chat` `agent:<id>:session:<sid>` surface vs the Advanced
+   * agents `session:<proj>:<inst>:<sid>` surface) so toggling the UI
+   * mode paints the destination transcript immediately instead of
+   * re-arming `ChatPanel`'s cold-load reveal. No-ops when the source
+   * isn't ready or the destination is already warm + fresh.
+   */
+  aliasHistoryEntry: (fromKey: string, toKey: string) => void;
 };
 
 const HISTORY_TTL_MS = 30_000;
@@ -409,6 +421,46 @@ export const useChatHistoryStore = create<ChatHistoryState>()((set, get) => ({
     }));
     useMessageStore.getState().setThread(key, events);
   },
+
+  aliasHistoryEntry: (fromKey, toKey): void => {
+    if (fromKey === toKey) return;
+    const source = get().entries[fromKey];
+    if (!source || source.status !== "ready") return;
+    const existing = get().entries[toKey];
+    // Don't clobber a destination that is already warm + fresh — it
+    // either carries newer data or is mid-revalidation.
+    if (existing?.status === "ready" && existing.fetchedAt > 0) return;
+
+    const lastMessage = source.events.length
+      ? source.events[source.events.length - 1]
+      : undefined;
+    set((s) => {
+      // Briefly pin the destination so the LRU can't evict the warmed
+      // slot before the destination panel mounts and pins it itself
+      // (mirrors the sidebar hover-warm pattern in `ChatAppLeftPanel`).
+      const pinnedKeys = new Set(s.pinnedKeys);
+      pinnedKeys.add(toKey);
+      return {
+        entries: withBoundedHistoryEntry(s.entries, pinnedKeys, toKey, {
+          events: source.events,
+          status: "ready",
+          fetchedAt: Date.now(),
+          error: null,
+          lastMessageAt: source.lastMessageAt,
+        }),
+        previewLastMessages: withBoundedHistoryPreview(
+          s.previewLastMessages,
+          toKey,
+          lastMessage,
+        ),
+        pinnedKeys,
+      };
+    });
+    useMessageStore.getState().setThread(toKey, source.events);
+    setTimeout(() => {
+      get().unpinKey(toKey);
+    }, HISTORY_TTL_MS);
+  },
 }));
 
 export function useChatHistory(key: string | undefined): {
@@ -429,6 +481,15 @@ export function useChatHistory(key: string | undefined): {
 
 export function agentHistoryKey(agentId: string): string {
   return `agent:${agentId}`;
+}
+
+/**
+ * History key for a specific session as read by the Simple `/chat`
+ * surface (`useStandaloneAgentChat`). Kept in sync with the inline
+ * key construction there and in `ChatAppLeftPanel`'s hover-warm.
+ */
+export function agentSessionHistoryKey(agentId: string, sessionId: string): string {
+  return `agent:${agentId}:session:${sessionId}`;
 }
 
 export function projectChatHistoryKey(projectId: string, agentInstanceId: string): string {

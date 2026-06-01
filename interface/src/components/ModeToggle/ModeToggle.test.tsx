@@ -12,6 +12,12 @@ import { ModeToggle } from "./ModeToggle";
 import { useUIModeStore } from "../../stores/ui-mode-store";
 import { useAuthStore } from "../../stores/auth-store";
 import {
+  agentSessionHistoryKey,
+  sessionHistoryKey,
+  useChatHistoryStore,
+} from "../../stores/chat-history-store";
+import type { DisplaySessionEvent } from "../../shared/types/stream";
+import {
   LAST_ADVANCED_PATH_KEY,
   LAST_SIMPLE_PATH_KEY,
 } from "../../constants";
@@ -36,7 +42,27 @@ beforeEach(() => {
   // squash to `"public"` (which would render the toggle inert and
   // intercept `userEvent` clicks).
   useAuthStore.setState({ user: TEST_USER });
+  useChatHistoryStore.setState({
+    entries: {},
+    previewLastMessages: {},
+    pinnedKeys: new Set<string>(),
+  });
 });
+
+function seedReadyHistory(key: string, id: string): void {
+  useChatHistoryStore.setState((s) => ({
+    entries: {
+      ...s.entries,
+      [key]: {
+        events: [{ id, role: "user", text: `msg-${id}` } as unknown as DisplaySessionEvent],
+        status: "ready",
+        fetchedAt: Date.now(),
+        error: null,
+        lastMessageAt: null,
+      },
+    },
+  }));
+}
 
 afterEach(() => {
   window.localStorage.clear();
@@ -217,6 +243,66 @@ describe("ModeToggle", () => {
       // override the current URL.
       expect(screen.getByTestId("probe-location")).toHaveTextContent(
         "/notes/note-1",
+      );
+    });
+  });
+
+  describe("conversation-aware cross-surface toggle", () => {
+    const PARAMS = "agent=A&project=P&instance=I&session=S";
+
+    it("Simple -> Advanced keeps the same conversation on the agents surface", async () => {
+      const user = userEvent.setup();
+      // A stored last-advanced path must NOT win when we're mid-conversation.
+      window.localStorage.setItem(LAST_ADVANCED_PATH_KEY, "/notes/note-2");
+      useUIModeStore.setState({ mode: "simple" });
+      renderToggle(`/chat?${PARAMS}`);
+
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/agents/A?project=P&instance=I&session=S",
+      );
+    });
+
+    it("Advanced -> Simple keeps the same conversation on the chat surface", async () => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(LAST_SIMPLE_PATH_KEY, "/chat?session=stale");
+      useUIModeStore.setState({ mode: "advanced" });
+      renderToggle(`/agents/A?project=P&instance=I&session=S`);
+
+      await user.click(screen.getByRole("radio", { name: "Simple" }));
+
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/chat?agent=A&project=P&instance=I&session=S",
+      );
+    });
+
+    it("pre-warms the destination transcript cache before navigating (Simple -> Advanced)", async () => {
+      const user = userEvent.setup();
+      const fromKey = agentSessionHistoryKey("A", "S");
+      const toKey = sessionHistoryKey("P", "I", "S");
+      seedReadyHistory(fromKey, "warm-1");
+      useUIModeStore.setState({ mode: "simple" });
+      renderToggle(`/chat?${PARAMS}`);
+
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+
+      const dest = useChatHistoryStore.getState().entries[toKey];
+      expect(dest?.status).toBe("ready");
+      expect(dest?.events[0].id).toBe("warm-1");
+    });
+
+    it("falls back to last-path restore when there is no resolvable conversation", async () => {
+      const user = userEvent.setup();
+      window.localStorage.setItem(LAST_ADVANCED_PATH_KEY, "/notes/note-2");
+      useUIModeStore.setState({ mode: "simple" });
+      // Fresh canvas: no project/instance/session params -> not resolvable.
+      renderToggle("/chat?agent=A");
+
+      await user.click(screen.getByRole("radio", { name: "Advanced" }));
+
+      expect(screen.getByTestId("probe-location")).toHaveTextContent(
+        "/notes/note-2",
       );
     });
   });

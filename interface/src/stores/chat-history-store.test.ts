@@ -11,7 +11,9 @@ vi.mock("../utils/build-display-messages", () => ({
 import {
   useChatHistoryStore,
   agentHistoryKey,
+  agentSessionHistoryKey,
   projectChatHistoryKey,
+  sessionHistoryKey,
 } from "./chat-history-store";
 
 function makeFetchFn(msgs: SessionEvent[] = []): () => Promise<SessionEvent[]> {
@@ -228,13 +230,85 @@ describe("chat-history-store", () => {
     });
   });
 
+  describe("aliasHistoryEntry", () => {
+    it("copies a ready entry + preview to the destination key as fresh", async () => {
+      await useChatHistoryStore
+        .getState()
+        .fetchHistory("from", makeFetchFn([makeMsg("m1")]));
+
+      useChatHistoryStore.getState().aliasHistoryEntry("from", "to");
+
+      const dest = useChatHistoryStore.getState().entries["to"];
+      expect(dest.status).toBe("ready");
+      expect(dest.fetchedAt).toBeGreaterThan(0);
+      expect(dest.events).toHaveLength(1);
+      expect(dest.events[0].id).toBe("m1");
+      expect(useChatHistoryStore.getState().previewLastMessages.to?.id).toBe("m1");
+    });
+
+    it("pins the destination so a burst of fetches can't evict it before mount", async () => {
+      await useChatHistoryStore
+        .getState()
+        .fetchHistory("from", makeFetchFn([makeMsg("m1")]));
+      useChatHistoryStore.getState().aliasHistoryEntry("from", "to");
+
+      for (let i = 0; i < 10; i += 1) {
+        await useChatHistoryStore
+          .getState()
+          .fetchHistory(`other-${i}`, makeFetchFn([makeMsg(`o${i}`)]));
+      }
+
+      expect(useChatHistoryStore.getState().entries["to"]).toBeDefined();
+      expect(useChatHistoryStore.getState().entries["to"].events[0].id).toBe("m1");
+    });
+
+    it("no-ops when the source entry is missing or not ready", () => {
+      useChatHistoryStore.getState().aliasHistoryEntry("missing", "to");
+      expect(useChatHistoryStore.getState().entries["to"]).toBeUndefined();
+    });
+
+    it("does not clobber a destination that is already warm and fresh", async () => {
+      await useChatHistoryStore
+        .getState()
+        .fetchHistory("from", makeFetchFn([makeMsg("from-msg")]));
+      await useChatHistoryStore
+        .getState()
+        .fetchHistory("to", makeFetchFn([makeMsg("to-msg")]));
+
+      useChatHistoryStore.getState().aliasHistoryEntry("from", "to");
+
+      expect(useChatHistoryStore.getState().entries["to"].events[0].id).toBe(
+        "to-msg",
+      );
+    });
+
+    it("is a no-op when source and destination keys match", async () => {
+      await useChatHistoryStore
+        .getState()
+        .fetchHistory("same", makeFetchFn([makeMsg("m1")]));
+      const before = useChatHistoryStore.getState().entries["same"];
+
+      useChatHistoryStore.getState().aliasHistoryEntry("same", "same");
+
+      expect(useChatHistoryStore.getState().entries["same"]).toBe(before);
+    });
+  });
+
   describe("key helpers", () => {
     it("agentHistoryKey", () => {
       expect(agentHistoryKey("a1")).toBe("agent:a1");
     });
 
+    it("agentSessionHistoryKey", () => {
+      expect(agentSessionHistoryKey("a1", "s1")).toBe("agent:a1:session:s1");
+    });
+
     it("projectChatHistoryKey", () => {
       expect(projectChatHistoryKey("p1", "ai1")).toBe("project:p1:ai1");
+    });
+
+    it("sessionHistoryKey", () => {
+      expect(sessionHistoryKey("p1", "ai1", "s1")).toBe("session:p1:ai1:s1");
     });
   });
 });
