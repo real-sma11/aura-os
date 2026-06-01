@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { X as XIcon, ChevronRight } from "lucide-react";
+import { X as XIcon } from "lucide-react";
+import { Item } from "@cypher-asi/zui";
 import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
@@ -290,19 +291,25 @@ export function CompletedTaskOutput({
   // hydration finishing) do not yank the body closed.
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
 
+  const statusLabel =
+    status === "failed" ? "Failed"
+    : status === "interrupted" ? "Interrupted"
+    : "Done";
+
+  const toggle = () => setCollapsed((c) => !c);
+
   return (
     <div className={styles.taskSection}>
       {showHeader && (
-        <button
-          type="button"
-          className={styles.taskHeader}
-          onClick={() => setCollapsed((c) => !c)}
-          aria-expanded={!collapsed}
+        <Item
+          className={styles.taskRow}
+          hasChildren
+          expanded={!collapsed}
+          onClick={toggle}
         >
-          <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-            <ChevronRight size={14} />
-          </span>
-          <span className={styles.taskTitle}>{title || taskId}</span>
+          <Item.Chevron size="sm" expanded={!collapsed} onToggle={toggle} />
+          <Item.Label>{title || taskId}</Item.Label>
+          <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
           <CopyTaskOutputButton getCopyText={getCopyText} />
           <TaskHeaderContextUsage taskId={taskId} projectId={projectId} />
           {showDismiss && (
@@ -330,7 +337,7 @@ export function CompletedTaskOutput({
           <span className={styles.taskSuffix}>
             <TaskStatusIcon status={status} />
           </span>
-        </button>
+        </Item>
       )}
       {!collapsed && (
         <>

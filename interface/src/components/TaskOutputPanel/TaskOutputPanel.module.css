@@ -198,45 +198,47 @@
   flex-direction: column;
 }
 
-.taskHeader {
-  display: flex;
-  align-items: center;
+/* Run-row header. Rendered with the shared zui `Item` primitive (the
+   same component the Tasks `Explorer` rows use) so height, hover, label
+   color/size, and chevron behavior all come from Item rather than local
+   overrides. This class only layers the Explorer "compact" metrics on
+   top of `Item` — mirroring how `Explorer` itself layers its
+   `.itemContent` compact treatment over the base `Item`. */
+.taskRow {
   gap: 2px;
   padding: 2px var(--space-3, 12px);
   min-height: 24px;
-  box-sizing: border-box;
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.1s;
+  font-size: var(--text-sm, 13px);
 }
 
-.taskHeader:hover {
-  background: var(--color-overlay-subtle);
-}
-
-.taskChevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
+/* Status badge ("DONE" / "FAILED" / "INTERRUPTED"). Kept on the run row
+   as the one piece of run-specific affordance the Tasks rows don't
+   have. */
+.taskStatusBadge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  color: var(--color-success);
 }
 
-.taskChevronExpanded {
-  composes: taskChevron;
-  transform: rotate(90deg);
+.taskStatusBadge[data-status="failed"] {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+}
+
+.taskStatusBadge[data-status="interrupted"] {
+  background: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
+  color: var(--color-text-muted);
 }
 
 /* Right-aligned status indicator, mirroring the Tasks Explorer row
    suffix (`TaskStatusIcon`) so a run row reads as "chevron + title +
-   subtle status circle" rather than a colored dot + bold DONE badge. */
+   subtle status circle". */
 .taskSuffix {
   display: inline-flex;
   align-items: center;
@@ -306,8 +308,8 @@
   margin-left: 0;
 }
 
-.taskHeader:hover .dismissBtn,
-.taskHeader:hover .copyBtn {
+.taskRow:hover .dismissBtn,
+.taskRow:hover .copyBtn {
   opacity: 1;
 }
 
@@ -321,17 +323,6 @@
   opacity: 1;
   outline: 2px solid var(--primary);
   outline-offset: -2px;
-}
-
-.taskTitle {
-  font-size: var(--text-sm, 13px);
-  font-weight: 500;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1;
 }
 
 .taskBody {

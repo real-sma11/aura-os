@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
-import { ChevronRight } from "lucide-react";
+import { Item } from "@cypher-asi/zui";
 import { TaskStatusIcon } from "../TaskStatusIcon";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import { useTaskOutputView } from "../../hooks/use-task-output-view";
@@ -171,22 +171,24 @@ export function ActiveTaskStream({
   return (
     <div className={styles.taskSection}>
       {showHeader && (
-        <button
-          type="button"
-          className={styles.taskHeader}
+        <Item
+          className={styles.taskRow}
+          hasChildren
+          expanded={!collapsed}
           onClick={() => setCollapsed((c) => !c)}
-          aria-expanded={!collapsed}
         >
-          <span className={collapsed ? styles.taskChevron : styles.taskChevronExpanded}>
-            <ChevronRight size={14} />
-          </span>
-          <span className={styles.taskTitle}>{title || taskId}</span>
+          <Item.Chevron
+            size="sm"
+            expanded={!collapsed}
+            onToggle={() => setCollapsed((c) => !c)}
+          />
+          <Item.Label>{title || taskId}</Item.Label>
           <TaskHeaderContextUsage taskId={taskId} projectId={ctx?.project.project_id} />
           <CopyTaskOutputButton getCopyText={getCopyText} />
           <span className={styles.taskSuffix}>
             <TaskStatusIcon status="active" />
           </span>
-        </button>
+        </Item>
       )}
       {!collapsed && (hasContent || showCooldownLine) && (
         <div className={styles.taskBody}>
