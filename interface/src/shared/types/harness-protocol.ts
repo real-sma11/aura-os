@@ -236,6 +236,14 @@ export interface SessionUsage {
    * "not available" and falls back to the legacy used/total view.
    */
   context_breakdown?: ContextBreakdown;
+  /**
+   * Rendered text the harness counted for each static context bucket,
+   * fetched lazily when a user opens a bucket in the Context
+   * Composition popover. Optional because older harness builds omit
+   * it; the frontend treats a missing/empty value as "content not
+   * available from this harness build yet".
+   */
+  context_contents?: ContextContents;
 }
 
 /**
@@ -262,6 +270,30 @@ export interface ContextBreakdown {
    * most recent turn (Anthropic `cache_creation_input_tokens`).
    */
   cache_creation_tokens?: number;
+}
+
+/**
+ * One rendered entry inside a context bucket (e.g. a single tool
+ * definition or skill). Named `ContextSegment` rather than `Item` per
+ * the naming rule, kept identical across Rust + TS for the binding.
+ */
+export interface ContextSegment {
+  label: string;
+  text: string;
+  tokens: number;
+}
+
+/**
+ * Rendered text the harness counted for each static context bucket.
+ * All fields optional/defaulted so older harness builds decode to an
+ * empty value rather than failing (mirrors {@link ContextBreakdown}).
+ */
+export interface ContextContents {
+  system_prompt?: string | null;
+  tools?: ContextSegment[];
+  skills?: ContextSegment[];
+  subagents?: ContextSegment[];
+  mcp?: ContextSegment[];
 }
 
 export interface FileOp {

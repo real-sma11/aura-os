@@ -3,8 +3,9 @@
 /**
  * Per-bucket token estimates for the current session context, computed
  * using the same `chars / CHARS_PER_TOKEN` heuristic as
- * [`SessionUsage::estimated_context_tokens`]. The buckets approximate
- * what the model actually receives on the next turn:
+ * [`crate::server::SessionUsage::estimated_context_tokens`]. The
+ * buckets approximate what the model actually receives on the next
+ * turn:
  *
  * - `system_prompt_tokens` — the rendered system prompt.
  * - `tools_tokens` — serialized tool definitions (name + description +

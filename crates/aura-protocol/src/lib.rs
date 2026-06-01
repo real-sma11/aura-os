@@ -36,6 +36,7 @@ pub mod automaton;
 pub mod chat_project_info;
 pub mod client;
 pub mod common;
+pub mod context;
 pub mod installed;
 pub mod permissions;
 pub mod runtime_request;
@@ -50,6 +51,7 @@ pub use client::{
     UserMessage,
 };
 pub use common::{ToolApprovalDecision, ToolApprovalRemember, ToolStateWire};
+pub use context::{ContextBreakdown, ContextContents, ContextSegment};
 pub use installed::{
     InstalledIntegration, InstalledTool, InstalledToolIntegrationRequirement,
     InstalledToolRuntimeAuth, InstalledToolRuntimeExecution, InstalledToolRuntimeIntegration,
@@ -63,11 +65,11 @@ pub use runtime_request::{
     RuntimeRequest, RuntimeRequestType, RuntimeRunResponse, WorkspaceLocation,
 };
 pub use server::{
-    AssistantMessageEnd, AssistantMessageStart, ContextBreakdown, ErrorMsg, FileDiff, FileOp,
-    FilesChanged, GenerationCompleted, GenerationErrorMsg, GenerationPartialImage,
-    GenerationProgressMsg, GenerationStart, OutboundMessage, ProgressMsg, SessionReady,
-    SessionUsage, SkillInfo, SubagentSpawned, SubagentStatus, TextDelta, ThinkingDelta,
-    ToolApprovalPrompt, ToolCallSnapshot, ToolInfo, ToolResultMsg, ToolUseStart,
+    AssistantMessageEnd, AssistantMessageStart, ErrorMsg, FileDiff, FileOp, FilesChanged,
+    GenerationCompleted, GenerationErrorMsg, GenerationPartialImage, GenerationProgressMsg,
+    GenerationStart, OutboundMessage, ProgressMsg, SessionReady, SessionUsage, SkillInfo,
+    SubagentSpawned, SubagentStatus, TextDelta, ThinkingDelta, ToolApprovalPrompt,
+    ToolCallSnapshot, ToolInfo, ToolResultMsg, ToolUseStart,
 };
 
 #[cfg(all(test, feature = "typescript"))]
