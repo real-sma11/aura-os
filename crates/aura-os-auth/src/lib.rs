@@ -131,6 +131,13 @@ struct JwtEmailClaims {
     preferred_username: Option<String>,
     #[serde(rename = "primaryEmail")]
     primary_email: Option<String>,
+    /// zOS access tokens are auth0-issued and carry the email under this
+    /// namespaced custom claim rather than a bare `email` claim. This is
+    /// the only email source available on the token-validation path
+    /// (app restart / stored token), so the `SYS_ADMIN_EMAILS` allowlist
+    /// match depends on reading it.
+    #[serde(rename = "http://fact0ry.com/email")]
+    fact0ry_email: Option<String>,
 }
 
 /// Best-effort extraction of an email from a JWT payload. Returns `None`
@@ -144,6 +151,7 @@ fn email_from_jwt_claims(token: &str) -> Option<String> {
     let claims: JwtEmailClaims = serde_json::from_slice(&payload_bytes).ok()?;
     claims
         .email
+        .or(claims.fact0ry_email)
         .or(claims.primary_email)
         .or(claims.preferred_username)
         .map(|e| e.trim().to_string())
@@ -185,9 +193,7 @@ impl AuthService {
     /// system-admin allowlist.
     fn is_allowlisted_admin(&self, email: Option<&str>) -> bool {
         match email {
-            Some(e) => self
-                .sys_admin_emails
-                .contains(&normalize_login_email(e)),
+            Some(e) => self.sys_admin_emails.contains(&normalize_login_email(e)),
             None => false,
         }
     }
@@ -367,7 +373,9 @@ impl AuthService {
             return Err(parse_zos_error(status, &body));
         }
 
-        res.json::<ZosProfileResponse>().await.map_err(AuthError::Http)
+        res.json::<ZosProfileResponse>()
+            .await
+            .map_err(AuthError::Http)
     }
 
     /// Validate a JWT token against zOS without relying on local disk persistence.
@@ -496,9 +504,7 @@ fn build_display_name(profile: &Option<ZosProfileSummary>, primary_zid: &Option<
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        email_from_jwt_claims, mask_email_for_log, normalize_login_email, AuthService,
-    };
+    use super::{email_from_jwt_claims, mask_email_for_log, normalize_login_email, AuthService};
     use base64::Engine;
     use std::collections::HashSet;
 
@@ -521,13 +527,29 @@ mod tests {
     #[test]
     fn jwt_email_extraction_prefers_email_then_primary_then_username() {
         let token = fake_jwt(&serde_json::json!({ "email": "a@zero.tech" }));
-        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("a@zero.tech"));
+        assert_eq!(
+            email_from_jwt_claims(&token).as_deref(),
+            Some("a@zero.tech")
+        );
 
         let token = fake_jwt(&serde_json::json!({ "primaryEmail": "b@zero.tech" }));
-        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("b@zero.tech"));
+        assert_eq!(
+            email_from_jwt_claims(&token).as_deref(),
+            Some("b@zero.tech")
+        );
 
         let token = fake_jwt(&serde_json::json!({ "preferred_username": "c@zero.tech" }));
-        assert_eq!(email_from_jwt_claims(&token).as_deref(), Some("c@zero.tech"));
+        assert_eq!(
+            email_from_jwt_claims(&token).as_deref(),
+            Some("c@zero.tech")
+        );
+
+        // zOS auth0 tokens carry the email only under this namespaced claim.
+        let token = fake_jwt(&serde_json::json!({ "http://fact0ry.com/email": "d@zero.tech" }));
+        assert_eq!(
+            email_from_jwt_claims(&token).as_deref(),
+            Some("d@zero.tech")
+        );
     }
 
     #[test]
@@ -549,18 +571,15 @@ mod tests {
 
     #[test]
     fn allowlist_matches_case_and_whitespace_insensitively() {
-        let svc = AuthService::with_sys_admin_emails(HashSet::from([
-            "  N3O@Zero.Tech ".to_string(),
-        ]));
+        let svc =
+            AuthService::with_sys_admin_emails(HashSet::from(["  N3O@Zero.Tech ".to_string()]));
         assert!(svc.is_allowlisted_admin(Some("n3o@zero.tech")));
         assert!(svc.is_allowlisted_admin(Some("  N3O@ZERO.TECH ")));
     }
 
     #[test]
     fn allowlist_rejects_unknown_or_missing_email() {
-        let svc = AuthService::with_sys_admin_emails(HashSet::from([
-            "n3o@zero.tech".to_string(),
-        ]));
+        let svc = AuthService::with_sys_admin_emails(HashSet::from(["n3o@zero.tech".to_string()]));
         assert!(!svc.is_allowlisted_admin(Some("someone@else.com")));
         assert!(!svc.is_allowlisted_admin(None));
     }
