@@ -33,6 +33,7 @@ export function extractToolCalls(blocks: ChatContentBlock[]): ToolCallEntry[] | 
       // child thread and render its terminal status. Undefined keys are
       // omitted so non-`task` tool calls keep their plain shape.
       ...(b.child_run_id ? { subagentRunId: b.child_run_id } : {}),
+      ...(b.subagent_session_id ? { subagentSessionId: b.subagent_session_id } : {}),
       ...(b.subagent_type ? { subagentType: b.subagent_type } : {}),
       ...(b.prompt ? { subagentPrompt: b.prompt } : {}),
       ...(isSubagentState(b.subagent_status)

@@ -1,5 +1,6 @@
 mod blocks;
 mod in_flight;
+mod subagent_link;
 
 use aura_os_core::parse_dt;
 use aura_os_core::{
@@ -9,6 +10,7 @@ use aura_os_storage::StorageSessionEvent;
 
 use blocks::{deserialize_content_blocks, sanitize_assistant_content_blocks};
 use in_flight::reconstruct_in_flight_assistant_turn;
+use subagent_link::fold_subagent_session_links;
 
 /// Reconstruct `Vec<SessionEvent>` from persisted session events.
 ///
@@ -34,6 +36,12 @@ pub fn events_to_session_history(
     if let Some(partial) = reconstruct_in_flight_assistant_turn(&sorted, agent_instance_id, pid) {
         messages.push(partial);
     }
+
+    // Stamp `subagent_session_id` onto any `task` tool_use block whose
+    // child run has a persisted subagent session, so a history-reopened
+    // card can fetch the child transcript. Race-free read-time fold —
+    // see `subagent_link`.
+    fold_subagent_session_links(&mut messages, &sorted);
 
     messages
 }

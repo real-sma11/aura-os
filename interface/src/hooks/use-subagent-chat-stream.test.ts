@@ -4,10 +4,21 @@ import type { StreamEventHandler } from "../api/streams";
 
 const mockAttach = vi.hoisted(() => vi.fn());
 const mockSend = vi.hoisted(() => vi.fn());
+const mockListSessionEvents = vi.hoisted(() => vi.fn());
 const mockAttachToStream = vi.hoisted(() => vi.fn());
 
 vi.mock("../shared/api/subagents", () => ({
-  subagentsApi: { attach: mockAttach, send: mockSend },
+  subagentsApi: {
+    attach: mockAttach,
+    send: mockSend,
+    listSessionEvents: mockListSessionEvents,
+  },
+}));
+
+vi.mock("../shared/lib/browser-db", () => ({
+  BROWSER_DB_STORES: { chatHistory: "chatHistory" },
+  browserDbGet: vi.fn().mockResolvedValue(null),
+  browserDbSet: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock(import("../api/streams"), async (importOriginal) => {
@@ -94,6 +105,49 @@ describe("useSubagentChatStream", () => {
 
     expect(getStreamEntry(key)?.events.length).toBe(eventsAfterFirst);
     expect(second.result.current.status).toBe("error");
+  });
+
+  it("loads the persisted transcript when a reaped run is reopened with a subagentSessionId", async () => {
+    const childRunId = "child-restart";
+    const key = subagentStreamKey(childRunId);
+
+    // App restart: the live child run is long gone, so the attach
+    // rejects. With a subagentSessionId the hook must fetch and render
+    // the persisted transcript from the subagent's storage session
+    // instead of surfacing the "unavailable" error.
+    mockAttach.mockRejectedValueOnce(new Error("thread no longer available"));
+    mockListSessionEvents.mockResolvedValueOnce([
+      {
+        event_id: "evt-1",
+        role: "assistant",
+        content: "Restored subagent answer",
+        content_blocks: [],
+        thinking: null,
+        thinking_duration_ms: null,
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true, "subagent-session-1"),
+    );
+    await act(async () => {});
+
+    expect(mockListSessionEvents).toHaveBeenCalledWith("subagent-session-1");
+    expect(getStreamEntry(key)?.events.length).toBeGreaterThan(0);
+    expect(result.current.status).toBe("done");
+  });
+
+  it("falls back to the error state when a reaped run has no persisted session", async () => {
+    const childRunId = "child-no-session";
+    mockAttach.mockRejectedValueOnce(new Error("thread no longer available"));
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true),
+    );
+    await act(async () => {});
+
+    expect(mockListSessionEvents).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("error");
   });
 
   it("renders a completed run from the persisted snapshot without re-attaching", async () => {

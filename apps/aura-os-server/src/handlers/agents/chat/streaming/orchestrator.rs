@@ -20,6 +20,7 @@ use crate::live_streams::{StreamKind, StreamScope};
 use crate::state::AppState;
 
 use super::super::event_bus::publish_user_message_event;
+use super::super::maybe_spawn_subagent_capture;
 use super::super::persist::{persist_user_message, ChatPersistCtx, ForkInfo};
 use super::super::persist_task::{spawn_chat_persist_task, ChatPersistTaskExtras};
 use super::super::turn_slot::{spawn_turn_slot_release, spawn_turn_watchdog};
@@ -253,6 +254,13 @@ pub(in super::super) async fn open_harness_chat_stream(
         ctx.clone(),
         title_user_content,
     );
+
+    // Capture any subagents this turn spawns into their own durable
+    // sessions so a subagent thread persists and reloads like a normal
+    // chat (see `subagent_capture`). Subscribes its own receiver to
+    // `events_tx`, so it never steals frames from the persist / SSE
+    // fan-out. Runs before `ctx` is moved into the persist task.
+    maybe_spawn_subagent_capture(state, &ctx, &events_tx, persist_model.clone());
 
     spawn_chat_persist_task(
         persist_rx,

@@ -11,6 +11,7 @@ use aura_os_sessions::{storage_enriched_session_to_enriched_session, storage_ses
 use aura_os_storage::StorageClient;
 
 use crate::error::{map_storage_error, ApiError, ApiResult};
+use crate::handlers::agents::chat::is_subagent_session_summary;
 use crate::state::{AppState, AuthJwt};
 
 use super::conversions::events_to_session_history;
@@ -98,6 +99,9 @@ pub(crate) async fn list_project_sessions(
                         .map_err(|e| warn!(error = %e, "skipping malformed session"))
                         .ok()
                 })
+                // Nested subagent sessions surface inside the parent chat
+                // as panes, never as top-level sidebar rows.
+                .filter(|s| !is_subagent_session_summary(&s.summary_of_previous_context))
                 .collect();
             Ok(Json(sessions))
         }
@@ -153,6 +157,7 @@ async fn list_project_sessions_legacy(
         }
     }
     let mut sessions = filter_nonempty_sessions_legacy(storage, jwt, sessions).await;
+    sessions.retain(|s| !is_subagent_session_summary(&s.summary_of_previous_context));
     sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
     Ok(Json(sessions))
 }
@@ -227,6 +232,7 @@ pub(crate) async fn list_my_sessions(
                 .map_err(|e| warn!(error = %e, "skipping malformed enriched session"))
                 .ok()
         })
+        .filter(|e| !is_subagent_session_summary(&e.session.summary_of_previous_context))
         .collect();
     Ok(Json(sessions))
 }
@@ -251,6 +257,7 @@ pub(crate) async fn list_sessions(
                 .map_err(|e| warn!(error = %e, "skipping malformed session"))
                 .ok()
         })
+        .filter(|s| !is_subagent_session_summary(&s.summary_of_previous_context))
         .collect();
     Ok(Json(sessions))
 }

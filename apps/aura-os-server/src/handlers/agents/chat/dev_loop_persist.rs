@@ -56,7 +56,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 use super::persist::ChatPersistCtx;
-use super::persist_task::PersistTaskState;
+use super::persist_task::{is_terminal_turn_event, reset_per_turn_state, PersistTaskState};
 use super::persist_task_dispatch::handle_outbound;
 
 /// Spawn a background task that persists every harness event the
@@ -141,24 +141,6 @@ fn deserialize_outbound(evt: &Value, ctx: &ChatPersistCtx) -> Option<HarnessOutb
             None
         }
     }
-}
-
-fn is_terminal_turn_event(evt: &HarnessOutbound) -> bool {
-    matches!(
-        evt,
-        HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
-    )
-}
-
-/// Drop per-turn accumulators (text, content blocks, message id,
-/// pairing bookkeeping) at the end of every assistant turn so the
-/// next turn's events do not inherit content from the previous one.
-/// Preserves [`PersistTaskState::seq`] so event ordering across the
-/// whole dev-loop session stays monotonic.
-fn reset_per_turn_state(state: &mut PersistTaskState) {
-    let preserved_seq = state.seq;
-    *state = PersistTaskState::new();
-    state.seq = preserved_seq;
 }
 
 #[cfg(test)]

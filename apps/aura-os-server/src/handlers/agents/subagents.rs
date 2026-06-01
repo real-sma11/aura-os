@@ -177,6 +177,46 @@ pub(crate) async fn send_subagent_message(
     Ok(Json(SubagentSendResponse { child_run_id }))
 }
 
+/// `GET /api/streams/subagents/sessions/:subagent_session_id/events`.
+///
+/// Returns the reconstructed chat history for a subagent's dedicated
+/// storage session. A history-reopened `task` card calls this — keyed by
+/// the `subagent_session_id` folded onto the tool_use block during
+/// history reconstruction — to render the persisted child transcript
+/// once the live child run has been reaped. The subagent session is a
+/// normal storage session under the parent's project/agent binding, so
+/// reconstruction reuses the same `events_to_session_history` path as
+/// top-level chats.
+pub(crate) async fn list_subagent_session_events(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+    Path(subagent_session_id): Path<SessionId>,
+) -> ApiResult<Json<Vec<aura_os_core::SessionEvent>>> {
+    let storage = state.require_storage_client()?;
+    let session_id_str = subagent_session_id.to_string();
+    let session = storage
+        .get_session(&session_id_str, &jwt)
+        .await
+        .map_err(|e| match &e {
+            aura_os_storage::StorageError::Server { status: 404, .. } => {
+                ApiError::not_found("subagent session not found")
+            }
+            _ => map_storage_error(e),
+        })?;
+    let project_agent_id = session.project_agent_id.unwrap_or_default();
+    let project_id = session.project_id.unwrap_or_default();
+    let events = storage
+        .list_events(&session_id_str, &jwt, None, None)
+        .await
+        .map_err(map_storage_error)?;
+    let history = crate::handlers::agents::conversions::events_to_session_history(
+        &events,
+        &project_agent_id,
+        &project_id,
+    );
+    Ok(Json(history))
+}
+
 /// `GET /api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/subagents`.
 ///
 /// Lists the subagent threads spawned in a session by scanning the

@@ -52,6 +52,19 @@ impl PersistTaskState {
     }
 }
 
+/// Drop the per-turn accumulators (text, thinking, content blocks,
+/// message id, pairing bookkeeping) at the end of an assistant turn so
+/// the next turn does not inherit the previous turn's content. Preserves
+/// the monotonic [`PersistTaskState::seq`] so event ordering stays stable
+/// across the whole session. Shared by the multi-turn drains (dev-loop
+/// forwarder and subagent capture), which — unlike the single-turn chat
+/// persist loop — keep draining past `AssistantMessageEnd`.
+pub(crate) fn reset_per_turn_state(state: &mut PersistTaskState) {
+    let preserved_seq = state.seq;
+    *state = PersistTaskState::new();
+    state.seq = preserved_seq;
+}
+
 pub(crate) fn flush_text_segment(state: &mut PersistTaskState) {
     if state.text_segment.is_empty() {
         return;

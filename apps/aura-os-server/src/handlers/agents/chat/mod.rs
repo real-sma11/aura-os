@@ -23,6 +23,7 @@ mod request;
 mod runtime_gate;
 mod setup;
 mod streaming;
+mod subagent_capture;
 mod tools;
 pub(crate) mod turn_slot;
 mod typed_session;
@@ -44,6 +45,9 @@ pub(crate) use persist_task::persist_event;
 pub(crate) use setup::{
     cancel_agent_turn, cancel_instance_turn, reset_agent_session, reset_instance_session,
     setup_agent_chat_persistence, setup_project_chat_persistence,
+};
+pub(crate) use subagent_capture::{
+    is_subagent_session_summary, maybe_spawn_subagent_capture, SUBAGENT_SESSION_LINK_EVENT,
 };
 pub use typed_session::{
     build_typed_session_fields, TypedProjectInputs, TypedSessionFields, TypedSessionInputs,

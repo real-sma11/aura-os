@@ -40,7 +40,8 @@ pub(crate) use sessions::{
     list_session_tasks, list_sessions, summarize_session,
 };
 pub(crate) use subagents::{
-    attach_subagent_stream, list_session_subagents, send_subagent_message,
+    attach_subagent_stream, list_session_subagents, list_subagent_session_events,
+    send_subagent_message,
 };
 
 pub mod conversions_pub {

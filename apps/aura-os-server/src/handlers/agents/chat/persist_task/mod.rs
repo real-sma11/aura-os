@@ -20,8 +20,20 @@ mod state;
 
 pub(crate) use persist_event::persist_event;
 pub(super) use state::{
-    flush_text_segment, log_stream_summary, message_id_for_synth, message_id_str, PersistTaskState,
+    flush_text_segment, log_stream_summary, message_id_for_synth, message_id_str,
+    reset_per_turn_state, PersistTaskState,
 };
+
+/// `true` when a harness event terminates an assistant turn. The
+/// single-turn chat persist loop breaks on it; the multi-turn drains
+/// (dev-loop forwarder, subagent capture) instead reset their per-turn
+/// accumulators via [`reset_per_turn_state`] and keep draining.
+pub(super) fn is_terminal_turn_event(evt: &HarnessOutbound) -> bool {
+    matches!(
+        evt,
+        HarnessOutbound::AssistantMessageEnd(_) | HarnessOutbound::Error(_)
+    )
+}
 
 /// Bundle of process-wide handles the persist task needs above and
 /// beyond the `ChatPersistCtx`. Held alongside `ctx` so the

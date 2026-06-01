@@ -46,6 +46,13 @@ export type ChatContentBlock =
       prompt?: string;
       subagent_status?: string;
       subagent_reason?: string;
+      /**
+       * Storage session id of the subagent's persisted transcript, folded
+       * onto the block during server-side history reconstruction from the
+       * `subagent_session` linkage event. Lets a history-reopened card
+       * fetch and render the child transcript once its live run is gone.
+       */
+      subagent_session_id?: string;
     }
   | { type: "tool_result"; tool_use_id: string; content: string;
       is_error?: boolean }

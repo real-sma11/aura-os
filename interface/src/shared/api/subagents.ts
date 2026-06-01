@@ -1,6 +1,7 @@
 import { apiFetch } from "./core";
 import type { SubagentState } from "../types/harness-protocol";
 import type { ChatAttachment } from "../types/aura-events/payloads";
+import type { SessionEvent } from "../types";
 import { isSubagentState } from "../utils/subagent";
 
 /**
@@ -107,6 +108,19 @@ export const subagentsApi = {
       },
     );
   },
+
+  /**
+   * Fetch the persisted transcript for a subagent's dedicated storage
+   * session. Called on a history-reopened card (keyed by the
+   * `subagentSessionId` folded onto the `task` block) to render the child
+   * thread after its live run has been reaped. Returns the reconstructed
+   * `SessionEvent[]`, same wire shape as the top-level session-events
+   * endpoints.
+   */
+  listSessionEvents: async (subagentSessionId: string): Promise<SessionEvent[]> =>
+    apiFetch<SessionEvent[]>(
+      `/api/streams/subagents/sessions/${encodeURIComponent(subagentSessionId)}/events`,
+    ),
 
   /** List the subagent threads spawned in a chat session. */
   listSessionSubagents: async (

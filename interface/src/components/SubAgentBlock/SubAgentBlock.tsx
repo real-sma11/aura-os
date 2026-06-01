@@ -79,6 +79,7 @@ export function SubAgentBlock({ entry, defaultExpanded }: SubAgentBlockProps) {
       prompt,
       state,
       reason,
+      subagentSessionId: entry.subagentSessionId,
     });
   };
 

@@ -14,6 +14,12 @@ export interface SubAgentPaneDescriptor {
   prompt: string;
   state: SubagentState;
   reason?: string;
+  /**
+   * Storage session id of the subagent's persisted transcript, present on
+   * a history-reopened card. Lets the pane fetch and render the child
+   * transcript when its live run has already been reaped.
+   */
+  subagentSessionId?: string;
 }
 
 interface SubAgentPaneState {

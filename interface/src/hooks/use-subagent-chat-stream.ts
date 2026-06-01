@@ -7,6 +7,12 @@ import type { StreamEventHandler } from "../api/streams";
 import { attachToStream } from "../api/streams";
 import { subagentsApi } from "../shared/api/subagents";
 import {
+  BROWSER_DB_STORES,
+  browserDbGet,
+  browserDbSet,
+} from "../shared/lib/browser-db";
+import { buildDisplayEvents } from "../utils/build-display-messages";
+import {
   ensureEntry,
   createSetters,
   getStreamEntry,
@@ -25,7 +31,11 @@ import {
   handleStreamError,
   finalizeStream,
 } from "./use-stream-core";
-import type { StreamSetters, StreamRefs } from "../shared/types/stream";
+import type {
+  DisplaySessionEvent,
+  StreamSetters,
+  StreamRefs,
+} from "../shared/types/stream";
 
 /**
  * Independent stream-store partition key for one subagent thread. The
@@ -90,6 +100,60 @@ function errorMessageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "Subagent stream error";
+}
+
+interface CachedSubagentHistory {
+  events: DisplaySessionEvent[];
+}
+
+/**
+ * Best-effort instant paint of a reopened subagent thread from the
+ * IndexedDB transcript cache, while the authoritative server fetch (or a
+ * live re-attach) revalidates in the background. Reuses the `chatHistory`
+ * store keyed by the subagent stream key. Never throws — the cache is a
+ * non-authoritative fast-path.
+ */
+async function hydrateSubagentCache(
+  key: string,
+  setters: StreamSetters,
+): Promise<void> {
+  try {
+    const cached = await browserDbGet<CachedSubagentHistory>(
+      BROWSER_DB_STORES.chatHistory,
+      key,
+    );
+    if (cached && Array.isArray(cached.events) && cached.events.length > 0) {
+      setters.setEvents(cached.events);
+    }
+  } catch {
+    // Ignore cache read failures; the server fetch is authoritative.
+  }
+}
+
+/**
+ * Fetch the subagent's persisted transcript from its dedicated storage
+ * session, seed the partition, and refresh the IndexedDB cache. Returns
+ * true when the session had renderable events. Never throws: a fetch
+ * failure resolves to false so the caller can fall back to its error
+ * path.
+ */
+async function loadSubagentHistory(
+  subagentSessionId: string,
+  key: string,
+  setters: StreamSetters,
+): Promise<boolean> {
+  try {
+    const events = await subagentsApi.listSessionEvents(subagentSessionId);
+    const display = buildDisplayEvents(events);
+    if (display.length === 0) return false;
+    setters.setEvents(display);
+    void browserDbSet(BROWSER_DB_STORES.chatHistory, key, {
+      events: display,
+    } satisfies CachedSubagentHistory).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -211,14 +275,17 @@ function buildSubagentChatHandler(
  *     transcript survives even after the harness session was reaped.
  *   - A live (non-terminal) run re-attaches and replays from seq 0,
  *     clearing the partition first so the replay does not double up.
- *   - A failed attach leaves any previously-accumulated `events` intact
- *     rather than wiping them — the root-cause fix for the prior
- *     ephemeral hook, which reset on every reopen and lost the thread.
+ *   - A failed attach falls back to the subagent's persisted transcript
+ *     (fetched from its dedicated storage session via `subagentSessionId`,
+ *     with an IndexedDB fast-path) so a thread reopened after an app
+ *     restart — when the live child run is long gone — still renders its
+ *     saved history instead of an "unavailable" error.
  */
 export function useSubagentChatStream(
   childRunId: string | undefined,
   parentToolUseId: string | undefined,
   active: boolean,
+  subagentSessionId?: string,
 ): SubagentChatThread {
   const streamKey = childRunId ? subagentStreamKey(childRunId) : PLACEHOLDER_KEY;
   const [status, setStatus] = useState<SubagentAttachStatus>("idle");
@@ -258,6 +325,13 @@ export function useSubagentChatStream(
         setErrorMessage(undefined);
         return;
       }
+      // Instant paint from the IndexedDB cache while we revalidate, but
+      // only when the partition is empty so we never clobber an in-session
+      // live transcript.
+      if (subagentSessionId && !getStreamEntry(streamKey)?.events.length) {
+        await hydrateSubagentCache(streamKey, setters);
+        if (cancelled || controller.signal.aborted) return;
+      }
       setStatus("attaching");
       setErrorMessage(undefined);
       try {
@@ -281,8 +355,21 @@ export function useSubagentChatStream(
         });
       } catch (error: unknown) {
         if (cancelled) return;
-        // Leave any persisted events untouched so closing/reopening a
-        // finished-but-reaped thread keeps its transcript.
+        // Live run is gone (reaped on a prior app session). Fall back to
+        // the persisted transcript so a reopened thread renders its saved
+        // history rather than an error. Leave any already-accumulated
+        // events intact when no session id / no persisted rows exist.
+        if (subagentSessionId) {
+          const loaded = await loadSubagentHistory(subagentSessionId, streamKey, setters);
+          if (cancelled || controller.signal.aborted) return;
+          if (loaded || getStreamEntry(streamKey)?.events.length) {
+            terminallyStreamed.add(streamKey);
+            setters.setIsStreaming(false);
+            setStatus("done");
+            setErrorMessage(undefined);
+            return;
+          }
+        }
         setStatus("error");
         setErrorMessage(errorMessageOf(error));
       }
@@ -294,7 +381,7 @@ export function useSubagentChatStream(
       controller.abort();
       createSetters(streamKey).setIsStreaming(false);
     };
-  }, [active, childRunId, parentToolUseId, streamKey]);
+  }, [active, childRunId, parentToolUseId, streamKey, subagentSessionId]);
 
   const onSend = useCallback(
     (

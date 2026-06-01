@@ -20,6 +20,12 @@ pub(super) fn stream_routes() -> Router<AppState> {
             "/api/streams/subagents/:child_run_id/send",
             post(agents::send_subagent_message),
         )
+        // Persisted child transcript fetch — registered before the
+        // `:attach_id` wildcard so it is not shadowed by it.
+        .route(
+            "/api/streams/subagents/sessions/:subagent_session_id/events",
+            get(agents::list_subagent_session_events),
+        )
         .route("/api/streams/:attach_id", get(streams::attach_stream))
         .route(
             "/api/streams/:attach_id/cancel",
