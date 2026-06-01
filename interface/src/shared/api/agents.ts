@@ -15,6 +15,7 @@ import type {
 import { apiFetch } from "./core";
 import { sendAgentEventStream, sendEventStream } from "../../api/streams";
 import type { WireContextBreakdown } from "../../stores/context-usage-store";
+import type { WireContextContents } from "../../stores/context-contents-store";
 
 type ApiRequestOptions = {
   signal?: AbortSignal;
@@ -67,6 +68,20 @@ export interface ContextUsageResponse {
   cumulative_cache_creation_input_tokens?: number;
   model?: string;
   provider?: string;
+}
+
+/**
+ * Response for the lazy `context-contents` endpoints. Mirrors the
+ * server's `ContextContentsResponse` struct: a single optional
+ * `context_contents` field that is omitted entirely (rather than
+ * serialized as `null`) when no qualifying `assistant_message_end`
+ * event exists. The frontend treats an absent value as "content not
+ * available from this harness build yet" and renders an empty state.
+ * The nested shape is `WireContextContents` (all fields optional) so
+ * older builds decode defensively.
+ */
+export interface ContextContentsResponse {
+  context_contents?: WireContextContents;
 }
 
 export const agentTemplatesApi = {
@@ -223,6 +238,22 @@ export const agentTemplatesApi = {
       `/api/agents/${agentId}/context-usage`,
       { signal: options?.signal },
     ),
+  /**
+   * Lazily fetch the rendered text the harness counted for each static
+   * context bucket (system prompt / tools / skills / subagents / MCP),
+   * scoped to the latest session across every project_agent that shares
+   * this template agent id. Kept separate from {@link getContextUsage}
+   * so the large text payload is only requested when a user opens a row
+   * in the Context Composition popover.
+   */
+  getContextContents: (
+    agentId: AgentId,
+    options?: ApiRequestOptions,
+  ): Promise<ContextContentsResponse> =>
+    apiFetch<ContextContentsResponse>(
+      `/api/agents/${agentId}/context-contents`,
+      { signal: options?.signal },
+    ),
   getInstalledTools: (
     agentId: AgentId,
     options?: ApiRequestOptions,
@@ -361,6 +392,22 @@ export const agentInstancesApi = {
   ) =>
     apiFetch<ContextUsageResponse>(
       `/api/projects/${projectId}/agents/${agentInstanceId}/context-usage`,
+      { signal: options?.signal },
+    ),
+  /**
+   * Project-instance counterpart to
+   * {@link agentTemplatesApi.getContextContents}. Returns the latest
+   * persisted rendered context contents for a single agent instance,
+   * fetched lazily when a user opens a bucket in the Context
+   * Composition popover.
+   */
+  getContextContents: (
+    projectId: ProjectId,
+    agentInstanceId: AgentInstanceId,
+    options?: ApiRequestOptions,
+  ): Promise<ContextContentsResponse> =>
+    apiFetch<ContextContentsResponse>(
+      `/api/projects/${projectId}/agents/${agentInstanceId}/context-contents`,
       { signal: options?.signal },
     ),
 };
