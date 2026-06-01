@@ -54,6 +54,7 @@
 .headerText {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   line-height: 1.25;
   min-width: 0;
 }
@@ -62,6 +63,12 @@
   font-weight: 600;
   font-size: 12px;
   letter-spacing: -0.01em;
+  /*
+   * Capital letters carry a small left side-bearing that makes the
+   * name read as indented past the status dot below it. Nudge it back
+   * so "Frontend" sits flush with the green online indicator.
+   */
+  margin-left: -1px;
 }
 
 .headerSubtitle {
@@ -106,6 +113,17 @@
 
 .rowAgent {
   justify-content: flex-start;
+}
+
+/*
+ * Loop-reset exit: the parent tags rows newest-first, one at a time,
+ * so the thread "unwinds" instead of clearing in a single jump. The
+ * row fades and slides down slightly while collapsing its height so
+ * the rows beneath it close the gap smoothly.
+ */
+.rowExiting {
+  animation: rowOut 260ms ease-in forwards;
+  pointer-events: none;
 }
 
 .bubble {
@@ -207,6 +225,22 @@
   white-space: nowrap;
 }
 
+/* While the visitor "types", the field reads as filled-in text. */
+.inputFieldActive {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Blinking caret trailing the typed text in the compose bar. */
+.composeCaret {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--agent-color, #6366f1);
+  animation: composeCaretBlink 1s steps(1) infinite;
+}
+
 .sendButton {
   display: flex;
   align-items: center;
@@ -217,6 +251,12 @@
   flex-shrink: 0;
   color: #0a0a0c;
   background: var(--agent-color, #6366f1);
+  transition: transform 120ms ease-out;
+}
+
+/* The "sent" beat: the button pops as the typed message flies off. */
+.sendButtonActive {
+  animation: sendPulse 420ms ease-out;
 }
 
 @keyframes bubbleIn {
@@ -230,6 +270,43 @@
   }
 }
 
+@keyframes rowOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 200px;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+    max-height: 0;
+    margin-top: -6px;
+  }
+}
+
+@keyframes composeCaretBlink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sendPulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /*
    * The transcript is decorative atmosphere (the whole subtree is
@@ -239,6 +316,17 @@
    */
   .bubble,
   .toolCard {
+    animation: none;
+  }
+
+  /*
+   * Drop the decorative loop-reset and compose animations too. Rows
+   * still unmount one at a time (driven by JS timers), they just don't
+   * play the fade/collapse, and the caret/send button stay static.
+   */
+  .rowExiting,
+  .composeCaret,
+  .sendButtonActive {
     animation: none;
   }
 }

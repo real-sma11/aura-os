@@ -60,9 +60,26 @@ export interface MobileConversation {
   readonly agentId: AgentId;
   /** Small status line under the agent name in the header. */
   readonly subtitle: string;
+  /**
+   * Accent color for this phone, taken from the AURA theme palette
+   * (the same swatches offered in Settings -> Appearance). Each phone
+   * uses a distinct accent so the trio reads as three separate
+   * conversations; this overrides the shared `AGENTS[agentId].color`
+   * locally so the desktop landing hero keeps its own palette.
+   */
+  readonly accent: string;
   /** Ordered timeline of bubbles + tool cards. */
   readonly frames: ReadonlyArray<MobileFrame>;
 }
+
+/**
+ * AURA theme accent colors (mirrors the dark-mode swatches in
+ * `SettingsView/AppearanceSection`). Assigned to the phones in
+ * left/center/right order.
+ */
+const ACCENT_CYAN = "#01f4cb";
+const ACCENT_BLUE = "#3b82f6";
+const ACCENT_GREEN = "#00e676";
 
 /**
  * Helper so frame literals below stay terse — `thread`/`agent` from
@@ -131,6 +148,7 @@ const FRONTEND_CHAT: MobileConversation = {
   id: "frontend",
   agentId: "frontend",
   subtitle: "online · on your VM",
+  accent: ACCENT_CYAN,
   frames: [
     userMessage("Add a dark mode toggle to settings", 1400),
     agentMessage(
@@ -166,6 +184,7 @@ const BACKEND_CHAT: MobileConversation = {
   id: "backend",
   agentId: "backend",
   subtitle: "online · on your VM",
+  accent: ACCENT_BLUE,
   frames: [
     userMessage("Why is /pricing slow today?", 1300),
     agentMessage(
@@ -212,6 +231,7 @@ const REVIEWER_CHAT: MobileConversation = {
   id: "reviewer",
   agentId: "reviewer",
   subtitle: "online · on your VM",
+  accent: ACCENT_GREEN,
   frames: [
     userMessage("Ship the release once CI is green", 1400),
     agentMessage("reviewer", "Watching the pipeline now.", 1100, 1800),
