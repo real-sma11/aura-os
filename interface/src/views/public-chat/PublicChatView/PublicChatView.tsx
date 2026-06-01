@@ -87,6 +87,18 @@ const FADE_MS = 550;
 const WHEEL_DELTA_THRESHOLD = 4;
 const PUBLIC_CHAT_PATH = "/chat";
 
+// Taglines cycled by the landing hero's looping typewriter (type ->
+// hold -> erase -> next -> repeat). The first/longest entry doubles as
+// the `.heroHeadline` `data-text` width reserve so the centered box
+// never reflows as the shorter phrases stream in and out.
+const HERO_PHRASES = [
+  "Your Private Agent.",
+  "Build Anything.",
+  "Imagine Anything.",
+  "Code Anything.",
+  "Just by Chatting.",
+] as const;
+
 /**
  * Perceived-luminance test for a `#rgb` / `#rrggbb` hex color. Used to
  * decide the hero tagline's polarity from the active persona's nav
@@ -574,7 +586,11 @@ export function PublicChatView(): React.ReactElement {
                 className={styles.heroHeadline}
                 data-text="Your Private Agent."
               >
-                <TypewriterText text="Your Private Agent." speedMs={45} />
+                <TypewriterText
+                  text="Your Private Agent."
+                  phrases={HERO_PHRASES}
+                  speedMs={45}
+                />
               </span>
             </div>
             <ComposePanel

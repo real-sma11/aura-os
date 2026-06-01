@@ -13,6 +13,28 @@ interface TypewriterTextProps {
    * advances.
    */
   readonly speedMs?: number;
+  /**
+   * Opt-in looping mode. When a non-empty array is passed the
+   * component ignores `text` and instead cycles forever through these
+   * phrases: type one in, hold it, erase it, then advance to the next
+   * (wrapping at the end). The single-`text` consumers (the `/agents`
+   * product hero, the decorative `DMWindow` bubbles) leave this unset
+   * and keep the original type-once-then-stop behaviour. The caret
+   * never settles to hidden in loop mode since the stream is never
+   * "complete".
+   */
+  readonly phrases?: readonly string[];
+  /**
+   * Loop-mode only. Milliseconds to hold a fully-typed phrase on
+   * screen before the erase pass begins. Defaults to 1200ms.
+   */
+  readonly holdMs?: number;
+  /**
+   * Loop-mode only. Milliseconds between character deletions during
+   * the erase pass. Defaults to 25ms — snappier than the type speed so
+   * the rewind reads as a quick backspace rather than a second reveal.
+   */
+  readonly eraseMs?: number;
 }
 
 /**
@@ -45,10 +67,21 @@ interface TypewriterTextProps {
 export function TypewriterText({
   text,
   speedMs = 28,
+  phrases,
+  holdMs = 1200,
+  eraseMs = 25,
 }: TypewriterTextProps): ReactNode {
+  const isLoop = Boolean(phrases && phrases.length > 0);
+  // In loop mode the visible string is driven entirely by the loop
+  // state machine below; the single-`text` path keeps streaming a
+  // prefix of the fixed `text` via the `shown` count.
   const [shown, setShown] = useState<number>(0);
+  const [loopText, setLoopText] = useState<string>("");
 
   useEffect(() => {
+    if (isLoop) {
+      return;
+    }
     if (text.length === 0) {
       setShown(0);
       return;
@@ -65,9 +98,60 @@ export function TypewriterText({
       }
     }, speedMs);
     return () => clearInterval(handle);
-  }, [text, speedMs]);
+  }, [isLoop, text, speedMs]);
 
-  const isComplete = shown >= text.length;
+  useEffect(() => {
+    if (!isLoop || !phrases) {
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout>;
+    let phraseIndex = 0;
+    let charCount = 0;
+    let phase: "typing" | "holding" | "erasing" = "typing";
+
+    const tick = (): void => {
+      const current = phrases[phraseIndex] ?? "";
+
+      if (phase === "typing") {
+        charCount += 1;
+        setLoopText(current.slice(0, charCount));
+        if (charCount >= current.length) {
+          phase = "holding";
+          timer = setTimeout(tick, holdMs);
+          return;
+        }
+        timer = setTimeout(tick, speedMs);
+        return;
+      }
+
+      if (phase === "holding") {
+        phase = "erasing";
+        timer = setTimeout(tick, eraseMs);
+        return;
+      }
+
+      // erasing
+      charCount -= 1;
+      setLoopText(current.slice(0, Math.max(charCount, 0)));
+      if (charCount <= 0) {
+        phase = "typing";
+        phraseIndex = (phraseIndex + 1) % phrases.length;
+        timer = setTimeout(tick, speedMs);
+        return;
+      }
+      timer = setTimeout(tick, eraseMs);
+    };
+
+    timer = setTimeout(tick, speedMs);
+    return () => clearTimeout(timer);
+  }, [isLoop, phrases, speedMs, holdMs, eraseMs]);
+
+  const visibleText = isLoop ? loopText : text.slice(0, shown);
+  // Loop mode never "completes" — the caret keeps blinking through the
+  // type/hold/erase cycle. Single-text mode hides the caret once the
+  // fixed string is fully revealed.
+  const isComplete = !isLoop && shown >= text.length;
 
   // The caret is intentionally kept mounted at completion (just
   // toggled to `visibility: hidden` via `caretHidden`). Unmounting
@@ -80,7 +164,7 @@ export function TypewriterText({
   // transition. See also the parallel fix in `TerminalStream`.
   return (
     <span className={styles.typewriter}>
-      {text.slice(0, shown)}
+      {visibleText}
       <span
         className={`${styles.caret} ${isComplete ? styles.caretHidden : ""}`}
         data-state={isComplete ? "hidden" : "blinking"}

@@ -77,4 +77,53 @@ describe("TypewriterText", () => {
     });
     expect(screen.getByText("hello")).toBeInTheDocument();
   });
+
+  it("ignores `text` and types the first phrase in loop mode, caret blinking", () => {
+    vi.useFakeTimers();
+    render(
+      <TypewriterText
+        text="ignored"
+        phrases={["AB", "CD"]}
+        speedMs={10}
+        holdMs={100}
+        eraseMs={10}
+      />,
+    );
+    // `text` is ignored in loop mode — only the phrase stream paints.
+    expect(screen.queryByText("ignored")).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(30);
+    });
+    expect(screen.getByText("AB")).toBeInTheDocument();
+    // The caret never settles to hidden while the loop is running.
+    expect(
+      document.querySelector("span > span")?.getAttribute("data-state"),
+    ).toBe("blinking");
+  });
+
+  it("holds, erases, and advances to the next phrase in loop mode", () => {
+    vi.useFakeTimers();
+    render(
+      <TypewriterText
+        text="ignored"
+        phrases={["AB", "CD"]}
+        speedMs={10}
+        holdMs={100}
+        eraseMs={10}
+      />,
+    );
+
+    // One continuous advance so the chained type -> hold -> erase ->
+    // next-phrase timers all flush inside a single fake-timer pass:
+    //   t10 "A", t20 "AB", hold→t120, erase t130 "A" / t140 "",
+    //   next phrase t150 "C", t160 "CD".
+    act(() => {
+      vi.advanceTimersByTime(170);
+    });
+    expect(screen.getByText("CD")).toBeInTheDocument();
+    expect(
+      document.querySelector("span > span")?.getAttribute("data-state"),
+    ).toBe("blinking");
+  });
 });
