@@ -15,6 +15,7 @@ import {
   DesktopChatInputBar,
   type ChatInputBarHandle,
   type ChatInputBarProps,
+  type ContextContentsFetcher,
 } from "../ChatInputBar";
 import {
   useSubAgentPane,
@@ -98,6 +99,9 @@ export interface ChatPanelProps {
   initialHandoff?: ChatPanelHandoffMode;
   onInitialHandoffReady?: () => void;
   contextUsage?: ContextUsageEntry;
+  /** Lazy fetcher for the Context Composition popover's bucket
+   * contents, forwarded to the input bar via {@link ChatSurface}. */
+  onFetchContextContents?: ContextContentsFetcher;
   /**
    * Optional ChatGPT-style "+" new-chat handler. When set, the input
    * bar shows a small Plus button that wipes the visible transcript and
@@ -151,6 +155,7 @@ export function ChatPanel({
   initialHandoff,
   onInitialHandoffReady,
   contextUsage,
+  onFetchContextContents,
   onNewChat,
   compact = false,
   sendDisabled = false,
@@ -253,6 +258,7 @@ export function ChatPanel({
           initialHandoff={initialHandoff}
           onInitialHandoffReady={onInitialHandoffReady}
           contextUsage={contextUsage}
+          onFetchContextContents={onFetchContextContents}
           onNewChat={onNewChat}
           compact={compact}
           sendDisabled={sendDisabled}

@@ -16,8 +16,14 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { track } from "../../../lib/analytics";
-import { ContextUsageIndicator } from "./ContextUsageIndicator";
+import { ContextUsageIndicator, type ContextBucketRowId } from "./ContextUsageIndicator";
 import type { ContextUsageEntry } from "../../../stores/context-usage-store";
+import {
+  mapWireContextContents,
+  useContextContentsStore,
+} from "../../../stores/context-contents-store";
+import { useSidekickStore } from "../../../stores/sidekick-store";
+import type { ContextContentsResponse } from "../../../shared/api/agents";
 import { useIsStreaming } from "../../../hooks/stream/hooks";
 import { useFileAttachments } from "./useFileAttachments";
 import type {
@@ -65,6 +71,17 @@ export interface ChatInputBarHandle {
   focus: () => void;
   isFocused?: () => boolean;
 }
+
+/**
+ * Lazily fetches the rendered text the harness counted for each static
+ * context bucket. Built by the surface that owns the chat (agent- vs
+ * instance-scoped — see `AgentChatPanel` / `useStandaloneAgentChat`) so
+ * the input bar can stay agnostic about which endpoint variant applies,
+ * mirroring how `useHydrateContextUtilization` receives its fetcher.
+ */
+export type ContextContentsFetcher = (
+  signal?: AbortSignal,
+) => Promise<ContextContentsResponse>;
 
 export interface AttachmentItem {
   id: string;
@@ -174,6 +191,13 @@ export interface ChatInputBarProps {
    */
   compact?: boolean;
   contextUsage?: ContextUsageEntry;
+  /**
+   * Lazy fetcher for the Context Composition popover's bucket contents.
+   * When set, clicking a breakdown row fetches + caches the bucket text
+   * and opens it in the Sidekick preview. Omitted on surfaces that
+   * can't resolve the right scope yet; the rows then stay inert.
+   */
+  onFetchContextContents?: ContextContentsFetcher;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   /**
@@ -251,6 +275,7 @@ export const DesktopChatInputBar = memo(
       isCentered = false,
       isStatic = false,
       contextUsage,
+      onFetchContextContents,
       onNewChat,
       sendDisabled = false,
       sendDisabledReason,
@@ -301,6 +326,34 @@ export const DesktopChatInputBar = memo(
         selectedCommands,
         streamKey,
       ],
+    );
+    const handleOpenContextBucket = useCallback(
+      (bucketId: ContextBucketRowId) => {
+        // Open the preview immediately so the panel reflects the click
+        // even before (or without) any harness contents; the empty
+        // state covers the "not available yet" case.
+        // TODO(phase4-followup): Modal fallback for surfaces without a
+        // sidekick lane (standalone agent chat) — for now the Sidekick
+        // preview store is the single open path.
+        useSidekickStore.getState().viewContextBucket({ bucketId, streamKey });
+        const fetcher = onFetchContextContents;
+        if (!fetcher) return;
+        void (async () => {
+          try {
+            const response = await fetcher();
+            const mapped = mapWireContextContents(response.context_contents);
+            if (mapped) {
+              useContextContentsStore
+                .getState()
+                .setContextContents(streamKey, mapped);
+            }
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") return;
+            console.warn("Failed to load context bucket contents", err);
+          }
+        })();
+      },
+      [onFetchContextContents, streamKey],
     );
     const [isDragOver, setIsDragOver] = useState(false);
     // Collapsed vendor sections in the chat model picker. Empty = all
@@ -1032,6 +1085,7 @@ export const DesktopChatInputBar = memo(
             cumulativeOutputTokens={contextUsage.cumulativeOutputTokens}
             cumulativeCacheReadTokens={contextUsage.cumulativeCacheReadTokens}
             cumulativeCacheCreationTokens={contextUsage.cumulativeCacheCreationTokens}
+            onOpenBucket={handleOpenContextBucket}
           />
         ) : null}
       </>

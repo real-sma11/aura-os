@@ -30,6 +30,15 @@ export interface ContextUsageIndicatorProps {
   cumulativeOutputTokens?: number;
   cumulativeCacheReadTokens?: number;
   cumulativeCacheCreationTokens?: number;
+  /**
+   * Invoked when a breakdown row is clicked. The presentational
+   * indicator stays free of stores/fetching — the chat input bar wires
+   * this to lazily fetch the bucket's rendered text and open the
+   * Sidekick preview. When omitted, the rows render as inert buttons
+   * (still keyboard/focus accessible) so older mount points don't
+   * regress.
+   */
+  onOpenBucket?: (bucketId: ContextBucketRowId) => void;
 }
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
@@ -74,6 +83,8 @@ interface BucketRow {
   label: string;
   tokens: number;
 }
+
+export type ContextBucketRowId = BucketRow["id"];
 
 /**
  * Order matches the screenshot: System prompt, Tools, Skills, MCP,
@@ -167,6 +178,7 @@ export function ContextUsageIndicator({
   cumulativeOutputTokens,
   cumulativeCacheReadTokens,
   cumulativeCacheCreationTokens,
+  onOpenBucket,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
@@ -194,6 +206,16 @@ export function ContextUsageIndicator({
   const handleClose = useCallback(() => {
     setOpen(false);
   }, []);
+  const handleOpenBucket = useCallback(
+    (bucketId: ContextBucketRowId) => {
+      if (!onOpenBucket) return;
+      onOpenBucket(bucketId);
+      // Hand off to the Sidekick preview; the popover has served its
+      // purpose so close it to free the composer.
+      setOpen(false);
+    },
+    [onOpenBucket],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -335,7 +357,14 @@ export function ContextUsageIndicator({
           </div>
           <div className={styles.contextBreakdownList}>
             {visibleRows.map((row) => (
-              <div key={row.id} className={styles.contextBreakdownRow}>
+              <button
+                key={row.id}
+                type="button"
+                className={`${styles.contextBreakdownRow} ${styles.contextBreakdownRowButton}`}
+                data-context-bucket-row={row.id}
+                aria-label={`View ${row.label} context`}
+                onClick={() => handleOpenBucket(row.id)}
+              >
                 <span className={styles.contextBreakdownRowLeft}>
                   <span
                     className={styles.contextBreakdownSwatch}
@@ -347,7 +376,7 @@ export function ContextUsageIndicator({
                 <span className={styles.contextBreakdownRowValue}>
                   {formatTokensShort(row.tokens)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
           {(breakdown.cacheReadTokens > 0 || breakdown.cacheCreationTokens > 0) && (

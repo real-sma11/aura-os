@@ -446,6 +446,12 @@ export function useStandaloneAgentChat(
 
   useHydrateContextUtilization(streamKey, contextUsageFetcher, agentId);
 
+  const contextContentsFetcher = useMemo(() => {
+    if (!agentId) return undefined;
+    return (signal?: AbortSignal) =>
+      api.agents.getContextContents(agentId, { signal });
+  }, [agentId]);
+
   const { historyMessages, historyResolved, isLoading, historyError, wrapSend } =
     useChatHistorySync({
       historyKey,
@@ -570,6 +576,7 @@ export function useStandaloneAgentChat(
     llmProjectId,
     onProjectChange: undefined,
     contextUsage,
+    onFetchContextContents: contextContentsFetcher,
     onNewChat: handleNewChat,
   };
 }

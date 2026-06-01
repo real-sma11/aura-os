@@ -15,6 +15,7 @@ import {
   DesktopChatInputBar,
   type ChatInputBarHandle,
   type ChatInputBarProps,
+  type ContextContentsFetcher,
 } from "../ChatInputBar";
 import { MessageQueue } from "../MessageQueue";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
@@ -101,6 +102,9 @@ export interface ChatSurfaceProps {
   initialHandoff?: "create-agent";
   onInitialHandoffReady?: () => void;
   contextUsage?: ContextUsageEntry;
+  /** Forwarded to the input bar so the Context Composition popover can
+   * lazily fetch a bucket's contents when a row is clicked. */
+  onFetchContextContents?: ContextContentsFetcher;
   onNewChat?: () => void;
   compact?: boolean;
   sendDisabled?: boolean;
@@ -163,6 +167,7 @@ export function ChatSurface({
   initialHandoff,
   onInitialHandoffReady,
   contextUsage,
+  onFetchContextContents,
   onNewChat,
   compact = false,
   sendDisabled = false,
@@ -658,6 +663,7 @@ export function ChatSurface({
           isCentered={centerInputWhenEmpty && isThreadEmpty}
           compact={compact}
           contextUsage={contextUsage}
+          onFetchContextContents={onFetchContextContents}
           onNewChat={onNewChat ? handleNewChat : undefined}
           sendDisabled={sendDisabled}
           sendDisabledReason={sendDisabledReason}

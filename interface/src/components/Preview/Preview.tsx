@@ -15,6 +15,7 @@ import { TaskHeaderContextUsage } from "../TaskOutputPanel/TaskHeaderContextUsag
 import { RunTaskButton } from "../RunTaskButton";
 import { SessionPreview } from "../SessionPreview";
 import { LogPreview } from "../LogPreview";
+import { ContextBucketPreview, contextBucketLabel } from "../ContextBucketPreview";
 import { formatRelativeTime } from "../../shared/utils/format";
 import type { PreviewItem } from "../../stores/sidekick-store";
 import type { Spec } from "../../shared/types";
@@ -179,6 +180,7 @@ function previewTitle(item: PreviewItem): string {
     case "task": return "Task";
     case "session": return `Session ${item.session.session_id.slice(0, 8)}`;
     case "log": return "Log";
+    case "context_bucket": return contextBucketLabel(item.bucketId);
     default: { const _exhaustive: never = item; return _exhaustive; }
   }
 }
@@ -251,6 +253,7 @@ export function PreviewContent() {
     : displayItem.kind === "specs_overview" ? "__specs_root__"
     : displayItem.kind === "session" ? displayItem.session.session_id
     : displayItem.kind === "log" ? `${displayItem.entry.timestamp}_${displayItem.entry.type}`
+    : displayItem.kind === "context_bucket" ? `context_${displayItem.bucketId}_${displayItem.streamKey}`
     : null
     : null;
 
@@ -307,6 +310,12 @@ export function PreviewContent() {
       )}
       {displayItem?.kind === "session" && <SessionPreview session={displayItem.session} />}
       {displayItem?.kind === "log" && <LogPreview entry={displayItem.entry} />}
+      {displayItem?.kind === "context_bucket" && (
+        <ContextBucketPreview
+          bucketId={displayItem.bucketId}
+          streamKey={displayItem.streamKey}
+        />
+      )}
     </div>
   );
 }

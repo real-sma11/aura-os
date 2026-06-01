@@ -37,12 +37,27 @@ function isSidekickTab(value: string): value is SidekickTab {
   return SIDEKICK_TABS.has(value as SidekickTab);
 }
 
+/**
+ * Stable id of a static context bucket surfaced in the chat input
+ * bar's Context Composition popover. Mirrors the `BucketRow["id"]`
+ * union in `ContextUsageIndicator` and the bucket keys served by the
+ * `context-contents` endpoint.
+ */
+export type ContextBucketId =
+  | "system_prompt"
+  | "tools"
+  | "skills"
+  | "mcp"
+  | "subagents"
+  | "conversation";
+
 export type PreviewItem =
   | { kind: "spec"; spec: Spec }
   | { kind: "specs_overview"; specs: Spec[]; title?: string; summary?: string; planId?: string }
   | { kind: "task"; task: Task }
   | { kind: "session"; session: Session }
-  | { kind: "log"; entry: LogEntry };
+  | { kind: "log"; entry: LogEntry }
+  | { kind: "context_bucket"; bucketId: ContextBucketId; streamKey: string };
 
 type AgentInstanceUpdateListener = (instance: AgentInstance) => void;
 
@@ -74,6 +89,7 @@ interface SidekickState extends SidekickSliceState<SidekickTab, PreviewItem> {
   viewSpec: (spec: Spec) => void;
   viewTask: (task: Task) => void;
   viewSession: (session: Session) => void;
+  viewContextBucket: (item: { bucketId: ContextBucketId; streamKey: string }) => void;
   goBackPreview: () => void;
   closePreview: () => void;
   toggleInfo: (title: string, content: ReactNode) => void;
@@ -204,6 +220,14 @@ export const useSidekickStore = create<SidekickState>()((set, get) => ({
 
   viewSession: (session) => {
     set({ previewItem: { kind: "session", session }, previewHistory: [], canGoBack: false });
+  },
+
+  viewContextBucket: ({ bucketId, streamKey }) => {
+    set({
+      previewItem: { kind: "context_bucket", bucketId, streamKey },
+      previewHistory: [],
+      canGoBack: false,
+    });
   },
 
   goBackPreview: () => {

@@ -209,6 +209,12 @@ export function AgentChatPanel({
   );
   useHydrateContextUtilization(streamKey, contextUsageFetcher, agentInstanceId);
 
+  const contextContentsFetcher = useMemo(
+    () => (signal?: AbortSignal) =>
+      api.getContextContents(projectId, agentInstanceId, { signal }),
+    [projectId, agentInstanceId],
+  );
+
   const { historyMessages, historyResolved, isLoading, historyError, wrapSend } =
     useChatHistorySync({
       historyKey,
@@ -329,6 +335,7 @@ export function AgentChatPanel({
     workspacePath: terminalTarget.workspacePath,
     remoteAgentId: terminalTarget.remoteAgentId,
     contextUsage,
+    onFetchContextContents: contextContentsFetcher,
     onNewChat: () => {
       optimisticRow.arm();
       fresh.newChat();
