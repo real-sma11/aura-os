@@ -4,10 +4,12 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Button, Text, GroupCollapsible, Item } from "@cypher-asi/zui";
 import { X, ArrowLeft, FileText } from "lucide-react";
+import { useParams } from "react-router-dom";
 import { useSidekickStore } from "../../stores/sidekick-store";
 import { useProjectActions } from "../../stores/project-action-store";
 import { api } from "../../api/client";
 import { usePlanStore } from "../../stores/plan-store";
+import { getLastAgent } from "../../utils/storage";
 import { TaskPreview } from "../TaskPreview";
 import { TaskHeaderContextUsage } from "../TaskOutputPanel/TaskHeaderContextUsage";
 import { RunTaskButton } from "../RunTaskButton";
@@ -34,6 +36,11 @@ function SpecsOverviewPreview({
   const ctx = useProjectActions();
   const project = ctx?.project;
   const projectId = project?.project_id;
+  // The /specs/summary endpoint resolves its model from the agent
+  // instance, so we must forward one (route param first, then the
+  // project's last-used agent). Without it the harness rejects the turn
+  // with "model name must not be empty".
+  const routeAgentInstanceId = useParams<{ agentInstanceId?: string }>().agentInstanceId;
 
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -42,10 +49,12 @@ function SpecsOverviewPreview({
 
   const runGenerate = useCallback(() => {
     if (!projectId || generating) return;
+    const agentInstanceId =
+      routeAgentInstanceId ?? getLastAgent(projectId) ?? undefined;
     setGenerating(true);
     setGenError(null);
     api
-      .generateSpecsSummary(projectId)
+      .generateSpecsSummary(projectId, agentInstanceId)
       .then((updated) => {
         const next = updated?.specs_summary ?? "";
         if (next) {
@@ -58,7 +67,7 @@ function SpecsOverviewPreview({
         setGenError(e instanceof Error ? e.message : "Failed to generate summary"),
       )
       .finally(() => setGenerating(false));
-  }, [projectId, planId, generating, ctx, updatePreviewSummary]);
+  }, [projectId, planId, generating, ctx, updatePreviewSummary, routeAgentInstanceId]);
 
   // Auto-generate once per (project, plan) when there is no summary yet.
   useEffect(() => {
