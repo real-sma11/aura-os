@@ -1,10 +1,7 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
-import { X as XIcon } from "lucide-react";
-import { Item } from "@cypher-asi/zui";
+import { useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DisplaySessionEvent } from "../../shared/types/stream";
 import {
-  useTaskOutputPanelStore,
   type PanelTaskFailureContext,
   type PanelTaskStatus,
 } from "../../stores/task-output-panel-store";
@@ -15,9 +12,7 @@ import { MessageBubble, LLMOutput } from "../ChatOutput";
 import { VerificationStepItem } from "../VerificationStepItem";
 import { GitStepItem } from "../GitStepItem";
 import { useScrollMargin } from "../../shared/hooks/use-scroll-margin";
-import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
-import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
-import { buildTaskCopyText } from "./task-copy-utils";
+import { SidekickCollapsibleRow } from "../SidekickCollapsibleRow";
 import styles from "./TaskOutputPanel.module.css";
 
 interface CompletedTaskOutputProps {
@@ -42,13 +37,6 @@ interface CompletedTaskOutputProps {
    * is visible without an extra click.
    */
   defaultExpanded?: boolean;
-  /**
-   * When `false`, the dismiss "X" button is hidden. Embedding contexts
-   * outside the Run pane (the task preview) shouldn't expose the
-   * destructive "drop this row from the panel" affordance — that
-   * interaction belongs to the Run pane only.
-   */
-  showDismiss?: boolean;
   /**
    * Hide the row's chevron/title header. Used when a parent surface
    * already labels the section (e.g. the Tasks-tab task preview) so
@@ -242,46 +230,15 @@ export function CompletedTaskOutput({
   failureReason,
   failureContext,
   defaultExpanded = false,
-  showDismiss = true,
   showHeader = true,
   showStepsFallback = true,
   scrollRef,
 }: CompletedTaskOutputProps) {
-  const dismissTask = useTaskOutputPanelStore((s) => s.dismissTask);
   // `CompletedTaskOutput` only renders for non-active rows, so every
   // mount is a terminal view from the hook's perspective.
   const { events, fallbackText, hasStructuredContent, hasAnyContent } =
     useTaskOutputView(taskId, projectId, true);
   const taskOutput = useTaskOutput(taskId);
-
-  const getCopyText = useCallback(
-    () =>
-      buildTaskCopyText({
-        title: title || taskId,
-        status,
-        failureReason: status === "failed" ? failureReason ?? null : null,
-        failureContext: status === "failed" ? failureContext ?? null : null,
-        fileOps: taskOutput.fileOps,
-        buildSteps: taskOutput.buildSteps,
-        testSteps: taskOutput.testSteps,
-        gitSteps: taskOutput.gitSteps,
-        events,
-        fallbackText,
-      }),
-    [
-      title,
-      taskId,
-      status,
-      failureReason,
-      failureContext,
-      taskOutput.fileOps,
-      taskOutput.buildSteps,
-      taskOutput.testSteps,
-      taskOutput.gitSteps,
-      events,
-      fallbackText,
-    ],
-  );
 
   // Default collapsed in the Run pane so a long history doesn't blow
   // out the panel; the task preview opts in to `defaultExpanded` so
@@ -298,45 +255,18 @@ export function CompletedTaskOutput({
   const toggle = () => setCollapsed((c) => !c);
 
   return (
-    <div className={styles.taskSection}>
-      {showHeader && (
-        <Item
-          className={styles.taskRow}
-          hasChildren
-          expanded={!collapsed}
-          onClick={toggle}
-        >
-          <Item.Chevron size="sm" expanded={!collapsed} onToggle={toggle} />
-          <Item.Label>{title || taskId}</Item.Label>
-          <span className={styles.taskStatusBadge} data-status={status}>{statusLabel}</span>
-          <CopyTaskOutputButton getCopyText={getCopyText} />
-          <TaskHeaderContextUsage taskId={taskId} projectId={projectId} />
-          {showDismiss && (
-            <span
-              role="button"
-              tabIndex={0}
-              className={styles.dismissBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                dismissTask(taskId);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  dismissTask(taskId);
-                }
-              }}
-              title="Dismiss"
-              aria-label="Dismiss task output"
-            >
-              <XIcon size={10} />
-            </span>
-          )}
-        </Item>
-      )}
-      {!collapsed && (
-        <>
+    <SidekickCollapsibleRow
+      expanded={!collapsed}
+      onToggle={toggle}
+      label={title || taskId}
+      showHeader={showHeader}
+      suffix={
+        <span className={styles.taskStatusBadge} data-status={status}>
+          {statusLabel}
+        </span>
+      }
+    >
+      <>
           {status === "failed" && failureReason && (
             <div className={styles.failReasonBanner}>
               {extractErrorMessage(failureReason)}
@@ -381,7 +311,6 @@ export function CompletedTaskOutput({
             </div>
           )}
         </>
-      )}
-    </div>
+    </SidekickCollapsibleRow>
   );
 }

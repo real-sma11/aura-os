@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from "react";
-import { Item } from "@cypher-asi/zui";
+import { useLayoutEffect, useMemo, useState, type RefObject } from "react";
+import { SidekickCollapsibleRow } from "../SidekickCollapsibleRow";
 import { useTaskStream } from "../../hooks/use-task-stream";
 import { useTaskOutputView } from "../../hooks/use-task-output-view";
 import {
@@ -20,10 +20,6 @@ import {
   renderCooldownMessage,
 } from "../../hooks/use-cooldown-status";
 import { useProjectActions } from "../../stores/project-action-store";
-import { useTaskOutput } from "../../stores/event-store/index";
-import { CopyTaskOutputButton } from "./CopyTaskOutputButton";
-import { TaskHeaderContextUsage } from "./TaskHeaderContextUsage";
-import { buildTaskCopyText } from "./task-copy-utils";
 import styles from "./TaskOutputPanel.module.css";
 
 interface ActiveTaskStreamProps {
@@ -72,7 +68,6 @@ export function ActiveTaskStream({
   const timeline = useTimeline(streamKey);
   const progressText = useProgressText(streamKey);
   const events = useStreamEvents(streamKey);
-  const taskOutput = useTaskOutput(taskId);
   const cooldown = useCooldownStatus(undefined, ctx?.project.project_id);
 
   const [collapsed, setCollapsed] = useState(!defaultExpanded);
@@ -100,40 +95,6 @@ export function ActiveTaskStream({
   const hasRealToolCalls = activeToolCalls.some((tc) => !tc.synthetic);
   const hasLiveContent = !!streamingText || !!thinkingText || hasRealToolCalls;
   const hasContent = priorTurns.length > 0 || hasLiveContent;
-
-  const getCopyText = useCallback(
-    () =>
-      buildTaskCopyText({
-        title: title || taskId,
-        status: "in_progress",
-        fileOps: taskOutput.fileOps,
-        buildSteps: taskOutput.buildSteps,
-        testSteps: taskOutput.testSteps,
-        gitSteps: taskOutput.gitSteps,
-        events,
-        fallbackText: taskOutput.text || null,
-        liveState: {
-          streamingText,
-          thinkingText,
-          activeToolCalls,
-          timeline,
-        },
-      }),
-    [
-      title,
-      taskId,
-      taskOutput.fileOps,
-      taskOutput.buildSteps,
-      taskOutput.testSteps,
-      taskOutput.gitSteps,
-      taskOutput.text,
-      events,
-      streamingText,
-      thinkingText,
-      activeToolCalls,
-      timeline,
-    ],
-  );
 
   // Pin to bottom when the tail grows. CSS `overflow-anchor: auto` on the
   // parent scroller (see TaskOutputPanel.module.css `.content`) handles
@@ -168,25 +129,13 @@ export function ActiveTaskStream({
   const showCooldownLine = !hasContent && cooldown.paused;
 
   return (
-    <div className={styles.taskSection}>
-      {showHeader && (
-        <Item
-          className={styles.taskRow}
-          hasChildren
-          expanded={!collapsed}
-          onClick={() => setCollapsed((c) => !c)}
-        >
-          <Item.Chevron
-            size="sm"
-            expanded={!collapsed}
-            onToggle={() => setCollapsed((c) => !c)}
-          />
-          <Item.Label>{title || taskId}</Item.Label>
-          <TaskHeaderContextUsage taskId={taskId} projectId={ctx?.project.project_id} />
-          <CopyTaskOutputButton getCopyText={getCopyText} />
-        </Item>
-      )}
-      {!collapsed && (hasContent || showCooldownLine) && (
+    <SidekickCollapsibleRow
+      expanded={!collapsed}
+      onToggle={() => setCollapsed((c) => !c)}
+      label={title || taskId}
+      showHeader={showHeader}
+    >
+      {(hasContent || showCooldownLine) && (
         <div className={styles.taskBody}>
           {hasContent ? (
             <>
@@ -217,6 +166,6 @@ export function ActiveTaskStream({
           )}
         </div>
       )}
-    </div>
+    </SidekickCollapsibleRow>
   );
 }

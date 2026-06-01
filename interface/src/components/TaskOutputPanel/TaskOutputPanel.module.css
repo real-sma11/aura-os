@@ -193,38 +193,14 @@
 
 /* ── Per-task section ── */
 
-.taskSection {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Run-row header. Rendered with the shared zui `Item` primitive (the
-   same component the Tasks / Specs `Explorer` rows use) so hover, label,
-   and chevron behavior all come from Item rather than local overrides.
-
-   The Item base (`.item`) is the taller 36px "menu" size; the Explorer
-   shrinks it via its own `.itemContent` compact class. That class isn't
-   exported, so we replicate its exact compact metrics here — scoped via
-   `.taskSection >` so the slightly higher specificity always wins over
-   the `.item` base regardless of stylesheet order. */
-.taskSection > .taskRow {
-  gap: 2px;
-  padding: 2px var(--space-3, 12px);
-  min-height: 24px;
-  font-size: var(--text-sm, 13px);
-  line-height: 1.3;
-}
-
-/* Explorer rows keep `text-secondary` on hover (only the background
-   lightens); the Item base would otherwise bump the label to
-   `text-primary`. Match the Explorer behavior. */
-.taskSection > .taskRow:hover {
-  color: var(--color-text-secondary);
-}
+/* Run rows render through the shared `SidekickCollapsibleRow` component
+   (the same compact row styling the Tasks / Specs `Explorer` rows use),
+   so the row box, padding, and hover all live there now. The classes
+   below are the run-specific pieces that hang off that row. */
 
 /* Status badge ("DONE" / "FAILED" / "INTERRUPTED"). Kept on the run row
    as the one piece of run-specific affordance the Tasks rows don't
-   have. */
+   have — passed as the row's `suffix`. */
 .taskStatusBadge {
   font-size: 9px;
   font-weight: 600;
@@ -247,23 +223,6 @@
   color: var(--color-text-muted);
 }
 
-.dismissBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.1s, background 0.1s, color 0.1s;
-}
-
 .copyBtn {
   display: inline-flex;
   align-items: center;
@@ -281,22 +240,10 @@
   transition: opacity 0.1s, background 0.1s, color 0.1s;
 }
 
-/* When the copy button is followed by the dismiss button, the dismiss
-   button keeps its own `margin-left: auto` rule, so collapse it back to a
-   small inline gap so the two buttons sit shoulder-to-shoulder. */
-.copyBtn + .dismissBtn {
-  margin-left: 0;
-}
-
 /* Per-task context-usage pill (mirrors ContextUsageIndicator in the
-   chat input bar). Always-visible status indicator like the status
-   badge — not a fade-on-hover action like copy / dismiss. flex-shrink
+   chat input bar), used by the task preview header. `flex-shrink: 0`
    keeps the pill at its natural width so a long task title truncates
-   first, and `margin-left: auto` mirrors the copyBtn rule so the
-   widget hugs the right edge when copy is hidden (showHeader=false
-   embedding contexts). When the pill sits between copy and dismiss in
-   the Run pane's completed row, the adjacent dismiss button drops its
-   own `margin-left: auto` so the three controls pack flush. */
+   first, and `margin-left: auto` lets the widget hug the right edge. */
 .headerContextUsage {
   display: inline-flex;
   align-items: center;
@@ -304,17 +251,6 @@
   margin-left: auto;
 }
 
-.copyBtn + .headerContextUsage,
-.headerContextUsage + .dismissBtn {
-  margin-left: 0;
-}
-
-.taskRow:hover .dismissBtn,
-.taskRow:hover .copyBtn {
-  opacity: 1;
-}
-
-.dismissBtn:hover,
 .copyBtn:hover {
   background: var(--color-overlay-medium);
   color: var(--color-text-primary);

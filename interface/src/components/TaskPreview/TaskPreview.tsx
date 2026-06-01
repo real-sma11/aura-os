@@ -270,7 +270,6 @@ export function TaskPreview({ task, scrollRef, isAutoFollowing }: TaskPreviewPro
               status={panelStatus}
               failureReason={failReason ?? task.execution_notes ?? null}
               defaultExpanded
-              showDismiss={false}
               showHeader={false}
               // The Tasks-tab preview already renders dedicated
               // `Build Verification` / `Test Verification` /
