@@ -22,7 +22,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use aura_os_core::{AgentInstanceId, HarnessMode, ProjectId, SessionId};
+use aura_os_core::{AgentId, AgentInstanceId, HarnessMode, ProjectId, SessionId};
 
 use crate::error::{map_storage_error, ApiError, ApiResult};
 use crate::live_streams::{StreamKind, StreamScope};
@@ -36,6 +36,14 @@ pub(crate) struct SubagentAttachQuery {
     /// the client can match the reattached thread to its tool card.
     #[serde(default)]
     pub parent_tool_use_id: Option<String>,
+    /// Template id of the PARENT agent that owns this child run. Threaded
+    /// in so the attach selects the SAME harness transport the parent
+    /// turn ran on: a council member spawned by a remote (swarm) parent
+    /// streams over the swarm gateway, not the local harness. Absent /
+    /// unresolvable falls back to the local harness (a bare local parent
+    /// never carried this field, preserving the prior behavior).
+    #[serde(default)]
+    pub agent_id: Option<AgentId>,
 }
 
 /// Response from the subagent-attach endpoint.
@@ -86,11 +94,16 @@ pub(crate) async fn attach_subagent_stream(
 ) -> ApiResult<Json<SubagentAttachResponse>> {
     info!(%child_run_id, "Subagent live-stream attach requested");
 
-    // Child runs are spawned in-process by the parent turn's harness;
-    // the local harness owns the `WS /stream/:run_id` surface. `false`
-    // for `wait_for_ready` mirrors the automaton reattach path — a child
-    // run never re-emits `SessionReady`.
-    let harness = state.harness_for(HarnessMode::Local);
+    // A child run lives on the SAME harness transport its parent turn
+    // ran on, so the attach must follow the parent agent's harness mode
+    // rather than assuming local. Resolve the parent (network first,
+    // local shadow fallback — same as the chat routes) and read its
+    // `harness_mode()`; default to local when the caller did not thread a
+    // parent `agent_id` or it cannot be resolved (preserves the original
+    // local-only behavior). `false` for `wait_for_ready` mirrors the
+    // automaton reattach path — a child run never re-emits `SessionReady`.
+    let mode = resolve_parent_harness_mode(&state, query.agent_id.as_ref(), &jwt).await;
+    let harness = state.harness_for(mode);
     let harness_session = harness
         .attach_run(&child_run_id, Some(&jwt), false)
         .await
@@ -117,6 +130,36 @@ pub(crate) async fn attach_subagent_stream(
         attach_id: live.attach_id.clone(),
         child_run_id,
     }))
+}
+
+/// Resolve the harness mode of the PARENT agent that owns a subagent
+/// child run, so the attach selects the matching transport (local vs
+/// swarm). Mirrors the chat routes' resolution: query aura-network with
+/// the caller's JWT, falling back to the local agent shadow on
+/// `NotFound`. Any miss (no `agent_id` threaded, network failure, or no
+/// shadow) degrades to [`HarnessMode::Local`] — the prior, local-only
+/// behavior — so a bare local parent keeps working without the hint.
+async fn resolve_parent_harness_mode(
+    state: &AppState,
+    agent_id: Option<&AgentId>,
+    jwt: &str,
+) -> HarnessMode {
+    let Some(agent_id) = agent_id else {
+        return HarnessMode::Local;
+    };
+    match state.agent_service.get_agent_with_jwt(jwt, agent_id).await {
+        Ok(agent) => agent.harness_mode(),
+        Err(_) => match state.agent_service.get_agent_local(agent_id) {
+            Ok(agent) => agent.harness_mode(),
+            Err(_) => {
+                info!(
+                    %agent_id,
+                    "subagent attach: parent agent unresolved; defaulting to local harness"
+                );
+                HarnessMode::Local
+            }
+        },
+    }
 }
 
 /// Request body for the prompt-into-subagent endpoint.
