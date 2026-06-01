@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { Modal, Badge, Spinner, Text } from "@cypher-asi/zui";
 import type { SubagentState } from "../../shared/types/harness-protocol";
 import { subagentTypeLabel } from "../../constants/tools";
@@ -6,9 +5,17 @@ import {
   subagentBadgeVariant,
   subagentStateLabel,
 } from "../../shared/utils/subagent";
-import { useSubagentThread } from "../../hooks/use-subagent-thread";
-import { ActivityTimeline } from "../ActivityTimeline";
+import {
+  useSubagentChatStream,
+  subagentStreamKey,
+} from "../../hooks/use-subagent-chat-stream";
+import { useStreamEvents, useIsStreaming } from "../../hooks/stream/hooks";
+import { ChatPanel } from "../../features/chat-ui/ChatPanel";
 import styles from "./SubAgentModal.module.css";
+
+const SUBAGENT_SEND_DISABLED_REASON =
+  "Subagent threads are read-only — you can watch the run but cannot send messages into it.";
+const SUBAGENT_EMPTY_MESSAGE = "This subagent has not produced any output yet.";
 
 export interface SubAgentModalProps {
   isOpen: boolean;
@@ -31,6 +38,22 @@ export interface SubAgentModalProps {
   reason?: string;
 }
 
+// Stable no-op handlers. The subagent attach endpoint is read-only —
+// there is no server path to send a message into (or stop) a child run
+// from here — so the reused `ChatPanel` runs with its input disabled.
+// See `useSubagentChatStream` and the `sendDisabled` ChatPanel prop.
+const noopSend = (): void => {};
+const noopStop = (): void => {};
+
+/**
+ * Floating modal that surfaces a subagent child run as a full
+ * chat-within-a-chat by reusing the main `ChatPanel` pointed at the
+ * run's stream-store partition (`subagent:{childRunId}`). Persistence,
+ * live streaming, scroll/auto-follow, and tool/activity rendering all
+ * come "for free" from the same store pipeline the top-level chat uses,
+ * so the transcript survives closing and reopening the modal. Sending
+ * is disabled because the child run has no inbound message path.
+ */
 export function SubAgentModal({
   isOpen,
   onClose,
@@ -41,17 +64,19 @@ export function SubAgentModal({
   state,
   reason,
 }: SubAgentModalProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const view = useSubagentThread(childRunId, parentToolUseId, isOpen);
+  const { status } = useSubagentChatStream(childRunId, parentToolUseId, isOpen);
+  const streamKey = subagentStreamKey(childRunId);
+  const events = useStreamEvents(streamKey);
+  const isStreaming = useIsStreaming(streamKey);
 
-  const hasTranscript = view.timeline.length > 0;
-  const isConnecting = view.status === "attaching" && !hasTranscript;
-  const showFailureReason =
-    !!reason && (state === "failed" || state === "rejected" || state === "cancelled");
+  const hasTranscript = events.length > 0;
+  const isConnecting = status === "attaching" && !hasTranscript && !isStreaming;
   // A finished run whose harness session was already reaped fails the
   // attach with no transcript. Surface that as a calm empty state rather
   // than a connection-error banner — there's simply nothing left to tail.
-  const threadUnavailable = view.status === "error" && !hasTranscript;
+  const threadUnavailable = status === "error" && !hasTranscript;
+  const showFailureReason =
+    !!reason && (state === "failed" || state === "rejected" || state === "cancelled");
 
   return (
     <Modal
@@ -67,7 +92,7 @@ export function SubAgentModal({
         </Badge>
       }
     >
-      <div className={styles.body} ref={scrollRef}>
+      <div className={styles.body}>
         {showFailureReason && (
           <Text variant="muted" size="sm" className={styles.reason}>
             {reason}
@@ -90,25 +115,19 @@ export function SubAgentModal({
             </Text>
           </div>
         ) : (
-          <ActivityTimeline
-            timeline={view.timeline}
-            thinkingText={view.thinkingText}
-            thinkingDurationMs={view.thinkingDurationMs}
-            toolCalls={view.toolCalls}
-            isStreaming={view.isStreaming}
-            defaultActivitiesExpanded
-            scrollRef={scrollRef}
-          />
-        )}
-        {view.status === "error" && hasTranscript && (
-          <Text variant="muted" size="sm" className={styles.error}>
-            {view.errorMessage ?? "Lost connection to the subagent thread."}
-          </Text>
-        )}
-        {!isConnecting && !hasTranscript && view.status !== "error" && (
-          <Text variant="muted" size="sm" className={styles.center}>
-            This subagent has not produced any output yet.
-          </Text>
+          <div className={styles.chat}>
+            <ChatPanel
+              streamKey={streamKey}
+              transcriptKey={streamKey}
+              onSend={noopSend}
+              onStop={noopStop}
+              historyResolved
+              focusInputOnThreadReady={false}
+              emptyMessage={SUBAGENT_EMPTY_MESSAGE}
+              sendDisabled
+              sendDisabledReason={SUBAGENT_SEND_DISABLED_REASON}
+            />
+          </div>
         )}
       </div>
     </Modal>
