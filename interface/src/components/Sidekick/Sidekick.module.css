@@ -48,17 +48,26 @@
   pointer-events: none;
 }
 
-/* Inline title shown next to the icon of the active section. Animating
-   a grid column from 0fr to 1fr expands the label to its *real* content
-   width over the full duration, so the icons to the right slide along
-   smoothly instead of snapping (which happens when animating a fixed
-   max-width that the short title reaches almost instantly). */
+/* Inline title shown next to the icon of the active section. Every tab
+   keeps a collapsed (0fr) label mounted at all times and simply
+   transitions it open/closed, so switching sections only ever moves
+   icons via the transition — never via a mount/unmount snap or a
+   keyframe-swap flash. A grid column (0fr -> 1fr) interpolates to the
+   title's real content width so neighbouring icons slide smoothly. */
 .tabLabel {
   display: grid;
   grid-template-columns: 0fr;
   /* Cancel the button's flex gap while collapsed so the icon stays
-     perfectly square at the start/end of the animation. */
+     perfectly square when the label is closed. */
   margin-left: calc(-1 * var(--space-2));
+  transition:
+    grid-template-columns 200ms ease,
+    margin-left 200ms ease;
+}
+
+.tabLabelOpen {
+  grid-template-columns: 1fr;
+  margin-left: 0;
 }
 
 .tabLabelInner {
@@ -67,29 +76,6 @@
   min-width: 0;
   font-size: var(--text-sm);
   line-height: 1;
-}
-
-.tabLabelEnter {
-  animation: tabLabelExpand 200ms ease-out forwards;
-}
-
-/* The outgoing label collapses over the same duration as the incoming
-   one expands, so neighbouring icons slide straight to their new
-   position instead of snapping to the no-label baseline first. No
-   opacity fade — only the width animates. */
-.tabLabelExit {
-  animation: tabLabelCollapse 200ms ease-out forwards;
-  pointer-events: none;
-}
-
-@keyframes tabLabelExpand {
-  from { grid-template-columns: 0fr; margin-left: calc(-1 * var(--space-2)); }
-  to   { grid-template-columns: 1fr; margin-left: 0; }
-}
-
-@keyframes tabLabelCollapse {
-  from { grid-template-columns: 1fr; margin-left: 0; }
-  to   { grid-template-columns: 0fr; margin-left: calc(-1 * var(--space-2)); }
 }
 
 .sidekickTabBar button:not(:disabled):hover {

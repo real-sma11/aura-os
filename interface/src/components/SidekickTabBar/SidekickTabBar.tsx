@@ -119,34 +119,6 @@ export function SidekickTabBar({
     };
   }, [enteringIds]);
 
-  // Tracks the tab whose inline label is collapsing away. We animate
-  // this collapse *concurrently* with the new label's expansion so the
-  // icons between the two tabs travel directly from their old position
-  // to their new one. Removing the old label instantly instead made
-  // those icons snap to the far-left (no-label) baseline before the new
-  // label pushed them back right — too much movement.
-  const [labelExitId, setLabelExitId] = useState<string | null>(null);
-  const prevActiveRef = useRef<string>(activeTab);
-  const labelExitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const LABEL_ANIM_MS = 200;
-
-  useEffect(() => {
-    const prev = prevActiveRef.current;
-    if (prev === activeTab) return;
-    prevActiveRef.current = activeTab;
-    const prevIsTab = tabs.some((t) => t.kind !== "action" && t.id === prev);
-    if (prevIsTab) {
-      clearTimeout(labelExitTimerRef.current);
-      setLabelExitId(prev);
-      labelExitTimerRef.current = setTimeout(
-        () => setLabelExitId((curr) => (curr === prev ? null : curr)),
-        LABEL_ANIM_MS,
-      );
-    }
-  }, [activeTab, tabs]);
-
-  useEffect(() => () => clearTimeout(labelExitTimerRef.current), []);
-
   const menuActionIds = useMemo(
     () =>
       new Set(
@@ -191,7 +163,6 @@ export function SidekickTabBar({
         {visibleItems.map(({ id, icon, title, kind }) => {
           const isInlineAction = kind === "action";
           const isActive = !isInlineAction && activeTab === id;
-          const isExiting = !isActive && id === labelExitId;
           return (
             <Button
               key={id}
@@ -209,11 +180,10 @@ export function SidekickTabBar({
               selected={isActive}
               style={enteringIds.has(id) ? { opacity: 0 } : undefined}
             >
-              {isActive || isExiting ? (
+              {!isInlineAction ? (
                 <span
-                  className={`${styles.tabLabel} ${
-                    isActive ? styles.tabLabelEnter : styles.tabLabelExit
-                  }`}
+                  className={`${styles.tabLabel} ${isActive ? styles.tabLabelOpen : ""}`}
+                  aria-hidden
                 >
                   <span className={styles.tabLabelInner}>{title}</span>
                 </span>
