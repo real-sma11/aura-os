@@ -359,8 +359,8 @@ export function ContextUsageIndicator({
             onClick={toggleComposition}
             aria-expanded={compositionOpen}
           >
-            {compositionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <span className={styles.contextSectionHeaderLabel}>Context Composition</span>
+            {compositionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
           {compositionOpen && (
             <div className={styles.contextSectionBody}>
@@ -452,8 +452,8 @@ export function ContextUsageIndicator({
                 onClick={toggleCost}
                 aria-expanded={costOpen}
               >
-                {costOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 <span className={styles.contextSectionHeaderLabel}>Session Cost</span>
+                {costOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </button>
               {costOpen && (
                 <div className={styles.contextSectionBody}>
