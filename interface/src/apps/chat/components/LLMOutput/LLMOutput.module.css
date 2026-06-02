@@ -1,7 +1,7 @@
 /* LLMOutput — reusable renderer for LLM responses */
 
 .root {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .root a {
@@ -14,8 +14,8 @@
   opacity: 0.8;
 }
 .root h1 { font-size: 18px; margin: 12px 0 8px; font-weight: 600; }
-.root h2 { font-size: 15px; margin: 10px 0 8px; font-weight: 600; }
-.root h3 { font-size: 13.5px; margin: 8px 0 8px; font-weight: 600; }
+.root h2 { font-size: 16px; margin: 10px 0 8px; font-weight: 600; }
+.root h3 { font-size: 15px; margin: 8px 0 8px; font-weight: 600; }
 .root :first-child { margin-top: 0; }
 .root p { margin-top: 0; margin-bottom: 12px; }
 .root p:last-child { margin-bottom: 0; }
@@ -78,7 +78,7 @@
   padding-left: 10px;
   color: var(--color-text-secondary);
   margin-bottom: 8px;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 
 .fallbackStack {

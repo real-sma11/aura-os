@@ -21,8 +21,8 @@
   --color-spinner: #fff;
 
   /* Override of ZUI's --color-text-muted to match AURA's quieter
-     "secondary text" baseline in dark mode. */
-  --color-text-muted: #555;
+     "secondary text" baseline in dark mode (srgb 1 1 1 / 0.56). */
+  --color-text-muted: rgba(255, 255, 255, 0.56);
 
   /* Brighter "secondary" tier for surfaces that need readable secondary
      copy in dark mode (e.g. logged-out marketing-link footer). ZUI's
@@ -34,6 +34,32 @@
   /* Primary text — explicit dark-mode override (srgb 1 1 1 / 0.88) kept in
      the app layer so the vendored ZUI base (#e6e8eb) stays untouched. */
   --color-text-primary: rgba(255, 255, 255, 0.88);
+
+  /* ----------------------------------------------------------------------
+     Typography scale — bumped +1px across the board.
+
+     ZUI's --text-* scale is a flat 12px (vendor/zui/src/styles/tokens.css);
+     overriding it here lifts the body base (base.css sets
+     `body { font-size: var(--text-base) }`) and every ZUI component to 13px.
+
+     Many app CSS modules also reach for an ad-hoc --font-size-* token via a
+     hardcoded fallback (e.g. `var(--font-size-sm, 13px)`). Those tokens were
+     never defined, so we define them here at fallback+1 to carry the +1px
+     bump through. --font-size-lg / --font-size-xl are intentionally left
+     undefined: their bare call sites inherit the (now 13px) base, so they
+     pick up the +1px automatically. */
+  --text-2xs: 13px;
+  --text-xs: 13px;
+  --text-sm: 13px;
+  --text-base: 13px;
+  --text-lg: 13px;
+  --text-xl: 13px;
+
+  --font-size-2xs: 12px;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
 
   /* Unify the border token across every surface so tables, blocks, tools,
      sidekick panes, overlays, and modals all render the same subtle outline
