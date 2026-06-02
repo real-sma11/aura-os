@@ -17,6 +17,7 @@ import { Avatar } from "../../../components/Avatar";
 import { FollowEditButton } from "../../../components/FollowEditButton";
 import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
+import { useAppUIStore } from "../../../stores/app-ui-store";
 import { useCardTilt } from "./use-card-tilt";
 import {
   formatAdapterLabel,
@@ -212,9 +213,12 @@ function ProfileCard({
   isOwnAgent,
 }: Pick<ProfileTabProps, "agent" | "isOwnAgent">) {
   const cardRef = useCardTilt<HTMLDivElement>();
+  const splitScreen = useAppUIStore((s) => s.sidekickSplitScreen);
 
   return (
-    <div className={styles.cardContainer}>
+    <div
+      className={`${styles.cardContainer}${splitScreen ? ` ${styles.cardContainerHorizontal}` : ""}`}
+    >
       <div ref={cardRef} className={styles.card}>
         <span className={styles.cardShine} aria-hidden="true" />
         <div className={styles.cardInner}>

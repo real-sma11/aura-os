@@ -219,7 +219,7 @@
   display: flex;
 }
 
-/* Horizontal layout when the sidekick lane is widened / split-screen. */
+/* Horizontal layout when the sidekick lane is widened (manual drag-resize). */
 @container (min-width: 460px) {
   .cardInner {
     flex-direction: row;
@@ -241,6 +241,29 @@
   .cardBody {
     justify-content: center;
   }
+}
+
+/* Horizontal layout forced by the split-screen shortcut, regardless of the
+   exact lane width (the container query above only covers manual resize). */
+.cardContainerHorizontal .cardInner {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.cardContainerHorizontal .cardMedia {
+  width: 40%;
+  max-width: 220px;
+  aspect-ratio: 1 / 1;
+  align-self: stretch;
+}
+
+.cardContainerHorizontal .cardMediaFallback {
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+}
+
+.cardContainerHorizontal .cardBody {
+  justify-content: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
