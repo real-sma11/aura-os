@@ -169,6 +169,8 @@
    the inner-plate hover bg). */
 .taskbarBtn > svg {
   display: block;
+  /* Slight shadow under the icon strokes for a touch of depth. */
+  filter: drop-shadow(0 1px 1px var(--taskbar-icon-shadow, #161616));
 }
 
 /* Inner rounded "halo" hover plate. Hit target stays full-size for a11y;
