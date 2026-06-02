@@ -611,8 +611,10 @@ export function createProfileCardScene(
     const bezelOutline = auraWindowOutline(screenW, screenH).getPoints();
     const scaleOutline = (s: number): THREE.Vector2[] =>
       bezelOutline.map((p) => new THREE.Vector2(p.x * s, p.y * s));
+    // Thin rim: inner hole sits just inside the screen edge (~0.007 per side) so
+    // the dark border is subtle; the recess depth still reads as inset.
     const bezelShape = new THREE.Shape(scaleOutline(1.02));
-    bezelShape.holes.push(new THREE.Path(scaleOutline(0.92)));
+    bezelShape.holes.push(new THREE.Path(scaleOutline(0.986)));
     const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
       depth: bezelDepth,
       bevelEnabled: false,
@@ -706,8 +708,9 @@ export function createProfileCardScene(
     // Dark bezel ring standing proud around the screen so the LCD reads as inset.
     const bezelDepth = 0.018;
     const bezelRadius = Math.min(screenW, screenH) * 0.06;
-    const bezelShape = roundedRectShape(screenW + 0.05, screenH + 0.05, bezelRadius);
-    bezelShape.holes.push(roundedRectShape(screenW - 0.03, screenH - 0.03, bezelRadius));
+    // Thin rim straddling the screen edge (~0.007 per side) for a subtle border.
+    const bezelShape = roundedRectShape(screenW + 0.008, screenH + 0.008, bezelRadius);
+    bezelShape.holes.push(roundedRectShape(screenW - 0.006, screenH - 0.006, bezelRadius));
     const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
       depth: bezelDepth,
       bevelEnabled: false,
