@@ -87,6 +87,11 @@ export function installBootErrorHandlers(): void {
       src = target.src;
     } else if (target instanceof HTMLLinkElement) {
       src = target.href;
+    } else if (target && target !== (window as unknown as EventTarget) && (target as HTMLElement).tagName) {
+      // Content resource-load failures (e.g. an <img> with an unresolved
+      // mxc:// avatar) are not boot blockers and are handled at the element
+      // level. Ignore them so they don't get reported as a startup error.
+      return;
     }
     reportBootError("window error", event.error ?? event.message ?? src);
   });

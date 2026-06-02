@@ -27,7 +27,12 @@ export function Avatar({ avatarUrl, name, type, size, status, isLocal, busy, cla
   const isAgent = type === "agent";
   const isTeam = type === "team";
   const [broken, setBroken] = useState(false);
-  const showImage = avatarUrl && !broken;
+  // Only attempt to load schemes the browser can actually render. Unresolved
+  // mxc:// (Matrix) avatars and other non-loadable schemes would otherwise
+  // fire a resource-load error and trip the boot-error overlay on a fresh
+  // window; treat them as broken so the fallback icon shows immediately.
+  const isLoadable = !!avatarUrl && /^(https?:|data:|blob:|\/)/i.test(avatarUrl);
+  const showImage = isLoadable && !broken;
   const fallback = isAgent
     ? <Bot size={iconSize} />
     : isTeam

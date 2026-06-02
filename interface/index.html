@@ -367,6 +367,16 @@
           "error",
           function (event) {
             var target = event.target;
+            // Resource-load failures surface with the failing element as the
+            // event target (not window). Only the app bundle (<script>) and
+            // stylesheet (<link>) are real boot blockers; content resources
+            // like <img>/<video> (e.g. an unresolved mxc:// avatar) fail
+            // routinely and are handled by their own onError, so ignore them
+            // instead of flashing the startup-error overlay.
+            if (target && target !== window && target.tagName) {
+              var tag = target.tagName;
+              if (tag !== "SCRIPT" && tag !== "LINK") return;
+            }
             var source = target && (target.src || target.href);
             showBootError(
               "AURA hit a startup error.",
