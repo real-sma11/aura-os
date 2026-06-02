@@ -665,7 +665,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
             )}
             <textarea
               ref={textareaRef}
-              className={styles.textarea}
+              className={`${styles.textarea}${isLocalAgent ? ` ${styles.textareaAwaitingRemote}` : ""}`}
               value={input}
               onChange={(event) => handleInputChange(event.target.value)}
               onFocus={() => {
@@ -679,7 +679,7 @@ export const MobileChatInputBar = forwardRef<ChatInputBarHandle, ChatInputBarPro
               disabled={sendDisabled}
               placeholder={
                 isLocalAgent
-                  ? "Remote agent required"
+                  ? "Remote agent required. Please switch agent"
                   : isThreeDMode
                     ? has3DSource
                       ? "Refine your 3D model (optional)"

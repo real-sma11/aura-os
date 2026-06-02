@@ -179,6 +179,16 @@
   color: color-mix(in srgb, var(--color-text-secondary) 78%, transparent);
 }
 
+/*
+  When a local agent is selected the input is disabled and shows the
+  "Remote agent required…" prompt. Shrink just that placeholder so the longer
+  guidance fits on the narrow mobile input. Safe to drop below the 16px
+  iOS zoom-on-focus threshold because the field is disabled in this state.
+*/
+.textareaAwaitingRemote::placeholder {
+  font-size: 13px;
+}
+
 .attachButton,
 .sendButton {
   display: inline-flex;
