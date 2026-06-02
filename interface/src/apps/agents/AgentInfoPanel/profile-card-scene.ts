@@ -236,31 +236,29 @@ export function createProfileCardScene(
 
   buildCard();
 
-  // Interaction state.
+  // Interaction state. Reduced motion only removes autonomous animation; the
+  // card stays interactive on hover (user-initiated), just gentler.
+  const tiltScale = reducedMotion ? 0.45 : 1;
+  const idleAmp = reducedMotion ? 0 : 1;
   let hovering = false;
-  let targetRotX = reducedMotion ? 0.08 : 0;
-  let targetRotY = reducedMotion ? -0.18 : 0;
-  if (reducedMotion) {
-    group.rotation.x = targetRotX;
-    group.rotation.y = targetRotY;
-  }
+  let targetRotX = 0;
+  let targetRotY = 0;
 
   const onPointerMove = (event: PointerEvent): void => {
-    if (reducedMotion) return;
     const rect = host.getBoundingClientRect();
     const nx = (event.clientX - rect.left) / rect.width - 0.5;
     const ny = (event.clientY - rect.top) / rect.height - 0.5;
     hovering = true;
-    targetRotY = nx * 0.6;
-    targetRotX = -ny * 0.4;
+    targetRotY = nx * 0.6 * tiltScale;
+    targetRotX = -ny * 0.4 * tiltScale;
+    // Never let interaction be dead if the loop was paused.
+    if (!running) start();
   };
   const onPointerLeave = (): void => {
     hovering = false;
   };
-  if (!reducedMotion) {
-    host.addEventListener("pointermove", onPointerMove);
-    host.addEventListener("pointerleave", onPointerLeave);
-  }
+  host.addEventListener("pointermove", onPointerMove);
+  host.addEventListener("pointerleave", onPointerLeave);
 
   const clock = new THREE.Clock();
   let raf = 0;
@@ -274,11 +272,11 @@ export function createProfileCardScene(
     raf = requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
     const idle = !hovering;
-    const desiredY = idle ? Math.sin(t * 0.6) * 0.13 : targetRotY;
-    const desiredX = idle ? Math.cos(t * 0.5) * 0.07 : targetRotX;
+    const desiredY = idle ? Math.sin(t * 0.6) * 0.13 * idleAmp : targetRotY;
+    const desiredX = idle ? Math.cos(t * 0.5) * 0.07 * idleAmp : targetRotX;
     group.rotation.y += (desiredY - group.rotation.y) * 0.08;
     group.rotation.x += (desiredX - group.rotation.x) * 0.08;
-    const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 : 0;
+    const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 * idleAmp : 0;
     group.position.y += (desiredFloat - group.position.y) * 0.08;
 
     bloom.strength += ((hovering ? 1.05 : 0.55) - bloom.strength) * 0.06;
@@ -292,10 +290,6 @@ export function createProfileCardScene(
   function start(): void {
     if (running) return;
     running = true;
-    if (reducedMotion) {
-      renderFrame();
-      return;
-    }
     clock.start();
     animate();
   }
@@ -306,16 +300,13 @@ export function createProfileCardScene(
     raf = 0;
   }
 
-  // Pause rendering when off-screen.
-  const intersection = new IntersectionObserver(
-    (entries) => {
-      const visible = entries.some((e) => e.isIntersecting);
-      if (visible) start();
-      else stop();
-    },
-    { threshold: 0.01 },
-  );
-  intersection.observe(host);
+  // Pause only while the tab is backgrounded. (A previous IntersectionObserver
+  // pause could permanently freeze a visible card on a spurious first report.)
+  const onVisibilityChange = (): void => {
+    if (document.hidden) stop();
+    else start();
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   const resizeObserver = new ResizeObserver(() => {
     const w = host.clientWidth || width;
@@ -356,12 +347,10 @@ export function createProfileCardScene(
     },
     dispose(): void {
       stop();
-      intersection.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       resizeObserver.disconnect();
-      if (!reducedMotion) {
-        host.removeEventListener("pointermove", onPointerMove);
-        host.removeEventListener("pointerleave", onPointerLeave);
-      }
+      host.removeEventListener("pointermove", onPointerMove);
+      host.removeEventListener("pointerleave", onPointerLeave);
       disposeBuilt();
       shellMaterial.dispose();
       screenMaterial.dispose();
