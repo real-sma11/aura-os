@@ -131,6 +131,16 @@ pub(crate) struct StartDemoRequest {
     instruction: String,
     /// Optional max-duration guard in seconds (clamped server-side).
     max_seconds: Option<u64>,
+    /// Optional demo-window logical size (clamped + forced even server-side).
+    window_width: Option<u32>,
+    window_height: Option<u32>,
+    /// Output target: `"x"` (default, framed X-ready) or `"raw"`.
+    target: Option<String>,
+    /// Custom background image path; absent/empty/missing => bundled default.
+    background: Option<String>,
+    /// Frame the window on a background (`true`, default) vs. full-screen
+    /// capture without compositing (`false`).
+    window_on_background: Option<bool>,
 }
 
 /// Kick off a demo recording: register a pending recording and ask the
@@ -176,15 +186,32 @@ pub(crate) async fn start_demo_recording(
         return Json(serde_json::json!({ "ok": false, "error": message }));
     }
 
+    // Validate + clamp all caller-supplied options at the boundary so the
+    // event loop only ever sees safe values.
+    let options = demo::DemoOptions::from_input(demo::DemoOptionsInput {
+        window_width: req.window_width,
+        window_height: req.window_height,
+        target: req.target,
+        background: req.background,
+        window_on_background: req.window_on_background,
+        max_seconds: req.max_seconds,
+    });
+
     let recording_id = demo::new_recording_id();
-    let max_seconds = demo::clamp_max_seconds(req.max_seconds);
     demo::insert_starting(&state.registry, &recording_id, instruction.clone());
 
-    info!(recording_id = %recording_id, max_seconds, "starting demo recording");
+    info!(
+        recording_id = %recording_id,
+        max_seconds = options.max_seconds,
+        window_width = options.window_width,
+        window_height = options.window_height,
+        window_on_background = options.window_on_background,
+        "starting demo recording"
+    );
     match state.proxy.send_event(UserEvent::StartDemoRecording {
         recording_id: recording_id.clone(),
         instruction,
-        max_seconds,
+        options,
     }) {
         Ok(()) => Json(serde_json::json!({ "ok": true, "recording_id": recording_id })),
         Err(error) => {

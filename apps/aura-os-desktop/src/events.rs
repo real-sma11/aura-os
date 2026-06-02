@@ -5,6 +5,7 @@
 
 use tao::window::{ResizeDirection, WindowId};
 
+use crate::demo::DemoOptions;
 use crate::updater::UpdateState;
 
 #[derive(Debug)]
@@ -53,14 +54,16 @@ pub(crate) enum UserEvent {
     /// installer can overwrite this process's files. Posted by the updater
     /// immediately before calling `std::process::exit`.
     ShutdownForUpdate,
-    /// Open a dedicated demo window and prepare to record `instruction`.
-    /// Posted by the desktop `POST /api/demo-recordings` route. The window
-    /// is driven (and screen-recorded) once the frontend demo bridge in it
+    /// Open a dedicated demo window and prepare to record `instruction`
+    /// with the validated `options` (window size, target format,
+    /// background, full-screen vs framed, and max-duration guard). Posted
+    /// by the desktop `POST /api/demo-recordings` route. The window is
+    /// driven (and screen-recorded) once the frontend demo bridge in it
     /// signals it is ready (`DemoWindowReady`).
     StartDemoRecording {
         recording_id: String,
         instruction: String,
-        max_seconds: u64,
+        options: DemoOptions,
     },
     /// The demo bridge in a demo window finished installing and is ready
     /// to run its instruction. Triggers ffmpeg capture + driving the run.
