@@ -4,6 +4,7 @@
 )]
 #![allow(unexpected_cfgs)]
 
+mod demo;
 mod events;
 mod frontend;
 mod handlers;
@@ -94,6 +95,7 @@ fn main() {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let ide_proxy: Arc<EventLoopProxy<UserEvent>> = Arc::new(proxy.clone());
+    let demo_registry = demo::new_registry();
 
     let ready_rx = spawn_server(
         std_listener,
@@ -101,6 +103,7 @@ fn main() {
         pre_bind.interface_dir.clone(),
         ide_proxy,
         pre_bind.route_state.clone(),
+        demo_registry.clone(),
     );
     // Surface server-thread startup failures through a real dialog
     // instead of panicking. Previously this site `.expect(...)`'d on
@@ -192,6 +195,7 @@ fn main() {
         route_state: pre_bind.route_state,
         host_origin,
         store_path,
+        demo_registry,
     });
 
     run_event_loop(event_loop, state);
@@ -391,6 +395,7 @@ struct BuildLoopStateInput {
     route_state: RouteState,
     host_origin: Option<String>,
     store_path: std::path::PathBuf,
+    demo_registry: crate::demo::DemoRegistry,
 }
 
 fn build_loop_state(input: BuildLoopStateInput) -> LoopState {
@@ -399,6 +404,8 @@ fn build_loop_state(input: BuildLoopStateInput) -> LoopState {
         main_webview: input.main_webview,
         ide_windows: std::collections::HashMap::new(),
         secondary_main_windows: std::collections::HashMap::new(),
+        demo_windows: std::collections::HashMap::new(),
+        demo_registry: input.demo_registry,
         managed_frontend_dev_server: input.managed_frontend_dev_server,
         managed_local_harness: input.managed_local_harness,
         frontend_base_url: input.initial_frontend_base_url,

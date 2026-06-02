@@ -154,6 +154,22 @@ export const desktopApi = {
       "/api/update-stage-only",
       { method: "POST" },
     ),
+  startDemoRecording: (instruction: string, maxSeconds?: number) =>
+    apiFetch<{ ok: boolean; recording_id?: string; error?: string }>("/api/demo-recordings", {
+      method: "POST",
+      body: JSON.stringify({ instruction, max_seconds: maxSeconds }),
+    }),
+  getDemoRecording: (recordingId: string) =>
+    apiFetch<{
+      ok: boolean;
+      recording?: {
+        phase: "starting" | "recording" | "finalizing" | "completed" | "failed";
+        instruction: string;
+        output_path?: string | null;
+        error?: string | null;
+      };
+      error?: string;
+    }>(`/api/demo-recordings/${encodeURIComponent(recordingId)}`),
   getUpdateBundleInfo: () =>
     apiFetch<DesktopUpdateBundleInfo>("/api/update-bundle-info"),
   relocateAndRelaunch: () =>

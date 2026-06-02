@@ -8,7 +8,7 @@
 //! every handler, which would otherwise blow that limit).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::Duration;
 use tao::event::{Event, WindowEvent};
@@ -17,6 +17,7 @@ use tao::window::{Fullscreen, WindowId};
 use tracing::{info, warn};
 use wry::WebContext;
 
+use crate::demo::{self, recorder::ActiveRecording, DemoRegistry};
 use crate::events::{UserEvent, WinCmd};
 use crate::frontend::dev_server::stop_managed_frontend_dev_server;
 use crate::frontend::routing::apply_restore_route;
@@ -25,8 +26,21 @@ use crate::init::env::ci_mode_enabled;
 use crate::init::init_script::{build_initialization_script, load_bootstrapped_auth_literals};
 use crate::route_state::RouteState;
 use crate::ui::icon::IconData;
-use crate::ui::main_window::{ipc_handler, open_secondary_main_window};
+use crate::ui::main_window::{ipc_handler, open_demo_window, open_secondary_main_window};
 use crate::updater;
+
+/// A live demo-recording window: the window/webview handles plus the
+/// instruction to run, where the recording is written, and the ffmpeg
+/// capture process once it has started.
+pub(crate) struct DemoSession {
+    pub(crate) recording_id: String,
+    pub(crate) instruction: String,
+    pub(crate) max_seconds: u64,
+    pub(crate) output_path: PathBuf,
+    pub(crate) window: tao::window::Window,
+    pub(crate) webview: wry::WebView,
+    pub(crate) recording: Option<ActiveRecording>,
+}
 
 /// Web context shared by the primary window and any secondary main windows
 /// spawned via File > New Window. Sharing the context makes localStorage,
@@ -70,6 +84,13 @@ pub(crate) struct LoopState {
     /// separately from `ide_windows` so closing one of them only drops that
     /// window — the primary `main_window` still drives app lifecycle.
     pub(crate) secondary_main_windows: HashMap<WindowId, (tao::window::Window, wry::WebView)>,
+    /// Active demo-recording windows keyed by `WindowId`. Tracked apart
+    /// from the other window maps because each carries an ffmpeg capture
+    /// process and a pending instruction to drive.
+    pub(crate) demo_windows: HashMap<WindowId, DemoSession>,
+    /// Shared recording-status registry read by the desktop
+    /// `GET /api/demo-recordings/:id` route.
+    pub(crate) demo_registry: DemoRegistry,
     pub(crate) managed_frontend_dev_server: Option<Child>,
     pub(crate) managed_local_harness: Option<Child>,
     pub(crate) frontend_base_url: String,
@@ -107,6 +128,228 @@ impl LoopState {
             UserEvent::AttachFrontendDevServer { frontend_url } => {
                 self.handle_attach_frontend_dev_server(frontend_url);
             }
+            UserEvent::StartDemoRecording {
+                recording_id,
+                instruction,
+                max_seconds,
+            } => self.handle_start_demo_recording(elwt, recording_id, instruction, max_seconds),
+            UserEvent::DemoWindowReady { window_id } => self.handle_demo_window_ready(window_id),
+            UserEvent::DemoWindowComplete { window_id } => {
+                self.handle_demo_window_complete(window_id)
+            }
+        }
+    }
+
+    fn data_dir(&self) -> PathBuf {
+        self.ctx
+            .store_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.ctx.store_path.clone())
+    }
+
+    /// Open the dedicated demo window and register a [`DemoSession`].
+    /// Recording + driving do not start until the frontend bridge in the
+    /// window posts `demo-ready` ([`UserEvent::DemoWindowReady`]).
+    fn handle_start_demo_recording(
+        &mut self,
+        elwt: &EventLoopWindowTarget<UserEvent>,
+        recording_id: String,
+        instruction: String,
+        max_seconds: u64,
+    ) {
+        // Per-window init script: inherit the shared host-origin seed,
+        // then stamp the demo marker the frontend bridge reads to know
+        // it is the recording window.
+        let mut init_script = build_initialization_script(self.ctx.host_origin.as_deref(), None);
+        init_script.push_str(&format!(
+            "\ntry{{window.{}={};}}catch(e){{}}",
+            demo::DEMO_MARKER_GLOBAL,
+            json_string(&recording_id)
+        ));
+
+        let url = self.frontend_base_url.clone();
+        let icon = self.ctx.icon_data.to_icon();
+        let proxy_clone = self.ctx.proxy.clone();
+        let output_path = demo::recording_output_path(&self.data_dir(), &recording_id);
+
+        match open_demo_window(
+            elwt,
+            &mut self.web_context,
+            &url,
+            &init_script,
+            Some(icon),
+            demo::DEMO_WINDOW_TITLE,
+            (1280.0, 800.0),
+            move |wid| Box::new(ipc_handler(proxy_clone.clone(), wid)),
+        ) {
+            Ok((window, webview)) => {
+                let wid = window.id();
+                self.demo_windows.insert(
+                    wid,
+                    DemoSession {
+                        recording_id,
+                        instruction,
+                        max_seconds,
+                        output_path,
+                        window,
+                        webview,
+                        recording: None,
+                    },
+                );
+                spawn_fallback_show_timer(self.ctx.proxy.clone(), wid);
+            }
+            Err(error) => {
+                warn!(%error, "failed to spawn demo recording window");
+                demo::set_failed(
+                    &self.demo_registry,
+                    &recording_id,
+                    format!("failed to open demo window: {error}"),
+                );
+            }
+        }
+    }
+
+    /// The demo bridge is ready: reveal + maximize the window, start
+    /// ffmpeg, drive the instruction, and arm the max-duration guard.
+    fn handle_demo_window_ready(&mut self, window_id: WindowId) {
+        let (recording_id, output_path, instruction, max_seconds, already_recording) =
+            match self.demo_windows.get(&window_id) {
+                Some(session) => (
+                    session.recording_id.clone(),
+                    session.output_path.clone(),
+                    session.instruction.clone(),
+                    session.max_seconds,
+                    session.recording.is_some(),
+                ),
+                None => return,
+            };
+        if already_recording {
+            return;
+        }
+
+        let mut region = demo::recorder::CaptureRegion {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        if let Some(session) = self.demo_windows.get(&window_id) {
+            session.window.set_visible(true);
+            session.window.set_maximized(true);
+            session.window.set_focus();
+
+            // Capture the full monitor the demo window lives on. Monitor
+            // geometry is independent of the window's maximized state, so
+            // it is safe to read immediately.
+            if let Some(monitor) = session
+                .window
+                .current_monitor()
+                .or_else(|| session.window.primary_monitor())
+            {
+                let position = monitor.position();
+                let size = monitor.size();
+                region = demo::recorder::CaptureRegion {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width,
+                    height: size.height,
+                };
+            }
+        }
+
+        let ffmpeg = demo::tools::resolve_ffmpeg_binary();
+        match demo::recorder::start_region_recording(
+            &ffmpeg,
+            region,
+            &output_path,
+            demo::RECORDING_FPS,
+        ) {
+            Ok(recording) => {
+                if let Some(session) = self.demo_windows.get_mut(&window_id) {
+                    session.recording = Some(recording);
+                }
+                demo::set_recording(&self.demo_registry, &recording_id, &output_path);
+            }
+            Err(error) => {
+                warn!(%error, "failed to start demo recording");
+                demo::set_failed(
+                    &self.demo_registry,
+                    &recording_id,
+                    format!("failed to start recording: {error}"),
+                );
+                self.demo_windows.remove(&window_id);
+                return;
+            }
+        }
+
+        // Drive the instruction through the real chat UI. The bridge
+        // posts `demo-complete` when the agent turn finishes.
+        if let Some(session) = self.demo_windows.get(&window_id) {
+            let js = format!(
+                "try{{window.__AURA_DEMO_BRIDGE__&&window.__AURA_DEMO_BRIDGE__.run({});}}catch(e){{}}",
+                json_string(&instruction)
+            );
+            if let Err(error) = session.webview.evaluate_script(&js) {
+                warn!(%error, "failed to drive demo instruction");
+            }
+        }
+
+        // Max-duration guard so a stuck/long turn still finalizes a file.
+        let proxy = self.ctx.proxy.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(max_seconds));
+            let _ = proxy.send_event(UserEvent::DemoWindowComplete { window_id });
+        });
+    }
+
+    /// Finalize a demo recording: tell ffmpeg to quit, close the window,
+    /// then wait for the file off-thread and mark the recording complete.
+    fn handle_demo_window_complete(&mut self, window_id: WindowId) {
+        let Some(mut session) = self.demo_windows.remove(&window_id) else {
+            return;
+        };
+        let registry = self.demo_registry.clone();
+        let recording_id = session.recording_id.clone();
+        let output_path = session.output_path.clone();
+
+        // Ask ffmpeg to stop BEFORE we drop the window so it isn't
+        // grabbing a window that is about to be destroyed.
+        let recording = session.recording.take();
+        let recording = recording.map(|mut rec| {
+            rec.request_quit();
+            rec
+        });
+
+        // Dropping the session here closes the demo window. ffmpeg has
+        // already been told to quit, so the file is being finalized from
+        // buffered frames, not from the live window.
+        drop(session);
+
+        match recording {
+            Some(rec) => {
+                demo::set_phase(&registry, &recording_id, demo::DemoPhase::Finalizing);
+                std::thread::spawn(move || match rec.wait() {
+                    Ok(()) => {
+                        if output_path.exists() {
+                            info!(path = %output_path.display(), "demo recording completed");
+                            demo::set_completed(&registry, &recording_id, &output_path);
+                            // Surface the result immediately by opening it.
+                            let _ = open::that(&output_path);
+                        } else {
+                            demo::set_failed(
+                                &registry,
+                                &recording_id,
+                                "recording finished but no output file was produced",
+                            );
+                        }
+                    }
+                    Err(error) => demo::set_failed(&registry, &recording_id, error),
+                });
+            }
+            None => {
+                demo::set_failed(&registry, &recording_id, "recording never started");
+            }
         }
     }
 
@@ -123,6 +366,11 @@ impl LoopState {
         if matches!(cmd, WinCmd::Close) {
             self.ide_windows.remove(&window_id);
             self.secondary_main_windows.remove(&window_id);
+            // A demo window closed via its titlebar finalizes whatever
+            // was captured so far rather than leaking the ffmpeg process.
+            if self.demo_windows.contains_key(&window_id) {
+                self.handle_demo_window_complete(window_id);
+            }
             return;
         }
         if let Some((win, _)) = self.ide_windows.get(&window_id) {
@@ -238,6 +486,8 @@ impl LoopState {
             ide_win.set_visible(true);
         } else if let Some((win, _)) = self.secondary_main_windows.get(&window_id) {
             win.set_visible(true);
+        } else if let Some(session) = self.demo_windows.get(&window_id) {
+            session.window.set_visible(true);
         }
     }
 
@@ -301,8 +551,19 @@ impl LoopState {
         } else {
             self.ide_windows.remove(&window_id);
             self.secondary_main_windows.remove(&window_id);
+            // OS-level close of a demo window: finalize the recording so
+            // the user still gets a (possibly shorter) file.
+            if self.demo_windows.contains_key(&window_id) {
+                self.handle_demo_window_complete(window_id);
+            }
         }
     }
+}
+
+/// Serialize a string as a JSON/JS string literal (quoted + escaped) for
+/// safe interpolation into an `evaluate_script` payload.
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
 }
 
 fn apply_secondary_window_command(win: &tao::window::Window, cmd: WinCmd) {

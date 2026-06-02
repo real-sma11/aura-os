@@ -8,6 +8,7 @@ import type { QueuedMessage } from "../../../stores/message-queue-store";
 import type { ChatAttachment } from "../../../api/streams";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
+import { desktopApi } from "../../../shared/api/desktop";
 import type { GenerationMode } from "../../../constants/models";
 import { availableModelsForAdapter } from "../../../constants/models";
 import { useChatDraft, useChatUI } from "../../../stores/chat-ui-store";
@@ -280,6 +281,24 @@ export function useChatPanelState({
       setInput("");
       const apiAttachments = buildApiAttachments(atts) ?? [];
       const userCommandIds = commandsRef.current.map((c) => c.id);
+
+      // `/record_demo` is a desktop-only native action, not a chat turn:
+      // it opens a fresh AURA window, runs the typed instruction there,
+      // and screen-records it. Intercept before the normal send pipeline.
+      if (userCommandIds.includes("record_demo")) {
+        setCommands((prev) => {
+          const next = prev.filter((c) => c.id !== "record_demo");
+          if (next.length === prev.length) return prev;
+          return next.length === 0 ? EMPTY_COMMANDS : next;
+        });
+        const instruction = content.trim();
+        if (instruction.length > 0) {
+          void desktopApi.startDemoRecording(instruction).catch(() => {
+            // Best-effort: the desktop route is unavailable in the web build.
+          });
+        }
+        return;
+      }
 
       // Translate the active mode (with optional per-call override)
       // into a fully-typed `ResolvedSend` variant.

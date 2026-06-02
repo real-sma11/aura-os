@@ -35,6 +35,16 @@ pub(crate) fn ipc_handler(
             let _ = proxy.send_event(UserEvent::OpenMainWindow);
             return;
         }
+        if msg == "demo-ready" {
+            debug!("IPC demo-ready signal");
+            let _ = proxy.send_event(UserEvent::DemoWindowReady { window_id });
+            return;
+        }
+        if msg == "demo-complete" {
+            debug!("IPC demo-complete signal");
+            let _ = proxy.send_event(UserEvent::DemoWindowComplete { window_id });
+            return;
+        }
         let cmd = match msg {
             "minimize" => Some(WinCmd::Minimize),
             "maximize" => Some(WinCmd::Maximize),
@@ -182,5 +192,61 @@ pub(crate) fn open_secondary_main_window<E: 'static>(
 
     webview.load_url(url)?;
     info!(%url, "opened secondary main window");
+    Ok((window, webview))
+}
+
+/// Spawn the dedicated demo-recording window. Like
+/// [`open_secondary_main_window`] but with a caller-chosen native title
+/// (so ffmpeg can target it uniquely) and inner size. The shared
+/// `WebContext` means it inherits the running session's auth, and the
+/// per-window `initialization_script` carries the demo marker the
+/// frontend bridge reads.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn open_demo_window<E: 'static>(
+    event_loop: &EventLoopWindowTarget<E>,
+    web_context: &mut WebContext,
+    url: &str,
+    initialization_script: &str,
+    icon: Option<Icon>,
+    title: &str,
+    size: (f64, f64),
+    make_ipc: impl FnOnce(WindowId) -> Box<dyn Fn(wry::http::Request<String>) + 'static>,
+) -> Result<(Window, WebView), Box<dyn std::error::Error>> {
+    let mut wb = WindowBuilder::new()
+        .with_title(title)
+        .with_decorations(false)
+        .with_visible(false)
+        .with_inner_size(tao::dpi::LogicalSize::new(size.0, size.1));
+    if let Some(ic) = icon {
+        wb = wb.with_window_icon(Some(ic));
+    }
+    let window = wb.build(event_loop)?;
+    set_square_corners(&window);
+    disable_window_background_erase(&window);
+    expand_top_resize_border(&window);
+
+    let ipc = make_ipc(window.id());
+    let builder = WebViewBuilder::new_with_web_context(web_context)
+        .with_background_color((0, 0, 0, 255))
+        .with_url(INITIAL_BLANK_PAGE_URL)
+        .with_initialization_script(initialization_script)
+        .with_ipc_handler(ipc)
+        .with_new_window_req_handler(|uri, _features| {
+            let _ = open::that(&uri);
+            wry::NewWindowResponse::Deny
+        });
+
+    #[cfg(not(target_os = "linux"))]
+    let webview = builder.build(&window)?;
+
+    #[cfg(target_os = "linux")]
+    let webview = {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+        builder.build_gtk(window.gtk_window())?
+    };
+
+    webview.load_url(url)?;
+    info!(%url, %title, "opened demo recording window");
     Ok((window, webview))
 }

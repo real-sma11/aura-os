@@ -79,6 +79,7 @@ pub(crate) fn spawn_server(
     interface_dir: Option<PathBuf>,
     ide_proxy: Arc<EventLoopProxy<UserEvent>>,
     route_state: RouteState,
+    demo_registry: crate::demo::DemoRegistry,
 ) -> std::sync::mpsc::Receiver<ServerReadyResult> {
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<ServerReadyResult>();
 
@@ -137,7 +138,20 @@ pub(crate) fn spawn_server(
                 .route("/api/write-file", axum_post(handlers::write_file))
                 .route(
                     "/api/open-ide",
-                    axum_post(handlers::open_ide).with_state(ide_proxy),
+                    axum_post(handlers::open_ide).with_state(ide_proxy.clone()),
+                )
+                .route(
+                    "/api/demo-recordings",
+                    axum_post(handlers::start_demo_recording).with_state(
+                        handlers::DemoRouteState {
+                            proxy: ide_proxy.clone(),
+                            registry: demo_registry.clone(),
+                        },
+                    ),
+                )
+                .route(
+                    "/api/demo-recordings/:recording_id",
+                    axum_get(handlers::get_demo_recording).with_state(demo_registry.clone()),
                 )
                 .route(
                     "/api/update-status",

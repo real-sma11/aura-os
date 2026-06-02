@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use axum::extract::State as AxumState;
+use axum::extract::{Path as AxumPath, State as AxumState};
 use axum::Json;
 use tao::event_loop::EventLoopProxy;
 use tracing::{debug, info, warn};
 
+use crate::demo::{self, DemoRegistry};
 use crate::route_state::RouteState;
 use crate::updater::{self, UpdateChannel, UpdateState};
 use crate::UserEvent;
@@ -110,6 +111,99 @@ pub(crate) async fn open_ide(
         root_path: req.root,
     });
     Json(serde_json::json!({ "ok": true }))
+}
+
+// ---------------------------------------------------------------------------
+// Demo recorder
+// ---------------------------------------------------------------------------
+
+/// Shared state for the demo-recording routes: the event-loop proxy (to
+/// open + drive the demo window) and the status registry (read by the
+/// status route, written as the recording progresses).
+#[derive(Clone)]
+pub(crate) struct DemoRouteState {
+    pub(crate) proxy: Arc<EventLoopProxy<UserEvent>>,
+    pub(crate) registry: DemoRegistry,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct StartDemoRequest {
+    instruction: String,
+    /// Optional max-duration guard in seconds (clamped server-side).
+    max_seconds: Option<u64>,
+}
+
+/// Kick off a demo recording: register a pending recording and ask the
+/// event loop to open the demo window. Returns the `recording_id` the
+/// caller polls via `GET /api/demo-recordings/:recording_id`.
+pub(crate) async fn start_demo_recording(
+    AxumState(state): AxumState<DemoRouteState>,
+    Json(req): Json<StartDemoRequest>,
+) -> Json<serde_json::Value> {
+    let instruction = req.instruction.trim().to_string();
+    if instruction.is_empty() {
+        return Json(serde_json::json!({ "ok": false, "error": "instruction is required" }));
+    }
+
+    // Preflight ffmpeg before opening any window, so a missing/broken
+    // ffmpeg surfaces an actionable error instead of a window that flashes
+    // open and immediately disappears when the capture spawn fails.
+    let ffmpeg = demo::tools::resolve_ffmpeg_binary();
+    let probe = {
+        let ffmpeg = ffmpeg.clone();
+        tokio::task::spawn_blocking(move || demo::tools::probe_ffmpeg(&ffmpeg)).await
+    };
+    if let Err(reason) = probe.unwrap_or_else(|join_error| Err(join_error.to_string())) {
+        let message = format!(
+            "Demo recording needs ffmpeg, which isn't available ({reason}). \
+             Install it (e.g. `winget install Gyan.FFmpeg`) or set the \
+             AURA_FFMPEG_BIN environment variable to an ffmpeg executable, \
+             then try again."
+        );
+        warn!(ffmpeg = %ffmpeg.display(), "demo recording preflight failed: ffmpeg unavailable");
+        // Native, visible feedback — this route is fire-and-forget from
+        // the chat input, so a dialog is the clearest way to explain why
+        // nothing happened.
+        let dialog_message = message.clone();
+        tokio::spawn(async move {
+            rfd::AsyncMessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("AURA — Record Demo")
+                .set_description(dialog_message)
+                .show()
+                .await;
+        });
+        return Json(serde_json::json!({ "ok": false, "error": message }));
+    }
+
+    let recording_id = demo::new_recording_id();
+    let max_seconds = demo::clamp_max_seconds(req.max_seconds);
+    demo::insert_starting(&state.registry, &recording_id, instruction.clone());
+
+    info!(recording_id = %recording_id, max_seconds, "starting demo recording");
+    match state.proxy.send_event(UserEvent::StartDemoRecording {
+        recording_id: recording_id.clone(),
+        instruction,
+        max_seconds,
+    }) {
+        Ok(()) => Json(serde_json::json!({ "ok": true, "recording_id": recording_id })),
+        Err(error) => {
+            warn!(error = %error, "failed to dispatch demo recording request");
+            demo::set_failed(&state.registry, &recording_id, error.to_string());
+            Json(serde_json::json!({ "ok": false, "error": error.to_string() }))
+        }
+    }
+}
+
+/// Status (and final file path) for a recording.
+pub(crate) async fn get_demo_recording(
+    AxumState(registry): AxumState<DemoRegistry>,
+    AxumPath(recording_id): AxumPath<String>,
+) -> Json<serde_json::Value> {
+    match demo::snapshot(&registry, &recording_id) {
+        Some(state) => Json(serde_json::json!({ "ok": true, "recording": state })),
+        None => Json(serde_json::json!({ "ok": false, "error": "recording not found" })),
+    }
 }
 
 // ---------------------------------------------------------------------------

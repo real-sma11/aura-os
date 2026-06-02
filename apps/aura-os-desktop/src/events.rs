@@ -53,4 +53,23 @@ pub(crate) enum UserEvent {
     /// installer can overwrite this process's files. Posted by the updater
     /// immediately before calling `std::process::exit`.
     ShutdownForUpdate,
+    /// Open a dedicated demo window and prepare to record `instruction`.
+    /// Posted by the desktop `POST /api/demo-recordings` route. The window
+    /// is driven (and screen-recorded) once the frontend demo bridge in it
+    /// signals it is ready (`DemoWindowReady`).
+    StartDemoRecording {
+        recording_id: String,
+        instruction: String,
+        max_seconds: u64,
+    },
+    /// The demo bridge in a demo window finished installing and is ready
+    /// to run its instruction. Triggers ffmpeg capture + driving the run.
+    DemoWindowReady {
+        window_id: WindowId,
+    },
+    /// The demo bridge finished the instruction's agent turn (or the
+    /// recording timed out). Finalizes the recording and closes the window.
+    DemoWindowComplete {
+        window_id: WindowId,
+    },
 }

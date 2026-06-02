@@ -32,6 +32,7 @@ import {
   resolveAuraCaptureTargetPath,
 } from "../../lib/capture-bridge";
 import { markAuraCaptureSessionActive, shouldEnableAuraScreenshotBridge } from "../../lib/screenshot-bridge";
+import { isDemoRecordingWindow, postDesktopIpc, runDemoInstruction } from "../../lib/demo-bridge";
 
 const BuyCreditsModal = lazy(() =>
   import("../BuyCreditsModal").then((module) => ({ default: module.BuyCreditsModal })),
@@ -354,6 +355,41 @@ function CaptureBridgeHost() {
   return null;
 }
 
+/**
+ * Installs `window.__AURA_DEMO_BRIDGE__` so the native shell can drive a
+ * scripted demo in this window. When this is the dedicated recording window
+ * (marked via `window.__AURA_DEMO_RECORDING__`), it signals `demo-ready` to
+ * the shell so ffmpeg capture + driving begin.
+ */
+function DemoBridgeHost() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const bridge = {
+      version: 1,
+      run: (instruction: string, opts?: { agentId?: string; timeoutMs?: number }) =>
+        runDemoInstruction(navigate, instruction, opts),
+    };
+    window.__AURA_DEMO_BRIDGE__ = bridge;
+
+    let readyTimer: ReturnType<typeof setTimeout> | undefined;
+    if (isDemoRecordingWindow()) {
+      // Defer a tick so the bridge + first paint are in place before the
+      // shell starts recording and calls `run`.
+      readyTimer = setTimeout(() => postDesktopIpc("demo-ready"), 50);
+    }
+
+    return () => {
+      if (readyTimer) clearTimeout(readyTimer);
+      if (window.__AURA_DEMO_BRIDGE__ === bridge) {
+        delete window.__AURA_DEMO_BRIDGE__;
+      }
+    };
+  }, [navigate]);
+
+  return null;
+}
+
 function useOnboardingHydration() {
   const user = useAuth().user;
   const hydrateForUser = useOnboardingStore((s) => s.hydrateForUser);
@@ -423,6 +459,7 @@ function AppContent() {
   return (
     <>
       <CaptureBridgeHost />
+      <DemoBridgeHost />
       <ResponsiveShell />
 
       {orgSettingsOpen ? (
