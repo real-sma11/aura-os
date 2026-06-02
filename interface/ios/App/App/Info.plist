@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>AURA uses the camera so you can take a photo to use as an agent's image or to attach to a message.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AURA accesses your photo library so you can choose a photo to use as an agent's image or to attach to a message.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchStoryboardName</key>
