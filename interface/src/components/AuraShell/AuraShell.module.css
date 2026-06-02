@@ -45,7 +45,6 @@
   flex-direction: column;
   background: var(--color-sidebar-bg);
   border: 1px solid var(--color-border-main-panel);
-  border-right: none;
   border-top-left-radius: 6px;
   border-bottom-left-radius: 6px;
   transition: border-color var(--transition-fast, 120ms) ease;
@@ -166,6 +165,11 @@
 .shell:not([data-ui-mode="public"]) .mainPanel {
   background: var(--color-bg);
   border: 1px solid var(--color-border-main-panel);
+  /* The vertical seam borders are owned by the adjacent sidebar (right)
+     and sidekick (left) so hovering their resize handles highlights the
+     correct edge. Keep only the top/bottom borders here. */
+  border-left: none;
+  border-right: none;
 }
 
 .shell[data-desktop-mode] .mainPanel {
