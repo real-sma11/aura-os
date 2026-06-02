@@ -145,20 +145,20 @@ function TokenRow({
         {label}
       </label>
       <div className={styles.controls}>
-        <span
-          aria-hidden="true"
+        <label
           className={styles.swatch}
           style={swatchStyle}
           data-testid={swatchTestId}
-        />
-        <input
-          type="color"
-          aria-label={`${ariaLabel} color picker`}
-          value={toColorInputValue(currentValue)}
-          onChange={handleColorChange}
-          className={styles.colorInput}
-          disabled={disabled}
-        />
+        >
+          <input
+            type="color"
+            aria-label={`${ariaLabel} color picker`}
+            value={toColorInputValue(currentValue)}
+            onChange={handleColorChange}
+            className={styles.colorInput}
+            disabled={disabled}
+          />
+        </label>
         <input
           id={inputId}
           type="text"
