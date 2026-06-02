@@ -230,12 +230,15 @@
 .taskbarBtn:not(:disabled)[aria-pressed="true"]::before,
 .taskbarBtn:not(:disabled)[data-selected="true"]::before {
   inset: 1px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 11px;
-  background: linear-gradient(to top right, #0f0f0f, #252523);
-  box-shadow:
-    inset 0 1px 0 0 color-mix(in srgb, #fff 8%, transparent),
-    0 2px 6px -2px color-mix(in srgb, #000 65%, transparent);
+  /* Fill clipped to the padding box; a dark -> light gradient fills the
+     1px transparent border (clipped to the border box) so the selected
+     area gets a 1px gradient outline that follows the rounded corners. */
+  background:
+    linear-gradient(to top right, #0f0f0f, #252523) padding-box,
+    linear-gradient(180deg, #141414, #6b6b6b) border-box;
+  box-shadow: 0 2px 6px -2px color-mix(in srgb, #000 65%, transparent);
 }
 
 .taskbarBtn:not(:disabled)[aria-pressed="true"]::after,
