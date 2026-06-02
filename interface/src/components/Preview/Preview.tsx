@@ -104,7 +104,7 @@ function SpecsOverviewPreview({
           {generating ? (
             <Text variant="secondary" size="sm">Generating summary…</Text>
           ) : summaryText ? (
-            <div className={styles.markdown}>
+            <div className={`${styles.markdown} ${styles.summaryMarkdown}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                 {summaryText}
               </ReactMarkdown>

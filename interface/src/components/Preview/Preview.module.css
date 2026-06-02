@@ -648,6 +648,45 @@
   justify-content: space-between;
   gap: var(--space-2);
   min-height: 28px;
+  padding: var(--space-3) var(--space-5) 0;
+}
+
+/* Plan summary body: roomier, document-like formatting with larger
+   headings and generous padding (kept scoped so spec markdown is
+   untouched). Rules sit after the base `.markdown` block so the equal
+   specificity selectors win on the shared element. */
+.summaryMarkdown {
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  line-height: 1.75;
+}
+.summaryMarkdown h1 {
+  font-size: 22px;
+  margin: 0 0 var(--space-3);
+}
+.summaryMarkdown h2 {
+  font-size: 18px;
+  margin: var(--space-6) 0 var(--space-2);
+}
+.summaryMarkdown h3 {
+  font-size: 15.5px;
+  margin: var(--space-5) 0 var(--space-2);
+}
+.summaryMarkdown p {
+  margin-bottom: var(--space-3);
+}
+.summaryMarkdown ul,
+.summaryMarkdown ol {
+  margin-bottom: var(--space-3);
+}
+.summaryMarkdown li {
+  margin-bottom: var(--space-1);
+}
+/* Render markdown horizontal rules as breathing space instead of a
+   visible divider line. */
+.summaryMarkdown hr {
+  border: none;
+  height: var(--space-5);
+  margin: 0;
 }
 
 .summaryRow {
