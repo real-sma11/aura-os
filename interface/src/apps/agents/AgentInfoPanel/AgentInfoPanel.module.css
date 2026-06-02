@@ -34,44 +34,119 @@
   }
 }
 
-/* ── Profile tab: cover image + avatar fallback ── */
+/* ── Profile card: floating 3D card (avatar + name + meta) ── */
 
-.profileCover {
+.cardContainer {
+  /* Establish a containment context so the card can reflow to a horizontal
+     layout based on the sidekick lane width (not the viewport). */
+  container-type: inline-size;
+  padding: var(--space-3);
+  /* Perspective lives on the container so the inner card tilts in 3D. */
+  perspective: 900px;
+}
+
+.card {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --tilt-active: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #6366f1) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-bg-surface) 94%, transparent);
+  overflow: hidden;
+  transform-style: preserve-3d;
+  transform: rotateY(var(--tilt-x)) rotateX(var(--tilt-y))
+    translateZ(calc(var(--tilt-active) * 8px));
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 0 0 1px color-mix(in srgb, var(--color-accent, #6366f1) 6%, transparent);
+  will-change: transform;
+}
+
+.card:hover {
+  border-color: color-mix(in srgb, var(--color-accent, #6366f1) 50%, var(--color-border));
+  box-shadow:
+    0 18px 40px -12px rgba(0, 0, 0, 0.55),
+    0 0 24px -6px color-mix(in srgb, var(--color-accent, #6366f1) 35%, transparent);
+}
+
+.cardInner {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardMedia {
   width: 100%;
   aspect-ratio: 1 / 1;
   background: var(--color-bg-hover);
   overflow: hidden;
-  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-.profileCoverImage {
+.cardMediaImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center top;
 }
 
-.profileImageBlock {
-  width: 100%;
+.cardMediaFallback {
+  aspect-ratio: auto;
   min-height: 120px;
   padding: 20px 0;
-  background: var(--color-bg-hover);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
 }
 
-/* ── Name block ── */
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  min-width: 0;
+  flex: 1;
+}
 
-.nameBlock {
+.cardHeader {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+}
+
+.cardBadgeRow {
+  display: flex;
+}
+
+/* Horizontal layout when the sidekick lane is widened / split-screen. */
+@container (min-width: 460px) {
+  .cardInner {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .cardMedia {
+    width: 40%;
+    max-width: 220px;
+    aspect-ratio: 1 / 1;
+    align-self: stretch;
+  }
+
+  .cardMediaFallback {
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+  }
+
+  .cardBody {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transform: none;
+    transition: box-shadow 220ms ease, border-color 220ms ease;
+  }
 }
 
 .nameText {

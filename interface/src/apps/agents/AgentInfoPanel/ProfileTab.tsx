@@ -17,6 +17,7 @@ import { Avatar } from "../../../components/Avatar";
 import { FollowEditButton } from "../../../components/FollowEditButton";
 import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
+import { useCardTilt } from "./use-card-tilt";
 import {
   formatAdapterLabel,
   formatAuthSourceLabel,
@@ -182,17 +183,17 @@ function MobileSkillsSection({
   );
 }
 
-function ProfileImage({ agent }: { agent: Agent }) {
+function ProfileCardMedia({ agent }: { agent: Agent }) {
   const [broken, setBroken] = useState(false);
   const showCover = !!agent.icon && !broken;
 
   if (showCover) {
     return (
-      <div className={styles.profileCover}>
+      <div className={styles.cardMedia}>
         <img
           src={agent.icon!}
           alt={agent.name}
-          className={styles.profileCoverImage}
+          className={styles.cardMediaImage}
           onError={() => setBroken(true)}
         />
       </div>
@@ -200,45 +201,48 @@ function ProfileImage({ agent }: { agent: Agent }) {
   }
 
   return (
-    <div className={styles.profileImageBlock}>
+    <div className={`${styles.cardMedia} ${styles.cardMediaFallback}`}>
       <Avatar avatarUrl={undefined} name={agent.name} type="agent" size={80} />
     </div>
   );
 }
 
-function ProfileHeader({
+function ProfileCard({
   agent,
   isOwnAgent,
 }: Pick<ProfileTabProps, "agent" | "isOwnAgent">) {
+  const cardRef = useCardTilt<HTMLDivElement>();
+
   return (
-    <>
-      <ProfileImage agent={agent} />
+    <div className={styles.cardContainer}>
+      <div ref={cardRef} className={styles.card}>
+        <div className={styles.cardInner}>
+          <ProfileCardMedia agent={agent} />
 
-      <div className={styles.nameBlock}>
-        <div className={styles.nameText}>
-          <span className={styles.displayName}>{agent.name}</span>
-          {agent.role && <span className={styles.subtitle}>{agent.role}</span>}
-        </div>
-        {!isOwnAgent && (
-          <div className={styles.nameAction}>
-            <FollowEditButton isOwner={false} targetProfileId={agent.profile_id} />
+          <div className={styles.cardBody}>
+            <div className={styles.cardHeader}>
+              <div className={styles.nameText}>
+                <span className={styles.displayName}>{agent.name}</span>
+                {agent.role && <span className={styles.subtitle}>{agent.role}</span>}
+              </div>
+              {!isOwnAgent && (
+                <div className={styles.nameAction}>
+                  <FollowEditButton isOwner={false} targetProfileId={agent.profile_id} />
+                </div>
+              )}
+            </div>
+
+            {isSuperAgent(agent) && (
+              <div className={styles.cardBadgeRow}>
+                <Badge variant="running">CEO SuperAgent</Badge>
+              </div>
+            )}
+
+            <ProfileMetaGrid agent={agent} />
           </div>
-        )}
+        </div>
       </div>
-
-      {isSuperAgent(agent) && (
-        <div className={styles.section}>
-          <Badge variant="running">CEO SuperAgent</Badge>
-        </div>
-      )}
-
-      {agent.personality && (
-        <div className={styles.section}>
-          <Text size="xs" variant="muted" weight="medium">Personality</Text>
-          <Text size="sm">{agent.personality}</Text>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -321,11 +325,13 @@ export function ProfileTab(props: ProfileTabProps) {
 
   return (
     <>
-      <ProfileHeader
-        agent={agent}
-        isOwnAgent={props.isOwnAgent}
-      />
-      <ProfileMetaGrid agent={agent} />
+      <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
+      {agent.personality && (
+        <div className={styles.section}>
+          <Text size="xs" variant="muted" weight="medium">Personality</Text>
+          <Text size="sm">{agent.personality}</Text>
+        </div>
+      )}
       {props.isMobileStandalone && <MobileRemoteRuntimeSection agent={agent} />}
       {props.isMobileStandalone && (
         <MobileSkillsSection
