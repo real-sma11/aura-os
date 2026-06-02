@@ -45,6 +45,10 @@ export function MessageActions({ message, streamKey }: MessageActionsProps) {
   }, [moreOpen]);
 
   const ShareIcon = shared ? Check : Link2;
+  let shareLabel = "Share link unavailable until session is ready";
+  if (canShare) {
+    shareLabel = shared ? "Share link copied" : "Copy share link";
+  }
 
   return (
     <div className={styles.row} ref={wrapperRef}>
@@ -54,18 +58,17 @@ export function MessageActions({ message, streamKey }: MessageActionsProps) {
         iconOnly
         className={styles.button}
       />
-      {canShare && (
-        <button
-          type="button"
-          className={`${styles.button} ${shared ? styles.buttonActive : ""}`}
-          onClick={copyShareLink}
-          disabled={isSharing}
-          aria-label={shared ? "Share link copied" : "Copy share link"}
-          aria-live="polite"
-        >
-          <ShareIcon size={14} aria-hidden="true" />
-        </button>
-      )}
+      <button
+        type="button"
+        className={`${styles.button} ${shared ? styles.buttonActive : ""}`}
+        onClick={copyShareLink}
+        disabled={isSharing || !canShare}
+        aria-label={shareLabel}
+        title={canShare ? "Copy share link" : "Share link unavailable until session is ready"}
+        aria-live="polite"
+      >
+        <ShareIcon size={14} aria-hidden="true" />
+      </button>
       <button
         type="button"
         className={styles.button}
@@ -74,17 +77,19 @@ export function MessageActions({ message, streamKey }: MessageActionsProps) {
       >
         <RotateCcw size={14} aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        className={`${styles.button} ${moreOpen ? styles.buttonActive : ""}`}
-        onClick={() => setMoreOpen((prev) => !prev)}
-        aria-label="More details"
-        aria-haspopup="dialog"
-        aria-expanded={moreOpen}
-      >
-        <MoreHorizontal size={14} aria-hidden="true" />
-      </button>
-      {moreOpen && <MoreInfoPopover meta={meta} onClose={closeMore} />}
+      <span className={styles.moreAnchor}>
+        <button
+          type="button"
+          className={`${styles.button} ${moreOpen ? styles.buttonActive : ""}`}
+          onClick={() => setMoreOpen((prev) => !prev)}
+          aria-label="More details"
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
+        >
+          <MoreHorizontal size={14} aria-hidden="true" />
+        </button>
+        {moreOpen && <MoreInfoPopover meta={meta} onClose={closeMore} />}
+      </span>
     </div>
   );
 }

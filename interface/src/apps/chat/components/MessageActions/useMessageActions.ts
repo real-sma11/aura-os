@@ -29,6 +29,11 @@ export interface MessageActionsState {
 
 const SHARED_RESET_MS = 1800;
 
+function readSessionIdFromLocation(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("session");
+}
+
 /**
  * Facade hook for the assistant message action row. It sources the
  * popover metadata (session id / project / workspace) from the existing
@@ -45,7 +50,7 @@ export function useMessageActions(
   const parsed = parseStreamKey(streamKey);
   const projectId = parsed?.projectId ?? "";
   const agentInstanceId = parsed?.agentInstanceId ?? "";
-  const sessionId = parsed?.sessionId ?? null;
+  const sessionId = parsed?.sessionId ?? readSessionIdFromLocation();
 
   const projectName = useProjectsListStore(
     (state) =>

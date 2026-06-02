@@ -337,53 +337,6 @@
   padding: 0;
 }
 
-/* Make room above the bubble so the absolutely-positioned hover copy
-   button never visually overlaps the prose, even when the user is
-   hovered (the button is icon-only and small, but it sits inside the
-   bubble box so we want it living in its own gutter). */
-.bubbleWithCopy {
-  position: relative;
-}
-
-/* Hover-revealed "copy whole assistant message as markdown" button.
-   Hidden by default to keep the assistant prose clean, fades in when
-   the user hovers the bubble (or focuses the button via keyboard) so
-   the affordance is discoverable without adding permanent chrome to
-   every reply.
-
-   Positioned to sit just left of a leading Block's chevron (Thought /
-   File / Spec / Command / etc.) instead of being pinned to the bubble's
-   raw top-right corner. Pinning it flush right (top:4px / right:0)
-   covered each block's chevron + badge area whenever the bubble started
-   with a Block. The vertical anchor centers against the Block header's
-   32px row (offset by the bubble's --space-2 top padding); the right
-   offset of 30px == 10px header padding + 12px chevron + 8px gap, so
-   the button lands in the slot immediately to the left of the chevron
-   regardless of which Block renderer leads the bubble. */
-.assistantCopyBtn {
-  position: absolute;
-  top: calc(var(--space-2, 8px) + var(--block-header-height, 32px) / 2);
-  right: 30px;
-  transform: translateY(-50%);
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-  z-index: 1;
-}
-
-.bubbleWithCopy:hover .assistantCopyBtn,
-.bubbleWithCopy:focus-within .assistantCopyBtn,
-.assistantCopyBtn:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  /* Touch devices have no hover -- always show so mobile users can
-     reach the affordance. */
-  .assistantCopyBtn {
-    opacity: 1;
-  }
-}
-
 .fallbackStack {
   display: flex;
   flex-direction: column;

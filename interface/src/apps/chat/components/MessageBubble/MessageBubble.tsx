@@ -219,14 +219,11 @@ export const MessageBubble = memo(function MessageBubble({
     return false;
   })();
 
-  // Hover-revealed "copy whole assistant message as markdown" affordance.
-  // Only attached when the bubble actually carries prose (skips
-  // tool-only / error-only frames where there's nothing markdown-y to
-  // hand to Obsidian). Bubble ref + `useMarkdownCopy` also intercept
-  // OS-level select+copy *of the entire bubble* so users who hit
-  // Ctrl/Cmd+A inside the bubble get markdown source instead of the
-  // rendered text. Hook calls live above the early `return null` below
-  // to keep call order stable across renders.
+  // Completed assistant prose gets the bottom action row, and the bubble
+  // ref still lets `useMarkdownCopy` intercept OS-level select+copy of
+  // the whole bubble so users get markdown source instead of rendered
+  // text. Hook calls live above the early `return null` below to keep
+  // call order stable across renders.
   const assistantBubbleRef = useRef<HTMLDivElement>(null);
   const showAssistantCopy = !!(
     message.role === "assistant"
@@ -599,17 +596,9 @@ export const MessageBubble = memo(function MessageBubble({
             isUser ? styles.bubbleUser : styles.bubbleAssistant
           } ${isAssistantToolOnly ? styles.bubbleAssistantCompact : ""} ${
             userBlocksAreAllWidgets ? styles.bubbleUserWidgetOnly : ""
-          } ${showAssistantCopy ? styles.bubbleWithCopy : ""}`}
+          }`}
         >
           {isUser ? renderUserContent() : renderAssistantContent()}
-          {showAssistantCopy && (
-            <CopyButton
-              getMarkdown={getAssistantMarkdown}
-              className={styles.assistantCopyBtn}
-              ariaLabel="Copy message as markdown"
-              iconOnly
-            />
-          )}
         </div>
       )}
       {showAssistantCopy && streamKey && (

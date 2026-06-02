@@ -33,6 +33,7 @@ describe("MessageActions", () => {
   beforeEach(() => {
     createSessionShare.mockReset();
     writeText.mockReset();
+    window.history.replaceState(null, "", "/");
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       writable: true,
@@ -60,6 +61,32 @@ describe("MessageActions", () => {
       expect(writeText).toHaveBeenCalledWith("https://aura.ai/s/t_abc"),
     );
     expect(await screen.findByLabelText("Share link copied")).toBeInTheDocument();
+  });
+
+  it("uses the current url session when the stream key is still fresh", async () => {
+    window.history.replaceState(null, "", "/projects/p1/agents/ai1?session=s-from-url");
+    createSessionShare.mockResolvedValue({
+      shareId: "t_abc",
+      url: "https://aura.ai/s/t_abc",
+    });
+    render(<MessageActions message={message} streamKey="p1:ai1:fresh" />);
+
+    fireEvent.click(screen.getByLabelText("Copy share link"));
+
+    await waitFor(() =>
+      expect(createSessionShare).toHaveBeenCalledWith({
+        projectId: "p1",
+        agentInstanceId: "ai1",
+        sessionId: "s-from-url",
+      }),
+    );
+  });
+
+  it("keeps the share button visible but disabled before a session exists", () => {
+    render(<MessageActions message={message} streamKey="p1:ai1:fresh" />);
+
+    const share = screen.getByLabelText("Share link unavailable until session is ready");
+    expect(share).toBeDisabled();
   });
 
   it("invokes the registered regenerate handler with the message id", () => {

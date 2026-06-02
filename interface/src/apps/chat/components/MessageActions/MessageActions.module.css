@@ -37,3 +37,8 @@
 .buttonActive {
   color: var(--color-text, #ddd);
 }
+
+.moreAnchor {
+  position: relative;
+  display: inline-flex;
+}
