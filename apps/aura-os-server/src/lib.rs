@@ -5,6 +5,7 @@ mod billing_bridge;
 pub(crate) mod billing_rollup;
 pub(crate) mod bug_report_store;
 mod capture_auth;
+pub mod channels;
 pub(crate) mod channel_ext;
 pub(crate) mod dto;
 pub(crate) mod error;

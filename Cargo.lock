@@ -688,6 +688,7 @@ dependencies = [
  "aura-os-auth",
  "aura-os-billing",
  "aura-os-browser",
+ "aura-os-channels",
  "aura-os-core",
  "aura-os-events",
  "aura-os-harness",
