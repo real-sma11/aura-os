@@ -624,6 +624,9 @@ describe("useChatStream", () => {
       // a `streamDropped` close), so the 12th positional argument
       // must remain `undefined` end-to-end here.
       undefined,
+      // 13th positional `council` is `undefined` — council is inactive
+      // in this test (single-model send).
+      undefined,
     );
     expect(api.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -638,6 +641,7 @@ describe("useChatStream", () => {
       undefined,
       false,
       null,
+      undefined,
       undefined,
     );
   });
@@ -838,6 +842,7 @@ describe("useChatStream", () => {
       false,
       "s-old",
       undefined,
+      undefined,
     );
   });
 
@@ -891,6 +896,7 @@ describe("useChatStream", () => {
       // the about-to-be-stale real-session partition.
       true,
       null,
+      undefined,
       undefined,
     );
   });

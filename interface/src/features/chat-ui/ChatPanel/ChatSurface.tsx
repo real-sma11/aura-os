@@ -341,6 +341,48 @@ export function ChatSurface({
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
+  // Keep the pinned cooking indicator (and the chat scroll reserve)
+  // anchored to the LIVE input bar height instead of a static ~103px
+  // estimate. Without this, activating AURA Council adds the multi-slot
+  // footer row to the input bar, but the indicator stays pinned at the
+  // 108px default and its opaque backdrop clips the top of the council
+  // model pills. Desktop only — the mobile layout pins the indicator
+  // off its own keyboard-aware variable.
+  const chatAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isMobileLayout || typeof ResizeObserver === "undefined") return;
+    const area = chatAreaRef.current;
+    if (!area) return;
+    const inputBar = area.querySelector<HTMLElement>(
+      '[data-agent-surface="chat-input-bar"]',
+    );
+    if (!inputBar) return;
+    // Gap above the input bar (matches the 5px the static 108px tuning
+    // exposed) plus the indicator's own ~68px height, so a freshly
+    // measured single-row input bar (~103px) reproduces the original
+    // 108px / 176px layout exactly.
+    const GAP_PX = 5;
+    const INDICATOR_PX = 68;
+    const apply = () => {
+      const height = inputBar.getBoundingClientRect().height;
+      if (height <= 0) return;
+      const bottom = Math.round(height + GAP_PX);
+      area.style.setProperty("--streaming-indicator-bottom", `${bottom}px`);
+      area.style.setProperty(
+        "--chat-input-clearance",
+        `${bottom + INDICATOR_PX}px`,
+      );
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(inputBar);
+    return () => {
+      ro.disconnect();
+      area.style.removeProperty("--streaming-indicator-bottom");
+      area.style.removeProperty("--chat-input-clearance");
+    };
+  }, [isMobileLayout, streamKey]);
+
   const initialHandoffReadyRef = useRef(false);
   const inputFocusReadyRef = useRef(false);
   const hasHandledThreadResetRef = useRef(false);
@@ -566,7 +608,7 @@ export function ChatSurface({
       onAnimationEnd={onAnimationEnd}
     >
       {header}
-      <div className={styles.chatArea}>
+      <div className={styles.chatArea} ref={chatAreaRef}>
         <div className={styles.messageAreaShell}>
           <div
             className={`${styles.messageArea}${isAutoFollowing ? ` ${styles.messageAreaFollowing}` : ` ${styles.messageAreaReading}`}`}

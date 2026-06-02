@@ -67,14 +67,26 @@ pub(super) async fn get_or_create_delegated_chat_session(
     // axis of the registry key so an effort change re-opens the
     // session instead of reusing one pinned to the prior level.
     let requested_effort = session_config.reasoning_effort.clone();
-    if let Some(reused) = try_reuse_session(state, key, &requested_model, &requested_effort).await {
-        return reuse_with_turn_slot(
-            reused,
-            turn,
-            state.harness_ws_slots,
-            Arc::clone(&state.stability_metrics),
-        )
-        .await;
+    // AURA Council sends must NEVER reuse a warm session. A resident
+    // entry was opened as a single-model `Chat` runtime request and
+    // reuse only forwards a bare `UserMessage`, which can never turn it
+    // into a `Council` run (no member fan-out, no synthesizer). The
+    // harness mints a fresh parent run per council request anyway, so we
+    // force a cold open whenever council is active and let this turn
+    // open its own `Council` session.
+    let council_active = session_config.council.is_some();
+    if !council_active {
+        if let Some(reused) =
+            try_reuse_session(state, key, &requested_model, &requested_effort).await
+        {
+            return reuse_with_turn_slot(
+                reused,
+                turn,
+                state.harness_ws_slots,
+                Arc::clone(&state.stability_metrics),
+            )
+            .await;
+        }
     }
 
     let harness = state.harness_for(harness_mode);

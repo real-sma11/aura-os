@@ -1022,7 +1022,9 @@ export const DesktopChatInputBar = memo(
     const showPickerInBottomRow = hasPicker && (isMultiLine || councilActive);
     // One ModelPicker per council member, each bound to its own slot.
     // Slot 0 is the synthesizer and carries a subtle affordance; every
-    // slot reuses `renderModelMenuList` minus the council count row.
+    // slot reuses `renderModelMenuList` including the council count row
+    // so the AURA Council control stays reachable from any model
+    // selector once the council has fanned out into multiple slots.
     const councilSlotNodes =
       councilActive && hasModelPicker
         ? Array.from({ length: councilCount }, (_, slot) => {
@@ -1048,7 +1050,7 @@ export const DesktopChatInputBar = memo(
                       activeEffort: slotEffort,
                       onSelect: (id, effort) =>
                         setCouncilModel(streamKey, slot, id, effort),
-                      includeCouncilRow: false,
+                      includeCouncilRow: true,
                     })
                   }
                   onOpen={handleModelPickerOpen}

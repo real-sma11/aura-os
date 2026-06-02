@@ -29,14 +29,14 @@ const FLYOUT_WIDTH = 184;
 const CLOSE_DELAY_MS = 120;
 
 function countValueLabel(count: CouncilCount): string {
-  return count === 1 ? "Off" : `${count}x`;
+  return count === 1 ? "1x" : `${count}x`;
 }
 
 // Subtle billing affordance: council fans the prompt out to `count`
 // models and then has slot 0 synthesize, so it costs more than the
 // single-model path. Doubles as the lightweight p6 cost hint.
 function countCostHint(count: CouncilCount): string {
-  return count === 1 ? "Off \u00b7 single model" : `${count} models + synthesizer`;
+  return count === 1 ? "1x \u00b7 single model" : `${count} models + synthesizer`;
 }
 
 /**
@@ -62,9 +62,10 @@ export const CouncilCountRow = memo(function CouncilCountRow({
     }
   }, []);
 
-  // Only one CouncilCountRow is ever mounted (it sits at the top of the
-  // single model picker's menu and is excluded from per-slot menus), so
-  // unlike `ModelMenuRow` no cross-row "single open flyout" coordination
+  // This row sits at the top of every model picker menu (the single
+  // picker and each council slot picker), but only one of those menus is
+  // open at a time, so at most one CouncilCountRow is mounted at once.
+  // Unlike `ModelMenuRow` no cross-row "single open flyout" coordination
   // is needed — this row just owns its own portal.
   const immediateClose = useCallback(() => {
     clearCloseTimer();
@@ -152,7 +153,7 @@ export const CouncilCountRow = memo(function CouncilCountRow({
                       data-council-count-option={n}
                       onClick={() => onSelect(n)}
                     >
-                      <span>{n === 1 ? "Off (1x)" : `${n}x`}</span>
+                      <span>{`${n}x`}</span>
                       <span className={styles.modelEffortOptionMultiplier}>
                         {n === 1 ? "single model" : `${n} + synth`}
                       </span>

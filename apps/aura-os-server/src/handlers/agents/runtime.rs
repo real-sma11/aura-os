@@ -74,18 +74,20 @@ pub(crate) fn effective_model(agent: &Agent, override_model: Option<String>) -> 
 /// harness needs to build wire [`aura_protocol::CouncilMember`]s.
 ///
 /// Each member reuses the single-model resolution path: its requested
-/// model id flows through [`effective_model`] (override → agent
-/// default) and its provider overrides through
-/// [`session_model_overrides_with_cache`], with a member-scoped cache
-/// key suffix so the council members don't clobber each other's prompt
-/// cache. `members[0]` is the synthesizer.
+/// model id resolves against `default_model` exactly as
+/// [`effective_model`] does (member id when non-blank, otherwise the
+/// surface's default model — `agent.default_model` for the agent route,
+/// `instance.default_model` for the project route) and its provider
+/// overrides flow through [`session_model_overrides_with_cache`], with a
+/// member-scoped cache key suffix so the council members don't clobber
+/// each other's prompt cache. `members[0]` is the synthesizer.
 ///
 /// Validation mirrors the single-model path: an empty `models` list is
 /// a structured 400 (the same `bad_request` shape the route uses for an
-/// invalid model); an unknown / blank member id resolves exactly as the
-/// single-model path does via [`effective_model`].
+/// invalid model); an unknown / blank member id falls back to
+/// `default_model` exactly as the single-model path does.
 pub(crate) fn resolve_council_members(
-    agent: &Agent,
+    default_model: Option<&str>,
     council: &CouncilRequestBody,
     cache_key: Option<&str>,
     retention: Option<&str>,
@@ -101,7 +103,13 @@ pub(crate) fn resolve_council_members(
         .iter()
         .enumerate()
         .map(|(index, member)| {
-            let model = effective_model(agent, Some(member.id.clone()));
+            // Mirror `effective_model`: a non-blank member id wins,
+            // otherwise fall back to the surface's default model.
+            let model = if member.id.trim().is_empty() {
+                default_model.map(ToString::to_string)
+            } else {
+                Some(member.id.clone())
+            };
             // Suffix the shared cache key per member so each council
             // model keeps its own upstream prompt-cache prefix.
             let member_cache_key =

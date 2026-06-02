@@ -30,7 +30,7 @@ use super::super::typed_session::{
 };
 use super::super::types::SseResponse;
 
-use super::super::super::runtime::session_model_overrides_with_cache;
+use super::super::super::runtime::{resolve_council_members, session_model_overrides_with_cache};
 
 use super::client_retry::header_indicates_client_retry;
 use super::helpers::{
@@ -192,6 +192,22 @@ pub(crate) async fn send_event_stream(
         resolve_agent_instance_workspace_path(&state, &project_id, Some(agent_instance_id)).await;
 
     let model = pick_instance_model(&body, &instance);
+
+    // AURA Council: only active when the client sends >= 2 models, the
+    // same gate the agent route uses. A single model (or an absent
+    // `council`) leaves the single-model path below unchanged. Each
+    // member resolves against the instance's default model and shares
+    // the per-instance override cache-key prefix + 24h retention.
+    let council = match body.council.as_ref().filter(|c| c.models.len() >= 2) {
+        Some(council_body) => Some(resolve_council_members(
+            instance.default_model.as_deref(),
+            council_body,
+            Some(&format!("instance:{agent_instance_id}")),
+            Some("24h"),
+        )?),
+        None => None,
+    };
+
     let effective_org_id = resolve_effective_org_id(&state, instance.org_id.as_ref(), &project_id);
     let org_integrations = fetch_org_integrations(&state, effective_org_id.as_ref(), &jwt).await;
     let normalized_instance_perms = normalize_instance_perms(&state, &instance, &pid_str).await;
@@ -290,6 +306,7 @@ pub(crate) async fn send_event_stream(
         agent_system_prompt,
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
+        council,
         ..Default::default()
     };
 

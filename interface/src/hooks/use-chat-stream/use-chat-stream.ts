@@ -619,6 +619,27 @@ export function useChatStream({
         // server so it can bump `client_auto_retry_streamdropped`.
         // First sends pass `undefined` so no header is set.
         const clientRetryAttempt = isAutoRetry ? ctrl.autoRetryCount : undefined;
+        // AURA Council fan-out for the project/instance chat — mirrors
+        // the standalone agent path in `use-agent-chat-stream`. Resolved
+        // from the live council store at send time (not capture time) so
+        // queued / replayed sends reflect the current council state.
+        // Built only for the regular chat path when council is active
+        // (`councilCount > 1`) and at least two slots resolve to a model
+        // id; otherwise left `undefined` so the single-model path is
+        // byte-for-byte unchanged.
+        const council = ((): { models: { id: string; reasoning_effort?: string }[] } | undefined => {
+          if (_generationMode) return undefined;
+          const uiState = useChatUIStore.getState();
+          if (uiState.getCouncilCount(getPartitionKey()) <= 1) return undefined;
+          const models = uiState
+            .getCouncilModels(getPartitionKey())
+            .filter((slot) => typeof slot.id === "string" && slot.id.length > 0)
+            .map((slot) => ({
+              id: slot.id,
+              ...(slot.effort ? { reasoning_effort: slot.effort } : {}),
+            }));
+          return models.length >= 2 ? { models } : undefined;
+        })();
         await api.sendEventStream(
           capturedProjectId,
           capturedInstanceId,
@@ -632,6 +653,7 @@ export function useChatStream({
           shouldStartNewSession,
           shouldStartNewSession ? null : sessionIdRef.current,
           clientRetryAttempt,
+          council,
         );
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

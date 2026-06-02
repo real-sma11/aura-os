@@ -208,7 +208,7 @@ pub(crate) async fn send_agent_event_stream(
     // uses, sharing the per-agent cache-key prefix + 24h retention.
     let council = match body.council.as_ref().filter(|c| c.models.len() >= 2) {
         Some(council_body) => Some(resolve_council_members(
-            &agent,
+            agent.default_model.as_deref(),
             council_body,
             Some(&format!("agent:{agent_id}")),
             Some("24h"),

@@ -551,6 +551,15 @@ export function sendEventStream(
    * on first sends to skip the header entirely.
    */
   clientRetryAttempt?: number,
+  /**
+   * AURA Council fan-out for the project/instance chat. Mirrors
+   * `sendAgentEventStream`: set only when council is active
+   * (`councilCount > 1`), `models[0]` is the synthesizer slot, and the
+   * server treats this as a Council runtime request only when
+   * `models.length >= 2`. Left `undefined` for single-model sends so
+   * that path is byte-for-byte unchanged.
+   */
+  council?: { models: { id: string; reasoning_effort?: string }[] },
 ) {
   const body: Record<string, unknown> = { content, action };
   if (model) {
@@ -560,6 +569,7 @@ export function sendEventStream(
     const effort = loadPersistedModelEffort(model);
     if (effort) body.reasoning_effort = effort;
   }
+  if (council) body.council = council;
   if (attachments && attachments.length > 0) {
     body.attachments = attachments;
   }
