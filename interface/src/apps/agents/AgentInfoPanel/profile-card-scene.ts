@@ -446,10 +446,15 @@ export function createProfileCardScene(
       return s - Math.floor(s);
     };
     // Edge-to-center intensity ramp: 1 at (and beyond) the outer edge, ~0 across
-    // the center, so lines fade to transparent over the portrait.
+    // the center, so lines fade to transparent over the portrait. `fade` is the
+    // transparent center half-width (fraction of `half`); the lines only start
+    // ramping up beyond it, widening the faint middle band by ~50% vs the old
+    // implicit knee (~0.4).
+    const fade = 0.6;
     const rampAt = (x: number): number => {
       const d = Math.min(1, Math.abs(x) / half);
-      return Math.pow(d, 3.2);
+      const u = Math.max(0, (d - fade) / (1 - fade));
+      return Math.pow(u, 3.2);
     };
     // Crop each row's left end along the window's large bottom-left 45-degree
     // chamfer (matches `auraWindowPath`'s `wcb`), so the overscanned field
