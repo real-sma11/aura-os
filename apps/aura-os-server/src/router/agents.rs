@@ -3,7 +3,7 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 
 use super::ATTACHMENT_REQUEST_MAX_BYTES;
-use crate::handlers::{agents, remote_files, swarm};
+use crate::handlers::{agents, remote_files, shares, swarm};
 use crate::state::AppState;
 
 pub(super) fn agent_routes() -> Router<AppState> {
@@ -150,6 +150,10 @@ pub(super) fn agent_routes() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/events",
             get(agents::list_session_events),
+        )
+        .route(
+            "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/share",
+            post(shares::create_session_share),
         )
         .route(
             "/api/projects/:project_id/agents/:agent_instance_id/sessions/:session_id/subagents",

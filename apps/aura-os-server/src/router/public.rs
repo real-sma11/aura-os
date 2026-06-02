@@ -52,7 +52,11 @@ pub(super) fn public_routes() -> Router<AppState> {
         // to aura-network's `/api/public/models`. Same graceful-degrade
         // contract as `/api/public/feedback`: returns `[]` when no
         // aura-network client is configured or the upstream call fails.
-        .route("/api/public/models", get(public_models::pub_list_models));
+        .route("/api/public/models", get(public_models::pub_list_models))
+        // Read-only public transcript for a shared session. Resolved
+        // with the server's `AURA_STORAGE_INTERNAL_TOKEN` and gated on
+        // the session's `is_public` flag (see `public::get_public_share`).
+        .route("/api/public/share/:token", get(public::get_public_share));
     if public_generation_enabled() {
         router = router
             .route(

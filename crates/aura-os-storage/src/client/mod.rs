@@ -30,6 +30,68 @@ pub(crate) fn validate_url_id(id: &str, label: &str) -> Result<(), StorageError>
     Ok(())
 }
 
+/// Validate a public share token before interpolating it into a URL
+/// path. Share tokens have the shape `t_<32 lowercase hex>` (a v4 UUID
+/// with its dashes stripped, e.g.
+/// `t_6a1e3d8f6e548191948c1f0a9c68cbda`). The general
+/// [`validate_url_id`] rejects the `_` separator, so the by-share read
+/// path needs this dedicated check. Enforces `^t_[0-9a-f]{32}$` with a
+/// manual scan (no regex dependency). The token is a capability secret,
+/// so it is never echoed into the error message.
+pub(crate) fn validate_share_token(token: &str, label: &str) -> Result<(), StorageError> {
+    let bytes = token.as_bytes();
+    let valid = bytes.len() == 34
+        && bytes[0] == b't'
+        && bytes[1] == b'_'
+        && bytes[2..]
+            .iter()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    if !valid {
+        return Err(StorageError::Validation(format!(
+            "{label} is not a valid share token"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod share_token_tests {
+    use super::validate_share_token;
+
+    #[test]
+    fn accepts_canonical_share_token() {
+        assert!(validate_share_token("t_6a1e3d8f6e548191948c1f0a9c68cbda", "token").is_ok());
+    }
+
+    #[test]
+    fn rejects_bare_uuid() {
+        assert!(validate_share_token("6a1e3d8f-6e54-8191-948c-1f0a9c68cbda", "token").is_err());
+        assert!(validate_share_token("6a1e3d8f6e548191948c1f0a9c68cbda", "token").is_err());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(validate_share_token("", "token").is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_length() {
+        // 31 hex chars (one short) and 33 hex chars (one long).
+        assert!(validate_share_token("t_6a1e3d8f6e548191948c1f0a9c68cbd", "token").is_err());
+        assert!(validate_share_token("t_6a1e3d8f6e548191948c1f0a9c68cbdaa", "token").is_err());
+    }
+
+    #[test]
+    fn rejects_uppercase_hex() {
+        assert!(validate_share_token("t_6A1E3D8F6E548191948C1F0A9C68CBDA", "token").is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_prefix() {
+        assert!(validate_share_token("x_6a1e3d8f6e548191948c1f0a9c68cbda", "token").is_err());
+    }
+}
+
 /// HTTP client for the aura-storage shared backend service.
 ///
 /// Wraps `reqwest` with typed methods for each aura-storage API endpoint.

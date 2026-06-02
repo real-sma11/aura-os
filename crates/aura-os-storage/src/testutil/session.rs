@@ -81,6 +81,8 @@ pub(super) async fn create_session(
         updated_at: Some(Utc::now().to_rfc3339()),
         event_count: Some(0),
         last_event_at: None,
+        is_public: None,
+        public_share_id: None,
     };
     let mut db = db.lock().await;
     db.sessions.push(session.clone());

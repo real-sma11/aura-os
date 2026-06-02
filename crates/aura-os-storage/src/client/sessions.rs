@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use crate::types::*;
 
-use super::{validate_url_id, StorageClient};
+use super::{validate_share_token, validate_url_id, StorageClient};
 
 impl StorageClient {
     pub async fn create_session(
@@ -114,6 +114,29 @@ impl StorageClient {
             jwt,
             req,
         )
+        .await
+    }
+
+    /// Fetch a session by its public share token using the server's
+    /// internal (`X-Internal-Token`) credential rather than a caller
+    /// JWT. Backs the unauthenticated public-share read path: the
+    /// viewer has no JWT, so aura-os-server resolves the shared session
+    /// with its own internal token.
+    ///
+    /// `public_share_id` is a capability token and is validated to the
+    /// `t_<32 hex>` shape via [`validate_share_token`] before being
+    /// interpolated into the URL. Returns the raw [`StorageSession`];
+    /// the caller is responsible for gating on `is_public` before
+    /// serving any content.
+    pub async fn get_session_by_share_internal(
+        &self,
+        public_share_id: &str,
+    ) -> Result<StorageSession, StorageError> {
+        validate_share_token(public_share_id, "public_share_id")?;
+        self.get_internal(&format!(
+            "{}/internal/sessions/by-share/{}",
+            self.base_url, public_share_id
+        ))
         .await
     }
 

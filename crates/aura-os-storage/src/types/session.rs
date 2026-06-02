@@ -72,6 +72,16 @@ pub struct StorageSession {
     /// list so the most recently-active sessions float to the top.
     #[serde(default)]
     pub last_event_at: Option<String>,
+    /// Whether this session is publicly shared (read-only). `None` on
+    /// aura-storage deployments predating the share feature; callers
+    /// treat the absent value as "private".
+    #[serde(default)]
+    pub is_public: Option<bool>,
+    /// Public share token (`t_<32 hex>`) when the session is shared.
+    /// Acts as the capability token in the `https://aura.ai/s/<token>`
+    /// public link; `None` when the session was never shared.
+    #[serde(default)]
+    pub public_share_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,7 +100,7 @@ pub struct CreateSessionRequest {
     pub summary_of_previous_context: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSessionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,4 +117,71 @@ pub struct UpdateSessionRequest {
     pub tasks_worked_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<String>,
+    /// Flip the session's public-share flag. Set `Some(true)` by the
+    /// create-share path; omitted from the wire payload when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_public: Option<bool>,
+    /// Public share token (`t_<32 hex>`) to persist alongside
+    /// `is_public`. Omitted from the wire payload when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_share_id: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn storage_session_round_trips_share_fields() {
+        let json = serde_json::json!({
+            "id": "11111111-1111-1111-1111-111111111111",
+            "isPublic": true,
+            "publicShareId": "t_6a1e3d8f6e548191948c1f0a9c68cbda",
+        });
+        let session: StorageSession =
+            serde_json::from_value(json).expect("deserialize StorageSession");
+        assert_eq!(session.is_public, Some(true));
+        assert_eq!(
+            session.public_share_id.as_deref(),
+            Some("t_6a1e3d8f6e548191948c1f0a9c68cbda")
+        );
+
+        let reencoded = serde_json::to_value(&session).expect("serialize StorageSession");
+        assert_eq!(reencoded["isPublic"], serde_json::json!(true));
+        assert_eq!(
+            reencoded["publicShareId"],
+            serde_json::json!("t_6a1e3d8f6e548191948c1f0a9c68cbda")
+        );
+    }
+
+    #[test]
+    fn storage_session_defaults_share_fields_when_absent() {
+        // Pre-share-feature aura-storage rows omit both columns.
+        let session: StorageSession = serde_json::from_value(serde_json::json!({
+            "id": "22222222-2222-2222-2222-222222222222",
+        }))
+        .expect("deserialize legacy StorageSession");
+        assert_eq!(session.is_public, None);
+        assert_eq!(session.public_share_id, None);
+    }
+
+    #[test]
+    fn update_session_request_omits_none_share_fields() {
+        let req = UpdateSessionRequest::default();
+        let json = serde_json::to_value(&req).expect("serialize UpdateSessionRequest");
+        assert!(json.get("isPublic").is_none());
+        assert!(json.get("publicShareId").is_none());
+
+        let req = UpdateSessionRequest {
+            is_public: Some(true),
+            public_share_id: Some("t_6a1e3d8f6e548191948c1f0a9c68cbda".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&req).expect("serialize UpdateSessionRequest");
+        assert_eq!(json["isPublic"], serde_json::json!(true));
+        assert_eq!(
+            json["publicShareId"],
+            serde_json::json!("t_6a1e3d8f6e548191948c1f0a9c68cbda")
+        );
+    }
 }

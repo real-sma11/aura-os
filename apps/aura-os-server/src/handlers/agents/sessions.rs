@@ -498,13 +498,8 @@ pub(crate) async fn generate_session_summary(
 
     if !summary.is_empty() {
         let update_req = aura_os_storage::UpdateSessionRequest {
-            status: None,
-            total_input_tokens: None,
-            total_output_tokens: None,
-            context_usage_estimate: None,
             summary_of_previous_context: Some(summary.clone()),
-            tasks_worked_count: None,
-            ended_at: None,
+            ..Default::default()
         };
         storage
             .update_session(session_id, jwt, &update_req)
@@ -597,13 +592,8 @@ pub(crate) async fn generate_session_title(
     }
 
     let update_req = aura_os_storage::UpdateSessionRequest {
-        status: None,
-        total_input_tokens: None,
-        total_output_tokens: None,
-        context_usage_estimate: None,
         summary_of_previous_context: Some(title.clone()),
-        tasks_worked_count: None,
-        ended_at: None,
+        ..Default::default()
     };
     storage
         .update_session(session_id, jwt, &update_req)

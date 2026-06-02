@@ -201,12 +201,8 @@ async fn close_active_sessions_for_agent(
         }
         let req = aura_os_storage::UpdateSessionRequest {
             status: Some("completed".to_string()),
-            total_input_tokens: None,
-            total_output_tokens: None,
-            context_usage_estimate: None,
-            summary_of_previous_context: None,
-            tasks_worked_count: None,
             ended_at: Some(now.clone()),
+            ..Default::default()
         };
         if let Err(e) = storage.update_session(&session.id, jwt, &req).await {
             warn!(session_id = %session.id, error = %e, "Failed to retire stale active session");

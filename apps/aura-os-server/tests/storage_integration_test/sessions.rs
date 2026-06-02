@@ -44,9 +44,9 @@ async fn session_create_list_get_update() {
             total_input_tokens: Some(0),
             total_output_tokens: Some(0),
             context_usage_estimate: Some(0.85),
-            summary_of_previous_context: None,
             ended_at: Some(chrono::Utc::now().to_rfc3339()),
             tasks_worked_count: Some(3),
+            ..Default::default()
         },
     )
     .await
@@ -134,9 +134,8 @@ async fn session_rollover_pattern() {
             total_input_tokens: Some(0),
             total_output_tokens: Some(0),
             context_usage_estimate: Some(0.52),
-            summary_of_previous_context: None,
             ended_at: Some(chrono::Utc::now().to_rfc3339()),
-            tasks_worked_count: None,
+            ..Default::default()
         },
     )
     .await

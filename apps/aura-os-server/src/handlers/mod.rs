@@ -33,6 +33,7 @@ pub(crate) mod public;
 pub(crate) mod public_models;
 pub(crate) mod remote_files;
 pub(crate) mod remote_terminal;
+pub(crate) mod shares;
 pub(crate) mod spec_disk;
 pub(crate) mod specs;
 pub(crate) mod sse;

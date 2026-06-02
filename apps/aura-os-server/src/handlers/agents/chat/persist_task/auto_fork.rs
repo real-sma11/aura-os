@@ -114,12 +114,8 @@ async fn persist_rollover_summary_event(ctx: &ChatPersistCtx, summary: &str, uti
 async fn mark_storage_session_rolled_over(ctx: &ChatPersistCtx) {
     let req = aura_os_storage::UpdateSessionRequest {
         status: Some("rolled_over".to_string()),
-        total_input_tokens: None,
-        total_output_tokens: None,
-        context_usage_estimate: None,
-        summary_of_previous_context: None,
-        tasks_worked_count: None,
         ended_at: Some(chrono::Utc::now().to_rfc3339()),
+        ..Default::default()
     };
     if let Err(error) =
         update_session_with_storage(&ctx.storage, &ctx.session_id.to_string(), &ctx.jwt, &req).await
