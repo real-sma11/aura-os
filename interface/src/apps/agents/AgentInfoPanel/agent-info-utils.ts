@@ -59,13 +59,29 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const WEEKDAY_NAMES = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
+
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
 /**
- * ChatGPT-style date bucket label for a session timestamp.
- * Returns a stable string suitable for grouping and as a section header.
+ * Date bucket label for a session timestamp. Returns a stable string
+ * suitable for grouping and as a section header. The scheme narrows for
+ * recent activity and widens as it ages:
+ *
+ *   - "Today" / "Yesterday" for the two most recent days.
+ *   - A per-day weekday name ("Saturday", "Friday", ...) for 2-6 days
+ *     ago. No weekday repeats inside that window, so each maps to a
+ *     single section.
+ *   - "Previous Week" for roughly the prior calendar week (7-13 days).
+ *   - "Month Year" ("May 2026") for anything older.
+ *
+ * `bucketizeByDate` preserves first-seen order and rows arrive
+ * newest-first, so sections render newest -> oldest without extra
+ * sorting.
  */
 export function getDateBucket(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
@@ -76,7 +92,7 @@ export function getDateBucket(iso: string, now: Date = new Date()): string {
 
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return "Previous 7 Days";
-  if (diffDays < 30) return "Previous 30 Days";
+  if (diffDays < 7) return WEEKDAY_NAMES[date.getDay()];
+  if (diffDays < 14) return "Previous Week";
   return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
 }
