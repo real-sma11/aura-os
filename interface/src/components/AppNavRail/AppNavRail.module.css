@@ -149,9 +149,9 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--taskbar-icon-color, #acacac);
   border-radius: var(--radius-md);
-  opacity: 0.6;
+  opacity: 1;
   cursor: pointer;
   /* Kill inline line-height so the icon sits on the geometric center of
      the button instead of being nudged by the inherited line-box. */
