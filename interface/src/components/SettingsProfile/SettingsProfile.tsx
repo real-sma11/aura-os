@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Textarea, Text } from "@cypher-asi/zui";
-import { ImagePlus, X, ExternalLink } from "lucide-react";
+import { ImagePlus, X, ExternalLink, LogOut } from "lucide-react";
 import { ImageCropModal } from "../ImageCropModal";
 import { DeleteAccountConfirmModal } from "./DeleteAccountConfirmModal";
 import { uploadFile } from "../../api/upload";
 import { useProfile, useProfileStore, type UserProfileData } from "../../stores/profile-store";
 import { useAuthStore } from "../../stores/auth-store";
+import { useLogout } from "../../stores/use-logout";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import styles from "../OrgSettingsPanel/OrgSettingsPanel.module.css";
 
@@ -20,6 +21,7 @@ export function SettingsProfile({ onClose }: Props) {
   const navigate = useNavigate();
   const { profile, updateProfile } = useProfile();
   const { isNativeApp } = useAuraCapabilities();
+  const logout = useLogout();
   const deleteAccount = useAuthStore((s) => s.deleteAccount);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -292,6 +294,26 @@ export function SettingsProfile({ onClose }: Props) {
         <>
           <div className={styles.settingsGroupLabel}>Account</div>
           <div className={styles.settingsGroup}>
+            <div className={styles.settingsRow}>
+              <div className={styles.rowInfo}>
+                <span className={styles.rowLabel}>Log out</span>
+                <span className={styles.rowDescription}>
+                  Sign out of AURA on this device
+                </span>
+              </div>
+              <div className={styles.rowControl}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<LogOut size={14} />}
+                  onClick={() => {
+                    void logout();
+                  }}
+                >
+                  Log Out
+                </Button>
+              </div>
+            </div>
             <div className={styles.settingsRow}>
               <div className={styles.rowInfo}>
                 <span className={styles.rowLabel}>Delete account</span>

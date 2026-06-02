@@ -8,9 +8,10 @@ import type { ChangeEvent, ReactNode } from "react";
 // suite verifies SettingsProfile's own logic — native gating, the open/confirm
 // flow, and error handling. The real modal's rendering is exercised visually
 // on the native build.
-const { mockUseAuraCapabilities, mockDeleteAccount } = vi.hoisted(() => ({
+const { mockUseAuraCapabilities, mockDeleteAccount, mockLogout } = vi.hoisted(() => ({
   mockUseAuraCapabilities: vi.fn(() => ({ isNativeApp: true })),
   mockDeleteAccount: vi.fn(),
+  mockLogout: vi.fn(),
 }));
 
 vi.mock("@cypher-asi/zui", () => ({
@@ -40,7 +41,7 @@ vi.mock("../../hooks/use-aura-capabilities", () => ({
 }));
 
 vi.mock("../../stores/auth-store", () => {
-  const state = { deleteAccount: mockDeleteAccount };
+  const state = { deleteAccount: mockDeleteAccount, logout: mockLogout };
   const useAuthStore = Object.assign(
     (sel: (s: typeof state) => unknown) => sel(state),
     { getState: () => state },
@@ -77,15 +78,26 @@ beforeEach(() => {
 });
 
 describe("SettingsProfile — delete account", () => {
-  it("hides the delete button outside the native app", () => {
+  it("hides the account actions outside the native app", () => {
     mockUseAuraCapabilities.mockReturnValue({ isNativeApp: false });
     render(<SettingsProfile />);
     expect(screen.queryByRole("button", { name: "Delete Account" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Log Out" })).not.toBeInTheDocument();
   });
 
-  it("shows the delete button in the native app", () => {
+  it("shows Log Out and Delete Account in the native app", () => {
     render(<SettingsProfile />);
+    expect(screen.getByRole("button", { name: "Log Out" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Account" })).toBeInTheDocument();
+  });
+
+  it("logs out when Log Out is tapped", async () => {
+    const user = userEvent.setup();
+    mockLogout.mockResolvedValue(undefined);
+    render(<SettingsProfile />);
+
+    await user.click(screen.getByRole("button", { name: "Log Out" }));
+    expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
   it("opens a permanent-deletion confirmation and deletes on confirm", async () => {
