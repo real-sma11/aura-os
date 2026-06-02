@@ -4,6 +4,16 @@
   gap: 8px;
 }
 
+.model {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .openButton {
   font-family: inherit;
   font-size: 11px;

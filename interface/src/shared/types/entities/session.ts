@@ -71,6 +71,13 @@ export type ChatContentBlock =
         council_index: number;
         subagent_status?: string;
         subagent_reason?: string;
+        /**
+         * Storage session id of this member's persisted transcript,
+         * folded on by the server's `subagent_session` link during
+         * history reconstruction. Lets a reopened council column fetch
+         * its saved transcript once the live child run is reaped.
+         */
+        subagent_session_id?: string;
       }[];
     }
   | { type: "tool_result"; tool_use_id: string; content: string;

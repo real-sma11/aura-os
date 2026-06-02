@@ -19,9 +19,18 @@ use aura_os_storage::StorageSessionEvent;
 
 use crate::handlers::agents::chat::SUBAGENT_SESSION_LINK_EVENT;
 
-/// Stamp `subagent_session_id` into the `extra` of every `task` tool_use
-/// block whose `child_run_id` has a matching `subagent_session` linkage
-/// event. No-op when the session spawned no subagents.
+/// Stamp `subagent_session_id` into the `extra` of every subagent
+/// tool_use block whose child run has a matching `subagent_session`
+/// linkage event. Handles two block shapes:
+///
+/// - An ordinary `task` spawn carries a scalar `child_run_id`; the
+///   linked session id is stamped at the block root.
+/// - An AURA Council turn carries a `council_members` array (members
+///   share ONE parent block); each member is stamped by its own
+///   `child_run_id` so a reopened council column can fetch its
+///   persisted transcript.
+///
+/// No-op when the session spawned no subagents.
 pub(super) fn fold_subagent_session_links(
     messages: &mut [SessionEvent],
     sorted: &[StorageSessionEvent],
@@ -44,12 +53,30 @@ fn stamp_block(block: &mut ChatContentBlock, links: &HashMap<String, String>) {
     let ChatContentBlock::ToolUse { extra, .. } = block else {
         return;
     };
-    let Some(child_run_id) = extra.get("child_run_id").and_then(|v| v.as_str()) else {
-        return;
-    };
-    // Clone before mutating `extra` so the immutable borrow above ends.
-    if let Some(session_id) = links.get(child_run_id).cloned() {
-        extra.insert("subagent_session_id".to_string(), json!(session_id));
+    // Ordinary `task` spawn: scalar `child_run_id` at the block root.
+    if let Some(child_run_id) = extra.get("child_run_id").and_then(|v| v.as_str()) {
+        // Clone before mutating `extra` so the immutable borrow above ends.
+        if let Some(session_id) = links.get(child_run_id).cloned() {
+            extra.insert("subagent_session_id".to_string(), json!(session_id));
+        }
+    }
+    // AURA Council turn: each member carries its own `child_run_id` in
+    // the `council_members` array.
+    if let Some(members) = extra
+        .get_mut("council_members")
+        .and_then(|v| v.as_array_mut())
+    {
+        for member in members.iter_mut() {
+            let Some(child_run_id) = member.get("child_run_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(session_id) = links.get(child_run_id).cloned() else {
+                continue;
+            };
+            if let Some(obj) = member.as_object_mut() {
+                obj.insert("subagent_session_id".to_string(), json!(session_id));
+            }
+        }
     }
 }
 
@@ -160,5 +187,92 @@ mod tests {
         let mut messages = vec![assistant_with_task_block("child-1")];
         fold_subagent_session_links(&mut messages, &[]);
         assert!(tool_use_session_id(&messages[0]).is_none());
+    }
+
+    fn assistant_with_council_block(child_run_ids: &[&str]) -> SessionEvent {
+        let members: Vec<serde_json::Value> = child_run_ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| {
+                json!({
+                    "child_run_id": id,
+                    "council_index": i,
+                    "model": format!("provider/model-{i}"),
+                })
+            })
+            .collect();
+        let mut extra = serde_json::Map::new();
+        extra.insert("council_members".to_string(), json!(members));
+        SessionEvent {
+            event_id: SessionEventId::new(),
+            agent_instance_id: AgentInstanceId::nil(),
+            project_id: ProjectId::nil(),
+            role: ChatRole::Assistant,
+            content: String::new(),
+            content_blocks: Some(vec![ChatContentBlock::ToolUse {
+                id: "toolu_council".to_string(),
+                name: "Task".to_string(),
+                input: json!({}),
+                extra,
+            }]),
+            thinking: None,
+            thinking_duration_ms: None,
+            created_at: parse_dt(&Some("2026-01-01T00:00:00Z".to_string())),
+            in_flight: None,
+            from_agent_id: None,
+        }
+    }
+
+    fn council_member_session_id(message: &SessionEvent, child_run_id: &str) -> Option<String> {
+        let blocks = message.content_blocks.as_ref()?;
+        for block in blocks {
+            if let ChatContentBlock::ToolUse { extra, .. } = block {
+                let members = extra.get("council_members")?.as_array()?;
+                for member in members {
+                    if member.get("child_run_id").and_then(|v| v.as_str()) == Some(child_run_id) {
+                        return member
+                            .get("subagent_session_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn stamps_session_id_onto_each_matching_council_member() {
+        let mut messages = vec![assistant_with_council_block(&["child-a", "child-b"])];
+        let sorted = vec![
+            link_event("child-a", "session-a"),
+            link_event("child-b", "session-b"),
+        ];
+        fold_subagent_session_links(&mut messages, &sorted);
+        assert_eq!(
+            council_member_session_id(&messages[0], "child-a").as_deref(),
+            Some("session-a"),
+            "each council member is stamped by its own child run id",
+        );
+        assert_eq!(
+            council_member_session_id(&messages[0], "child-b").as_deref(),
+            Some("session-b"),
+        );
+    }
+
+    #[test]
+    fn leaves_unlinked_council_member_untouched() {
+        let mut messages = vec![assistant_with_council_block(&["child-a", "child-b"])];
+        // Only one member has a link; the other must stay unstamped.
+        let sorted = vec![link_event("child-a", "session-a")];
+        fold_subagent_session_links(&mut messages, &sorted);
+        assert_eq!(
+            council_member_session_id(&messages[0], "child-a").as_deref(),
+            Some("session-a"),
+        );
+        assert!(
+            council_member_session_id(&messages[0], "child-b").is_none(),
+            "a council member with no matching link must not be stamped",
+        );
     }
 }

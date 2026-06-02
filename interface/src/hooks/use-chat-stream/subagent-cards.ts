@@ -182,6 +182,7 @@ export function registerSpawnedSubagent(
       subagentRunId: payload.child_run_id,
       subagentType: tc.subagentType ?? payload.subagent_type,
       subagentPrompt: tc.subagentPrompt ?? payload.prompt,
+      subagentModel: tc.subagentModel ?? payload.model ?? undefined,
       subagentStatus: tc.subagentStatus ?? "running",
     }),
   );

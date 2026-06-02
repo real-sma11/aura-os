@@ -156,6 +156,14 @@ export interface CouncilMemberEntry {
   councilIndex: number;
   /** Latest lifecycle state folded in from `subagent_status`. */
   status?: SubagentState;
+  /**
+   * Storage session id of this member's persisted transcript, folded in
+   * during history reconstruction (mirrors {@link
+   * ToolCallEntry.subagentSessionId} for a `task` spawn). Lets a
+   * reopened council member pane fetch its saved transcript when the
+   * live child run is gone.
+   */
+  subagentSessionId?: string;
   /** Failure/rejection detail from the latest `subagent_status`. */
   reason?: string;
 }
@@ -237,6 +245,13 @@ export interface ToolCallEntry {
   subagentType?: string;
   /** Spawn prompt carried on `subagent_spawned`, for the card summary. */
   subagentPrompt?: string;
+  /**
+   * Model id driving the spawned subagent, carried on `subagent_spawned`
+   * (`SubagentSpawned.model`). Set for AURA Council members so a member
+   * rendered as a card can label its model; absent for ordinary `task`
+   * spawns, whose runtime emits a `null` model today.
+   */
+  subagentModel?: string;
   /**
    * Failure/rejection detail from the latest `subagent_status` (e.g. a
    * depth/quota rejection reason). Rendered in the card's rejected /

@@ -110,3 +110,15 @@ export function subagentStateLabel(state: SubagentState): string {
 export function isTerminalSubagentState(state: SubagentState): boolean {
   return state !== "running";
 }
+
+/**
+ * Display label for a subagent/council model id: drops a leading
+ * `provider/` prefix so a column or card reads `claude-…` rather than
+ * `anthropic/claude-…`. Returns `undefined` for an empty/missing model
+ * so callers can omit the label entirely.
+ */
+export function modelLabel(model: string | undefined): string | undefined {
+  if (!model || model.trim().length === 0) return undefined;
+  const slash = model.lastIndexOf("/");
+  return slash >= 0 ? model.slice(slash + 1) : model;
+}

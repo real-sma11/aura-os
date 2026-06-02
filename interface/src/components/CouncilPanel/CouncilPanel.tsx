@@ -8,6 +8,7 @@ import type {
 } from "../../shared/types/stream";
 import type { SubagentState } from "../../shared/types/harness-protocol";
 import {
+  modelLabel,
   subagentBadgeVariant,
   subagentStateLabel,
 } from "../../shared/utils/subagent";
@@ -42,13 +43,6 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
 
 function ordinalLabel(index: number): string {
   return ORDINALS[index] ?? `${index + 1}th`;
-}
-
-/** Drop a `provider/` prefix so a column reads `claude-…` not `anthropic/claude-…`. */
-function modelLabel(model: string | undefined): string {
-  if (!model || model.trim().length === 0) return "Member";
-  const slash = model.lastIndexOf("/");
-  return slash >= 0 ? model.slice(slash + 1) : model;
 }
 
 /**
@@ -114,7 +108,7 @@ function CouncilColumn({
 
   const state: SubagentState = member.status ?? "running";
   const isSynthesizer = member.councilIndex === 0;
-  const label = modelLabel(member.model);
+  const label = modelLabel(member.model) ?? "Member";
   const canOpen = !!parentStreamKey;
 
   const liveText =
@@ -132,6 +126,7 @@ function CouncilColumn({
       prompt,
       state,
       reason: member.reason,
+      subagentSessionId: member.subagentSessionId,
     };
     openPane(parentStreamKey, descriptor);
   };

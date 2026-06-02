@@ -30,6 +30,7 @@ function extractCouncilMembers(
     ...(m.model ? { model: m.model } : {}),
     ...(isSubagentState(m.subagent_status) ? { status: m.subagent_status } : {}),
     ...(m.subagent_reason ? { reason: m.subagent_reason } : {}),
+    ...(m.subagent_session_id ? { subagentSessionId: m.subagent_session_id } : {}),
   }));
   members.sort((a, b) => a.councilIndex - b.councilIndex);
   return members;

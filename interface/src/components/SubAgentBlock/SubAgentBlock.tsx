@@ -4,6 +4,7 @@ import { Badge } from "@cypher-asi/zui";
 import type { ToolCallEntry } from "../../shared/types/stream";
 import { subagentTypeLabel } from "../../constants/tools";
 import {
+  modelLabel,
   resolveSubagentState,
   subagentBadgeVariant,
   subagentStateLabel,
@@ -62,6 +63,7 @@ export function SubAgentBlock({ entry, defaultExpanded }: SubAgentBlockProps) {
     "";
   const state = resolveSubagentState(entry);
   const label = subagentTypeLabel(subagentType);
+  const model = modelLabel(entry.subagentModel);
   const reason = entry.subagentReason;
   const childRunId = entry.subagentRunId;
   const canOpen = !!childRunId && !!parentStreamKey;
@@ -103,6 +105,11 @@ export function SubAgentBlock({ entry, defaultExpanded }: SubAgentBlockProps) {
       copy={{ getText: getCopyText, ariaLabel: `Copy ${label} subagent` }}
       trailing={
         <span className={styles.trailing}>
+          {model && (
+            <span className={styles.model} title={entry.subagentModel}>
+              {model}
+            </span>
+          )}
           <Badge variant={subagentBadgeVariant(state)} pulse={state === "running"}>
             {subagentStateLabel(state)}
           </Badge>
