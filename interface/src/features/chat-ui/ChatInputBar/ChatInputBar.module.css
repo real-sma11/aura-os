@@ -655,6 +655,7 @@
   margin: 0 -6px;
   border-radius: 8px;
   text-align: left;
+  user-select: none;
 }
 
 .contextSectionHeader:hover {
