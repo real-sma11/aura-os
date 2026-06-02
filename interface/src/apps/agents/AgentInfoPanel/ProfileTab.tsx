@@ -27,6 +27,7 @@ import {
 } from "./agent-info-utils";
 import type { Agent, HarnessSkill, HarnessSkillInstallation } from "../../../shared/types";
 import { isSuperAgent } from "../../../shared/types/permissions";
+import { TelegramConnect } from "../components/TelegramConnect";
 import styles from "./AgentInfoPanel.module.css";
 
 export interface ProfileTabProps {
@@ -334,6 +335,7 @@ export function ProfileTab(props: ProfileTabProps) {
       ) : (
         <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
       )}
+      <TelegramConnect agent={agent} compact />
       {agent.personality && (
         <div className={styles.section}>
           <Text size="xs" variant="muted" weight="medium">Personality</Text>

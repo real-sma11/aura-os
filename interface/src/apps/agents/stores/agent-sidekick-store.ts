@@ -14,6 +14,7 @@ export type AgentSidekickTab =
   | "chats"
   | "skills"
   | "permissions"
+  | "messaging"
   | "projects"
   | "tasks"
   | "processes"
@@ -26,6 +27,7 @@ const AGENT_SIDEKICK_TABS = new Set<AgentSidekickTab>([
   "chats",
   "skills",
   "permissions",
+  "messaging",
   "projects",
   "tasks",
   "processes",

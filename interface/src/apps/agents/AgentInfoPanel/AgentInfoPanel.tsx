@@ -27,6 +27,7 @@ import { FactPreview, EventPreview, ProcedurePreview } from "./MemoryPreview";
 import { ProfileTab } from "./ProfileTab";
 import { ChatsTab } from "./ChatsTab";
 import { PermissionsTab } from "./PermissionsTab";
+import { MessagingTab } from "./MessagingTab";
 import type { Agent } from "../../../shared/types";
 import { isSuperAgent } from "../../../shared/types/permissions";
 import styles from "./AgentInfoPanel.module.css";
@@ -269,6 +270,7 @@ export function AgentInfoPanel({ variant = "default", agent: agentOverride }: Ag
         {effectiveTab === "permissions" && (
           <PermissionsTab agent={a} isOwnAgent={isOwnAgent} />
         )}
+        {effectiveTab === "messaging" && <MessagingTab agent={a} />}
         {effectiveTab === "projects" && (
           <ProjectsTab
             projectBindings={cascade.bindings}

@@ -27,6 +27,12 @@ export type {
 } from "../shared/api/projects";
 export { STANDALONE_AGENT_HISTORY_LIMIT } from "../shared/api/agents";
 
+export type {
+  ChannelSummary,
+  ChannelStatus,
+  TelegramLinkResult,
+} from "../shared/api/channels";
+
 export type { DirEntry } from "../shared/api/desktop";
 export type { LoopStatusResponse } from "../shared/api/loop";
 export type { SessionShare } from "../shared/api/shares";
@@ -42,6 +48,7 @@ import { followsApi, usersApi, profilesApi, feedApi, leaderboardApi, platformSta
 import { feedbackApi } from "./feedback";
 import { environmentApi } from "../shared/api/environment";
 import { swarmApi } from "../shared/api/swarm";
+import { channelsApi } from "../shared/api/channels";
 import { processApi } from "../shared/api/process";
 import { memoryApi } from "../shared/api/memory";
 import { harnessSkillsApi } from "../shared/api/harness-skills";
@@ -72,6 +79,7 @@ export const api = {
   activity: activityApi,
   environment: environmentApi,
   swarm: swarmApi,
+  channels: channelsApi,
   superAgent: superAgentApi,
   process: processApi,
   memory: memoryApi,
