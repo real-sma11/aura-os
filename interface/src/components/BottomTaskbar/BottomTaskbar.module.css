@@ -42,22 +42,21 @@
 .right {
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   min-height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
-  --pill-bg: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
-  /* Background is a vertical gradient that also carries two precise bevel
-     details: a soft lighter wash at the very top, then a 1px bright WHITE
-     EDGE a few px down (top side only — the rounded mask keeps it off the
-     corners), settling to the base chrome tone and darkening toward the
-     bottom. Carrying the white edge in the gradient (rather than a
-     box-shadow) lets it sit exactly below the inset border shadow. */
+  --pill-grad-top: var(--shell-pill-grad-top, #2c2c2e);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #161618);
+  /* Background is the charcoal -> near-black vertical gradient from the
+     reference swatch, with the bevel detail layered on top: a soft lighter
+     wash at the very top, then a 1px bright WHITE EDGE a few px down (top
+     side only — the rounded mask keeps it off the corners), before the
+     graphite top tone settles down into the near-black bottom. */
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, #fff 8%, var(--pill-bg)) 0,
-    color-mix(in srgb, #fff 8%, var(--pill-bg)) 3px,
-    color-mix(in srgb, #fff 30%, var(--pill-bg)) 3px,
-    color-mix(in srgb, #fff 30%, var(--pill-bg)) 4px,
-    color-mix(in srgb, #fff 3%, var(--pill-bg)) 6px,
-    var(--pill-bg) 48%,
-    color-mix(in srgb, #000 18%, var(--pill-bg)) 100%
+    color-mix(in srgb, #fff 8%, var(--pill-grad-top)) 0,
+    color-mix(in srgb, #fff 8%, var(--pill-grad-top)) 3px,
+    color-mix(in srgb, #fff 30%, var(--pill-grad-top)) 3px,
+    color-mix(in srgb, #fff 30%, var(--pill-grad-top)) 4px,
+    var(--pill-grad-top) 6px,
+    var(--pill-grad-bottom) 100%
   );
   backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
@@ -175,19 +174,18 @@
   align-items: center;
   height: var(--public-pill-height, 24px);
   min-height: var(--public-pill-height, 24px);
-  --pill-bg: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
-  /* Same deep bevel as the authed pills, toned down for the shorter public
-     pills: lighter top wash + 1px white edge in the gradient, darkening
-     toward the bottom. */
+  --pill-grad-top: var(--shell-pill-grad-top, #2c2c2e);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #161618);
+  /* Same charcoal -> near-black gradient as the authed pills, toned down
+     for the shorter public pills: lighter top wash + 1px white edge. */
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, #fff 8%, var(--pill-bg)) 0,
-    color-mix(in srgb, #fff 8%, var(--pill-bg)) 2px,
-    color-mix(in srgb, #fff 28%, var(--pill-bg)) 2px,
-    color-mix(in srgb, #fff 28%, var(--pill-bg)) 3px,
-    color-mix(in srgb, #fff 3%, var(--pill-bg)) 5px,
-    var(--pill-bg) 50%,
-    color-mix(in srgb, #000 16%, var(--pill-bg)) 100%
+    color-mix(in srgb, #fff 8%, var(--pill-grad-top)) 0,
+    color-mix(in srgb, #fff 8%, var(--pill-grad-top)) 2px,
+    color-mix(in srgb, #fff 28%, var(--pill-grad-top)) 2px,
+    color-mix(in srgb, #fff 28%, var(--pill-grad-top)) 3px,
+    var(--pill-grad-top) 5px,
+    var(--pill-grad-bottom) 100%
   );
   backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
