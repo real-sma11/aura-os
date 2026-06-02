@@ -321,7 +321,7 @@
   border-radius: 0;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   /* Match TaskbarIconButton centering safeguards. */
   line-height: 0;

@@ -892,7 +892,7 @@
   height: 24px;
   border: none;
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   cursor: pointer;
   line-height: 0;
   transition: color 0.1s ease;
