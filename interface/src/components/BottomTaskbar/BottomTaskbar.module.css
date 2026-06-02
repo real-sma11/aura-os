@@ -1,36 +1,17 @@
 /*
- * Panel each taskbar pill/bubble sits on. A 3.5px gradient ring
- * (#090909 -> #131313, all around) frames the pill snugly (no padding gap).
- * The ring is a masked pseudo so it follows the rounded corners;
- * `inset: -3.5px` expands it from the padding box out to the border-box so
- * the ring lands in the 3.5px border region.
+ * Panel each taskbar pill/bubble sits on. The frame's gradient background
+ * (#090909 -> #131313, all around) shows only as a 3.5px ring because the
+ * opaque pill inside covers the rest of the content box. Using the
+ * background as the ring (instead of a masked pseudo) keeps every edge
+ * rendering uniformly, so the ring can't get clipped on one side.
  */
 .taskbarContainer {
-  position: relative;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  padding: 0;
-  border: 3.5px solid transparent;
-  border-radius: calc(var(--shell-chrome-radius, 20px) + 3.5px);
-}
-
-.taskbarContainer::before {
-  content: "";
-  position: absolute;
-  inset: -3.5px;
-  border-radius: inherit;
   padding: 3.5px;
+  border-radius: calc(var(--shell-chrome-radius, 20px) + 3.5px);
   background: linear-gradient(135deg, #090909, #131313);
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
 }
 
 /* The center bubble's frame carries the absolute centering (moved off
