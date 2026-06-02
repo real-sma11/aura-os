@@ -75,6 +75,20 @@
   background: transparent;
 }
 
+/* Hero heading grouped with the centered input. Matches the input
+   container's max width so the title and box read as one block, and
+   only renders while the wrapper is centered (it unmounts as the bar
+   docks on first send). */
+.centeredHeading {
+  max-width: 680px;
+  margin: 0 auto var(--space-4);
+  text-align: center;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .inputWrapper,
   .inputWrapper::before {

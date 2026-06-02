@@ -32,7 +32,7 @@ test("desktop browser projects root keeps desktop welcome layout", async ({ page
 
   await expect(page.getByRole("tree", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Search" })).toBeVisible();
-  await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+  await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open navigation" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open host settings" })).toBeVisible();
 });
@@ -69,7 +69,7 @@ test("desktop browser agents route keeps desktop layout without mobile switcher"
   await expect(page.getByRole("combobox", { name: "Choose agent" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Builder Bot/i }).first()).toBeVisible();
   await expect(page.getByRole("paragraph").filter({ hasText: "Helpful" })).toBeVisible();
-  await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+  await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open navigation" })).toHaveCount(0);
 });
 

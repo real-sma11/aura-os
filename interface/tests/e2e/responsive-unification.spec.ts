@@ -166,7 +166,7 @@ test("projects entry keeps desktop welcome, while mobile/tablet resolve to the p
   if (factor === "desktop") {
     await expect(page.getByRole("tree", { name: "Projects" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Search" })).toBeVisible();
-    await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+    await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   } else {
     await expect(page).toHaveURL(/\/projects\/proj-1\/agents$/);
     await expect(page.getByRole("button", { name: "Open chat with Builder Bot" })).toBeVisible({ timeout: 10000 });
@@ -188,7 +188,7 @@ test("projects entry preserves desktop remembered chat while smaller form factor
   if (factor === "desktop") {
     await expect(page).toHaveURL(/\/projects\/proj-1\/agents\/agent-inst-1$/);
     await expect(page.getByRole("tree", { name: "Projects" })).toBeVisible();
-    await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+    await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   } else {
     await expect(page).toHaveURL(/\/projects\/proj-1\/agents$/);
     await expect(page.getByRole("button", { name: "Open chat with Builder Bot" })).toBeVisible({ timeout: 10000 });

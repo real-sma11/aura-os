@@ -19,16 +19,11 @@ import {
 } from "../ChatInputBar";
 import { MessageQueue } from "../MessageQueue";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
-import { PromptSuggestions } from "../PromptSuggestions/PromptSuggestions";
 import { ChatStreamingIndicator } from "./ChatStreamingIndicator";
 import { useChatPanelState } from "./useChatPanelState";
 import { findLatestGeneratedImage } from "./latest-generated-image";
 import { useChatUIStore } from "../../../stores/chat-ui-store";
 import { useMessageQueueStore } from "../../../stores/message-queue-store";
-import {
-  useOnboardingStore,
-  selectHasSentFirstMessage,
-} from "../../../features/onboarding/onboarding-store";
 import {
   useStreamHealth,
   useStuckStreamAutoTimeout,
@@ -586,8 +581,6 @@ export function ChatSurface({
     queue.length === 0 &&
     !shouldHideThreadForInitialReveal;
 
-  const hasSentFirstMessage = useOnboardingStore(selectHasSentFirstMessage);
-
   const emptyState = errorMessage ? (
     <div className={styles.emptyState}>
       <AlertCircle size={40} />
@@ -670,13 +663,6 @@ export function ChatSurface({
           onStop={onStop}
           onRetry={handleRetryLastSend}
         />
-
-        {centerInputWhenEmpty &&
-          isThreadEmpty &&
-          !hasSentFirstMessage &&
-          !sendDisabled && (
-            <PromptSuggestions onSelect={(prompt) => handleSend(prompt)} />
-          )}
 
         <InputBarComponent
           ref={inputBarRef}

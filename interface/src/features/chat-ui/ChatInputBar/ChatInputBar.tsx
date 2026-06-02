@@ -1306,7 +1306,9 @@ export const DesktopChatInputBar = memo(
         : "Describe an image to generate\u2026"
       : selectedMode === "code" && !isStatic
         ? "/ for commands, @ for context"
-        : "What do you want to create?";
+        : isCentered
+          ? "Describe what you want to create\u2026"
+          : "What do you want to create?";
 
     const isUploading = generationMode !== "image" && attachments.some((a) => a.uploading);
 
@@ -1322,6 +1324,7 @@ export const DesktopChatInputBar = memo(
         isSendEnabled={!sendDisabled && isSendEnabled}
         isVisible={isVisible}
         isCentered={isCentered}
+        centeredHeading="What do you want to create?"
         isStatic={isStatic}
         isPulsing={isCentered}
         isDropZone={isDragOver}

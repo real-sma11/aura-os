@@ -50,7 +50,7 @@ test("capture desktop projects root and execution chrome", async ({ page }, test
 
   await page.goto("/projects");
   await expect(page.getByRole("tree", { name: "Projects" })).toBeVisible();
-  await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+  await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open host settings" })).toBeVisible();
   await page.screenshot({
     path: `test-artifacts/review-shots/${projectName}-desktop-projects-root.png`,
@@ -114,7 +114,7 @@ test("capture desktop agents, feed, and profile views", async ({ page }, testInf
 
   await page.getByRole("button", { name: /Research Bot/i }).click();
   await expect(page).toHaveURL(/\/agents\/agent-2$/);
-  await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+  await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
 
   await page.getByTitle("New Agent").click();
   const createDialog = page.getByRole("dialog");
@@ -129,7 +129,7 @@ test("capture desktop agents, feed, and profile views", async ({ page }, testInf
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await page.goto("/projects/proj-1/agents/agent-inst-1");
-  await expect(page.getByPlaceholder("What do you want to create?")).toBeVisible();
+  await expect(page.locator('[data-agent-surface="chat-input-bar"]').first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Plans" })).toBeVisible();
   await page.screenshot({
     path: `test-artifacts/review-shots/${projectName}-desktop-project-agent-chat.png`,

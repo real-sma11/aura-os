@@ -52,6 +52,13 @@ export interface InputBarShellProps {
   isVisible?: boolean;
   /** Empty-thread state — lifts the bar to vertical center with pulse. */
   isCentered?: boolean;
+  /**
+   * Heading rendered directly above the input box, but only while
+   * `isCentered` is true. Lets empty-thread surfaces show a hero prompt
+   * (e.g. "What do you want to create?") grouped with the centered
+   * input so the two read as one block and dock together on first send.
+   */
+  centeredHeading?: ReactNode;
   /** Adds the centered-pulse animation to the inner container. */
   isPulsing?: boolean;
   /** Highlights the container border for active drag-and-drop. */
@@ -147,6 +154,7 @@ function InputBarShellInner(
     isSendEnabled,
     isVisible = true,
     isCentered = false,
+    centeredHeading,
     isPulsing = false,
     isDropZone = false,
     isStatic = false,
@@ -407,6 +415,9 @@ function InputBarShellInner(
       data-visible={isVisible ? "true" : "false"}
       data-centered={isCentered ? "true" : "false"}
     >
+      {isCentered && centeredHeading ? (
+        <div className={styles.centeredHeading}>{centeredHeading}</div>
+      ) : null}
       <div
         className={containerClassName}
         data-multiline={isMultiLine ? "true" : "false"}
