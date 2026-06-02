@@ -210,9 +210,10 @@ export function ContextUsageIndicator({
     (bucketId: ContextBucketRowId) => {
       if (!onOpenBucket) return;
       onOpenBucket(bucketId);
-      // Hand off to the Sidekick preview; the popover has served its
-      // purpose so close it to free the composer.
-      setOpen(false);
+      // Keep the popover open so the user can click through multiple
+      // buckets without reopening it each time. It dismisses only when
+      // the user clicks outside both the popover and the Sidekick panel
+      // (see the click-outside handler below), or via Escape / the X.
     },
     [onOpenBucket],
   );
@@ -220,9 +221,19 @@ export function ContextUsageIndicator({
   useEffect(() => {
     if (!open) return;
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
+      const target = e.target as Node;
+      // Clicks inside the popover/indicator never dismiss it.
+      if (wrapperRef.current?.contains(target)) return;
+      // Nor do clicks inside the Sidekick panel, where the selected
+      // bucket's info overlay renders — this lets the user browse
+      // multiple sections while the popover stays open.
+      if (
+        target instanceof Element &&
+        target.closest('[data-agent-surface="sidekick-panel"]')
+      ) {
+        return;
       }
+      setOpen(false);
     };
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
