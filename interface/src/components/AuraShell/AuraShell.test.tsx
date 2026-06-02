@@ -3,14 +3,14 @@
  *
  * Covers the load-bearing invariants of the unified shell:
  *
- *   (a) **Stable mounts across mode flips.** Captures DOM refs to the
- *       titlebar wrapper, sidebar Lane, sidebar header, main panel,
- *       and BottomTaskbar `.bar` BEFORE a mode change; flips
- *       `useUIModeStore.setState({ mode: ... })`; re-captures the
- *       same `data-testid`s; asserts each pair is reference-equal.
- *       The slide-not-snap animation, search query continuity, and
- *       `--shell-chrome-outer-height` row stability all depend on
- *       these elements never remounting.
+ *   (a) **Stable mounts across the login transition.** Captures DOM
+ *       refs to the titlebar wrapper, sidebar Lane, sidebar header,
+ *       main panel, and BottomTaskbar `.bar` BEFORE sign-in; flips
+ *       auth via `useAuthStore.setState`; re-captures the same
+ *       `data-testid`s; asserts each pair is reference-equal. Search
+ *       query continuity and `--shell-chrome-outer-height` row
+ *       stability depend on these elements never remounting across
+ *       the public <-> standard boundary.
  *
  *   (b) **BottomTaskbar in public mode** renders only
  *       `ThemeToggleButton` (no Desktop / favorites / app rail /
@@ -19,12 +19,6 @@
  *       reserves the `--shell-chrome-outer-height` row, so its
  *       presence in every mode is what keeps the main panel's
  *       bottom edge from shifting on flip.
- *
- *   (c) **Sidebar search continuity.** Types "hello" into the
- *       `<PanelSearch>` input, flips Simple <-> Advanced via the
- *       store, asserts the input value is still "hello". Backed by
- *       the per-app `useAppUIStore.sidebarQueries` map (for authed)
- *       and the `useSidebarSearchStore` (for public).
  *
  *   (d) **Public-only content gate.** In public effective mode the
  *       public nav footer (Pricing link) and `MockAuraApp` hero are
@@ -38,7 +32,6 @@
  *   - `aura-sidebar`        — sidebar `<aside>`
  *   - `aura-sidebar-header` — `.sidebarHeader` div
  *   - `aura-shell-main`     — `<main>` slot
- *   - `ui-mode-indicator`   — `SlidingPills` indicator span
  *
  * Test setup uses `MemoryRouter` to drive the route tree (so
  * `useLocation` / `useOutlet` work) and stubs the few heavy modules
@@ -206,12 +199,12 @@ beforeEach(() => {
     guestToken: null,
   });
   useSidebarSearchStore.setState({ queries: {} });
-  useUIModeStore.setState({ mode: "simple" });
+  useUIModeStore.setState({ mode: "standard" });
   // Reset the public-sidebar collapse state (its default is `true`,
   // but a previous test may have toggled it open via store action).
   useAppUIStore.setState({ publicSidebarCollapsed: true });
   // Reset any modal state a previous test may have flipped open (the
-  // Simple-mode shortcut test below flips `orgSettingsOpen`).
+  // menu-shortcut test below flips `orgSettingsOpen`).
   useUIModalStore.setState({ orgSettingsOpen: false });
   // Pin the platform to non-mac so `Ctrl+...` shortcuts match
   // regardless of the host running the suite.
@@ -225,38 +218,13 @@ afterEach(() => {
 });
 
 describe("AuraShell — Phase 3 unified shell", () => {
-  it("(a) preserves DOM identity of titlebar, sidebar Lane, sidebar header, main, and BottomTaskbar `.bar` across mode flips", async () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    const { container } = renderAuraShell();
-
-    const titlebarBefore = screen.getByTestId("aura-titlebar");
-    const sidebarBefore = screen.getByTestId("aura-sidebar");
-    const sidebarHeaderBefore = screen.getByTestId("aura-sidebar-header");
-    const mainBefore = screen.getByTestId("aura-shell-main");
-    const barBefore = container.querySelector(
-      "[data-agent-surface='desktop-shell-bottom-taskbar']",
-    );
-    expect(barBefore).not.toBeNull();
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
-
-    expect(screen.getByTestId("aura-titlebar")).toBe(titlebarBefore);
-    expect(screen.getByTestId("aura-sidebar")).toBe(sidebarBefore);
-    expect(screen.getByTestId("aura-sidebar-header")).toBe(sidebarHeaderBefore);
-    expect(screen.getByTestId("aura-shell-main")).toBe(mainBefore);
-    const barAfter = container.querySelector(
-      "[data-agent-surface='desktop-shell-bottom-taskbar']",
-    );
-    expect(barAfter).toBe(barBefore);
-  });
-
-  it("(a, cont.) preserves DOM identity across the public -> simple (login) transition", async () => {
+  it("(a) preserves DOM identity of the titlebar, sidebar Lane, sidebar header, and main across the public -> standard (login) transition", async () => {
+    // The outer BottomTaskbar `.bar` is NOT asserted here: public and
+    // authed render distinct taskbar components (`PublicBottomTaskbar`
+    // vs `AuthedBottomTaskbar`), so React swaps the `.bar` node across
+    // the login boundary. The titlebar / sidebar / header / main slots
+    // are unconditional wrappers in AuraShell and stay reference-stable.
     setLoggedOut();
-    useUIModeStore.setState({ mode: "simple" });
 
     renderAuraShell();
 
@@ -299,31 +267,6 @@ describe("AuraShell — Phase 3 unified shell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("(c) sidebar search query survives a Simple -> Advanced flip (no remount, no input value loss)", async () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    const user = userEvent.setup();
-    // Render at `/chat` so path-based resolution returns the same
-    // ChatApp the simple-mode pin returns. The per-app
-    // `useAppUIStore.sidebarQueries` map is keyed by active app id;
-    // mismatched ids across the flip would wipe the input value
-    // and shadow the slide-not-snap continuity check.
-    renderAuraShell("/chat");
-
-    const input = screen.getByPlaceholderText("Search") as HTMLInputElement;
-    await user.type(input, "hello");
-    expect(input.value).toBe("hello");
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
-
-    const inputAfter = screen.getByPlaceholderText("Search") as HTMLInputElement;
-    expect(inputAfter).toBe(input);
-    expect(inputAfter.value).toBe("hello");
-  });
-
   it("(d) gates public nav links behind public mode and hides them when logged in", async () => {
     setLoggedOut();
 
@@ -345,7 +288,6 @@ describe("AuraShell — Phase 3 unified shell", () => {
 
     await act(async () => {
       setLoggedIn();
-      useUIModeStore.setState({ mode: "simple" });
     });
 
     expect(
@@ -354,29 +296,6 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(
       screen.queryByRole("button", { name: "Chat" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("(e) hides the Simple/Advanced ModeToggle in public mode and remounts it on sign-in", async () => {
-    // The toggle never makes sense for unauthenticated visitors —
-    // they have no persisted authed mode to flip. AuraSidebar gates
-    // the render behind `mode !== "public"` so the radiogroup is
-    // absent until the user logs in.
-    setLoggedOut();
-
-    renderAuraShell();
-
-    expect(
-      screen.queryByRole("radiogroup", { name: "Interface mode" }),
-    ).not.toBeInTheDocument();
-
-    await act(async () => {
-      setLoggedIn();
-      useUIModeStore.setState({ mode: "simple" });
-    });
-
-    expect(
-      screen.getByRole("radiogroup", { name: "Interface mode" }),
-    ).toBeInTheDocument();
   });
 
   it("(f) public titlebar does not render a theme toggle (day/night lives in BottomTaskbar) but keeps the auth pills", () => {
@@ -409,13 +328,11 @@ describe("AuraShell — Phase 3 unified shell", () => {
     expect(downloadLink).toHaveAttribute("href", "/download");
   });
 
-  it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public and Simple modes and mounts it only in Advanced", async () => {
+  it("(g) suppresses the desktop wallpaper (BackgroundLayer) in public mode and mounts it for authed standard users", async () => {
     // The persisted desktop wallpaper must not bleed onto logged-out
-    // surfaces, and Simple mode is a chat-only surface that also
-    // suppresses the wallpaper. AuraShell gates `<BackgroundLayer />`
-    // behind `mode === "advanced"`, so the stub testid is absent in
-    // public + Simple and appears only when the user lands in
-    // Advanced.
+    // surfaces. AuraShell gates `<BackgroundLayer />` behind
+    // `mode === "standard"`, so the stub testid is absent in public
+    // and appears once the user signs in.
     setLoggedOut();
 
     renderAuraShell();
@@ -426,21 +343,12 @@ describe("AuraShell — Phase 3 unified shell", () => {
 
     await act(async () => {
       setLoggedIn();
-      useUIModeStore.setState({ mode: "simple" });
-    });
-
-    expect(
-      screen.queryByTestId("background-layer-stub"),
-    ).not.toBeInTheDocument();
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
     });
 
     expect(screen.getByTestId("background-layer-stub")).toBeInTheDocument();
 
     await act(async () => {
-      useUIModeStore.setState({ mode: "simple" });
+      setLoggedOut();
     });
 
     expect(
@@ -455,69 +363,26 @@ describe("AuraShell — Phase 3 unified shell", () => {
 });
 
 /**
- * Simple-mode chrome stripping. Simple is a chat-only surface, so
- * the desktop wallpaper, the right sidekick lane, and the two
- * sidekick-related icon buttons (`Toggle split screen` /
- * `Toggle sidekick`) all unmount. The window controls
- * (min/max/close) stay. The referral CTA (`EarnCreditsButton`)
- * now lives in the left sidebar footer instead of the titlebar
- * trailing cluster — covered by the sidebar assertion below.
- *
- * Coverage for the wallpaper itself is in test (g) above; this
- * block focuses on the right lane + the titlebar trailing cluster.
+ * Standard-mode chrome. The authed standard surface mounts the
+ * desktop wallpaper (test (g) above), the right sidekick lane, the
+ * two sidekick-related icon buttons (`Toggle split screen` /
+ * `Toggle sidekick`), and the File / Edit / View / Help menu bar.
+ * The referral CTA (`EarnCreditsButton`) lives in the left sidebar
+ * footer. This block focuses on the right lane + the titlebar.
  */
-describe("AuraShell — Simple-mode chrome stripping", () => {
-  it("does not mount the right sidekick lane (no `data-agent-surface=\"sidekick-panel\"`) in Simple, and remounts it in Advanced", async () => {
+describe("AuraShell — standard-mode chrome", () => {
+  it("mounts the right sidekick lane (`data-agent-surface=\"sidekick-panel\"`) for the authed standard shell", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
 
     const { container } = renderAuraShell("/chat");
-
-    expect(
-      container.querySelector('[data-agent-surface="sidekick-panel"]'),
-    ).toBeNull();
-    expect(
-      container.querySelector('[data-agent-surface="sidekick-header"]'),
-    ).toBeNull();
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
 
     expect(
       container.querySelector('[data-agent-surface="sidekick-panel"]'),
     ).not.toBeNull();
   });
 
-  it("does not render the Split-screen / Sidekick toggle icon buttons in the titlebar in Simple mode, and renders EarnCredits in the sidebar footer", () => {
+  it("renders the Split-screen / Sidekick toggle icon buttons in the titlebar and the referral CTA in the sidebar footer", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    renderAuraShell("/chat");
-
-    const titlebar = screen.getByTestId("aura-titlebar");
-    expect(
-      within(titlebar).queryByRole("button", { name: /toggle sidekick/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(titlebar).queryByRole("button", { name: /toggle split screen/i }),
-    ).not.toBeInTheDocument();
-    // The referral CTA moved out of the titlebar trailing cluster and
-    // into the left sidebar footer (`AuthedSidebarFooter`). Assert it
-    // is *not* in the titlebar anymore and *is* in the sidebar — keyed
-    // off the new aria-label "Refer a member to earn credits".
-    expect(
-      within(titlebar).queryByRole("button", { name: /refer a member/i }),
-    ).not.toBeInTheDocument();
-    const sidebar = screen.getByTestId("aura-sidebar");
-    expect(
-      within(sidebar).getByRole("button", { name: /refer a member/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the Split-screen / Sidekick toggle icon buttons in the titlebar in Advanced mode", async () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
     renderAuraShell("/chat");
 
@@ -528,26 +393,24 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
     expect(
       within(titlebar).getByRole("button", { name: /toggle split screen/i }),
     ).toBeInTheDocument();
+    // The referral CTA lives in the left sidebar footer
+    // (`AuthedSidebarFooter`), keyed off the aria-label
+    // "Refer a member to earn credits" — not in the titlebar.
+    expect(
+      within(titlebar).queryByRole("button", { name: /refer a member/i }),
+    ).not.toBeInTheDocument();
+    const sidebar = screen.getByTestId("aura-sidebar");
+    expect(
+      within(sidebar).getByRole("button", { name: /refer a member/i }),
+    ).toBeInTheDocument();
   });
 
-  it("hides the File / Edit / View / Help menu bar in Simple mode and remounts it in Advanced", async () => {
+  it("renders the File / Edit / View / Help menu bar in the authed standard shell", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
 
     renderAuraShell("/chat");
 
     const titlebar = screen.getByTestId("aura-titlebar");
-    expect(
-      within(titlebar).queryByRole("menubar", { name: /application menu/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(titlebar).queryByRole("menuitem", { name: "File" }),
-    ).not.toBeInTheDocument();
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
-
     expect(
       within(titlebar).getByRole("menubar", { name: /application menu/i }),
     ).toBeInTheDocument();
@@ -565,14 +428,11 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the application-menu keyboard shortcuts wired in Simple mode (no visible bar required)", () => {
-    // The visible bar is gone in Simple, but the headless
-    // `<MenuShortcuts />` companion still installs the document-level
-    // `keydown` listener. Firing `Ctrl+,` (Settings) must still flip
-    // `useUIModalStore.orgSettingsOpen` to `true` — proving the
-    // shortcut path survives the chrome stripping.
+  it("wires the application-menu keyboard shortcuts in the authed standard shell", () => {
+    // The headless `<MenuShortcuts />` companion installs the
+    // document-level `keydown` listener. Firing `Ctrl+,` (Settings)
+    // must flip `useUIModalStore.orgSettingsOpen` to `true`.
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
 
     renderAuraShell("/chat");
 
@@ -593,16 +453,15 @@ describe("AuraShell — Simple-mode chrome stripping", () => {
 });
 
 /**
- * Phase 4 `p4_simple_pin_chat` regression coverage.
+ * Active-app resolution coverage.
  *
  * The shell's authoritative source of the "current app" is
- * `useActiveApp()`. Phase 4 pins it to ChatApp whenever the
- * effective mode is `simple`, regardless of the pathname. AuraSidebar
+ * `useActiveApp()`, derived purely from the pathname. AuraSidebar
  * stamps `data-agent-active-app-id` on the LeftPanel host, so we
- * assert against that attribute as a structural proxy for "ChatApp's
- * MainPanel + LeftPanel are the things that render right now".
+ * assert against that attribute as a structural proxy for "this
+ * app's MainPanel + LeftPanel are the things that render right now".
  */
-describe("AuraShell — Phase 4 simple-mode pin", () => {
+describe("AuraShell — active-app resolution", () => {
   /**
    * Resolves the currently active app id by inspecting the sidebar
    * subtree. Two probes are needed because the sidebar renders one
@@ -632,40 +491,11 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     return null;
   }
 
-  it("pins ChatApp as the active app in Simple mode regardless of the URL", async () => {
+  it("resolves the active app from the pathname for an authed user (`/projects/:id` -> projects)", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    // Render at a non-`/chat` path that maps to a different app
-    // (`/projects/:id` -> `projects`). The pin must still resolve
-    // ChatApp because effective mode is `simple`.
-    const { container } = renderAuraShell("/projects/abc");
-
-    expect(getActiveAppId(container)).toBe("chat");
-  });
-
-  it("falls back to path-based resolution in Advanced mode (no pin)", () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
     const { container } = renderAuraShell("/projects/abc");
 
-    expect(getActiveAppId(container)).toBe("projects");
-  });
-
-  it("flipping Simple -> Advanced at /projects/abc swaps the active app from chat to projects without remounting the sidebar", async () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    const { container } = renderAuraShell("/projects/abc");
-    const sidebarBefore = screen.getByTestId("aura-sidebar");
-    expect(getActiveAppId(container)).toBe("chat");
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
-
-    expect(screen.getByTestId("aura-sidebar")).toBe(sidebarBefore);
     expect(getActiveAppId(container)).toBe("projects");
   });
 
@@ -681,7 +511,7 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     expect(screen.getByRole("button", { name: "Chat" })).toBeInTheDocument();
   });
 
-  it("sign-in transition (public -> simple) tears down the public nav and mounts ChatAppLeftPanel", async () => {
+  it("sign-in transition (public -> standard) tears down the public nav and mounts an authed LeftPanel", async () => {
     setLoggedOut();
     const { container } = renderAuraShell("/");
 
@@ -691,7 +521,6 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
 
     await act(async () => {
       setLoggedIn();
-      useUIModeStore.setState({ mode: "simple" });
     });
 
     expect(
@@ -700,7 +529,9 @@ describe("AuraShell — Phase 4 simple-mode pin", () => {
     expect(
       screen.queryByRole("button", { name: "Chat" }),
     ).not.toBeInTheDocument();
-    expect(getActiveAppId(container)).toBe("chat");
+    // The pathname-derived active app now owns the sidebar LeftPanel
+    // host, so the structural probe resolves to a concrete app id.
+    expect(getActiveAppId(container)).not.toBeNull();
   });
 });
 
@@ -785,24 +616,13 @@ describe("AuraShell — public left drawer", () => {
     );
   });
 
-  it("renders the left drawer toggle in authed modes too (uniform affordance across public / simple / advanced)", async () => {
+  it("renders the left drawer toggle in the authed standard mode too (uniform affordance across public / standard)", () => {
     // The titlebar leading slot is a uniform `<PanelLeft />` drawer
     // toggle on every effective mode now — the previous "no toggle
     // in authed modes" guarantee was relaxed when the team selector
-    // moved to the bottom taskbar. Verify it mounts in Simple, in
-    // Advanced, and remains present across the Simple <-> Advanced
-    // flip.
+    // moved to the bottom taskbar.
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
     renderAuraShell("/chat");
-
-    expect(
-      screen.getByRole("button", { name: "Toggle sidebar" }),
-    ).toBeInTheDocument();
-
-    await act(async () => {
-      useUIModeStore.setState({ mode: "advanced" });
-    });
 
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }),
@@ -848,7 +668,7 @@ describe("AuraShell — public left drawer", () => {
 });
 
 /**
- * Advanced `/desktop` regression coverage. Two behaviours were lost
+ * Standard `/desktop` regression coverage. Two behaviours were lost
  * when DesktopShell was folded into AuraShell and are tracked here:
  *
  *   1. `data-desktop-mode` must live on the `.shell` root (the
@@ -862,13 +682,13 @@ describe("AuraShell — public left drawer", () => {
  *
  *   2. The left sidebar Lane must collapse to width 0 on `/desktop`.
  *      `DesktopApp.LeftPanel` returns `null`, so the body is empty,
- *      but the `<PanelSearch>` row + `<ModeToggle>` would otherwise
- *      keep the lane open and visibly cover the wallpaper. Legacy
- *      `DesktopShell` had this via `<Lane collapsed={isDesktop}
- *      animateCollapse={false}>`; `AuraSidebar` now mirrors the
- *      behaviour off the `isDesktop` prop AuraShell threads in.
+ *      but the `<PanelSearch>` row would otherwise keep the lane open
+ *      and visibly cover the wallpaper. Legacy `DesktopShell` had this
+ *      via `<Lane collapsed={isDesktop} animateCollapse={false}>`;
+ *      `AuraSidebar` now mirrors the behaviour off the `isDesktop`
+ *      prop AuraShell threads in.
  */
-describe("AuraShell — advanced /desktop chrome", () => {
+describe("AuraShell — standard /desktop chrome", () => {
   beforeEach(() => {
     // `desktopModeActive = isDesktop && backgroundHydrated`. The
     // store starts in an unhydrated state in the no-image-slot
@@ -877,9 +697,8 @@ describe("AuraShell — advanced /desktop chrome", () => {
     useDesktopBackgroundStore.setState({ hydrated: true });
   });
 
-  it("stamps `data-desktop-mode` on the `.shell` root (not the inner `.body`) when on /desktop in advanced mode", () => {
+  it("stamps `data-desktop-mode` on the `.shell` root (not the inner `.body`) when on /desktop in standard mode", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
     renderAuraShell("/desktop");
 
@@ -894,9 +713,8 @@ describe("AuraShell — advanced /desktop chrome", () => {
     expect(shell.querySelector("[data-desktop-mode]")).toBeNull();
   });
 
-  it("does not stamp `data-desktop-mode` on /chat in advanced mode (only `/desktop` activates it)", () => {
+  it("does not stamp `data-desktop-mode` on /chat in standard mode (only `/desktop` activates it)", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
     renderAuraShell("/chat");
 
@@ -904,19 +722,8 @@ describe("AuraShell — advanced /desktop chrome", () => {
     expect(shell).not.toHaveAttribute("data-desktop-mode");
   });
 
-  it("does not stamp `data-desktop-mode` on /desktop in Simple mode (Simple pins ChatApp regardless of URL)", () => {
+  it("collapses the sidebar Lane to 0 width on /desktop in standard mode (wallpaper-edge-to-edge)", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "simple" });
-
-    renderAuraShell("/desktop");
-
-    const shell = screen.getByTestId("aura-shell");
-    expect(shell).not.toHaveAttribute("data-desktop-mode");
-  });
-
-  it("collapses the sidebar Lane to 0 width on /desktop in advanced mode (wallpaper-edge-to-edge)", () => {
-    setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
     renderAuraShell("/desktop");
 
@@ -929,27 +736,16 @@ describe("AuraShell — advanced /desktop chrome", () => {
     expect(lane?.style.width).toBe("0px");
   });
 
-  it("re-expands the sidebar Lane when navigating away from /desktop without remounting it", async () => {
+  it("keeps the sidebar Lane expanded off /desktop in standard mode (only /desktop forces the 0-width collapse)", () => {
     setLoggedIn();
-    useUIModeStore.setState({ mode: "advanced" });
 
-    renderAuraShell("/desktop");
-
-    const sidebar = screen.getByTestId("aura-sidebar");
-    const laneBefore = sidebar.querySelector<HTMLElement>("[data-lane]");
-    expect(laneBefore).not.toBeNull();
-    expect(laneBefore?.style.width).toBe("0px");
-
-    // Flip into Simple mode (which pins ChatApp) to take the user
-    // off `/desktop`'s collapsed path — the simplest way to assert
-    // re-expansion without a navigate(). The Lane wrapper must keep
-    // DOM identity (same invariant as test (a) above).
-    await act(async () => {
-      useUIModeStore.setState({ mode: "simple" });
-    });
-
-    const laneAfter = sidebar.querySelector<HTMLElement>("[data-lane]");
-    expect(laneAfter).toBe(laneBefore);
-    expect(laneAfter?.style.width).not.toBe("0px");
+    renderAuraShell("/chat");
+    const lane = screen
+      .getByTestId("aura-sidebar")
+      .querySelector<HTMLElement>("[data-lane]");
+    expect(lane).not.toBeNull();
+    // Off `/desktop` the lane is not force-collapsed, so its inline
+    // width resolves to a non-zero value (the persisted/default size).
+    expect(lane?.style.width).not.toBe("0px");
   });
 });

@@ -47,36 +47,29 @@ function useClock(): string {
 
 export interface BottomTaskbarProps {
   /**
-   * Effective UI mode (public / simple / advanced). Drives child
-   * content. The outer `.bar` element is always rendered so
+   * Effective UI mode (public / standard). Drives child content. The
+   * outer `.bar` element is always rendered so
    * `--shell-chrome-outer-height` reserves the same row of vertical
    * space in every mode — flipping modes does not move the main
    * panel's bottom edge.
    *
- * - `public`: only the `ThemeToggleButton` in the right slot.
- * - `simple`: bottom-left `ProfilePill` (avatar + name) plus
- *   Credits, ThemeToggle, and Settings (in that order) in the right
- *   slot. No Desktop button, no app rail center, no center pill, no
- *   profile rail shortcut, no clock, no Help, no collapse chevron
- *   — a minimal authed surface anchored by the profile pill, with
- *   Settings trailing as the always-visible bottom-right affordance.
- * - `advanced`: full chrome (ProfilePill + favorites left,
- *   Desktop + AppNavRail center, collapsible right cluster with
- *   Credits/ThemeToggle/Help/Profile, plus an always-visible Settings
- *   button directly to the left of the clock readout).
+   * - `public`: only the `ThemeToggleButton` in the right slot.
+   * - `standard`: full chrome (ProfilePill + favorites left,
+   *   Desktop + AppNavRail center, collapsible right cluster with
+   *   Credits/ThemeToggle/Help/Profile, plus an always-visible Settings
+   *   button directly to the left of the clock readout).
    */
   mode: UIMode;
 }
 
 /**
  * Bottom chrome strip rendered by `AuraShell` in every effective
- * mode. The outer `.bar` element is mounted in all three modes (so
+ * mode. The outer `.bar` element is mounted in both modes (so
  * `--shell-chrome-outer-height` reserves the same row of vertical
  * space) while child slots branch on mode. `public` renders the
- * minimal theme-toggle path; authed (`simple` / `advanced`) renders
- * `AuthedBottomTaskbar`, which itself branches on `mode === "advanced"`
- * to swap the heavy chrome (Desktop button, app rail, collapse
- * chevron, Help, clock readout) on/off.
+ * minimal theme-toggle path; the authed `standard` mode renders
+ * `AuthedBottomTaskbar` with the full chrome (Desktop button, app
+ * rail, collapse chevron, Help, clock readout).
  */
 export function BottomTaskbar({ mode }: BottomTaskbarProps): React.ReactElement {
   if (mode === "public") {
@@ -140,55 +133,34 @@ function PublicBottomTaskbar(): React.ReactElement {
 }
 
 /**
- * Authenticated (Simple / Advanced) taskbar render path. The outer
- * `.bar` div, the `.left` pill (anchored by `<ProfilePill />`), the
- * `.right` flex container, and the `rightPrimary` cluster are mounted
- * unconditionally — so flipping Simple <-> Advanced reconciles the
- * load-bearing chrome in place (the outer `.bar` reserves
- * `--shell-chrome-outer-height`). The `.center` pill container is
- * still gated on `isAdvanced`.
+ * Authenticated (standard) taskbar render path. The outer `.bar` div,
+ * the `.left` pill (anchored by `<ProfilePill />`), the `.center`
+ * cluster, the `.right` flex container, and the `rightPrimary` cluster
+ * are all mounted (the outer `.bar` reserves
+ * `--shell-chrome-outer-height`).
  *
  * This component acts as the container for the presentational
  * `<ProfilePill />`: it reads `profile-store` (display name, avatar)
  * and `ui-modal-store` (`openOrgSettings`) and pipes them in as props.
  *
- * Branches on `isAdvanced` to gate:
+ * Layout:
  *
- *   - `.left`:  the pill is mounted in both modes; the trailing
- *     `<FavoriteAgentsStrip />` is Advanced-only. Simple shows the
- *     profile pill (plus OrgSelector) on its own.
- *   - `.center`: the entire pill (Desktop + AppNavRail + Apps +
- *     collapse chevron) — Advanced only. The Desktop circle leads
- *     the cluster so the active-app surface is anchored at the
- *     front of the middle taskbar.
- *   - `.right.rightPrimary`:
- *     - Right-cluster collapse chevron (Advanced only)
- *     - Credits / ThemeToggle (both modes; in Advanced these hide
- *       behind the right-cluster collapse — Simple has no collapse
- *       affordance so they always show)
- *     - HelpButton (Advanced only)
- *     - Profile AppNavRail (Advanced only, and hidden when the right
- *       cluster is collapsed — Simple drops the profile shortcut so
- *       the right cluster reads as Credits / Theme / Settings only)
- *     - Settings (both modes, always visible — rendered last inside
- *       `.rightPrimary` so it sits directly to the left of the
- *       Advanced `<ClockReadout />` and at the end of the Simple
- *       right cluster, regardless of `rightCollapsed`)
- *   - `.clock` readout (Advanced only — extracted into a tiny
- *     `<ClockReadout />` so `useClock`'s `setInterval` doesn't mount
- *     in Simple)
- *
- * The collapse-state hooks (`getTaskbarRightCollapsed` / `getTaskbarAppsCollapsed`)
- * still run unconditionally so the rules-of-hooks contract is preserved
- * across mode flips; Simple just ignores the stored value.
+ *   - `.left`:  `<ProfilePill />` + `<OrgSelector />` +
+ *     `<FavoriteAgentsStrip />`.
+ *   - `.center`: Desktop circle (leads the cluster) + AppNavRail +
+ *     Apps + apps collapse chevron.
+ *   - `.right.rightPrimary`: right-cluster collapse chevron, then the
+ *     collapsible secondary cluster (Credits / ThemeToggle / Help /
+ *     Profile shortcut), then an always-visible Settings button
+ *     trailing the cluster (directly to the left of `<ClockReadout />`)
+ *     regardless of `rightCollapsed`.
+ *   - `.clock` readout (`<ClockReadout />`).
  */
 function AuthedBottomTaskbar({
   mode,
 }: {
-  mode: Exclude<UIMode, "public">;
+  mode: "standard";
 }): React.ReactElement {
-  const isAdvanced = mode === "advanced";
-
   const openBuyCredits = useUIModalStore((s) => s.openBuyCredits);
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
   const openAppsModal = useUIModalStore((s) => s.openAppsModal);
@@ -237,9 +209,7 @@ function AuthedBottomTaskbar({
     handleContextMenu(event);
   };
 
-  // Simple has no collapse affordance — always show the secondary
-  // cluster contents. Advanced respects the stored collapse state.
-  const showSecondaryCluster = !isAdvanced || !rightCollapsed;
+  const showSecondaryCluster = !rightCollapsed;
 
   return (
     <div
@@ -259,74 +229,69 @@ function AuthedBottomTaskbar({
         />
         {/*
          * Team selector lives in the bottom taskbar right after
-         * `ProfilePill` in every authed mode. The Desktop icon now
-         * leads the `.center` cluster instead of trailing the
-         * left cluster, so `OrgSelector` is the last fixed item in
-         * `.left` (followed only by Advanced's `FavoriteAgentsStrip`).
-         * The titlebar's leading slot is a uniform `<PanelLeft />`
-         * drawer toggle across every mode, so the team affordance no
-         * longer competes for that spot.
+         * `ProfilePill`. The Desktop icon now leads the `.center`
+         * cluster instead of trailing the left cluster, so
+         * `OrgSelector` is the last fixed item in `.left` (followed
+         * only by `FavoriteAgentsStrip`). The titlebar's leading slot
+         * is a uniform `<PanelLeft />` drawer toggle, so the team
+         * affordance no longer competes for that spot.
          */}
         <OrgSelector variant="icon" />
-        {isAdvanced && <FavoriteAgentsStrip />}
+        <FavoriteAgentsStrip />
       </div>
 
-      {isAdvanced && (
-        <div className={styles.center}>
-          <TaskbarIconButton
-            selected={activeApp.id === "desktop"}
-            icon={<Circle size={TASKBAR_ICON_SIZE} />}
-            title="Desktop"
-            aria-label="Desktop"
-            onClick={() => {
-              if (activeApp.id === "desktop") {
-                if (previousPath) navigate(previousPath);
-              } else {
-                navigate("/desktop");
-              }
-            }}
-          />
-          <AppNavRail
-            layout="taskbar"
-            allowReorder
-            excludeIds={["profile"]}
-            {...(collapsed && { includeIds: ["agents", "projects"] })}
-          />
-          <TaskbarIconButton
-            icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
-            title="Apps"
-            aria-label="Apps"
-            onClick={openAppsModal}
-          />
-          <TaskbarIconButton
-            icon={
-              collapsed ? (
-                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-              ) : (
-                <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
-              )
+      <div className={styles.center}>
+        <TaskbarIconButton
+          selected={activeApp.id === "desktop"}
+          icon={<Circle size={TASKBAR_ICON_SIZE} />}
+          title="Desktop"
+          aria-label="Desktop"
+          onClick={() => {
+            if (activeApp.id === "desktop") {
+              if (previousPath) navigate(previousPath);
+            } else {
+              navigate("/desktop");
             }
-            onClick={toggleAppsCollapsed}
-            aria-label={collapsed ? "Expand apps" : "Collapse apps"}
-          />
-        </div>
-      )}
+          }}
+        />
+        <AppNavRail
+          layout="taskbar"
+          allowReorder
+          excludeIds={["profile"]}
+          {...(collapsed && { includeIds: ["agents", "projects"] })}
+        />
+        <TaskbarIconButton
+          icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
+          title="Apps"
+          aria-label="Apps"
+          onClick={openAppsModal}
+        />
+        <TaskbarIconButton
+          icon={
+            collapsed ? (
+              <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+            ) : (
+              <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+            )
+          }
+          onClick={toggleAppsCollapsed}
+          aria-label={collapsed ? "Expand apps" : "Collapse apps"}
+        />
+      </div>
 
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
-          {isAdvanced && (
-            <TaskbarIconButton
-              icon={
-                rightCollapsed ? (
-                  <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
-                ) : (
-                  <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
-                )
-              }
-              onClick={toggleRightCollapsed}
-              aria-label={rightCollapsed ? "Expand taskbar" : "Collapse taskbar"}
-            />
-          )}
+          <TaskbarIconButton
+            icon={
+              rightCollapsed ? (
+                <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+              ) : (
+                <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+              )
+            }
+            onClick={toggleRightCollapsed}
+            aria-label={rightCollapsed ? "Expand taskbar" : "Collapse taskbar"}
+          />
           {showSecondaryCluster && (
             <>
               <TaskbarIconButton
@@ -336,25 +301,21 @@ function AuthedBottomTaskbar({
                 onClick={openBuyCredits}
               />
               <ThemeToggleButton />
-              {isAdvanced && <HelpButton />}
+              <HelpButton />
+              <AppNavRail
+                layout="taskbar"
+                includeIds={["profile"]}
+                ariaLabel="Profile shortcut"
+              />
             </>
           )}
-          {isAdvanced && showSecondaryCluster && (
-            <AppNavRail
-              layout="taskbar"
-              includeIds={["profile"]}
-              ariaLabel="Profile shortcut"
-            />
-          )}
           {/*
-           * Settings is rendered unconditionally (in both Simple and
-           * Advanced) as the trailing item of `.rightPrimary`, which
-           * places it directly to the left of `<ClockReadout />` in
-           * Advanced and at the end of the right cluster in Simple.
-           * It is intentionally outside the `showSecondaryCluster`
-           * branch so the Advanced right-cluster collapse no longer
-           * hides it — Settings is always one click away regardless
-           * of `rightCollapsed`.
+           * Settings is rendered unconditionally as the trailing item
+           * of `.rightPrimary`, which places it directly to the left of
+           * `<ClockReadout />`. It is intentionally outside the
+           * `showSecondaryCluster` branch so the right-cluster collapse
+           * no longer hides it — Settings is always one click away
+           * regardless of `rightCollapsed`.
            */}
           <TaskbarIconButton
             icon={<Settings size={TASKBAR_ICON_SIZE} />}
@@ -363,7 +324,7 @@ function AuthedBottomTaskbar({
             onClick={openOrgSettings}
           />
         </div>
-        {isAdvanced && <ClockReadout />}
+        <ClockReadout />
       </div>
       {menuElement}
     </div>
@@ -372,10 +333,9 @@ function AuthedBottomTaskbar({
 
 /**
  * Live wall-clock readout extracted into a separate component so the
- * `setInterval` inside `useClock` only mounts in Advanced mode.
- * Simple mode never instantiates this component, so the timer never
- * fires — which both saves wakeups on simple-mode users and matches
- * the product spec ("no clock in Simple").
+ * `setInterval` inside `useClock` only mounts in the authed standard
+ * shell. Public mode never instantiates this component, so the timer
+ * never fires.
  */
 function ClockReadout(): React.ReactElement {
   const time = useClock();

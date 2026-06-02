@@ -1,17 +1,13 @@
 import {
   clearLastAgentIf,
-  getLastAdvancedPath,
   getLastAgent,
   getLastProject,
-  getLastSimplePath,
   getProjectOrder,
   getTaskbarAppOrder,
   getTaskbarAppsCollapsed,
   getTaskbarRightCollapsed,
-  setLastAdvancedPath,
   setLastAgent,
   setLastProject,
-  setLastSimplePath,
   setProjectOrder,
   setTaskbarAppOrder,
   setTaskbarAppsCollapsed,
@@ -24,8 +20,6 @@ const PROJECT_ORDER_KEY = "aura-project-order";
 const TASKBAR_APP_ORDER_KEY = "aura-taskbar-app-order";
 const TASKBAR_APPS_COLLAPSED_KEY = "aura-taskbar-apps-collapsed";
 const TASKBAR_RIGHT_COLLAPSED_KEY = "aura-taskbar-right-collapsed";
-const LAST_SIMPLE_PATH_KEY = "aura-last-simple-path";
-const LAST_ADVANCED_PATH_KEY = "aura-last-advanced-path";
 
 describe("storage", () => {
   let store: Record<string, string>;
@@ -313,110 +307,6 @@ describe("storage", () => {
     it("removes the key when the order is empty", () => {
       setTaskbarAppOrder([]);
       expect(localStorage.removeItem).toHaveBeenCalledWith(TASKBAR_APP_ORDER_KEY);
-    });
-  });
-
-  // Per-mode last-path tracking — read by `ModeToggle` so the
-  // Simple <-> Advanced flip restores the URL the user had last seen
-  // in the destination mode. The setters validate that Simple paths
-  // start with `/chat` and Advanced paths do not, so a hand-edited /
-  // stale entry can't drive `navigate()` to an invalid surface.
-  describe("getLastSimplePath", () => {
-    it("returns null when no value is stored", () => {
-      expect(getLastSimplePath()).toBeNull();
-    });
-
-    it("returns a stored /chat path verbatim", () => {
-      store[LAST_SIMPLE_PATH_KEY] = "/chat?session=abc";
-      expect(getLastSimplePath()).toBe("/chat?session=abc");
-    });
-
-    it("returns a stored /chat/<sub> subpath", () => {
-      store[LAST_SIMPLE_PATH_KEY] = "/chat/session-123";
-      expect(getLastSimplePath()).toBe("/chat/session-123");
-    });
-
-    it("returns null when the stored value is not a /chat path", () => {
-      // Defensive: a hand-edited entry under the wrong key must not
-      // drive `navigate()` to the wrong surface.
-      store[LAST_SIMPLE_PATH_KEY] = "/notes/abc";
-      expect(getLastSimplePath()).toBeNull();
-    });
-
-    it("returns null for restore-invalid paths (e.g. /api/...)", () => {
-      store[LAST_SIMPLE_PATH_KEY] = "/api/foo";
-      expect(getLastSimplePath()).toBeNull();
-    });
-  });
-
-  describe("setLastSimplePath", () => {
-    it("persists a sanitized /chat path", () => {
-      setLastSimplePath("/chat?session=abc");
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        LAST_SIMPLE_PATH_KEY,
-        "/chat?session=abc",
-      );
-    });
-
-    it("strips the `host` query param via sanitizeRestorePath", () => {
-      setLastSimplePath("/chat?session=abc&host=foo");
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        LAST_SIMPLE_PATH_KEY,
-        "/chat?session=abc",
-      );
-    });
-
-    it("drops non-/chat paths silently (no write)", () => {
-      setLastSimplePath("/notes/abc");
-      expect(localStorage.setItem).not.toHaveBeenCalled();
-    });
-
-    it("drops invalid restore paths (e.g. /login) silently", () => {
-      setLastSimplePath("/login");
-      expect(localStorage.setItem).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("getLastAdvancedPath", () => {
-    it("returns null when no value is stored", () => {
-      expect(getLastAdvancedPath()).toBeNull();
-    });
-
-    it("returns a stored non-/chat path verbatim", () => {
-      store[LAST_ADVANCED_PATH_KEY] = "/notes/note-1";
-      expect(getLastAdvancedPath()).toBe("/notes/note-1");
-    });
-
-    it("returns null when the stored value is a /chat path", () => {
-      // Defensive: prevents Advanced -> Simple thrash if someone
-      // wrote a `/chat...` URL under the Advanced key.
-      store[LAST_ADVANCED_PATH_KEY] = "/chat?session=abc";
-      expect(getLastAdvancedPath()).toBeNull();
-    });
-
-    it("returns null for restore-invalid paths (e.g. /desktop)", () => {
-      store[LAST_ADVANCED_PATH_KEY] = "/desktop";
-      expect(getLastAdvancedPath()).toBeNull();
-    });
-  });
-
-  describe("setLastAdvancedPath", () => {
-    it("persists a sanitized non-/chat path", () => {
-      setLastAdvancedPath("/projects/abc?tab=tasks");
-      expect(localStorage.setItem).toHaveBeenCalledWith(
-        LAST_ADVANCED_PATH_KEY,
-        "/projects/abc?tab=tasks",
-      );
-    });
-
-    it("drops /chat paths silently (no write)", () => {
-      setLastAdvancedPath("/chat?session=abc");
-      expect(localStorage.setItem).not.toHaveBeenCalled();
-    });
-
-    it("drops invalid restore paths silently", () => {
-      setLastAdvancedPath("/api/foo");
-      expect(localStorage.setItem).not.toHaveBeenCalled();
     });
   });
 });

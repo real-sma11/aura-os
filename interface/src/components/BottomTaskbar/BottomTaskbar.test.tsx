@@ -267,8 +267,8 @@ beforeEach(() => {
 });
 
 describe("BottomTaskbar", () => {
-  it("places the OrgSelector after ProfilePill in the left cluster in advanced mode (Desktop icon is no longer in .left)", () => {
-    const { container } = render(<BottomTaskbar mode="advanced" />);
+  it("places the OrgSelector after ProfilePill in the left cluster in standard mode (Desktop icon is no longer in .left)", () => {
+    const { container } = render(<BottomTaskbar mode="standard" />);
 
     const leftSlot = container.querySelector<HTMLElement>(".left");
     expect(leftSlot).not.toBeNull();
@@ -294,7 +294,7 @@ describe("BottomTaskbar", () => {
   });
 
   it("leads the .center cluster with the Desktop circle, ahead of the AppNavRail and Apps button", () => {
-    const { container } = render(<BottomTaskbar mode="advanced" />);
+    const { container } = render(<BottomTaskbar mode="standard" />);
 
     const centerSlot = container.querySelector<HTMLElement>(".center");
     expect(centerSlot).not.toBeNull();
@@ -325,34 +325,10 @@ describe("BottomTaskbar", () => {
     expect(navRailIndex).toBeLessThan(appsIndex);
   });
 
-  it("places the OrgSelector after ProfilePill in the left cluster in simple mode (no Desktop icon present)", () => {
-    const { container } = render(<BottomTaskbar mode="simple" />);
-
-    const leftSlot = container.querySelector<HTMLElement>(".left");
-    expect(leftSlot).not.toBeNull();
-    if (!leftSlot) return;
-
-    const buttons = Array.from(leftSlot.querySelectorAll("button"));
-    const profilePillIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Open settings",
-    );
-    const orgSelectorIndex = buttons.findIndex(
-      (btn) => btn.getAttribute("aria-label") === "Switch team",
-    );
-
-    expect(profilePillIndex).toBeGreaterThanOrEqual(0);
-    expect(orgSelectorIndex).toBeGreaterThan(profilePillIndex);
-    // Simple has no Desktop icon, so the OrgSelector sits right after
-    // the profile pill in the left cluster.
-    expect(
-      leftSlot.querySelector('button[aria-label="Desktop"]'),
-    ).toBeNull();
-  });
-
   it("opens a favorite agent without navigating to desktop when outside desktop mode", async () => {
     const user = userEvent.setup();
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -367,7 +343,7 @@ describe("BottomTaskbar", () => {
       "agent-1": { agentId: "agent-1" },
     };
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -383,7 +359,7 @@ describe("BottomTaskbar", () => {
       "agent-1": { agentId: "agent-1" },
     };
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Desk Helper" }));
 
@@ -393,7 +369,7 @@ describe("BottomTaskbar", () => {
   });
 
   it("renders the taskbar apps collapsed by default", () => {
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     expect(screen.getByRole("button", { name: "Expand apps" })).toBeInTheDocument();
     expect(screen.getAllByTestId("chevron-right").length).toBeGreaterThan(0);
@@ -414,7 +390,7 @@ describe("BottomTaskbar", () => {
   it("restores the expanded state from storage", () => {
     getTaskbarAppsCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     expect(screen.getByRole("button", { name: "Collapse apps" })).toBeInTheDocument();
 
@@ -424,7 +400,7 @@ describe("BottomTaskbar", () => {
   });
 
   it("hides Credits/Theme/Help and the profile rail when the right cluster is collapsed by default, but keeps Settings visible", () => {
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     expect(screen.getByRole("button", { name: "Expand taskbar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credits" })).not.toBeInTheDocument();
@@ -443,7 +419,7 @@ describe("BottomTaskbar", () => {
   it("restores the profile rail when the right cluster is expanded", () => {
     getTaskbarRightCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     const profileNavRail = screen.getAllByTestId("app-nav-rail").find((rail) =>
       rail.getAttribute("data-include-ids") === JSON.stringify(["profile"]),
@@ -451,8 +427,8 @@ describe("BottomTaskbar", () => {
     expect(profileNavRail).toBeDefined();
   });
 
-  it("places Settings directly to the left of the clock readout in advanced mode", () => {
-    const { container } = render(<BottomTaskbar mode="advanced" />);
+  it("places Settings directly to the left of the clock readout in standard mode", () => {
+    const { container } = render(<BottomTaskbar mode="standard" />);
 
     const rightSlot = container.querySelector<HTMLElement>(".right");
     expect(rightSlot).not.toBeNull();
@@ -478,12 +454,12 @@ describe("BottomTaskbar", () => {
     expect(rightPrimary.lastElementChild).toBe(settingsButton);
   });
 
-  it("keeps Settings visible in advanced mode even when the right cluster is collapsed (always-on settings affordance)", () => {
+  it("keeps Settings visible in standard mode even when the right cluster is collapsed (always-on settings affordance)", () => {
     // Default fixture has `getTaskbarRightCollapsed.mockReturnValue(true)`,
     // so this asserts the always-on behavior directly: even when the
     // user has the cluster collapsed, the Settings shortcut must still
     // render and remain clickable.
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     const settingsButton = screen.getByRole("button", { name: "Settings" });
     expect(settingsButton).toBeInTheDocument();
@@ -494,7 +470,7 @@ describe("BottomTaskbar", () => {
 
   it("expands the right cluster and persists the state when the chevron is clicked", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
 
@@ -506,7 +482,7 @@ describe("BottomTaskbar", () => {
 
   it("re-collapses the right cluster on a second chevron click", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Expand taskbar" }));
     await user.click(screen.getByRole("button", { name: "Collapse taskbar" }));
@@ -524,7 +500,7 @@ describe("BottomTaskbar", () => {
   it("restores the expanded right cluster state from storage", () => {
     getTaskbarRightCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     expect(screen.getByRole("button", { name: "Collapse taskbar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Credits" })).toBeInTheDocument();
@@ -535,7 +511,7 @@ describe("BottomTaskbar", () => {
     const user = userEvent.setup();
     getTaskbarRightCollapsed.mockReturnValue(false);
 
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
@@ -544,7 +520,7 @@ describe("BottomTaskbar", () => {
 
   it("expands to all apps when the chevron is clicked", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     await user.click(screen.getByRole("button", { name: "Expand apps" }));
 
@@ -558,7 +534,7 @@ describe("BottomTaskbar", () => {
 
   it("collapses back to agents and projects on a second chevron click", async () => {
     const user = userEvent.setup();
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     const chevron = screen.getByRole("button", { name: "Expand apps" });
     await user.click(chevron);
@@ -586,7 +562,7 @@ describe("BottomTaskbar", () => {
     }
 
     it("opens the desktop context menu when right-clicking empty taskbar space", () => {
-      const { container } = render(<BottomTaskbar mode="advanced" />);
+      const { container } = render(<BottomTaskbar mode="standard" />);
 
       expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
 
@@ -598,7 +574,7 @@ describe("BottomTaskbar", () => {
     });
 
     it("does not open the desktop context menu when right-clicking a taskbar button", () => {
-      render(<BottomTaskbar mode="advanced" />);
+      render(<BottomTaskbar mode="standard" />);
 
       fireEvent.contextMenu(screen.getByRole("button", { name: "Apps" }));
 
@@ -607,7 +583,7 @@ describe("BottomTaskbar", () => {
 
     it("opens org settings when selecting Settings from the context menu", async () => {
       const user = userEvent.setup();
-      const { container } = render(<BottomTaskbar mode="advanced" />);
+      const { container } = render(<BottomTaskbar mode="standard" />);
 
       fireEvent.contextMenu(getBar(container));
       await user.click(screen.getByRole("menuitem", { name: "Settings" }));
@@ -618,41 +594,12 @@ describe("BottomTaskbar", () => {
 
     it("opens the background modal when selecting Background", async () => {
       const user = userEvent.setup();
-      const { container } = render(<BottomTaskbar mode="advanced" />);
+      const { container } = render(<BottomTaskbar mode="standard" />);
 
       fireEvent.contextMenu(getBar(container));
       await user.click(screen.getByRole("menuitem", { name: "Background" }));
 
       expect(screen.getByTestId("background-modal")).toBeInTheDocument();
-    });
-
-    it("preserves outer .bar DOM identity across the Simple <-> Advanced flip", () => {
-      // The outer `.bar` element must reconcile in place across
-      // mode flips so `--shell-chrome-outer-height` keeps reserving
-      // the same row of vertical space (Phase 3 invariant). Both
-      // Simple and Advanced go through `AuthedBottomTaskbar`, whose
-      // outer `<div className={styles.bar}>` is unconditional —
-      // React reuses the same DOM node when only inner slots swap.
-      const { container, rerender } = render(<BottomTaskbar mode="advanced" />);
-      const barBefore = container.querySelector(
-        '[data-agent-surface="desktop-shell-bottom-taskbar"]',
-      );
-      expect(barBefore).not.toBeNull();
-      expect(barBefore).toHaveAttribute("data-ui-mode", "advanced");
-
-      rerender(<BottomTaskbar mode="simple" />);
-      const barAfter = container.querySelector(
-        '[data-agent-surface="desktop-shell-bottom-taskbar"]',
-      );
-      expect(barAfter).toBe(barBefore);
-      expect(barAfter).toHaveAttribute("data-ui-mode", "simple");
-
-      rerender(<BottomTaskbar mode="advanced" />);
-      const barRoundtrip = container.querySelector(
-        '[data-agent-surface="desktop-shell-bottom-taskbar"]',
-      );
-      expect(barRoundtrip).toBe(barBefore);
-      expect(barRoundtrip).toHaveAttribute("data-ui-mode", "advanced");
     });
 
     it("anchors to the bottom of the click when right-clicking near the viewport bottom", () => {
@@ -668,7 +615,7 @@ describe("BottomTaskbar", () => {
       });
 
       try {
-        const { container } = render(<BottomTaskbar mode="advanced" />);
+        const { container } = render(<BottomTaskbar mode="standard" />);
 
         fireEvent.contextMenu(getBar(container), {
           clientX: 200,
@@ -691,116 +638,18 @@ describe("BottomTaskbar", () => {
     });
   });
 
-  describe("Simple vs Advanced visible difference", () => {
-    it("hides Desktop, favorites, app rail, both collapse chevrons, Help, the clock, and the .center pill in Simple mode (ProfilePill stays)", () => {
-      // Even with a non-default stored collapse state (`false` would
-      // expose the right-cluster contents in Advanced), Simple mode
-      // never surfaces the chevron — it has no collapse affordance.
+  describe("standard mode chrome", () => {
+    it("renders Desktop, Apps, the clock, the .center cluster, and the profile rail (right cluster expanded)", () => {
       getTaskbarRightCollapsed.mockReturnValue(false);
-      getTaskbarAppsCollapsed.mockReturnValue(false);
-
-      const { container } = render(<BottomTaskbar mode="simple" />);
-
-      // Left slot — Desktop button + favorite agents are Advanced-only,
-      // but the `.left` pill itself now mounts in Simple too because it
-      // anchors the always-on `<ProfilePill />`. The pill remains a
-      // single-click target to open settings.
-      expect(
-        screen.queryByRole("button", { name: "Desktop" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Desk Helper" }),
-      ).not.toBeInTheDocument();
-      expect(container.querySelector(".left")).not.toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Open settings" }),
-      ).toBeInTheDocument();
-
-      // Center slot — AppNavRail + Apps + apps-collapse chevron are
-      // Advanced-only, and the `.center` pill itself unmounts in
-      // Simple too (the empty rounded pill that previously floated in
-      // the middle of the row is gone).
-      expect(
-        screen.queryByRole("button", { name: "Apps" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /expand apps/i }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /collapse apps/i }),
-      ).not.toBeInTheDocument();
-      expect(container.querySelector(".center")).toBeNull();
-
-      // Right slot — the right-cluster collapse chevron and Help
-      // button are Advanced-only.
-      expect(
-        screen.queryByRole("button", { name: /expand taskbar/i }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /collapse taskbar/i }),
-      ).not.toBeInTheDocument();
-
-      // No clock readout in Simple — the `<ClockReadout />` extraction
-      // skips `useClock`'s setInterval entirely. The proxy CSS-module
-      // mock turns `styles.clock` into the literal class `clock`.
-      expect(container.querySelector(".clock")).toBeNull();
-    });
-
-    it("renders Credits, Settings, and the theme toggle in Simple mode (no profile rail, no collapse)", () => {
-      // Stored right-cluster collapse state is true (Advanced default)
-      // but Simple ignores it — Credits/Settings/Theme always show.
-      getTaskbarRightCollapsed.mockReturnValue(true);
-
-      render(<BottomTaskbar mode="simple" />);
-
-      expect(screen.getByRole("button", { name: "Credits" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
-      // ThemeToggleButton's aria-label is generated by
-      // `getThemeToggleAriaLabel`: "Switch theme (currently <theme>)".
-      expect(
-        screen.getByRole("button", { name: /switch theme/i }),
-      ).toBeInTheDocument();
-
-      // Simple drops every AppNavRail — the center rail is Advanced-
-      // only and the bottom-right profile rail is now gated on
-      // `isAdvanced` too, so the right cluster reads as Credits /
-      // Settings / Theme only.
-      expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
-    });
-
-    it("flipping mode='advanced' -> mode='simple' removes Desktop / Apps / clock / .center / profile rail without remounting .bar (ProfilePill survives in .left)", () => {
-      // Reference-equality across Simple <-> Advanced is asserted in
-      // the "preserves outer .bar DOM identity" test in the
-      // right-click describe block; this case covers the *visible*
-      // differential — what disappears between Advanced and Simple
-      // inside the same outer container. The `.left` pill stays
-      // mounted in both modes now (anchored by `<ProfilePill />`),
-      // so only `.center` unmounts on the Simple flip.
-      getTaskbarRightCollapsed.mockReturnValue(false);
-      const { container, rerender } = render(<BottomTaskbar mode="advanced" />);
+      const { container } = render(<BottomTaskbar mode="standard" />);
 
       expect(screen.getByRole("button", { name: "Desktop" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Apps" })).toBeInTheDocument();
       expect(container.querySelector(".clock")).not.toBeNull();
       expect(container.querySelector(".left")).not.toBeNull();
       expect(container.querySelector(".center")).not.toBeNull();
+      // Center reorderable rail + bottom-right profile rail.
       expect(screen.getAllByTestId("app-nav-rail")).toHaveLength(2);
-
-      rerender(<BottomTaskbar mode="simple" />);
-
-      expect(
-        screen.queryByRole("button", { name: "Desktop" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Apps" }),
-      ).not.toBeInTheDocument();
-      expect(container.querySelector(".clock")).toBeNull();
-      expect(container.querySelector(".left")).not.toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Open settings" }),
-      ).toBeInTheDocument();
-      expect(container.querySelector(".center")).toBeNull();
-      expect(screen.queryAllByTestId("app-nav-rail")).toHaveLength(0);
     });
   });
 
@@ -883,13 +732,8 @@ describe("BottomTaskbar", () => {
       expect(rel).toContain("noreferrer");
     });
 
-    it("does not render the 'Powered by THE GRID' link in authed modes", () => {
-      const { rerender } = render(<BottomTaskbar mode="simple" />);
-      expect(
-        screen.queryByRole("link", { name: /powered by the grid/i }),
-      ).not.toBeInTheDocument();
-
-      rerender(<BottomTaskbar mode="advanced" />);
+    it("does not render the 'Powered by THE GRID' link in the authed standard mode", () => {
+      render(<BottomTaskbar mode="standard" />);
       expect(
         screen.queryByRole("link", { name: /powered by the grid/i }),
       ).not.toBeInTheDocument();

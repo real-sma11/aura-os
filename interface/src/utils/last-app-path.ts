@@ -18,9 +18,8 @@ export function getPathname(path: string): string {
 /**
  * Pure pathname predicate matching the canonical `/chat` route and any
  * descendant subpath (e.g. `/chat/session-123`). Centralised here so
- * `ChatRedirectGuard` (route element) and the per-mode last-path
- * tracking in `storage.ts` can share a single rule without a
- * components -> utils import.
+ * callers can share a single rule without a components -> utils
+ * import.
  */
 export function isChatPathname(pathname: string): boolean {
   return pathname === "/chat" || pathname.startsWith("/chat/");

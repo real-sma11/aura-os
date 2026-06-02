@@ -12,7 +12,6 @@ import { useAuthStore } from "./stores/auth-store";
 import { useAuraCapabilities } from "./hooks/use-aura-capabilities";
 import { RequireAuth } from "./components/RequireAuth";
 import { AppShell } from "./components/AppShell";
-import { ChatRedirectGuard } from "./components/ChatRedirectGuard";
 import { NativeContextMenuOverride } from "./components/NativeContextMenuOverride";
 import { LoginView } from "./views/LoginView";
 import { PublicChatView } from "./views/public-chat/PublicChatView";
@@ -71,15 +70,6 @@ if (initiallyLoggedIn) {
 }
 
 function LastAppRedirect(): React.ReactElement {
-  const effectiveMode = useEffectiveMode();
-  // Phase 4 `p4_simple_pin_chat`: in Simple mode the only valid
-  // chat surface is `/chat` — short-circuit before consulting the
-  // last-visited app so a logged-out -> Simple sign-in lands on the
-  // chat surface even if the user previously persisted a different
-  // app id (e.g. `notes`).
-  if (effectiveMode === "simple") {
-    return <Navigate to="/chat" replace />;
-  }
   const lastAppId = getLastApp();
   return <Navigate to={getInitialShellPath(lastAppId, null)} replace />;
 }
@@ -133,9 +123,7 @@ function ChatRouteSwitch(): React.ReactElement {
 /**
  * Phase 3 landing (`/`) route element. Public users see the public
  * chat surface (matching the previous `LoggedOutChatView` route);
- * authenticated users are redirected into their last-visited app
- * (or `/chat` when pinned to Simple mode — see `LastAppRedirect`
- * for the simple-mode short-circuit).
+ * authenticated users are redirected into their last-visited app.
  */
 function LandingRoute(): React.ReactElement {
   const effectiveMode = useEffectiveMode();
@@ -472,24 +460,20 @@ function AppRoutes(): React.ReactElement {
             </Route>
           )}
           <Route element={<RequireAuth />}>
-            <Route element={<SimpleModeChatRedirectLayout />}>
-              {renderRoutes(shellAppRoutes)}
-              <Route
-                path="invite/:token"
-                element={
-                  <Suspense fallback={<RouteFallback />}>
-                    <InviteAcceptView />
-                  </Suspense>
-                }
-              />
-            </Route>
+            {renderRoutes(shellAppRoutes)}
+            <Route
+              path="invite/:token"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <InviteAcceptView />
+                </Suspense>
+              }
+            />
             {/*
               Parallel authenticated Download route. Reuses the SAME
               `DownloadView` as the logged-out marketing route so
               `aura.ai/download` resolves once signed in (the link is
-              opened in a new tab from Help > Downloads). Mounted OUTSIDE
-              `SimpleModeChatRedirectLayout` so a Simple-mode user is not
-              bounced to `/chat` before reaching the page.
+              opened in a new tab from Help > Downloads).
             */}
             <Route
               path="download"
@@ -503,11 +487,8 @@ function AppRoutes(): React.ReactElement {
               Parallel authenticated share route. Reuses the SAME
               `SharedSessionView` but renders inside the normal authed
               `AuraShell` (the public chrome is irrelevant once signed
-              in). Mounted OUTSIDE `SimpleModeChatRedirectLayout` so a
-              Simple-mode user opening a share link still sees the
-              conversation instead of being bounced to `/chat`. Both
-              routes read the same public endpoint, so no auth header is
-              needed either way.
+              in). Both routes read the same public endpoint, so no auth
+              header is needed either way.
             */}
             <Route
               path="s/:shareToken"
@@ -524,21 +505,6 @@ function AppRoutes(): React.ReactElement {
     </Routes>
     {showLoginOverlay && <LoginOverlay />}
     </>
-  );
-}
-
-/**
- * Phase 4 layout route that wraps every authed leaf route except
- * `/chat` with the simple-mode redirect guard. Wrapping at the
- * layout layer (rather than per-route) keeps the route table small
- * and ensures every new app route inherits the pin without a
- * per-app code change.
- */
-function SimpleModeChatRedirectLayout(): React.ReactElement {
-  return (
-    <ChatRedirectGuard>
-      <Outlet />
-    </ChatRedirectGuard>
   );
 }
 

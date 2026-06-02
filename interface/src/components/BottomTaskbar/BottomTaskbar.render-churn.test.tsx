@@ -189,7 +189,7 @@ describe("BottomTaskbar render churn", () => {
   });
 
   it("does not rerender unrelated taskbar chrome on window store updates", () => {
-    render(<BottomTaskbar mode="advanced" />);
+    render(<BottomTaskbar mode="standard" />);
 
     // The right cluster is collapsed by default, which hides the
     // profile rail, so only the center AppNavRail mounts here.

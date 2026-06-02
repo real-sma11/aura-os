@@ -47,8 +47,8 @@ export interface SlidingPillsProps<T extends string> {
   readonly indicatorClassName?: string;
   /**
    * Optional `data-testid` attribute applied to the sliding indicator
-   * span. Used by Phase 3's `ModeToggle` slide-not-snap regression so
-   * tests can capture the same DOM node before and after a mode flip.
+   * span so tests can capture the same DOM node before and after a
+   * selection change.
    */
   readonly indicatorTestId?: string;
 }
@@ -123,8 +123,8 @@ export function SlidingPills<T extends string>({
       // box, but the absolutely-positioned indicator (`top/left: 0`) is
       // offset from the padding box (inside the border). Subtract the
       // border widths (`clientLeft`/`clientTop`) so a bordered container
-      // (e.g. `ModeToggle`'s pills) doesn't shift the indicator down /
-      // right by the border width. Borderless consumers read 0 here.
+      // doesn't shift the indicator down / right by the border width.
+      // Borderless consumers read 0 here.
       indicator.style.transform = `translate(${
         selectedRect.left - containerRect.left - container.clientLeft
       }px, ${selectedRect.top - containerRect.top - container.clientTop}px)`;

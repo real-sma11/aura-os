@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { cn } from "@cypher-asi/zui";
 import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
-import { ModeToggle } from "../ModeToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { EarnCreditsButton } from "../EarnCreditsButton";
@@ -41,27 +40,21 @@ const PUBLIC_SEARCH_KEY = "public";
 
 export interface AuraSidebarProps {
   /**
-   * Effective UI mode. Drives the body slot, search variant, and
-   * `<ModeToggle>` presence — but NOT the wrapping `<aside>`, the
-   * `<Lane>` instance, the `.sidebarHeader`, or the `<PanelSearch>`
-   * input. Those keep stable DOM identity across every mode flip so
-   * the slide-not-snap and search-continuity invariants hold.
-   *
-   * `<ModeToggle>` is gated to authenticated modes only — it
-   * unmounts in `public` and remounts on sign-in. The slide-not-snap
-   * invariant is preserved across the in-scope flow (Simple <->
-   * Advanced); the public boundary is a discrete login event where
-   * a remount is the correct UX.
+   * Effective UI mode. Drives the body slot and search variant — but
+   * NOT the wrapping `<aside>`, the `<Lane>` instance, the
+   * `.sidebarHeader`, or the `<PanelSearch>` input. Those keep stable
+   * DOM identity across every mode flip so the search-continuity
+   * invariant holds.
    */
   mode: UIMode;
   /**
-   * True when the user is on `/desktop` in advanced mode. Collapses
+   * True when the user is on `/desktop` in standard mode. Collapses
    * the Lane to 0 width (snap, not animated) so the wallpaper-backed
    * Desktop surface goes edge-to-edge — matching the legacy
    * `DesktopShell` behaviour that was lost in Phase 3's consolidation.
    * `DesktopApp.LeftPanel` returns `null` so the body has nothing to
-   * show anyway; the search box + `<ModeToggle>` would otherwise hang
-   * over the wallpaper.
+   * show anyway; the search box would otherwise hang over the
+   * wallpaper.
    */
   isDesktop?: boolean;
 }
@@ -69,24 +62,20 @@ export interface AuraSidebarProps {
 /**
  * Single `<Lane>` (and single `<aside>` wrapper) mounted across
  * every effective mode. Header slot always renders the
- * `<PanelSearch>` and renders `<ModeToggle>` only in authenticated
- * modes (`simple` / `advanced`). Body slot conditionally renders one
- * of three subtrees based on `mode`.
+ * `<PanelSearch>`. Body slot conditionally renders the public or
+ * authed subtree based on `mode`.
  *
  * Phase 3 invariants:
  * - The Lane mount, sidebarHeader div, and PanelSearch input retain
- *   reference-stable DOM identity across every mode flip. The
- *   `ModeToggle` keeps reference-stable identity across the
- *   Simple <-> Advanced flip; it remounts across the public <->
- *   authed boundary, where the remount is the correct UX for a
- *   discrete login event.
+ *   reference-stable DOM identity across the public <-> authed
+ *   boundary.
  * - The sidebar Lane writes its current width to the
  *   `--aura-sidebar-width` CSS variable on `documentElement` so the
  *   public-chat surface's centered AURA visual loop stays aligned
  *   regardless of user resize.
  * - Search query value is lifted into `useSidebarSearchStore` (for
  *   the `public` key) and the existing per-app `useAppUIStore.
- *   sidebarQueries` (for authenticated modes via `useSidebarSearch`)
+ *   sidebarQueries` (for the authed mode via `useSidebarSearch`)
  *   so typing survives mode flips.
  */
 export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): React.ReactElement {
@@ -142,9 +131,9 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
       >
         <Lane
           // Every mode is now collapsible: public toggles via the
-          // titlebar drawer (`publicSidebarCollapsed`), authed
-          // modes toggle the same drawer bound to
-          // `authedSidebarCollapsed`, and advanced `/desktop`
+          // titlebar drawer (`publicSidebarCollapsed`), the authed
+          // mode toggles the same drawer bound to
+          // `authedSidebarCollapsed`, and standard `/desktop`
           // forces collapse (snap, no animation) so the wallpaper
           // extends edge-to-edge — same behaviour the legacy
           // `DesktopShell` had via `collapsed={isDesktop}
@@ -168,7 +157,6 @@ export function AuraSidebar({ mode, isDesktop = false }: AuraSidebarProps): Reac
               data-testid="aura-sidebar-header"
             >
               <AuraSidebarSearch mode={mode} />
-              {!isPublic && <ModeToggle />}
             </div>
           }
         >
@@ -203,13 +191,10 @@ function SidebarBody({ mode }: { mode: UIMode }): React.ReactElement {
   if (mode === "public") {
     return <PublicSidebarBody />;
   }
-  // Phase 3: simple and advanced share the active-app LeftPanel
-  // body. Phase 4's `p4_simple_pin_chat` pins `ChatApp` as the
-  // active app whenever `effectiveMode === "simple"`, so the body
-  // resolves to ChatAppLeftPanel automatically via `useActiveApp`
-  // without the shell needing to import from `apps/*`. The public
-  // nav footer only lives inside `PublicSidebarBody` — it never
-  // reaches simple/advanced users.
+  // The authed body renders the active-app LeftPanel, resolved via
+  // `useActiveApp` without the shell needing to import from
+  // `apps/*`. The public nav footer only lives inside
+  // `PublicSidebarBody` — it never reaches authed users.
   return <AuthedSidebarBody />;
 }
 

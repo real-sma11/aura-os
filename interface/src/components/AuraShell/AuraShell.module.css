@@ -1,15 +1,14 @@
 /*
  * AuraShell — unified desktop shell mounted once across every
- * effective UI mode (`public` / `simple` / `advanced`). Phase 3's
+ * effective UI mode (`public` / `standard`). Phase 3's
  * load-bearing invariant is that the chrome DOM identity (shell
- * root, titlebar wrapper, sidebar Lane, search input, ModeToggle,
+ * root, titlebar wrapper, sidebar Lane, search input,
  * BottomTaskbar `.bar`) stays stable across mode flips and
  * login/logout transitions — only slot bodies swap.
  *
  * Ported from `DesktopShell.module.css`: `.desktopShell` ->
  * `.shell`, `.desktopContent` -> `.body`, `.desktopSidebar` ->
- * `.sidebar`, plus the sibling `.sidebarHeader` / nth-child rules
- * that govern the search + ModeToggle stacking. The CSS variable
+ * `.sidebar`. The CSS variable
  * `--aura-sidebar-width` is published by `AuraSidebar` so the
  * public-chat surface (`LoggedOutShell.module.css`) can keep its
  * centered AURA visual loop aligned regardless of the user-resized
@@ -118,17 +117,10 @@
   overflow: hidden;
 }
 
-/* Stacks `PanelSearch` over `ModeToggle` inside the Lane's header
-   slot. The toggle (`:nth-child(2)`) needs an explicit 5px inset so
-   its left/right edges line up with the search row above it, mirroring
-   the rule that lived in `DesktopShell.module.css`. */
+/* Hosts the `PanelSearch` row inside the Lane's header slot. */
 .sidebarHeader {
   display: flex;
   flex-direction: column;
-}
-
-.sidebarHeader > :nth-child(2) {
-  padding: 0 var(--shell-chrome-inset, 5px) var(--shell-chrome-inset, 5px);
 }
 
 .mainPanel {

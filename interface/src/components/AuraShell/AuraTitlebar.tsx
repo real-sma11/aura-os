@@ -68,16 +68,14 @@ export interface AuraTitlebarProps {
  *   `selected={!collapsed}`, `aria-pressed`) and the same neutral-
  *   text override on `[aria-pressed="true"]`. Public and authed
  *   shells each bind the toggle to their own collapse state so the
- *   two drawers remember independent positions. Authenticated modes
- *   additionally mount headless `MenuShortcuts` (always) and the
- *   visible `MenuBar` (File / Edit / View / Help) in Advanced only —
- *   Simple is chat-only and never shows the application menu, but
- *   the global keyboard shortcuts the menu publishes (Ctrl+N, Ctrl+,,
- *   F11, zoom, etc.) still fire in Simple via the headless companion.
+ *   two drawers remember independent positions. The authed standard
+ *   mode mounts headless `MenuShortcuts` plus the visible `MenuBar`
+ *   (File / Edit / View / Help); public mode shows neither.
  *   The team selector (`OrgSelector`) lives in the bottom taskbar's
  *   `.left` cluster (right after `ProfilePill`) instead of the
- *   titlebar. In Advanced the Desktop icon now leads the `.center`
- *   cluster, so it no longer sits adjacent to the org selector.
+ *   titlebar. In standard mode the Desktop icon now leads the
+ *   `.center` cluster, so it no longer sits adjacent to the org
+ *   selector.
  * - Trailing slot:
  *   - Authenticated: `UpdatePill` + optional host-settings button +
  *     `WindowControls` (with the sidekick / split-screen toggles
@@ -156,10 +154,10 @@ function AuthedLeading({
   onToggle?: () => void;
 }): React.ReactElement {
   // `MenuShortcuts` is headless (`null`) and installs the document-
-  // level shortcut listener for both Simple and Advanced. The visible
-  // `MenuBar` only mounts in Advanced — Simple is a chat-only surface
-  // and never shows the File / Edit / View / Help bar.
-  const isAdvanced = mode === "advanced";
+  // level shortcut listener. The visible `MenuBar` mounts only in the
+  // authed standard surface — public mode never shows the
+  // File / Edit / View / Help bar.
+  const isStandard = mode === "standard";
   const menuBarCollapsed = useAppUIStore((s) => s.menuBarCollapsed);
   const toggleMenuBar = useAppUIStore((s) => s.toggleMenuBar);
   return (
@@ -177,7 +175,7 @@ function AuthedLeading({
         <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
       )}
       <MenuShortcuts />
-      {isAdvanced && (
+      {isStandard && (
         <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
       )}
     </span>
@@ -253,7 +251,7 @@ function AuthedActions({
         // Pass through `undefined` (rather than substituting a no-op
         // function) so `WindowControls` can drop the `Toggle sidekick`
         // / `Toggle split screen` icon buttons entirely when the host
-        // has opted out — this is what gives Simple mode a clean
+        // has opted out — this is what gives public mode a clean
         // titlebar trailing cluster (min/max/close only).
         onToggleSidekick={onToggleSidekick}
         splitScreenActive={splitScreenActive}

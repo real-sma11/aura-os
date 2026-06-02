@@ -71,7 +71,7 @@ type AppUIState = {
    */
   publicSidebarCollapsed: boolean;
   /**
-   * Whether the authenticated-shell (simple / advanced) left
+   * Whether the authenticated standard-shell left
    * sidebar is collapsed. Mirrors `publicSidebarCollapsed` but
    * persisted under its own storage key so the two shells remember
    * independent positions. Default is `false` (open) so signed-in
@@ -82,7 +82,7 @@ type AppUIState = {
   authedSidebarCollapsed: boolean;
   /**
    * Whether the application menu bar (File / Edit / View / Help) is
-   * collapsed in the authenticated Advanced titlebar. The left
+   * collapsed in the authenticated standard titlebar. The left
    * sidebar drawer toggle stays visible regardless; only the menu
    * triggers hide. Persisted to `localStorage` so the choice
    * survives reloads, mirroring the bottom-taskbar collapse

@@ -53,7 +53,7 @@ function blurActiveElement(): void {
 
 /**
  * AuraShell — the single mounted-once desktop shell for every
- * effective UI mode (`public` / `simple` / `advanced`). Mounts:
+ * effective UI mode (`public` / `standard`). Mounts:
  *   - `<BackgroundLayer />` (theme wallpaper; authed modes only —
  *     suppressed in `public` so the persisted desktop wallpaper
  *     never bleeds onto logged-out surfaces)
@@ -80,10 +80,10 @@ function blurActiveElement(): void {
 export function AuraShell(): React.ReactElement {
   const mode = useEffectiveMode();
   const isPublic = mode === "public";
-  // Simple mode is a chat-only surface: no wallpaper, no right
-  // sidekick lane, no titlebar split/sidekick toggles, no host
-  // settings entry — only Advanced gets the full chrome.
-  const isAdvanced = mode === "advanced";
+  // Authenticated users get the full standard shell: wallpaper, the
+  // right sidekick lane, titlebar split/sidekick toggles, and the
+  // host settings entry. Public mode strips all of it.
+  const isStandard = mode === "standard";
 
   // Authed-side state. We call these hooks unconditionally because
   // their subscriptions are cheap store reads — `useAppUIStore`,
@@ -111,10 +111,10 @@ export function AuraShell(): React.ReactElement {
     (state) => Object.keys(state.windows).length,
   );
 
-  const isDesktop = isAdvanced && activeApp.id === "desktop";
+  const isDesktop = isStandard && activeApp.id === "desktop";
   const desktopModeActive = isDesktop && backgroundHydrated;
   const hasActiveSidekick =
-    isAdvanced && Boolean(activeApp.SidekickPanel) && !isDesktop;
+    isStandard && Boolean(activeApp.SidekickPanel) && !isDesktop;
   const sidekickHostCollapsed = sidekickCollapsed || !hasActiveSidekick;
   const showSidekickHeader = hasActiveSidekick && Boolean(activeApp.SidekickTaskbar);
   const splitScreenActive = sidekickSplitScreen && hasActiveSidekick;
@@ -239,7 +239,7 @@ export function AuraShell(): React.ReactElement {
         data-testid="aura-shell"
         data-agent-context={isPublic ? "logged-out-shell" : "desktop-shell"}
       >
-        {isAdvanced && <BackgroundLayer />}
+        {isStandard && <BackgroundLayer />}
         <AuraTitlebar
           mode={mode}
           publicSidebarCollapsed={publicSidebarCollapsed}
@@ -247,12 +247,12 @@ export function AuraShell(): React.ReactElement {
           authedSidebarCollapsed={authedSidebarCollapsed}
           onToggleAuthedSidebar={!isPublic ? toggleAuthedSidebar : undefined}
           sidekickCollapsed={sidekickCollapsed}
-          onToggleSidekick={isAdvanced ? toggleSidekick : undefined}
+          onToggleSidekick={isStandard ? toggleSidekick : undefined}
           splitScreenActive={splitScreenActive}
           onToggleSplitScreen={
-            isAdvanced && hasActiveSidekick ? handleToggleSplitScreen : undefined
+            isStandard && hasActiveSidekick ? handleToggleSplitScreen : undefined
           }
-          onOpenHostSettings={isAdvanced ? openHostSettings : undefined}
+          onOpenHostSettings={isStandard ? openHostSettings : undefined}
         />
         <div
           ref={desktopContentRef}
@@ -263,7 +263,7 @@ export function AuraShell(): React.ReactElement {
             mode={mode}
             mainPanelHostRef={mainPanelHostRef}
           />
-          {isAdvanced && (
+          {isStandard && (
             <>
               {hasActiveSidekick && (
                 <ErrorBoundary name="sidekick">
@@ -299,7 +299,7 @@ export function AuraShell(): React.ReactElement {
         </div>
         <BottomTaskbar mode={mode} />
       </div>
-      {isAdvanced && hostSettingsOpen ? (
+      {isStandard && hostSettingsOpen ? (
         <Suspense fallback={null}>
           <HostSettingsModal
             isOpen={hostSettingsOpen}

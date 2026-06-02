@@ -4,7 +4,6 @@ import {
   selectEffectiveMode,
   useUIModeStore,
   type UIMode,
-  type UIModeState,
 } from "./ui-mode-store";
 
 const STORAGE_KEY = "aura-ui-mode";
@@ -15,13 +14,15 @@ beforeEach(() => {
   // Reset the store to a known starting value between tests so order
   // isn't load-bearing. The store reads `localStorage` once at module
   // load; later tests use `setMode` / `setState` to drive transitions.
-  useUIModeStore.setState({ mode: "simple" });
+  useUIModeStore.setState({ mode: "standard" });
 });
 
 describe("ui-mode-store", () => {
   describe("UIMode type round-trip", () => {
-    it("accepts and persists each of the three values", () => {
-      const values: ReadonlyArray<UIMode> = ["advanced", "public", "simple"];
+    it("accepts and persists each of the two values", () => {
+      // `beforeEach` seeds `standard`, so lead with `public` to avoid a
+      // no-op `setMode` short-circuit on the first iteration.
+      const values: ReadonlyArray<UIMode> = ["public", "standard"];
       for (const value of values) {
         useUIModeStore.getState().setMode(value);
         expect(useUIModeStore.getState().mode).toBe(value);
@@ -31,111 +32,68 @@ describe("ui-mode-store", () => {
   });
 
   describe("readPersistedMode migrations", () => {
-    it("returns 'simple' when nothing is persisted", () => {
-      expect(readPersistedMode()).toBe("simple");
+    it("returns 'standard' when nothing is persisted", () => {
+      expect(readPersistedMode()).toBe("standard");
     });
 
     it("returns the persisted value when it matches the union", () => {
-      window.localStorage.setItem(STORAGE_KEY, "advanced");
-      expect(readPersistedMode()).toBe("advanced");
+      window.localStorage.setItem(STORAGE_KEY, "standard");
+      expect(readPersistedMode()).toBe("standard");
       window.localStorage.setItem(STORAGE_KEY, "public");
       expect(readPersistedMode()).toBe("public");
     });
 
-    it("migrates the legacy 'normie' value to 'simple'", () => {
-      window.localStorage.setItem(STORAGE_KEY, "normie");
-      expect(readPersistedMode()).toBe("simple");
+    it("collapses the legacy 'simple' / 'advanced' / 'normie' values to 'standard'", () => {
+      for (const legacy of ["simple", "advanced", "normie"]) {
+        window.localStorage.setItem(STORAGE_KEY, legacy);
+        expect(readPersistedMode()).toBe("standard");
+      }
     });
 
-    it("migrates legacy aura-app-mode='advanced' to seed advanced and removes the legacy key", () => {
+    it("migrates legacy aura-app-mode='advanced' to 'standard' and removes the legacy key", () => {
       window.localStorage.setItem(LEGACY_APP_MODE_KEY, "advanced");
-      expect(readPersistedMode()).toBe("advanced");
+      expect(readPersistedMode()).toBe("standard");
       // The migration must consume the legacy key so it isn't read
       // a second time after the user explicitly chose a new value.
       expect(window.localStorage.getItem(LEGACY_APP_MODE_KEY)).toBeNull();
     });
 
-    it("migrates legacy aura-app-mode='simple' to seed simple and removes the legacy key", () => {
+    it("migrates legacy aura-app-mode='simple' to 'standard' and removes the legacy key", () => {
       window.localStorage.setItem(LEGACY_APP_MODE_KEY, "simple");
-      expect(readPersistedMode()).toBe("simple");
+      expect(readPersistedMode()).toBe("standard");
       expect(window.localStorage.getItem(LEGACY_APP_MODE_KEY)).toBeNull();
     });
 
-    it("falls back to 'simple' on garbage values", () => {
+    it("falls back to 'standard' on garbage values", () => {
       window.localStorage.setItem(STORAGE_KEY, "wat");
-      expect(readPersistedMode()).toBe("simple");
+      expect(readPersistedMode()).toBe("standard");
     });
   });
 
-  describe("selectEffectiveMode truth table", () => {
-    function effective(mode: UIMode, isAuthenticated: boolean): UIMode {
-      const state: UIModeState = {
-        mode,
-        setMode: () => {},
-        toggleMode: () => {},
-      };
-      return selectEffectiveMode(state, isAuthenticated);
-    }
-
-    it("logged-out users always see 'public' regardless of stored preference", () => {
-      expect(effective("simple", false)).toBe("public");
-      expect(effective("advanced", false)).toBe("public");
-      expect(effective("public", false)).toBe("public");
+  describe("selectEffectiveMode", () => {
+    it("logged-out users always see 'public'", () => {
+      expect(selectEffectiveMode(false)).toBe("public");
     });
 
-    it("logged-in users see their stored 'simple' / 'advanced' preference", () => {
-      expect(effective("simple", true)).toBe("simple");
-      expect(effective("advanced", true)).toBe("advanced");
-    });
-
-    it("logged-in users with a stale 'public' preference are squashed to 'simple'", () => {
-      expect(effective("public", true)).toBe("simple");
+    it("logged-in users always see 'standard'", () => {
+      expect(selectEffectiveMode(true)).toBe("standard");
     });
   });
 
   describe("setMode persistence", () => {
     it("persists each chosen mode to localStorage", () => {
-      useUIModeStore.getState().setMode("advanced");
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("advanced");
-      useUIModeStore.getState().setMode("simple");
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("simple");
       useUIModeStore.getState().setMode("public");
       expect(window.localStorage.getItem(STORAGE_KEY)).toBe("public");
+      useUIModeStore.getState().setMode("standard");
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("standard");
     });
 
     it("is a no-op when the value is unchanged", () => {
       // Reset state and storage so we can observe whether a write lands.
-      useUIModeStore.setState({ mode: "advanced" });
+      useUIModeStore.setState({ mode: "standard" });
       window.localStorage.removeItem(STORAGE_KEY);
-      useUIModeStore.getState().setMode("advanced");
+      useUIModeStore.getState().setMode("standard");
       expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-    });
-
-    it("setMode('public') while logged in: store persists 'public' but selectEffectiveMode squashes to 'simple'", () => {
-      useUIModeStore.getState().setMode("public");
-      expect(useUIModeStore.getState().mode).toBe("public");
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("public");
-      expect(selectEffectiveMode(useUIModeStore.getState(), true)).toBe(
-        "simple",
-      );
-    });
-  });
-
-  describe("toggleMode", () => {
-    it("flips between simple and advanced", () => {
-      useUIModeStore.setState({ mode: "simple" });
-      useUIModeStore.getState().toggleMode();
-      expect(useUIModeStore.getState().mode).toBe("advanced");
-      useUIModeStore.getState().toggleMode();
-      expect(useUIModeStore.getState().mode).toBe("simple");
-    });
-
-    it("persists each flip", () => {
-      useUIModeStore.setState({ mode: "simple" });
-      useUIModeStore.getState().toggleMode();
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("advanced");
-      useUIModeStore.getState().toggleMode();
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe("simple");
     });
   });
 });

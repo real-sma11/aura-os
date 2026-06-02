@@ -20,10 +20,10 @@ for (const scenario of scenarios) {
     );
 
     // Smoke tests that navigate to project routes require the full
-    // DesktopShell (advanced mode). Set the preference before any
-    // navigation so the simple-mode shell doesn't redirect to /chat.
+    // standard DesktopShell. Seed the persisted mode before any
+    // navigation to keep behaviour deterministic across runs.
     await page.addInitScript(() => {
-      localStorage.setItem("aura-ui-mode", "advanced");
+      localStorage.setItem("aura-ui-mode", "standard");
     });
 
     await bootstrapScenarioPage(page, scenario);

@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../apps/registry", () => ({
@@ -21,8 +21,6 @@ vi.mock("../utils/storage", () => ({
 }));
 
 import { useActiveApp, useActiveAppId } from "./use-active-app";
-import { useUIModeStore } from "../stores/ui-mode-store";
-import { useAuthStore } from "../stores/auth-store";
 
 function wrapperAt(pathname: string) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -31,22 +29,6 @@ function wrapperAt(pathname: string) {
 }
 
 describe("useActiveApp", () => {
-  beforeEach(() => {
-    // Phase 4: the simple-mode pin overrides path-based resolution and
-    // forces ChatApp. The pre-Phase-4 tests assume an authenticated
-    // advanced shell where path-based resolution wins; set the store
-    // accordingly so each test is unaffected by suite-wide state.
-    useAuthStore.setState({
-      user: { user_id: "test", display_name: "T" } as never,
-    });
-    useUIModeStore.setState({ mode: "advanced" });
-  });
-
-  afterEach(() => {
-    useAuthStore.setState({ user: null });
-    useUIModeStore.setState({ mode: "simple" });
-  });
-
   it("derives the app that owns the current pathname", () => {
     const { result } = renderHook(() => useActiveApp(), {
       wrapper: wrapperAt("/projects/abc"),
@@ -54,17 +36,7 @@ describe("useActiveApp", () => {
     expect(result.current.id).toBe("projects");
   });
 
-  it("pins the Chat app when effectiveMode is `simple` regardless of the pathname", () => {
-    act(() => {
-      useUIModeStore.setState({ mode: "simple" });
-    });
-    const { result } = renderHook(() => useActiveApp(), {
-      wrapper: wrapperAt("/projects/abc"),
-    });
-    expect(result.current.id).toBe("chat");
-  });
-
-  it("does NOT pin Chat in advanced mode (path-based resolution wins)", () => {
+  it("resolves the active app purely from the pathname", () => {
     const { result } = renderHook(() => useActiveApp(), {
       wrapper: wrapperAt("/notes"),
     });

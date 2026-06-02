@@ -488,7 +488,7 @@ function AppContent() {
         </LazyModalBoundary>
       ) : null}
       <ProjectCreationModalHost />
-      {uiMode === "advanced" && (
+      {uiMode === "standard" && (
         <>
           <LazyModalBoundary>
             <WelcomeModal />
