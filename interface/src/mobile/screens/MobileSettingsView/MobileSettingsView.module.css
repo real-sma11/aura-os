@@ -1,6 +1,19 @@
 .settingsRoot {
+  /*
+    Own scroll viewport. `.mobileMainPanel` is a bounded flex parent with
+    `overflow: hidden`, and the native shell sets Capacitor `scrollEnabled:
+    false`, so the body cannot scroll — each route screen must scroll itself.
+    `flex: 1; min-height: 0; overflow-y: auto` makes this element the scroller,
+    mirroring the working ProjectStatsScreen/ProjectAgentsScreen route roots.
+  */
   width: 100%;
-  min-height: 100%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 18px 16px calc(28px + env(safe-area-inset-bottom));
   color: var(--color-text);
   background: var(--color-bg);
