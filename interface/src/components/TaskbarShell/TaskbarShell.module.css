@@ -1,13 +1,15 @@
 /*
- * Full-width panel behind the entire bottom taskbar section. It spans
- * left to right and all the way down to the bottom edge of the shell, so
- * every taskbar pill sits on top of it. The background is a diagonal
- * gradient from #131313 (bottom-left) to #272727 (top-right).
+ * Full-width container for the bottom taskbar section. It spans left to
+ * right and reaches the bottom edge of the shell so every taskbar pill
+ * sits inside it. The section is transparent — the shell backdrop
+ * (`AuraShell` standard mode) paints the diagonal gradient behind it, so
+ * the taskbar reads as part of one continuous shell rather than a
+ * separate banded panel.
  */
 .taskbarShell {
   width: 100%;
   flex-shrink: 0;
   display: flex;
   box-sizing: border-box;
-  background: linear-gradient(to top right, #131313, #272727);
+  background: transparent;
 }

@@ -26,13 +26,14 @@
 }
 
 /*
- * Standard (authed) mode paints a near-black backdrop so the contained
- * desktop below reads as a framed "screen" — the top bar and bottom
- * taskbar live on this backdrop, forming a shell around it. Public mode
- * keeps `var(--color-bg)` (its own content owns the visuals).
+ * Standard (authed) mode paints a diagonal gradient backdrop across the
+ * whole shell so the contained desktop below reads as a framed "screen"
+ * — the top bar and bottom taskbar live on this backdrop, forming a
+ * continuous shell around it. Public mode keeps `var(--color-bg)` (its
+ * own content owns the visuals).
  */
 .shell[data-ui-mode="standard"] {
-  background: var(--desktop-shell-backdrop, #0b0c10);
+  background: var(--desktop-shell-backdrop, linear-gradient(to top right, #131313, #272727));
 }
 
 .body {

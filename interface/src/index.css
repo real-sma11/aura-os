@@ -76,12 +76,13 @@
   --shell-chrome-backdrop-filter: blur(40px) saturate(1.4);
 
   /*
-   * Backdrop painted behind the contained authed desktop frame
-   * (`AuraShell` standard mode). The desktop wallpaper + content live
-   * inside a centered 16:10 rounded rectangle; this near-black fill is
-   * the surrounding "shell" the top bar and bottom taskbar sit on.
+   * Backdrop painted across the entire authed shell (`AuraShell`
+   * standard mode). The desktop wallpaper + content live inside a
+   * rounded, inset "screen"; this diagonal gradient is the surrounding
+   * shell the top bar and bottom taskbar sit on (the bottom-taskbar
+   * section is transparent so the gradient runs continuously behind it).
    */
-  --desktop-shell-backdrop: #0b0c10;
+  --desktop-shell-backdrop: linear-gradient(to top right, #131313, #272727);
 
   /*
    * Public-mode pill tokens. Shared by the top Log In / Sign Up
