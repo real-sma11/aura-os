@@ -76,6 +76,14 @@
   --shell-chrome-backdrop-filter: blur(40px) saturate(1.4);
 
   /*
+   * Backdrop painted behind the contained authed desktop frame
+   * (`AuraShell` standard mode). The desktop wallpaper + content live
+   * inside a centered 16:10 rounded rectangle; this near-black fill is
+   * the surrounding "shell" the top bar and bottom taskbar sit on.
+   */
+  --desktop-shell-backdrop: #0b0c10;
+
+  /*
    * Public-mode pill tokens. Shared by the top Log In / Sign Up
    * `.authPill` chrome in `AuraTitlebar` and the bottom-taskbar
    * `.left` / `.right` pill chrome in `BottomTaskbar` (and the

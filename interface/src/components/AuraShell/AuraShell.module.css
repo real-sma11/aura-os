@@ -25,6 +25,16 @@
   background: var(--color-bg);
 }
 
+/*
+ * Standard (authed) mode paints a near-black backdrop so the contained
+ * desktop below reads as a framed "screen" — the top bar and bottom
+ * taskbar live on this backdrop, forming a shell around it. Public mode
+ * keeps `var(--color-bg)` (its own content owns the visuals).
+ */
+.shell[data-ui-mode="standard"] {
+  background: var(--desktop-shell-backdrop, #0b0c10);
+}
+
 .body {
   position: relative;
   flex: 1;
@@ -34,6 +44,21 @@
   background: transparent;
   margin: 0 5px;
   border-radius: 6px;
+}
+
+/*
+ * Standard-mode contained desktop. `.body` already fills the whole
+ * region between the titlebar and bottom taskbar with a slim side
+ * inset; the only change here is the larger corner radius so the
+ * wallpaper (`BackgroundLayer`, clipped by `overflow: hidden`), app
+ * content, and desktop windows read as a single rounded "screen"
+ * floating on the near-black backdrop. The titlebar/taskbar inset
+ * (`--shell-chrome-inset`) plus the matching 5px side margin make the
+ * surrounding backdrop read as a uniform shell with curved sides —
+ * the same way the public-mode `.siteBackground` fills its panel.
+ */
+.shell[data-ui-mode="standard"] .body {
+  border-radius: var(--shell-chrome-radius);
 }
 
 .sidebar {

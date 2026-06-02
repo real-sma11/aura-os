@@ -54,12 +54,15 @@ function blurActiveElement(): void {
 /**
  * AuraShell — the single mounted-once desktop shell for every
  * effective UI mode (`public` / `standard`). Mounts:
- *   - `<BackgroundLayer />` (theme wallpaper; authed modes only —
- *     suppressed in `public` so the persisted desktop wallpaper
- *     never bleeds onto logged-out surfaces)
  *   - `<AuraTitlebar />` (one instance, slot composition by mode)
- *   - `<div className={styles.body}>` containing sidebar / main /
- *     conditional sidekick
+ *   - `<div className={styles.body}>` containing
+ *     `<BackgroundLayer />` (theme wallpaper; authed modes only —
+ *     suppressed in `public` so the persisted desktop wallpaper never
+ *     bleeds onto logged-out surfaces) plus sidebar / main /
+ *     conditional sidekick. In standard mode `.body` is a rounded
+ *     "device" rectangle inset from the chrome over a near-black
+ *     backdrop, so the top bar and bottom taskbar read as a shell
+ *     around the contained desktop.
  *   - `<AuraSidebar />` (one Lane instance, conditional body)
  *   - `<main>` (one element, content varies by mode)
  *   - `<BottomTaskbar />` (one `.bar`, mode-aware children)
@@ -239,7 +242,6 @@ export function AuraShell(): React.ReactElement {
         data-testid="aura-shell"
         data-agent-context={isPublic ? "logged-out-shell" : "desktop-shell"}
       >
-        {isStandard && <BackgroundLayer />}
         <AuraTitlebar
           mode={mode}
           publicSidebarCollapsed={publicSidebarCollapsed}
@@ -258,6 +260,7 @@ export function AuraShell(): React.ReactElement {
           ref={desktopContentRef}
           className={styles.body}
         >
+          {isStandard && <BackgroundLayer />}
           <AuraSidebar mode={mode} isDesktop={isDesktop} />
           <MainPanelSlot
             mode={mode}
