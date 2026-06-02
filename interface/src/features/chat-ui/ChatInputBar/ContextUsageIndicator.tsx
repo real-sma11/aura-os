@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import type { ContextBreakdown } from "../../../stores/context-usage-store";
 import { computeSessionCost } from "../../../constants/model-pricing";
 import { modelLabel } from "../../../constants/models";
@@ -353,17 +353,23 @@ export function ContextUsageIndicator({
             </button>
           </div>
 
-          <button
-            type="button"
-            className={styles.contextSectionHeader}
-            onClick={toggleComposition}
-            aria-expanded={compositionOpen}
-          >
-            <span className={styles.contextSectionHeaderLabel}>Context Composition</span>
-            {compositionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </button>
-          {compositionOpen && (
-            <div className={styles.contextSectionBody}>
+          <div className={styles.contextSection}>
+            <button
+              type="button"
+              className={styles.contextSectionHeader}
+              onClick={toggleComposition}
+              aria-expanded={compositionOpen}
+            >
+              <span className={styles.contextSectionHeaderLabel}>Context Composition</span>
+              <ChevronRight
+                size={12}
+                className={styles.contextSectionChevron}
+                data-open={compositionOpen}
+              />
+            </button>
+            <div className={styles.contextSectionCollapse} data-open={compositionOpen}>
+              <div className={styles.contextSectionCollapseInner}>
+                <div className={styles.contextSectionBody}>
               <div className={styles.contextBreakdownSummary}>
                 <span
                   className={`${styles.contextBreakdownPercent}${toneClass ? ` ${toneClass}` : ""}`}
@@ -440,12 +446,14 @@ export function ContextUsageIndicator({
                     </span>
                   </div>
                 )}
+                </div>
+                </div>
               </div>
             </div>
-          )}
+          </div>
 
           {sessionCostView && (
-            <>
+            <div className={styles.contextSection}>
               <button
                 type="button"
                 className={styles.contextSectionHeader}
@@ -453,14 +461,18 @@ export function ContextUsageIndicator({
                 aria-expanded={costOpen}
               >
                 <span className={styles.contextSectionHeaderLabel}>Session Cost</span>
-                {costOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <ChevronRight
+                  size={12}
+                  className={styles.contextSectionChevron}
+                  data-open={costOpen}
+                />
               </button>
-              {costOpen && (
-                <div className={styles.contextSectionBody}>
+              <div className={styles.contextSectionCollapse} data-open={costOpen}>
+                <div className={styles.contextSectionCollapseInner}>
                   <SessionCostSection view={sessionCostView} showTitle={false} />
                 </div>
-              )}
-            </>
+              </div>
+            </div>
           )}
         </div>
       )}

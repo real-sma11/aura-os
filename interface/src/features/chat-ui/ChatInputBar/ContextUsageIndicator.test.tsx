@@ -198,26 +198,24 @@ describe("ContextUsageIndicator", () => {
 
     await user.click(screen.getByRole("button", { name: /39%/ }));
 
-    // Composition body is visible by default.
-    expect(screen.getByText("Conversation")).toBeInTheDocument();
-
-    // Session Cost is collapsed: its header shows but the body (Model
-    // row) is not rendered yet.
+    const compositionHeader = screen.getByRole("button", {
+      name: /context composition/i,
+    });
     const costHeader = screen.getByRole("button", { name: /session cost/i });
+
+    // Defaults: Context Composition expanded, Session Cost collapsed.
+    // (Section bodies stay mounted for the height animation, so collapse
+    // state is communicated via aria-expanded rather than presence.)
+    expect(compositionHeader).toHaveAttribute("aria-expanded", "true");
     expect(costHeader).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Model")).not.toBeInTheDocument();
+    expect(screen.getByText("Conversation")).toBeInTheDocument();
 
     await user.click(costHeader);
     expect(costHeader).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Model")).toBeInTheDocument();
 
-    // Collapsing Context Composition hides its bucket rows.
-    const compositionHeader = screen.getByRole("button", {
-      name: /context composition/i,
-    });
     await user.click(compositionHeader);
     expect(compositionHeader).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
   });
 
   // The Cached row renders as a single bottom row with an Info popup that

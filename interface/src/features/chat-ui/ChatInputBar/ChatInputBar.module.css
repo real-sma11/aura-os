@@ -673,10 +673,55 @@
   letter-spacing: 0.01em;
 }
 
+/* Chevron rotates from pointing right (collapsed) to down (expanded)
+   instead of swapping icons, so the toggle reads as a smooth turn. */
+.contextSectionChevron {
+  flex: 0 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.contextSectionChevron[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+/* Each collapsible section groups its header with an animated body. The
+   card's own gap separates sections; in-section spacing comes from the
+   body's padding so it collapses to nothing when closed. */
+.contextSection {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Height animation via the grid-template-rows 0fr -> 1fr technique:
+   animates cleanly to/from content height without measuring in JS. The
+   inner wrapper must clip overflow and allow a 0 min-height. */
+.contextSectionCollapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s ease;
+}
+
+.contextSectionCollapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.contextSectionCollapseInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contextSectionChevron,
+  .contextSectionCollapse {
+    transition: none;
+  }
+}
+
 .contextSectionBody {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-top: 8px;
 }
 
 /* Cached row value: keep the Info trigger vertically centered with the
