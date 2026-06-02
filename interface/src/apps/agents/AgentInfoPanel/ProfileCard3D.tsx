@@ -13,6 +13,11 @@ function readAccent(el: HTMLElement): string {
   return value || "#6366f1";
 }
 
+function readLineColor(el: HTMLElement): string {
+  const value = getComputedStyle(el).getPropertyValue("--color-card-line").trim();
+  return value || "#cfe8ff";
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -40,6 +45,7 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
     try {
       scene = createProfileCardScene(host, {
         accent: readAccent(host),
+        lineColor: readLineColor(host),
         reducedMotion: prefersReducedMotion(),
       });
     } catch {
@@ -77,6 +83,7 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
       accent: readAccent(host),
       avatar,
     });
+    scene.setLineColor(readLineColor(host));
     scene.refreshTexture();
   }, [ready, agent, avatar]);
 

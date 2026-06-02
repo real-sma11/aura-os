@@ -114,6 +114,11 @@
   --color-sidekick-bg: var(--color-bg);
   --color-titlebar-bg: var(--color-bg);
 
+  /* Agent profile card LCD scan-line glow (editable; defaults to LCD blue,
+     matching the duotone highlight used by the card texture). Set this to
+     var(--color-accent)'s value to make the lines track your accent. */
+  --color-card-line: #cfe8ff;
+
   /* ----------------------------------------------------------------------
      Process canvas surface — used by ProcessCanvas (ReactFlow background,
      dot-grid pattern, mini-map mask + edge color).
@@ -266,6 +271,9 @@
   --color-sidebar-bg: var(--color-surface);
   --color-sidekick-bg: var(--color-elevated);
   --color-titlebar-bg: var(--color-bg);
+
+  /* Agent profile card LCD scan-line glow — same LCD blue default in light. */
+  --color-card-line: #cfe8ff;
 
   /* Process canvas — light overrides. */
   --color-canvas-bg: #f9fafb;

@@ -7,6 +7,8 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 export interface ProfileCardSceneOptions {
   accent: string;
+  /** CSS color for the LCD scan lines (read from `--color-card-line`). */
+  lineColor?: string;
   reducedMotion: boolean;
 }
 
@@ -14,6 +16,8 @@ export interface ProfileCardScene {
   /** Offscreen canvas the LCD texture is drawn into by the caller. */
   readonly screenCanvas: HTMLCanvasElement;
   setAccent(accent: string): void;
+  /** Update the LCD scan-line color (independent of the accent). */
+  setLineColor(color: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
   dispose(): void;
@@ -374,11 +378,15 @@ function createBarcodeTexture(): THREE.CanvasTexture {
 const WORDMARK_SRC = "/AURA_logo_text_mark.png";
 const WORDMARK_ASPECT = 3322 / 421;
 
+/** Fallback LCD scan-line color (matches the `--color-card-line` token default). */
+const CARD_LINE_COLOR = "#cfe8ff";
+
 export function createProfileCardScene(
   host: HTMLElement,
   options: ProfileCardSceneOptions,
 ): ProfileCardScene {
   let accent = new THREE.Color(options.accent || "#6366f1");
+  let lineColor = new THREE.Color(options.lineColor || CARD_LINE_COLOR);
   const reducedMotion = options.reducedMotion;
 
   const width = host.clientWidth || 320;
@@ -491,14 +499,14 @@ export function createProfileCardScene(
     roughness: 0.85,
     envMapIntensity: 0.4,
   });
-  // Fake barcode decal — white bars tinted to a subtle, slightly-lighter-than-
-  // metal blue and kept low-contrast via opacity so it reads as etched/printed.
+  // Fake barcode decal — white bars tinted to a medium grey and kept low-contrast
+  // via opacity so it reads as etched/printed.
   const barcodeTexture = createBarcodeTexture();
   const barcodeMaterial = new THREE.MeshBasicMaterial({
     map: barcodeTexture,
-    color: 0x5e7cac,
+    color: 0x9a9a9a,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.55,
     depthWrite: false,
   });
   // AURA wordmark decal — the app's actual wordmark PNG, tinted cool white.
@@ -536,7 +544,7 @@ export function createProfileCardScene(
   const lineCoreOpacity = 0.24;
   const lineHaloOpacity = 0.08;
   const lineMaterial = new THREE.LineBasicMaterial({
-    color: accent.clone(),
+    color: lineColor.clone(),
     vertexColors: true,
     transparent: true,
     opacity: lineCoreOpacity,
@@ -544,7 +552,7 @@ export function createProfileCardScene(
     blending: THREE.AdditiveBlending,
   });
   const lineHaloMaterial = new THREE.LineBasicMaterial({
-    color: accent.clone(),
+    color: lineColor.clone(),
     vertexColors: true,
     transparent: true,
     opacity: lineHaloOpacity,
@@ -986,8 +994,12 @@ export function createProfileCardScene(
       accentMaterial.color.copy(accent);
       accentMaterial.emissive.copy(accent);
       accentLight.color.copy(accent);
-      lineMaterial.color.copy(accent);
-      lineHaloMaterial.color.copy(accent);
+      if (reducedMotion) renderFrame();
+    },
+    setLineColor(next: string): void {
+      lineColor = new THREE.Color(next || CARD_LINE_COLOR);
+      lineMaterial.color.copy(lineColor);
+      lineHaloMaterial.color.copy(lineColor);
       if (reducedMotion) renderFrame();
     },
     refreshTexture(): void {
