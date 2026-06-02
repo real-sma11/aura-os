@@ -47,6 +47,10 @@ function installCapturingResizeObserver(): {
 function makeContainerRef(overrides?: {
   containerWidth?: number;
   buttonWidth?: number;
+  /** Width of the active (expanded) tab button, if it differs from the
+   *  collapsed icon width. Mirrors the inline label the active tab shows. */
+  activeButtonWidth?: number;
+  buttonCount?: number;
   tabGap?: number;
   containerGap?: number;
   paddingLeft?: number;
@@ -55,18 +59,23 @@ function makeContainerRef(overrides?: {
   const {
     containerWidth = 400,
     buttonWidth = 40,
+    activeButtonWidth,
+    buttonCount = 1,
     tabGap = 4,
     containerGap = 8,
     paddingLeft = 0,
     paddingRight = 0,
   } = overrides ?? {};
 
-  const button = {
-    offsetWidth: buttonWidth,
-  } as HTMLElement;
+  const widths =
+    activeButtonWidth !== undefined
+      ? [activeButtonWidth, ...Array(Math.max(0, buttonCount - 1)).fill(buttonWidth)]
+      : Array(Math.max(1, buttonCount)).fill(buttonWidth);
+  const buttons = widths.map((w) => ({ offsetWidth: w }) as HTMLElement);
 
   const tabBar = {
-    querySelector: () => button,
+    querySelector: () => buttons[0],
+    querySelectorAll: () => buttons,
   } as unknown as HTMLElement;
 
   const container = {
@@ -115,6 +124,28 @@ describe("useOverflowTabs", () => {
       ...result.current.visibleItems,
       ...result.current.overflowItems,
     ]).toEqual(items);
+  });
+
+  it("keeps all items visible when the active (first) tab is expanded but everything still fits at collapsed width", () => {
+    // Regression for the "Sessions selected hides most nav items on open"
+    // bug: the active tab renders a wide inline label. Measuring that
+    // expanded button as the per-tab unit made us think only a couple of
+    // tabs fit. With 9 collapsed icons at 40px (+4px gaps) the row needs
+    // 9*40 + 8*4 = 392px; the active label adds 80px of extra width.
+    const items = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+    const ref = makeContainerRef({
+      containerWidth: 500,
+      buttonWidth: 40,
+      activeButtonWidth: 120,
+      buttonCount: items.length,
+      tabGap: 4,
+      containerGap: 8,
+    });
+
+    const { result } = renderHook(() => useOverflowTabs(ref, items));
+
+    expect(result.current.visibleItems).toEqual(items);
+    expect(result.current.overflowItems).toEqual([]);
   });
 
   it("returns all items when items is empty", () => {

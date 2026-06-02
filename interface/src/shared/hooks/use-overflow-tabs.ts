@@ -48,11 +48,20 @@ export function useOverflowTabs<T>(
 
     const tabBar = container.firstElementChild as HTMLElement | null;
     if (!tabBar) return;
-    const btn = tabBar.querySelector<HTMLElement>(":scope > button");
-    if (!btn) return;
+    const btns = Array.from(tabBar.querySelectorAll<HTMLElement>(":scope > button"));
+    if (btns.length === 0) return;
 
-    const btnW = btn.offsetWidth;
+    // The active tab renders an inline expanded label and is therefore
+    // wider than the collapsed icon-only tabs. Using that width as the
+    // per-tab unit makes us think far fewer tabs fit than actually do,
+    // hiding most of them into the overflow menu (worst when the first
+    // tab is the active one). Use the *collapsed* icon width (the
+    // minimum) as the unit and reserve the active label's extra width
+    // separately so capacity is independent of which tab is selected.
+    const widths = btns.map((b) => b.offsetWidth);
+    const btnW = Math.min(...widths);
     if (btnW <= 0) return;
+    const activeExtra = Math.max(...widths) - btnW;
 
     const tabGap = parseFloat(getComputedStyle(tabBar).gap) || 0;
     const slot = btnW + tabGap;
@@ -60,7 +69,7 @@ export function useOverflowTabs<T>(
     const cs = getComputedStyle(container);
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
     const containerGap = parseFloat(cs.gap) || 0;
-    const totalAvailable = container.clientWidth - padX;
+    const totalAvailable = container.clientWidth - padX - activeExtra;
 
     const moreSlot = btnW + containerGap;
 
