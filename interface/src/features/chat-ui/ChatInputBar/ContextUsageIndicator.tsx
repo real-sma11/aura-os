@@ -5,6 +5,7 @@ import { computeSessionCost } from "../../../constants/model-pricing";
 import { modelLabel } from "../../../constants/models";
 import { SessionCostSection, type SessionCostView } from "../SessionCostSection";
 import { CacheInfoOverlay } from "./CacheInfoOverlay";
+import { CollapsibleSection } from "./CollapsibleSection";
 import styles from "./ChatInputBar.module.css";
 
 export interface ContextUsageIndicatorProps {
@@ -367,8 +368,7 @@ export function ContextUsageIndicator({
                 data-open={compositionOpen}
               />
             </button>
-            <div className={styles.contextSectionCollapse} data-open={compositionOpen}>
-              <div className={styles.contextSectionCollapseInner}>
+            <CollapsibleSection open={compositionOpen}>
                 <div className={styles.contextSectionBody}>
               <div className={styles.contextBreakdownSummary}>
                 <span
@@ -448,8 +448,7 @@ export function ContextUsageIndicator({
                 )}
                 </div>
                 </div>
-              </div>
-            </div>
+            </CollapsibleSection>
           </div>
 
           {sessionCostView && (
@@ -467,11 +466,9 @@ export function ContextUsageIndicator({
                   data-open={costOpen}
                 />
               </button>
-              <div className={styles.contextSectionCollapse} data-open={costOpen}>
-                <div className={styles.contextSectionCollapseInner}>
-                  <SessionCostSection view={sessionCostView} showTitle={false} />
-                </div>
-              </div>
+              <CollapsibleSection open={costOpen}>
+                <SessionCostSection view={sessionCostView} showTitle={false} />
+              </CollapsibleSection>
             </div>
           )}
         </div>

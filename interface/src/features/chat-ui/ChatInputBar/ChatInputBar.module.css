@@ -692,22 +692,13 @@
   flex-direction: column;
 }
 
-/* Height animation via the grid-template-rows 0fr -> 1fr technique:
-   animates cleanly to/from content height without measuring in JS. The
-   inner wrapper must clip overflow and allow a 0 min-height. */
+/* Height animation. The wrapper's pixel `height` is driven by JS
+   (CollapsibleSection measures the content), and CSS animates the
+   transition; `overflow: hidden` clips the content while it grows or
+   shrinks. */
 .contextSectionCollapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.22s ease;
-}
-
-.contextSectionCollapse[data-open="true"] {
-  grid-template-rows: 1fr;
-}
-
-.contextSectionCollapseInner {
-  min-height: 0;
   overflow: hidden;
+  transition: height 0.22s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
