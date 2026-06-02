@@ -9,6 +9,7 @@ import {
   LAST_DEBUG_RUN_KEY,
   LAST_PROJECT_KEY,
   LAST_SIMPLE_PATH_KEY,
+  MENU_BAR_COLLAPSED_KEY,
   PROJECT_ORDER_KEY,
   PUBLIC_SIDEBAR_COLLAPSED_KEY,
   TASKBAR_APP_ORDER_KEY,
@@ -465,6 +466,31 @@ export function getAuthedSidebarCollapsed(): boolean {
 export function setAuthedSidebarCollapsed(collapsed: boolean): void {
   try {
     localStorage.setItem(AUTHED_SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+/**
+ * Application menu bar (File / Edit / View / Help) collapse state.
+ * Defaults to `false` (expanded) so the menu bar shows by default;
+ * the titlebar chevron toggle writes the user's choice here so it
+ * survives reloads, mirroring the bottom-taskbar collapse sections.
+ */
+export function getMenuBarCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(MENU_BAR_COLLAPSED_KEY);
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  } catch {
+    // ignore storage failures
+  }
+  return false;
+}
+
+export function setMenuBarCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(MENU_BAR_COLLAPSED_KEY, String(collapsed));
   } catch {
     // ignore storage failures
   }

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatShortcut } from "../../lib/platform";
 import { MENU_DEFINITIONS, type MenuDefinition, type MenuActionKey } from "./menu-config";
 import { useMenuActions } from "./use-menu-actions";
@@ -66,9 +67,19 @@ function MenuPanel({ menu, position, onSelect, onClose, panelRef, isItemDisabled
 interface MenuBarProps {
   /** Optional content rendered at the end of the menu bar, after the last menu trigger. */
   trailingSlot?: ReactNode;
+  /**
+   * When provided, the bar can be collapsed/expanded via a chevron
+   * toggle rendered after the last menu (or after `trailingSlot`).
+   * `collapsed` hides the File / Edit / View / Help triggers and the
+   * `trailingSlot`; only the chevron remains. The chevron points based
+   * on state, matching the bottom-taskbar collapse affordance
+   * (left = expanded/collapse, right = collapsed/expand).
+   */
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-export function MenuBar({ trailingSlot }: MenuBarProps = {}) {
+export function MenuBar({ trailingSlot, collapsed = false, onToggleCollapsed }: MenuBarProps = {}) {
   // The document-level shortcut listener is installed by the headless
   // `<MenuShortcuts />` companion (mounted once per authed shell in
   // `AuraTitlebar`), so this visible bar only needs the action map and
@@ -169,30 +180,46 @@ export function MenuBar({ trailingSlot }: MenuBarProps = {}) {
       aria-label="Application menu"
       onDoubleClick={(event) => event.stopPropagation()}
     >
-      {menus.map((menu) => {
-        const isOpen = openMenuId === menu.id;
-        return (
-          <button
-            key={menu.id}
-            ref={(node) => {
-              if (node) triggerRefs.current.set(menu.id, node);
-              else triggerRefs.current.delete(menu.id);
-            }}
-            type="button"
-            role="menuitem"
-            aria-haspopup="menu"
-            aria-expanded={isOpen}
-            data-open={isOpen || undefined}
-            className={`${styles.trigger} ${isOpen ? styles.triggerOpen : ""} titlebar-no-drag`}
-            onClick={() => handleTriggerClick(menu.id)}
-            onPointerEnter={() => handleTriggerEnter(menu.id)}
-          >
-            {menu.label}
-          </button>
-        );
-      })}
-      {trailingSlot}
-      {activeMenu && typeof document !== "undefined"
+      {!collapsed &&
+        menus.map((menu) => {
+          const isOpen = openMenuId === menu.id;
+          return (
+            <button
+              key={menu.id}
+              ref={(node) => {
+                if (node) triggerRefs.current.set(menu.id, node);
+                else triggerRefs.current.delete(menu.id);
+              }}
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              data-open={isOpen || undefined}
+              className={`${styles.trigger} ${isOpen ? styles.triggerOpen : ""} titlebar-no-drag`}
+              onClick={() => handleTriggerClick(menu.id)}
+              onPointerEnter={() => handleTriggerEnter(menu.id)}
+            >
+              {menu.label}
+            </button>
+          );
+        })}
+      {!collapsed && trailingSlot}
+      {onToggleCollapsed && (
+        <button
+          type="button"
+          aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+          aria-expanded={!collapsed}
+          className={`${styles.trigger} ${styles.chevronTrigger} titlebar-no-drag`}
+          onClick={onToggleCollapsed}
+        >
+          {collapsed ? (
+            <ChevronRight size={12} strokeWidth={2} />
+          ) : (
+            <ChevronLeft size={12} strokeWidth={2} />
+          )}
+        </button>
+      )}
+      {!collapsed && activeMenu && typeof document !== "undefined"
         ? createPortal(
             <MenuPanel
               menu={activeMenu}

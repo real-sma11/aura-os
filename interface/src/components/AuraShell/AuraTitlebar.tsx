@@ -8,6 +8,7 @@ import { WindowControls } from "../WindowControls";
 import { UpdatePill } from "../UpdateBanner";
 import { PublicTopNav } from "../../views/public-chat/PublicTopNav";
 import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
+import { useAppUIStore } from "../../stores/app-ui-store";
 import { track } from "../../lib/analytics";
 import type { UIMode } from "../../stores/ui-mode-store";
 import styles from "./AuraShell.module.css";
@@ -159,6 +160,8 @@ function AuthedLeading({
   // `MenuBar` only mounts in Advanced — Simple is a chat-only surface
   // and never shows the File / Edit / View / Help bar.
   const isAdvanced = mode === "advanced";
+  const menuBarCollapsed = useAppUIStore((s) => s.menuBarCollapsed);
+  const toggleMenuBar = useAppUIStore((s) => s.toggleMenuBar);
   return (
     <span
       className={`${styles.titleLeading} titlebar-no-drag`}
@@ -174,7 +177,9 @@ function AuthedLeading({
         <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
       )}
       <MenuShortcuts />
-      {isAdvanced && <MenuBar />}
+      {isAdvanced && (
+        <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
+      )}
     </span>
   );
 }

@@ -4,8 +4,10 @@ import { PREVIOUS_PATH_KEY } from "../constants";
 import { sanitizeRestorePath } from "../utils/last-app-path";
 import {
   getAuthedSidebarCollapsed,
+  getMenuBarCollapsed,
   getPublicSidebarCollapsed,
   setAuthedSidebarCollapsed as writeAuthedSidebarCollapsed,
+  setMenuBarCollapsed as writeMenuBarCollapsed,
   setPublicSidebarCollapsed as writePublicSidebarCollapsed,
 } from "../utils/storage";
 
@@ -78,6 +80,15 @@ type AppUIState = {
    * survives reloads.
    */
   authedSidebarCollapsed: boolean;
+  /**
+   * Whether the application menu bar (File / Edit / View / Help) is
+   * collapsed in the authenticated Advanced titlebar. The left
+   * sidebar drawer toggle stays visible regardless; only the menu
+   * triggers hide. Persisted to `localStorage` so the choice
+   * survives reloads, mirroring the bottom-taskbar collapse
+   * sections. Default is `false` (expanded).
+   */
+  menuBarCollapsed: boolean;
   previousPath: string | null;
 
   markAppVisited: (appId: string) => void;
@@ -90,6 +101,7 @@ type AppUIState = {
   setPublicSidebarCollapsed: (value: boolean) => void;
   toggleAuthedSidebar: () => void;
   setAuthedSidebarCollapsed: (value: boolean) => void;
+  toggleMenuBar: () => void;
   setPreviousPath: (path: string) => void;
 };
 
@@ -101,6 +113,7 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
   sidekickSplitScreen: readSidekickSplitScreen(),
   publicSidebarCollapsed: getPublicSidebarCollapsed(),
   authedSidebarCollapsed: getAuthedSidebarCollapsed(),
+  menuBarCollapsed: getMenuBarCollapsed(),
   previousPath: readPreviousPath(),
 
   markAppVisited: (appId): void => {
@@ -170,6 +183,14 @@ export const useAppUIStore = create<AppUIState>()((set) => ({
       if (s.authedSidebarCollapsed === value) return s;
       writeAuthedSidebarCollapsed(value);
       return { authedSidebarCollapsed: value };
+    });
+  },
+
+  toggleMenuBar: (): void => {
+    set((s) => {
+      const next = !s.menuBarCollapsed;
+      writeMenuBarCollapsed(next);
+      return { menuBarCollapsed: next };
     });
   },
 

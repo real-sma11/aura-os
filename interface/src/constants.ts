@@ -10,6 +10,7 @@ export const COLLAPSED_PROJECTS_KEY = "aura-collapsed-projects";
 export const PROJECT_ORDER_KEY = "aura-project-order";
 export const TASKBAR_APPS_COLLAPSED_KEY = "aura-taskbar-apps-collapsed";
 export const TASKBAR_RIGHT_COLLAPSED_KEY = "aura-taskbar-right-collapsed";
+export const MENU_BAR_COLLAPSED_KEY = "aura-menubar-collapsed";
 export const PUBLIC_SIDEBAR_COLLAPSED_KEY = "aura-public-sidebar-collapsed";
 export const AUTHED_SIDEBAR_COLLAPSED_KEY = "aura-authed-sidebar-collapsed";
 export const TASKBAR_APP_ORDER_KEY = "aura-taskbar-app-order";

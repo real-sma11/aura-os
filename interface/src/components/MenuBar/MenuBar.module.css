@@ -63,6 +63,22 @@
   color: var(--color-accent);
 }
 
+/*
+ * Collapse/expand chevron rendered after the last menu (or after the
+ * trailingSlot). Reuses the `.trigger` pill styling so it reads as part
+ * of the menu bar; only the padding tightens to suit an icon-only hit
+ * target. The chevron direction itself is driven in JS (left when
+ * expanded, right when collapsed) to match the bottom-taskbar sections.
+ */
+.chevronTrigger {
+  padding: 0 var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.chevronTrigger:hover {
+  color: var(--color-text-primary);
+}
+
 .panel {
   position: fixed;
   z-index: var(--z-dropdown, 200);
