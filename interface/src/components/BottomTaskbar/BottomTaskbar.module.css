@@ -1,26 +1,26 @@
 /*
- * Panel each taskbar pill/bubble sits on. A 10px gradient ring
- * (#090909 -> #131313, all around) frames the pill, with 10px of padding
- * between the ring and the pill inside. The ring is a masked pseudo so it
- * follows the rounded corners; `inset: -10px` expands it from the padding
- * box out to the border-box so the ring lands in the 10px border region.
+ * Panel each taskbar pill/bubble sits on. A 5px gradient ring
+ * (#090909 -> #131313, all around) frames the pill snugly (no padding gap).
+ * The ring is a masked pseudo so it follows the rounded corners;
+ * `inset: -5px` expands it from the padding box out to the border-box so
+ * the ring lands in the 5px border region.
  */
 .taskbarContainer {
   position: relative;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  padding: 10px;
-  border: 10px solid transparent;
-  border-radius: calc(var(--shell-chrome-radius, 20px) + 20px);
+  padding: 0;
+  border: 5px solid transparent;
+  border-radius: calc(var(--shell-chrome-radius, 20px) + 5px);
 }
 
 .taskbarContainer::before {
   content: "";
   position: absolute;
-  inset: -10px;
+  inset: -5px;
   border-radius: inherit;
-  padding: 10px;
+  padding: 5px;
   background: linear-gradient(135deg, #090909, #131313);
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
