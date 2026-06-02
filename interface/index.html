@@ -49,15 +49,29 @@
           if (meta) meta.setAttribute('content', color);
           var manifest = document.getElementById('aura-manifest');
           if (manifest) manifest.setAttribute('href', manifestHref);
-          // Stamp the "Glass sidebar" option before first paint so the left
-          // panel renders frosted on the first frame (default-on). Mirrors
-          // lib/sidebar-glass.ts: only an explicit "false" disables it.
-          if (localStorage.getItem('aura-sidebar-glass') !== 'false') {
-            document.documentElement.setAttribute('data-sidebar-glass', 'true');
+          // Stamp the per-panel glass options before first paint so panels
+          // render frosted on the first frame (left default-on). Mirrors
+          // lib/panel-glass.ts, including migration from the legacy single
+          // "aura-sidebar-glass" key into the left panel.
+          var glass = { left: true, middle: false, sidekick: false };
+          var glassRaw = localStorage.getItem('aura-panel-glass');
+          if (glassRaw) {
+            var glassParsed = JSON.parse(glassRaw);
+            if (glassParsed && typeof glassParsed === 'object') {
+              ['left', 'middle', 'sidekick'].forEach(function (k) {
+                if (typeof glassParsed[k] === 'boolean') glass[k] = glassParsed[k];
+              });
+            }
+          } else {
+            var legacyGlass = localStorage.getItem('aura-sidebar-glass');
+            if (legacyGlass !== null) glass.left = legacyGlass !== 'false';
           }
+          if (glass.left) document.documentElement.setAttribute('data-glass-left', 'true');
+          if (glass.middle) document.documentElement.setAttribute('data-glass-middle', 'true');
+          if (glass.sidekick) document.documentElement.setAttribute('data-glass-sidekick', 'true');
         } catch (_) {
           document.documentElement.setAttribute('data-theme', 'dark');
-          document.documentElement.setAttribute('data-sidebar-glass', 'true');
+          document.documentElement.setAttribute('data-glass-left', 'true');
         }
       })();
     </script>

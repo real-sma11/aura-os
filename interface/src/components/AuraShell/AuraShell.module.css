@@ -60,17 +60,26 @@
 }
 
 /*
- * "Glass sidebar" theme option (default-on; toggled in Settings > Theme).
- * Swaps the solid `--color-sidebar-bg` fill for the same frosted chrome
- * recipe the search pill / taskbar use, so the standard-mode wallpaper
+ * Per-panel "glass" theme options (toggled in Settings > Theme; left is
+ * default-on). Swaps a panel's solid fill for the same frosted chrome recipe
+ * the search pill / taskbar use, so the standard-mode wallpaper
  * (`BackgroundLayer`) behind the shell shows through blurred. Scoped to
- * standard authed mode only — desktop and public modes already render the
- * sidebar fully transparent, so they don't need (or want) the translucent
- * fill fighting their own overrides.
+ * standard authed mode only — desktop and public modes already render these
+ * panels transparent, so they don't need (or want) the translucent fill
+ * fighting their own overrides. The sidekick rule lives alongside its
+ * `.sidekickLane` base styles in `DesktopShell.module.css`.
  */
-:global([data-sidebar-glass="true"])
+:global([data-glass-left="true"])
   .shell:not([data-ui-mode="public"]):not([data-desktop-mode])
   .sidebar {
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+}
+
+:global([data-glass-middle="true"])
+  .shell:not([data-ui-mode="public"]):not([data-desktop-mode])
+  .mainPanel {
   background: var(--shell-chrome-background);
   backdrop-filter: var(--shell-chrome-backdrop-filter);
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);

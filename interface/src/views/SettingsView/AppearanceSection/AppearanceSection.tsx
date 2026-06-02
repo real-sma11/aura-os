@@ -12,8 +12,15 @@ import {
 import { Sun, Moon, MonitorSmartphone } from "lucide-react";
 import { CustomTokensPanel } from "./CustomTokensPanel";
 import { PresetsPanel } from "./PresetsPanel";
-import { useSidebarGlass } from "../../../hooks/use-sidebar-glass";
+import { usePanelGlass } from "../../../hooks/use-panel-glass";
+import type { PanelKey } from "../../../lib/panel-glass";
 import styles from "./AppearanceSection.module.css";
+
+const GLASS_PANELS: { key: PanelKey; label: string }[] = [
+  { key: "left", label: "Glass left panel" },
+  { key: "middle", label: "Glass main panel" },
+  { key: "sidekick", label: "Glass sidekick" },
+];
 
 const THEME_LABELS: Record<Theme, string> = {
   dark: "Dark",
@@ -47,8 +54,7 @@ const SWATCH_CLASSES: Record<AccentColor, string> = {
 
 export function AppearanceSection() {
   const { theme, accent, setTheme, setAccent } = useTheme();
-  const { enabled: glassEnabled, setEnabled: setGlassEnabled } =
-    useSidebarGlass();
+  const { glass, setPanel } = usePanelGlass();
 
   return (
     <Panel
@@ -112,13 +118,16 @@ export function AppearanceSection() {
         <Text variant="muted" size="sm">
           Effects
         </Text>
-        <Toggle
-          label="Glass sidebar"
-          checked={glassEnabled}
-          onChange={(e) => setGlassEnabled(e.target.checked)}
-        />
+        {GLASS_PANELS.map(({ key, label }) => (
+          <Toggle
+            key={key}
+            label={label}
+            checked={glass[key]}
+            onChange={(e) => setPanel(key, e.target.checked)}
+          />
+        ))}
         <Text variant="muted" size="xs">
-          Frosts the left panel so the wallpaper shows through behind it.
+          Frosts each panel so the wallpaper shows through behind it.
         </Text>
       </div>
 

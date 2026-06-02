@@ -11,7 +11,7 @@ import { App } from "./App";
 import { applyHighlightTheme } from "./lib/highlight-theme";
 import { HighlightThemeBridge } from "./components/HighlightThemeBridge";
 import { ThemeOverridesBridge } from "./components/ThemeOverridesBridge";
-import { SidebarGlassBridge } from "./components/SidebarGlassBridge";
+import { PanelGlassBridge } from "./components/PanelGlassBridge";
 import { BrowserChromeThemeBridge } from "./components/BrowserChromeThemeBridge";
 import { GalleryProvider } from "./components/Gallery";
 import { queryClient } from "./shared/lib/query-client";
@@ -104,7 +104,7 @@ createRoot(rootEl).render(
     <ThemeProvider defaultTheme="dark" defaultAccent="purple" disableTransitionOnChange>
       <HighlightThemeBridge />
       <ThemeOverridesBridge />
-      <SidebarGlassBridge />
+      <PanelGlassBridge />
       <BrowserChromeThemeBridge />
       <GalleryProvider>
         <App />

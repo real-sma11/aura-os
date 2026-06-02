@@ -187,6 +187,22 @@
 }
 
 /*
+ * "Glass sidekick" theme option (toggled in Settings > Theme). Frosts the
+ * sidekick underlay so the wallpaper shows through, mirroring the left/
+ * middle panel rules in `AuraShell.module.css`. `data-glass-sidekick` is on
+ * `<html>`; `data-ui-mode` / `data-desktop-mode` live on the shell ancestor,
+ * so scope through it and exclude desktop mode (which already collapses +
+ * transparents the lane above).
+ */
+:global([data-glass-sidekick="true"])
+  :global([data-ui-mode]:not([data-desktop-mode]))
+  .sidekickLane {
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+}
+
+/*
  * `data-desktop-mode` lives on AuraShell's `.shell` root, not on a
  * `.desktopShell` (deleted with Phase 3). Using `:global([data-desktop-mode])`
  * keeps this rule working under the new shell wrapper — same approach as
