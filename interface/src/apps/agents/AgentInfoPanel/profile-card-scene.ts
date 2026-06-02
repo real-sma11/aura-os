@@ -312,11 +312,16 @@ export function createProfileCardScene(
     depthWrite: false,
   });
   // Horizontal scan-line overlay floating in front of the LCD (additive accent).
-  // Two layers: a brighter core plus a dimmer, offset "halo" that feeds the
-  // bloom pass for the CRT/LCD glow.
-  const lineCoreOpacity = 0.3;
+  // Each line spans the full width but its per-vertex intensity ramps from bright
+  // at the outer edges down to ~0 in the center, so the lines fade to transparent
+  // over the portrait. `color` carries the accent and is multiplied by the
+  // grayscale vertex-color ramp. Two layers: a brighter core plus a dimmer,
+  // offset "halo" that feeds the bloom pass for the CRT/LCD glow.
+  const lineCoreOpacity = 0.34;
+  const lineHaloOpacity = 0.14;
   const lineMaterial = new THREE.LineBasicMaterial({
     color: accent.clone(),
+    vertexColors: true,
     transparent: true,
     opacity: lineCoreOpacity,
     depthWrite: false,
@@ -324,8 +329,9 @@ export function createProfileCardScene(
   });
   const lineHaloMaterial = new THREE.LineBasicMaterial({
     color: accent.clone(),
+    vertexColors: true,
     transparent: true,
-    opacity: 0.12,
+    opacity: lineHaloOpacity,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -338,12 +344,12 @@ export function createProfileCardScene(
   const detailMeshes: THREE.Mesh[] = [];
 
   /**
-   * Build the "open" scan-line readout: each row is two short segments anchored
-   * to the left and right window edges, extending inward by a deterministic
-   * varying amount (a stable pseudo-random pattern, not Math.random, so it
-   * doesn't reshuffle on every resize). A central guard gap is always left clear
-   * so the portrait shows through the middle. A dimmer offset copy feeds bloom
-   * for the CRT/LCD glow. Pushed slightly in front of the LCD so it parallaxes.
+   * Build the scan-line readout: each row spans the full screen width but is
+   * subdivided so a per-vertex grayscale ramp can drive its intensity from
+   * bright at the outer edges down to ~0 in the center (additive blending turns
+   * the dim center transparent over the portrait). A deterministic per-row
+   * brightness jitter (stable across rebuilds, not Math.random) keeps it from
+   * looking uniform. A dimmer offset copy feeds bloom for the CRT/LCD glow.
    */
   function addScreenLines(
     screenW: number,
@@ -353,31 +359,37 @@ export function createProfileCardScene(
     z: number,
   ): void {
     const spacing = screenH / 56;
-    const left = -screenW / 2;
-    const right = screenW / 2;
-    // Half-width of the always-clear central gap over the portrait.
-    const gapHalf = screenW * 0.12;
-    const minLen = screenW * 0.04;
-    const maxLen = screenW * 0.4;
+    const half = screenW / 2;
+    const segments = 32;
     // Deterministic 0..1 hash for a row index (stable across rebuilds).
     const hash = (n: number): number => {
       const s = Math.sin(n * 12.9898) * 43758.5453;
       return s - Math.floor(s);
     };
+    // Edge-to-center intensity ramp: 1 at the outer edge, ~0 across the center.
+    const rampAt = (x: number): number => {
+      const d = Math.min(1, Math.abs(x) / half);
+      return Math.pow(d, 2.2);
+    };
     const pos: number[] = [];
+    const col: number[] = [];
     let row = 0;
     for (let y = -screenH / 2 + spacing; y < screenH / 2; y += spacing) {
-      const leftLen = Math.min(minLen + hash(row) * (maxLen - minLen), screenW / 2 - gapHalf);
-      const rightLen = Math.min(
-        minLen + hash(row + 101.7) * (maxLen - minLen),
-        screenW / 2 - gapHalf,
-      );
-      pos.push(left, y, 0, left + leftLen, y, 0);
-      pos.push(right - rightLen, y, 0, right, y, 0);
+      const rowGain = 0.75 + hash(row) * 0.35;
+      let prevX = -half;
+      for (let i = 1; i <= segments; i += 1) {
+        const x = -half + (screenW * i) / segments;
+        const i0 = rampAt(prevX) * rowGain;
+        const i1 = rampAt(x) * rowGain;
+        pos.push(prevX, y, 0, x, y, 0);
+        col.push(i0, i0, i0, i1, i1, i1);
+        prevX = x;
+      }
       row += 1;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
     screenLinesMesh = new THREE.LineSegments(geo, lineMaterial);
     screenLinesMesh.position.set(cx, cy, z);
     group.add(screenLinesMesh);
@@ -679,11 +691,14 @@ export function createProfileCardScene(
       ((hovering ? 1.3 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
     accentLight.intensity += ((hovering ? 4.5 : 3.5) - accentLight.intensity) * 0.06;
 
-    // Subtle CRT flicker on the scan lines (skipped under reduced motion).
+    // Subtle CRT animation on the scan lines (skipped under reduced motion): a
+    // slow breathing fade in/out plus a faster low-amplitude flicker.
     if (idleAmp) {
+      const breathe = 0.78 + Math.sin(t * 0.9) * 0.22;
       const flicker = 1 + Math.sin(t * 9) * 0.05 + Math.sin(t * 23.3) * 0.025;
-      lineMaterial.opacity = lineCoreOpacity * flicker;
-      lineHaloMaterial.opacity = 0.12 * flicker;
+      const factor = breathe * flicker;
+      lineMaterial.opacity = lineCoreOpacity * factor;
+      lineHaloMaterial.opacity = lineHaloOpacity * factor;
     }
 
     renderFrame();
