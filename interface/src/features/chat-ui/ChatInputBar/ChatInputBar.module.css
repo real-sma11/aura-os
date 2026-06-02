@@ -590,12 +590,19 @@
   line-height: 1.4;
 }
 
+/* Non-button rows (e.g. the "Cached" row) mirror the bucket buttons'
+   horizontal padding + negative margin so their left labels and right
+   values share the same edges as the interactive rows. */
+.contextBreakdownRow:not(.contextBreakdownRowButton) {
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+
 /* Each breakdown row is a real <button> so the bucket is keyboard- and
    screen-reader-accessible. This reset keeps it visually identical to
    the former static row while adding a hover/focus affordance that
    signals it now opens the bucket's contents in the Sidekick preview. */
 .contextBreakdownRowButton {
-  width: 100%;
   appearance: none;
   border: none;
   background: transparent;
@@ -645,7 +652,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  width: 100%;
   appearance: none;
   border: none;
   background: transparent;
