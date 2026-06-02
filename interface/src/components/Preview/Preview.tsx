@@ -93,28 +93,28 @@ function SpecsOverviewPreview({
     <>
       <div className={styles.taskMeta}>
         <div className={styles.taskField}>
-          <span className={styles.fieldLabel}>Summary</span>
-          <div className={styles.summaryRow}>
-            <div className={styles.summaryContent}>
-              {generating ? (
-                <Text variant="secondary" size="sm">Generating summary…</Text>
-              ) : summaryText ? (
-                <Text variant="secondary" size="sm" className={`${styles.preWrapText} ${styles.specSummaryParagraph}`}>
-                  {summaryText}
-                </Text>
-              ) : (
-                <Text variant="secondary" size="sm">No summary yet.</Text>
-              )}
-              {genError && (
-                <Text variant="secondary" size="sm">{genError}</Text>
-              )}
-              {!generating && (
-                <Button variant="ghost" size="sm" onClick={runGenerate}>
-                  {summaryText ? "Regenerate" : "Generate summary"}
-                </Button>
-              )}
-            </div>
+          <div className={styles.summaryHeader}>
+            <span className={styles.fieldLabel}>Summary</span>
+            {!generating && (
+              <Button variant="ghost" size="sm" onClick={runGenerate}>
+                {summaryText ? "Regenerate" : "Generate summary"}
+              </Button>
+            )}
           </div>
+          {generating ? (
+            <Text variant="secondary" size="sm">Generating summary…</Text>
+          ) : summaryText ? (
+            <div className={styles.markdown}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {summaryText}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <Text variant="secondary" size="sm">No summary yet.</Text>
+          )}
+          {genError && (
+            <Text variant="secondary" size="sm">{genError}</Text>
+          )}
         </div>
         {firstCreated && (
           <div className={styles.taskField}>
