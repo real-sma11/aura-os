@@ -178,6 +178,39 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
 }
 
 /**
+ * Bakes edge wear into a vertex `color` attribute: faces whose normal points
+ * mostly sideways (the extruded bevel + side walls, i.e. `|normal.z|` below
+ * `threshold`) are tinted toward bare worn steel so the raised 45-degree edges
+ * read as rubbed/exposed, while flat front/back faces stay neutral (1,1,1 — a
+ * no-op against the material albedo). Relies on `vertexColors: true`.
+ */
+const EDGE_WEAR_COLOR = new THREE.Color(0xb9c4d4);
+function applyEdgeWear(geo: THREE.BufferGeometry, threshold = 0.6): void {
+  const normals = geo.attributes.normal;
+  if (!normals) {
+    geo.computeVertexNormals();
+  }
+  const nrm = geo.attributes.normal;
+  const count = nrm.count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i += 1) {
+    const nz = Math.abs(nrm.getZ(i));
+    if (nz < threshold) {
+      // Ramp the wear in as the face turns more side-on.
+      const t = Math.min(1, (threshold - nz) / threshold);
+      colors[i * 3] = 1 + (EDGE_WEAR_COLOR.r - 1) * t;
+      colors[i * 3 + 1] = 1 + (EDGE_WEAR_COLOR.g - 1) * t;
+      colors[i * 3 + 2] = 1 + (EDGE_WEAR_COLOR.b - 1) * t;
+    } else {
+      colors[i * 3] = 1;
+      colors[i * 3 + 1] = 1;
+      colors[i * 3 + 2] = 1;
+    }
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+}
+
+/**
  * Subtle brushed-metal texture: a few soft low-frequency vertical streaks on a
  * solid base. Kept low-contrast and blurred so it reads as a finish rather than
  * noise (which the env-map reflections would otherwise amplify into speckle).
@@ -217,6 +250,84 @@ function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTe
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Worn-metal detail tuning. Bumped up here so the wear is easy to dial in. */
+const WEAR_SCRATCHES = 320;
+const WEAR_SCUFFS = 26;
+
+/**
+ * Procedural wear/grunge detail: fine scratches at varied angles plus soft scuff
+ * blotches on a neutral mid-grey base. Returned as a linear (data) texture so it
+ * can drive `bumpMap`/`roughnessMap` without sRGB decoding skewing the values.
+ * Mid-grey (128) is the neutral point: brighter pixels read as raised/rougher,
+ * darker as recessed/smoother. The pattern is deterministic so it stays stable
+ * across rebuilds.
+ */
+function createWearTexture(): THREE.CanvasTexture {
+  const size = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    let seed = 7;
+    const rand = (): number => {
+      const s = Math.sin(seed++ * 12.9898) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    // Neutral base.
+    ctx.fillStyle = "#808080";
+    ctx.fillRect(0, 0, size, size);
+
+    // Soft scuff blotches (low-frequency roughness variation), denser near edges.
+    for (let i = 0; i < WEAR_SCUFFS; i += 1) {
+      const edgeBias = rand() < 0.6;
+      const cx = edgeBias
+        ? rand() < 0.5
+          ? rand() * size * 0.18
+          : size - rand() * size * 0.18
+        : rand() * size;
+      const cy = edgeBias
+        ? rand() < 0.5
+          ? rand() * size * 0.18
+          : size - rand() * size * 0.18
+        : rand() * size;
+      const r = size * (0.04 + rand() * 0.12);
+      const light = rand() > 0.5;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      const tone = light ? "180,180,180" : "70,70,70";
+      grad.addColorStop(0, `rgba(${tone},${0.1 + rand() * 0.12})`);
+      grad.addColorStop(1, "rgba(128,128,128,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Fine scratches: short strokes at random angles, mixing light and dark.
+    ctx.lineCap = "round";
+    for (let i = 0; i < WEAR_SCRATCHES; i += 1) {
+      const x = rand() * size;
+      const y = rand() * size;
+      const angle = rand() * Math.PI * 2;
+      const len = 8 + rand() * 90;
+      const light = rand() > 0.5;
+      ctx.strokeStyle = light ? "#c8c8c8" : "#3c3c3c";
+      ctx.globalAlpha = 0.05 + rand() * 0.18;
+      ctx.lineWidth = 0.5 + rand() * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.NoColorSpace;
   return tex;
 }
 
@@ -347,6 +458,11 @@ export function createProfileCardScene(
   });
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  // Shared worn-metal detail map (scratches + scuffs) reused as bump + roughness
+  // so the frame catches light along fine scratches and worn patches.
+  const wearTexture = createWearTexture();
+  wearTexture.anisotropy = maxAniso;
+  wearTexture.repeat.set(3, 3);
   // Layer 1 — blue brushed metal frame (the structural part of the card).
   const blueMetalTexture = createBrushedMetalTexture("#16263f", "#5a86c4");
   blueMetalTexture.anisotropy = maxAniso;
@@ -354,9 +470,13 @@ export function createProfileCardScene(
   const blueMetalMaterial = new THREE.MeshStandardMaterial({
     color: 0x2a4a78,
     map: blueMetalTexture,
+    bumpMap: wearTexture,
+    bumpScale: 0.018,
+    roughnessMap: wearTexture,
     metalness: 0.85,
-    roughness: 0.42,
-    envMapIntensity: 1.0,
+    roughness: 0.52,
+    envMapIntensity: 0.9,
+    vertexColors: true,
   });
   // Layer 2 — softer matte black metal underlayer behind the frame.
   const matteTexture = createBrushedMetalTexture("#0a0c11", "#222a3a");
@@ -365,6 +485,8 @@ export function createProfileCardScene(
   const matteMaterial = new THREE.MeshStandardMaterial({
     color: 0x0b0e13,
     map: matteTexture,
+    bumpMap: wearTexture,
+    bumpScale: 0.012,
     metalness: 0.5,
     roughness: 0.85,
     envMapIntensity: 0.4,
@@ -599,6 +721,7 @@ export function createProfileCardScene(
     });
     frameGeo.center();
     frameGeo.computeBoundingBox();
+    applyEdgeWear(frameGeo);
     const frontZ = frameGeo.boundingBox ? frameGeo.boundingBox.max.z : SHELL_DEPTH / 2;
     shellMesh = new THREE.Mesh(frameGeo, blueMetalMaterial);
     group.add(shellMesh);
@@ -890,6 +1013,7 @@ export function createProfileCardScene(
       lineHaloMaterial.dispose();
       blueMetalTexture.dispose();
       matteTexture.dispose();
+      wearTexture.dispose();
       barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();
