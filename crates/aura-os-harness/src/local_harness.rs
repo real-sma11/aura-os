@@ -503,7 +503,7 @@ impl LocalHarness {
             }
         };
 
-        let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
+        let (events_tx, primed_events_rx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
 
         // Subagent frames the harness emits before `session_ready` (AURA
         // Council member fan-out happens at run start) would be dropped
@@ -566,6 +566,7 @@ impl LocalHarness {
             raw_events_tx,
             commands_tx,
             pending_events,
+            events_rx: Some(primed_events_rx),
         })
     }
 }

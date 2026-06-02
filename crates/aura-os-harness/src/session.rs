@@ -144,6 +144,7 @@ mod tests {
                 raw_events_tx,
                 commands_tx,
                 pending_events: Vec::new(),
+                events_rx: None,
             })
         }
 

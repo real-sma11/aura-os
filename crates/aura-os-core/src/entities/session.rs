@@ -216,7 +216,10 @@ mod chat_content_block_tests {
             Some("explore"),
         );
         assert_eq!(back.get("type").and_then(|v| v.as_str()), Some("tool_use"));
-        assert_eq!(back.get("id").and_then(|v| v.as_str()), Some("toolu_task_1"));
+        assert_eq!(
+            back.get("id").and_then(|v| v.as_str()),
+            Some("toolu_task_1")
+        );
         // The internal tag must not leak into the flattened extras.
         assert!(
             !back.get("input").is_none(),

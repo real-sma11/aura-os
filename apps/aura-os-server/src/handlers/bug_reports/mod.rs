@@ -73,10 +73,11 @@ async fn generate_bug_report_summary(
     description: &str,
     diagnostics: &serde_json::Value,
 ) -> Result<String, String> {
-    let diagnostics_text = serde_json::to_string_pretty(diagnostics)
-        .unwrap_or_else(|_| diagnostics.to_string());
-    let user_content =
-        format!("Issue description:\n{description}\n\nDiagnostics bundle (JSON):\n{diagnostics_text}");
+    let diagnostics_text =
+        serde_json::to_string_pretty(diagnostics).unwrap_or_else(|_| diagnostics.to_string());
+    let user_content = format!(
+        "Issue description:\n{description}\n\nDiagnostics bundle (JSON):\n{diagnostics_text}"
+    );
 
     let req_body = json!({
         "model": BUG_REPORT_MODEL,
@@ -194,14 +195,15 @@ fn spawn_bug_report_summary(
     diagnostics: serde_json::Value,
 ) {
     tokio::spawn(async move {
-        let summary =
-            match generate_bug_report_summary(&state, &jwt, &description, &diagnostics).await {
-                Ok(summary) => summary,
-                Err(error) => {
-                    warn!(%report_id, %error, "bug report LLM summary failed; report persisted without summary");
-                    return;
-                }
-            };
+        let summary = match generate_bug_report_summary(&state, &jwt, &description, &diagnostics)
+            .await
+        {
+            Ok(summary) => summary,
+            Err(error) => {
+                warn!(%report_id, %error, "bug report LLM summary failed; report persisted without summary");
+                return;
+            }
+        };
         let store = BugReportStore::new(state.store.clone());
         match store.get(&report_id) {
             Ok(Some(mut report)) => {
@@ -523,11 +525,7 @@ async fn set_feedback_status(
 /// linked bug report resolved and flip any associated feedback post to
 /// `done`. Best-effort — every failure is logged and swallowed so it can
 /// never unwind the task transition that triggered it.
-pub(crate) async fn resolve_linked_bug_report_on_done(
-    state: &AppState,
-    jwt: &str,
-    task_id: &str,
-) {
+pub(crate) async fn resolve_linked_bug_report_on_done(state: &AppState, jwt: &str, task_id: &str) {
     let store = BugReportStore::new(state.store.clone());
     let reports = match store.list() {
         Ok(reports) => reports,

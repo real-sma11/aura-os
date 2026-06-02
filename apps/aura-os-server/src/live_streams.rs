@@ -251,11 +251,20 @@ impl LiveStreamRegistry {
         self: &Arc<Self>,
         kind: StreamKind,
         scope: StreamScope,
-        session: HarnessSession,
+        mut session: HarnessSession,
     ) -> Arc<LiveStream> {
         let attach_id = uuid::Uuid::new_v4().to_string();
         let events = EventLog::new(self.stream_capacity);
-        let rx = session.events_tx.subscribe();
+        // Adopt the receiver primed at WS-bridge creation when present, so
+        // the harness's replay-on-attach burst (a completed child run's
+        // ENTIRE transcript) is captured. A late `events_tx.subscribe()`
+        // here would race the bridge reader and drop that burst, leaving
+        // the EventLog (and thus the UI) empty for an already-finished
+        // run — the AURA Council member symptom.
+        let rx = session
+            .events_rx
+            .take()
+            .unwrap_or_else(|| session.events_tx.subscribe());
         let cancel = CancellationToken::new();
         let stream = Arc::new(LiveStream {
             attach_id: attach_id.clone(),
@@ -465,6 +474,7 @@ mod tests {
             raw_events_tx,
             commands_tx,
             pending_events: Vec::new(),
+            events_rx: None,
         }
     }
 

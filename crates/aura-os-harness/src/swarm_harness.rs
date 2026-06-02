@@ -427,7 +427,7 @@ impl SwarmHarness {
                 }));
             }
         };
-        let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
+        let (events_tx, primed_events_rx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
         let mut pending_events: Vec<OutboundMessage> = Vec::new();
         if wait_for_ready {
             // Phase A: the gateway proxies a run that was already created
@@ -470,6 +470,7 @@ impl SwarmHarness {
             raw_events_tx,
             commands_tx,
             pending_events,
+            events_rx: Some(primed_events_rx),
         })
     }
 }

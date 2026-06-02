@@ -47,8 +47,8 @@ function AutomationControls({ projectId }: { projectId: string }) {
           aria-label="Run automation"
         >
           {starting || preparing
-            ? <Loader2 size={11} className={styles.spinner} />
-            : <Play size={11} />}
+            ? <Loader2 size={14} className={styles.spinner} />
+            : <Play size={14} />}
           <span>Run</span>
         </button>
       )}
@@ -62,7 +62,7 @@ function AutomationControls({ projectId }: { projectId: string }) {
               title="Resume"
               aria-label="Resume automation"
             >
-              <Play size={11} />
+              <Play size={14} />
               <span>Run</span>
             </button>
           )}
@@ -74,7 +74,7 @@ function AutomationControls({ projectId }: { projectId: string }) {
               title="Pause"
               aria-label="Pause automation"
             >
-              <Pause size={11} />
+              <Pause size={13} />
             </button>
           )}
           <button
@@ -85,7 +85,7 @@ function AutomationControls({ projectId }: { projectId: string }) {
             title="Stop"
             aria-label="Stop automation"
           >
-            <Square size={11} />
+            <Square size={13} />
           </button>
         </>
       )}

@@ -363,8 +363,17 @@ mod tests {
         let mut state = PersistTaskState::new();
         state.message_id = "msg-task".to_string();
         let ctx = test_ctx();
-        handle_subagent_spawned(&mut state, &ctx, "child-run-x", None, "explore", "go", None, None)
-            .await;
+        handle_subagent_spawned(
+            &mut state,
+            &ctx,
+            "child-run-x",
+            None,
+            "explore",
+            "go",
+            None,
+            None,
+        )
+        .await;
         assert!(
             state.content_blocks.is_empty(),
             "no tool_use block to stamp when parent id is absent",
@@ -422,7 +431,11 @@ mod tests {
             .get("council_members")
             .and_then(Value::as_array)
             .expect("council_members array present");
-        assert_eq!(members.len(), 2, "both members accumulate, none overwritten");
+        assert_eq!(
+            members.len(),
+            2,
+            "both members accumulate, none overwritten"
+        );
         assert_eq!(
             members[0].get("council_index").and_then(Value::as_u64),
             Some(0),
@@ -493,15 +506,16 @@ mod tests {
             "exactly one synthetic parent block is created and reused",
         );
         let block = council_blocks[0];
-        assert_eq!(
-            block.get("type").and_then(Value::as_str),
-            Some("tool_use"),
-        );
+        assert_eq!(block.get("type").and_then(Value::as_str), Some("tool_use"),);
         let members = block
             .get("council_members")
             .and_then(Value::as_array)
             .expect("council_members array present");
-        assert_eq!(members.len(), 2, "both members accumulate on the synthetic block");
+        assert_eq!(
+            members.len(),
+            2,
+            "both members accumulate on the synthetic block"
+        );
         assert_eq!(
             members[0].get("child_run_id").and_then(Value::as_str),
             Some("child-run-a"),

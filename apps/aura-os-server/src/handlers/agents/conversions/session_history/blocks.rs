@@ -64,9 +64,9 @@ pub(super) fn sanitize_assistant_content_blocks(
 
     for block in blocks {
         match block {
-            ChatContentBlock::ToolUse { id, name, input, .. }
-                if is_incomplete_write_tool_use(&name, &input) =>
-            {
+            ChatContentBlock::ToolUse {
+                id, name, input, ..
+            } if is_incomplete_write_tool_use(&name, &input) => {
                 suppressed_tool_use_ids.insert(id);
             }
             ChatContentBlock::ToolUse {

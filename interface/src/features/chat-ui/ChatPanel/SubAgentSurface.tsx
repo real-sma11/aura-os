@@ -71,6 +71,10 @@ export function SubAgentSurface({
     descriptor.parentToolUseId,
     true,
     descriptor.subagentSessionId,
+    // Parent agent id so a remote (swarm) parent's child run attaches over
+    // the matching harness transport (server `?agent_id=`); local parents
+    // pass `undefined` and the server defaults to the local harness.
+    agentId,
   );
   const subStreamKey = subagentThread.streamKey;
   const subEvents = useStreamEvents(subStreamKey);

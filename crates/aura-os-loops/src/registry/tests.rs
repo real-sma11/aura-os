@@ -390,9 +390,12 @@ async fn clear_current_task_is_scoped_to_project() {
     let registry = LoopRegistry::new(hub.clone());
     let p1 = ProjectId::new();
     let p2 = ProjectId::new();
-    let (_g2, mut rx2) =
-        hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(p2)));
-    let h2 = registry.open(fresh_loop_id(p2, AgentInstanceId::new(), LoopKind::Automation));
+    let (_g2, mut rx2) = hub.subscribe(SubscriptionFilter::empty().with_topic(Topic::Project(p2)));
+    let h2 = registry.open(fresh_loop_id(
+        p2,
+        AgentInstanceId::new(),
+        LoopKind::Automation,
+    ));
     let _ = rx2.recv().await; // LoopOpened (p2)
 
     let task_id = TaskId::new();
@@ -406,10 +409,7 @@ async fn clear_current_task_is_scoped_to_project() {
         stray.is_err(),
         "a clear scoped to another project must not publish for this loop"
     );
-    assert_eq!(
-        h2.snapshot().and_then(|a| a.current_task_id),
-        Some(task_id),
-    );
+    assert_eq!(h2.snapshot().and_then(|a| a.current_task_id), Some(task_id),);
 
     h2.mark_completed().await;
     let _ = rx2.recv().await;

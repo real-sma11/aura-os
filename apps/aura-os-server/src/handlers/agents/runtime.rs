@@ -112,13 +112,9 @@ pub(crate) fn resolve_council_members(
             };
             // Suffix the shared cache key per member so each council
             // model keeps its own upstream prompt-cache prefix.
-            let member_cache_key =
-                cache_key.map(|key| format!("{key}:council:{index}"));
-            let provider_overrides = session_model_overrides_with_cache(
-                model.as_deref(),
-                member_cache_key,
-                retention,
-            );
+            let member_cache_key = cache_key.map(|key| format!("{key}:council:{index}"));
+            let provider_overrides =
+                session_model_overrides_with_cache(model.as_deref(), member_cache_key, retention);
             CouncilMemberConfig {
                 model,
                 reasoning_effort: member.reasoning_effort.clone(),

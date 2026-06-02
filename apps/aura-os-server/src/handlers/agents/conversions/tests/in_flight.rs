@@ -130,7 +130,9 @@ fn events_to_session_history_reconstructs_partial_turn_with_tool_blocks() {
     assert_eq!(blocks.len(), 3, "text, tool_use, tool_result");
     assert!(matches!(&blocks[0], ChatContentBlock::Text { text } if text == "calling "));
     match &blocks[1] {
-        ChatContentBlock::ToolUse { id, name, input, .. } => {
+        ChatContentBlock::ToolUse {
+            id, name, input, ..
+        } => {
             assert_eq!(id, "tool-1");
             assert_eq!(name, "create_spec");
             assert_eq!(input.get("title").and_then(|v| v.as_str()), Some("Hello"));

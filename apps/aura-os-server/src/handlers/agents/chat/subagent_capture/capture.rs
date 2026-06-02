@@ -136,8 +136,15 @@ async fn attach_and_drain(ctx: &SubagentCaptureCtx, child_ctx: ChatPersistCtx, c
         .attach_run(child_run_id, Some(&ctx.jwt), false)
         .await
     {
-        Ok(session) => {
-            let rx = session.events_tx.subscribe();
+        Ok(mut session) => {
+            // Adopt the primed receiver so the child run's replay-on-attach
+            // burst is persisted even when the run already finished before
+            // capture attached (a late `events_tx.subscribe()` would drop
+            // it, leaving the persisted transcript empty after reload).
+            let rx = session
+                .events_rx
+                .take()
+                .unwrap_or_else(|| session.events_tx.subscribe());
             tokio::spawn(run_subagent_persist_loop(rx, child_ctx, session));
         }
         Err(error) => {

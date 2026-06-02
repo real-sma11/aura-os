@@ -9,7 +9,9 @@ pub(super) struct CoreServices {
 pub(super) fn init_core_services(store: &Arc<SettingsStore>) -> CoreServices {
     CoreServices {
         org_service: Arc::new(OrgService::new(store.clone())),
-        auth_service: Arc::new(AuthService::with_sys_admin_emails(sys_admin_emails_from_env())),
+        auth_service: Arc::new(AuthService::with_sys_admin_emails(
+            sys_admin_emails_from_env(),
+        )),
         billing_client: Arc::new(BillingClient::new()),
     }
 }

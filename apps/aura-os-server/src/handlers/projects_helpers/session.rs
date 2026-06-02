@@ -285,9 +285,7 @@ pub(crate) async fn project_tool_session_config(
                     .agent_service
                     .get_agent_local(&instance.agent_id)
                     .ok()
-                    .and_then(|agent| {
-                        agent.default_model.filter(|value| !value.trim().is_empty())
-                    })
+                    .and_then(|agent| agent.default_model.filter(|value| !value.trim().is_empty()))
             })
         })
         .or_else(|| Some(DEFAULT_PROJECT_TOOL_MODEL.to_string()));

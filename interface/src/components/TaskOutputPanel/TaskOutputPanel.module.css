@@ -16,14 +16,16 @@
    picker's own clamp then truncates the label). */
 .runControlBar {
   position: absolute;
-  left: 50%;
-  bottom: var(--space-3, 12px);
-  transform: translateX(-50%);
+  /* Span the same width as the top PanelSearch input: it insets its
+     chrome pill by `--shell-chrome-inset` on each side, so match those
+     edges here instead of centering a fit-content pill. */
+  left: var(--shell-chrome-inset, 5px);
+  right: var(--shell-chrome-inset, 5px);
+  bottom: var(--shell-chrome-inset, 5px);
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 2px;
-  max-width: calc(100% - 2 * var(--space-3, 12px));
   padding: 0 var(--space-2, 8px);
   height: var(--shell-chrome-height, var(--control-height-sm, 32px));
   box-sizing: border-box;
@@ -34,10 +36,12 @@
   border: 1px solid color-mix(in srgb, var(--color-border-chrome) 30%, transparent);
 }
 
-/* Model picker slot inside the floating pill. `min-width: 0` lets the
-   picker's text truncate via the AutomationModelPicker's own clamp when
-   the sidekick gets narrow. */
+/* Model picker slot inside the floating pill. `margin-left: auto` pushes
+   it to the far right so the Run/Pause/Stop controls and status badge
+   stay flush-left; `min-width: 0` lets the picker's text truncate via
+   the AutomationModelPicker's own clamp when the sidekick gets narrow. */
 .headerModelSlot {
+  margin-left: auto;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -56,15 +60,15 @@
 .runBtnGroup {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 6px 2px 4px;
+  gap: 4px;
+  padding: 3px 8px 3px 6px;
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--color-text-primary);
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
   transition: background 0.1s, color 0.1s;
 }
@@ -183,9 +187,10 @@
   left: 0;
   right: 0;
   /* Stack just above the floating `.runControlBar` pill so the shimmer
-     and the run controls never overlap. */
+     and the run controls never overlap. Matches the pill's bottom inset
+     + its height + a small gap. */
   bottom: calc(
-    var(--space-3, 12px) +
+    var(--shell-chrome-inset, 5px) +
     var(--shell-chrome-height, var(--control-height-sm, 32px)) +
     var(--space-2, 8px)
   );

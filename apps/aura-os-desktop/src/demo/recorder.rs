@@ -43,8 +43,12 @@ pub(crate) fn start_region_recording(
     fps: u32,
 ) -> Result<ActiveRecording, String> {
     if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create recordings dir {}: {error}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create recordings dir {}: {error}",
+                parent.display()
+            )
+        })?;
     }
 
     // libx264 + yuv420p require even dimensions.

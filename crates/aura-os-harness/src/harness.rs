@@ -126,6 +126,17 @@ pub struct HarnessSession {
     /// registry) is subscribed. Always empty for runs that emit no
     /// subagent frames during init (the ordinary single-model path).
     pub pending_events: Vec<OutboundMessage>,
+    /// Receiver subscribed to `events_tx` at WS-bridge creation time,
+    /// BEFORE the reader task could broadcast the harness's
+    /// replay-on-attach burst. A consumer that adopts this receiver
+    /// (instead of a late `events_tx.subscribe()`) observes a run's full
+    /// replayed transcript on attach rather than dropping it. `take()`-n
+    /// by the subagent live-stream attach + capture paths, where the
+    /// child run is frequently already complete so its whole transcript
+    /// lives in that initial burst. `None` on transports/tests that do
+    /// not prime one; the parent chat path leaves it unused (it relies on
+    /// `pending_events` for its multi-consumer fan-out).
+    pub events_rx: Option<broadcast::Receiver<OutboundMessage>>,
 }
 
 pub type HarnessCommandSender = mpsc::Sender<InboundMessage>;

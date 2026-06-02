@@ -51,6 +51,7 @@ pub(crate) fn spawn_ws_bridge<S>(
     ws_stream: S,
 ) -> (
     broadcast::Sender<OutboundMessage>,
+    broadcast::Receiver<OutboundMessage>,
     broadcast::Sender<serde_json::Value>,
     mpsc::Sender<InboundMessage>,
 )
@@ -63,6 +64,16 @@ where
 {
     let cap = read_broadcast_capacity_from_env();
     let (outbound_tx, _) = broadcast::channel::<OutboundMessage>(cap);
+    // Subscribe a primed receiver BEFORE the reader task is spawned. The
+    // harness replays a run's full history as a burst the instant a WS
+    // attaches (see `handle_chat_ws_attach` in aura-node), then streams
+    // live. A consumer that only `events_tx.subscribe()`s AFTER this
+    // function returns races the reader task and drops that burst — which
+    // for a completed child run (e.g. an AURA Council member) is the
+    // ENTIRE transcript. A consumer that adopts this primed receiver
+    // instead observes every frame from the first one. Returned on
+    // `HarnessSession.events_rx`.
+    let primed_rx = outbound_tx.subscribe();
     let (raw_tx, _) = broadcast::channel::<serde_json::Value>(cap);
     let (inbound_tx, inbound_rx) = mpsc::channel::<InboundMessage>(WS_COMMAND_BUFFER);
 
@@ -70,7 +81,7 @@ where
     spawn_bridge_reader(ws_stream_read, outbound_tx.clone(), raw_tx.clone());
     spawn_bridge_writer(ws_sink, inbound_rx);
 
-    (outbound_tx, raw_tx, inbound_tx)
+    (outbound_tx, primed_rx, raw_tx, inbound_tx)
 }
 
 fn spawn_bridge_reader<R>(

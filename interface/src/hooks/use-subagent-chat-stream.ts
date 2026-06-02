@@ -60,6 +60,49 @@ const PLACEHOLDER_KEY = "subagent:__inactive__";
  */
 const terminallyStreamed = new Set<string>();
 
+/**
+ * Ref-counted live attach per `subagent:{childRunId}` partition.
+ *
+ * The inline view (a `task` card / AURA Council column) and the slide-over
+ * panel both call {@link useSubagentChatStream} with the SAME `childRunId`
+ * while both are mounted. Without coordination each would open its own
+ * `attach` + SSE into the ONE shared module-level partition, racing to
+ * `resetStreamBuffers` and double-replaying the transcript — which garbled
+ * (or blanked) the inline stream the moment the panel opened. Instead, the
+ * first hook to mount for a partition OWNS the attach (its `controller`
+ * lives here, not on the hook), additional hooks are pure viewers of the
+ * shared partition, and the attach is torn down only when the LAST viewer
+ * unmounts — so the owner unmounting while the panel is open does not kill
+ * the stream.
+ */
+interface SharedSubagentAttach {
+  count: number;
+  controller: AbortController | null;
+}
+const sharedAttaches = new Map<string, SharedSubagentAttach>();
+
+function acquireSharedAttach(key: string): SharedSubagentAttach {
+  let shared = sharedAttaches.get(key);
+  if (!shared) {
+    shared = { count: 0, controller: null };
+    sharedAttaches.set(key, shared);
+  }
+  shared.count += 1;
+  return shared;
+}
+
+function releaseSharedAttach(key: string): void {
+  const shared = sharedAttaches.get(key);
+  if (!shared) return;
+  shared.count -= 1;
+  if (shared.count <= 0) {
+    shared.controller?.abort();
+    sharedAttaches.delete(key);
+    // Last viewer gone: stop the partition's streaming indicator.
+    createSetters(key).setIsStreaming(false);
+  }
+}
+
 export type SubagentAttachStatus =
   | "idle"
   | "attaching"
@@ -340,7 +383,32 @@ export function useSubagentChatStream(
   useEffect(() => {
     if (!active || !childRunId) return;
 
+    // Ref-count this partition's live attach. The first mounted hook for
+    // a `childRunId` owns the attach; any additional hook (e.g. the
+    // slide-over panel opened over an inline card) is a pure viewer of the
+    // shared partition and must NOT open a second attach.
+    const shared = acquireSharedAttach(streamKey);
+    const isOwner = shared.controller === null;
+
+    if (!isOwner) {
+      // Viewer-only: reflect the shared partition the owner is populating.
+      const entry = getStreamEntry(streamKey);
+      const hasTranscript = (entry?.events.length ?? 0) > 0;
+      if (terminallyStreamed.has(streamKey) || hasTranscript) {
+        setStatus("live");
+      } else {
+        // Owner is still attaching; show a loading state until the shared
+        // partition fills rather than a spurious empty/error view.
+        setStatus("attaching");
+      }
+      setErrorMessage(undefined);
+      return () => {
+        releaseSharedAttach(streamKey);
+      };
+    }
+
     const controller = new AbortController();
+    shared.controller = controller;
     const abortRef: MutableRefObject<AbortController | null> = { current: controller };
     let cancelled = false;
 
@@ -430,8 +498,11 @@ export function useSubagentChatStream(
 
     return () => {
       cancelled = true;
-      controller.abort();
-      createSetters(streamKey).setIsStreaming(false);
+      // Release this viewer. The shared attach (and its controller) is
+      // aborted only when the LAST viewer unmounts, so closing the panel
+      // while the inline card stays mounted — or vice versa — never kills
+      // a still-live stream.
+      releaseSharedAttach(streamKey);
     };
   }, [active, childRunId, parentToolUseId, streamKey, subagentSessionId, parentAgentId]);
 

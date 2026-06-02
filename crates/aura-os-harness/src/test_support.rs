@@ -273,6 +273,7 @@ impl HarnessLink for FakeHarness {
             raw_events_tx,
             commands_tx,
             pending_events,
+            events_rx: None,
         })
     }
 
