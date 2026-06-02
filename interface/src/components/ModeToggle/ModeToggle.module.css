@@ -71,11 +71,11 @@
   padding: 0 8px;
   /*
    * Typography is pinned to match the chat input's `ModeSelector`
-   * segments (11px / 600 / 0.02em) so the two sibling sliding-pill
+   * segments (11px / 500 / 0.02em) so the two sibling sliding-pill
    * controls read as one family.
    */
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
   letter-spacing: 0.02em;
   /*
@@ -89,7 +89,7 @@
 }
 
 .segment[aria-checked="true"] {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-primary);
 }
 
