@@ -7,7 +7,12 @@ import {
 } from "../../../stores/chat-history-store";
 import { useContextUsageStore } from "../../../stores/context-usage-store";
 import { useSessionsListStore } from "../../../stores/sessions-list-store";
-import { getIsStreaming, useStreamStore } from "../../../hooks/stream/store";
+import { useChatUIStore } from "../../../stores/chat-ui-store";
+import {
+  getIsStreaming,
+  keyForProjectSession,
+  useStreamStore,
+} from "../../../hooks/stream/store";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
 
 interface UseFreshCanvasOptions {
@@ -124,6 +129,18 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     ctx.markResetPending(streamKey);
   }, [streamKey]);
 
+  // A brand new conversation always starts with AURA Council off (1x).
+  // The next send fans out from the lane's fresh-canvas partition
+  // (`keyForProjectSession(projectId, agentInstanceId, null)`), so reset
+  // that key — and the session key we're leaving — back to the single
+  // model path. Without this, a council fanned out in the previous chat
+  // would be inherited (its count/models persist per stream key).
+  const resetCouncilState = useCallback(() => {
+    const resetCouncil = useChatUIStore.getState().resetCouncil;
+    resetCouncil(keyForProjectSession(projectId, agentInstanceId, null));
+    resetCouncil(streamKey);
+  }, [projectId, agentInstanceId, streamKey]);
+
   const newChat = useCallback(() => {
     void import("../../../lib/analytics").then(({ track }) => track("chat_new_chat"));
     markNextSendAsNewSession();
@@ -151,6 +168,7 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     setFreshChatNonce((n) => n + 1);
     clearStreamSlot();
     clearContextUsage();
+    resetCouncilState();
     dropSessionParam();
     useSessionsListStore.getState().bumpVersion();
   }, [
@@ -161,6 +179,7 @@ export function useFreshCanvas(opts: UseFreshCanvasOptions): UseFreshCanvasResul
     orgAgentId,
     clearStreamSlot,
     clearContextUsage,
+    resetCouncilState,
     dropSessionParam,
   ]);
 

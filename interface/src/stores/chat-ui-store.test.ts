@@ -526,4 +526,43 @@ describe("chat-ui-store", () => {
       expect(useChatUIStore.getState().drafts).toEqual({ "stream-2": "b" });
     });
   });
+
+  describe("resetCouncil", () => {
+    it("resets an in-memory fanned-out council back to 1x", () => {
+      const store = useChatUIStore.getState();
+      store.init("stream-1");
+      store.setCouncilCount("stream-1", 3);
+      expect(useChatUIStore.getState().streams["stream-1"]?.councilCount).toBe(3);
+
+      store.resetCouncil("stream-1");
+
+      const next = useChatUIStore.getState().streams["stream-1"];
+      expect(next?.councilCount).toBe(1);
+      expect(next?.councilModels).toEqual([]);
+    });
+
+    it("drops the persisted count/models so a re-init does not rehydrate the council", () => {
+      const store = useChatUIStore.getState();
+      store.init("stream-1");
+      store.setCouncilCount("stream-1", 4);
+      expect(localStorage.getItem("aura-council-count:stream-1")).toBe("4");
+
+      store.resetCouncil("stream-1");
+      expect(localStorage.getItem("aura-council-count:stream-1")).toBeNull();
+      expect(localStorage.getItem("aura-council-models:stream-1")).toBeNull();
+
+      // A fresh init for the same key (new conversation) must land on 1x.
+      resetStore();
+      useChatUIStore.getState().init("stream-1");
+      expect(useChatUIStore.getState().streams["stream-1"]?.councilCount).toBe(1);
+    });
+
+    it("is a no-op for a stream already on the single-model path", () => {
+      const store = useChatUIStore.getState();
+      store.init("stream-1");
+      const before = useChatUIStore.getState().streams;
+      store.resetCouncil("stream-1");
+      expect(useChatUIStore.getState().streams).toBe(before);
+    });
+  });
 });

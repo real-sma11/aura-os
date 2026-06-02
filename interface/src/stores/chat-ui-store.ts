@@ -143,6 +143,15 @@ function persistCouncilModels(streamKey: string, models: CouncilSlot[]): void {
   }
 }
 
+function clearPersistedCouncil(streamKey: string): void {
+  try {
+    localStorage.removeItem(councilCountStorageKey(streamKey));
+    localStorage.removeItem(councilModelsStorageKey(streamKey));
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
 function loadPersistedCouncilModels(streamKey: string): CouncilSlot[] {
   try {
     const stored = localStorage.getItem(councilModelsStorageKey(streamKey));
@@ -255,6 +264,13 @@ interface ChatUIActions {
     effort?: ModelEffort,
   ) => void;
   getCouncilModels: (streamKey: string) => CouncilSlot[];
+  /**
+   * Reset AURA Council for a stream back to `1x` (council off): clear
+   * the per-slot picks and drop the persisted count/models so a brand
+   * new conversation on this lane never inherits a previous chat's
+   * fanned-out council. Called by the "+" / new-session affordance.
+   */
+  resetCouncil: (streamKey: string) => void;
   /**
    * Set the Image-mode quality tier for a stream and persist it (per
    * agent + global default).
@@ -454,6 +470,30 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
   },
 
   getCouncilModels: (streamKey) => getStream(get(), streamKey).councilModels,
+
+  resetCouncil: (streamKey) => {
+    clearPersistedCouncil(streamKey);
+    set((s) => {
+      const current = s.streams[streamKey];
+      if (
+        current &&
+        current.councilCount === DEFAULT_COUNCIL_COUNT &&
+        current.councilModels.length === 0
+      ) {
+        return s;
+      }
+      return {
+        streams: {
+          ...s.streams,
+          [streamKey]: {
+            ...getStream(s, streamKey),
+            councilCount: DEFAULT_COUNCIL_COUNT,
+            councilModels: EMPTY_COUNCIL_MODELS,
+          },
+        },
+      };
+    });
+  },
 
   setImageQuality: (streamKey, quality, agentId) => {
     persistImageQuality(quality, agentId);
