@@ -29,7 +29,11 @@
      default (`#9ca3af`) sits between primary and muted, but app code
      reaches for this token by name; setting it explicitly here keeps
      the override tracked in one place. */
-  --color-text-secondary: #c9c9cf;
+  --color-text-secondary: rgba(113, 118, 123, 1);
+
+  /* Primary text — explicit dark-mode override (srgb 1 1 1 / 0.88) kept in
+     the app layer so the vendored ZUI base (#e6e8eb) stays untouched. */
+  --color-text-primary: rgba(255, 255, 255, 0.88);
 
   /* Unify the border token across every surface so tables, blocks, tools,
      sidekick panes, overlays, and modals all render the same subtle outline
