@@ -155,34 +155,11 @@ pub(crate) async fn start_demo_recording(
         return Json(serde_json::json!({ "ok": false, "error": "instruction is required" }));
     }
 
-    // Preflight ffmpeg before opening any window, so a missing/broken
-    // ffmpeg surfaces an actionable error instead of a window that flashes
-    // open and immediately disappears when the capture spawn fails.
-    let ffmpeg = demo::tools::resolve_ffmpeg_binary();
-    let probe = {
-        let ffmpeg = ffmpeg.clone();
-        tokio::task::spawn_blocking(move || demo::tools::probe_ffmpeg(&ffmpeg)).await
-    };
-    if let Err(reason) = probe.unwrap_or_else(|join_error| Err(join_error.to_string())) {
-        let message = format!(
-            "Demo recording needs ffmpeg, which isn't available ({reason}). \
-             Install it (e.g. `winget install Gyan.FFmpeg`) or set the \
-             AURA_FFMPEG_BIN environment variable to an ffmpeg executable, \
-             then try again."
-        );
-        warn!(ffmpeg = %ffmpeg.display(), "demo recording preflight failed: ffmpeg unavailable");
-        // Native, visible feedback — this route is fire-and-forget from
-        // the chat input, so a dialog is the clearest way to explain why
-        // nothing happened.
-        let dialog_message = message.clone();
-        tokio::spawn(async move {
-            rfd::AsyncMessageDialog::new()
-                .set_level(rfd::MessageLevel::Error)
-                .set_title("AURA — Record Demo")
-                .set_description(dialog_message)
-                .show()
-                .await;
-        });
+    // Preflight before opening any window so missing prerequisites
+    // (ffmpeg, or — on macOS — Screen Recording permission) surface as an
+    // actionable dialog instead of a window that flashes open and produces
+    // an empty file. Any blocking probe runs inside `spawn_blocking`.
+    if let Err(message) = demo::preflight::run_demo_preflight().await {
         return Json(serde_json::json!({ "ok": false, "error": message }));
     }
 

@@ -11,6 +11,7 @@
 //! in [`crate::ui::runtime`] because it needs the `tao` event loop and
 //! the per-window `wry::WebView` handles.
 
+pub(crate) mod preflight;
 pub(crate) mod recorder;
 pub(crate) mod tools;
 

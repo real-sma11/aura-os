@@ -307,17 +307,76 @@ fn center_demo_window(window: &Window, width: u32, height: u32) {
     ));
 }
 
-/// The demo window's outer rect as a capture region, in physical pixels
-/// (desktop coordinates). `None` if the position cannot be read.
+/// The demo window's outer rect as a capture region. On Windows/Linux the
+/// tao geometry is already in physical desktop pixels and is used as-is
+/// (gdigrab/x11grab grab that rectangle directly). On macOS the rect is
+/// remapped into the display's backing-store pixel space for the
+/// avfoundation `-vf crop` (see [`macos_backing_capture_region`]). `None`
+/// if the position cannot be read.
 fn window_capture_region(window: &Window) -> Option<demo::recorder::CaptureRegion> {
     let position = window.outer_position().ok()?;
     let size = window.outer_size();
+    #[cfg(target_os = "macos")]
+    {
+        macos_backing_capture_region(window, position, size)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(demo::recorder::CaptureRegion {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        })
+    }
+}
+
+/// macOS crop rect for the avfoundation capture, in **backing-store
+/// (physical) pixels** relative to the display origin.
+///
+/// COORDINATE-SPACE ASSUMPTION (needs on-device verification on a Retina
+/// Mac): we treat tao's `outer_position()`/`outer_size()` on macOS as
+/// *logical points* and multiply by `window.scale_factor()` to reach the
+/// backing-store pixel grid that avfoundation records at. This follows
+/// the plan ("multiply the window geometry by `scale_factor()` to get the
+/// crop rect in backing pixels"). If tao 0.34 already reports physical
+/// pixels here, this would double-count the scale factor and must be
+/// changed to use the raw values. The crop origin is made relative to the
+/// monitor (avfoundation captures one display, origin at its top-left).
+#[cfg(target_os = "macos")]
+fn macos_backing_capture_region(
+    window: &Window,
+    position: tao::dpi::PhysicalPosition<i32>,
+    size: tao::dpi::PhysicalSize<u32>,
+) -> Option<demo::recorder::CaptureRegion> {
+    let monitor = window
+        .current_monitor()
+        .or_else(|| window.primary_monitor())?;
+    let monitor_pos = monitor.position();
+    let scale = window.scale_factor();
+
+    let x = (((position.x - monitor_pos.x) as f64) * scale)
+        .round()
+        .max(0.0) as i32;
+    let y = (((position.y - monitor_pos.y) as f64) * scale)
+        .round()
+        .max(0.0) as i32;
+    let width = even_dim(size.width as f64 * scale);
+    let height = even_dim(size.height as f64 * scale);
+
     Some(demo::recorder::CaptureRegion {
-        x: position.x,
-        y: position.y,
-        width: size.width,
-        height: size.height,
+        x,
+        y,
+        width,
+        height,
     })
+}
+
+/// Round a scaled dimension to an even `u32` (>= 2) for libx264/yuv420p.
+#[cfg(target_os = "macos")]
+fn even_dim(value: f64) -> u32 {
+    let rounded = value.round().max(0.0) as u32;
+    rounded.max(2) & !1
 }
 
 /// The current monitor's full rect as a capture region, in physical

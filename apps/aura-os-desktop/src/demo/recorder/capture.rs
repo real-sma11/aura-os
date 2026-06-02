@@ -62,7 +62,14 @@ pub(crate) fn start_region_recording(
         .arg("-loglevel")
         .arg("warning");
 
-    append_capture_input(&mut command, region, width, height, fps);
+    let capture_input = CaptureInput {
+        region,
+        width,
+        height,
+        fps,
+        ffmpeg,
+    };
+    append_capture_input(&mut command, &capture_input);
     append_encode_output(&mut command, output);
 
     #[cfg(target_os = "windows")]
@@ -84,26 +91,54 @@ pub(crate) fn start_region_recording(
     Ok(ActiveRecording { child })
 }
 
-/// Append the per-OS capture-input arguments.
-///
-/// gdigrab (Windows) reads the composited screen; x11grab (Linux) crops
-/// via the display+offset syntax. macOS avfoundation can't crop by
-/// rectangle, so it captures the whole main display (best-effort; the
-/// demo recorder is Windows-first for the MVP — macOS cropping is a
-/// later phase).
-fn append_capture_input(
-    command: &mut Command,
+/// Borrowed parameters for [`append_capture_input`] (bundled to respect
+/// the 5-parameter limit and to thread the `ffmpeg` path through for the
+/// macOS device-detection step). `width`/`height` are the even-adjusted
+/// capture dimensions; `region` carries the desktop/crop offset.
+struct CaptureInput<'a> {
     region: CaptureRegion,
     width: u32,
     height: u32,
     fps: u32,
-) {
+    /// Resolved ffmpeg path (used only on macOS to detect the screen
+    /// capture device index; ignored on other platforms).
+    ffmpeg: &'a Path,
+}
+
+/// Append the per-OS capture-input arguments.
+///
+/// gdigrab (Windows) reads the composited screen; x11grab (Linux) crops
+/// via the display+offset syntax. macOS avfoundation cannot crop by
+/// rectangle on input, so it captures the detected screen-capture device
+/// and applies a `-vf crop` to the window rect (in backing-store pixels).
+fn append_capture_input(command: &mut Command, input: &CaptureInput) {
     #[cfg(target_os = "windows")]
-    append_gdigrab_input(command, region, width, height, fps);
+    {
+        let _ = input.ffmpeg;
+        append_gdigrab_input(command, input.region, input.width, input.height, input.fps);
+    }
     #[cfg(target_os = "linux")]
-    append_x11grab_input(command, region, width, height, fps);
+    {
+        let _ = input.ffmpeg;
+        append_x11grab_input(command, input.region, input.width, input.height, input.fps);
+    }
     #[cfg(target_os = "macos")]
-    append_avfoundation_input(command, fps);
+    {
+        // Detect the avfoundation screen device just-in-time. This runs on
+        // the event-loop thread (not the async executor), so the brief
+        // `ffmpeg -list_devices` probe does not block tokio. Fall back to
+        // index `1`, the historical default, when detection fails.
+        let device_index =
+            crate::demo::tools::detect_macos_screen_device(input.ffmpeg).unwrap_or(1);
+        // Crop to the even-adjusted window rect in backing pixels.
+        let crop = CaptureRegion {
+            x: input.region.x,
+            y: input.region.y,
+            width: input.width,
+            height: input.height,
+        };
+        append_avfoundation_input(command, crop, input.fps, device_index);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -148,15 +183,35 @@ fn append_x11grab_input(
         .arg(format!(":0.0+{},{}", region.x, region.y));
 }
 
+/// avfoundation has no input-side cropping, so capture the detected
+/// screen device (`device_index`) at full display resolution and crop to
+/// the window `region` with a `-vf crop=W:H:X:Y` filter. The crop rect is
+/// in backing-store (physical) pixels; `width`/`height` are pre-evened for
+/// libx264. Negative offsets are clamped to `0`.
 #[cfg(target_os = "macos")]
-fn append_avfoundation_input(command: &mut Command, fps: u32) {
+fn append_avfoundation_input(
+    command: &mut Command,
+    region: CaptureRegion,
+    fps: u32,
+    device_index: u32,
+) {
     command
         .arg("-f")
         .arg("avfoundation")
         .arg("-framerate")
         .arg(fps.to_string())
+        .arg("-capture_cursor")
+        .arg("1")
         .arg("-i")
-        .arg("1:none");
+        .arg(format!("{device_index}:none"))
+        .arg("-vf")
+        .arg(format!(
+            "crop={}:{}:{}:{}",
+            region.width,
+            region.height,
+            region.x.max(0),
+            region.y.max(0)
+        ));
 }
 
 /// Append the intermediate-encode arguments. Uses a high-quality

@@ -90,6 +90,12 @@ pub(crate) fn resolve_background_image() -> Option<PathBuf> {
 /// the bare binary name so `std::process::Command` resolves it via
 /// `PATH`. The bare-name fallback can still fail to spawn; the recorder
 /// surfaces that as a recording error with the resolved path.
+///
+/// macOS packaging note: this already searches `Contents/Resources/bin`,
+/// so a bundled mac binary should be a **universal** (`lipo`-merged
+/// arm64 + x86_64) `ffmpeg` so a single app bundle runs natively on both
+/// Apple Silicon and Intel. Binary packaging is deferred like the Windows
+/// MVP; for dev, `AURA_FFMPEG_BIN` / `PATH` cover both architectures.
 pub(crate) fn resolve_ffmpeg_binary() -> PathBuf {
     if let Ok(explicit) = std::env::var("AURA_FFMPEG_BIN") {
         let trimmed = explicit.trim();
@@ -143,5 +149,121 @@ pub(crate) fn probe_ffmpeg(ffmpeg: &Path) -> Result<(), String> {
             "could not run ffmpeg at `{}`: {error}",
             ffmpeg.display()
         )),
+    }
+}
+
+/// Detect the avfoundation screen-capture device index on macOS.
+///
+/// Runs `ffmpeg -f avfoundation -list_devices true -i ""`, which prints
+/// the device list to stderr and exits non-zero (expected — we ignore the
+/// exit status). The bracketed index of the `Capture screen` entry is
+/// returned, or `None` on any exec/parse failure so the caller can fall
+/// back to a sensible default index. Blocking; call off the async
+/// executor.
+#[cfg(target_os = "macos")]
+pub(crate) fn detect_macos_screen_device(ffmpeg: &Path) -> Option<u32> {
+    let output = Command::new(ffmpeg)
+        .arg("-hide_banner")
+        .arg("-f")
+        .arg("avfoundation")
+        .arg("-list_devices")
+        .arg("true")
+        .arg("-i")
+        .arg("")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    parse_screen_device_index(&stderr)
+}
+
+/// Pure parser for the `ffmpeg -list_devices` stderr output: find the
+/// `AVFoundation video devices` section and return the bracketed index of
+/// the first entry whose label contains `Capture screen`
+/// (e.g. `[3] Capture screen 0` -> `3`). Returns `None` when no screen
+/// device is listed. Kept platform-independent so it is unit-testable on
+/// any host.
+///
+/// Compiled on macOS (where [`detect_macos_screen_device`] calls it) and
+/// under `test` (so the parser test runs on every host); on other
+/// non-test builds it has no caller, hence the `cfg`.
+#[cfg(any(test, target_os = "macos"))]
+fn parse_screen_device_index(stderr: &str) -> Option<u32> {
+    let mut in_video_section = false;
+    for line in stderr.lines() {
+        if line.contains("AVFoundation video devices") {
+            in_video_section = true;
+            continue;
+        }
+        if line.contains("AVFoundation audio devices") {
+            in_video_section = false;
+            continue;
+        }
+        if !in_video_section || !line.contains("Capture screen") {
+            continue;
+        }
+        if let Some(index) = bracketed_index_before(line, "Capture screen") {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// Parse the last `[N]` bracket group that appears before `label` in
+/// `line`. ffmpeg prefixes each line with `[AVFoundation indev @ 0x..]`,
+/// so the *last* bracket before the label is the device index.
+#[cfg(any(test, target_os = "macos"))]
+fn bracketed_index_before(line: &str, label: &str) -> Option<u32> {
+    let label_pos = line.find(label)?;
+    let prefix = &line[..label_pos];
+    let close = prefix.rfind(']')?;
+    let open = prefix[..close].rfind('[')?;
+    prefix[open + 1..close].trim().parse::<u32>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_screen_device_index;
+
+    #[test]
+    fn parse_screen_device_finds_capture_screen_index() {
+        let stderr = "\
+[AVFoundation indev @ 0x7f8] AVFoundation video devices:
+[AVFoundation indev @ 0x7f8] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x7f8] [1] External Camera
+[AVFoundation indev @ 0x7f8] [3] Capture screen 0
+[AVFoundation indev @ 0x7f8] [4] Capture screen 1
+[AVFoundation indev @ 0x7f8] AVFoundation audio devices:
+[AVFoundation indev @ 0x7f8] [0] MacBook Pro Microphone";
+        assert_eq!(parse_screen_device_index(stderr), Some(3));
+    }
+
+    #[test]
+    fn parse_screen_device_ignores_audio_section_matches() {
+        let stderr = "\
+[AVFoundation indev @ 0x1] AVFoundation video devices:
+[AVFoundation indev @ 0x1] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x1] AVFoundation audio devices:
+[AVFoundation indev @ 0x1] [2] Capture screen audio";
+        assert_eq!(parse_screen_device_index(stderr), None);
+    }
+
+    #[test]
+    fn parse_screen_device_without_indev_prefix() {
+        let stderr = "\
+AVFoundation video devices:
+[0] FaceTime HD Camera
+[2] Capture screen 0";
+        assert_eq!(parse_screen_device_index(stderr), Some(2));
+    }
+
+    #[test]
+    fn parse_screen_device_returns_none_when_absent() {
+        let stderr = "\
+[AVFoundation indev @ 0x1] AVFoundation video devices:
+[AVFoundation indev @ 0x1] [0] FaceTime HD Camera";
+        assert_eq!(parse_screen_device_index(stderr), None);
     }
 }
