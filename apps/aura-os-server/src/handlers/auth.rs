@@ -510,6 +510,29 @@ pub(crate) async fn logout(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /api/auth/delete-account` — permanently deletes the caller's ZERO
+/// account (Apple Guideline 5.1.1(v)). Protected, so the auth middleware has
+/// already validated the session and `AuthJwt` hands us the raw token to
+/// forward upstream. The upstream delete runs FIRST: if it fails we surface
+/// the error and leave the local session intact; only on success do we tear
+/// the local session down so the now-deleted token can't be reused.
+pub(crate) async fn delete_account(
+    State(state): State<AppState>,
+    AuthJwt(jwt): AuthJwt,
+) -> ApiResult<StatusCode> {
+    state
+        .auth_service
+        .delete_account(&jwt)
+        .await
+        .map_err(map_auth_error)?;
+
+    state.validation_cache.remove(&jwt);
+    clear_user_network_sync_dedupe(&jwt);
+    clear_zero_auth_session(&state.store);
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Payload decoded from JWT (only the claims we need for issuer discovery).
 #[derive(serde::Deserialize)]
 struct JwtPayloadIss {

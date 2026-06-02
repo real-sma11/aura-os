@@ -337,6 +337,31 @@ impl AuthService {
         Ok(())
     }
 
+    /// Delete the caller's ZERO account via zOS-api. zOS performs a soft
+    /// delete (`is_deleted = true`) that permanently blocks the account from
+    /// authenticating again. Unlike `logout`, this is not best-effort: a
+    /// non-2xx response is surfaced as an error so callers do not tear down
+    /// the local session — or tell the user their account is gone — when the
+    /// upstream delete did not actually happen.
+    pub async fn delete_account(&self, token: &str) -> Result<(), AuthError> {
+        debug!("Deleting account via zOS-api");
+        let res = self
+            .http
+            .post(format!("{ZOS_API_URL}/api/v2/accounts/delete"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(AuthError::Http)?;
+
+        if !res.status().is_success() {
+            let status = res.status().as_u16();
+            let body = res.text().await.unwrap_or_default();
+            return Err(parse_zos_error(status, &body));
+        }
+
+        Ok(())
+    }
+
     async fn fetch_user_info(&self, token: &str) -> Result<ZosUserResponse, AuthError> {
         let res = self
             .http
