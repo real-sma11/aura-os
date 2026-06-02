@@ -827,7 +827,7 @@ export function createProfileCardScene(
     // slow breathing fade in/out plus a faster low-amplitude flicker.
     if (idleAmp) {
       const breathe = 0.78 + Math.sin(t * 0.9) * 0.22;
-      const flicker = 1 + Math.sin(t * 9) * 0.05 + Math.sin(t * 23.3) * 0.025;
+      const flicker = 1 + Math.sin(t * 9) * 0.11 + Math.sin(t * 23.3) * 0.06;
       const factor = breathe * flicker;
       lineMaterial.opacity = lineCoreOpacity * factor;
       lineHaloMaterial.opacity = lineHaloOpacity * factor;
