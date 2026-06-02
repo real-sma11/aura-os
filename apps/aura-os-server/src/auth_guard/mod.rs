@@ -87,9 +87,21 @@ pub(crate) async fn require_verified_session(
 
     enforce_zero_pro(&state, &session)?;
 
-    // Fire server-side session_active for True DAU tracking.
+    // Fire server-side session_active for True DAU tracking. Forward the
+    // client's app version / platform (set by the `X-App-Version` /
+    // `X-App-Platform` headers) so these events carry the same
+    // `app_version` the client SDK reports — without them Mixpanel shows
+    // server-emitted events as `app_version = "(not set)"`.
     if let Some(ref mp) = state.mixpanel {
-        mp.track_session_active(&session.user_id);
+        let app_version = req
+            .headers()
+            .get("x-app-version")
+            .and_then(|v| v.to_str().ok());
+        let platform = req
+            .headers()
+            .get("x-app-platform")
+            .and_then(|v| v.to_str().ok());
+        mp.track_session_active(&session.user_id, app_version, platform);
     }
 
     req.extensions_mut().insert(AuthJwt(token));

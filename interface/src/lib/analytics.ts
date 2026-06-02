@@ -8,6 +8,8 @@
 
 import mixpanel from "mixpanel-browser";
 
+import { getAppPlatform, getAppVersion } from "./build-info";
+
 const MIXPANEL_TOKEN = import.meta.env.VITE_MIXPANEL_TOKEN?.trim() ?? "";
 const OPT_OUT_KEY = "aura-analytics-opt-out";
 
@@ -51,8 +53,8 @@ export function initAnalytics(): void {
 
     // Set super properties (attached to every event)
     mixpanel.register({
-      platform: detectPlatform(),
-      app_version: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "unknown",
+      platform: getAppPlatform(),
+      app_version: getAppVersion(),
       is_authenticated: false,
     });
 
@@ -140,17 +142,4 @@ export function optIn(): void {
 /** Check if user is currently opted out. */
 export function isAnalyticsOptedOut(): boolean {
   return isOptedOut();
-}
-
-function detectPlatform(): "desktop" | "web" | "mobile" {
-  if (typeof window === "undefined") return "web";
-  // Electron desktop app
-  if ("ipc" in window && typeof (window as unknown as Record<string, unknown>).ipc === "object") {
-    return "desktop";
-  }
-  // Capacitor mobile app
-  if ("Capacitor" in window) {
-    return "mobile";
-  }
-  return "web";
 }

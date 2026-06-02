@@ -39,7 +39,18 @@ impl MixpanelTracker {
 
     /// Fire `session_active` for this user if it hasn't been fired
     /// today. Safe to call on every request — deduplicates internally.
-    pub(crate) fn track_session_active(&self, user_id: &str) {
+    ///
+    /// `app_version` / `platform` come from the `X-App-Version` /
+    /// `X-App-Platform` headers the client sends on every API call. They
+    /// are attached so the server-emitted `session_active` carries the
+    /// same `app_version` super-property the client SDK sets — otherwise
+    /// Mixpanel reports these events as `app_version = "(not set)"`.
+    pub(crate) fn track_session_active(
+        &self,
+        user_id: &str,
+        app_version: Option<&str>,
+        platform: Option<&str>,
+    ) {
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let key = format!("{user_id}:{today}");
 
@@ -53,7 +64,15 @@ impl MixpanelTracker {
         // today). Only runs when we actually insert a new entry.
         self.seen_today.retain(|k, _| k.ends_with(&today));
 
-        self.enqueue_event("session_active", user_id.to_string(), Map::new());
+        let mut properties = Map::new();
+        if let Some(version) = sanitize_client_header(app_version) {
+            properties.insert("app_version".to_string(), json!(version));
+        }
+        if let Some(platform) = sanitize_client_header(platform) {
+            properties.insert("platform".to_string(), json!(platform));
+        }
+
+        self.enqueue_event("session_active", user_id.to_string(), properties);
     }
 
     /// Fire a generic Mixpanel event with JSON-object properties.
@@ -132,6 +151,21 @@ impl MixpanelTracker {
             post_mixpanel_payload(client, payload, event).await;
         });
     }
+}
+
+/// Normalize a client-supplied header value before it lands in Mixpanel.
+///
+/// Header values are attacker-influenced, so we trim whitespace, drop
+/// empties, and cap the length to keep a malformed/oversized header from
+/// polluting the analytics property. Returns `None` when there is nothing
+/// worth recording.
+fn sanitize_client_header(value: Option<&str>) -> Option<String> {
+    const MAX_LEN: usize = 64;
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(MAX_LEN).collect())
 }
 
 fn value_to_properties(properties: Value) -> Map<String, Value> {
@@ -220,6 +254,20 @@ mod tests {
         assert_eq!(payload[0]["properties"]["mp_lib"], "rust-server");
         assert_eq!(payload[0]["properties"]["session_id"], "session-1");
         assert_eq!(payload[0]["properties"]["reused"], true);
+    }
+
+    #[test]
+    fn sanitize_client_header_trims_drops_and_caps() {
+        assert_eq!(sanitize_client_header(None), None);
+        assert_eq!(sanitize_client_header(Some("   ")), None);
+        assert_eq!(
+            sanitize_client_header(Some("  0.1.0-nightly.577.1  ")),
+            Some("0.1.0-nightly.577.1".to_string())
+        );
+
+        let long = "v".repeat(200);
+        let sanitized = sanitize_client_header(Some(&long)).expect("non-empty");
+        assert_eq!(sanitized.len(), 64);
     }
 
     #[test]

@@ -97,13 +97,19 @@ describe("auth-token", () => {
     expect(getStoredJwt()).toBeNull();
   });
 
-  it("authHeaders returns empty object when no jwt", () => {
-    expect(authHeaders()).toEqual({});
+  it("authHeaders omits Authorization but always sends client meta when no jwt", () => {
+    const headers = authHeaders();
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers["X-App-Version"]).toEqual(expect.any(String));
+    expect(headers["X-App-Platform"]).toEqual(expect.any(String));
   });
 
-  it("authHeaders returns Authorization header when jwt stored", async () => {
+  it("authHeaders returns Authorization header alongside client meta when jwt stored", async () => {
     await setStoredAuth(mockSession);
-    expect(authHeaders()).toEqual({ Authorization: "Bearer my-jwt-token" });
+    const headers = authHeaders();
+    expect(headers.Authorization).toEqual("Bearer my-jwt-token");
+    expect(headers["X-App-Version"]).toEqual(expect.any(String));
+    expect(headers["X-App-Platform"]).toEqual(expect.any(String));
   });
 
   it("detects capture sessions by their explicit token prefix", async () => {

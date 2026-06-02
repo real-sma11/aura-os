@@ -42,6 +42,36 @@ export function getBuildInfo(): BuildInfo {
   };
 }
 
+export type AppPlatform = "desktop" | "web" | "mobile";
+
+/**
+ * Resolve the build-time app version. Mirrors the `app_version` super
+ * property the Mixpanel SDK registers, and is the value sent to the
+ * server via the `X-App-Version` header so server-emitted analytics
+ * events carry a real version instead of "(not set)".
+ */
+export function getAppVersion(): string {
+  return safeRead(typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : undefined, "0.0.0");
+}
+
+/**
+ * Detect whether we're running in the Electron desktop shell, the
+ * Capacitor mobile shell, or a plain web browser. Single source of
+ * truth shared by analytics and the API client.
+ */
+export function getAppPlatform(): AppPlatform {
+  if (typeof window === "undefined") return "web";
+  // Electron desktop app
+  if ("ipc" in window && typeof (window as unknown as Record<string, unknown>).ipc === "object") {
+    return "desktop";
+  }
+  // Capacitor mobile app
+  if ("Capacitor" in window) {
+    return "mobile";
+  }
+  return "web";
+}
+
 export function formatBuildTime(buildTime: string, locale?: string): string {
   if (!buildTime || buildTime === "dev") {
     return "Development build";

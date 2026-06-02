@@ -1,4 +1,5 @@
 import type { AuthSession } from "../types";
+import { getAppPlatform, getAppVersion } from "../../lib/build-info";
 import { BROWSER_DB_STORES, browserDbDelete, browserDbGet, browserDbSet } from "./browser-db";
 
 const JWT_STORAGE_KEY = "aura-jwt";
@@ -381,7 +382,24 @@ export async function endLocalSession(): Promise<void> {
   getLocalStorage()?.setItem(FORCE_LOGGED_OUT_KEY, "1");
 }
 
+/**
+ * Build/platform headers attached to every API request. The server reads
+ * these on the auth path to tag server-emitted `session_active` Mixpanel
+ * events with the client's real `app_version` (otherwise those events
+ * report `app_version = "(not set)"`).
+ */
+function clientMetaHeaders(): Record<string, string> {
+  return {
+    "X-App-Version": getAppVersion(),
+    "X-App-Platform": getAppPlatform(),
+  };
+}
+
 export function authHeaders(): Record<string, string> {
   const jwt = getStoredJwt();
-  return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+  const headers = clientMetaHeaders();
+  if (jwt) {
+    headers.Authorization = `Bearer ${jwt}`;
+  }
+  return headers;
 }
