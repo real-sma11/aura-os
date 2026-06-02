@@ -48,6 +48,12 @@
   border-right: none;
   border-top-left-radius: 6px;
   border-bottom-left-radius: 6px;
+  transition: border-color var(--transition-fast, 120ms) ease;
+}
+
+.sidebar:has([data-lane-resize-handle]:hover),
+.sidebar:has([data-lane][data-resizing]) {
+  border-color: var(--color-accent);
 }
 
 :global([data-desktop-mode]) .sidebar {

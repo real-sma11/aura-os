@@ -19,6 +19,12 @@
 .sidebar {
   background: var(--color-bg);
   border-right: 1px solid var(--color-border);
+  transition: border-color var(--transition-fast, 120ms) ease;
+}
+
+.sidebar:has([data-lane-resize-handle]:hover),
+.sidebar[data-resizing] {
+  border-right-color: var(--color-accent);
 }
 
 .editorPane {

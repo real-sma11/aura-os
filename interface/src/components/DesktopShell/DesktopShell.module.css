@@ -189,6 +189,12 @@
   border-left: none;
   border-top-right-radius: 6px;
   border-bottom-right-radius: 6px;
+  transition: border-color var(--transition-fast, 120ms) ease;
+}
+
+.sidekickLane:has([data-lane-resize-handle]:hover),
+.sidekickLane[data-resizing] {
+  border-color: var(--color-accent);
 }
 
 /*
