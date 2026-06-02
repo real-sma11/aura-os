@@ -17,7 +17,7 @@ export function EarnCreditsButton(): ReactElement {
         title="Earn credits by inviting a member"
         aria-label="Refer a member to earn credits"
       >
-        <span className={styles.label}>Refer member, earn $50.</span>
+        <span className={styles.label}>Refer member. Earn $50.</span>
       </button>
       <InviteModal isOpen={inviteModalOpen} onClose={closeInviteModal} />
     </>

@@ -31,10 +31,10 @@ beforeEach(() => {
 });
 
 describe("EarnCreditsButton", () => {
-  it("renders the 'Refer member, earn $50.' label", () => {
+  it("renders the 'Refer member. Earn $50.' label", () => {
     render(<EarnCreditsButton />);
 
-    expect(screen.getByText("Refer member, earn $50.")).toBeInTheDocument();
+    expect(screen.getByText("Refer member. Earn $50.")).toBeInTheDocument();
   });
 
   it("calls openInviteModal when the button is clicked", async () => {
