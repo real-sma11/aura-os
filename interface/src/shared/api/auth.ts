@@ -23,6 +23,8 @@ export const authApi = {
     apiFetch<AuthSession>("/api/auth/validate", { method: "POST" }),
   logout: () =>
     apiFetch<void>("/api/auth/logout", { method: "POST" }),
+  deleteAccount: () =>
+    apiFetch<void>("/api/auth/delete-account", { method: "POST" }),
   requestPasswordReset: (email: string) =>
     apiFetch<void>("/api/auth/request-password-reset", {
       method: "POST",

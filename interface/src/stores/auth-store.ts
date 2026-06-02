@@ -87,6 +87,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, inviteCode: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 /**
@@ -126,7 +127,7 @@ function seedAuthStateFromStorage(): Pick<
   };
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   ...seedAuthStateFromStorage(),
 
   restoreSession: async () => {
@@ -293,6 +294,15 @@ export const useAuthStore = create<AuthState>()((set) => ({
     // desktop initialization script (which carries startup-time auth
     // literals that would otherwise clobber the just-cleared localStorage).
     set({ user: null, hasResolvedInitialSession: true, zeroProRefreshError: null });
+  },
+  deleteAccount: async () => {
+    // Permanently delete the account upstream FIRST. Unlike `logout`, errors
+    // are NOT swallowed: if this throws the account still exists, so the
+    // caller surfaces the error and the session is left intact. Only on
+    // success do we run the normal logout teardown — mirroring the ZERO
+    // mobile app, which logs the user out after a successful delete.
+    await authApi.deleteAccount();
+    await get().logout();
   },
 }));
 

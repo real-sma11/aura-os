@@ -8,6 +8,7 @@ const { mockApi } = vi.hoisted(() => {
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
+    deleteAccount: vi.fn(),
     follows: {
       list: vi.fn().mockResolvedValue([]),
     },
@@ -333,6 +334,34 @@ describe("auth-store", () => {
 
       expect(useUIModalStore.getState().orgSettingsOpen).toBe(false);
       expect(useUIModalStore.getState().orgInitialSection).toBeUndefined();
+    });
+  });
+
+  describe("deleteAccount", () => {
+    it("deletes the account then runs the logout teardown", async () => {
+      useAuthStore.setState({ user: expectedUser(mockSession) });
+      mockApi.deleteAccount.mockResolvedValue(undefined);
+      mockApi.logout.mockResolvedValue(undefined);
+
+      await useAuthStore.getState().deleteAccount();
+
+      expect(mockApi.deleteAccount).toHaveBeenCalledTimes(1);
+      expect(useAuthStore.getState().user).toBeNull();
+      expect(useAuthStore.getState().hasResolvedInitialSession).toBe(true);
+    });
+
+    it("propagates the error and keeps the session when the delete fails", async () => {
+      useAuthStore.setState({ user: expectedUser(mockSession) });
+      mockApi.deleteAccount.mockRejectedValue(new Error("delete failed"));
+
+      await expect(useAuthStore.getState().deleteAccount()).rejects.toThrow(
+        "delete failed",
+      );
+
+      // Account still exists upstream, so the local session must be intact and
+      // the logout teardown must not have run.
+      expect(useAuthStore.getState().user).toEqual(expectedUser(mockSession));
+      expect(mockApi.logout).not.toHaveBeenCalled();
     });
   });
 });
