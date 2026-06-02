@@ -42,14 +42,14 @@
 .right {
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   min-height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
-  --pill-grad-top: var(--shell-pill-grad-top, #2c2c2e);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #161618);
-  /* Charcoal -> near-black vertical gradient from the reference swatch:
-     a soft lighter wash near the top settling down into the near-black
-     bottom. The top-edge highlight is a subtle inset lip in box-shadow
-     below (hugging the border), not a bright line in the fill. */
+  --pill-grad-top: var(--shell-pill-grad-top, #232323);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #141414);
+  /* Charcoal -> near-black gradient, angled slightly toward the bottom-
+     right (160deg). A soft lighter wash near the top settles down into the
+     near-black bottom. The top-edge highlight is a subtle inset lip in
+     box-shadow below (hugging the border), not a bright line in the fill. */
   background: linear-gradient(
-    to bottom,
+    160deg,
     color-mix(in srgb, #fff 5%, var(--pill-grad-top)) 0,
     var(--pill-grad-top) 40%,
     var(--pill-grad-bottom) 100%
@@ -170,11 +170,11 @@
   align-items: center;
   height: var(--public-pill-height, 24px);
   min-height: var(--public-pill-height, 24px);
-  --pill-grad-top: var(--shell-pill-grad-top, #2c2c2e);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #161618);
-  /* Same charcoal -> near-black gradient as the authed pills. */
+  --pill-grad-top: var(--shell-pill-grad-top, #232323);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #141414);
+  /* Same angled charcoal -> near-black gradient as the authed pills. */
   background: linear-gradient(
-    to bottom,
+    160deg,
     color-mix(in srgb, #fff 5%, var(--pill-grad-top)) 0,
     var(--pill-grad-top) 40%,
     var(--pill-grad-bottom) 100%
