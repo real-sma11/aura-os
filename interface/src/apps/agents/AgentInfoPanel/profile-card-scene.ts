@@ -661,10 +661,12 @@ export function createProfileCardScene(
     }
     slashGeo.dispose();
 
-    // LED cluster: three on the left slot.
+    // LED cluster: three on the left slot, centered in the metal strip between
+    // the recessed slot floor and the screen window's left edge.
     const ledGeo = new THREE.SphereGeometry(0.0133, 16, 16);
+    const ledX = -shell.w / 2 + (LED_SLOT_DEPTH + WINDOW.left * shell.w) / 2;
     const ledColumns: Array<{ x: number; cy: number }> = [
-      { x: -shell.w / 2 + shell.w * 0.038, cy: shell.h * 0.03 },
+      { x: ledX, cy: shell.h * 0.03 },
     ];
     for (const col of ledColumns) {
       for (let i = 0; i < 3; i += 1) {
