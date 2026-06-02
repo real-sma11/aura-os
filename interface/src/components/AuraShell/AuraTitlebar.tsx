@@ -218,12 +218,23 @@ function AuthedActions({
   onToggleSplitScreen,
   onOpenHostSettings,
 }: AuthedActionsProps): React.ReactElement {
-  const { features } = useAuraCapabilities();
+  const { features, remoteOnly } = useAuraCapabilities();
   return (
     <div
       className={styles.titleActions}
       onDoubleClick={(e) => e.stopPropagation()}
     >
+      {remoteOnly && (
+        <Link
+          to="/download"
+          className={`${styles.authPill} ${styles.authPillSecondary} ${styles.authedDownloadPill}`}
+          onClick={() =>
+            track("public_download_clicked", { source: "authed_titlebar" })
+          }
+        >
+          Download
+        </Link>
+      )}
       <UpdatePill />
       {features.hostRetargeting && onOpenHostSettings && (
         <Button

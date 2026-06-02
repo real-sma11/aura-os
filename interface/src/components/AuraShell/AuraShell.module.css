@@ -315,6 +315,15 @@
 }
 
 /*
+ * Download pill rendered in the authed titlebar trailing cluster.
+ * `.titleActions` uses `gap: 0`, so add explicit right spacing to
+ * keep the pill from butting against the adjacent `UpdatePill`.
+ */
+.authedDownloadPill {
+  margin-right: 8px;
+}
+
+/*
  * Ghost variant used for the public titlebar's "Log In" pill. Same
  * geometry as `.authPillSecondary` (the base `.authPill` rule keeps
  * its 1px transparent border so all three pills line up at the same
