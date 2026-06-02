@@ -203,6 +203,20 @@
 }
 
 /*
+ * The panel container paints an opaque `--color-sidekick-bg` over the whole
+ * lane (so it can scroll content over a solid fill). Drop it to transparent
+ * when glass is on so the frosted `.sidekickLane` behind actually shows;
+ * otherwise the backdrop-filter is fully covered and the toggle looks dead.
+ * Per-app sidekick panels that set their own opaque background (e.g. the
+ * profile card canvas host) are made transparent in their own modules.
+ */
+:global([data-glass-sidekick="true"])
+  :global([data-ui-mode]:not([data-desktop-mode]))
+  .sidekickPanels {
+  background: transparent;
+}
+
+/*
  * `data-desktop-mode` lives on AuraShell's `.shell` root, not on a
  * `.desktopShell` (deleted with Phase 3). Using `:global([data-desktop-mode])`
  * keeps this rule working under the new shell wrapper — same approach as

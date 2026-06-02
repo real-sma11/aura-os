@@ -58,6 +58,13 @@
   touch-action: none;
 }
 
+/* When the sidekick glass option is on, drop this themed backdrop so the
+   frosted sidekick lane shows through behind the (transparent) WebGL card
+   instead of a solid rectangle. */
+:global([data-glass-sidekick="true"]) .cardCanvasHost {
+  background: transparent;
+}
+
 .card3dActions {
   display: flex;
   justify-content: center;
