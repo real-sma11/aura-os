@@ -14,7 +14,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "find_files", label: "Find Files", description: "Find files by name or glob", category: "Core" },
   { id: "list_files", label: "List Files", description: "List files in a directory", category: "Core" },
   { id: "run_command", label: "Run Command", description: "Execute a shell command", category: "Core" },
-  { id: "record_demo", label: "Record Demo", description: "Open a new AURA window, run your instruction, and save a screen recording", category: "Core" },
+  { id: "record_demo", label: "Record Demo", description: "Open a new AURA window, run your instruction, and save an X-ready clip with the window framed on a background", category: "Core" },
   { id: "stat_file", label: "File Info", description: "Get file metadata and permissions", category: "Core" },
   { id: "delete_file", label: "Delete File", description: "Delete a file", category: "Core" },
 

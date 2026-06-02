@@ -88,6 +88,70 @@ export interface PersistDesktopRouteResponse {
   error?: string;
 }
 
+/**
+ * Output format for a `/record_demo` clip. `x` produces the framed,
+ * X/Twitter-ready H.264 MP4 (window composited onto a background); `raw`
+ * keeps the unframed full-monitor capture. Mirrors the backend
+ * `target` field on `POST /api/demo-recordings`.
+ */
+export type RecordTarget = "x" | "raw";
+
+/**
+ * 16:10 window-resolution presets for the recorded AURA window. The
+ * canvas the window is composited onto stays at the backend X default
+ * (1920x1080); these presets only size the captured window so it never
+ * needs upscaling. See `RECORD_RESOLUTION_PIXELS`.
+ */
+export type RecordResolution = "720p" | "1080p" | "1440p";
+
+/**
+ * Window logical-pixel size for each resolution preset. Kept 16:10 to
+ * match the Phase 1/2 backend defaults (1600x1000 window on a 1920x1080
+ * canvas), so the composite never upscales the window:
+ *   - `720p`  -> 1280x800
+ *   - `1080p` -> 1600x1000 (the backend default window size)
+ *   - `1440p` -> 2048x1280
+ */
+export const RECORD_RESOLUTION_PIXELS: Record<
+  RecordResolution,
+  { width: number; height: number }
+> = {
+  "720p": { width: 1280, height: 800 },
+  "1080p": { width: 1600, height: 1000 },
+  "1440p": { width: 2048, height: 1280 },
+};
+
+/**
+ * User-chosen knobs for a `/record_demo` run, collected by the
+ * `DemoRecordSettings` panel and mapped onto the desktop
+ * `POST /api/demo-recordings` body in `startDemoRecording`.
+ */
+export interface DemoRecordOptions {
+  resolution: RecordResolution;
+  target: RecordTarget;
+  windowOnBackground: boolean;
+  /** Absolute path to a custom background image, or `null` for the
+   * bundled default background. */
+  backgroundPath: string | null;
+}
+
+/**
+ * X-ready defaults: 1080p window, framed X output, composited onto the
+ * default bundled background. The panel only overrides these.
+ */
+export const DEFAULT_DEMO_RECORD_OPTIONS: DemoRecordOptions = {
+  resolution: "1080p",
+  target: "x",
+  windowOnBackground: true,
+  backgroundPath: null,
+};
+
+export interface StartDemoRecordingResponse {
+  ok: boolean;
+  recording_id?: string;
+  error?: string;
+}
+
 export const desktopApi = {
   getLogEntries: (limit = 1000) =>
     apiFetch<{ timestamp_ms: number; event: import("../types/aura-events").AuraEvent }[]>(
@@ -154,11 +218,25 @@ export const desktopApi = {
       "/api/update-stage-only",
       { method: "POST" },
     ),
-  startDemoRecording: (instruction: string, maxSeconds?: number) =>
-    apiFetch<{ ok: boolean; recording_id?: string; error?: string }>("/api/demo-recordings", {
+  startDemoRecording: (
+    instruction: string,
+    options?: DemoRecordOptions,
+  ): Promise<StartDemoRecordingResponse> => {
+    const pixels = options
+      ? RECORD_RESOLUTION_PIXELS[options.resolution]
+      : undefined;
+    return apiFetch<StartDemoRecordingResponse>("/api/demo-recordings", {
       method: "POST",
-      body: JSON.stringify({ instruction, max_seconds: maxSeconds }),
-    }),
+      body: JSON.stringify({
+        instruction,
+        window_width: pixels?.width,
+        window_height: pixels?.height,
+        target: options?.target,
+        background: options?.backgroundPath ?? undefined,
+        window_on_background: options?.windowOnBackground,
+      }),
+    });
+  },
   getDemoRecording: (recordingId: string) =>
     apiFetch<{
       ok: boolean;

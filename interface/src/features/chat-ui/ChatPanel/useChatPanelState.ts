@@ -8,7 +8,11 @@ import type { QueuedMessage } from "../../../stores/message-queue-store";
 import type { ChatAttachment } from "../../../api/streams";
 import type { DisplaySessionEvent } from "../../../shared/types/stream";
 import { isGenerationCommand, type SlashCommand } from "../../../constants/commands";
-import { desktopApi } from "../../../shared/api/desktop";
+import {
+  desktopApi,
+  DEFAULT_DEMO_RECORD_OPTIONS,
+  type DemoRecordOptions,
+} from "../../../shared/api/desktop";
 import type { GenerationMode } from "../../../constants/models";
 import { availableModelsForAdapter } from "../../../constants/models";
 import { useChatDraft, useChatUI } from "../../../stores/chat-ui-store";
@@ -94,6 +98,11 @@ export function useChatPanelState({
   const [input, setInput] = useChatDraft(streamKey);
   const [attachments, setAttachments] = useState<AttachmentItem[]>(EMPTY_ATTACHMENTS);
   const [commands, setCommands] = useState<SlashCommand[]>(EMPTY_COMMANDS);
+  // Co-located with `commands` so the `/record_demo` send intercept can
+  // read exactly what the `DemoRecordSettings` panel mutates.
+  const [demoRecordOptions, setDemoRecordOptions] = useState<DemoRecordOptions>(
+    DEFAULT_DEMO_RECORD_OPTIONS,
+  );
   const availableModels = availableModelsForAdapter(adapterType);
   const chatUI = useChatUI(streamKey);
   const selectedModel = chatUI.selectedModel;
@@ -259,6 +268,11 @@ export function useChatPanelState({
     commandsRef.current = commands;
   }, [commands]);
 
+  const demoRecordOptionsRef = useRef(demoRecordOptions);
+  useEffect(() => {
+    demoRecordOptionsRef.current = demoRecordOptions;
+  }, [demoRecordOptions]);
+
   const isStreamingRef = useRef(isStreaming);
   useEffect(() => {
     isStreamingRef.current = isStreaming;
@@ -303,9 +317,11 @@ export function useChatPanelState({
         });
         const instruction = content.trim();
         if (instruction.length > 0) {
-          void desktopApi.startDemoRecording(instruction).catch(() => {
-            // Best-effort: the desktop route is unavailable in the web build.
-          });
+          void desktopApi
+            .startDemoRecording(instruction, demoRecordOptionsRef.current)
+            .catch(() => {
+              // Best-effort: the desktop route is unavailable in the web build.
+            });
         }
         return;
       }
@@ -511,6 +527,8 @@ export function useChatPanelState({
     setAttachments,
     commands,
     setCommands,
+    demoRecordOptions,
+    setDemoRecordOptions,
     messageAreaRef,
     inputBarRef,
     isMobileLayout,

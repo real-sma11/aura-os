@@ -183,6 +183,8 @@ export function ChatSurface({
     setAttachments,
     commands,
     setCommands,
+    demoRecordOptions,
+    setDemoRecordOptions,
     messageAreaRef,
     inputBarRef,
     isMobileLayout,
@@ -696,6 +698,8 @@ export function ChatSurface({
           onRemoveAttachment={handleRemoveAttachment}
           selectedCommands={commands}
           onCommandsChange={setCommands}
+          demoRecordOptions={demoRecordOptions}
+          onDemoRecordOptionsChange={setDemoRecordOptions}
           projects={projects}
           selectedProjectId={selectedProjectId}
           onProjectChange={onProjectChange}

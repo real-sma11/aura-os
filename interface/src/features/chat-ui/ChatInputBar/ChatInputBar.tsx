@@ -63,9 +63,15 @@ import { SlashCommandMenu } from "./SlashCommandMenu";
 import { FileMentionMenu } from "./FileMentionMenu";
 import { useProjectFiles } from "./useProjectFiles";
 import { CommandChips } from "./CommandChips";
+import { DemoRecordSettings } from "./DemoRecordSettings";
 import { useChatUI } from "../../../stores/chat-ui-store";
 import type { SlashCommand } from "../../../constants/commands";
 import type { Project } from "../../../shared/types";
+import {
+  desktopApi,
+  DEFAULT_DEMO_RECORD_OPTIONS,
+  type DemoRecordOptions,
+} from "../../../shared/api/desktop";
 import styles from "./ChatInputBar.module.css";
 
 export interface ChatInputBarHandle {
@@ -155,6 +161,15 @@ export interface ChatInputBarProps {
   onRemoveAttachment?: (id: string) => void;
   selectedCommands?: SlashCommand[];
   onCommandsChange?: (commands: SlashCommand[]) => void;
+  /**
+   * Current `/record_demo` settings. Owned by the chat panel
+   * (co-located with `selectedCommands`) so the send intercept can
+   * read the same value the panel mutates. When omitted, the bar falls
+   * back to a local copy seeded with the X-ready defaults so it still
+   * renders standalone (e.g. in isolation tests).
+   */
+  demoRecordOptions?: DemoRecordOptions;
+  onDemoRecordOptionsChange?: (options: DemoRecordOptions) => void;
   projects?: Project[];
   selectedProjectId?: string;
   onProjectChange?: (projectId: string) => void;
@@ -267,6 +282,8 @@ export const DesktopChatInputBar = memo(
       onRemoveAttachment,
       selectedCommands = [],
       onCommandsChange,
+      demoRecordOptions,
+      onDemoRecordOptionsChange,
       projects = [],
       selectedProjectId,
       onProjectChange,
@@ -386,6 +403,11 @@ export const DesktopChatInputBar = memo(
     const [isMultiLine, setIsMultiLine] = useState(false);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashQuery, setSlashQuery] = useState("");
+    // Fallback store for the demo-record settings when the owner does
+    // not lift them (controlled prop wins via `effectiveDemoOptions`).
+    const [localDemoOptions, setLocalDemoOptions] = useState<DemoRecordOptions>(
+      DEFAULT_DEMO_RECORD_OPTIONS,
+    );
     const slashStartRef = useRef<number | null>(null);
     const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
     const [mentionQuery, setMentionQuery] = useState("");
@@ -587,6 +609,33 @@ export const DesktopChatInputBar = memo(
       },
       [selectedCommands, onCommandsChange],
     );
+
+    const isRecordDemoActive = selectedCommands.some(
+      (c) => c.id === "record_demo",
+    );
+    const effectiveDemoOptions = demoRecordOptions ?? localDemoOptions;
+    const handleDemoOptionsChange = useCallback(
+      (next: DemoRecordOptions) => {
+        if (onDemoRecordOptionsChange) onDemoRecordOptionsChange(next);
+        else setLocalDemoOptions(next);
+      },
+      [onDemoRecordOptionsChange],
+    );
+    const handlePickDemoBackground = useCallback(() => {
+      void (async () => {
+        try {
+          const path = await desktopApi.pickFile();
+          // A null path means the user cancelled the native picker.
+          if (!path) return;
+          handleDemoOptionsChange({
+            ...effectiveDemoOptions,
+            backgroundPath: path,
+          });
+        } catch {
+          // Best-effort: the desktop picker is unavailable in the web build.
+        }
+      })();
+    }, [effectiveDemoOptions, handleDemoOptionsChange]);
 
     const handleInputChange = useCallback(
       (value: string) => {
@@ -846,6 +895,13 @@ export const DesktopChatInputBar = memo(
           attachments={attachments}
           onRemove={handleRemove}
         />
+        {isRecordDemoActive ? (
+          <DemoRecordSettings
+            value={effectiveDemoOptions}
+            onChange={handleDemoOptionsChange}
+            onPickBackground={handlePickDemoBackground}
+          />
+        ) : null}
         {isQueued ? (
           <div
             className={styles.queuedHint}
