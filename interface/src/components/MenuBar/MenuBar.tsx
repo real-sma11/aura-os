@@ -10,9 +10,13 @@ import {
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatShortcut } from "../../lib/platform";
+import { TaskbarIconButton, TASKBAR_ICON_SIZE } from "../AppNavRail/TaskbarIconButton";
 import { MENU_DEFINITIONS, type MenuDefinition, type MenuActionKey } from "./menu-config";
 import { useMenuActions } from "./use-menu-actions";
 import styles from "./MenuBar.module.css";
+
+// Match the bottom taskbar's collapse chevron exactly (see BottomTaskbar.tsx).
+const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
 
 interface MenuPanelProps {
   menu: MenuDefinition;
@@ -205,19 +209,19 @@ export function MenuBar({ trailingSlot, collapsed = false, onToggleCollapsed }: 
         })}
       {!collapsed && trailingSlot}
       {onToggleCollapsed && (
-        <button
-          type="button"
+        <TaskbarIconButton
+          icon={
+            collapsed ? (
+              <ChevronRight size={TASKBAR_CHEVRON_SIZE} />
+            ) : (
+              <ChevronLeft size={TASKBAR_CHEVRON_SIZE} />
+            )
+          }
+          className="titlebar-no-drag"
           aria-label={collapsed ? "Expand menu" : "Collapse menu"}
           aria-expanded={!collapsed}
-          className={`${styles.trigger} ${styles.chevronTrigger} titlebar-no-drag`}
           onClick={onToggleCollapsed}
-        >
-          {collapsed ? (
-            <ChevronRight size={12} strokeWidth={2} />
-          ) : (
-            <ChevronLeft size={12} strokeWidth={2} />
-          )}
-        </button>
+        />
       )}
       {!collapsed && activeMenu && typeof document !== "undefined"
         ? createPortal(
