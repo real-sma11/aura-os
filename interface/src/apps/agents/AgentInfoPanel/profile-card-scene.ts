@@ -58,7 +58,7 @@ const SHELL_RIGHT_STEP = 0.06;
 const LED_SLOT_DEPTH = 0.05;
 
 /** Inner LCD window box as fractions of the portrait shell (left,right,bottom,top). */
-const WINDOW = { left: 0.105, right: 0.9, bottom: 0.16, top: 0.84 };
+const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 
 function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
   const shape = new THREE.Shape();
@@ -80,9 +80,10 @@ function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
 /**
  * Outer silhouette of the AURA card (portrait), traced from the reference art and
  * built in world units so every angled segment is a true 45-degree cut (equal dx
- * and dy). Consistent corner chamfers on three corners, a larger 45-degree
- * chamfer at the bottom-left, a 45-degree step on the right edge, and an inset
- * LED-slot notch on the left. Wound clockwise from the top-left.
+ * and dy). Consistent corner chamfers on the top corners, a larger 45-degree
+ * chamfer at the bottom-left, a square 90-degree bottom-right corner, a 45-degree
+ * step on the right edge, and an inset LED-slot notch on the left. Wound clockwise
+ * from the top-left.
  */
 function auraOuterShape(w: number, h: number): THREE.Shape {
   const hw = w / 2;
@@ -93,16 +94,15 @@ function auraOuterShape(w: number, h: number): THREE.Shape {
   const d = LED_SLOT_DEPTH;
   // Right-edge step and left LED-slot extents (world units, +y up).
   const yStepTop = -h * 0.05;
-  const ySlotBot = -h * 0.016;
-  const ySlotTop = h * 0.076;
+  const ySlotBot = -h * 0.108;
+  const ySlotTop = h * 0.168;
   const s = new THREE.Shape();
   s.moveTo(-hw + c, hh); // top edge start (after top-left chamfer)
   s.lineTo(hw - c, hh); // top edge
   s.lineTo(hw, hh - c); // top-right 45 chamfer
   s.lineTo(hw, yStepTop); // right edge (full width)
   s.lineTo(hw - st, yStepTop - st); // 45 step-in
-  s.lineTo(hw - st, -hh + c); // narrow right edge
-  s.lineTo(hw - st - c, -hh); // bottom-right 45 chamfer
+  s.lineTo(hw - st, -hh); // narrow right edge down to square 90 corner
   s.lineTo(-hw + cb, -hh); // bottom edge
   s.lineTo(-hw, -hh + cb); // bottom-left large 45 chamfer
   s.lineTo(-hw, ySlotBot); // left edge up to slot
@@ -115,8 +115,9 @@ function auraOuterShape(w: number, h: number): THREE.Shape {
 }
 
 /**
- * Inner screen window cut-out, mirroring the shell with true 45-degree corners:
- * consistent small chamfers on three corners and a larger one at the bottom-left.
+ * Inner screen window cut-out, mirroring the shell: 45-degree chamfers on the top
+ * corners, a larger 45-degree chamfer at the bottom-left, and a square 90-degree
+ * bottom-right corner.
  */
 function auraWindowPath(w: number, h: number): THREE.Path {
   const hw = w / 2;
@@ -131,8 +132,7 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   p.moveTo(wl + wc, wt); // top edge start (after top-left chamfer)
   p.lineTo(wr - wc, wt); // top edge
   p.lineTo(wr, wt - wc); // top-right 45 chamfer
-  p.lineTo(wr, wb + wc); // right edge
-  p.lineTo(wr - wc, wb); // bottom-right 45 chamfer
+  p.lineTo(wr, wb); // right edge down to square 90 corner
   p.lineTo(wl + wcb, wb); // bottom edge
   p.lineTo(wl, wb + wcb); // bottom-left large 45 chamfer
   p.lineTo(wl, wt - wc); // left edge
@@ -183,34 +183,9 @@ function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTe
   return tex;
 }
 
-/** "AURA" wordmark drawn with wide letter spacing onto a transparent texture. */
-function createWordmarkTexture(): THREE.CanvasTexture {
-  const w = 512;
-  const h = 160;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#eaf3ff";
-    ctx.textBaseline = "middle";
-    ctx.font = `300 ${Math.round(h * 0.62)}px "JetBrains Mono", ui-monospace, monospace`;
-    const letters = "AURA".split("");
-    const spacing = h * 0.62;
-    const widths = letters.map((c) => ctx.measureText(c).width);
-    const total =
-      widths.reduce((a, b) => a + b, 0) + spacing * (letters.length - 1);
-    let x = (w - total) / 2;
-    for (let i = 0; i < letters.length; i += 1) {
-      ctx.fillText(letters[i], x, h / 2);
-      x += widths[i] + spacing;
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+/** Intrinsic aspect ratio (w/h) of the AURA wordmark PNG used as a fallback. */
+const WORDMARK_SRC = "/AURA_logo_text_mark.png";
+const WORDMARK_ASPECT = 3322 / 421;
 
 export function createProfileCardScene(
   host: HTMLElement,
@@ -310,18 +285,47 @@ export function createProfileCardScene(
     roughness: 0.85,
     envMapIntensity: 0.4,
   });
-  // AURA wordmark decal.
-  const wordmarkTexture = createWordmarkTexture();
+  // AURA wordmark decal — the app's actual wordmark PNG, tinted cool white.
+  let wordmarkMesh: THREE.Mesh | null = null;
+  let wordmarkWidth = 0;
+  let wordmarkAspect = WORDMARK_ASPECT;
+  const wordmarkTexture = new THREE.TextureLoader().load(WORDMARK_SRC, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const img = tex.image as { width?: number; height?: number } | undefined;
+    if (img?.width && img?.height) {
+      wordmarkAspect = img.width / img.height;
+      if (wordmarkMesh && wordmarkWidth > 0) {
+        wordmarkMesh.geometry.dispose();
+        wordmarkMesh.geometry = new THREE.PlaneGeometry(
+          wordmarkWidth,
+          wordmarkWidth / wordmarkAspect,
+        );
+      }
+    }
+    if (reducedMotion) renderFrame();
+  });
+  wordmarkTexture.colorSpace = THREE.SRGBColorSpace;
   const wordmarkMaterial = new THREE.MeshBasicMaterial({
     map: wordmarkTexture,
+    color: 0xeaf3ff,
     transparent: true,
     depthWrite: false,
   });
   // Horizontal scan-line overlay floating in front of the LCD (additive accent).
+  // Two layers: a brighter core plus a dimmer, offset "halo" that feeds the
+  // bloom pass for the CRT/LCD glow.
+  const lineCoreOpacity = 0.3;
   const lineMaterial = new THREE.LineBasicMaterial({
     color: accent.clone(),
     transparent: true,
-    opacity: 0.16,
+    opacity: lineCoreOpacity,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const lineHaloMaterial = new THREE.LineBasicMaterial({
+    color: accent.clone(),
+    transparent: true,
+    opacity: 0.12,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -330,23 +334,58 @@ export function createProfileCardScene(
   let underlayerMesh: THREE.Mesh | null = null;
   let screenMesh: THREE.Mesh | null = null;
   let screenLinesMesh: THREE.LineSegments | null = null;
+  let screenLinesHaloMesh: THREE.LineSegments | null = null;
   const detailMeshes: THREE.Mesh[] = [];
 
   /**
-   * Build a layer of evenly spaced horizontal lines sized to the screen and
-   * push it slightly in front of the LCD plane so it parallaxes on tilt.
+   * Build the "open" scan-line readout: each row is two short segments anchored
+   * to the left and right window edges, extending inward by a deterministic
+   * varying amount (a stable pseudo-random pattern, not Math.random, so it
+   * doesn't reshuffle on every resize). A central guard gap is always left clear
+   * so the portrait shows through the middle. A dimmer offset copy feeds bloom
+   * for the CRT/LCD glow. Pushed slightly in front of the LCD so it parallaxes.
    */
-  function addScreenLines(screenW: number, screenH: number, z: number): void {
+  function addScreenLines(
+    screenW: number,
+    screenH: number,
+    cx: number,
+    cy: number,
+    z: number,
+  ): void {
     const spacing = screenH / 56;
+    const left = -screenW / 2;
+    const right = screenW / 2;
+    // Half-width of the always-clear central gap over the portrait.
+    const gapHalf = screenW * 0.12;
+    const minLen = screenW * 0.04;
+    const maxLen = screenW * 0.4;
+    // Deterministic 0..1 hash for a row index (stable across rebuilds).
+    const hash = (n: number): number => {
+      const s = Math.sin(n * 12.9898) * 43758.5453;
+      return s - Math.floor(s);
+    };
     const pos: number[] = [];
+    let row = 0;
     for (let y = -screenH / 2 + spacing; y < screenH / 2; y += spacing) {
-      pos.push(-screenW / 2, y, 0, screenW / 2, y, 0);
+      const leftLen = Math.min(minLen + hash(row) * (maxLen - minLen), screenW / 2 - gapHalf);
+      const rightLen = Math.min(
+        minLen + hash(row + 101.7) * (maxLen - minLen),
+        screenW / 2 - gapHalf,
+      );
+      pos.push(left, y, 0, left + leftLen, y, 0);
+      pos.push(right - rightLen, y, 0, right, y, 0);
+      row += 1;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     screenLinesMesh = new THREE.LineSegments(geo, lineMaterial);
-    screenLinesMesh.position.z = z;
+    screenLinesMesh.position.set(cx, cy, z);
     group.add(screenLinesMesh);
+
+    // Halo copy, nudged slightly forward, that the bloom pass spreads into glow.
+    screenLinesHaloMesh = new THREE.LineSegments(geo, lineHaloMaterial);
+    screenLinesHaloMesh.position.set(cx, cy, z + 0.004);
+    group.add(screenLinesHaloMesh);
   }
 
   function disposeBuilt(): void {
@@ -370,11 +409,17 @@ export function createProfileCardScene(
       screenLinesMesh.geometry.dispose();
       screenLinesMesh = null;
     }
+    if (screenLinesHaloMesh) {
+      // Geometry is shared with screenLinesMesh (disposed above).
+      group.remove(screenLinesHaloMesh);
+      screenLinesHaloMesh = null;
+    }
     for (const d of detailMeshes) {
       group.remove(d);
       d.geometry.dispose();
     }
     detailMeshes.length = 0;
+    wordmarkMesh = null;
   }
 
   function buildCard(): void {
@@ -436,31 +481,44 @@ export function createProfileCardScene(
     screenCanvas.height = canvasSize.h;
     const screenW = (WINDOW.right - WINDOW.left) * shell.w;
     const screenH = (WINDOW.top - WINDOW.bottom) * shell.h;
+    // Window center (the box is not symmetric about the origin).
+    const winCx = shell.w * ((WINDOW.left + WINDOW.right) / 2 - 0.5);
+    const winCy = shell.h * ((WINDOW.bottom + WINDOW.top) / 2 - 0.5);
     const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    screenMesh.position.z = frontZ - 0.018;
+    screenMesh.position.set(winCx, winCy, frontZ - 0.018);
     group.add(screenMesh);
 
-    // Scan-line layer floating just in front of the recessed LCD.
-    addScreenLines(screenW, screenH, frontZ - 0.008);
-
-    // AURA wordmark, top-left on the metal frame.
-    const markW = shell.w * 0.32;
-    const markH = markW * (160 / 512);
-    const markMesh = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
-    markMesh.position.set(
-      -shell.w / 2 + markW * 0.62,
-      shell.h / 2 - markH * 1.1,
-      frontZ + 0.006,
+    // Scan-line layer floating just in front of the recessed LCD, inset inside
+    // the window opening so its edges stay clipped behind the frame's bevel lip
+    // (otherwise the lines spill over the inner border, especially on tilt).
+    const lineInset = SHELL_BEVEL + 0.025;
+    addScreenLines(
+      screenW - lineInset * 2,
+      screenH - lineInset * 2,
+      winCx,
+      winCy,
+      frontZ - 0.008,
     );
-    group.add(markMesh);
-    detailMeshes.push(markMesh);
 
-    // Vent slashes, top-right (dark angled inlays).
+    // Header row shared by the wordmark + vent slashes (same vertical center).
+    const headerY = shell.h / 2 - 0.16;
+    const windowLeft = -shell.w / 2 + WINDOW.left * shell.w;
+
+    // AURA wordmark, left edge aligned to the window's left edge (20% smaller).
+    const markW = shell.w * 0.272;
+    const markH = markW / wordmarkAspect;
+    wordmarkWidth = markW;
+    wordmarkMesh = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
+    wordmarkMesh.position.set(windowLeft + markW / 2, headerY, frontZ + 0.006);
+    group.add(wordmarkMesh);
+    detailMeshes.push(wordmarkMesh);
+
+    // Vent slashes, top-right (dark angled inlays), aligned to the wordmark row.
     const slashGeo = new THREE.BoxGeometry(0.02, 0.12, 0.03);
     for (let i = 0; i < 3; i += 1) {
       const slash = new THREE.Mesh(slashGeo.clone(), matteMaterial);
-      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, shell.h / 2 - 0.16, frontZ + 0.004);
+      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, headerY, frontZ + 0.004);
       slash.rotation.z = 0.5;
       group.add(slash);
       detailMeshes.push(slash);
@@ -510,15 +568,15 @@ export function createProfileCardScene(
     // LCD canvas + screen plane (aspect matched to canvas to avoid stretch).
     screenCanvas.width = canvasSize.w;
     screenCanvas.height = canvasSize.h;
-    const screenW = shell.w - Math.min(shell.w, shell.h) * 0.16;
+    const screenW = shell.w - Math.min(shell.w, shell.h) * 0.1;
     const screenH = screenW * (canvasSize.h / canvasSize.w);
     const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    screenMesh.position.z = frontZ + 0.012;
+    screenMesh.position.set(0, 0, frontZ + 0.012);
     group.add(screenMesh);
 
     // Scan-line layer floating just in front of the LCD.
-    addScreenLines(screenW, screenH, frontZ + 0.02);
+    addScreenLines(screenW, screenH, 0, 0, frontZ + 0.02);
 
     // Glowing accent tabs on the left/right edges.
     const tabGeo = new THREE.BoxGeometry(0.06, shell.h * 0.16, 0.05);
@@ -621,6 +679,13 @@ export function createProfileCardScene(
       ((hovering ? 1.3 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
     accentLight.intensity += ((hovering ? 4.5 : 3.5) - accentLight.intensity) * 0.06;
 
+    // Subtle CRT flicker on the scan lines (skipped under reduced motion).
+    if (idleAmp) {
+      const flicker = 1 + Math.sin(t * 9) * 0.05 + Math.sin(t * 23.3) * 0.025;
+      lineMaterial.opacity = lineCoreOpacity * flicker;
+      lineHaloMaterial.opacity = 0.12 * flicker;
+    }
+
     renderFrame();
   }
 
@@ -677,6 +742,7 @@ export function createProfileCardScene(
       accentMaterial.emissive.copy(accent);
       accentLight.color.copy(accent);
       lineMaterial.color.copy(accent);
+      lineHaloMaterial.color.copy(accent);
       if (reducedMotion) renderFrame();
     },
     refreshTexture(): void {
@@ -697,6 +763,7 @@ export function createProfileCardScene(
       matteMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
+      lineHaloMaterial.dispose();
       blueMetalTexture.dispose();
       matteTexture.dispose();
       wordmarkTexture.dispose();
