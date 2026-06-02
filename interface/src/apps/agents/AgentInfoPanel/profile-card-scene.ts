@@ -116,9 +116,9 @@ function auraOuterShape(w: number, h: number): THREE.Shape {
 
 /**
  * Inner screen window cut-out, mirroring the shell: 45-degree chamfers on the top
- * corners, a larger 45-degree chamfer at the bottom-left, a square 90-degree
- * bottom-right corner, and a stepped bottom edge (deeper left, raised right,
- * joined by a 45-degree diagonal).
+ * corners, a larger 45-degree chamfer at the bottom-left, a 45-degree cut at the
+ * bottom-right, and a stepped bottom edge (deeper left, raised right, joined by a
+ * 45-degree diagonal).
  */
 function auraWindowPath(w: number, h: number): THREE.Path {
   const hw = w / 2;
@@ -129,6 +129,7 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   const wt = -hh + WINDOW.top * h;
   const wc = 0.1; // consistent 45 corner chamfer
   const wcb = SHELL_CHAMFER_BL; // bottom-left 45 chamfer, matching the outer shell cut
+  const wcbr = 0.11; // bottom-right 45 chamfer
   // Stepped bottom: a deeper left portion and a raised right portion joined by a
   // 45 diagonal. `wbR` is the raised right level, `xStep` where the step sits.
   const stepH = 0.08;
@@ -138,7 +139,8 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   p.moveTo(wl + wc, wt); // top edge start (after top-left chamfer)
   p.lineTo(wr - wc, wt); // top edge
   p.lineTo(wr, wt - wc); // top-right 45 chamfer
-  p.lineTo(wr, wbR); // right edge down to raised right bottom (square 90)
+  p.lineTo(wr, wbR + wcbr); // right edge down to bottom-right chamfer
+  p.lineTo(wr - wcbr, wbR); // bottom-right 45 cut
   p.lineTo(xStep, wbR); // raised bottom edge (right portion)
   p.lineTo(xStep - stepH, wb); // 45 step down to the deeper left level
   p.lineTo(wl + wcb, wb); // deeper bottom edge (left portion)
@@ -325,8 +327,8 @@ export function createProfileCardScene(
   // over the portrait. `color` carries the accent and is multiplied by the
   // grayscale vertex-color ramp. Two layers: a brighter core plus a dimmer,
   // offset "halo" that feeds the bloom pass for the CRT/LCD glow.
-  const lineCoreOpacity = 0.34;
-  const lineHaloOpacity = 0.14;
+  const lineCoreOpacity = 0.24;
+  const lineHaloOpacity = 0.08;
   const lineMaterial = new THREE.LineBasicMaterial({
     color: accent.clone(),
     vertexColors: true,
@@ -386,16 +388,33 @@ export function createProfileCardScene(
     // the center, so lines fade to transparent over the portrait.
     const rampAt = (x: number): number => {
       const d = Math.min(1, Math.abs(x) / half);
-      return Math.pow(d, 2.2);
+      return Math.pow(d, 3.2);
     };
+    // Crop each row's left end along the window's large bottom-left 45-degree
+    // chamfer (matches `auraWindowPath`'s `wcb`), so the overscanned field
+    // doesn't spill past the frame silhouette into the background there.
+    const wcb = 0.34;
+    const bottom = -halfH;
+    const left = -half;
     const pos: number[] = [];
     const col: number[] = [];
     let row = 0;
     for (let y = -drawHalfH; y <= drawHalfH + 1e-4; y += spacing) {
-      const rowGain = 0.75 + hash(row) * 0.35;
-      let prevX = -drawHalf;
+      const rowGain = 0.4 + hash(row) * 1.05;
+      let x0 = -drawHalf;
+      if (y < bottom + wcb) {
+        // Diagonal from (left + wcb, bottom) up to (left, bottom + wcb).
+        x0 = Math.max(x0, left + wcb - (y - bottom));
+      }
+      const x1 = drawHalf;
+      if (x1 <= x0) {
+        row += 1;
+        continue;
+      }
+      const span = x1 - x0;
+      let prevX = x0;
       for (let i = 1; i <= segments; i += 1) {
-        const x = -drawHalf + (2 * drawHalf * i) / segments;
+        const x = x0 + (span * i) / segments;
         const i0 = rampAt(prevX) * rowGain;
         const i1 = rampAt(x) * rowGain;
         pos.push(prevX, y, 0, x, y, 0);

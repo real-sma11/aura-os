@@ -183,6 +183,14 @@ impl LoopState {
 
         if options.window_on_background {
             center_demo_window(&session.window, options.window_width, options.window_height);
+            // Framed mode captures only the window's screen rectangle, so any
+            // other window stacked above it (e.g. the user clicking back to
+            // their editor) would be recorded instead of the demo. Pin the
+            // demo window topmost for the duration of the capture so nothing
+            // can overlap the captured region. Full-screen/computer-use mode
+            // deliberately skips this: there the agent drives other apps that
+            // must remain visible in the recording.
+            session.window.set_always_on_top(true);
             if let Some(rect) = window_capture_region(&session.window) {
                 region = rect;
             }
