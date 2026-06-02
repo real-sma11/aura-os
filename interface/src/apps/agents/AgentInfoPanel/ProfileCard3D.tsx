@@ -18,6 +18,19 @@ function readLineColor(el: HTMLElement): string {
   return value || "#cfe8ff";
 }
 
+// Resolve the color painted behind the card. `--color-sidekick-bg` is defined
+// as `var(--color-bg)`, so reading the custom property directly can return the
+// unresolved `var(...)` string; a throwaway probe forces full resolution to an
+// rgb() value that THREE.Color can parse.
+function readBg(el: HTMLElement): string {
+  const probe = document.createElement("div");
+  probe.style.color = "var(--color-sidekick-bg)";
+  el.appendChild(probe);
+  const rgb = getComputedStyle(probe).color.trim();
+  el.removeChild(probe);
+  return rgb || "#09090b";
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -46,6 +59,7 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
       scene = createProfileCardScene(host, {
         accent: readAccent(host),
         lineColor: readLineColor(host),
+        background: readBg(host),
         reducedMotion: prefersReducedMotion(),
       });
     } catch {
@@ -54,7 +68,20 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
     }
     sceneRef.current = scene;
     setReady(true);
+
+    // Keep the backdrop in sync with the active theme. `data-theme` flips on
+    // light/dark toggle; the inline `style` attribute changes when a user
+    // customizes `--color-sidekick-bg` via the appearance settings.
+    const themeObserver = new MutationObserver(() => {
+      sceneRef.current?.setBackground(readBg(host));
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "style"],
+    });
+
     return () => {
+      themeObserver.disconnect();
       scene?.dispose();
       sceneRef.current = null;
     };

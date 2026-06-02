@@ -9,6 +9,12 @@ export interface ProfileCardSceneOptions {
   accent: string;
   /** CSS color for the LCD scan lines (read from `--color-card-line`). */
   lineColor?: string;
+  /**
+   * Resolved CSS color painted behind the card (read from
+   * `--color-sidekick-bg`) so the canvas backdrop blends with the surrounding
+   * sidekick panel instead of the opaque dark bloom composite.
+   */
+  background?: string;
   reducedMotion: boolean;
 }
 
@@ -18,6 +24,8 @@ export interface ProfileCardScene {
   setAccent(accent: string): void;
   /** Update the LCD scan-line color (independent of the accent). */
   setLineColor(color: string): void;
+  /** Update the themed backdrop color (read from `--color-sidekick-bg`). */
+  setBackground(color: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
   dispose(): void;
@@ -381,6 +389,9 @@ const WORDMARK_ASPECT = 3322 / 421;
 /** Fallback LCD scan-line color (matches the `--color-card-line` token default). */
 const CARD_LINE_COLOR = "#cfe8ff";
 
+/** Fallback backdrop color (matches the dark-theme `--color-bg` default). */
+const CARD_BG_COLOR = "#09090b";
+
 export function createProfileCardScene(
   host: HTMLElement,
   options: ProfileCardSceneOptions,
@@ -395,7 +406,10 @@ export function createProfileCardScene(
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
-  renderer.setClearColor(0x000000, 0);
+  // Paint an opaque, themed backdrop so the canvas blends with the sidekick
+  // panel. The bloom/EffectComposer chain otherwise composites onto an opaque
+  // dark target, leaving a fixed gray rectangle that ignores the theme.
+  renderer.setClearColor(new THREE.Color(options.background || CARD_BG_COLOR), 1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   host.appendChild(renderer.domElement);
@@ -1000,6 +1014,10 @@ export function createProfileCardScene(
       lineColor = new THREE.Color(next || CARD_LINE_COLOR);
       lineMaterial.color.copy(lineColor);
       lineHaloMaterial.color.copy(lineColor);
+      if (reducedMotion) renderFrame();
+    },
+    setBackground(next: string): void {
+      renderer.setClearColor(new THREE.Color(next || CARD_BG_COLOR), 1);
       if (reducedMotion) renderFrame();
     },
     refreshTexture(): void {
