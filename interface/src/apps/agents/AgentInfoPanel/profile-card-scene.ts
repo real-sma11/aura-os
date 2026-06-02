@@ -151,6 +151,50 @@ function auraWindowPath(w: number, h: number): THREE.Path {
 }
 
 /**
+ * Solid version of `auraWindowPath` (same outline, local window-centered coords)
+ * used for the LCD plane itself so the photo is clipped to the chamfered/stepped
+ * window silhouette and never spills past the frame (e.g. the bottom-left
+ * chamfer). UVs are remapped to 0..1 over the bounding box to match the texture.
+ */
+function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
+  const hw = w / 2;
+  const hh = h / 2;
+  const wl = -hw;
+  const wr = hw;
+  const wb = -hh;
+  const wt = hh;
+  const wc = 0.1;
+  const wcb = SHELL_CHAMFER_BL;
+  const wcbr = 0.11;
+  const stepH = 0.08;
+  const wbR = wb + stepH;
+  const xStep = wl + (wr - wl) * 0.6;
+  const s = new THREE.Shape();
+  s.moveTo(wl + wc, wt);
+  s.lineTo(wr - wc, wt);
+  s.lineTo(wr, wt - wc);
+  s.lineTo(wr, wbR + wcbr);
+  s.lineTo(wr - wcbr, wbR);
+  s.lineTo(xStep, wbR);
+  s.lineTo(xStep - stepH, wb);
+  s.lineTo(wl + wcb, wb);
+  s.lineTo(wl, wb + wcb);
+  s.lineTo(wl, wt - wc);
+  s.lineTo(wl + wc, wt);
+  const geo = new THREE.ShapeGeometry(s);
+  // ShapeGeometry UVs are raw vertex coords; remap to 0..1 over the box so the
+  // emissive photo maps exactly as a PlaneGeometry would.
+  const positions = geo.attributes.position;
+  const uv = new Float32Array(positions.count * 2);
+  for (let i = 0; i < positions.count; i += 1) {
+    uv[i * 2] = (positions.getX(i) + hw) / w;
+    uv[i * 2 + 1] = (positions.getY(i) + hh) / h;
+  }
+  geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+
+/**
  * Subtle brushed-metal texture: a few soft low-frequency vertical streaks on a
  * solid base. Kept low-contrast and blurred so it reads as a finish rather than
  * noise (which the env-map reflections would otherwise amplify into speckle).
@@ -532,7 +576,7 @@ export function createProfileCardScene(
     // Window center (the box is not symmetric about the origin).
     const winCx = shell.w * ((WINDOW.left + WINDOW.right) / 2 - 0.5);
     const winCy = shell.h * ((WINDOW.bottom + WINDOW.top) / 2 - 0.5);
-    const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
+    const screenGeo = auraWindowShape(screenW, screenH);
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
     screenMesh.position.set(winCx, winCy, frontZ - 0.018);
     group.add(screenMesh);
