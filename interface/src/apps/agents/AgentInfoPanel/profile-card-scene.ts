@@ -114,9 +114,13 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   return p;
 }
 
-/** Procedural brushed-metal texture (vertical streaks + speckle) for card layers. */
+/**
+ * Subtle brushed-metal texture: a few soft low-frequency vertical streaks on a
+ * solid base. Kept low-contrast and blurred so it reads as a finish rather than
+ * noise (which the env-map reflections would otherwise amplify into speckle).
+ */
 function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTexture {
-  const size = 512;
+  const size = 1024;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -124,21 +128,27 @@ function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTe
   if (ctx) {
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
+    ctx.filter = "blur(1.5px)";
     ctx.strokeStyle = streak;
-    for (let i = 0; i < 1400; i += 1) {
+    ctx.lineCap = "round";
+    for (let i = 0; i < 180; i += 1) {
       const x = Math.random() * size;
-      ctx.globalAlpha = Math.random() * 0.06;
+      ctx.globalAlpha = 0.015 + Math.random() * 0.025;
+      ctx.lineWidth = 1 + Math.random() * 2.5;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + (Math.random() * 36 - 18), size);
+      ctx.moveTo(x, -10);
+      ctx.bezierCurveTo(
+        x + (Math.random() * 20 - 10),
+        size * 0.33,
+        x + (Math.random() * 20 - 10),
+        size * 0.66,
+        x + (Math.random() * 20 - 10),
+        size + 10,
+      );
       ctx.stroke();
     }
+    ctx.filter = "none";
     ctx.globalAlpha = 1;
-    for (let i = 0; i < 4000; i += 1) {
-      const v = Math.random();
-      ctx.fillStyle = `rgba(255,255,255,${v * 0.03})`;
-      ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
-    }
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
@@ -192,7 +202,7 @@ export function createProfileCardScene(
   renderer.setSize(width, height);
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.0;
   host.appendChild(renderer.domElement);
   renderer.domElement.style.display = "block";
   renderer.domElement.style.width = "100%";
@@ -213,7 +223,7 @@ export function createProfileCardScene(
   const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(2.5, 4, 4);
   scene.add(key);
-  const accentLight = new THREE.PointLight(accent.getHex(), 6, 12, 2);
+  const accentLight = new THREE.PointLight(accent.getHex(), 4, 12, 2);
   accentLight.position.set(-1.5, 1.5, 2.5);
   scene.add(accentLight);
 
@@ -246,29 +256,33 @@ export function createProfileCardScene(
   const accentMaterial = new THREE.MeshStandardMaterial({
     color: accent.clone(),
     emissive: accent.clone(),
-    emissiveIntensity: 1.6,
+    emissiveIntensity: 1.1,
     roughness: 0.4,
     metalness: 0.2,
   });
 
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
   // Layer 1 — blue brushed metal frame (the structural part of the card).
-  const blueMetalTexture = createBrushedMetalTexture("#16263f", "#3f6fae");
+  const blueMetalTexture = createBrushedMetalTexture("#16263f", "#5a86c4");
+  blueMetalTexture.anisotropy = maxAniso;
+  blueMetalTexture.repeat.set(2, 2);
   const blueMetalMaterial = new THREE.MeshStandardMaterial({
     color: 0x2a4a78,
     map: blueMetalTexture,
-    roughnessMap: blueMetalTexture,
-    metalness: 0.9,
-    roughness: 0.5,
-    envMapIntensity: 1.25,
+    metalness: 0.85,
+    roughness: 0.42,
+    envMapIntensity: 1.0,
   });
   // Layer 2 — softer matte black metal underlayer behind the frame.
-  const matteTexture = createBrushedMetalTexture("#0a0c11", "#1b2230");
+  const matteTexture = createBrushedMetalTexture("#0a0c11", "#222a3a");
+  matteTexture.anisotropy = maxAniso;
+  matteTexture.repeat.set(2, 2);
   const matteMaterial = new THREE.MeshStandardMaterial({
     color: 0x0b0e13,
     map: matteTexture,
-    metalness: 0.55,
-    roughness: 0.88,
-    envMapIntensity: 0.45,
+    metalness: 0.5,
+    roughness: 0.85,
+    envMapIntensity: 0.4,
   });
   // AURA wordmark decal.
   const wordmarkTexture = createWordmarkTexture();
@@ -332,8 +346,8 @@ export function createProfileCardScene(
       bevelEnabled: true,
       bevelThickness: SHELL_BEVEL,
       bevelSize: SHELL_BEVEL,
-      bevelSegments: 3,
-      curveSegments: 16,
+      bevelSegments: 4,
+      curveSegments: 32,
       steps: 1,
     });
     frameGeo.center();
@@ -476,10 +490,19 @@ export function createProfileCardScene(
     camera.updateProjectionMatrix();
   }
 
-  // Post-processing: bloom for the neon edges + LCD glow.
-  const composer = new EffectComposer(renderer);
+  // Post-processing: bloom for the neon edges + LCD glow. The composer renders
+  // into an explicit multisampled (MSAA) + HDR target so silhouette edges stay
+  // crisp (the renderer's own antialias is bypassed once a composer is used).
+  const bufferSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const renderTarget = new THREE.WebGLRenderTarget(bufferSize.x, bufferSize.y, {
+    type: THREE.HalfFloatType,
+    samples: 4,
+  });
+  const composer = new EffectComposer(renderer, renderTarget);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.6, 0.6, 0.6);
+  // Gentler bloom (lower strength, tighter radius, higher threshold) so only the
+  // brightest neon blooms — no haze, halos or doubled text.
+  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.32, 0.45, 0.82);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -530,10 +553,10 @@ export function createProfileCardScene(
     const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 * idleAmp : 0;
     group.position.y += (desiredFloat - group.position.y) * 0.08;
 
-    bloom.strength += ((hovering ? 1.05 : 0.55) - bloom.strength) * 0.06;
+    bloom.strength += ((hovering ? 0.5 : 0.32) - bloom.strength) * 0.06;
     screenMaterial.emissiveIntensity +=
-      ((hovering ? 1.7 : 1.25) - screenMaterial.emissiveIntensity) * 0.06;
-    accentLight.intensity += ((hovering ? 9 : 6) - accentLight.intensity) * 0.06;
+      ((hovering ? 1.45 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
+    accentLight.intensity += ((hovering ? 6 : 4) - accentLight.intensity) * 0.06;
 
     renderFrame();
   }
