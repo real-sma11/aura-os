@@ -212,7 +212,6 @@ function AuthedBottomTaskbar({
   const showSecondaryCluster = !rightCollapsed;
 
   return (
-    <div className={styles.taskbarContainer} data-ui-mode={mode}>
     <div
       className={styles.bar}
       data-agent-surface="desktop-shell-bottom-taskbar"
@@ -221,6 +220,7 @@ function AuthedBottomTaskbar({
       data-ui-mode={mode}
       onContextMenu={onContextMenu}
     >
+      <div className={styles.taskbarContainer}>
       <div className={styles.left}>
         <ProfilePill
           name={profile.name}
@@ -240,7 +240,9 @@ function AuthedBottomTaskbar({
         <OrgSelector variant="icon" />
         <FavoriteAgentsStrip />
       </div>
+      </div>
 
+      <div className={`${styles.taskbarContainer} ${styles.taskbarContainerCenter}`}>
       <div className={styles.center}>
         <TaskbarIconButton
           selected={activeApp.id === "desktop"}
@@ -281,7 +283,9 @@ function AuthedBottomTaskbar({
           aria-label={collapsed ? "Expand apps" : "Collapse apps"}
         />
       </div>
+      </div>
 
+      <div className={styles.taskbarContainer}>
       <div className={styles.right}>
         <div className={styles.rightPrimary}>
           <TaskbarIconButton
@@ -329,8 +333,8 @@ function AuthedBottomTaskbar({
         </div>
         <ClockReadout />
       </div>
+      </div>
       {menuElement}
-    </div>
     </div>
   );
 }

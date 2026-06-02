@@ -1,22 +1,45 @@
 /*
- * Outer panel the taskbar sits on. A 10px gradient border (#090909 ->
- * #131313) frames the bar all around, with 10px of padding between the
- * frame and the bar inside. Public mode opts out so the marketing
- * floating-pill layout is unchanged.
+ * Panel each taskbar pill/bubble sits on. A 10px gradient ring
+ * (#090909 -> #131313, all around) frames the pill, with 10px of padding
+ * between the ring and the pill inside. The ring is a masked pseudo so it
+ * follows the rounded corners; `inset: -10px` expands it from the padding
+ * box out to the border-box so the ring lands in the 10px border region.
  */
 .taskbarContainer {
-  width: 100%;
-  flex-shrink: 0;
+  position: relative;
   box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
   padding: 10px;
-  border: 10px solid #090909;
-  border-image: linear-gradient(135deg, #090909, #131313) 1;
+  border: 10px solid transparent;
+  border-radius: calc(var(--shell-chrome-radius, 20px) + 20px);
 }
 
-.taskbarContainer[data-ui-mode="public"] {
-  padding: 0;
-  border: 0;
-  border-image: none;
+.taskbarContainer::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: inherit;
+  padding: 10px;
+  background: linear-gradient(135deg, #090909, #131313);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* The center bubble's frame carries the absolute centering (moved off
+   `.center`, which is now a normal flex child inside its frame). */
+.taskbarContainerCenter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .bar {
@@ -26,7 +49,7 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  height: var(--shell-chrome-outer-height, calc(var(--control-height-sm) + 18px));
+  height: auto;
   min-height: var(--shell-chrome-outer-height, calc(var(--control-height-sm) + 18px));
   background: transparent;
   flex-shrink: 0;
@@ -304,10 +327,6 @@
  */
 
 .center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
