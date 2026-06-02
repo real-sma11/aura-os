@@ -116,6 +116,8 @@ function CouncilColumn({
       ? streamingText
       : latestAssistantText(events);
 
+  const placeholderText = member.reason ?? (isStreaming ? "Thinking…" : null);
+
   const open = (event: MouseEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
     if (!parentStreamKey) return;
@@ -160,11 +162,9 @@ function CouncilColumn({
       <div className={styles.body}>
         {liveText.length > 0 ? (
           <SegmentedContent content={liveText} isStreaming={isStreaming} />
-        ) : (
-          <span className={styles.placeholder}>
-            {member.reason ?? (isStreaming ? "Thinking…" : "Waiting to start…")}
-          </span>
-        )}
+        ) : placeholderText ? (
+          <span className={styles.placeholder}>{placeholderText}</span>
+        ) : null}
       </div>
     </div>
   );
