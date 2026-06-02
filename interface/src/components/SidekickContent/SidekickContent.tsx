@@ -248,7 +248,10 @@ function LaneOverlay() {
   }, [closePreview]);
 
   const content = (
-    <div className={cn(overlayStyles.overlay, overlayStyles.fullLane)}>
+    <div
+      className={cn(overlayStyles.overlay, overlayStyles.fullLane)}
+      data-agent-surface="sidekick-preview"
+    >
       <PreviewHeader />
       <PreviewContent />
     </div>

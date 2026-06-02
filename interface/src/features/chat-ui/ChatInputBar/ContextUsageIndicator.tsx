@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import type { ContextBreakdown } from "../../../stores/context-usage-store";
 import { computeSessionCost } from "../../../constants/model-pricing";
 import { modelLabel } from "../../../constants/models";
 import { SessionCostSection, type SessionCostView } from "../SessionCostSection";
+import { CacheInfoOverlay } from "./CacheInfoOverlay";
 import styles from "./ChatInputBar.module.css";
 
 export interface ContextUsageIndicatorProps {
@@ -181,6 +182,11 @@ export function ContextUsageIndicator({
   onOpenBucket,
 }: ContextUsageIndicatorProps) {
   const [open, setOpen] = useState(false);
+  // Collapsible sections inside the breakdown popover. Context Composition
+  // is the primary view so it starts expanded; Session Cost is secondary
+  // and starts collapsed.
+  const [compositionOpen, setCompositionOpen] = useState(true);
+  const [costOpen, setCostOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
 
   const sessionCostView = buildSessionCostView({
@@ -206,6 +212,8 @@ export function ContextUsageIndicator({
   const handleClose = useCallback(() => {
     setOpen(false);
   }, []);
+  const toggleComposition = useCallback(() => setCompositionOpen((prev) => !prev), []);
+  const toggleCost = useCallback(() => setCostOpen((prev) => !prev), []);
   const handleOpenBucket = useCallback(
     (bucketId: ContextBucketRowId) => {
       if (!onOpenBucket) return;
@@ -224,12 +232,15 @@ export function ContextUsageIndicator({
       const target = e.target as Node;
       // Clicks inside the popover/indicator never dismiss it.
       if (wrapperRef.current?.contains(target)) return;
-      // Nor do clicks inside the Sidekick panel, where the selected
-      // bucket's info overlay renders — this lets the user browse
-      // multiple sections while the popover stays open.
+      // Nor do clicks inside the Sidekick (the panel itself or the
+      // preview overlay where the selected bucket's info renders) — this
+      // lets the user browse multiple sections while the popover stays
+      // open.
       if (
         target instanceof Element &&
-        target.closest('[data-agent-surface="sidekick-panel"]')
+        target.closest(
+          '[data-agent-surface="sidekick-panel"],[data-agent-surface="sidekick-preview"]',
+        )
       ) {
         return;
       }
@@ -331,7 +342,7 @@ export function ContextUsageIndicator({
           data-agent-surface="chat-context-breakdown"
         >
           <div className={styles.contextBreakdownHeader}>
-            <span className={styles.contextBreakdownTitle}>Context Composition</span>
+            <span className={styles.contextBreakdownTitle}>Context</span>
             <button
               type="button"
               className={styles.contextBreakdownClose}
@@ -341,82 +352,116 @@ export function ContextUsageIndicator({
               <X size={12} />
             </button>
           </div>
-          <div className={styles.contextBreakdownSummary}>
-            <span
-              className={`${styles.contextBreakdownPercent}${toneClass ? ` ${toneClass}` : ""}`}
-            >
-              {percent}% Full
-            </span>
-            <span className={styles.contextBreakdownTokens}>
-              ~{formatTokensShort(usedTokens)} / {formatTokensShort(totalTokens)} Tokens
-            </span>
-          </div>
-          <div
-            className={styles.contextBreakdownBar}
-            role="img"
-            aria-label={`Context usage: ${percent} percent of the model window`}
+
+          <button
+            type="button"
+            className={styles.contextSectionHeader}
+            onClick={toggleComposition}
+            aria-expanded={compositionOpen}
           >
-            {segments.map((s) => (
-              <span
-                key={s.id}
-                className={styles.contextBreakdownSegment}
-                data-context-bucket={s.id}
-                style={{ flexBasis: `${s.widthPct}%` }}
-                title={`${s.label}: ${formatTokens(s.tokens)} tokens`}
-              />
-            ))}
-          </div>
-          <div className={styles.contextBreakdownList}>
-            {visibleRows.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                className={`${styles.contextBreakdownRow} ${styles.contextBreakdownRowButton}`}
-                data-context-bucket-row={row.id}
-                aria-label={`View ${row.label} context`}
-                onClick={() => handleOpenBucket(row.id)}
+            {compositionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <span className={styles.contextSectionHeaderLabel}>Context Composition</span>
+          </button>
+          {compositionOpen && (
+            <div className={styles.contextSectionBody}>
+              <div className={styles.contextBreakdownSummary}>
+                <span
+                  className={`${styles.contextBreakdownPercent}${toneClass ? ` ${toneClass}` : ""}`}
+                >
+                  {percent}% Full
+                </span>
+                <span className={styles.contextBreakdownTokens}>
+                  ~{formatTokensShort(usedTokens)} / {formatTokensShort(totalTokens)} Tokens
+                </span>
+              </div>
+              <div
+                className={styles.contextBreakdownBar}
+                role="img"
+                aria-label={`Context usage: ${percent} percent of the model window`}
               >
-                <span className={styles.contextBreakdownRowLeft}>
+                {segments.map((s) => (
                   <span
-                    className={styles.contextBreakdownSwatch}
-                    data-context-bucket={row.id}
-                    aria-hidden="true"
+                    key={s.id}
+                    className={styles.contextBreakdownSegment}
+                    data-context-bucket={s.id}
+                    style={{ flexBasis: `${s.widthPct}%` }}
+                    title={`${s.label}: ${formatTokens(s.tokens)} tokens`}
                   />
-                  {row.label}
-                </span>
-                <span className={styles.contextBreakdownRowValue}>
-                  {formatTokensShort(row.tokens)}
-                </span>
-              </button>
-            ))}
-          </div>
-          {(breakdown.cacheReadTokens > 0 || breakdown.cacheCreationTokens > 0) && (
-            <div className={styles.contextBreakdownCacheRow} data-cache-row>
-              <span className={styles.contextBreakdownRowLeft}>Cached this turn</span>
-              <span className={styles.contextBreakdownRowValue}>
-                {formatTokensShort(breakdown.cacheReadTokens)} read
-                {breakdown.cacheCreationTokens > 0 ? (
-                  <>
-                    {" "}/ {formatTokensShort(breakdown.cacheCreationTokens)} written
-                  </>
-                ) : null}
-                {(() => {
-                  const total =
-                    breakdown.cacheReadTokens + breakdown.cacheCreationTokens;
-                  if (total === 0) return null;
-                  const hitPct = Math.round(
-                    (breakdown.cacheReadTokens / total) * 100,
-                  );
-                  return (
-                    <>
-                      {" "}<span style={{ opacity: 0.7 }}>({hitPct}% hit)</span>
-                    </>
-                  );
-                })()}
-              </span>
+                ))}
+              </div>
+              <div className={styles.contextBreakdownList}>
+                {visibleRows.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className={`${styles.contextBreakdownRow} ${styles.contextBreakdownRowButton}`}
+                    data-context-bucket-row={row.id}
+                    aria-label={`View ${row.label} context`}
+                    onClick={() => handleOpenBucket(row.id)}
+                  >
+                    <span className={styles.contextBreakdownRowLeft}>
+                      <span
+                        className={styles.contextBreakdownSwatch}
+                        data-context-bucket={row.id}
+                        aria-hidden="true"
+                      />
+                      {row.label}
+                    </span>
+                    <span className={styles.contextBreakdownRowValue}>
+                      {formatTokensShort(row.tokens)}
+                    </span>
+                  </button>
+                ))}
+                {(breakdown.cacheReadTokens > 0 ||
+                  breakdown.cacheCreationTokens > 0) && (
+                  <div
+                    className={styles.contextBreakdownRow}
+                    data-context-bucket-row="cached"
+                    data-cache-row
+                  >
+                    <span className={styles.contextBreakdownRowLeft}>Cached</span>
+                    <span
+                      className={`${styles.contextBreakdownRowValue} ${styles.contextBreakdownCacheValue}`}
+                    >
+                      <CacheInfoOverlay
+                        readTokens={breakdown.cacheReadTokens}
+                        writtenTokens={breakdown.cacheCreationTokens}
+                        formatTokens={(v) => `${formatTokensShort(v)}`}
+                      />
+                      {(() => {
+                        const total =
+                          breakdown.cacheReadTokens + breakdown.cacheCreationTokens;
+                        const hitPct =
+                          total === 0
+                            ? 0
+                            : Math.round((breakdown.cacheReadTokens / total) * 100);
+                        return `${hitPct}% hit`;
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
-          {sessionCostView && <SessionCostSection view={sessionCostView} />}
+
+          {sessionCostView && (
+            <>
+              <button
+                type="button"
+                className={styles.contextSectionHeader}
+                onClick={toggleCost}
+                aria-expanded={costOpen}
+              >
+                {costOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <span className={styles.contextSectionHeaderLabel}>Session Cost</span>
+              </button>
+              {costOpen && (
+                <div className={styles.contextSectionBody}>
+                  <SessionCostSection view={sessionCostView} showTitle={false} />
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
