@@ -101,7 +101,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: color-mix(in srgb, var(--color-text-primary) 85%, transparent);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
   width: fit-content;
@@ -142,7 +142,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: color-mix(in srgb, var(--color-text-primary) 85%, transparent);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
   width: fit-content;
@@ -276,7 +276,7 @@
   color: var(--color-text-primary);
   cursor: pointer;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   transition: background 0.15s ease;
 }
@@ -297,7 +297,7 @@
 }
 
 .attachmentName {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-text-muted);
   max-width: 60px;
   overflow: hidden;
@@ -313,12 +313,12 @@
 
 .infoDivider {
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .infoText {
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 /* Trigger metrics deliberately mirror `.projectButton` and
@@ -332,7 +332,7 @@
   align-items: center;
   gap: 5px;
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
@@ -433,7 +433,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -449,7 +449,7 @@
 }
 
 .contextUsageHint {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-text-muted);
   font-style: italic;
   line-height: 1.4;
@@ -498,7 +498,7 @@
 }
 
 .contextBreakdownTitle {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
   letter-spacing: 0.01em;
@@ -529,7 +529,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -579,7 +579,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -668,7 +668,7 @@
 
 .contextSectionHeaderLabel {
   flex: 1 1 auto;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -773,7 +773,7 @@
 }
 
 .cacheOverlayTitle {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 2px;
@@ -784,7 +784,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -802,7 +802,7 @@
   padding-top: 4px;
   border-top: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 /* Per-bucket palette. Tied to a `data-context-bucket` attribute on both
@@ -940,7 +940,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: color 0.15s ease;
   white-space: nowrap;
@@ -978,7 +978,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -1050,7 +1050,7 @@
   border-radius: 4px;
   background: var(--color-overlay-medium);
   border: 1px solid var(--color-overlay-heavy);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-primary);
   line-height: 1.4;
   white-space: nowrap;
@@ -1111,7 +1111,7 @@
 
 .slashMenuCategory {
   padding: 6px 12px 2px;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1129,7 +1129,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   transition:
@@ -1171,7 +1171,7 @@
 
 .mentionMenuEmpty {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-muted);
   font-style: italic;
 }

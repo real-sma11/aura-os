@@ -12,7 +12,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
   /* Reserve enough width for the widest content ("• Remote") so the slot
@@ -106,7 +106,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -133,14 +133,14 @@
 }
 
 .recoveryNoticeLabel {
-  font-size: 10px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-muted);
 }
 
 .recoveryNoticeMessage {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--color-text-primary);
 }
@@ -188,7 +188,7 @@
 }
 
 .actionsWait {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-text-muted);
   font-style: italic;
 }
@@ -201,7 +201,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -219,7 +219,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -255,12 +255,12 @@
 }
 
 .actionHint {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-text-muted);
 }
 
 .actionError {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-error);
   flex-basis: 100%;
 }
