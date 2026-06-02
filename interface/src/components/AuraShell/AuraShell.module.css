@@ -43,9 +43,9 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  margin-right: 2px;
   background: var(--color-sidebar-bg);
   border: 1px solid var(--color-border-main-panel);
+  border-right: none;
   border-top-left-radius: 6px;
   border-bottom-left-radius: 6px;
 }
