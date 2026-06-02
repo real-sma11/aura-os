@@ -80,6 +80,7 @@ export function ProjectAppearanceFrame({
     <div
       className={styles.frame}
       style={style}
+      data-project-appearance-frame=""
       data-bg-pattern={pattern}
       data-bg-invert={invert ? "true" : undefined}
       data-project-id={projectId ?? undefined}

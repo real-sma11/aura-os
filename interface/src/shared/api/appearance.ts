@@ -100,7 +100,7 @@ export interface UploadBackgroundImageResponse {
  * and render a fallback header instead of an error.
  */
 export function projectBannerUrl(projectId: string): string {
-  return `/api/projects/${projectId}/appearance/banner`;
+  return resolveApiUrl(`/api/projects/${projectId}/appearance/banner`);
 }
 
 /**
@@ -108,7 +108,7 @@ export function projectBannerUrl(projectId: string): string {
  * image (`pattern: "image"`).
  */
 export function projectBackgroundImageUrl(projectId: string): string {
-  return `/api/projects/${projectId}/appearance/background-image`;
+  return resolveApiUrl(`/api/projects/${projectId}/appearance/background-image`);
 }
 
 export const appearanceApi = {

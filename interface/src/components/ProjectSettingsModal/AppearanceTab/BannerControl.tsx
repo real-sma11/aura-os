@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Button, Text } from "@cypher-asi/zui";
-import { BannerCropDialog, type BannerCropResult } from "./BannerCropDialog";
+import { ImageCropDialog, type ImageCropResult } from "./ImageCropDialog";
 import styles from "./AppearanceTab.module.css";
 
 interface BannerControlProps {
@@ -58,7 +58,7 @@ export function BannerControl({
     reader.readAsDataURL(file);
   };
 
-  const handleConfirm = async ({ blob, scaleToFit }: BannerCropResult) => {
+  const handleConfirm = async ({ blob, scaleToFit }: ImageCropResult) => {
     await onUpload(blob);
     // Mirror the crop mode on the appearance JSON so the rendering
     // surfaces pick the right `object-fit` (cover vs contain). Sent
@@ -69,6 +69,30 @@ export function BannerControl({
     // already cache-busts on upload, but resetting the local error
     // state ensures the `<img>` re-renders.
     setHasBanner(true);
+  };
+
+  const closePicker = () => {
+    setPickedSrc((prev) => {
+      // Object URLs from the "re-crop current image" path must be
+      // revoked; fresh-pick data URLs need no cleanup.
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
+
+  // Re-open the crop dialog on the *current* banner so the user can
+  // re-frame it without re-picking the file. Fetched into a same-origin
+  // object URL first — a cross-origin `<img>` would taint the crop
+  // canvas and break `toBlob`. (Re-crops the stored image; the original
+  // full-resolution source isn't retained server-side.)
+  const handleEditCrop = async () => {
+    try {
+      const res = await fetch(bannerUrl);
+      if (!res.ok) return;
+      setPickedSrc(URL.createObjectURL(await res.blob()));
+    } catch (err) {
+      console.warn("Failed to load banner for crop:", err);
+    }
   };
 
   const handleRemove = async () => {
@@ -115,6 +139,11 @@ export function BannerControl({
           {hasBanner ? "Replace" : "Upload banner"}
         </Button>
         {hasBanner && (
+          <Button variant="ghost" onClick={handleEditCrop}>
+            Crop
+          </Button>
+        )}
+        {hasBanner && (
           <Button
             variant="ghost"
             onClick={handleRemove}
@@ -133,11 +162,16 @@ export function BannerControl({
       </div>
 
       {pickedSrc && (
-        <BannerCropDialog
+        <ImageCropDialog
           isOpen
           imageSrc={pickedSrc}
+          aspect={16 / 5}
+          outputWidth={1600}
+          outputHeight={500}
+          title="Crop banner"
+          saveLabel="Save banner"
           onConfirm={handleConfirm}
-          onClose={() => setPickedSrc(null)}
+          onClose={closePicker}
         />
       )}
     </div>

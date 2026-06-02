@@ -1,7 +1,7 @@
-/* Wide aspect viewport so the user previews the banner roughly the
-   way it will read on the project's main header. The fixed height is
-   deliberate — letting it stretch with the modal causes the crop
-   selection to feel imprecise. */
+/* Aspect viewport so the user previews the image roughly the way it
+   will read in its destination. The fixed height is deliberate —
+   letting it stretch with the modal causes the crop selection to feel
+   imprecise. */
 .cropContainer {
   position: relative;
   width: 100%;

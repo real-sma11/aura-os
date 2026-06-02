@@ -2,42 +2,38 @@ import { useCallback, useEffect, useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 import { Button, Modal } from "@cypher-asi/zui";
 import { cropImageToBlob } from "../../../shared/utils/crop-to-blob";
-import styles from "./BannerCropDialog.module.css";
+import styles from "./ImageCropDialog.module.css";
 
-/**
- * Banner output resolution at the chosen 16:5 aspect. Big enough for
- * a hero display on a high-DPI screen without producing megabyte-class
- * files; small enough that the 5 MiB server cap won't bite. The
- * cropper renders at any aspect, but we fix the output to keep
- * downstream layout predictable.
- */
-const BANNER_ASPECT = 16 / 5;
-const BANNER_OUTPUT_W = 1600;
-const BANNER_OUTPUT_H = 500;
-
-export interface BannerCropResult {
+export interface ImageCropResult {
   blob: Blob;
   /** When true, the user opted out of cropping. The image was
-   *  uploaded at its native aspect and the consumer should mirror
-   *  that on `appearance.bannerScaleToFit` so the rendering
-   *  surfaces switch `object-fit` accordingly. */
+   *  re-encoded at its native aspect; consumers that track a
+   *  "scale to fit" flag (e.g. the banner) should mirror it so the
+   *  rendering surface picks the right `object-fit`. */
   scaleToFit: boolean;
 }
 
-interface BannerCropDialogProps {
+interface ImageCropDialogProps {
   isOpen: boolean;
   imageSrc: string;
-  onConfirm: (result: BannerCropResult) => Promise<void> | void;
+  /** Crop aspect ratio (width / height) for the interactive cropper. */
+  aspect: number;
+  /** Fixed output resolution the cropped region is rendered to, so
+   *  downstream layout stays predictable regardless of source size. */
+  outputWidth: number;
+  outputHeight: number;
+  /** Modal title, e.g. "Crop banner" / "Crop background". */
+  title: string;
+  /** Primary button label, e.g. "Save banner" / "Save background". */
+  saveLabel: string;
+  onConfirm: (result: ImageCropResult) => Promise<void> | void;
   onClose: () => void;
 }
 
 /**
- * Read the raw image at `imageSrc` and re-encode as a PNG blob via
- * an offscreen canvas. Used for the scale-to-fit path so the
- * uploaded asset stays a PNG matching the rest of the banner
- * pipeline; preserves the source's native aspect (no cropping) and
- * caps the output's longest edge so we don't ship 20-megapixel
- * originals.
+ * Re-encode the image at `imageSrc` as a PNG blob at its native aspect
+ * (no crop), capping the longest edge so very large originals don't
+ * bloat the upload. Backs the "scale to fit" path.
  */
 async function reencodeForScaleToFit(imageSrc: string): Promise<Blob> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -46,8 +42,6 @@ async function reencodeForScaleToFit(imageSrc: string): Promise<Blob> {
     img.onerror = () => reject(new Error(`failed to load image: ${imageSrc}`));
     img.src = imageSrc;
   });
-  // Cap the longest edge so very large originals don't bloat the
-  // upload. Aspect is preserved either way.
   const MAX_EDGE = 2000;
   const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
   const width = Math.round(image.naturalWidth * scale);
@@ -66,12 +60,24 @@ async function reencodeForScaleToFit(imageSrc: string): Promise<Blob> {
   });
 }
 
-export function BannerCropDialog({
+/**
+ * Reusable crop dialog: an interactive (react-easy-crop) cropper at a
+ * fixed `aspect`, plus a "scale to fit" escape hatch that uploads the
+ * source at its native aspect. Used by both the banner and the
+ * project background-image flows, parameterised by aspect / output /
+ * labels so each reads correctly for its field.
+ */
+export function ImageCropDialog({
   isOpen,
   imageSrc,
+  aspect,
+  outputWidth,
+  outputHeight,
+  title,
+  saveLabel,
   onConfirm,
   onClose,
-}: BannerCropDialogProps) {
+}: ImageCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
@@ -103,8 +109,8 @@ export function BannerCropDialog({
           ? await cropImageToBlob(
               imageSrc,
               croppedArea,
-              BANNER_OUTPUT_W,
-              BANNER_OUTPUT_H,
+              outputWidth,
+              outputHeight,
               "image/png",
             )
           : null;
@@ -119,7 +125,7 @@ export function BannerCropDialog({
     } finally {
       setSaving(false);
     }
-  }, [croppedArea, imageSrc, onConfirm, onClose, scaleToFit]);
+  }, [croppedArea, imageSrc, outputWidth, outputHeight, onConfirm, onClose, scaleToFit]);
 
   const canConfirm = scaleToFit || !!croppedArea;
 
@@ -127,7 +133,7 @@ export function BannerCropDialog({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Crop banner"
+      title={title}
       size="md"
       footer={
         <div className={styles.footer}>
@@ -139,7 +145,7 @@ export function BannerCropDialog({
             onClick={handleConfirm}
             disabled={saving || !canConfirm}
           >
-            {saving ? "Saving…" : scaleToFit ? "Save banner" : "Save banner"}
+            {saving ? "Saving…" : saveLabel}
           </Button>
         </div>
       }
@@ -151,7 +157,7 @@ export function BannerCropDialog({
             crop={crop}
             zoom={zoom}
             minZoom={0.5}
-            aspect={BANNER_ASPECT}
+            aspect={aspect}
             cropShape="rect"
             showGrid={false}
             restrictPosition={false}
@@ -160,16 +166,8 @@ export function BannerCropDialog({
             onCropComplete={onCropComplete}
           />
         )}
-        {/* Scale-to-fit preview: show the entire image letterboxed
-            inside the same crop container so the user sees what the
-            uploaded asset will look like. Replaces the interactive
-            Cropper; the original is uploaded at its native aspect. */}
         {imageSrc && scaleToFit && (
-          <img
-            src={imageSrc}
-            alt="Banner preview"
-            className={styles.fitPreview}
-          />
+          <img src={imageSrc} alt="Preview" className={styles.fitPreview} />
         )}
       </div>
       <div className={styles.controls}>

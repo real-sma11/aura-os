@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Button, Input, Text } from "@cypher-asi/zui";
 import type { ProjectAppearance } from "../../../shared/api/appearance";
 import { ThemedSelect } from "./ThemedSelect";
+import { ImageCropDialog, type ImageCropResult } from "./ImageCropDialog";
 import styles from "./AppearanceTab.module.css";
 
 /** True if `value` parses as a six-digit hex (with leading `#`).
@@ -10,6 +11,39 @@ import styles from "./AppearanceTab.module.css";
  *  fields' hex inputs. */
 function isValidHex(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
+/**
+ * Measure the live project background panel so the crop window matches
+ * the space the image will actually fill (rather than a guessed ratio).
+ * The frame stays mounted behind the settings modal, tagged with
+ * `data-project-appearance-frame`. Falls back to 16:9 if it can't be
+ * found. Output is capped at ~1600px on the longest edge — plenty for
+ * the panel while staying well under the server's 5 MiB image cap.
+ */
+function measureBackgroundCrop(): {
+  aspect: number;
+  outputWidth: number;
+  outputHeight: number;
+} {
+  let w = 1600;
+  let h = 900;
+  const el = document.querySelector<HTMLElement>(
+    "[data-project-appearance-frame]",
+  );
+  if (el) {
+    const r = el.getBoundingClientRect();
+    if (r.width >= 1 && r.height >= 1) {
+      w = r.width;
+      h = r.height;
+    }
+  }
+  const scale = 1600 / Math.max(w, h);
+  return {
+    aspect: w / h,
+    outputWidth: Math.max(1, Math.round(w * scale)),
+    outputHeight: Math.max(1, Math.round(h * scale)),
+  };
 }
 
 type Pattern = NonNullable<NonNullable<ProjectAppearance["background"]>["pattern"]>;
@@ -62,6 +96,16 @@ export function BackgroundControl({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [hasImage, setHasImage] = useState(true);
   const [removingImage, setRemovingImage] = useState(false);
+  // Data URL of a freshly picked file, awaiting crop. Mirrors the
+  // banner flow: pick → crop dialog → upload the cropped blob.
+  const [pickedSrc, setPickedSrc] = useState<string | null>(null);
+  // Crop aspect + output size, measured from the live background panel
+  // at pick time so the crop window matches the real space.
+  const [cropSpec, setCropSpec] = useState({
+    aspect: 16 / 9,
+    outputWidth: 1600,
+    outputHeight: 900,
+  });
   // Reset the "did this URL load?" probe whenever the cache-bust
   // version flips. Without this, an initial 404 (no image uploaded
   // yet) would unmount the `<img>` and a subsequent upload would never
@@ -208,9 +252,45 @@ export function BackgroundControl({
       alert("Background image must be a PNG or JPEG.");
       return;
     }
-    void onUploadImage(file).catch((err) => {
-      console.warn("Failed to upload background image:", err);
+    // Snapshot the live panel size so the crop window matches the
+    // space the background will fill.
+    setCropSpec(measureBackgroundCrop());
+    // Read into a data URL and open the crop dialog rather than
+    // uploading the raw file — same flow as the banner.
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setPickedSrc(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropConfirm = async ({ blob }: ImageCropResult) => {
+    // The background always renders with `object-fit: cover`, so the
+    // scale-to-fit flag has no separate persisted field here — either
+    // path just uploads the resulting blob.
+    await onUploadImage(blob);
+  };
+
+  const closePicker = () => {
+    setPickedSrc((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
     });
+  };
+
+  // Re-open the crop dialog on the current background image so the user
+  // can re-frame it (e.g. to a changed panel size) without re-picking.
+  // Fetched into a same-origin object URL so the crop canvas isn't
+  // tainted; re-measures the panel for the current aspect.
+  const handleEditCrop = async () => {
+    try {
+      const res = await fetch(backgroundImageUrl);
+      if (!res.ok) return;
+      setCropSpec(measureBackgroundCrop());
+      setPickedSrc(URL.createObjectURL(await res.blob()));
+    } catch (err) {
+      console.warn("Failed to load background image for crop:", err);
+    }
   };
 
   const handleRemoveImage = async () => {
@@ -326,6 +406,11 @@ export function BackgroundControl({
               {hasImage ? "Replace image" : "Upload image"}
             </Button>
             {hasImage && (
+              <Button variant="ghost" onClick={handleEditCrop}>
+                Crop
+              </Button>
+            )}
+            {hasImage && (
               <Button
                 variant="ghost"
                 onClick={handleRemoveImage}
@@ -386,6 +471,20 @@ export function BackgroundControl({
           />
           <span className={styles.opacityValue}>{frostAmount}px</span>
         </div>
+      )}
+
+      {pickedSrc && (
+        <ImageCropDialog
+          isOpen
+          imageSrc={pickedSrc}
+          aspect={cropSpec.aspect}
+          outputWidth={cropSpec.outputWidth}
+          outputHeight={cropSpec.outputHeight}
+          title="Crop background"
+          saveLabel="Save background"
+          onConfirm={handleCropConfirm}
+          onClose={closePicker}
+        />
       )}
     </div>
   );
