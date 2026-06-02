@@ -288,6 +288,12 @@
   --color-text-secondary: #374151;
   --color-text-muted: #4b5563;
 
+  /* Light counterpart to the dark primary (srgb 1 1 1 / 0.88). Without
+     this, the dark near-white value set on :root leaks into light mode
+     (this file loads after ZUI, equal specificity to [data-theme='light']),
+     leaving primary text near-invisible on the white page. */
+  --color-text-primary: rgba(0, 0, 0, 0.88);
+
   --color-border: #e5e7eb;
 
   /* Channel-decomposed --color-bg for light mode — matches the
