@@ -184,14 +184,21 @@ impl AgentPermissions {
     /// persisted empty (older `aura-network` deployments didn't store the
     /// column, so legacy records round-trip as `AgentPermissions::empty()`).
     ///
-    /// If `(name, role)` identifies the CEO role *and* `self` is not
-    /// already the canonical [`Self::ceo_preset`], this returns the
+    /// If `(name, role)` identifies the CEO role *and* `self` is
+    /// [`Self::is_empty`] (the never-set default), this returns the
     /// preset so downstream callers (tool manifest builders, sidekick
     /// toggles, etc.) see an agent with the capabilities users expect
     /// from the CEO icon. For every other case it returns `self`
     /// unchanged — non-CEO agents with empty permissions stay empty,
     /// matching the product rule that only the CEO defaults to the
     /// full-access preset.
+    ///
+    /// Crucially this only *fills an empty bundle*; it never forces a
+    /// non-empty (deliberately customized) bundle back to the preset.
+    /// That keeps the "default ON for the CEO" behavior while letting a
+    /// user who edits the CEO's capabilities — including paring them
+    /// down — have those edits respected everywhere this helper runs
+    /// (chat/session permission derivation, dev-loop, instance reads).
     ///
     /// The check is intentionally narrow — only `name == "CEO"` *and*
     /// `role == "CEO"` (case-insensitive) — so a non-CEO agent can't
@@ -203,7 +210,7 @@ impl AgentPermissions {
     pub fn normalized_for_identity(self, name: &str, role: Option<&str>) -> Self {
         let looks_like_ceo =
             name.eq_ignore_ascii_case("CEO") && role.is_some_and(|r| r.eq_ignore_ascii_case("CEO"));
-        if looks_like_ceo && !self.is_ceo_preset() {
+        if looks_like_ceo && self.is_empty() {
             Self::ceo_preset()
         } else {
             self

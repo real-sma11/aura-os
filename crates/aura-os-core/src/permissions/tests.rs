@@ -91,6 +91,24 @@ fn normalized_for_identity_preserves_already_correct_preset() {
 }
 
 #[test]
+fn normalized_for_identity_preserves_customized_ceo_bundle() {
+    // The CEO defaults to full access only when its bundle was never
+    // set (empty). A deliberately pared-down bundle on a strict
+    // name+role CEO must be left untouched so user edits — including
+    // turning capabilities off — are respected rather than snapped back
+    // to the preset on every read.
+    let customized = AgentPermissions {
+        scope: AgentScope::default(),
+        capabilities: vec![Capability::ReadAgent, Capability::ListAgents],
+    };
+    let same = customized
+        .clone()
+        .normalized_for_identity("CEO", Some("CEO"));
+    assert_eq!(same, customized);
+    assert!(!same.is_ceo_preset());
+}
+
+#[test]
 fn with_subagent_caps_splices_spawn_and_read_for_empty_bundle() {
     let perms = AgentPermissions::empty().with_subagent_caps();
     assert!(perms.capabilities.contains(&Capability::SpawnAgent));
