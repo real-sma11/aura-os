@@ -52,6 +52,13 @@ pub(super) struct SessionForTurn {
     /// `spawn_turn_slot_release`; explicit Stop cancels via
     /// `setup/cancel.rs`.)
     pub(super) commands_tx: HarnessCommandSender,
+    /// Subagent frames (`SubagentSpawned` / `SubagentStatus`) the harness
+    /// emitted before `session_ready`, captured at cold-open because no
+    /// consumer was subscribed yet. The orchestrator replays them onto
+    /// `events_tx` after every consumer subscribes so AURA Council member
+    /// columns render live and persist. Empty for warm reuse and for runs
+    /// that emit no subagent frames during init.
+    pub(super) pending_events: Vec<HarnessOutbound>,
 }
 
 pub(super) async fn get_or_create_delegated_chat_session(
@@ -104,16 +111,16 @@ pub(super) async fn get_or_create_delegated_chat_session(
     // synthesis turn. Forwarding the user message here would run a
     // spurious single-model turn on the synthesizer ahead of the
     // council, so council cold-opens open-only.
-    let open_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send>> =
-        if council_active {
-            Box::pin(SessionBridge::open(harness, session_config))
-        } else {
-            Box::pin(SessionBridge::open_and_send_user_message(
-                harness,
-                session_config,
-                turn,
-            ))
-        };
+    let open_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send>> = if council_active
+    {
+        Box::pin(SessionBridge::open(harness, session_config))
+    } else {
+        Box::pin(SessionBridge::open_and_send_user_message(
+            harness,
+            session_config,
+            turn,
+        ))
+    };
     let started = match tokio::time::timeout(std::time::Duration::from_secs(60), open_fut).await {
         Ok(result) => result.map_err(map_session_bridge_start_error(
             key,
@@ -178,6 +185,10 @@ async fn reuse_with_turn_slot(
         events_tx: reused.events_tx,
         slot_guard: acquired.guard,
         commands_tx: reused.commands_tx,
+        // Warm reuse never cold-opens, so there are no pre-`session_ready`
+        // frames to replay. AURA Council always forces a cold open (see
+        // `council_active` above), so this path is never a council turn.
+        pending_events: Vec::new(),
     })
 }
 
@@ -260,6 +271,10 @@ async fn insert_delegated_chat_session(
     let rx = started.events_rx;
     let events_tx = started.session.events_tx.clone();
     let commands_tx = started.session.commands_tx.clone();
+    // Move the captured pre-`session_ready` subagent frames out of the
+    // session before its remaining fields are consumed into the registry
+    // entry below; the orchestrator replays these onto `events_tx`.
+    let pending_events = started.session.pending_events;
     let composite_key = ChatSessionKey::with_effort(key, requested_model.clone(), requested_effort);
     state.chat_sessions.insert(
         composite_key,
@@ -281,5 +296,6 @@ async fn insert_delegated_chat_session(
         events_tx,
         slot_guard: acquired.guard,
         commands_tx,
+        pending_events,
     })
 }

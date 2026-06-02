@@ -428,13 +428,14 @@ impl SwarmHarness {
             }
         };
         let (events_tx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
+        let mut pending_events: Vec<OutboundMessage> = Vec::new();
         if wait_for_ready {
             // Phase A: the gateway proxies a run that was already created
             // on the HTTP side (`POST /v1/agents/:id/run`), so the harness
             // driver emits `session_ready` unprompted. No session-init
             // first frame.
             let mut ready_rx = events_tx.subscribe();
-            wait_for_session_ready(&mut ready_rx, run_id).await?;
+            wait_for_session_ready(&mut ready_rx, run_id, &mut pending_events).await?;
         } else {
             // Reattach / council child runs stream domain events directly
             // and never re-emit `session_ready`. Do a brief liveness probe
@@ -468,6 +469,7 @@ impl SwarmHarness {
             events_tx,
             raw_events_tx,
             commands_tx,
+            pending_events,
         })
     }
 }
@@ -588,9 +590,17 @@ fn is_capacity_exhausted_response(status: StatusCode, body: &str) -> bool {
     }
 }
 
+/// Block on the proxied `session_ready` frame, collecting any subagent
+/// lifecycle frames (`SubagentSpawned` / `SubagentStatus`) the harness
+/// emits beforehand into `pending_events`. AURA Council parent runs fan
+/// their members out at run start (around/before `session_ready`), so
+/// these frames arrive before any server-side consumer subscribes to
+/// `events_tx`; capturing them lets the chat orchestrator replay them so
+/// the council member columns render.
 async fn wait_for_session_ready(
     rx: &mut broadcast::Receiver<OutboundMessage>,
     swarm_session_id: &str,
+    pending_events: &mut Vec<OutboundMessage>,
 ) -> anyhow::Result<()> {
     let ready = tokio::time::timeout(SESSION_READY_TIMEOUT, async {
         loop {
@@ -602,6 +612,19 @@ async fn wait_for_session_ready(
                         err.code,
                         err.message
                     )
+                }
+                Ok(evt @ OutboundMessage::SubagentSpawned(_))
+                | Ok(evt @ OutboundMessage::SubagentStatus(_)) => {
+                    if let OutboundMessage::SubagentSpawned(spawned) = &evt {
+                        tracing::debug!(
+                            target: "aura::council",
+                            child_run_id = %spawned.child_run_id,
+                            council_index = ?spawned.council_index,
+                            "captured pre-session_ready subagent_spawned (swarm)"
+                        );
+                    }
+                    pending_events.push(evt);
+                    continue;
                 }
                 Ok(_) => continue,
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -780,6 +803,41 @@ impl HarnessLink for SwarmHarness {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn wait_for_session_ready_collects_pre_ready_subagent_frames() {
+        use aura_protocol::{SessionReady, SubagentSpawned};
+
+        let (tx, _rx0) = broadcast::channel::<OutboundMessage>(16);
+        let mut rx = tx.subscribe();
+
+        tx.send(OutboundMessage::SubagentSpawned(SubagentSpawned {
+            child_run_id: "child-0".into(),
+            parent_tool_use_id: Some("council-parent".into()),
+            subagent_type: "council-member".into(),
+            prompt: "deliberate".into(),
+            model: Some("model-a".into()),
+            council_index: Some(0),
+        }))
+        .expect("send spawn");
+        tx.send(OutboundMessage::SessionReady(SessionReady {
+            session_id: "swarm-run".into(),
+            tools: Vec::new(),
+            skills: Vec::new(),
+        }))
+        .expect("send ready");
+
+        let mut pending = Vec::new();
+        wait_for_session_ready(&mut rx, "swarm-run", &mut pending)
+            .await
+            .expect("session ready resolves");
+
+        assert_eq!(pending.len(), 1, "pre-ready council spawn must be captured");
+        assert!(matches!(
+            &pending[0],
+            OutboundMessage::SubagentSpawned(s) if s.child_run_id == "child-0" && s.council_index == Some(0)
+        ));
+    }
 
     #[test]
     fn create_agent_body_uses_template_id_for_swarm_agent_id() {

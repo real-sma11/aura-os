@@ -64,6 +64,11 @@ struct FakeInner {
     /// 6 integration tests that assert the server's clean
     /// `harness_capacity_exhausted` 503 mapping.
     capacity_limit: Option<usize>,
+    /// Subagent frames the next opened session reports as having been
+    /// observed before `session_ready`. Mirrors the real harness clients,
+    /// which capture AURA Council member `subagent_spawned` events emitted
+    /// at run start so the chat orchestrator can replay them.
+    pending_events: Vec<HarnessOutbound>,
 }
 
 impl FakeInner {
@@ -74,6 +79,7 @@ impl FakeInner {
             gate: None,
             next_session_id: 0,
             capacity_limit: None,
+            pending_events: Vec::new(),
         }
     }
 }
@@ -165,6 +171,15 @@ impl FakeHarness {
         let mut inner = self.inner.lock().await;
         inner.capacity_limit = Some(limit);
     }
+
+    /// Seed the subagent frames the next opened session reports as
+    /// captured before `session_ready`. Lets tests exercise the chat
+    /// orchestrator's pre-`session_ready` council-spawn replay without a
+    /// real WS upstream.
+    pub async fn set_pending_events(&self, events: Vec<HarnessOutbound>) {
+        let mut inner = self.inner.lock().await;
+        inner.pending_events = events;
+    }
 }
 
 impl Default for FakeHarness {
@@ -195,7 +210,7 @@ impl ResponseGate {
 impl HarnessLink for FakeHarness {
     async fn open_session(&self, config: SessionConfig) -> anyhow::Result<HarnessSession> {
         let session_init = build_runtime_request(&config);
-        let (script, gate, session_id) = {
+        let (script, gate, session_id, pending_events) = {
             let mut inner = self.inner.lock().await;
             // Phase-6 capacity-exhaustion stub. Refusing BEFORE we
             // record the session_init keeps the observable count of
@@ -210,7 +225,8 @@ impl HarnessLink for FakeHarness {
             inner.session_inits.push(session_init.clone());
             inner.next_session_id += 1;
             let session_id = format!("fake-session-{}", inner.next_session_id);
-            (inner.script.clone(), inner.gate.clone(), session_id)
+            let pending_events = std::mem::take(&mut inner.pending_events);
+            (inner.script.clone(), inner.gate.clone(), session_id, pending_events)
         };
 
         let (events_tx, _) = broadcast::channel(DEFAULT_EVENT_CHANNEL_CAPACITY);
@@ -256,6 +272,7 @@ impl HarnessLink for FakeHarness {
             events_tx,
             raw_events_tx,
             commands_tx,
+            pending_events,
         })
     }
 
@@ -404,6 +421,42 @@ mod tests {
             .expect("release should let the event through")
             .expect("recv");
         assert!(matches!(evt, HarnessOutbound::TextDelta(ref t) if t.text == "released"));
+    }
+
+    fn council_spawn(child_run_id: &str, council_index: u32) -> HarnessOutbound {
+        HarnessOutbound::SubagentSpawned(aura_protocol::SubagentSpawned {
+            child_run_id: child_run_id.to_string(),
+            parent_tool_use_id: Some("council-parent".to_string()),
+            subagent_type: "council-member".to_string(),
+            prompt: "deliberate".to_string(),
+            model: Some(format!("model-{council_index}")),
+            council_index: Some(council_index),
+        })
+    }
+
+    #[tokio::test]
+    async fn open_surfaces_pre_ready_subagent_frames_on_started_session() {
+        let fake = FakeHarness::new();
+        fake.set_pending_events(vec![council_spawn("child-0", 0), council_spawn("child-1", 1)])
+            .await;
+
+        let cfg = SessionConfig {
+            agent_id: Some("t::council".into()),
+            ..Default::default()
+        };
+        let started = SessionBridge::open(&fake, cfg).await.expect("open");
+
+        // The captured council fan-out must travel through the bridge so
+        // the chat orchestrator can replay it onto the broadcast.
+        assert_eq!(started.session.pending_events.len(), 2);
+        assert!(matches!(
+            &started.session.pending_events[0],
+            HarnessOutbound::SubagentSpawned(s) if s.child_run_id == "child-0" && s.council_index == Some(0)
+        ));
+        assert!(matches!(
+            &started.session.pending_events[1],
+            HarnessOutbound::SubagentSpawned(s) if s.child_run_id == "child-1" && s.council_index == Some(1)
+        ));
     }
 
     #[allow(dead_code)]

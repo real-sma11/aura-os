@@ -464,6 +464,7 @@ mod tests {
             events_tx,
             raw_events_tx,
             commands_tx,
+            pending_events: Vec::new(),
         }
     }
 
