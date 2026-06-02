@@ -9,12 +9,6 @@ export interface ProfileCardSceneOptions {
   accent: string;
   /** CSS color for the LCD scan lines (read from `--color-card-line`). */
   lineColor?: string;
-  /**
-   * Resolved CSS color painted behind the card (read from
-   * `--color-sidekick-bg`) so the canvas backdrop blends with the surrounding
-   * sidekick panel instead of the opaque dark bloom composite.
-   */
-  background?: string;
   reducedMotion: boolean;
 }
 
@@ -24,8 +18,6 @@ export interface ProfileCardScene {
   setAccent(accent: string): void;
   /** Update the LCD scan-line color (independent of the accent). */
   setLineColor(color: string): void;
-  /** Update the themed backdrop color (read from `--color-sidekick-bg`). */
-  setBackground(color: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
   dispose(): void;
@@ -389,9 +381,6 @@ const WORDMARK_ASPECT = 3322 / 421;
 /** Fallback LCD scan-line color (matches the `--color-card-line` token default). */
 const CARD_LINE_COLOR = "#cfe8ff";
 
-/** Fallback backdrop color (matches the dark-theme `--color-bg` default). */
-const CARD_BG_COLOR = "#09090b";
-
 export function createProfileCardScene(
   host: HTMLElement,
   options: ProfileCardSceneOptions,
@@ -406,10 +395,11 @@ export function createProfileCardScene(
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
-  // Paint an opaque, themed backdrop so the canvas blends with the sidekick
-  // panel. The bloom/EffectComposer chain otherwise composites onto an opaque
-  // dark target, leaving a fixed gray rectangle that ignores the theme.
-  renderer.setClearColor(new THREE.Color(options.background || CARD_BG_COLOR), 1);
+  // Keep the canvas transparent so the themed backdrop painted by CSS behind
+  // the host (`--color-sidekick-bg`) shows through and the dark card floats on
+  // the surrounding panel. The bloom blend is patched below to preserve this
+  // transparency (it otherwise forces the whole canvas opaque).
+  renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   host.appendChild(renderer.domElement);
@@ -898,6 +888,22 @@ export function createProfileCardScene(
   // Gentler bloom (lower strength, tighter radius, higher threshold) so only the
   // brightest neon blooms — no haze, halos or doubled text.
   const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.26, 0.4, 0.85);
+  // UnrealBloomPass blends its glow additively over the scene with a copy
+  // material that outputs alpha = 1, which (added to the scene's alpha) forces
+  // the entire canvas opaque and paints a flat box over the themed CSS
+  // backdrop. Switch its blend to custom factors that keep the additive RGB
+  // glow but take alpha from the destination (the scene), so empty areas stay
+  // transparent and the themed sidekick background behind the host shows
+  // through unchanged.
+  const bloomBlend = bloom.blendMaterial;
+  bloomBlend.blending = THREE.CustomBlending;
+  bloomBlend.blendEquation = THREE.AddEquation;
+  bloomBlend.blendSrc = THREE.SrcAlphaFactor;
+  bloomBlend.blendDst = THREE.OneFactor;
+  bloomBlend.blendEquationAlpha = THREE.AddEquation;
+  bloomBlend.blendSrcAlpha = THREE.ZeroFactor;
+  bloomBlend.blendDstAlpha = THREE.OneFactor;
+  bloomBlend.needsUpdate = true;
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1014,10 +1020,6 @@ export function createProfileCardScene(
       lineColor = new THREE.Color(next || CARD_LINE_COLOR);
       lineMaterial.color.copy(lineColor);
       lineHaloMaterial.color.copy(lineColor);
-      if (reducedMotion) renderFrame();
-    },
-    setBackground(next: string): void {
-      renderer.setClearColor(new THREE.Color(next || CARD_BG_COLOR), 1);
       if (reducedMotion) renderFrame();
     },
     refreshTexture(): void {
