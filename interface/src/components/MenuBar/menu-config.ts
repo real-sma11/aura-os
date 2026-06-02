@@ -22,6 +22,7 @@ export type MenuActionKey =
   | "view.nextAgent"
   | "view.toggleFullscreen"
   | "help.visitWebsite"
+  | "help.downloads"
   | "help.gettingStarted";
 
 export interface MenuItemEntry {
@@ -98,6 +99,7 @@ export const MENU_DEFINITIONS: MenuDefinition[] = [
     label: "Help",
     entries: [
       { type: "item", id: "help.visitWebsite", label: "Visit aura.ai" },
+      { type: "item", id: "help.downloads", label: "Downloads" },
       { type: "item", id: "help.gettingStarted", label: "Getting Started" },
     ],
   },

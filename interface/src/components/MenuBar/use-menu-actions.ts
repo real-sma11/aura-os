@@ -13,6 +13,7 @@ import { track } from "../../lib/analytics";
 import type { MenuActionKey } from "./menu-config";
 
 const AURA_WEBSITE = "https://aura.ai";
+const AURA_DOWNLOADS = "https://aura.ai/download";
 
 function nextIndex(currentIndex: number, length: number, direction: 1 | -1): number {
   if (length === 0) return -1;
@@ -167,6 +168,11 @@ export function useMenuActions(): {
     window.open(AURA_WEBSITE, "_blank", "noopener,noreferrer");
   }, []);
 
+  const handleDownloads = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.open(AURA_DOWNLOADS, "_blank", "noopener,noreferrer");
+  }, []);
+
   const handleGettingStarted = useCallback(() => {
     const store = useOnboardingStore.getState();
     if (store.checklistDismissed) {
@@ -206,9 +212,11 @@ export function useMenuActions(): {
       "view.nextAgent": handleNextAgent,
       "view.toggleFullscreen": handleToggleFullscreen,
       "help.visitWebsite": handleVisitWebsite,
+      "help.downloads": handleDownloads,
       "help.gettingStarted": handleGettingStarted,
     }),
     [
+      handleDownloads,
       handleExit,
       handleGettingStarted,
       handleLogout,
