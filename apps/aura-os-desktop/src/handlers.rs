@@ -141,6 +141,9 @@ pub(crate) struct StartDemoRequest {
     /// Frame the window on a background (`true`, default) vs. full-screen
     /// capture without compositing (`false`).
     window_on_background: Option<bool>,
+    /// Opt-in to real OS-wide computer-use control for this recording.
+    /// When `true`, capture is forced full-monitor (see [`demo::DemoOptions`]).
+    computer_use: Option<bool>,
 }
 
 /// Kick off a demo recording: register a pending recording and ask the
@@ -171,11 +174,25 @@ pub(crate) async fn start_demo_recording(
         target: req.target,
         background: req.background,
         window_on_background: req.window_on_background,
+        computer_use: req.computer_use,
         max_seconds: req.max_seconds,
     });
 
     let recording_id = demo::new_recording_id();
     demo::insert_starting(&state.registry, &recording_id, instruction.clone());
+
+    // Phase 5 capture-mode activation (env-gate approach): when this demo
+    // opts into computer-use, flip the process-wide flag the embedded
+    // aura-os-server reads (together with AURA_COMPUTER_EXECUTOR_URL) when
+    // building the chat SessionConfig. The demo bridge drives ordinary chat
+    // turns from a separate window context, so an env flag is far less
+    // invasive than threading a per-turn request flag through that bridge.
+    // The flag stays set for the rest of this desktop process session
+    // (single-user MVP); finer per-recording scoping is a follow-up.
+    if options.computer_use {
+        std::env::set_var("AURA_COMPUTER_USE_ENABLED", "1");
+        warn!(recording_id = %recording_id, "computer-use enabled for this demo session");
+    }
 
     info!(
         recording_id = %recording_id,
@@ -183,6 +200,7 @@ pub(crate) async fn start_demo_recording(
         window_width = options.window_width,
         window_height = options.window_height,
         window_on_background = options.window_on_background,
+        computer_use = options.computer_use,
         "starting demo recording"
     );
     match state.proxy.send_event(UserEvent::StartDemoRecording {

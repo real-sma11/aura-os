@@ -125,6 +125,27 @@ function DemoRecordSettingsImpl({ value, onChange, onPickBackground }: Props) {
           <span className={styles.toggleKnob} aria-hidden="true" />
         </button>
       </div>
+
+      <div className={styles.field}>
+        <span className={styles.label}>Computer use</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={value.computerUse}
+          aria-label="Enable computer use"
+          className={`${styles.toggle} ${
+            value.computerUse ? styles.toggleOn : ""
+          }`}
+          onClick={() =>
+            onChange({
+              ...value,
+              computerUse: !value.computerUse,
+            })
+          }
+        >
+          <span className={styles.toggleKnob} aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }

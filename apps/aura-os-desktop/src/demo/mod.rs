@@ -220,6 +220,12 @@ pub(crate) struct DemoOptions {
     /// background (stage-2 composite). When `false`, capture the whole
     /// monitor full-screen and skip compositing.
     pub(crate) window_on_background: bool,
+    /// When `true`, the agent drives the real OS cursor/keyboard across the
+    /// whole desktop (computer-use). This conflicts with window-only
+    /// framing, so [`DemoOptions::from_input`] forces
+    /// `window_on_background = false` (full-monitor capture, no stage-2
+    /// composite) whenever this is set.
+    pub(crate) computer_use: bool,
     pub(crate) max_seconds: u64,
 }
 
@@ -231,6 +237,7 @@ impl Default for DemoOptions {
             target: DemoTarget::X,
             background: DemoBackground::Default,
             window_on_background: true,
+            computer_use: false,
             max_seconds: DEFAULT_MAX_SECONDS,
         }
     }
@@ -248,6 +255,9 @@ pub(crate) struct DemoOptionsInput {
     /// A custom background image path; absent/empty/missing => Default.
     pub(crate) background: Option<String>,
     pub(crate) window_on_background: Option<bool>,
+    /// Opt-in to real OS-wide computer-use control for this recording.
+    /// Absent/false keeps the programmatic window-only demo behavior.
+    pub(crate) computer_use: Option<bool>,
     pub(crate) max_seconds: Option<u64>,
 }
 
@@ -255,6 +265,7 @@ impl DemoOptions {
     /// Validate and clamp raw caller input into ready-to-use options.
     pub(crate) fn from_input(input: DemoOptionsInput) -> Self {
         let defaults = DemoOptions::default();
+        let computer_use = input.computer_use.unwrap_or(false);
         DemoOptions {
             window_width: input
                 .window_width
@@ -266,7 +277,15 @@ impl DemoOptions {
                 .unwrap_or(defaults.window_height),
             target: parse_target(input.target.as_deref()),
             background: resolve_background_option(input.background.as_deref()),
-            window_on_background: input.window_on_background.unwrap_or(true),
+            // Computer-use roams the whole desktop, so force full-monitor
+            // capture (skip the window-only stage-2 composite) regardless of
+            // the caller's window_on_background preference.
+            window_on_background: if computer_use {
+                false
+            } else {
+                input.window_on_background.unwrap_or(true)
+            },
+            computer_use,
             max_seconds: clamp_max_seconds(input.max_seconds),
         }
     }
@@ -353,6 +372,24 @@ mod tests {
         });
         assert_eq!(huge.window_width, MAX_WINDOW_WIDTH);
         assert_eq!(huge.window_height, MAX_WINDOW_HEIGHT);
+    }
+
+    #[test]
+    fn computer_use_forces_full_monitor_capture() {
+        // Even when the caller asks for window-on-background framing,
+        // enabling computer-use must force full-monitor capture.
+        let options = DemoOptions::from_input(DemoOptionsInput {
+            computer_use: Some(true),
+            window_on_background: Some(true),
+            ..Default::default()
+        });
+        assert!(options.computer_use);
+        assert!(!options.window_on_background);
+
+        // Default (no computer-use) keeps the framed window-on-background path.
+        let default_options = DemoOptions::from_input(DemoOptionsInput::default());
+        assert!(!default_options.computer_use);
+        assert!(default_options.window_on_background);
     }
 
     #[test]

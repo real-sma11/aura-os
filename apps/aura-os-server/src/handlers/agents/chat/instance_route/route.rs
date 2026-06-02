@@ -17,6 +17,7 @@ use crate::state::{AppState, AuthJwt};
 
 use super::super::agent_route::parse_wire_session_id;
 use super::super::busy::{reject_if_partition_busy, BusyScope};
+use super::super::computer_use_gate::computer_use_session_fields;
 use super::super::cross_agent_reply::read_cross_agent_depth;
 use super::super::persist::{
     build_chat_partition, try_pin_session, ChatPersistRequest, PinnedSessionOutcome,
@@ -278,6 +279,7 @@ pub(crate) async fn send_event_stream(
         },
     );
 
+    let (computer_use, computer_executor_url) = computer_use_session_fields();
     let config = SessionConfig {
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(instance.agent_id.to_string()),
@@ -307,6 +309,8 @@ pub(crate) async fn send_event_stream(
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
         council,
+        computer_use,
+        computer_executor_url,
         ..Default::default()
     };
 

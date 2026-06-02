@@ -62,6 +62,13 @@ pub(crate) fn bind_listener() -> (StdTcpListener, u16, String) {
         .expect("listener must have local address")
         .port();
     let url = format!("http://127.0.0.1:{port}");
+    // Publish the bound URL so the chat session builder can forward
+    // computer-use actions back to *this* desktop's local executor
+    // (`/api/computer/*`). The desktop is both the chat host and the
+    // executor, so the agent's computer actions round-trip through here.
+    // `bind_listener` runs on the main thread before the embedded server
+    // builds any sessions, so setting it here is the earliest safe point.
+    std::env::set_var("AURA_COMPUTER_EXECUTOR_URL", &url);
     info!(%url, "server binding ready");
     (std_listener, port, url)
 }
@@ -129,6 +136,10 @@ pub(crate) fn spawn_server(
                 }
             };
             let computer_state = computer_use::ComputerUseState::new();
+            // Register the global abort hotkey (Ctrl+Alt+Q) so a user can stop
+            // synthetic input even when AURA is unfocused. Best-effort and
+            // Windows-gated; a no-op elsewhere.
+            computer_use::spawn_abort_hotkey_listener(computer_state.clone());
             let desktop_routes = Router::new()
                 .route("/api/pick-folder", axum_post(handlers::pick_folder))
                 .route("/api/pick-file", axum_post(handlers::pick_file))

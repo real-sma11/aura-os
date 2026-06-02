@@ -69,6 +69,22 @@ describe("DemoRecordSettings", () => {
     });
   });
 
+  it("toggles computer-use through onChange", async () => {
+    const user = userEvent.setup();
+    const { value, onChange } = setup({ computerUse: false });
+
+    const toggle = screen.getByRole("switch", {
+      name: "Enable computer use",
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await user.click(toggle);
+    expect(onChange).toHaveBeenCalledWith({
+      ...value,
+      computerUse: true,
+    });
+  });
+
   it("calls onPickBackground when Choose is clicked", async () => {
     const user = userEvent.setup();
     const { onPickBackground } = setup();

@@ -1074,8 +1074,16 @@ export const DesktopChatInputBar = memo(
     // into the bottom row so the N model slots get a full-width strip to
     // sit in, regardless of textarea height.
     const councilActive = councilCount > 1;
-    const showPickerInline = hasPicker && !isMultiLine && !councilActive;
-    const showPickerInBottomRow = hasPicker && (isMultiLine || councilActive);
+    // Command chips read as part of the prompt, but cramming them into
+    // the narrow inline `inputRowEnd` slot truncates the label (e.g.
+    // `/Record Demo` -> `/R…`). When any chip is present we expand the
+    // bar: chips get their own full-width row and the model picker drops
+    // to the bottom row so each sits on its own line, fully legible.
+    const hasCommandChips = selectedCommands.length > 0;
+    const showPickerInline =
+      hasPicker && !isMultiLine && !councilActive && !hasCommandChips;
+    const showPickerInBottomRow =
+      hasPicker && (isMultiLine || councilActive || hasCommandChips);
     // One ModelPicker per council member, each bound to its own slot
     // (slot 0 is the synthesizer). Every slot reuses `renderModelMenuList`
     // including the council count row so the AURA Council control stays
@@ -1119,33 +1127,43 @@ export const DesktopChatInputBar = memo(
             );
           })
         : null;
-    const hasInputRowEnd = selectedCommands.length > 0 || showPickerInline;
+    // Chips no longer live in the inline slot; the slot now only carries
+    // the single-line model/quality picker hugged to the send button.
+    const hasInputRowEnd = showPickerInline;
     const inputRowEnd = hasInputRowEnd ? (
       <>
-        {selectedCommands.length > 0 ? (
-          <CommandChips
-            commands={selectedCommands}
-            onRemove={handleCommandRemove}
-            variant="inline"
-          />
-        ) : null}
         {showPickerInline ? modelPickerNode : null}
         {showPickerInline ? qualityPickerNode : null}
       </>
     ) : null;
-    const containerBottom = showPickerInBottomRow ? (
-      <div
-        className={
-          councilActive
-            ? `${styles.bottomChromeRow} ${styles.councilSlotsRow}`
-            : styles.bottomChromeRow
-        }
-        data-agent-surface={councilActive ? "council-slots" : undefined}
-      >
-        {councilActive ? councilSlotNodes : modelPickerNode}
-        {qualityPickerNode}
-      </div>
-    ) : null;
+    // Bottom region stacks the tags row above the model ("LLM") row so a
+    // tag like `/Record Demo` sits on its own line with full text, one
+    // line below the prompt, and the model picker keeps its own line.
+    const containerBottom =
+      hasCommandChips || showPickerInBottomRow ? (
+        <div className={styles.bottomStack}>
+          {hasCommandChips ? (
+            <CommandChips
+              commands={selectedCommands}
+              onRemove={handleCommandRemove}
+              variant="stacked"
+            />
+          ) : null}
+          {showPickerInBottomRow ? (
+            <div
+              className={
+                councilActive
+                  ? `${styles.bottomChromeRow} ${styles.councilSlotsRow}`
+                  : styles.bottomChromeRow
+              }
+              data-agent-surface={councilActive ? "council-slots" : undefined}
+            >
+              {councilActive ? councilSlotNodes : modelPickerNode}
+              {qualityPickerNode}
+            </div>
+          ) : null}
+        </div>
+      ) : null;
 
     // Only render the "·" divider when the orbit indicator on the
     // right will actually paint something. `OrbitStatusIndicator`

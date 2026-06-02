@@ -133,17 +133,26 @@ export interface DemoRecordOptions {
   /** Absolute path to a custom background image, or `null` for the
    * bundled default background. */
   backgroundPath: string | null;
+  /**
+   * Let the agent drive the real OS cursor/keyboard across the whole
+   * desktop (computer-use). When `true`, the backend forces full-monitor
+   * capture and skips the window-on-background composite, so the recording
+   * shows authentic OS-wide control rather than the framed window demo.
+   */
+  computerUse: boolean;
 }
 
 /**
  * X-ready defaults: 1080p window, framed X output, composited onto the
- * default bundled background. The panel only overrides these.
+ * default bundled background, with computer-use OFF (the framed
+ * window-only demo). The panel only overrides these.
  */
 export const DEFAULT_DEMO_RECORD_OPTIONS: DemoRecordOptions = {
   resolution: "1080p",
   target: "x",
   windowOnBackground: true,
   backgroundPath: null,
+  computerUse: false,
 };
 
 export interface StartDemoRecordingResponse {
@@ -234,6 +243,7 @@ export const desktopApi = {
         target: options?.target,
         background: options?.backgroundPath ?? undefined,
         window_on_background: options?.windowOnBackground,
+        computer_use: options?.computerUse,
       }),
     });
   },

@@ -836,7 +836,7 @@ describe("ChatInputBar", () => {
     expect(mockSetPinnedSourceImage).toHaveBeenCalledWith("test-stream", null);
   });
 
-  it("renders selected slash commands inline and removes them", async () => {
+  it("renders selected slash commands on their own stacked row and removes them", async () => {
     const user = userEvent.setup();
     const selectedCommands = [
       {
@@ -853,12 +853,14 @@ describe("ChatInputBar", () => {
       />,
     );
 
-    const inlineSurface = container.querySelector(
-      '[data-agent-surface="command-chips-inline"]',
+    // Chips now live on a dedicated full-width row (stacked) so the tag
+    // text stays fully legible, never crammed into the inline slot.
+    const stackedSurface = container.querySelector(
+      '[data-agent-surface="command-chips-stacked"]',
     );
-    expect(inlineSurface).toContainElement(screen.getByText("/Find Files"));
+    expect(stackedSurface).toContainElement(screen.getByText("/Find Files"));
     expect(
-      container.querySelector('[data-agent-surface="command-chips-stacked"]'),
+      container.querySelector('[data-agent-surface="command-chips-inline"]'),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Remove Find Files" }));

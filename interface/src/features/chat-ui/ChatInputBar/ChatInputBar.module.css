@@ -1001,11 +1001,35 @@
 
 /* ── Slash command chips ─────────────────────────────────────── */
 
+/* Bottom region wrapper: stacks the tags row above the model ("LLM")
+   row so each gets its own line. Lives inside the shell's
+   `.containerBottomRow`, which already supplies the 32px corner
+   gutter that clears the attach / send buttons. */
+.bottomStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
 .commandChips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px 14px 0;
+}
+
+/* Stacked chips on the dedicated bottom row align to the existing 32px
+   gutter (no extra inset) and show the full tag text, wrapping to more
+   lines instead of truncating. */
+.bottomStack .commandChips {
+  padding: 0;
+}
+
+.bottomStack .commandChipLabel {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .commandChipsInline {

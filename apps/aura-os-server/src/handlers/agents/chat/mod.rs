@@ -7,6 +7,7 @@
 mod agent_route;
 mod busy;
 mod compaction;
+mod computer_use_gate;
 mod constants;
 mod cross_agent_reply;
 mod dev_loop_persist;

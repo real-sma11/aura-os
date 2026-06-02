@@ -14,6 +14,7 @@ use crate::handlers::projects_helpers::{is_project_tool_action, project_tool_max
 use crate::state::{AppState, AuthJwt};
 
 use super::busy::{reject_if_partition_busy, BusyScope};
+use super::computer_use_gate::computer_use_session_fields;
 use super::cross_agent_reply::read_cross_agent_depth;
 use super::persist::{build_chat_partition, ChatPersistRequest};
 use super::runtime_gate::ensure_chat_runtime_allowed;
@@ -279,6 +280,7 @@ pub(crate) async fn send_agent_event_stream(
     )
     .await;
 
+    let (computer_use, computer_executor_url) = computer_use_session_fields();
     let config = SessionConfig {
         agent_id: Some(partition_agent_id),
         template_agent_id: Some(agent_id.to_string()),
@@ -308,6 +310,8 @@ pub(crate) async fn send_agent_event_stream(
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
         council,
+        computer_use,
+        computer_executor_url,
         ..Default::default()
     };
 

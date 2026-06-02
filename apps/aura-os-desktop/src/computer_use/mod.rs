@@ -14,10 +14,13 @@
 //! input; on macOS an Accessibility grant is required. Screenshot payloads are
 //! never logged — only their dimensions.
 
+mod abort_hotkey;
 #[cfg(target_os = "macos")]
 mod accessibility;
 mod input;
 mod screenshot;
+
+pub(crate) use abort_hotkey::spawn_abort_hotkey_listener;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -46,6 +49,9 @@ pub(crate) struct ComputerUseState {
 
 struct ComputerUseInner {
     abort: AtomicBool,
+    /// Latches `true` the first time computer-use synthesizes input, so the
+    /// "now controlling" indicator is announced exactly once per process.
+    controlling_announced: AtomicBool,
     advertised_width: u32,
     advertised_height: u32,
 }
@@ -55,6 +61,7 @@ impl ComputerUseState {
         Self {
             inner: Arc::new(ComputerUseInner {
                 abort: AtomicBool::new(false),
+                controlling_announced: AtomicBool::new(false),
                 advertised_width: ADVERTISED_W,
                 advertised_height: ADVERTISED_H,
             }),
@@ -75,6 +82,28 @@ impl ComputerUseState {
 
     fn set_aborted(&self) {
         self.inner.abort.store(true, Ordering::SeqCst);
+    }
+
+    /// Minimal on-screen-indicator stand-in: emit a single prominent warning
+    /// the first time computer-use actively controls the desktop, so the
+    /// session is never hijacked silently.
+    ///
+    /// A full always-on-top borderless indicator window is a deliberate
+    /// follow-up: `tao` windows must be created on the event-loop thread, but
+    /// this executor runs on `spawn_blocking` worker threads with no access
+    /// to the loop. Cross-thread window creation there is impractical, so the
+    /// real visual indicator is deferred to an event-loop-side change.
+    fn announce_controlling_once(&self) {
+        if !self
+            .inner
+            .controlling_announced
+            .swap(true, Ordering::SeqCst)
+        {
+            warn!(
+                "AURA is now controlling your computer (computer-use active). \
+                 Press Ctrl+Alt+Q to abort."
+            );
+        }
     }
 }
 
@@ -203,6 +232,9 @@ fn dispatch_action(
     let synthesizes_input = !matches!(action, "screenshot" | "wait");
     if synthesizes_input && state.is_aborted() {
         return Err("computer-use is aborted; input is suppressed".to_string());
+    }
+    if synthesizes_input {
+        state.announce_controlling_once();
     }
     match action {
         "screenshot" => Ok(()),
