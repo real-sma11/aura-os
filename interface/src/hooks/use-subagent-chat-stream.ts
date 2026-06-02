@@ -331,6 +331,7 @@ export function useSubagentChatStream(
   parentToolUseId: string | undefined,
   active: boolean,
   subagentSessionId?: string,
+  parentAgentId?: string,
 ): SubagentChatThread {
   const streamKey = childRunId ? subagentStreamKey(childRunId) : PLACEHOLDER_KEY;
   const [status, setStatus] = useState<SubagentAttachStatus>("idle");
@@ -380,7 +381,11 @@ export function useSubagentChatStream(
       setStatus("attaching");
       setErrorMessage(undefined);
       try {
-        const res = await subagentsApi.attach(childRunId, parentToolUseId);
+        const res = await subagentsApi.attach(
+          childRunId,
+          parentToolUseId,
+          parentAgentId,
+        );
         if (cancelled || controller.signal.aborted) return;
         // Attach succeeded — a fresh replay from seq 0 is incoming. We no
         // longer blank the partition first: that made the whole transcript
@@ -428,7 +433,7 @@ export function useSubagentChatStream(
       controller.abort();
       createSetters(streamKey).setIsStreaming(false);
     };
-  }, [active, childRunId, parentToolUseId, streamKey, subagentSessionId]);
+  }, [active, childRunId, parentToolUseId, streamKey, subagentSessionId, parentAgentId]);
 
   const onSend = useCallback(
     (

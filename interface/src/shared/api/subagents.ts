@@ -67,13 +67,21 @@ export const subagentsApi = {
   /**
    * Attach to a spawned child run's live harness stream and mint the
    * resumable `attach_id` the SSE replay/tail endpoint expects.
+   *
+   * `parentAgentId` is the PARENT agent id (the same id the parent chat
+   * stream uses). Threaded through as `?agent_id=` so the server picks
+   * the parent's harness transport — a remote (swarm) parent's council
+   * members / subagents stream over the swarm gateway. Omitting it keeps
+   * the prior behavior: the server defaults to the local harness.
    */
   attach: async (
     childRunId: string,
     parentToolUseId?: string,
+    parentAgentId?: string,
   ): Promise<SubagentAttachResponse> => {
     const params = new URLSearchParams();
     if (parentToolUseId) params.set("parent_tool_use_id", parentToolUseId);
+    if (parentAgentId) params.set("agent_id", parentAgentId);
     const qs = params.toString();
     const raw = await apiFetch<unknown>(
       `/api/streams/subagents/${encodeURIComponent(childRunId)}/attach${

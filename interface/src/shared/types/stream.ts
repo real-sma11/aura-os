@@ -138,6 +138,28 @@ export interface DisplaySessionEvent {
   fromAgentId?: string;
 }
 
+/**
+ * One AURA Council member folded onto the shared council parent
+ * tool-call entry. All members of a council turn arrive as
+ * `subagent_spawned` events sharing ONE synthetic `parent_tool_use_id`
+ * (the grouping key), so they accumulate into {@link
+ * ToolCallEntry.councilMembers} on that single entry rather than each
+ * minting a separate card. The `CouncilPanel` renders one live column
+ * per member, ordered by `councilIndex`, labeled by `model`.
+ */
+export interface CouncilMemberEntry {
+  /** Child run id this member streams over (its `useSubagentChatStream`). */
+  childRunId: string;
+  /** Model id driving the member, used as the column label. */
+  model?: string;
+  /** Zero-based council slot index; orders the columns (slot 0 synthesizes). */
+  councilIndex: number;
+  /** Latest lifecycle state folded in from `subagent_status`. */
+  status?: SubagentState;
+  /** Failure/rejection detail from the latest `subagent_status`. */
+  reason?: string;
+}
+
 export interface ToolCallEntry {
   id: string;
   name: string;
@@ -221,6 +243,14 @@ export interface ToolCallEntry {
    * failed state.
    */
   subagentReason?: string;
+  /**
+   * AURA Council members folded onto this entry when the spawned
+   * subagents carry a `council_index` (all members of a turn share this
+   * entry's `id` as their synthetic `parent_tool_use_id`). Present ⇒ the
+   * block registry renders a {@link CouncilMemberEntry}-driven
+   * `CouncilPanel` (N live columns) instead of a single `SubAgentBlock`.
+   */
+  councilMembers?: CouncilMemberEntry[];
 }
 
 /* ------------------------------------------------------------------ */

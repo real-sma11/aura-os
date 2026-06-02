@@ -1,4 +1,5 @@
 import type {
+  CouncilMemberEntry,
   StreamRefs,
   StreamSetters,
   ToolCallEntry,
@@ -49,9 +50,53 @@ function patchToolCall(
 }
 
 /**
- * Handle a parent-stream `subagent_spawned` event: stamp the spawning
- * `task` tool card (matched by `parent_tool_use_id`) with the child run
- * id + type + prompt so the `SubAgentBlock` can open its live thread.
+ * Upsert one AURA Council member into the shared council parent entry's
+ * `councilMembers`, keyed by `child_run_id` and ordered by
+ * `council_index`. All members of a council turn share the SAME
+ * `parent_tool_use_id`, so each spawn folds onto the one matched entry
+ * rather than clobbering a single scalar `subagentRunId`. An existing
+ * member's folded-in lifecycle `status` / `reason` are preserved across
+ * a re-delivered spawn.
+ */
+function upsertCouncilMember(
+  tc: ToolCallEntry,
+  payload: SubagentSpawned,
+  councilIndex: number,
+): ToolCallEntry {
+  const members = tc.councilMembers ? [...tc.councilMembers] : [];
+  const existingIdx = members.findIndex(
+    (m) => m.childRunId === payload.child_run_id,
+  );
+  const existing = existingIdx >= 0 ? members[existingIdx] : undefined;
+  const member: CouncilMemberEntry = {
+    childRunId: payload.child_run_id,
+    model: payload.model ?? existing?.model,
+    councilIndex,
+    status: existing?.status ?? "running",
+    reason: existing?.reason,
+  };
+  if (existingIdx >= 0) members[existingIdx] = member;
+  else members.push(member);
+  members.sort((a, b) => a.councilIndex - b.councilIndex);
+  return {
+    ...tc,
+    councilMembers: members,
+    subagentType: tc.subagentType ?? payload.subagent_type,
+    subagentPrompt: tc.subagentPrompt ?? payload.prompt,
+  };
+}
+
+/**
+ * Handle a parent-stream `subagent_spawned` event.
+ *
+ * For an AURA Council member (`council_index` set), fold the member into
+ * the shared council parent entry's `councilMembers` array (grouped by
+ * the entry id == `parent_tool_use_id`) so the registry renders ONE
+ * `CouncilPanel` with N live columns.
+ *
+ * For an ordinary `task` spawn, stamp the spawning card (matched by
+ * `parent_tool_use_id`) with the child run id + type + prompt so the
+ * `SubAgentBlock` can open its live thread.
  */
 export function registerSpawnedSubagent(
   refs: StreamRefs,
@@ -60,6 +105,16 @@ export function registerSpawnedSubagent(
 ): void {
   const parentId = payload.parent_tool_use_id;
   if (!parentId) return;
+  const councilIndex = payload.council_index;
+  if (councilIndex != null) {
+    patchToolCall(
+      refs,
+      setters,
+      (tc) => tc.id === parentId,
+      (tc) => upsertCouncilMember(tc, payload, councilIndex),
+    );
+    return;
+  }
   patchToolCall(
     refs,
     setters,
@@ -74,10 +129,16 @@ export function registerSpawnedSubagent(
   );
 }
 
+/** True when this entry carries a council member for the child run. */
+function hasCouncilMember(tc: ToolCallEntry, childRunId: string): boolean {
+  return tc.councilMembers?.some((m) => m.childRunId === childRunId) ?? false;
+}
+
 /**
  * Handle a parent-stream `subagent_status` event: fold the latest
  * lifecycle state (+ optional reason) into the card whose
- * `subagentRunId` matches the child run.
+ * `subagentRunId` matches the child run, OR into the matching AURA
+ * Council member when the child run belongs to a council group.
  */
 export function applySubagentStatus(
   refs: StreamRefs,
@@ -87,11 +148,29 @@ export function applySubagentStatus(
   patchToolCall(
     refs,
     setters,
-    (tc) => tc.subagentRunId === payload.child_run_id,
-    (tc) => ({
-      ...tc,
-      subagentStatus: payload.state,
-      subagentReason: payload.reason ?? tc.subagentReason,
-    }),
+    (tc) =>
+      tc.subagentRunId === payload.child_run_id ||
+      hasCouncilMember(tc, payload.child_run_id),
+    (tc) => {
+      if (hasCouncilMember(tc, payload.child_run_id)) {
+        return {
+          ...tc,
+          councilMembers: tc.councilMembers?.map((m) =>
+            m.childRunId === payload.child_run_id
+              ? {
+                  ...m,
+                  status: payload.state,
+                  reason: payload.reason ?? m.reason,
+                }
+              : m,
+          ),
+        };
+      }
+      return {
+        ...tc,
+        subagentStatus: payload.state,
+        subagentReason: payload.reason ?? tc.subagentReason,
+      };
+    },
   );
 }

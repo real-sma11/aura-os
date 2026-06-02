@@ -11,6 +11,7 @@ import { VideoBlock } from "./renderers/VideoBlock";
 import { StatusReadoutBlock } from "./renderers/StatusReadoutBlock";
 import { GenericToolBlock } from "./renderers/GenericToolBlock";
 import { SubAgentBlock } from "../SubAgentBlock";
+import { CouncilPanel } from "../CouncilPanel";
 
 /**
  * Phase 5 — extra hints the parent feed (`ActivityTimeline`) can hand
@@ -159,6 +160,16 @@ export function renderToolBlock(
   defaultExpanded?: boolean,
   options?: BlockRenderOptions,
 ): ReactNode {
+  // AURA Council grouping: all members of a council turn fold onto ONE
+  // tool-call entry (they share its id as their synthetic
+  // `parent_tool_use_id`), so a single entry carries every member. Render
+  // the whole group as ONE `CouncilPanel` of N live columns instead of a
+  // per-member `SubAgentBlock` — sibling to the `task` -> `SubAgentBlock`
+  // mapping below, but matched on the folded-in members rather than the
+  // tool name.
+  if (entry.councilMembers && entry.councilMembers.length > 0) {
+    return <CouncilPanel entry={entry} defaultExpanded={defaultExpanded} />;
+  }
   const renderer = REGISTRY[entry.name];
   if (renderer) return renderer(entry, defaultExpanded, options);
   return <GenericToolBlock entry={entry} defaultExpanded={defaultExpanded} />;

@@ -1,0 +1,220 @@
+import { type MouseEvent } from "react";
+import { Users } from "lucide-react";
+import { Badge } from "@cypher-asi/zui";
+import type {
+  CouncilMemberEntry,
+  DisplaySessionEvent,
+  ToolCallEntry,
+} from "../../shared/types/stream";
+import type { SubagentState } from "../../shared/types/harness-protocol";
+import {
+  subagentBadgeVariant,
+  subagentStateLabel,
+} from "../../shared/utils/subagent";
+import { SegmentedContent } from "../SegmentedContent";
+import { useChatPanelStreamKey } from "../../features/chat-ui/ChatPanel/chat-panel-context";
+import {
+  useSubAgentPaneActions,
+  type SubAgentPaneDescriptor,
+} from "../../stores/subagent-pane-store";
+import { useSubagentChatStream } from "../../hooks/use-subagent-chat-stream";
+import {
+  useIsStreaming,
+  useStreamEvents,
+  useStreamingText,
+} from "../../hooks/stream/hooks";
+import styles from "./CouncilPanel.module.css";
+
+type OpenPane = ReturnType<typeof useSubAgentPaneActions>["openPane"];
+
+interface CouncilPanelProps {
+  /**
+   * The shared council parent tool-call entry. `entry.id` is the council
+   * grouping key (the synthetic `parent_tool_use_id` every member shares)
+   * and `entry.councilMembers` carries the per-member columns. Rendered
+   * once for the whole group by the block registry.
+   */
+  entry: ToolCallEntry;
+  defaultExpanded?: boolean;
+}
+
+const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
+
+function ordinalLabel(index: number): string {
+  return ORDINALS[index] ?? `${index + 1}th`;
+}
+
+/** Drop a `provider/` prefix so a column reads `claude-…` not `anthropic/claude-…`. */
+function modelLabel(model: string | undefined): string {
+  if (!model || model.trim().length === 0) return "Member";
+  const slash = model.lastIndexOf("/");
+  return slash >= 0 ? model.slice(slash + 1) : model;
+}
+
+/**
+ * Recover the parent agent id from a chat stream key. The chat stream
+ * key is `keyForAgentSession(agentId, sessionId)` == `${agentId}:${sessionId}`
+ * (segments joined by ":"), so the agent id is everything before the LAST
+ * ":". Threaded into each member's attach as `?agent_id=` so a remote
+ * (swarm) parent's council members stream over the matching harness
+ * transport. Returns undefined with no key (server then defaults to
+ * local — the prior behavior for bare local parents).
+ */
+function agentIdFromStreamKey(streamKey: string | undefined): string | undefined {
+  if (!streamKey) return undefined;
+  const sep = streamKey.lastIndexOf(":");
+  return sep > 0 ? streamKey.slice(0, sep) : streamKey;
+}
+
+/** Latest non-empty assistant turn text already committed to the partition. */
+function latestAssistantText(events: DisplaySessionEvent[]): string {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.role === "assistant" && event.content.trim().length > 0) {
+      return event.content;
+    }
+  }
+  return "";
+}
+
+interface CouncilColumnProps {
+  member: CouncilMemberEntry;
+  parentToolUseId: string;
+  parentStreamKey: string | undefined;
+  parentAgentId: string | undefined;
+  prompt: string;
+  openPane: OpenPane;
+}
+
+/**
+ * One live AURA Council member column. Drives the member's child run into
+ * its own `subagent:{childRunId}` partition via `useSubagentChatStream`
+ * (one per column, concurrently) and renders the streaming answer with a
+ * status pill. The header opens the existing single slide-over for a full
+ * promptable chat-within-a-chat with this member.
+ */
+function CouncilColumn({
+  member,
+  parentToolUseId,
+  parentStreamKey,
+  parentAgentId,
+  prompt,
+  openPane,
+}: CouncilColumnProps) {
+  const thread = useSubagentChatStream(
+    member.childRunId,
+    parentToolUseId,
+    true,
+    undefined,
+    parentAgentId,
+  );
+  const events = useStreamEvents(thread.streamKey);
+  const streamingText = useStreamingText(thread.streamKey);
+  const isStreaming = useIsStreaming(thread.streamKey);
+
+  const state: SubagentState = member.status ?? "running";
+  const isSynthesizer = member.councilIndex === 0;
+  const label = modelLabel(member.model);
+  const canOpen = !!parentStreamKey;
+
+  const liveText =
+    streamingText.trim().length > 0
+      ? streamingText
+      : latestAssistantText(events);
+
+  const open = (event: MouseEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+    if (!parentStreamKey) return;
+    const descriptor: SubAgentPaneDescriptor = {
+      childRunId: member.childRunId,
+      parentToolUseId,
+      subagentType: label,
+      prompt,
+      state,
+      reason: member.reason,
+    };
+    openPane(parentStreamKey, descriptor);
+  };
+
+  return (
+    <div className={styles.column} data-council-index={member.councilIndex}>
+      <button
+        type="button"
+        className={styles.columnHead}
+        onClick={open}
+        disabled={!canOpen}
+        aria-label={
+          canOpen
+            ? `Open ${label} council member thread`
+            : `${label} council member thread not available yet`
+        }
+        title={canOpen ? "Open this member's thread" : undefined}
+      >
+        <span className={styles.slot}>
+          {ordinalLabel(member.councilIndex)}
+          {isSynthesizer ? " · synthesizes" : ""}
+        </span>
+        <span className={styles.model}>{label}</span>
+        <Badge
+          variant={subagentBadgeVariant(state)}
+          pulse={state === "running"}
+        >
+          {subagentStateLabel(state)}
+        </Badge>
+      </button>
+      <div className={styles.body}>
+        {liveText.length > 0 ? (
+          <SegmentedContent content={liveText} isStreaming={isStreaming} />
+        ) : (
+          <span className={styles.placeholder}>
+            {member.reason ?? (isStreaming ? "Thinking…" : "Waiting to start…")}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Renders an AURA Council turn: N live member columns (ordered by
+ * `councilIndex`, labeled by `model`) streaming concurrently, each with a
+ * status pill and a click-to-open drill-in. The synthesized combined
+ * answer is the normal parent assistant message, which renders below this
+ * panel. Slot 0 is the synthesizer.
+ */
+export function CouncilPanel({ entry }: CouncilPanelProps) {
+  const members = entry.councilMembers ?? [];
+  const parentStreamKey = useChatPanelStreamKey();
+  const { openPane } = useSubAgentPaneActions();
+  const parentAgentId = agentIdFromStreamKey(parentStreamKey);
+  const prompt = entry.subagentPrompt ?? "";
+
+  const ordered = [...members].sort((a, b) => a.councilIndex - b.councilIndex);
+
+  if (ordered.length === 0) return null;
+
+  return (
+    <div className={styles.panel} data-council-panel="true">
+      <div className={styles.header}>
+        <Users size={12} className={styles.headerIcon} />
+        <span className={styles.title}>AURA Council</span>
+        <span className={styles.subtitle}>
+          {ordered.length} members · slot 0 synthesizes
+        </span>
+      </div>
+      <div className={styles.columns}>
+        {ordered.map((member) => (
+          <CouncilColumn
+            key={member.childRunId}
+            member={member}
+            parentToolUseId={entry.id}
+            parentStreamKey={parentStreamKey}
+            parentAgentId={parentAgentId}
+            prompt={prompt}
+            openPane={openPane}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
