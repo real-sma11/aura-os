@@ -129,10 +129,10 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   const wt = -hh + WINDOW.top * h;
   const wc = 0.1; // consistent 45 corner chamfer
   const wcb = SHELL_CHAMFER_BL; // bottom-left 45 chamfer, matching the outer shell cut
-  const wcbr = 0.11; // bottom-right 45 chamfer
   // Stepped bottom: a deeper left portion and a raised right portion joined by a
   // 45 diagonal. `wbR` is the raised right level, `xStep` where the step sits.
   const stepH = 0.08;
+  const wcbr = stepH; // bottom-right 45 cut, same size + angle as the middle step
   const wbR = wb + stepH;
   const xStep = wl + (wr - wl) * 0.6;
   const p = new THREE.Path();
@@ -165,8 +165,8 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
   const wt = hh;
   const wc = 0.1;
   const wcb = SHELL_CHAMFER_BL;
-  const wcbr = 0.11;
   const stepH = 0.08;
+  const wcbr = stepH; // bottom-right 45 cut, same size + angle as the middle step
   const wbR = wb + stepH;
   const xStep = wl + (wr - wl) * 0.6;
   const s = new THREE.Shape();
