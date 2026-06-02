@@ -162,7 +162,9 @@ export const Lane = forwardRef<HTMLDivElement, LaneProps>(
               resizePosition === "left" ? styles.resizeHandleLeft : styles.resizeHandleRight,
             )}
             onMouseDown={handleMouseDown}
-          />
+          >
+            <div className={styles.resizeHandleLine} />
+          </div>
         )}
 
         <div className={styles.laneInner} style={collapsible ? { minWidth: openWidth } : undefined}>
