@@ -482,6 +482,18 @@ pub struct AppState {
     /// Optional Mixpanel tracker for server-side `session_active` events.
     /// `None` when `MIXPANEL_TOKEN` is not set.
     pub mixpanel: Option<crate::mixpanel::MixpanelTracker>,
+    /// Persistence for external-chat (Telegram) link records. Backed by
+    /// the same [`SettingsStore`] as the rest of the server; used by the
+    /// `/api/agents/:agent_id/channels*` routes to mint pending-link
+    /// codes and list / disconnect durable links.
+    pub channel_service: Arc<aura_os_channels::ChannelService>,
+    /// Resolved Telegram bot `@username`, used by the link handler to
+    /// build `t.me/<username>?start=<code>` deep links. Pre-filled from
+    /// `TELEGRAM_BOT_USERNAME` at boot when set; otherwise populated by
+    /// the bridge task once it resolves the username via `getMe`. Stays
+    /// empty when no Telegram bot is configured, in which case the link
+    /// handler returns a 503.
+    pub telegram_bot_username: Arc<OnceCell<String>>,
 }
 
 impl AppState {

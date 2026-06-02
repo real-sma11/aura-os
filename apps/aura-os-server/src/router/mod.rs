@@ -16,6 +16,7 @@ use crate::state::AppState;
 mod agents;
 mod auth;
 mod bug_reports;
+mod channels;
 mod cors;
 mod debug_loops;
 mod feedback;
@@ -47,6 +48,7 @@ pub(super) const ATTACHMENT_REQUEST_MAX_BYTES: usize = 16 * 1024 * 1024;
 use agents::agent_routes;
 use auth::{auth_routes, protected_auth_routes};
 use bug_reports::bug_reports_routes;
+use channels::channel_routes;
 pub use cors::build_local_api_cors_layer;
 use debug_loops::{debug_routes, loops_routes};
 use feedback::feedback_routes;
@@ -83,6 +85,7 @@ pub fn create_router_with_interface(state: AppState, interface_dir: Option<PathB
         .merge(stream_routes())
         .merge(task_routes())
         .merge(agent_routes())
+        .merge(channel_routes())
         .merge(social_routes())
         .merge(feedback_routes())
         .merge(bug_reports_routes())

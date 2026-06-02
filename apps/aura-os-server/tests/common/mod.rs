@@ -339,6 +339,7 @@ pub fn build_test_app_from_store_with_remote_only(
     let loop_log = Arc::new(aura_os_server::loop_log::LoopLogWriter::new(
         data_dir.join("loop_logs"),
     ));
+    let channel_service = Arc::new(aura_os_channels::ChannelService::new(store.clone()));
     let state = AppState {
         store,
         data_dir,
@@ -395,6 +396,8 @@ pub fn build_test_app_from_store_with_remote_only(
         public_rate_limiter: aura_os_server::PublicRateLimiter::new(),
         public_demo_agent_id: Arc::new(tokio::sync::OnceCell::new()),
         mixpanel: None,
+        channel_service,
+        telegram_bot_username: Arc::new(tokio::sync::OnceCell::new()),
     };
 
     let app = aura_os_server::create_router_with_interface(state.clone(), None);

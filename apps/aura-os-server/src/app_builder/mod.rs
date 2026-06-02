@@ -389,6 +389,63 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         event_broadcast.clone(),
     );
 
+    // External-chat (Telegram) bridge wiring. The link/list/disconnect HTTP
+    // routes share this `ChannelService`; the inbound bridge task (spawned
+    // below, gated on `TELEGRAM_BOT_TOKEN`) reuses the same instance so a
+    // `/start <code>` redemption sees the pending links the routes minted.
+    let channel_service = Arc::new(aura_os_channels::ChannelService::new(store.clone()));
+
+    // Telegram bot `@username` used to build `t.me/<username>?start=<code>`
+    // deep links. Pre-fill from `TELEGRAM_BOT_USERNAME` when set so the link
+    // route works even before the bridge task resolves it via `getMe`;
+    // otherwise the bridge task fills it in on boot.
+    let telegram_bot_username: Arc<OnceCell<String>> = Arc::new(OnceCell::new());
+    if let Some(username) = env_opt("TELEGRAM_BOT_USERNAME") {
+        let _ = telegram_bot_username.set(username);
+    }
+
+    if let Some(token) = env_opt("TELEGRAM_BOT_TOKEN") {
+        let channel_service_for_bridge = channel_service.clone();
+        let validation_cache_for_bridge = validation_cache.clone();
+        let auth_service_for_bridge = core.auth_service.clone();
+        let http_client_for_bridge = http_client.clone();
+        let username_cell = telegram_bot_username.clone();
+        let dispatcher_base_url = aura_os_integrations::control_plane_api_base_url();
+        tokio::spawn(async move {
+            use aura_os_channels::ChatConnector as _;
+            let connector = std::sync::Arc::new(aura_os_channels::TelegramConnector::new(token));
+            // Resolve the bot username if it wasn't pre-filled from env.
+            if username_cell.get().is_none() {
+                match connector.fetch_bot_username().await {
+                    Ok(username) => {
+                        let _ = username_cell.set(username);
+                    }
+                    Err(error) => {
+                        warn!(%error, "failed to resolve Telegram bot username");
+                    }
+                }
+            }
+            let dispatcher = std::sync::Arc::new(crate::channels::ServerMessageDispatcher::new(
+                validation_cache_for_bridge,
+                auth_service_for_bridge,
+                http_client_for_bridge,
+                dispatcher_base_url,
+            ));
+            let runtime = std::sync::Arc::new(aura_os_channels::BridgeRuntime::new(
+                connector.clone(),
+                channel_service_for_bridge,
+                dispatcher,
+                aura_os_channels::ChannelKind::Telegram,
+                "This chat isn't connected to an agent. Open AURA and reconnect to continue."
+                    .to_string(),
+            ));
+            if let Err(error) = connector.run(runtime).await {
+                tracing::error!(%error, "Telegram bridge connector exited");
+            }
+        });
+        info!("Telegram messaging bridge enabled");
+    }
+
     Ok(AppState {
         data_dir,
         store,
@@ -444,6 +501,8 @@ pub fn build_app_state(store_path: &Path) -> Result<AppState, StoreError> {
         mixpanel: crate::mixpanel::MixpanelTracker::new(
             &env_opt("MIXPANEL_TOKEN").unwrap_or_default(),
         ),
+        channel_service,
+        telegram_bot_username,
     })
 }
 
