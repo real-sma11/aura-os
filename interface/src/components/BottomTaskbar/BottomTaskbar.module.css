@@ -13,6 +13,30 @@
   padding: var(--shell-chrome-inset, 5px);
 }
 
+/*
+ * Authed bottom taskbar runs ~33% larger than the default chrome: the
+ * pill height, corner radius, edge inset, icon hit target, and icon
+ * glyphs all scale up together. The chrome tokens are rebound locally on
+ * `.bar` (not at :root) so the top titlebar and side panels keep the
+ * standard chrome size — only the bottom taskbar grows. Public mode is
+ * excluded so its compact pills stay aligned with the top auth pills.
+ */
+.bar:not([data-ui-mode="public"]) {
+  --shell-chrome-height: 43px;
+  --shell-chrome-outer-height: 57px;
+  --shell-chrome-inset: 7px;
+  --shell-chrome-radius: 27px;
+  --taskbar-item-size: 40px;
+}
+
+/* Scale the icon glyphs to match (16 -> ~21). Done in CSS rather than via
+   the shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
+   imports the same constant, is left untouched. */
+.bar:not([data-ui-mode="public"]) button svg {
+  width: 21px;
+  height: 21px;
+}
+
 .left,
 .center,
 .right {
@@ -178,8 +202,8 @@
 .divider {
   flex-shrink: 0;
   width: 1px;
-  height: 16px;
-  margin: 0 2px;
+  height: 21px;
+  margin: 0 3px;
   border-radius: 1px;
   background: color-mix(in srgb, var(--color-border-chrome) 80%, transparent);
 }
