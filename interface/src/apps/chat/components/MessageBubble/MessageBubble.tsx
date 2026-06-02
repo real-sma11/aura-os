@@ -36,6 +36,7 @@ import {
 import { LLMOutput } from "../LLMOutput";
 import { LargeTextBlock, isLargeText } from "./LargeTextBlock";
 import { ReportBugButton } from "../../../../components/ReportBugButton";
+import { MessageActions } from "../MessageActions";
 import { useMarkdownCopy } from "../../../../shared/hooks/use-markdown-copy";
 
 interface Props {
@@ -610,6 +611,9 @@ export const MessageBubble = memo(function MessageBubble({
             />
           )}
         </div>
+      )}
+      {showAssistantCopy && streamKey && (
+        <MessageActions message={message} streamKey={streamKey} />
       )}
     </div>
   );

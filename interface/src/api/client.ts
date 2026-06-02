@@ -29,6 +29,7 @@ export { STANDALONE_AGENT_HISTORY_LIMIT } from "../shared/api/agents";
 
 export type { DirEntry } from "../shared/api/desktop";
 export type { LoopStatusResponse } from "../shared/api/loop";
+export type { SessionShare } from "../shared/api/shares";
 
 import { authApi } from "../shared/api/auth";
 import { projectsApi } from "../shared/api/projects";
@@ -48,6 +49,7 @@ import { notesApi } from "../shared/api/notes";
 import { marketplaceApi } from "./marketplace";
 import { debugApi } from "../shared/api/debug";
 import { streamsApi } from "../shared/api/streams";
+import { sharesApi } from "../shared/api/shares";
 
 export const api = {
   auth: authApi,
@@ -78,4 +80,5 @@ export const api = {
   marketplace: marketplaceApi,
   debug: debugApi,
   streams: streamsApi,
+  shares: sharesApi,
 };

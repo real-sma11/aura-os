@@ -21,6 +21,8 @@ import {
   toQueuedRecord,
   type LegacyOnSend,
 } from "./resolve-send";
+import { findPrecedingUserMessage } from "../../../apps/chat/components/MessageActions/find-preceding-user-message";
+import { registerRegenerateTurn } from "../../../apps/chat/components/MessageActions/regenerate-registry";
 
 // Stable module-level empty defaults. Reusing the same array references on
 // every reset (rather than allocating a fresh `[]`) lets `React.memo` on the
@@ -108,6 +110,14 @@ export function useChatPanelState({
   });
   const isStreaming = useIsStreaming(streamKey);
   const queue = useMessageQueue(streamKey);
+
+  // Ref-mirror the live transcript so `handleRegenerateTurn` can resolve
+  // the prompt preceding any assistant turn without re-creating the
+  // callback (and re-registering it) on every streamed token.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     chatUI.init(streamKey, adapterType, defaultModel, agentId);
@@ -383,6 +393,39 @@ export function useChatPanelState({
       }
     },
     [buildApiAttachments, streamKey],
+  );
+
+  // Per-turn regenerate. Finds the user prompt immediately preceding the
+  // target assistant message and re-sends it through the existing send
+  // path (mirrors `handleRetryLastSend`: stop, then `onSend`) so no
+  // SSE/stream logic is duplicated. Registered in the regenerate
+  // registry keyed by `streamKey` so the `MessageActions` facade hook can
+  // trigger it without prop-drilling through the message list.
+  const handleRegenerateTurn = useCallback((assistantMessageId: string) => {
+    if (sendDisabledRef.current) return;
+    const content = findPrecedingUserMessage(
+      messagesRef.current,
+      assistantMessageId,
+    );
+    if (!content) return;
+    const stop = onStopRef.current;
+    if (stop) stop();
+    onSendRef.current(
+      content,
+      null,
+      selectedModelRef.current,
+      undefined,
+      undefined,
+      selectedProjectIdRef.current,
+      undefined,
+      undefined,
+    );
+    scrollToBottomRef.current();
+  }, []);
+
+  useEffect(
+    () => registerRegenerateTurn(streamKey, handleRegenerateTurn),
+    [streamKey, handleRegenerateTurn],
   );
 
   const prevStreamingRef = useRef(false);
