@@ -10,6 +10,7 @@
 use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
+use serde_json::json;
 use tracing::info;
 
 use aura_os_core::{AgentInstanceId, ProjectId, SessionId};
@@ -50,8 +51,8 @@ pub(crate) struct CreateShareResponse {
 pub(crate) async fn create_session_share(
     State(state): State<AppState>,
     AuthJwt(jwt): AuthJwt,
-    AuthSession(_session): AuthSession,
-    Path((_project_id, _agent_instance_id, session_id)): Path<(
+    AuthSession(session): AuthSession,
+    Path((project_id, agent_instance_id, session_id)): Path<(
         ProjectId,
         AgentInstanceId,
         SessionId,
@@ -74,6 +75,14 @@ pub(crate) async fn create_session_share(
     // existing token so links shared earlier keep resolving.
     if existing.is_public == Some(true) {
         if let Some(token) = existing.public_share_id {
+            track_share_link_generated(
+                &state,
+                &session.user_id,
+                &session_id,
+                &project_id,
+                &agent_instance_id,
+                true,
+            );
             return Ok(Json(build_response(token)));
         }
     }
@@ -94,8 +103,38 @@ pub(crate) async fn create_session_share(
 
     let prefix: String = token.chars().take(TOKEN_LOG_PREFIX_LEN).collect();
     info!(session_id = %sid, token_prefix = %prefix, "Created public session share");
+    track_share_link_generated(
+        &state,
+        &session.user_id,
+        &session_id,
+        &project_id,
+        &agent_instance_id,
+        false,
+    );
 
     Ok(Json(build_response(token)))
+}
+
+fn track_share_link_generated(
+    state: &AppState,
+    owner_user_id: &str,
+    session_id: &SessionId,
+    project_id: &ProjectId,
+    agent_instance_id: &AgentInstanceId,
+    reused: bool,
+) {
+    if let Some(mixpanel) = &state.mixpanel {
+        mixpanel.track_event(
+            "share_link_generated",
+            owner_user_id,
+            json!({
+                "session_id": session_id.to_string(),
+                "project_id": project_id.to_string(),
+                "agent_instance_id": agent_instance_id.to_string(),
+                "reused": reused,
+            }),
+        );
+    }
 }
 
 /// Assemble the `{ shareId, url }` response from a share token.

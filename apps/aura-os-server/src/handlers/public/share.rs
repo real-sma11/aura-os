@@ -73,5 +73,12 @@ pub(crate) async fn get_public_share(
         .unwrap_or_else(|| session.id.clone());
     let project_id = session.project_id.clone().unwrap_or_default();
     let messages = events_to_session_history(&events, &project_agent_id, &project_id);
+    let event_count = session
+        .event_count
+        .or_else(|| u32::try_from(events.len()).ok());
+    if let Some(mixpanel) = &state.mixpanel {
+        mixpanel.track_share_link_opened(&token, &session.id, !messages.is_empty(), event_count);
+    }
+
     Ok(Json(messages))
 }
