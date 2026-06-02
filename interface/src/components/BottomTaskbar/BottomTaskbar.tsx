@@ -32,6 +32,7 @@ import { PublicChatTaskbarButton } from "./PublicChatTaskbarButton";
 import { PoweredByGridButton } from "./PoweredByGridButton";
 import { RotatingTagline } from "./RotatingTagline";
 import { SidebarDrawerToggle } from "../AuraShell/SidebarDrawerToggle";
+import { TaskbarShell } from "../TaskbarShell";
 import styles from "./BottomTaskbar.module.css";
 
 const TASKBAR_CHEVRON_SIZE = TASKBAR_ICON_SIZE + 1;
@@ -212,6 +213,7 @@ function AuthedBottomTaskbar({
   const showSecondaryCluster = !rightCollapsed;
 
   return (
+    <TaskbarShell>
     <div
       className={styles.bar}
       data-agent-surface="desktop-shell-bottom-taskbar"
@@ -336,6 +338,7 @@ function AuthedBottomTaskbar({
       </div>
       {menuElement}
     </div>
+    </TaskbarShell>
   );
 }
 
