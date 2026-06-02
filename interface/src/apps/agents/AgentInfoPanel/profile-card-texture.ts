@@ -6,8 +6,6 @@ export interface DrawProfileCardOptions {
   accent: string;
   /** Decoded avatar image, or null when unavailable / CORS-tainted. */
   avatar: HTMLImageElement | null;
-  /** Landscape layout when the sidekick is widened / split-screen. */
-  horizontal: boolean;
 }
 
 /** Duotone ramp endpoints: cold navy shadows up to a bright cyan highlight. */

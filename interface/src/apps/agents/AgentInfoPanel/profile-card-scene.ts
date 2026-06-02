@@ -6,7 +6,6 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 export interface ProfileCardSceneOptions {
-  horizontal: boolean;
   accent: string;
   reducedMotion: boolean;
 }
@@ -14,10 +13,6 @@ export interface ProfileCardSceneOptions {
 export interface ProfileCardScene {
   /** Offscreen canvas the LCD texture is drawn into by the caller. */
   readonly screenCanvas: HTMLCanvasElement;
-  /** True when the current layout is landscape. */
-  readonly horizontal: boolean;
-  /** Resize the LCD canvas + rebuild card geometry for the orientation. */
-  setOrientation(horizontal: boolean): void;
   setAccent(accent: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
@@ -38,10 +33,8 @@ export function isWebGLAvailable(): boolean {
 }
 
 const PORTRAIT_CANVAS = { w: 700, h: 748 };
-const LANDSCAPE_CANVAS = { w: 980, h: 600 };
 
 const PORTRAIT_SHELL = { w: 2.0, h: 2.5 };
-const LANDSCAPE_SHELL = { w: 2.74, h: 1.7 };
 
 const SHELL_DEPTH = 0.12;
 const SHELL_BEVEL = 0.03;
@@ -59,23 +52,6 @@ const LED_SLOT_DEPTH = 0.05;
 
 /** Inner LCD window box as fractions of the portrait shell (left,right,bottom,top). */
 const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
-
-function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
-  const shape = new THREE.Shape();
-  const x = -w / 2;
-  const y = -h / 2;
-  const radius = Math.min(r, w / 2, h / 2);
-  shape.moveTo(x + radius, y);
-  shape.lineTo(x + w - radius, y);
-  shape.quadraticCurveTo(x + w, y, x + w, y + radius);
-  shape.lineTo(x + w, y + h - radius);
-  shape.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  shape.lineTo(x + radius, y + h);
-  shape.quadraticCurveTo(x, y + h, x, y + h - radius);
-  shape.lineTo(x, y + radius);
-  shape.quadraticCurveTo(x, y, x + radius, y);
-  return shape;
-}
 
 /**
  * Outer silhouette of the AURA card (portrait), traced from the reference art and
@@ -244,6 +220,45 @@ function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTe
   return tex;
 }
 
+/**
+ * Fake barcode: vertical bars of varying widths on a transparent background,
+ * drawn in white so the material `color` + `opacity` can tint it to a subtle,
+ * slightly-lighter-than-metal tone (etched/printed look). The bar pattern is
+ * deterministic so it stays stable across rebuilds.
+ */
+function createBarcodeTexture(): THREE.CanvasTexture {
+  const w = 512;
+  const h = 132;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#ffffff";
+    let seed = 1;
+    const rand = (): number => {
+      const s = Math.sin(seed++ * 12.9898) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    const margin = 10;
+    const top = 8;
+    const barH = h - top * 2;
+    let x = margin;
+    while (x < w - margin) {
+      const barW = 2 + Math.floor(rand() * 6);
+      const gap = 2 + Math.floor(rand() * 5);
+      ctx.globalAlpha = 0.75 + rand() * 0.25;
+      ctx.fillRect(x, top, barW, barH);
+      x += barW + gap;
+    }
+    ctx.globalAlpha = 1;
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 /** Intrinsic aspect ratio (w/h) of the AURA wordmark PNG used as a fallback. */
 const WORDMARK_SRC = "/AURA_logo_text_mark.png";
 const WORDMARK_ASPECT = 3322 / 421;
@@ -252,7 +267,6 @@ export function createProfileCardScene(
   host: HTMLElement,
   options: ProfileCardSceneOptions,
 ): ProfileCardScene {
-  let horizontal = options.horizontal;
   let accent = new THREE.Color(options.accent || "#6366f1");
   const reducedMotion = options.reducedMotion;
 
@@ -355,6 +369,16 @@ export function createProfileCardScene(
     roughness: 0.85,
     envMapIntensity: 0.4,
   });
+  // Fake barcode decal — white bars tinted to a subtle, slightly-lighter-than-
+  // metal blue and kept low-contrast via opacity so it reads as etched/printed.
+  const barcodeTexture = createBarcodeTexture();
+  const barcodeMaterial = new THREE.MeshBasicMaterial({
+    map: barcodeTexture,
+    color: 0x5e7cac,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+  });
   // AURA wordmark decal — the app's actual wordmark PNG, tinted cool white.
   let wordmarkMesh: THREE.Mesh | null = null;
   let wordmarkWidth = 0;
@@ -409,6 +433,7 @@ export function createProfileCardScene(
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
   let bezelMesh: THREE.Mesh | null = null;
+  let barcodeMesh: THREE.Mesh | null = null;
   let screenMesh: THREE.Mesh | null = null;
   let screenLinesMesh: THREE.LineSegments | null = null;
   let screenLinesHaloMesh: THREE.LineSegments | null = null;
@@ -518,6 +543,11 @@ export function createProfileCardScene(
       bezelMesh.geometry.dispose();
       bezelMesh = null;
     }
+    if (barcodeMesh) {
+      group.remove(barcodeMesh);
+      barcodeMesh.geometry.dispose();
+      barcodeMesh = null;
+    }
     if (screenMesh) {
       group.remove(screenMesh);
       screenMesh.geometry.dispose();
@@ -543,11 +573,7 @@ export function createProfileCardScene(
 
   function buildCard(): void {
     disposeBuilt();
-    if (horizontal) {
-      buildLandscape();
-    } else {
-      buildPortrait();
-    }
+    buildPortrait();
   }
 
   /**
@@ -678,79 +704,28 @@ export function createProfileCardScene(
     }
     ledGeo.dispose();
 
-    fitCamera(shell.w, shell.h);
-  }
-
-  function buildLandscape(): void {
-    const shell = LANDSCAPE_SHELL;
-    const canvasSize = LANDSCAPE_CANVAS;
-
-    // Shell geometry: beveled extruded rounded rect = metal card with edges.
-    const shape = roundedRectShape(shell.w, shell.h, Math.min(shell.w, shell.h) * 0.12);
-    const shellGeo = new THREE.ExtrudeGeometry(shape, {
-      depth: SHELL_DEPTH,
-      bevelEnabled: true,
-      bevelThickness: SHELL_BEVEL,
-      bevelSize: SHELL_BEVEL,
-      bevelSegments: 3,
-      curveSegments: 16,
-      steps: 1,
-    });
-    shellGeo.center();
-    shellGeo.computeBoundingBox();
-    const frontZ = shellGeo.boundingBox ? shellGeo.boundingBox.max.z : SHELL_DEPTH / 2;
-    shellMesh = new THREE.Mesh(shellGeo, shellMaterial);
-    group.add(shellMesh);
-
-    // LCD canvas + screen plane (aspect matched to canvas to avoid stretch).
-    screenCanvas.width = canvasSize.w;
-    screenCanvas.height = canvasSize.h;
-    const screenW = shell.w - Math.min(shell.w, shell.h) * 0.1;
-    const screenH = screenW * (canvasSize.h / canvasSize.w);
-    // Dark bezel ring standing proud around the screen so the LCD reads as inset.
-    const bezelDepth = 0.018;
-    const bezelRadius = Math.min(screenW, screenH) * 0.06;
-    // Thin rim straddling the screen edge (~0.007 per side) for a subtle border.
-    const bezelShape = roundedRectShape(screenW + 0.008, screenH + 0.008, bezelRadius);
-    bezelShape.holes.push(roundedRectShape(screenW - 0.006, screenH - 0.006, bezelRadius));
-    const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
-      depth: bezelDepth,
-      bevelEnabled: false,
-      curveSegments: 12,
-      steps: 1,
-    });
-    bezelMesh = new THREE.Mesh(bezelGeo, bezelMaterial);
-    bezelMesh.position.set(0, 0, frontZ);
-    group.add(bezelMesh);
-
-    const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
-    screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    // Recessed below the bezel rim (which sits at frontZ + bezelDepth).
-    screenMesh.position.set(0, 0, frontZ + 0.006);
-    group.add(screenMesh);
-
-    // Scan-line layer floating just in front of the LCD, below the bezel rim.
-    addScreenLines(screenW, screenH, 0, 0, frontZ + 0.012);
-
-    // Glowing accent tabs on the left/right edges.
-    const tabGeo = new THREE.BoxGeometry(0.06, shell.h * 0.16, 0.05);
-    for (const sx of [-1, 1]) {
-      const tab = new THREE.Mesh(tabGeo.clone(), accentMaterial);
-      tab.position.set((sx * shell.w) / 2, 0, frontZ - 0.02);
-      group.add(tab);
-      detailMeshes.push(tab);
-    }
-    tabGeo.dispose();
-
-    // Vent ticks near a top corner for flavor.
-    const tickGeo = new THREE.BoxGeometry(0.018, 0.12, 0.04);
-    for (let i = 0; i < 3; i += 1) {
-      const tick = new THREE.Mesh(tickGeo.clone(), accentMaterial);
-      tick.position.set(shell.w / 2 - 0.18 - i * 0.05, shell.h / 2 - 0.22, frontZ + 0.005);
-      group.add(tick);
-      detailMeshes.push(tick);
-    }
-    tickGeo.dispose();
+    // Fake barcode decal centered in the bottom-right metal area: below the
+    // window's raised right bottom edge and left of the bottom-right window
+    // chamfer / stepped outer edge. Bounds derived from the same window +
+    // silhouette constants so it tracks the geometry.
+    const hwP = shell.w / 2;
+    const hhP = shell.h / 2;
+    const winRight = -hwP + WINDOW.right * shell.w;
+    const winBottom = -hhP + WINDOW.bottom * shell.h;
+    const winBottomRight = winBottom + 0.08; // raised right bottom (matches stepH)
+    const winLeft = -hwP + WINDOW.left * shell.w;
+    const bottomStepX = winLeft + (winRight - winLeft) * 0.6; // window bottom step
+    const outerBottom = -hhP;
+    const areaCx = (bottomStepX + winRight) / 2;
+    const areaCy = (winBottomRight + outerBottom) / 2;
+    const barcodeW = (winRight - bottomStepX) * 0.62;
+    const barcodeH = (winBottomRight - outerBottom) * 0.5;
+    barcodeMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(barcodeW, barcodeH),
+      barcodeMaterial,
+    );
+    barcodeMesh.position.set(areaCx, areaCy, frontZ + 0.003);
+    group.add(barcodeMesh);
 
     fitCamera(shell.w, shell.h);
   }
@@ -874,8 +849,7 @@ export function createProfileCardScene(
     composer.setSize(w, h);
     bloom.resolution.set(w, h);
     camera.aspect = w / h;
-    const shell = horizontal ? LANDSCAPE_SHELL : PORTRAIT_SHELL;
-    fitCamera(shell.w, shell.h);
+    fitCamera(PORTRAIT_SHELL.w, PORTRAIT_SHELL.h);
     if (reducedMotion) renderFrame();
   });
   resizeObserver.observe(host);
@@ -884,15 +858,6 @@ export function createProfileCardScene(
 
   return {
     screenCanvas,
-    get horizontal() {
-      return horizontal;
-    },
-    setOrientation(next: boolean): void {
-      if (next === horizontal) return;
-      horizontal = next;
-      buildCard();
-      if (reducedMotion) renderFrame();
-    },
     setAccent(next: string): void {
       accent = new THREE.Color(next || "#6366f1");
       accentMaterial.color.copy(accent);

@@ -17,7 +17,6 @@ import { Avatar } from "../../../components/Avatar";
 import { FollowEditButton } from "../../../components/FollowEditButton";
 import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
-import { useAppUIStore } from "../../../stores/app-ui-store";
 import { useCardTilt } from "./use-card-tilt";
 import { ProfileCard3D } from "./ProfileCard3D";
 import { isWebGLAvailable } from "./profile-card-scene";
@@ -215,12 +214,9 @@ function ProfileCard({
   isOwnAgent,
 }: Pick<ProfileTabProps, "agent" | "isOwnAgent">) {
   const cardRef = useCardTilt<HTMLDivElement>();
-  const splitScreen = useAppUIStore((s) => s.sidekickSplitScreen);
 
   return (
-    <div
-      className={`${styles.cardContainer}${splitScreen ? ` ${styles.cardContainerHorizontal}` : ""}`}
-    >
+    <div className={styles.cardContainer}>
       <div ref={cardRef} className={styles.card}>
         <span className={styles.cardShine} aria-hidden="true" />
         <div className={styles.cardInner}>
@@ -313,7 +309,6 @@ export function ProfileTab(props: ProfileTabProps) {
   const { agent } = props;
   const [installations, setInstallations] = useState<HarnessSkillInstallation[]>([]);
   const webglOk = useMemo(() => isWebGLAvailable(), []);
-  const splitScreen = useAppUIStore((s) => s.sidekickSplitScreen);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,11 +330,7 @@ export function ProfileTab(props: ProfileTabProps) {
   return (
     <>
       {webglOk ? (
-        <ProfileCard3D
-          agent={agent}
-          isOwnAgent={props.isOwnAgent}
-          splitScreen={splitScreen}
-        />
+        <ProfileCard3D agent={agent} isOwnAgent={props.isOwnAgent} />
       ) : (
         <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
       )}

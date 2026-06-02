@@ -45,13 +45,13 @@
 
 .cardCanvasHost {
   width: 100%;
+  /* Cap the card so it stays the same size in a narrow vs. wide sidekick;
+     extra lane width becomes left/right space while the card stays centered. */
+  max-width: 340px;
+  margin-inline: auto;
   aspect-ratio: 4 / 5;
   /* Let pointer events drive the tilt without scrolling on touch. */
   touch-action: none;
-}
-
-.cardCanvasHostHorizontal {
-  aspect-ratio: 16 / 10;
 }
 
 .card3dActions {
@@ -62,9 +62,6 @@
 /* ── Profile card: floating DOM card fallback (avatar + name + meta) ── */
 
 .cardContainer {
-  /* Establish a containment context so the card can reflow to a horizontal
-     layout based on the sidekick lane width (not the viewport). */
-  container-type: inline-size;
   padding: var(--space-3);
   /* Perspective lives on the container so the inner card tilts in 3D. */
   perspective: 900px;
@@ -75,6 +72,10 @@
   --tilt-y: 0deg;
   --tilt-active: 0;
   position: relative;
+  /* Match the WebGL card: cap width and center so the card looks the same in a
+     narrow vs. wide sidekick, with extra lane width as left/right space. */
+  max-width: 340px;
+  margin-inline: auto;
   border-radius: var(--radius-lg, 18px);
   border: 1px solid color-mix(in srgb, var(--color-accent, #6366f1) 28%, var(--color-border));
   /* Slight top-to-bottom sheen so the plastic surface catches light. */
@@ -242,53 +243,6 @@
 
 .cardBadgeRow {
   display: flex;
-}
-
-/* Horizontal layout when the sidekick lane is widened (manual drag-resize). */
-@container (min-width: 460px) {
-  .cardInner {
-    flex-direction: row;
-    align-items: stretch;
-  }
-
-  .cardMedia {
-    width: 40%;
-    max-width: 220px;
-    aspect-ratio: 1 / 1;
-    align-self: stretch;
-  }
-
-  .cardMediaFallback {
-    aspect-ratio: 1 / 1;
-    min-height: 0;
-  }
-
-  .cardBody {
-    justify-content: center;
-  }
-}
-
-/* Horizontal layout forced by the split-screen shortcut, regardless of the
-   exact lane width (the container query above only covers manual resize). */
-.cardContainerHorizontal .cardInner {
-  flex-direction: row;
-  align-items: stretch;
-}
-
-.cardContainerHorizontal .cardMedia {
-  width: 40%;
-  max-width: 220px;
-  aspect-ratio: 1 / 1;
-  align-self: stretch;
-}
-
-.cardContainerHorizontal .cardMediaFallback {
-  aspect-ratio: 1 / 1;
-  min-height: 0;
-}
-
-.cardContainerHorizontal .cardBody {
-  justify-content: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
