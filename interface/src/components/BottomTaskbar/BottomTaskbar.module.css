@@ -42,21 +42,42 @@
 .right {
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   min-height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
-  background: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  --pill-bg: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  /* Background is a vertical gradient that also carries two precise bevel
+     details: a soft lighter wash at the very top, then a 1px bright WHITE
+     EDGE a few px down (top side only — the rounded mask keeps it off the
+     corners), settling to the base chrome tone and darkening toward the
+     bottom. Carrying the white edge in the gradient (rather than a
+     box-shadow) lets it sit exactly below the inset border shadow. */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, #fff 8%, var(--pill-bg)) 0,
+    color-mix(in srgb, #fff 8%, var(--pill-bg)) 3px,
+    color-mix(in srgb, #fff 30%, var(--pill-bg)) 3px,
+    color-mix(in srgb, #fff 30%, var(--pill-bg)) 4px,
+    color-mix(in srgb, #fff 3%, var(--pill-bg)) 6px,
+    var(--pill-bg) 48%,
+    color-mix(in srgb, #000 18%, var(--pill-bg)) 100%
+  );
   backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
-  border: 1px solid var(--shell-bevel-border, color-mix(in srgb, var(--color-border-chrome) 55%, transparent));
+  /* High-contrast outer border. */
+  border: 1px solid var(--shell-bevel-border, color-mix(in srgb, var(--color-border-chrome) 72%, #000));
   border-radius: var(--shell-chrome-radius, 20px);
   box-sizing: border-box;
-  /* Deep beveled / neumorphic rim: a bright inner lip along the top edge
-     and a dark inner shadow along the bottom make each pill read as
-     extruded chrome, while the outer ambient drop lifts it off the panel
-     behind it. White/black color-mix keeps the effect theme-adaptive. */
+  /* Layered deep bevel, top -> down:
+       1. dark inset shadow hugging the inside of the high-contrast border
+          (the border reads as "inset with a shadow"); the gradient's white
+          edge sits just below this band.
+       2. a crisp 1px outer ring that thickens the high-contrast border.
+       3. a thick outer ambient drop so the pill reads as a chunky extruded
+          slab lifted off the panel behind it.
+       4. a faint outer bottom lift. */
   box-shadow: var(--shell-bevel-shadow,
-    inset 0 1px 0 0 color-mix(in srgb, #fff 9%, transparent),
-    inset 0 -1px 1px 0 color-mix(in srgb, #000 50%, transparent),
-    0 1px 0 0 color-mix(in srgb, #fff 5%, transparent),
-    0 3px 8px -2px color-mix(in srgb, #000 55%, transparent)
+    inset 0 1px 2px 0 color-mix(in srgb, #000 70%, transparent),
+    0 0 0 1px color-mix(in srgb, #000 40%, transparent),
+    0 6px 14px -4px color-mix(in srgb, #000 65%, transparent),
+    0 1px 0 0 color-mix(in srgb, #fff 5%, transparent)
   );
   /* Consistent breathing room at the start/end of every pill so icons
      don't sit flush against the rounded corners. */
@@ -154,19 +175,30 @@
   align-items: center;
   height: var(--public-pill-height, 24px);
   min-height: var(--public-pill-height, 24px);
-  background: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  --pill-bg: var(--shell-chrome-background, color-mix(in srgb, var(--color-bg) 90%, transparent));
+  /* Same deep bevel as the authed pills, toned down for the shorter public
+     pills: lighter top wash + 1px white edge in the gradient, darkening
+     toward the bottom. */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, #fff 8%, var(--pill-bg)) 0,
+    color-mix(in srgb, #fff 8%, var(--pill-bg)) 2px,
+    color-mix(in srgb, #fff 28%, var(--pill-bg)) 2px,
+    color-mix(in srgb, #fff 28%, var(--pill-bg)) 3px,
+    color-mix(in srgb, #fff 3%, var(--pill-bg)) 5px,
+    var(--pill-bg) 50%,
+    color-mix(in srgb, #000 16%, var(--pill-bg)) 100%
+  );
   backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
   -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter, blur(40px) saturate(1.4));
-  border: 1px solid var(--shell-bevel-border, color-mix(in srgb, var(--color-border-chrome) 55%, transparent));
+  border: 1px solid var(--shell-bevel-border, color-mix(in srgb, var(--color-border-chrome) 72%, #000));
   border-radius: var(--shell-chrome-radius, 20px);
   box-sizing: border-box;
-  /* Same deep bevel as the authed pills above, so the public floating
-     pills read as the same extruded chrome. */
   box-shadow: var(--shell-bevel-shadow,
-    inset 0 1px 0 0 color-mix(in srgb, #fff 9%, transparent),
-    inset 0 -1px 1px 0 color-mix(in srgb, #000 50%, transparent),
-    0 1px 0 0 color-mix(in srgb, #fff 5%, transparent),
-    0 3px 8px -2px color-mix(in srgb, #000 55%, transparent)
+    inset 0 1px 2px 0 color-mix(in srgb, #000 65%, transparent),
+    0 0 0 1px color-mix(in srgb, #000 38%, transparent),
+    0 4px 10px -3px color-mix(in srgb, #000 60%, transparent),
+    0 1px 0 0 color-mix(in srgb, #fff 5%, transparent)
   );
   padding: 0 var(--space-2);
 }
