@@ -9,9 +9,13 @@
 //! finalize orchestration that ties the two stages together.
 
 mod capture;
+#[cfg(target_os = "windows")]
+mod capture_wgc;
 mod composite;
 
 pub(crate) use capture::{start_region_recording, ActiveRecording, CaptureRegion};
+#[cfg(target_os = "windows")]
+pub(crate) use capture_wgc::start_window_recording;
 pub(crate) use composite::{composite_and_encode, CompositeArgs};
 
 use std::path::{Path, PathBuf};

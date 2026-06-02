@@ -42,6 +42,14 @@ tempfile = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = ["Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Threading", "Win32_Security"] }
+# Windows Graphics Capture backend for the demo recorder's framed window
+# mode: captures the demo window's composited surface directly (by HWND), so
+# the recording includes GPU-rendered WebView2 content (gdigrab `title=` is
+# all-black for it) and follows the window as it moves/resizes/is occluded —
+# none of which a fixed gdigrab screen region can do. Ships its own
+# Media-Foundation H.264 encoder, replacing a large amount of WinRT +
+# Direct3D + Sink Writer FFI we would otherwise hand-roll.
+windows-capture = "2"
 
 # Embeds an `RT_GROUP_ICON` (and matching version info) into the produced
 # `aura-os-desktop.exe` so the Start Menu, File Explorer, "pin to taskbar"

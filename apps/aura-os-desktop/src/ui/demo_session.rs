@@ -131,12 +131,47 @@ impl LoopState {
         let region = self.prepare_demo_window(window_id, &options);
 
         let ffmpeg = demo::tools::resolve_ffmpeg_binary();
-        match demo::recorder::start_region_recording(
+
+        // On Windows, framed window mode captures the window's own composited
+        // surface via Windows Graphics Capture (by HWND): it records GPU
+        // WebView2 content, follows the window as it moves/resizes, and is
+        // immune to other windows stacked on top — none of which the fixed
+        // gdigrab screen region can do. Full-screen / computer-use mode still
+        // uses the gdigrab monitor region (there the whole desktop, including
+        // apps the agent drives, must be recorded).
+        #[cfg(target_os = "windows")]
+        let start_result = if options.window_on_background {
+            use tao::platform::windows::WindowExtWindows;
+            match self.demo_windows.get(&window_id) {
+                Some(session) => {
+                    let hwnd = session.window.hwnd() as *mut std::ffi::c_void;
+                    demo::recorder::start_window_recording(
+                        hwnd,
+                        &intermediate_path,
+                        demo::RECORDING_FPS,
+                    )
+                    .map(demo::recorder::ActiveRecording::Wgc)
+                }
+                None => Err("demo window missing".to_string()),
+            }
+        } else {
+            demo::recorder::start_region_recording(
+                &ffmpeg,
+                region,
+                &intermediate_path,
+                demo::RECORDING_FPS,
+            )
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let start_result = demo::recorder::start_region_recording(
             &ffmpeg,
             region,
             &intermediate_path,
             demo::RECORDING_FPS,
-        ) {
+        );
+
+        match start_result {
             Ok(recording) => {
                 if let Some(session) = self.demo_windows.get_mut(&window_id) {
                     session.recording = Some(recording);

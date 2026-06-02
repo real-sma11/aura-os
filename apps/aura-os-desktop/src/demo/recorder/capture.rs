@@ -29,9 +29,16 @@ pub(crate) struct CaptureRegion {
     pub(crate) height: u32,
 }
 
-/// A running ffmpeg capture process.
-pub(crate) struct ActiveRecording {
-    child: Child,
+/// A running demo capture, abstracting over the capture backend so the
+/// finalize pipeline can drive either uniformly via [`Self::request_quit`] /
+/// [`Self::wait`].
+pub(crate) enum ActiveRecording {
+    /// gdigrab / x11grab / avfoundation fixed-region capture (`q`-to-stop).
+    Ffmpeg(Child),
+    /// Windows Graphics Capture of the demo window by handle (Windows-only,
+    /// framed window mode). See [`super::capture_wgc`].
+    #[cfg(target_os = "windows")]
+    Wgc(super::capture_wgc::WgcRecording),
 }
 
 /// Start capturing the screen `region` into `output` (an `.mp4`).
@@ -88,7 +95,7 @@ pub(crate) fn start_region_recording(
         fps,
         "started ffmpeg screen recording"
     );
-    Ok(ActiveRecording { child })
+    Ok(ActiveRecording::Ffmpeg(child))
 }
 
 /// Borrowed parameters for [`append_capture_input`] (bundled to respect
@@ -236,35 +243,45 @@ fn append_encode_output(command: &mut Command, output: &Path) {
 }
 
 impl ActiveRecording {
-    /// Ask ffmpeg to quit by writing `q` to its stdin. Fast and
-    /// non-blocking; call this on the event-loop thread *before*
-    /// destroying the captured window so ffmpeg has stopped grabbing it
-    /// by the time the window goes away. Finalize with [`Self::wait`].
+    /// Ask the capture to stop. Fast/non-blocking-enough to call on the
+    /// event-loop thread *before* destroying the captured window so the
+    /// backend has stopped grabbing it by the time the window goes away.
+    /// Finalize with [`Self::wait`].
     pub(crate) fn request_quit(&mut self) {
-        if let Some(mut stdin) = self.child.stdin.take() {
-            let _ = stdin.write_all(b"q");
-            let _ = stdin.flush();
+        match self {
+            ActiveRecording::Ffmpeg(child) => {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(b"q");
+                    let _ = stdin.flush();
+                }
+            }
+            #[cfg(target_os = "windows")]
+            ActiveRecording::Wgc(recording) => recording.request_quit(),
         }
     }
 
-    /// Block until ffmpeg exits (force-killing after a grace period so a
-    /// stuck capture can never leak a process). Run on a background
-    /// thread after [`Self::request_quit`].
-    pub(crate) fn wait(mut self) -> Result<(), String> {
-        for _ in 0..60 {
-            match self.child.try_wait() {
-                Ok(Some(status)) => {
-                    info!(?status, "ffmpeg recording finalized");
-                    return Ok(());
+    /// Block until the capture has fully finalized its output file. Run on a
+    /// background thread after [`Self::request_quit`].
+    pub(crate) fn wait(self) -> Result<(), String> {
+        match self {
+            ActiveRecording::Ffmpeg(mut child) => {
+                for _ in 0..60 {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            info!(?status, "ffmpeg recording finalized");
+                            return Ok(());
+                        }
+                        Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+                        Err(error) => return Err(format!("failed to wait on ffmpeg: {error}")),
+                    }
                 }
-                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-                Err(error) => return Err(format!("failed to wait on ffmpeg: {error}")),
+                warn!("ffmpeg did not exit after quit request; killing the process");
+                let _ = child.kill();
+                let _ = child.wait();
+                Ok(())
             }
+            #[cfg(target_os = "windows")]
+            ActiveRecording::Wgc(recording) => recording.wait(),
         }
-
-        warn!("ffmpeg did not exit after quit request; killing the process");
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        Ok(())
     }
 }
