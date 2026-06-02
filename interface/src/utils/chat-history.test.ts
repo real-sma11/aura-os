@@ -99,6 +99,57 @@ describe("extractToolCalls", () => {
     const result = extractToolCalls(blocks)!;
     expect(result[0].input).toEqual({});
   });
+
+  it("folds persisted AURA Council members into one entry, ordered by council_index", () => {
+    const blocks: ChatContentBlock[] = [
+      {
+        type: "tool_use",
+        id: "council_parent",
+        name: "Task",
+        input: {},
+        prompt: "deliberate",
+        council_members: [
+          { child_run_id: "run-b", council_index: 1, model: "anthropic/claude", subagent_status: "completed" },
+          { child_run_id: "run-a", council_index: 0, model: "openai/gpt", subagent_status: "failed", subagent_reason: "boom" },
+        ],
+      },
+    ];
+    const result = extractToolCalls(blocks)!;
+    expect(result).toHaveLength(1);
+    const members = result[0].councilMembers!;
+    expect(members).toEqual([
+      { childRunId: "run-a", councilIndex: 0, model: "openai/gpt", status: "failed", reason: "boom" },
+      { childRunId: "run-b", councilIndex: 1, model: "anthropic/claude", status: "completed" },
+    ]);
+    // The parent prompt still labels the panel; no single-subagent scalar.
+    expect(result[0].subagentPrompt).toBe("deliberate");
+    expect(result[0].subagentRunId).toBeUndefined();
+  });
+
+  it("ignores an invalid persisted member status (leaves status unset)", () => {
+    const blocks: ChatContentBlock[] = [
+      {
+        type: "tool_use",
+        id: "council_parent",
+        name: "Task",
+        input: {},
+        council_members: [
+          { child_run_id: "run-a", council_index: 0, subagent_status: "bogus" },
+        ],
+      },
+    ];
+    const member = extractToolCalls(blocks)![0].councilMembers![0];
+    expect(member).toEqual({ childRunId: "run-a", councilIndex: 0 });
+  });
+
+  it("leaves non-council tool calls without councilMembers", () => {
+    const blocks: ChatContentBlock[] = [
+      { type: "tool_use", id: "c1", name: "task", input: {}, child_run_id: "run-x", subagent_type: "explore" },
+    ];
+    const result = extractToolCalls(blocks)!;
+    expect(result[0].councilMembers).toBeUndefined();
+    expect(result[0].subagentRunId).toBe("run-x");
+  });
 });
 
 describe("extractArtifactRefs", () => {

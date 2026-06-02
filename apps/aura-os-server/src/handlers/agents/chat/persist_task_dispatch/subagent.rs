@@ -11,10 +11,73 @@
 //! of the persisted history can render the live thread under the
 //! originating tool card.
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::super::persist::ChatPersistCtx;
 use super::super::persist_task::{persist_event, PersistTaskState};
+
+/// Append (or update by `child_run_id`) one AURA Council member on the
+/// shared parent `tool_use` block's `council_members` array, ordered by
+/// `council_index`. All members of a council turn share ONE
+/// `parent_tool_use_id`, so accumulating the full set here — rather than
+/// overwriting a single scalar `child_run_id` / `model` / `council_index`
+/// — is what lets a reloaded turn rebuild the N-column council panel from
+/// `content_blocks` alone. The array round-trips to the client through
+/// the `ChatContentBlock::ToolUse` flattened `extra` map (no
+/// `session_history` change required).
+fn upsert_council_member(
+    block: &mut Value,
+    child_run_id: &str,
+    model: Option<&str>,
+    council_index: u32,
+) {
+    let Some(obj) = block.as_object_mut() else {
+        return;
+    };
+    let members = obj
+        .entry("council_members")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let Some(arr) = members.as_array_mut() else {
+        return;
+    };
+    if let Some(existing) = arr
+        .iter_mut()
+        .find(|m| m.get("child_run_id").and_then(|v| v.as_str()) == Some(child_run_id))
+    {
+        // Re-delivered spawn for the same child run: refresh in place so
+        // we never duplicate a member column.
+        existing["council_index"] = json!(council_index);
+        if let Some(model) = model {
+            existing["model"] = json!(model);
+        }
+    } else {
+        let mut member = serde_json::Map::new();
+        member.insert("child_run_id".to_string(), json!(child_run_id));
+        member.insert("council_index".to_string(), json!(council_index));
+        if let Some(model) = model {
+            member.insert("model".to_string(), json!(model));
+        }
+        arr.push(Value::Object(member));
+    }
+    arr.sort_by(|a, b| {
+        let ia = a.get("council_index").and_then(Value::as_u64).unwrap_or(0);
+        let ib = b.get("council_index").and_then(Value::as_u64).unwrap_or(0);
+        ia.cmp(&ib)
+    });
+}
+
+/// True when the block carries a council member for `child_run_id` in its
+/// `council_members` array.
+fn block_has_council_member(block: &Value, child_run_id: &str) -> bool {
+    block
+        .get("council_members")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .any(|m| m.get("child_run_id").and_then(|v| v.as_str()) == Some(child_run_id))
+        })
+        .unwrap_or(false)
+}
 
 /// Handle a `subagent_spawned` event: stamp `child_run_id` onto the
 /// originating `task` tool_use block (when `parent_tool_use_id` is
@@ -40,20 +103,33 @@ pub(super) async fn handle_subagent_spawned(
             b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                 && b.get("id").and_then(|i| i.as_str()) == Some(parent_id)
         }) {
-            // Stamp the full linkage onto the originating `task` block so
-            // a replay of the persisted history can both re-attach to the
-            // child thread (`child_run_id`) and label the card
-            // (`subagent_type` / `prompt`) without consulting the
-            // separate `subagent_spawned` linkage event.
-            block["child_run_id"] = json!(child_run_id);
-            block["parent_tool_use_id"] = json!(parent_id);
-            block["subagent_type"] = json!(subagent_type);
-            block["prompt"] = json!(prompt);
-            if let Some(model) = model {
-                block["model"] = json!(model);
-            }
-            if let Some(council_index) = council_index {
-                block["council_index"] = json!(council_index);
+            match council_index {
+                // AURA Council member: all members of a council turn share
+                // ONE `parent_tool_use_id`, so accumulate the full ordered
+                // set in a `council_members` array on the parent block
+                // (keyed by `child_run_id`) instead of overwriting a single
+                // scalar. `subagent_type` / `prompt` still label the shared
+                // parent card.
+                Some(council_index) => {
+                    upsert_council_member(block, child_run_id, model, council_index);
+                    block["parent_tool_use_id"] = json!(parent_id);
+                    block["subagent_type"] = json!(subagent_type);
+                    block["prompt"] = json!(prompt);
+                }
+                // Ordinary `task` spawn (unchanged): stamp the single child
+                // linkage onto the originating block so a replay can both
+                // re-attach to the child thread (`child_run_id`) and label
+                // the card (`subagent_type` / `prompt`) without consulting
+                // the separate `subagent_spawned` linkage event.
+                None => {
+                    block["child_run_id"] = json!(child_run_id);
+                    block["parent_tool_use_id"] = json!(parent_id);
+                    block["subagent_type"] = json!(subagent_type);
+                    block["prompt"] = json!(prompt);
+                    if let Some(model) = model {
+                        block["model"] = json!(model);
+                    }
+                }
             }
         }
     }
@@ -92,17 +168,40 @@ pub(super) async fn handle_subagent_status(
     // Fold the latest lifecycle state onto the originating `task` block
     // (located by the `child_run_id` stamped at spawn time) so a history
     // reopen renders the terminal status (completed / failed / rejected)
-    // instead of inferring it from the tool result.
+    // instead of inferring it from the tool result. For an AURA Council
+    // turn the child run lives inside the parent block's
+    // `council_members` array, so fold the status onto the matching
+    // member there instead of the single scalar.
     if let Some(block) = state.content_blocks.iter_mut().rev().find(|b| {
         b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-            && b.get("child_run_id").and_then(|c| c.as_str()) == Some(child_run_id)
+            && (b.get("child_run_id").and_then(|c| c.as_str()) == Some(child_run_id)
+                || block_has_council_member(b, child_run_id))
     }) {
-        block["subagent_status"] = json!(child_state);
-        match reason {
-            Some(reason) => block["subagent_reason"] = json!(reason),
-            None => {
-                if let Some(map) = block.as_object_mut() {
-                    map.remove("subagent_reason");
+        if let Some(member) = block
+            .get_mut("council_members")
+            .and_then(|v| v.as_array_mut())
+            .and_then(|arr| {
+                arr.iter_mut()
+                    .find(|m| m.get("child_run_id").and_then(|v| v.as_str()) == Some(child_run_id))
+            })
+        {
+            member["subagent_status"] = json!(child_state);
+            match reason {
+                Some(reason) => member["subagent_reason"] = json!(reason),
+                None => {
+                    if let Some(map) = member.as_object_mut() {
+                        map.remove("subagent_reason");
+                    }
+                }
+            }
+        } else {
+            block["subagent_status"] = json!(child_state);
+            match reason {
+                Some(reason) => block["subagent_reason"] = json!(reason),
+                None => {
+                    if let Some(map) = block.as_object_mut() {
+                        map.remove("subagent_reason");
+                    }
                 }
             }
         }
@@ -128,7 +227,6 @@ pub(super) async fn handle_subagent_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
 
     fn test_ctx() -> ChatPersistCtx {
         ChatPersistCtx {
@@ -254,10 +352,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn subagent_spawned_stamps_council_model_and_index_on_parent_tool_use_block() {
-        // AURA Council members carry `model` + `council_index`; both must
-        // be stamped onto the originating tool_use block so a reloaded
-        // turn can group the member threads into a council panel.
+    async fn subagent_spawned_appends_ordered_council_members_on_parent_tool_use_block() {
+        // AURA Council members share ONE `parent_tool_use_id`, so each
+        // spawn must APPEND (keyed by child_run_id, ordered by
+        // council_index) into the parent block's `council_members` array
+        // — preserving the full ordered set for a reloaded N-column
+        // council panel — rather than overwriting a single scalar.
         let mut state = PersistTaskState::new();
         state.message_id = "msg-council".to_string();
         state.content_blocks.push(json!({
@@ -268,15 +368,28 @@ mod tests {
         }));
 
         let ctx = test_ctx();
+        // Spawn slot 1 first, then slot 0, to prove the array ends up
+        // ordered by council_index regardless of arrival order.
         handle_subagent_spawned(
             &mut state,
             &ctx,
-            "child-run-council",
+            "child-run-b",
             Some("toolu_council_1"),
             "council-member",
             "deliberate on the answer",
             Some("anthropic/claude"),
-            Some(2),
+            Some(1),
+        )
+        .await;
+        handle_subagent_spawned(
+            &mut state,
+            &ctx,
+            "child-run-a",
+            Some("toolu_council_1"),
+            "council-member",
+            "deliberate on the answer",
+            Some("openai/gpt"),
+            Some(0),
         )
         .await;
 
@@ -285,10 +398,72 @@ mod tests {
             .iter()
             .find(|b| b.get("id").and_then(Value::as_str) == Some("toolu_council_1"))
             .expect("council tool_use block present");
+        let members = block
+            .get("council_members")
+            .and_then(Value::as_array)
+            .expect("council_members array present");
+        assert_eq!(members.len(), 2, "both members accumulate, none overwritten");
         assert_eq!(
-            block.get("model").and_then(Value::as_str),
-            Some("anthropic/claude"),
+            members[0].get("council_index").and_then(Value::as_u64),
+            Some(0),
         );
-        assert_eq!(block.get("council_index").and_then(Value::as_u64), Some(2));
+        assert_eq!(
+            members[0].get("child_run_id").and_then(Value::as_str),
+            Some("child-run-a"),
+        );
+        assert_eq!(
+            members[0].get("model").and_then(Value::as_str),
+            Some("openai/gpt"),
+        );
+        assert_eq!(
+            members[1].get("council_index").and_then(Value::as_u64),
+            Some(1),
+        );
+        assert_eq!(
+            members[1].get("child_run_id").and_then(Value::as_str),
+            Some("child-run-b"),
+        );
+        // Council members must NOT collapse onto the single scalar
+        // `child_run_id` (that's the non-council `task` shape).
+        assert!(block.get("child_run_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn subagent_status_folds_state_onto_matching_council_member() {
+        // A council turn's terminal status must land on the matching entry
+        // inside `council_members` (not the scalar block status) so a
+        // reloaded column shows its persisted state.
+        let mut state = PersistTaskState::new();
+        state.message_id = "msg-council".to_string();
+        state.content_blocks.push(json!({
+            "type": "tool_use",
+            "id": "toolu_council_1",
+            "name": "Task",
+            "input": json!({"prompt": "deliberate"}),
+            "council_members": [
+                {"child_run_id": "child-a", "council_index": 0, "model": "m0"},
+                {"child_run_id": "child-b", "council_index": 1, "model": "m1"},
+            ],
+        }));
+
+        let ctx = test_ctx();
+        handle_subagent_status(&mut state, &ctx, "child-b", "completed", None).await;
+
+        let block = &state.content_blocks[0];
+        let members = block
+            .get("council_members")
+            .and_then(Value::as_array)
+            .expect("council_members array present");
+        assert_eq!(
+            members[0].get("subagent_status").and_then(Value::as_str),
+            None,
+            "non-matching member is untouched",
+        );
+        assert_eq!(
+            members[1].get("subagent_status").and_then(Value::as_str),
+            Some("completed"),
+        );
+        // The scalar block status must not be set for a council update.
+        assert!(block.get("subagent_status").is_none());
     }
 }

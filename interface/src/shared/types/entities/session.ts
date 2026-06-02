@@ -53,6 +53,25 @@ export type ChatContentBlock =
        * fetch and render the child transcript once its live run is gone.
        */
       subagent_session_id?: string;
+      /**
+       * AURA Council members folded onto the shared parent `tool_use`
+       * block by the server (`handle_subagent_spawned`). All members of a
+       * council turn share ONE `parent_tool_use_id`, so the server
+       * accumulates the full ordered set here (keyed by `child_run_id`,
+       * ordered by `council_index`) instead of overwriting a single
+       * scalar. Round-trips through the `ChatContentBlock::ToolUse`
+       * flattened `extra` map. On reload `extractToolCalls` folds this
+       * into `ToolCallEntry.councilMembers[]` so the block registry
+       * rebuilds the N-column `CouncilPanel`. Absent on every non-council
+       * tool call.
+       */
+      council_members?: {
+        child_run_id: string;
+        model?: string;
+        council_index: number;
+        subagent_status?: string;
+        subagent_reason?: string;
+      }[];
     }
   | { type: "tool_result"; tool_use_id: string; content: string;
       is_error?: boolean }
