@@ -100,7 +100,7 @@ export function SidekickTaskbar() {
       // secondary Log/Files tabs ensures Log/Files (not Stats) are the
       // ones that fall into the overflow "More" menu on narrow panels.
       { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
-      { id: "log", icon: <ClipboardClock size={16} />, title: "Log" },
+      { id: "log", icon: <ClipboardClock size={16} />, title: "Logs" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
     ],
     [tasksActive, runActive],

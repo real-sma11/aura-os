@@ -7,7 +7,7 @@ import {
   FolderOpen,
   Check,
   Cpu,
-  ScrollText,
+  ClipboardClock,
   ChartNoAxesColumnIncreasing,
   Database,
   Pencil,
@@ -30,7 +30,7 @@ const TAB_ICONS: TabItem[] = [
   { id: "projects", icon: <FolderOpen size={16} />, title: "Projects" },
   { id: "tasks", icon: <Check size={16} />, title: "Tasks" },
   { id: "processes", icon: <Cpu size={16} />, title: "Processes" },
-  { id: "logs", icon: <ScrollText size={16} />, title: "Logs" },
+  { id: "logs", icon: <ClipboardClock size={16} />, title: "Logs" },
   { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
 ];
 

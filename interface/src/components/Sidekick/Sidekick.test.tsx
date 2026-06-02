@@ -187,7 +187,7 @@ describe("SidekickTaskbar", () => {
       "Run",
       "Tasks",
       "Stats",
-      "Log",
+      "Logs",
       "Files",
       "More actions",
     ]);
