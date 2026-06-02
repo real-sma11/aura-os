@@ -434,9 +434,20 @@ export function useChatHistorySync({
     // cross-tab writes is preserved without the visible flash.
     if (invalidateBeforeFetch && !getIsStreaming(streamKey)) {
       const cachedEntry = useChatHistoryStore.getState().entries[historyKey];
+      // A freshly hover-prefetched, NON-EMPTY `ready` entry is trusted so
+      // the click paints instantly without re-arming the cold-load gate.
+      // An EMPTY `ready` entry is deliberately NOT treated as fresh: it is
+      // almost always a hover prefetch that raced ahead of the server
+      // persisting the transcript (notably a subagent session, whose child
+      // transcript is drained asynchronously after the row appears).
+      // Trusting it strands the panel on the empty state on click even
+      // though a hard refresh then shows the content. Invalidating resets
+      // `fetchedAt` to 0 so the `fetchHistory` below revalidates against
+      // the network instead of short-circuiting on the stale empty cache.
       const isFreshlyCached =
         cachedEntry?.status === "ready" &&
         cachedEntry.fetchedAt > 0 &&
+        cachedEntry.events.length > 0 &&
         Date.now() - cachedEntry.fetchedAt < HISTORY_PREFETCH_FRESH_MS;
       if (!isFreshlyCached) {
         useChatHistoryStore.getState().invalidateHistory(historyKey);

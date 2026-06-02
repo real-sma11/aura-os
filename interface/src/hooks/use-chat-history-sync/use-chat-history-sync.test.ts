@@ -871,6 +871,40 @@ describe("useChatHistorySync", () => {
     expect(mocks.state.invalidateHistory).not.toHaveBeenCalled();
   });
 
+  // Empty-ready cache fix: a hover prefetch that landed an EMPTY `ready`
+  // entry (e.g. a subagent session whose child transcript had not been
+  // persisted yet when the row was hovered) must NOT be trusted on click —
+  // the `fetchHistory` TTL short-circuit would otherwise serve the empty
+  // cache and strand the panel blank until a hard refresh. An empty fresh
+  // entry is invalidated so the follow-up fetch revalidates the network.
+  it("invalidates a freshly-prefetched but EMPTY ready entry", async () => {
+    mocks.getIsStreaming.mockReturnValue(false);
+    mocks.state.entries["agent:agent-1"] = {
+      events: [],
+      status: "ready",
+      fetchedAt: Date.now(),
+      error: null,
+      lastMessageAt: null,
+    };
+    const resetEvents = vi.fn();
+    const fetchFn = vi.fn(async () => []);
+
+    renderHook(() =>
+      useChatHistorySync({
+        historyKey: "agent:agent-1",
+        streamKey: "agent-1",
+        fetchFn,
+        resetEvents,
+        invalidateBeforeFetch: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.state.invalidateHistory).toHaveBeenCalledWith("agent:agent-1");
+    });
+    expect(mocks.state.fetchHistory).toHaveBeenCalled();
+  });
+
   // Regression test for the "user message disappears mid-send" flicker.
   // After the first send on a fresh canvas, `SessionReady` flips the URL
   // to `?session=<id>` which causes the panel's `historyKey` to recompute
