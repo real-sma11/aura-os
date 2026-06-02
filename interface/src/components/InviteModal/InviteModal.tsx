@@ -73,29 +73,31 @@ export function InviteModal({ isOpen, onClose }: Props) {
 
         <div className={styles.codeSection}>
           <div className={styles.codeLabel}>Your invite code</div>
-          {inviteLoading ? (
-            <span className={styles.codeValue}>Loading...</span>
-          ) : inviteCode ? (
-            <div className={styles.codeRow}>
-              <span
-                className={styles.codeClickable}
-                onClick={handleCodeClick}
-                title="Click to copy"
-              >
-                {copied ? "Copied!" : inviteCode}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={copied ? <Check size={14} /> : <Copy size={14} />}
-                iconOnly
-                aria-label="Copy invite code"
-                onClick={handleCodeClick}
-              />
-            </div>
-          ) : (
-            <span className={styles.codeValue}>Unavailable</span>
-          )}
+          <div className={styles.codeDisplay}>
+            {inviteLoading ? (
+              <span className={styles.codeValue}>Loading...</span>
+            ) : inviteCode ? (
+              <div className={styles.codeRow}>
+                <span
+                  className={styles.codeClickable}
+                  onClick={handleCodeClick}
+                  title="Click to copy"
+                >
+                  {copied ? "Copied!" : inviteCode}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={copied ? <Check size={14} /> : <Copy size={14} />}
+                  iconOnly
+                  aria-label="Copy invite code"
+                  onClick={handleCodeClick}
+                />
+              </div>
+            ) : (
+              <span className={styles.codeValue}>Unavailable</span>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
