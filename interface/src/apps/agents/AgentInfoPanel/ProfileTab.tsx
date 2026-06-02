@@ -19,6 +19,8 @@ import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
 import { useAppUIStore } from "../../../stores/app-ui-store";
 import { useCardTilt } from "./use-card-tilt";
+import { ProfileCard3D } from "./ProfileCard3D";
+import { isWebGLAvailable } from "./profile-card-scene";
 import {
   formatAdapterLabel,
   formatAuthSourceLabel,
@@ -310,6 +312,8 @@ function ProfileMetaGrid({ agent }: { agent: Agent }) {
 export function ProfileTab(props: ProfileTabProps) {
   const { agent } = props;
   const [installations, setInstallations] = useState<HarnessSkillInstallation[]>([]);
+  const webglOk = useMemo(() => isWebGLAvailable(), []);
+  const splitScreen = useAppUIStore((s) => s.sidekickSplitScreen);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,7 +334,15 @@ export function ProfileTab(props: ProfileTabProps) {
 
   return (
     <>
-      <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
+      {webglOk ? (
+        <ProfileCard3D
+          agent={agent}
+          isOwnAgent={props.isOwnAgent}
+          splitScreen={splitScreen}
+        />
+      ) : (
+        <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
+      )}
       {agent.personality && (
         <div className={styles.section}>
           <Text size="xs" variant="muted" weight="medium">Personality</Text>

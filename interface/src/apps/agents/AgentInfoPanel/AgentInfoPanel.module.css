@@ -34,7 +34,32 @@
   }
 }
 
-/* ── Profile card: floating 3D card (avatar + name + meta) ── */
+/* ── Profile card: WebGL metal card ── */
+
+.card3dContainer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.cardCanvasHost {
+  width: 100%;
+  aspect-ratio: 5 / 7;
+  /* Let pointer events drive the tilt without scrolling on touch. */
+  touch-action: none;
+}
+
+.cardCanvasHostHorizontal {
+  aspect-ratio: 16 / 10;
+}
+
+.card3dActions {
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Profile card: floating DOM card fallback (avatar + name + meta) ── */
 
 .cardContainer {
   /* Establish a containment context so the card can reflow to a horizontal
