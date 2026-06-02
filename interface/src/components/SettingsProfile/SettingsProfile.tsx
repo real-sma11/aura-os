@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Button, Input, Textarea, Text } from "@cypher-asi/zui";
 import { ImagePlus, X, ExternalLink } from "lucide-react";
 import { ImageCropModal } from "../ImageCropModal";
+import { DeleteAccountConfirmModal } from "./DeleteAccountConfirmModal";
 import { uploadFile } from "../../api/upload";
 import { useProfile, useProfileStore, type UserProfileData } from "../../stores/profile-store";
+import { useAuthStore } from "../../stores/auth-store";
+import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import styles from "../OrgSettingsPanel/OrgSettingsPanel.module.css";
 
 interface Props {
@@ -16,6 +19,11 @@ type TextField = "name" | "bio" | "website" | "location";
 export function SettingsProfile({ onClose }: Props) {
   const navigate = useNavigate();
   const { profile, updateProfile } = useProfile();
+  const { isNativeApp } = useAuraCapabilities();
+  const deleteAccount = useAuthStore((s) => s.deleteAccount);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Ensure bio/website/location are loaded even if the Profile app was
   // never opened (init is idempotent).
@@ -117,6 +125,20 @@ export function SettingsProfile({ onClose }: Props) {
     onClose?.();
     navigate("/profile");
   }, [onClose, navigate]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      // On success the auth store clears the session (user -> null), which
+      // routes the app back to login and unmounts this panel with it — no
+      // manual close/navigate needed here.
+      await deleteAccount();
+    } catch {
+      setDeleteError("Couldn't delete your account. Please try again.");
+      setDeleting(false);
+    }
+  }, [deleteAccount]);
 
   return (
     <>
@@ -259,6 +281,50 @@ export function SettingsProfile({ onClose }: Props) {
           {saving ? "Saving..." : message}
         </Text>
       )}
+
+      {/*
+        Account deletion is required in-app on iOS (App Store Guideline
+        5.1.1(v)). Gated to the native app only — credit purchases are
+        likewise native-gated, and web/desktop users manage their account
+        elsewhere. `isNativeApp` is true only inside the Capacitor shell.
+      */}
+      {isNativeApp && (
+        <>
+          <div className={styles.settingsGroupLabel}>Account</div>
+          <div className={styles.settingsGroup}>
+            <div className={styles.settingsRow}>
+              <div className={styles.rowInfo}>
+                <span className={styles.rowLabel}>Delete account</span>
+                <span className={styles.rowDescription}>
+                  Permanently delete your account and sign out
+                </span>
+              </div>
+              <div className={styles.rowControl}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteOpen(true);
+                  }}
+                >
+                  Delete Account
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <DeleteAccountConfirmModal
+        isOpen={deleteOpen}
+        onClose={() => {
+          if (!deleting) setDeleteOpen(false);
+        }}
+        onConfirm={handleDeleteAccount}
+        deleting={deleting}
+        error={deleteError}
+      />
 
       <ImageCropModal
         isOpen={cropOpen}
