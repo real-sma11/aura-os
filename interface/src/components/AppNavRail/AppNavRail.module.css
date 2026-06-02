@@ -246,9 +246,16 @@
 .taskbarBtn:not(:disabled)[data-selected="true"]::after {
   content: "";
   position: absolute;
+  box-sizing: border-box;
   inset: 4px;
   border-radius: 8px;
   border: 1px solid var(--color-accent);
+  /* Padding opens a gap inside the accent border before the lighter
+     "main container" (the content-box gradient) that hugs the icon. The
+     fill is lighter than the dark outer container so the icon sits on a
+     raised, lighter plate. */
+  padding: 3px;
+  background: linear-gradient(160deg, #2c2c2e, #3c3c40) content-box;
   box-shadow:
     0 0 6px color-mix(in srgb, var(--color-accent) 45%, transparent),
     inset 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
