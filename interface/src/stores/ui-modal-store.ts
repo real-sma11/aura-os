@@ -3,7 +3,7 @@ import { INSUFFICIENT_CREDITS_EVENT } from "../api/client";
 
 interface UIModalState {
   orgSettingsOpen: boolean;
-  orgInitialSection: "billing" | undefined;
+  orgInitialSection: "general" | "billing" | undefined;
   buyCreditsOpen: boolean;
   hostSettingsOpen: boolean;
   appsModalOpen: boolean;
@@ -35,7 +35,7 @@ const CLOSED_MODAL_STATE = {
 export const useUIModalStore = create<UIModalState>()((set) => ({
   ...CLOSED_MODAL_STATE,
 
-  openOrgSettings: () => set({ orgSettingsOpen: true }),
+  openOrgSettings: () => set({ orgSettingsOpen: true, orgInitialSection: "general" }),
   closeOrgSettings: () => set({ orgSettingsOpen: false, orgInitialSection: undefined }),
   openOrgBilling: () => set({ orgSettingsOpen: true, orgInitialSection: "billing" }),
   openBuyCredits: () => set({ buyCreditsOpen: true }),

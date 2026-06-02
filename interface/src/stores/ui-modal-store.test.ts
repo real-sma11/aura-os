@@ -25,6 +25,7 @@ describe("ui-modal-store", () => {
     it("opens org settings", () => {
       useUIModalStore.getState().openOrgSettings();
       expect(useUIModalStore.getState().orgSettingsOpen).toBe(true);
+      expect(useUIModalStore.getState().orgInitialSection).toBe("general");
     });
 
     it("closes org settings and clears initialSection", () => {
