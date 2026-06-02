@@ -882,6 +882,7 @@ export function createProfileCardScene(
       screenMaterial.dispose();
       accentMaterial.dispose();
       bezelMaterial.dispose();
+      barcodeMaterial.dispose();
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
       wordmarkMaterial.dispose();
@@ -889,6 +890,7 @@ export function createProfileCardScene(
       lineHaloMaterial.dispose();
       blueMetalTexture.dispose();
       matteTexture.dispose();
+      barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();
       envRT.texture.dispose();
