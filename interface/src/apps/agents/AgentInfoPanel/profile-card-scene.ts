@@ -37,14 +37,17 @@ export function isWebGLAvailable(): boolean {
   }
 }
 
-const PORTRAIT_CANVAS = { w: 620, h: 868 };
+const PORTRAIT_CANVAS = { w: 700, h: 748 };
 const LANDSCAPE_CANVAS = { w: 980, h: 600 };
 
-const PORTRAIT_SHELL = { w: 1.78, h: 2.46 };
+const PORTRAIT_SHELL = { w: 2.0, h: 2.5 };
 const LANDSCAPE_SHELL = { w: 2.74, h: 1.7 };
 
 const SHELL_DEPTH = 0.12;
 const SHELL_BEVEL = 0.03;
+
+/** Inner LCD window box as fractions of the portrait shell (left,right,bottom,top). */
+const WINDOW = { left: 0.105, right: 0.9, bottom: 0.16, top: 0.84 };
 
 function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
   const shape = new THREE.Shape();
@@ -61,6 +64,116 @@ function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
   shape.lineTo(x, y + radius);
   shape.quadraticCurveTo(x, y, x + radius, y);
   return shape;
+}
+
+/**
+ * Outer silhouette of the AURA card (portrait), traced from the reference art:
+ * rounded top, a chamfered top-right vent corner, a stepped lower-right edge, an
+ * inset LED slot on the left, and a large 45-degree chamfer at the bottom-left.
+ */
+function auraOuterShape(w: number, h: number): THREE.Shape {
+  const hw = w / 2;
+  const hh = h / 2;
+  const X = (f: number) => -hw + f * w;
+  const Y = (f: number) => -hh + f * h;
+  const s = new THREE.Shape();
+  s.moveTo(X(0.05), Y(0.985));
+  s.lineTo(X(0.85), Y(0.985)); // top edge
+  s.lineTo(X(0.99), Y(0.9)); // top-right chamfer
+  s.lineTo(X(0.99), Y(0.45)); // right edge (full width)
+  s.lineTo(X(0.93), Y(0.39)); // step in
+  s.lineTo(X(0.93), Y(0.07)); // lower-right edge
+  s.quadraticCurveTo(X(0.93), Y(0.02), X(0.88), Y(0.02)); // bottom-right corner
+  s.lineTo(X(0.3), Y(0.02)); // bottom edge
+  s.lineTo(X(0.02), Y(0.21)); // bottom-left chamfer
+  s.lineTo(X(0.02), Y(0.45)); // left edge up to slot
+  s.lineTo(X(0.055), Y(0.485)); // LED slot in
+  s.lineTo(X(0.055), Y(0.575));
+  s.lineTo(X(0.02), Y(0.61)); // LED slot out
+  s.lineTo(X(0.02), Y(0.93)); // left edge up
+  s.quadraticCurveTo(X(0.02), Y(0.985), X(0.05), Y(0.985)); // top-left corner
+  return s;
+}
+
+/** Inner screen window cut-out, with a chamfered bottom-left corner. */
+function auraWindowPath(w: number, h: number): THREE.Path {
+  const hw = w / 2;
+  const hh = h / 2;
+  const X = (f: number) => -hw + f * w;
+  const Y = (f: number) => -hh + f * h;
+  const p = new THREE.Path();
+  p.moveTo(X(0.12), Y(WINDOW.top));
+  p.lineTo(X(0.88), Y(WINDOW.top));
+  p.quadraticCurveTo(X(0.9), Y(WINDOW.top), X(0.9), Y(0.82));
+  p.lineTo(X(WINDOW.right), Y(0.18));
+  p.quadraticCurveTo(X(0.9), Y(WINDOW.bottom), X(0.88), Y(WINDOW.bottom));
+  p.lineTo(X(0.3), Y(WINDOW.bottom));
+  p.lineTo(X(0.1), Y(0.3)); // bottom-left chamfer
+  p.lineTo(X(0.1), Y(0.82));
+  p.quadraticCurveTo(X(0.1), Y(WINDOW.top), X(0.12), Y(WINDOW.top));
+  return p;
+}
+
+/** Procedural brushed-metal texture (vertical streaks + speckle) for card layers. */
+function createBrushedMetalTexture(base: string, streak: string): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = streak;
+    for (let i = 0; i < 1400; i += 1) {
+      const x = Math.random() * size;
+      ctx.globalAlpha = Math.random() * 0.06;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + (Math.random() * 36 - 18), size);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 4000; i += 1) {
+      const v = Math.random();
+      ctx.fillStyle = `rgba(255,255,255,${v * 0.03})`;
+      ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** "AURA" wordmark drawn with wide letter spacing onto a transparent texture. */
+function createWordmarkTexture(): THREE.CanvasTexture {
+  const w = 512;
+  const h = 160;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#eaf3ff";
+    ctx.textBaseline = "middle";
+    ctx.font = `300 ${Math.round(h * 0.62)}px "JetBrains Mono", ui-monospace, monospace`;
+    const letters = "AURA".split("");
+    const spacing = h * 0.62;
+    const widths = letters.map((c) => ctx.measureText(c).width);
+    const total =
+      widths.reduce((a, b) => a + b, 0) + spacing * (letters.length - 1);
+    let x = (w - total) / 2;
+    for (let i = 0; i < letters.length; i += 1) {
+      ctx.fillText(letters[i], x, h / 2);
+      x += widths[i] + spacing;
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 export function createProfileCardScene(
@@ -138,7 +251,35 @@ export function createProfileCardScene(
     metalness: 0.2,
   });
 
+  // Layer 1 — blue brushed metal frame (the structural part of the card).
+  const blueMetalTexture = createBrushedMetalTexture("#16263f", "#3f6fae");
+  const blueMetalMaterial = new THREE.MeshStandardMaterial({
+    color: 0x2a4a78,
+    map: blueMetalTexture,
+    roughnessMap: blueMetalTexture,
+    metalness: 0.9,
+    roughness: 0.5,
+    envMapIntensity: 1.25,
+  });
+  // Layer 2 — softer matte black metal underlayer behind the frame.
+  const matteTexture = createBrushedMetalTexture("#0a0c11", "#1b2230");
+  const matteMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0b0e13,
+    map: matteTexture,
+    metalness: 0.55,
+    roughness: 0.88,
+    envMapIntensity: 0.45,
+  });
+  // AURA wordmark decal.
+  const wordmarkTexture = createWordmarkTexture();
+  const wordmarkMaterial = new THREE.MeshBasicMaterial({
+    map: wordmarkTexture,
+    transparent: true,
+    depthWrite: false,
+  });
+
   let shellMesh: THREE.Mesh | null = null;
+  let underlayerMesh: THREE.Mesh | null = null;
   let screenMesh: THREE.Mesh | null = null;
   const detailMeshes: THREE.Mesh[] = [];
 
@@ -147,6 +288,11 @@ export function createProfileCardScene(
       group.remove(shellMesh);
       shellMesh.geometry.dispose();
       shellMesh = null;
+    }
+    if (underlayerMesh) {
+      group.remove(underlayerMesh);
+      underlayerMesh.geometry.dispose();
+      underlayerMesh = null;
     }
     if (screenMesh) {
       group.remove(screenMesh);
@@ -162,8 +308,113 @@ export function createProfileCardScene(
 
   function buildCard(): void {
     disposeBuilt();
-    const shell = horizontal ? LANDSCAPE_SHELL : PORTRAIT_SHELL;
-    const canvasSize = horizontal ? LANDSCAPE_CANVAS : PORTRAIT_CANVAS;
+    if (horizontal) {
+      buildLandscape();
+    } else {
+      buildPortrait();
+    }
+  }
+
+  /**
+   * Portrait card built as three depth-separated layers: a blue brushed-metal
+   * frame (with the screen window cut out), a softer matte-black underlayer that
+   * peeks through the silhouette notches, and the emissive LCD plane.
+   */
+  function buildPortrait(): void {
+    const shell = PORTRAIT_SHELL;
+    const canvasSize = PORTRAIT_CANVAS;
+
+    // Metal frame: silhouette extruded with the screen window as a hole.
+    const outer = auraOuterShape(shell.w, shell.h);
+    outer.holes.push(auraWindowPath(shell.w, shell.h));
+    const frameGeo = new THREE.ExtrudeGeometry(outer, {
+      depth: SHELL_DEPTH,
+      bevelEnabled: true,
+      bevelThickness: SHELL_BEVEL,
+      bevelSize: SHELL_BEVEL,
+      bevelSegments: 3,
+      curveSegments: 16,
+      steps: 1,
+    });
+    frameGeo.center();
+    frameGeo.computeBoundingBox();
+    const frontZ = frameGeo.boundingBox ? frameGeo.boundingBox.max.z : SHELL_DEPTH / 2;
+    shellMesh = new THREE.Mesh(frameGeo, blueMetalMaterial);
+    group.add(shellMesh);
+
+    // Underlayer: full silhouette (no hole), pushed back and scaled slightly so
+    // it shows through the LED slot, the chamfers and behind the LCD window.
+    const underGeo = new THREE.ExtrudeGeometry(auraOuterShape(shell.w, shell.h), {
+      depth: SHELL_DEPTH * 0.8,
+      bevelEnabled: true,
+      bevelThickness: SHELL_BEVEL,
+      bevelSize: SHELL_BEVEL,
+      bevelSegments: 2,
+      curveSegments: 16,
+      steps: 1,
+    });
+    underGeo.center();
+    underlayerMesh = new THREE.Mesh(underGeo, matteMaterial);
+    underlayerMesh.scale.set(1.03, 1.025, 1);
+    underlayerMesh.position.z = -SHELL_DEPTH * 0.55;
+    group.add(underlayerMesh);
+
+    // LCD plane sits inside the window, recessed just behind the metal front so
+    // the frame stands proud and the chamfered hole clips the screen corner.
+    screenCanvas.width = canvasSize.w;
+    screenCanvas.height = canvasSize.h;
+    const screenW = (WINDOW.right - WINDOW.left) * shell.w;
+    const screenH = (WINDOW.top - WINDOW.bottom) * shell.h;
+    const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
+    screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
+    screenMesh.position.z = frontZ - 0.018;
+    group.add(screenMesh);
+
+    // AURA wordmark, top-left on the metal frame.
+    const markW = shell.w * 0.32;
+    const markH = markW * (160 / 512);
+    const markMesh = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
+    markMesh.position.set(
+      -shell.w / 2 + markW * 0.62,
+      shell.h / 2 - markH * 1.1,
+      frontZ + 0.006,
+    );
+    group.add(markMesh);
+    detailMeshes.push(markMesh);
+
+    // Vent slashes, top-right (dark angled inlays).
+    const slashGeo = new THREE.BoxGeometry(0.02, 0.12, 0.03);
+    for (let i = 0; i < 3; i += 1) {
+      const slash = new THREE.Mesh(slashGeo.clone(), matteMaterial);
+      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, shell.h / 2 - 0.16, frontZ + 0.004);
+      slash.rotation.z = 0.5;
+      group.add(slash);
+      detailMeshes.push(slash);
+    }
+    slashGeo.dispose();
+
+    // LED clusters: three on the left slot, three on the bottom-right panel.
+    const ledGeo = new THREE.SphereGeometry(0.024, 16, 16);
+    const ledColumns: Array<{ x: number; cy: number }> = [
+      { x: -shell.w / 2 + shell.w * 0.038, cy: shell.h * 0.03 },
+      { x: shell.w / 2 - shell.w * 0.05, cy: -shell.h * 0.38 },
+    ];
+    for (const col of ledColumns) {
+      for (let i = 0; i < 3; i += 1) {
+        const led = new THREE.Mesh(ledGeo.clone(), accentMaterial);
+        led.position.set(col.x, col.cy + (1 - i) * 0.07, frontZ + 0.008);
+        group.add(led);
+        detailMeshes.push(led);
+      }
+    }
+    ledGeo.dispose();
+
+    fitCamera(shell.w, shell.h);
+  }
+
+  function buildLandscape(): void {
+    const shell = LANDSCAPE_SHELL;
+    const canvasSize = LANDSCAPE_CANVAS;
 
     // Shell geometry: beveled extruded rounded rect = metal card with edges.
     const shape = roundedRectShape(shell.w, shell.h, Math.min(shell.w, shell.h) * 0.12);
@@ -355,6 +606,12 @@ export function createProfileCardScene(
       shellMaterial.dispose();
       screenMaterial.dispose();
       accentMaterial.dispose();
+      blueMetalMaterial.dispose();
+      matteMaterial.dispose();
+      wordmarkMaterial.dispose();
+      blueMetalTexture.dispose();
+      matteTexture.dispose();
+      wordmarkTexture.dispose();
       screenTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();

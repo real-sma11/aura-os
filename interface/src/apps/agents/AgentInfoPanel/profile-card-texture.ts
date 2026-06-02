@@ -208,6 +208,7 @@ function drawScreenChrome(
   h: number,
   accent: string,
   agent: Agent,
+  horizontal: boolean,
 ): void {
   const pad = w * 0.04;
 
@@ -222,7 +223,10 @@ function drawScreenChrome(
   ctx.font = `500 ${Math.round(h * 0.02)}px "JetBrains Mono", ui-monospace, monospace`;
   ctx.fillText(shortId(agent), w - pad, pad + h * 0.02);
 
-  // Corner brackets.
+  // Corner brackets + inner frame only in landscape; in portrait the metal
+  // silhouette already supplies the border, so we keep the LCD clean.
+  if (!horizontal) return;
+
   const b = Math.min(w, h) * 0.05;
   ctx.strokeStyle = accent;
   ctx.globalAlpha = 0.8;
@@ -358,7 +362,7 @@ export function drawProfileCardTexture(
     drawMeta(ctx, items, pad, ny + h * 0.02, w - pad * 2, h * 0.1, 2, accent);
   }
 
-  drawScreenChrome(ctx, w, h, accent, agent);
+  drawScreenChrome(ctx, w, h, accent, agent, horizontal);
   drawScanlines(ctx, w, h);
 }
 

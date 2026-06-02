@@ -45,7 +45,7 @@
 
 .cardCanvasHost {
   width: 100%;
-  aspect-ratio: 5 / 7;
+  aspect-ratio: 4 / 5;
   /* Let pointer events drive the tilt without scrolling on touch. */
   touch-action: none;
 }
