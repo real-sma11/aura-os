@@ -77,7 +77,7 @@
 
 .sidebar:has([data-lane-resize-handle]:hover),
 .sidebar:has([data-lane][data-resizing]) {
-  border-color: var(--color-accent);
+  border-right-color: var(--color-accent);
 }
 
 :global([data-desktop-mode]) .sidebar {

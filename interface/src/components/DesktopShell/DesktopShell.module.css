@@ -183,7 +183,7 @@
 
 .sidekickLane:has([data-lane-resize-handle]:hover),
 .sidekickLane[data-resizing] {
-  border-color: var(--color-accent);
+  border-left-color: var(--color-accent);
 }
 
 /*
