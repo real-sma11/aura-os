@@ -1,0 +1,65 @@
+.supportPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--color-bg);
+}
+
+.supportCard {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.supportWordmark {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.supportHeadline {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 48px);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+
+.supportBody {
+  margin: 0;
+  max-width: 420px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.supportEmail {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px 22px;
+  transition: background 0.15s ease;
+}
+
+.supportEmail:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+}
+
+.supportNote {
+  margin: 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}

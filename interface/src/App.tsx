@@ -55,6 +55,9 @@ const ModelsView = lazy(() =>
 const DownloadView = lazy(() =>
   import("./views/marketing/DownloadView").then((m) => ({ default: m.DownloadView })),
 );
+const SupportView = lazy(() =>
+  import("./views/marketing/SupportView").then((m) => ({ default: m.SupportView })),
+);
 const SharedSessionView = lazy(() =>
   import("./views/public-chat/SharedSessionView").then((m) => ({
     default: m.SharedSessionView,
@@ -341,6 +344,22 @@ function AppRoutes(): React.ReactElement {
         element={
           <Suspense fallback={<RouteFallback />}>
             <IdeView />
+          </Suspense>
+        }
+      />
+      {/*
+        Public support page (App Store Guideline 1.5 Support URL). Mounted as
+        a standalone top-level route — outside `AppShell`/`RequireAuth` and the
+        `!isAuthenticated` marketing gate — so `aura.ai/support` resolves for
+        every visitor, including a reviewer opening it directly while logged
+        out. The Render static site's `/*` -> `/index.html` rewrite serves the
+        SPA for this deep link.
+      */}
+      <Route
+        path="support"
+        element={
+          <Suspense fallback={<RouteFallback />}>
+            <SupportView />
           </Suspense>
         }
       />
