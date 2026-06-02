@@ -123,6 +123,15 @@ fn append_silent_audio_input(command: &mut Command) {
 /// Build the single-pass `filter_complex`: cover-scale the background,
 /// round the window corners, build a blurred drop shadow, then overlay
 /// the shadow and the window centered on the canvas.
+///
+/// CRITICAL: both `overlay`s carry `shortest=1`. The background (a looped
+/// still image or the `gradients` lavfi source) is an *infinite* stream, so
+/// without `shortest=1` the overlay keeps emitting frames forever after the
+/// finite window video ends — the encode never terminates (the top-level
+/// `-shortest` can't help, since no *mapped* output stream is finite). That
+/// hung the finalize thread and left a partial, unplayable MP4. With
+/// `shortest=1` each overlay ends when the (finite) window input ends, so
+/// the output is exactly the recording length.
 fn build_filter_complex() -> String {
     let alpha = rounded_corner_alpha_expr();
     format!(
@@ -132,8 +141,8 @@ crop={CANVAS_WIDTH}:{CANVAS_HEIGHT},setsar=1[bg];\
 format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha}'[win];\
 [win]split=2[wmain][wshadow];\
 [wshadow]colorchannelmixer=rr=0:gg=0:bb=0:aa=0.5,boxblur={SHADOW_BLUR}:1[sh];\
-[bg][sh]overlay=(W-w)/2+{SHADOW_OFFSET_X}:(H-h)/2+{SHADOW_OFFSET_Y}[bgsh];\
-[bgsh][wmain]overlay=(W-w)/2:(H-h)/2,format=yuv420p[outv]"
+[bg][sh]overlay=(W-w)/2+{SHADOW_OFFSET_X}:(H-h)/2+{SHADOW_OFFSET_Y}:shortest=1[bgsh];\
+[bgsh][wmain]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[outv]"
     )
 }
 

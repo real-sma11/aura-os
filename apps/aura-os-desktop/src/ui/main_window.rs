@@ -9,7 +9,8 @@ use wry::{WebContext, WebView, WebViewBuilder};
 
 use crate::events::{UserEvent, WinCmd};
 use crate::ui::chrome::{
-    disable_window_background_erase, expand_top_resize_border, set_square_corners,
+    disable_window_background_erase, disable_window_transitions, expand_top_resize_border,
+    set_square_corners,
 };
 use crate::ui::icon::IconData;
 
@@ -224,6 +225,9 @@ pub(crate) fn open_demo_window<E: 'static>(
     set_square_corners(&window);
     disable_window_background_erase(&window);
     expand_top_resize_border(&window);
+    // The recorder starts gdigrab the moment this window is revealed, so
+    // suppress the OS window-appear animation to keep it out of the clip.
+    disable_window_transitions(&window);
 
     let ipc = make_ipc(window.id());
     let builder = WebViewBuilder::new_with_web_context(web_context)

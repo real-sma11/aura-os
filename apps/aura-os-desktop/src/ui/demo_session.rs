@@ -328,7 +328,22 @@ fn window_capture_region(window: &Window) -> Option<demo::recorder::CaptureRegio
     {
         macos_backing_capture_region(window, position, size)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        // tao's `outer_position`/`outer_size` come from `GetWindowRect`,
+        // which for a borderless-but-resizable window includes the invisible
+        // ~7px resize border on the left/right/bottom. Feeding that to
+        // gdigrab records thin desktop strips around the window. Use the DWM
+        // extended frame bounds (the true *visible* rect) instead, falling
+        // back to the outer rect if the query fails.
+        windows_visible_capture_region(window).or(Some(demo::recorder::CaptureRegion {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        }))
+    }
+    #[cfg(target_os = "linux")]
     {
         Some(demo::recorder::CaptureRegion {
             x: position.x,
@@ -337,6 +352,44 @@ fn window_capture_region(window: &Window) -> Option<demo::recorder::CaptureRegio
             height: size.height,
         })
     }
+}
+
+/// The demo window's *visible* rectangle (excluding the invisible borderless
+/// resize border) from `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`,
+/// as a physical-pixel capture region. `None` if the query fails or returns
+/// an empty rect.
+#[cfg(target_os = "windows")]
+fn windows_visible_capture_region(window: &Window) -> Option<demo::recorder::CaptureRegion> {
+    use tao::platform::windows::WindowExtWindows;
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+
+    let hwnd = HWND(window.hwnd() as _);
+    let mut bounds = RECT::default();
+    // SAFETY: `hwnd` is a live window handle owned by `window`; we pass a
+    // correctly-sized `RECT` out-param matching `DWMWA_EXTENDED_FRAME_BOUNDS`.
+    let hr = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut bounds as *mut _ as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+    };
+    if hr.is_err() {
+        return None;
+    }
+    let width = (bounds.right - bounds.left).max(0);
+    let height = (bounds.bottom - bounds.top).max(0);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    Some(demo::recorder::CaptureRegion {
+        x: bounds.left,
+        y: bounds.top,
+        width: width as u32,
+        height: height as u32,
+    })
 }
 
 /// macOS crop rect for the avfoundation capture, in **backing-store

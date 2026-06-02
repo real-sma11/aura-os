@@ -44,6 +44,37 @@ pub(crate) fn set_square_corners(_window: &tao::window::Window) {
     // Any rounding from the compositor (e.g. Mutter, KWin) cannot be overridden.
 }
 
+/// Disables the Windows open/close/minimize/restore animations for this
+/// window (DWM `DWMWA_TRANSITIONS_FORCEDISABLED`). Used for the demo
+/// recording window: the recorder starts gdigrab the instant the window is
+/// revealed, so without this the first ~200ms of every clip captures the
+/// OS "window appears" zoom-in animation (the window scaling up from ~70%
+/// with the desktop visible around it). Forcing transitions off makes the
+/// window snap to full size immediately, so the capture is clean from
+/// frame one. No-op off Windows.
+pub(crate) fn disable_window_transitions(_window: &tao::window::Window) {
+    #[cfg(target_os = "windows")]
+    {
+        use tao::platform::windows::WindowExtWindows;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED,
+        };
+
+        let hwnd = HWND(_window.hwnd() as *mut std::ffi::c_void);
+        // BOOL TRUE (4 bytes) per the DWMWA_TRANSITIONS_FORCEDISABLED contract.
+        let disable: i32 = 1;
+        let _ = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_TRANSITIONS_FORCEDISABLED,
+                &disable as *const _ as *const _,
+                std::mem::size_of::<i32>() as u32,
+            )
+        };
+    }
+}
+
 /// Sets the main window class background brush to `BLACK_BRUSH` so that
 /// growing the window (right / bottom drag-resize) paints a black bar at
 /// the newly-exposed edge before the WebView2 swap chain catches up with
