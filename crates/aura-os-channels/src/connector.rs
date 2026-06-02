@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::error::ChannelError;
+use crate::inbound::InboundHandler;
 use crate::kind::ChannelKind;
 
 /// A bidirectional bridge between a remote agent and an external chat
@@ -26,9 +27,13 @@ pub trait ChatConnector: Send + Sync {
 
     /// Drive the connector's inbound transport loop until cancellation.
     ///
-    /// Placeholder for a later phase: this is where the long-poll / event
-    /// stream that pulls inbound messages off the platform and forwards
-    /// them to the agent bridge will live. Takes `Arc<Self>` so the loop
-    /// can hand owned clones to spawned tasks.
-    async fn run(self: Arc<Self>) -> Result<(), ChannelError>;
+    /// This is the long-poll / event stream that pulls inbound messages off
+    /// the platform, normalizes them, and forwards each to `handler` via
+    /// [`InboundHandler::on_message`]. Takes `Arc<Self>` so the loop can hand
+    /// owned clones to spawned tasks. Implementations should be resilient to
+    /// transient transport errors and keep polling rather than returning.
+    async fn run(
+        self: Arc<Self>,
+        handler: Arc<dyn InboundHandler>,
+    ) -> Result<(), ChannelError>;
 }

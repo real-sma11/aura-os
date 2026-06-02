@@ -10,9 +10,11 @@ repository.workspace = true
 aura-os-store = { path = "../aura-os-store" }
 async-trait = { workspace = true }
 chrono = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [lints]
