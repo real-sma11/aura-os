@@ -226,7 +226,12 @@ impl HarnessLink for FakeHarness {
             inner.next_session_id += 1;
             let session_id = format!("fake-session-{}", inner.next_session_id);
             let pending_events = std::mem::take(&mut inner.pending_events);
-            (inner.script.clone(), inner.gate.clone(), session_id, pending_events)
+            (
+                inner.script.clone(),
+                inner.gate.clone(),
+                session_id,
+                pending_events,
+            )
         };
 
         let (events_tx, _) = broadcast::channel(DEFAULT_EVENT_CHANNEL_CAPACITY);
@@ -438,8 +443,11 @@ mod tests {
     #[tokio::test]
     async fn open_surfaces_pre_ready_subagent_frames_on_started_session() {
         let fake = FakeHarness::new();
-        fake.set_pending_events(vec![council_spawn("child-0", 0), council_spawn("child-1", 1)])
-            .await;
+        fake.set_pending_events(vec![
+            council_spawn("child-0", 0),
+            council_spawn("child-1", 1),
+        ])
+        .await;
 
         let cfg = SessionConfig {
             agent_id: Some("t::council".into()),

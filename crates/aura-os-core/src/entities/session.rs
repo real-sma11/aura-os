@@ -173,6 +173,21 @@ pub enum ChatContentBlock {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        /// IANA media type of an optional attached image result (e.g.
+        /// `"image/png"`), mirroring the [`ChatContentBlock::Image`]
+        /// `media_type` field. Set by computer-use / vision tools that
+        /// return a rendered frame alongside (or instead of) text.
+        /// Strictly additive: `#[serde(default)]` keeps existing
+        /// persisted tool-result rows deserializing, and the
+        /// skip-if-none pair keeps the stored JSON byte-identical when
+        /// no image is present.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image_media_type: Option<String>,
+        /// Base64-encoded PNG/JPEG payload paired with
+        /// [`Self::ToolResult::image_media_type`]. Never logged. `None`
+        /// for the ordinary string-only tool-result path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image_data: Option<String>,
     },
     TaskRef {
         task_id: String,

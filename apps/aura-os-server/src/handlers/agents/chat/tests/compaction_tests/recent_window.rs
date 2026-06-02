@@ -27,6 +27,8 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
                 tool_use_id: "tool-old".into(),
                 content: big_old.clone(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -56,6 +58,8 @@ fn conversation_history_uses_tight_cap_for_old_tool_results() {
                 tool_use_id: "tool-new".into(),
                 content: big_recent.clone(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );

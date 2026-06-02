@@ -39,6 +39,8 @@ fn conversation_history_renders_tool_only_assistant_turn_to_text() {
                 tool_use_id: "tool-1".into(),
                 content: "spec-123".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -83,6 +85,8 @@ fn conversation_history_preserves_text_plus_tool_turns() {
             tool_use_id: "tool-1".into(),
             content: "spec-123".into(),
             is_error: Some(false),
+            image_media_type: None,
+            image_data: None,
         }]),
     );
 

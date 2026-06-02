@@ -305,6 +305,18 @@ fn apply_tool_result(parts: &mut AssistantParts, content: Option<&serde_json::Va
     let is_error = content
         .and_then(|c| c.get("is_error"))
         .and_then(|v| v.as_bool());
+    // Recover any image payload the harness attached to this
+    // tool-result so an in-flight snapshot reload mid-turn keeps the
+    // screenshot intact (it is persisted as sibling fields by
+    // `handle_tool_result`).
+    let image_media_type = content
+        .and_then(|c| c.get("image_media_type"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let image_data = content
+        .and_then(|c| c.get("image_data"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     // Mirror chat.rs: any tool_use still carrying `Null` input
     // gets normalized to `{}` so replays don't fail validation.
     for block in parts.blocks.iter_mut().rev() {
@@ -319,5 +331,7 @@ fn apply_tool_result(parts: &mut AssistantParts, content: Option<&serde_json::Va
         tool_use_id,
         content: result_text,
         is_error,
+        image_media_type,
+        image_data,
     });
 }

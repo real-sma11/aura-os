@@ -35,16 +35,22 @@ fn agent_history_dedupes_duplicate_tool_results_by_tool_use_id() {
                 tool_use_id: "toolu_dup".into(),
                 content: "spec-1-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_dup".into(),
                 content: "spec-2-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "toolu_dup".into(),
                 content: "spec-3-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -110,16 +116,22 @@ fn agent_history_preserves_distinct_tool_use_ids_in_order() {
                 tool_use_id: "A".into(),
                 content: "a-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "B".into(),
                 content: "b-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             ChatContentBlock::ToolResult {
                 tool_use_id: "C".into(),
                 content: "c-result".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -170,6 +182,8 @@ fn corrupted_session_recovers_across_subsequent_user_sends() {
             tool_use_id: last_id.to_string(),
             content: format!("result-for-{id}-mislabeled-as-{last_id}"),
             is_error: Some(false),
+            image_media_type: None,
+            image_data: None,
         });
     }
     let corrupted_assistant = assistant_event("", Some(corrupted_blocks));
@@ -246,6 +260,8 @@ fn dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace(
                 tool_use_id: "toolu_plan_001".into(),
                 content: "plan accepted".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             ChatContentBlock::ToolUse {
                 id: LIVE_TRACE_TOOL_USE_ID.into(),
@@ -261,6 +277,8 @@ fn dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace(
                 tool_use_id: LIVE_TRACE_TOOL_USE_ID.into(),
                 content: "edit_file: wrote 14 lines to src/lib.rs".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
             // The auto-build verification block the harness emits
             // against the same id — this is the duplicate that 400s
@@ -269,6 +287,8 @@ fn dedupe_collapses_duplicate_tool_results_for_same_tool_use_id_from_live_trace(
                 tool_use_id: LIVE_TRACE_TOOL_USE_ID.into(),
                 content: "[auto-build: cargo check --workspace --tests] ok".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );

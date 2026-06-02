@@ -72,10 +72,14 @@ pub(super) async fn handle_outbound(
             handle_tool_result(
                 state,
                 ctx,
-                result.tool_use_id.as_deref(),
-                &result.name,
-                &result.result,
-                result.is_error,
+                tool::ToolResultInput {
+                    wire_tool_use_id: result.tool_use_id.as_deref(),
+                    name: &result.name,
+                    result: &result.result,
+                    is_error: result.is_error,
+                    image_base64: result.image_base64.as_deref(),
+                    image_media_type: result.image_media_type.as_deref(),
+                },
             )
             .await;
             true

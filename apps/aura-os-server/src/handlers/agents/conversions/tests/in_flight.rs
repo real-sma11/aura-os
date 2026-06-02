@@ -144,6 +144,7 @@ fn events_to_session_history_reconstructs_partial_turn_with_tool_blocks() {
             tool_use_id,
             content,
             is_error,
+            ..
         } => {
             assert_eq!(tool_use_id, "tool-1");
             assert_eq!(content, "spec-123");

@@ -235,6 +235,8 @@ mod tests {
                 tool_use_id: "toolu_write".into(),
                 content: "should not appear".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ];
         let sanitized = sanitize_assistant_content_blocks(blocks);

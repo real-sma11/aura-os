@@ -226,6 +226,12 @@ pub fn automaton_start_params_to_runtime_request(params: &AutomatonStartParams) 
             installed_tools: params.installed_tools.clone().unwrap_or_default(),
             installed_integrations: params.installed_integrations.clone().unwrap_or_default(),
             intent_classifier: params.intent_classifier.clone(),
+            // Computer-use is a chat/demo-session capability only;
+            // dev-loop / single-task automata never drive the real
+            // desktop. TODO: thread these through `AutomatonStartParams`
+            // if a headless automaton ever needs computer-use.
+            computer_use: false,
+            computer_executor_url: None,
         },
         auth_jwt: params.auth_token.clone(),
         user_id: params.user_id.clone().unwrap_or_default(),

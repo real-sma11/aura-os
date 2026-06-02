@@ -42,6 +42,8 @@ fn render_conversation_text_truncates_oversized_tool_result() {
             tool_use_id: "tool-1".into(),
             content: big.clone(),
             is_error: Some(false),
+            image_media_type: None,
+            image_data: None,
         },
     ];
     let referenced: std::collections::HashSet<String> =

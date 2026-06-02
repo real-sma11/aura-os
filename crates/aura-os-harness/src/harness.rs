@@ -78,6 +78,17 @@ pub struct SessionConfig {
     /// `None` (or a single member) keeps the ordinary single-model chat
     /// path unchanged.
     pub council: Option<Vec<CouncilMemberConfig>>,
+    /// Computer-use capability flag forwarded onto
+    /// [`aura_protocol::AgentCapabilities::computer_use`]. When `true`
+    /// the harness exposes the Anthropic computer-use tool so the agent
+    /// can drive the real desktop. Off by default.
+    pub computer_use: bool,
+    /// Base URL of the local desktop computer-use executor, forwarded
+    /// onto [`aura_protocol::AgentCapabilities::computer_executor_url`].
+    /// The aura-os server populates this from the local desktop server
+    /// URL when it builds the [`SessionConfig`] for a computer-use
+    /// session; `None` (the default) leaves forwarding disabled.
+    pub computer_executor_url: Option<String>,
 }
 
 /// Resolved AURA Council member ready to build a wire
@@ -348,6 +359,8 @@ pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
             installed_tools: cfg.installed_tools.clone().unwrap_or_default(),
             installed_integrations: cfg.installed_integrations.clone().unwrap_or_default(),
             intent_classifier: cfg.intent_classifier.clone(),
+            computer_use: cfg.computer_use,
+            computer_executor_url: cfg.computer_executor_url.clone(),
         },
         auth_jwt: cfg.token.clone(),
         user_id: cfg.user_id.clone().unwrap_or_default(),

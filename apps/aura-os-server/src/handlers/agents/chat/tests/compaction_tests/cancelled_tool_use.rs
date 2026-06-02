@@ -45,6 +45,8 @@ fn agent_history_heals_legacy_null_tool_use_input_to_empty_object() {
                 content: "[cancelled by user before tool call completed; no result was produced]"
                     .into(),
                 is_error: Some(true),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -100,6 +102,8 @@ fn agent_history_heals_legacy_string_tool_use_input_to_empty_object() {
                 content: "[cancelled by user before tool call completed; no result was produced]"
                     .into(),
                 is_error: Some(true),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -125,6 +129,8 @@ fn agent_history_heals_legacy_array_tool_use_input_to_empty_object() {
                 tool_use_id: "toolu_array".into(),
                 content: "ok".into(),
                 is_error: Some(false),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );
@@ -196,6 +202,8 @@ fn agent_history_paired_synthetic_cancellation_round_trips_cleanly() {
                 content: "[cancelled by user before tool call completed; no result was produced]"
                     .into(),
                 is_error: Some(true),
+                image_media_type: None,
+                image_data: None,
             },
         ]),
     );

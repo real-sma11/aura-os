@@ -796,7 +796,9 @@ mod tests {
             &pending[0],
             OutboundMessage::SubagentSpawned(s) if s.child_run_id == "child-0" && s.council_index == Some(0)
         ));
-        assert!(matches!(&pending[1], OutboundMessage::SubagentStatus(s) if s.child_run_id == "child-0"));
+        assert!(
+            matches!(&pending[1], OutboundMessage::SubagentStatus(s) if s.child_run_id == "child-0")
+        );
         assert!(matches!(
             &pending[2],
             OutboundMessage::SubagentSpawned(s) if s.child_run_id == "child-1" && s.council_index == Some(1)

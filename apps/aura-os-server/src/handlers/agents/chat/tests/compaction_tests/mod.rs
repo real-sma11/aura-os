@@ -7,6 +7,7 @@ use aura_os_core::{
 mod cancelled_tool_use;
 mod conversation;
 mod dedupe;
+mod image_tool_result;
 mod invariants;
 mod recent_window;
 mod truncate;

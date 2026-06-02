@@ -542,16 +542,60 @@ fn assistant_blocks_to_api(
                 tool_use_id,
                 content,
                 is_error,
+                image_media_type,
+                image_data,
             } => {
-                pending_tool_results.push(serde_json::json!({
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": content,
-                    "is_error": is_error.unwrap_or(false),
-                }));
+                pending_tool_results.push(tool_result_to_api_block(
+                    tool_use_id,
+                    content,
+                    is_error.unwrap_or(false),
+                    image_media_type.as_deref(),
+                    image_data.as_deref(),
+                ));
             }
             _ => {}
         }
     }
     api_blocks
+}
+
+/// Build the Anthropic `tool_result` block for replay.
+///
+/// When the persisted result carries an image (both `image_media_type`
+/// and `image_data` set), the emitted `content` is an ARRAY containing
+/// the text block (when non-empty) plus an `image` block with a base64
+/// `source`, reusing the same image-source shape as the user-image
+/// replay path in [`append_user_event`]. With no image, `content`
+/// stays the plain string so the existing wire shape is unchanged.
+fn tool_result_to_api_block(
+    tool_use_id: &str,
+    content: &str,
+    is_error: bool,
+    image_media_type: Option<&str>,
+    image_data: Option<&str>,
+) -> serde_json::Value {
+    let content_value = match (image_media_type, image_data) {
+        (Some(media_type), Some(data)) if !media_type.is_empty() && !data.is_empty() => {
+            let mut blocks: Vec<serde_json::Value> = Vec::with_capacity(2);
+            if !content.is_empty() {
+                blocks.push(serde_json::json!({ "type": "text", "text": content }));
+            }
+            blocks.push(serde_json::json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": data,
+                }
+            }));
+            serde_json::Value::Array(blocks)
+        }
+        _ => serde_json::Value::String(content.to_string()),
+    };
+    serde_json::json!({
+        "type": "tool_result",
+        "tool_use_id": tool_use_id,
+        "content": content_value,
+        "is_error": is_error,
+    })
 }

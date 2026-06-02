@@ -63,6 +63,8 @@ async fn test_agent_harness_history_strips_dangling_tool_use_block() {
             tool_use_id: matched_id.into(),
             content: "ok".into(),
             is_error: None,
+            image_media_type: None,
+            image_data: None,
         }]),
     ];
 
@@ -104,6 +106,8 @@ async fn conversation_history_strips_dangling_tool_use_block() {
             tool_use_id: matched_id.into(),
             content: "done".into(),
             is_error: None,
+            image_media_type: None,
+            image_data: None,
         }]),
     ];
 

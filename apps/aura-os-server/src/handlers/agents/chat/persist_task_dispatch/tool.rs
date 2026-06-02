@@ -4,7 +4,7 @@
 //! "one result per use" invariant.
 
 use serde_json::{json, Value};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use super::super::persist::ChatPersistCtx;
 use super::super::persist_task::{flush_text_segment, persist_event, PersistTaskState};
@@ -145,15 +145,59 @@ fn update_or_append_tool_use_input(
 /// case we still use `state.last_tool_use_id` — which is correct for the
 /// sequential, one-tool-at-a-time pattern those builds emit — and bail out
 /// only if it too is empty (no preceding `tool_use_start`).
+/// Inbound `tool_result` payload, bundled into one struct so
+/// [`handle_tool_result`] stays within the 5-parameter limit while
+/// carrying the optional image attachment alongside the text result.
+///
+/// `image_base64` + `image_media_type` mirror
+/// [`aura_protocol::ToolResultMsg`]'s optional image fields. Both must
+/// be present for an image to be persisted; either absent leaves the
+/// ordinary string-only path untouched.
+pub(super) struct ToolResultInput<'a> {
+    /// Wire-supplied `tool_use_id` (preferred over
+    /// `state.last_tool_use_id`; see the doc-comment below).
+    pub wire_tool_use_id: Option<&'a str>,
+    pub name: &'a str,
+    pub result: &'a str,
+    pub is_error: bool,
+    /// Base64 PNG/JPEG screenshot payload. Never logged.
+    pub image_base64: Option<&'a str>,
+    /// IANA media type for [`Self::image_base64`] (e.g. `"image/png"`).
+    pub image_media_type: Option<&'a str>,
+}
+
+impl ToolResultInput<'_> {
+    /// The `(media_type, base64)` pair when both image fields are set;
+    /// `None` for the string-only path.
+    fn image(&self) -> Option<(&str, &str)> {
+        match (self.image_media_type, self.image_base64) {
+            (Some(media_type), Some(data)) if !media_type.is_empty() && !data.is_empty() => {
+                Some((media_type, data))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Stamp the persisted image sibling fields (`image_media_type` /
+/// `image_data`) onto a tool_result JSON object when an image is
+/// present. Field names match [`aura_os_core::ChatContentBlock::ToolResult`]
+/// so the block round-trips through storage and the in-flight snapshot
+/// path.
+fn attach_image_fields(target: &mut Value, input: &ToolResultInput<'_>) {
+    if let (Some((media_type, data)), Some(obj)) = (input.image(), target.as_object_mut()) {
+        obj.insert("image_media_type".to_string(), json!(media_type));
+        obj.insert("image_data".to_string(), json!(data));
+    }
+}
+
 pub(super) async fn handle_tool_result(
     state: &mut PersistTaskState,
     ctx: &ChatPersistCtx,
-    wire_tool_use_id: Option<&str>,
-    name: &str,
-    result: &str,
-    is_error: bool,
+    input: ToolResultInput<'_>,
 ) {
-    let tool_use_id = wire_tool_use_id
+    let tool_use_id = input
+        .wire_tool_use_id
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| state.last_tool_use_id.clone());
@@ -167,34 +211,45 @@ pub(super) async fn handle_tool_result(
         warn!(
             session_id = %ctx.session_id,
             project_agent_id = %ctx.project_agent_id,
-            tool_name = name,
+            tool_name = input.name,
             "tool_result arrived without a tool_use_id and no prior tool_use_start; dropping to avoid corrupting replay"
         );
         return;
     }
 
-    normalize_tool_use_input(state, &tool_use_id, name);
+    if let Some((media_type, data)) = input.image() {
+        // Structured logging only — never the base64 payload itself.
+        debug!(
+            session_id = %ctx.session_id,
+            tool_name = input.name,
+            tool_use_id = %tool_use_id,
+            image_media_type = media_type,
+            image_b64_len = data.len(),
+            "persisting image tool-result"
+        );
+    }
 
-    state.content_blocks.push(json!({
+    normalize_tool_use_input(state, &tool_use_id, input.name);
+
+    let mut content_block = json!({
         "type": "tool_result",
         "tool_use_id": &tool_use_id,
-        "content": result,
-        "is_error": is_error,
-    }));
-    if persist_event(
-        ctx,
-        "tool_result",
-        json!({
-            "message_id": &state.message_id,
-            "tool_use_id": &tool_use_id,
-            "name": name,
-            "result": result,
-            "is_error": is_error,
-            "seq": state.seq,
-        }),
-    )
-    .await
-    {
+        "content": input.result,
+        "is_error": input.is_error,
+    });
+    attach_image_fields(&mut content_block, &input);
+    state.content_blocks.push(content_block);
+
+    let mut event_payload = json!({
+        "message_id": &state.message_id,
+        "tool_use_id": &tool_use_id,
+        "name": input.name,
+        "result": input.result,
+        "is_error": input.is_error,
+        "seq": state.seq,
+    });
+    attach_image_fields(&mut event_payload, &input);
+    if persist_event(ctx, "tool_result", event_payload).await {
         state.persisted_events += 1;
     }
 }
@@ -261,10 +316,14 @@ mod tests {
             handle_tool_result(
                 &mut state,
                 &ctx,
-                Some(id),
-                "create_spec",
-                "spec-id-result",
-                false,
+                ToolResultInput {
+                    wire_tool_use_id: Some(id),
+                    name: "create_spec",
+                    result: "spec-id-result",
+                    is_error: false,
+                    image_base64: None,
+                    image_media_type: None,
+                },
             )
             .await;
         }
@@ -316,11 +375,111 @@ mod tests {
             from_agent_id: None,
         };
 
-        handle_tool_result(&mut state, &ctx, None, "read_file", "ok", false).await;
+        handle_tool_result(
+            &mut state,
+            &ctx,
+            ToolResultInput {
+                wire_tool_use_id: None,
+                name: "read_file",
+                result: "ok",
+                is_error: false,
+                image_base64: None,
+                image_media_type: None,
+            },
+        )
+        .await;
 
         let last = state.content_blocks.last().expect("tool_result appended");
         assert_eq!(last["type"], "tool_result");
         assert_eq!(last["tool_use_id"], "tu_legacy");
+    }
+
+    #[tokio::test]
+    async fn handle_tool_result_persists_image_sibling_fields() {
+        // A computer-use screenshot result must persist the image as
+        // sibling `image_media_type` / `image_data` fields on the
+        // tool_result content block so it survives reload, while the
+        // string-only `content` stays intact.
+        let mut state = state_with_pending_tool_use("tu_shot", "computer", Value::Null);
+        state.message_id = "msg-image".to_string();
+        let ctx = ChatPersistCtx {
+            storage: std::sync::Arc::new(aura_os_storage::StorageClient::with_base_url(
+                "http://127.0.0.1:1",
+            )),
+            session_id: aura_os_core::SessionId::new(),
+            project_id: "project-test".to_string(),
+            project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+            agent_id: None,
+            originating_agent_id: None,
+            cross_agent_depth: 0,
+            jwt: "jwt".to_string(),
+            from_agent_id: None,
+        };
+
+        handle_tool_result(
+            &mut state,
+            &ctx,
+            ToolResultInput {
+                wire_tool_use_id: Some("tu_shot"),
+                name: "computer",
+                result: "screenshot taken",
+                is_error: false,
+                image_base64: Some("aGVsbG8="),
+                image_media_type: Some("image/png"),
+            },
+        )
+        .await;
+
+        let block = state.content_blocks.last().expect("tool_result appended");
+        assert_eq!(block["type"], "tool_result");
+        assert_eq!(block["content"], "screenshot taken");
+        assert_eq!(block["image_media_type"], "image/png");
+        assert_eq!(block["image_data"], "aGVsbG8=");
+    }
+
+    #[tokio::test]
+    async fn handle_tool_result_omits_image_fields_when_absent() {
+        // The string-only path must not stamp any image keys onto the
+        // persisted block.
+        let mut state = state_with_pending_tool_use("tu_plain", "read_file", Value::Null);
+        state.message_id = "msg-plain".to_string();
+        let ctx = ChatPersistCtx {
+            storage: std::sync::Arc::new(aura_os_storage::StorageClient::with_base_url(
+                "http://127.0.0.1:1",
+            )),
+            session_id: aura_os_core::SessionId::new(),
+            project_id: "project-test".to_string(),
+            project_agent_id: "00000000-0000-0000-0000-000000000aaa".to_string(),
+            agent_id: None,
+            originating_agent_id: None,
+            cross_agent_depth: 0,
+            jwt: "jwt".to_string(),
+            from_agent_id: None,
+        };
+
+        handle_tool_result(
+            &mut state,
+            &ctx,
+            ToolResultInput {
+                wire_tool_use_id: Some("tu_plain"),
+                name: "read_file",
+                result: "ok",
+                is_error: false,
+                image_base64: None,
+                image_media_type: None,
+            },
+        )
+        .await;
+
+        let block = state.content_blocks.last().expect("tool_result appended");
+        assert!(
+            block.get("image_media_type").is_none(),
+            "string-only result must not carry an image_media_type key"
+        );
+        assert!(
+            block.get("image_data").is_none(),
+            "string-only result must not carry an image_data key"
+        );
     }
 
     #[tokio::test]
@@ -346,7 +505,19 @@ mod tests {
             from_agent_id: None,
         };
 
-        handle_tool_result(&mut state, &ctx, None, "ghost_tool", "ok", false).await;
+        handle_tool_result(
+            &mut state,
+            &ctx,
+            ToolResultInput {
+                wire_tool_use_id: None,
+                name: "ghost_tool",
+                result: "ok",
+                is_error: false,
+                image_base64: None,
+                image_media_type: None,
+            },
+        )
+        .await;
 
         assert!(
             state.content_blocks.is_empty(),
