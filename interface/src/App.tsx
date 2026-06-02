@@ -484,6 +484,22 @@ function AppRoutes(): React.ReactElement {
               />
             </Route>
             {/*
+              Parallel authenticated Download route. Reuses the SAME
+              `DownloadView` as the logged-out marketing route so
+              `aura.ai/download` resolves once signed in (the link is
+              opened in a new tab from Help > Downloads). Mounted OUTSIDE
+              `SimpleModeChatRedirectLayout` so a Simple-mode user is not
+              bounced to `/chat` before reaching the page.
+            */}
+            <Route
+              path="download"
+              element={
+                <Suspense fallback={null}>
+                  <DownloadView />
+                </Suspense>
+              }
+            />
+            {/*
               Parallel authenticated share route. Reuses the SAME
               `SharedSessionView` but renders inside the normal authed
               `AuraShell` (the public chrome is irrelevant once signed
