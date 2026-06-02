@@ -134,10 +134,18 @@ pub(crate) fn new_recording_id() -> String {
     format!("demo-{nanos}")
 }
 
-/// Absolute path the recording for `id` is written to under the data
-/// directory's `recordings/` folder.
+/// Absolute path the final (framed, X-ready) recording for `id` is
+/// written to under the data directory's `recordings/` folder.
 pub(crate) fn recording_output_path(data_dir: &Path, id: &str) -> PathBuf {
     data_dir.join("recordings").join(format!("{id}.mp4"))
+}
+
+/// Absolute path of the stage-1 window-only capture: the intermediate
+/// `recordings/{id}.window.mp4` that the stage-2 composite reads to
+/// produce [`recording_output_path`]. Kept distinct so the registry's
+/// advertised `output_path` (the final clip) is unchanged.
+pub(crate) fn intermediate_output_path(data_dir: &Path, id: &str) -> PathBuf {
+    data_dir.join("recordings").join(format!("{id}.window.mp4"))
 }
 
 /// Clamp a caller-supplied max-duration into the supported range.

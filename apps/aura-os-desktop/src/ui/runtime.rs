@@ -36,7 +36,10 @@ pub(crate) struct DemoSession {
     pub(crate) recording_id: String,
     pub(crate) instruction: String,
     pub(crate) max_seconds: u64,
+    /// Final framed, X-ready clip the user receives.
     pub(crate) output_path: PathBuf,
+    /// Stage-1 window-only capture the composite reads from.
+    pub(crate) intermediate_path: PathBuf,
     pub(crate) window: tao::window::Window,
     pub(crate) webview: wry::WebView,
     pub(crate) recording: Option<ActiveRecording>,
@@ -60,6 +63,13 @@ pub(crate) type SharedWebContext = WebContext;
 /// stall, etc.), in which case showing a blank window is the desired
 /// behavior so the user isn't staring at an invisible process.
 const WINDOW_SHOW_FALLBACK_DELAY: Duration = Duration::from_secs(15);
+
+/// Fixed logical size of the demo window. The window is centered on the
+/// current monitor and its outer rect is captured (rather than the whole
+/// monitor) so stage-2 can frame just the app on a background. Kept below
+/// the canvas size to avoid upscaling the capture.
+const DEMO_WINDOW_LOGICAL_WIDTH: f64 = 1600.0;
+const DEMO_WINDOW_LOGICAL_HEIGHT: f64 = 1000.0;
 
 /// Inputs the event-loop closure inherits once and never mutates after
 /// startup — everything in [`LoopState::handle_*`] reads but does not
@@ -171,7 +181,9 @@ impl LoopState {
         let url = self.frontend_base_url.clone();
         let icon = self.ctx.icon_data.to_icon();
         let proxy_clone = self.ctx.proxy.clone();
-        let output_path = demo::recording_output_path(&self.data_dir(), &recording_id);
+        let data_dir = self.data_dir();
+        let output_path = demo::recording_output_path(&data_dir, &recording_id);
+        let intermediate_path = demo::intermediate_output_path(&data_dir, &recording_id);
 
         match open_demo_window(
             elwt,
@@ -180,7 +192,7 @@ impl LoopState {
             &init_script,
             Some(icon),
             demo::DEMO_WINDOW_TITLE,
-            (1280.0, 800.0),
+            (DEMO_WINDOW_LOGICAL_WIDTH, DEMO_WINDOW_LOGICAL_HEIGHT),
             move |wid| Box::new(ipc_handler(proxy_clone.clone(), wid)),
         ) {
             Ok((window, webview)) => {
@@ -192,6 +204,7 @@ impl LoopState {
                         instruction,
                         max_seconds,
                         output_path,
+                        intermediate_path,
                         window,
                         webview,
                         recording: None,
@@ -213,21 +226,24 @@ impl LoopState {
     /// The demo bridge is ready: reveal + maximize the window, start
     /// ffmpeg, drive the instruction, and arm the max-duration guard.
     fn handle_demo_window_ready(&mut self, window_id: WindowId) {
-        let (recording_id, output_path, instruction, max_seconds, already_recording) =
+        let (recording_id, output_path, intermediate_path, instruction, max_seconds, recording) =
             match self.demo_windows.get(&window_id) {
                 Some(session) => (
                     session.recording_id.clone(),
                     session.output_path.clone(),
+                    session.intermediate_path.clone(),
                     session.instruction.clone(),
                     session.max_seconds,
                     session.recording.is_some(),
                 ),
                 None => return,
             };
-        if already_recording {
+        if recording {
             return;
         }
 
+        // Default to the whole 1080p canvas; overwritten with the
+        // window's real outer rect once it is centered on the monitor.
         let mut region = demo::recorder::CaptureRegion {
             x: 0,
             y: 0,
@@ -236,25 +252,13 @@ impl LoopState {
         };
         if let Some(session) = self.demo_windows.get(&window_id) {
             session.window.set_visible(true);
-            session.window.set_maximized(true);
+            center_demo_window(&session.window);
             session.window.set_focus();
 
-            // Capture the full monitor the demo window lives on. Monitor
-            // geometry is independent of the window's maximized state, so
-            // it is safe to read immediately.
-            if let Some(monitor) = session
-                .window
-                .current_monitor()
-                .or_else(|| session.window.primary_monitor())
-            {
-                let position = monitor.position();
-                let size = monitor.size();
-                region = demo::recorder::CaptureRegion {
-                    x: position.x,
-                    y: position.y,
-                    width: size.width,
-                    height: size.height,
-                };
+            // Capture just the window's outer rect (physical px on
+            // Windows) so stage-2 can frame the app onto a background.
+            if let Some(rect) = window_capture_region(&session.window) {
+                region = rect;
             }
         }
 
@@ -262,7 +266,7 @@ impl LoopState {
         match demo::recorder::start_region_recording(
             &ffmpeg,
             region,
-            &output_path,
+            &intermediate_path,
             demo::RECORDING_FPS,
         ) {
             Ok(recording) => {
@@ -312,11 +316,11 @@ impl LoopState {
         let registry = self.demo_registry.clone();
         let recording_id = session.recording_id.clone();
         let output_path = session.output_path.clone();
+        let intermediate_path = session.intermediate_path.clone();
 
         // Ask ffmpeg to stop BEFORE we drop the window so it isn't
         // grabbing a window that is about to be destroyed.
-        let recording = session.recording.take();
-        let recording = recording.map(|mut rec| {
+        let recording = session.recording.take().map(|mut rec| {
             rec.request_quit();
             rec
         });
@@ -329,22 +333,16 @@ impl LoopState {
         match recording {
             Some(rec) => {
                 demo::set_phase(&registry, &recording_id, demo::DemoPhase::Finalizing);
-                std::thread::spawn(move || match rec.wait() {
-                    Ok(()) => {
-                        if output_path.exists() {
-                            info!(path = %output_path.display(), "demo recording completed");
-                            demo::set_completed(&registry, &recording_id, &output_path);
-                            // Surface the result immediately by opening it.
-                            let _ = open::that(&output_path);
-                        } else {
-                            demo::set_failed(
-                                &registry,
-                                &recording_id,
-                                "recording finished but no output file was produced",
-                            );
-                        }
-                    }
-                    Err(error) => demo::set_failed(&registry, &recording_id, error),
+                // Off-thread: wait for the stage-1 capture, run the
+                // stage-2 composite into the final clip, then open it.
+                std::thread::spawn(move || {
+                    demo::recorder::finalize_recording(
+                        &registry,
+                        &recording_id,
+                        rec,
+                        &intermediate_path,
+                        &output_path,
+                    );
                 });
             }
             None => {
@@ -564,6 +562,48 @@ impl LoopState {
 /// safe interpolation into an `evaluate_script` payload.
 fn json_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
+}
+
+/// Size the demo window to the fixed logical demo size and center it on
+/// its current monitor so its whole outer rect is on-screen (window-only
+/// capture requires the window fully visible).
+fn center_demo_window(window: &tao::window::Window) {
+    use tao::dpi::{LogicalSize, PhysicalPosition};
+
+    window.set_inner_size(LogicalSize::new(
+        DEMO_WINDOW_LOGICAL_WIDTH,
+        DEMO_WINDOW_LOGICAL_HEIGHT,
+    ));
+
+    let Some(monitor) = window
+        .current_monitor()
+        .or_else(|| window.primary_monitor())
+    else {
+        return;
+    };
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size();
+
+    let offset_x = (monitor_size.width as i32 - window_size.width as i32).max(0) / 2;
+    let offset_y = (monitor_size.height as i32 - window_size.height as i32).max(0) / 2;
+    window.set_outer_position(PhysicalPosition::new(
+        monitor_pos.x + offset_x,
+        monitor_pos.y + offset_y,
+    ));
+}
+
+/// The demo window's outer rect as a capture region, in physical pixels
+/// (desktop coordinates). `None` if the position cannot be read.
+fn window_capture_region(window: &tao::window::Window) -> Option<demo::recorder::CaptureRegion> {
+    let position = window.outer_position().ok()?;
+    let size = window.outer_size();
+    Some(demo::recorder::CaptureRegion {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
 }
 
 fn apply_secondary_window_command(win: &tao::window::Window, cmd: WinCmd) {

@@ -45,6 +45,44 @@ fn ffmpeg_resource_candidates() -> Vec<PathBuf> {
     candidates
 }
 
+/// Bundled-resource candidates for the default demo background image,
+/// mirroring [`ffmpeg_resource_candidates`]'s directory patterns.
+fn background_resource_candidates() -> Vec<PathBuf> {
+    const ASSET: &str = "demo-bg.png";
+    let mut candidates = vec![
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(ASSET),
+        PathBuf::from("apps/aura-os-desktop/resources").join(ASSET),
+        PathBuf::from("resources").join(ASSET),
+    ];
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            candidates.push(exe_dir.join(ASSET));
+            candidates.push(exe_dir.join("resources").join(ASSET));
+            if let Some(contents_dir) = exe_dir.parent() {
+                candidates.push(contents_dir.join("Resources").join(ASSET));
+                candidates.push(contents_dir.join("Resources/resources").join(ASSET));
+            }
+        }
+    }
+
+    candidates
+}
+
+/// Resolve the bundled demo background image, if present.
+///
+/// Returns the first existing `resources/demo-bg.png` candidate, or
+/// `None` when no asset is bundled — in which case the stage-2
+/// compositor falls back to a generated gradient. No binary asset ships
+/// yet (Phase 1), so this returns `None` in dev unless one is dropped in.
+pub(crate) fn resolve_background_image() -> Option<PathBuf> {
+    background_resource_candidates()
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
 /// Resolve the `ffmpeg` executable to launch.
 ///
 /// Returns the first match of: `AURA_FFMPEG_BIN` (if it exists on disk),
