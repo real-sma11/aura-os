@@ -23,6 +23,10 @@ import {
   resolveAbandonedPendingToolCalls,
   finalizeStream,
 } from "../hooks/stream/handlers";
+import {
+  applySubagentStatus,
+  registerSpawnedSubagent,
+} from "../hooks/use-chat-stream/subagent-cards";
 import { useTaskOutputPanelStore } from "./task-output-panel-store";
 import type { PanelTaskFailureContext } from "./task-output-panel-store";
 import { useAutomationLoopStore } from "./automation-loop-store";
@@ -369,6 +373,27 @@ function handleToolResultEvent(e: AuraEvent): void {
       .getState()
       .bumpEstimatedTokens(key, approxTokensFromText(c.result));
   }
+}
+
+function handleSubagentSpawnedEvent(e: AuraEventOfType<typeof EventType.SubagentSpawned>): void {
+  const c = parseEventContent(e);
+  const taskId = c.task_id as string | undefined;
+  if (!taskId) return;
+  ensureRunPaneTaskRow(e, taskId, c.task_title as string | undefined);
+  const { refs, setters } = contextForTask(taskId);
+  if (!isStreamingByTask.get(taskId)) {
+    setters.setIsStreaming(true);
+    isStreamingByTask.set(taskId, true);
+  }
+  registerSpawnedSubagent(refs, setters, e.content);
+}
+
+function handleSubagentStatusEvent(e: AuraEventOfType<typeof EventType.SubagentStatus>): void {
+  const c = parseEventContent(e);
+  const taskId = c.task_id as string | undefined;
+  if (!taskId) return;
+  const { refs, setters } = contextForTask(taskId);
+  applySubagentStatus(refs, setters, e.content);
 }
 
 /**
@@ -921,6 +946,8 @@ const taskStreamSubscriptionGroup = createEventSubscriptionGroup(
     subscribe(EventType.ToolCallCompleted, handleToolCallCompletedEvent),
     subscribe(EventType.ToolCallSnapshot, handleToolCallSnapshotEvent),
     subscribe(EventType.ToolResult, handleToolResultEvent),
+    subscribe(EventType.SubagentSpawned, handleSubagentSpawnedEvent),
+    subscribe(EventType.SubagentStatus, handleSubagentStatusEvent),
     subscribe(EventType.ToolCallRetrying, handleToolCallRetryingEvent),
     subscribe(EventType.ToolCallFailed, handleToolCallFailedEvent),
     subscribe(EventType.AssistantMessageEnd, handleAssistantMessageEndEvent),

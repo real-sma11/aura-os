@@ -333,6 +333,61 @@ describe("task-stream-bootstrap: task_retrying resolves pending tool cards", () 
   });
 });
 
+describe("task-stream-bootstrap: live subagent council events", () => {
+  it("folds council members into the active task stream immediately", () => {
+    dispatch({
+      type: EventType.TaskStarted,
+      content: { task_id: "t-council", task_title: "Council task" },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    dispatch({
+      type: EventType.SubagentSpawned,
+      content: {
+        task_id: "t-council",
+        child_run_id: "child-b",
+        parent_tool_use_id: "toolu_council_1",
+        subagent_type: "council-member",
+        prompt: "compare options",
+        model: "anthropic/claude",
+        council_index: 1,
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+    dispatch({
+      type: EventType.SubagentSpawned,
+      content: {
+        task_id: "t-council",
+        child_run_id: "child-a",
+        parent_tool_use_id: "toolu_council_1",
+        subagent_type: "council-member",
+        prompt: "compare options",
+        model: "openai/gpt",
+        council_index: 0,
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+    dispatch({
+      type: EventType.SubagentStatus,
+      content: {
+        task_id: "t-council",
+        child_run_id: "child-b",
+        state: "completed",
+      },
+      project_id: "p1",
+    } as unknown as AuraEvent);
+
+    const entry = useStreamStore.getState().entries[taskStreamKey("t-council")];
+    const council = entry.activeToolCalls.find((tc) => tc.id === "toolu_council_1");
+    expect(council).toBeDefined();
+    expect(council?.councilMembers?.map((m) => m.childRunId)).toEqual([
+      "child-a",
+      "child-b",
+    ]);
+    expect(council?.councilMembers?.[1].status).toBe("completed");
+  });
+});
+
 describe("task-stream-bootstrap: task_completion_gate", () => {
   it("appends an error tool card when the gate rejects a completion", () => {
     seedActiveTask("t1");

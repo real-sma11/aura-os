@@ -86,6 +86,58 @@ describe("useAgentChatStream", () => {
     expect(entry.events[0].content).toBe("hello");
   });
 
+  it("renders council members immediately from live subagent events", async () => {
+    vi.mocked(api.agents.sendEventStream).mockImplementation(
+      async (_id, _content, _action, _model, _attachments, handler) => {
+        handler?.onEvent({
+          type: EventType.SubagentSpawned,
+          content: {
+            child_run_id: "child-b",
+            parent_tool_use_id: "toolu_council_1",
+            subagent_type: "council-member",
+            prompt: "answer this",
+            model: "anthropic/claude",
+            council_index: 1,
+          },
+        } as AuraEvent);
+        handler?.onEvent({
+          type: EventType.SubagentSpawned,
+          content: {
+            child_run_id: "child-a",
+            parent_tool_use_id: "toolu_council_1",
+            subagent_type: "council-member",
+            prompt: "answer this",
+            model: "openai/gpt",
+            council_index: 0,
+          },
+        } as AuraEvent);
+        handler?.onEvent({
+          type: EventType.SubagentStatus,
+          content: {
+            child_run_id: "child-b",
+            state: "completed",
+          },
+        } as AuraEvent);
+      },
+    );
+    const { result } = renderHook(() =>
+      useAgentChatStream({ agentId: "agent-1" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("answer this");
+    });
+
+    const entry = useStreamStore.getState().entries[result.current.streamKey];
+    const council = entry.activeToolCalls.find((tc) => tc.id === "toolu_council_1");
+    expect(council).toBeDefined();
+    expect(council?.councilMembers?.map((m) => m.childRunId)).toEqual([
+      "child-a",
+      "child-b",
+    ]);
+    expect(council?.councilMembers?.[1].status).toBe("completed");
+  });
+
   it("routes image generation through the dedicated image stream", async () => {
     const attachments = [
       {
@@ -844,6 +896,8 @@ describe("useAgentChatStream", () => {
       // option `sessionId` defaults to undefined). Forwarded as the
       // 11th positional arg to `api.agents.sendEventStream`.
       null,
+      undefined,
+      undefined,
     );
     expect(api.agents.sendEventStream).toHaveBeenNthCalledWith(
       2,
@@ -858,6 +912,8 @@ describe("useAgentChatStream", () => {
       undefined,
       false,
       null,
+      undefined,
+      undefined,
     );
   });
 
@@ -1051,6 +1107,8 @@ describe("useAgentChatStream", () => {
       undefined,
       false,
       "s-old",
+      undefined,
+      undefined,
     );
   });
 
@@ -1098,6 +1156,8 @@ describe("useAgentChatStream", () => {
       undefined,
       true,
       null,
+      undefined,
+      undefined,
     );
   });
 
@@ -1134,6 +1194,8 @@ describe("useAgentChatStream", () => {
       undefined,
       false,
       null,
+      undefined,
+      undefined,
     );
   });
 });

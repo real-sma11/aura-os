@@ -65,6 +65,7 @@ import {
 } from "./stream/partition-state";
 import { STUCK_THRESHOLD_MS } from "./stream/use-stream-health";
 import type { StreamCloseContext } from "../shared/observability/stream-breadcrumbs";
+import { applySubagentStatus, registerSpawnedSubagent } from "./use-chat-stream/subagent-cards";
 
 /**
  * Per-streamKey cache of the most recent `sendMessage` payload plus
@@ -419,6 +420,12 @@ export function useAgentChatStream({
               }
               break;
             }
+            case EventType.SubagentSpawned:
+              registerSpawnedSubagent(refs, partitionSetters, event.content);
+              break;
+            case EventType.SubagentStatus:
+              applySubagentStatus(refs, partitionSetters, event.content);
+              break;
             case EventType.SpecSaved:
               onSpecSavedRef.current?.(event.content.spec);
               break;
@@ -940,6 +947,12 @@ export function useAgentChatStream({
             }
             break;
           }
+          case EventType.SubagentSpawned:
+            registerSpawnedSubagent(refs, partitionSetters, event.content);
+            break;
+          case EventType.SubagentStatus:
+            applySubagentStatus(refs, partitionSetters, event.content);
+            break;
           case EventType.SpecSaved:
             onSpecSavedRef.current?.(event.content.spec);
             break;
