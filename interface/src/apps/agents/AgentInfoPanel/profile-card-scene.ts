@@ -317,11 +317,37 @@ export function createProfileCardScene(
     transparent: true,
     depthWrite: false,
   });
+  // Horizontal scan-line overlay floating in front of the LCD (additive accent).
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: accent.clone(),
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
 
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
   let screenMesh: THREE.Mesh | null = null;
+  let screenLinesMesh: THREE.LineSegments | null = null;
   const detailMeshes: THREE.Mesh[] = [];
+
+  /**
+   * Build a layer of evenly spaced horizontal lines sized to the screen and
+   * push it slightly in front of the LCD plane so it parallaxes on tilt.
+   */
+  function addScreenLines(screenW: number, screenH: number, z: number): void {
+    const spacing = screenH / 56;
+    const pos: number[] = [];
+    for (let y = -screenH / 2 + spacing; y < screenH / 2; y += spacing) {
+      pos.push(-screenW / 2, y, 0, screenW / 2, y, 0);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    screenLinesMesh = new THREE.LineSegments(geo, lineMaterial);
+    screenLinesMesh.position.z = z;
+    group.add(screenLinesMesh);
+  }
 
   function disposeBuilt(): void {
     if (shellMesh) {
@@ -338,6 +364,11 @@ export function createProfileCardScene(
       group.remove(screenMesh);
       screenMesh.geometry.dispose();
       screenMesh = null;
+    }
+    if (screenLinesMesh) {
+      group.remove(screenLinesMesh);
+      screenLinesMesh.geometry.dispose();
+      screenLinesMesh = null;
     }
     for (const d of detailMeshes) {
       group.remove(d);
@@ -409,6 +440,9 @@ export function createProfileCardScene(
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
     screenMesh.position.z = frontZ - 0.018;
     group.add(screenMesh);
+
+    // Scan-line layer floating just in front of the recessed LCD.
+    addScreenLines(screenW, screenH, frontZ - 0.008);
 
     // AURA wordmark, top-left on the metal frame.
     const markW = shell.w * 0.32;
@@ -482,6 +516,9 @@ export function createProfileCardScene(
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
     screenMesh.position.z = frontZ + 0.012;
     group.add(screenMesh);
+
+    // Scan-line layer floating just in front of the LCD.
+    addScreenLines(screenW, screenH, frontZ + 0.02);
 
     // Glowing accent tabs on the left/right edges.
     const tabGeo = new THREE.BoxGeometry(0.06, shell.h * 0.16, 0.05);
@@ -639,6 +676,7 @@ export function createProfileCardScene(
       accentMaterial.color.copy(accent);
       accentMaterial.emissive.copy(accent);
       accentLight.color.copy(accent);
+      lineMaterial.color.copy(accent);
       if (reducedMotion) renderFrame();
     },
     refreshTexture(): void {
@@ -658,6 +696,7 @@ export function createProfileCardScene(
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
       wordmarkMaterial.dispose();
+      lineMaterial.dispose();
       blueMetalTexture.dispose();
       matteTexture.dispose();
       wordmarkTexture.dispose();

@@ -1,9 +1,4 @@
 import type { Agent } from "../../../shared/types";
-import {
-  formatAdapterLabel,
-  formatAuthSourceLabel,
-  formatRunsOnLabel,
-} from "./agent-info-utils";
 
 export interface DrawProfileCardOptions {
   agent: Agent;
@@ -15,62 +10,9 @@ export interface DrawProfileCardOptions {
   horizontal: boolean;
 }
 
-const INK = "#e8f1f6";
-const INK_DIM = "rgba(220, 234, 242, 0.55)";
-const INK_FAINT = "rgba(220, 234, 242, 0.35)";
-const SCREEN_BG_TOP = "#0c1116";
-const SCREEN_BG_BOTTOM = "#05080b";
-
-interface MetaItem {
-  label: string;
-  value: string;
-}
-
-function metaItems(agent: Agent): MetaItem[] {
-  return [
-    { label: "Runs On", value: formatRunsOnLabel(agent.environment, agent.machine_type) },
-    { label: "Type", value: formatAdapterLabel(agent.adapter_type) },
-    { label: "Credentials", value: formatAuthSourceLabel(agent.auth_source, agent.adapter_type) },
-    {
-      label: "Birthed",
-      value: new Date(agent.created_at).toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-      }),
-    },
-  ];
-}
-
-function shortId(agent: Agent): string {
-  const id = agent.agent_id ?? "";
-  if (id.length <= 10) return id.toUpperCase();
-  return `${id.slice(0, 4)}…${id.slice(-4)}`.toUpperCase();
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  const radius = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
-}
+/** Duotone ramp endpoints: cold navy shadows up to a bright cyan highlight. */
+const DUOTONE_SHADOW: [number, number, number] = [5, 10, 18];
+const DUOTONE_HIGHLIGHT: [number, number, number] = [207, 232, 255];
 
 function drawImageCover(
   ctx: CanvasRenderingContext2D,
@@ -100,187 +42,128 @@ function drawImageCover(
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
-function wrapText(
+function parseAccent(accent: string): [number, number, number] {
+  const hex = accent.trim();
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (m) {
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const rgb = /rgba?\(([^)]+)\)/i.exec(hex);
+  if (rgb) {
+    const parts = rgb[1].split(",").map((p) => parseFloat(p));
+    if (parts.length >= 3) return [parts[0], parts[1], parts[2]];
+  }
+  return [99, 102, 241];
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Grade the whole canvas into a cold-blue duotone: map each pixel's luminance
+ * across a shadow -> accent-mid -> highlight ramp with a gentle contrast curve.
+ * The source must be CORS-clean (callers guarantee this for the avatar).
+ */
+function applyDuotone(
   ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxLines: number,
-): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width > maxWidth && current) {
-      lines.push(current);
-      current = word;
-      if (lines.length === maxLines - 1) break;
+  w: number,
+  h: number,
+  accent: [number, number, number],
+): void {
+  const image = ctx.getImageData(0, 0, w, h);
+  const data = image.data;
+  const [sr, sg, sb] = DUOTONE_SHADOW;
+  const [hr, hg, hb] = DUOTONE_HIGHLIGHT;
+  // Cool the accent slightly so midtones read as blue.
+  const mr = accent[0] * 0.65 + 30;
+  const mg = accent[1] * 0.75 + 60;
+  const mb = accent[2] * 0.85 + 90;
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
+    // Contrast curve (smoothstep) to deepen shadows + lift highlights.
+    const t = lum * lum * (3 - 2 * lum);
+    let r: number;
+    let g: number;
+    let b: number;
+    if (t < 0.5) {
+      const k = t / 0.5;
+      r = lerp(sr, mr, k);
+      g = lerp(sg, mg, k);
+      b = lerp(sb, mb, k);
     } else {
-      current = candidate;
+      const k = (t - 0.5) / 0.5;
+      r = lerp(mr, hr, k);
+      g = lerp(mg, hg, k);
+      b = lerp(mb, hb, k);
     }
+    data[i] = r;
+    data[i + 1] = g;
+    data[i + 2] = b;
   }
-  if (current && lines.length < maxLines) lines.push(current);
-  return lines.slice(0, maxLines);
+  ctx.putImageData(image, 0, 0);
 }
 
-function drawAvatar(
-  ctx: CanvasRenderingContext2D,
-  opts: DrawProfileCardOptions,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
-  const { agent, avatar, accent } = opts;
-  ctx.save();
-  roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.08);
-  ctx.clip();
-
-  if (avatar) {
-    drawImageCover(ctx, avatar, x, y, w, h);
-  } else {
-    const grad = ctx.createLinearGradient(x, y, x + w, y + h);
-    grad.addColorStop(0, accent);
-    grad.addColorStop(1, "#0a0f14");
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, w, h);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = INK;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `700 ${Math.round(h * 0.34)}px Inter, system-ui, sans-serif`;
-    ctx.fillText(initials(agent.name), x + w / 2, y + h / 2);
-  }
-
-  // Subtle top-light gradient over the photo for the LCD sheen.
-  const sheen = ctx.createLinearGradient(x, y, x, y + h);
-  sheen.addColorStop(0, "rgba(255,255,255,0.12)");
-  sheen.addColorStop(0.4, "rgba(255,255,255,0)");
-  sheen.addColorStop(1, "rgba(0,0,0,0.45)");
+/** Cinematic top sheen + radial vignette over the graded photo. */
+function applyGrade(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const sheen = ctx.createLinearGradient(0, 0, 0, h);
+  sheen.addColorStop(0, "rgba(200, 226, 255, 0.16)");
+  sheen.addColorStop(0.35, "rgba(255,255,255,0)");
+  sheen.addColorStop(1, "rgba(0,0,0,0.5)");
   ctx.fillStyle = sheen;
-  ctx.fillRect(x, y, w, h);
-  ctx.restore();
+  ctx.fillRect(0, 0, w, h);
 
-  // Accent frame around the avatar.
-  ctx.strokeStyle = accent;
-  ctx.globalAlpha = 0.7;
-  ctx.lineWidth = Math.max(2, w * 0.006);
-  roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.08);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-}
-
-function drawMeta(
-  ctx: CanvasRenderingContext2D,
-  items: MetaItem[],
-  x: number,
-  y: number,
-  w: number,
-  rowH: number,
-  cols: number,
-  accent: string,
-): void {
-  const colW = w / cols;
-  items.forEach((item, i) => {
-    const cx = x + (i % cols) * colW;
-    const cy = y + Math.floor(i / cols) * rowH;
-    ctx.fillStyle = accent;
-    ctx.globalAlpha = 0.85;
-    ctx.fillRect(cx, cy + rowH * 0.18, Math.max(3, w * 0.006), rowH * 0.42);
-    ctx.globalAlpha = 1;
-    const tx = cx + w * 0.022;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = INK_FAINT;
-    ctx.font = `600 ${Math.round(rowH * 0.24)}px "JetBrains Mono", ui-monospace, monospace`;
-    ctx.fillText(item.label.toUpperCase(), tx, cy + rowH * 0.36);
-    ctx.fillStyle = INK;
-    ctx.font = `500 ${Math.round(rowH * 0.3)}px Inter, system-ui, sans-serif`;
-    const value = item.value.length > 20 ? `${item.value.slice(0, 19)}…` : item.value;
-    ctx.fillText(value, tx, cy + rowH * 0.66);
-  });
-}
-
-function drawScreenChrome(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  accent: string,
-  agent: Agent,
-  horizontal: boolean,
-): void {
-  const pad = w * 0.04;
-
-  // Header chip: //agent + short id.
-  ctx.textBaseline = "alphabetic";
-  ctx.textAlign = "left";
-  ctx.fillStyle = accent;
-  ctx.font = `700 ${Math.round(h * 0.022)}px "JetBrains Mono", ui-monospace, monospace`;
-  ctx.fillText("// AGENT", pad, pad + h * 0.02);
-  ctx.textAlign = "right";
-  ctx.fillStyle = INK_DIM;
-  ctx.font = `500 ${Math.round(h * 0.02)}px "JetBrains Mono", ui-monospace, monospace`;
-  ctx.fillText(shortId(agent), w - pad, pad + h * 0.02);
-
-  // Corner brackets + inner frame only in landscape; in portrait the metal
-  // silhouette already supplies the border, so we keep the LCD clean.
-  if (!horizontal) return;
-
-  const b = Math.min(w, h) * 0.05;
-  ctx.strokeStyle = accent;
-  ctx.globalAlpha = 0.8;
-  ctx.lineWidth = Math.max(2, w * 0.005);
-  const corners: Array<[number, number, number, number]> = [
-    [pad, pad + h * 0.04, 1, 1],
-    [w - pad, pad + h * 0.04, -1, 1],
-    [pad, h - pad, 1, -1],
-    [w - pad, h - pad, -1, -1],
-  ];
-  for (const [cx, cy, sx, sy] of corners) {
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + b * sy);
-    ctx.lineTo(cx, cy);
-    ctx.lineTo(cx + b * sx, cy);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  // Inner accent frame.
-  ctx.globalAlpha = 0.25;
-  roundRect(ctx, pad * 0.6, pad * 0.6, w - pad * 1.2, h - pad * 1.2, w * 0.02);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-}
-
-function drawScanlines(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(0,0,0,0.16)";
-  for (let y = 0; y < h; y += 3) {
-    ctx.fillRect(0, y, w, 1);
-  }
-  // Vignette.
   const vignette = ctx.createRadialGradient(
     w / 2,
-    h / 2,
-    Math.min(w, h) * 0.25,
+    h * 0.46,
+    Math.min(w, h) * 0.28,
     w / 2,
-    h / 2,
-    Math.max(w, h) * 0.7,
+    h * 0.5,
+    Math.max(w, h) * 0.72,
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.5)");
+  vignette.addColorStop(1, "rgba(2,5,10,0.62)");
   ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/** No-avatar fallback: a stylized blue gradient with a faint accent glow. */
+function drawFallback(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  accent: string,
+): void {
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, "#0c1626");
+  bg.addColorStop(1, "#04070d");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  const glow = ctx.createRadialGradient(
+    w / 2,
+    h * 0.42,
+    0,
+    w / 2,
+    h * 0.42,
+    Math.max(w, h) * 0.55,
+  );
+  glow.addColorStop(0, accent);
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }
 
 /**
- * Render the agent "LCD" into a 2D canvas. The canvas is uploaded as a Three.js
+ * Render the agent "LCD" into a 2D canvas: a full-bleed, cold-blue duotone of
+ * the uploaded profile photo (no text). The canvas is uploaded as a Three.js
  * texture, so it must never become CORS-tainted: the avatar is only drawn when
  * the caller verified it is cross-origin clean (otherwise `avatar` is null and a
- * generated fallback is used).
+ * stylized gradient fallback is used).
  */
 export function drawProfileCardTexture(
   canvas: HTMLCanvasElement,
@@ -290,80 +173,18 @@ export function drawProfileCardTexture(
   if (!ctx) return;
   const w = canvas.width;
   const h = canvas.height;
-  const { agent, accent, horizontal } = opts;
+  const { accent, avatar } = opts;
 
   ctx.clearRect(0, 0, w, h);
 
-  // Background.
-  const bg = ctx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, SCREEN_BG_TOP);
-  bg.addColorStop(1, SCREEN_BG_BOTTOM);
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-
-  // Faint accent wash from the top.
-  ctx.save();
-  ctx.globalAlpha = 0.14;
-  const wash = ctx.createRadialGradient(w * 0.5, 0, 0, w * 0.5, 0, h * 0.9);
-  wash.addColorStop(0, accent);
-  wash.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = wash;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
-
-  const pad = w * 0.06;
-  const items = metaItems(agent);
-
-  if (horizontal) {
-    const avatarSize = h - pad * 2 - h * 0.06;
-    const ax = pad;
-    const ay = pad + h * 0.06;
-    drawAvatar(ctx, opts, ax, ay, avatarSize, avatarSize);
-
-    const rx = ax + avatarSize + pad;
-    const rw = w - rx - pad;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = INK;
-    ctx.font = `800 ${Math.round(h * 0.12)}px Inter, system-ui, sans-serif`;
-    const nameLines = wrapText(ctx, agent.name, rw, 2);
-    let ny = ay + h * 0.12;
-    for (const line of nameLines) {
-      ctx.fillText(line, rx, ny);
-      ny += h * 0.13;
-    }
-    if (agent.role) {
-      ctx.fillStyle = accent;
-      ctx.font = `600 ${Math.round(h * 0.045)}px "JetBrains Mono", ui-monospace, monospace`;
-      ctx.fillText(agent.role.toUpperCase(), rx, ny);
-      ny += h * 0.06;
-    }
-    drawMeta(ctx, items, rx, ny + h * 0.02, rw, h * 0.16, 2, accent);
+  if (avatar) {
+    drawImageCover(ctx, avatar, 0, 0, w, h);
+    applyDuotone(ctx, w, h, parseAccent(accent));
   } else {
-    const avatarH = h * 0.4;
-    drawAvatar(ctx, opts, pad, pad + h * 0.05, w - pad * 2, avatarH);
-
-    let ny = pad + h * 0.05 + avatarH + h * 0.08;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = INK;
-    ctx.font = `800 ${Math.round(w * 0.11)}px Inter, system-ui, sans-serif`;
-    const nameLines = wrapText(ctx, agent.name, w - pad * 2, 2);
-    for (const line of nameLines) {
-      ctx.fillText(line, pad, ny);
-      ny += w * 0.115;
-    }
-    if (agent.role) {
-      ctx.fillStyle = accent;
-      ctx.font = `600 ${Math.round(w * 0.04)}px "JetBrains Mono", ui-monospace, monospace`;
-      ctx.fillText(agent.role.toUpperCase(), pad, ny);
-      ny += w * 0.05;
-    }
-    drawMeta(ctx, items, pad, ny + h * 0.02, w - pad * 2, h * 0.1, 2, accent);
+    drawFallback(ctx, w, h, accent);
   }
 
-  drawScreenChrome(ctx, w, h, accent, agent, horizontal);
-  drawScanlines(ctx, w, h);
+  applyGrade(ctx, w, h);
 }
 
 /**
