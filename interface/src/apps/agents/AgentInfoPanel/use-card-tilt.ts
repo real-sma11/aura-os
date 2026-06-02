@@ -40,6 +40,10 @@ export function useCardTilt<T extends HTMLElement>() {
       el.style.setProperty("--tilt-x", `${(px * MAX_TILT_DEG).toFixed(2)}deg`);
       el.style.setProperty("--tilt-y", `${(-py * MAX_TILT_DEG).toFixed(2)}deg`);
       el.style.setProperty("--tilt-active", "1");
+
+      // Pointer position (0-100%) for the cursor-following spotlight glow.
+      el.style.setProperty("--mx", `${((px + 0.5) * 100).toFixed(1)}%`);
+      el.style.setProperty("--my", `${((py + 0.5) * 100).toFixed(1)}%`);
     };
 
     const handleLeave = () => {

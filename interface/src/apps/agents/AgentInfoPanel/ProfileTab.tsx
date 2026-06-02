@@ -216,6 +216,7 @@ function ProfileCard({
   return (
     <div className={styles.cardContainer}>
       <div ref={cardRef} className={styles.card}>
+        <span className={styles.cardShine} aria-hidden="true" />
         <div className={styles.cardInner}>
           <ProfileCardMedia agent={agent} />
 

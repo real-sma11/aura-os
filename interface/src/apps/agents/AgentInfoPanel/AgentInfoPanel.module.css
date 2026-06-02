@@ -84,6 +84,7 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
+  z-index: 1;
   background-image:
     linear-gradient(
       115deg,
@@ -102,7 +103,7 @@
 }
 
 .card:hover {
-  border-color: color-mix(in srgb, var(--color-accent, #6366f1) 50%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-accent, #6366f1) 60%, var(--color-border));
   box-shadow:
     0 6px 10px rgba(0, 0, 0, 0.3),
     0 18px 32px -10px rgba(0, 0, 0, 0.5),
@@ -110,6 +111,64 @@
     0 0 28px -6px color-mix(in srgb, var(--color-accent, #6366f1) 35%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* Cursor-following spotlight: the card lights up where the pointer is. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--color-accent, #6366f1) 55%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent, #6366f1) 18%, transparent) 32%,
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 240ms ease;
+  mix-blend-mode: screen;
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+/* Animated shimmer streak that sweeps across on hover. */
+.cardShine {
+  position: absolute;
+  inset: -40%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.08) 46%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.08) 54%,
+    transparent 62%
+  );
+  transform: translateX(-65%) rotate(8deg);
+  opacity: 0;
+  transition: opacity 220ms ease;
+  mix-blend-mode: screen;
+}
+
+.card:hover .cardShine {
+  opacity: 1;
+  animation: cardShineSweep 1.8s ease-in-out infinite;
+}
+
+@keyframes cardShineSweep {
+  0% {
+    transform: translateX(-65%) rotate(8deg);
+  }
+  60%,
+  100% {
+    transform: translateX(65%) rotate(8deg);
+  }
 }
 
 .cardInner {
@@ -188,6 +247,12 @@
   .card {
     transform: none;
     transition: box-shadow 220ms ease, border-color 220ms ease;
+  }
+
+  .card:hover .cardShine {
+    animation: none;
+    /* Hold a static highlight instead of sweeping. */
+    transform: translateX(0) rotate(8deg);
   }
 }
 
