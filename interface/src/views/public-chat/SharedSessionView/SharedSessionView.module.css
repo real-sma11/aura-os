@@ -1,0 +1,82 @@
+/*
+ * SharedSessionView — read-only viewer for a public `/s/:shareToken`
+ * conversation. Owns its own vertical scroll so it renders correctly in
+ * BOTH shells it mounts under: the public-mode `PublicMarketingPanel`
+ * scroll column AND the authenticated `AuraShell` main panel (which is
+ * locked to `overflow: hidden`). Bubble chrome mirrors `PublicChatBubble`
+ * so a shared transcript reads the same as the live chat, minus the
+ * action row and input bar.
+ */
+.root {
+  height: 100%;
+  overflow-y: auto;
+  color: var(--color-text-primary);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 768px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  box-sizing: border-box;
+}
+
+.heading {
+  margin: 0 0 var(--space-2);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.status {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.row {
+  display: flex;
+}
+
+.rowUser {
+  justify-content: flex-end;
+}
+
+.rowAssistant {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: min(640px, 86%);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 18px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+  line-height: 1.45;
+}
+
+.rowUser .bubble {
+  white-space: pre-wrap;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.rowAssistant .bubble {
+  white-space: normal;
+}
+
+.assistantOutput {
+  /* Collapse the default `LLMOutput` column gap so the bubble padding
+   * owns the spacing, matching `PublicChatBubble.assistantOutput`. */
+  gap: 0;
+}

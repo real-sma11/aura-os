@@ -55,6 +55,11 @@ const ModelsView = lazy(() =>
 const DownloadView = lazy(() =>
   import("./views/marketing/DownloadView").then((m) => ({ default: m.DownloadView })),
 );
+const SharedSessionView = lazy(() =>
+  import("./views/public-chat/SharedSessionView").then((m) => ({
+    default: m.SharedSessionView,
+  })),
+);
 
 const initiallyLoggedIn = isLoggedInSync();
 
@@ -297,6 +302,15 @@ function AppRoutes(): React.ReactElement {
                 </Suspense>
               }
             />
+            {/* Authenticated share viewer on native (no public shell). */}
+            <Route
+              path="s/:shareToken"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <SharedSessionView />
+                </Suspense>
+              }
+            />
           </Route>
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Route>
@@ -419,6 +433,23 @@ function AppRoutes(): React.ReactElement {
                   </Suspense>
                 }
               />
+              {/*
+                ChatGPT-style public share viewer (`https://aura.ai/s/<token>`).
+                Mounted inside the `PublicMarketingPanel` group so a
+                logged-out visitor opening a shared conversation gets the
+                full public-mode chrome — the `AuraTitlebar` `PublicActions`
+                Log In / Sign Up pills render in the trailing slot. The view
+                fetches the public, unauthenticated transcript endpoint and
+                renders it read-only (no action row, no input bar).
+              */}
+              <Route
+                path="s/:shareToken"
+                element={
+                  <Suspense fallback={null}>
+                    <SharedSessionView />
+                  </Suspense>
+                }
+              />
             </Route>
           )}
           <Route element={<RequireAuth />}>
@@ -433,6 +464,24 @@ function AppRoutes(): React.ReactElement {
                 }
               />
             </Route>
+            {/*
+              Parallel authenticated share route. Reuses the SAME
+              `SharedSessionView` but renders inside the normal authed
+              `AuraShell` (the public chrome is irrelevant once signed
+              in). Mounted OUTSIDE `SimpleModeChatRedirectLayout` so a
+              Simple-mode user opening a share link still sees the
+              conversation instead of being bounced to `/chat`. Both
+              routes read the same public endpoint, so no auth header is
+              needed either way.
+            */}
+            <Route
+              path="s/:shareToken"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <SharedSessionView />
+                </Suspense>
+              }
+            />
           </Route>
           <Route path="*" element={<UnknownRouteRedirect />} />
         </Route>
