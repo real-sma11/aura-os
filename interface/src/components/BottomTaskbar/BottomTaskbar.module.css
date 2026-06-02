@@ -54,12 +54,14 @@
   --taskbar-item-size: 40px;
 }
 
-/* Scale the icon glyphs to match (16 -> ~21). Done in CSS rather than via
-   the shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
-   imports the same constant, is left untouched. */
+/* Scale the icon glyphs up (16 -> 20). Done in CSS rather than via the
+   shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
+   imports the same constant, is left untouched. 20px (even) centers on
+   whole pixels inside the 40px (even) button — an odd size like 21px lands
+   on a half-pixel, which reads as off-center and slightly blurry. */
 .bar:not([data-ui-mode="public"]) button svg {
-  width: 21px;
-  height: 21px;
+  width: 20px;
+  height: 20px;
 }
 
 .left,
