@@ -30,6 +30,7 @@ import {
   handleAssistantTurnBoundary,
   handleStreamError,
   finalizeStream,
+  isStreamDroppedError,
 } from "./use-stream-core";
 import type {
   DisplaySessionEvent,
@@ -327,9 +328,27 @@ function buildSubagentChatHandler(
           markDone();
           break;
         case EventType.Error: {
-          const message =
-            (event.content as { message?: string }).message ??
-            "Subagent stream error";
+          const content = event.content as { code?: string; message?: string };
+          const message = content.message ?? "Subagent stream error";
+          // The subagent surface is a read-only re-attach to a child
+          // run. When that run finishes, the harness WS closes and the
+          // bridge surfaces a recoverable transport-close frame
+          // (`harness_ws_closed` / `harness_ws_read_error` / idle
+          // timeout / lag). That close is the NORMAL end-of-stream
+          // here, not a failure — finalize cleanly so the streamed
+          // transcript is kept and no "connection dropped" banner is
+          // appended. Gated on having an actual transcript so a
+          // genuinely empty / failed attach still falls through to the
+          // error state (and its "no longer available" surface).
+          const hasTranscript = (getStreamEntry(key)?.events.length ?? 0) > 0;
+          if (
+            isStreamDroppedError(content, message) &&
+            (hasTranscript || terminallyStreamed.has(key))
+          ) {
+            finalizeStream(refs, setters, abortRef, false, { reason: "completed" });
+            markDone();
+            break;
+          }
           handleStreamError(refs, setters, event.content);
           callbacks.onError(message);
           break;
@@ -339,6 +358,15 @@ function buildSubagentChatHandler(
       }
     },
     onError(error: unknown) {
+      // Same benign-close handling as the `EventType.Error` arm above,
+      // for the transport-level close delivered once the resumable SSE
+      // exhausts its retries (e.g. the child WS dropped at end-of-run).
+      const hasTranscript = (getStreamEntry(key)?.events.length ?? 0) > 0;
+      if (isStreamDroppedError(error) && (hasTranscript || terminallyStreamed.has(key))) {
+        finalizeStream(refs, setters, abortRef, false, { reason: "completed" });
+        markDone();
+        return;
+      }
       handleStreamError(refs, setters, error);
       callbacks.onError(errorMessageOf(error));
     },

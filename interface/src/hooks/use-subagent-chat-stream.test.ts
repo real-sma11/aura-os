@@ -238,6 +238,60 @@ describe("useSubagentChatStream", () => {
     });
     expect(mockSend).not.toHaveBeenCalled();
   });
+
+  it("treats a harness WS close after a streamed turn as a clean finish, not a dropped-stream error", async () => {
+    const childRunId = "child-ws-close";
+    const key = subagentStreamKey(childRunId);
+    mockAttach.mockResolvedValue({ attach_id: "att-1", child_run_id: childRunId });
+    mockAttachToStream.mockImplementation(
+      (_id: string, _since: number, handler: StreamEventHandler) => {
+        // Content streamed, then the (finished) child run's WS closes,
+        // which the bridge surfaces as a recoverable transport-close.
+        streamTurn(handler, "Partial work before the run finished", "tool_use");
+        handler.onEvent(
+          evt(EventType.Error, {
+            code: "harness_ws_closed",
+            message: "harness websocket closed",
+          }),
+        );
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true),
+    );
+    await act(async () => {});
+
+    const events = getStreamEntry(key)?.events ?? [];
+    expect(events.length).toBeGreaterThan(0);
+    expect(
+      events.some(
+        (e) => (e as { displayVariant?: string }).displayVariant === "streamDropped",
+      ),
+    ).toBe(false);
+    expect(result.current.status).toBe("done");
+  });
+
+  it("still surfaces a genuine subagent error frame", async () => {
+    const childRunId = "child-real-error";
+    mockAttach.mockResolvedValue({ attach_id: "att-1", child_run_id: childRunId });
+    mockAttachToStream.mockImplementation(
+      (_id: string, _since: number, handler: StreamEventHandler) => {
+        streamTurn(handler, "Some progress", "tool_use");
+        handler.onEvent(
+          evt(EventType.Error, { code: "model_error", message: "the model exploded" }),
+        );
+      },
+    );
+
+    const { result } = renderHook(() =>
+      useSubagentChatStream(childRunId, "tool-1", true),
+    );
+    await act(async () => {});
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.errorMessage).toBe("the model exploded");
+  });
 });
 
 describe("reconcileOptimisticUserEchoes", () => {
