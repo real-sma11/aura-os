@@ -60,6 +60,23 @@
 }
 
 /*
+ * "Glass sidebar" theme option (default-on; toggled in Settings > Theme).
+ * Swaps the solid `--color-sidebar-bg` fill for the same frosted chrome
+ * recipe the search pill / taskbar use, so the standard-mode wallpaper
+ * (`BackgroundLayer`) behind the shell shows through blurred. Scoped to
+ * standard authed mode only — desktop and public modes already render the
+ * sidebar fully transparent, so they don't need (or want) the translucent
+ * fill fighting their own overrides.
+ */
+:global([data-sidebar-glass="true"])
+  .shell:not([data-ui-mode="public"]):not([data-desktop-mode])
+  .sidebar {
+  background: var(--shell-chrome-background);
+  backdrop-filter: var(--shell-chrome-backdrop-filter);
+  -webkit-backdrop-filter: var(--shell-chrome-backdrop-filter);
+}
+
+/*
  * Public mode promotes the sidebar to an absolutely-positioned
  * overlay that floats over `.body` (which already establishes a
  * positioning context via `position: relative`). The `<main>` chat

@@ -49,8 +49,15 @@
           if (meta) meta.setAttribute('content', color);
           var manifest = document.getElementById('aura-manifest');
           if (manifest) manifest.setAttribute('href', manifestHref);
+          // Stamp the "Glass sidebar" option before first paint so the left
+          // panel renders frosted on the first frame (default-on). Mirrors
+          // lib/sidebar-glass.ts: only an explicit "false" disables it.
+          if (localStorage.getItem('aura-sidebar-glass') !== 'false') {
+            document.documentElement.setAttribute('data-sidebar-glass', 'true');
+          }
         } catch (_) {
           document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.setAttribute('data-sidebar-glass', 'true');
         }
       })();
     </script>

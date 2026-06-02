@@ -2,6 +2,7 @@ import {
   Button,
   Panel,
   Text,
+  Toggle,
   useTheme,
   THEMES,
   ACCENT_COLORS,
@@ -11,6 +12,7 @@ import {
 import { Sun, Moon, MonitorSmartphone } from "lucide-react";
 import { CustomTokensPanel } from "./CustomTokensPanel";
 import { PresetsPanel } from "./PresetsPanel";
+import { useSidebarGlass } from "../../../hooks/use-sidebar-glass";
 import styles from "./AppearanceSection.module.css";
 
 const THEME_LABELS: Record<Theme, string> = {
@@ -45,6 +47,8 @@ const SWATCH_CLASSES: Record<AccentColor, string> = {
 
 export function AppearanceSection() {
   const { theme, accent, setTheme, setAccent } = useTheme();
+  const { enabled: glassEnabled, setEnabled: setGlassEnabled } =
+    useSidebarGlass();
 
   return (
     <Panel
@@ -102,6 +106,20 @@ export function AppearanceSection() {
             );
           })}
         </div>
+      </div>
+
+      <div className={styles.section}>
+        <Text variant="muted" size="sm">
+          Effects
+        </Text>
+        <Toggle
+          label="Glass sidebar"
+          checked={glassEnabled}
+          onChange={(e) => setGlassEnabled(e.target.checked)}
+        />
+        <Text variant="muted" size="xs">
+          Frosts the left panel so the wallpaper shows through behind it.
+        </Text>
       </div>
 
       <CustomTokensPanel />
