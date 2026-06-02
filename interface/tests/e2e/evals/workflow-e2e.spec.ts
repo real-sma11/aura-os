@@ -82,7 +82,12 @@ for (const scenario of scenarios) {
     await timed("open_workbench", () => page.goto(`/projects/${project.project_id}/work`));
     await expect(page.getByRole("button", { name: "Plans", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Tasks", exact: true }).last()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Stats", exact: true })).toBeVisible();
+    // Stats is the last sidekick tab and overflows into the "More" menu at
+    // the default panel width, so assert it's still reachable there rather
+    // than as a top-level button. Widening the panel brings it back inline.
+    await page.getByRole("button", { name: "More actions", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Stats", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     await timed("start_loop", async () => {
       await browserApiFetch<void>(

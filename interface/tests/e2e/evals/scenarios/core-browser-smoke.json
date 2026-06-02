@@ -65,8 +65,18 @@
           "visibleRoles": [
             { "role": "button", "name": "Demo Project" },
             { "role": "button", "name": "Plans", "exact": true },
-            { "role": "button", "name": "Tasks", "exact": true },
-            { "role": "button", "name": "Stats", "exact": true }
+            { "role": "button", "name": "Tasks", "exact": true }
+          ]
+        }
+      },
+      {
+        "label": "open_stats_from_overflow",
+        "action": {
+          "clickRole": { "role": "button", "name": "More actions", "exact": true }
+        },
+        "expect": {
+          "visibleRoles": [
+            { "role": "menuitem", "name": "Stats", "exact": true }
           ]
         }
       }

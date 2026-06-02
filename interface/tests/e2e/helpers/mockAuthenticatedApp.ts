@@ -130,6 +130,13 @@ export async function mockAuthenticatedApp(page: Page, options: MockAuthenticate
       } else {
         window.localStorage.removeItem("aura-last-app");
       }
+      // Suppress the first-run onboarding (welcome modal + checklist) so it
+      // doesn't overlay the app and intercept clicks during evals. Keyed by
+      // user_id to match AppShell's hydrateForUser(user.user_id).
+      window.localStorage.setItem(
+        `aura:onboarding:${seedSession.user_id}`,
+        JSON.stringify({ welcomeCompleted: true, welcomeSkipped: true, checklistDismissed: true, checklistTasks: {} }),
+      );
     } catch {
       /* no-op: localStorage may be unavailable in restricted contexts */
     }
