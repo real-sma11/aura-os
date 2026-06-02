@@ -119,9 +119,15 @@ export function SlidingPills<T extends string>({
       }
       const containerRect = container.getBoundingClientRect();
       const selectedRect = selectedEl.getBoundingClientRect();
+      // `getBoundingClientRect` measures from the container's border
+      // box, but the absolutely-positioned indicator (`top/left: 0`) is
+      // offset from the padding box (inside the border). Subtract the
+      // border widths (`clientLeft`/`clientTop`) so a bordered container
+      // (e.g. `ModeToggle`'s pills) doesn't shift the indicator down /
+      // right by the border width. Borderless consumers read 0 here.
       indicator.style.transform = `translate(${
-        selectedRect.left - containerRect.left
-      }px, ${selectedRect.top - containerRect.top}px)`;
+        selectedRect.left - containerRect.left - container.clientLeft
+      }px, ${selectedRect.top - containerRect.top - container.clientTop}px)`;
       indicator.style.width = `${selectedRect.width}px`;
       indicator.style.height = `${selectedRect.height}px`;
       indicator.style.opacity = "1";
