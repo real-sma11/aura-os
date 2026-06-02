@@ -35,14 +35,19 @@ pub(crate) struct CleanupCeoResponse {
     pub failed: Vec<String>,
 }
 
-/// Distinctive opening of the system prompt produced by
-/// [`ceo_system_prompt`]. Used as a third identity signal in
-/// [`looks_like_ceo`] so a CEO that was created before the
-/// `bootstrap:ceo_agent_id` stamping landed (commit `2dabef61a`,
-/// April 20) can still be recognised after the user renames it —
-/// the agent editor preserves `system_prompt` on save unless the
-/// user explicitly rewrites it, so this prefix survives a rename.
-const CEO_SYSTEM_PROMPT_PREFIX: &str = "You are the CEO SuperAgent";
+// Distinctive opening of the system prompt produced by
+// `ceo_system_prompt`. Used as a third identity signal in
+// `looks_like_ceo` so a CEO that was created before the
+// `bootstrap:ceo_agent_id` stamping landed (commit `2dabef61a`,
+// April 20) can still be recognised after the user renames it — the
+// agent editor preserves `system_prompt` on save unless the user
+// explicitly rewrites it, so this prefix survives a rename.
+//
+// Shared from `aura_os_core` so the read-time reconciler in
+// `aura-os-agents` uses the exact same signal; the
+// `ceo_system_prompt_starts_with_canonical_prefix` test keeps the
+// template in lock-step with this constant.
+use aura_os_core::CEO_SYSTEM_PROMPT_PREFIX;
 
 /// True if a network agent record has the explicit CEO bootstrap identity.
 ///

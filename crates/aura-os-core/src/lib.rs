@@ -41,7 +41,7 @@ pub use ids::{
     ProcessNodeConnectionId, ProcessNodeId, ProcessRunId, ProfileId, ProjectId, SessionEventId,
     SessionId, SpecId, TaskId, UserId,
 };
-pub use permissions::{AgentPermissions, AgentScope, Capability};
+pub use permissions::{AgentPermissions, AgentScope, Capability, CEO_SYSTEM_PROMPT_PREFIX};
 pub use settings::{SettingsEntry, SettingsValue};
 
 /// Re-export of the wire-shipped intent classifier spec used by

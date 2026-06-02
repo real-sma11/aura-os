@@ -27,6 +27,19 @@ use serde::{Deserialize, Serialize};
 
 use aura_protocol::{AgentPermissionsWire, AgentScopeWire, CapabilityWire};
 
+/// Distinctive opening line of the bootstrap CEO system prompt.
+///
+/// Single source of truth shared across the workspace: the server's
+/// bootstrap handler stamps this prefix into the CEO template
+/// (`ceo_system_prompt`) and uses it as a rename-proof identity signal
+/// in `looks_like_ceo`, while the agent service's read-time
+/// `reconcile_permissions_with_shadow` uses it to restore the CEO
+/// preset for a renamed CEO whose persisted/shadow permissions came
+/// back empty. Both sides MUST reference this constant so the signal
+/// can never drift; the bootstrap handler additionally `debug_assert!`s
+/// that its template still starts with this prefix.
+pub const CEO_SYSTEM_PROMPT_PREFIX: &str = "You are the CEO SuperAgent";
+
 /// Capabilities an agent can hold. Enforced by the harness against the
 /// `SessionInit.agent_permissions` bundle shipped by the caller.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
