@@ -41,6 +41,14 @@ pub(crate) async fn update_agent(
         .update_agent(&agent_id.to_string(), &jwt, &prepared.net_req)
         .await
         .map_err(map_network_error)?;
+    // Record that the user explicitly saved a permissions bundle so the
+    // read-time CEO default-fill stands down and an intentional
+    // "clear all" is honored rather than re-defaulted to the preset.
+    if submitted_permissions.is_some() {
+        state
+            .agent_service
+            .mark_agent_permissions_customized(&agent_id);
+    }
     state
         .agent_service
         .save_agent_runtime_config(&agent_id, &prepared.runtime_config)
@@ -203,22 +211,28 @@ fn reconcile_post_update(
                 response_capabilities = agent.permissions.capabilities.len(),
                 "aura-network PUT response did not echo the submitted `permissions` bundle; using the request-side value"
             );
-            agent.permissions = submitted.clone();
         }
+        // The user explicitly submitted a bundle — it is authoritative,
+        // including an intentional "clear all". Trust it verbatim and do
+        // NOT run the shadow/identity rescue: that rescue would adopt the
+        // previous non-empty shadow (or re-default the CEO preset) and
+        // silently undo the edit the user just made.
+        agent.permissions = submitted.clone();
+    } else {
+        // Symmetric fallback for the common "edit form didn't submit
+        // `permissions`" case (e.g. the AgentEditorModal only edits name /
+        // system_prompt / personality today). When `submitted_permissions`
+        // is `None` and aura-network's PUT response omitted the column,
+        // `agent.permissions` is empty here — same regression that
+        // `reconcile_permissions_with_shadow` fixes on the GET / list read
+        // paths. Without this, renaming the CEO SuperAgent strips its
+        // preset bundle on save and the UI's `isSuperAgent` check fails
+        // (both the capability-based primary check and the CEO/CEO name
+        // fallback), so the CEO preset banner disappears and individual
+        // toggles appear. We reconcile before `save_agent_shadow` below so
+        // we never overwrite a good shadow with the empty projection.
+        state.agent_service.reconcile_permissions_with_shadow(agent);
     }
-    // Symmetric fallback for the common "edit form didn't submit
-    // `permissions`" case (e.g. the AgentEditorModal only edits name /
-    // system_prompt / personality today). When `submitted_permissions`
-    // is `None` and aura-network's PUT response omitted the column,
-    // `agent.permissions` is empty here — same regression that
-    // `reconcile_permissions_with_shadow` fixes on the GET / list read
-    // paths. Without this, renaming the CEO SuperAgent strips its
-    // preset bundle on save and the UI's `isSuperAgent` check fails
-    // (both the capability-based primary check and the CEO/CEO name
-    // fallback), so the CEO preset banner disappears and individual
-    // toggles appear. We reconcile before `save_agent_shadow` below so
-    // we never overwrite a good shadow with the empty projection.
-    state.agent_service.reconcile_permissions_with_shadow(agent);
     state
         .agent_service
         .apply_runtime_config(agent)

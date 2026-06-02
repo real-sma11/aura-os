@@ -364,6 +364,69 @@ fn bootstrapped_ceo_agent_id_round_trips() {
     assert_eq!(service.bootstrapped_ceo_agent_id(), Some(id));
 }
 
+fn renamed_ceo(name: &str) -> Agent {
+    let mut ceo = agent_with_permissions(name, AgentPermissions::empty());
+    ceo.role = "CEO".into();
+    ceo.system_prompt = format!(
+        "{} for the \"Acme\" organization in Aura OS.",
+        aura_os_core::CEO_SYSTEM_PROMPT_PREFIX
+    );
+    ceo
+}
+
+#[test]
+fn reconcile_restores_ceo_preset_by_system_prompt_prefix() {
+    let (service, _dir) = open_service();
+    let mut ceo = renamed_ceo("Maia");
+
+    // No agent_id stamp, no shadow, empty network response: only the
+    // bootstrap CEO system-prompt prefix identifies this renamed CEO.
+    // This is the dev-vs-prod gap — a fresh prod store has neither the
+    // stamp nor a warm shadow.
+    service.reconcile_permissions_with_shadow(&mut ceo);
+    assert!(
+        ceo.permissions.is_ceo_preset(),
+        "renamed CEO recognised by system-prompt prefix must default to the preset"
+    );
+}
+
+#[test]
+fn reconcile_skips_ceo_default_when_permissions_customized() {
+    let (service, _dir) = open_service();
+    let mut ceo = renamed_ceo("Maia");
+
+    // User explicitly cleared every capability: the customized flag must
+    // suppress the CEO default-fill so the all-off choice wins instead of
+    // snapping back to the preset on the next read.
+    service.mark_agent_permissions_customized(&ceo.agent_id);
+    service.reconcile_permissions_with_shadow(&mut ceo);
+    assert!(
+        ceo.permissions.is_empty(),
+        "an explicit clear-all on the CEO must not be re-defaulted to the preset"
+    );
+}
+
+#[test]
+fn save_agent_shadow_allows_clear_all_when_customized() {
+    let (service, _dir) = open_service();
+    let seeded = agent_with_permissions("Maia", AgentPermissions::ceo_preset());
+    service.save_agent_shadow(&seeded).unwrap();
+
+    // With the customized flag set, an empty bundle is an intentional
+    // clear-all and must persist rather than being resurrected from the
+    // stored preset by the dropped-column guard.
+    service.mark_agent_permissions_customized(&seeded.agent_id);
+    let mut cleared = seeded.clone();
+    cleared.permissions = AgentPermissions::empty();
+    service.save_agent_shadow(&cleared).unwrap();
+
+    let reloaded = service.get_agent_local(&seeded.agent_id).unwrap();
+    assert!(
+        reloaded.permissions.is_empty(),
+        "a customized agent must be allowed to persist an intentional clear-all"
+    );
+}
+
 // -----------------------------------------------------------------
 // Per-process heal-PUT throttle. Pins the contract that the
 // shadow-adoption safety net keeps running every reconcile call,

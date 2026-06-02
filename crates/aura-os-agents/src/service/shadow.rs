@@ -42,6 +42,16 @@ impl AgentService {
         if !agent.permissions.is_empty() {
             return;
         }
+        // An empty bundle here is normally a dropped-column projection,
+        // so we preserve the last-known-good shadow. But if the user
+        // has explicitly saved this agent's permissions (the
+        // customized flag), an empty bundle is an intentional
+        // "clear all" and must be allowed to persist — otherwise the
+        // toggles the user just cleared would be resurrected from the
+        // stale shadow on the next read.
+        if self.agent_permissions_customized(&agent.agent_id) {
+            return;
+        }
         let shadow = match self.get_agent_local(&agent.agent_id) {
             Ok(s) => s,
             Err(_) => return,

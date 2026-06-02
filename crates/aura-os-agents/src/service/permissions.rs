@@ -38,6 +38,42 @@ impl AgentService {
         s.parse::<AgentId>().ok()
     }
 
+    /// Settings key recording that a user has explicitly saved this
+    /// agent's `permissions` bundle at least once.
+    fn agent_perms_customized_key(agent_id: &AgentId) -> String {
+        format!("agent:perms_user_set:{agent_id}")
+    }
+
+    /// Mark that the user explicitly saved a `permissions` bundle for
+    /// `agent_id` (set from the PUT handler whenever the request
+    /// carries a `permissions` field, including an intentional
+    /// "clear all"). Once set, the CEO default-fill in
+    /// [`Self::reconcile_permissions_with_shadow`] stands down so the
+    /// user's saved bundle — even an empty one — always wins over the
+    /// "default ON for the CEO" behavior. Best-effort: failures are
+    /// logged and swallowed since the flag is an optimization on top of
+    /// the shadow cache.
+    pub fn mark_agent_permissions_customized(&self, agent_id: &AgentId) {
+        if let Err(err) = self
+            .store
+            .put_setting(&Self::agent_perms_customized_key(agent_id), b"1")
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                error = %err,
+                "failed to persist agent permissions-customized flag"
+            );
+        }
+    }
+
+    /// True iff the user has explicitly saved a `permissions` bundle for
+    /// `agent_id` (see [`Self::mark_agent_permissions_customized`]).
+    pub fn agent_permissions_customized(&self, agent_id: &AgentId) -> bool {
+        self.store
+            .get_setting(&Self::agent_perms_customized_key(agent_id))
+            .is_ok()
+    }
+
     /// Read-time counterpart to the PUT-side reconciliation in
     /// `handlers::agents::crud::update_agent`.
     ///
@@ -114,30 +150,44 @@ impl AgentService {
             agent.permissions = shadow;
             return;
         }
-        // Both sides are empty. Last-resort: if this is the
-        // bootstrapped CEO for the org, restore the canonical preset.
-        // The `normalized_for_identity` helper on the incoming
-        // `NetworkAgent` already handles the "still named CEO"
-        // sub-case, so reaching here means the user renamed (common
-        // "Orion"-style tweak) *and* their shadow got wiped by the
-        // pre-fix PUT flow.
-        if let Some(ceo_id) = self.bootstrapped_ceo_agent_id() {
-            if ceo_id == agent.agent_id {
-                let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
-                if first_attempt && !upstream_known_broken {
-                    tracing::warn!(
-                        agent_id = %agent.agent_id,
-                        "restoring CEO preset from bootstrap-stamped agent_id (both network and shadow had empty permissions); scheduling one-shot upstream heal"
-                    );
-                    self.try_heal_permissions_upstream(
-                        agent.agent_id,
-                        AgentPermissions::ceo_preset(),
-                    );
-                } else if upstream_known_broken {
-                    self.log_upstream_drops_sentinel_once();
-                }
-                agent.permissions = AgentPermissions::ceo_preset();
+        // Both sides are empty. Default-fill the canonical CEO preset
+        // — but only when the user has never explicitly saved this
+        // agent's permissions. An explicit save (including an
+        // intentional "clear all") sets the customized flag and must
+        // win over the "default ON for the CEO" behavior, so we leave
+        // the empty bundle untouched in that case.
+        if self.agent_permissions_customized(&agent.agent_id) {
+            return;
+        }
+        // Recognise the canonical CEO with the same rename-proof
+        // signals as the server's `looks_like_ceo`: the
+        // `setup_ceo_agent`-stamped agent_id, or the bootstrap CEO
+        // system-prompt prefix (survives a rename in the agent editor).
+        // The `normalized_for_identity` helper already handles the
+        // "still named CEO/CEO" sub-case upstream of this call; the
+        // prefix clause is what rescues a renamed CEO (e.g. "Maia") on
+        // a fresh install whose shadow was never warmed and whose
+        // agent_id stamp isn't present yet.
+        let is_bootstrapped_ceo = self
+            .bootstrapped_ceo_agent_id()
+            .is_some_and(|ceo_id| ceo_id == agent.agent_id);
+        let looks_like_ceo = is_bootstrapped_ceo
+            || agent
+                .system_prompt
+                .starts_with(aura_os_core::CEO_SYSTEM_PROMPT_PREFIX);
+        if looks_like_ceo {
+            let first_attempt = self.note_permission_heal_attempt(&agent.agent_id);
+            if first_attempt && !upstream_known_broken {
+                tracing::warn!(
+                    agent_id = %agent.agent_id,
+                    is_bootstrapped_ceo,
+                    "restoring CEO preset (both network and shadow had empty permissions); scheduling one-shot upstream heal"
+                );
+                self.try_heal_permissions_upstream(agent.agent_id, AgentPermissions::ceo_preset());
+            } else if upstream_known_broken {
+                self.log_upstream_drops_sentinel_once();
             }
+            agent.permissions = AgentPermissions::ceo_preset();
         }
     }
 
