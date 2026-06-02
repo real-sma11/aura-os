@@ -89,6 +89,10 @@ fn main() {
     let cli = parse_cli_args();
     let pre_bind = prepare_pre_bind(cli);
     let bootstrapped_auth = load_bootstrapped_auth_literals(&pre_bind.store_path);
+    // Re-apply a previously chosen ffmpeg path (from the in-app "locate
+    // ffmpeg" setup flow) to AURA_FFMPEG_BIN so demo recording keeps working
+    // across restarts without re-prompting. A real shell override wins.
+    demo::tools::apply_persisted_ffmpeg_path(&pre_bind.store_path);
 
     let (std_listener, server_port, server_url) = bind_listener();
     self_heal_loopback_overrides(server_port);

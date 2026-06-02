@@ -1,0 +1,65 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  line-height: 1.45;
+}
+
+.commandRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.command {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  user-select: all;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.copyButton {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  padding: 2px 6px;
+}
+
+.copyButton:hover {
+  opacity: 1;
+}
+
+.error {
+  font-size: 0.8rem;
+  color: var(--color-danger, #e5484d);
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}

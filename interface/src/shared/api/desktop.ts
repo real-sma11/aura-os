@@ -155,10 +155,16 @@ export const DEFAULT_DEMO_RECORD_OPTIONS: DemoRecordOptions = {
   computerUse: false,
 };
 
+/** Machine-readable reason a demo-recording preflight failed, mirroring the
+ * backend `PreflightKind`. Drives which remediation flow the setup modal
+ * shows. */
+export type DemoPreflightKind = "ffmpeg_missing" | "screen_recording_permission";
+
 export interface StartDemoRecordingResponse {
   ok: boolean;
   recording_id?: string;
   error?: string;
+  kind?: DemoPreflightKind;
 }
 
 export const desktopApi = {
@@ -247,6 +253,16 @@ export const desktopApi = {
       }),
     });
   },
+  setDemoFfmpegPath: (path: string) =>
+    apiFetch<{ ok: boolean; error?: string }>("/api/demo-recordings/ffmpeg-path", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  openScreenRecordingSettings: () =>
+    apiFetch<{ ok: boolean; error?: string }>(
+      "/api/demo-recordings/open-screen-recording-settings",
+      { method: "POST" },
+    ),
   getDemoRecording: (recordingId: string) =>
     apiFetch<{
       ok: boolean;

@@ -160,10 +160,16 @@ pub(crate) async fn start_demo_recording(
 
     // Preflight before opening any window so missing prerequisites
     // (ffmpeg, or — on macOS — Screen Recording permission) surface as an
-    // actionable dialog instead of a window that flashes open and produces
-    // an empty file. Any blocking probe runs inside `spawn_blocking`.
-    if let Err(message) = demo::preflight::run_demo_preflight().await {
-        return Json(serde_json::json!({ "ok": false, "error": message }));
+    // actionable in-app setup prompt instead of a window that flashes open
+    // and produces an empty file. Any blocking probe runs inside
+    // `spawn_blocking`. The `kind` lets the chat UI pick the right
+    // self-service remediation flow (locate ffmpeg / open System Settings).
+    if let Err(failure) = demo::preflight::run_demo_preflight().await {
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": failure.message,
+            "kind": failure.kind.as_str(),
+        }));
     }
 
     // Validate + clamp all caller-supplied options at the boundary so the
@@ -225,6 +231,75 @@ pub(crate) async fn get_demo_recording(
     match demo::snapshot(&registry, &recording_id) {
         Some(state) => Json(serde_json::json!({ "ok": true, "recording": state })),
         None => Json(serde_json::json!({ "ok": false, "error": "recording not found" })),
+    }
+}
+
+/// State for the ffmpeg-path setup route: where to persist the user's
+/// chosen ffmpeg path so it survives restarts.
+#[derive(Clone)]
+pub(crate) struct DemoFfmpegPathState {
+    pub(crate) store_path: std::path::PathBuf,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct SetDemoFfmpegPathRequest {
+    path: String,
+}
+
+/// Point AURA at a user-selected ffmpeg binary (the self-service remedy for
+/// a failed `ffmpeg_missing` preflight). Validates the path is launchable,
+/// then applies it both in-process (so the very next recording works
+/// without a relaunch) and to the settings store (so it survives restarts).
+pub(crate) async fn set_demo_ffmpeg_path(
+    AxumState(state): AxumState<DemoFfmpegPathState>,
+    Json(req): Json<SetDemoFfmpegPathRequest>,
+) -> Json<serde_json::Value> {
+    let path = req.path.trim().to_string();
+    if path.is_empty() {
+        return Json(serde_json::json!({ "ok": false, "error": "ffmpeg path is required" }));
+    }
+
+    let probe_path = path.clone();
+    let probe = tokio::task::spawn_blocking(move || {
+        demo::tools::probe_ffmpeg(std::path::Path::new(&probe_path))
+    })
+    .await
+    .unwrap_or_else(|join_error| Err(join_error.to_string()));
+
+    if let Err(reason) = probe {
+        warn!(path = %path, "rejected ffmpeg path: not launchable");
+        return Json(serde_json::json!({
+            "ok": false,
+            "error": format!("That file doesn't look like a working ffmpeg ({reason})."),
+        }));
+    }
+
+    std::env::set_var(demo::tools::FFMPEG_BIN_ENV, &path);
+    demo::tools::persist_ffmpeg_path(&state.store_path, &path);
+    info!(path = %path, "ffmpeg path configured via setup flow");
+    Json(serde_json::json!({ "ok": true }))
+}
+
+/// Open the OS screen-recording privacy settings (the self-service remedy
+/// for a failed `screen_recording_permission` preflight). Uses a URL scheme
+/// rather than a filesystem path, so it can't go through `open_path` (which
+/// requires the target to exist on disk). No-op off macOS.
+pub(crate) async fn open_screen_recording_settings() -> Json<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        const SETTINGS_URL: &str =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+        match open::that(SETTINGS_URL) {
+            Ok(_) => Json(serde_json::json!({ "ok": true })),
+            Err(e) => {
+                warn!(error = %e, "failed to open screen recording settings");
+                Json(serde_json::json!({ "ok": false, "error": e.to_string() }))
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Json(serde_json::json!({ "ok": true }))
     }
 }
 

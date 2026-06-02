@@ -15,6 +15,7 @@ import {
 } from "../../../shared/api/desktop";
 import type { GenerationMode } from "../../../constants/models";
 import { availableModelsForAdapter } from "../../../constants/models";
+import { useDemoRecordStore } from "../../../stores/demo-record-store";
 import { useChatDraft, useChatUI } from "../../../stores/chat-ui-store";
 import { useConversationSnapshot } from "../../../hooks/use-conversation-snapshot";
 import { useLoadOlderMessages } from "../../../hooks/use-load-older-messages";
@@ -317,8 +318,24 @@ export function useChatPanelState({
         });
         const instruction = content.trim();
         if (instruction.length > 0) {
+          const options = demoRecordOptionsRef.current;
           void desktopApi
-            .startDemoRecording(instruction, demoRecordOptionsRef.current)
+            .startDemoRecording(instruction, options)
+            .then((res) => {
+              // Preflight failures (missing ffmpeg, or — on macOS — Screen
+              // Recording permission) come back as `{ ok:false, kind }`.
+              // Surface a self-service setup modal instead of failing
+              // silently; it can locate ffmpeg / open System Settings and
+              // retry the same instruction + options.
+              if (res && res.ok === false && res.kind) {
+                useDemoRecordStore.getState().requestSetup({
+                  kind: res.kind,
+                  message: res.error ?? "Demo recording could not start.",
+                  instruction,
+                  options,
+                });
+              }
+            })
             .catch(() => {
               // Best-effort: the desktop route is unavailable in the web build.
             });

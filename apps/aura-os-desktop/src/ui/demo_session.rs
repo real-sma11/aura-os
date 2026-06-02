@@ -16,7 +16,7 @@ use tracing::warn;
 
 use crate::demo::{self, recorder::ActiveRecording, DemoOptions};
 use crate::events::UserEvent;
-use crate::init::init_script::build_initialization_script;
+use crate::init::init_script::{build_initialization_script, load_bootstrapped_auth_literals};
 use crate::ui::main_window::{ipc_handler, open_demo_window};
 use crate::ui::runtime::{spawn_fallback_show_timer, LoopState};
 
@@ -48,10 +48,18 @@ impl LoopState {
         instruction: String,
         options: DemoOptions,
     ) {
-        // Per-window init script: inherit the shared host-origin seed,
-        // then stamp the demo marker the frontend bridge reads to know
-        // it is the recording window.
-        let mut init_script = build_initialization_script(self.ctx.host_origin.as_deref(), None);
+        // Per-window init script: inherit the shared host-origin seed and
+        // bake in the cached auth snapshot (like the main/IDE windows) so
+        // `__AURA_BOOT_AUTH__.isLoggedIn` is true synchronously and the
+        // window never paints the logged-out public surface before async
+        // auth hydration runs (which caused a public-mode flash on reveal).
+        // Then stamp the demo marker the frontend bridge reads to know it is
+        // the recording window.
+        let bootstrapped_auth = load_bootstrapped_auth_literals(&self.ctx.store_path);
+        let mut init_script = build_initialization_script(
+            self.ctx.host_origin.as_deref(),
+            bootstrapped_auth.as_ref(),
+        );
         init_script.push_str(&format!(
             "\ntry{{window.{}={};}}catch(e){{}}",
             demo::DEMO_MARKER_GLOBAL,

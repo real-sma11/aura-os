@@ -1,18 +1,50 @@
 //! Pre-recording preflight checks for the demo recorder.
 //!
 //! Run before any demo window is opened so missing prerequisites surface
-//! as an actionable native dialog instead of a window that flashes open
-//! and immediately produces an empty file. Currently:
+//! as an actionable in-app setup prompt instead of a window that flashes
+//! open and immediately produces an empty file. Currently:
 //! - ffmpeg must be launchable (all platforms);
 //! - macOS Screen Recording (TCC) permission must be granted.
 //!
-//! The start route is fire-and-forget from the chat input, so a native
-//! dialog is the clearest way to explain why nothing happened; each check
-//! both shows the dialog and returns the reason string to the caller.
+//! Each check returns a structured [`PreflightFailure`] (machine-readable
+//! `kind` + human message) that the start route serializes to the chat UI,
+//! which renders a self-service setup modal (locate ffmpeg / open System
+//! Settings + retry).
 
 use tracing::warn;
 
 use super::tools;
+
+/// Machine-readable cause of a failed preflight check. Mirrored by the
+/// frontend (`StartDemoRecordingResponse.kind`) so the setup modal can show
+/// the right remediation flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreflightKind {
+    /// ffmpeg could not be launched (missing binary / bad `AURA_FFMPEG_BIN`).
+    FfmpegMissing,
+    /// macOS Screen Recording (TCC) permission has not been granted.
+    /// Only constructed on macOS; benign dead code on other platforms.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    ScreenRecordingPermission,
+}
+
+impl PreflightKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            PreflightKind::FfmpegMissing => "ffmpeg_missing",
+            PreflightKind::ScreenRecordingPermission => "screen_recording_permission",
+        }
+    }
+}
+
+/// A failed preflight check: a machine-readable `kind` plus a user-facing
+/// `message`. Returned to the caller so the chat UI can render an in-app
+/// setup prompt instead of silently doing nothing.
+#[derive(Debug, Clone)]
+pub(crate) struct PreflightFailure {
+    pub(crate) kind: PreflightKind,
+    pub(crate) message: String,
+}
 
 // CoreGraphics screen-recording (TCC) preflight. `CGPreflightScreenCaptureAccess`
 // is a side-effect-free query that reports whether this process already has
@@ -24,19 +56,20 @@ extern "C" {
     fn CGPreflightScreenCaptureAccess() -> bool;
 }
 
-/// Run all demo-recording preflight checks. Returns `Err(message)` with a
-/// user-facing reason (a native error dialog is also shown) when a check
-/// fails, so the caller aborts before opening the demo window.
-pub(crate) async fn run_demo_preflight() -> Result<(), String> {
+/// Run all demo-recording preflight checks. Returns `Err(PreflightFailure)`
+/// (machine-readable `kind` + user-facing message) when a check fails, so
+/// the caller aborts before opening the demo window and the chat UI can
+/// render a self-service setup prompt.
+pub(crate) async fn run_demo_preflight() -> Result<(), PreflightFailure> {
     ensure_ffmpeg_available().await?;
     ensure_screen_recording_permission().await?;
     Ok(())
 }
 
 /// Verify ffmpeg can be launched (probe runs off the async executor via
-/// `spawn_blocking`). On failure, show the install / `AURA_FFMPEG_BIN`
-/// guidance dialog and return the reason.
-async fn ensure_ffmpeg_available() -> Result<(), String> {
+/// `spawn_blocking`). On failure, return the install / `AURA_FFMPEG_BIN`
+/// guidance so the in-app setup modal can offer to locate ffmpeg.
+async fn ensure_ffmpeg_available() -> Result<(), PreflightFailure> {
     let ffmpeg = tools::resolve_ffmpeg_binary();
     let probe = {
         let ffmpeg = ffmpeg.clone();
@@ -47,19 +80,20 @@ async fn ensure_ffmpeg_available() -> Result<(), String> {
     };
     let message = format!(
         "Demo recording needs ffmpeg, which isn't available ({reason}). \
-         Install it (e.g. `winget install Gyan.FFmpeg`) or set the \
-         AURA_FFMPEG_BIN environment variable to an ffmpeg executable, \
-         then try again."
+         Install it (e.g. `winget install Gyan.FFmpeg`) or point AURA at an \
+         existing ffmpeg executable, then try again."
     );
     warn!(ffmpeg = %ffmpeg.display(), "demo recording preflight failed: ffmpeg unavailable");
-    show_error_dialog(message.clone());
-    Err(message)
+    Err(PreflightFailure {
+        kind: PreflightKind::FfmpegMissing,
+        message,
+    })
 }
 
 /// macOS Screen Recording (TCC) permission check. avfoundation silently
-/// records an empty/black file without it, so fail early with a dialog
+/// records an empty/black file without it, so fail early with guidance
 /// pointing at System Settings. No-op on other platforms.
-async fn ensure_screen_recording_permission() -> Result<(), String> {
+async fn ensure_screen_recording_permission() -> Result<(), PreflightFailure> {
     #[cfg(target_os = "macos")]
     {
         let granted = tokio::task::spawn_blocking(screen_recording_permission_granted)
@@ -71,24 +105,13 @@ async fn ensure_screen_recording_permission() -> Result<(), String> {
                  enable AURA, then try again."
                 .to_string();
             warn!("demo recording preflight failed: screen recording permission not granted");
-            show_error_dialog(message.clone());
-            return Err(message);
+            return Err(PreflightFailure {
+                kind: PreflightKind::ScreenRecordingPermission,
+                message,
+            });
         }
     }
     Ok(())
-}
-
-/// Show a native, fire-and-forget error dialog explaining a failed
-/// preflight check.
-fn show_error_dialog(message: String) {
-    tokio::spawn(async move {
-        rfd::AsyncMessageDialog::new()
-            .set_level(rfd::MessageLevel::Error)
-            .set_title("AURA — Record Demo")
-            .set_description(message)
-            .show()
-            .await;
-    });
 }
 
 /// Best-effort macOS Screen Recording permission query (does not prompt).

@@ -18,6 +18,7 @@ import { useOnboardingTaskWatcher } from "../../features/onboarding/useOnboardin
 import { useShallow } from "zustand/react/shallow";
 import { AuraShell } from "../AuraShell";
 import { ForcedUpgradeOverlay } from "../ForcedUpgrade";
+import { RecordDemoSetupModal } from "../RecordDemoSetupModal/RecordDemoSetupModal";
 import { MobileShell, MobilePublicShell } from "../../mobile/shell";
 import { useUIModeStore } from "../../stores/ui-mode-store";
 import { useEffectiveMode } from "../../stores/use-effective-mode";
@@ -460,6 +461,7 @@ function AppContent() {
     <>
       <CaptureBridgeHost />
       <DemoBridgeHost />
+      <RecordDemoSetupModal />
       <ResponsiveShell />
 
       {orgSettingsOpen ? (

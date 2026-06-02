@@ -12,6 +12,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tracing::warn;
 
+use aura_os_store::SettingsStore;
+
+/// Environment variable read first by [`resolve_ffmpeg_binary`]. Also the
+/// in-process channel the "locate ffmpeg" setup flow writes so the user's
+/// choice takes effect immediately, without a relaunch.
+pub(crate) const FFMPEG_BIN_ENV: &str = "AURA_FFMPEG_BIN";
+
+/// Settings-store key holding the user-chosen ffmpeg path so it survives
+/// restarts (re-applied to [`FFMPEG_BIN_ENV`] at startup).
+pub(crate) const FFMPEG_PATH_SETTING_KEY: &str = "demo.ffmpeg_path";
+
 pub(crate) fn ffmpeg_binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "ffmpeg.exe"
@@ -97,7 +108,7 @@ pub(crate) fn resolve_background_image() -> Option<PathBuf> {
 /// Apple Silicon and Intel. Binary packaging is deferred like the Windows
 /// MVP; for dev, `AURA_FFMPEG_BIN` / `PATH` cover both architectures.
 pub(crate) fn resolve_ffmpeg_binary() -> PathBuf {
-    if let Ok(explicit) = std::env::var("AURA_FFMPEG_BIN") {
+    if let Ok(explicit) = std::env::var(FFMPEG_BIN_ENV) {
         let trimmed = explicit.trim();
         if !trimmed.is_empty() {
             let path = PathBuf::from(trimmed);
@@ -150,6 +161,46 @@ pub(crate) fn probe_ffmpeg(ffmpeg: &Path) -> Result<(), String> {
             ffmpeg.display()
         )),
     }
+}
+
+/// Persist a user-chosen ffmpeg path to the settings store so it survives
+/// restarts. Best-effort: a store-open/write failure is logged but does not
+/// fail the caller (the in-process env var still makes the path usable for
+/// this session).
+pub(crate) fn persist_ffmpeg_path(store_path: &Path, ffmpeg_path: &str) {
+    let store = match SettingsStore::open(store_path) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!(%error, path = %store_path.display(), "failed to open settings store to persist ffmpeg path");
+            return;
+        }
+    };
+    if let Err(error) = store.put_setting(FFMPEG_PATH_SETTING_KEY, ffmpeg_path.as_bytes()) {
+        warn!(%error, "failed to persist ffmpeg path setting");
+    }
+}
+
+/// Re-apply a previously persisted ffmpeg path to [`FFMPEG_BIN_ENV`] at
+/// startup so the user's earlier "locate ffmpeg" choice keeps working
+/// across restarts. A real environment override (set by the user's shell)
+/// always wins, so we never clobber an existing value.
+pub(crate) fn apply_persisted_ffmpeg_path(store_path: &Path) {
+    if std::env::var_os(FFMPEG_BIN_ENV).is_some() {
+        return;
+    }
+    let store = match SettingsStore::open(store_path) {
+        Ok(store) => store,
+        Err(_) => return,
+    };
+    let Ok(bytes) = store.get_setting(FFMPEG_PATH_SETTING_KEY) else {
+        return;
+    };
+    let value = String::from_utf8_lossy(&bytes);
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    std::env::set_var(FFMPEG_BIN_ENV, trimmed);
 }
 
 /// Detect the avfoundation screen-capture device index on macOS.

@@ -163,6 +163,18 @@ pub(crate) fn spawn_server(
                     ),
                 )
                 .route(
+                    "/api/demo-recordings/ffmpeg-path",
+                    axum_post(handlers::set_demo_ffmpeg_path).with_state(
+                        handlers::DemoFfmpegPathState {
+                            store_path: store_path.clone(),
+                        },
+                    ),
+                )
+                .route(
+                    "/api/demo-recordings/open-screen-recording-settings",
+                    axum_post(handlers::open_screen_recording_settings),
+                )
+                .route(
                     "/api/demo-recordings/:recording_id",
                     axum_get(handlers::get_demo_recording).with_state(demo_registry.clone()),
                 )
