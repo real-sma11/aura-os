@@ -254,12 +254,14 @@ function AuthedBottomTaskbar({
             }
           }}
         />
+        <span className={styles.divider} aria-hidden="true" />
         <AppNavRail
           layout="taskbar"
           allowReorder
           excludeIds={["profile"]}
           {...(collapsed && { includeIds: ["agents", "projects"] })}
         />
+        <span className={styles.divider} aria-hidden="true" />
         <TaskbarIconButton
           icon={<LayoutGrid size={TASKBAR_ICON_SIZE} />}
           title="Apps"

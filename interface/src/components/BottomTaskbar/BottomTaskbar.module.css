@@ -168,8 +168,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
+}
+
+/* Thin vertical separators between the center cluster's icon groups
+   (Desktop / app rail / Apps launcher / collapse), echoing the grouped
+   dividers of the reference icon bar. */
+.divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--color-border-chrome) 80%, transparent);
 }
 
 .favorites {

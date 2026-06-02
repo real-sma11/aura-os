@@ -181,7 +181,11 @@
   inset: var(--icon-hover-inset);
   border-radius: var(--icon-hover-radius);
   background: transparent;
-  transition: background var(--transition-fast);
+  border: 1px solid transparent;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
   pointer-events: none;
   z-index: 0;
 }
@@ -200,10 +204,22 @@
   background: var(--icon-hover-bg);
 }
 
+/* Active app reads as an accent rounded-square ring with a soft glow,
+   while the glyph itself stays bright/neutral — the ring carries the
+   accent so the icon stays legible (see the reference icon bar). */
 .taskbarBtn:not(:disabled)[aria-pressed="true"],
 .taskbarBtn:not(:disabled)[data-selected="true"] {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
   opacity: 1;
+}
+
+.taskbarBtn:not(:disabled)[aria-pressed="true"]::before,
+.taskbarBtn:not(:disabled)[data-selected="true"]::before {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 0 8px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 .taskbarBtn:focus-visible {
@@ -221,5 +237,5 @@
 }
 
 .taskbarDragOverlay[data-selected="true"] {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
 }
