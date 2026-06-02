@@ -81,7 +81,12 @@ export function usePermissionsForm(
 
   const universeScope = hasUniverseScope(draft);
   const isCeoPreset = hasUniverseScope(draft) && hasAllCoreCapabilities(draft);
-  const canEdit = isOwnAgent && !isCeoPreset;
+  // The CEO defaults to the full-access preset, but its capabilities are
+  // editable like any other agent's: the server backfills the preset only
+  // when the bundle was never set, and honors any explicit edit (including
+  // turning capabilities off) thereafter. Editing is gated solely on
+  // ownership so a user can tailor their own CEO's capabilities.
+  const canEdit = isOwnAgent;
 
   const globalEnabled = useMemo(() => {
     return new Set(draft.capabilities.map((c) => c.type));

@@ -120,11 +120,9 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
   } as Agent;
 }
 
-// Must mirror `CEO_CORE_CAPABILITY_TYPES` in
-// `interface/src/shared/types/permissions-wire.ts` so `hasAllCoreCapabilities`
-// considers this bundle a full CEO preset — if it drifts out of sync,
-// `canEdit` flips to true and the switches in this suite stop being
-// disabled.
+// Mirrors `CEO_CORE_CAPABILITY_TYPES` in
+// `interface/src/shared/types/permissions-wire.ts` (the full CEO preset) so
+// the CEO test below renders with every capability toggle checked.
 const ceoPermissions: AgentPermissions = {
   scope: { orgs: [], projects: [], agent_ids: [] },
   capabilities: [
@@ -159,7 +157,7 @@ describe("PermissionsTab", () => {
     });
   });
 
-  it("renders the CEO preset banner and locks all switches", () => {
+  it("renders the CEO preset banner with editable, checked switches for the owner", () => {
     const agent = makeAgent({
       agent_id: "ceo-1",
       name: "CEO",
@@ -172,10 +170,14 @@ describe("PermissionsTab", () => {
       screen.getByText(/CEO preset — universe scope/i),
     ).toBeInTheDocument();
 
+    // The CEO defaults to full access but its capabilities are now
+    // editable like any other owned agent — the switches are enabled and
+    // checked rather than locked.
     const switches = screen.getAllByRole("switch");
     expect(switches.length).toBeGreaterThan(0);
     for (const sw of switches) {
-      expect(sw).toBeDisabled();
+      expect(sw).toBeEnabled();
+      expect(sw).toBeChecked();
     }
     expect(screen.queryByText(/saving/i)).not.toBeInTheDocument();
   });

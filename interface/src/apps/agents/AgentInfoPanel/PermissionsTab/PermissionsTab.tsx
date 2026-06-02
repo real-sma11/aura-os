@@ -83,7 +83,8 @@ export function PermissionsTab({ agent, isOwnAgent }: PermissionsTabProps) {
               CEO preset — universe scope, every core capability.
             </Text>
             <Text size="xs" variant="muted">
-              CEO permissions are locked to prevent self-lockout.
+              Defaults to full access. You can adjust these capabilities;
+              changes are saved automatically.
             </Text>
           </div>
         </div>
