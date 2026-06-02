@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * Deploy-time commit-count snapshot for the marketing `/changelog` page.
+ * Deploy-time commit/release-count snapshot for the marketing
+ * `/changelog` page.
  *
- * Runs inside the release/changelog CI job (see
- * `.github/workflows/publish-release-changelog.yml`) where the workflow's
+ * Runs both inside the release/changelog CI job (see
+ * `.github/workflows/publish-release-changelog.yml`) and on every push to
+ * main (see `.github/workflows/refresh-commit-stats.yml`) so the figures
+ * stay current between releases — otherwise a new month starts stuck at 0
+ * until the first release republishes the snapshot. The workflow's
  * built-in `GITHUB_TOKEN` provides an authenticated GitHub REST budget
- * (1000 req/hr/repo) — so the 14-request fan-out never trips the 60
- * req/hr/IP unauthenticated limit that throttled the old in-browser /
- * Render-server approach on shared egress IPs.
+ * (1000 req/hr/repo) — so the per-repo commit fan-out plus the aura-os
+ * release pagination never trips the 60 req/hr/IP unauthenticated limit
+ * that throttled the old in-browser / Render-server approach on shared
+ * egress IPs.
  *
  * It writes `<pages-dir>/commit-stats.json` onto the `gh-pages` branch,
  * which the SPA reads statically (same host as the changelog index). A
@@ -199,6 +204,109 @@ export async function countCommits({ owner, repo, since, token, fetchImpl = fetc
 }
 
 /**
+ * Count GitHub releases for one repo. Returns `{ allTime, thisMonth }`
+ * where `thisMonth` is the number of (non-draft) releases published on
+ * or after `since`, or `null` on any failure so the caller can fall
+ * back to the previously committed values. Drafts are excluded; nightly
+ * prereleases are counted. Pages through `per_page=100` until a short
+ * page signals the end of the list.
+ */
+export async function countReleases({
+  owner,
+  repo,
+  since,
+  token,
+  fetchImpl = fetch,
+}) {
+  const sinceMs = since ? new Date(since).getTime() : null;
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "aura-os-commit-stats",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let allTime = 0;
+  let thisMonth = 0;
+
+  for (let page = 1; page <= 50; page += 1) {
+    const url = new URL(`${GITHUB_API_BASE}/repos/${owner}/${repo}/releases`);
+    url.searchParams.set("per_page", "100");
+    url.searchParams.set("page", String(page));
+
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      console.warn(
+        `commit-stats: ${repo} releases request failed: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+
+    if (!response.ok) {
+      console.warn(
+        `commit-stats: ${repo} releases returned HTTP ${response.status}`,
+      );
+      return null;
+    }
+
+    let body;
+    try {
+      body = await response.json();
+    } catch (err) {
+      console.warn(
+        `commit-stats: ${repo} releases malformed body: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+
+    if (!Array.isArray(body)) return null;
+
+    for (const release of body) {
+      if (!release || typeof release !== "object") continue;
+      if (release.draft === true) continue;
+      allTime += 1;
+      const stamp = release.published_at ?? release.created_at;
+      if (sinceMs != null && stamp) {
+        const stampMs = new Date(stamp).getTime();
+        if (Number.isFinite(stampMs) && stampMs >= sinceMs) thisMonth += 1;
+      }
+    }
+
+    if (body.length < 100) break;
+  }
+
+  return { allTime, thisMonth };
+}
+
+/**
+ * Resolve this run's release counts against the prior snapshot, mirroring
+ * the per-repo commit fallback: a failed all-time keeps the prior
+ * all-time; a failed this-month keeps the prior this-month only when the
+ * prior snapshot belongs to the same PST month (otherwise it resets to 0
+ * rather than carrying last month's number forward).
+ */
+export function mergeReleaseCounts({ fetched, prior, monthKey }) {
+  const priorSameMonth = Boolean(prior && prior.monthKey === monthKey);
+  const { allTime, thisMonth } = fetched ?? { allTime: null, thisMonth: null };
+
+  const releasesAllTime =
+    allTime == null ? prior?.releasesAllTime ?? 0 : allTime;
+  const releasesThisMonth =
+    thisMonth == null
+      ? priorSameMonth
+        ? prior?.releasesThisMonth ?? 0
+        : 0
+      : thisMonth;
+
+  return { releasesThisMonth, releasesAllTime };
+}
+
+/**
  * Merge this run's freshly-fetched per-repo counts with the prior
  * committed snapshot. A failed all-time keeps the prior all-time; a
  * failed this-month keeps the prior this-month only when the prior
@@ -266,13 +374,23 @@ async function main() {
   const prior = readJsonIfExists(outFile);
 
   const fetched = {};
-  await Promise.all(
-    AURA_PUBLIC_REPOS.map(async (repo) => {
+  let releaseFetched = null;
+  await Promise.all([
+    ...AURA_PUBLIC_REPOS.map(async (repo) => {
       const allTime = await countCommits({ owner, repo, token });
       const thisMonth = await countCommits({ owner, repo, since: sinceIso, token });
       fetched[repo] = { allTime, thisMonth };
     }),
-  );
+    (async () => {
+      // Releases are tracked for the primary `aura-os` repo only.
+      releaseFetched = await countReleases({
+        owner,
+        repo: "aura-os",
+        since: sinceIso,
+        token,
+      });
+    })(),
+  ]);
 
   const { anySuccess, snapshot } = mergeSnapshot({
     repos: AURA_PUBLIC_REPOS,
@@ -282,22 +400,30 @@ async function main() {
     fetchedAt: new Date().toISOString(),
   });
 
-  if (!anySuccess) {
+  const releaseCounts = mergeReleaseCounts({
+    fetched: releaseFetched,
+    prior,
+    monthKey,
+  });
+  const releaseSuccess = releaseFetched != null;
+
+  if (!anySuccess && !releaseSuccess) {
     if (prior) {
       console.warn(
-        "commit-stats: every repo fetch failed; keeping the existing committed snapshot.",
+        "commit-stats: every repo and release fetch failed; keeping the existing committed snapshot.",
       );
     } else {
       console.warn(
-        "commit-stats: every repo fetch failed and no prior snapshot exists; writing nothing.",
+        "commit-stats: every repo and release fetch failed and no prior snapshot exists; writing nothing.",
       );
     }
     return;
   }
 
-  writeJson(outFile, snapshot);
+  const finalSnapshot = { ...snapshot, ...releaseCounts };
+  writeJson(outFile, finalSnapshot);
   console.log(
-    `commit-stats: wrote ${outFile} (thisMonth=${snapshot.commitsThisMonth}, allTime=${snapshot.commitsAllTime}, partial=${snapshot.partial}, monthKey=${snapshot.monthKey})`,
+    `commit-stats: wrote ${outFile} (commitsThisMonth=${finalSnapshot.commitsThisMonth}, commitsAllTime=${finalSnapshot.commitsAllTime}, releasesThisMonth=${finalSnapshot.releasesThisMonth}, releasesAllTime=${finalSnapshot.releasesAllTime}, partial=${finalSnapshot.partial}, monthKey=${finalSnapshot.monthKey})`,
   );
 }
 

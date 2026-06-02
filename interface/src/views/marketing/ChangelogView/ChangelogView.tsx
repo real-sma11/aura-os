@@ -49,6 +49,10 @@ const COMMIT_STATS_STORAGE_KEY = "aura.changelog.commitStats.v2";
 interface CommitTotals {
   readonly commitsThisMonth: number;
   readonly commitsAllTime: number;
+  /** GitHub release counts for `aura-os`, when the snapshot carries them.
+   *  `releasesThisMonth` is gated on `monthKey` like the commit figure. */
+  readonly releasesThisMonth?: number;
+  readonly releasesAllTime?: number;
   /** PST `YYYY-MM` the `commitsThisMonth` figure belongs to. */
   readonly monthKey: string;
 }
@@ -79,6 +83,12 @@ function readStoredCommitTotals(): CommitTotals | null {
       return {
         commitsThisMonth: parsed.commitsThisMonth,
         commitsAllTime: parsed.commitsAllTime,
+        ...(typeof parsed.releasesThisMonth === "number"
+          ? { releasesThisMonth: parsed.releasesThisMonth }
+          : {}),
+        ...(typeof parsed.releasesAllTime === "number"
+          ? { releasesAllTime: parsed.releasesAllTime }
+          : {}),
         monthKey: typeof parsed.monthKey === "string" ? parsed.monthKey : "",
       };
     }
@@ -408,6 +418,12 @@ export function ChangelogView(): ReactNode {
     const totals: CommitTotals = {
       commitsThisMonth: liveCommitStats.commitsThisMonth,
       commitsAllTime: liveCommitStats.commitsAllTime,
+      ...(typeof liveCommitStats.releasesThisMonth === "number"
+        ? { releasesThisMonth: liveCommitStats.releasesThisMonth }
+        : {}),
+      ...(typeof liveCommitStats.releasesAllTime === "number"
+        ? { releasesAllTime: liveCommitStats.releasesAllTime }
+        : {}),
       monthKey: liveCommitStats.monthKey,
     };
     writeStoredCommitTotals(totals);
@@ -422,6 +438,12 @@ export function ChangelogView(): ReactNode {
     ? {
         commitsThisMonth: liveCommitStats.commitsThisMonth,
         commitsAllTime: liveCommitStats.commitsAllTime,
+        ...(typeof liveCommitStats.releasesThisMonth === "number"
+          ? { releasesThisMonth: liveCommitStats.releasesThisMonth }
+          : {}),
+        ...(typeof liveCommitStats.releasesAllTime === "number"
+          ? { releasesAllTime: liveCommitStats.releasesAllTime }
+          : {}),
         monthKey: liveCommitStats.monthKey,
       }
     : storedCommitTotals;
@@ -493,16 +515,43 @@ export function ChangelogView(): ReactNode {
     [entries],
   );
 
+  // Release counts prefer the CI-published snapshot (refreshed on every
+  // push to main, so it stays current between releases) and fall back to
+  // the changelog-index-derived figures when the snapshot predates
+  // release tracking. "This month" is gated on the snapshot's month
+  // matching the current PST month, mirroring the commit figure.
+  const snapshotReleasesThisMonth =
+    thisMonthIsCurrent &&
+    effectiveCommitTotals &&
+    typeof effectiveCommitTotals.releasesThisMonth === "number"
+      ? effectiveCommitTotals.releasesThisMonth
+      : null;
+  const snapshotReleasesAllTime =
+    effectiveCommitTotals &&
+    typeof effectiveCommitTotals.releasesAllTime === "number"
+      ? effectiveCommitTotals.releasesAllTime
+      : null;
+
   // Count every summary stat up from 0 on each visit. Targets stay null
   // while their query is pending so the value holds at 0 during fetch;
   // once a finite total arrives it counts up from 0 to the real number.
   const releasesThisMonthDisplay = useCountUp({
-    target: isLoading ? null : stats.releasesThisMonth,
+    target:
+      snapshotReleasesThisMonth !== null
+        ? snapshotReleasesThisMonth
+        : isLoading
+          ? null
+          : stats.releasesThisMonth,
     resetKey: visitKey,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });
   const releasesAllTimeDisplay = useCountUp({
-    target: isLoading ? null : stats.releasesAllTime,
+    target:
+      snapshotReleasesAllTime !== null
+        ? snapshotReleasesAllTime
+        : isLoading
+          ? null
+          : stats.releasesAllTime,
     resetKey: visitKey,
     durationMs: BANNER_COUNT_UP_DURATION_MS,
   });

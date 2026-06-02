@@ -42,6 +42,53 @@ describe("fetchAuraCommitStats", () => {
     expect(url).toContain("commit-stats.json");
   });
 
+  it("parses release counts when the snapshot carries them", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          commitsThisMonth: 88,
+          commitsAllTime: 2940,
+          releasesThisMonth: 4,
+          releasesAllTime: 210,
+          monthKey: "2026-06",
+          fetchedAt: "2026-06-02T16:22:00.000Z",
+          partial: false,
+          perRepo: { "aura-os": { thisMonth: 42, allTime: 1234 } },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const stats = await fetchAuraCommitStats();
+
+    expect(stats.releasesThisMonth).toBe(4);
+    expect(stats.releasesAllTime).toBe(210);
+  });
+
+  it("omits release fields when absent or non-finite", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          commitsThisMonth: 88,
+          commitsAllTime: 2940,
+          releasesThisMonth: "nope",
+          monthKey: "2026-06",
+          fetchedAt: "2026-06-02T16:22:00.000Z",
+          partial: false,
+          perRepo: { "aura-os": { thisMonth: 42, allTime: 1234 } },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const stats = await fetchAuraCommitStats();
+
+    expect(stats.releasesThisMonth).toBeUndefined();
+    expect(stats.releasesAllTime).toBeUndefined();
+  });
+
   it("drops malformed per-repo entries but keeps valid totals", async () => {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(

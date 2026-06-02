@@ -248,6 +248,68 @@ describe("ChangelogView", () => {
     );
   });
 
+  it("prefers the snapshot's release counts over the changelog-derived figures", async () => {
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockResolvedValue({
+      commitsThisMonth: 137,
+      commitsAllTime: 9421,
+      releasesThisMonth: 4,
+      releasesAllTime: 210,
+      perRepo: Object.fromEntries(
+        githubCommits.AURA_PUBLIC_REPOS.map((repo) => [
+          repo,
+          { thisMonth: 0, allTime: 0 },
+        ]),
+      ),
+      monthKey: CURRENT_PST_MONTH_KEY,
+      fetchedAt: new Date().toISOString(),
+      partial: false,
+    });
+
+    renderChangelogView();
+
+    // The changelog index isn't mocked here, so its derived release
+    // counts are 0; seeing the snapshot's numbers proves it wins.
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/Releases this month/).textContent,
+      ).toBe("4");
+    });
+    expect(getCommitStatValueElement(/All-time releases/).textContent).toBe(
+      "210",
+    );
+  });
+
+  it("shows 0 releases this month for a stale-month snapshot but keeps all-time releases", async () => {
+    vi.spyOn(githubCommits, "fetchAuraCommitStats").mockResolvedValue({
+      commitsThisMonth: 999,
+      commitsAllTime: 9421,
+      releasesThisMonth: 99,
+      releasesAllTime: 210,
+      perRepo: Object.fromEntries(
+        githubCommits.AURA_PUBLIC_REPOS.map((repo) => [
+          repo,
+          { thisMonth: 0, allTime: 0 },
+        ]),
+      ),
+      monthKey: "1999-01",
+      fetchedAt: new Date().toISOString(),
+      partial: false,
+    });
+
+    renderChangelogView();
+
+    await waitFor(() => {
+      expect(
+        getCommitStatValueElement(/All-time releases/).textContent,
+      ).toBe("210");
+    });
+    // Stale-month snapshot: this-month release figure is gated off and
+    // falls back to the changelog-derived 0.
+    expect(getCommitStatValueElement(/Releases this month/).textContent).toBe(
+      "0",
+    );
+  });
+
   it("renders Current Version as a stat block in the card header (top-right) with the version number, release age, Download and GitHub links", async () => {
     // Anchor the timestamp 2 hours before the actual test-runner clock
     // so the relative-time string is deterministic ("2 hours ago")

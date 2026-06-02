@@ -40,6 +40,15 @@ export interface RepoCommitCounts {
 export interface LiveCommitStats {
   readonly commitsThisMonth: number;
   readonly commitsAllTime: number;
+  /**
+   * GitHub release counts for `aura-os`. Optional for backward
+   * compatibility with snapshots published before release tracking was
+   * added; absent fields fall back to the changelog-index-derived counts
+   * in the UI. `releasesThisMonth` is gated on `monthKey` like the commit
+   * figure.
+   */
+  readonly releasesThisMonth?: number;
+  readonly releasesAllTime?: number;
   readonly perRepo: Readonly<Record<string, RepoCommitCounts>>;
   /**
    * PST `YYYY-MM` the `commitsThisMonth` figure belongs to. The UI gates
@@ -108,6 +117,12 @@ function normalizeSnapshot(raw: unknown): LiveCommitStats | null {
   return {
     commitsThisMonth: record.commitsThisMonth,
     commitsAllTime: record.commitsAllTime,
+    ...(isFiniteNumber(record.releasesThisMonth)
+      ? { releasesThisMonth: record.releasesThisMonth }
+      : {}),
+    ...(isFiniteNumber(record.releasesAllTime)
+      ? { releasesAllTime: record.releasesAllTime }
+      : {}),
     perRepo,
     monthKey: typeof record.monthKey === "string" ? record.monthKey : "",
     fetchedAt:
