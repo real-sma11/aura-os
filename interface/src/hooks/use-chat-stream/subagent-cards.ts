@@ -8,6 +8,11 @@ import type {
   SubagentSpawned,
   SubagentStatus,
 } from "../../shared/types/harness-protocol";
+import {
+  closeCurrentThinkingSegment,
+  nextTimelineId,
+  syncDisplayedTimeline,
+} from "../stream/handlers/shared";
 
 /**
  * Apply `update` to every tool-call entry matching `match`, both in the
@@ -87,6 +92,58 @@ function upsertCouncilMember(
 }
 
 /**
+ * Ensure a parent tool-call entry exists for an AURA Council turn.
+ *
+ * Unlike an ordinary `task` spawn — whose parent card is created earlier
+ * by the model's `task` tool call (`tool_use_start`) — a council run
+ * fans members out directly with no preceding tool call, so there is no
+ * entry for the shared `parent_tool_use_id` to fold onto. Synthesize one
+ * (mirroring `handleToolCallStarted`) the first time a council member is
+ * announced so the block registry can render the `CouncilPanel` and the
+ * activity timeline shows the row. Subsequent members find this entry and
+ * simply upsert.
+ */
+function ensureCouncilParentEntry(
+  refs: StreamRefs,
+  setters: StreamSetters,
+  parentId: string,
+): void {
+  let exists = refs.toolCalls.current.some((tc) => tc.id === parentId);
+  if (!exists) {
+    setters.setEvents((prev) => {
+      exists =
+        exists ||
+        prev.some((evt) => evt.toolCalls?.some((tc) => tc.id === parentId));
+      return prev;
+    });
+  }
+  if (exists) return;
+
+  const entry: ToolCallEntry = {
+    id: parentId,
+    name: "Task",
+    input: {},
+    pending: true,
+    started: true,
+  };
+  refs.toolCalls.current = [...refs.toolCalls.current, entry];
+  setters.setActiveToolCalls([...refs.toolCalls.current]);
+
+  const alreadyInTimeline = refs.timeline.current.some(
+    (item) => item.kind === "tool" && item.toolCallId === parentId,
+  );
+  if (!alreadyInTimeline) {
+    closeCurrentThinkingSegment(refs);
+    refs.timeline.current.push({
+      kind: "tool",
+      toolCallId: parentId,
+      id: nextTimelineId(),
+    });
+    syncDisplayedTimeline(refs, setters);
+  }
+}
+
+/**
  * Handle a parent-stream `subagent_spawned` event.
  *
  * For an AURA Council member (`council_index` set), fold the member into
@@ -107,6 +164,7 @@ export function registerSpawnedSubagent(
   if (!parentId) return;
   const councilIndex = payload.council_index;
   if (councilIndex != null) {
+    ensureCouncilParentEntry(refs, setters, parentId);
     patchToolCall(
       refs,
       setters,

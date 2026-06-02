@@ -99,6 +99,26 @@ pub(super) async fn handle_subagent_spawned(
     council_index: Option<u32>,
 ) {
     if let Some(parent_id) = parent_tool_use_id.filter(|s| !s.is_empty()) {
+        // AURA Council members are fanned out directly with no preceding
+        // `task` tool call, so the shared parent `tool_use` block the
+        // members fold onto never gets created the way an ordinary `task`
+        // spawn's does. Synthesize it the first time a council member is
+        // announced so a reloaded turn can rebuild the N-column panel from
+        // `content_blocks` alone (mirrors the live UI's
+        // `ensureCouncilParentEntry`).
+        let has_block = state.content_blocks.iter().any(|b| {
+            b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                && b.get("id").and_then(|i| i.as_str()) == Some(parent_id)
+        });
+        if !has_block && council_index.is_some() {
+            state.content_blocks.push(json!({
+                "type": "tool_use",
+                "id": parent_id,
+                "name": "Task",
+                "input": json!({}),
+            }));
+        }
+
         if let Some(block) = state.content_blocks.iter_mut().rev().find(|b| {
             b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                 && b.get("id").and_then(|i| i.as_str()) == Some(parent_id)
@@ -425,6 +445,71 @@ mod tests {
         );
         // Council members must NOT collapse onto the single scalar
         // `child_run_id` (that's the non-council `task` shape).
+        assert!(block.get("child_run_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn subagent_spawned_synthesizes_parent_block_for_council_when_absent() {
+        // Council members are fanned out with no preceding `task` tool
+        // call, so the parent `tool_use` block does NOT pre-exist. The
+        // first council spawn must synthesize it and accumulate members so
+        // a reloaded turn can rebuild the N-column panel from
+        // `content_blocks` alone.
+        let mut state = PersistTaskState::new();
+        state.message_id = "msg-council".to_string();
+
+        let ctx = test_ctx();
+        handle_subagent_spawned(
+            &mut state,
+            &ctx,
+            "child-run-b",
+            Some("toolu_council_1"),
+            "council-member",
+            "deliberate on the answer",
+            Some("anthropic/claude"),
+            Some(1),
+        )
+        .await;
+        handle_subagent_spawned(
+            &mut state,
+            &ctx,
+            "child-run-a",
+            Some("toolu_council_1"),
+            "council-member",
+            "deliberate on the answer",
+            Some("openai/gpt"),
+            Some(0),
+        )
+        .await;
+
+        let council_blocks: Vec<&Value> = state
+            .content_blocks
+            .iter()
+            .filter(|b| b.get("id").and_then(Value::as_str) == Some("toolu_council_1"))
+            .collect();
+        assert_eq!(
+            council_blocks.len(),
+            1,
+            "exactly one synthetic parent block is created and reused",
+        );
+        let block = council_blocks[0];
+        assert_eq!(
+            block.get("type").and_then(Value::as_str),
+            Some("tool_use"),
+        );
+        let members = block
+            .get("council_members")
+            .and_then(Value::as_array)
+            .expect("council_members array present");
+        assert_eq!(members.len(), 2, "both members accumulate on the synthetic block");
+        assert_eq!(
+            members[0].get("child_run_id").and_then(Value::as_str),
+            Some("child-run-a"),
+        );
+        assert_eq!(
+            members[1].get("child_run_id").and_then(Value::as_str),
+            Some("child-run-b"),
+        );
         assert!(block.get("child_run_id").is_none());
     }
 

@@ -120,6 +120,71 @@ describe("registerSpawnedSubagent", () => {
     expect(patched?.subagentRunId).toBe("child-run-123");
     expect(patched?.subagentStatus).toBe("running");
   });
+
+  it("synthesizes a council parent entry when none exists and folds in the member", () => {
+    // Council runs fan members out directly with no preceding `task`
+    // tool call, so there is no parent entry to attach to. The first
+    // council spawn must create one and the registry then renders the
+    // CouncilPanel.
+    const h = makeHarness([]);
+    registerSpawnedSubagent(
+      h.refs,
+      h.setters,
+      spawn({
+        child_run_id: "child-a",
+        parent_tool_use_id: "toolu_council_1",
+        subagent_type: "council-member",
+        model: "openai/gpt",
+        council_index: 0,
+      }),
+    );
+
+    const entry = h.refs.toolCalls.current.find((tc) => tc.id === "toolu_council_1");
+    expect(entry).toBeDefined();
+    expect(entry?.councilMembers).toHaveLength(1);
+    expect(entry?.councilMembers?.[0].childRunId).toBe("child-a");
+    expect(entry?.councilMembers?.[0].councilIndex).toBe(0);
+    expect(
+      h.refs.timeline.current.some(
+        (item) => item.kind === "tool" && item.toolCallId === "toolu_council_1",
+      ),
+    ).toBe(true);
+  });
+
+  it("folds additional council members onto the same parent entry, ordered by index", () => {
+    const h = makeHarness([]);
+    // Slot 1 arrives before slot 0 to prove ordering by council_index.
+    registerSpawnedSubagent(
+      h.refs,
+      h.setters,
+      spawn({
+        child_run_id: "child-b",
+        parent_tool_use_id: "toolu_council_1",
+        subagent_type: "council-member",
+        model: "anthropic/claude",
+        council_index: 1,
+      }),
+    );
+    registerSpawnedSubagent(
+      h.refs,
+      h.setters,
+      spawn({
+        child_run_id: "child-a",
+        parent_tool_use_id: "toolu_council_1",
+        subagent_type: "council-member",
+        model: "openai/gpt",
+        council_index: 0,
+      }),
+    );
+
+    const entries = h.refs.toolCalls.current.filter(
+      (tc) => tc.id === "toolu_council_1",
+    );
+    expect(entries).toHaveLength(1);
+    const members = entries[0].councilMembers ?? [];
+    expect(members.map((m) => m.councilIndex)).toEqual([0, 1]);
+    expect(members.map((m) => m.childRunId)).toEqual(["child-a", "child-b"]);
+  });
 });
 
 describe("applySubagentStatus", () => {
