@@ -186,9 +186,9 @@
 
 /* Purple - Creative, modern */
 [data-accent='purple'] {
-  --color-accent: #a855f7;
-  --color-accent-hover: #9333ea;
-  --color-accent-muted: rgba(168, 85, 247, 0.15);
+  --color-accent: #400999;
+  --color-accent-hover: #34077d;
+  --color-accent-muted: rgba(64, 9, 153, 0.15);
   --color-accent-contrast: #ffffff;
 }
 

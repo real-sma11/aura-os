@@ -79,7 +79,7 @@ export interface MobileConversation {
  */
 const ACCENT_CYAN = "#01f4cb";
 const ACCENT_BLUE = "#3b82f6";
-const ACCENT_PURPLE = "#a855f7";
+const ACCENT_PURPLE = "#400999";
 
 /**
  * Helper so frame literals below stay terse — `thread`/`agent` from
