@@ -33,6 +33,12 @@ export interface SessionCostView {
 
 export interface SessionCostSectionProps {
   view: SessionCostView;
+  /**
+   * When `false`, the section's own "Session Cost" title is omitted. Used
+   * when an enclosing collapsible header already provides the label so the
+   * heading isn't duplicated.
+   */
+  showTitle?: boolean;
 }
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en-US");
@@ -60,10 +66,13 @@ function formatRatePerMillion(value: number): string {
  * weighted-average billed cost per token (with a per-type rate overlay),
  * and the total billed cost in dollars.
  */
-export function SessionCostSection({ view }: SessionCostSectionProps): ReactElement {
+export function SessionCostSection({
+  view,
+  showTitle = true,
+}: SessionCostSectionProps): ReactElement {
   return (
     <div className={styles.section} data-agent-surface="chat-session-cost">
-      <span className={styles.title}>Session Cost</span>
+      {showTitle && <span className={styles.title}>Session Cost</span>}
 
       <div className={styles.row}>
         <span className={styles.label}>Model</span>

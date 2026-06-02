@@ -637,27 +637,134 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* "Cached this turn" sub-row. Visually distinct from the bucket rows
-   (smaller text + muted token color + thin underline) so it reads as
-   per-turn metadata, not another context bucket. Cache fields are
-   excluded from the stacked bar by design; this row carries them
-   instead. */
-.contextBreakdownCacheRow {
+/* Collapsible section header inside the breakdown popover (Context
+   Composition / Session Cost). Chevron + label, button reset, with a
+   subtle hover so it reads as an interactive toggle. */
+.contextSectionHeader {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  margin: 8px 0 4px;
-  padding: 6px 0 2px 2px;
-  border-top: 1px solid var(--color-border);
-  font-size: 11px;
-  color: var(--color-text-muted);
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-sm, 4px);
+  text-align: left;
 }
 
-.contextBreakdownCacheRow .contextBreakdownRowLeft,
-.contextBreakdownCacheRow .contextBreakdownRowValue {
-  font-size: 11px;
+.contextSectionHeader:hover {
+  background: var(--color-overlay-light);
+}
+
+.contextSectionHeader:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.contextSectionHeaderLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.contextSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Cached row value: keep the Info trigger vertically centered with the
+   "NN% hit" text and add a small gap, mirroring the avg-cost row. */
+.contextBreakdownCacheValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Cached-row info popover. Mirrors the SessionCostSection cost overlay so
+   the two "i" popups feel identical. */
+.cacheOverlayWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cacheOverlayTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.cacheOverlayTrigger:hover {
+  color: var(--color-text-primary);
+  background: var(--color-overlay-medium);
+}
+
+.cacheOverlayTrigger:focus-visible {
+  outline: 2px solid var(--color-accent, var(--color-text-primary));
+  outline-offset: 1px;
+}
+
+.cacheOverlayCard {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 110;
+  min-width: 200px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px var(--color-backdrop-light);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cacheOverlayTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 2px;
+}
+
+.cacheOverlayRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cacheOverlayRowLabel {
+  color: var(--color-text-secondary);
+}
+
+.cacheOverlayRowValue {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cacheOverlayFooter {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 10px;
 }
 
 /* Per-bucket palette. Tied to a `data-context-bucket` attribute on both

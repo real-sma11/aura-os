@@ -9,7 +9,7 @@ vi.mock("./ChatInputBar.module.css", () => ({
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import type { ContextBreakdown } from "../../../stores/context-usage-store";
 
-function fixtureBreakdown(): ContextBreakdown {
+function fixtureBreakdown(overrides: Partial<ContextBreakdown> = {}): ContextBreakdown {
   return {
     systemPromptTokens: 6_500,
     toolsTokens: 20_300,
@@ -19,6 +19,7 @@ function fixtureBreakdown(): ContextBreakdown {
     conversationTokens: 71_800,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    ...overrides,
   };
 }
 
@@ -177,6 +178,79 @@ describe("ContextUsageIndicator", () => {
     expect(
       screen.queryByRole("dialog", { name: /context breakdown/i }),
     ).toBeInTheDocument();
+  });
+
+  // Context Composition starts expanded (bucket rows visible) while
+  // Session Cost starts collapsed (its content hidden until its header
+  // is clicked).
+  it("opens Context Composition by default and keeps Session Cost collapsed", async () => {
+    const user = userEvent.setup();
+    render(
+      <ContextUsageIndicator
+        utilization={0.39}
+        estimatedTokens={105_141}
+        breakdown={fixtureBreakdown()}
+        model="claude-opus-4-8"
+        cumulativeInputTokens={1_000_000}
+        cumulativeOutputTokens={200_000}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /39%/ }));
+
+    // Composition body is visible by default.
+    expect(screen.getByText("Conversation")).toBeInTheDocument();
+
+    // Session Cost is collapsed: its header shows but the body (Model
+    // row) is not rendered yet.
+    const costHeader = screen.getByRole("button", { name: /session cost/i });
+    expect(costHeader).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Model")).not.toBeInTheDocument();
+
+    await user.click(costHeader);
+    expect(costHeader).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Model")).toBeInTheDocument();
+
+    // Collapsing Context Composition hides its bucket rows.
+    const compositionHeader = screen.getByRole("button", {
+      name: /context composition/i,
+    });
+    await user.click(compositionHeader);
+    expect(compositionHeader).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Conversation")).not.toBeInTheDocument();
+  });
+
+  // The Cached row renders as a single bottom row with an Info popup that
+  // breaks out read / written / total tokens, mirroring the avg-cost row.
+  it("renders Cached as a single row with an info popup", async () => {
+    const user = userEvent.setup();
+    render(
+      <ContextUsageIndicator
+        utilization={0.39}
+        estimatedTokens={105_141}
+        breakdown={fixtureBreakdown({
+          cacheReadTokens: 0,
+          cacheCreationTokens: 42_000,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /39%/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: /context breakdown/i });
+    expect(dialog).toHaveTextContent("Cached");
+    // Headline value is the cache hit rate (0 read of 42K total).
+    expect(dialog).toHaveTextContent("0% hit");
+    // Multi-line "read / written" block is gone from the row itself.
+    expect(dialog).not.toHaveTextContent(/Cached this turn/i);
+
+    await user.click(screen.getByRole("button", { name: /show cache token details/i }));
+    const cacheDialog = await screen.findByRole("dialog", {
+      name: /cache token details/i,
+    });
+    expect(cacheDialog).toHaveTextContent("Read (reused)");
+    expect(cacheDialog).toHaveTextContent("Written");
+    expect(cacheDialog).toHaveTextContent("42K");
   });
 
   it("closes the breakdown popover when the close button is clicked", async () => {
