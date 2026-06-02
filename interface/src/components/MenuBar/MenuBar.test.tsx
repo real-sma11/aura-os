@@ -12,6 +12,16 @@ const reopenChecklist = vi.fn();
 const dismissChecklist = vi.fn();
 const trackMock = vi.fn();
 const windowCommandMock = vi.fn();
+const logoutMock = vi.fn();
+let isAuthenticatedMock = false;
+
+vi.mock("../../stores/auth-store", () => ({
+  useAuth: () => ({ isAuthenticated: isAuthenticatedMock }),
+}));
+
+vi.mock("../../stores/use-logout", () => ({
+  useLogout: () => logoutMock,
+}));
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
@@ -101,6 +111,7 @@ function renderMenuBar() {
 beforeEach(() => {
   __setIsMacForTesting(false);
   document.documentElement.dataset.theme = "dark";
+  isAuthenticatedMock = false;
 });
 
 afterEach(() => {
@@ -171,6 +182,34 @@ describe("MenuBar", () => {
     await user.click(screen.getByRole("menuitem", { name: "File" }));
     await user.click(screen.getByRole("menuitem", { name: /Exit/ }));
     expect(windowCommandMock).toHaveBeenCalledWith("close");
+  });
+
+  it("Help > Downloads navigates in-app to /download when logged in", async () => {
+    isAuthenticatedMock = true;
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderMenuBar();
+    await user.click(screen.getByRole("menuitem", { name: "Help" }));
+    await user.click(screen.getByRole("menuitem", { name: /Downloads/ }));
+    expect(mockNavigate).toHaveBeenCalledWith("/download");
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
+  it("Help > Downloads opens aura.ai/download in a new tab when logged out", async () => {
+    isAuthenticatedMock = false;
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderMenuBar();
+    await user.click(screen.getByRole("menuitem", { name: "Help" }));
+    await user.click(screen.getByRole("menuitem", { name: /Downloads/ }));
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://aura.ai/download",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 
   it("View > Toggle Sidekick calls toggleSidekick", async () => {

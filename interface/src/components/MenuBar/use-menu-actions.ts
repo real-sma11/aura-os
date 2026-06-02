@@ -169,9 +169,15 @@ export function useMenuActions(): {
   }, []);
 
   const handleDownloads = useCallback(() => {
+    // Logged-in (desktop) users get the in-app `/download` route so the
+    // page opens inside the actual app rather than a new browser tab.
+    if (isAuthenticated) {
+      navigate("/download");
+      return;
+    }
     if (typeof window === "undefined") return;
     window.open(AURA_DOWNLOADS, "_blank", "noopener,noreferrer");
-  }, []);
+  }, [isAuthenticated, navigate]);
 
   const handleGettingStarted = useCallback(() => {
     const store = useOnboardingStore.getState();
