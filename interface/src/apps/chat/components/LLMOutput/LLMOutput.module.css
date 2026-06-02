@@ -66,9 +66,12 @@
 .root ul, .root ol {
   padding-left: 18px;
   margin-bottom: 8px;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
-.root li { margin-bottom: 2px; color: var(--color-text-secondary); }
+.root ul { list-style: disc outside; }
+.root ol { list-style: decimal outside; }
+.root ul ul { list-style: circle outside; }
+.root li { margin-bottom: 2px; color: var(--color-text); }
 .root hr {
   border: none;
   height: 16px;
