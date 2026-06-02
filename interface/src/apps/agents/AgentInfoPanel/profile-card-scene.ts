@@ -128,7 +128,7 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   const wb = -hh + WINDOW.bottom * h;
   const wt = -hh + WINDOW.top * h;
   const wc = 0.1; // consistent 45 corner chamfer
-  const wcb = 0.34; // larger bottom-left 45 chamfer
+  const wcb = SHELL_CHAMFER_BL; // bottom-left 45 chamfer, matching the outer shell cut
   // Stepped bottom: a deeper left portion and a raised right portion joined by a
   // 45 diagonal. `wbR` is the raised right level, `xStep` where the step sits.
   const stepH = 0.08;
@@ -365,16 +365,25 @@ export function createProfileCardScene(
     cx: number,
     cy: number,
     z: number,
+    overscan = 1,
   ): void {
     const spacing = screenH / 56;
     const half = screenW / 2;
-    const segments = 32;
+    const halfH = screenH / 2;
+    // Overscan the line field so the ends tuck under the metal frame (which is
+    // in front and occludes them) instead of stopping short and leaving a dark
+    // bezel gap. The ramp still peaks at the true (visible) window edge. Only
+    // portrait recesses the lines behind the frame, so callers opt in.
+    const drawHalf = half * overscan;
+    const drawHalfH = halfH * overscan;
+    const segments = 36;
     // Deterministic 0..1 hash for a row index (stable across rebuilds).
     const hash = (n: number): number => {
       const s = Math.sin(n * 12.9898) * 43758.5453;
       return s - Math.floor(s);
     };
-    // Edge-to-center intensity ramp: 1 at the outer edge, ~0 across the center.
+    // Edge-to-center intensity ramp: 1 at (and beyond) the outer edge, ~0 across
+    // the center, so lines fade to transparent over the portrait.
     const rampAt = (x: number): number => {
       const d = Math.min(1, Math.abs(x) / half);
       return Math.pow(d, 2.2);
@@ -382,11 +391,11 @@ export function createProfileCardScene(
     const pos: number[] = [];
     const col: number[] = [];
     let row = 0;
-    for (let y = -screenH / 2; y <= screenH / 2 + 1e-4; y += spacing) {
+    for (let y = -drawHalfH; y <= drawHalfH + 1e-4; y += spacing) {
       const rowGain = 0.75 + hash(row) * 0.35;
-      let prevX = -half;
+      let prevX = -drawHalf;
       for (let i = 1; i <= segments; i += 1) {
-        const x = -half + (screenW * i) / segments;
+        const x = -drawHalf + (2 * drawHalf * i) / segments;
         const i0 = rampAt(prevX) * rowGain;
         const i1 = rampAt(x) * rowGain;
         pos.push(prevX, y, 0, x, y, 0);
@@ -509,17 +518,11 @@ export function createProfileCardScene(
     screenMesh.position.set(winCx, winCy, frontZ - 0.018);
     group.add(screenMesh);
 
-    // Scan-line layer floating just in front of the recessed LCD, inset inside
-    // the window opening so its edges stay clipped behind the frame's bevel lip
-    // (otherwise the lines spill over the inner border, especially on tilt).
-    const lineInset = SHELL_BEVEL + 0.025;
-    addScreenLines(
-      screenW - lineInset * 2,
-      screenH - lineInset * 2,
-      winCx,
-      winCy,
-      frontZ - 0.008,
-    );
+    // Scan-line layer floating just in front of the recessed LCD. The field is
+    // overscanned past the window so the bright line-ends reach the visible
+    // edge and the overscan tucks inside the solid frame (depth-occluded), with
+    // no inset bezel gap.
+    addScreenLines(screenW, screenH, winCx, winCy, frontZ - 0.008, 1.1);
 
     // Header row shared by the wordmark + vent slashes (same vertical center).
     const headerY = shell.h / 2 - 0.16;
