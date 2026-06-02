@@ -212,6 +212,7 @@ function AuthedBottomTaskbar({
   const showSecondaryCluster = !rightCollapsed;
 
   return (
+    <div className={styles.taskbarContainer} data-ui-mode={mode}>
     <div
       className={styles.bar}
       data-agent-surface="desktop-shell-bottom-taskbar"
@@ -329,6 +330,7 @@ function AuthedBottomTaskbar({
         <ClockReadout />
       </div>
       {menuElement}
+    </div>
     </div>
   );
 }
