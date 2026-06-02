@@ -256,7 +256,7 @@ export function createProfileCardScene(
   const accentMaterial = new THREE.MeshStandardMaterial({
     color: accent.clone(),
     emissive: accent.clone(),
-    emissiveIntensity: 1.1,
+    emissiveIntensity: 0.7,
     roughness: 0.4,
     metalness: 0.2,
   });
@@ -408,7 +408,7 @@ export function createProfileCardScene(
     slashGeo.dispose();
 
     // LED clusters: three on the left slot, three on the bottom-right panel.
-    const ledGeo = new THREE.SphereGeometry(0.024, 16, 16);
+    const ledGeo = new THREE.SphereGeometry(0.019, 16, 16);
     const ledColumns: Array<{ x: number; cy: number }> = [
       { x: -shell.w / 2 + shell.w * 0.038, cy: shell.h * 0.03 },
       { x: shell.w / 2 - shell.w * 0.05, cy: -shell.h * 0.38 },
@@ -416,7 +416,7 @@ export function createProfileCardScene(
     for (const col of ledColumns) {
       for (let i = 0; i < 3; i += 1) {
         const led = new THREE.Mesh(ledGeo.clone(), accentMaterial);
-        led.position.set(col.x, col.cy + (1 - i) * 0.07, frontZ + 0.008);
+        led.position.set(col.x, col.cy + (1 - i) * 0.09, frontZ + 0.008);
         group.add(led);
         detailMeshes.push(led);
       }
@@ -502,7 +502,7 @@ export function createProfileCardScene(
   composer.addPass(new RenderPass(scene, camera));
   // Gentler bloom (lower strength, tighter radius, higher threshold) so only the
   // brightest neon blooms — no haze, halos or doubled text.
-  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.32, 0.45, 0.82);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.26, 0.4, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -553,10 +553,10 @@ export function createProfileCardScene(
     const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 * idleAmp : 0;
     group.position.y += (desiredFloat - group.position.y) * 0.08;
 
-    bloom.strength += ((hovering ? 0.5 : 0.32) - bloom.strength) * 0.06;
+    bloom.strength += ((hovering ? 0.32 : 0.26) - bloom.strength) * 0.06;
     screenMaterial.emissiveIntensity +=
-      ((hovering ? 1.45 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
-    accentLight.intensity += ((hovering ? 6 : 4) - accentLight.intensity) * 0.06;
+      ((hovering ? 1.3 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
+    accentLight.intensity += ((hovering ? 4.5 : 3.5) - accentLight.intensity) * 0.06;
 
     renderFrame();
   }
