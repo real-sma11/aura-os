@@ -198,7 +198,18 @@
  * `.desktopSidebar` above.
  */
 :global([data-desktop-mode]) .sidekickLane {
-  border-color: transparent;
+  /*
+   * Desktop mode force-collapses the sidekick lane to width 0. With the
+   * global `box-sizing: border-box` reset a 0-width element with 1px
+   * borders still renders its ~2px border box, and `background-clip:
+   * border-box` paints `--color-sidekick-bg` under the transparent
+   * border — a dark sliver against the wallpaper. Zero the margin,
+   * border, and background so the collapsed lane is truly 0px, matching
+   * the `.sidebar` desktop rule which already strips its background.
+   */
+  margin-left: 0;
+  border-width: 0;
+  background: transparent;
 }
 
 .titleLink {
