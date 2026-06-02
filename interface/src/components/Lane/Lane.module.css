@@ -44,9 +44,6 @@
   cursor: ew-resize;
   z-index: 30;
   user-select: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .resizeHandleRight {
@@ -57,12 +54,24 @@
   left: 0;
 }
 
+/* Accent line painted directly on the resize edge. The panels strip the
+   border on this edge (border-left/right: none), so this fills that void
+   on hover/drag without shifting layout. */
 .resizeHandleLine {
-  width: 2px;
-  height: 48px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
   background: transparent;
-  border-radius: var(--radius-sm);
   transition: background-color var(--transition-fast, 120ms) ease;
+}
+
+.resizeHandleRight .resizeHandleLine {
+  right: 0;
+}
+
+.resizeHandleLeft .resizeHandleLine {
+  left: 0;
 }
 
 .resizeHandle:hover .resizeHandleLine,
