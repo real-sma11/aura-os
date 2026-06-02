@@ -116,8 +116,9 @@ function auraOuterShape(w: number, h: number): THREE.Shape {
 
 /**
  * Inner screen window cut-out, mirroring the shell: 45-degree chamfers on the top
- * corners, a larger 45-degree chamfer at the bottom-left, and a square 90-degree
- * bottom-right corner.
+ * corners, a larger 45-degree chamfer at the bottom-left, a square 90-degree
+ * bottom-right corner, and a stepped bottom edge (deeper left, raised right,
+ * joined by a 45-degree diagonal).
  */
 function auraWindowPath(w: number, h: number): THREE.Path {
   const hw = w / 2;
@@ -128,12 +129,19 @@ function auraWindowPath(w: number, h: number): THREE.Path {
   const wt = -hh + WINDOW.top * h;
   const wc = 0.1; // consistent 45 corner chamfer
   const wcb = 0.34; // larger bottom-left 45 chamfer
+  // Stepped bottom: a deeper left portion and a raised right portion joined by a
+  // 45 diagonal. `wbR` is the raised right level, `xStep` where the step sits.
+  const stepH = 0.08;
+  const wbR = wb + stepH;
+  const xStep = wl + (wr - wl) * 0.6;
   const p = new THREE.Path();
   p.moveTo(wl + wc, wt); // top edge start (after top-left chamfer)
   p.lineTo(wr - wc, wt); // top edge
   p.lineTo(wr, wt - wc); // top-right 45 chamfer
-  p.lineTo(wr, wb); // right edge down to square 90 corner
-  p.lineTo(wl + wcb, wb); // bottom edge
+  p.lineTo(wr, wbR); // right edge down to raised right bottom (square 90)
+  p.lineTo(xStep, wbR); // raised bottom edge (right portion)
+  p.lineTo(xStep - stepH, wb); // 45 step down to the deeper left level
+  p.lineTo(wl + wcb, wb); // deeper bottom edge (left portion)
   p.lineTo(wl, wb + wcb); // bottom-left large 45 chamfer
   p.lineTo(wl, wt - wc); // left edge
   p.lineTo(wl + wc, wt); // top-left 45 chamfer (close)
@@ -374,7 +382,7 @@ export function createProfileCardScene(
     const pos: number[] = [];
     const col: number[] = [];
     let row = 0;
-    for (let y = -screenH / 2 + spacing; y < screenH / 2; y += spacing) {
+    for (let y = -screenH / 2; y <= screenH / 2 + 1e-4; y += spacing) {
       const rowGain = 0.75 + hash(row) * 0.35;
       let prevX = -half;
       for (let i = 1; i <= segments; i += 1) {
@@ -538,7 +546,7 @@ export function createProfileCardScene(
     slashGeo.dispose();
 
     // LED clusters: three on the left slot, three on the bottom-right panel.
-    const ledGeo = new THREE.SphereGeometry(0.019, 16, 16);
+    const ledGeo = new THREE.SphereGeometry(0.0133, 16, 16);
     const ledColumns: Array<{ x: number; cy: number }> = [
       { x: -shell.w / 2 + shell.w * 0.038, cy: shell.h * 0.03 },
       { x: shell.w / 2 - shell.w * 0.05, cy: -shell.h * 0.38 },
