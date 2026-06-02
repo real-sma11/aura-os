@@ -206,13 +206,6 @@
   margin-left: 0;
 }
 
-/* Subtle "synthesizes" affordance on slot 0 (the council synthesizer). */
-.councilSlotBadge {
-  color: var(--color-text-muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
 .threeDHintFlash {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   animation: threeDHintShake 280ms ease;
