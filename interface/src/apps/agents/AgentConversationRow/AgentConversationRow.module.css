@@ -102,7 +102,7 @@
 }
 
 .time {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--color-text-muted, var(--color-text-secondary));
   white-space: nowrap;
   flex-shrink: 0;
