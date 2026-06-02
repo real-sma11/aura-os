@@ -93,9 +93,15 @@ export function SidekickTaskbar() {
         icon: <CheckLoopGlyph active={tasksActive} size={16} />,
         title: "Tasks",
       },
+      // Stats is a primary navigation destination (asserted by the
+      // core smoke + workflow evals), so it must stay in the visible
+      // tab row. The sidekick lane only fits ~7 icon tabs at its
+      // default 320px width, so keeping Stats ahead of the more
+      // secondary Log/Files tabs ensures Log/Files (not Stats) are the
+      // ones that fall into the overflow "More" menu on narrow panels.
+      { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
       { id: "log", icon: <ClipboardClock size={16} />, title: "Log" },
       { id: "files", icon: <FolderClosed size={16} />, title: "Files" },
-      { id: "stats", icon: <ChartNoAxesColumnIncreasing size={16} />, title: "Stats" },
     ],
     [tasksActive, runActive],
   );

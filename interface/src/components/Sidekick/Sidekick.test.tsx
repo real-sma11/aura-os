@@ -179,18 +179,17 @@ describe("SidekickTaskbar", () => {
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
 
-    expect(labels.slice(0, 11)).toEqual([
+    expect(labels).toEqual([
+      "Sessions",
       "Terminal",
       "Browser",
-      "Run",
       "Plans",
+      "Run",
       "Tasks",
       "Stats",
       "Log",
-      "Sessions",
       "Files",
-      "New terminal",
-      "New browser",
+      "More actions",
     ]);
   });
 
@@ -199,15 +198,6 @@ describe("SidekickTaskbar", () => {
     render(<SidekickTaskbar />);
 
     await user.click(screen.getByRole("button", { name: "Terminal" }));
-    expect(mockSidekick.setActiveTab).toHaveBeenCalledWith("terminal");
-  });
-
-  it("creates a terminal from the inline plus button", async () => {
-    const user = userEvent.setup();
-    render(<SidekickTaskbar />);
-
-    await user.click(screen.getByRole("button", { name: "New terminal" }));
-    expect(addTerminal).toHaveBeenCalled();
     expect(mockSidekick.setActiveTab).toHaveBeenCalledWith("terminal");
   });
 
