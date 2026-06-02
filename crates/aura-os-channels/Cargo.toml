@@ -1,0 +1,19 @@
+[package]
+name = "aura-os-channels"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aura-os-store = { path = "../aura-os-store" }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

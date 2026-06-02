@@ -493,6 +493,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aura-os-channels"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "aura-os-store",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "aura-os-core"
 version = "0.2.0"
 dependencies = [
