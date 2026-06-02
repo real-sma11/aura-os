@@ -46,6 +46,17 @@ const LANDSCAPE_SHELL = { w: 2.74, h: 1.7 };
 const SHELL_DEPTH = 0.12;
 const SHELL_BEVEL = 0.03;
 
+/**
+ * Silhouette chamfers, in world units, so every diagonal is a true 45-degree cut
+ * (equal horizontal + vertical delta). `SHELL_CHAMFER` is the consistent corner
+ * size; the bottom-left uses the larger `SHELL_CHAMFER_BL` to match the art.
+ */
+const SHELL_CHAMFER = 0.16;
+const SHELL_CHAMFER_BL = 0.46;
+/** Right-edge step (45 deg) and inset left LED-slot notch, both in world units. */
+const SHELL_RIGHT_STEP = 0.06;
+const LED_SLOT_DEPTH = 0.05;
+
 /** Inner LCD window box as fractions of the portrait shell (left,right,bottom,top). */
 const WINDOW = { left: 0.105, right: 0.9, bottom: 0.16, top: 0.84 };
 
@@ -67,50 +78,65 @@ function roundedRectShape(w: number, h: number, r: number): THREE.Shape {
 }
 
 /**
- * Outer silhouette of the AURA card (portrait), traced from the reference art:
- * rounded top, a chamfered top-right vent corner, a stepped lower-right edge, an
- * inset LED slot on the left, and a large 45-degree chamfer at the bottom-left.
+ * Outer silhouette of the AURA card (portrait), traced from the reference art and
+ * built in world units so every angled segment is a true 45-degree cut (equal dx
+ * and dy). Consistent corner chamfers on three corners, a larger 45-degree
+ * chamfer at the bottom-left, a 45-degree step on the right edge, and an inset
+ * LED-slot notch on the left. Wound clockwise from the top-left.
  */
 function auraOuterShape(w: number, h: number): THREE.Shape {
   const hw = w / 2;
   const hh = h / 2;
-  const X = (f: number) => -hw + f * w;
-  const Y = (f: number) => -hh + f * h;
+  const c = SHELL_CHAMFER;
+  const cb = SHELL_CHAMFER_BL;
+  const st = SHELL_RIGHT_STEP;
+  const d = LED_SLOT_DEPTH;
+  // Right-edge step and left LED-slot extents (world units, +y up).
+  const yStepTop = -h * 0.05;
+  const ySlotBot = -h * 0.016;
+  const ySlotTop = h * 0.076;
   const s = new THREE.Shape();
-  s.moveTo(X(0.05), Y(0.985));
-  s.lineTo(X(0.85), Y(0.985)); // top edge
-  s.lineTo(X(0.99), Y(0.9)); // top-right chamfer
-  s.lineTo(X(0.99), Y(0.45)); // right edge (full width)
-  s.lineTo(X(0.93), Y(0.39)); // step in
-  s.lineTo(X(0.93), Y(0.07)); // lower-right edge
-  s.quadraticCurveTo(X(0.93), Y(0.02), X(0.88), Y(0.02)); // bottom-right corner
-  s.lineTo(X(0.3), Y(0.02)); // bottom edge
-  s.lineTo(X(0.02), Y(0.21)); // bottom-left chamfer
-  s.lineTo(X(0.02), Y(0.45)); // left edge up to slot
-  s.lineTo(X(0.055), Y(0.485)); // LED slot in
-  s.lineTo(X(0.055), Y(0.575));
-  s.lineTo(X(0.02), Y(0.61)); // LED slot out
-  s.lineTo(X(0.02), Y(0.93)); // left edge up
-  s.quadraticCurveTo(X(0.02), Y(0.985), X(0.05), Y(0.985)); // top-left corner
+  s.moveTo(-hw + c, hh); // top edge start (after top-left chamfer)
+  s.lineTo(hw - c, hh); // top edge
+  s.lineTo(hw, hh - c); // top-right 45 chamfer
+  s.lineTo(hw, yStepTop); // right edge (full width)
+  s.lineTo(hw - st, yStepTop - st); // 45 step-in
+  s.lineTo(hw - st, -hh + c); // narrow right edge
+  s.lineTo(hw - st - c, -hh); // bottom-right 45 chamfer
+  s.lineTo(-hw + cb, -hh); // bottom edge
+  s.lineTo(-hw, -hh + cb); // bottom-left large 45 chamfer
+  s.lineTo(-hw, ySlotBot); // left edge up to slot
+  s.lineTo(-hw + d, ySlotBot + d); // 45 LED-slot lead-in
+  s.lineTo(-hw + d, ySlotTop - d); // slot inner edge
+  s.lineTo(-hw, ySlotTop); // 45 LED-slot lead-out
+  s.lineTo(-hw, hh - c); // left edge up
+  s.lineTo(-hw + c, hh); // top-left 45 chamfer (close)
   return s;
 }
 
-/** Inner screen window cut-out, with a chamfered bottom-left corner. */
+/**
+ * Inner screen window cut-out, mirroring the shell with true 45-degree corners:
+ * consistent small chamfers on three corners and a larger one at the bottom-left.
+ */
 function auraWindowPath(w: number, h: number): THREE.Path {
   const hw = w / 2;
   const hh = h / 2;
-  const X = (f: number) => -hw + f * w;
-  const Y = (f: number) => -hh + f * h;
+  const wl = -hw + WINDOW.left * w;
+  const wr = -hw + WINDOW.right * w;
+  const wb = -hh + WINDOW.bottom * h;
+  const wt = -hh + WINDOW.top * h;
+  const wc = 0.1; // consistent 45 corner chamfer
+  const wcb = 0.34; // larger bottom-left 45 chamfer
   const p = new THREE.Path();
-  p.moveTo(X(0.12), Y(WINDOW.top));
-  p.lineTo(X(0.88), Y(WINDOW.top));
-  p.quadraticCurveTo(X(0.9), Y(WINDOW.top), X(0.9), Y(0.82));
-  p.lineTo(X(WINDOW.right), Y(0.18));
-  p.quadraticCurveTo(X(0.9), Y(WINDOW.bottom), X(0.88), Y(WINDOW.bottom));
-  p.lineTo(X(0.3), Y(WINDOW.bottom));
-  p.lineTo(X(0.1), Y(0.3)); // bottom-left chamfer
-  p.lineTo(X(0.1), Y(0.82));
-  p.quadraticCurveTo(X(0.1), Y(WINDOW.top), X(0.12), Y(WINDOW.top));
+  p.moveTo(wl + wc, wt); // top edge start (after top-left chamfer)
+  p.lineTo(wr - wc, wt); // top edge
+  p.lineTo(wr, wt - wc); // top-right 45 chamfer
+  p.lineTo(wr, wb + wc); // right edge
+  p.lineTo(wr - wc, wb); // bottom-right 45 chamfer
+  p.lineTo(wl + wcb, wb); // bottom edge
+  p.lineTo(wl, wb + wcb); // bottom-left large 45 chamfer
+  p.lineTo(wl, wt - wc); // left edge
+  p.lineTo(wl + wc, wt); // top-left 45 chamfer (close)
   return p;
 }
 
