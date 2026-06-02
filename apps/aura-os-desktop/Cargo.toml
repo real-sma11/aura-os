@@ -28,6 +28,14 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
 cargo-packager-updater = "0.2"
+# Computer-use executor (src/computer_use): `enigo` synthesizes real OS
+# mouse/keyboard input (Windows SendInput / macOS CGEvent / Linux) and `xcap`
+# captures the full desktop to an `image::RgbaImage`. Both are cross-platform
+# and replace ~hundreds of lines of per-OS unsafe FFI we'd otherwise hand-roll,
+# so they earn their place per the lean-dependency rule. Pinned to versions
+# compatible with the workspace rust-version (enigo 0.6+ requires rustc 1.85).
+enigo = "0.3.0"
+xcap = "0.9.6"
 
 [dev-dependencies]
 tempfile = { workspace = true }

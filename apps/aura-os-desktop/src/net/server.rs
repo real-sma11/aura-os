@@ -11,6 +11,7 @@ use tao::event_loop::EventLoopProxy;
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 
+use crate::computer_use;
 use crate::events::UserEvent;
 use crate::handlers;
 use crate::init::env::ci_mode_enabled;
@@ -127,6 +128,7 @@ pub(crate) fn spawn_server(
                     return;
                 }
             };
+            let computer_state = computer_use::ComputerUseState::new();
             let desktop_routes = Router::new()
                 .route("/api/pick-folder", axum_post(handlers::pick_folder))
                 .route("/api/pick-file", axum_post(handlers::pick_file))
@@ -189,6 +191,20 @@ pub(crate) fn spawn_server(
                     "/api/update-relocate-and-relaunch",
                     axum_post(handlers::post_update_relocate_and_relaunch)
                         .with_state(update_state.clone()),
+                )
+                .route(
+                    "/api/computer/action",
+                    axum_post(computer_use::post_computer_action)
+                        .with_state(computer_state.clone()),
+                )
+                .route(
+                    "/api/computer/screenshot",
+                    axum_post(computer_use::post_computer_screenshot)
+                        .with_state(computer_state.clone()),
+                )
+                .route(
+                    "/api/computer/abort",
+                    axum_post(computer_use::post_computer_abort).with_state(computer_state.clone()),
                 )
                 .layer(aura_os_server::build_local_api_cors_layer());
 

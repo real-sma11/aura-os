@@ -4,6 +4,7 @@
 )]
 #![allow(unexpected_cfgs)]
 
+mod computer_use;
 mod demo;
 mod events;
 mod frontend;
