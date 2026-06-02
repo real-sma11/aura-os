@@ -62,6 +62,26 @@ impl SessionBridge {
         config: SessionConfig,
         turn: SessionBridgeTurn,
     ) -> Result<SessionBridgeStarted, SessionBridgeError> {
+        let started = Self::open(harness, config).await?;
+        Self::send_user_message(&started.commands_tx, turn)?;
+        Ok(started)
+    }
+
+    /// Open a harness session and return the bound handles WITHOUT
+    /// sending an initial user message.
+    ///
+    /// AURA Council runs use this: the harness mints a `Council` parent
+    /// run that derives its query from the request's
+    /// `conversation_messages` and is driven entirely by the harness
+    /// council orchestrator (member fan-out + the injected synthesis
+    /// turn). Forwarding an out-of-band `UserMessage` here would make the
+    /// synthesizer parent run a spurious single-model turn ahead of the
+    /// council, so the council cold-open path opens-only and lets the
+    /// orchestrator own every turn.
+    pub async fn open(
+        harness: &dyn HarnessLink,
+        config: SessionConfig,
+    ) -> Result<SessionBridgeStarted, SessionBridgeError> {
         tracing::info!(
             target: "aura_os_harness::session",
             harness_agent_id = ?config.agent_id,
@@ -79,7 +99,6 @@ impl SessionBridge {
         })?;
         let events_rx = session.events_tx.subscribe();
         let commands_tx = session.commands_tx.clone();
-        Self::send_user_message(&commands_tx, turn)?;
         Ok(SessionBridgeStarted {
             session,
             events_rx,
@@ -157,6 +176,28 @@ mod tests {
         match rx.recv().await.expect("first command") {
             HarnessInbound::UserMessage(message) => assert_eq!(message.content, "hello"),
             other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn open_does_not_send_any_user_message() {
+        let harness = FakeHarnessLink::default();
+        let started = SessionBridge::open(&harness, SessionConfig::default())
+            .await
+            .expect("bridge should open session");
+
+        assert_eq!(started.session.session_id, "session-1");
+        let mut rx = harness
+            .commands_rx
+            .lock()
+            .expect("commands receiver lock")
+            .take()
+            .expect("commands receiver");
+        // Council cold-opens must NOT forward an out-of-band user
+        // message: the harness council orchestrator owns every turn.
+        match rx.try_recv() {
+            Err(mpsc::error::TryRecvError::Empty) => {}
+            other => panic!("expected no queued command, got: {other:?}"),
         }
     }
 }

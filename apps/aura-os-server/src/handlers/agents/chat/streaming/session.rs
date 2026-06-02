@@ -98,7 +98,22 @@ pub(super) async fn get_or_create_delegated_chat_session(
         harness_mode = ?harness_mode,
         "chat cold-open begin"
     );
-    let open_fut = SessionBridge::open_and_send_user_message(harness, session_config, turn);
+    // AURA Council parent runs are driven entirely by the harness
+    // council orchestrator: the query rides in the request's
+    // `conversation_messages` and the orchestrator injects the single
+    // synthesis turn. Forwarding the user message here would run a
+    // spurious single-model turn on the synthesizer ahead of the
+    // council, so council cold-opens open-only.
+    let open_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send>> =
+        if council_active {
+            Box::pin(SessionBridge::open(harness, session_config))
+        } else {
+            Box::pin(SessionBridge::open_and_send_user_message(
+                harness,
+                session_config,
+                turn,
+            ))
+        };
     let started = match tokio::time::timeout(std::time::Duration::from_secs(60), open_fut).await {
         Ok(result) => result.map_err(map_session_bridge_start_error(
             key,

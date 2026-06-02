@@ -69,7 +69,7 @@ pub(in super::super) async fn open_harness_chat_stream(
     let OpenChatStreamArgs {
         session_key,
         harness_mode,
-        session_config,
+        mut session_config,
         user_content,
         requested_model,
         persist_ctx,
@@ -148,6 +148,22 @@ pub(in super::super) async fn open_harness_chat_stream(
     // code-mode turn on the same session sends the unwrapped content
     // and the model has no on-wire reason to assume plan-mode is
     // still in effect.
+    // AURA Council parent runs derive their query from the request's
+    // `conversation_messages` (the harness council orchestrator calls
+    // `latest_user_query` over them) rather than from an out-of-band
+    // `UserMessage`. The new turn is only persisted later (below) and is
+    // never sent to the council parent run (see `streaming::session`),
+    // so append it to the history here — otherwise the orchestrator fans
+    // members out over a stale / empty query.
+    if session_config.council.is_some() {
+        let mut messages = session_config.conversation_messages.take().unwrap_or_default();
+        messages.push(aura_os_harness::ConversationMessage {
+            role: "user".to_string(),
+            content: user_content.clone(),
+        });
+        session_config.conversation_messages = Some(messages);
+    }
+
     let harness_content = if is_plan_mode {
         crate::handlers::plan_mode::wrap_user_content_for_plan_mode(&user_content)
     } else {
