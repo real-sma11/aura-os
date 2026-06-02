@@ -156,7 +156,7 @@ function auraWindowPath(w: number, h: number): THREE.Path {
  * window silhouette and never spills past the frame (e.g. the bottom-left
  * chamfer). UVs are remapped to 0..1 over the bounding box to match the texture.
  */
-function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
+function auraWindowOutline(w: number, h: number): THREE.Shape {
   const hw = w / 2;
   const hh = h / 2;
   const wl = -hw;
@@ -181,6 +181,13 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
   s.lineTo(wl, wb + wcb);
   s.lineTo(wl, wt - wc);
   s.lineTo(wl + wc, wt);
+  return s;
+}
+
+function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
+  const hw = w / 2;
+  const hh = h / 2;
+  const s = auraWindowOutline(w, h);
   const geo = new THREE.ShapeGeometry(s);
   // ShapeGeometry UVs are raw vertex coords; remap to 0..1 over the box so the
   // emissive photo maps exactly as a PlaneGeometry would.
@@ -315,6 +322,15 @@ export function createProfileCardScene(
     roughness: 0.4,
     metalness: 0.2,
   });
+  // Dark recessed bezel forming the pocket walls + rim the LCD sits inside, so
+  // the screen reads as inset into the metal. Matte + near-black so it stays in
+  // shadow and doesn't catch env reflections or bloom.
+  const bezelMaterial = new THREE.MeshStandardMaterial({
+    color: 0x05070a,
+    metalness: 0.1,
+    roughness: 0.92,
+    envMapIntensity: 0.15,
+  });
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   // Layer 1 — blue brushed metal frame (the structural part of the card).
@@ -392,6 +408,7 @@ export function createProfileCardScene(
 
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
+  let bezelMesh: THREE.Mesh | null = null;
   let screenMesh: THREE.Mesh | null = null;
   let screenLinesMesh: THREE.LineSegments | null = null;
   let screenLinesHaloMesh: THREE.LineSegments | null = null;
@@ -491,6 +508,11 @@ export function createProfileCardScene(
       underlayerMesh.geometry.dispose();
       underlayerMesh = null;
     }
+    if (bezelMesh) {
+      group.remove(bezelMesh);
+      bezelMesh.geometry.dispose();
+      bezelMesh = null;
+    }
     if (screenMesh) {
       group.remove(screenMesh);
       screenMesh.geometry.dispose();
@@ -576,16 +598,37 @@ export function createProfileCardScene(
     // Window center (the box is not symmetric about the origin).
     const winCx = shell.w * ((WINDOW.left + WINDOW.right) / 2 - 0.5);
     const winCy = shell.h * ((WINDOW.bottom + WINDOW.top) / 2 - 0.5);
+    // Dark bezel: a ring matching the window silhouette (outer tucked under the
+    // frame, inner hole slightly smaller than the screen) extruded backward from
+    // the frame front. Its rim + inner walls form the recessed pocket the LCD
+    // sits inside, so the screen reads as inset into the metal.
+    const bezelDepth = 0.04;
+    const bezelOutline = auraWindowOutline(screenW, screenH).getPoints();
+    const scaleOutline = (s: number): THREE.Vector2[] =>
+      bezelOutline.map((p) => new THREE.Vector2(p.x * s, p.y * s));
+    const bezelShape = new THREE.Shape(scaleOutline(1.02));
+    bezelShape.holes.push(new THREE.Path(scaleOutline(0.92)));
+    const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
+      depth: bezelDepth,
+      bevelEnabled: false,
+      curveSegments: 4,
+      steps: 1,
+    });
+    bezelMesh = new THREE.Mesh(bezelGeo, bezelMaterial);
+    bezelMesh.position.set(winCx, winCy, frontZ - bezelDepth - 0.001);
+    group.add(bezelMesh);
+
     const screenGeo = auraWindowShape(screenW, screenH);
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    screenMesh.position.set(winCx, winCy, frontZ - 0.018);
+    // Recessed deep into the bezel pocket so the dark walls give real depth.
+    screenMesh.position.set(winCx, winCy, frontZ - 0.045);
     group.add(screenMesh);
 
     // Scan-line layer floating just in front of the recessed LCD. The field is
     // overscanned past the window so the bright line-ends reach the visible
     // edge and the overscan tucks inside the solid frame (depth-occluded), with
     // no inset bezel gap.
-    addScreenLines(screenW, screenH, winCx, winCy, frontZ - 0.008, 1.1);
+    addScreenLines(screenW, screenH, winCx, winCy, frontZ - 0.035, 1.1);
 
     // Header row shared by the wordmark + vent slashes (same vertical center).
     const headerY = shell.h / 2 - 0.16;
@@ -655,13 +698,29 @@ export function createProfileCardScene(
     screenCanvas.height = canvasSize.h;
     const screenW = shell.w - Math.min(shell.w, shell.h) * 0.1;
     const screenH = screenW * (canvasSize.h / canvasSize.w);
+    // Dark bezel ring standing proud around the screen so the LCD reads as inset.
+    const bezelDepth = 0.018;
+    const bezelRadius = Math.min(screenW, screenH) * 0.06;
+    const bezelShape = roundedRectShape(screenW + 0.05, screenH + 0.05, bezelRadius);
+    bezelShape.holes.push(roundedRectShape(screenW - 0.03, screenH - 0.03, bezelRadius));
+    const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
+      depth: bezelDepth,
+      bevelEnabled: false,
+      curveSegments: 12,
+      steps: 1,
+    });
+    bezelMesh = new THREE.Mesh(bezelGeo, bezelMaterial);
+    bezelMesh.position.set(0, 0, frontZ);
+    group.add(bezelMesh);
+
     const screenGeo = new THREE.PlaneGeometry(screenW, screenH);
     screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    screenMesh.position.set(0, 0, frontZ + 0.012);
+    // Recessed below the bezel rim (which sits at frontZ + bezelDepth).
+    screenMesh.position.set(0, 0, frontZ + 0.006);
     group.add(screenMesh);
 
-    // Scan-line layer floating just in front of the LCD.
-    addScreenLines(screenW, screenH, 0, 0, frontZ + 0.02);
+    // Scan-line layer floating just in front of the LCD, below the bezel rim.
+    addScreenLines(screenW, screenH, 0, 0, frontZ + 0.012);
 
     // Glowing accent tabs on the left/right edges.
     const tabGeo = new THREE.BoxGeometry(0.06, shell.h * 0.16, 0.05);
@@ -847,6 +906,7 @@ export function createProfileCardScene(
       shellMaterial.dispose();
       screenMaterial.dispose();
       accentMaterial.dispose();
+      bezelMaterial.dispose();
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
       wordmarkMaterial.dispose();
