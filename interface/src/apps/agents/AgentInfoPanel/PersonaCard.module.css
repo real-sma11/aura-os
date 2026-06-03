@@ -20,8 +20,7 @@
   padding: var(--space-4, 16px);
   border: 1px solid transparent;
   border-radius: 18px;
-  /* backdrop-filter renders a rectangular blur layer that ignores the
-     border-radius, squaring off the corners; clip it to the rounded box. */
+  /* Clip content to the rounded box so nothing pokes past the corners. */
   overflow: hidden;
   background:
     linear-gradient(
@@ -37,8 +36,10 @@
       rgba(255, 255, 255, 0.02) 55%,
       rgba(255, 255, 255, 0.14) 100%
     ) border-box;
-  backdrop-filter: blur(12px) saturate(120%);
-  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  /* No backdrop-filter: an element with backdrop-filter inside the
+     sidekick's overflow:auto scroll area forces a compositing path that
+     breaks that container's vertical scrolling (Chromium). The translucent
+     dark fill + bevel already read as glass over the solid panel. */
   /* Soft ambient + tight contact drop shadow to lift the card, plus a
      top bevel highlight and a faint bottom shade for the glass edge. */
   box-shadow:
