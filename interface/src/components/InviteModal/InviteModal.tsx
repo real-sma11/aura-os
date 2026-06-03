@@ -74,9 +74,8 @@ export function InviteModal({ isOpen, onClose }: Props) {
             />
           </span>
           <p className={styles.subtext}>
-            Share your code with a friend to get them started on AURA. If they
-            subscribe to one of our monthly plans, you'll both receive 5,000 Z
-            Credits worth $50 to spend on AI models, image generation, and more.
+            Share your code with a friend. If they subscribe, you'll both
+            receive 5,000 Z Credits worth $50 to spend on frontier AI models.
           </p>
 
           <Button
