@@ -879,7 +879,11 @@ button.attachRing::before {
 /* Live WebGL prism ring (PrismRing). Slightly oversized via the
    negative inset so the animated glow can bleed past the disc edge. It
    sits behind the glyph (z-index 1) and the static ring fallback. */
-.prismRing {
+/* Scoped under `button.attachRing` so it outranks the shared
+   `.attachButton > *` rule in InputBarShell (which would otherwise force
+   the canvas to `position: relative; z-index: 1`, dropping it into the
+   layout flow and on top of the + glyph). */
+button.attachRing canvas.prismRing {
   position: absolute;
   /* A <canvas> is a replaced element, so `width: auto` resolves to its
      intrinsic 300x150 rather than stretching to the inset box — give it
@@ -890,6 +894,7 @@ button.attachRing::before {
   height: calc(100% + 12px);
   border-radius: 50%;
   pointer-events: none;
+  /* Sit behind the + glyph (which the shared rule pins at z-index 1). */
   z-index: 0;
 }
 
