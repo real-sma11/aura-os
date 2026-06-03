@@ -83,6 +83,8 @@
 }
 
 .body {
+  /* Shared width so the AURA tab and the invite code button match. */
+  --invite-control-width: 240px;
   position: relative;
   z-index: 1;
   display: flex;
@@ -98,6 +100,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: var(--invite-control-width);
   padding: var(--space-3) var(--space-4);
   border-radius: 9999px;
   background: rgba(0, 0, 0, 0.55);
@@ -126,7 +129,7 @@
 }
 
 .shareButton {
-  width: 100%;
+  width: var(--invite-control-width);
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.06em;
   /* Radius tokens are 0 in this design system, so set an explicit radius. */
