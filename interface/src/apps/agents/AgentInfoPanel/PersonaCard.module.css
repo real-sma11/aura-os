@@ -18,6 +18,12 @@
   margin: var(--space-3);
   max-width: 340px;
   padding: var(--space-4, 16px);
+  /* The card is a flex item in the column scroll area. With overflow:hidden
+     its automatic min-height collapses to 0, so flexbox shrinks the card to
+     fit the lane and clips the expanded text instead of letting the scroll
+     area overflow. Pin the shrink factor so it keeps its natural height and
+     the scroll area scrolls. */
+  flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: 18px;
   /* Clip content to the rounded box so nothing pokes past the corners. */
