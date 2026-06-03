@@ -876,58 +876,47 @@ button.attachRing::before {
   border-radius: 50%;
 }
 
-/* Live WebGL prism ring (PrismRing). Slightly oversized via the
-   negative inset so the animated glow can bleed past the disc edge. It
-   sits behind the glyph (z-index 1) and the static ring fallback. */
-/* Scoped under `button.attachRing` so it outranks the shared
-   `.attachButton > *` rule in InputBarShell (which would otherwise force
-   the canvas to `position: relative; z-index: 1`, dropping it into the
-   layout flow and on top of the + glyph). */
-button.attachRing canvas.prismRing {
-  position: absolute;
-  /* Size + position are driven in JS (PrismRing) as a square centered on
-     the + glyph — a <canvas> is a replaced element whose `calc()` width /
-     inset can resolve unexpectedly, which left the ring off-center and
-     clipped. No border-radius: the shader's alpha already shapes the ring,
-     and a rounded clip would crop an off-center ring. */
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  /* Sit behind the + glyph (which the shared rule pins at z-index 1). */
-  z-index: 0;
-}
-
-/* Once the live canvas is rendering, hide the static conic-gradient
-   ring so the two don't stack. The static ring remains the fallback
-   when WebGL / motion is unavailable (canvas stays data-prism="off"). */
-button.attachRing:has(canvas[data-prism="on"])::after {
-  display: none;
-}
-
-/* The ring itself: a conic prism gradient masked to a 3px donut.
-   Acts as the no-WebGL / reduced-motion fallback. */
+/* Accent ring around the "+" attach button: a 3px donut painted in the
+   theme accent color that glows and pulsates. Replaces the former WebGL
+   prism ring. Uses `--color-accent` so it tracks the user's chosen
+   accent. Sits behind the + glyph (which the shared rule pins at
+   z-index 1). */
 button.attachRing::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
   padding: 3px;
-  background-image: conic-gradient(
-    from 0deg,
-    #ff5f6d,
-    #ffc371,
-    #47e0b0,
-    #4aa3ff,
-    #b86bff,
-    #ff5f6d
-  );
+  background: var(--color-accent);
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 70%, transparent);
+  animation: attachRingPulse 2s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
+}
+
+@keyframes attachRingPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 85%, transparent);
+  }
+}
+
+/* Reduced-motion users get a static accent ring (no pulse). */
+@media (prefers-reduced-motion: reduce) {
+  button.attachRing::after {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .modeSelectorFlex {
