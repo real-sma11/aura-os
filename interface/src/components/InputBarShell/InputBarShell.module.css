@@ -144,6 +144,48 @@
   margin-right: auto;
 }
 
+/* ── Pill chat variant ──────────────────────────────────────────────
+ * Fully-rounded single-line container with a lighter gradient fill, a
+ * 1px gradient border, and a dark drop shadow. The 1px border is drawn
+ * with the two-layer padding-box / border-box gradient technique so the
+ * stroke follows the fully-rounded corners crisply. Scoped to the chat
+ * surface via the `pill` prop so other InputBarShell consumers keep the
+ * default 14px box. */
+.inputContainerPill {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
+    linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
+  box-shadow: 0 2px 6px var(--pill-shadow, #141414);
+}
+
+/* Soften to a rounded rectangle once the prompt wraps to a second line
+   so a tall block of text doesn't read as an awkwardly capsule-ended
+   box. */
+.inputContainerPill[data-multiline="true"] {
+  border-radius: 18px;
+}
+
+/* Brighten the gradient stroke on focus instead of the base
+   `:focus-within` rule's solid `border-color` swap (which can't override
+   the border-box gradient). */
+.inputContainerPill:focus-within {
+  background:
+    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
+    linear-gradient(180deg, #4a4a4a, #3a3a3a) border-box;
+}
+
+/* Keep the gradient fill in the static (public empty-state) wrapper,
+   whose `.inputWrapperStatic .inputContainer` rules would otherwise
+   force a flat background. */
+.inputWrapperStatic .inputContainerPill,
+:global([data-desktop-mode]) .inputWrapperStatic .inputContainerPill {
+  background:
+    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
+    linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
+}
+
 .inputContainerPulse {
   animation: pulseGlow 6s ease-in-out infinite;
 }

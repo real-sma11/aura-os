@@ -981,7 +981,7 @@ export const DesktopChatInputBar = memo(
       ) : (
         <button
           type="button"
-          className={inputBarShellStyles.attachButton}
+          className={`${inputBarShellStyles.attachButton} ${styles.attachRing}`}
           onClick={() => fileInputRef.current?.click()}
           disabled={!canAddMore || sendDisabled}
           aria-label="Attach file"
@@ -1283,7 +1283,11 @@ export const DesktopChatInputBar = memo(
         </button>
       </div>
     ) : (
-      <ModeSelector selectedMode={selectedMode} onChange={onModeChange} />
+      <ModeSelector
+        selectedMode={selectedMode}
+        onChange={onModeChange}
+        className={styles.modeSelectorDetached}
+      />
     );
 
     // In 3D mode the bar is a two-step pipeline:
@@ -1326,6 +1330,7 @@ export const DesktopChatInputBar = memo(
         isCentered={isCentered}
         centeredHeading="What do you want to create?"
         isStatic={isStatic}
+        pill
         isPulsing={isCentered}
         isDropZone={isDragOver}
         placeholder={placeholder}

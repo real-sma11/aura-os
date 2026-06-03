@@ -69,6 +69,15 @@ export interface InputBarShellProps {
    * of overlaying scrollable content (e.g. inside the aura3d tab panel).
    */
   isStatic?: boolean;
+  /**
+   * Opt into the "pill" chat treatment: a fully-rounded single-line
+   * container with a lighter gradient fill, 1px gradient border, and
+   * dark drop shadow. When set, the `modeBar` slot is rendered ABOVE
+   * the rounded container (detached) instead of inside it. Other
+   * surfaces (aura3d / auravideo / automation) leave this off and keep
+   * the default rounded-box chrome.
+   */
+  pill?: boolean;
 
   /** Textarea placeholder. */
   placeholder?: string;
@@ -158,6 +167,7 @@ function InputBarShellInner(
     isPulsing = false,
     isDropZone = false,
     isStatic = false,
+    pill = false,
     placeholder,
     disabled = false,
     textareaProps,
@@ -393,6 +403,7 @@ function InputBarShellInner(
 
   const containerClassName = [
     styles.inputContainer,
+    pill ? styles.inputContainerPill : "",
     isDropZone ? styles.dropZoneActive : "",
     isPulsing || isCentered ? styles.inputContainerPulse : "",
     isMultiLine ? styles.inputContainerMultiLine : "",
@@ -418,6 +429,9 @@ function InputBarShellInner(
       {isCentered && centeredHeading ? (
         <div className={styles.centeredHeading}>{centeredHeading}</div>
       ) : null}
+      {/* In pill mode the mode selector is detached above the rounded
+          container so it reads as separate chrome from the input. */}
+      {pill ? modeBar : null}
       <div
         className={containerClassName}
         data-multiline={isMultiLine ? "true" : "false"}
@@ -425,7 +439,7 @@ function InputBarShellInner(
         onDragLeave={onContainerDragLeave}
         onDrop={onContainerDrop}
       >
-        {modeBar}
+        {pill ? null : modeBar}
         {containerTop}
         <div className={inputRowClassName}>
           {inputRowStart}

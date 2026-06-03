@@ -852,16 +852,65 @@
   width: 100%;
   min-width: 0;
   padding: 0 2px;
-  /* Own the divider for the whole mode-bar row so the line spans
-     the full input-container width. The selector child below has
-     its own border-bottom suppressed to avoid stacking a second
-     semi-transparent border on top of this one. */
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  /* The mode selector is detached above the pill input now, so it owns
+     no divider or surface — the gap below lets it read as separate
+     chrome floating above the rounded input. Match the input
+     container's centered 680px cap so the "+" new-chat button stays
+     aligned above the send button. */
+  max-width: 680px;
+  margin: 0 auto 6px;
+}
+
+/* Iridescent ring around the bottom-left "+" attach button, sitting on
+   a dark inner plate so the glyph reads as a raised disc with a prism
+   outline (matches the design mock). Element-qualified selectors keep
+   the higher specificity needed to override the shared `.attachButton`
+   chrome from InputBarShell regardless of stylesheet order. */
+button.attachRing {
+  border-radius: 50%;
+  background: linear-gradient(180deg, #1e1e1e, #181818);
+}
+
+/* Keep the shared hover plate circular so it matches the disc. */
+button.attachRing::before {
+  border-radius: 50%;
+}
+
+/* The ring itself: a conic prism gradient masked to a 1.5px donut. */
+button.attachRing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 1.5px;
+  background-image: conic-gradient(
+    from 0deg,
+    #ff5f6d,
+    #ffc371,
+    #47e0b0,
+    #4aa3ff,
+    #b86bff,
+    #ff5f6d
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .modeSelectorFlex {
   grid-column: 2;
   min-width: 0;
+}
+
+/* Standalone (no "+" new-chat button) selector: drop the ModeSelector's
+   own divider so the detached selector reads as separate chrome above
+   the pill, matching the `.modeBarRow .modeSelectorFlex` suppression. */
+.modeSelectorDetached {
+  border-bottom: none;
 }
 
 /* The ModeSelector ships with its own `.root` border-bottom for the
