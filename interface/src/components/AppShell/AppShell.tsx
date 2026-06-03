@@ -34,6 +34,7 @@ import {
 } from "../../lib/capture-bridge";
 import { markAuraCaptureSessionActive, shouldEnableAuraScreenshotBridge } from "../../lib/screenshot-bridge";
 import { isDemoRecordingWindow, postDesktopIpc, runDemoInstruction } from "../../lib/demo-bridge";
+import { awaitInitialShellAppReady } from "../../lib/boot-shell";
 
 const BuyCreditsModal = lazy(() =>
   import("../BuyCreditsModal").then((module) => ({ default: module.BuyCreditsModal })),
@@ -373,15 +374,22 @@ function DemoBridgeHost() {
     };
     window.__AURA_DEMO_BRIDGE__ = bridge;
 
-    let readyTimer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
     if (isDemoRecordingWindow()) {
-      // Defer a tick so the bridge + first paint are in place before the
-      // shell starts recording and calls `run`.
-      readyTimer = setTimeout(() => postDesktopIpc("demo-ready"), 50);
+      // Mirror the normal-window reveal (`splash-ready` in `main.tsx`): only
+      // signal the shell to reveal the window + start ffmpeg once the initial
+      // shell app module is loaded and painted. Otherwise the recording window
+      // popped up — and started recording — on a blank/loading frame while a
+      // normal window appeared instantly with content. `awaitInitialShellAppReady`
+      // resolves when the module is ready or after its own safety timeout, so
+      // this can never deadlock the recording.
+      void awaitInitialShellAppReady().finally(() => {
+        if (!cancelled) postDesktopIpc("demo-ready");
+      });
     }
 
     return () => {
-      if (readyTimer) clearTimeout(readyTimer);
+      cancelled = true;
       if (window.__AURA_DEMO_BRIDGE__ === bridge) {
         delete window.__AURA_DEMO_BRIDGE__;
       }
