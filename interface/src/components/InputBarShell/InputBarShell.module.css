@@ -212,10 +212,12 @@
   transform: translateY(-50%);
 }
 
-/* Soften to a rounded rectangle once the prompt wraps to a second line
-   so a tall block of text doesn't read as an awkwardly capsule-ended
-   box. */
-.inputContainerPill[data-multiline="true"] {
+/* Soften to a rounded rectangle once the prompt wraps to a second line,
+   or whenever the container is expanded by stacked chrome (slash menu,
+   attachments, the record-demo settings panel, etc.), so a tall box
+   doesn't read as an awkwardly capsule-ended oval. */
+.inputContainerPill[data-multiline="true"],
+.inputContainerPill[data-expanded="true"] {
   border-radius: 18px;
 }
 

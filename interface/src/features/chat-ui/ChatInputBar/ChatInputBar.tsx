@@ -1340,6 +1340,18 @@ export const DesktopChatInputBar = memo(
 
     const isUploading = generationMode !== "image" && attachments.some((a) => a.uploading);
 
+    // Stacked chrome in the `containerTop` slot (slash/mention menus,
+    // attachments, the record-demo settings panel, queued/disabled hints)
+    // makes the pill grow tall; flag that so the shell softens the fully
+    // rounded pill to a normal rounded-rectangle radius instead of an oval.
+    const inputExpanded =
+      slashMenuOpen ||
+      (mentionMenuOpen && canUseMentions) ||
+      attachments.length > 0 ||
+      isRecordDemoActive ||
+      isQueued ||
+      sendDisabled;
+
     return (
       <InputBarShell
         ref={shellRef}
@@ -1355,6 +1367,7 @@ export const DesktopChatInputBar = memo(
         centeredHeading="What do you want to create?"
         isStatic={isStatic}
         pill
+        expanded={inputExpanded}
         isPulsing={isCentered}
         isDropZone={isDragOver}
         placeholder={placeholder}

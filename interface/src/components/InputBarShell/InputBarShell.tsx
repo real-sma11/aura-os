@@ -78,6 +78,14 @@ export interface InputBarShellProps {
    * the default rounded-box chrome.
    */
   pill?: boolean;
+  /**
+   * Pill mode only: when true, the fully-rounded (999px) pill softens to
+   * the normal rounded-rectangle corner radius. Set this when the container
+   * is expanded by stacked chrome (slash menu, attachments, the record-demo
+   * settings panel, etc.) so a tall box doesn't render as a giant oval —
+   * mirrors the automatic softening already applied in the multi-line state.
+   */
+  expanded?: boolean;
 
   /** Textarea placeholder. */
   placeholder?: string;
@@ -168,6 +176,7 @@ function InputBarShellInner(
     isDropZone = false,
     isStatic = false,
     pill = false,
+    expanded = false,
     placeholder,
     disabled = false,
     textareaProps,
@@ -435,6 +444,7 @@ function InputBarShellInner(
       <div
         className={containerClassName}
         data-multiline={isMultiLine ? "true" : "false"}
+        data-expanded={expanded ? "true" : "false"}
         onDragOver={onContainerDragOver}
         onDragLeave={onContainerDragLeave}
         onDrop={onContainerDrop}
