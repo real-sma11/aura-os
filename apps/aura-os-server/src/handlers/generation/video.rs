@@ -23,6 +23,10 @@ pub(crate) struct GenerateVideoRequest {
     pub duration_seconds: Option<u8>,
     pub resolution: Option<String>,
     pub generate_audio: Option<bool>,
+    /// Source images for image-to-video. Each entry is a fully-resolved
+    /// URL or a `data:<mime>;base64,...` string, mirroring
+    /// [`crate::dto::GenerateImageRequest::images`].
+    pub images: Option<Vec<String>>,
     #[serde(rename = "projectId")]
     pub project_id: Option<String>,
     pub agent_id: Option<String>,
@@ -73,7 +77,7 @@ pub(crate) async fn generate_video_stream(
     )
     .await;
     if let Some(ctx) = persist_ctx.as_ref() {
-        persist_user_prompt(&state, ctx, &body.prompt, None).await;
+        persist_user_prompt(&state, ctx, &body.prompt, body.images.as_deref()).await;
     }
     let persist_args = persist_ctx.map(|ctx| GenerationPersistArgs {
         ctx,
@@ -94,7 +98,7 @@ pub(crate) async fn generate_video_stream(
             model: body.model,
             size: None,
             image_url: None,
-            images: None,
+            images: body.images,
             project_id: body.project_id,
             parent_id: None,
             is_iteration: None,
