@@ -10,7 +10,7 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font-size: 13px;
   cursor: default;
   white-space: nowrap;

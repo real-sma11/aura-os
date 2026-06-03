@@ -554,7 +554,7 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font-family: inherit;
   font-size: 13px;
   cursor: pointer;
