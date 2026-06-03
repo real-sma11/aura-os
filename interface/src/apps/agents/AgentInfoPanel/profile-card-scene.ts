@@ -136,6 +136,18 @@ const INFO_CHANNELS = {
 };
 
 /**
+ * Pill pocket dimensions derived from `INFO_CHANNELS`, shared by the plate
+ * opening, the recessed pocket geometry, and the logo decal canvas so they all
+ * stay aligned. The outer pill is slightly shorter than the region; the inner
+ * (floor/decal) is inset to leave room for the pocket walls.
+ */
+const PILL_W = INFO_CHANNELS.w;
+const PILL_H = (INFO_CHANNELS.top - INFO_CHANNELS.bottom) * 0.82;
+const PILL_INNER_W = PILL_W - 0.05;
+const PILL_INNER_H = PILL_H - 0.05;
+const PILL_POCKET_DEPTH = 0.03;
+
+/**
  * Navigation links region on the lower part of the backplate (below the
  * channel pill). Rows are drawn by an external renderer; clicks are hit-tested
  * via raycasting against this plane and mapped to a row index.
@@ -254,13 +266,26 @@ function auraWindowOutline(w: number, h: number): THREE.Shape {
   return s;
 }
 
-function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
+/** Mirror a list of points horizontally (negate x). */
+function mirrorX(points: THREE.Vector2[]): THREE.Vector2[] {
+  return points.map((p) => new THREE.Vector2(-p.x, p.y));
+}
+
+/** Scale a list of points about the origin. */
+function scalePoints(points: THREE.Vector2[], s: number): THREE.Vector2[] {
+  return points.map((p) => new THREE.Vector2(p.x * s, p.y * s));
+}
+
+/**
+ * Build a ShapeGeometry from an explicit outline (window-centered points), with
+ * UVs remapped to 0..1 over the `w`x`h` bounding box so the emissive texture
+ * maps exactly as a PlaneGeometry would (independent of the outline winding, so
+ * a horizontally-mirrored silhouette still shows non-mirrored text).
+ */
+function shapeFromOutline(points: THREE.Vector2[], w: number, h: number): THREE.ShapeGeometry {
   const hw = w / 2;
   const hh = h / 2;
-  const s = auraWindowOutline(w, h);
-  const geo = new THREE.ShapeGeometry(s);
-  // ShapeGeometry UVs are raw vertex coords; remap to 0..1 over the box so the
-  // emissive photo maps exactly as a PlaneGeometry would.
+  const geo = new THREE.ShapeGeometry(new THREE.Shape(points));
   const positions = geo.attributes.position;
   const uv = new Float32Array(positions.count * 2);
   for (let i = 0; i < positions.count; i += 1) {
@@ -269,6 +294,33 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
   }
   geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   return geo;
+}
+
+/**
+ * Horizontal extent [minX, maxX] of a closed polygon at height `y`, or null if
+ * the line doesn't cross it. Used to clip each scan-line row to the true window
+ * silhouette (so the field follows every chamfer/step on the correct side, for
+ * both the front and the horizontally-mirrored back face).
+ */
+function xSpanAtY(points: THREE.Vector2[], y: number): [number, number] | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const crosses = (a.y <= y && b.y >= y) || (b.y <= y && a.y >= y);
+    if (!crosses) continue;
+    if (a.y === b.y) {
+      lo = Math.min(lo, a.x, b.x);
+      hi = Math.max(hi, a.x, b.x);
+    } else {
+      const t = (y - a.y) / (b.y - a.y);
+      const x = a.x + (b.x - a.x) * t;
+      lo = Math.min(lo, x);
+      hi = Math.max(hi, x);
+    }
+  }
+  return lo <= hi ? [lo, hi] : null;
 }
 
 /**
@@ -625,8 +677,9 @@ export function createProfileCardScene(
   // the recessed pill pocket. Static icon set, so no per-frame redraw.
   const channelsCanvas = document.createElement("canvas");
   channelsCanvas.width = INFO_CHANNELS.canvasW;
+  // Match the decal plane's aspect (inner pill) so the round logos stay round.
   channelsCanvas.height = Math.round(
-    (INFO_CHANNELS.canvasW * (INFO_CHANNELS.top - INFO_CHANNELS.bottom)) / INFO_CHANNELS.w,
+    (INFO_CHANNELS.canvasW * PILL_INNER_H) / PILL_INNER_W,
   );
   const channelsTexture = new THREE.CanvasTexture(channelsCanvas);
   channelsTexture.colorSpace = THREE.SRGBColorSpace;
@@ -637,6 +690,11 @@ export function createProfileCardScene(
     map: channelsTexture,
     transparent: true,
     depthWrite: false,
+    // Bias the decal toward the camera so it never z-fights the pocket floor
+    // (the two sit close together inside the recess) as the card tilts.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
 
   const raycaster = new THREE.Raycaster();
@@ -839,17 +897,10 @@ export function createProfileCardScene(
     cx: number,
     cy: number,
     z: number,
-    overscan = 1,
+    clip: THREE.Vector2[],
   ): void {
     const spacing = screenH / 56;
     const half = screenW / 2;
-    const halfH = screenH / 2;
-    // Overscan the line field so the ends tuck under the metal frame (which is
-    // in front and occludes them) instead of stopping short and leaving a dark
-    // bezel gap. The ramp still peaks at the true (visible) window edge. Only
-    // portrait recesses the lines behind the frame, so callers opt in.
-    const drawHalf = half * overscan;
-    const drawHalfH = halfH * overscan;
     const segments = 36;
     // Deterministic 0..1 hash for a row index (stable across rebuilds).
     const hash = (n: number): number => {
@@ -859,39 +910,43 @@ export function createProfileCardScene(
     // Edge-to-center intensity ramp: 1 at (and beyond) the outer edge, ~0 across
     // the center, so lines fade to transparent over the portrait. `fade` is the
     // transparent center half-width (fraction of `half`); the lines only start
-    // ramping up beyond it, widening the faint middle band by ~50% vs the old
-    // implicit knee (~0.4).
+    // ramping up beyond it. Symmetric about x=0, so it is mirror-agnostic.
     const fade = 0.6;
     const rampAt = (x: number): number => {
       const d = Math.min(1, Math.abs(x) / half);
       const u = Math.max(0, (d - fade) / (1 - fade));
       return Math.pow(u, 3.2);
     };
-    // Crop each row's left end along the window's large bottom-left 45-degree
-    // chamfer (matches `auraWindowPath`'s `wcb`), so the overscanned field
-    // doesn't spill past the frame silhouette into the background there.
-    const wcb = 0.34;
-    const bottom = -halfH;
-    const left = -half;
+    // Vertical extent from the clip polygon's bounds.
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (const p of clip) {
+      yMin = Math.min(yMin, p.y);
+      yMax = Math.max(yMax, p.y);
+    }
     const pos: number[] = [];
     const col: number[] = [];
     let row = 0;
-    for (let y = -drawHalfH; y <= drawHalfH + 1e-4; y += spacing) {
-      const rowGain = 0.4 + hash(row) * 1.05;
-      let x0 = -drawHalf;
-      if (y < bottom + wcb) {
-        // Diagonal from (left + wcb, bottom) up to (left, bottom + wcb).
-        x0 = Math.max(x0, left + wcb - (y - bottom));
+    for (let y = yMin; y <= yMax + 1e-4; y += spacing) {
+      // Clip each row to the (slightly expanded) window silhouette so the field
+      // follows every chamfer/step on the correct side and tucks under the
+      // metal frame without spilling past the card. Works for both the front
+      // outline and the horizontally-mirrored back outline.
+      const span = xSpanAtY(clip, y);
+      if (!span) {
+        row += 1;
+        continue;
       }
-      const x1 = drawHalf;
+      const [x0, x1] = span;
       if (x1 <= x0) {
         row += 1;
         continue;
       }
-      const span = x1 - x0;
+      const rowGain = 0.4 + hash(row) * 1.05;
+      const total = x1 - x0;
       let prevX = x0;
       for (let i = 1; i <= segments; i += 1) {
-        const x = x0 + (span * i) / segments;
+        const x = x0 + (total * i) / segments;
         const i0 = rampAt(prevX) * rowGain;
         const i1 = rampAt(x) * rowGain;
         pos.push(prevX, y, 0, x, y, 0);
@@ -985,15 +1040,21 @@ export function createProfileCardScene(
     screenH: number,
     winCx: number,
     winCy: number,
+    mirror: boolean,
   ): THREE.Mesh {
+    // The back face sits in a node rotated PI about Y; after the card's own flip
+    // (another PI) its net rotation is zero, so to line its window silhouette up
+    // with the (mirrored) metal frame it must use a horizontally-mirrored
+    // outline. The front uses the outline as-is. UVs are remapped over the
+    // bounding box either way, so the back text still reads correctly.
+    const baseOutline = auraWindowOutline(screenW, screenH).getPoints();
+    const outline = mirror ? mirrorX(baseOutline) : baseOutline;
+
     // Dark bezel: a ring matching the window silhouette, extruded backward to
     // form the recessed pocket walls the LCD sits inside.
     const bezelDepth = 0.04;
-    const bezelOutline = auraWindowOutline(screenW, screenH).getPoints();
-    const scaleOutline = (s: number): THREE.Vector2[] =>
-      bezelOutline.map((p) => new THREE.Vector2(p.x * s, p.y * s));
-    const bezelShape = new THREE.Shape(scaleOutline(1.02));
-    bezelShape.holes.push(new THREE.Path(scaleOutline(0.986)));
+    const bezelShape = new THREE.Shape(scalePoints(outline, 1.02));
+    bezelShape.holes.push(new THREE.Path(scalePoints(outline, 0.986)));
     const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
       depth: bezelDepth,
       bevelEnabled: false,
@@ -1005,12 +1066,27 @@ export function createProfileCardScene(
     parent.add(bezel);
 
     // Emissive LCD plane, recessed deep into the bezel pocket.
-    const screen = new THREE.Mesh(auraWindowShape(screenW, screenH), screenMat);
+    const screen = new THREE.Mesh(shapeFromOutline(outline, screenW, screenH), screenMat);
     screen.position.set(winCx, winCy, frontZ - 0.045);
     parent.add(screen);
 
-    // Scan-line layer floating just in front of the recessed LCD.
-    addScreenLines(parent, screenW, screenH, winCx, winCy, frontZ - 0.035, 1.1);
+    // Scan-line layer floating just in front of the recessed LCD, clipped to a
+    // slightly-expanded copy of the window silhouette so the field tucks under
+    // the frame on the correct side.
+    addScreenLines(
+      parent,
+      screenW,
+      screenH,
+      winCx,
+      winCy,
+      frontZ - 0.035,
+      scalePoints(outline, 1.06),
+    );
+
+    // Decals sit over specific frame regions (LED slot on the left, vents on the
+    // right). The back's frame is mirrored by the flip, so mirror the decal x
+    // positions there too (`mx`) to keep each decal over its matching feature.
+    const mx = mirror ? -1 : 1;
 
     // Header row shared by the wordmark + vent slashes (same vertical center).
     const headerY = shell.h / 2 - 0.16;
@@ -1021,7 +1097,7 @@ export function createProfileCardScene(
     const markH = markW / wordmarkAspect;
     wordmarkWidth = markW;
     const wordmark = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
-    wordmark.position.set(windowLeft + markW / 2, headerY, frontZ + 0.006);
+    wordmark.position.set((windowLeft + markW / 2) * mx, headerY, frontZ + 0.006);
     parent.add(wordmark);
     wordmarkMeshes.push(wordmark);
 
@@ -1029,8 +1105,8 @@ export function createProfileCardScene(
     const slashGeo = new THREE.BoxGeometry(0.02, 0.12, 0.03);
     for (let i = 0; i < 3; i += 1) {
       const slash = new THREE.Mesh(slashGeo.clone(), matteMaterial);
-      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, headerY, frontZ + 0.004);
-      slash.rotation.z = 0.5;
+      slash.position.set((shell.w / 2 - 0.14 - i * 0.07) * mx, headerY, frontZ + 0.004);
+      slash.rotation.z = 0.5 * mx;
       parent.add(slash);
     }
     slashGeo.dispose();
@@ -1042,7 +1118,7 @@ export function createProfileCardScene(
     const ledCy = shell.h * 0.03;
     for (let i = 0; i < 3; i += 1) {
       const led = new THREE.Mesh(ledGeo.clone(), accentMaterial);
-      led.position.set(ledX, ledCy + (1 - i) * 0.09, frontZ + 0.008);
+      led.position.set(ledX * mx, ledCy + (1 - i) * 0.09, frontZ + 0.008);
       parent.add(led);
     }
     ledGeo.dispose();
@@ -1064,7 +1140,7 @@ export function createProfileCardScene(
       new THREE.PlaneGeometry(barcodeW, barcodeH),
       barcodeMaterial,
     );
-    barcode.position.set(areaCx, areaCy, frontZ + 0.003);
+    barcode.position.set(areaCx * mx, areaCy, frontZ + 0.003);
     parent.add(barcode);
 
     return screen;
@@ -1082,19 +1158,32 @@ export function createProfileCardScene(
     // Info backplate: a worn gray metal plate behind the card, narrower than the
     // card so its sides stay hidden, extending below the card's bottom edge as a
     // visible strip for agent info. Built first so it sits at the back.
+    // Pill pocket placement (used both to cut the plate opening and to build the
+    // recessed pocket below). The pill sits in the gap between the Wallet row
+    // and the Soul link; its center in the plate's local frame is the world
+    // pill center minus the plate center.
+    const pillCy = (INFO_CHANNELS.top + INFO_CHANNELS.bottom) / 2;
+    const plateCy = (INFO_PLATE.top + INFO_PLATE.bottom) / 2;
+    const pillLocalY = pillCy - plateCy;
+    const pillR = PILL_H / 2;
+
     const plateH = INFO_PLATE.top - INFO_PLATE.bottom;
-    const plateGeo = new THREE.ExtrudeGeometry(
-      plateShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer),
-      {
-        depth: INFO_PLATE.depth,
-        bevelEnabled: true,
-        bevelThickness: INFO_PLATE.bevel,
-        bevelSize: INFO_PLATE.bevel,
-        bevelSegments: 2,
-        curveSegments: 12,
-        steps: 1,
-      },
-    );
+    const plate = plateShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer);
+    // Cut the pill opening so the recessed floor + engraved logos are visible
+    // through the plate instead of being occluded by its solid front face.
+    const pillHolePts = pillShape(PILL_W, PILL_H, pillR)
+      .getPoints(32)
+      .map((p) => new THREE.Vector2(p.x, p.y + pillLocalY));
+    plate.holes.push(new THREE.Path(pillHolePts));
+    const plateGeo = new THREE.ExtrudeGeometry(plate, {
+      depth: INFO_PLATE.depth,
+      bevelEnabled: true,
+      bevelThickness: INFO_PLATE.bevel,
+      bevelSize: INFO_PLATE.bevel,
+      bevelSegments: 2,
+      curveSegments: 12,
+      steps: 1,
+    });
     plateGeo.center();
     applyEdgeWear(plateGeo);
     infoPlateMesh = new THREE.Mesh(plateGeo, plateMaterial);
@@ -1127,37 +1216,37 @@ export function createProfileCardScene(
     // walls, a recessed pill floor reads as cut-in, and a decal plane just in
     // front of the floor carries the engraved brand logos.
     const plateFrontZ = INFO_PLATE.z + INFO_PLATE.depth / 2 + INFO_PLATE.bevel;
-    const pillH = (INFO_CHANNELS.top - INFO_CHANNELS.bottom) * 0.82;
-    const pillW = INFO_CHANNELS.w;
-    const pillCy = (INFO_CHANNELS.top + INFO_CHANNELS.bottom) / 2;
-    const pillR = pillH / 2;
-    const pocketDepth = 0.03;
     // Wall ring: outer pill with a slightly inset pill hole, extruded back from
-    // the plate front so its inner walls give the recess real depth.
-    const wallShape = pillShape(pillW, pillH, pillR);
-    const innerW = pillW - 0.05;
-    const innerH = pillH - 0.05;
-    wallShape.holes.push(new THREE.Path(pillShape(innerW, innerH, innerH / 2).getPoints()));
+    // the plate front so its inner walls give the recess real depth. It fills
+    // the gap between the plate opening edge and the recessed floor.
+    const wallShape = pillShape(PILL_W, PILL_H, pillR);
+    wallShape.holes.push(
+      new THREE.Path(pillShape(PILL_INNER_W, PILL_INNER_H, PILL_INNER_H / 2).getPoints(32)),
+    );
     const wallGeo = new THREE.ExtrudeGeometry(wallShape, {
-      depth: pocketDepth,
+      depth: PILL_POCKET_DEPTH,
       bevelEnabled: false,
       curveSegments: 24,
       steps: 1,
     });
     channelsWallMesh = new THREE.Mesh(wallGeo, bezelMaterial);
-    channelsWallMesh.position.set(0, pillCy, plateFrontZ - pocketDepth);
+    channelsWallMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH);
     group.add(channelsWallMesh);
 
     // Recessed pocket floor (dark metal), set behind the plate surface.
-    const floorGeo = new THREE.ShapeGeometry(pillShape(innerW, innerH, innerH / 2), 24);
+    const floorGeo = new THREE.ShapeGeometry(
+      pillShape(PILL_INNER_W, PILL_INNER_H, PILL_INNER_H / 2),
+      24,
+    );
     channelsFloorMesh = new THREE.Mesh(floorGeo, matteMaterial);
-    channelsFloorMesh.position.set(0, pillCy, plateFrontZ - pocketDepth + 0.001);
+    channelsFloorMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.001);
     group.add(channelsFloorMesh);
 
-    // Engraved logo decal, just in front of the recessed floor.
-    const channelsGeo = new THREE.PlaneGeometry(innerW, innerH);
+    // Engraved logo decal, clearly in front of the recessed floor (a wide gap
+    // plus polygon offset on the material avoid z-fighting during card tilt).
+    const channelsGeo = new THREE.PlaneGeometry(PILL_INNER_W, PILL_INNER_H);
     channelsMesh = new THREE.Mesh(channelsGeo, channelsMaterial);
-    channelsMesh.position.set(0, pillCy, plateFrontZ - pocketDepth + 0.004);
+    channelsMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.014);
     group.add(channelsMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole. Shared
@@ -1222,6 +1311,7 @@ export function createProfileCardScene(
       screenH,
       winCx,
       winCy,
+      false,
     );
 
     // Back face: identical build, but the parent node is rotated PI about Y so
@@ -1241,6 +1331,7 @@ export function createProfileCardScene(
       screenH,
       winCx,
       winCy,
+      true,
     );
 
     fitCamera(shell.w, shell.h);
