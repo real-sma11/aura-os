@@ -88,13 +88,14 @@ describe("ProfileTab", () => {
     });
   });
 
-  it("keeps desktop profile compact while still showing skill tags", async () => {
+  it("keeps desktop profile compact without skill tags", async () => {
     render(<ProfileTab {...baseProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText("deploy")).toBeInTheDocument();
+      expect(mockListAgentSkills).toHaveBeenCalledWith("agent-1");
     });
 
+    expect(screen.queryByText("deploy")).not.toBeInTheDocument();
     expect(screen.queryByText("Installed Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Remote Runtime")).not.toBeInTheDocument();
   });

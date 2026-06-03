@@ -379,16 +379,6 @@ export function ProfileTab(props: ProfileTabProps) {
           onViewSkill={props.onViewSkill}
         />
       )}
-      {installations.length > 0 && (
-        <div className={styles.skillTagsSection}>
-          {installations.map((inst) => (
-            <span key={inst.skill_name} className={styles.skillTag}>
-              <Zap size={10} className={styles.skillTagIcon} />
-              {inst.skill_name}
-            </span>
-          ))}
-        </div>
-      )}
     </>
   );
 }
