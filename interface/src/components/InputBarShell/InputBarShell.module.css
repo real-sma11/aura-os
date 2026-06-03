@@ -176,6 +176,10 @@
      7.75px gap so the spacing around the icon equals the top/bottom
      padding. */
   padding-left: 50px;
+  /* Mirror the left inset on the right so typed text clears the
+     enlarged 34.5px send disc (which now occupies the same 7.75px
+     inset + 34.5px width as the attach disc). */
+  padding-right: 50px;
 }
 
 /* The ringed "+" disc is enlarged from the default 24px icon button;
@@ -183,6 +187,17 @@
    clears the same 7.75px at the top and bottom of the 50px row. */
 .inputContainerPill .attachButton {
   left: 7.75px;
+  width: 34.5px;
+  height: 34.5px;
+}
+
+/* Mirror the "+" disc's proportions and edge spacing on the send (and
+   stop) button: same 34.5px square inset 7.75px from the right edge so
+   the two corner affordances read as a matched pair. The send button
+   keeps its plain rounded-rect hover plate — it deliberately does NOT
+   get the attach button's spinning chrome ring / pulsing halo. */
+.inputContainerPill .sendButton {
+  right: 7.75px;
   width: 34.5px;
   height: 34.5px;
 }
@@ -335,6 +350,13 @@
   display: none;
 }
 
+/* Push the inline picker slot clear of the enlarged 34.5px send disc
+   (left edge ~42px from the right) so the model picker no longer
+   tucks under the send button in pill mode. */
+.inputContainerPill .inputRowEnd {
+  right: 50px;
+}
+
 .inputContainer[data-multiline="true"] .inputRowHasEnd .textarea {
   padding-right: 32px;
 }
@@ -354,6 +376,15 @@
      multi-line state below. */
   min-height: 24px;
   padding: 0 32px 6px 32px;
+}
+
+/* In pill mode the corner discs are enlarged to 34.5px (inset 7.75px),
+   so widen the footer row's horizontal padding to 50px on both sides
+   to keep the model picker clear of the bottom-anchored attach/send
+   discs in the multi-line state. */
+.inputContainerPill .containerBottomRow {
+  padding-left: 50px;
+  padding-right: 50px;
 }
 
 /* Multi-line state alignment (desktop only): re-anchor the corner
