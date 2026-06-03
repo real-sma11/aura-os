@@ -76,7 +76,9 @@ export function InviteModal({ isOpen, onClose }: Props) {
           <p className={styles.subtext}>
             Share your code with a friend.
             <br />
-            If they subscribe, you'll both receive $50 to spend on frontier AI.
+            If they subscribe, you'll both receive
+            <br />
+            $50 to spend on frontier AI.
           </p>
 
           <Button
