@@ -45,9 +45,10 @@
 
 .cardCanvasHost {
   width: 100%;
-  /* Cap the card so it stays the same size in a narrow vs. wide sidekick;
+  /* Cap the card at ~10% below its size at the normal (320px) sidekick width so
+     it reads a touch smaller and never grows larger when the sidekick widens;
      extra lane width becomes left/right space while the card stays centered. */
-  max-width: 340px;
+  max-width: 265px;
   margin-inline: auto;
   /* Taller than the card alone so the worn-metal info backplate that pokes out
      below the card stays visible; the card itself keeps the same on-screen size
@@ -88,7 +89,7 @@
   position: relative;
   /* Match the WebGL card: cap width and center so the card looks the same in a
      narrow vs. wide sidekick, with extra lane width as left/right space. */
-  max-width: 340px;
+  max-width: 265px;
   margin-inline: auto;
   border-radius: var(--radius-lg, 18px);
   border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
