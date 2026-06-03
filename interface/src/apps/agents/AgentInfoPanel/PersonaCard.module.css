@@ -28,27 +28,28 @@
   border-radius: 18px;
   /* Clip content to the rounded box so nothing pokes past the corners. */
   overflow: hidden;
-  /* Transparent black fill so the blurred backdrop shows through as smoked
-     glass; the diagonal alpha ramp keeps the top-left lighter for a sheen. */
+  /* Near-black fill with enough alpha to read as black (not gray) over the
+     dark panel, while still letting the blurred backdrop bleed through; the
+     diagonal alpha ramp keeps the top-left a touch lighter for a sheen. */
   background:
     linear-gradient(
       160deg,
-      rgba(18, 18, 22, 0.45) 0%,
-      rgba(8, 8, 11, 0.55) 48%,
-      rgba(4, 4, 6, 0.62) 100%
+      rgba(10, 10, 13, 0.74) 0%,
+      rgba(4, 4, 6, 0.8) 48%,
+      rgba(0, 0, 0, 0.85) 100%
     ) padding-box,
     linear-gradient(
       150deg,
-      rgba(255, 255, 255, 0.3) 0%,
+      rgba(255, 255, 255, 0.32) 0%,
       rgba(255, 255, 255, 0.07) 30%,
       rgba(255, 255, 255, 0.03) 55%,
       rgba(255, 255, 255, 0.16) 100%
     ) border-box;
-  /* Blur + darken whatever sits behind the card for true smoked glass.
-     Safe now that the card is flex-shrink:0; the earlier scroll break was
-     the flex min-height collapse, not the backdrop-filter. */
-  backdrop-filter: blur(18px) saturate(125%) brightness(0.85);
-  -webkit-backdrop-filter: blur(18px) saturate(125%) brightness(0.85);
+  /* Blur and strongly darken the backdrop so the glass reads as smoked
+     black rather than gray. Safe now that the card is flex-shrink:0; the
+     earlier scroll break was the flex min-height collapse, not the blur. */
+  backdrop-filter: blur(20px) saturate(115%) brightness(0.5);
+  -webkit-backdrop-filter: blur(20px) saturate(115%) brightness(0.5);
   /* Soft ambient + tight contact drop shadow to lift the card, plus a
      top bevel highlight and a faint bottom shade for the glass edge. */
   box-shadow:
