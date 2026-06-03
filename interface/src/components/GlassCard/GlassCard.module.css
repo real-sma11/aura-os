@@ -1,23 +1,32 @@
+/* This design system zeroes out --radius-* tokens, so use an explicit radius. */
 .card {
+  --glass-card-radius: 22px;
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: var(--radius-xl, 22px);
-  border: 1px solid transparent;
+  border-radius: var(--glass-card-radius);
 }
 
 /* Soft white glow behind the card plus a dark shadow for floating depth.
-   box-shadow is not clipped by the card's own overflow:hidden, so it
-   radiates outward as intended. */
+   Kept on the outer (unclipped) element so the glow radiates outward; the
+   inner .clip layer would otherwise clip it away via clip-path. */
 .glow {
   box-shadow:
     0 0 70px -10px rgba(255, 255, 255, 0.22),
     0 30px 70px -24px rgba(0, 0, 0, 0.75);
 }
 
-/* Black, see-through, blurred glass fill kept as a child so the card's
-   rounded overflow:hidden clips the blur (a same-element backdrop-filter
-   is rendered to a square bounding box in Chromium, squaring the corners). */
+/* Rounds and clips all content. clip-path (not just overflow:hidden +
+   border-radius) is required because composited descendants - the <video>,
+   its mask, and the backdrop-filter glass layer - otherwise escape the
+   rounded clip and render square corners in Chromium. */
+.clip {
+  position: relative;
+  isolation: isolate;
+  border-radius: inherit;
+  overflow: hidden;
+  clip-path: inset(0 round var(--glass-card-radius));
+}
+
+/* Black, see-through, blurred glass fill. */
 .glass {
   position: absolute;
   inset: 0;

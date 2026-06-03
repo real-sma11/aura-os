@@ -99,7 +99,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-xl, 20px);
+  border-radius: 16px;
   background: color-mix(in srgb, white 6%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -129,6 +129,8 @@
   width: 100%;
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.06em;
+  /* Radius tokens are 0 in this design system, so set an explicit radius. */
+  border-radius: 12px;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;

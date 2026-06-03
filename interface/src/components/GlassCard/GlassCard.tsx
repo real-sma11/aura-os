@@ -23,9 +23,11 @@ export function GlassCard({ children, glow = true, className, ...rest }: GlassCa
       className={`${styles.card} ${glow ? styles.glow : ""} ${className ?? ""}`}
       {...rest}
     >
-      <div className={styles.glass} aria-hidden="true" />
-      <div className={styles.border} aria-hidden="true" />
-      <div className={styles.content}>{children}</div>
+      <div className={styles.clip}>
+        <div className={styles.glass} aria-hidden="true" />
+        <div className={styles.border} aria-hidden="true" />
+        <div className={styles.content}>{children}</div>
+      </div>
     </div>
   );
 }
