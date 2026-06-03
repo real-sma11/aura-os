@@ -564,5 +564,45 @@ describe("chat-ui-store", () => {
       store.resetCouncil("stream-1");
       expect(useChatUIStore.getState().streams).toBe(before);
     });
+
+    it("clears a persisted non-default mechanism back to synthesize", () => {
+      const store = useChatUIStore.getState();
+      store.init("stream-1");
+      store.setCouncilMechanism("stream-1", "contrast");
+      expect(localStorage.getItem("aura-council-mechanism:stream-1")).toBe(
+        "contrast",
+      );
+
+      store.resetCouncil("stream-1");
+      expect(
+        localStorage.getItem("aura-council-mechanism:stream-1"),
+      ).toBeNull();
+      expect(
+        useChatUIStore.getState().streams["stream-1"]?.councilMechanism,
+      ).toBe("synthesize");
+    });
+  });
+
+  describe("council mechanism", () => {
+    it("defaults to synthesize and persists a selection across re-init", () => {
+      const store = useChatUIStore.getState();
+      store.init("stream-1");
+      expect(store.getCouncilMechanism("stream-1")).toBe("synthesize");
+
+      store.setCouncilMechanism("stream-1", "side_by_side");
+      expect(
+        useChatUIStore.getState().getCouncilMechanism("stream-1"),
+      ).toBe("side_by_side");
+      expect(localStorage.getItem("aura-council-mechanism:stream-1")).toBe(
+        "side_by_side",
+      );
+
+      // A fresh store re-init for the same key rehydrates the choice.
+      resetStore();
+      useChatUIStore.getState().init("stream-1");
+      expect(
+        useChatUIStore.getState().getCouncilMechanism("stream-1"),
+      ).toBe("side_by_side");
+    });
   });
 });

@@ -82,7 +82,18 @@ export interface CouncilSlot {
   effort: ModelEffort | null;
 }
 
+/**
+ * How an AURA Council combines its members' answers once every member
+ * has completed. Mirrors the backend `CouncilMechanism` wire enum:
+ * `synthesize` integrates into one answer (the default), `contrast`
+ * surfaces agreements/disagreements, and `side_by_side` presents each
+ * member faithfully without merging.
+ */
+export type CouncilMechanism = "synthesize" | "contrast" | "side_by_side";
+
 const DEFAULT_COUNCIL_COUNT: CouncilCount = 1;
+
+const DEFAULT_COUNCIL_MECHANISM: CouncilMechanism = "synthesize";
 
 /**
  * Stable empty slot list so the `useChatUI` selector returns a
@@ -94,6 +105,12 @@ const EMPTY_COUNCIL_MODELS: CouncilSlot[] = [];
 
 function isCouncilCount(value: unknown): value is CouncilCount {
   return value === 1 || value === 2 || value === 3 || value === 4;
+}
+
+function isCouncilMechanism(value: unknown): value is CouncilMechanism {
+  return (
+    value === "synthesize" || value === "contrast" || value === "side_by_side"
+  );
 }
 
 function isModelEffort(value: unknown): value is ModelEffort {
@@ -115,6 +132,10 @@ function councilCountStorageKey(streamKey: string): string {
 
 function councilModelsStorageKey(streamKey: string): string {
   return `aura-council-models:${streamKey}`;
+}
+
+function councilMechanismStorageKey(streamKey: string): string {
+  return `aura-council-mechanism:${streamKey}`;
 }
 
 function persistCouncilCount(streamKey: string, count: CouncilCount): void {
@@ -143,10 +164,32 @@ function persistCouncilModels(streamKey: string, models: CouncilSlot[]): void {
   }
 }
 
+function persistCouncilMechanism(
+  streamKey: string,
+  mechanism: CouncilMechanism,
+): void {
+  try {
+    localStorage.setItem(councilMechanismStorageKey(streamKey), mechanism);
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+function loadPersistedCouncilMechanism(streamKey: string): CouncilMechanism {
+  try {
+    const stored = localStorage.getItem(councilMechanismStorageKey(streamKey));
+    if (isCouncilMechanism(stored)) return stored;
+  } catch {
+    // localStorage may be unavailable
+  }
+  return DEFAULT_COUNCIL_MECHANISM;
+}
+
 function clearPersistedCouncil(streamKey: string): void {
   try {
     localStorage.removeItem(councilCountStorageKey(streamKey));
     localStorage.removeItem(councilModelsStorageKey(streamKey));
+    localStorage.removeItem(councilMechanismStorageKey(streamKey));
   } catch {
     // localStorage may be unavailable
   }
@@ -208,6 +251,12 @@ interface StreamState {
    * effort) so the send path can reuse it per member.
    */
   councilModels: CouncilSlot[];
+  /**
+   * How the council combines its members' answers once every member
+   * completes (`synthesize` default / `contrast` / `side_by_side`).
+   * Only consulted when the council is active (`councilCount > 1`).
+   */
+  councilMechanism: CouncilMechanism;
 }
 
 interface ChatUIState {
@@ -264,6 +313,16 @@ interface ChatUIActions {
     effort?: ModelEffort,
   ) => void;
   getCouncilModels: (streamKey: string) => CouncilSlot[];
+  /**
+   * Set the AURA Council combine mechanism for a stream and persist it
+   * (per stream, like the count). Read at send time so the choice is
+   * applied to the council's synthesis turn.
+   */
+  setCouncilMechanism: (
+    streamKey: string,
+    mechanism: CouncilMechanism,
+  ) => void;
+  getCouncilMechanism: (streamKey: string) => CouncilMechanism;
   /**
    * Reset AURA Council for a stream back to `1x` (council off): clear
    * the per-slot picks and drop the persisted count/models so a brand
@@ -336,6 +395,7 @@ const getStream = (state: ChatUIState, key: string): StreamState =>
     pinnedSourceImage: null,
     councilCount: DEFAULT_COUNCIL_COUNT,
     councilModels: EMPTY_COUNCIL_MODELS,
+    councilMechanism: DEFAULT_COUNCIL_MECHANISM,
   };
 
 export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
@@ -382,6 +442,7 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
           selectedMode: mode,
           councilCount: loadPersistedCouncilCount(streamKey),
           councilModels: loadPersistedCouncilModels(streamKey),
+          councilMechanism: loadPersistedCouncilMechanism(streamKey),
         },
       },
     }));
@@ -471,6 +532,19 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
 
   getCouncilModels: (streamKey) => getStream(get(), streamKey).councilModels,
 
+  setCouncilMechanism: (streamKey, mechanism) => {
+    persistCouncilMechanism(streamKey, mechanism);
+    set((s) => ({
+      streams: {
+        ...s.streams,
+        [streamKey]: { ...getStream(s, streamKey), councilMechanism: mechanism },
+      },
+    }));
+  },
+
+  getCouncilMechanism: (streamKey) =>
+    getStream(get(), streamKey).councilMechanism,
+
   resetCouncil: (streamKey) => {
     clearPersistedCouncil(streamKey);
     set((s) => {
@@ -478,7 +552,8 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
       if (
         current &&
         current.councilCount === DEFAULT_COUNCIL_COUNT &&
-        current.councilModels.length === 0
+        current.councilModels.length === 0 &&
+        current.councilMechanism === DEFAULT_COUNCIL_MECHANISM
       ) {
         return s;
       }
@@ -489,6 +564,7 @@ export const useChatUIStore = create<ChatUIStore>()((set, get) => ({
             ...getStream(s, streamKey),
             councilCount: DEFAULT_COUNCIL_COUNT,
             councilModels: EMPTY_COUNCIL_MODELS,
+            councilMechanism: DEFAULT_COUNCIL_MECHANISM,
           },
         },
       };
@@ -784,9 +860,13 @@ export function useChatUI(streamKey: string) {
   const councilModels = useChatUIStore(
     (s) => s.streams[streamKey]?.councilModels ?? EMPTY_COUNCIL_MODELS,
   );
+  const councilMechanism = useChatUIStore(
+    (s) => s.streams[streamKey]?.councilMechanism ?? DEFAULT_COUNCIL_MECHANISM,
+  );
   const setSelectedModel = useChatUIStore((s) => s.setSelectedModel);
   const setCouncilCount = useChatUIStore((s) => s.setCouncilCount);
   const setCouncilModel = useChatUIStore((s) => s.setCouncilModel);
+  const setCouncilMechanism = useChatUIStore((s) => s.setCouncilMechanism);
   const setSelectedEffort = useChatUIStore((s) => s.setSelectedEffort);
   const setImageQuality = useChatUIStore((s) => s.setImageQuality);
   const setProjectId = useChatUIStore((s) => s.setProjectId);
@@ -803,10 +883,12 @@ export function useChatUI(streamKey: string) {
     pinnedSourceImage,
     councilCount,
     councilModels,
+    councilMechanism,
     setSelectedMode,
     setSelectedModel,
     setCouncilCount,
     setCouncilModel,
+    setCouncilMechanism,
     setSelectedEffort,
     setImageQuality,
     setProjectId,
