@@ -22,6 +22,8 @@ pub struct NetworkAgent {
     pub machine_type: Option<String>,
     #[serde(default)]
     pub vm_id: Option<String>,
+    #[serde(default)]
+    pub wallet_address: Option<String>,
     #[serde(alias = "ownerId")]
     pub user_id: String,
     #[serde(default)]

@@ -125,6 +125,11 @@ pub struct Agent {
     pub default_model: Option<String>,
     #[serde(default)]
     pub vm_id: Option<String>,
+    /// On-chain smart-wallet address (EIP-7702) provisioned for the agent at
+    /// creation via zOS API. `None` for agents created before wallet support
+    /// or when wallet provisioning is unconfigured.
+    #[serde(default)]
+    pub wallet_address: Option<String>,
     #[serde(default)]
     pub network_agent_id: Option<AgentId>,
     #[serde(default)]

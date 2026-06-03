@@ -11,6 +11,7 @@ import {
   Clock3,
   Activity,
   AlertTriangle,
+  Wallet,
 } from "lucide-react";
 import { Avatar } from "../../../components/Avatar";
 import { FollowEditButton } from "../../../components/FollowEditButton";
@@ -43,6 +44,11 @@ function extractInstallations(value: unknown): HarnessSkillInstallation[] {
   if (Array.isArray(obj.skills)) return obj.skills as HarnessSkillInstallation[];
   if (Array.isArray(obj.installations)) return obj.installations as HarnessSkillInstallation[];
   return [];
+}
+
+/** Shorten an on-chain address for display, e.g. `0x9469…412f`. */
+function truncateAddress(address: string): string {
+  return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
 }
 
 function formatUptime(seconds: number): string {
@@ -268,6 +274,17 @@ function ProfileMetaGrid({ agent }: { agent: Agent }) {
           </span>
         </div>
       </div>
+      {agent.wallet_address && (
+        <div className={styles.metaRow}>
+          <Wallet size={13} className={styles.metaIcon} />
+          <div className={styles.metaText}>
+            <span className={styles.metaLabel}>Wallet</span>
+            <span className={styles.metaValue} title={agent.wallet_address}>
+              {truncateAddress(agent.wallet_address)}
+            </span>
+          </div>
+        </div>
+      )}
       <div className={styles.metaRow}>
         <Calendar size={13} className={styles.metaIcon} />
         <div className={styles.metaText}>

@@ -444,6 +444,7 @@ async fn build_phase7_scenario() -> Scenario {
         integration_id: None,
         default_model: None,
         vm_id: None,
+        wallet_address: None,
         network_agent_id: None,
         profile_id: None,
         tags: vec![],

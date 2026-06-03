@@ -38,6 +38,7 @@ pub(crate) fn agent_from_network(net: &NetworkAgent) -> Agent {
         integration_id: None,
         default_model: None,
         vm_id: net.vm_id.clone(),
+        wallet_address: net.wallet_address.clone(),
         network_agent_id: net.id.parse().ok(),
         profile_id,
         tags,

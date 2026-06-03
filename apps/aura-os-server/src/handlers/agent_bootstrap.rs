@@ -546,6 +546,7 @@ mod tests {
             harness: None,
             machine_type: None,
             vm_id: None,
+            wallet_address: None,
             user_id: "user-1".to_string(),
             org_id: None,
             profile_id: None,

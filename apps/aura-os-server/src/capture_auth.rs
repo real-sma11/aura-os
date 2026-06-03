@@ -181,6 +181,7 @@ pub(crate) fn demo_agent() -> Agent {
         integration_id: None,
         default_model: Some("gpt-5.4".into()),
         vm_id: None,
+        wallet_address: None,
         network_agent_id: None,
         profile_id: None,
         tags: vec!["capture-demo".into()],

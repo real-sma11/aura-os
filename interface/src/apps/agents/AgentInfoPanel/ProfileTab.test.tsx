@@ -99,6 +99,25 @@ describe("ProfileTab", () => {
     expect(screen.queryByText("Remote Runtime")).not.toBeInTheDocument();
   });
 
+  it("shows the agent's smart-wallet address (truncated) when present", () => {
+    render(
+      <ProfileTab
+        {...baseProps}
+        agent={{
+          ...baseProps.agent,
+          wallet_address: "0x94695c64F52cCFc7a6dC2Ea68Af41A82C5E7412f",
+        }}
+      />,
+    );
+    expect(screen.getByText("Wallet")).toBeInTheDocument();
+    expect(screen.getByText(/0x9469.*412f/)).toBeInTheDocument();
+  });
+
+  it("omits the wallet row when the agent has no wallet address", () => {
+    render(<ProfileTab {...baseProps} />);
+    expect(screen.queryByText("Wallet")).not.toBeInTheDocument();
+  });
+
   it("shows remote runtime and installed skills on mobile standalone", async () => {
     render(<ProfileTab {...baseProps} isMobileStandalone />);
 

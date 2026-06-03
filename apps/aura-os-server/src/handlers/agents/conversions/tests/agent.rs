@@ -15,6 +15,7 @@ fn blank_network_agent(name: &str, role: Option<&str>) -> NetworkAgent {
         harness: None,
         machine_type: None,
         vm_id: None,
+        wallet_address: None,
         user_id: "user-1".to_string(),
         org_id: None,
         profile_id: None,
@@ -95,6 +96,36 @@ fn agent_from_network_leaves_non_ceo_empty_permissions_alone() {
             "no classifier should be synthesized for non-CEO agents"
         );
     }
+}
+
+#[test]
+fn wallet_address_survives_both_serde_boundaries_and_the_conversion() {
+    // The agent's on-chain wallet (set by aura-network from the zOS
+    // provisioning call) must cross two serde boundaries without being
+    // dropped: aura-network emits camelCase `walletAddress` (its Agent model
+    // is `rename_all = "camelCase"`), and the server re-serializes the core
+    // Agent as snake_case `wallet_address` for the frontend. Pin both wire
+    // keys so a future rename can't silently break the chain.
+    const ADDR: &str = "0x94695c64F52cCFc7a6dC2Ea68Af41A82C5E7412f";
+    let mut net = blank_network_agent("Atlas", Some("Engineer"));
+    net.wallet_address = Some(ADDR.to_string());
+
+    // NetworkAgent's wire key is camelCase (matches aura-network) and round-trips.
+    let net_json = serde_json::to_value(&net).expect("serialize NetworkAgent");
+    assert_eq!(net_json["walletAddress"], ADDR, "NetworkAgent uses camelCase on the wire");
+    let net: NetworkAgent = serde_json::from_value(net_json).expect("round-trip NetworkAgent");
+
+    // The conversion carries it onto the core Agent...
+    let agent = agent_from_network(&net);
+    assert_eq!(agent.wallet_address.as_deref(), Some(ADDR));
+
+    // ...which serializes the snake_case key the frontend reads.
+    let agent_json = serde_json::to_value(&agent).expect("serialize core Agent");
+    assert_eq!(agent_json["wallet_address"], ADDR, "core Agent uses snake_case for the frontend");
+
+    // Absent (and not a stray key) on records without a provisioned wallet.
+    let bare = agent_from_network(&blank_network_agent("Bare", None));
+    assert_eq!(bare.wallet_address, None);
 }
 
 #[test]

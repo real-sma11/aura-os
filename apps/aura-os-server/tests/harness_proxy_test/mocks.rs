@@ -267,6 +267,7 @@ pub(crate) fn persist_test_agent(
         integration_id: None,
         default_model: None,
         vm_id: None,
+        wallet_address: None,
         network_agent_id: None,
         profile_id: None,
         tags: vec![],

@@ -49,6 +49,7 @@ fn build_general_agent(user_id: &str, project: Option<&aura_os_core::Project>) -
         integration_id: None,
         default_model: None,
         vm_id: None,
+        wallet_address: None,
         network_agent_id: None,
         profile_id: None,
         tags: vec![PROJECT_LOCAL_GENERAL_AGENT_TAG.to_string()],

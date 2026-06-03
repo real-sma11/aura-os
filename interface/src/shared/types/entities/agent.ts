@@ -32,6 +32,8 @@ export interface Agent {
   integration_id?: string | null;
   default_model?: string | null;
   vm_id?: string | null;
+  /** On-chain smart-wallet address (EIP-7702) provisioned at agent creation. */
+  wallet_address?: string | null;
   network_agent_id?: string;
   profile_id?: string;
   tags: string[];
