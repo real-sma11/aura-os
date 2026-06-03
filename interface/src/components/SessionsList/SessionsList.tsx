@@ -1,16 +1,16 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { EmptyState } from "../EmptyState";
 import {
-  SidekickItemContextMenu,
-  useSidekickItemContextMenu,
-} from "../SidekickItemContextMenu";
+  SidekickList,
+  type SidekickListSection,
+} from "../SidekickList";
 import { isOptimisticSessionId } from "../../stores/sessions-list-store";
 import {
   type AnnotatedSession,
@@ -82,101 +82,26 @@ interface SessionsListProps {
   streamKeyForSession?: (session: AnnotatedSession) => string;
 }
 
-interface SessionRowButtonProps {
-  session: AnnotatedSession;
-  label: string;
-  isSelected: boolean;
-  suffix: ReactNode;
-  onClick: (session: AnnotatedSession) => void;
-  onHover: (session: AnnotatedSession) => void;
-  /**
-   * Visibility callback for the IntersectionObserver wired up in
-   * `SessionsList`. Fires once per intersection-state change and is
-   * the gate the lazy `/summarize` backfill in `useSessionSummaries`
-   * uses to decide whether to fetch a Haiku title for an untitled
-   * row. Off-screen rows never trigger an LLM call until they
-   * scroll in.
-   */
-  onVisibilityChange?: (sessionId: string, visible: boolean) => void;
-  streamKeyForSession?: (session: AnnotatedSession) => string;
-}
-
 /**
- * Per-row component so each row owns its own
+ * Per-row streaming indicator so each row owns its own
  * `useIsSessionStreaming(session)` subscription. Hoisting the selector
  * out to the parent would re-render every row whenever any session's
  * `isStreaming` flips; subscribing per-row keeps the parent's render
  * cost flat and isolates re-renders to the rows whose lane actually
- * changed.
+ * changed. Rendered as the row's `leadingIndicator`; returns `null` when
+ * the session isn't streaming so the indicator slot stays collapsed.
  */
-function SessionRowButton({
+function SessionStreamingDot({
   session,
-  label,
-  isSelected,
-  suffix,
-  onClick,
-  onHover,
-  onVisibilityChange,
   streamKeyForSession,
-}: SessionRowButtonProps) {
+}: {
+  session: AnnotatedSession;
+  streamKeyForSession?: (session: AnnotatedSession) => string;
+}): ReactElement | null {
   const isStreaming = useIsSessionStreaming(session, streamKeyForSession);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // Visibility tracking for lazy summary backfill. We notify the
-  // parent on intersection-state changes so `useSessionSummaries`
-  // only fires `/summarize` for rows the user actually sees. The
-  // observer is created per-row (not shared) because the parent
-  // doesn't render a stable scroll container ref through here, and
-  // the cost of N tiny observers is negligible compared to the N
-  // Haiku LLM calls we're avoiding. Skip entirely in environments
-  // without `IntersectionObserver` (very old browsers, jsdom test
-  // shims) — the gate is a perf optimization, not correctness, so
-  // falling back to "summarize on mount" matches legacy behavior.
-  useEffect(() => {
-    if (!onVisibilityChange) return;
-    if (typeof IntersectionObserver === "undefined") {
-      onVisibilityChange(session.session_id, true);
-      return;
-    }
-    const target = buttonRef.current;
-    if (!target) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          onVisibilityChange(session.session_id, entry.isIntersecting);
-        }
-      },
-      { rootMargin: "200px 0px" },
-    );
-    observer.observe(target);
-    return () => {
-      observer.disconnect();
-    };
-  }, [onVisibilityChange, session.session_id]);
-
+  if (!isStreaming) return null;
   return (
-    <button
-      id={session.session_id}
-      ref={buttonRef}
-      type="button"
-      role="treeitem"
-      aria-selected={isSelected}
-      aria-current={isSelected ? "page" : undefined}
-      className={`${styles.sessionRow}${isSelected ? ` ${styles.sessionRowSelected}` : ""}`}
-      onClick={() => onClick(session)}
-      onMouseEnter={() => onHover(session)}
-      onFocus={() => onHover(session)}
-    >
-      {isStreaming && (
-        <span
-          className={styles.streamingDot}
-          aria-label="Streaming"
-          role="status"
-        />
-      )}
-      <span className={styles.sessionLabel}>{label}</span>
-      {suffix && <span className={styles.sessionSuffix}>{suffix}</span>}
-    </button>
+    <span className={styles.streamingDot} aria-label="Streaming" role="status" />
   );
 }
 
@@ -313,23 +238,13 @@ export function SessionsList({
     return titledRows[0]?.session.session_id ?? null;
   }, [selectedSessionId, titledRows]);
 
-  const resolveMenuTarget = useCallback(
-    (nodeId: string): AnnotatedSession | null => sessionById.get(nodeId) ?? null,
-    [sessionById],
-  );
-  const { menu, menuRef, handleContextMenu, closeMenu } =
-    useSidekickItemContextMenu<AnnotatedSession>({
-      resolveItem: resolveMenuTarget,
-    });
-
   const handleMenuAction = useCallback(
-    (actionId: string) => {
-      const target = menu?.item;
-      closeMenu();
-      if (!target || actionId !== "delete") return;
-      onDeleteSession?.(target);
+    (actionId: string, rowId: string) => {
+      if (actionId !== "delete") return;
+      const target = sessionById.get(rowId);
+      if (target) onDeleteSession?.(target);
     },
-    [menu, closeMenu, onDeleteSession],
+    [sessionById, onDeleteSession],
   );
 
   const handleRowMouseEnter = useCallback(
@@ -342,39 +257,44 @@ export function SessionsList({
     [onSessionHover],
   );
 
-  const renderRow = useCallback(
-    ({ session, label }: SessionRow) => {
-      const isSelected =
-        effectiveSelectedSessionId === session.session_id;
-      const customSuffix = renderRowSuffix?.(session) ?? null;
-      const defaultSuffix =
-        hasMultipleProjects && session._projectName ? (
-          <span className={styles.sessionProject}>{session._projectName}</span>
-        ) : null;
-      const suffix = customSuffix !== null ? customSuffix : defaultSuffix;
-
-      return (
-        <SessionRowButton
-          key={session.session_id}
-          session={session}
-          label={label}
-          isSelected={isSelected}
-          suffix={suffix}
-          onClick={onSessionClick}
-          onHover={handleRowMouseEnter}
-          onVisibilityChange={handleVisibilityChange}
-          streamKeyForSession={streamKeyForSession}
-        />
-      );
-    },
+  const sections = useMemo<SidekickListSection[]>(
+    () =>
+      buckets.map((bucket) => ({
+        id: bucket.label,
+        label: bucket.label,
+        rows: bucket.rows.map(({ session, label }: SessionRow) => {
+          const customSuffix = renderRowSuffix?.(session) ?? null;
+          const defaultSuffix =
+            hasMultipleProjects && session._projectName ? (
+              <span className={styles.sessionProject}>{session._projectName}</span>
+            ) : null;
+          const suffix = customSuffix !== null ? customSuffix : defaultSuffix;
+          return {
+            id: session.session_id,
+            label,
+            leadingIndicator: (
+              <SessionStreamingDot
+                session={session}
+                streamKeyForSession={streamKeyForSession}
+              />
+            ),
+            suffix,
+            onSelect: () => onSessionClick(session),
+            onMouseEnter: () => handleRowMouseEnter(session),
+            onFocus: () => handleRowMouseEnter(session),
+            onVisibilityChange: (visible: boolean) =>
+              handleVisibilityChange(session.session_id, visible),
+          };
+        }),
+      })),
     [
-      effectiveSelectedSessionId,
+      buckets,
+      renderRowSuffix,
+      hasMultipleProjects,
+      streamKeyForSession,
+      onSessionClick,
       handleRowMouseEnter,
       handleVisibilityChange,
-      hasMultipleProjects,
-      onSessionClick,
-      renderRowSuffix,
-      streamKeyForSession,
     ],
   );
 
@@ -394,50 +314,19 @@ export function SessionsList({
     </div>
   ) : null;
 
-  if (loading && sessions.length === 0) {
-    return (
-      <>
-        {errorBanner}
-        <div className={styles.tabEmptyState}>Loading sessions...</div>
-      </>
-    );
-  }
-
-  if (titledRows.length === 0) {
-    return (
-      <>
-        {errorBanner}
-        <EmptyState>No sessions yet</EmptyState>
-      </>
-    );
-  }
-
   return (
     <>
       {errorBanner}
-      <div
+      <SidekickList
+        sections={sections}
+        selectedId={effectiveSelectedSessionId}
+        loading={loading && sessions.length === 0}
+        loadingLabel="Loading sessions..."
+        empty={<EmptyState>No sessions yet</EmptyState>}
+        menuActions={onDeleteSession ? ["delete"] : undefined}
+        onMenuAction={onDeleteSession ? handleMenuAction : undefined}
         className={styles.chatsList}
-        role="tree"
-        onContextMenu={handleContextMenu}
-      >
-        {buckets.map((bucket) => (
-          <section key={bucket.label} className={styles.chatsBucket}>
-            <div className={styles.chatsBucketHeader}>{bucket.label}</div>
-            <div className={styles.chatsBucketRows}>
-              {bucket.rows.map((row) => renderRow(row))}
-            </div>
-          </section>
-        ))}
-      </div>
-      {menu && onDeleteSession && (
-        <SidekickItemContextMenu
-          x={menu.x}
-          y={menu.y}
-          menuRef={menuRef}
-          onAction={handleMenuAction}
-          actions={["delete"]}
-        />
-      )}
+      />
     </>
   );
 }

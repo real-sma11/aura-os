@@ -78,9 +78,6 @@ const FIREWORKS_PRICING: Readonly<Record<string, ModelRates>> = {
   "minimax-m2p7": { input: 0.3, output: 1.2, cacheWrite: 0.3, cacheRead: 0.06 },
   "glm-5p1": { input: 1.4, output: 4.4, cacheWrite: 1.4, cacheRead: 0.26 },
   "qwen3p6-plus": { input: 0.5, output: 3.0, cacheWrite: 0.5, cacheRead: 0.1 },
-  // Gemma is tier-priced (uniform input/output, no cached-input discount).
-  "gemma-4-31b-it": { input: 0.9, output: 0.9, cacheWrite: 0.9, cacheRead: 0.9 },
-  "gemma-4-26b-a4b-it": { input: 0.5, output: 0.5, cacheWrite: 0.5, cacheRead: 0.5 },
 } as const;
 
 const DEEPSEEK_PRICING: Readonly<Record<string, ModelRates>> = {
@@ -129,8 +126,6 @@ export function normalizePricingKey(model: string): string {
     "aura-minimax-m2-7": "minimax-m2p7",
     "aura-glm-5-1": "glm-5p1",
     "aura-qwen3-6-plus": "qwen3p6-plus",
-    "aura-gemma-4-31b": "gemma-4-31b-it",
-    "aura-gemma-4-26b-a4b": "gemma-4-26b-a4b-it",
     "aura-gemini-3-1-pro": "gemini-3.1-pro",
     "aura-gemini-3-5-flash": "gemini-3.5-flash",
     "aura-gemini-3-flash": "gemini-3-flash",
@@ -159,15 +154,13 @@ function inferProvider(model: string, provider?: string): PricingProvider {
   const key = normalizePricingKey(model);
   if (key.startsWith("claude")) return "anthropic";
   if (key.startsWith("deepseek")) return "deepseek";
-  // `gemini` resolves to Google; `gemma` (open-weight) stays on Fireworks.
   if (key.startsWith("gemini")) return "google";
   if (
     key.startsWith("kimi") ||
     key.startsWith("gpt-oss") ||
     key.startsWith("minimax") ||
     key.startsWith("glm") ||
-    key.startsWith("qwen") ||
-    key.startsWith("gemma")
+    key.startsWith("qwen")
   ) {
     return "fireworks";
   }

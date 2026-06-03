@@ -516,31 +516,6 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
     description:
       "Lowest-cost Gemini model for high-throughput, latency-sensitive workloads with a 1M-token context window.",
   },
-  // ── Google (Gemma) ──────────────────────────────────────────
-  {
-    id: "aura-gemma-4-31b",
-    label: "Gemma 4 31B IT",
-    tier: "haiku",
-    mode: "chat",
-    vendor: "google",
-    creditMultiplier: 0.3,
-    contextWindow: 262_144,
-    provider: "Google",
-    description:
-      "Open-weight Gemma instruction-tuned model with vision support and a 256K context window.",
-  },
-  {
-    id: "aura-gemma-4-26b-a4b",
-    label: "Gemma 4 26B A4B IT",
-    tier: "haiku",
-    mode: "chat",
-    vendor: "google",
-    creditMultiplier: 0.2,
-    contextWindow: 262_144,
-    provider: "Google",
-    description:
-      "Open-weight Gemma mixture-of-experts (4B active) model with vision support and a 256K context window.",
-  },
 ];
 
 /**
@@ -908,10 +883,6 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "glm-5p1": "aura-glm-5-1",
   "aura-qwen3-6-plus": "aura-qwen3-6-plus",
   "qwen3p6-plus": "aura-qwen3-6-plus",
-  "aura-gemma-4-31b": "aura-gemma-4-31b",
-  "gemma-4-31b-it": "aura-gemma-4-31b",
-  "aura-gemma-4-26b-a4b": "aura-gemma-4-26b-a4b",
-  "gemma-4-26b-a4b-it": "aura-gemma-4-26b-a4b",
   "aura-gemini-3-1-pro": "aura-gemini-3-1-pro",
   "gemini-3.1-pro-preview": "aura-gemini-3-1-pro",
   "aura-gemini-3-5-flash": "aura-gemini-3-5-flash",
@@ -935,8 +906,6 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "accounts/fireworks/models/minimax-m2p7": "aura-minimax-m2-7",
   "accounts/fireworks/models/glm-5p1": "aura-glm-5-1",
   "accounts/fireworks/models/qwen3p6-plus": "aura-qwen3-6-plus",
-  "accounts/fireworks/models/gemma-4-31b-it": "aura-gemma-4-31b",
-  "accounts/fireworks/models/gemma-4-26b-a4b-it": "aura-gemma-4-26b-a4b",
 };
 
 function normalizeManagedModelId(modelId?: string | null): string | null {

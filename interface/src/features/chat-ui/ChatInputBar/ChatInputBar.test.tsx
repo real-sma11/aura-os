@@ -326,7 +326,6 @@ describe("ChatInputBar", () => {
     // GPT-OSS 120B now lives in the OpenAI section.
     expect(screen.getAllByText("GPT-OSS 120B")[0]).toBeInTheDocument();
     expect(screen.getAllByText("GLM 5.1")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Gemma 4 31B IT")[0]).toBeInTheDocument();
   });
 
   it("collapses and expands a provider section when its header is clicked", async () => {

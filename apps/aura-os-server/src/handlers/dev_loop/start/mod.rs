@@ -91,8 +91,25 @@ async fn load_agent_instance(
         })
 }
 
+/// Pinned fallback model for dev-loop / task-run starts when neither
+/// the request nor the agent instance names one.
+///
+/// Remote (swarm) agents are routinely bootstrapped with
+/// `default_model: None` / `model: None`, and the harness-native
+/// `start_dev_loop()` / `run_task(task_id)` tools expose no `model`
+/// parameter — so an agent driving its own dev loop from chat (the
+/// common remote case) could never satisfy the explicit-model
+/// requirement and stalled on a 400/502. Defaulting to the same id the
+/// chat surface and project-tool sessions use (`DEFAULT_CHAT_MODEL_ID`
+/// / `DEFAULT_PROJECT_TOOL_MODEL`) lets those starts proceed by default
+/// while an explicit `?model=` or a configured `default_model` still
+/// wins.
+const DEFAULT_DEV_LOOP_MODEL: &str = "aura-claude-sonnet-4-6";
+
 /// Pick the effective model for the start request: an explicit request
-/// trims-and-wins, then `default_model`, then `model`. Carved out of
+/// trims-and-wins, then `default_model`, then `model`, and finally the
+/// pinned [`DEFAULT_DEV_LOOP_MODEL`] so a remote agent without a
+/// configured model can still start its loop. Carved out of
 /// [`resolve_start_context`] so its body stays inside the 50-line
 /// per-function budget.
 fn pick_model(
@@ -104,8 +121,19 @@ fn pick_model(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .or_else(|| agent_instance.default_model.clone())
-        .or_else(|| agent_instance.model.clone())
+        .or_else(|| {
+            agent_instance
+                .default_model
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(|| {
+            agent_instance
+                .model
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(|| Some(DEFAULT_DEV_LOOP_MODEL.to_string()))
 }
 
 /// Require an explicit model on every dev-loop / task-run start. The

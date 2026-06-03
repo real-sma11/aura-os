@@ -98,6 +98,12 @@
   align-items: center;
 }
 
+/* A per-row indicator component (e.g. the chat streaming dot) renders
+   `null` when inactive; collapse the empty wrapper so it adds no gap. */
+.leadingIndicator:empty {
+  display: none;
+}
+
 .icon {
   display: inline-flex;
   flex: 0 0 auto;

@@ -141,6 +141,7 @@ function SidekickListItem({
         type="button"
         role="treeitem"
         aria-selected={selected}
+        aria-current={selected ? "page" : undefined}
         disabled={row.disabled}
         className={`${styles.row}${hasDetail ? ` ${styles.rowMultiline}` : ""}`}
         onClick={handleClick}

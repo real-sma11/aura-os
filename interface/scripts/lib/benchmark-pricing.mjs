@@ -209,19 +209,6 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 0.5,
     cacheRead: 0.1,
   },
-  // Gemma is tier-priced (uniform input/output, no cached-input discount).
-  "gemma-4-31b-it": {
-    input: 0.9,
-    output: 0.9,
-    cacheWrite: 0.9,
-    cacheRead: 0.9,
-  },
-  "gemma-4-26b-a4b-it": {
-    input: 0.5,
-    output: 0.5,
-    cacheWrite: 0.5,
-    cacheRead: 0.5,
-  },
 };
 
 // Gemini chat models. Pro tiers use the flat (<=200k prompt) rate; cached
@@ -317,8 +304,6 @@ function normalizeModelKey(model) {
     "aura-minimax-m2-7": "minimax-m2p7",
     "aura-glm-5-1": "glm-5p1",
     "aura-qwen3-6-plus": "qwen3p6-plus",
-    "aura-gemma-4-31b": "gemma-4-31b-it",
-    "aura-gemma-4-26b-a4b": "gemma-4-26b-a4b-it",
   };
   if (auraFireworksModels[unprefixed]) return auraFireworksModels[unprefixed];
   const auraDeepSeekModels = {
@@ -350,15 +335,13 @@ function inferProvider(model, provider) {
   if (modelKey.startsWith("deepseek-v4") || modelKey === "deepseek-chat" || modelKey === "deepseek-reasoner") {
     return "deepseek";
   }
-  // `gemini` resolves to Google; `gemma` (open-weight) stays on Fireworks.
   if (modelKey.startsWith("gemini")) return "google";
   if (
     modelKey.startsWith("kimi") ||
     modelKey.startsWith("gpt-oss") ||
     modelKey.startsWith("minimax") ||
     modelKey.startsWith("glm") ||
-    modelKey.startsWith("qwen") ||
-    modelKey.startsWith("gemma")
+    modelKey.startsWith("qwen")
   ) {
     return "fireworks";
   }

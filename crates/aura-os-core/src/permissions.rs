@@ -289,7 +289,45 @@ impl AgentPermissions {
     /// passed to the harness (the storage row is untouched, so the
     /// chat surface still respects whatever the user configured).
     #[must_use]
-    pub fn with_dev_loop_execution_caps(mut self) -> Self {
+    pub fn with_dev_loop_execution_caps(self) -> Self {
+        self.with_invoke_process_cap()
+    }
+
+    /// Splice [`Capability::InvokeProcess`] into this bundle for a
+    /// **sandboxed remote (swarm) chat session** if it isn't already
+    /// present. Idempotent.
+    ///
+    /// # Why
+    ///
+    /// Remote agents run inside an isolated swarm microVM, not on the
+    /// user's host. Inside that sandbox the harness `run_command` tool
+    /// (`npm install`, `npm run build`, `cargo test`, `git`, …) is a
+    /// baseline capability every agent is expected to have — without it
+    /// a remote chat agent that tries to build the project it was just
+    /// asked to build gets `permissions: requires capability
+    /// InvokeProcess` and stalls retrying the blocked call.
+    ///
+    /// Most agent records are persisted with an empty `capabilities`
+    /// list (only the CEO preset carries `InvokeProcess` by default), so
+    /// fresh remote agents systematically failed to use shell tools from
+    /// chat. We splice the capability only on the **swarm** chat path and
+    /// only into the in-memory bundle handed to the harness — the
+    /// persisted storage row is untouched, and the **local** chat path is
+    /// deliberately left alone so `run_command` on the user's real
+    /// machine still respects whatever the operator configured in the
+    /// Permissions tab.
+    #[must_use]
+    pub fn with_remote_execution_caps(self) -> Self {
+        self.with_invoke_process_cap()
+    }
+
+    /// Shared idempotent splice of [`Capability::InvokeProcess`] backing
+    /// both [`Self::with_dev_loop_execution_caps`] (local + swarm
+    /// dev-loop / task-run starts) and [`Self::with_remote_execution_caps`]
+    /// (sandboxed swarm chat sessions). Kept private so callers express
+    /// intent through the two named wrappers above.
+    #[must_use]
+    fn with_invoke_process_cap(mut self) -> Self {
         if !self.capabilities.contains(&Capability::InvokeProcess) {
             self.capabilities.push(Capability::InvokeProcess);
         }
