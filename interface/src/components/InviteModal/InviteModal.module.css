@@ -1,15 +1,29 @@
 /* Doubled class to win over zui's .modal background/border/radius without !important */
 .modalRoot.modalRoot {
   position: relative;
+  isolation: isolate;
   overflow: hidden;
   border-radius: var(--radius-xl, 22px);
-  background: color-mix(in srgb, var(--color-bg-secondary) 45%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: transparent;
   border: 1px solid transparent;
   box-shadow:
     0 24px 60px -12px rgba(0, 0, 0, 0.6),
     0 0 48px -8px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+/* Blur + tint kept as a child layer so the card's rounded overflow:hidden
+   clips it. Putting backdrop-filter directly on the card makes Chromium
+   render the blur to a square bounding box, squaring off the corners. */
+.modalRoot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--color-bg-secondary) 45%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  pointer-events: none;
 }
 
 /* Gradient border ring (theme colors) drawn as a masked pseudo-element */
