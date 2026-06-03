@@ -130,11 +130,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-lg, 14px);
-  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
-  border: 1px solid color-mix(in srgb, white 8%, transparent);
-  box-shadow: 0 0 24px -6px color-mix(in srgb, var(--color-accent) 40%, transparent);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl, 20px);
+  background: color-mix(in srgb, white 6%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, white 14%, transparent);
+  box-shadow:
+    0 0 20px -4px color-mix(in srgb, white 30%, transparent),
+    inset 0 0 12px -6px color-mix(in srgb, white 40%, transparent);
 }
 
 .wordmark {
