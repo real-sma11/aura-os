@@ -244,12 +244,13 @@ export function AuraShell(): React.ReactElement {
       >
         <AuraTitlebar
           mode={mode}
+          isDesktop={isDesktop}
           publicSidebarCollapsed={publicSidebarCollapsed}
           onTogglePublicSidebar={isPublic ? togglePublicSidebar : undefined}
           authedSidebarCollapsed={authedSidebarCollapsed}
-          onToggleAuthedSidebar={!isPublic ? toggleAuthedSidebar : undefined}
+          onToggleAuthedSidebar={!isPublic && !isDesktop ? toggleAuthedSidebar : undefined}
           sidekickCollapsed={sidekickCollapsed}
-          onToggleSidekick={isStandard ? toggleSidekick : undefined}
+          onToggleSidekick={isStandard && !isDesktop ? toggleSidekick : undefined}
           splitScreenActive={splitScreenActive}
           onToggleSplitScreen={
             isStandard && hasActiveSidekick ? handleToggleSplitScreen : undefined

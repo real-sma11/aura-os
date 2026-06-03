@@ -21,6 +21,16 @@ export interface AuraTitlebarProps {
    */
   mode: UIMode;
   /**
+   * Authenticated-only: whether the Desktop app (`/desktop`) is the
+   * active surface. In desktop mode the leading sidebar toggle, the
+   * trailing sidekick toggle, and the MenuBar collapse chevron are all
+   * suppressed for a clean top bar (the File / Edit / View / Help menus
+   * stay). The sidebar and sidekick toggles are dropped upstream by
+   * `AuraShell` passing `undefined` callbacks; this flag drives the
+   * chevron suppression in `AuthedLeading`.
+   */
+  isDesktop?: boolean;
+  /**
    * Public-only: collapse state of the left sidebar (sessions panel).
    * Drives the `<PanelLeft />` drawer button's `selected` /
    * `aria-pressed` so it lights up when the drawer is open and goes
@@ -107,6 +117,7 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
         ) : (
           <AuthedLeading
             mode={mode}
+            isDesktop={props.isDesktop ?? false}
             collapsed={props.authedSidebarCollapsed ?? false}
             onToggle={props.onToggleAuthedSidebar}
           />
@@ -146,10 +157,12 @@ export function AuraTitlebar(props: AuraTitlebarProps): React.ReactElement {
 
 function AuthedLeading({
   mode,
+  isDesktop,
   collapsed,
   onToggle,
 }: {
   mode: UIMode;
+  isDesktop: boolean;
   collapsed: boolean;
   onToggle?: () => void;
 }): React.ReactElement {
@@ -175,9 +188,14 @@ function AuthedLeading({
         <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
       )}
       <MenuShortcuts />
-      {isStandard && (
-        <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
-      )}
+      {isStandard &&
+        (isDesktop ? (
+          // Desktop mode keeps the File / Edit / View / Help menus but
+          // drops the collapse chevron for a clean top bar.
+          <MenuBar />
+        ) : (
+          <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
+        ))}
     </span>
   );
 }
