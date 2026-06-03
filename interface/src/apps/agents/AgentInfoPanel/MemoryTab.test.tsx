@@ -138,8 +138,7 @@ describe("MemoryTab", () => {
       expect(screen.getByText("lang")).toBeDefined();
     });
 
-    const factsBtn = screen.getByText(/facts/i);
-    fireEvent.click(factsBtn);
+    fireEvent.click(screen.getByRole("button", { name: "Facts (1)" }));
     expect(screen.getByText("lang")).toBeDefined();
     expect(screen.queryByText("deploy-flow")).toBeNull();
   });
