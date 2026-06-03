@@ -23,7 +23,7 @@ import { SidekickTabBar, type TabItem } from "../../../components/SidekickTabBar
 import type { Agent } from "../../../shared/types";
 
 const TAB_ICONS: TabItem[] = [
-  { id: "profile", icon: <User size={16} />, title: "Profile" },
+  { id: "profile", icon: <User size={16} />, title: "Agent" },
   { id: "chats", icon: <MessageSquare size={16} />, title: "Chats" },
   { id: "skills", icon: <Zap size={16} />, title: "Skills" },
   { id: "permissions", icon: <ShieldCheck size={16} />, title: "Permissions" },
