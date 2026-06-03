@@ -59,16 +59,14 @@ export function InviteModal({ isOpen, onClose }: Props) {
           playsInline
           aria-hidden="true"
         />
+        <div className={styles.bannerGlow} aria-hidden="true" />
       </div>
       <div className={styles.body}>
-        <h2 className={styles.heading}>INVITE FRIENDS</h2>
+        <span className={styles.titlePill}>INVITE FRIENDS</span>
         <p className={styles.subtext}>
-          Share your code with a friend to get them started on AURA.
-        </p>
-        <p className={styles.subtext}>
-          If they subscribe to one of our monthly plans, you'll both
-          receive 5,000 Z Credits worth $50 to spend on AI models,
-          image generation, and more.
+          Share your code with a friend to get them started on AURA. If they
+          subscribe to one of our monthly plans, you'll both receive 5,000 Z
+          Credits worth $50 to spend on AI models, image generation, and more.
         </p>
 
         <div className={styles.codeSection}>
@@ -77,28 +75,30 @@ export function InviteModal({ isOpen, onClose }: Props) {
             {inviteLoading ? (
               <span className={styles.codeValue}>Loading...</span>
             ) : inviteCode ? (
-              <div className={styles.codeRow}>
-                <span
-                  className={styles.codeClickable}
-                  onClick={handleCodeClick}
-                  title="Click to copy"
-                >
-                  {copied ? "Copied!" : inviteCode}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={copied ? <Check size={14} /> : <Copy size={14} />}
-                  iconOnly
-                  aria-label="Copy invite code"
-                  onClick={handleCodeClick}
-                />
-              </div>
+              <span
+                className={styles.codePill}
+                onClick={handleCodeClick}
+                title="Click to copy"
+              >
+                {copied ? "Copied!" : inviteCode}
+              </span>
             ) : (
               <span className={styles.codeValue}>Unavailable</span>
             )}
           </div>
         </div>
+
+        <Button
+          variant="secondary"
+          size="md"
+          fullWidth
+          className={styles.shareButton}
+          icon={copied ? <Check size={16} /> : <Copy size={16} />}
+          onClick={handleCodeClick}
+          disabled={!inviteCode}
+        >
+          {copied ? "Copied!" : "Copy invite code"}
+        </Button>
       </div>
     </Modal>
   );
