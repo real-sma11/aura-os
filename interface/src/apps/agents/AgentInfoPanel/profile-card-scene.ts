@@ -620,6 +620,12 @@ export function createProfileCardScene(
   const cardGroup = new THREE.Group();
   group.add(cardGroup);
 
+  // The worn-metal info/links backplate lives in its own group so it can slide
+  // down out of the way before the card flips (and back up after it returns),
+  // avoiding the card rotating through it mid-flip.
+  const plateGroup = new THREE.Group();
+  group.add(plateGroup);
+
   // LCD offscreen canvas + texture.
   const screenCanvas = document.createElement("canvas");
   const screenTexture = new THREE.CanvasTexture(screenCanvas);
@@ -971,32 +977,32 @@ export function createProfileCardScene(
 
   function disposeBuilt(): void {
     if (infoPlateMesh) {
-      group.remove(infoPlateMesh);
+      plateGroup.remove(infoPlateMesh);
       infoPlateMesh.geometry.dispose();
       infoPlateMesh = null;
     }
     if (infoMesh) {
-      group.remove(infoMesh);
+      plateGroup.remove(infoMesh);
       infoMesh.geometry.dispose();
       infoMesh = null;
     }
     if (linksMesh) {
-      group.remove(linksMesh);
+      plateGroup.remove(linksMesh);
       linksMesh.geometry.dispose();
       linksMesh = null;
     }
     if (channelsMesh) {
-      group.remove(channelsMesh);
+      plateGroup.remove(channelsMesh);
       channelsMesh.geometry.dispose();
       channelsMesh = null;
     }
     if (channelsWallMesh) {
-      group.remove(channelsWallMesh);
+      plateGroup.remove(channelsWallMesh);
       channelsWallMesh.geometry.dispose();
       channelsWallMesh = null;
     }
     if (channelsFloorMesh) {
-      group.remove(channelsFloorMesh);
+      plateGroup.remove(channelsFloorMesh);
       channelsFloorMesh.geometry.dispose();
       channelsFloorMesh = null;
     }
@@ -1188,7 +1194,7 @@ export function createProfileCardScene(
     applyEdgeWear(plateGeo);
     infoPlateMesh = new THREE.Mesh(plateGeo, plateMaterial);
     infoPlateMesh.position.set(0, (INFO_PLATE.top + INFO_PLATE.bottom) / 2, INFO_PLATE.z);
-    group.add(infoPlateMesh);
+    plateGroup.add(infoPlateMesh);
 
     // Agent info readout plane, just in front of the plate's front face (the
     // plate front sits at ~ INFO_PLATE.z + depth/2 + bevel).
@@ -1199,7 +1205,7 @@ export function createProfileCardScene(
       infoMaterial,
     );
     infoMesh.position.set(0, (INFO_TEXT.top + INFO_TEXT.bottom) / 2, infoFrontZ);
-    group.add(infoMesh);
+    plateGroup.add(infoMesh);
 
     // Navigation links plane (clickable), below the info readout.
     const linksH = INFO_LINKS.top - INFO_LINKS.bottom;
@@ -1208,7 +1214,7 @@ export function createProfileCardScene(
       linksMaterial,
     );
     linksMesh.position.set(0, (INFO_LINKS.top + INFO_LINKS.bottom) / 2, infoFrontZ);
-    group.add(linksMesh);
+    plateGroup.add(linksMesh);
 
     // Messaging-channel pill: a shallow pocket cut into the plate between the
     // Wallet readout row and the Soul link. Mirrors the LCD bezel recipe — a
@@ -1231,7 +1237,7 @@ export function createProfileCardScene(
     });
     channelsWallMesh = new THREE.Mesh(wallGeo, bezelMaterial);
     channelsWallMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH);
-    group.add(channelsWallMesh);
+    plateGroup.add(channelsWallMesh);
 
     // Recessed pocket floor (dark metal), set behind the plate surface.
     const floorGeo = new THREE.ShapeGeometry(
@@ -1240,14 +1246,14 @@ export function createProfileCardScene(
     );
     channelsFloorMesh = new THREE.Mesh(floorGeo, matteMaterial);
     channelsFloorMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.001);
-    group.add(channelsFloorMesh);
+    plateGroup.add(channelsFloorMesh);
 
     // Engraved logo decal, clearly in front of the recessed floor (a wide gap
     // plus polygon offset on the material avoid z-fighting during card tilt).
     const channelsGeo = new THREE.PlaneGeometry(PILL_INNER_W, PILL_INNER_H);
     channelsMesh = new THREE.Mesh(channelsGeo, channelsMaterial);
     channelsMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.014);
-    group.add(channelsMesh);
+    plateGroup.add(channelsMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole. Shared
     // by both faces (its front + back faces are both visible), so it lives
@@ -1398,9 +1404,14 @@ export function createProfileCardScene(
   let targetRotX = 0;
   let targetRotY = 0;
   // Flip state: clicking the card toggles between front (0) and back (PI),
-  // animated by lerping `cardGroup.rotation.y` toward `flipTarget`.
+  // animated by lerping `cardGroup.rotation.y` toward `flipTarget`. The flip is
+  // sequenced with the backplate slide (see the animation loop) so the card
+  // never rotates through the worn-metal strip.
   let flipped = false;
   let flipTarget = 0;
+  // Drop distance for the info backplate so its top (-0.9) clears the card's
+  // bottom edge (-1.25) plus margin for the card's z-sweep during the flip.
+  const PLATE_DROP = 0.9;
 
   /** Set the pointer NDC for the current event, for raycasting. */
   const setPointerNdc = (event: PointerEvent): void => {
@@ -1478,9 +1489,10 @@ export function createProfileCardScene(
       return;
     }
     // Clicking the metal card (and not a link row) flips it to show the back.
+    // `flipTarget` is derived in the animation loop so the flip stays in step
+    // with the backplate slide.
     if (idx < 0 && cardAt(event)) {
       flipped = !flipped;
-      flipTarget = flipped ? Math.PI : 0;
       if (!running) start();
     }
   };
@@ -1508,7 +1520,21 @@ export function createProfileCardScene(
     const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 * idleAmp : 0;
     group.position.y += (desiredFloat - group.position.y) * 0.08;
 
-    // Flip the card toward its target face (0 = front, PI = back).
+    // Sequence the backplate slide with the card flip. Going to the back: slide
+    // the plate down first, then flip once it has cleared the card. Returning to
+    // the front: flip back first, then slide the plate up once the card is flat
+    // again. This keeps the card from ever rotating through the metal strip.
+    let plateTarget = 0;
+    if (flipped) {
+      plateTarget = -PLATE_DROP;
+      const cleared = plateGroup.position.y - plateTarget < 0.06;
+      flipTarget = cleared ? Math.PI : 0;
+    } else {
+      flipTarget = 0;
+      const flat = cardGroup.rotation.y < 0.08;
+      plateTarget = flat ? 0 : -PLATE_DROP;
+    }
+    plateGroup.position.y += (plateTarget - plateGroup.position.y) * 0.2;
     cardGroup.rotation.y += (flipTarget - cardGroup.rotation.y) * 0.12;
 
     bloom.strength += ((hovering ? 0.32 : 0.26) - bloom.strength) * 0.06;
