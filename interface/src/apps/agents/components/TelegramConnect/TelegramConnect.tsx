@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { Text, Button } from "@cypher-asi/zui";
 import { Send, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -11,32 +11,61 @@ import type {
   TelegramLinkResult,
 } from "../../../../shared/api/channels";
 import type { Agent } from "../../../../shared/types";
+import { telegramChannelsQueryKey } from "./query-key";
 import styles from "./TelegramConnect.module.css";
 
 export interface TelegramConnectProps {
   agent: Agent;
   /** Tightens spacing for placement under the profile card. */
   compact?: boolean;
+  /**
+   * When provided, the PARENT owns the channels query and this component does
+   * not start its own polling observer. This prevents the same `["channels",
+   * agentId]` key from being polled by two observers at once (MessagingTab +
+   * this component), which caused redundant refetches and re-render jank.
+   */
+  channels?: ChannelSummary[];
+  /** Ask the query owner to refetch (used when this component is parent-managed). */
+  onChanged?: () => void;
 }
 
 const POLL_INTERVAL_MS = 3_000;
+/** Slow cadence used when the endpoint is erroring (e.g. server not yet
+ * rebuilt with the channels routes) so a missing/unreachable endpoint never
+ * turns into a 3s retry storm that re-renders the whole sidekick. */
+const ERROR_BACKOFF_MS = 15_000;
 
-export function TelegramConnect({ agent, compact = false }: TelegramConnectProps) {
+export function TelegramConnect({
+  agent,
+  compact = false,
+  channels: externalChannels,
+  onChanged,
+}: TelegramConnectProps) {
   const isRemote = agent.machine_type === "remote";
   const agentId = agent.agent_id;
+  // When the parent injects `channels`, it owns the polling; we stay passive.
+  const parentManaged = externalChannels !== undefined;
 
   const [link, setLink] = useState<TelegramLinkResult | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  const channelsQuery = useQuery({
-    queryKey: ["channels", agentId],
+  const internalQuery = useQuery({
+    queryKey: telegramChannelsQueryKey(agentId),
     queryFn: () => api.channels.listChannels(agentId),
-    enabled: isRemote,
-    // Keep polling while we don't yet have a connected telegram channel so a
-    // scan/deep-link completion on the phone flips the UI without a reload.
+    enabled: isRemote && !parentManaged,
+    // Keep the last good data on the screen across refetches so rows never
+    // flicker to an empty/loading state mid-poll (a source of layout jank).
+    placeholderData: keepPreviousData,
+    // A failing poll should not fan out into retries; the interval already
+    // re-attempts on its own cadence.
+    retry: false,
+    // Opening the Telegram deep link steals focus; don't let regaining it
+    // trigger an extra refetch + re-render.
+    refetchOnWindowFocus: false,
     refetchInterval: (query) => {
+      if (query.state.status === "error") return ERROR_BACKOFF_MS;
       const channels = query.state.data?.channels ?? [];
       const hasConnected = channels.some(
         (c) => c.kind === "telegram" && c.status === "connected",
@@ -45,13 +74,23 @@ export function TelegramConnect({ agent, compact = false }: TelegramConnectProps
     },
   });
 
-  const telegramChannel = useMemo<ChannelSummary | null>(() => {
-    const channels = channelsQuery.data?.channels ?? [];
-    return channels.find((c) => c.kind === "telegram") ?? null;
-  }, [channelsQuery.data]);
+  const channels = externalChannels ?? internalQuery.data?.channels;
+
+  const telegramChannel = useMemo<ChannelSummary | null>(
+    () => (channels ?? []).find((c) => c.kind === "telegram") ?? null,
+    [channels],
+  );
 
   const isConnected = telegramChannel?.status === "connected";
   const needsRelink = telegramChannel?.status === "needs_relink";
+
+  const refreshChannels = useCallback(async () => {
+    if (parentManaged) {
+      onChanged?.();
+    } else {
+      await internalQuery.refetch();
+    }
+  }, [parentManaged, onChanged, internalQuery]);
 
   const startLink = useCallback(async () => {
     setLinking(true);
@@ -59,7 +98,13 @@ export function TelegramConnect({ agent, compact = false }: TelegramConnectProps
     try {
       const res = await api.channels.linkTelegram(agentId);
       setLink(res);
-      window.open(res.deep_link, "_blank");
+      // Best-effort: pop Telegram on the same device. Never let a blocked
+      // popup throw into the connect flow.
+      try {
+        window.open(res.deep_link, "_blank", "noopener,noreferrer");
+      } catch {
+        /* popup blocked — the QR below still works */
+      }
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 503) {
         setLinkError(
@@ -79,13 +124,13 @@ export function TelegramConnect({ agent, compact = false }: TelegramConnectProps
     try {
       await api.channels.disconnectChannel(agentId, telegramChannel.channel_id);
       setLink(null);
-      await channelsQuery.refetch();
+      await refreshChannels();
     } catch (err) {
       setLinkError(getApiErrorMessage(err));
     } finally {
       setDisconnecting(false);
     }
-  }, [agentId, channelsQuery, telegramChannel]);
+  }, [agentId, refreshChannels, telegramChannel]);
 
   const rootClass = compact
     ? `${styles.root} ${styles.compact}`

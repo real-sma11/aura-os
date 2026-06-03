@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Text } from "@cypher-asi/zui";
 import { Send, MessageCircle, MessageSquare, Hash, MessagesSquare } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "../../../../api/client";
 import type { Agent } from "../../../../shared/types";
-import { TelegramConnect } from "../../components/TelegramConnect";
+import {
+  TelegramConnect,
+  telegramChannelsQueryKey,
+} from "../../components/TelegramConnect";
 import panelStyles from "../AgentInfoPanel.module.css";
 import styles from "./MessagingTab.module.css";
 
@@ -28,13 +31,21 @@ const COMING_SOON: ComingSoonConnector[] = [
 export function MessagingTab({ agent }: MessagingTabProps) {
   const isRemote = agent.machine_type === "remote";
 
-  // Mirror TelegramConnect's polling so the header chip reflects connection
-  // state; react-query dedupes this against the component's own query.
+  // This tab owns the single polling observer for the agent's channels and
+  // feeds the data down to <TelegramConnect> so there is exactly ONE poller
+  // per surface (two independent observers on the same key caused the
+  // sidekick re-render jank). Options mirror TelegramConnect's: keep previous
+  // data across polls, no retry storms, no window-focus refetch, and a slow
+  // backoff while the endpoint is erroring.
   const channelsQuery = useQuery({
-    queryKey: ["channels", agent.agent_id],
+    queryKey: telegramChannelsQueryKey(agent.agent_id),
     queryFn: () => api.channels.listChannels(agent.agent_id),
     enabled: isRemote,
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchOnWindowFocus: false,
     refetchInterval: (query) => {
+      if (query.state.status === "error") return 15_000;
       const channels = query.state.data?.channels ?? [];
       const hasConnected = channels.some(
         (c) => c.kind === "telegram" && c.status === "connected",
@@ -43,7 +54,8 @@ export function MessagingTab({ agent }: MessagingTabProps) {
     },
   });
 
-  const telegramConnected = (channelsQuery.data?.channels ?? []).some(
+  const channels = channelsQuery.data?.channels ?? [];
+  const telegramConnected = channels.some(
     (c) => c.kind === "telegram" && c.status === "connected",
   );
 
@@ -69,7 +81,13 @@ export function MessagingTab({ agent }: MessagingTabProps) {
               {telegramConnected ? "Connected" : "Available"}
             </span>
           </div>
-          <TelegramConnect agent={agent} />
+          <TelegramConnect
+            agent={agent}
+            channels={channels}
+            onChanged={() => {
+              void channelsQuery.refetch();
+            }}
+          />
         </div>
 
         {COMING_SOON.map(({ id, name, Icon }) => (
