@@ -25,9 +25,11 @@ export function GlassCard({ children, glow = true, className, ...rest }: GlassCa
     >
       <div className={styles.clip}>
         <div className={styles.glass} aria-hidden="true" />
-        <div className={styles.border} aria-hidden="true" />
         <div className={styles.content}>{children}</div>
       </div>
+      {/* Rendered outside .clip so it is not double-rounded (clip-path + mask),
+          which otherwise aliases the corners. */}
+      <div className={styles.border} aria-hidden="true" />
     </div>
   );
 }

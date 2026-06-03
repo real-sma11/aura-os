@@ -38,12 +38,14 @@
   pointer-events: none;
 }
 
-/* Top-lit white-to-dark translucent gradient rim. */
+/* Top-lit white-to-dark translucent gradient rim. Lives outside .clip (a
+   sibling of it) so it is rounded only by its own mask, not also by the
+   clip-path - double rounding aliases the corners. */
 .border {
   position: absolute;
   inset: 0;
-  z-index: 2;
-  border-radius: inherit;
+  z-index: 1;
+  border-radius: var(--glass-card-radius);
   padding: 1px;
   background: linear-gradient(
     160deg,
