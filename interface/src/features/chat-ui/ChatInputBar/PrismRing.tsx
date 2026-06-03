@@ -29,29 +29,37 @@ const FRAG_SRC = `
 precision highp float;
 varying vec2 vUv;
 uniform float uTime;
+uniform vec2 uRes;
 
 vec3 palette(float t) {
   return 0.5 + 0.5 * cos(6.2831853 * (t + vec3(0.0, 0.33, 0.67)));
 }
 
 void main() {
+  // Aspect-correct so the ring stays a circle even if the drawing
+  // buffer isn't perfectly square.
   vec2 p = vUv * 2.0 - 1.0;
+  p.x *= uRes.x / max(uRes.y, 1.0);
+
   float r = length(p);
   float a = atan(p.y, p.x);
 
-  float ringR = 0.78;
-  float ringW = 0.13;
-  float ring = smoothstep(ringW, ringW - 0.05, abs(r - ringR));
+  // Clean thin band; alpha is 0 everywhere off the band, so the disc
+  // and the + glyph in the center stay fully visible.
+  float ringR = 0.7;
+  float ringW = 0.16;
+  float band = smoothstep(ringW, ringW * 0.35, abs(r - ringR));
 
-  float hue = a / 6.2831853 + 0.5 + uTime * 0.04;
-  float hl = pow(max(0.0, cos(a - uTime * 1.2)), 8.0);
-  float pulse = 0.6 + 0.4 * sin(uTime * 2.0);
+  // Iridescent color sweeps slowly around the ring.
+  float hue = a / 6.2831853 + uTime * 0.05;
+  vec3 col = palette(hue);
 
-  vec3 col = palette(hue) * (0.35 + hl * 1.3 * pulse);
-  float glow = smoothstep(ringR + ringW + 0.25, ringR, r) * 0.22 * pulse;
-  vec3 outc = col * ring + palette(hue) * glow;
+  // Bright highlight arc rotating around the ring + overall pulse.
+  float hi = pow(0.5 + 0.5 * cos(a - uTime * 1.5), 3.0);
+  float pulse = 0.75 + 0.25 * sin(uTime * 2.2);
+  vec3 outc = col * (0.45 + 1.15 * hi) * pulse;
 
-  gl_FragColor = vec4(outc, clamp(ring + glow, 0.0, 1.0));
+  gl_FragColor = vec4(outc, band);
 }
 `;
 
@@ -113,12 +121,14 @@ export function PrismRing({ className }: { className?: string }) {
 
     const aPos = gl.getAttribLocation(program, "aPos");
     const uTime = gl.getUniformLocation(program, "uTime");
+    const uRes = gl.getUniformLocation(program, "uRes");
 
     gl.useProgram(program);
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0, 0, 0, 0);
 
     setActive(true);
 
@@ -145,6 +155,8 @@ export function PrismRing({ className }: { className?: string }) {
     const render = (now: number) => {
       resize();
       gl.uniform1f(uTime, (now - start) / 1000);
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       raf = requestAnimationFrame(render);
     };
