@@ -76,8 +76,7 @@ export function InviteModal({ isOpen, onClose }: Props) {
           <p className={styles.subtext}>
             Share your code with a friend.
             <br />
-            If they subscribe, you'll both receive 5,000 Z Credits worth $50 to
-            spend on frontier AI models.
+            If they subscribe, you'll both receive $50 to spend on frontier AI.
           </p>
 
           <Button
