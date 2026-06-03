@@ -241,7 +241,10 @@ export interface StreamPublicImageArgs extends StreamPublicMediaArgsBase {
   sourceUrl?: string;
 }
 
-export type StreamPublicVideoArgs = StreamPublicMediaArgsBase;
+export interface StreamPublicVideoArgs extends StreamPublicMediaArgsBase {
+  /** Optional source image URL for image-to-video generation. */
+  sourceUrl?: string;
+}
 
 export interface StreamPublicModel3dArgs extends StreamPublicMediaArgsBase {
   /** Required source image for the Tripo image-to-3D pipeline. Either
@@ -273,10 +276,14 @@ export function streamPublicImage(args: StreamPublicImageArgs): PublicMediaStrea
 
 /** Open the public video-generation SSE stream. */
 export function streamPublicVideo(args: StreamPublicVideoArgs): PublicMediaStreamHandle {
+  const body: Record<string, unknown> = { prompt: args.prompt };
+  if (args.sourceUrl && args.sourceUrl.trim().length > 0) {
+    body.source_url = args.sourceUrl;
+  }
   return openMediaStream({
     args,
     path: "/api/public/generation/video",
-    body: { prompt: args.prompt },
+    body,
     kind: "video",
   });
 }

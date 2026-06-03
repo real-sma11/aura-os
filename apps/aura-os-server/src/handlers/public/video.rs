@@ -59,11 +59,14 @@ const PUBLIC_VIDEO_RESOLUTION: &str = "720p";
 /// look-and-feel.
 const PUBLIC_VIDEO_ASPECT_RATIO: &str = "16:9";
 
-/// Public-mode video generation request. The DTO carries only the
-/// prompt — every other knob is server-fixed.
+/// Public-mode video generation request. The DTO carries the prompt
+/// plus an optional source image for image-to-video; every other knob
+/// is server-fixed.
 #[derive(Debug, Deserialize)]
 pub(crate) struct PublicVideoRequest {
     pub(crate) prompt: String,
+    #[serde(default, alias = "sourceUrl", alias = "imageUrl")]
+    pub(crate) source_url: Option<String>,
 }
 
 /// `POST /api/public/generation/video`. Reserves a turn slot via the
@@ -106,14 +109,21 @@ pub(crate) async fn public_video_stream(
 /// the caller's prompt flows through; the model, duration,
 /// resolution, and aspect ratio are pinned to the cheap defaults.
 fn build_public_video_payload(body: &PublicVideoRequest) -> Value {
-    json!({
+    let mut payload = json!({
         "prompt": body.prompt,
         "model": PUBLIC_VIDEO_MODEL,
         "durationSeconds": PUBLIC_VIDEO_DURATION_SECONDS,
         "resolution": PUBLIC_VIDEO_RESOLUTION,
         "aspectRatio": PUBLIC_VIDEO_ASPECT_RATIO,
         "generateAudio": false,
-    })
+    });
+    if let Some(source) = body.source_url.as_deref() {
+        let trimmed = source.trim();
+        if !trimmed.is_empty() {
+            payload["images"] = json!([trimmed]);
+        }
+    }
+    payload
 }
 
 #[cfg(test)]
@@ -124,6 +134,7 @@ mod tests {
     fn build_payload_hardcodes_cheap_tier_and_duration() {
         let body = PublicVideoRequest {
             prompt: "a kite over a beach".to_string(),
+            source_url: None,
         };
         let payload = build_public_video_payload(&body);
         assert_eq!(payload["model"], PUBLIC_VIDEO_MODEL);
@@ -131,14 +142,26 @@ mod tests {
         assert_eq!(payload["resolution"], PUBLIC_VIDEO_RESOLUTION);
         assert_eq!(payload["aspectRatio"], PUBLIC_VIDEO_ASPECT_RATIO);
         assert_eq!(payload["generateAudio"], false);
+        assert!(payload.get("images").is_none());
     }
 
     #[test]
     fn build_payload_carries_prompt_unchanged() {
         let body = PublicVideoRequest {
             prompt: "verbatim".to_string(),
+            source_url: None,
         };
         let payload = build_public_video_payload(&body);
         assert_eq!(payload["prompt"], "verbatim");
+    }
+
+    #[test]
+    fn build_payload_forwards_source_image() {
+        let body = PublicVideoRequest {
+            prompt: "animate this character".to_string(),
+            source_url: Some("  https://cdn.example/cypher.png  ".to_string()),
+        };
+        let payload = build_public_video_payload(&body);
+        assert_eq!(payload["images"], json!(["https://cdn.example/cypher.png"]));
     }
 }

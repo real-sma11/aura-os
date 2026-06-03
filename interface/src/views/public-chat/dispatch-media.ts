@@ -119,6 +119,7 @@ export function dispatchMediaTurn(args: DispatchMediaArgs): PublicMediaStreamHan
       current = streamPublicVideo({
         token,
         prompt: args.prompt,
+        sourceUrl: args.sourceImage,
         onProgress,
         onCompleted,
         onLimit: args.onLimit,
