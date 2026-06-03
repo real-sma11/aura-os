@@ -58,6 +58,23 @@ const LED_SLOT_DEPTH = 0.05;
 const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 
 /**
+ * Worn-metal info backplate that sits behind the card and pokes out below it as
+ * a strip where agent info is later printed. Width is 90% of the card so its
+ * sides stay tucked behind the card; it overlaps the card's lower portion and
+ * extends below the bottom edge (card bottom is at `y = -PORTRAIT_SHELL.h / 2`).
+ * All values in world units.
+ */
+const INFO_PLATE = {
+  w: PORTRAIT_SHELL.w * 0.9, // 1.8
+  top: -0.9, // tucked ~0.35 behind the card's lower area
+  bottom: -2.3, // exposed strip extends ~1.05 below the card's bottom edge
+  depth: 0.1,
+  bevel: 0.02,
+  chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
+  z: -0.16, // front face sits just behind the card back (~ -0.09)
+};
+
+/**
  * Outer silhouette of the AURA card (portrait), traced from the reference art and
  * built in world units so every angled segment is a true 45-degree cut (equal dx
  * and dy). Consistent corner chamfers on the top corners, a larger 45-degree
@@ -179,6 +196,26 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
   }
   geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   return geo;
+}
+
+/**
+ * A rectangle with 45-degree corner chamfers (centered on the origin), echoing
+ * the card's faceted silhouette. Used for the worn-metal info backplate.
+ */
+function chamferedRectShape(w: number, h: number, c: number): THREE.Shape {
+  const hw = w / 2;
+  const hh = h / 2;
+  const s = new THREE.Shape();
+  s.moveTo(-hw + c, hh);
+  s.lineTo(hw - c, hh);
+  s.lineTo(hw, hh - c);
+  s.lineTo(hw, -hh + c);
+  s.lineTo(hw - c, -hh);
+  s.lineTo(-hw + c, -hh);
+  s.lineTo(-hw, -hh + c);
+  s.lineTo(-hw, hh - c);
+  s.lineTo(-hw + c, hh);
+  return s;
 }
 
 /**
@@ -503,6 +540,26 @@ export function createProfileCardScene(
     roughness: 0.85,
     envMapIntensity: 0.4,
   });
+  // Info backplate — gray brushed metal with a heavier worn finish. Its own wear
+  // texture (coarser repeat) + a stronger bump make it read as more rubbed/scuffed
+  // than the card frame.
+  const plateMetalTexture = createBrushedMetalTexture("#3c3f45", "#7c8088");
+  plateMetalTexture.anisotropy = maxAniso;
+  plateMetalTexture.repeat.set(2, 2);
+  const plateWearTexture = createWearTexture();
+  plateWearTexture.anisotropy = maxAniso;
+  plateWearTexture.repeat.set(2.5, 2.5);
+  const plateMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4a4d52,
+    map: plateMetalTexture,
+    bumpMap: plateWearTexture,
+    bumpScale: 0.03,
+    roughnessMap: plateWearTexture,
+    metalness: 0.8,
+    roughness: 0.7,
+    envMapIntensity: 0.7,
+    vertexColors: true,
+  });
   // Fake barcode decal — white bars tinted to a medium grey and kept low-contrast
   // via opacity so it reads as etched/printed.
   const barcodeTexture = createBarcodeTexture();
@@ -564,6 +621,7 @@ export function createProfileCardScene(
     blending: THREE.AdditiveBlending,
   });
 
+  let infoPlateMesh: THREE.Mesh | null = null;
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
   let bezelMesh: THREE.Mesh | null = null;
@@ -662,6 +720,11 @@ export function createProfileCardScene(
   }
 
   function disposeBuilt(): void {
+    if (infoPlateMesh) {
+      group.remove(infoPlateMesh);
+      infoPlateMesh.geometry.dispose();
+      infoPlateMesh = null;
+    }
     if (shellMesh) {
       group.remove(shellMesh);
       shellMesh.geometry.dispose();
@@ -718,6 +781,28 @@ export function createProfileCardScene(
   function buildPortrait(): void {
     const shell = PORTRAIT_SHELL;
     const canvasSize = PORTRAIT_CANVAS;
+
+    // Info backplate: a worn gray metal plate behind the card, narrower than the
+    // card so its sides stay hidden, extending below the card's bottom edge as a
+    // visible strip for agent info. Built first so it sits at the back.
+    const plateH = INFO_PLATE.top - INFO_PLATE.bottom;
+    const plateGeo = new THREE.ExtrudeGeometry(
+      chamferedRectShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer),
+      {
+        depth: INFO_PLATE.depth,
+        bevelEnabled: true,
+        bevelThickness: INFO_PLATE.bevel,
+        bevelSize: INFO_PLATE.bevel,
+        bevelSegments: 2,
+        curveSegments: 8,
+        steps: 1,
+      },
+    );
+    plateGeo.center();
+    applyEdgeWear(plateGeo);
+    infoPlateMesh = new THREE.Mesh(plateGeo, plateMaterial);
+    infoPlateMesh.position.set(0, (INFO_PLATE.top + INFO_PLATE.bottom) / 2, INFO_PLATE.z);
+    group.add(infoPlateMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole.
     const outer = auraOuterShape(shell.w, shell.h);
@@ -868,10 +953,14 @@ export function createProfileCardScene(
   function fitCamera(shellW: number, shellH: number): void {
     const margin = 1.16;
     const vFov = THREE.MathUtils.degToRad(camera.fov);
-    const distH = (shellH * margin) / 2 / Math.tan(vFov / 2);
+    // Always frame to the card width so the card keeps the same on-screen size
+    // regardless of canvas height; the (taller) canvas reveals the worn-metal
+    // info strip below. The extra vertical space is centered between the card's
+    // top edge and the backplate's bottom so both stay in view.
     const distW = (shellW * margin) / 2 / Math.tan(vFov / 2) / camera.aspect;
-    camera.position.set(0, 0, Math.max(distH, distW));
-    camera.lookAt(0, 0, 0);
+    const centerY = (shellH / 2 + INFO_PLATE.bottom) / 2;
+    camera.position.set(0, centerY, distW);
+    camera.lookAt(0, centerY, 0);
     camera.updateProjectionMatrix();
   }
 
@@ -1040,12 +1129,15 @@ export function createProfileCardScene(
       barcodeMaterial.dispose();
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
+      plateMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
       blueMetalTexture.dispose();
       matteTexture.dispose();
       wearTexture.dispose();
+      plateMetalTexture.dispose();
+      plateWearTexture.dispose();
       barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();

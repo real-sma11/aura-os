@@ -49,7 +49,10 @@
      extra lane width becomes left/right space while the card stays centered. */
   max-width: 340px;
   margin-inline: auto;
-  aspect-ratio: 4 / 5;
+  /* Taller than the card alone so the worn-metal info backplate that pokes out
+     below the card stays visible; the card itself keeps the same on-screen size
+     (framed to its width in the WebGL scene). */
+  aspect-ratio: 4 / 6.8;
   /* The WebGL canvas is transparent; the dark card always renders in its dark
      variant and only this themed backdrop changes between light/dark, blending
      with the surrounding sidekick panel. */
