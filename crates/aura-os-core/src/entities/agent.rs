@@ -8,6 +8,14 @@ use crate::listing_status::AgentListingStatus;
 use crate::permissions::AgentPermissions;
 use aura_protocol::IntentClassifierSpec;
 
+/// Canonical "latest frontier model" assigned to a newly created agent
+/// when the creator doesn't specify one. New agents should run on the
+/// strongest available model by default so they can plan and build
+/// autonomously (including from headless / remote contexts where no
+/// human is at a model picker). Update this single constant when a
+/// newer frontier model ships.
+pub const LATEST_FRONTIER_MODEL: &str = "aura-claude-opus-4-8";
+
 fn default_machine_type() -> String {
     "local".to_string()
 }

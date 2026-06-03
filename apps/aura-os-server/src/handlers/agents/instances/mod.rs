@@ -7,6 +7,7 @@ use chrono::Utc;
 use aura_os_agents::{merge_agent_instance, AgentInstanceService, AgentService};
 use aura_os_core::{
     Agent, AgentId, AgentInstance, AgentInstanceId, AgentRuntimeConfig, AgentStatus, ProjectId,
+    LATEST_FRONTIER_MODEL,
 };
 
 use crate::capture_auth::{
@@ -47,7 +48,7 @@ fn build_general_agent(user_id: &str, project: Option<&aura_os_core::Project>) -
         environment: "local_host".to_string(),
         auth_source: "aura_managed".to_string(),
         integration_id: None,
-        default_model: None,
+        default_model: Some(LATEST_FRONTIER_MODEL.to_string()),
         vm_id: None,
         wallet_address: None,
         network_agent_id: None,
@@ -60,7 +61,7 @@ fn build_general_agent(user_id: &str, project: Option<&aura_os_core::Project>) -
         revenue_usd: 0.0,
         reputation: 0.0,
         local_workspace_path: None,
-        permissions: aura_os_core::AgentPermissions::empty(),
+        permissions: aura_os_core::AgentPermissions::default_new_agent(),
         intent_classifier: None,
         created_at: now,
         updated_at: now,
@@ -125,7 +126,7 @@ fn general_agent_runtime_config() -> AgentRuntimeConfig {
         environment: "local_host".to_string(),
         auth_source: "aura_managed".to_string(),
         integration_id: None,
-        default_model: None,
+        default_model: Some(LATEST_FRONTIER_MODEL.to_string()),
     }
 }
 

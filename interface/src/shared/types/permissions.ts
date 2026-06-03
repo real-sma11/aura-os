@@ -125,8 +125,9 @@ export const CAPABILITY_LABELS: Record<
     Icon: CreditCard,
   },
   invokeProcess: {
-    label: "Invoke processes",
-    description: "Run workflows and process nodes.",
+    label: "Run commands",
+    description:
+      "Execute shell commands in the workspace (npm, build, test, git). Enables the harness run_command tool.",
     Icon: Workflow,
   },
   postToFeed: {

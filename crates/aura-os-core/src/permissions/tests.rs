@@ -308,6 +308,35 @@ fn with_dev_loop_execution_caps_preserves_scope() {
 }
 
 #[test]
+fn default_new_agent_grants_everything_except_billing() {
+    let perms = AgentPermissions::default_new_agent();
+    // Billing is the one deliberate exclusion.
+    assert!(
+        !perms.capabilities.contains(&Capability::ManageBilling),
+        "new agents must not get billing by default"
+    );
+    // Everything else from the full-access preset is present.
+    for cap in AgentPermissions::full_access().capabilities {
+        if matches!(cap, Capability::ManageBilling) {
+            continue;
+        }
+        assert!(
+            perms.capabilities.contains(&cap),
+            "default new-agent bundle must include {cap:?}"
+        );
+    }
+    // Spot-check the capabilities that unblock autonomous building.
+    assert!(perms.capabilities.contains(&Capability::InvokeProcess));
+    assert!(perms.capabilities.contains(&Capability::WriteAllProjects));
+    assert!(perms.scope.is_universe());
+}
+
+#[test]
+fn default_new_agent_is_not_empty() {
+    assert!(!AgentPermissions::default_new_agent().is_empty());
+}
+
+#[test]
 fn capability_serde_is_camel_case_external_tag() {
     let c = Capability::ReadProject { id: "p".into() };
     let v = serde_json::to_value(&c).unwrap();

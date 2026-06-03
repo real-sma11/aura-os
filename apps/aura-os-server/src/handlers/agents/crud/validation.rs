@@ -1,4 +1,4 @@
-use aura_os_core::{effective_auth_source, AgentRuntimeConfig};
+use aura_os_core::{effective_auth_source, AgentRuntimeConfig, LATEST_FRONTIER_MODEL};
 
 use crate::error::{ApiError, ApiResult};
 
@@ -67,8 +67,21 @@ pub(super) fn build_runtime_config(inputs: RuntimeConfigInputs) -> ApiResult<Age
         environment,
         auth_source,
         integration_id,
-        default_model: inputs.default_model,
+        // Newly created agents run on the latest frontier model unless the
+        // creator picked one explicitly. This carries through to chat
+        // (`effective_model`) and the dev loop / task runner
+        // (`pick_model`), so a headless / remote agent with no human at a
+        // model picker still has a concrete model to run on.
+        default_model: resolve_default_model(inputs.default_model),
     })
+}
+
+/// Resolve the agent's default model at creation: a non-blank explicit
+/// value wins; otherwise fall back to [`LATEST_FRONTIER_MODEL`].
+fn resolve_default_model(requested: Option<String>) -> Option<String> {
+    requested
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| Some(LATEST_FRONTIER_MODEL.to_string()))
 }
 
 pub(super) fn ensure_remote_runtime_create_allowed(
@@ -158,6 +171,39 @@ mod tests {
 
         assert_eq!(config.auth_source, "aura_managed");
         assert_eq!(config.integration_id, None);
+    }
+
+    #[test]
+    fn unset_model_defaults_to_latest_frontier() {
+        let config = build_runtime_config(aura_harness_inputs()).expect("runtime config");
+        assert_eq!(
+            config.default_model.as_deref(),
+            Some(aura_os_core::LATEST_FRONTIER_MODEL),
+            "a new agent without an explicit model must default to the frontier model"
+        );
+    }
+
+    #[test]
+    fn blank_model_defaults_to_latest_frontier() {
+        let config = build_runtime_config(RuntimeConfigInputs {
+            default_model: Some("   ".to_string()),
+            ..aura_harness_inputs()
+        })
+        .expect("runtime config");
+        assert_eq!(
+            config.default_model.as_deref(),
+            Some(aura_os_core::LATEST_FRONTIER_MODEL)
+        );
+    }
+
+    #[test]
+    fn explicit_model_is_preserved() {
+        let config = build_runtime_config(RuntimeConfigInputs {
+            default_model: Some("aura-gpt-5-5".to_string()),
+            ..aura_harness_inputs()
+        })
+        .expect("runtime config");
+        assert_eq!(config.default_model.as_deref(), Some("aura-gpt-5-5"));
     }
 
     #[test]

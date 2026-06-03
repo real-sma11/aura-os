@@ -56,25 +56,15 @@ pub(super) async fn load_project_state_for_agent(
 /// the harness receives `SessionConfig.agent_permissions` that let
 /// `visible_tools_with_permissions` expose the matching project-scoped
 /// native tools.
-///
-/// For **swarm** (remote) agents we additionally splice
-/// `InvokeProcess` via [`AgentPermissions::with_remote_execution_caps`]
-/// so a sandboxed remote chat agent can use `run_command`
-/// (`npm install`, `npm run build`, …) out of the box. The **local**
-/// path is intentionally excluded — shell access on the user's real
-/// machine stays opt-in through the Permissions tab.
 pub(super) fn normalize_agent_perms(
     agent: &aura_os_core::Agent,
     effective_project_id: Option<&str>,
 ) -> AgentPermissions {
-    let mut base_perms = agent
+    let base_perms = agent
         .permissions
         .clone()
         .normalized_for_identity(&agent.name, Some(agent.role.as_str()))
         .with_subagent_caps();
-    if agent.harness_mode() == aura_os_core::HarnessMode::Swarm {
-        base_perms = base_perms.with_remote_execution_caps();
-    }
     match effective_project_id {
         Some(pid) => base_perms.with_project_self_caps(pid),
         None => base_perms,

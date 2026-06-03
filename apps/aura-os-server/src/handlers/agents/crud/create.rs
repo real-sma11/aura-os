@@ -122,9 +122,21 @@ pub(crate) fn prepare_create(body: CreateAgentRequest) -> ApiResult<PreparedCrea
         normalize_marketplace_fields(body.listing_status.as_deref(), body.expertise.as_deref())?;
     let dual_write_tags = merge_marketplace_tags(body.tags, &marketplace);
     let submitted_local_path = trim_local_path(body.local_workspace_path.as_deref());
+    // Resolve the agent's starting permission bundle through the
+    // canonical flow. The CEO identity promotion still wins for an
+    // empty CEO bundle; otherwise an empty bundle (the common case for
+    // a freshly created agent) is seeded with the default new-agent
+    // preset (everything except billing) so the agent can act
+    // autonomously out of the box. A caller that submits an explicit
+    // bundle (e.g. the Permissions tab) is always respected as-is.
     let permissions = body
         .permissions
         .normalized_for_identity(&body.name, Some(body.role.as_str()));
+    let permissions = if permissions.is_empty() {
+        aura_os_core::AgentPermissions::default_new_agent()
+    } else {
+        permissions
+    };
 
     let net_req = aura_os_network::CreateAgentRequest {
         org_id: body.org_id.map(|id| id.to_string()),

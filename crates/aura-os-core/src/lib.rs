@@ -28,6 +28,7 @@ pub use entities::{
     OrgIntegrationKind, Process, ProcessArtifact, ProcessEvent, ProcessFolder, ProcessNode,
     ProcessNodeConnection, ProcessRun, Project, RuntimeAgentState, Session, SessionEvent, Spec,
     Task, TestStepRecord, TransactionsResponse, WebSearchConfig, ZeroAuthSession,
+    LATEST_FRONTIER_MODEL,
 };
 pub use enums::{
     AgentInstanceRole, AgentInstanceSource, AgentStatus, ArtifactType, ChatRole, HarnessMode,

@@ -9,7 +9,7 @@ mod task;
 
 pub use agent::{
     effective_auth_source, Agent, AgentInstance, AgentRuntimeConfig, OrgIntegration,
-    OrgIntegrationKind, RuntimeAgentState,
+    OrgIntegrationKind, RuntimeAgentState, LATEST_FRONTIER_MODEL,
 };
 pub use integrations::{IntegrationConfig, ObsidianConfig, WebSearchConfig};
 pub use orchestration::{AgentOrchestration, AgentOrchestrationStep};

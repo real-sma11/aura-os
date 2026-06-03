@@ -125,12 +125,6 @@ pub(super) async fn fetch_org_integrations(
 /// always documented as a "parent-lookup-failed" fallback — without
 /// this lookup the instance session was the only place that silently
 /// kept serving stale capabilities.
-///
-/// For **swarm** (remote) instances we also splice `InvokeProcess` via
-/// [`AgentPermissions::with_remote_execution_caps`] so a sandboxed
-/// remote chat agent can run `run_command` (`npm install`,
-/// `npm run build`, …) without the operator hand-granting it. The
-/// **local** path is left untouched so host shell access stays opt-in.
 pub(super) async fn normalize_instance_perms(
     state: &AppState,
     instance: &aura_os_core::AgentInstance,
@@ -144,15 +138,10 @@ pub(super) async fn normalize_instance_perms(
         .ok()
         .map(|parent| parent.permissions);
     let effective = fresh_parent_permissions.unwrap_or_else(|| instance.permissions.clone());
-    let normalized = effective
+    effective
         .normalized_for_identity(&instance.name, Some(instance.role.as_str()))
         .with_subagent_caps()
-        .with_project_self_caps(pid_str);
-    if instance.harness_mode() == aura_os_core::HarnessMode::Swarm {
-        normalized.with_remote_execution_caps()
-    } else {
-        normalized
-    }
+        .with_project_self_caps(pid_str)
 }
 
 pub(super) fn installed_workspace_integrations(

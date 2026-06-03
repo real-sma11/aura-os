@@ -3,7 +3,7 @@ use axum::Json;
 use serde::Serialize;
 use tracing::{info, warn};
 
-use aura_os_core::{Agent, AgentOrchestration};
+use aura_os_core::{Agent, AgentOrchestration, AgentRuntimeConfig, LATEST_FRONTIER_MODEL};
 use aura_os_network::NetworkAgent;
 
 use crate::agent_events::AgentEvent;
@@ -400,6 +400,19 @@ pub(crate) async fn setup_ceo_agent(
             .map_err(map_network_error)?;
 
         let mut agent = agent_from_network(&net_agent);
+        // Persist the frontier default model for the local CEO so it
+        // matches the remote bootstrap path (which routes through
+        // `build_runtime_config`) and propagates to chat / dev-loop.
+        let runtime_config = AgentRuntimeConfig {
+            adapter_type: agent.adapter_type.clone(),
+            environment: agent.environment.clone(),
+            auth_source: agent.auth_source.clone(),
+            integration_id: agent.integration_id.clone(),
+            default_model: Some(LATEST_FRONTIER_MODEL.to_string()),
+        };
+        let _ = state
+            .agent_service
+            .save_agent_runtime_config(&agent.agent_id, &runtime_config);
         let _ = state.agent_service.apply_runtime_config(&mut agent);
         agent
     };
