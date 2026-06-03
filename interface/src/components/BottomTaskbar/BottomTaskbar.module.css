@@ -39,30 +39,42 @@
 }
 
 /*
- * Authed bottom taskbar runs larger than the top titlebar chrome. The
- * shared `--shell-chrome-*` tokens are rebound locally on `.bar` (not at
- * :root) so the top titlebar and side panels keep the standard size — only
- * the bottom taskbar grows. The pill is sized so the selected icon's
- * circular plate fits with breathing room: pill 44px, outer
- * 56px (= 44 + 2 * 6 inset), inset 6px, radius 26px, icon hit target 40px.
- * Public mode is excluded so its compact pills stay aligned with the top
- * auth pills.
+ * Authed bottom taskbar keeps its larger pill chrome (pill 44px, radius
+ * 26px, icon hit target 40px) but its surrounding vertical padding is
+ * trimmed to the minimum so the section reads as slim as the top
+ * titlebar: outer 46px (= 44 pill + 2 * 1px top/bottom pad) instead of
+ * 56px. The horizontal `--shell-chrome-inset` (6px) is left intact so
+ * the leading/trailing pills stay aligned with the rest of the shell;
+ * only the top/bottom padding is squeezed (see the `padding` override
+ * below). The shared `--shell-chrome-*` tokens are rebound locally on
+ * `.bar` (not at :root) so the top titlebar and side panels keep the
+ * standard size. Public mode is excluded so its compact pills stay
+ * aligned with the top auth pills.
+ *
+ * Pill chrome + icon hit targets are scaled to 85% of the original
+ * (pill 44 -> 37px, radius 26 -> 22px, icon hit target 40 -> 34px,
+ * glyph 20 -> 17px below), shrinking every taskbar control by 15%.
  */
 .bar:not([data-ui-mode="public"]) {
-  --shell-chrome-height: 44px;
-  --shell-chrome-outer-height: 56px;
+  --shell-chrome-height: 37px;
+  --shell-chrome-outer-height: 39px;
   --shell-chrome-inset: 6px;
-  --shell-chrome-radius: 26px;
-  --taskbar-item-size: 40px;
+  --shell-chrome-radius: 22px;
+  --taskbar-item-size: 34px;
+  /* Trim only the vertical padding (the `.bar` base rule pads all sides
+     with `--shell-chrome-inset`); horizontal padding stays at the inset
+     token so the pills keep their left/right alignment. */
+  padding-top: 1px;
+  padding-bottom: 1px;
 }
 
-/* Scale the icon glyphs up with the bar (16 -> 20). Kept in CSS rather than
-   the shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
-   imports the same constant, is untouched. 20px (even) centers on whole
-   pixels inside the 36px (even) button, so the glyph stays crisp. */
+/* Scale the icon glyphs with the bar. Kept in CSS rather than the shared
+   `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which imports the
+   same constant, is untouched. 17px is the prior 20px glyph scaled to 85%
+   alongside the 15% pill/hit-target reduction above. */
 .bar:not([data-ui-mode="public"]) button svg {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
 }
 
 .left,
