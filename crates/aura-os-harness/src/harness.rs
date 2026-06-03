@@ -3,9 +3,9 @@ use tokio::sync::{broadcast, mpsc};
 
 use aura_protocol::{
     AgentCapabilities, AgentIdentity, AgentPermissionsWire, AgentPersona, AgentToolPermissionsWire,
-    ChatProjectInfoWire, ConversationMessage, CouncilMember, InboundMessage, InstalledIntegration,
-    IntentClassifierSpec, ModelSelection, OutboundMessage, ProjectContext, RuntimeRequest,
-    RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
+    ChatProjectInfoWire, ConversationMessage, CouncilMechanism, CouncilMember, InboundMessage,
+    InstalledIntegration, IntentClassifierSpec, ModelSelection, OutboundMessage, ProjectContext,
+    RuntimeRequest, RuntimeRequestType, SessionModelOverrides, WorkspaceLocation,
 };
 
 use crate::error::HarnessError;
@@ -78,6 +78,12 @@ pub struct SessionConfig {
     /// `None` (or a single member) keeps the ordinary single-model chat
     /// path unchanged.
     pub council: Option<Vec<CouncilMemberConfig>>,
+    /// How an active AURA Council combines its members' answers once
+    /// every member has completed. Only meaningful when [`Self::council`]
+    /// resolves to a [`RuntimeRequestType::Council`] request (>= 2
+    /// members). `None` lets [`build_runtime_request`] fall back to
+    /// [`CouncilMechanism::Synthesize`], the original behavior.
+    pub council_mechanism: Option<CouncilMechanism>,
     /// Computer-use capability flag forwarded onto
     /// [`aura_protocol::AgentCapabilities::computer_use`]. When `true`
     /// the harness exposes the Anthropic computer-use tool so the agent
@@ -304,6 +310,7 @@ pub fn build_runtime_request(cfg: &SessionConfig) -> RuntimeRequest {
             // `members[0]` is the synthesizer (first selected model).
             Some(members) => RuntimeRequestType::Council {
                 members,
+                mechanism: cfg.council_mechanism.unwrap_or_default(),
                 conversation_messages: cfg.conversation_messages.clone().unwrap_or_default(),
             },
             None => RuntimeRequestType::Chat {
@@ -526,5 +533,65 @@ mod tests {
 
         assert_eq!(result.run_id, "auto-456");
         assert_eq!(result.event_stream_url, "/stream/auto-456");
+    }
+
+    fn two_member_council() -> Vec<CouncilMemberConfig> {
+        vec![
+            CouncilMemberConfig {
+                model: Some("model-a".into()),
+                ..Default::default()
+            },
+            CouncilMemberConfig {
+                model: Some("model-b".into()),
+                ..Default::default()
+            },
+        ]
+    }
+
+    #[test]
+    fn build_runtime_request_defaults_council_mechanism_to_synthesize() {
+        let cfg = SessionConfig {
+            council: Some(two_member_council()),
+            ..Default::default()
+        };
+        match build_runtime_request(&cfg).r#type {
+            RuntimeRequestType::Council { mechanism, .. } => {
+                assert_eq!(mechanism, CouncilMechanism::Synthesize);
+            }
+            other => panic!("expected council request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_runtime_request_forwards_selected_council_mechanism() {
+        let cfg = SessionConfig {
+            council: Some(two_member_council()),
+            council_mechanism: Some(CouncilMechanism::SideBySide),
+            ..Default::default()
+        };
+        match build_runtime_request(&cfg).r#type {
+            RuntimeRequestType::Council { mechanism, .. } => {
+                assert_eq!(mechanism, CouncilMechanism::SideBySide);
+            }
+            other => panic!("expected council request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_runtime_request_ignores_mechanism_for_single_member() {
+        // A single member never becomes a Council request, so the
+        // mechanism is irrelevant and the ordinary Chat path is used.
+        let cfg = SessionConfig {
+            council: Some(vec![CouncilMemberConfig {
+                model: Some("solo".into()),
+                ..Default::default()
+            }]),
+            council_mechanism: Some(CouncilMechanism::Contrast),
+            ..Default::default()
+        };
+        assert!(matches!(
+            build_runtime_request(&cfg).r#type,
+            RuntimeRequestType::Chat { .. }
+        ));
     }
 }
