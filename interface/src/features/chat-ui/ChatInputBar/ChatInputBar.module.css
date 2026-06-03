@@ -850,14 +850,14 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  width: 100%;
+  /* Shrink the bordered wrapper to its content (collapse chevron + mode
+     pills + new-chat "+") so the box hugs the controls rather than
+     spanning the full width of the input pill below it. The 680px cap
+     still keeps it from out-growing the input on very wide layouts, and
+     `margin: 0 auto` keeps the cluster centred above the pill. */
+  width: fit-content;
   min-width: 0;
   padding: 2px;
-  /* The mode bar reads as a single unit with the input pill below it:
-     a bordered box with rounded top corners and square bottom corners
-     that sits flush on the input (no gap), so the two visually connect.
-     Match the input container's centered 680px cap so the chevron / "+"
-     stay aligned above the corner buttons of the pill. */
   max-width: 680px;
   margin: 0 auto;
   border: 1px solid var(--color-border-strong);
@@ -930,8 +930,9 @@
    order. */
 button.attachRing {
   border-radius: 50%;
-  /* Dark inner plate so the chrome rim reads as a raised disc. */
-  background: linear-gradient(180deg, #232323, #141414);
+  /* Inner plate so the chrome rim reads as a raised disc (dark by
+     default, light-gray under [data-theme='light'] via the token). */
+  background: var(--attach-ring-plate);
   /* Soft white halo behind the disc that gently pulses, plus a static
      dark drop shadow for depth (the rim's own bevel highlights can't use
      box-shadow because the ring is mask-clipped). */

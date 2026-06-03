@@ -157,8 +157,8 @@
   border: 1px solid transparent;
   border-radius: 999px;
   background:
-    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
-    linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
+    var(--input-pill-fill) padding-box,
+    var(--input-pill-stroke) border-box;
   box-shadow: 0 2px 6px var(--pill-shadow);
 }
 
@@ -224,8 +224,8 @@
    the border-box gradient). */
 .inputContainerPill:focus-within {
   background:
-    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
-    linear-gradient(180deg, #4a4a4a, #3a3a3a) border-box;
+    var(--input-pill-fill) padding-box,
+    var(--input-pill-stroke-focus) border-box;
 }
 
 /* Keep the gradient fill in the static (public empty-state) wrapper,
@@ -234,8 +234,8 @@
 .inputWrapperStatic .inputContainerPill,
 :global([data-desktop-mode]) .inputWrapperStatic .inputContainerPill {
   background:
-    linear-gradient(180deg, #1e1e1e, #181818) padding-box,
-    linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
+    var(--input-pill-fill) padding-box,
+    var(--input-pill-stroke) border-box;
 }
 
 .inputContainerPulse {
