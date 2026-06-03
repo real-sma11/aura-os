@@ -172,16 +172,18 @@
   min-height: var(--pill-row-height);
   padding-top: 15px;
   padding-bottom: 15px;
-  /* Match the icon's left inset (13px) + icon width (24px) + a 13px gap
+  /* Match the icon's left inset (10px) + icon width (30px) + a 10px gap
      so the spacing around the icon equals the top/bottom padding. */
   padding-left: 50px;
 }
 
-/* Inset the icon from the pill's left edge by the same 13px that the
-   centred 24px icon clears at the top and bottom of the 50px row, so
-   the icon reads as evenly spaced inside the rounded end. */
+/* The ringed "+" disc is 25% larger than the default 24px icon button;
+   inset it 10px from the pill's left edge so the centred 30px disc
+   clears the same 10px at the top and bottom of the 50px row. */
 .inputContainerPill .attachButton {
-  left: 13px;
+  left: 10px;
+  width: 30px;
+  height: 30px;
 }
 
 /* Centre the corner attach/send buttons within the taller single-line
