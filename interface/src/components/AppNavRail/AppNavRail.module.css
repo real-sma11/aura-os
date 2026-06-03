@@ -174,15 +174,20 @@
   shape-rendering: geometricPrecision;
 }
 
-/* Inner rounded "halo" hover plate. Hit target stays full-size for a11y;
-   the visible hover background is inset by --icon-hover-inset so it sits
-   tightly behind the glyph instead of slabbing the whole button.
+/* Inner circular "halo" plate shared by the hover and selected states, so
+   both affordances render at exactly the same size + shape. Hit target stays
+   full-size for a11y; the visible plate is a centered circle inset a uniform
+   4px from the button edge (`--taskbar-item-size - 8px`), keeping it even-
+   sized (crisp) and concentric with the flex-centered glyph across modes.
    See interface/docs/icon-system.md. */
 .taskbarBtn::before {
   content: "";
   position: absolute;
-  inset: var(--icon-hover-inset);
-  border-radius: var(--icon-hover-radius);
+  inset: 0;
+  margin: auto;
+  width: calc(var(--taskbar-item-size, 30px) - 8px);
+  height: calc(var(--taskbar-item-size, 30px) - 8px);
+  border-radius: 50%;
   background: transparent;
   border: 1px solid transparent;
   transition:
@@ -229,9 +234,11 @@
  */
 .taskbarBtn:not(:disabled)[aria-pressed="true"]::before,
 .taskbarBtn:not(:disabled)[data-selected="true"]::before {
-  inset: 1px;
-  border: 1px solid transparent;
-  border-radius: 50%;
+  /* Geometry (centered circle, size, radius) is inherited from the base
+     `.taskbarBtn::before` so selected matches the hover plate exactly. This
+     rule only adds the selected paint: the #373739 -> #272729 fill
+     (padding-box) inside a 1px #666668 -> #262628 gradient border
+     (border-box), plus a drop shadow lifting it off the pill. */
   background:
     linear-gradient(180deg, #373739, #272729) padding-box,
     linear-gradient(180deg, #666668, #262628) border-box;
