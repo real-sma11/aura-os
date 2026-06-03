@@ -100,13 +100,13 @@
   justify-content: center;
   padding: var(--space-3) var(--space-4);
   border-radius: 16px;
-  background: color-mix(in srgb, white 6%, transparent);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, white 14%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
-    0 0 20px -4px color-mix(in srgb, white 30%, transparent),
-    inset 0 0 12px -6px color-mix(in srgb, white 40%, transparent);
+    0 0 12px -4px rgba(255, 255, 255, 0.12),
+    inset 0 0 8px -6px rgba(255, 255, 255, 0.2);
 }
 
 .wordmark {
