@@ -119,8 +119,8 @@
 }
 
 .modeTabActive {
-  color: var(--color-accent, #60a5fa);
-  border-bottom-color: var(--color-accent, #60a5fa);
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 /* ── Timeframe pills (Daily / Weekly / Monthly) ── */
@@ -145,7 +145,7 @@
 }
 
 .pill:hover {
-  border-color: var(--color-accent, #60a5fa);
+  border-color: var(--color-accent);
   color: var(--color-text);
 }
 
@@ -239,7 +239,7 @@
 }
 
 .dayToggle:hover {
-  border-color: var(--color-accent, #60a5fa);
+  border-color: var(--color-accent);
   color: var(--color-text);
 }
 

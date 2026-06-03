@@ -7,7 +7,7 @@
 
 .header {
   padding-bottom: var(--space-2, 8px);
-  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section {
@@ -20,7 +20,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1, 6px);
-  color: var(--color-text-secondary, rgba(255, 255, 255, 0.5));
+  color: var(--color-text-secondary);
 }
 
 .statGrid {
@@ -35,7 +35,7 @@
   align-items: center;
   padding: var(--space-3, 12px);
   border-radius: 8px;
-  background: var(--color-surface-elevated, rgba(255, 255, 255, 0.03));
+  background: var(--color-surface-elevated);
 }
 
 .orchestrationList {
@@ -51,7 +51,7 @@
   gap: var(--space-2, 8px);
   padding: 6px 8px;
   border-radius: 6px;
-  background: var(--color-surface-elevated, rgba(255, 255, 255, 0.03));
+  background: var(--color-surface-elevated);
 }
 
 .orchestrationIntent {

@@ -79,7 +79,7 @@
 }
 
 .errorText {
-  color: var(--color-danger, #e27c7c);
+  color: var(--color-danger);
 }
 
 .versionHint {

@@ -86,6 +86,32 @@
   --desktop-shell-backdrop: linear-gradient(to bottom right, #0c0c0e 0%, #1b1b1d 100%);
 
   /*
+   * Shell pill paint + stroke tokens. The floating chrome pills (titlebar,
+   * bottom taskbar, input bar) are intentionally fixed-dark in BOTH themes
+   * — they read as one continuous piece of device chrome regardless of the
+   * app theme — so these live here as theme-independent literals rather than
+   * flipping surface tokens. Previously every call site carried these as
+   * inline `var(--shell-…, #hex)` fallbacks; defining them once keeps the
+   * chrome in a single source of truth.
+   */
+  --shell-pill-grad-top: #0e0e10;
+  --shell-pill-grad-bottom: #050507;
+  --shell-stroke-top: #424242;
+  --shell-stroke-side: #262626;
+  --shell-stroke-bottom: #121212;
+  --pill-shadow: #141414;
+
+  /*
+   * AppNavRail selected/hover plate. A beveled charcoal disc behind the
+   * active app glyph; like the pills above it stays dark in both themes.
+   */
+  --nav-plate-fill: linear-gradient(180deg, #373739, #272729);
+  --nav-plate-stroke: linear-gradient(180deg, #666668, #262628);
+  --nav-plate-shadow: rgba(0, 0, 0, 0.65);
+  --nav-plate-glyph: #fff;
+  --taskbar-icon-color: #acacac;
+
+  /*
    * Public-mode pill tokens. Shared by the top Log In / Sign Up
    * `.authPill` chrome in `AuraTitlebar` and the bottom-taskbar
    * `.left` / `.right` pill chrome in `BottomTaskbar` (and the

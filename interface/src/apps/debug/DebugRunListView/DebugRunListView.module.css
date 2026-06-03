@@ -66,19 +66,19 @@
 }
 
 .badgeRunning {
-  background: color-mix(in oklab, var(--color-accent-500, #3b82f6) 20%, transparent);
+  background: color-mix(in oklab, var(--color-accent-500) 20%, transparent);
 }
 
 .badgeCompleted {
-  background: color-mix(in oklab, var(--color-success-500, #22c55e) 20%, transparent);
+  background: color-mix(in oklab, var(--color-success-500) 20%, transparent);
 }
 
 .badgeFailed {
-  background: color-mix(in oklab, var(--color-danger-500, #ef4444) 25%, transparent);
+  background: color-mix(in oklab, var(--color-danger-500) 25%, transparent);
 }
 
 .badgeInterrupted {
-  background: color-mix(in oklab, var(--color-warning-500, #f59e0b) 25%, transparent);
+  background: color-mix(in oklab, var(--color-warning-500) 25%, transparent);
 }
 
 .cardBody {

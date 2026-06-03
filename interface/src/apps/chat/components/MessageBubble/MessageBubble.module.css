@@ -55,8 +55,8 @@
   padding: 2px 8px;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--color-text-secondary, #6b6b6b);
-  background: var(--color-surface-2, rgba(0, 0, 0, 0.04));
+  color: var(--color-text-secondary);
+  background: var(--color-surface-2);
   border-radius: 999px;
   /* Right-align with the user bubble: matching `messageUser` /
      `messageUserWidgetOnly` keeps the badge above the bubble's
@@ -200,7 +200,7 @@
   display: inline-flex;
   max-width: min(100%, 520px);
   border: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-overlay-subtle);
   padding: 0;
   cursor: zoom-in;
   border-radius: 4px;
@@ -300,7 +300,7 @@
 
 .fileAttachmentName {
   font-weight: 500;
-  color: var(--color-text-muted, #aaa);
+  color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -350,7 +350,7 @@
 .inlineErrorLink {
   background: none;
   border: none;
-  color: var(--color-accent, #60a5fa);
+  color: var(--color-accent);
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
@@ -373,7 +373,7 @@
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
-  background: var(--color-bg-warning-subtle, rgba(255, 196, 0, 0.08));
+  background: var(--color-bg-warning-subtle);
   color: var(--color-text-secondary);
   font-size: 12.5px;
   line-height: 1.5;

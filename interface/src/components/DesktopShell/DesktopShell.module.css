@@ -168,8 +168,8 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in srgb, var(--color-bg, #111) 42%, transparent) 38%,
-    color-mix(in srgb, var(--color-bg, #111) 92%, black) 100%
+    color-mix(in srgb, var(--color-bg) 42%, transparent) 38%,
+    color-mix(in srgb, var(--color-bg) 92%, black) 100%
   );
 }
 

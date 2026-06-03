@@ -125,7 +125,7 @@
 }
 
 .agentActionButton:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text, #fff) 12%, transparent);
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
   color: var(--color-text);
 }
 

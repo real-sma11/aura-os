@@ -159,7 +159,7 @@
   background:
     linear-gradient(180deg, #1e1e1e, #181818) padding-box,
     linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
-  box-shadow: 0 2px 6px var(--pill-shadow, #141414);
+  box-shadow: 0 2px 6px var(--pill-shadow);
 }
 
 /* Grow the single-line input row + textarea to the taller pill height,

@@ -3,8 +3,8 @@
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  background: var(--color-bg-subtle, #141414);
-  border-bottom: 1px solid var(--color-border, #2a2a2a);
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border);
   overflow-x: auto;
 }
 
@@ -23,7 +23,7 @@
   border-radius: var(--radius-sm, 4px);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--color-text-muted, #9a9a9a);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 12px;
   min-width: 0;
@@ -31,14 +31,14 @@
 }
 
 .tab:hover {
-  color: var(--color-text, #ededed);
-  background: var(--color-bg-hover, #1e1e1e);
+  color: var(--color-text);
+  background: var(--color-bg-hover);
 }
 
 .tab[aria-current="page"] {
-  color: var(--color-text, #ededed);
-  background: var(--color-bg-elevated, #1a1a1a);
-  border-color: var(--color-border, #2a2a2a);
+  color: var(--color-text);
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
 }
 
 .title {
@@ -75,11 +75,11 @@
   border-radius: var(--radius-sm, 4px);
   border: none;
   background: transparent;
-  color: var(--color-text-muted, #9a9a9a);
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 
 .addButton:hover {
-  color: var(--color-text, #ededed);
-  background: var(--color-bg-hover, #1e1e1e);
+  color: var(--color-text);
+  background: var(--color-bg-hover);
 }

@@ -90,6 +90,44 @@
   --color-bg-elevated: var(--color-elevated);
   --color-border-strong: var(--color-border);
 
+  /* Theme-aware aliases for additional legacy / ad-hoc token names that
+     various app modules reference bare (no fallback) but ZUI never defined.
+     Each dereferences to a theme-aware base token so the consumer flips
+     with the active theme automatically. Defined once here (they resolve
+     theme-aware bases, so no per-mode override is needed). */
+  --color-bg-surface: var(--color-surface);
+  --color-bg-tertiary: var(--color-elevated);
+  --color-bg-active: var(--color-surface-active);
+  --color-bg-selected: var(--color-surface-active);
+  --color-bg-input: var(--color-input-bg);
+  --color-bg-overlay: var(--color-backdrop);
+  --color-panel-solid: var(--color-surface);
+  --color-surface-2: var(--color-elevated);
+  --color-surface-raised: var(--color-elevated);
+  --color-surface-elevated: var(--color-elevated);
+  --color-bg-warning-subtle: color-mix(in srgb, var(--color-warning) 8%, transparent);
+
+  --color-text-tertiary: var(--color-text-muted);
+  --color-text-default: var(--color-text-primary);
+  --color-text-subtle: var(--color-text-muted);
+  --color-text-on-primary: var(--color-accent-contrast);
+
+  --color-border-default: var(--color-border);
+  --color-border-muted: var(--color-border-light);
+  --color-border-subtle: var(--color-border-light);
+
+  --color-primary: var(--color-accent);
+  --primary: var(--color-accent);
+  --color-brand-primary: var(--color-accent);
+  --color-accent-500: var(--color-accent);
+  --color-accent-subtle: var(--color-accent-muted);
+  --color-danger-500: var(--color-danger);
+  --color-success-500: var(--color-success);
+  --color-warning-500: var(--color-warning);
+
+  /* Loop / progress ring color — was a bare #4f8bff blue at call sites. */
+  --loop-progress-color: var(--color-info);
+
   /* Hover / active surface aliases. Many app modules write
      `var(--color-surface-hover, rgba(255, 255, 255, 0.06))` as the
      "row hover" / "icon-button hover" backdrop, which left those
@@ -248,9 +286,16 @@
      ---------------------------------------------------------------------- */
   --color-status-info: #06b6d4;
   --color-status-info-fg: #67e8f9;
-  --color-status-purple: #a855f7;
+  --color-status-purple: #400999;
   --color-warning-fg: #fbbf24;
   --color-error-fg: #f87171;
+
+  /* Generic info-blue, theme-aware. Many in-app surfaces reach for a
+     raw #3b82f6 / #60a5fa blue for informational accents, links, and
+     active states; routing them through this token lets them flip in
+     light mode. The `-fg` variant is the brighter label shade. */
+  --color-info: #3b82f6;
+  --color-info-fg: #60a5fa;
 
   /* ----------------------------------------------------------------------
      Image scrim — solid dark wash that stays dark on any background
@@ -384,9 +429,13 @@
   /* Status notice tints — light overrides. */
   --color-status-info: #0891b2;
   --color-status-info-fg: #0e7490;
-  --color-status-purple: #7c3aed;
+  --color-status-purple: #400999;
   --color-warning-fg: #b45309;
   --color-error-fg: #b91c1c;
+
+  /* Info-blue — light overrides. */
+  --color-info: #2563eb;
+  --color-info-fg: #1d4ed8;
 
   /* Image scrim — slightly lighter in light mode. */
   --color-image-scrim: rgba(0, 0, 0, 0.5);

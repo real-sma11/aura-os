@@ -105,12 +105,12 @@
 
 .statusTag[data-status="done"],
 .statusTag[data-status="deployed"] {
-  color: var(--color-success, #7dd37d);
+  color: var(--color-success);
 }
 
 .statusTag[data-status="in_progress"],
 .statusTag[data-status="in_review"] {
-  color: var(--color-accent, #7ca4e2);
+  color: var(--color-accent);
 }
 
 .statusSelect {
@@ -143,18 +143,18 @@
 }
 
 .statusSelect:focus-visible {
-  outline: 2px solid var(--color-accent, #7ca4e2);
+  outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
 
 .statusSelect[data-status="done"],
 .statusSelect[data-status="deployed"] {
-  color: var(--color-success, #7dd37d);
+  color: var(--color-success);
 }
 
 .statusSelect[data-status="in_progress"],
 .statusSelect[data-status="in_review"] {
-  color: var(--color-accent, #7ca4e2);
+  color: var(--color-accent);
 }
 
 .resolveButton {

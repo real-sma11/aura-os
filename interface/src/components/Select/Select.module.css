@@ -108,9 +108,9 @@
 
 .option:hover,
 .option:focus-visible {
-  background: var(--color-bg-hover, rgba(255, 255, 255, 0.08));
+  background: var(--color-bg-hover);
 }
 
 .optionSelected {
-  color: var(--color-accent, #60a5fa);
+  color: var(--color-accent);
 }

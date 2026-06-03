@@ -14,7 +14,7 @@
   min-height: var(--control-height-sm, 32px);
   border: none;
   background: transparent;
-  color: var(--color-text-muted, #999);
+  color: var(--color-text-muted);
   font-family: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -23,7 +23,7 @@
 }
 
 .header:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-overlay-subtle);
 }
 
 .chevron {

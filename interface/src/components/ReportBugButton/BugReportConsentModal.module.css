@@ -96,7 +96,7 @@
 }
 
 .errorText {
-  color: var(--color-danger, #e27c7c);
+  color: var(--color-danger);
 }
 
 .successBox {
@@ -112,5 +112,5 @@
 .successTitle {
   font-weight: 600;
   font-size: var(--font-size-md, 15px);
-  color: var(--color-success, #6fcf97);
+  color: var(--color-success);
 }

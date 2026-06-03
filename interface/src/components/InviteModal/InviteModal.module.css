@@ -122,5 +122,5 @@
 }
 
 .codeClickable:hover {
-  color: #01f4cb;
+  color: var(--color-accent);
 }

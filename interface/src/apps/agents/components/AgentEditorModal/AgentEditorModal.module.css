@@ -155,8 +155,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--color-bg-overlay, rgba(0, 0, 0, 0.6));
-  color: var(--color-text-on-primary, #fff);
+  background: var(--color-bg-overlay);
+  color: var(--color-text-on-primary);
   display: none;
   align-items: center;
   justify-content: center;
@@ -334,7 +334,7 @@
 .choiceCard:hover:not(.choiceCardActive),
 .integrationOption:hover:not(.integrationOptionActive) {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-bg-subtle));
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-subtle));
 }
 
 .runtimeOptionActive,
@@ -479,18 +479,18 @@
 }
 
 .readinessInfo {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 22%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
 }
 
 .readinessSuccess {
-  background: color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-success, #22c55e) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 28%, var(--color-border));
 }
 
 .readinessWarning {
-  background: color-mix(in srgb, var(--color-warning, #f59e0b) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 30%, var(--color-border));
 }
 
 @media (max-width: 720px) {

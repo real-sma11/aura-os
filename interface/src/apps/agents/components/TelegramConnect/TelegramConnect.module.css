@@ -18,6 +18,25 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Single-row connect state: icon + "Telegram" on the left, the Connect
+ * button pinned to the far right. */
+.connectRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.connectRow .header {
+  flex: 1 1 auto;
+}
+
+.connectButton {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .brandIcon {
@@ -35,9 +54,9 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-success, #16a34a);
-  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-success, #16a34a) 30%, var(--color-border));
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 30%, var(--color-border));
 }
 
 .relinkPill {
@@ -49,9 +68,9 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-warning, #f59e0b);
-  background: color-mix(in srgb, var(--color-warning, #f59e0b) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 30%, var(--color-border));
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, var(--color-border));
 }
 
 .chatId {
@@ -70,7 +89,7 @@
 }
 
 .errorText {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
 }
 
 .qrBlock {

@@ -43,11 +43,11 @@
 }
 
 .row:hover {
-  background: var(--color-bg-hover, rgba(127, 127, 127, 0.08));
+  background: var(--color-bg-hover);
 }
 
 .rowActive {
-  background: var(--color-bg-selected, rgba(124, 164, 226, 0.14));
+  background: var(--color-bg-selected);
   border-color: var(--color-border);
 }
 
@@ -77,7 +77,7 @@
 
 .statusTag[data-status="done"],
 .statusTag[data-status="resolved"] {
-  color: var(--color-success, #7dd37d);
+  color: var(--color-success);
 }
 
 .rowMeta {

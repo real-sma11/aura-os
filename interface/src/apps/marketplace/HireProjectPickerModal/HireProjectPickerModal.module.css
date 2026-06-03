@@ -44,5 +44,5 @@
 
 .error {
   margin-top: var(--space-2);
-  color: var(--color-danger, #c55);
+  color: var(--color-danger);
 }

@@ -9,6 +9,6 @@
 .pillButton,
 .pillButton:hover:not(:disabled),
 .pillButton:disabled {
-  color: #0a0a0a;
+  color: var(--color-accent-contrast);
   border-radius: 9999px;
 }

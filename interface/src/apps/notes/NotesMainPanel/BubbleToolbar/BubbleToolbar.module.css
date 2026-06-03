@@ -13,11 +13,11 @@
 }
 
 .bubbleButton:hover {
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 84%, white 16%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 84%, white 16%);
   color: var(--color-text);
 }
 
 .bubbleButton[data-active="true"] {
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 72%, white 28%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 72%, white 28%);
   color: var(--color-text);
 }

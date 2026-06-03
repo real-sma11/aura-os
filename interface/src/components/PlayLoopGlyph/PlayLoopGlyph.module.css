@@ -9,7 +9,7 @@
    the accent variable yet, and the final `#4f8bff` is a last-ditch
    default if neither variable resolves. */
 .ringGroup {
-  color: var(--color-accent, var(--loop-progress-color, #4f8bff));
+  color: var(--color-accent, var(--loop-progress-color));
 }
 
 /* Spinning accent arc. `transform-box: fill-box` is critical: by

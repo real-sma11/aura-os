@@ -48,10 +48,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  --color-text-primary: var(--public-nav-fg-color, #e6e8eb);
-  --color-text-secondary: var(--public-nav-fg-color-muted, #c9c9cf);
-  --color-text-muted: var(--public-nav-fg-color-muted, #c9c9cf);
-  --color-text: var(--public-nav-fg-color, #e6e8eb);
+  --color-text-primary: var(--public-nav-fg-color);
+  --color-text-secondary: var(--public-nav-fg-color-muted);
+  --color-text-muted: var(--public-nav-fg-color-muted);
+  --color-text: var(--public-nav-fg-color);
 }
 
 .advancedSidebarBody {

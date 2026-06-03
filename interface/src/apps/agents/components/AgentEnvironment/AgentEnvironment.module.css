@@ -55,8 +55,8 @@
 }
 
 .dot[data-status="hibernating"] {
-  background: #400999;
-  box-shadow: 0 0 4px color-mix(in srgb, #400999 30%, transparent);
+  background: var(--color-status-purple);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-status-purple) 30%, transparent);
 }
 
 .dot[data-status="stopping"] {
@@ -69,8 +69,8 @@
 }
 
 .dot[data-status="local"] {
-  background: #400999;
-  box-shadow: 0 0 4px color-mix(in srgb, #400999 30%, transparent);
+  background: var(--color-status-purple);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-status-purple) 30%, transparent);
 }
 
 .dot[data-status="error"] {

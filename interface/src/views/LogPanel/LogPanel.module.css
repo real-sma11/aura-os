@@ -36,11 +36,11 @@
 }
 
 .logRow:hover {
-  background: var(--color-bg-hover, rgba(255, 255, 255, 0.04));
+  background: var(--color-bg-hover);
 }
 
 .logRowSelected {
-  background: var(--color-bg-hover, rgba(255, 255, 255, 0.04));
+  background: var(--color-bg-hover);
 }
 
 .logTimestamp {
@@ -61,50 +61,50 @@
   display: inline-block;
   min-width: 42px;
   text-align: center;
-  background: var(--color-bg-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--color-bg-subtle);
   color: var(--color-text-muted);
 }
 
 .logBadge_loop {
   composes: logBadge;
-  background: rgba(74, 222, 128, 0.15);
-  color: rgb(74, 222, 128);
+  background: color-mix(in srgb, var(--color-log-loop) 15%, transparent);
+  color: var(--color-log-loop);
 }
 
 .logBadge_task {
   composes: logBadge;
-  background: rgba(52, 211, 153, 0.15);
-  color: rgb(52, 211, 153);
+  background: color-mix(in srgb, var(--color-log-task) 15%, transparent);
+  color: var(--color-log-task);
 }
 
 .logBadge_output {
   composes: logBadge;
-  background: rgba(134, 239, 172, 0.15);
-  color: rgb(134, 239, 172);
+  background: color-mix(in srgb, var(--color-log-output) 15%, transparent);
+  color: var(--color-log-output);
 }
 
 .logBadge_files {
   composes: logBadge;
-  background: rgba(163, 230, 53, 0.15);
-  color: rgb(163, 230, 53);
+  background: color-mix(in srgb, var(--color-log-files) 15%, transparent);
+  color: var(--color-log-files);
 }
 
 .logBadge_session {
   composes: logBadge;
-  background: rgba(45, 212, 191, 0.15);
-  color: rgb(45, 212, 191);
+  background: color-mix(in srgb, var(--color-log-session) 15%, transparent);
+  color: var(--color-log-session);
 }
 
 .logBadge_log {
   composes: logBadge;
-  background: rgba(22, 163, 74, 0.15);
-  color: rgb(22, 163, 74);
+  background: color-mix(in srgb, var(--color-log-log) 15%, transparent);
+  color: var(--color-log-log);
 }
 
 .logBadge_spec {
   composes: logBadge;
-  background: rgba(94, 234, 212, 0.15);
-  color: rgb(94, 234, 212);
+  background: color-mix(in srgb, var(--color-log-spec) 15%, transparent);
+  color: var(--color-log-spec);
 }
 
 .logSummary {
@@ -118,7 +118,7 @@
 .logDetail {
   padding: var(--space-2) var(--space-3);
   margin: 0 0 var(--space-1) 0;
-  background: var(--color-bg-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--color-bg-subtle);
   border-radius: var(--radius-sm, 3px);
   border-left: 2px solid var(--color-border);
 }

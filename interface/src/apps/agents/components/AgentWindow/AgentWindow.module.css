@@ -99,7 +99,7 @@
 }
 
 .controlBtnClose:hover {
-  background: #e81123;
+  background: var(--color-error);
   color: #fff;
 }
 

@@ -43,7 +43,7 @@
 
 .newIdeaButton:hover {
   color: var(--color-text);
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 84%, white 16%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 84%, white 16%);
   border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border));
 }
 
@@ -83,7 +83,7 @@
 .mobileFilterChipActive {
   color: var(--color-text);
   border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border));
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 84%, white 16%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 84%, white 16%);
 }
 
 .scrollArea {

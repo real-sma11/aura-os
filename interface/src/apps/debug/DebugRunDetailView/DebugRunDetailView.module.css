@@ -132,7 +132,7 @@
 
 .rowActive,
 .rowActive:hover {
-  background: color-mix(in oklab, var(--color-accent-500, #3b82f6) 14%, transparent);
+  background: color-mix(in oklab, var(--color-accent-500) 14%, transparent);
   color: var(--color-text-primary);
 }
 

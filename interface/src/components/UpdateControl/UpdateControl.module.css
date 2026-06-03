@@ -37,7 +37,7 @@
 }
 
 .updateError {
-  color: var(--color-danger, #d9534f);
+  color: var(--color-danger);
 }
 
 .updateErrorStep {
@@ -115,12 +115,12 @@
 .updatePanel[data-variant="failed"] {
   border-color: color-mix(
     in srgb,
-    var(--color-danger, #d9534f) 56%,
+    var(--color-danger) 56%,
     var(--color-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-danger, #d9534f) 8%,
+    var(--color-danger) 8%,
     var(--color-surface)
   );
 }
@@ -147,8 +147,8 @@
 }
 
 .updatePanel[data-variant="failed"] .updatePanelIcon {
-  color: var(--color-danger, #d9534f);
-  background: color-mix(in srgb, var(--color-danger, #d9534f) 14%, transparent);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
 }
 
 .updatePanelBody {

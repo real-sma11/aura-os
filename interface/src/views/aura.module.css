@@ -211,7 +211,7 @@
 }
 
 .statCardValueSuccess {
-  color: var(--color-success, #4c9);
+  color: var(--color-success);
 }
 
 .statCardLabel {

@@ -28,7 +28,7 @@
 }
 
 .detailBack:hover {
-  background: var(--color-overlay-medium, rgba(255, 255, 255, 0.08));
+  background: var(--color-overlay-medium);
   color: var(--color-text);
 }
 
@@ -115,7 +115,7 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--color-text-secondary);
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.05));
+  background: var(--color-overlay-subtle);
   border: 1px solid var(--color-border);
   border-radius: 9999px;
 }
@@ -142,7 +142,7 @@
 }
 
 .permAddInput:focus {
-  border-color: var(--color-primary, #3b82f6);
+  border-color: var(--color-primary);
 }
 
 .permAddInput::placeholder {
@@ -165,7 +165,7 @@
 }
 
 .permAddBtn:hover {
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.04));
+  background: var(--color-overlay-subtle);
   color: var(--color-text);
 }
 
@@ -186,8 +186,8 @@
 }
 
 .permRemoveBtn:hover {
-  background: rgba(232, 17, 35, 0.15);
-  color: #e81123;
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+  color: var(--color-error);
 }
 
 /* ── View Source ── */
@@ -207,7 +207,7 @@
 }
 
 .viewSourceBtn:hover {
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.04));
+  background: var(--color-overlay-subtle);
   color: var(--color-text);
 }
 

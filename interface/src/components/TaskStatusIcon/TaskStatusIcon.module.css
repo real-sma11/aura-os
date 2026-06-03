@@ -21,9 +21,9 @@
 }
 
 .strokeMuted {
-  stroke: var(--color-text-muted, #6b7280);
+  stroke: var(--color-text-muted);
 }
 
 .fillFailed {
-  fill: var(--status-failed, #ff6b6b);
+  fill: var(--status-failed);
 }

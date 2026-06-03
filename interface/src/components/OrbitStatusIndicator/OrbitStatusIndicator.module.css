@@ -28,13 +28,13 @@
 }
 
 .dot[data-status="connected"] {
-  background: var(--color-success, #4c9);
-  box-shadow: 0 0 4px color-mix(in srgb, var(--color-success, #4c9) 40%, transparent);
+  background: var(--color-success);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 40%, transparent);
 }
 
 .dot[data-status="disconnected"] {
-  background: #ef4444;
-  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+  background: var(--color-error);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-error) 40%, transparent);
 }
 
 /* Orbit is reachable but the capacity guard has observed a
@@ -42,8 +42,8 @@
  * the user can tell at a glance that orbit is degraded (retries are
  * in cooldown) without confusing it with a full disconnect. */
 .dot[data-status="degraded"] {
-  background: #f59e0b;
-  box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+  background: var(--color-warning);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-warning) 40%, transparent);
 }
 
 .statusCard {
@@ -72,7 +72,7 @@
 }
 
 .statusLabel {
-  color: var(--color-text-tertiary, #6b7280);
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
   min-width: 68px;
 }

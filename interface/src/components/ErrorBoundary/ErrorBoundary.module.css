@@ -6,13 +6,13 @@
   height: 100%;
   padding: var(--space-4, 16px);
   gap: var(--space-3, 12px);
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   text-align: center;
   overflow: auto;
 }
 
 .errorHeading {
-  color: var(--color-danger, #e55);
+  color: var(--color-danger);
 }
 
 .errorTrace {
@@ -22,17 +22,17 @@
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-overlay-subtle);
   padding: 8px 12px;
   border-radius: 4px;
 }
 
 .retryButton {
   padding: 6px 16px;
-  border: 1px solid var(--color-border, #333);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   background: transparent;
-  color: var(--color-text, #ccc);
+  color: var(--color-text);
   cursor: pointer;
   font-size: 13px;
 }

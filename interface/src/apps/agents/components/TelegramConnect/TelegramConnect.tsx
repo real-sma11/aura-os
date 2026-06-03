@@ -181,29 +181,24 @@ export function TelegramConnect({
 
   return (
     <div className={rootClass} data-telegram-connect="connect">
-      <div className={styles.header}>
-        <Send size={16} className={styles.brandIcon} />
-        <Text size="sm" weight="medium">Telegram</Text>
-        {needsRelink && (
-          <span className={styles.relinkPill}>
-            <AlertTriangle size={12} />
-            Needs reconnect
-          </span>
-        )}
-      </div>
+      <div className={styles.connectRow}>
+        <div className={styles.header}>
+          <Send size={16} className={styles.brandIcon} />
+          <Text size="sm" weight="medium">Telegram</Text>
+          {needsRelink && (
+            <span className={styles.relinkPill}>
+              <AlertTriangle size={12} />
+              Needs reconnect
+            </span>
+          )}
+        </div>
 
-      {needsRelink && (
-        <Text size="xs" variant="muted">
-          This connection expired. Reconnect to keep messaging this agent.
-        </Text>
-      )}
-
-      <div className={styles.actions}>
         <Button
           variant="primary"
           size="sm"
           onClick={startLink}
           disabled={linking}
+          className={styles.connectButton}
         >
           {linking ? (
             <span className={styles.btnInner}>
@@ -217,6 +212,12 @@ export function TelegramConnect({
           )}
         </Button>
       </div>
+
+      {needsRelink && (
+        <Text size="xs" variant="muted">
+          This connection expired. Reconnect to keep messaging this agent.
+        </Text>
+      )}
 
       {linkError && (
         <Text size="xs" className={styles.errorText}>{linkError}</Text>

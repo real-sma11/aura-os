@@ -159,7 +159,7 @@
 .taskCheckDone {
   background: var(--color-brand-primary);
   border-color: var(--color-brand-primary);
-  color: var(--color-text-on-primary, #fff);
+  color: var(--color-text-on-primary);
 }
 
 .taskInfo {

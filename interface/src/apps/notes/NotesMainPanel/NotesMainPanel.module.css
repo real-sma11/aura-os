@@ -35,7 +35,7 @@
 }
 
 .saveStateError {
-  color: var(--color-danger, #d14343);
+  color: var(--color-danger);
   opacity: 1;
 }
 
@@ -193,7 +193,7 @@
   font-size: 0.92em;
   padding: 0.1em 0.3em;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 88%, white 12%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 88%, white 12%);
 }
 
 .editor :global(pre) {
@@ -201,7 +201,7 @@
   padding: 12px 14px;
   border-radius: 6px;
   overflow: auto;
-  background: color-mix(in srgb, var(--color-bg-secondary, #181818) 92%, white 8%);
+  background: color-mix(in srgb, var(--color-bg-secondary) 92%, white 8%);
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.9em;
   line-height: 1.5;
@@ -252,7 +252,7 @@
   gap: 2px;
   padding: 4px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-bg, #111) 88%, white 12%);
+  background: color-mix(in srgb, var(--color-bg) 88%, white 12%);
   border: 1px solid var(--color-border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }

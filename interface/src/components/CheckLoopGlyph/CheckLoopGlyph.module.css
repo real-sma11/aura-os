@@ -9,7 +9,7 @@
    `PlayLoopGlyph.module.css` so the Run and Tasks tabs render
    identically-tinted rings. */
 .ringGroup {
-  color: var(--color-accent, var(--loop-progress-color, #4f8bff));
+  color: var(--color-accent, var(--loop-progress-color));
 }
 
 /* Spinning accent arc. `transform-box: fill-box` is critical: by

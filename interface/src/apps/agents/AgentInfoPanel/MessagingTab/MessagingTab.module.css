@@ -51,16 +51,16 @@
 
 .statusAvailable {
   color: var(--color-text-secondary);
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.05));
+  background: var(--color-overlay-subtle);
 }
 
 .statusConnected {
-  color: var(--color-success, #16a34a);
-  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-success, #16a34a) 30%, var(--color-border));
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 30%, var(--color-border));
 }
 
 .statusSoon {
   color: var(--color-text-muted);
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--color-overlay-subtle);
 }

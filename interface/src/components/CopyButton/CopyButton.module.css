@@ -5,7 +5,7 @@
   padding: 3px 8px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   font-family: var(--font-sans, inherit);
   font-size: 11px;
   line-height: 1;
@@ -15,21 +15,21 @@
 }
 
 .button:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-text, #ddd);
+  background: var(--color-overlay-light);
+  color: var(--color-text);
 }
 
 .button:focus-visible {
-  outline: 1px solid var(--color-accent, #60a5fa);
+  outline: 1px solid var(--color-accent);
   outline-offset: 1px;
 }
 
 .buttonCopied {
-  color: var(--color-success, #4ade80);
+  color: var(--color-success);
 }
 
 .buttonCopied:hover {
-  color: var(--color-success, #4ade80);
+  color: var(--color-success);
 }
 
 .label {

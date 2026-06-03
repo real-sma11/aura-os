@@ -28,7 +28,6 @@ const interfaceRoot = resolve(__dirname, "..");
  */
 const DENYLIST = [
   "src/views/SidekickLog/SidekickLog.module.css",
-  "src/apps/chat/components/ChatInputBar/ChatInputBar.module.css",
   "src/views/IdeView/IdeView.module.css",
   "src/components/Preview/Preview.module.css",
   "src/features/left-menu/LeftMenuTree/LeftMenuTree.module.css",

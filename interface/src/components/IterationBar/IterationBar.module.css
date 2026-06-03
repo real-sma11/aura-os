@@ -22,23 +22,23 @@
 }
 
 .iterationDot[data-cat="read"] {
-  background: #60a5fa;
+  background: var(--color-info);
 }
 
 .iterationDot[data-cat="write"] {
-  background: #34d399;
+  background: var(--color-success);
 }
 
 .iterationDot[data-cat="command"] {
-  background: #fbbf24;
+  background: var(--color-warning);
 }
 
 .iterationDot[data-cat="other"] {
-  background: #ffffff;
+  background: var(--color-text-primary);
 }
 
 .iterationDot[data-cat="error"] {
-  background: #ff6b6b;
+  background: var(--color-error);
 }
 
 .iterationDotPulse {

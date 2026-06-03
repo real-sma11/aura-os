@@ -90,5 +90,5 @@
 }
 
 .error {
-  color: var(--color-danger, #e05a5a);
+  color: var(--color-danger);
 }

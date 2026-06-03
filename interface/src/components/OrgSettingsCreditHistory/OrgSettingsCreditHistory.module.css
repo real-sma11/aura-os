@@ -1,30 +1,30 @@
 .intro {
   font-size: var(--text-sm, 14px);
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   margin-bottom: var(--space-4, 16px);
   line-height: 1.5;
 }
 
 .loading {
   text-align: center;
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   padding: var(--space-6, 24px) 0;
 }
 
 .highlightValue {
   font-weight: 600;
-  color: var(--color-text-primary, #fff);
+  color: var(--color-text-primary);
 }
 
 .statusBadge {
   font-size: var(--text-2xs, 11px);
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   margin-left: var(--space-2, 8px);
 }
 
 .empty {
   text-align: center;
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   padding: var(--space-6, 24px) var(--space-4, 16px);
   font-size: var(--text-sm, 14px);
 }
@@ -41,7 +41,7 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-3, 12px) var(--space-3, 12px);
-  border-bottom: 1px solid var(--color-border, #222);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .txRow:last-child {
@@ -56,12 +56,12 @@
 
 .txType {
   font-size: var(--text-sm, 14px);
-  color: var(--color-text-primary, #e0e0e0);
+  color: var(--color-text-primary);
 }
 
 .txDate {
   font-size: var(--text-2xs, 11px);
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
 }
 
 .txAmounts {
@@ -77,14 +77,14 @@
 }
 
 .txPositive {
-  color: #01f4cb;
+  color: var(--color-success);
 }
 
 .txNegative {
-  color: #f44;
+  color: var(--color-error);
 }
 
 .txBalance {
   font-size: var(--text-2xs, 11px);
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
 }

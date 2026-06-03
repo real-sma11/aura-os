@@ -10,9 +10,9 @@
   font-weight: 500;
   background: linear-gradient(
     90deg,
-    var(--color-text-muted, #aaa) 0%,
-    var(--color-text, #fff) 40%,
-    var(--color-text-muted, #aaa) 80%
+    var(--color-text-muted) 0%,
+    var(--color-text) 40%,
+    var(--color-text-muted) 80%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -33,7 +33,7 @@
 .countdown {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }

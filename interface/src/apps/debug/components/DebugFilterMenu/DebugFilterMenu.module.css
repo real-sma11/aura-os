@@ -19,7 +19,7 @@
 }
 
 .trigger:focus-visible {
-  outline: 2px solid var(--color-accent-500, #3b82f6);
+  outline: 2px solid var(--color-accent-500);
   outline-offset: 1px;
 }
 

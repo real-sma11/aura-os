@@ -83,8 +83,8 @@
 .desktopBubble {
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   min-height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
-  --pill-grad-top: var(--shell-pill-grad-top, #0e0e10);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #050507);
+  --pill-grad-top: var(--shell-pill-grad-top);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom);
   /* Charcoal -> near-black gradient, angled slightly toward the bottom-
      right (160deg). A soft lighter wash near the top settles down into the
      near-black bottom. The top-edge highlight is a subtle inset lip in
@@ -110,7 +110,7 @@
     inset 0 1px 0 0 color-mix(in srgb, #fff 10%, transparent),
     inset 0 2px 3px -1px color-mix(in srgb, #000 65%, transparent),
     0 6px 14px -4px color-mix(in srgb, #000 65%, transparent),
-    0 0 8px 0 color-mix(in srgb, var(--shell-stroke-top, #424242) 50%, transparent)
+    0 0 8px 0 color-mix(in srgb, var(--shell-stroke-top) 50%, transparent)
   );
   /* Consistent breathing room at the start/end of every pill so icons
      don't sit flush against the rounded corners. */
@@ -135,9 +135,9 @@
   padding: 1px;
   background: linear-gradient(
     to bottom,
-    var(--shell-stroke-top, #424242) 0%,
-    var(--shell-stroke-side, #262626) 50%,
-    var(--shell-stroke-bottom, #121212) 100%
+    var(--shell-stroke-top) 0%,
+    var(--shell-stroke-side) 50%,
+    var(--shell-stroke-bottom) 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -272,8 +272,8 @@
   align-items: center;
   height: var(--public-pill-height, 24px);
   min-height: var(--public-pill-height, 24px);
-  --pill-grad-top: var(--shell-pill-grad-top, #0e0e10);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #050507);
+  --pill-grad-top: var(--shell-pill-grad-top);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom);
   /* Same angled charcoal -> near-black gradient as the authed pills. */
   background: linear-gradient(
     160deg,
@@ -291,7 +291,7 @@
     inset 0 1px 0 0 color-mix(in srgb, #fff 10%, transparent),
     inset 0 2px 3px -1px color-mix(in srgb, #000 60%, transparent),
     0 4px 10px -3px color-mix(in srgb, #000 60%, transparent),
-    0 0 8px 0 color-mix(in srgb, var(--shell-stroke-top, #424242) 50%, transparent)
+    0 0 8px 0 color-mix(in srgb, var(--shell-stroke-top) 50%, transparent)
   );
   padding: 0 var(--space-2);
 }
@@ -309,9 +309,9 @@
   padding: 1px;
   background: linear-gradient(
     to bottom,
-    var(--shell-stroke-top, #424242) 0%,
-    var(--shell-stroke-side, #262626) 50%,
-    var(--shell-stroke-bottom, #121212) 100%
+    var(--shell-stroke-top) 0%,
+    var(--shell-stroke-side) 50%,
+    var(--shell-stroke-bottom) 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -488,10 +488,10 @@
  * "live energy" mark glowing at the start of the chip.
  */
 .poweredByGridBolt {
-  color: var(--color-success, #2ecc71);
+  color: var(--color-success);
   flex-shrink: 0;
   overflow: visible;
-  filter: drop-shadow(0 0 3px var(--color-success, #2ecc71));
+  filter: drop-shadow(0 0 3px var(--color-success));
   animation: boltGlowPulse 1.8s ease-in-out infinite;
 }
 
@@ -500,8 +500,8 @@
  * stroke in `--color-success` so it reads as one solid green glyph.
  */
 .poweredByGridBoltBase {
-  fill: var(--color-success, #2ecc71);
-  stroke: var(--color-success, #2ecc71);
+  fill: var(--color-success);
+  stroke: var(--color-success);
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -547,10 +547,10 @@
   0%,
   100% {
     opacity: 0.85;
-    filter: drop-shadow(0 0 2px var(--color-success, #2ecc71));
+    filter: drop-shadow(0 0 2px var(--color-success));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 7px var(--color-success, #2ecc71));
+    filter: drop-shadow(0 0 7px var(--color-success));
   }
 }

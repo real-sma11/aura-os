@@ -67,7 +67,7 @@
 }
 
 .pathSeparator {
-  color: var(--color-text-subtle, rgba(255, 255, 255, 0.25));
+  color: var(--color-text-subtle);
   margin: 0 3px;
 }
 

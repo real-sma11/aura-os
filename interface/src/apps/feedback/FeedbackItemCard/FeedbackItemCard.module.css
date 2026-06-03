@@ -18,7 +18,7 @@
 
 .cardActive,
 .cardActive:hover {
-  background: color-mix(in srgb, var(--color-bg, #111) 88%, white 12%);
+  background: color-mix(in srgb, var(--color-bg) 88%, white 12%);
 }
 
 .voteColumn {
@@ -44,16 +44,16 @@
 }
 
 .voteButton:hover {
-  background: var(--color-overlay-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--color-overlay-subtle);
   color: var(--color-text);
 }
 
 .voteButtonUp {
-  color: var(--color-success, #7dd37d);
+  color: var(--color-success);
 }
 
 .voteButtonDown {
-  color: var(--color-danger, #e27c7c);
+  color: var(--color-danger);
 }
 
 .voteScore {
@@ -149,12 +149,12 @@
 
 .statusTag[data-status="done"],
 .statusTag[data-status="deployed"] {
-  color: var(--color-success, #7dd37d);
+  color: var(--color-success);
 }
 
 .statusTag[data-status="in_progress"],
 .statusTag[data-status="in_review"] {
-  color: var(--color-accent, #7ca4e2);
+  color: var(--color-accent);
 }
 
 .commentPreview {

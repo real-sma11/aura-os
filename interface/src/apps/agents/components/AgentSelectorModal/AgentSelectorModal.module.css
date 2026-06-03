@@ -92,7 +92,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--color-accent-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--color-accent-subtle);
   color: var(--color-accent);
   flex-shrink: 0;
 }

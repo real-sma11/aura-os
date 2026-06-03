@@ -5,7 +5,7 @@
   line-height: 1.65;
 }
 .root a {
-  color: var(--color-accent, #60a5fa);
+  color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   transition: opacity 0.15s;
@@ -116,5 +116,5 @@
 
 .artifactRefTitle {
   font-size: 13px;
-  color: var(--color-text, #ddd);
+  color: var(--color-text);
 }

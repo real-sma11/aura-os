@@ -2,7 +2,7 @@
   overflow-x: hidden;
   margin: 0;
   padding: var(--space-2);
-  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.15));
+  background: var(--color-bg-tertiary);
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -16,7 +16,7 @@
   overflow-x: hidden;
   margin: 0;
   padding: var(--space-2);
-  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.15));
+  background: var(--color-bg-tertiary);
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.5;
@@ -102,9 +102,9 @@
 }
 
 .toolMarkerOk {
-  color: var(--status-done, #34d399);
+  color: var(--status-done);
 }
 
 .toolMarkerError {
-  color: var(--status-failed, #ff6b6b);
+  color: var(--status-failed);
 }

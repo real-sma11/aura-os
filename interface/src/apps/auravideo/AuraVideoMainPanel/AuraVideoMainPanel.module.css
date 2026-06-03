@@ -51,14 +51,14 @@
 
 .progressFill {
   height: 100%;
-  background: var(--color-text-primary, #fff);
+  background: var(--color-text-primary);
   transition: width 0.3s ease;
 }
 
 .errorBanner {
   padding: var(--space-3) var(--space-4);
-  background: rgba(220, 38, 38, 0.15);
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
   border-radius: var(--radius-md, 8px);
   color: var(--color-text-primary);
   font-size: 13px;

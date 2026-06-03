@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: center;
   padding: 32px;
-  background: var(--color-bg, #0b0b0d);
+  background: var(--color-bg);
   animation: forcedUpgradeFadeIn 200ms ease-out;
 }
 
@@ -44,7 +44,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-warning-fg, #f5a623);
+  color: var(--color-warning-fg);
   margin-bottom: 4px;
 }
 
@@ -64,7 +64,7 @@
 
 .error {
   margin: 0;
-  color: var(--color-error-fg, #ff5d5d);
+  color: var(--color-error-fg);
 }
 
 .action {

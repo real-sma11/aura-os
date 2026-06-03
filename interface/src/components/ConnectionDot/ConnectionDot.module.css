@@ -6,13 +6,13 @@
 }
 
 .iconDanger {
-  color: var(--color-danger, #e55);
+  color: var(--color-danger);
 }
 
 .iconWarning {
-  color: var(--color-warning, #ea0);
+  color: var(--color-warning);
 }
 
 .iconSuccess {
-  color: var(--color-success, #4c9);
+  color: var(--color-success);
 }

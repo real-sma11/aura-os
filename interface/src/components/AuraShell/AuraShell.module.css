@@ -33,7 +33,7 @@
  * own content owns the visuals).
  */
 .shell[data-ui-mode="standard"] {
-  background: var(--desktop-shell-backdrop, #000);
+  background: var(--desktop-shell-backdrop);
 }
 
 .body {
@@ -95,9 +95,9 @@
   border: 1px solid transparent;
   background: linear-gradient(
       to bottom,
-      var(--shell-stroke-top, #424242) 0%,
-      var(--shell-stroke-side, #262626) 50%,
-      var(--shell-stroke-bottom, #121212) 100%
+      var(--shell-stroke-top) 0%,
+      var(--shell-stroke-side) 50%,
+      var(--shell-stroke-bottom) 100%
     )
     border-box;
 }
@@ -361,7 +361,7 @@
 }
 
 .titleLogoLink:focus-visible {
-  outline: 2px solid var(--color-focus-ring, #6e8cff);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -413,7 +413,7 @@
 }
 
 .authPill:focus-visible {
-  outline: 2px solid var(--color-focus-ring, #6e8cff);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 

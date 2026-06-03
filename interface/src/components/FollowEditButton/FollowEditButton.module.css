@@ -31,11 +31,11 @@
 }
 
 .following {
-  color: var(--color-success, #4aeaa8);
-  border-color: var(--color-success, #4aeaa8);
+  color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 .following:hover {
-  color: var(--color-danger, #f87171);
-  border-color: var(--color-danger, #f87171);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }

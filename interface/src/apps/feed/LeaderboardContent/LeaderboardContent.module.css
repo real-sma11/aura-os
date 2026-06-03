@@ -24,11 +24,11 @@
 }
 
 .rowActive {
-  background: color-mix(in srgb, var(--color-bg, #111) 88%, white 12%);
+  background: color-mix(in srgb, var(--color-bg) 88%, white 12%);
 }
 
 .rowActive:hover {
-  background: color-mix(in srgb, var(--color-bg, #111) 88%, white 12%);
+  background: color-mix(in srgb, var(--color-bg) 88%, white 12%);
 }
 
 .rankCell {
