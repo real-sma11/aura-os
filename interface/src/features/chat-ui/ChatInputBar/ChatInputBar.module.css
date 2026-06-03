@@ -846,9 +846,10 @@
    button's `left: 2px`, so all four corner buttons share a 2px
    inset from the rounded-container edges. */
 .modeBarRow {
-  display: grid;
-  grid-template-columns: 24px 1fr 24px;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 2px;
   width: 100%;
   min-width: 0;
   padding: 2px;
@@ -874,7 +875,6 @@
    mode pills. Same 24x24 hit target and shared icon-button hover plate. */
 .modeCollapseButton {
   position: relative;
-  grid-column: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1031,7 +1031,6 @@ button.attachRing::after {
 }
 
 .modeSelectorFlex {
-  grid-column: 2;
   min-width: 0;
 }
 
@@ -1048,6 +1047,10 @@ button.attachRing::after {
    single 1px line. Higher specificity than ModeSelector's `.root`. */
 .modeBarRow .modeSelectorFlex {
   border-bottom: none;
+  /* Hug the chevron / "+" tightly — drop the wide centring padding the
+     selector uses when it stands alone so the row reads as one compact
+     cluster rather than three widely-spaced controls. */
+  padding: 0 4px;
 }
 
 /* Top-right new-chat "+" mirrors the bottom-left attach "+" in
@@ -1057,7 +1060,6 @@ button.attachRing::after {
    styles/tokens.css), same Plus glyph size/strokeWidth in the TSX. */
 .modeNewChatButton {
   position: relative;
-  grid-column: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
