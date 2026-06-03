@@ -31,7 +31,9 @@ use super::super::typed_session::{
 };
 use super::super::types::SseResponse;
 
-use super::super::super::runtime::{resolve_council_members, session_model_overrides_with_cache};
+use super::super::super::runtime::{
+    resolve_council_mechanism, resolve_council_members, session_model_overrides_with_cache,
+};
 
 use super::client_retry::header_indicates_client_retry;
 use super::helpers::{
@@ -199,7 +201,8 @@ pub(crate) async fn send_event_stream(
     // `council`) leaves the single-model path below unchanged. Each
     // member resolves against the instance's default model and shares
     // the per-instance override cache-key prefix + 24h retention.
-    let council = match body.council.as_ref().filter(|c| c.models.len() >= 2) {
+    let active_council = body.council.as_ref().filter(|c| c.models.len() >= 2);
+    let council = match active_council {
         Some(council_body) => Some(resolve_council_members(
             instance.default_model.as_deref(),
             council_body,
@@ -208,6 +211,10 @@ pub(crate) async fn send_event_stream(
         )?),
         None => None,
     };
+    // Council-wide combine mechanism (synthesize / contrast /
+    // side_by_side). Only meaningful when the council is active; the
+    // single-model path leaves it `None`.
+    let council_mechanism = active_council.map(resolve_council_mechanism);
 
     let effective_org_id = resolve_effective_org_id(&state, instance.org_id.as_ref(), &project_id);
     let org_integrations = fetch_org_integrations(&state, effective_org_id.as_ref(), &jwt).await;
@@ -309,6 +316,7 @@ pub(crate) async fn send_event_stream(
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
         council,
+        council_mechanism,
         computer_use,
         computer_executor_url,
         ..Default::default()

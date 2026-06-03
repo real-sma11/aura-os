@@ -25,7 +25,8 @@ use super::typed_session::TypedSessionFields;
 use super::types::SseResponse;
 
 use super::super::runtime::{
-    effective_model, resolve_council_members, session_model_overrides_with_cache,
+    effective_model, resolve_council_mechanism, resolve_council_members,
+    session_model_overrides_with_cache,
 };
 
 mod helpers;
@@ -207,7 +208,8 @@ pub(crate) async fn send_agent_event_stream(
     // path below 100% unchanged. Each member is resolved through the
     // same `effective_model` / override-cache path the single model
     // uses, sharing the per-agent cache-key prefix + 24h retention.
-    let council = match body.council.as_ref().filter(|c| c.models.len() >= 2) {
+    let active_council = body.council.as_ref().filter(|c| c.models.len() >= 2);
+    let council = match active_council {
         Some(council_body) => Some(resolve_council_members(
             agent.default_model.as_deref(),
             council_body,
@@ -216,6 +218,9 @@ pub(crate) async fn send_agent_event_stream(
         )?),
         None => None,
     };
+    // Council-wide combine mechanism (synthesize / contrast /
+    // side_by_side); only meaningful when the council is active.
+    let council_mechanism = active_council.map(resolve_council_mechanism);
 
     let org_integrations = fetch_org_integrations(&state, effective_org_id.as_ref(), &jwt).await;
     let normalized_perms = normalize_agent_perms(&agent, effective_project_id.as_deref());
@@ -310,6 +315,7 @@ pub(crate) async fn send_agent_event_stream(
         project_info,
         reasoning_effort: body.reasoning_effort.clone(),
         council,
+        council_mechanism,
         computer_use,
         computer_executor_url,
         ..Default::default()

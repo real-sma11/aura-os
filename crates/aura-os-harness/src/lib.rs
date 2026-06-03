@@ -59,12 +59,12 @@ pub use swarm_harness::{CreateAgentResponse, SwarmHarness};
 pub use ws_reader_handle::WsReaderHandle;
 
 pub use aura_protocol::{
-    ApprovalResponse, AssistantMessageEnd, AssistantMessageStart, ConversationMessage, ErrorMsg,
-    FileOp, FilesChanged, InboundMessage as HarnessInbound, InstalledIntegration, InstalledTool,
-    InstalledToolIntegrationRequirement, InstalledToolRuntimeAuth, InstalledToolRuntimeExecution,
-    InstalledToolRuntimeIntegration, InstalledToolRuntimeProviderExecution, MessageAttachment,
-    OutboundMessage as HarnessOutbound, RuntimeRequest, RuntimeRequestType, RuntimeRunResponse,
-    SessionModelOverrides, SessionReady, SessionUsage, SkillInfo, SubagentSpawned, SubagentStatus,
-    TextDelta, ThinkingDelta, ToolAuth, ToolCallSnapshot, ToolInfo, ToolResultMsg, ToolUseStart,
-    UserMessage,
+    ApprovalResponse, AssistantMessageEnd, AssistantMessageStart, ConversationMessage,
+    CouncilMechanism, ErrorMsg, FileOp, FilesChanged, InboundMessage as HarnessInbound,
+    InstalledIntegration, InstalledTool, InstalledToolIntegrationRequirement,
+    InstalledToolRuntimeAuth, InstalledToolRuntimeExecution, InstalledToolRuntimeIntegration,
+    InstalledToolRuntimeProviderExecution, MessageAttachment, OutboundMessage as HarnessOutbound,
+    RuntimeRequest, RuntimeRequestType, RuntimeRunResponse, SessionModelOverrides, SessionReady,
+    SessionUsage, SkillInfo, SubagentSpawned, SubagentStatus, TextDelta, ThinkingDelta, ToolAuth,
+    ToolCallSnapshot, ToolInfo, ToolResultMsg, ToolUseStart, UserMessage,
 };

@@ -6,8 +6,8 @@ use tokio::time::timeout;
 
 use aura_os_core::{Agent, AgentId};
 use aura_os_harness::{
-    CouncilMemberConfig, HarnessInbound, HarnessOutbound, SessionConfig, SessionModelOverrides,
-    SessionUsage, UserMessage,
+    CouncilMechanism, CouncilMemberConfig, HarnessInbound, HarnessOutbound, SessionConfig,
+    SessionModelOverrides, SessionUsage, UserMessage,
 };
 
 use crate::dto::{AgentRuntimeTestResponse, CouncilRequestBody};
@@ -122,6 +122,19 @@ pub(crate) fn resolve_council_members(
             }
         })
         .collect())
+}
+
+/// Resolve the council combine mechanism from the chat client's wire
+/// string. An absent / unknown / blank value resolves to
+/// [`CouncilMechanism::Synthesize`] (the default, original behavior)
+/// rather than failing the request, mirroring how `reasoning_effort`
+/// falls back when the tier is unrecognized.
+pub(crate) fn resolve_council_mechanism(council: &CouncilRequestBody) -> CouncilMechanism {
+    council
+        .mechanism
+        .as_deref()
+        .and_then(CouncilMechanism::from_wire)
+        .unwrap_or_default()
 }
 
 fn non_empty_string(value: &str) -> Option<String> {
@@ -309,6 +322,57 @@ mod tests {
         assert!(
             session_model_overrides_with_cache(Some(""), Some("  ".into()), Some("")).is_none()
         );
+    }
+
+    fn council_body(mechanism: Option<&str>) -> CouncilRequestBody {
+        CouncilRequestBody {
+            models: Vec::new(),
+            mechanism: mechanism.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn resolve_council_mechanism_parses_each_variant() {
+        assert_eq!(
+            resolve_council_mechanism(&council_body(Some("synthesize"))),
+            CouncilMechanism::Synthesize
+        );
+        assert_eq!(
+            resolve_council_mechanism(&council_body(Some("contrast"))),
+            CouncilMechanism::Contrast
+        );
+        assert_eq!(
+            resolve_council_mechanism(&council_body(Some("side_by_side"))),
+            CouncilMechanism::SideBySide
+        );
+    }
+
+    #[test]
+    fn resolve_council_mechanism_defaults_when_absent_or_unknown() {
+        assert_eq!(
+            resolve_council_mechanism(&council_body(None)),
+            CouncilMechanism::Synthesize
+        );
+        assert_eq!(
+            resolve_council_mechanism(&council_body(Some("bogus"))),
+            CouncilMechanism::Synthesize
+        );
+        assert_eq!(
+            resolve_council_mechanism(&council_body(Some(""))),
+            CouncilMechanism::Synthesize
+        );
+    }
+
+    #[test]
+    fn council_request_body_deserializes_with_and_without_mechanism() {
+        let with: CouncilRequestBody =
+            serde_json::from_str(r#"{"models":[{"id":"m"}],"mechanism":"contrast"}"#)
+                .expect("deserialize council body with mechanism");
+        assert_eq!(with.mechanism.as_deref(), Some("contrast"));
+
+        let without: CouncilRequestBody =
+            serde_json::from_str(r#"{"models":[{"id":"m"}]}"#).expect("deserialize legacy body");
+        assert!(without.mechanism.is_none());
     }
 
     #[test]

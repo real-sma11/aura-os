@@ -360,6 +360,13 @@ pub(crate) struct SendChatRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct CouncilRequestBody {
     pub models: Vec<CouncilModelRequestBody>,
+    /// How `models[0]` combines the members' answers once every member
+    /// completes (`synthesize` / `contrast` / `side_by_side`). Older
+    /// clients omit it — `#[serde(default)]` keeps wire compat and the
+    /// server resolves the absent / unknown value to the default
+    /// (`synthesize`).
+    #[serde(default)]
+    pub mechanism: Option<String>,
 }
 
 /// One council member from the chat client: a model id plus its
