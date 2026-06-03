@@ -761,7 +761,10 @@ export function useAgentChatStream({
         // is the per-slot mirror of `selectedEffort` and is already the
         // wire `reasoning_effort` string — null means "no effort tiers",
         // matching how the single pick omits the field.
-        const council = ((): { models: { id: string; reasoning_effort?: string }[] } | undefined => {
+        const council = ((): {
+          models: { id: string; reasoning_effort?: string }[];
+          mechanism?: string;
+        } | undefined => {
           if (_generationMode) return undefined;
           const uiState = useChatUIStore.getState();
           if (uiState.getCouncilCount(getPartitionKey()) <= 1) return undefined;
@@ -772,7 +775,11 @@ export function useAgentChatStream({
               id: slot.id,
               ...(slot.effort ? { reasoning_effort: slot.effort } : {}),
             }));
-          return models.length >= 2 ? { models } : undefined;
+          if (models.length < 2) return undefined;
+          // Resolved at send time alongside the slots so a queued /
+          // replayed send reflects the live mechanism choice.
+          const mechanism = uiState.getCouncilMechanism(getPartitionKey());
+          return { models, mechanism };
         })();
         await api.agents.sendEventStream(
           agentId,

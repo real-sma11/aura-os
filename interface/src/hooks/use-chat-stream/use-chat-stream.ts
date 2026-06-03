@@ -637,7 +637,10 @@ export function useChatStream({
         // (`councilCount > 1`) and at least two slots resolve to a model
         // id; otherwise left `undefined` so the single-model path is
         // byte-for-byte unchanged.
-        const council = ((): { models: { id: string; reasoning_effort?: string }[] } | undefined => {
+        const council = ((): {
+          models: { id: string; reasoning_effort?: string }[];
+          mechanism?: string;
+        } | undefined => {
           if (_generationMode) return undefined;
           const uiState = useChatUIStore.getState();
           if (uiState.getCouncilCount(getPartitionKey()) <= 1) return undefined;
@@ -648,7 +651,9 @@ export function useChatStream({
               id: slot.id,
               ...(slot.effort ? { reasoning_effort: slot.effort } : {}),
             }));
-          return models.length >= 2 ? { models } : undefined;
+          if (models.length < 2) return undefined;
+          const mechanism = uiState.getCouncilMechanism(getPartitionKey());
+          return { models, mechanism };
         })();
         await api.sendEventStream(
           capturedProjectId,
