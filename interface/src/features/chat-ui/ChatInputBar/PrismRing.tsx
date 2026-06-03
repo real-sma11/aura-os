@@ -134,51 +134,74 @@ export function PrismRing({ className }: { className?: string }) {
 
     setActive(true);
 
-    // Where the + glyph sits within the canvas (0..1). The canvas is
-    // oversized and may not be perfectly centered on the glyph in every
-    // layout, so measure it and recenter the ring on the glyph rather
-    // than assuming the canvas center.
-    let centerX = 0.5;
-    let centerY = 0.5;
-    const measureCenter = () => {
-      const glyph = canvas.parentElement?.querySelector("svg");
-      const cr = canvas.getBoundingClientRect();
-      if (!glyph || cr.width <= 0 || cr.height <= 0) {
-        centerX = 0.5;
-        centerY = 0.5;
-        return;
-      }
-      const gr = glyph.getBoundingClientRect();
-      centerX = (gr.left + gr.width / 2 - cr.left) / cr.width;
-      centerY = (gr.top + gr.height / 2 - cr.top) / cr.height;
-    };
+    // Margin (css px) added around the host button so the ring + a little
+    // glow always has room inside the canvas.
+    const MARGIN = 8;
+    let bufW = 1;
+    let bufH = 1;
+    let lastLeft = NaN;
+    let lastTop = NaN;
+    let lastSize = NaN;
 
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-      const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        gl.viewport(0, 0, w, h);
+    // Lay the canvas out as a square centered on the + glyph. Sizing and
+    // positioning happen in JS (relative to the canvas's real
+    // offsetParent) because a <canvas> is a replaced element whose CSS
+    // `calc()` width / inset can resolve unexpectedly, leaving the ring
+    // off-center and clipped by the canvas edge.
+    const layout = () => {
+      const btn = canvas.parentElement;
+      const op = canvas.offsetParent as HTMLElement | null;
+      const glyph = btn?.querySelector("svg");
+      if (!btn || !op) return;
+      const btnRect = btn.getBoundingClientRect();
+      if (btnRect.width <= 0 || btnRect.height <= 0) return;
+      const target = glyph ?? btn;
+      const tRect = target.getBoundingClientRect();
+      const opRect = op.getBoundingClientRect();
+
+      const size = Math.round(Math.max(btnRect.width, btnRect.height)) + MARGIN * 2;
+      // Glyph center expressed in the offsetParent's padding-box coords.
+      const gx = tRect.left + tRect.width / 2 - opRect.left - op.clientLeft;
+      const gy = tRect.top + tRect.height / 2 - opRect.top - op.clientTop;
+      const left = Math.round(gx - size / 2);
+      const top = Math.round(gy - size / 2);
+
+      if (left !== lastLeft || top !== lastTop || size !== lastSize) {
+        lastLeft = left;
+        lastTop = top;
+        lastSize = size;
+        canvas.style.left = left + "px";
+        canvas.style.top = top + "px";
+        canvas.style.width = size + "px";
+        canvas.style.height = size + "px";
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const buf = Math.max(1, Math.round(size * dpr));
+        canvas.width = buf;
+        canvas.height = buf;
+        bufW = buf;
+        bufH = buf;
+        gl.viewport(0, 0, buf, buf);
       }
     };
-    resize();
+    layout();
 
     const ro =
       typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(resize)
+        ? new ResizeObserver(layout)
         : null;
-    ro?.observe(canvas);
+    // Observe the host button (not the canvas, whose size we drive) so a
+    // resize of the input bar re-lays-out the ring.
+    if (canvas.parentElement) ro?.observe(canvas.parentElement);
+    window.addEventListener("resize", layout);
 
     let raf = 0;
     const start = performance.now();
     const render = (now: number) => {
-      resize();
-      measureCenter();
+      layout();
       gl.uniform1f(uTime, (now - start) / 1000);
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform2f(uCenter, centerX, centerY);
+      gl.uniform2f(uRes, bufW, bufH);
+      // Canvas is centered on the glyph, so the ring centers at (0.5,0.5).
+      gl.uniform2f(uCenter, 0.5, 0.5);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       raf = requestAnimationFrame(render);
@@ -201,6 +224,7 @@ export function PrismRing({ className }: { className?: string }) {
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("resize", layout);
       pause();
       ro?.disconnect();
       gl.deleteBuffer(buffer);
