@@ -12,10 +12,15 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4, 16px);
-  margin: var(--space-3);
+  width: 100%;
+  max-width: 340px;
+  margin: var(--space-3) auto;
   padding: var(--space-4, 16px);
   border: 1px solid transparent;
-  border-radius: var(--radius-lg, 18px);
+  border-radius: 18px;
+  /* backdrop-filter renders a rectangular blur layer that ignores the
+     border-radius, squaring off the corners; clip it to the rounded box. */
+  overflow: hidden;
   background:
     linear-gradient(
       160deg,
