@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { LLMOutput } from "../../../apps/chat/components/LLMOutput";
 import {
@@ -33,15 +33,23 @@ type LoadState =
 export function SharedSessionView(): React.ReactElement {
   const { shareToken } = useParams<{ shareToken: string }>();
   const token = shareToken ?? "";
+  // The `.root` section owns the vertical scroll in both mount contexts
+  // (logged-out `PublicMarketingPanel` and authenticated `AuraShell`), so
+  // the loaded transcript pins it to the bottom — see `SharedSessionContent`.
+  const containerRef = useRef<HTMLElement>(null);
 
   return (
-    <section className={styles.root} aria-label="Shared conversation">
+    <section
+      ref={containerRef}
+      className={styles.root}
+      aria-label="Shared conversation"
+    >
       <div className={styles.column}>
         {isValidShareToken(token) ? (
           // Key on the token so a navigation between two share links
           // remounts the loader with a fresh `loading` state instead of
           // synchronously resetting state inside an effect.
-          <SharedSessionLoader key={token} token={token} />
+          <SharedSessionLoader key={token} token={token} containerRef={containerRef} />
         ) : (
           <ShareMessage
             heading="This share link is unavailable"
@@ -55,8 +63,10 @@ export function SharedSessionView(): React.ReactElement {
 
 function SharedSessionLoader({
   token,
+  containerRef,
 }: {
   token: string;
+  containerRef: React.RefObject<HTMLElement | null>;
 }): React.ReactElement {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
@@ -81,14 +91,27 @@ function SharedSessionLoader({
     };
   }, [token]);
 
-  return <SharedSessionContent state={state} />;
+  return <SharedSessionContent state={state} containerRef={containerRef} />;
 }
 
 function SharedSessionContent({
   state,
+  containerRef,
 }: {
   state: LoadState;
+  containerRef: React.RefObject<HTMLElement | null>;
 }): React.ReactElement {
+  // Land the viewer at the bottom (latest message) once the transcript
+  // commits. The conversation is static (`isStreaming={false}`) and the
+  // markdown lays out synchronously, so a single layout-effect pin runs
+  // after the DOM mutates but before paint — no visible scroll jump.
+  useLayoutEffect(() => {
+    if (state.status !== "ready" || state.events.length === 0) return;
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [state, containerRef]);
+
   if (state.status === "loading") {
     return (
       <p className={styles.status} role="status" aria-live="polite">

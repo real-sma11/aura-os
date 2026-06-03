@@ -78,6 +78,27 @@ describe("SharedSessionView", () => {
     expect(getPublicShareMock).toHaveBeenCalledWith(TOKEN);
   });
 
+  it("scrolls the transcript to the bottom once it loads", async () => {
+    getPublicShareMock.mockResolvedValue(transcript);
+
+    renderAt(`/s/${TOKEN}`);
+
+    // The scroll container renders during the loading state too, so grab
+    // it synchronously and stub its scroll metrics BEFORE the transcript
+    // resolves — JSDOM has no layout, so `scrollHeight` would otherwise be
+    // 0 by the time the pinning layout effect runs.
+    const container = screen.getByRole("region", {
+      name: /shared conversation/i,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      value: 1200,
+      configurable: true,
+    });
+
+    expect(await screen.findByText("General Kenobi")).toBeInTheDocument();
+    expect(container.scrollTop).toBe(1200);
+  });
+
   it("renders a not-found state when the share is missing", async () => {
     getPublicShareMock.mockRejectedValue(new ShareNotFoundError());
 
