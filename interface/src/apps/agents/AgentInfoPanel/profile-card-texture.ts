@@ -323,12 +323,16 @@ export function drawInfoStrip(
     ctx.textAlign = "right";
     ctx.font = row.mono ? `500 58px ${STRIP_MONO}` : `600 68px ${STRIP_SANS}`;
     if (row.status && opts.isOnline) {
-      // Online: crisp accent text with a very subtle, gently pulsing glow.
+      // Online: accent-colored text with a very subtle, gently pulsing glow.
+      // The card is ACES tone-mapped, which washes bright saturated colors
+      // toward white; use a deeper version of the accent hue so it reads as
+      // the cyan/green rather than white.
       const [ar, ag, ab] = accent;
+      const k = 0.55;
       ctx.save();
-      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.5 : 0.32})`;
+      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.45 : 0.28})`;
       ctx.shadowBlur = dotOn ? 6 : 4;
-      ctx.fillStyle = `rgb(${ar},${ag},${ab})`;
+      ctx.fillStyle = `rgb(${Math.round(ar * k)},${Math.round(ag * k)},${Math.round(ab * k)})`;
       ctx.fillText(row.value, valueX, y);
       ctx.restore();
     } else if (row.status) {
