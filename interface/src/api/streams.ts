@@ -496,6 +496,12 @@ export interface GenerateVideoOptions {
   name?: string;
   agentId?: string;
   agentInstanceId?: string;
+  /**
+   * Source images for image-to-video ("animate this character"). Each
+   * entry is a fully-resolved URL or a `data:<mime>;base64,...` string,
+   * mirroring the `images` shape used by {@link generateImageStream}.
+   */
+  images?: string[];
   /** See {@link generateImageStream} — same semantics. */
   newSession?: boolean;
   /** See {@link generateImageStream} — same semantics. */
@@ -513,6 +519,7 @@ export function generateVideoStream(
   if (options.durationSeconds) body.durationSeconds = options.durationSeconds;
   if (options.resolution) body.resolution = options.resolution;
   if (options.generateAudio !== undefined) body.generateAudio = options.generateAudio;
+  if (options.images && options.images.length > 0) body.images = options.images;
   if (options.projectId) body.projectId = options.projectId;
   if (options.name) body.name = options.name;
   if (options.agentId) body.agentId = options.agentId;
