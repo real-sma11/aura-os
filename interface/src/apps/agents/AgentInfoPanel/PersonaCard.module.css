@@ -28,24 +28,27 @@
   border-radius: 18px;
   /* Clip content to the rounded box so nothing pokes past the corners. */
   overflow: hidden;
+  /* Transparent black fill so the blurred backdrop shows through as smoked
+     glass; the diagonal alpha ramp keeps the top-left lighter for a sheen. */
   background:
     linear-gradient(
       160deg,
-      rgba(22, 22, 25, 0.92) 0%,
-      rgba(12, 12, 14, 0.95) 48%,
-      rgba(6, 6, 8, 0.97) 100%
+      rgba(18, 18, 22, 0.45) 0%,
+      rgba(8, 8, 11, 0.55) 48%,
+      rgba(4, 4, 6, 0.62) 100%
     ) padding-box,
     linear-gradient(
       150deg,
-      rgba(255, 255, 255, 0.28) 0%,
-      rgba(255, 255, 255, 0.06) 30%,
-      rgba(255, 255, 255, 0.02) 55%,
-      rgba(255, 255, 255, 0.14) 100%
+      rgba(255, 255, 255, 0.3) 0%,
+      rgba(255, 255, 255, 0.07) 30%,
+      rgba(255, 255, 255, 0.03) 55%,
+      rgba(255, 255, 255, 0.16) 100%
     ) border-box;
-  /* No backdrop-filter: an element with backdrop-filter inside the
-     sidekick's overflow:auto scroll area forces a compositing path that
-     breaks that container's vertical scrolling (Chromium). The translucent
-     dark fill + bevel already read as glass over the solid panel. */
+  /* Blur + darken whatever sits behind the card for true smoked glass.
+     Safe now that the card is flex-shrink:0; the earlier scroll break was
+     the flex min-height collapse, not the backdrop-filter. */
+  backdrop-filter: blur(18px) saturate(125%) brightness(0.85);
+  -webkit-backdrop-filter: blur(18px) saturate(125%) brightness(0.85);
   /* Soft ambient + tight contact drop shadow to lift the card, plus a
      top bevel highlight and a faint bottom shade for the glass edge. */
   box-shadow:
