@@ -79,6 +79,7 @@ export function InviteModal({ isOpen, onClose }: Props) {
         <Button
           variant="secondary"
           size="md"
+          rounded="lg"
           fullWidth
           className={styles.shareButton}
           icon={inviteCode ? (copied ? <Check size={16} /> : <Copy size={16} />) : undefined}
