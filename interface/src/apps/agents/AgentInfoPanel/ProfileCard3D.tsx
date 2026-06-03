@@ -1,12 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FollowEditButton } from "../../../components/FollowEditButton";
 import type { Agent } from "../../../shared/types";
+import { useAvatarState } from "../../../hooks/use-avatar-state";
+import { useProfileStatusStore } from "../../../stores/profile-status-store";
+import { useOrgStore } from "../../../stores/org-store";
+import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
+import { useEnvironmentInfo } from "../../../hooks/use-environment-info";
 import {
   createProfileCardScene,
   type ProfileCardScene,
 } from "./profile-card-scene";
-import { drawProfileCardTexture, loadCardAvatar } from "./profile-card-texture";
+import {
+  drawInfoStrip,
+  drawProfileCardTexture,
+  loadCardAvatar,
+} from "./profile-card-texture";
 import styles from "./AgentInfoPanel.module.css";
+
+/** Normalized statuses that should not read as "online". */
+const OFFLINE_STATUSES = new Set([
+  "stopped",
+  "stopping",
+  "hibernating",
+  "error",
+  "archived",
+  "offline",
+]);
 
 function readAccent(el: HTMLElement): string {
   const value = getComputedStyle(el).getPropertyValue("--color-accent").trim();
@@ -36,6 +55,37 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
   const sceneRef = useRef<ProfileCardScene | null>(null);
   const [ready, setReady] = useState(false);
   const [avatar, setAvatar] = useState<HTMLImageElement | null>(null);
+
+  // Live agent status for the blinking dot (registers the agent so the central
+  // status store polls/streams it even if no list view mounted it).
+  useEffect(() => {
+    const store = useProfileStatusStore.getState();
+    store.registerAgents([{ id: agent.agent_id, machineType: agent.machine_type }]);
+    if (agent.machine_type === "remote") {
+      store.registerRemoteAgents([{ agent_id: agent.agent_id }]);
+    }
+  }, [agent.agent_id, agent.machine_type]);
+
+  const { status } = useAvatarState(agent.agent_id);
+  const isOnline = !status || !OFFLINE_STATUSES.has(status);
+
+  const orgName = useOrgStore((s) =>
+    agent.org_id ? s.orgs.find((o) => o.org_id === agent.org_id)?.name ?? null : null,
+  );
+
+  // IP: remote agents expose a VM endpoint; local agents fall back to the host
+  // machine IP. Both hooks are called unconditionally (rules of hooks).
+  const remote = useRemoteAgentState(
+    agent.machine_type === "remote" ? agent.agent_id : undefined,
+  );
+  const env = useEnvironmentInfo();
+  const ip = useMemo(
+    () =>
+      agent.machine_type === "remote"
+        ? remote.data?.endpoint ?? null
+        : env.data?.ip ?? null,
+    [agent.machine_type, remote.data?.endpoint, env.data?.ip],
+  );
 
   // Create the WebGL scene once.
   useEffect(() => {
@@ -86,6 +136,28 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
     scene.setLineColor(readLineColor(host));
     scene.refreshTexture();
   }, [ready, agent, avatar]);
+
+  // Draw the agent info strip on the worn-metal backplate. Registers a renderer
+  // so the scene can redraw it on each status-dot blink.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!ready || !scene) return;
+    scene.setInfoRenderer((dotOn) => {
+      drawInfoStrip(
+        scene.infoCanvas,
+        {
+          name: agent.name,
+          role: agent.role,
+          statusLabel: isOnline ? "Online" : "Offline",
+          isOnline,
+          orgName,
+          ip,
+          wallet: agent.wallet_address ?? null,
+        },
+        dotOn,
+      );
+    });
+  }, [ready, agent.name, agent.role, isOnline, orgName, ip, agent.wallet_address]);
 
   return (
     <div className={styles.card3dContainer}>

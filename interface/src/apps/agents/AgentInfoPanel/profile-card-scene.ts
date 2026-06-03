@@ -15,11 +15,19 @@ export interface ProfileCardSceneOptions {
 export interface ProfileCardScene {
   /** Offscreen canvas the LCD texture is drawn into by the caller. */
   readonly screenCanvas: HTMLCanvasElement;
+  /** Offscreen canvas the agent info strip is drawn into by the renderer. */
+  readonly infoCanvas: HTMLCanvasElement;
   setAccent(accent: string): void;
   /** Update the LCD scan-line color (independent of the accent). */
   setLineColor(color: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
+  /**
+   * Register the function that redraws the info strip into `infoCanvas`. It is
+   * called immediately and again on every blink toggle (with `dotOn` flipped)
+   * so the status dot can pulse without the caller driving the animation.
+   */
+  setInfoRenderer(render: (dotOn: boolean) => void): void;
   dispose(): void;
 }
 
@@ -72,6 +80,19 @@ const INFO_PLATE = {
   bevel: 0.02,
   chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
   z: -0.16, // front face sits just behind the card back (~ -0.09)
+};
+
+/**
+ * Text region on the exposed (below-the-card) part of the backplate where the
+ * agent info readout is drawn (a transparent canvas mapped onto a plane just in
+ * front of the plate). Inset from the plate edges; `canvasW` sets the texture
+ * resolution and the canvas height is derived from the region's aspect ratio.
+ */
+const INFO_TEXT = {
+  w: 1.62,
+  top: -1.3,
+  bottom: -2.22,
+  canvasW: 720,
 };
 
 /**
@@ -473,6 +494,25 @@ export function createProfileCardScene(
   screenTexture.colorSpace = THREE.SRGBColorSpace;
   screenTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
+  // Agent info strip: a transparent canvas mapped onto a plane over the exposed
+  // part of the backplate. Drawn by an externally-supplied renderer; the status
+  // dot blinks via `infoDotOn` toggling in the animation loop.
+  const infoCanvas = document.createElement("canvas");
+  infoCanvas.width = INFO_TEXT.canvasW;
+  infoCanvas.height = Math.round(
+    (INFO_TEXT.canvasW * (INFO_TEXT.top - INFO_TEXT.bottom)) / INFO_TEXT.w,
+  );
+  const infoTexture = new THREE.CanvasTexture(infoCanvas);
+  infoTexture.colorSpace = THREE.SRGBColorSpace;
+  infoTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const infoMaterial = new THREE.MeshBasicMaterial({
+    map: infoTexture,
+    transparent: true,
+    depthWrite: false,
+  });
+  let infoRenderer: ((dotOn: boolean) => void) | null = null;
+  let infoDotOn = true;
+
   // Materials reused across rebuilds.
   const shellMaterial = new THREE.MeshStandardMaterial({
     color: 0x161a21,
@@ -623,6 +663,7 @@ export function createProfileCardScene(
   });
 
   let infoPlateMesh: THREE.Mesh | null = null;
+  let infoMesh: THREE.Mesh | null = null;
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
   let bezelMesh: THREE.Mesh | null = null;
@@ -726,6 +767,11 @@ export function createProfileCardScene(
       infoPlateMesh.geometry.dispose();
       infoPlateMesh = null;
     }
+    if (infoMesh) {
+      group.remove(infoMesh);
+      infoMesh.geometry.dispose();
+      infoMesh = null;
+    }
     if (shellMesh) {
       group.remove(shellMesh);
       shellMesh.geometry.dispose();
@@ -804,6 +850,17 @@ export function createProfileCardScene(
     infoPlateMesh = new THREE.Mesh(plateGeo, plateMaterial);
     infoPlateMesh.position.set(0, (INFO_PLATE.top + INFO_PLATE.bottom) / 2, INFO_PLATE.z);
     group.add(infoPlateMesh);
+
+    // Agent info readout plane, just in front of the plate's front face (the
+    // plate front sits at ~ INFO_PLATE.z + depth/2 + bevel).
+    const infoH = INFO_TEXT.top - INFO_TEXT.bottom;
+    const infoFrontZ = INFO_PLATE.z + INFO_PLATE.depth / 2 + INFO_PLATE.bevel + 0.015;
+    infoMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(INFO_TEXT.w, infoH),
+      infoMaterial,
+    );
+    infoMesh.position.set(0, (INFO_TEXT.top + INFO_TEXT.bottom) / 2, infoFrontZ);
+    group.add(infoMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole.
     const outer = auraOuterShape(shell.w, shell.h);
@@ -1059,6 +1116,18 @@ export function createProfileCardScene(
       lineHaloMaterial.opacity = lineHaloOpacity * factor;
     }
 
+    // Blink the info-strip status dot: mostly on with a brief off beat (~1.85s
+    // cycle). Redraw only when the on/off state flips. Reduced motion keeps it
+    // steadily on.
+    if (idleAmp && infoRenderer) {
+      const on = Math.sin(t * 3.4) > -0.35;
+      if (on !== infoDotOn) {
+        infoDotOn = on;
+        infoRenderer(infoDotOn);
+        infoTexture.needsUpdate = true;
+      }
+    }
+
     renderFrame();
   }
 
@@ -1116,6 +1185,13 @@ export function createProfileCardScene(
       screenTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
+    infoCanvas,
+    setInfoRenderer(render: (dotOn: boolean) => void): void {
+      infoRenderer = render;
+      render(infoDotOn);
+      infoTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    },
     dispose(): void {
       stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -1131,6 +1207,7 @@ export function createProfileCardScene(
       blueMetalMaterial.dispose();
       matteMaterial.dispose();
       plateMaterial.dispose();
+      infoMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
@@ -1142,6 +1219,7 @@ export function createProfileCardScene(
       barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();
+      infoTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();
       composer.dispose();
