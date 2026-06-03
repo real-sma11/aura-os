@@ -11,6 +11,7 @@ import {
   isSuperAgent,
 } from "../../../../shared/types/permissions";
 import { Toggle } from "@cypher-asi/zui";
+import { SidekickList } from "../../../../components/SidekickList";
 import styles from "../AgentInfoPanel.module.css";
 import { shortenId } from "./permissions-utils";
 import {
@@ -159,30 +160,32 @@ export function PermissionsTab({ agent, isOwnAgent }: PermissionsTabProps) {
         <div className={styles.permsSectionHeader}>
           <span className={styles.permsSectionTitle}>Capabilities</span>
         </div>
-        {GLOBAL_CAPABILITY_TYPES.map((type) => {
-          const meta = CAPABILITY_LABELS[type];
-          const Icon = meta.Icon;
-          const checked = globalEnabled.has(type);
-          return (
-            <div key={type} className={styles.permsCapabilityRow}>
-              <Icon size={14} className={styles.permsCapabilityIcon} />
-              <div className={styles.permsCapabilityText}>
-                <span className={styles.permsCapabilityLabel}>{meta.label}</span>
-                <span className={styles.permsCapabilityDescription}>
-                  {meta.description}
-                </span>
-              </div>
-              <Toggle
-                size="sm"
-                checked={checked}
-                disabled={!canEdit}
-                onChange={() => toggleGlobalCapability(type)}
-                aria-label={meta.label}
-                className={styles.permsCapabilityToggle}
-              />
-            </div>
-          );
-        })}
+        <SidekickList
+          sections={[
+            {
+              id: "capabilities",
+              rows: GLOBAL_CAPABILITY_TYPES.map((type) => {
+                const meta = CAPABILITY_LABELS[type];
+                const Icon = meta.Icon;
+                return {
+                  id: type,
+                  icon: <Icon size={14} />,
+                  label: meta.label,
+                  detail: meta.description,
+                  trailingAction: (
+                    <Toggle
+                      size="sm"
+                      checked={globalEnabled.has(type)}
+                      disabled={!canEdit}
+                      onChange={() => toggleGlobalCapability(type)}
+                      aria-label={meta.label}
+                    />
+                  ),
+                };
+              }),
+            },
+          ]}
+        />
       </div>
 
       <ActiveHarnessToolsSection

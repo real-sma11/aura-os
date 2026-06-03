@@ -6,6 +6,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { AgentOrchestrationDashboard } from "../components/AgentOrchestrationDashboard";
 import { AgentEditorModal } from "../components/AgentEditorModal";
 import { PreviewOverlay } from "../../../components/PreviewOverlay";
+import { SidekickList } from "../../../components/SidekickList";
 import { api } from "../../../api/client";
 import { getApiErrorMessage } from "../../../shared/utils/api-errors";
 import { useSelectedAgent, useAgentStore } from "../stores";
@@ -115,45 +116,51 @@ function ProjectsTab({
 
   return (
     <div className={styles.section}>
-      <Text size="xs" variant="muted" weight="medium">Added to Projects</Text>
       {projectBindingsError && (
         <Text size="xs" className={styles.deleteError}>{projectBindingsError}</Text>
       )}
-      <div className={styles.bindingsList}>
-        {projectBindings.map((b) => {
-          const hint = bindingHints[b.project_agent_id];
-          return (
-            <div key={b.project_agent_id} className={styles.bindingRow}>
-              <FolderOpen size={12} className={styles.metaIcon} />
-              <Text size="xs" className={styles.bindingName}>
-                {b.project_name}
-                {hint === "another-org" && (
-                  <span className={styles.bindingHint}> (in another org)</span>
-                )}
-                {hint === "archived" && (
-                  <span className={styles.bindingHint}> (archived)</span>
-                )}
-              </Text>
-              {isOwnAgent && (
-                <button
-                  type="button"
-                  className={styles.removeBinding}
-                  title="Remove from project"
-                  onClick={async () => {
-                    try {
-                      await onRemoveBinding(b);
-                    } catch {
-                      // Error state is handled by the parent so the panel can stay consistent.
-                    }
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <SidekickList
+        sections={[
+          {
+            id: "bindings",
+            label: "Added to Projects",
+            rows: projectBindings.map((b) => {
+              const hint = bindingHints[b.project_agent_id];
+              return {
+                id: b.project_agent_id,
+                icon: <FolderOpen size={13} />,
+                label: (
+                  <>
+                    {b.project_name}
+                    {hint === "another-org" && (
+                      <span className={styles.bindingHint}> (in another org)</span>
+                    )}
+                    {hint === "archived" && (
+                      <span className={styles.bindingHint}> (archived)</span>
+                    )}
+                  </>
+                ),
+                trailingAction: isOwnAgent ? (
+                  <button
+                    type="button"
+                    className={styles.removeBinding}
+                    title="Remove from project"
+                    onClick={async () => {
+                      try {
+                        await onRemoveBinding(b);
+                      } catch {
+                        // Error state is handled by the parent so the panel can stay consistent.
+                      }
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                ) : undefined,
+              };
+            }),
+          },
+        ]}
+      />
     </div>
   );
 }
