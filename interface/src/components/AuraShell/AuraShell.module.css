@@ -75,6 +75,17 @@
   transition: border-color var(--transition-fast, 120ms) ease;
 }
 
+/*
+ * Standard mode rounds `.body` to `--shell-chrome-radius` (20px) and clips
+ * it with `overflow: hidden`. Match the sidebar's outer (left) corners to
+ * that radius so its border follows the rounded screen edge instead of
+ * being sliced off where the smaller 6px corner falls outside the clip.
+ */
+.shell[data-ui-mode="standard"] .sidebar {
+  border-top-left-radius: var(--shell-chrome-radius);
+  border-bottom-left-radius: var(--shell-chrome-radius);
+}
+
 .sidebar:has([data-lane-resize-handle]:hover),
 .sidebar:has([data-lane][data-resizing]) {
   border-right-color: var(--color-accent);

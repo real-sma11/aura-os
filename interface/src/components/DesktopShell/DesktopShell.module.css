@@ -176,8 +176,11 @@
 .sidekickLane {
   background: var(--color-sidekick-bg);
   border: 1px solid var(--color-border-main-panel);
-  border-top-right-radius: 6px;
-  border-bottom-right-radius: 6px;
+  /* Match the standard-mode `.body` clip radius (--shell-chrome-radius, 20px)
+     so the sidekick's outer (right) corners follow the rounded screen edge
+     rather than being clipped where the old 6px corner fell outside it. */
+  border-top-right-radius: var(--shell-chrome-radius);
+  border-bottom-right-radius: var(--shell-chrome-radius);
   transition: border-color var(--transition-fast, 120ms) ease;
 }
 
