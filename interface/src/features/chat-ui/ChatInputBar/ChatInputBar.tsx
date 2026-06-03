@@ -986,7 +986,7 @@ export const DesktopChatInputBar = memo(
           disabled={!canAddMore || sendDisabled}
           aria-label="Attach file"
         >
-          <Plus size={20} strokeWidth={1} />
+          <Plus size={23} strokeWidth={1} />
         </button>
       );
 
