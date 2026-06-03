@@ -141,7 +141,9 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
   // so the scene can redraw it on each status-dot blink.
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!ready || !scene) return;
+    const host = hostRef.current;
+    if (!ready || !scene || !host) return;
+    const accent = readAccent(host);
     scene.setInfoRenderer((dotOn) => {
       drawInfoStrip(
         scene.infoCanvas,
@@ -153,6 +155,7 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
           orgName,
           ip,
           wallet: agent.wallet_address ?? null,
+          accent,
         },
         dotOn,
       );

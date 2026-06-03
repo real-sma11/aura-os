@@ -52,7 +52,7 @@
   /* Taller than the card alone so the worn-metal info backplate that pokes out
      below the card stays visible; the card itself keeps the same on-screen size
      (framed to its width in the WebGL scene). */
-  aspect-ratio: 4 / 6.8;
+  aspect-ratio: 4 / 7.5;
   /* The WebGL canvas is transparent; the dark card always renders in its dark
      variant and only this themed backdrop changes between light/dark, blending
      with the surrounding sidekick panel. */

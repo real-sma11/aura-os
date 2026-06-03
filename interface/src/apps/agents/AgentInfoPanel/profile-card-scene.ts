@@ -75,7 +75,7 @@ const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 const INFO_PLATE = {
   w: PORTRAIT_SHELL.w * 0.9, // 1.8
   top: -0.9, // tucked ~0.35 behind the card's lower area
-  bottom: -2.3, // exposed strip extends ~1.05 below the card's bottom edge
+  bottom: -2.62, // exposed strip extends well below the card for a readable readout
   depth: 0.1,
   bevel: 0.02,
   chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
@@ -89,10 +89,10 @@ const INFO_PLATE = {
  * resolution and the canvas height is derived from the region's aspect ratio.
  */
 const INFO_TEXT = {
-  w: 1.62,
+  w: 1.7,
   top: -1.3,
-  bottom: -2.22,
-  canvasW: 720,
+  bottom: -2.54,
+  canvasW: 760,
 };
 
 /**

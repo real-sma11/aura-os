@@ -195,11 +195,13 @@ export interface DrawInfoStripOptions {
   role: string;
   /** Human-readable status label, e.g. "Online". */
   statusLabel: string;
-  /** Drives the status dot color (green vs red). */
+  /** Drives the status dot color (accent when online, red otherwise). */
   isOnline: boolean;
   orgName: string | null;
   ip: string | null;
   wallet: string | null;
+  /** Theme accent (CSS color) used for the online status dot + glow. */
+  accent: string;
 }
 
 const STRIP_SANS = '"Inter", "Helvetica Neue", Arial, sans-serif';
@@ -237,7 +239,7 @@ function engrave(
   ctx.fillText(text, x, y);
 }
 
-/** Blinking status indicator: glowing green when online, steady red otherwise. */
+/** Blinking status indicator: glowing accent when online, steady red otherwise. */
 function drawStatusDot(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -245,18 +247,26 @@ function drawStatusDot(
   r: number,
   isOnline: boolean,
   dotOn: boolean,
+  accent: [number, number, number],
 ): void {
+  const [ar, ag, ab] = accent;
   ctx.save();
   if (isOnline && dotOn) {
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6);
-    glow.addColorStop(0, "rgba(63,221,90,0.55)");
-    glow.addColorStop(1, "rgba(63,221,90,0)");
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.8);
+    glow.addColorStop(0, `rgba(${ar},${ag},${ab},0.6)`);
+    glow.addColorStop(1, `rgba(${ar},${ag},${ab},0)`);
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(x, y, r * 2.6, 0, Math.PI * 2);
+    ctx.arc(x, y, r * 2.8, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.fillStyle = isOnline ? (dotOn ? "#3fdd5a" : "#2c7a3d") : "#d9534f";
+  if (isOnline) {
+    ctx.fillStyle = dotOn
+      ? `rgb(${ar},${ag},${ab})`
+      : `rgba(${ar},${ag},${ab},0.42)`;
+  } else {
+    ctx.fillStyle = "#d9534f";
+  }
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
@@ -284,40 +294,41 @@ export function drawInfoStrip(
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const padL = 46;
-  const padR = 46;
+  const accent = parseAccent(opts.accent);
+  const padL = 48;
+  const padR = 48;
   const valueX = w - padR;
 
   // Name (stamped) on the left of the header row.
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = `700 46px ${STRIP_SANS}`;
-  engrave(ctx, opts.name || "Unnamed", padL, 60, "#15171b");
+  ctx.font = `700 70px ${STRIP_SANS}`;
+  engrave(ctx, opts.name || "Unnamed", padL, 84, "#15171b");
 
   // Role pill, right-aligned on the header row.
   const role = (opts.role || "").trim();
   if (role) {
-    ctx.font = `600 20px ${STRIP_SANS}`;
+    ctx.font = `600 28px ${STRIP_SANS}`;
     const label = role.toUpperCase();
     const tw = ctx.measureText(label).width;
-    const pillPad = 16;
-    const pillH = 34;
+    const pillPad = 22;
+    const pillH = 48;
     const pillW = tw + pillPad * 2;
     const pillX = valueX - pillW;
-    const pillY = 34;
-    roundRectPath(ctx, pillX, pillY, pillW, pillH, 8);
+    const pillY = 40;
+    roundRectPath(ctx, pillX, pillY, pillW, pillH, 11);
     ctx.fillStyle = "rgba(16,18,22,0.55)";
     ctx.fill();
     ctx.lineWidth = 1;
     ctx.strokeStyle = "rgba(255,255,255,0.1)";
     ctx.stroke();
     ctx.fillStyle = "#cdd1d7";
-    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 7);
+    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 10);
   }
 
   // Divider with a light bevel below it.
-  const divY = 86;
-  ctx.lineWidth = 1;
+  const divY = 120;
+  ctx.lineWidth = 1.5;
   ctx.strokeStyle = "rgba(0,0,0,0.28)";
   ctx.beginPath();
   ctx.moveTo(padL, divY);
@@ -325,8 +336,8 @@ export function drawInfoStrip(
   ctx.stroke();
   ctx.strokeStyle = "rgba(255,255,255,0.07)";
   ctx.beginPath();
-  ctx.moveTo(padL, divY + 1.5);
-  ctx.lineTo(w - padR, divY + 1.5);
+  ctx.moveTo(padL, divY + 2);
+  ctx.lineTo(w - padR, divY + 2);
   ctx.stroke();
 
   // Spec rows.
@@ -337,21 +348,21 @@ export function drawInfoStrip(
     { label: "Wallet", value: opts.wallet ? truncateWallet(opts.wallet) : "—", mono: true },
   ];
 
-  const firstRowY = 124;
-  const rowGap = (h - firstRowY - 12) / rows.length;
+  const firstRowY = 158;
+  const rowGap = (h - firstRowY - 18) / rows.length;
   rows.forEach((row, i) => {
     const y = firstRowY + rowGap * i + rowGap / 2;
 
     ctx.textAlign = "left";
-    ctx.font = `600 19px ${STRIP_SANS}`;
+    ctx.font = `600 27px ${STRIP_SANS}`;
     engrave(ctx, row.label.toUpperCase(), padL, y, "#8b9098");
 
     ctx.textAlign = "right";
-    ctx.font = row.mono ? `500 26px ${STRIP_MONO}` : `600 26px ${STRIP_SANS}`;
+    ctx.font = row.mono ? `500 33px ${STRIP_MONO}` : `600 38px ${STRIP_SANS}`;
     if (row.status) {
       const tw = ctx.measureText(row.value).width;
       engrave(ctx, row.value, valueX, y, "#1b1d22");
-      drawStatusDot(ctx, valueX - tw - 18, y - 8, 7, opts.isOnline, dotOn);
+      drawStatusDot(ctx, valueX - tw - 26, y - 12, 10, opts.isOnline, dotOn, accent);
     } else {
       engrave(ctx, row.value, valueX, y, "#1b1d22");
     }
