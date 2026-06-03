@@ -83,7 +83,7 @@
    * top bar and bottom taskbar sit on (the bottom-taskbar section is
    * transparent so the gradient runs continuously behind it).
    */
-  --desktop-shell-backdrop: linear-gradient(to bottom, #1b1b1d 0%, #0c0c0e 100%);
+  --desktop-shell-backdrop: linear-gradient(to bottom right, #0c0c0e 0%, #1b1b1d 100%);
 
   /*
    * Public-mode pill tokens. Shared by the top Log In / Sign Up
