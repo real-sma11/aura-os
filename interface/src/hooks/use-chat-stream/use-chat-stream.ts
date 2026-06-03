@@ -570,7 +570,9 @@ export function useChatStream({
             kind: "3d",
           });
           await generate3dStream(
-            { kind: "url", imageUrl: _sourceImageUrl },
+            _sourceImageUrl.startsWith("data:")
+              ? { kind: "data", imageData: _sourceImageUrl }
+              : { kind: "url", imageUrl: _sourceImageUrl },
             trimmed || null,
             {
               ...handler,
