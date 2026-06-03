@@ -92,7 +92,7 @@ const INFO_TEXT = {
   w: 1.7,
   top: -1.3,
   bottom: -2.54,
-  canvasW: 760,
+  canvasW: 1200,
 };
 
 /**
@@ -504,7 +504,11 @@ export function createProfileCardScene(
   );
   const infoTexture = new THREE.CanvasTexture(infoCanvas);
   infoTexture.colorSpace = THREE.SRGBColorSpace;
-  infoTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  infoTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  // Keep the readout crisp: skip mipmaps (which soften the high-res text when
+  // minified) and sample linearly.
+  infoTexture.generateMipmaps = false;
+  infoTexture.minFilter = THREE.LinearFilter;
   const infoMaterial = new THREE.MeshBasicMaterial({
     map: infoTexture,
     transparent: true,

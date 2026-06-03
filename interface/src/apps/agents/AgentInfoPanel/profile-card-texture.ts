@@ -234,7 +234,7 @@ function engrave(
   color: string,
 ): void {
   ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillText(text, x, y + 2);
+  ctx.fillText(text, x, y + 3);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
 }
@@ -295,40 +295,40 @@ export function drawInfoStrip(
   ctx.clearRect(0, 0, w, h);
 
   const accent = parseAccent(opts.accent);
-  const padL = 48;
-  const padR = 48;
+  const padL = 84;
+  const padR = 84;
   const valueX = w - padR;
 
   // Name (stamped) on the left of the header row.
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = `700 70px ${STRIP_SANS}`;
-  engrave(ctx, opts.name || "Unnamed", padL, 84, "#f4f6f9");
+  ctx.font = `700 128px ${STRIP_SANS}`;
+  engrave(ctx, opts.name || "Unnamed", padL, 150, "#f4f6f9");
 
   // Role pill, right-aligned on the header row.
   const role = (opts.role || "").trim();
   if (role) {
-    ctx.font = `600 28px ${STRIP_SANS}`;
+    ctx.font = `600 50px ${STRIP_SANS}`;
     const label = role.toUpperCase();
     const tw = ctx.measureText(label).width;
-    const pillPad = 22;
-    const pillH = 48;
+    const pillPad = 40;
+    const pillH = 86;
     const pillW = tw + pillPad * 2;
     const pillX = valueX - pillW;
-    const pillY = 40;
-    roundRectPath(ctx, pillX, pillY, pillW, pillH, 11);
+    const pillY = 70;
+    roundRectPath(ctx, pillX, pillY, pillW, pillH, 20);
     ctx.fillStyle = "rgba(8,10,13,0.7)";
     ctx.fill();
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.stroke();
     ctx.fillStyle = "#eef1f5";
-    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 10);
+    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 18);
   }
 
   // Divider: a dark groove with a light bevel below it.
-  const divY = 120;
-  ctx.lineWidth = 1.5;
+  const divY = 214;
+  ctx.lineWidth = 2.5;
   ctx.strokeStyle = "rgba(0,0,0,0.5)";
   ctx.beginPath();
   ctx.moveTo(padL, divY);
@@ -336,8 +336,8 @@ export function drawInfoStrip(
   ctx.stroke();
   ctx.strokeStyle = "rgba(255,255,255,0.16)";
   ctx.beginPath();
-  ctx.moveTo(padL, divY + 2);
-  ctx.lineTo(w - padR, divY + 2);
+  ctx.moveTo(padL, divY + 3);
+  ctx.lineTo(w - padR, divY + 3);
   ctx.stroke();
 
   // Spec rows.
@@ -348,21 +348,21 @@ export function drawInfoStrip(
     { label: "Wallet", value: opts.wallet ? truncateWallet(opts.wallet) : "—", mono: true },
   ];
 
-  const firstRowY = 158;
-  const rowGap = (h - firstRowY - 18) / rows.length;
+  const firstRowY = 282;
+  const rowGap = (h - firstRowY - 30) / rows.length;
   rows.forEach((row, i) => {
     const y = firstRowY + rowGap * i + rowGap / 2;
 
     ctx.textAlign = "left";
-    ctx.font = `600 27px ${STRIP_SANS}`;
+    ctx.font = `600 48px ${STRIP_SANS}`;
     engrave(ctx, row.label.toUpperCase(), padL, y, "#aab1ba");
 
     ctx.textAlign = "right";
-    ctx.font = row.mono ? `500 33px ${STRIP_MONO}` : `600 38px ${STRIP_SANS}`;
+    ctx.font = row.mono ? `500 58px ${STRIP_MONO}` : `600 68px ${STRIP_SANS}`;
     if (row.status) {
       const tw = ctx.measureText(row.value).width;
       engrave(ctx, row.value, valueX, y, "#f4f6f9");
-      drawStatusDot(ctx, valueX - tw - 26, y - 12, 10, opts.isOnline, dotOn, accent);
+      drawStatusDot(ctx, valueX - tw - 44, y - 20, 17, opts.isOnline, dotOn, accent);
     } else {
       engrave(ctx, row.value, valueX, y, "#f4f6f9");
     }
