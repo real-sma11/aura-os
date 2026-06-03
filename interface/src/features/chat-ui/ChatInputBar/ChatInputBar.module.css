@@ -881,9 +881,13 @@ button.attachRing::before {
    sits behind the glyph (z-index 1) and the static ring fallback. */
 .prismRing {
   position: absolute;
-  inset: -6px;
-  width: auto;
-  height: auto;
+  /* A <canvas> is a replaced element, so `width: auto` resolves to its
+     intrinsic 300x150 rather than stretching to the inset box — give it
+     explicit dimensions (button size + 6px each side for glow bleed). */
+  top: -6px;
+  left: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
   border-radius: 50%;
   pointer-events: none;
   z-index: 0;

@@ -9,11 +9,11 @@ import { useEffect, useRef, useState } from "react";
  * canvas is tiny (~45px) so the per-frame cost is trivial; the loop
  * pauses while the tab is hidden.
  *
- * Degrades gracefully: when `prefers-reduced-motion` is set or WebGL is
- * unavailable the component renders nothing, leaving the static CSS
- * conic-gradient ring (`button.attachRing::after`) visible as a fallback.
- * The caller flips `data-prism="on"` only once the canvas is mounted so
- * the fallback is hidden exactly when the live ring takes over.
+ * Degrades gracefully: when WebGL is unavailable the component leaves the
+ * static CSS conic-gradient ring (`button.attachRing::after`) visible as a
+ * fallback. The canvas reports `data-prism="on"` only once it is actually
+ * rendering, so the fallback is hidden exactly when the live ring takes
+ * over (see the `:has()` rule in ChatInputBar.module.css).
  */
 
 const VERT_SRC = `
@@ -78,11 +78,6 @@ export function PrismRing({ className }: { className?: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const prefersReducedMotion =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion) return;
 
     const gl = (canvas.getContext("webgl", {
       alpha: true,
@@ -177,8 +172,6 @@ export function PrismRing({ className }: { className?: string }) {
       gl.deleteProgram(program);
       gl.deleteShader(vert);
       gl.deleteShader(frag);
-      const lose = gl.getExtension("WEBGL_lose_context");
-      lose?.loseContext();
       setActive(false);
     };
   }, []);
