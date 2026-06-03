@@ -18,6 +18,7 @@ import {
   type PublicMessage,
   type PublicSession,
 } from "../../../stores/public-chat-store";
+import { usePublicGateShown, usePublicPageViewed } from "../use-public-shell-analytics";
 import { PublicChatBubble } from "../PublicChatBubble";
 import styles from "./MobilePublicChatView.module.css";
 
@@ -72,6 +73,8 @@ function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] 
 const COMPOSER_PLACEHOLDER = "What do you want to create?";
 
 export function MobilePublicChatView(): React.ReactElement {
+  usePublicPageViewed();
+  usePublicGateShown();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

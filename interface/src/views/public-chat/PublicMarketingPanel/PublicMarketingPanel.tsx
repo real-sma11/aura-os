@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { OverlayScrollbar } from "../../../components/OverlayScrollbar";
+import { usePublicPageViewed } from "../use-public-shell-analytics";
 import styles from "./PublicMarketingPanel.module.css";
 
 /*
@@ -91,6 +92,7 @@ const DEFAULT_MARKETING_BG = "#000";
  * change. See `MARKETING_NAV_FG_COLOR` constant below.
  */
 export function PublicMarketingPanel(): React.ReactElement {
+  usePublicPageViewed();
   const scrollRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
 

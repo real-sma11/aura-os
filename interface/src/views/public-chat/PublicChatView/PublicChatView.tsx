@@ -22,6 +22,7 @@ import {
   type PublicMessage,
   type PublicSession,
 } from "../../../stores/public-chat-store";
+import { usePublicGateShown, usePublicPageViewed } from "../use-public-shell-analytics";
 import { ComposePanel } from "../ComposePanel";
 import { CreateAgentButton } from "../CreateAgentButton";
 import { PersonaTickRail } from "../PersonaTickRail";
@@ -151,6 +152,8 @@ function toPublicChatHistory(turns: readonly PublicMessage[]): PublicChatTurn[] 
 }
 
 export function PublicChatView(): React.ReactElement {
+  usePublicPageViewed();
+  usePublicGateShown();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
