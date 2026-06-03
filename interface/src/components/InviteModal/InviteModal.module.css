@@ -99,7 +99,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-3) var(--space-4);
-  border-radius: 16px;
+  border-radius: 9999px;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
