@@ -28,6 +28,18 @@ export interface ProfileCardScene {
    * so the status dot can pulse without the caller driving the animation.
    */
   setInfoRenderer(render: (dotOn: boolean) => void): void;
+  /** Offscreen canvas the navigation links are drawn into by the renderer. */
+  readonly linksCanvas: HTMLCanvasElement;
+  /**
+   * Configure the clickable navigation links. `count` is the number of rows
+   * (used to hit-test clicks), `onActivate` fires with the clicked row index,
+   * and `render` redraws the links with the given hovered row index (-1 = none).
+   */
+  setLinks(
+    count: number,
+    onActivate: (index: number) => void,
+    render: (hovered: number) => void,
+  ): void;
   dispose(): void;
 }
 
@@ -75,7 +87,7 @@ const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 const INFO_PLATE = {
   w: PORTRAIT_SHELL.w * 0.9, // 1.8
   top: -0.9, // tucked ~0.35 behind the card's lower area
-  bottom: -2.62, // exposed strip extends well below the card for a readable readout
+  bottom: -3.95, // long strip: readout up top, navigation links below
   depth: 0.1,
   bevel: 0.02,
   chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
@@ -92,6 +104,18 @@ const INFO_TEXT = {
   w: 1.7,
   top: -1.3,
   bottom: -2.54,
+  canvasW: 1200,
+};
+
+/**
+ * Navigation links region on the lower part of the backplate (below the info
+ * readout). Rows are drawn by an external renderer; clicks are hit-tested via
+ * raycasting against this plane and mapped to a row index.
+ */
+const INFO_LINKS = {
+  w: 1.7,
+  top: -2.64,
+  bottom: -3.82,
   canvasW: 1200,
 };
 
@@ -517,6 +541,33 @@ export function createProfileCardScene(
   let infoRenderer: ((dotOn: boolean) => void) | null = null;
   let infoDotOn = true;
 
+  // Navigation links: a transparent canvas mapped onto a plane below the info
+  // readout, with raycast-based hover/click hit-testing.
+  const linksCanvas = document.createElement("canvas");
+  linksCanvas.width = INFO_LINKS.canvasW;
+  linksCanvas.height = Math.round(
+    (INFO_LINKS.canvasW * (INFO_LINKS.top - INFO_LINKS.bottom)) / INFO_LINKS.w,
+  );
+  const linksTexture = new THREE.CanvasTexture(linksCanvas);
+  linksTexture.colorSpace = THREE.SRGBColorSpace;
+  linksTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  linksTexture.generateMipmaps = false;
+  linksTexture.minFilter = THREE.LinearFilter;
+  const linksMaterial = new THREE.MeshBasicMaterial({
+    map: linksTexture,
+    transparent: true,
+    depthWrite: false,
+  });
+  const raycaster = new THREE.Raycaster();
+  const pointerNdc = new THREE.Vector2();
+  let linkCount = 0;
+  let onLinkActivate: ((index: number) => void) | null = null;
+  let linksRenderer: ((hovered: number) => void) | null = null;
+  let hoveredLink = -1;
+  let pointerDownX = 0;
+  let pointerDownY = 0;
+  let pointerDownLink = -1;
+
   // Materials reused across rebuilds.
   const shellMaterial = new THREE.MeshStandardMaterial({
     color: 0x161a21,
@@ -668,6 +719,7 @@ export function createProfileCardScene(
 
   let infoPlateMesh: THREE.Mesh | null = null;
   let infoMesh: THREE.Mesh | null = null;
+  let linksMesh: THREE.Mesh | null = null;
   let shellMesh: THREE.Mesh | null = null;
   let underlayerMesh: THREE.Mesh | null = null;
   let bezelMesh: THREE.Mesh | null = null;
@@ -776,6 +828,11 @@ export function createProfileCardScene(
       infoMesh.geometry.dispose();
       infoMesh = null;
     }
+    if (linksMesh) {
+      group.remove(linksMesh);
+      linksMesh.geometry.dispose();
+      linksMesh = null;
+    }
     if (shellMesh) {
       group.remove(shellMesh);
       shellMesh.geometry.dispose();
@@ -865,6 +922,15 @@ export function createProfileCardScene(
     );
     infoMesh.position.set(0, (INFO_TEXT.top + INFO_TEXT.bottom) / 2, infoFrontZ);
     group.add(infoMesh);
+
+    // Navigation links plane (clickable), below the info readout.
+    const linksH = INFO_LINKS.top - INFO_LINKS.bottom;
+    linksMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(INFO_LINKS.w, linksH),
+      linksMaterial,
+    );
+    linksMesh.position.set(0, (INFO_LINKS.top + INFO_LINKS.bottom) / 2, infoFrontZ);
+    group.add(linksMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole.
     const outer = auraOuterShape(shell.w, shell.h);
@@ -1073,6 +1139,30 @@ export function createProfileCardScene(
   let targetRotX = 0;
   let targetRotY = 0;
 
+  /** Raycast the pointer against the links plane; returns a row index or -1. */
+  const linkAt = (event: PointerEvent): number => {
+    if (!linksMesh || linkCount <= 0) return -1;
+    const rect = host.getBoundingClientRect();
+    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNdc, camera);
+    const hit = raycaster.intersectObject(linksMesh, false)[0];
+    if (!hit || !hit.uv) return -1;
+    const idx = Math.floor((1 - hit.uv.y) * linkCount);
+    return Math.min(linkCount - 1, Math.max(0, idx));
+  };
+
+  const updateHoveredLink = (next: number): void => {
+    if (next === hoveredLink) return;
+    hoveredLink = next;
+    host.style.cursor = next >= 0 ? "pointer" : "";
+    if (linksRenderer) {
+      linksRenderer(hoveredLink);
+      linksTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    }
+  };
+
   const onPointerMove = (event: PointerEvent): void => {
     const rect = host.getBoundingClientRect();
     const nx = (event.clientX - rect.left) / rect.width - 0.5;
@@ -1080,14 +1170,31 @@ export function createProfileCardScene(
     hovering = true;
     targetRotY = nx * 0.6 * tiltScale;
     targetRotX = -ny * 0.4 * tiltScale;
+    updateHoveredLink(linkAt(event));
     // Never let interaction be dead if the loop was paused.
     if (!running) start();
   };
   const onPointerLeave = (): void => {
     hovering = false;
+    updateHoveredLink(-1);
+  };
+  const onPointerDown = (event: PointerEvent): void => {
+    pointerDownX = event.clientX;
+    pointerDownY = event.clientY;
+    pointerDownLink = linkAt(event);
+  };
+  const onPointerUp = (event: PointerEvent): void => {
+    const moved = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
+    if (moved > 6) return;
+    const idx = linkAt(event);
+    if (idx >= 0 && idx === pointerDownLink && onLinkActivate) {
+      onLinkActivate(idx);
+    }
   };
   host.addEventListener("pointermove", onPointerMove);
   host.addEventListener("pointerleave", onPointerLeave);
+  host.addEventListener("pointerdown", onPointerDown);
+  host.addEventListener("pointerup", onPointerUp);
 
   const clock = new THREE.Clock();
   let raf = 0;
@@ -1199,12 +1306,27 @@ export function createProfileCardScene(
       infoTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
+    linksCanvas,
+    setLinks(
+      count: number,
+      onActivate: (index: number) => void,
+      render: (hovered: number) => void,
+    ): void {
+      linkCount = count;
+      onLinkActivate = onActivate;
+      linksRenderer = render;
+      render(hoveredLink);
+      linksTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    },
     dispose(): void {
       stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       resizeObserver.disconnect();
       host.removeEventListener("pointermove", onPointerMove);
       host.removeEventListener("pointerleave", onPointerLeave);
+      host.removeEventListener("pointerdown", onPointerDown);
+      host.removeEventListener("pointerup", onPointerUp);
       disposeBuilt();
       shellMaterial.dispose();
       screenMaterial.dispose();
@@ -1215,6 +1337,7 @@ export function createProfileCardScene(
       matteMaterial.dispose();
       plateMaterial.dispose();
       infoMaterial.dispose();
+      linksMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
@@ -1227,6 +1350,7 @@ export function createProfileCardScene(
       wordmarkTexture.dispose();
       screenTexture.dispose();
       infoTexture.dispose();
+      linksTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();
       composer.dispose();

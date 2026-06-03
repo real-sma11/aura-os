@@ -6,16 +6,25 @@ import { useProfileStatusStore } from "../../../stores/profile-status-store";
 import { useOrgStore } from "../../../stores/org-store";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
 import { useEnvironmentInfo } from "../../../hooks/use-environment-info";
+import { useAgentSidekickStore, type AgentSidekickTab } from "../stores/agent-sidekick-store";
 import {
   createProfileCardScene,
   type ProfileCardScene,
 } from "./profile-card-scene";
 import {
+  drawInfoLinks,
   drawInfoStrip,
   drawProfileCardTexture,
   loadCardAvatar,
 } from "./profile-card-texture";
 import styles from "./AgentInfoPanel.module.css";
+
+/** A clickable navigation link drawn on the backplate. */
+export interface ProfileSectionLink {
+  id: AgentSidekickTab;
+  label: string;
+  count: number;
+}
 
 /** Normalized statuses that should not read as "online". */
 const OFFLINE_STATUSES = new Set([
@@ -48,9 +57,10 @@ function prefersReducedMotion(): boolean {
 export interface ProfileCard3DProps {
   agent: Agent;
   isOwnAgent: boolean;
+  sections?: ProfileSectionLink[];
 }
 
-export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
+export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3DProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<ProfileCardScene | null>(null);
   const [ready, setReady] = useState(false);
@@ -161,6 +171,29 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
       );
     });
   }, [ready, agent.name, agent.role, isOnline, orgName, ip, agent.wallet_address]);
+
+  // Navigation links on the lower backplate: draw rows + wire clicks to tabs.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const host = hostRef.current;
+    if (!ready || !scene || !host) return;
+    const accent = readAccent(host);
+    scene.setLinks(
+      sections.length,
+      (index) => {
+        const section = sections[index];
+        if (section) useAgentSidekickStore.getState().setActiveTab(section.id);
+      },
+      (hovered) => {
+        drawInfoLinks(
+          scene.linksCanvas,
+          sections.map((s) => ({ label: s.label, count: s.count })),
+          accent,
+          hovered,
+        );
+      },
+    );
+  }, [ready, sections]);
 
   return (
     <div className={styles.card3dContainer}>

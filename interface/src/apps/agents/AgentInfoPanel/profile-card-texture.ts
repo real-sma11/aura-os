@@ -345,6 +345,72 @@ export function drawInfoStrip(
   ctx.textAlign = "left";
 }
 
+export interface InfoLink {
+  label: string;
+  count: number;
+}
+
+/**
+ * Render the navigation links onto the lower part of the backplate: one row per
+ * link with the label on the left and its count on the right, a subtle groove
+ * between rows, and an accent-tinted highlight on the hovered row.
+ */
+export function drawInfoLinks(
+  canvas: HTMLCanvasElement,
+  links: InfoLink[],
+  accentStr: string,
+  hovered: number,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (links.length === 0) return;
+
+  const [ar, ag, ab] = parseAccent(accentStr);
+  const padL = 84;
+  const padR = 84;
+  const valueX = w - padR;
+  const rowH = h / links.length;
+
+  ctx.textBaseline = "middle";
+  links.forEach((link, i) => {
+    const top = i * rowH;
+    const cy = top + rowH / 2;
+
+    if (i === hovered) {
+      ctx.fillStyle = `rgba(${ar},${ag},${ab},0.12)`;
+      ctx.fillRect(0, top, w, rowH);
+    }
+
+    if (i < links.length - 1) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.beginPath();
+      ctx.moveTo(padL, top + rowH);
+      ctx.lineTo(w - padR, top + rowH);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.beginPath();
+      ctx.moveTo(padL, top + rowH + 2);
+      ctx.lineTo(w - padR, top + rowH + 2);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = "left";
+    ctx.font = `600 64px ${STRIP_SANS}`;
+    engrave(ctx, link.label, padL, cy, i === hovered ? "#ffffff" : "#dfe3e8");
+
+    ctx.textAlign = "right";
+    ctx.font = `600 58px ${STRIP_SANS}`;
+    engrave(ctx, String(link.count), valueX, cy, i === hovered ? "#eef1f5" : "#9aa0a8");
+  });
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+}
+
 /**
  * Load an image and resolve it only when it is safe to upload as a WebGL
  * texture (i.e. cross-origin clean). Resolves null on failure or taint.

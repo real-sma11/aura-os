@@ -18,7 +18,7 @@ import { FollowEditButton } from "../../../components/FollowEditButton";
 import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
 import { useCardTilt } from "./use-card-tilt";
-import { ProfileCard3D } from "./ProfileCard3D";
+import { ProfileCard3D, type ProfileSectionLink } from "./ProfileCard3D";
 import { isWebGLAvailable } from "./profile-card-scene";
 import {
   formatAdapterLabel,
@@ -310,6 +310,7 @@ function ProfileMetaGrid({ agent }: { agent: Agent }) {
 export function ProfileTab(props: ProfileTabProps) {
   const { agent } = props;
   const [installations, setInstallations] = useState<HarnessSkillInstallation[]>([]);
+  const [connectorCount, setConnectorCount] = useState(0);
   const webglOk = useMemo(() => isWebGLAvailable(), []);
 
   useEffect(() => {
@@ -329,10 +330,58 @@ export function ProfileTab(props: ProfileTabProps) {
     return () => { cancelled = true; };
   }, [agent.agent_id]);
 
+  // Connectors count (connected channels) - only meaningful for remote agents.
+  // Non-remote agents are treated as 0 in the memo below.
+  useEffect(() => {
+    if (agent.machine_type !== "remote") return;
+    let cancelled = false;
+    api.channels
+      .listChannels(agent.agent_id)
+      .then((res) => {
+        if (!cancelled) {
+          setConnectorCount(res.channels.filter((c) => c.status === "connected").length);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setConnectorCount(0);
+      });
+    return () => { cancelled = true; };
+  }, [agent.agent_id, agent.machine_type]);
+
+  const sections = useMemo<ProfileSectionLink[]>(
+    () => [
+      {
+        id: "profile",
+        label: "Soul",
+        count:
+          (agent.personality?.trim() ? 1 : 0) + (agent.system_prompt?.trim() ? 1 : 0),
+      },
+      { id: "skills", label: "Skills", count: installations.length },
+      {
+        id: "messaging",
+        label: "Connectors",
+        count: agent.machine_type === "remote" ? connectorCount : 0,
+      },
+      {
+        id: "permissions",
+        label: "Permissions",
+        count: agent.permissions?.capabilities?.length ?? 0,
+      },
+    ],
+    [
+      agent.personality,
+      agent.system_prompt,
+      agent.permissions,
+      agent.machine_type,
+      installations.length,
+      connectorCount,
+    ],
+  );
+
   return (
     <>
       {webglOk ? (
-        <ProfileCard3D agent={agent} isOwnAgent={props.isOwnAgent} />
+        <ProfileCard3D agent={agent} isOwnAgent={props.isOwnAgent} sections={sections} />
       ) : (
         <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
       )}
