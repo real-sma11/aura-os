@@ -12,8 +12,10 @@ import {
   type ProfileCardScene,
 } from "./profile-card-scene";
 import {
+  drawChannelStrip,
   drawInfoLinks,
   drawInfoStrip,
+  drawPersonalityScreen,
   drawProfileCardTexture,
   loadCardAvatar,
 } from "./profile-card-texture";
@@ -147,6 +149,20 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
     scene.refreshTexture();
   }, [ready, agent, avatar]);
 
+  // Redraw the BACK LCD (revealed on flip) with the agent's persona text.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const host = hostRef.current;
+    if (!ready || !scene || !host) return;
+    drawPersonalityScreen(scene.backScreenCanvas, {
+      personality: agent.personality,
+      systemPrompt: agent.system_prompt,
+      role: agent.role,
+      accent: readAccent(host),
+    });
+    scene.refreshBackTexture();
+  }, [ready, agent.personality, agent.system_prompt, agent.role]);
+
   // Draw the agent info strip on the worn-metal backplate. Registers a renderer
   // so the scene can redraw it on each status-dot blink.
   useEffect(() => {
@@ -171,6 +187,14 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
       );
     });
   }, [ready, agent.name, agent.role, isOnline, orgName, ip, agent.wallet_address]);
+
+  // Messaging-channel logos engraved into the recessed pill between the Wallet
+  // readout and the Soul link. Static icon set, so drawn once when ready.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!ready || !scene) return;
+    scene.setChannelsRenderer(() => drawChannelStrip(scene.channelsCanvas));
+  }, [ready]);
 
   // Navigation links on the lower backplate: draw rows + wire clicks to tabs.
   useEffect(() => {

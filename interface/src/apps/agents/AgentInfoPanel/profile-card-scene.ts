@@ -15,6 +15,11 @@ export interface ProfileCardSceneOptions {
 export interface ProfileCardScene {
   /** Offscreen canvas the LCD texture is drawn into by the caller. */
   readonly screenCanvas: HTMLCanvasElement;
+  /**
+   * Offscreen canvas for the LCD on the BACK of the card (revealed when the
+   * card is flipped). The caller draws the agent's persona text into it.
+   */
+  readonly backScreenCanvas: HTMLCanvasElement;
   /** Offscreen canvas the agent info strip is drawn into by the renderer. */
   readonly infoCanvas: HTMLCanvasElement;
   setAccent(accent: string): void;
@@ -22,6 +27,8 @@ export interface ProfileCardScene {
   setLineColor(color: string): void;
   /** Mark the LCD texture dirty after redrawing into `screenCanvas`. */
   refreshTexture(): void;
+  /** Mark the back LCD texture dirty after redrawing into `backScreenCanvas`. */
+  refreshBackTexture(): void;
   /**
    * Register the function that redraws the info strip into `infoCanvas`. It is
    * called immediately and again on every blink toggle (with `dotOn` flipped)
@@ -40,6 +47,13 @@ export interface ProfileCardScene {
     onActivate: (index: number) => void,
     render: (hovered: number) => void,
   ): void;
+  /** Offscreen canvas the messaging-channel logos are drawn into. */
+  readonly channelsCanvas: HTMLCanvasElement;
+  /**
+   * Register the function that draws the brand logos into `channelsCanvas`.
+   * Called immediately; the icon set is static so no animation is driven.
+   */
+  setChannelsRenderer(render: () => void): void;
   dispose(): void;
 }
 
@@ -108,13 +122,27 @@ const INFO_TEXT = {
 };
 
 /**
- * Navigation links region on the lower part of the backplate (below the info
- * readout). Rows are drawn by an external renderer; clicks are hit-tested via
- * raycasting against this plane and mapped to a row index.
+ * Messaging-channel pill region between the info readout (which ends with the
+ * Wallet row) and the navigation links (which start with Soul). A shallow
+ * recessed pocket is cut into the backplate here and brand logos are engraved
+ * into it. Narrower than the readout so the rounded pill reads as an inset
+ * stamp centered in the strip.
+ */
+const INFO_CHANNELS = {
+  w: 1.2,
+  top: -2.6,
+  bottom: -2.94,
+  canvasW: 1024,
+};
+
+/**
+ * Navigation links region on the lower part of the backplate (below the
+ * channel pill). Rows are drawn by an external renderer; clicks are hit-tested
+ * via raycasting against this plane and mapped to a row index.
  */
 const INFO_LINKS = {
   w: 1.7,
-  top: -2.64,
+  top: -3.0,
   bottom: -3.82,
   canvasW: 1200,
 };
@@ -261,6 +289,28 @@ function plateShape(w: number, h: number, c: number): THREE.Shape {
   s.quadraticCurveTo(-hw, -hh, -hw, -hh + c); // bottom-left rounded corner
   s.lineTo(-hw, hh - c); // left edge up
   s.lineTo(-hw + c, hh); // top-left 45 chamfer (close)
+  return s;
+}
+
+/**
+ * Stadium / pill outline (rounded rectangle), centered on the origin. `r` is the
+ * corner radius; pass `h / 2` for a true pill with fully-rounded ends. Used for
+ * the recessed messaging-channel pocket and its decal plane.
+ */
+function pillShape(w: number, h: number, r: number): THREE.Shape {
+  const hw = w / 2;
+  const hh = h / 2;
+  const rad = Math.min(r, hh, hw);
+  const s = new THREE.Shape();
+  s.moveTo(-hw + rad, hh);
+  s.lineTo(hw - rad, hh);
+  s.absarc(hw - rad, hh - rad, rad, Math.PI / 2, 0, true);
+  s.lineTo(hw, -hh + rad);
+  s.absarc(hw - rad, -hh + rad, rad, 0, -Math.PI / 2, true);
+  s.lineTo(-hw + rad, -hh);
+  s.absarc(-hw + rad, -hh + rad, rad, -Math.PI / 2, -Math.PI, true);
+  s.lineTo(-hw, hh - rad);
+  s.absarc(-hw + rad, hh - rad, rad, Math.PI, Math.PI / 2, true);
   return s;
 }
 
@@ -512,11 +562,24 @@ export function createProfileCardScene(
   const group = new THREE.Group();
   scene.add(group);
 
+  // The card itself lives in a nested group so it can flip (rotate 180deg about
+  // Y) on click without taking the worn-metal info/links strip below it along
+  // for the ride (that stays in `group`, facing front).
+  const cardGroup = new THREE.Group();
+  group.add(cardGroup);
+
   // LCD offscreen canvas + texture.
   const screenCanvas = document.createElement("canvas");
   const screenTexture = new THREE.CanvasTexture(screenCanvas);
   screenTexture.colorSpace = THREE.SRGBColorSpace;
   screenTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+  // Back-of-card LCD: a second offscreen canvas + texture, drawn with the
+  // agent's persona text by the caller and revealed when the card flips.
+  const backScreenCanvas = document.createElement("canvas");
+  const backScreenTexture = new THREE.CanvasTexture(backScreenCanvas);
+  backScreenTexture.colorSpace = THREE.SRGBColorSpace;
+  backScreenTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
   // Agent info strip: a transparent canvas mapped onto a plane over the exposed
   // part of the backplate. Drawn by an externally-supplied renderer; the status
@@ -558,6 +621,24 @@ export function createProfileCardScene(
     transparent: true,
     depthWrite: false,
   });
+  // Messaging-channel logos: a transparent canvas mapped onto a plane inside
+  // the recessed pill pocket. Static icon set, so no per-frame redraw.
+  const channelsCanvas = document.createElement("canvas");
+  channelsCanvas.width = INFO_CHANNELS.canvasW;
+  channelsCanvas.height = Math.round(
+    (INFO_CHANNELS.canvasW * (INFO_CHANNELS.top - INFO_CHANNELS.bottom)) / INFO_CHANNELS.w,
+  );
+  const channelsTexture = new THREE.CanvasTexture(channelsCanvas);
+  channelsTexture.colorSpace = THREE.SRGBColorSpace;
+  channelsTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  channelsTexture.generateMipmaps = false;
+  channelsTexture.minFilter = THREE.LinearFilter;
+  const channelsMaterial = new THREE.MeshBasicMaterial({
+    map: channelsTexture,
+    transparent: true,
+    depthWrite: false,
+  });
+
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
   let linkCount = 0;
@@ -579,6 +660,17 @@ export function createProfileCardScene(
     color: 0x000000,
     emissive: 0xffffff,
     emissiveMap: screenTexture,
+    emissiveIntensity: 1.25,
+    roughness: 0.28,
+    metalness: 0,
+    clearcoat: 1,
+    clearcoatRoughness: 0.22,
+  });
+  // Identical LCD material for the back face, driven by its own (text) texture.
+  const backScreenMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x000000,
+    emissive: 0xffffff,
+    emissiveMap: backScreenTexture,
     emissiveIntensity: 1.25,
     roughness: 0.28,
     metalness: 0,
@@ -667,7 +759,6 @@ export function createProfileCardScene(
     depthWrite: false,
   });
   // AURA wordmark decal — the app's actual wordmark PNG, tinted cool white.
-  let wordmarkMesh: THREE.Mesh | null = null;
   let wordmarkWidth = 0;
   let wordmarkAspect = WORDMARK_ASPECT;
   const wordmarkTexture = new THREE.TextureLoader().load(WORDMARK_SRC, (tex) => {
@@ -675,12 +766,14 @@ export function createProfileCardScene(
     const img = tex.image as { width?: number; height?: number } | undefined;
     if (img?.width && img?.height) {
       wordmarkAspect = img.width / img.height;
-      if (wordmarkMesh && wordmarkWidth > 0) {
-        wordmarkMesh.geometry.dispose();
-        wordmarkMesh.geometry = new THREE.PlaneGeometry(
-          wordmarkWidth,
-          wordmarkWidth / wordmarkAspect,
-        );
+      if (wordmarkWidth > 0) {
+        for (const mesh of wordmarkMeshes) {
+          mesh.geometry.dispose();
+          mesh.geometry = new THREE.PlaneGeometry(
+            wordmarkWidth,
+            wordmarkWidth / wordmarkAspect,
+          );
+        }
       }
     }
     if (reducedMotion) renderFrame();
@@ -717,17 +810,19 @@ export function createProfileCardScene(
     blending: THREE.AdditiveBlending,
   });
 
+  // Meshes living directly in `group` (the worn-metal strip; do not flip).
   let infoPlateMesh: THREE.Mesh | null = null;
   let infoMesh: THREE.Mesh | null = null;
   let linksMesh: THREE.Mesh | null = null;
+  let channelsMesh: THREE.Mesh | null = null;
+  let channelsWallMesh: THREE.Mesh | null = null;
+  let channelsFloorMesh: THREE.Mesh | null = null;
+  // Card meshes (children of `cardGroup`), kept for raycast hit-testing the flip.
   let shellMesh: THREE.Mesh | null = null;
-  let underlayerMesh: THREE.Mesh | null = null;
-  let bezelMesh: THREE.Mesh | null = null;
-  let barcodeMesh: THREE.Mesh | null = null;
-  let screenMesh: THREE.Mesh | null = null;
-  let screenLinesMesh: THREE.LineSegments | null = null;
-  let screenLinesHaloMesh: THREE.LineSegments | null = null;
-  const detailMeshes: THREE.Mesh[] = [];
+  let frontScreenMesh: THREE.Mesh | null = null;
+  let backScreenMesh: THREE.Mesh | null = null;
+  // Wordmark planes (front + back) resized when the logo aspect resolves.
+  const wordmarkMeshes: THREE.Mesh[] = [];
 
   /**
    * Build the scan-line readout: each row spans the full screen width but is
@@ -738,6 +833,7 @@ export function createProfileCardScene(
    * looking uniform. A dimmer offset copy feeds bloom for the CRT/LCD glow.
    */
   function addScreenLines(
+    parent: THREE.Object3D,
     screenW: number,
     screenH: number,
     cx: number,
@@ -807,14 +903,15 @@ export function createProfileCardScene(
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-    screenLinesMesh = new THREE.LineSegments(geo, lineMaterial);
-    screenLinesMesh.position.set(cx, cy, z);
-    group.add(screenLinesMesh);
+    const lines = new THREE.LineSegments(geo, lineMaterial);
+    lines.position.set(cx, cy, z);
+    parent.add(lines);
 
     // Halo copy, nudged slightly forward, that the bloom pass spreads into glow.
-    screenLinesHaloMesh = new THREE.LineSegments(geo, lineHaloMaterial);
-    screenLinesHaloMesh.position.set(cx, cy, z + 0.004);
-    group.add(screenLinesHaloMesh);
+    // Shares geometry with `lines` (disposed once via the cardGroup subtree).
+    const halo = new THREE.LineSegments(geo, lineHaloMaterial);
+    halo.position.set(cx, cy, z + 0.004);
+    parent.add(halo);
   }
 
   function disposeBuilt(): void {
@@ -833,52 +930,144 @@ export function createProfileCardScene(
       linksMesh.geometry.dispose();
       linksMesh = null;
     }
-    if (shellMesh) {
-      group.remove(shellMesh);
-      shellMesh.geometry.dispose();
-      shellMesh = null;
+    if (channelsMesh) {
+      group.remove(channelsMesh);
+      channelsMesh.geometry.dispose();
+      channelsMesh = null;
     }
-    if (underlayerMesh) {
-      group.remove(underlayerMesh);
-      underlayerMesh.geometry.dispose();
-      underlayerMesh = null;
+    if (channelsWallMesh) {
+      group.remove(channelsWallMesh);
+      channelsWallMesh.geometry.dispose();
+      channelsWallMesh = null;
     }
-    if (bezelMesh) {
-      group.remove(bezelMesh);
-      bezelMesh.geometry.dispose();
-      bezelMesh = null;
+    if (channelsFloorMesh) {
+      group.remove(channelsFloorMesh);
+      channelsFloorMesh.geometry.dispose();
+      channelsFloorMesh = null;
     }
-    if (barcodeMesh) {
-      group.remove(barcodeMesh);
-      barcodeMesh.geometry.dispose();
-      barcodeMesh = null;
+    // Card meshes (frame, matte core, and the front/back face nodes) live under
+    // `cardGroup`. Remove every child and dispose its geometries, de-duplicated
+    // via a set since the scan-line halo shares geometry with its core line.
+    const geos = new Set<THREE.BufferGeometry>();
+    for (const child of [...cardGroup.children]) {
+      child.traverse((obj) => {
+        const mesh = obj as Partial<THREE.Mesh>;
+        if (mesh.geometry) geos.add(mesh.geometry);
+      });
+      cardGroup.remove(child);
     }
-    if (screenMesh) {
-      group.remove(screenMesh);
-      screenMesh.geometry.dispose();
-      screenMesh = null;
-    }
-    if (screenLinesMesh) {
-      group.remove(screenLinesMesh);
-      screenLinesMesh.geometry.dispose();
-      screenLinesMesh = null;
-    }
-    if (screenLinesHaloMesh) {
-      // Geometry is shared with screenLinesMesh (disposed above).
-      group.remove(screenLinesHaloMesh);
-      screenLinesHaloMesh = null;
-    }
-    for (const d of detailMeshes) {
-      group.remove(d);
-      d.geometry.dispose();
-    }
-    detailMeshes.length = 0;
-    wordmarkMesh = null;
+    geos.forEach((g) => g.dispose());
+    shellMesh = null;
+    frontScreenMesh = null;
+    backScreenMesh = null;
+    wordmarkMeshes.length = 0;
   }
 
   function buildCard(): void {
     disposeBuilt();
     buildPortrait();
+  }
+
+  /**
+   * Build one screen face (bezel pocket, emissive LCD, scan-lines, and the metal
+   * decals) into `parent` using card-local coordinates with `+z` toward the
+   * front. The front face is added with no rotation; the back face's `parent` is
+   * rotated PI about Y, which mirrors these same offsets onto the rear and keeps
+   * every texture reading the right way round when viewed from behind. Returns
+   * the LCD mesh so callers can keep it for raycast hit-testing the flip.
+   */
+  function buildFace(
+    parent: THREE.Object3D,
+    screenMat: THREE.Material,
+    shell: { w: number; h: number },
+    frontZ: number,
+    screenW: number,
+    screenH: number,
+    winCx: number,
+    winCy: number,
+  ): THREE.Mesh {
+    // Dark bezel: a ring matching the window silhouette, extruded backward to
+    // form the recessed pocket walls the LCD sits inside.
+    const bezelDepth = 0.04;
+    const bezelOutline = auraWindowOutline(screenW, screenH).getPoints();
+    const scaleOutline = (s: number): THREE.Vector2[] =>
+      bezelOutline.map((p) => new THREE.Vector2(p.x * s, p.y * s));
+    const bezelShape = new THREE.Shape(scaleOutline(1.02));
+    bezelShape.holes.push(new THREE.Path(scaleOutline(0.986)));
+    const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
+      depth: bezelDepth,
+      bevelEnabled: false,
+      curveSegments: 4,
+      steps: 1,
+    });
+    const bezel = new THREE.Mesh(bezelGeo, bezelMaterial);
+    bezel.position.set(winCx, winCy, frontZ - bezelDepth - 0.001);
+    parent.add(bezel);
+
+    // Emissive LCD plane, recessed deep into the bezel pocket.
+    const screen = new THREE.Mesh(auraWindowShape(screenW, screenH), screenMat);
+    screen.position.set(winCx, winCy, frontZ - 0.045);
+    parent.add(screen);
+
+    // Scan-line layer floating just in front of the recessed LCD.
+    addScreenLines(parent, screenW, screenH, winCx, winCy, frontZ - 0.035, 1.1);
+
+    // Header row shared by the wordmark + vent slashes (same vertical center).
+    const headerY = shell.h / 2 - 0.16;
+    const windowLeft = -shell.w / 2 + WINDOW.left * shell.w;
+
+    // AURA wordmark, left edge aligned to the window's left edge.
+    const markW = shell.w * 0.272;
+    const markH = markW / wordmarkAspect;
+    wordmarkWidth = markW;
+    const wordmark = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
+    wordmark.position.set(windowLeft + markW / 2, headerY, frontZ + 0.006);
+    parent.add(wordmark);
+    wordmarkMeshes.push(wordmark);
+
+    // Vent slashes, top-right (dark angled inlays), aligned to the wordmark row.
+    const slashGeo = new THREE.BoxGeometry(0.02, 0.12, 0.03);
+    for (let i = 0; i < 3; i += 1) {
+      const slash = new THREE.Mesh(slashGeo.clone(), matteMaterial);
+      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, headerY, frontZ + 0.004);
+      slash.rotation.z = 0.5;
+      parent.add(slash);
+    }
+    slashGeo.dispose();
+
+    // LED cluster: three on the left slot, centered in the metal strip between
+    // the recessed slot floor and the screen window's left edge.
+    const ledGeo = new THREE.SphereGeometry(0.0133, 16, 16);
+    const ledX = -shell.w / 2 + (LED_SLOT_DEPTH + WINDOW.left * shell.w) / 2;
+    const ledCy = shell.h * 0.03;
+    for (let i = 0; i < 3; i += 1) {
+      const led = new THREE.Mesh(ledGeo.clone(), accentMaterial);
+      led.position.set(ledX, ledCy + (1 - i) * 0.09, frontZ + 0.008);
+      parent.add(led);
+    }
+    ledGeo.dispose();
+
+    // Fake barcode decal centered in the bottom-right metal area.
+    const hwP = shell.w / 2;
+    const hhP = shell.h / 2;
+    const winRight = -hwP + WINDOW.right * shell.w;
+    const winBottom = -hhP + WINDOW.bottom * shell.h;
+    const winBottomRight = winBottom + 0.08; // raised right bottom (matches stepH)
+    const winLeft = -hwP + WINDOW.left * shell.w;
+    const bottomStepX = winLeft + (winRight - winLeft) * 0.6; // window bottom step
+    const outerBottom = -hhP;
+    const areaCx = (bottomStepX + winRight) / 2;
+    const areaCy = (winBottomRight + outerBottom) / 2;
+    const barcodeW = (winRight - bottomStepX) * 0.62;
+    const barcodeH = (winBottomRight - outerBottom) * 0.5;
+    const barcode = new THREE.Mesh(
+      new THREE.PlaneGeometry(barcodeW, barcodeH),
+      barcodeMaterial,
+    );
+    barcode.position.set(areaCx, areaCy, frontZ + 0.003);
+    parent.add(barcode);
+
+    return screen;
   }
 
   /**
@@ -932,7 +1121,48 @@ export function createProfileCardScene(
     linksMesh.position.set(0, (INFO_LINKS.top + INFO_LINKS.bottom) / 2, infoFrontZ);
     group.add(linksMesh);
 
-    // Metal frame: silhouette extruded with the screen window as a hole.
+    // Messaging-channel pill: a shallow pocket cut into the plate between the
+    // Wallet readout row and the Soul link. Mirrors the LCD bezel recipe — a
+    // dark wall ring extruded backward from the plate surface forms the pocket
+    // walls, a recessed pill floor reads as cut-in, and a decal plane just in
+    // front of the floor carries the engraved brand logos.
+    const plateFrontZ = INFO_PLATE.z + INFO_PLATE.depth / 2 + INFO_PLATE.bevel;
+    const pillH = (INFO_CHANNELS.top - INFO_CHANNELS.bottom) * 0.82;
+    const pillW = INFO_CHANNELS.w;
+    const pillCy = (INFO_CHANNELS.top + INFO_CHANNELS.bottom) / 2;
+    const pillR = pillH / 2;
+    const pocketDepth = 0.03;
+    // Wall ring: outer pill with a slightly inset pill hole, extruded back from
+    // the plate front so its inner walls give the recess real depth.
+    const wallShape = pillShape(pillW, pillH, pillR);
+    const innerW = pillW - 0.05;
+    const innerH = pillH - 0.05;
+    wallShape.holes.push(new THREE.Path(pillShape(innerW, innerH, innerH / 2).getPoints()));
+    const wallGeo = new THREE.ExtrudeGeometry(wallShape, {
+      depth: pocketDepth,
+      bevelEnabled: false,
+      curveSegments: 24,
+      steps: 1,
+    });
+    channelsWallMesh = new THREE.Mesh(wallGeo, bezelMaterial);
+    channelsWallMesh.position.set(0, pillCy, plateFrontZ - pocketDepth);
+    group.add(channelsWallMesh);
+
+    // Recessed pocket floor (dark metal), set behind the plate surface.
+    const floorGeo = new THREE.ShapeGeometry(pillShape(innerW, innerH, innerH / 2), 24);
+    channelsFloorMesh = new THREE.Mesh(floorGeo, matteMaterial);
+    channelsFloorMesh.position.set(0, pillCy, plateFrontZ - pocketDepth + 0.001);
+    group.add(channelsFloorMesh);
+
+    // Engraved logo decal, just in front of the recessed floor.
+    const channelsGeo = new THREE.PlaneGeometry(innerW, innerH);
+    channelsMesh = new THREE.Mesh(channelsGeo, channelsMaterial);
+    channelsMesh.position.set(0, pillCy, plateFrontZ - pocketDepth + 0.004);
+    group.add(channelsMesh);
+
+    // Metal frame: silhouette extruded with the screen window as a hole. Shared
+    // by both faces (its front + back faces are both visible), so it lives
+    // directly on `cardGroup` rather than in a per-face node.
     const outer = auraOuterShape(shell.w, shell.h);
     outer.holes.push(auraWindowPath(shell.w, shell.h));
     const frameGeo = new THREE.ExtrudeGeometry(outer, {
@@ -949,12 +1179,14 @@ export function createProfileCardScene(
     applyEdgeWear(frameGeo);
     const frontZ = frameGeo.boundingBox ? frameGeo.boundingBox.max.z : SHELL_DEPTH / 2;
     shellMesh = new THREE.Mesh(frameGeo, blueMetalMaterial);
-    group.add(shellMesh);
+    cardGroup.add(shellMesh);
 
-    // Underlayer: full silhouette (no hole), pushed back and scaled slightly so
-    // it shows through the LED slot, the chamfers and behind the LCD window.
-    const underGeo = new THREE.ExtrudeGeometry(auraOuterShape(shell.w, shell.h), {
-      depth: SHELL_DEPTH * 0.8,
+    // Matte core: full silhouette (no hole), centered at z=0 and scaled slightly
+    // so it peeks through the LED slot + chamfers and forms the opaque dark
+    // backing shared by BOTH the front and back LCDs (no see-through when
+    // flipped). Thin enough to sit between the two recessed screens.
+    const coreGeo = new THREE.ExtrudeGeometry(auraOuterShape(shell.w, shell.h), {
+      depth: 0.05,
       bevelEnabled: true,
       bevelThickness: SHELL_BEVEL,
       bevelSize: SHELL_BEVEL,
@@ -962,118 +1194,51 @@ export function createProfileCardScene(
       curveSegments: 16,
       steps: 1,
     });
-    underGeo.center();
-    underlayerMesh = new THREE.Mesh(underGeo, matteMaterial);
-    underlayerMesh.scale.set(1.03, 1.025, 1);
-    underlayerMesh.position.z = -SHELL_DEPTH * 0.55;
-    group.add(underlayerMesh);
+    coreGeo.center();
+    const coreMesh = new THREE.Mesh(coreGeo, matteMaterial);
+    coreMesh.scale.set(1.03, 1.025, 1);
+    cardGroup.add(coreMesh);
 
-    // LCD plane sits inside the window, recessed just behind the metal front so
-    // the frame stands proud and the chamfered hole clips the screen corner.
-    screenCanvas.width = canvasSize.w;
-    screenCanvas.height = canvasSize.h;
+    // Shared LCD geometry metrics. The window box is not symmetric about origin.
     const screenW = (WINDOW.right - WINDOW.left) * shell.w;
     const screenH = (WINDOW.top - WINDOW.bottom) * shell.h;
-    // Window center (the box is not symmetric about the origin).
     const winCx = shell.w * ((WINDOW.left + WINDOW.right) / 2 - 0.5);
     const winCy = shell.h * ((WINDOW.bottom + WINDOW.top) / 2 - 0.5);
-    // Dark bezel: a ring matching the window silhouette (outer tucked under the
-    // frame, inner hole slightly smaller than the screen) extruded backward from
-    // the frame front. Its rim + inner walls form the recessed pocket the LCD
-    // sits inside, so the screen reads as inset into the metal.
-    const bezelDepth = 0.04;
-    const bezelOutline = auraWindowOutline(screenW, screenH).getPoints();
-    const scaleOutline = (s: number): THREE.Vector2[] =>
-      bezelOutline.map((p) => new THREE.Vector2(p.x * s, p.y * s));
-    // Thin rim: inner hole sits just inside the screen edge (~0.007 per side) so
-    // the dark border is subtle; the recess depth still reads as inset.
-    const bezelShape = new THREE.Shape(scaleOutline(1.02));
-    bezelShape.holes.push(new THREE.Path(scaleOutline(0.986)));
-    const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, {
-      depth: bezelDepth,
-      bevelEnabled: false,
-      curveSegments: 4,
-      steps: 1,
-    });
-    bezelMesh = new THREE.Mesh(bezelGeo, bezelMaterial);
-    bezelMesh.position.set(winCx, winCy, frontZ - bezelDepth - 0.001);
-    group.add(bezelMesh);
 
-    const screenGeo = auraWindowShape(screenW, screenH);
-    screenMesh = new THREE.Mesh(screenGeo, screenMaterial);
-    // Recessed deep into the bezel pocket so the dark walls give real depth.
-    screenMesh.position.set(winCx, winCy, frontZ - 0.045);
-    group.add(screenMesh);
-
-    // Scan-line layer floating just in front of the recessed LCD. The field is
-    // overscanned past the window so the bright line-ends reach the visible
-    // edge and the overscan tucks inside the solid frame (depth-occluded), with
-    // no inset bezel gap.
-    addScreenLines(screenW, screenH, winCx, winCy, frontZ - 0.035, 1.1);
-
-    // Header row shared by the wordmark + vent slashes (same vertical center).
-    const headerY = shell.h / 2 - 0.16;
-    const windowLeft = -shell.w / 2 + WINDOW.left * shell.w;
-
-    // AURA wordmark, left edge aligned to the window's left edge (20% smaller).
-    const markW = shell.w * 0.272;
-    const markH = markW / wordmarkAspect;
-    wordmarkWidth = markW;
-    wordmarkMesh = new THREE.Mesh(new THREE.PlaneGeometry(markW, markH), wordmarkMaterial);
-    wordmarkMesh.position.set(windowLeft + markW / 2, headerY, frontZ + 0.006);
-    group.add(wordmarkMesh);
-    detailMeshes.push(wordmarkMesh);
-
-    // Vent slashes, top-right (dark angled inlays), aligned to the wordmark row.
-    const slashGeo = new THREE.BoxGeometry(0.02, 0.12, 0.03);
-    for (let i = 0; i < 3; i += 1) {
-      const slash = new THREE.Mesh(slashGeo.clone(), matteMaterial);
-      slash.position.set(shell.w / 2 - 0.14 - i * 0.07, headerY, frontZ + 0.004);
-      slash.rotation.z = 0.5;
-      group.add(slash);
-      detailMeshes.push(slash);
-    }
-    slashGeo.dispose();
-
-    // LED cluster: three on the left slot, centered in the metal strip between
-    // the recessed slot floor and the screen window's left edge.
-    const ledGeo = new THREE.SphereGeometry(0.0133, 16, 16);
-    const ledX = -shell.w / 2 + (LED_SLOT_DEPTH + WINDOW.left * shell.w) / 2;
-    const ledColumns: Array<{ x: number; cy: number }> = [
-      { x: ledX, cy: shell.h * 0.03 },
-    ];
-    for (const col of ledColumns) {
-      for (let i = 0; i < 3; i += 1) {
-        const led = new THREE.Mesh(ledGeo.clone(), accentMaterial);
-        led.position.set(col.x, col.cy + (1 - i) * 0.09, frontZ + 0.008);
-        group.add(led);
-        detailMeshes.push(led);
-      }
-    }
-    ledGeo.dispose();
-
-    // Fake barcode decal centered in the bottom-right metal area: below the
-    // window's raised right bottom edge and left of the bottom-right window
-    // chamfer / stepped outer edge. Bounds derived from the same window +
-    // silhouette constants so it tracks the geometry.
-    const hwP = shell.w / 2;
-    const hhP = shell.h / 2;
-    const winRight = -hwP + WINDOW.right * shell.w;
-    const winBottom = -hhP + WINDOW.bottom * shell.h;
-    const winBottomRight = winBottom + 0.08; // raised right bottom (matches stepH)
-    const winLeft = -hwP + WINDOW.left * shell.w;
-    const bottomStepX = winLeft + (winRight - winLeft) * 0.6; // window bottom step
-    const outerBottom = -hhP;
-    const areaCx = (bottomStepX + winRight) / 2;
-    const areaCy = (winBottomRight + outerBottom) / 2;
-    const barcodeW = (winRight - bottomStepX) * 0.62;
-    const barcodeH = (winBottomRight - outerBottom) * 0.5;
-    barcodeMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(barcodeW, barcodeH),
-      barcodeMaterial,
+    // Front face: the photo LCD. Built at face-local +z offsets.
+    screenCanvas.width = canvasSize.w;
+    screenCanvas.height = canvasSize.h;
+    const frontFace = new THREE.Group();
+    cardGroup.add(frontFace);
+    frontScreenMesh = buildFace(
+      frontFace,
+      screenMaterial,
+      shell,
+      frontZ,
+      screenW,
+      screenH,
+      winCx,
+      winCy,
     );
-    barcodeMesh.position.set(areaCx, areaCy, frontZ + 0.003);
-    group.add(barcodeMesh);
+
+    // Back face: identical build, but the parent node is rotated PI about Y so
+    // the same local offsets land on the rear and textures read correctly from
+    // behind. Its LCD shows the agent's persona text instead of the photo.
+    backScreenCanvas.width = canvasSize.w;
+    backScreenCanvas.height = canvasSize.h;
+    const backFace = new THREE.Group();
+    backFace.rotation.y = Math.PI;
+    cardGroup.add(backFace);
+    backScreenMesh = buildFace(
+      backFace,
+      backScreenMaterial,
+      shell,
+      frontZ,
+      screenW,
+      screenH,
+      winCx,
+      winCy,
+    );
 
     fitCamera(shell.w, shell.h);
   }
@@ -1138,6 +1303,28 @@ export function createProfileCardScene(
   let hovering = false;
   let targetRotX = 0;
   let targetRotY = 0;
+  // Flip state: clicking the card toggles between front (0) and back (PI),
+  // animated by lerping `cardGroup.rotation.y` toward `flipTarget`.
+  let flipped = false;
+  let flipTarget = 0;
+
+  /** Set the pointer NDC for the current event, for raycasting. */
+  const setPointerNdc = (event: PointerEvent): void => {
+    const rect = host.getBoundingClientRect();
+    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNdc, camera);
+  };
+
+  /** Whether the pointer is over the metal card (frame or either LCD). */
+  const cardAt = (event: PointerEvent): boolean => {
+    const targets = [shellMesh, frontScreenMesh, backScreenMesh].filter(
+      (m): m is THREE.Mesh => m != null,
+    );
+    if (targets.length === 0) return false;
+    setPointerNdc(event);
+    return raycaster.intersectObjects(targets, false).length > 0;
+  };
 
   /** Raycast the pointer against the links plane; returns a row index or -1. */
   const linkAt = (event: PointerEvent): number => {
@@ -1170,7 +1357,11 @@ export function createProfileCardScene(
     hovering = true;
     targetRotY = nx * 0.6 * tiltScale;
     targetRotX = -ny * 0.4 * tiltScale;
-    updateHoveredLink(linkAt(event));
+    const over = linkAt(event);
+    updateHoveredLink(over);
+    // A link row owns the cursor when hovered; otherwise the card body itself is
+    // clickable (to flip), so show a pointer there too.
+    if (over < 0) host.style.cursor = cardAt(event) ? "pointer" : "";
     // Never let interaction be dead if the loop was paused.
     if (!running) start();
   };
@@ -1185,10 +1376,18 @@ export function createProfileCardScene(
   };
   const onPointerUp = (event: PointerEvent): void => {
     const moved = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
+    // Treat as a drag (tilt), not a click, if the pointer moved appreciably.
     if (moved > 6) return;
     const idx = linkAt(event);
     if (idx >= 0 && idx === pointerDownLink && onLinkActivate) {
       onLinkActivate(idx);
+      return;
+    }
+    // Clicking the metal card (and not a link row) flips it to show the back.
+    if (idx < 0 && cardAt(event)) {
+      flipped = !flipped;
+      flipTarget = flipped ? Math.PI : 0;
+      if (!running) start();
     }
   };
   host.addEventListener("pointermove", onPointerMove);
@@ -1215,9 +1414,15 @@ export function createProfileCardScene(
     const desiredFloat = idle ? Math.sin(t * 0.8) * 0.03 * idleAmp : 0;
     group.position.y += (desiredFloat - group.position.y) * 0.08;
 
+    // Flip the card toward its target face (0 = front, PI = back).
+    cardGroup.rotation.y += (flipTarget - cardGroup.rotation.y) * 0.12;
+
     bloom.strength += ((hovering ? 0.32 : 0.26) - bloom.strength) * 0.06;
+    const desiredEmissive = hovering ? 1.3 : 1.15;
     screenMaterial.emissiveIntensity +=
-      ((hovering ? 1.3 : 1.15) - screenMaterial.emissiveIntensity) * 0.06;
+      (desiredEmissive - screenMaterial.emissiveIntensity) * 0.06;
+    backScreenMaterial.emissiveIntensity +=
+      (desiredEmissive - backScreenMaterial.emissiveIntensity) * 0.06;
     accentLight.intensity += ((hovering ? 4.5 : 3.5) - accentLight.intensity) * 0.06;
 
     // Subtle CRT animation on the scan lines (skipped under reduced motion): a
@@ -1299,6 +1504,11 @@ export function createProfileCardScene(
       screenTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
+    backScreenCanvas,
+    refreshBackTexture(): void {
+      backScreenTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    },
     infoCanvas,
     setInfoRenderer(render: (dotOn: boolean) => void): void {
       infoRenderer = render;
@@ -1319,6 +1529,12 @@ export function createProfileCardScene(
       linksTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
+    channelsCanvas,
+    setChannelsRenderer(render: () => void): void {
+      render();
+      channelsTexture.needsUpdate = true;
+      if (reducedMotion) renderFrame();
+    },
     dispose(): void {
       stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -1330,6 +1546,7 @@ export function createProfileCardScene(
       disposeBuilt();
       shellMaterial.dispose();
       screenMaterial.dispose();
+      backScreenMaterial.dispose();
       accentMaterial.dispose();
       bezelMaterial.dispose();
       barcodeMaterial.dispose();
@@ -1338,6 +1555,7 @@ export function createProfileCardScene(
       plateMaterial.dispose();
       infoMaterial.dispose();
       linksMaterial.dispose();
+      channelsMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
@@ -1349,8 +1567,10 @@ export function createProfileCardScene(
       barcodeTexture.dispose();
       wordmarkTexture.dispose();
       screenTexture.dispose();
+      backScreenTexture.dispose();
       infoTexture.dispose();
       linksTexture.dispose();
+      channelsTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();
       composer.dispose();

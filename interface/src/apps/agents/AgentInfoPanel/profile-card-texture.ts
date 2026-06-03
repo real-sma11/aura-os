@@ -185,6 +185,168 @@ export function drawProfileCardTexture(
   applyGrade(ctx, w, h);
 }
 
+export interface DrawPersonalityScreenOptions {
+  /** The agent's personality blurb (primary back-of-card content). */
+  personality?: string | null;
+  /** The agent's system prompt (secondary, mono section). */
+  systemPrompt?: string | null;
+  /** Fallback shown when there is no personality text. */
+  role?: string | null;
+  /** CSS color string for the accent (read from `--color-accent`). */
+  accent: string;
+}
+
+const SCREEN_SANS = '"Inter", "Helvetica Neue", Arial, sans-serif';
+const SCREEN_MONO = '"SFMono-Regular", "DejaVu Sans Mono", "Menlo", monospace';
+
+/**
+ * Greedy word-wrap: break `text` into lines no wider than `maxWidth` for the
+ * font currently set on `ctx`. Hard-breaks single words that are themselves too
+ * long so nothing spills past the edge.
+ */
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split(/\n/)) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Render a labelled text section into the LCD canvas starting at `y`, clamped to
+ * `maxLines` (with an ellipsis when truncated). Returns the y just below the
+ * block so the caller can stack the next section.
+ */
+function drawScreenSection(
+  ctx: CanvasRenderingContext2D,
+  opts: {
+    label: string;
+    body: string;
+    x: number;
+    y: number;
+    width: number;
+    bottom: number;
+    labelColor: string;
+    bodyFont: string;
+    lineHeight: number;
+  },
+): number {
+  const { label, body, x, y, width, bottom, labelColor, bodyFont, lineHeight } = opts;
+  let cursorY = y;
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `700 26px ${SCREEN_SANS}`;
+  ctx.fillStyle = labelColor;
+  ctx.fillText(label.toUpperCase(), x, cursorY);
+  cursorY += 44;
+
+  ctx.font = bodyFont;
+  ctx.fillStyle = "#e9f2ff";
+  const maxLines = Math.max(1, Math.floor((bottom - cursorY) / lineHeight));
+  const lines = wrapText(ctx, body, width);
+  const shown = lines.slice(0, maxLines);
+  if (lines.length > maxLines && shown.length > 0) {
+    let last = shown[shown.length - 1];
+    while (last.length > 1 && ctx.measureText(`${last}…`).width > width) {
+      last = last.slice(0, -1);
+    }
+    shown[shown.length - 1] = `${last}…`;
+  }
+  for (const line of shown) {
+    ctx.fillText(line, x, cursorY);
+    cursorY += lineHeight;
+  }
+  return cursorY;
+}
+
+/**
+ * Render the BACK of the agent card's LCD: the agent's Personality and System
+ * Prompt as engraved text on a dark screen, matching the front LCD aesthetic
+ * (the 3D scene overlays the same CRT scan-lines on top). Drawn into the same
+ * resolution canvas as the front photo texture.
+ */
+export function drawPersonalityScreen(
+  canvas: HTMLCanvasElement,
+  opts: DrawPersonalityScreenOptions,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  drawFallback(ctx, w, h, opts.accent);
+
+  const [ar, ag, ab] = parseAccent(opts.accent);
+  // Cool, slightly-deepened accent for the section labels so they read as the
+  // hue rather than washing to white under the card's ACES tone-mapping.
+  const labelColor = `rgb(${Math.round(ar * 0.7 + 40)},${Math.round(
+    ag * 0.7 + 60,
+  )},${Math.round(ab * 0.7 + 80)})`;
+
+  const padX = Math.round(w * 0.1);
+  const x = padX;
+  const width = w - padX * 2;
+  const bottom = h - Math.round(h * 0.06);
+  let y = Math.round(h * 0.12);
+
+  const personality = (opts.personality ?? "").trim();
+  const systemPrompt = (opts.systemPrompt ?? "").trim();
+  const role = (opts.role ?? "").trim();
+
+  const personalityBody =
+    personality || role || "No personality has been set for this agent yet.";
+
+  y = drawScreenSection(ctx, {
+    label: "Personality",
+    body: personalityBody,
+    x,
+    y,
+    width,
+    bottom: systemPrompt ? Math.round(h * 0.56) : bottom,
+    labelColor,
+    bodyFont: `400 30px ${SCREEN_SANS}`,
+    lineHeight: 40,
+  });
+
+  if (systemPrompt) {
+    y += 36;
+    drawScreenSection(ctx, {
+      label: "System Prompt",
+      body: systemPrompt,
+      x,
+      y,
+      width,
+      bottom,
+      labelColor,
+      bodyFont: `400 26px ${SCREEN_MONO}`,
+      lineHeight: 36,
+    });
+  }
+
+  applyGrade(ctx, w, h);
+}
+
 /** Shorten an on-chain address for display, e.g. `0x1234…abcd`. */
 function truncateWallet(address: string): string {
   return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
