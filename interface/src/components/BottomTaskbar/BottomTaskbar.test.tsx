@@ -293,18 +293,31 @@ describe("BottomTaskbar", () => {
     ).toBeNull();
   });
 
-  it("leads the .center cluster with the Desktop circle, ahead of the AppNavRail and Apps button", () => {
+  it("hosts the Desktop circle in its own standalone bubble, not in the .center cluster", () => {
+    const { container } = render(<BottomTaskbar mode="standard" />);
+
+    // Desktop lives in its own circular `.desktopBubble` (far left),
+    // separate from both the `.left` ProfilePill cluster and the
+    // `.center` app rail.
+    const desktopBubble = container.querySelector<HTMLElement>(".desktopBubble");
+    expect(desktopBubble).not.toBeNull();
+    expect(
+      desktopBubble?.querySelector('button[aria-label="Desktop"]'),
+    ).not.toBeNull();
+
+    const centerSlot = container.querySelector<HTMLElement>(".center");
+    expect(centerSlot).not.toBeNull();
+    expect(
+      centerSlot?.querySelector('button[aria-label="Desktop"]'),
+    ).toBeNull();
+  });
+
+  it("leads the .center cluster with the AppNavRail, ahead of the Apps button", () => {
     const { container } = render(<BottomTaskbar mode="standard" />);
 
     const centerSlot = container.querySelector<HTMLElement>(".center");
     expect(centerSlot).not.toBeNull();
     if (!centerSlot) return;
-
-    const desktopButton = centerSlot.querySelector<HTMLElement>(
-      'button[aria-label="Desktop"]',
-    );
-    expect(desktopButton).not.toBeNull();
-    if (!desktopButton) return;
 
     const navRail = centerSlot.querySelector<HTMLElement>(
       '[data-testid="app-nav-rail"]',
@@ -316,12 +329,10 @@ describe("BottomTaskbar", () => {
     expect(appsButton).not.toBeNull();
 
     const orderedChildren = Array.from(centerSlot.children);
-    const desktopIndex = orderedChildren.indexOf(desktopButton);
     const navRailIndex = orderedChildren.indexOf(navRail as Element);
     const appsIndex = orderedChildren.indexOf(appsButton as Element);
 
-    expect(desktopIndex).toBeGreaterThanOrEqual(0);
-    expect(desktopIndex).toBeLessThan(navRailIndex);
+    expect(navRailIndex).toBeGreaterThanOrEqual(0);
     expect(navRailIndex).toBeLessThan(appsIndex);
   });
 

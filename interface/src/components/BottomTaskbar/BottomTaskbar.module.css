@@ -1,6 +1,6 @@
 /*
  * Panel each taskbar pill/bubble sits on. The frame's gradient background
- * (#090909 -> #131313, all around) shows only as a 3.5px ring because the
+ * (#090909 -> #131313, all around) shows only as a 1.75px ring because the
  * opaque pill inside covers the rest of the content box. Using the
  * background as the ring (instead of a masked pseudo) keeps every edge
  * rendering uniformly, so the ring can't get clipped on one side.
@@ -9,8 +9,8 @@
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  padding: 3.5px;
-  border-radius: calc(var(--shell-chrome-radius, 20px) + 3.5px);
+  padding: 1.75px;
+  border-radius: calc(var(--shell-chrome-radius, 20px) + 1.75px);
   background: linear-gradient(135deg, #090909, #131313);
 }
 
@@ -39,26 +39,27 @@
 }
 
 /*
- * Authed bottom taskbar runs ~33% larger than the default chrome: the
- * pill height, corner radius, edge inset, icon hit target, and icon
- * glyphs all scale up together. The chrome tokens are rebound locally on
- * `.bar` (not at :root) so the top titlebar and side panels keep the
- * standard chrome size — only the bottom taskbar grows. Public mode is
- * excluded so its compact pills stay aligned with the top auth pills.
+ * Authed bottom taskbar runs larger than the top titlebar chrome. The
+ * shared `--shell-chrome-*` tokens are rebound locally on `.bar` (not at
+ * :root) so the top titlebar and side panels keep the standard size — only
+ * the bottom taskbar grows. The pill is sized so the selected icon's
+ * circular plate fits with breathing room: pill 44px, outer
+ * 56px (= 44 + 2 * 6 inset), inset 6px, radius 26px, icon hit target 40px.
+ * Public mode is excluded so its compact pills stay aligned with the top
+ * auth pills.
  */
 .bar:not([data-ui-mode="public"]) {
-  --shell-chrome-height: 43px;
-  --shell-chrome-outer-height: 57px;
-  --shell-chrome-inset: 7px;
-  --shell-chrome-radius: 27px;
+  --shell-chrome-height: 44px;
+  --shell-chrome-outer-height: 56px;
+  --shell-chrome-inset: 6px;
+  --shell-chrome-radius: 26px;
   --taskbar-item-size: 40px;
 }
 
-/* Scale the icon glyphs up (16 -> 20). Done in CSS rather than via the
-   shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
-   imports the same constant, is left untouched. 20px (even) centers on
-   whole pixels inside the 40px (even) button — an odd size like 21px lands
-   on a half-pixel, which reads as off-center and slightly blurry. */
+/* Scale the icon glyphs up with the bar (16 -> 20). Kept in CSS rather than
+   the shared `TASKBAR_ICON_SIZE` constant so the titlebar MenuBar, which
+   imports the same constant, is untouched. 20px (even) centers on whole
+   pixels inside the 36px (even) button, so the glyph stays crisp. */
 .bar:not([data-ui-mode="public"]) button svg {
   width: 20px;
   height: 20px;
@@ -66,18 +67,19 @@
 
 .left,
 .center,
-.right {
+.right,
+.desktopBubble {
   height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
   min-height: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
-  --pill-grad-top: var(--shell-pill-grad-top, #232323);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #141414);
+  --pill-grad-top: var(--shell-pill-grad-top, #0e0e10);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #050507);
   /* Charcoal -> near-black gradient, angled slightly toward the bottom-
      right (160deg). A soft lighter wash near the top settles down into the
      near-black bottom. The top-edge highlight is a subtle inset lip in
      box-shadow below (hugging the border), not a bright line in the fill. */
   background: linear-gradient(
     160deg,
-    color-mix(in srgb, #fff 5%, var(--pill-grad-top)) 0,
+    color-mix(in srgb, #fff 2%, var(--pill-grad-top)) 0,
     var(--pill-grad-top) 40%,
     var(--pill-grad-bottom) 100%
   );
@@ -112,7 +114,8 @@
  */
 .left::after,
 .center::after,
-.right::after {
+.right::after,
+.desktopBubble::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -173,6 +176,37 @@
   height: var(--public-pill-item-size, 22px);
 }
 
+/*
+ * Leading flex group that holds the standalone Desktop bubble plus the
+ * `.left` ProfilePill frame. Grouping them keeps the bar's
+ * `justify-content: space-between` working (this group is the single
+ * leading flow child, `.right` is the trailing one), while letting the
+ * Desktop dot float as its own separate bubble ahead of the pill.
+ */
+.leadCluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/*
+ * Standalone circular "solo dot" bubble for the Desktop affordance. Reuses
+ * the shared pill chrome (gradient fill + `::after` 1px stroke ring) but is
+ * forced to a fixed square sized to the pill height and rounded to a full
+ * circle, with no horizontal padding so the single icon button sits dead
+ * center as a round dot.
+ */
+.desktopBubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--shell-chrome-height, calc(var(--control-height-sm) + 8px));
+  padding: 0;
+  border-radius: 50%;
+}
+
 .left {
   display: flex;
   align-items: center;
@@ -226,12 +260,12 @@
   align-items: center;
   height: var(--public-pill-height, 24px);
   min-height: var(--public-pill-height, 24px);
-  --pill-grad-top: var(--shell-pill-grad-top, #232323);
-  --pill-grad-bottom: var(--shell-pill-grad-bottom, #141414);
+  --pill-grad-top: var(--shell-pill-grad-top, #0e0e10);
+  --pill-grad-bottom: var(--shell-pill-grad-bottom, #050507);
   /* Same angled charcoal -> near-black gradient as the authed pills. */
   background: linear-gradient(
     160deg,
-    color-mix(in srgb, #fff 5%, var(--pill-grad-top)) 0,
+    color-mix(in srgb, #fff 2%, var(--pill-grad-top)) 0,
     var(--pill-grad-top) 40%,
     var(--pill-grad-bottom) 100%
   );

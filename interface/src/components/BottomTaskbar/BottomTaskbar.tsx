@@ -146,10 +146,10 @@ function PublicBottomTaskbar(): React.ReactElement {
  *
  * Layout:
  *
- *   - `.left`:  `<ProfilePill />` + `<OrgSelector />` +
- *     `<FavoriteAgentsStrip />`.
- *   - `.center`: Desktop circle (leads the cluster) + AppNavRail +
- *     Apps + apps collapse chevron.
+ *   - `.leadCluster`: standalone Desktop circle bubble (far left) +
+ *     the `.left` pill (`<ProfilePill />` + `<OrgSelector />` +
+ *     `<FavoriteAgentsStrip />`).
+ *   - `.center`: AppNavRail + Apps + apps collapse chevron.
  *   - `.right.rightPrimary`: right-cluster collapse chevron, then the
  *     collapsible secondary cluster (Credits / ThemeToggle / Help /
  *     Profile shortcut), then an always-visible Settings button
@@ -222,44 +222,55 @@ function AuthedBottomTaskbar({
       data-ui-mode={mode}
       onContextMenu={onContextMenu}
     >
-      <div className={styles.taskbarContainer}>
-      <div className={styles.left}>
-        <ProfilePill
-          name={profile.name}
-          avatarUrl={profile.avatarUrl}
-          onOpenSettings={openOrgSettings}
-          plan={plan}
-        />
+      <div className={styles.leadCluster}>
         {/*
-         * Team selector lives in the bottom taskbar right after
-         * `ProfilePill`. The Desktop icon now leads the `.center`
-         * cluster instead of trailing the left cluster, so
-         * `OrgSelector` is the last fixed item in `.left` (followed
-         * only by `FavoriteAgentsStrip`). The titlebar's leading slot
-         * is a uniform `<PanelLeft />` drawer toggle, so the team
-         * affordance no longer competes for that spot.
+         * Desktop now lives in its own standalone circular bubble pinned
+         * to the far left of the bar, separate from the ProfilePill
+         * cluster. It reads as a solo "dot" home affordance: tapping it
+         * navigates to `/desktop`, or back to the previous path when the
+         * desktop is already active.
          */}
-        <OrgSelector variant="icon" />
-        <FavoriteAgentsStrip />
-      </div>
+        <div className={styles.taskbarContainer}>
+          <div className={styles.desktopBubble}>
+            <TaskbarIconButton
+              selected={activeApp.id === "desktop"}
+              icon={<Circle size={TASKBAR_ICON_SIZE} />}
+              title="Desktop"
+              aria-label="Desktop"
+              onClick={() => {
+                if (activeApp.id === "desktop") {
+                  if (previousPath) navigate(previousPath);
+                } else {
+                  navigate("/desktop");
+                }
+              }}
+            />
+          </div>
+        </div>
+        <div className={styles.taskbarContainer}>
+        <div className={styles.left}>
+          <ProfilePill
+            name={profile.name}
+            avatarUrl={profile.avatarUrl}
+            onOpenSettings={openOrgSettings}
+            plan={plan}
+          />
+          {/*
+           * Team selector lives in the bottom taskbar right after
+           * `ProfilePill`. `OrgSelector` is the last fixed item in
+           * `.left` (followed only by `FavoriteAgentsStrip`). The
+           * titlebar's leading slot is a uniform `<PanelLeft />` drawer
+           * toggle, so the team affordance no longer competes for that
+           * spot.
+           */}
+          <OrgSelector variant="icon" />
+          <FavoriteAgentsStrip />
+        </div>
+        </div>
       </div>
 
       <div className={`${styles.taskbarContainer} ${styles.taskbarContainerCenter}`}>
       <div className={styles.center}>
-        <TaskbarIconButton
-          selected={activeApp.id === "desktop"}
-          icon={<Circle size={TASKBAR_ICON_SIZE} />}
-          title="Desktop"
-          aria-label="Desktop"
-          onClick={() => {
-            if (activeApp.id === "desktop") {
-              if (previousPath) navigate(previousPath);
-            } else {
-              navigate("/desktop");
-            }
-          }}
-        />
-        <span className={styles.divider} aria-hidden="true" />
         <AppNavRail
           layout="taskbar"
           allowReorder
