@@ -749,15 +749,15 @@ describe("AuraShell — standard /desktop chrome", () => {
     expect(lane?.style.width).not.toBe("0px");
   });
 
-  it("hides the sidebar toggle, sidekick toggle, and menu collapse chevron in the titlebar on /desktop", () => {
+  it("hides the sidebar toggle, sidekick toggle, and the whole menu bar in the titlebar on /desktop", () => {
     setLoggedIn();
 
     renderAuraShell("/desktop");
 
     const titlebar = screen.getByTestId("aura-titlebar");
     // Left PanelLeft sidebar toggle, right PanelRight sidekick toggle,
-    // and the MenuBar collapse chevron are all suppressed in desktop
-    // mode for a clean top bar.
+    // and the entire File / Edit / View / Help menu bar (chevron
+    // included) are all suppressed in desktop mode for a clean top bar.
     expect(
       within(titlebar).queryByRole("button", { name: "Toggle sidebar" }),
     ).not.toBeInTheDocument();
@@ -765,14 +765,10 @@ describe("AuraShell — standard /desktop chrome", () => {
       within(titlebar).queryByRole("button", { name: /toggle sidekick/i }),
     ).not.toBeInTheDocument();
     expect(
-      within(titlebar).queryByRole("button", { name: /collapse menu/i }),
+      within(titlebar).queryByRole("menubar", { name: /application menu/i }),
     ).not.toBeInTheDocument();
     expect(
-      within(titlebar).queryByRole("button", { name: /expand menu/i }),
+      within(titlebar).queryByRole("menuitem", { name: "File" }),
     ).not.toBeInTheDocument();
-    // The File / Edit / View / Help menus themselves stay visible.
-    expect(
-      within(titlebar).getByRole("menuitem", { name: "File" }),
-    ).toBeInTheDocument();
   });
 });

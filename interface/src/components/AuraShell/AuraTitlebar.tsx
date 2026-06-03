@@ -188,14 +188,12 @@ function AuthedLeading({
         <SidebarDrawerToggle collapsed={collapsed} onToggle={onToggle} />
       )}
       <MenuShortcuts />
-      {isStandard &&
-        (isDesktop ? (
-          // Desktop mode keeps the File / Edit / View / Help menus but
-          // drops the collapse chevron for a clean top bar.
-          <MenuBar />
-        ) : (
-          <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
-        ))}
+      {/* Desktop mode hides the visible File / Edit / View / Help bar
+          (and its collapse chevron) for a clean top bar. `MenuShortcuts`
+          stays mounted so the keyboard shortcuts keep working. */}
+      {isStandard && !isDesktop && (
+        <MenuBar collapsed={menuBarCollapsed} onToggleCollapsed={toggleMenuBar} />
+      )}
     </span>
   );
 }
