@@ -14,13 +14,25 @@
   background: var(--taskbar-frame);
 }
 
-/* The center bubble's frame carries the absolute centering (moved off
-   `.center`, which is now a normal flex child inside its frame). */
-.taskbarContainerCenter {
+/* Full-bar overlay that centers the middle pill frame. Using flex
+   centering (not `transform: translate(-50%, -50%)`) keeps the frame on
+   the device pixel grid: a transformed box with a non-integer height
+   (37px pill + 2 x 1.75px frame = 40.5px) lands on a half-pixel and the
+   browser does NOT snap transformed content, so its ring would anti-alias
+   across two physical pixels and read thicker/darker than the
+   flex-laid-out left/right pills. The overlay is click-through; only the
+   frame inside it receives pointer events. */
+.taskbarCenterSlot {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.taskbarCenterSlot > * {
+  pointer-events: auto;
 }
 
 .bar {

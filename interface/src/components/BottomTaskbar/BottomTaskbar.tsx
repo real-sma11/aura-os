@@ -269,7 +269,8 @@ function AuthedBottomTaskbar({
         </div>
       </div>
 
-      <div className={`${styles.taskbarContainer} ${styles.taskbarContainerCenter}`}>
+      <div className={styles.taskbarCenterSlot}>
+      <div className={styles.taskbarContainer}>
       <div className={styles.center}>
         <AppNavRail
           layout="taskbar"
@@ -295,6 +296,7 @@ function AuthedBottomTaskbar({
           onClick={toggleAppsCollapsed}
           aria-label={collapsed ? "Expand apps" : "Collapse apps"}
         />
+      </div>
       </div>
       </div>
 
