@@ -69,35 +69,23 @@ export function InviteModal({ isOpen, onClose }: Props) {
           Credits worth $50 to spend on AI models, image generation, and more.
         </p>
 
-        <div className={styles.codeSection}>
-          <div className={styles.codeLabel}>Your invite code</div>
-          <div className={styles.codeDisplay}>
-            {inviteLoading ? (
-              <span className={styles.codeValue}>Loading...</span>
-            ) : inviteCode ? (
-              <span
-                className={styles.codePill}
-                onClick={handleCodeClick}
-                title="Click to copy"
-              >
-                {copied ? "Copied!" : inviteCode}
-              </span>
-            ) : (
-              <span className={styles.codeValue}>Unavailable</span>
-            )}
-          </div>
-        </div>
-
         <Button
           variant="secondary"
           size="md"
           fullWidth
           className={styles.shareButton}
-          icon={copied ? <Check size={16} /> : <Copy size={16} />}
+          icon={inviteCode ? (copied ? <Check size={16} /> : <Copy size={16} />) : undefined}
           onClick={handleCodeClick}
           disabled={!inviteCode}
+          title="Click to copy your invite code"
         >
-          {copied ? "Copied!" : "Copy invite code"}
+          {inviteLoading
+            ? "Loading..."
+            : !inviteCode
+              ? "Unavailable"
+              : copied
+                ? "Copied!"
+                : inviteCode}
         </Button>
       </div>
     </Modal>

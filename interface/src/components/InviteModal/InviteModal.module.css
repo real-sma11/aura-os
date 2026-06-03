@@ -1,12 +1,37 @@
-.modalRoot {
+/* Doubled class to win over zui's .modal background/border/radius without !important */
+.modalRoot.modalRoot {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius-xl, 20px);
-  background: color-mix(in srgb, var(--color-bg-secondary) 86%, black);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+  border-radius: var(--radius-xl, 22px);
+  background: color-mix(in srgb, var(--color-bg-secondary) 45%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid transparent;
   box-shadow:
     0 24px 60px -12px rgba(0, 0, 0, 0.6),
     0 0 48px -8px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+/* Gradient border ring (theme colors) drawn as a masked pseudo-element */
+.modalRoot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 80%, transparent),
+    color-mix(in srgb, var(--color-primary) 50%, transparent) 45%,
+    transparent 90%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .floatingHeader {
@@ -110,63 +135,14 @@
   text-align: center;
 }
 
-.codeSection {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.codeLabel {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.codeDisplay {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-}
-
-.codeValue {
-  font-family: var(--font-mono, monospace);
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.codePill {
-  font-family: var(--font-mono, monospace);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md, 12px);
-  background: color-mix(in srgb, var(--color-surface) 75%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 16%, var(--color-border));
-  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
-  animation: fadeIn var(--transition-fast, 0.2s) ease;
-}
-
-.codePill:hover {
-  color: var(--color-accent);
-  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
-  box-shadow: 0 0 20px -4px color-mix(in srgb, var(--color-accent) 40%, transparent);
-}
-
 .shareButton {
   width: 100%;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.06em;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  animation: fadeIn var(--transition-fast, 0.2s) ease;
 }
 
 .shareButton:hover:not(:disabled) {
