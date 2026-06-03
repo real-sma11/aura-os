@@ -876,7 +876,28 @@ button.attachRing::before {
   border-radius: 50%;
 }
 
-/* The ring itself: a conic prism gradient masked to a 3px donut. */
+/* Live WebGL prism ring (PrismRing). Slightly oversized via the
+   negative inset so the animated glow can bleed past the disc edge. It
+   sits behind the glyph (z-index 1) and the static ring fallback. */
+.prismRing {
+  position: absolute;
+  inset: -6px;
+  width: auto;
+  height: auto;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Once the live canvas is rendering, hide the static conic-gradient
+   ring so the two don't stack. The static ring remains the fallback
+   when WebGL / motion is unavailable (canvas stays data-prism="off"). */
+button.attachRing:has(canvas[data-prism="on"])::after {
+  display: none;
+}
+
+/* The ring itself: a conic prism gradient masked to a 3px donut.
+   Acts as the no-WebGL / reduced-motion fallback. */
 button.attachRing::after {
   content: "";
   position: absolute;

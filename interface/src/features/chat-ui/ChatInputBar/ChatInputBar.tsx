@@ -61,6 +61,7 @@ import {
 } from "../../../components/InputBarShell";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { FileMentionMenu } from "./FileMentionMenu";
+import { PrismRing } from "./PrismRing";
 import { useProjectFiles } from "./useProjectFiles";
 import { CommandChips } from "./CommandChips";
 import { DemoRecordSettings } from "./DemoRecordSettings";
@@ -986,6 +987,7 @@ export const DesktopChatInputBar = memo(
           disabled={!canAddMore || sendDisabled}
           aria-label="Attach file"
         >
+          <PrismRing className={styles.prismRing} />
           <Plus size={23} strokeWidth={1} />
         </button>
       );
