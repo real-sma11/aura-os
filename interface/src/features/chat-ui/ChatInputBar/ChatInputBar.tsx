@@ -378,6 +378,9 @@ export const DesktopChatInputBar = memo(
       [onFetchContextContents, streamKey],
     );
     const [isDragOver, setIsDragOver] = useState(false);
+    // Collapses the mode-selector pills from the top mode bar, leaving the
+    // balanced chevron (left) / new-chat "+" (right) affordances in place.
+    const [modesCollapsed, setModesCollapsed] = useState(false);
     // Collapsed vendor sections in the chat model picker. Empty = all
     // expanded (the default whenever the picker opens).
     const [collapsedVendors, setCollapsedVendors] = useState<Set<ModelVendor>>(
@@ -1264,11 +1267,32 @@ export const DesktopChatInputBar = memo(
 
     const modeBar = onNewChat ? (
       <div className={styles.modeBarRow}>
-        <ModeSelector
-          selectedMode={selectedMode}
-          onChange={onModeChange}
-          className={styles.modeSelectorFlex}
-        />
+        <button
+          type="button"
+          className={styles.modeCollapseButton}
+          onClick={() => setModesCollapsed((v) => !v)}
+          title={modesCollapsed ? "Show modes" : "Hide modes"}
+          aria-label={modesCollapsed ? "Show modes" : "Hide modes"}
+          aria-expanded={!modesCollapsed}
+          data-agent-action="toggle-modes"
+        >
+          <ChevronDown
+            size={16}
+            strokeWidth={1.5}
+            className={
+              modesCollapsed
+                ? `${styles.modeChevron} ${styles.modeChevronCollapsed}`
+                : styles.modeChevron
+            }
+          />
+        </button>
+        {modesCollapsed ? null : (
+          <ModeSelector
+            selectedMode={selectedMode}
+            onChange={onModeChange}
+            className={styles.modeSelectorFlex}
+          />
+        )}
         <button
           type="button"
           className={styles.modeNewChatButton}

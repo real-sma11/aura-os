@@ -848,17 +848,78 @@
 .modeBarRow {
   display: grid;
   grid-template-columns: 24px 1fr 24px;
-  align-items: stretch;
+  align-items: center;
   width: 100%;
   min-width: 0;
-  padding: 0 2px;
-  /* The mode selector is detached above the pill input now, so it owns
-     no divider or surface — the gap below lets it read as separate
-     chrome floating above the rounded input. Match the input
-     container's centered 680px cap so the "+" new-chat button stays
-     aligned above the send button. */
+  padding: 2px;
+  /* The mode bar reads as a single unit with the input pill below it:
+     a bordered box with rounded top corners and square bottom corners
+     that sits flush on the input (no gap), so the two visually connect.
+     Match the input container's centered 680px cap so the chevron / "+"
+     stay aligned above the corner buttons of the pill. */
   max-width: 680px;
-  margin: 0 auto 6px;
+  margin: 0 auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 14px 14px 0 0;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-bg) 60%, transparent),
+      color-mix(in srgb, var(--color-bg) 85%, transparent)
+    );
+}
+
+/* Top-left collapse chevron mirrors the top-right new-chat "+" so the
+   two affordances are visually balanced on either side of the centred
+   mode pills. Same 24x24 hit target and shared icon-button hover plate. */
+.modeCollapseButton {
+  position: relative;
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: color 0.1s ease;
+}
+
+.modeCollapseButton::before {
+  content: "";
+  position: absolute;
+  inset: var(--icon-hover-inset);
+  border-radius: var(--icon-hover-radius);
+  background: transparent;
+  transition: background var(--transition-fast);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.modeCollapseButton > * {
+  position: relative;
+  z-index: 1;
+}
+
+.modeCollapseButton:hover {
+  color: var(--color-text-primary);
+}
+
+.modeCollapseButton:hover::before {
+  background: var(--icon-hover-bg);
+}
+
+.modeChevron {
+  display: block;
+  transition: transform 0.18s ease;
+}
+
+.modeChevronCollapsed {
+  transform: rotate(-90deg);
 }
 
 /* Chrome "mirror" rim around the bottom-left "+" attach button, sitting
