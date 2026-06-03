@@ -10,7 +10,7 @@
    inner .clip layer would otherwise clip it away via clip-path. */
 .glow {
   box-shadow:
-    0 0 70px -10px rgba(255, 255, 255, 0.22),
+    0 0 70px -10px var(--glass-card-glow, rgba(255, 255, 255, 0.22)),
     0 30px 70px -24px rgba(0, 0, 0, 0.75);
 }
 
