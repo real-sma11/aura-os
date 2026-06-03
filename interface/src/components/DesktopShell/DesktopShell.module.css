@@ -175,12 +175,12 @@
 
 .sidekickLane {
   background: var(--color-sidekick-bg);
-  border: 1px solid var(--color-border-main-panel);
-  /* Match the standard-mode `.body` clip radius (--shell-chrome-radius, 20px)
-     so the sidekick's outer (right) corners follow the rounded screen edge
-     rather than being clipped where the old 6px corner fell outside it. */
-  border-top-right-radius: var(--shell-chrome-radius);
-  border-bottom-right-radius: var(--shell-chrome-radius);
+  /* The rounded screen frame is drawn on `.body` (AuraShell.module.css), so
+     the sidekick only keeps its left edge as the interior seam against the
+     main panel (the resize-hover accent below targets this left border).
+     Its outer top/right/bottom borders and right corner radii are dropped —
+     they would double the body frame or get clipped at the rounded corner. */
+  border-left: 1px solid var(--color-border-main-panel);
   transition: border-color var(--transition-fast, 120ms) ease;
 }
 

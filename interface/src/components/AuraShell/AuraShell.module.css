@@ -33,7 +33,7 @@
  * own content owns the visuals).
  */
 .shell[data-ui-mode="standard"] {
-  background: var(--desktop-shell-backdrop, linear-gradient(to top right, #131313, #272727));
+  background: var(--desktop-shell-backdrop, linear-gradient(to top right, #111113, #0a0a0c));
 }
 
 .body {
@@ -56,8 +56,17 @@
  * floating on the gradient outer-shell backdrop. The titlebar/taskbar
  * inset plus the matching 5px side margin make the surrounding backdrop
  * read as a uniform shell with curved sides.
+ *
+ * The screen's perimeter border lives here on `.body` rather than on the
+ * inner panels. `.body` owns the rounded `overflow: hidden` clip, and a
+ * border is painted on the border box — outside the clipped content box —
+ * so it renders as a complete, unbroken rounded outline. Drawing the
+ * border on a panel flush to this edge instead got its outer corner
+ * shaved off by the same clip. The panels keep only their interior seam
+ * borders (see `.sidebar` / `.mainPanel` / `.sidekickLane` below).
  */
 .shell[data-ui-mode="standard"] .body {
+  border: 1px solid var(--color-border-main-panel);
   border-radius: var(--shell-chrome-radius);
 }
 
@@ -75,14 +84,18 @@
 }
 
 /*
- * Standard mode rounds `.body` to `--shell-chrome-radius` (20px) and clips
- * it with `overflow: hidden`. Match the sidebar's outer (left) corners to
- * that radius so its border follows the rounded screen edge instead of
- * being sliced off where the smaller 6px corner falls outside the clip.
+ * The rounded screen frame is drawn on `.body` (above), so the sidebar
+ * only keeps its right edge as the interior seam against the main panel
+ * (which carries the resize-hover accent below). Its outer top/left/
+ * bottom borders and left corner radii are dropped — they would either
+ * double the body frame or get clipped at the rounded corner.
  */
 .shell[data-ui-mode="standard"] .sidebar {
-  border-top-left-radius: var(--shell-chrome-radius);
-  border-bottom-left-radius: var(--shell-chrome-radius);
+  border-top: none;
+  border-left: none;
+  border-bottom: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .sidebar:has([data-lane-resize-handle]:hover),
@@ -224,6 +237,17 @@
      correct edge. Keep only the top/bottom borders here. */
   border-left: none;
   border-right: none;
+}
+
+/*
+ * In standard mode the rounded screen frame is drawn on `.body`, which
+ * already provides the top and bottom edges of the main panel's column,
+ * so drop the main panel's own top/bottom borders to avoid a doubled
+ * line just inside the rounded frame.
+ */
+.shell[data-ui-mode="standard"] .mainPanel {
+  border-top: none;
+  border-bottom: none;
 }
 
 .shell[data-desktop-mode] .mainPanel {
