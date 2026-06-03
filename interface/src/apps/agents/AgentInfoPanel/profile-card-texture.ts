@@ -225,7 +225,7 @@ function roundRectPath(
   ctx.closePath();
 }
 
-/** Engraved text: a faint light bevel under dark stamped glyphs on gray metal. */
+/** Embossed light text: a dark drop shadow under bright glyphs for contrast on the dark metal. */
 function engrave(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -233,8 +233,8 @@ function engrave(
   y: number,
   color: string,
 ): void {
-  ctx.fillStyle = "rgba(255,255,255,0.1)";
-  ctx.fillText(text, x, y + 1.5);
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillText(text, x, y + 2);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
 }
@@ -303,7 +303,7 @@ export function drawInfoStrip(
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.font = `700 70px ${STRIP_SANS}`;
-  engrave(ctx, opts.name || "Unnamed", padL, 84, "#15171b");
+  engrave(ctx, opts.name || "Unnamed", padL, 84, "#f4f6f9");
 
   // Role pill, right-aligned on the header row.
   const role = (opts.role || "").trim();
@@ -317,24 +317,24 @@ export function drawInfoStrip(
     const pillX = valueX - pillW;
     const pillY = 40;
     roundRectPath(ctx, pillX, pillY, pillW, pillH, 11);
-    ctx.fillStyle = "rgba(16,18,22,0.55)";
+    ctx.fillStyle = "rgba(8,10,13,0.7)";
     ctx.fill();
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.stroke();
-    ctx.fillStyle = "#cdd1d7";
+    ctx.fillStyle = "#eef1f5";
     ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 10);
   }
 
-  // Divider with a light bevel below it.
+  // Divider: a dark groove with a light bevel below it.
   const divY = 120;
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = "rgba(0,0,0,0.28)";
+  ctx.strokeStyle = "rgba(0,0,0,0.5)";
   ctx.beginPath();
   ctx.moveTo(padL, divY);
   ctx.lineTo(w - padR, divY);
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
   ctx.beginPath();
   ctx.moveTo(padL, divY + 2);
   ctx.lineTo(w - padR, divY + 2);
@@ -355,16 +355,16 @@ export function drawInfoStrip(
 
     ctx.textAlign = "left";
     ctx.font = `600 27px ${STRIP_SANS}`;
-    engrave(ctx, row.label.toUpperCase(), padL, y, "#8b9098");
+    engrave(ctx, row.label.toUpperCase(), padL, y, "#aab1ba");
 
     ctx.textAlign = "right";
     ctx.font = row.mono ? `500 33px ${STRIP_MONO}` : `600 38px ${STRIP_SANS}`;
     if (row.status) {
       const tw = ctx.measureText(row.value).width;
-      engrave(ctx, row.value, valueX, y, "#1b1d22");
+      engrave(ctx, row.value, valueX, y, "#f4f6f9");
       drawStatusDot(ctx, valueX - tw - 26, y - 12, 10, opts.isOnline, dotOn, accent);
     } else {
-      engrave(ctx, row.value, valueX, y, "#1b1d22");
+      engrave(ctx, row.value, valueX, y, "#f4f6f9");
     }
   });
 
