@@ -33,7 +33,7 @@
  * own content owns the visuals).
  */
 .shell[data-ui-mode="standard"] {
-  background: var(--desktop-shell-backdrop, linear-gradient(to top right, #111113, #0a0a0c));
+  background: var(--desktop-shell-backdrop, #000);
 }
 
 .body {
@@ -50,24 +50,62 @@
 /*
  * Standard-mode contained desktop. `.body` already fills the whole
  * region between the titlebar and bottom taskbar with a slim side
- * inset; the only change here is the larger corner radius so the
- * wallpaper (`BackgroundLayer`, clipped by `overflow: hidden`), app
- * content, and desktop windows read as a single rounded "screen"
- * floating on the gradient outer-shell backdrop. The titlebar/taskbar
+ * inset; the corner radius here keeps the wallpaper (`BackgroundLayer`,
+ * clipped by `overflow: hidden`), app content, and desktop windows reading
+ * as a single rounded "screen" floating on the gradient outer-shell
+ * backdrop. The titlebar/taskbar
  * inset plus the matching 5px side margin make the surrounding backdrop
  * read as a uniform shell with curved sides.
  *
  * The screen's perimeter border lives here on `.body` rather than on the
- * inner panels. `.body` owns the rounded `overflow: hidden` clip, and a
- * border is painted on the border box — outside the clipped content box —
- * so it renders as a complete, unbroken rounded outline. Drawing the
- * border on a panel flush to this edge instead got its outer corner
- * shaved off by the same clip. The panels keep only their interior seam
- * borders (see `.sidebar` / `.mainPanel` / `.sidekickLane` below).
+ * inner panels. `.body` owns the rounded `overflow: hidden` clip, and the
+ * gradient ring is painted by a masked `::after` (below) whose outer radius
+ * matches the clip, so it renders as a complete, unbroken rounded outline.
+ * Drawing the border on a panel flush to this edge instead got its outer
+ * corner shaved off by the same clip. The panels keep only their interior
+ * seam borders (see `.sidebar` / `.mainPanel` / `.sidekickLane` below).
+ *
+ * Roundness matches the public-mode shell (the base `.body` 6px) so the
+ * contained desktop reads with the same tighter corners rather than the
+ * heavier 20px chrome radius.
  */
 .shell[data-ui-mode="standard"] .body {
-  border: 1px solid var(--color-border-main-panel);
-  border-radius: var(--shell-chrome-radius);
+  border-radius: 6px;
+}
+
+/*
+ * 1px gradient stroke framing the contained desktop, reusing the exact
+ * recipe the bottom-taskbar pills use (`.left::after` et al. in
+ * `BottomTaskbar.module.css`): a vertical `--shell-stroke-top -> side ->
+ * bottom` gradient clipped to a 1px ring via the mask-composite trick, so
+ * the desktop feels set into the surrounding shell frame. `border-radius:
+ * inherit` picks up the 6px corner above. `z-index` lifts the ring over the
+ * panels' opaque fills (sidebar / main panel) but keeps it under the
+ * desktop window layer (z-index 1000); `pointer-events: none` so it never
+ * intercepts interaction.
+ */
+.shell[data-ui-mode="standard"] .body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    var(--shell-stroke-top, #424242) 0%,
+    var(--shell-stroke-side, #262626) 50%,
+    var(--shell-stroke-bottom, #121212) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .sidebar {
@@ -182,6 +220,19 @@
  * for `LoginView` and other surfaces that mount it directly.
  */
 .shell[data-ui-mode="public"] :global(.titlebar-drag) {
+  border-color: transparent;
+}
+
+/*
+ * Default (dark) theme: the authed top app bar (titlebar) drops its
+ * frosted background + border so it floats cleanly on the gradient
+ * outer-shell backdrop. `ShellTitlebar`'s `.blur` sets its background
+ * with `!important`, so the override needs `!important` to win; the
+ * border is zeroed to `transparent` (not `none`) to preserve the pill's
+ * box geometry. Light theme keeps the standard chrome.
+ */
+:global([data-theme="dark"]) .shell[data-ui-mode="standard"] :global(.titlebar-drag) {
+  background: transparent !important;
   border-color: transparent;
 }
 
