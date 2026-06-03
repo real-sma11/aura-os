@@ -133,10 +133,20 @@ export function resolveSend({
       };
     case "generate_3d": {
       const commands = dedupe([behavior.commandId, ...userCommandIds]);
-      // Manual attachments are intentionally dropped on the 3D wire
-      // shape today — neither branch accepts an arbitrary file (the
-      // proxy path is disabled and the model step uses the pinned
-      // URL exclusively).
+      // 3D is image-to-3D. Source priority:
+      //   1. an explicitly pinned image (an existing artifact URL),
+      //   2. an uploaded / pasted image, forwarded directly as a
+      //      `data:` URL (the backend's `image_data` path materialises
+      //      it before calling the 3D provider),
+      //   3. otherwise the text -> AURA-styled-image step.
+      // The stream hooks branch on the `data:` prefix of
+      // `sourceImageUrl` to choose the `image_data` vs `image_url`
+      // wire shape.
+      const uploadedImage = attachments.find((a) => a.type === "image");
+      const uploadedImageUrl = uploadedImage
+        ? (uploadedImage.source_url ??
+          `data:${uploadedImage.media_type};base64,${uploadedImage.data}`)
+        : null;
       const empty: ChatAttachment[] = [];
       if (pinnedSourceImageUrl) {
         return {
@@ -145,6 +155,18 @@ export function resolveSend({
           attachments: empty,
           commands,
           sourceImageUrl: pinnedSourceImageUrl,
+        };
+      }
+      if (uploadedImageUrl) {
+        // Keep the attachments so the user's message bubble shows the
+        // image they uploaded; the model step sources from
+        // `sourceImageUrl` and ignores the attachment list itself.
+        return {
+          kind: "3d_model_step",
+          content,
+          attachments,
+          commands,
+          sourceImageUrl: uploadedImageUrl,
         };
       }
       return {
