@@ -1,0 +1,150 @@
+/* Shared sidekick list. Codifies the canonical "collapsible section +
+   child item rows" structure that the Plans (`SpecList`) and Tasks
+   (`TaskList`) Explorer lists use, so every sidekick list reads with the
+   same metrics, hover/selected treatment, and spacing.
+
+   Rows are zui `Item` buttons (the same primitive Explorer rows use).
+   The metrics are restated here (rather than relying solely on the
+   global `.sidekickBody` Explorer overrides) so a list rendered outside
+   `.sidekickBody` - e.g. in tests or a preview - still reads correctly.
+   The `.list` scope raises specificity so these win over zui `Item`'s
+   base `.item` rules regardless of stylesheet import order. */
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.list .row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: auto;
+  margin: 1px var(--space-2, 8px);
+  padding: 0 var(--space-3, 12px);
+  min-height: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast, 75ms ease-out),
+              color var(--transition-fast, 75ms ease-out);
+}
+
+/* Two-line rows (label + detail) grow to fit both lines. */
+.list .rowMultiline {
+  height: auto;
+  min-height: 44px;
+  padding-top: var(--space-1, 4px);
+  padding-bottom: var(--space-1, 4px);
+  align-items: flex-start;
+}
+
+.list .row:hover {
+  background: var(--color-overlay-subtle);
+}
+
+.list .row:focus-visible {
+  outline: none;
+  background: var(--color-overlay-subtle);
+}
+
+/* Selected and hover must stay visually distinct: a hovered row paints
+   `--color-overlay-subtle`, the selected row paints `--color-overlay-medium`,
+   so a hovered row in one section never reads identical to the selected
+   row in another. Mirrors the SessionsList / Explorer pattern. */
+.list .row[aria-selected="true"],
+.list .row[aria-selected="true"]:hover,
+.list .row[aria-selected="true"]:focus-visible {
+  background: var(--color-overlay-medium);
+  color: var(--color-text-primary);
+}
+
+.leadingIndicator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  opacity: 0.6;
+}
+
+.rowMultiline .icon {
+  margin-top: 1px;
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 300;
+  color: var(--color-text-muted);
+}
+
+.suffix {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+}
+
+.count {
+  margin-left: var(--space-1, 4px);
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.sectionEmpty,
+.loading {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  margin: 0 var(--space-2, 8px);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.25;
+}
+
+.loading {
+  justify-content: center;
+  padding: var(--space-6, 24px) var(--space-4, 16px);
+}
