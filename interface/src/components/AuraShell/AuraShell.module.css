@@ -59,53 +59,47 @@
  *
  * The screen's perimeter border lives here on `.body` rather than on the
  * inner panels. `.body` owns the rounded `overflow: hidden` clip, and the
- * gradient ring is painted by a masked `::after` (below) whose outer radius
- * matches the clip, so it renders as a complete, unbroken rounded outline.
- * Drawing the border on a panel flush to this edge instead got its outer
- * corner shaved off by the same clip. The panels keep only their interior
- * seam borders (see `.sidebar` / `.mainPanel` / `.sidekickLane` below).
+ * gradient ring is painted as `.body`'s own `border-box` background behind a
+ * transparent 1px border (below), so the element's `border-radius` renders
+ * the rounded corner crisply. Drawing the border on a panel flush to this
+ * edge instead got its outer corner shaved off by the same clip. The panels
+ * keep only their interior seam borders (see `.sidebar` / `.mainPanel` /
+ * `.sidekickLane` below).
  *
  * Roundness matches the public-mode shell (the base `.body` 6px) so the
  * contained desktop reads with the same tighter corners rather than the
  * heavier 20px chrome radius.
+ *
+ * The 1px gradient stroke reuses the vertical `--shell-stroke-top -> side ->
+ * bottom` gradient the bottom-taskbar pills use. Instead of a masked
+ * `::after` ring (which left the rounded corners aliased), the gradient is
+ * `.body`'s own `border-box` background sitting behind a transparent 1px
+ * border: the sidebar / main panel children are opaque and clip to the
+ * padding box via `overflow: hidden`, so the gradient only shows through the
+ * 1px border, and the element's `border-radius` anti-aliases that rounded
+ * edge crisply. `box-sizing: border-box` (zui reset) means the 1px border
+ * eats inward, so the screen size is unchanged.
  */
 .shell[data-ui-mode="standard"] .body {
+  /*
+   * Own stacking context so `BackgroundLayer`'s `z-index: -1` wallpaper
+   * paints WITHIN `.body` — above this gradient screen-frame fill but
+   * below the content panels. Without it, the wallpaper's negative
+   * z-index escapes into `.shell`'s context (it has `isolation: isolate`)
+   * and paints behind this gradient, which then hides it. The wallpaper
+   * is `inset: 0` (padding box), so the 1px transparent-border gradient
+   * frame still shows on the perimeter.
+   */
+  isolation: isolate;
   border-radius: 6px;
-}
-
-/*
- * 1px gradient stroke framing the contained desktop, reusing the exact
- * recipe the bottom-taskbar pills use (`.left::after` et al. in
- * `BottomTaskbar.module.css`): a vertical `--shell-stroke-top -> side ->
- * bottom` gradient clipped to a 1px ring via the mask-composite trick, so
- * the desktop feels set into the surrounding shell frame. `border-radius:
- * inherit` picks up the 6px corner above. `z-index` lifts the ring over the
- * panels' opaque fills (sidebar / main panel) but keeps it under the
- * desktop window layer (z-index 1000); `pointer-events: none` so it never
- * intercepts interaction.
- */
-.shell[data-ui-mode="standard"] .body::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  border-radius: inherit;
-  padding: 1px;
+  border: 1px solid transparent;
   background: linear-gradient(
-    to bottom,
-    var(--shell-stroke-top, #424242) 0%,
-    var(--shell-stroke-side, #262626) 50%,
-    var(--shell-stroke-bottom, #121212) 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
+      to bottom,
+      var(--shell-stroke-top, #424242) 0%,
+      var(--shell-stroke-side, #262626) 50%,
+      var(--shell-stroke-bottom, #121212) 100%
+    )
+    border-box;
 }
 
 .sidebar {
