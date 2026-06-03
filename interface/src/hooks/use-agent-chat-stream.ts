@@ -726,10 +726,14 @@ export function useAgentChatStream({
             model: selectedModel ?? null,
             kind: "video",
           });
+          const videoImages = attachments
+            ?.filter((a) => a.type === "image")
+            .map((a) => a.source_url ?? `data:${a.media_type};base64,${a.data}`);
           await generateVideoStream(
             {
               prompt: userMsg.content,
               model: selectedModel ?? undefined,
+              images: videoImages,
               projectId,
               agentId,
               newSession: shouldStartNewSession,
