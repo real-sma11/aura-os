@@ -166,12 +166,12 @@
 
 /* SVG-as-block removes the inline-baseline gap and keeps the icon's
    bounding box exactly where flex centering puts it (perfectly inside
-   the inner-plate hover bg). */
+   the inner-plate hover bg). No drop-shadow filter: the filter forced the
+   glyph onto a separate raster layer, which softened the 1.5px strokes —
+   dropping it lets the strokes paint crisp directly on the pixel grid. */
 .taskbarBtn > svg {
   display: block;
-  /* Slight shadow under the icon strokes for a touch of depth. Keep the
-     blur at 0 so the strokes stay crisp instead of looking soft. */
-  filter: drop-shadow(0 1px 0 var(--taskbar-icon-shadow, #161616));
+  shape-rendering: geometricPrecision;
 }
 
 /* Inner rounded "halo" hover plate. Hit target stays full-size for a11y;
@@ -207,60 +207,35 @@
   background: var(--icon-hover-bg);
 }
 
-/* Active app reads as an accent rounded-square ring with a soft glow,
-   while the glyph itself stays bright/neutral — the ring carries the
-   accent so the icon stays legible (see the reference icon bar). */
+/* Active app: the glyph itself carries the accent color while the
+   surrounding rings stay neutral, so the selection reads from the icon
+   tint rather than a colored ring/glow. */
 .taskbarBtn:not(:disabled)[aria-pressed="true"],
 .taskbarBtn:not(:disabled)[data-selected="true"] {
-  color: var(--color-text-primary);
+  color: #fff;
   opacity: 1;
-  /* Lift the selected item above its neighbors so the pop-out container
-     ring isn't clipped by adjacent icons. */
+  /* Lift the selected item above its neighbors so the circular plate
+     isn't clipped by adjacent icons. */
   z-index: 2;
 }
 
 /*
- * Selected/active app affordance, built as two nested rings that sit
- * INSIDE the pill with spacing from its edge:
- *   - `::before` is the outer container: a #0f0f0f -> #252523 gradient
- *     rounded square, inset 1px from the icon button (so it clears the
- *     pill edge) with a few px of dark gradient before the gold ring.
- *   - `::after` is the gold ring inside it.
- * The glyph (z-index 1) stays centered on top of both.
+ * Selected/active app affordance: a single circular plate behind the
+ * glyph. `::before` carries the plate — a #373739 -> #272729 fill
+ * (padding-box) inside a 1px #666668 -> #262628 gradient border
+ * (border-box), both running top-to-bottom for a beveled read, plus a
+ * drop shadow lifting it off the pill. The glyph (z-index 1) stays
+ * centered on top.
  */
 .taskbarBtn:not(:disabled)[aria-pressed="true"]::before,
 .taskbarBtn:not(:disabled)[data-selected="true"]::before {
   inset: 1px;
   border: 1px solid transparent;
-  border-radius: 11px;
-  /* Fill clipped to the padding box; a dark -> light gradient fills the
-     1px transparent border (clipped to the border box) so the selected
-     area gets a 1px gradient outline that follows the rounded corners. */
+  border-radius: 50%;
   background:
-    linear-gradient(to top right, #0f0f0f, #252523) padding-box,
-    linear-gradient(180deg, #141414, #6b6b6b) border-box;
-  box-shadow: 0 2px 6px -2px color-mix(in srgb, #000 65%, transparent);
-}
-
-.taskbarBtn:not(:disabled)[aria-pressed="true"]::after,
-.taskbarBtn:not(:disabled)[data-selected="true"]::after {
-  content: "";
-  position: absolute;
-  box-sizing: border-box;
-  inset: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--color-accent);
-  /* Padding opens a gap inside the accent border before the lighter
-     "main container" (the content-box gradient) that hugs the icon. The
-     fill is lighter than the dark outer container so the icon sits on a
-     raised, lighter plate. */
-  padding: 3px;
-  background: linear-gradient(160deg, #2c2c2e, #3c3c40) content-box;
-  box-shadow:
-    0 0 6px color-mix(in srgb, var(--color-accent) 45%, transparent),
-    inset 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
-  pointer-events: none;
-  z-index: 0;
+    linear-gradient(180deg, #373739, #272729) padding-box,
+    linear-gradient(180deg, #666668, #262628) border-box;
+  box-shadow: 0 2px 6px -1px color-mix(in srgb, #000 65%, transparent);
 }
 
 .taskbarBtn:focus-visible {
