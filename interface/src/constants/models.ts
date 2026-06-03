@@ -27,6 +27,20 @@ export const EFFORT_LABELS: Record<ModelEffort, string> = {
 };
 
 /**
+ * Compact effort labels shown only on the selected model picker trigger
+ * (via {@link modelLabelWithEffort}). The dropdown effort flyout keeps the
+ * full {@link EFFORT_LABELS} for readability. `max` reads as "XH" (Extra
+ * High) here even though the menu labels it "Max".
+ */
+export const EFFORT_SHORT_LABELS: Record<ModelEffort, string> = {
+  minimal: "Min",
+  low: "L",
+  medium: "M",
+  high: "H",
+  max: "XH",
+};
+
+/**
  * Vendor a chat model is attributed to in the picker's collapsible
  * provider sections. Distinct from {@link ModelProviderGroup} (which
  * separates chat/image/3d) — this is the human-facing brand grouping.
@@ -1240,9 +1254,11 @@ export function modelLabel(
 
 /**
  * Like {@link modelLabel}, but appends the selected reasoning-effort tier
- * (e.g. `"Opus 4.8 Max"`) when an effort is active and the model exposes
- * effort tiers. Falls back to the plain label otherwise, so models without
- * efforts (or with no selection) read exactly as before.
+ * as a compact abbreviation (e.g. `"Opus 4.8 XH"`) when an effort is active
+ * and the model exposes effort tiers. Uses {@link EFFORT_SHORT_LABELS} so
+ * the selected trigger stays compact; the menu flyout still shows full
+ * names. Falls back to the plain label otherwise, so models without efforts
+ * (or with no selection) read exactly as before.
  */
 export function modelLabelWithEffort(
   modelId: string,
@@ -1253,7 +1269,7 @@ export function modelLabelWithEffort(
   const base = modelLabel(modelId, adapterType, explicitDefault);
   if (!effort) return base;
   if (getModelEfforts(modelId).length === 0) return base;
-  return `${base} ${EFFORT_LABELS[effort]}`;
+  return `${base} ${EFFORT_SHORT_LABELS[effort]}`;
 }
 
 export function modelProviderGroup(model: ModelOption): ModelProviderGroup {
