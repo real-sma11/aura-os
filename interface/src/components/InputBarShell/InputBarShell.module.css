@@ -152,12 +152,36 @@
  * surface via the `pill` prop so other InputBarShell consumers keep the
  * default 14px box. */
 .inputContainerPill {
+  /* 25% taller than the default 32px control height. */
+  --pill-row-height: 40px;
   border: 1px solid transparent;
   border-radius: 999px;
   background:
     linear-gradient(180deg, #1e1e1e, #181818) padding-box,
     linear-gradient(180deg, #3a3a3a, #2f2f2f) border-box;
   box-shadow: 0 2px 6px var(--pill-shadow, #141414);
+}
+
+/* Grow the single-line input row + textarea to the taller pill height,
+   padding the textarea so the prompt stays vertically centred. */
+.inputContainerPill .inputRow {
+  min-height: var(--pill-row-height);
+}
+
+.inputContainerPill .textarea {
+  min-height: var(--pill-row-height);
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Centre the corner attach/send buttons within the taller single-line
+   pill. The multi-line state keeps the existing bottom-anchored layout
+   (handled by the `[data-multiline]` rules below). */
+.inputContainerPill:not([data-multiline="true"]) .attachButton,
+.inputContainerPill:not([data-multiline="true"]) .sendButton {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
 }
 
 /* Soften to a rounded rectangle once the prompt wraps to a second line
