@@ -30,15 +30,16 @@ precision highp float;
 varying vec2 vUv;
 uniform float uTime;
 uniform vec2 uRes;
+uniform vec2 uCenter;
 
 vec3 palette(float t) {
   return 0.5 + 0.5 * cos(6.2831853 * (t + vec3(0.0, 0.33, 0.67)));
 }
 
 void main() {
-  // Aspect-correct so the ring stays a circle even if the drawing
-  // buffer isn't perfectly square.
-  vec2 p = vUv * 2.0 - 1.0;
+  // Center the ring on the + glyph (uCenter, in 0..1 canvas space) and
+  // aspect-correct so it stays a circle even if the buffer isn't square.
+  vec2 p = (vUv - uCenter) * 2.0;
   p.x *= uRes.x / max(uRes.y, 1.0);
 
   float r = length(p);
@@ -122,6 +123,7 @@ export function PrismRing({ className }: { className?: string }) {
     const aPos = gl.getAttribLocation(program, "aPos");
     const uTime = gl.getUniformLocation(program, "uTime");
     const uRes = gl.getUniformLocation(program, "uRes");
+    const uCenter = gl.getUniformLocation(program, "uCenter");
 
     gl.useProgram(program);
     gl.enableVertexAttribArray(aPos);
@@ -131,6 +133,25 @@ export function PrismRing({ className }: { className?: string }) {
     gl.clearColor(0, 0, 0, 0);
 
     setActive(true);
+
+    // Where the + glyph sits within the canvas (0..1). The canvas is
+    // oversized and may not be perfectly centered on the glyph in every
+    // layout, so measure it and recenter the ring on the glyph rather
+    // than assuming the canvas center.
+    let centerX = 0.5;
+    let centerY = 0.5;
+    const measureCenter = () => {
+      const glyph = canvas.parentElement?.querySelector("svg");
+      const cr = canvas.getBoundingClientRect();
+      if (!glyph || cr.width <= 0 || cr.height <= 0) {
+        centerX = 0.5;
+        centerY = 0.5;
+        return;
+      }
+      const gr = glyph.getBoundingClientRect();
+      centerX = (gr.left + gr.width / 2 - cr.left) / cr.width;
+      centerY = (gr.top + gr.height / 2 - cr.top) / cr.height;
+    };
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -154,8 +175,10 @@ export function PrismRing({ className }: { className?: string }) {
     const start = performance.now();
     const render = (now: number) => {
       resize();
+      measureCenter();
       gl.uniform1f(uTime, (now - start) / 1000);
       gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform2f(uCenter, centerX, centerY);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       raf = requestAnimationFrame(render);
