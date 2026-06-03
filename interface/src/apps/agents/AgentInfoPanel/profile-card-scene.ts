@@ -1183,13 +1183,16 @@ export function createProfileCardScene(
 
     // Matte core: full silhouette (no hole), centered at z=0 and scaled slightly
     // so it peeks through the LED slot + chamfers and forms the opaque dark
-    // backing shared by BOTH the front and back LCDs (no see-through when
-    // flipped). Thin enough to sit between the two recessed screens.
+    // backing shared by BOTH the front and back LCDs. It must stay THIN: the
+    // LCDs are recessed to z = +/-0.045, and ExtrudeGeometry adds the bevel on
+    // both ends, so the total z-thickness is depth + 2*bevel. Keep its faces
+    // comfortably inside +/-0.045 (here ~ +/-0.02) so it never pokes in front of
+    // a screen and occludes it.
     const coreGeo = new THREE.ExtrudeGeometry(auraOuterShape(shell.w, shell.h), {
-      depth: 0.05,
+      depth: 0.02,
       bevelEnabled: true,
-      bevelThickness: SHELL_BEVEL,
-      bevelSize: SHELL_BEVEL,
+      bevelThickness: 0.01,
+      bevelSize: 0.01,
       bevelSegments: 2,
       curveSegments: 16,
       steps: 1,
