@@ -65,7 +65,7 @@ export function SidekickTaskbar() {
   const handleArchive = ctx?.handleArchive;
   const tabs = useMemo<TabItem[]>(
     () => [
-      { id: "sessions", icon: <MessageSquare size={16} />, title: "Sessions" },
+      { id: "sessions", icon: <MessageSquare size={16} />, title: "Chats" },
       { id: "terminal", icon: <SquareTerminal size={16} />, title: "Terminal" },
       { id: "browser", icon: <Globe size={16} />, title: "Browser" },
       { id: "specs", icon: <File size={16} />, title: "Plans" },
