@@ -129,15 +129,19 @@
 .titlePill {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-1) var(--space-3);
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--color-text-primary);
-  border-radius: var(--radius-full, 999px);
-  background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 14%, var(--color-border));
-  text-shadow: 0 0 18px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg, 14px);
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  border: 1px solid color-mix(in srgb, white 8%, transparent);
+  box-shadow: 0 0 24px -6px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.wordmark {
+  display: block;
+  height: 18px;
+  width: auto;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-accent) 45%, transparent));
 }
 
 .subtext {

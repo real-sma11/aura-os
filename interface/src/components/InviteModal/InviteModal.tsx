@@ -62,7 +62,14 @@ export function InviteModal({ isOpen, onClose }: Props) {
         <div className={styles.bannerGlow} aria-hidden="true" />
       </div>
       <div className={styles.body}>
-        <span className={styles.titlePill}>INVITE FRIENDS</span>
+        <span className={styles.titlePill}>
+          <img
+            src="/AURA_logo_text_mark.png"
+            alt="AURA"
+            className={styles.wordmark}
+            draggable={false}
+          />
+        </span>
         <p className={styles.subtext}>
           Share your code with a friend to get them started on AURA. If they
           subscribe to one of our monthly plans, you'll both receive 5,000 Z
