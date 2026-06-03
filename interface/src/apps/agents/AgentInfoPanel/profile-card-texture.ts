@@ -321,7 +321,7 @@ export function drawInfoStrip(
     engrave(ctx, row.label.toUpperCase(), padL, y, "#aab1ba");
 
     ctx.textAlign = "right";
-    ctx.font = row.mono ? `500 70px ${STRIP_MONO}` : `600 82px ${STRIP_SANS}`;
+    ctx.font = row.mono ? `500 56px ${STRIP_MONO}` : `600 66px ${STRIP_SANS}`;
     if (row.status && opts.isOnline) {
       // Online: accent-colored text with a very subtle, gently pulsing glow.
       // The card is ACES tone-mapped, which washes bright saturated colors
