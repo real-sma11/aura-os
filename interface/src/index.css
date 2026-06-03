@@ -77,10 +77,11 @@
 
   /*
    * Backdrop painted across the entire authed shell (`AuraShell`
-   * standard mode). The desktop wallpaper + content live inside a
-   * rounded, inset "screen"; this diagonal gradient is the surrounding
-   * shell the top bar and bottom taskbar sit on (the bottom-taskbar
-   * section is transparent so the gradient runs continuously behind it).
+   * standard mode) — the "outer shell" the contained desktop floats on,
+   * mirroring how the public landing's `.siteBackground` fills the area
+   * behind the mock. This diagonal gradient is the surrounding shell the
+   * top bar and bottom taskbar sit on (the bottom-taskbar section is
+   * transparent so the gradient runs continuously behind it).
    */
   --desktop-shell-backdrop: linear-gradient(to top right, #131313, #272727);
 

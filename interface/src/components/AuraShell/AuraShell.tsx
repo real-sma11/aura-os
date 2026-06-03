@@ -59,10 +59,10 @@ function blurActiveElement(): void {
  *     `<BackgroundLayer />` (theme wallpaper; authed modes only —
  *     suppressed in `public` so the persisted desktop wallpaper never
  *     bleeds onto logged-out surfaces) plus sidebar / main /
- *     conditional sidekick. In standard mode `.body` is a rounded
- *     "device" rectangle inset from the chrome over a near-black
- *     backdrop, so the top bar and bottom taskbar read as a shell
- *     around the contained desktop.
+ *     conditional sidekick. In standard mode `.body` fills the region
+ *     between the chrome with a slim inset and rounded corners, floating
+ *     on the gradient outer-shell backdrop so the top bar and bottom
+ *     taskbar read as a shell around the contained desktop.
  *   - `<AuraSidebar />` (one Lane instance, conditional body)
  *   - `<main>` (one element, content varies by mode)
  *   - `<BottomTaskbar />` (one `.bar`, mode-aware children)

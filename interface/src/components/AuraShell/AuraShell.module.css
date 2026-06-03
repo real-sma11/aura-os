@@ -53,10 +53,9 @@
  * inset; the only change here is the larger corner radius so the
  * wallpaper (`BackgroundLayer`, clipped by `overflow: hidden`), app
  * content, and desktop windows read as a single rounded "screen"
- * floating on the near-black backdrop. The titlebar/taskbar inset
- * (`--shell-chrome-inset`) plus the matching 5px side margin make the
- * surrounding backdrop read as a uniform shell with curved sides —
- * the same way the public-mode `.siteBackground` fills its panel.
+ * floating on the gradient outer-shell backdrop. The titlebar/taskbar
+ * inset plus the matching 5px side margin make the surrounding backdrop
+ * read as a uniform shell with curved sides.
  */
 .shell[data-ui-mode="standard"] .body {
   border-radius: var(--shell-chrome-radius);
