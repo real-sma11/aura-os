@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Text, Button, ButtonMore, Modal } from "@cypher-asi/zui";
-import { Zap, Loader2, Plus, Trash2, ChevronDown, ChevronRight, FilePlus2, Store } from "lucide-react";
+import { Zap, Loader2, Plus, Trash2, FilePlus2, Store } from "lucide-react";
 import { api } from "../../../api/client";
 import type { MySkillEntry, SkillInstalledAgentRef } from "../../../shared/api/harness-skills";
 import { useAgentSidekickStore } from "../stores/agent-sidekick-store";
+import {
+  SidekickList,
+  type SidekickListSection,
+} from "../../../components/SidekickList";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillShopModal } from "../../../components/SkillShopModal";
 import type { Agent, HarnessSkill, HarnessSkillInstallation } from "../../../shared/types";
@@ -29,12 +33,11 @@ function extractArrayField<T>(value: unknown, fields: readonly string[]): T[] {
   return [];
 }
 
-interface SkillRowProps {
+interface SkillRowActionsProps {
   skill: HarnessSkill;
   installed: boolean;
   loading: boolean;
   onAction: () => void;
-  onView: (skill: HarnessSkill) => void;
   /** When provided, the row shows a "Delete skill" action in its menu.
    *  Only passed for user-authored ("My Skills") rows — deleting
    *  removes the SKILL.md file and is a different operation from
@@ -42,14 +45,20 @@ interface SkillRowProps {
   onDelete?: () => void;
 }
 
-function SkillRow({
+/**
+ * Trailing action for a skill row: a spinner while a mutation is in
+ * flight, a "more actions" menu (uninstall / delete) for installed or
+ * user-authored skills, or a bare install button for available ones.
+ * Rendered as the row's `trailingAction` so it stays a valid sibling of
+ * the row button.
+ */
+function SkillRowActions({
   skill,
   installed,
   loading,
   onAction,
-  onView,
   onDelete,
-}: SkillRowProps) {
+}: SkillRowActionsProps) {
   const menuItems: Array<
     { id: string; label: string; icon?: React.ReactNode } | { type: "separator" }
   > = [];
@@ -73,46 +82,35 @@ function SkillRow({
     }
   };
 
+  if (loading) {
+    return (
+      <div className={styles.skillActionRemove}>
+        <Loader2 size={14} className={styles.spin} />
+      </div>
+    );
+  }
+  if (installed || onDelete) {
+    return (
+      <ButtonMore
+        items={menuItems}
+        onSelect={handleSelect}
+        icon="horizontal"
+        size="sm"
+        variant="ghost"
+        className={styles.skillMoreBtn}
+        title={`Actions for ${skill.name}`}
+      />
+    );
+  }
   return (
-    <div className={styles.skillRow}>
-      <button
-        type="button"
-        className={styles.skillRowContent}
-        onClick={() => onView(skill)}
-      >
-        <Zap size={14} className={styles.skillRowIcon} />
-        <div className={styles.skillRowText}>
-          <div className={styles.skillRowName}>{skill.name}</div>
-          {skill.description && (
-            <div className={styles.skillRowDesc}>{skill.description}</div>
-          )}
-        </div>
-      </button>
-      {loading ? (
-        <div className={styles.skillActionRemove}>
-          <Loader2 size={14} className={styles.spin} />
-        </div>
-      ) : installed || onDelete ? (
-        <ButtonMore
-          items={menuItems}
-          onSelect={handleSelect}
-          icon="horizontal"
-          size="sm"
-          variant="ghost"
-          className={styles.skillMoreBtn}
-          title={`Actions for ${skill.name}`}
-        />
-      ) : (
-        <button
-          type="button"
-          className={styles.skillActionAdd}
-          onClick={onAction}
-          title={`Install ${skill.name}`}
-        >
-          <Plus size={14} />
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      className={styles.skillActionAdd}
+      onClick={onAction}
+      title={`Install ${skill.name}`}
+    >
+      <Plus size={14} />
+    </button>
   );
 }
 
@@ -199,8 +197,6 @@ export function SkillsTab({ agent }: SkillsTabProps) {
   const [mySkills, setMySkills] = useState<MySkillEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
-  const [showAvailable, setShowAvailable] = useState(false);
-  const [showMine, setShowMine] = useState(true);
   const [showCreator, setShowCreator] = useState(false);
   const [showStore, setShowStore] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -213,7 +209,10 @@ export function SkillsTab({ agent }: SkillsTabProps) {
   // inline so the user knows exactly which agents to clean up first.
   const [blockingAgents, setBlockingAgents] = useState<SkillInstalledAgentRef[]>([]);
   const viewSkill = useAgentSidekickStore((s) => s.viewSkill);
-  const installationByName = new Map(installations.map((i) => [i.skill_name, i]));
+  const installationByName = useMemo(
+    () => new Map(installations.map((i) => [i.skill_name, i])),
+    [installations],
+  );
 
   const agentId = agent.agent_id;
 
@@ -269,9 +268,15 @@ export function SkillsTab({ agent }: SkillsTabProps) {
     fetchData();
   }, [fetchData]);
 
-  const installedNameSet = new Set(installations.map((i) => i.skill_name));
+  const installedNameSet = useMemo(
+    () => new Set(installations.map((i) => i.skill_name)),
+    [installations],
+  );
   const catalogByName = new Map(catalog.map((s) => [s.name, s]));
-  const mySkillNameSet = new Set(mySkills.map((s) => s.name));
+  const mySkillNameSet = useMemo(
+    () => new Set(mySkills.map((s) => s.name)),
+    [mySkills],
+  );
 
   // Build installed list from installations, synthesising entries for skills
   // the harness catalog hasn't indexed yet (race after store install).
@@ -390,128 +395,111 @@ export function SkillsTab({ agent }: SkillsTabProps) {
     }
   }, [pendingDeleteName, fetchData]);
 
+  const sections = useMemo<SidekickListSection[]>(() => {
+    const available = availableSkills.filter((s) => !mySkillNameSet.has(s.name));
+    const skillRow = (
+      prefix: string,
+      skill: HarnessSkill,
+      opts: { installed: boolean; onAction: () => void; onDelete?: () => void },
+    ) => ({
+      id: `${prefix}:${skill.name}`,
+      icon: <Zap size={14} />,
+      label: skill.name,
+      detail: skill.description || undefined,
+      onSelect: () => viewSkill(skill, installationByName.get(skill.name)),
+      trailingAction: (
+        <SkillRowActions
+          skill={skill}
+          installed={opts.installed}
+          loading={!!actionLoading[skill.name]}
+          onAction={opts.onAction}
+          onDelete={opts.onDelete}
+        />
+      ),
+    });
+
+    return [
+      {
+        id: "installed",
+        label: loading ? "Installed" : `Installed (${installedSkills.length})`,
+        emptyLabel: fetchError ?? "No skills installed",
+        rows: installedSkills.map((skill) =>
+          skillRow("installed", skill, {
+            installed: true,
+            onAction: () => handleUninstall(skill.name),
+          }),
+        ),
+      },
+      {
+        id: "mine",
+        label: loading ? "My Skills" : `My Skills (${mySkillsRows.length})`,
+        emptyLabel: "No skills yet — click + above to create one",
+        rows: mySkillsRows.map((skill) => {
+          const installed = installedNameSet.has(skill.name);
+          return skillRow("mine", skill, {
+            installed,
+            onAction: () =>
+              installed ? handleUninstall(skill.name) : handleInstall(skill.name),
+            onDelete: () => requestDeleteMySkill(skill.name),
+          });
+        }),
+      },
+      {
+        id: "available",
+        label: loading ? "Available" : `Available (${available.length})`,
+        defaultExpanded: false,
+        emptyLabel: "No additional skills available",
+        rows: available.map((skill) =>
+          skillRow("available", skill, {
+            installed: false,
+            onAction: () => handleInstall(skill.name),
+          }),
+        ),
+      },
+    ];
+  }, [
+    availableSkills,
+    mySkillNameSet,
+    installedSkills,
+    mySkillsRows,
+    installedNameSet,
+    installationByName,
+    actionLoading,
+    loading,
+    fetchError,
+    viewSkill,
+    handleInstall,
+    handleUninstall,
+    requestDeleteMySkill,
+  ]);
+
   return (
     <div className={styles.skillsListWrap}>
-      {/* Installed section */}
-      <div className={styles.skillsSectionHeader}>
-        <Text size="xs" variant="muted" weight="medium">
-          Installed{!loading && ` (${installedSkills.length})`}
-        </Text>
-        <div className={styles.skillHeaderActions}>
-          {loading && (
-            <div className={styles.skillHeaderSpinner} aria-hidden="true">
-              <Loader2 size={12} className={styles.spin} />
-            </div>
-          )}
-          <button
-            type="button"
-            className={styles.skillCreateBtn}
-            onClick={() => setShowCreator(true)}
-            title="Create skill"
-          >
-            <FilePlus2 size={14} />
-          </button>
-          <button
-            type="button"
-            className={styles.skillCreateBtn}
-            onClick={() => setShowStore(true)}
-            title="Skill Shop"
-          >
-            <Store size={14} />
-          </button>
-        </div>
+      <div className={styles.skillsToolbar}>
+        {loading && (
+          <div className={styles.skillHeaderSpinner} aria-hidden="true">
+            <Loader2 size={12} className={styles.spin} />
+          </div>
+        )}
+        <button
+          type="button"
+          className={styles.skillCreateBtn}
+          onClick={() => setShowCreator(true)}
+          title="Create skill"
+        >
+          <FilePlus2 size={14} />
+        </button>
+        <button
+          type="button"
+          className={styles.skillCreateBtn}
+          onClick={() => setShowStore(true)}
+          title="Skill Shop"
+        >
+          <Store size={14} />
+        </button>
       </div>
 
-      {!loading && fetchError && (
-        <div className={styles.skillsEmpty} role="alert">
-          {fetchError}
-        </div>
-      )}
-
-      {!loading && !fetchError && (installedSkills.length === 0 ? (
-        <div className={styles.skillsEmpty}>No skills installed</div>
-      ) : (
-        installedSkills.map((skill) => (
-          <SkillRow
-            key={skill.name}
-            skill={skill}
-            installed
-            loading={!!actionLoading[skill.name]}
-            onAction={() => handleUninstall(skill.name)}
-            onView={(s) => viewSkill(s, installationByName.get(s.name))}
-          />
-        ))
-      ))}
-
-      {/* My Skills section (collapsible) — skills the current user authored */}
-      <button
-        type="button"
-        className={styles.skillsSectionToggle}
-        onClick={() => setShowMine((v) => !v)}
-      >
-        {showMine ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Text size="xs" variant="muted" weight="medium">
-          My Skills{!loading && ` (${mySkillsRows.length})`}
-        </Text>
-      </button>
-
-      {!loading && !fetchError && showMine &&
-        (mySkillsRows.length === 0 ? (
-          <div className={styles.skillsEmpty}>
-            No skills yet — click the + above to create one
-          </div>
-        ) : (
-          mySkillsRows.map((skill) => {
-            const installed = installedNameSet.has(skill.name);
-            return (
-              <SkillRow
-                key={`mine-${skill.name}`}
-                skill={skill}
-                installed={installed}
-                loading={!!actionLoading[skill.name]}
-                onAction={() =>
-                  installed ? handleUninstall(skill.name) : handleInstall(skill.name)
-                }
-                onView={(s) => viewSkill(s, installationByName.get(s.name))}
-                onDelete={() => requestDeleteMySkill(skill.name)}
-              />
-            );
-          })
-        ))}
-
-      {/* Available section (collapsible). Excludes skills shown under
-          "My Skills" so a single user-authored skill doesn't appear twice. */}
-      <button
-        type="button"
-        className={styles.skillsSectionToggle}
-        onClick={() => setShowAvailable((v) => !v)}
-      >
-        {showAvailable ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Text size="xs" variant="muted" weight="medium">
-          Available
-          {!loading &&
-            ` (${availableSkills.filter((s) => !mySkillNameSet.has(s.name)).length})`}
-        </Text>
-      </button>
-
-      {!loading && showAvailable &&
-        (() => {
-          const rows = availableSkills.filter((s) => !mySkillNameSet.has(s.name));
-          return rows.length === 0 ? (
-            <div className={styles.skillsEmpty}>No additional skills available</div>
-          ) : (
-            rows.map((skill) => (
-              <SkillRow
-                key={skill.name}
-                skill={skill}
-                installed={false}
-                loading={!!actionLoading[skill.name]}
-                onAction={() => handleInstall(skill.name)}
-                onView={viewSkill}
-              />
-            ))
-          );
-        })()}
+      <SidekickList sections={sections} />
 
       <CreateSkillModal
         isOpen={showCreator}

@@ -1,4 +1,5 @@
 .skillsListWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
+.skillsToolbar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: var(--space-2) var(--space-3) var(--space-1); }
 .skillsSectionHeader { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3) var(--space-1); }
 .skillCreateBtn { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: transparent; color: var(--color-text-secondary); opacity: 0.5; cursor: pointer; border-radius: 4px; padding: 0; }
 .skillCreateBtn:hover { opacity: 1; background: var(--color-overlay-medium); color: var(--color-success); }

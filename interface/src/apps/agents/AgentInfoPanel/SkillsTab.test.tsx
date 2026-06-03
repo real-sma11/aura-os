@@ -35,6 +35,34 @@ vi.mock("@cypher-asi/zui", () => ({
   Modal: ({ isOpen, children, footer }: any) =>
     isOpen ? <div data-testid="modal">{children}{footer}</div> : null,
   Input: (props: any) => <input {...props} />,
+  // `SidekickList` section headers render through `SidekickCollapsibleRow`,
+  // which uses the compound `Item` primitive. Flatten it to a button so the
+  // header label (and its collapse toggle) are present in tests.
+  Item: Object.assign(
+    ({ children, onClick, className }: any) => (
+      <button type="button" onClick={onClick} className={className}>
+        {children}
+      </button>
+    ),
+    {
+      Chevron: ({ onToggle }: any) => (
+        <span data-testid="chevron" onClick={onToggle} />
+      ),
+      Label: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
+      Icon: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
+      Action: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
+      Spacer: () => <span />,
+    },
+  ),
+  Menu: ({ items, onChange }: any) => (
+    <div>
+      {items?.map((i: any) => (
+        <button key={i.id} onClick={() => onChange?.(i.id)}>
+          {i.label}
+        </button>
+      ))}
+    </div>
+  ),
   // `ButtonMore` renders a menu; in tests we flatten it to a list of
   // buttons so the "Delete skill" entry is directly clickable.
   ButtonMore: ({ items, onSelect }: any) => (

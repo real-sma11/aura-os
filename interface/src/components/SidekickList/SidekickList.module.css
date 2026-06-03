@@ -24,12 +24,38 @@
   flex-direction: column;
 }
 
+/* The row wrapper owns the hover / selected background so it spans the
+   full width including any trailing action sibling. Rows are plain
+   `<button>`s (like SessionsList) so selection is parent-controlled and
+   any interactive trailing action stays a valid sibling rather than a
+   nested button. */
+.rowWrap {
+  display: flex;
+  align-items: stretch;
+  margin: 1px var(--space-2, 8px);
+  border-radius: 6px;
+  transition: background-color var(--transition-fast, 75ms ease-out);
+}
+
+.rowWrap:hover {
+  background: var(--color-overlay-subtle);
+}
+
+/* Selected and hover must stay visually distinct: a hovered row paints
+   `--color-overlay-subtle`, the selected row paints `--color-overlay-medium`,
+   so a hovered row in one section never reads identical to the selected
+   row in another. Mirrors the SessionsList / Explorer pattern. */
+.rowWrapSelected,
+.rowWrapSelected:hover {
+  background: var(--color-overlay-medium);
+}
+
 .list .row {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: var(--space-2, 8px);
-  width: auto;
-  margin: 1px var(--space-2, 8px);
   padding: 0 var(--space-3, 12px);
   min-height: 30px;
   height: 30px;
@@ -44,8 +70,6 @@
   text-align: left;
   cursor: pointer;
   user-select: none;
-  transition: background-color var(--transition-fast, 75ms ease-out),
-              color var(--transition-fast, 75ms ease-out);
 }
 
 /* Two-line rows (label + detail) grow to fit both lines. */
@@ -57,24 +81,15 @@
   align-items: flex-start;
 }
 
-.list .row:hover {
-  background: var(--color-overlay-subtle);
-}
-
 .list .row:focus-visible {
   outline: none;
-  background: var(--color-overlay-subtle);
 }
 
-/* Selected and hover must stay visually distinct: a hovered row paints
-   `--color-overlay-subtle`, the selected row paints `--color-overlay-medium`,
-   so a hovered row in one section never reads identical to the selected
-   row in another. Mirrors the SessionsList / Explorer pattern. */
-.list .row[aria-selected="true"],
-.list .row[aria-selected="true"]:hover,
-.list .row[aria-selected="true"]:focus-visible {
-  background: var(--color-overlay-medium);
-  color: var(--color-text-primary);
+.trailingAction {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding-right: var(--space-2, 8px);
 }
 
 .leadingIndicator {
@@ -124,12 +139,6 @@
   flex: 0 0 auto;
   align-items: center;
   margin-left: auto;
-}
-
-.count {
-  margin-left: var(--space-1, 4px);
-  color: var(--color-text-muted);
-  font-weight: 400;
 }
 
 .sectionEmpty,

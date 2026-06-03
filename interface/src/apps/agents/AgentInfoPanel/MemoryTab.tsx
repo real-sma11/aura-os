@@ -139,8 +139,7 @@ export function MemoryTab({ agent }: MemoryTabProps) {
     if (filter === "all" || filter === "facts") {
       out.push({
         id: "facts",
-        label: "Facts",
-        count: counts.facts,
+        label: `Facts (${counts.facts})`,
         emptyLabel: "No facts yet",
         rows: (snapshot.facts ?? []).map((fact) => ({
           id: `fact:${fact.fact_id}`,
@@ -155,8 +154,7 @@ export function MemoryTab({ agent }: MemoryTabProps) {
     if (filter === "all" || filter === "events") {
       out.push({
         id: "events",
-        label: "Events",
-        count: counts.events,
+        label: `Events (${counts.events})`,
         emptyLabel: "No events yet",
         rows: (snapshot.events ?? []).map((event) => ({
           id: `event:${event.event_id}`,
@@ -171,8 +169,7 @@ export function MemoryTab({ agent }: MemoryTabProps) {
     if (filter === "all" || filter === "procedures") {
       out.push({
         id: "procedures",
-        label: "Procedures",
-        count: counts.procedures,
+        label: `Procedures (${counts.procedures})`,
         emptyLabel: "No procedures yet",
         rows: (snapshot.procedures ?? []).map((proc) => ({
           id: `procedure:${proc.procedure_id}`,

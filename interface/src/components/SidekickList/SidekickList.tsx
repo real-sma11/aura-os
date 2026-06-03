@@ -7,7 +7,6 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Item } from "@cypher-asi/zui";
 import { EmptyState } from "../EmptyState";
 import { SidekickCollapsibleRow } from "../SidekickCollapsibleRow";
 import {
@@ -33,8 +32,15 @@ export interface SidekickListRow {
   icon?: ReactNode;
   /** Optional indicator rendered flush to the row's left edge (e.g. a streaming dot). */
   leadingIndicator?: ReactNode;
-  /** Optional right-aligned content (badge, action button, menu trigger). */
+  /** Optional non-interactive right-aligned content inside the row (badge, status). */
   suffix?: ReactNode;
+  /**
+   * Optional interactive control rendered as a sibling of the row button
+   * (e.g. an install button or a "more actions" menu). Kept outside the
+   * row `<button>` so it stays valid, focusable, and independently
+   * clickable.
+   */
+  trailingAction?: ReactNode;
   disabled?: boolean;
   /** Per-row click handler. Falls back to the list-level `onSelectRow`. */
   onSelect?: () => void;
@@ -57,10 +63,6 @@ export interface SidekickListSection {
   id: string;
   label?: ReactNode;
   rows: SidekickListRow[];
-  /** Optional count shown muted next to the header label. */
-  count?: number;
-  /** Optional header actions, rendered right-aligned in the header. */
-  headerSuffix?: ReactNode;
   /** Whether the section starts expanded. Defaults to `true`. */
   defaultExpanded?: boolean;
   /** Copy shown (muted) when the section has no rows but is expanded. */
@@ -130,27 +132,35 @@ function SidekickListItem({
   const hasDetail = row.detail !== undefined && row.detail !== null;
 
   return (
-    <Item
-      ref={buttonRef}
-      id={row.id}
-      role="treeitem"
-      selected={selected}
-      disabled={row.disabled}
-      className={`${styles.row}${hasDetail ? ` ${styles.rowMultiline}` : ""}`}
-      onClick={handleClick}
-      onMouseEnter={row.onMouseEnter}
-      onFocus={row.onFocus}
+    <div
+      className={`${styles.rowWrap}${selected ? ` ${styles.rowWrapSelected}` : ""}`}
     >
-      {row.leadingIndicator && (
-        <span className={styles.leadingIndicator}>{row.leadingIndicator}</span>
+      <button
+        ref={buttonRef}
+        id={row.id}
+        type="button"
+        role="treeitem"
+        aria-selected={selected}
+        disabled={row.disabled}
+        className={`${styles.row}${hasDetail ? ` ${styles.rowMultiline}` : ""}`}
+        onClick={handleClick}
+        onMouseEnter={row.onMouseEnter}
+        onFocus={row.onFocus}
+      >
+        {row.leadingIndicator && (
+          <span className={styles.leadingIndicator}>{row.leadingIndicator}</span>
+        )}
+        {row.icon && <span className={styles.icon}>{row.icon}</span>}
+        <span className={styles.text}>
+          <span className={styles.label}>{row.label}</span>
+          {hasDetail && <span className={styles.detail}>{row.detail}</span>}
+        </span>
+        {row.suffix && <span className={styles.suffix}>{row.suffix}</span>}
+      </button>
+      {row.trailingAction && (
+        <div className={styles.trailingAction}>{row.trailingAction}</div>
       )}
-      {row.icon && <span className={styles.icon}>{row.icon}</span>}
-      <span className={styles.text}>
-        <span className={styles.label}>{row.label}</span>
-        {hasDetail && <span className={styles.detail}>{row.detail}</span>}
-      </span>
-      {row.suffix && <span className={styles.suffix}>{row.suffix}</span>}
-    </Item>
+    </div>
   );
 }
 
@@ -189,23 +199,9 @@ function SidekickListSectionView({
     return <div className={styles.section}>{rows}</div>;
   }
 
-  const headerLabel = (
-    <>
-      {section.label}
-      {section.count !== undefined && (
-        <span className={styles.count}>({section.count})</span>
-      )}
-    </>
-  );
-
   return (
     <div className={styles.section}>
-      <SidekickCollapsibleRow
-        expanded={expanded}
-        onToggle={toggle}
-        label={headerLabel}
-        suffix={section.headerSuffix}
-      >
+      <SidekickCollapsibleRow expanded={expanded} onToggle={toggle} label={section.label}>
         {rows}
       </SidekickCollapsibleRow>
     </div>
@@ -262,8 +258,16 @@ export function SidekickList({
     return <div className={styles.loading}>{loadingLabel}</div>;
   }
 
+  // Whole-list empty/fallback only when the caller hasn't modelled the
+  // empty case as labelled sections (each of which renders its own
+  // `emptyLabel`). This lets multi-section lists (e.g. Skills) keep their
+  // section headers visible while single-purpose lists show one message.
   if (totalRows === 0) {
-    return empty != null ? <>{empty}</> : <EmptyState>No items yet</EmptyState>;
+    if (empty != null) return <>{empty}</>;
+    const hasSectionEmptyCopy = sections.some(
+      (section) => section.label != null || section.emptyLabel != null,
+    );
+    if (!hasSectionEmptyCopy) return <EmptyState>No items yet</EmptyState>;
   }
 
   return (
