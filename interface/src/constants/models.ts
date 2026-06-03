@@ -367,6 +367,18 @@ export const AURA_MANAGED_CHAT_MODELS: ModelOption[] = [
   },
   // ── MiniMax ─────────────────────────────────────────────────
   {
+    id: "aura-minimax-m3",
+    label: "MiniMax M3",
+    tier: "haiku",
+    mode: "chat",
+    vendor: "minimax",
+    creditMultiplier: 0.2,
+    contextWindow: 262_144,
+    provider: "MiniMax",
+    description:
+      "Open-weight MiniMax model offering low-cost, high-throughput generation with a 256K context window.",
+  },
+  {
     id: "aura-minimax-m2-7",
     label: "MiniMax M2.7",
     tier: "haiku",
@@ -888,6 +900,8 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "deepseek/deepseek-v4-flash": "aura-deepseek-v4-flash",
   "aura-oss-120b": "aura-oss-120b",
   "aura-qwen2-5-coder-7b": "aura-qwen2-5-coder-7b",
+  "aura-minimax-m3": "aura-minimax-m3",
+  "minimax-m3": "aura-minimax-m3",
   "aura-minimax-m2-7": "aura-minimax-m2-7",
   "minimax-m2p7": "aura-minimax-m2-7",
   "aura-glm-5-1": "aura-glm-5-1",
@@ -917,6 +931,7 @@ const LEGACY_AURA_MODEL_IDS: Record<string, string> = {
   "accounts/fireworks/models/kimi-k2p6": "aura-kimi-k2-6",
   "accounts/fireworks/models/gpt-oss-120b": "aura-oss-120b",
   "accounts/fireworks/models/qwen2p5-coder-7b": "aura-qwen2-5-coder-7b",
+  "accounts/fireworks/models/minimax-m3": "aura-minimax-m3",
   "accounts/fireworks/models/minimax-m2p7": "aura-minimax-m2-7",
   "accounts/fireworks/models/glm-5p1": "aura-glm-5-1",
   "accounts/fireworks/models/qwen3p6-plus": "aura-qwen3-6-plus",

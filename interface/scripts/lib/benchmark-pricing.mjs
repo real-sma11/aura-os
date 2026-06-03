@@ -185,6 +185,12 @@ const FIREWORKS_MODEL_PRICING_PER_MTOK = {
     cacheWrite: 0.15,
     cacheRead: 0.01,
   },
+  "minimax-m3": {
+    input: 0.4,
+    output: 1.6,
+    cacheWrite: 0.4,
+    cacheRead: 0.08,
+  },
   "minimax-m2p7": {
     input: 0.3,
     output: 1.2,
@@ -307,6 +313,7 @@ function normalizeModelKey(model) {
     "aura-kimi-k2-6": "kimi-k2p6",
     "aura-kimi-k2-5": "kimi-k2p5",
     "aura-oss-120b": "gpt-oss-120b",
+    "aura-minimax-m3": "minimax-m3",
     "aura-minimax-m2-7": "minimax-m2p7",
     "aura-glm-5-1": "glm-5p1",
     "aura-qwen3-6-plus": "qwen3p6-plus",
