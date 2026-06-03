@@ -199,22 +199,23 @@ function auraWindowShape(w: number, h: number): THREE.ShapeGeometry {
 }
 
 /**
- * A rectangle with 45-degree corner chamfers (centered on the origin), echoing
- * the card's faceted silhouette. Used for the worn-metal info backplate.
+ * Worn-metal info backplate silhouette (centered on the origin): 45-degree
+ * chamfers on the top corners (which tuck behind the card) and rounded corners
+ * on the bottom two, where the plate pokes out below the card.
  */
-function chamferedRectShape(w: number, h: number, c: number): THREE.Shape {
+function plateShape(w: number, h: number, c: number): THREE.Shape {
   const hw = w / 2;
   const hh = h / 2;
   const s = new THREE.Shape();
   s.moveTo(-hw + c, hh);
   s.lineTo(hw - c, hh);
-  s.lineTo(hw, hh - c);
-  s.lineTo(hw, -hh + c);
-  s.lineTo(hw - c, -hh);
-  s.lineTo(-hw + c, -hh);
-  s.lineTo(-hw, -hh + c);
-  s.lineTo(-hw, hh - c);
-  s.lineTo(-hw + c, hh);
+  s.lineTo(hw, hh - c); // top-right 45 chamfer
+  s.lineTo(hw, -hh + c); // right edge down
+  s.quadraticCurveTo(hw, -hh, hw - c, -hh); // bottom-right rounded corner
+  s.lineTo(-hw + c, -hh); // bottom edge
+  s.quadraticCurveTo(-hw, -hh, -hw, -hh + c); // bottom-left rounded corner
+  s.lineTo(-hw, hh - c); // left edge up
+  s.lineTo(-hw + c, hh); // top-left 45 chamfer (close)
   return s;
 }
 
@@ -787,14 +788,14 @@ export function createProfileCardScene(
     // visible strip for agent info. Built first so it sits at the back.
     const plateH = INFO_PLATE.top - INFO_PLATE.bottom;
     const plateGeo = new THREE.ExtrudeGeometry(
-      chamferedRectShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer),
+      plateShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer),
       {
         depth: INFO_PLATE.depth,
         bevelEnabled: true,
         bevelThickness: INFO_PLATE.bevel,
         bevelSize: INFO_PLATE.bevel,
         bevelSegments: 2,
-        curveSegments: 8,
+        curveSegments: 12,
         steps: 1,
       },
     );
