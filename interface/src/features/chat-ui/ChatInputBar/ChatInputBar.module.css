@@ -861,6 +861,9 @@
   max-width: 680px;
   margin: 0 auto;
   border: 1px solid var(--color-border-strong);
+  /* Open the bottom edge so the wrapper reads as a tab over the input
+     pill rather than a fully-closed box with a square bottom line. */
+  border-bottom: none;
   border-radius: 14px 14px 0 0;
   background:
     linear-gradient(
