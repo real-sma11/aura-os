@@ -1,7 +1,7 @@
 /* LLMOutput — reusable renderer for LLM responses */
 
 .root {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.65;
 }
 .root a {
