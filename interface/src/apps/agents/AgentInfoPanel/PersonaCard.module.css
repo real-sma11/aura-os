@@ -1,0 +1,95 @@
+/* ── Persona card: black-glass, gradient border, beveled edge ──
+ *
+ * A wide horizontal card carrying the agent's Personality and System
+ * Prompt. The 1px gradient stroke uses the two-layer padding-box /
+ * border-box technique (see InputBarShell.module.css) so the gradient
+ * follows the rounded corners crisply. The dark fill + layered inset
+ * highlights give the physical "beveled glass" edge. Intentionally
+ * fixed-dark to match the reference, independent of the active theme.
+ */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  margin: var(--space-3);
+  padding: var(--space-4, 16px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg, 18px);
+  background:
+    linear-gradient(
+      160deg,
+      rgba(22, 22, 25, 0.92) 0%,
+      rgba(12, 12, 14, 0.95) 48%,
+      rgba(6, 6, 8, 0.97) 100%
+    ) padding-box,
+    linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.06) 30%,
+      rgba(255, 255, 255, 0.02) 55%,
+      rgba(255, 255, 255, 0.14) 100%
+    ) border-box;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  /* Soft ambient + tight contact drop shadow to lift the card, plus a
+     top bevel highlight and a faint bottom shade for the glass edge. */
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 12px 28px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--font-size-2xs, 10px);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.value {
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.valueMono {
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: var(--font-size-xs, 12px);
+  opacity: 0.88;
+}
+
+.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.toggle {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  opacity: 0.8;
+}
