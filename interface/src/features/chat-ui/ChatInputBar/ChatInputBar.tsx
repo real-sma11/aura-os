@@ -309,8 +309,10 @@ export const DesktopChatInputBar = memo(
     const imageQuality = chatUI.imageQuality;
     const councilCount = chatUI.councilCount;
     const councilModels = chatUI.councilModels;
+    const councilMechanism = chatUI.councilMechanism;
     const setCouncilCount = chatUI.setCouncilCount;
     const setCouncilModel = chatUI.setCouncilModel;
+    const setCouncilMechanism = chatUI.setCouncilMechanism;
     const onModelChange = useCallback(
       (model: string, effort?: ModelEffort) => {
         chatUI.setSelectedModel(streamKey, model, adapterType, agentId, effort);
@@ -767,6 +769,8 @@ export const DesktopChatInputBar = memo(
             key="__council_count__"
             count={councilCount}
             onSelect={(n) => setCouncilCount(streamKey, n)}
+            mechanism={councilMechanism}
+            onSelectMechanism={(m) => setCouncilMechanism(streamKey, m)}
           />
         ) : null;
         if (shouldUseCondensedAuraMenu) {
@@ -835,6 +839,8 @@ export const DesktopChatInputBar = memo(
         sortedModelsForMode,
         councilCount,
         setCouncilCount,
+        councilMechanism,
+        setCouncilMechanism,
         streamKey,
       ],
     );
