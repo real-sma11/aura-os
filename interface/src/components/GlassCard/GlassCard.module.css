@@ -1,0 +1,56 @@
+.card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-xl, 22px);
+  border: 1px solid transparent;
+}
+
+/* Soft white glow behind the card plus a dark shadow for floating depth.
+   box-shadow is not clipped by the card's own overflow:hidden, so it
+   radiates outward as intended. */
+.glow {
+  box-shadow:
+    0 0 70px -10px rgba(255, 255, 255, 0.22),
+    0 30px 70px -24px rgba(0, 0, 0, 0.75);
+}
+
+/* Black, see-through, blurred glass fill kept as a child so the card's
+   rounded overflow:hidden clips the blur (a same-element backdrop-filter
+   is rendered to a square bounding box in Chromium, squaring the corners). */
+.glass {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(8, 10, 16, 0.55);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  pointer-events: none;
+}
+
+/* Top-lit white-to-dark translucent gradient rim. */
+.border {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.1) 35%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+}

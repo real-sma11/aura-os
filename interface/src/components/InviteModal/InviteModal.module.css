@@ -1,51 +1,19 @@
-/* Doubled class to win over zui's .modal background/border/radius without !important */
-.modalRoot.modalRoot {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: var(--radius-xl, 22px);
+/* The zui Modal container is made invisible and non-clipping (doubled class
+   beats zui's single-class .modal) so the floating GlassCard - and its glow -
+   shows instead of the default modal box. */
+.modalShell.modalShell {
   background: transparent;
-  border: 1px solid transparent;
-  box-shadow:
-    0 24px 60px -12px rgba(0, 0, 0, 0.6),
-    0 0 48px -8px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border: none;
+  box-shadow: none;
+  overflow: visible;
 }
 
-/* Blur + tint kept as a child layer so the card's rounded overflow:hidden
-   clips it. Putting backdrop-filter directly on the card makes Chromium
-   render the blur to a square bounding box, squaring off the corners. */
-.modalRoot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: color-mix(in srgb, var(--color-bg-secondary) 45%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  pointer-events: none;
+.modalContent.modalContent {
+  overflow: visible;
 }
 
-/* Gradient border ring (theme colors) drawn as a masked pseudo-element */
-.modalRoot::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(255, 255, 255, 0.12) 35%,
-    rgba(0, 0, 0, 0.45) 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  z-index: 2;
+.card {
+  width: 100%;
 }
 
 .floatingHeader {
@@ -67,7 +35,7 @@
   transition: opacity var(--transition-fast, 0.15s) ease;
 }
 
-.modalRoot:hover .floatingHeader button,
+.modalShell:hover .floatingHeader button,
 .floatingHeader button:focus-visible {
   opacity: 1;
 }

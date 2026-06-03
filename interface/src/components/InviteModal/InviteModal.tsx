@@ -4,6 +4,7 @@ import { Check, Copy } from "lucide-react";
 import { useAuth } from "../../stores/auth-store";
 import { useInviteCodeStore } from "../../stores/invite-code-store";
 import { track } from "../../lib/analytics";
+import { GlassCard } from "../GlassCard";
 import styles from "./InviteModal.module.css";
 
 interface Props {
@@ -46,56 +47,59 @@ export function InviteModal({ isOpen, onClose }: Props) {
       title=""
       size="sm"
       noPadding
-      className={styles.modalRoot}
+      className={styles.modalShell}
+      contentClassName={styles.modalContent}
       headerClassName={styles.floatingHeader}
     >
-      <div className={styles.videoBanner}>
-        <video
-          className={styles.bannerVideo}
-          src="/AURA_visual_loop.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-          aria-hidden="true"
-        />
-        <div className={styles.bannerGlow} aria-hidden="true" />
-      </div>
-      <div className={styles.body}>
-        <span className={styles.titlePill}>
-          <img
-            src="/AURA_logo_text_mark.png"
-            alt="AURA"
-            className={styles.wordmark}
-            draggable={false}
+      <GlassCard className={styles.card}>
+        <div className={styles.videoBanner}>
+          <video
+            className={styles.bannerVideo}
+            src="/AURA_visual_loop.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-hidden="true"
           />
-        </span>
-        <p className={styles.subtext}>
-          Share your code with a friend to get them started on AURA. If they
-          subscribe to one of our monthly plans, you'll both receive 5,000 Z
-          Credits worth $50 to spend on AI models, image generation, and more.
-        </p>
+          <div className={styles.bannerGlow} aria-hidden="true" />
+        </div>
+        <div className={styles.body}>
+          <span className={styles.titlePill}>
+            <img
+              src="/AURA_logo_text_mark.png"
+              alt="AURA"
+              className={styles.wordmark}
+              draggable={false}
+            />
+          </span>
+          <p className={styles.subtext}>
+            Share your code with a friend to get them started on AURA. If they
+            subscribe to one of our monthly plans, you'll both receive 5,000 Z
+            Credits worth $50 to spend on AI models, image generation, and more.
+          </p>
 
-        <Button
-          variant="secondary"
-          size="md"
-          rounded="lg"
-          fullWidth
-          className={styles.shareButton}
-          icon={inviteCode ? (copied ? <Check size={16} /> : <Copy size={16} />) : undefined}
-          onClick={handleCodeClick}
-          disabled={!inviteCode}
-          title="Click to copy your invite code"
-        >
-          {inviteLoading
-            ? "Loading..."
-            : !inviteCode
-              ? "Unavailable"
-              : copied
-                ? "Copied!"
-                : inviteCode}
-        </Button>
-      </div>
+          <Button
+            variant="secondary"
+            size="md"
+            rounded="lg"
+            fullWidth
+            className={styles.shareButton}
+            icon={inviteCode ? (copied ? <Check size={16} /> : <Copy size={16} />) : undefined}
+            onClick={handleCodeClick}
+            disabled={!inviteCode}
+            title="Click to copy your invite code"
+          >
+            {inviteLoading
+              ? "Loading..."
+              : !inviteCode
+                ? "Unavailable"
+                : copied
+                  ? "Copied!"
+                  : inviteCode}
+          </Button>
+        </div>
+      </GlassCard>
     </Modal>
   );
 }
