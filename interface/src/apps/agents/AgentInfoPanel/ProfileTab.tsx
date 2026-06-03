@@ -350,12 +350,6 @@ export function ProfileTab(props: ProfileTabProps) {
 
   const sections = useMemo<ProfileSectionLink[]>(
     () => [
-      {
-        id: "profile",
-        label: "Soul",
-        count:
-          (agent.personality?.trim() ? 1 : 0) + (agent.system_prompt?.trim() ? 1 : 0),
-      },
       { id: "skills", label: "Skills", count: installations.length },
       {
         id: "messaging",
@@ -368,14 +362,7 @@ export function ProfileTab(props: ProfileTabProps) {
         count: agent.permissions?.capabilities?.length ?? 0,
       },
     ],
-    [
-      agent.personality,
-      agent.system_prompt,
-      agent.permissions,
-      agent.machine_type,
-      installations.length,
-      connectorCount,
-    ],
+    [agent.permissions, agent.machine_type, installations.length, connectorCount],
   );
 
   return (

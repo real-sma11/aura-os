@@ -358,7 +358,6 @@ export interface InfoLink {
 export function drawInfoLinks(
   canvas: HTMLCanvasElement,
   links: InfoLink[],
-  accentStr: string,
   hovered: number,
 ): void {
   const ctx = canvas.getContext("2d");
@@ -368,7 +367,6 @@ export function drawInfoLinks(
   ctx.clearRect(0, 0, w, h);
   if (links.length === 0) return;
 
-  const [ar, ag, ab] = parseAccent(accentStr);
   const padL = 84;
   const padR = 84;
   const valueX = w - padR;
@@ -378,11 +376,7 @@ export function drawInfoLinks(
   links.forEach((link, i) => {
     const top = i * rowH;
     const cy = top + rowH / 2;
-
-    if (i === hovered) {
-      ctx.fillStyle = `rgba(${ar},${ag},${ab},0.12)`;
-      ctx.fillRect(0, top, w, rowH);
-    }
+    const isHover = i === hovered;
 
     if (i < links.length - 1) {
       ctx.lineWidth = 2;
@@ -398,13 +392,30 @@ export function drawInfoLinks(
       ctx.stroke();
     }
 
+    ctx.save();
+    // On hover, glow the text brighter instead of tinting the row.
+    if (isHover) {
+      ctx.shadowColor = "rgba(214,232,255,0.55)";
+      ctx.shadowBlur = 16;
+    }
     ctx.textAlign = "left";
     ctx.font = `600 64px ${STRIP_SANS}`;
-    engrave(ctx, link.label, padL, cy, i === hovered ? "#ffffff" : "#dfe3e8");
+    if (isHover) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(link.label, padL, cy);
+    } else {
+      engrave(ctx, link.label, padL, cy, "#dfe3e8");
+    }
 
     ctx.textAlign = "right";
     ctx.font = `600 58px ${STRIP_SANS}`;
-    engrave(ctx, String(link.count), valueX, cy, i === hovered ? "#eef1f5" : "#9aa0a8");
+    if (isHover) {
+      ctx.fillStyle = "#eef1f5";
+      ctx.fillText(String(link.count), valueX, cy);
+    } else {
+      engrave(ctx, String(link.count), valueX, cy, "#9aa0a8");
+    }
+    ctx.restore();
   });
 
   ctx.textAlign = "left";

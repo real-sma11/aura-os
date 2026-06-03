@@ -175,9 +175,7 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
   // Navigation links on the lower backplate: draw rows + wire clicks to tabs.
   useEffect(() => {
     const scene = sceneRef.current;
-    const host = hostRef.current;
-    if (!ready || !scene || !host) return;
-    const accent = readAccent(host);
+    if (!ready || !scene) return;
     scene.setLinks(
       sections.length,
       (index) => {
@@ -188,7 +186,6 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
         drawInfoLinks(
           scene.linksCanvas,
           sections.map((s) => ({ label: s.label, count: s.count })),
-          accent,
           hovered,
         );
       },
