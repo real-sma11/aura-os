@@ -258,7 +258,11 @@ export function useFileAttachments(
         });
       }
     }
-    textareaRef?.current?.focus();
+    // Defer to the next frame so the refocus lands after the native file
+    // picker has released focus and React has committed the new attachment
+    // chips — focusing synchronously here gets overridden and the input is
+    // left unselected.
+    requestAnimationFrame(() => textareaRef?.current?.focus());
   }, [attachments, canAddMore, onAttachmentsChange, updateAttachment, textareaRef]);
 
   /**
