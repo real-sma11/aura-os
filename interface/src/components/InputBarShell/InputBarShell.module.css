@@ -81,7 +81,7 @@
    docks on first send). */
 .centeredHeading {
   max-width: 680px;
-  margin: 0 auto var(--space-8);
+  margin: 0 auto calc(var(--space-8) * 1.5);
   text-align: center;
   font-size: 28px;
   font-weight: 300;
