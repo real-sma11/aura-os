@@ -45,14 +45,23 @@ export function useRemoteAgentState(agentId: string | undefined) {
     const interval = setInterval(fetchState, POLL_INTERVAL_MS);
 
     const unsubscribe = subscribe(EventType.RemoteAgentStateChanged, (event) => {
-      if (event.content?.agent_id === agentId) {
-        setData({
-          state: event.content.state,
-          uptime_seconds: event.content.uptime_seconds,
-          active_sessions: event.content.active_sessions,
-          error_message: event.content.error_message,
-        });
-      }
+      const c = event.content;
+      if (c?.agent_id !== agentId) return;
+      // The WS event only carries lifecycle fields; preserve the
+      // poll-only fields (endpoint, runtime_version, etc.) so the IP and
+      // other VM details don't blank out between polls.
+      setData((prev) => ({
+        state: c.state,
+        uptime_seconds: c.uptime_seconds ?? prev?.uptime_seconds ?? 0,
+        active_sessions: c.active_sessions ?? prev?.active_sessions ?? 0,
+        error_message: c.error_message,
+        endpoint: prev?.endpoint,
+        runtime_version: prev?.runtime_version,
+        isolation: prev?.isolation,
+        cpu_millicores: prev?.cpu_millicores,
+        memory_mb: prev?.memory_mb,
+        agent_id: prev?.agent_id ?? agentId,
+      }));
     });
 
     return () => {

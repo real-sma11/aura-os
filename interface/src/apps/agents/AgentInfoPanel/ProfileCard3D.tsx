@@ -38,6 +38,24 @@ const OFFLINE_STATUSES = new Set([
   "offline",
 ]);
 
+/**
+ * Remote VM states that count as "online" (the dot glows). Only an actively
+ * running VM is online; `idle`, `hibernating`, etc. are not. Note
+ * `useAvatarState` normalizes `working` -> `running`.
+ */
+const REMOTE_ONLINE_STATES = new Set(["running"]);
+
+/** Human-readable labels for the remote VM states (see VmStatusBadge). */
+const REMOTE_STATE_LABELS: Record<string, string> = {
+  running: "Running",
+  idle: "Idle",
+  provisioning: "Provisioning",
+  hibernating: "Hibernating",
+  stopping: "Stopping",
+  stopped: "Stopped",
+  error: "Error",
+};
+
 function readAccent(el: HTMLElement): string {
   const value = getComputedStyle(el).getPropertyValue("--color-accent").trim();
   return value || "#6366f1";
@@ -79,7 +97,20 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
   }, [agent.agent_id, agent.machine_type]);
 
   const { status } = useAvatarState(agent.agent_id);
-  const isOnline = !status || !OFFLINE_STATUSES.has(status);
+  const isRemote = agent.machine_type === "remote";
+  // Remote agents reflect their real VM state: only a running VM is "online",
+  // and the label shows the actual state (Idle, Hibernating, ...) instead of a
+  // misleading "Online". Local agents keep the simple online/offline read.
+  const isOnline = isRemote
+    ? !!status && REMOTE_ONLINE_STATES.has(status)
+    : !status || !OFFLINE_STATUSES.has(status);
+  const statusLabel = isRemote
+    ? status
+      ? REMOTE_STATE_LABELS[status] ?? status
+      : "Offline"
+    : isOnline
+      ? "Online"
+      : "Offline";
 
   const orgName = useOrgStore((s) =>
     agent.org_id ? s.orgs.find((o) => o.org_id === agent.org_id)?.name ?? null : null,
@@ -176,7 +207,7 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
         {
           name: agent.name,
           role: agent.role,
-          statusLabel: isOnline ? "Online" : "Offline",
+          statusLabel,
           isOnline,
           orgName,
           ip,
@@ -186,7 +217,7 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
         dotOn,
       );
     });
-  }, [ready, agent.name, agent.role, isOnline, orgName, ip, agent.wallet_address]);
+  }, [ready, agent.name, agent.role, isOnline, statusLabel, orgName, ip, agent.wallet_address]);
 
   // Messaging-channel logos engraved into the recessed pill between the Wallet
   // readout and the Soul link. Static icon set, so drawn once when ready.

@@ -256,6 +256,7 @@ async fn ensure_canonical_ceo_permissions_persisted(
         icon: None,
         harness: None,
         machine_type: None,
+        org_id: None,
         vm_id: None,
         tags: None,
         listing_status: None,

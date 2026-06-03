@@ -81,6 +81,10 @@ pub(super) async fn persist_vm_id(
         icon: None,
         harness: None,
         machine_type: None,
+        // Re-assert the org the agent was created with so the provisioning
+        // PUT can't drop it (remote agents are the only path that PUTs
+        // post-create; without this their Organization reads blank).
+        org_id: net_agent.org_id.clone(),
         vm_id: Some(vm_id.to_string()),
         tags: None,
         listing_status: None,

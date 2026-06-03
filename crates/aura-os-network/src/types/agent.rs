@@ -132,6 +132,11 @@ pub struct UpdateAgentRequest {
     pub harness: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub machine_type: Option<String>,
+    /// Owning organization. `None` leaves the server value untouched; sent on
+    /// the post-provision `vm_id` update so remote agents re-assert their org
+    /// rather than risk it being dropped by the network PUT.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vm_id: Option<String>,
     /// `None` means "don't change"; `Some(vec)` replaces the tag set wholesale.

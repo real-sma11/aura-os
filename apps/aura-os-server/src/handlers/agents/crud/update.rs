@@ -177,6 +177,8 @@ fn build_network_update(
             "local".to_string()
         }),
         harness: None,
+        // Org is not editable via this path; leave it untouched.
+        org_id: None,
         vm_id: None,
         tags: dual_write_tags,
         listing_status: marketplace.listing_status.clone(),
