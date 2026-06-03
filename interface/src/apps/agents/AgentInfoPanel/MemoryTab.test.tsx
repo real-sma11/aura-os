@@ -138,7 +138,9 @@ describe("MemoryTab", () => {
       expect(screen.getByText("lang")).toBeDefined();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Facts (1)" }));
+    // The filter chip and the section header share the name "Facts (1)";
+    // the chip renders first in DOM order.
+    fireEvent.click(screen.getAllByRole("button", { name: "Facts (1)" })[0]);
     expect(screen.getByText("lang")).toBeDefined();
     expect(screen.queryByText("deploy-flow")).toBeNull();
   });
