@@ -239,43 +239,6 @@ function engrave(
   ctx.fillText(text, x, y);
 }
 
-/** Blinking status indicator: glowing accent when online, steady red otherwise. */
-function drawStatusDot(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number,
-  isOnline: boolean,
-  dotOn: boolean,
-  accent: [number, number, number],
-): void {
-  const [ar, ag, ab] = accent;
-  ctx.save();
-  if (isOnline && dotOn) {
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.8);
-    glow.addColorStop(0, `rgba(${ar},${ag},${ab},0.6)`);
-    glow.addColorStop(1, `rgba(${ar},${ag},${ab},0)`);
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(x, y, r * 2.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  if (isOnline) {
-    ctx.fillStyle = dotOn
-      ? `rgb(${ar},${ag},${ab})`
-      : `rgba(${ar},${ag},${ab},0.42)`;
-  } else {
-    ctx.fillStyle = "#d9534f";
-  }
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  ctx.stroke();
-  ctx.restore();
-}
-
 /**
  * Render the agent info readout onto the worn-metal backplate's exposed strip:
  * a stamped nameplate (name + role pill) over a spec list (status, org, IP,
@@ -359,10 +322,19 @@ export function drawInfoStrip(
 
     ctx.textAlign = "right";
     ctx.font = row.mono ? `500 58px ${STRIP_MONO}` : `600 68px ${STRIP_SANS}`;
-    if (row.status) {
-      const tw = ctx.measureText(row.value).width;
-      engrave(ctx, row.value, valueX, y, "#f4f6f9");
-      drawStatusDot(ctx, valueX - tw - 44, y - 20, 17, opts.isOnline, dotOn, accent);
+    if (row.status && opts.isOnline) {
+      // Online: glowing accent text (gently pulsing via `dotOn`). Drawn twice to
+      // build up the glow.
+      const [ar, ag, ab] = accent;
+      ctx.save();
+      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.95 : 0.5})`;
+      ctx.shadowBlur = dotOn ? 24 : 14;
+      ctx.fillStyle = `rgb(${ar},${ag},${ab})`;
+      ctx.fillText(row.value, valueX, y);
+      ctx.fillText(row.value, valueX, y);
+      ctx.restore();
+    } else if (row.status) {
+      engrave(ctx, row.value, valueX, y, "#e06a66");
     } else {
       engrave(ctx, row.value, valueX, y, "#f4f6f9");
     }
