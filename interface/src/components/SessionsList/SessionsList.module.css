@@ -1,91 +1,12 @@
 /* Sessions tab: ChatGPT-style sectioned list shared between the
    agents app's "Chats" sidekick, the projects app's "Sessions"
-   sidekick, and the chat app's left panel. Each row is a plain
-   `<button>` (no ZUI Explorer) so selection state is owned by a
-   single parent-controlled id across every date bucket. */
+   sidekick, and the chat app's left panel. Rows, buckets, hover, and
+   selection now come from the shared `SidekickList`; only the
+   chat-specific affordances (streaming dot, project suffix, delete
+   error banner) live here. */
 
 .chatsList {
-  display: flex;
-  flex-direction: column;
   padding: var(--space-2) 0;
-}
-
-.chatsBucket {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: var(--space-3);
-}
-
-.chatsBucketHeader {
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  font-size: var(--font-size-xs, 11px);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.chatsBucketRows {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-/* Individual session row. Mirrors the ZUI Item visual language
-   (subtle hover / medium selected / heavy selected+hover) while
-   keeping the markup as a single native button so the parent owns the
-   only `selected` flag in the surface. */
-.sessionRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  width: auto;
-  margin: 0 var(--space-2);
-  padding: 0 var(--space-3, 12px);
-  height: 30px;
-  min-height: 30px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-primary);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 300;
-  line-height: 1.25;
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
-  transition: background-color var(--transition-fast, 75ms ease-out),
-              color var(--transition-fast, 75ms ease-out);
-}
-
-.sessionRow:hover {
-  background: var(--color-overlay-subtle);
-}
-
-.sessionRow:focus-visible {
-  outline: none;
-  background: var(--color-overlay-subtle);
-}
-
-/* Selected and hover must be visually distinct: the hovered row paints
-   with `--color-overlay-subtle`, so if we used the same token for
-   selected, a hovered row in one date bucket would look identical to
-   the selected row in another bucket and the list would appear to
-   multi-select across days. Mirrors the AgentConversationRow pattern. */
-.sessionRowSelected,
-.sessionRowSelected:hover,
-.sessionRowSelected:focus-visible {
-  background: var(--color-overlay-medium);
-  color: var(--color-text-primary);
-}
-
-.sessionLabel {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Per-session streaming indicator. Mirrors the existing "agent is
@@ -121,25 +42,6 @@
     animation: none;
     opacity: 0.85;
   }
-}
-
-.sessionSuffix {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.tabEmptyState {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: var(--space-6) var(--space-4);
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 300;
-  line-height: 1.25;
 }
 
 /* Inline failure banner shown when right-click "Delete session" hits a
