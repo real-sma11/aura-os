@@ -1013,14 +1013,17 @@ export function createProfileCardScene(
   }
 
   function fitCamera(shellW: number, shellH: number): void {
-    const margin = 1.16;
+    // Tighter framing than before (was 1.16) makes the whole card ~12% larger.
+    const margin = 1.036;
+    // Small gap above the card so it starts high in the view; the rest of the
+    // taller canvas falls below, revealing the worn-metal info strip.
+    const topGap = 0.1;
     const vFov = THREE.MathUtils.degToRad(camera.fov);
-    // Always frame to the card width so the card keeps the same on-screen size
-    // regardless of canvas height; the (taller) canvas reveals the worn-metal
-    // info strip below. The extra vertical space is centered between the card's
-    // top edge and the backplate's bottom so both stay in view.
+    // Frame to the card width so the card size tracks the (fixed-width) host;
+    // position the vertical window so the card top sits just below the top edge.
     const distW = (shellW * margin) / 2 / Math.tan(vFov / 2) / camera.aspect;
-    const centerY = (shellH / 2 + INFO_PLATE.bottom) / 2;
+    const visibleHeight = (shellW * margin) / camera.aspect;
+    const centerY = shellH / 2 + topGap - visibleHeight / 2;
     camera.position.set(0, centerY, distW);
     camera.lookAt(0, centerY, 0);
     camera.updateProjectionMatrix();
