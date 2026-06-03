@@ -75,6 +75,11 @@ pub struct StabilityMetricsSnapshot {
     pub auto_fork_triggered: u64,
     pub auto_fork_applied: u64,
     pub client_auto_retry_streamdropped: u64,
+    /// Transparent mid-turn WS reconnects performed by the harness
+    /// bridge (`aura_os_harness::stability_metrics::ws_reconnect`).
+    /// Appended after the original counters to keep the JSON shape
+    /// backward compatible for existing dashboards.
+    pub harness_ws_reconnect: u64,
     pub snapshot_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -184,6 +189,7 @@ impl StabilityMetrics {
             client_auto_retry_streamdropped: self
                 .client_auto_retry_streamdropped
                 .load(Ordering::Relaxed),
+            harness_ws_reconnect: aura_os_harness::stability_metrics::ws_reconnect(),
             snapshot_at: chrono::Utc::now(),
         }
     }

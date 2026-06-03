@@ -52,8 +52,12 @@ import type { ActiveStreamSummary } from "../../shared/api/streams";
 // we silently re-issue the last user message on a fresh harness
 // session — the harness rebuilds context from `aura_session_id` in
 // storage. Bounded to `MAX_AUTO_RETRIES` to avoid hammering a
-// genuinely-down upstream.
-const MAX_AUTO_RETRIES = 2;
+// genuinely-down upstream. The counter resets on every successfully
+// completed turn (see `onAssistantTurnCompleted`), so this bounds
+// *consecutive* failed retries, not a session lifetime. Raised from 2
+// to 4 so a flaky long session (the repeated-manual-retry symptom)
+// recovers on its own instead of stranding the user on a red banner.
+const MAX_AUTO_RETRIES = 4;
 
 interface UseChatStreamOptions {
   projectId: string | undefined;

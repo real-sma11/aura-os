@@ -25,6 +25,7 @@ static HARNESS_INITIAL_CONNECT_RETRIES: AtomicU64 = AtomicU64::new(0);
 static HARNESS_WS_CLOSED: AtomicU64 = AtomicU64::new(0);
 static HARNESS_WS_READ_ERROR: AtomicU64 = AtomicU64::new(0);
 static HARNESS_PROTOCOL_MISMATCH: AtomicU64 = AtomicU64::new(0);
+static HARNESS_WS_RECONNECT: AtomicU64 = AtomicU64::new(0);
 
 /// Bumped once per *retry* attempt past the first inside
 /// `LocalHarness::open_session` / `SwarmHarness::open_run_socket`.
@@ -53,6 +54,15 @@ pub fn inc_protocol_mismatch() {
     HARNESS_PROTOCOL_MISMATCH.fetch_add(1, Ordering::Relaxed);
 }
 
+/// Bumped each time the WS bridge transparently re-establishes a
+/// dropped upstream harness connection mid-turn (the
+/// `spawn_ws_bridge_with_reconnect` path) instead of surfacing a
+/// terminal `harness_ws_read_error` / `harness_ws_closed`. A rising
+/// count means long sessions are surviving transient socket resets.
+pub fn inc_ws_reconnect() {
+    HARNESS_WS_RECONNECT.fetch_add(1, Ordering::Relaxed);
+}
+
 #[must_use]
 pub fn initial_connect_retries() -> u64 {
     HARNESS_INITIAL_CONNECT_RETRIES.load(Ordering::Relaxed)
@@ -71,6 +81,11 @@ pub fn ws_read_error() -> u64 {
 #[must_use]
 pub fn protocol_mismatch() -> u64 {
     HARNESS_PROTOCOL_MISMATCH.load(Ordering::Relaxed)
+}
+
+#[must_use]
+pub fn ws_reconnect() -> u64 {
+    HARNESS_WS_RECONNECT.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]

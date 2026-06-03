@@ -8,6 +8,7 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::StatusCode;
 use tokio::sync::{broadcast, Mutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::{info, warn};
 
 use aura_protocol::OutboundMessage;
@@ -22,11 +23,84 @@ use crate::local_harness::{
     DEFAULT_CONNECT_TIMEOUT_SECS, MAX_CONNECT_ATTEMPTS,
 };
 use crate::stability_metrics;
-use crate::ws_bridge::spawn_ws_bridge;
+use crate::ws_bridge::{spawn_ws_bridge, spawn_ws_bridge_with_reconnect, WsReconnect};
 
 const AGENT_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const AGENT_READY_TIMEOUT: Duration = Duration::from_secs(90);
 const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Concrete upstream WS stream type produced by `connect_async` for the
+/// swarm gateway. Named so the [`WsReconnect`] factory the bridge takes
+/// can reference the exact type the initial connect yielded.
+type SwarmWsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Env flag enabling transparent mid-turn WS reconnect for swarm runs.
+///
+/// Off by default: the gateway's run-only reattach proxy
+/// (`{ws_base}/stream/:run_id`) must replay (not merely tail) the run on
+/// attach for a mid-turn reconnect to be lossless. Operators flip this on
+/// once that semantic is confirmed for their gateway build. The keepalive
+/// ping (`AURA_HARNESS_WS_PING_SECS`) is always on and prevents most
+/// drops regardless of this flag.
+const WS_RECONNECT_ENV: &str = "AURA_HARNESS_WS_RECONNECT";
+
+fn ws_reconnect_enabled() -> bool {
+    std::env::var(WS_RECONNECT_ENV)
+        .map(|v| {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("on")
+        })
+        .unwrap_or(false)
+}
+
+/// Re-open the swarm run WS at `ws_url` with the shared bounded
+/// connect-retry budget. Used as the [`WsReconnect`] body so a dropped
+/// mid-turn socket is transparently re-established against the same
+/// broadcast / command channels.
+async fn connect_swarm_ws(
+    ws_url: &str,
+    token: Option<&str>,
+    per_attempt_timeout: Duration,
+    max_attempts: u32,
+) -> anyhow::Result<SwarmWsStream> {
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 1..=max_attempts {
+        let mut ws_request = ws_url
+            .into_client_request()
+            .context("swarm websocket reconnect request build failed")?;
+        if let Some(t) = token {
+            ws_request.headers_mut().insert(
+                "Authorization",
+                format!("Bearer {t}")
+                    .parse()
+                    .map_err(|e| anyhow::anyhow!("swarm websocket auth header build failed: {e}"))?,
+            );
+        }
+        match tokio::time::timeout(
+            per_attempt_timeout,
+            tokio_tungstenite::connect_async(ws_request),
+        )
+        .await
+        {
+            Ok(Ok((ws_stream, _))) => return Ok(ws_stream),
+            Ok(Err(err)) => {
+                last_err = Some(anyhow::Error::new(err).context("swarm websocket reconnect failed"))
+            }
+            Err(_) => {
+                last_err = Some(anyhow::anyhow!(
+                    "timed out reconnecting to swarm websocket: {ws_url}"
+                ))
+            }
+        }
+        if attempt < max_attempts {
+            let backoff = next_backoff(attempt);
+            stability_metrics::inc_initial_connect_retry();
+            tokio::time::sleep(backoff).await;
+        }
+    }
+    Err(last_err
+        .unwrap_or_else(|| anyhow::anyhow!("swarm websocket reconnect failed (no attempts ran)")))
+}
 
 /// Swarm-side mirror of [`crate::local_harness::next_backoff`]. Kept
 /// in this module so the unit test for the swarm path is self-
@@ -427,7 +501,23 @@ impl SwarmHarness {
                 }));
             }
         };
-        let (events_tx, primed_events_rx, raw_events_tx, commands_tx) = spawn_ws_bridge(ws_stream);
+        let (events_tx, primed_events_rx, raw_events_tx, commands_tx) = if ws_reconnect_enabled() {
+            // Capture the run's WS coordinates so the bridge can re-open
+            // the gateway proxy stream after a recoverable drop without
+            // tearing the warm chat session down.
+            let reconnect_url = ws_url.to_string();
+            let reconnect_token = token.map(ToOwned::to_owned);
+            let reconnect: WsReconnect<SwarmWsStream> = Box::new(move || {
+                let url = reconnect_url.clone();
+                let tok = reconnect_token.clone();
+                Box::pin(async move {
+                    connect_swarm_ws(&url, tok.as_deref(), per_attempt_timeout, max_attempts).await
+                })
+            });
+            spawn_ws_bridge_with_reconnect(ws_stream, reconnect)
+        } else {
+            spawn_ws_bridge(ws_stream)
+        };
         let mut pending_events: Vec<OutboundMessage> = Vec::new();
         if wait_for_ready {
             // Phase A: the gateway proxies a run that was already created

@@ -10,17 +10,19 @@ use std::time::Duration;
 /// Default first-event timeout when `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS`
 /// is unset or invalid.
 ///
-/// Phase 3 of the agent-stuck-and-reset plan tightened this from
-/// `120s` -> `90s` so the server-side cold-start window matches the
-/// client SSE idle timeout (`IDLE_TIMEOUT_MS = 90_000` in
-/// `interface/src/shared/api/sse.ts`). Past 90s the browser was going
-/// to disconnect the SSE stream anyway; holding the server watchdog
-/// for an extra 30s past that just left the user staring at a frozen
-/// "cooking" indicator with no actionable error. Opus router
-/// cold-start + first thinking delta normally completes well inside
-/// this window; the rare run that doesn't surfaces a `stream_stalled`
-/// the client can act on instead of timing out silently.
-pub const DEFAULT_FIRST_EVENT_TIMEOUT_SECS: u64 = 90;
+/// Phase 3 of the agent-stuck-and-reset plan briefly tightened this to
+/// `90s` to match the *then* client SSE idle timeout. That coupling no
+/// longer holds: the SSE bridge now emits a synthetic
+/// `progress { stage: "heartbeat" }` every 15s while the harness is
+/// silent (`streaming::bridge::SSE_HEARTBEAT_INTERVAL`), so the browser
+/// never idle-disconnects during a cold start. The only thing the 90s
+/// ceiling was still doing was killing legitimately-slow long-session
+/// turns: on a large reused context the model's time-to-first-token
+/// (router cold-start + reprocessing a big prompt) routinely crosses
+/// 90s and surfaced a spurious `stream_stalled`. Raised to `180s` so a
+/// genuinely-warming turn is given room while a truly dead one still
+/// fails in a few minutes. Tune with `AURA_TURN_FIRST_EVENT_TIMEOUT_SECS`.
+pub const DEFAULT_FIRST_EVENT_TIMEOUT_SECS: u64 = 180;
 
 /// Default sliding-idle timeout when `AURA_TURN_MAX_TIMEOUT_SECS`
 /// is unset or invalid.
