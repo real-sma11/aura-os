@@ -36,30 +36,30 @@
   --color-text-primary: rgba(255, 255, 255, 0.88);
 
   /* ----------------------------------------------------------------------
-     Typography scale — bumped +1px across the board.
+     Typography scale.
 
      ZUI's --text-* scale is a flat 12px (vendor/zui/src/styles/tokens.css);
-     overriding it here lifts the body base (base.css sets
-     `body { font-size: var(--text-base) }`) and every ZUI component to 13px.
+     we mirror that base here so the body (base.css sets
+     `body { font-size: var(--text-base) }`) and every ZUI component sit at
+     12px.
 
      Many app CSS modules also reach for an ad-hoc --font-size-* token via a
      hardcoded fallback (e.g. `var(--font-size-sm, 13px)`). Those tokens were
-     never defined, so we define them here at fallback+1 to carry the +1px
-     bump through. --font-size-lg / --font-size-xl are intentionally left
-     undefined: their bare call sites inherit the (now 13px) base, so they
-     pick up the +1px automatically. */
-  --text-2xs: 13px;
-  --text-xs: 13px;
-  --text-sm: 13px;
-  --text-base: 13px;
-  --text-lg: 13px;
-  --text-xl: 13px;
+     never defined upstream, so we define them here at their call-site
+     fallback values. --font-size-lg / --font-size-xl are intentionally left
+     undefined: their bare call sites inherit the (12px) base. */
+  --text-2xs: 12px;
+  --text-xs: 12px;
+  --text-sm: 12px;
+  --text-base: 12px;
+  --text-lg: 12px;
+  --text-xl: 12px;
 
-  --font-size-2xs: 12px;
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-base: 15px;
-  --font-size-md: 16px;
+  --font-size-2xs: 11px;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
 
   /* Unify the border token across every surface so tables, blocks, tools,
      sidekick panes, overlays, and modals all render the same subtle outline
