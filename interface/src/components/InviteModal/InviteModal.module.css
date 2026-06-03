@@ -34,10 +34,10 @@
   border-radius: inherit;
   padding: 1px;
   background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-accent) 80%, transparent),
-    color-mix(in srgb, var(--color-primary) 50%, transparent) 45%,
-    transparent 90%
+    160deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.12) 35%,
+    rgba(0, 0, 0, 0.45) 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
