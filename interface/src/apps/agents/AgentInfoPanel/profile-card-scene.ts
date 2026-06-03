@@ -1527,14 +1527,14 @@ export function createProfileCardScene(
     let plateTarget = 0;
     if (flipped) {
       plateTarget = -PLATE_DROP;
-      const cleared = plateGroup.position.y - plateTarget < 0.06;
+      const cleared = plateGroup.position.y - plateTarget < 0.12;
       flipTarget = cleared ? Math.PI : 0;
     } else {
       flipTarget = 0;
       const flat = cardGroup.rotation.y < 0.08;
       plateTarget = flat ? 0 : -PLATE_DROP;
     }
-    plateGroup.position.y += (plateTarget - plateGroup.position.y) * 0.2;
+    plateGroup.position.y += (plateTarget - plateGroup.position.y) * 0.45;
     cardGroup.rotation.y += (flipTarget - cardGroup.rotation.y) * 0.12;
 
     bloom.strength += ((hovering ? 0.32 : 0.26) - bloom.strength) * 0.06;
