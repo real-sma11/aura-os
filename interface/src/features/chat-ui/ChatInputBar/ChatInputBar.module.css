@@ -869,6 +869,19 @@
 button.attachRing {
   border-radius: 50%;
   background: linear-gradient(180deg, #1e1e1e, #181818);
+  /* Slight pulsating background glow behind the disc, in the accent
+     color. Subtler/slower than the ring so it reads as a soft halo. */
+  animation: attachRingGlow 3s ease-in-out infinite;
+}
+
+@keyframes attachRingGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
 }
 
 /* Keep the shared hover plate circular so it matches the disc. */
@@ -876,7 +889,7 @@ button.attachRing::before {
   border-radius: 50%;
 }
 
-/* Accent ring around the "+" attach button: a 3px donut painted in the
+/* Accent ring around the "+" attach button: a 1px donut painted in the
    theme accent color that glows and pulsates. Replaces the former WebGL
    prism ring. Uses `--color-accent` so it tracks the user's chosen
    accent. Sits behind the + glyph (which the shared rule pins at
@@ -886,7 +899,7 @@ button.attachRing::after {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  padding: 3px;
+  padding: 1px;
   background: var(--color-accent);
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -911,8 +924,11 @@ button.attachRing::after {
   }
 }
 
-/* Reduced-motion users get a static accent ring (no pulse). */
+/* Reduced-motion users get a static accent ring and glow (no pulse). */
 @media (prefers-reduced-motion: reduce) {
+  button.attachRing {
+    animation: none;
+  }
   button.attachRing::after {
     animation: none;
     opacity: 1;
