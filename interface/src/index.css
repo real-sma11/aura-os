@@ -123,6 +123,14 @@
   --attach-ring-plate: linear-gradient(180deg, #232323, #141414);
 
   /*
+   * Frame ring each bottom-taskbar pill sits on (shows as a ~1.75px
+   * outline around the pill). Near-black by default; flipped to a soft
+   * gray under [data-theme='light'] so the ring reads as a subtle edge
+   * instead of a hard dark band against the light pills.
+   */
+  --taskbar-frame: linear-gradient(135deg, #090909, #131313);
+
+  /*
    * Public-mode pill tokens. Shared by the top Log In / Sign Up
    * `.authPill` chrome in `AuraTitlebar` and the bottom-taskbar
    * `.left` / `.right` pill chrome in `BottomTaskbar` (and the
@@ -346,6 +354,9 @@ img[data-aura-wordmark] {
   --input-pill-stroke: linear-gradient(180deg, #e2e2e8, #d3d3da);
   --input-pill-stroke-focus: linear-gradient(180deg, #cfcfd6, #bfbfc8);
   --attach-ring-plate: linear-gradient(180deg, #ffffff, #e9e9ee);
+
+  /* Taskbar pill frame ring — soft mid-gray instead of near-black. */
+  --taskbar-frame: linear-gradient(135deg, #c2c2cb, #d4d4db);
 }
 
 ::-webkit-scrollbar {
