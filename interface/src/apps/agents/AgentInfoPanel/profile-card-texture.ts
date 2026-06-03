@@ -265,32 +265,32 @@ export function drawInfoStrip(
   // Name (stamped) on the left of the header row.
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = `700 128px ${STRIP_SANS}`;
-  engrave(ctx, opts.name || "Unnamed", padL, 150, "#f4f6f9");
+  ctx.font = `700 154px ${STRIP_SANS}`;
+  engrave(ctx, opts.name || "Unnamed", padL, 162, "#f4f6f9");
 
   // Role pill, right-aligned on the header row.
   const role = (opts.role || "").trim();
   if (role) {
-    ctx.font = `600 50px ${STRIP_SANS}`;
+    ctx.font = `600 60px ${STRIP_SANS}`;
     const label = role.toUpperCase();
     const tw = ctx.measureText(label).width;
-    const pillPad = 40;
-    const pillH = 86;
+    const pillPad = 48;
+    const pillH = 103;
     const pillW = tw + pillPad * 2;
     const pillX = valueX - pillW;
-    const pillY = 70;
-    roundRectPath(ctx, pillX, pillY, pillW, pillH, 20);
+    const pillY = 74;
+    roundRectPath(ctx, pillX, pillY, pillW, pillH, 24);
     ctx.fillStyle = "rgba(8,10,13,0.7)";
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.stroke();
     ctx.fillStyle = "#eef1f5";
-    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 18);
+    ctx.fillText(label, pillX + pillPad, pillY + pillH / 2 + 22);
   }
 
   // Divider: a dark groove with a light bevel below it.
-  const divY = 214;
+  const divY = 230;
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = "rgba(0,0,0,0.5)";
   ctx.beginPath();
@@ -311,17 +311,17 @@ export function drawInfoStrip(
     { label: "Wallet", value: opts.wallet ? truncateWallet(opts.wallet) : "—", mono: true },
   ];
 
-  const firstRowY = 282;
+  const firstRowY = 300;
   const rowGap = (h - firstRowY - 30) / rows.length;
   rows.forEach((row, i) => {
     const y = firstRowY + rowGap * i + rowGap / 2;
 
     ctx.textAlign = "left";
-    ctx.font = `600 48px ${STRIP_SANS}`;
+    ctx.font = `600 58px ${STRIP_SANS}`;
     engrave(ctx, row.label.toUpperCase(), padL, y, "#aab1ba");
 
     ctx.textAlign = "right";
-    ctx.font = row.mono ? `500 58px ${STRIP_MONO}` : `600 68px ${STRIP_SANS}`;
+    ctx.font = row.mono ? `500 70px ${STRIP_MONO}` : `600 82px ${STRIP_SANS}`;
     if (row.status && opts.isOnline) {
       // Online: accent-colored text with a very subtle, gently pulsing glow.
       // The card is ACES tone-mapped, which washes bright saturated colors
