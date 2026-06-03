@@ -28,7 +28,6 @@ import {
 import type { Agent, HarnessSkill, HarnessSkillInstallation } from "../../../shared/types";
 import { isSuperAgent } from "../../../shared/types/permissions";
 import { TelegramConnect } from "../components/TelegramConnect";
-import { PersonaCard } from "./PersonaCard";
 import styles from "./AgentInfoPanel.module.css";
 
 export interface ProfileTabProps {
@@ -373,7 +372,6 @@ export function ProfileTab(props: ProfileTabProps) {
         <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
       )}
       <TelegramConnect agent={agent} compact />
-      <PersonaCard personality={agent.personality} systemPrompt={agent.system_prompt} />
       {props.isMobileStandalone && <MobileRemoteRuntimeSection agent={agent} />}
       {props.isMobileStandalone && (
         <MobileSkillsSection
