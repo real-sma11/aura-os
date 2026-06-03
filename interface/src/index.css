@@ -58,7 +58,7 @@
 
 :root {
   color-scheme: light dark;
-  --font-sans: "Segoe WPC", "Segoe UI", sans-serif;
+  --font-sans: 'Inter Variable', sans-serif;
 
   /*
    * Shell chrome tokens shared by every surface that participates in the
