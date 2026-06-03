@@ -34,14 +34,6 @@
   display: flex;
   flex-direction: column;
   gap: 36px;
-  padding: clamp(28px, 4vw, 48px);
-  box-sizing: border-box;
-  border-radius: 24px;
-  background: rgba(10, 25, 70, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
 }
 
 .pricingPageHeader {
@@ -115,28 +107,30 @@
 .pricingPlansGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 24px;
+  background: rgba(10, 25, 70, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 .pricingPlanCard {
   min-height: 292px;
-  padding: 18px 16px 16px;
+  padding: 4px 24px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 18px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: background-color var(--marketing-transition-fast, 150ms ease);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.pricingPlanCard:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.pricingPlanCardRecommended {
-  background: rgba(255, 255, 255, 0.09);
+.pricingPlanCard:first-child {
+  border-left: 0;
 }
 
 .pricingPlanBody {
@@ -273,7 +267,6 @@
 
   .pricingPageContent {
     gap: 28px;
-    border-radius: 20px;
   }
 
   .pricingPageTitle {
@@ -281,20 +274,24 @@
   }
 
   .pricingPlansGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: 1fr;
+    gap: 0;
+    border-radius: 20px;
   }
 
   .pricingPlanCard {
     min-height: 0;
+    padding: 20px 4px;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .pricingPlanCard:first-child {
+    border-top: 0;
   }
 }
 
 @media (max-width: 640px) {
-  .pricingPlansGrid {
-    grid-template-columns: 1fr;
-  }
-
   .pricingToggleButton {
     min-width: 84px;
   }
@@ -303,9 +300,5 @@
 @media (max-width: 480px) {
   .pricingPage {
     padding: 32px 16px calc(var(--marketing-taskbar-safe-offset) + 88px);
-  }
-
-  .pricingPlanCard {
-    padding: 18px 20px 16px;
   }
 }
