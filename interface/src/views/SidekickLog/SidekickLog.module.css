@@ -190,28 +190,6 @@
   text-align: center;
 }
 
-.logLine {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.logRow {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 2px 0;
-  cursor: pointer;
-  border-radius: var(--radius-sm, 3px);
-}
-
-.logRow:hover {
-  background: var(--color-overlay-subtle);
-}
-
-.logRowSelected {
-  background: var(--color-overlay-subtle);
-}
-
 .logTimestamp {
   color: var(--color-text-muted);
   flex-shrink: 0;
@@ -274,14 +252,6 @@
   composes: logBadge;
   background: color-mix(in srgb, var(--color-log-spec) 15%, transparent);
   color: var(--color-log-spec);
-}
-
-.logSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .logDetail {

@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { Text } from "@cypher-asi/zui";
 import { Check } from "lucide-react";
 import { OverlayScrollbar } from "../../components/OverlayScrollbar";
+import { SidekickList } from "../../components/SidekickList";
 import { useLogStream, EVENT_LABELS } from "../../hooks/use-log-stream";
 import { useClickOutside } from "../../shared/hooks/use-click-outside";
 import { useSidekickStore } from "../../stores/sidekick-store";
-import type { LogEntry } from "../../hooks/use-log-stream";
 import styles from "./SidekickLog.module.css";
 
 const TYPE_CATEGORY: Record<string, string> = {
@@ -114,29 +114,6 @@ function LogFilterBar({
   );
 }
 
-function LogRow({
-  entry,
-  onSelect,
-}: {
-  entry: LogEntry;
-  onSelect: () => void;
-}) {
-  const label = EVENT_LABELS[entry.type] ?? "Event";
-  return (
-    <div
-      className={styles.logRow}
-      onClick={onSelect}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(); }}
-    >
-      <span className={styles.logTimestamp}>{entry.timestamp}</span>
-      <span className={`${styles.logBadge} ${categoryClass(label)}`}>{label}</span>
-      <span className={styles.logSummary}>{entry.summary}</span>
-    </div>
-  );
-}
-
 export function SidekickLog({ searchQuery }: { searchQuery: string }) {
   const { entries, contentRef, handleScroll } = useLogStream();
   const pushPreview = useSidekickStore((s) => s.pushPreview);
@@ -168,6 +145,27 @@ export function SidekickLog({ searchQuery }: { searchQuery: string }) {
     return result;
   }, [entries, activeFilters, searchQuery]);
 
+  const rows = useMemo(
+    () =>
+      filtered.map((entry, i) => {
+        const label = EVENT_LABELS[entry.type] ?? "Event";
+        return {
+          id: `log-${i}`,
+          leadingIndicator: (
+            <span className={styles.logTimestamp}>{entry.timestamp}</span>
+          ),
+          label: entry.summary,
+          suffix: (
+            <span className={`${styles.logBadge} ${categoryClass(label)}`}>
+              {label}
+            </span>
+          ),
+          onSelect: () => pushPreview({ kind: "log", entry }),
+        };
+      }),
+    [filtered, pushPreview],
+  );
+
   return (
     <div className={styles.logWrap}>
       <LogFilterBar active={activeFilters} onToggle={toggleFilter} onToggleAll={toggleAll} />
@@ -186,13 +184,7 @@ export function SidekickLog({ searchQuery }: { searchQuery: string }) {
               </Text>
             </div>
           ) : (
-            filtered.map((entry, i) => (
-              <LogRow
-                key={i}
-                entry={entry}
-                onSelect={() => pushPreview({ kind: "log", entry })}
-              />
-            ))
+            <SidekickList sections={[{ id: "log", rows }]} />
           )}
         </div>
         <OverlayScrollbar scrollRef={contentRef} />
