@@ -323,14 +323,12 @@ export function drawInfoStrip(
     ctx.textAlign = "right";
     ctx.font = row.mono ? `500 58px ${STRIP_MONO}` : `600 68px ${STRIP_SANS}`;
     if (row.status && opts.isOnline) {
-      // Online: glowing accent text (gently pulsing via `dotOn`). Drawn twice to
-      // build up the glow.
+      // Online: crisp accent text with a very subtle, gently pulsing glow.
       const [ar, ag, ab] = accent;
       ctx.save();
-      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.95 : 0.5})`;
-      ctx.shadowBlur = dotOn ? 24 : 14;
+      ctx.shadowColor = `rgba(${ar},${ag},${ab},${dotOn ? 0.5 : 0.32})`;
+      ctx.shadowBlur = dotOn ? 6 : 4;
       ctx.fillStyle = `rgb(${ar},${ag},${ab})`;
-      ctx.fillText(row.value, valueX, y);
       ctx.fillText(row.value, valueX, y);
       ctx.restore();
     } else if (row.status) {
