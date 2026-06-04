@@ -169,15 +169,20 @@ export function useMenuActions(): {
   }, []);
 
   const handleDownloads = useCallback(() => {
-    // Logged-in (desktop) users get the in-app `/download` route so the
-    // page opens inside the actual app rather than a new browser tab.
+    // Logged-in (desktop) users get the Downloads page in an in-app
+    // modal so it opens inside the actual app rather than a new browser
+    // tab or a full route navigation.
     if (isAuthenticated) {
-      navigate("/download");
+      useUIModalStore.getState().openDownloads();
       return;
     }
     if (typeof window === "undefined") return;
     window.open(AURA_DOWNLOADS, "_blank", "noopener,noreferrer");
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated]);
+
+  const handleChangelog = useCallback(() => {
+    useUIModalStore.getState().openChangelog();
+  }, []);
 
   const handleGettingStarted = useCallback(() => {
     const store = useOnboardingStore.getState();
@@ -219,9 +224,11 @@ export function useMenuActions(): {
       "view.toggleFullscreen": handleToggleFullscreen,
       "help.visitWebsite": handleVisitWebsite,
       "help.downloads": handleDownloads,
+      "help.changelog": handleChangelog,
       "help.gettingStarted": handleGettingStarted,
     }),
     [
+      handleChangelog,
       handleDownloads,
       handleExit,
       handleGettingStarted,

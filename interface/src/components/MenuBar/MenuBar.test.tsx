@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 
 const mockNavigate = vi.fn();
 const openOrgSettings = vi.fn();
+const openDownloads = vi.fn();
+const openChangelog = vi.fn();
 const openCreateAgentModal = vi.fn();
 const openNewProjectModal = vi.fn();
 const toggleSidekick = vi.fn();
@@ -33,12 +35,18 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("../../stores/ui-modal-store", () => ({
   useUIModalStore: Object.assign(
-    (selector?: (state: { openOrgSettings: typeof openOrgSettings }) => unknown) => {
-      const state = { openOrgSettings };
+    (
+      selector?: (state: {
+        openOrgSettings: typeof openOrgSettings;
+        openDownloads: typeof openDownloads;
+        openChangelog: typeof openChangelog;
+      }) => unknown,
+    ) => {
+      const state = { openOrgSettings, openDownloads, openChangelog };
       return selector ? selector(state) : state;
     },
     {
-      getState: () => ({ openOrgSettings }),
+      getState: () => ({ openOrgSettings, openDownloads, openChangelog }),
     },
   ),
 }));
@@ -184,16 +192,26 @@ describe("MenuBar", () => {
     expect(windowCommandMock).toHaveBeenCalledWith("close");
   });
 
-  it("Help > Downloads navigates in-app to /download when logged in", async () => {
+  it("Help > Downloads opens the in-app modal when logged in", async () => {
     isAuthenticatedMock = true;
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const user = userEvent.setup();
     renderMenuBar();
     await user.click(screen.getByRole("menuitem", { name: "Help" }));
     await user.click(screen.getByRole("menuitem", { name: /Downloads/ }));
-    expect(mockNavigate).toHaveBeenCalledWith("/download");
+    expect(openDownloads).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
     expect(openSpy).not.toHaveBeenCalled();
     openSpy.mockRestore();
+  });
+
+  it("Help > Changelog opens the in-app modal", async () => {
+    isAuthenticatedMock = true;
+    const user = userEvent.setup();
+    renderMenuBar();
+    await user.click(screen.getByRole("menuitem", { name: "Help" }));
+    await user.click(screen.getByRole("menuitem", { name: /Changelog/ }));
+    expect(openChangelog).toHaveBeenCalledTimes(1);
   });
 
   it("Help > Downloads opens aura.ai/download in a new tab when logged out", async () => {

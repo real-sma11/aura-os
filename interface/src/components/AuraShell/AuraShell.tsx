@@ -43,6 +43,16 @@ const HostSettingsModal = lazy(() =>
     default: module.HostSettingsModal,
   })),
 );
+const ChangelogModal = lazy(() =>
+  import("../ChangelogModal").then((module) => ({
+    default: module.ChangelogModal,
+  })),
+);
+const DownloadsModal = lazy(() =>
+  import("../DownloadsModal").then((module) => ({
+    default: module.DownloadsModal,
+  })),
+);
 
 function blurActiveElement(): void {
   const active = document.activeElement;
@@ -102,11 +112,23 @@ export function AuraShell(): React.ReactElement {
   const togglePublicSidebar = useAppUIStore((s) => s.togglePublicSidebar);
   const authedSidebarCollapsed = useAppUIStore((s) => s.authedSidebarCollapsed);
   const toggleAuthedSidebar = useAppUIStore((s) => s.toggleAuthedSidebar);
-  const { hostSettingsOpen, openHostSettings, closeHostSettings } = useUIModalStore(
+  const {
+    hostSettingsOpen,
+    openHostSettings,
+    closeHostSettings,
+    changelogModalOpen,
+    closeChangelog,
+    downloadsModalOpen,
+    closeDownloads,
+  } = useUIModalStore(
     useShallow((s) => ({
       hostSettingsOpen: s.hostSettingsOpen,
       openHostSettings: s.openHostSettings,
       closeHostSettings: s.closeHostSettings,
+      changelogModalOpen: s.changelogModalOpen,
+      closeChangelog: s.closeChangelog,
+      downloadsModalOpen: s.downloadsModalOpen,
+      closeDownloads: s.closeDownloads,
     })),
   );
   const backgroundHydrated = useDesktopBackgroundStore((s) => s.hydrated);
@@ -310,6 +332,28 @@ export function AuraShell(): React.ReactElement {
             onClose={() => {
               blurActiveElement();
               closeHostSettings();
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {isStandard && changelogModalOpen ? (
+        <Suspense fallback={null}>
+          <ChangelogModal
+            isOpen={changelogModalOpen}
+            onClose={() => {
+              blurActiveElement();
+              closeChangelog();
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {isStandard && downloadsModalOpen ? (
+        <Suspense fallback={null}>
+          <DownloadsModal
+            isOpen={downloadsModalOpen}
+            onClose={() => {
+              blurActiveElement();
+              closeDownloads();
             }}
           />
         </Suspense>
