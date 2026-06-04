@@ -21,54 +21,48 @@ export interface AppSwitchToggleProps {
 }
 
 /**
- * Neumorphic rocker switch that toggles between the Agents and Projects
- * apps. Lives at the top of the shared sidebar body for both apps.
+ * Flat, plate-mounted toggle between the Agents and Projects apps. Lives at
+ * the top of the shared sidebar body for both apps.
  *
- * Modeled as a center-folding rocker rather than a rigid tilting plate:
- * the two halves are hinged at the center seam. The selected half lies
- * flat and frontal in the plane of the cradle; the unselected half folds
- * back from the seam like a ramp, foreshortening under a shared scene
- * perspective. This is the only model that yields a genuinely flat
- * selected face with a skewed opposite face.
- *
- * Fully theme-aware: the soft light/dark shadow + plate tokens are
- * rebound per `[data-theme]` so the plastic look reads correctly in
- * both light and dark mode.
+ * The foundation is a fixed-size gradient `.plate` holding a recessed
+ * `.panel` (the seam). The two halves fill the panel: the idle half is a
+ * flat fill, while the selected half gets a diagonal gradient fill, an
+ * accent glow flaring up-and-outward, a directional gradient border, and a
+ * large black shadow cast down-and-outward. The foundation never changes
+ * size when the selection flips.
  */
 export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactElement {
   const navigate = useNavigate();
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.scene}>
+      <div className={styles.plate}>
         <div
-          className={styles.cradle}
+          className={styles.panel}
           role="group"
           aria-label="Switch between Agents and Projects"
         >
-          <div className={styles.rocker}>
-            {OPTIONS.map((option) => {
-              const isActive = option.id === active;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={cn(
-                    styles.half,
-                    option.id === "agents" ? styles.halfLeft : styles.halfRight,
-                    isActive ? styles.halfActive : styles.halfFolded,
-                  )}
-                  aria-pressed={isActive}
-                  onClick={() => {
-                    if (isActive) return;
-                    navigate(option.path);
-                  }}
-                >
-                  <span className={styles.label}>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {OPTIONS.map((option) => {
+            const isActive = option.id === active;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={cn(
+                  styles.half,
+                  option.id === "agents" ? styles.halfLeft : styles.halfRight,
+                  isActive ? styles.halfActive : styles.halfIdle,
+                )}
+                aria-pressed={isActive}
+                onClick={() => {
+                  if (isActive) return;
+                  navigate(option.path);
+                }}
+              >
+                <span className={styles.label}>{option.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

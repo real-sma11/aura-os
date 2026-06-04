@@ -1,82 +1,96 @@
 /*
- * Neumorphic Agents/Projects rocker switch — center-folding model.
+ * Agents/Projects switch — flat, plate-mounted toggle.
  *
  * Structure:
- *   .scene   owns the shared 3D perspective + vanishing point. Keeping
- *            perspective here (not in each plate's own transform) is what
- *            makes the fold read coherently — both halves share one
- *            stable vanishing point instead of each warping around its
- *            own box center.
- *   .cradle  the static recessed housing the rocker sits in.
- *   .rocker  preserve-3d flex container holding the two halves.
- *   .half    a hinged panel. The SELECTED half lies flat in the cradle
- *            plane; the UNSELECTED half folds back from the center seam
- *            like a ramp and foreshortens under the scene perspective.
+ *   .plate  the foundation. A left->right gradient slab that never changes
+ *           size when the selection flips.
+ *   .panel  the recessed housing the switch sits in. A dark seam with a
+ *           top-dark / bottom-light gradient ring (::before) so it reads as
+ *           set into the page.
+ *   .half   one of the two toggle faces. The IDLE half is a flat fill; the
+ *           ACTIVE half gets a diagonal gradient fill, an accent glow that
+ *           flares up-and-outward, a directional gradient border, and a
+ *           large black shadow cast down-and-outward.
  *
- * Neumorphism needs its light/dark shadow pair to flip with the theme or
- * the effect inverts, so the `--nm-*` tokens are rebound per
- * `[data-theme]` below.
+ * Theme-aware: the spec's fixed dark hex values live under
+ * [data-theme="dark"]; a lighter token set is the default for light mode.
+ * The glow always tracks `--color-accent`.
  */
 
 .wrap {
   flex-shrink: 0;
   padding: 12px 12px 10px;
+
+  /* Light-mode defaults. */
+  --sw-plate-from: #ececee;
+  --sw-plate-to: #e3e3e6;
+  --sw-panel-bg: #d9d9dd;
+  --sw-ring-top: rgba(0, 0, 0, 0.22);
+  --sw-ring-bottom: rgba(255, 255, 255, 0.85);
+  --sw-idle-bg: #e3e3e6;
+  --sw-active-from: #f6f6f7;
+  --sw-active-to: #eeeef0;
+  --sw-active-ring-light: rgba(255, 255, 255, 0.95);
+  --sw-active-ring-dark: rgba(0, 0, 0, 0.22);
+  --sw-active-shadow: rgba(0, 0, 0, 0.28);
+  --sw-text: #8a8d96;
+  --sw-text-active: #2b2e36;
 }
 
-.scene {
-  /* Light-mode defaults — soft pressed-plastic plate, matching the ref. */
-  --nm-base-bg: #e6e6e6;
-  --nm-plate: #f4f4f5;
-  --nm-plate-fold: #dfe0e3;
-  --nm-highlight: rgba(255, 255, 255, 0.9);
-  --nm-shadow: rgba(0, 0, 0, 0.18);
-  --nm-shadow-soft: rgba(0, 0, 0, 0.06);
-  --nm-text: #8a8d96;
-  --nm-text-active: #2b2e36;
-  --nm-fold: 40deg;
-
-  perspective: 720px;
-  /* Slightly above center so the folded ramp is seen from above, going
-     back into the housing rather than edge-on. */
-  perspective-origin: 50% 32%;
+:global([data-theme="dark"]) .wrap {
+  --sw-plate-from: #282828;
+  --sw-plate-to: #2b2b2b;
+  --sw-panel-bg: #202020;
+  --sw-ring-top: rgba(0, 0, 0, 0.85);
+  --sw-ring-bottom: rgba(255, 255, 255, 0.14);
+  --sw-idle-bg: #2b2b2b;
+  --sw-active-from: #242424;
+  --sw-active-to: #212421;
+  --sw-active-ring-light: rgba(255, 255, 255, 0.45);
+  --sw-active-ring-dark: rgba(0, 0, 0, 0.85);
+  --sw-active-shadow: rgba(0, 0, 0, 0.7);
+  --sw-text: rgba(255, 255, 255, 0.42);
+  --sw-text-active: rgba(255, 255, 255, 0.92);
 }
 
-:global([data-theme="dark"]) .scene {
-  --nm-base-bg: #161718;
-  --nm-plate: #2b2d34;
-  --nm-plate-fold: #202229;
-  --nm-highlight: rgba(255, 255, 255, 0.07);
-  --nm-shadow: rgba(0, 0, 0, 0.6);
-  --nm-shadow-soft: rgba(0, 0, 0, 0.42);
-  --nm-text: rgba(255, 255, 255, 0.42);
-  --nm-text-active: rgba(255, 255, 255, 0.92);
-}
-
-.cradle {
-  display: flex;
-  align-items: center;
+.plate {
   width: 100%;
   height: 56px;
-  /* Symmetric inset -> the rocker reads as centered with equal left/right
-     breathing room. */
-  padding: 8px 16px;
   box-sizing: border-box;
-  border-radius: 16px;
-  background: var(--nm-base-bg);
-  box-shadow:
-    inset 0 2px 3px var(--nm-highlight),
-    inset 0 -7px 18px var(--nm-shadow-soft);
+  padding: 8px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, var(--sw-plate-from), var(--sw-plate-to));
 }
 
-.rocker {
+/* Recessed housing the switch sits in. */
+.panel {
   position: relative;
   display: flex;
   width: 100%;
   height: 100%;
-  transform-style: preserve-3d;
+  border-radius: 13px;
+  background: var(--sw-panel-bg);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* Top-dark / bottom-light gradient ring — the recessed "seam" border. */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, var(--sw-ring-top), var(--sw-ring-bottom));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .half {
+  position: relative;
   flex: 1;
   display: inline-flex;
   align-items: center;
@@ -84,68 +98,116 @@
   margin: 0;
   padding: 0;
   border: 0;
-  background: var(--nm-plate);
+  background: var(--sw-idle-bg);
   font-family: inherit;
   cursor: pointer;
-  backface-visibility: hidden;
   transition:
-    transform 280ms cubic-bezier(0.34, 1.04, 0.42, 1),
-    background-color 280ms ease,
-    box-shadow 280ms ease;
+    background 240ms ease,
+    box-shadow 240ms ease;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Each half hinges at the CENTER seam (its inner edge). */
+/* Outer corners pill-rounded, inner seam corners near-square. */
 .halfLeft {
-  transform-origin: right center;
-  border-radius: 11px 2px 2px 11px;
+  border-radius: 12px 3px 3px 12px;
 }
 
 .halfRight {
-  transform-origin: left center;
-  border-radius: 2px 11px 11px 2px;
+  border-radius: 3px 12px 12px 3px;
 }
 
-/* Selected half: flat in the cradle plane, lifted slightly toward the
-   viewer so it clearly reads as the raised/active face. */
+/* Active half: diagonal gradient fill + large outward-down black shadow.
+   The shadow is set per side below. */
 .halfActive {
-  transform: translateZ(4px);
-  background: var(--nm-plate);
-  box-shadow:
-    0 11px 16px var(--nm-shadow),
-    inset 0 1px 1px var(--nm-highlight);
+  background: linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
+  z-index: 1;
 }
 
-/* Unselected half: folds back from the seam. Left half swings its outer
-   (left) edge away (+rotateY sends -X toward -Z); right half mirrors. */
-.halfFolded {
-  background: var(--nm-plate-fold);
-  box-shadow: 0 5px 9px var(--nm-shadow-soft);
+.halfLeft.halfActive {
+  box-shadow: -10px 12px 22px -4px var(--sw-active-shadow);
 }
 
-.halfLeft.halfFolded {
-  transform: rotateY(var(--nm-fold));
+.halfRight.halfActive {
+  box-shadow: 10px 12px 22px -4px var(--sw-active-shadow);
 }
 
-.halfRight.halfFolded {
-  transform: rotateY(calc(-1 * var(--nm-fold)));
+/* Directional gradient border on the active half: lighter toward the
+   outer/top edge, darker toward the inner/bottom. */
+.halfActive::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.halfLeft.halfActive::before {
+  background: linear-gradient(
+    135deg,
+    var(--sw-active-ring-light),
+    var(--sw-active-ring-dark)
+  );
+}
+
+.halfRight.halfActive::before {
+  background: linear-gradient(
+    225deg,
+    var(--sw-active-ring-light),
+    var(--sw-active-ring-dark)
+  );
+}
+
+/* Accent glow flaring up-and-outward from the active half. */
+.halfActive::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.85;
+}
+
+.halfLeft.halfActive::after {
+  background: radial-gradient(
+    120% 120% at 0% 0%,
+    var(--color-accent) 0%,
+    color-mix(in srgb, var(--color-accent) 35%, transparent) 24%,
+    transparent 55%
+  );
+}
+
+.halfRight.halfActive::after {
+  background: radial-gradient(
+    120% 120% at 100% 0%,
+    var(--color-accent) 0%,
+    color-mix(in srgb, var(--color-accent) 35%, transparent) 24%,
+    transparent 55%
+  );
 }
 
 .label {
+  position: relative;
+  z-index: 1;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--nm-text);
-  transition: color 280ms ease;
+  color: var(--sw-text);
+  transition: color 240ms ease;
 }
 
 .halfActive .label {
-  color: var(--nm-text-active);
+  color: var(--sw-text-active);
 }
 
 .half:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -3px;
-  border-radius: 10px;
 }
