@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { startTransition, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { cn } from "@cypher-asi/zui";
 import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
-import { AppSwitchToggle, type AppSwitchOptionId } from "../AppSwitchToggle";
+import { AppSwitchToggle, type AppSwitchOption } from "../AppSwitchToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { EarnCreditsButton } from "../EarnCreditsButton";
@@ -202,15 +202,34 @@ function SidebarBody({ mode }: { mode: UIMode }): React.ReactElement {
 // Apps that share the Agents <-> Projects neumorphic switch at the top
 // of the sidebar body. Both are workspace surfaces the user flips
 // between frequently, so the switch lives above whichever app's nav is
-// currently mounted.
-const APP_SWITCH_IDS: Record<string, AppSwitchOptionId> = {
-  agents: "agents",
-  projects: "projects",
+// currently mounted. Options + paths are module-level constants so the
+// memoized `AppSwitchToggle` keeps reference-stable props and stays inert
+// while the sidebar body re-renders for unrelated reasons.
+const APP_SWITCH_OPTIONS: readonly AppSwitchOption[] = [
+  { id: "agents", label: "Agents" },
+  { id: "projects", label: "Projects" },
+];
+const APP_SWITCH_PATHS: Record<string, string> = {
+  agents: "/agents",
+  projects: "/projects",
 };
 
 function AuthedSidebarBody(): React.ReactElement {
   const activeApp = useActiveApp();
   const visitedAppIds = useAppUIStore((s) => s.visitedAppIds);
+  const navigate = useNavigate();
+
+  // Defer the route swap into a transition so the (potentially heavy)
+  // mount of the target app's nav/main panel never competes with the
+  // switch's composited slide/fade — the thumb starts moving on the
+  // optimistic click frame and the navigation settles after.
+  const handleSwitch = useCallback(
+    (id: string): void => {
+      const path = APP_SWITCH_PATHS[id];
+      if (path) startTransition(() => navigate(path));
+    },
+    [navigate],
+  );
 
   const body = usesSharedDesktopLeftMenu(activeApp.id) ? (
     <LeftMenu
@@ -230,14 +249,18 @@ function AuthedSidebarBody(): React.ReactElement {
     </div>
   );
 
-  const switchOption = APP_SWITCH_IDS[activeApp.id];
-  if (!switchOption) {
+  if (!APP_SWITCH_PATHS[activeApp.id]) {
     return body;
   }
 
   return (
     <div className={styles.appSwitchBody}>
-      <AppSwitchToggle active={switchOption} />
+      <AppSwitchToggle
+        options={APP_SWITCH_OPTIONS}
+        active={activeApp.id}
+        onChange={handleSwitch}
+        ariaLabel="Switch between Agents and Projects"
+      />
       <div className={styles.appSwitchPanelFill}>{body}</div>
     </div>
   );

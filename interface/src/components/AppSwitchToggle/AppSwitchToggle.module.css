@@ -1,5 +1,7 @@
 /*
- * Agents/Projects switch — flat, plate-mounted toggle.
+ * Generic two-up switch — flat, plate-mounted toggle. The active side is
+ * keyed by `data-active-index` (0 or 1) so it is agnostic to what it
+ * switches between.
  *
  * Structure:
  *   .plate  the foundation. A diagonal gradient slab that never changes size
@@ -98,7 +100,7 @@
   pointer-events: none;
 }
 
-.panel[data-selected="agents"]::after {
+.panel[data-active-index="0"]::after {
   background: linear-gradient(
     135deg,
     var(--sw-active-ring-light) 0%,
@@ -106,7 +108,7 @@
   );
 }
 
-.panel[data-selected="projects"]::after {
+.panel[data-active-index="1"]::after {
   background: linear-gradient(
     225deg,
     var(--sw-active-ring-light) 0%,
@@ -133,7 +135,7 @@
   pointer-events: none;
 }
 
-.panel[data-selected="agents"] .thumb {
+.panel[data-active-index="0"] .thumb {
   transform: translateX(0%);
   border-radius: 12px 0 0 12px;
   /* Seam fade on the inner (right) edge so the thumb blends into the idle
@@ -150,7 +152,7 @@
     -10px 14px 24px -4px var(--sw-active-shadow);
 }
 
-.panel[data-selected="projects"] .thumb {
+.panel[data-active-index="1"] .thumb {
   transform: translateX(100%);
   border-radius: 0 12px 12px 0;
   background:
@@ -176,7 +178,7 @@
   opacity: 0.32;
 }
 
-.panel[data-selected="agents"] .thumb::after {
+.panel[data-active-index="0"] .thumb::after {
   background: radial-gradient(
     120% 120% at 0% 0%,
     color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
@@ -185,7 +187,7 @@
   );
 }
 
-.panel[data-selected="projects"] .thumb::after {
+.panel[data-active-index="1"] .thumb::after {
   background: radial-gradient(
     120% 120% at 100% 0%,
     color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
@@ -217,11 +219,18 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sw-text);
-  transition: color 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
+  /* Idle labels sit slightly faded; the selected one fades up to full in
+     step with the thumb slide so the switch content reads as a crossfade,
+     not just a moving plate. opacity + color are cheap, paint-only props. */
+  opacity: 0.7;
+  transition:
+    color 280ms cubic-bezier(0.33, 0.1, 0.25, 1),
+    opacity 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
 }
 
 .halfActive .label {
   color: var(--sw-text-active);
+  opacity: 1;
 }
 
 .half:focus-visible {
@@ -234,5 +243,9 @@
   .thumb,
   .label {
     transition: none;
+  }
+
+  .label {
+    opacity: 1;
   }
 }

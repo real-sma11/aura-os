@@ -1,2 +1,2 @@
 export { AppSwitchToggle } from "./AppSwitchToggle";
-export type { AppSwitchToggleProps, AppSwitchOptionId } from "./AppSwitchToggle";
+export type { AppSwitchToggleProps, AppSwitchOption } from "./AppSwitchToggle";
