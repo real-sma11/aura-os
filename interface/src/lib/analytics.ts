@@ -2,6 +2,9 @@
  * Product analytics wrapper (Mixpanel).
  *
  * Anonymous by default — user ID is a UUID, no emails/names/prompts.
+ * Coarse geolocation ($country_code/$region/$city) is resolved by
+ * Mixpanel from the request IP at ingestion (see `ip: true`) so events
+ * can be broken down by location.
  * Opt-out via localStorage toggle. Respects DNT/GPC browser signals.
  * Safe no-op when token is unset (dev/preview) or user opts out.
  */
@@ -42,8 +45,11 @@ export function initAnalytics(): void {
       debug: import.meta.env.DEV,
       track_pageview: false, // We track custom events, not page views
       persistence: "localStorage",
-      ip: false, // Don't resolve IP to geolocation
-      property_blacklist: ["$city", "$region"],
+      // Let Mixpanel resolve $country_code / $region / $city from the
+      // request IP at ingestion so events (e.g. user_signed_up) can be
+      // broken down by location. IP is used transiently for geo lookup
+      // and is not persisted as an event property by the SDK.
+      ip: true,
     });
 
     // Respect DNT/GPC browser signals
