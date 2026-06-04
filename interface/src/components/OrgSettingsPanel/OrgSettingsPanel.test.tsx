@@ -67,6 +67,8 @@ const mockLogout = vi.fn();
 
 vi.mock("../../stores/auth-store", () => ({
   useAuth: () => ({ user: { user_id: "u1" }, logout: mockLogout }),
+  useAuthStore: (sel: (s: { logout: () => void }) => unknown) =>
+    sel({ logout: mockLogout }),
 }));
 
 vi.mock("../../hooks/use-aura-capabilities", () => ({
@@ -146,6 +148,29 @@ vi.mock("../TierSubscriptionModal", () => ({
 }));
 vi.mock("../../views/SettingsView/AppearanceSection", () => ({
   AppearanceSection: () => <div data-testid="section-appearance">Appearance</div>,
+}));
+vi.mock("../../views/SettingsView/AppearanceSection/themeSubAreas", () => ({
+  DEFAULT_THEME_SUB_AREA: "mode",
+  THEME_SUB_AREAS: [
+    {
+      id: "mode",
+      label: "Mode & accent",
+      icon: () => null,
+      Component: () => <div data-testid="subarea-mode">Mode pane</div>,
+    },
+    {
+      id: "typography",
+      label: "Typography",
+      icon: () => null,
+      Component: () => <div data-testid="subarea-typography">Typography pane</div>,
+    },
+    {
+      id: "presets",
+      label: "Presets",
+      icon: () => null,
+      Component: () => <div data-testid="subarea-presets">Presets pane</div>,
+    },
+  ],
 }));
 vi.mock("../../views/SettingsView/AboutSection", () => ({
   AboutSection: () => <div data-testid="section-about">About</div>,
@@ -260,12 +285,50 @@ describe("OrgSettingsPanel", () => {
     expect(screen.getByText("Advanced")).toBeInTheDocument();
   });
 
-  it("switches to Theme section (app-scoped)", async () => {
+  it("drills into Theme sub-areas when Theme is clicked", async () => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(screen.getByText("Theme"));
-    expect(screen.getByTestId("section-appearance")).toBeInTheDocument();
+
+    // Breadcrumb back button + current section label appear, top-level groups
+    // are replaced by the Theme sub-area list, and the default pane renders.
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Mode & accent")).toBeInTheDocument();
+    expect(screen.getByText("Typography")).toBeInTheDocument();
+    expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
+    // Top-level groups are gone while drilled in.
+    expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
+  });
+
+  it("selecting a Theme sub-area swaps the content pane", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByText("Theme"));
+    await user.click(screen.getByText("Typography"));
+
+    expect(screen.getByTestId("subarea-typography")).toBeInTheDocument();
+    expect(screen.queryByTestId("subarea-mode")).not.toBeInTheDocument();
+  });
+
+  it("back button returns from Theme sub-areas to the top-level nav", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByText("Theme"));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    // Top-level groups are back and the drill-down content is gone.
+    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    expect(screen.queryByTestId("subarea-mode")).not.toBeInTheDocument();
+  });
+
+  it("opens already drilled in when initialSection is a drill-down section", () => {
+    renderPanel({ initialSection: "appearance" });
+
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
   });
 
   it("uses 'Settings' as the modal title", () => {
@@ -357,7 +420,7 @@ describe("OrgSettingsPanel", () => {
       renderPanel();
 
       await user.click(screen.getByText("Theme"));
-      expect(screen.getByTestId("section-appearance")).toBeInTheDocument();
+      expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
       expect(screen.queryByText("Team settings are currently unavailable.")).not.toBeInTheDocument();
     });
   });

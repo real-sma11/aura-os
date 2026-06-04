@@ -18,6 +18,11 @@ const TOKEN_LABELS: Record<EditableToken, string> = {
   "--color-sidekick-bg": "Sidekick background",
   "--color-titlebar-bg": "Titlebar background",
   "--color-accent": "Accent",
+  "--color-accent-hover": "Accent (hover)",
+  "--color-accent-muted": "Accent (muted)",
+  "--color-accent-contrast": "Accent (contrast)",
+  "--color-surface": "Surface",
+  "--color-elevated": "Elevated surface",
   "--color-modal-bg": "Modal background",
   "--color-card-line": "Agent card lines",
 };

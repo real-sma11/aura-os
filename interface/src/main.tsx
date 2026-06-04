@@ -12,6 +12,7 @@ import { applyHighlightTheme } from "./lib/highlight-theme";
 import { HighlightThemeBridge } from "./components/HighlightThemeBridge";
 import { ThemeOverridesBridge } from "./components/ThemeOverridesBridge";
 import { PanelGlassBridge } from "./components/PanelGlassBridge";
+import { ThemeExtrasBridge } from "./components/ThemeExtrasBridge";
 import { BrowserChromeThemeBridge } from "./components/BrowserChromeThemeBridge";
 import { GalleryProvider } from "./components/Gallery";
 import { queryClient } from "./shared/lib/query-client";
@@ -105,6 +106,7 @@ createRoot(rootEl).render(
       <HighlightThemeBridge />
       <ThemeOverridesBridge />
       <PanelGlassBridge />
+      <ThemeExtrasBridge />
       <BrowserChromeThemeBridge />
       <GalleryProvider>
         <App />

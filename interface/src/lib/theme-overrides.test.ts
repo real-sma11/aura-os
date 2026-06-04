@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyOverridesToDocument,
+  deriveAccent,
   EDITABLE_TOKENS,
   isValidColorValue,
   loadOverrides,
@@ -143,5 +144,34 @@ describe("theme-overrides", () => {
         expect(isValidColorValue(value)).toBe(false);
       },
     );
+  });
+
+  describe("deriveAccent", () => {
+    it("returns the full accent token set for a valid hex", () => {
+      const derived = deriveAccent("#3b82f6");
+      expect(derived).not.toBeNull();
+      expect(derived?.["--color-accent"]).toBe("#3b82f6");
+      // hover is a darker shade of the input (each channel * 0.82, rounded).
+      expect(derived?.["--color-accent-hover"]).toBe("#306bca");
+      expect(derived?.["--color-accent-muted"]).toBe("rgba(59, 130, 246, 0.15)");
+    });
+
+    it("expands 3-digit hex shorthand", () => {
+      const derived = deriveAccent("#fff");
+      expect(derived?.["--color-accent"]).toBe("#ffffff");
+      // White is bright -> black contrast text.
+      expect(derived?.["--color-accent-contrast"]).toBe("#000000");
+    });
+
+    it("picks white contrast for dark accents", () => {
+      const derived = deriveAccent("#101010");
+      expect(derived?.["--color-accent-contrast"]).toBe("#ffffff");
+    });
+
+    it("returns null for non-hex input", () => {
+      expect(deriveAccent("rgb(1,2,3)")).toBeNull();
+      expect(deriveAccent("not-a-color")).toBeNull();
+      expect(deriveAccent("#12")).toBeNull();
+    });
   });
 });

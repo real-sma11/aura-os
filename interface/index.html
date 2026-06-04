@@ -88,6 +88,72 @@
           }
           document.documentElement.style.setProperty('--shell-chrome-blur', blur + 'px');
           document.documentElement.style.setProperty('--shell-chrome-opacity', opacity + '%');
+          // Stamp typography (font stacks + text scale), layout (corner radius
+          // + density control heights), and motion (transition speed +
+          // reduce-motion) before first paint so a customized Settings > Theme
+          // never flashes the defaults. Mirrors lib/theme-typography.ts,
+          // lib/theme-layout.ts, and lib/theme-motion.ts.
+          var rootStyle = document.documentElement.style;
+          var SANS = {
+            inter: "'Inter Variable', 'Inter', system-ui, sans-serif",
+            system: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+            geist: "'Geist', 'Inter Variable', system-ui, sans-serif",
+            serif: "Georgia, 'Times New Roman', 'Noto Serif', serif"
+          };
+          var MONO = {
+            jetbrains: "'JetBrains Mono', 'Fira Code', monospace",
+            fira: "'Fira Code', 'JetBrains Mono', monospace",
+            system: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace",
+            courier: "'Courier New', Courier, monospace"
+          };
+          var typoRaw = localStorage.getItem('aura-typography');
+          var typo = typoRaw ? JSON.parse(typoRaw) : null;
+          var sansId = typo && SANS[typo.sans] ? typo.sans : 'inter';
+          var monoId = typo && MONO[typo.mono] ? typo.mono : 'jetbrains';
+          rootStyle.setProperty('--font-sans', SANS[sansId]);
+          rootStyle.setProperty('--font-mono', MONO[monoId]);
+          var scale = typo && typeof typo.scale === 'number'
+            ? Math.min(140, Math.max(85, Math.round(typo.scale)))
+            : 100;
+          ['--text-2xs', '--text-xs', '--text-sm', '--text-base', '--text-lg', '--text-xl'].forEach(function (t) {
+            rootStyle.setProperty(t, Math.round(12 * scale / 100) + 'px');
+          });
+          var RADIUS = {
+            sharp: { sm: '0', md: '0', lg: '0', xl: '0' },
+            soft: { sm: '4px', md: '6px', lg: '10px', xl: '14px' },
+            round: { sm: '8px', md: '12px', lg: '18px', xl: '26px' }
+          };
+          var DENSITY = {
+            comfortable: { xs: '28px', sm: '32px', md: '36px', lg: '44px' },
+            compact: { xs: '24px', sm: '28px', md: '32px', lg: '38px' }
+          };
+          var layoutRaw = localStorage.getItem('aura-layout');
+          var layout = layoutRaw ? JSON.parse(layoutRaw) : null;
+          var radiusKey = layout && RADIUS[layout.radius] ? layout.radius : 'sharp';
+          var densityKey = layout && DENSITY[layout.density] ? layout.density : 'comfortable';
+          var r = RADIUS[radiusKey];
+          rootStyle.setProperty('--radius-sm', r.sm);
+          rootStyle.setProperty('--radius-md', r.md);
+          rootStyle.setProperty('--radius-lg', r.lg);
+          rootStyle.setProperty('--radius-xl', r.xl);
+          var d = DENSITY[densityKey];
+          rootStyle.setProperty('--control-height-xs', d.xs);
+          rootStyle.setProperty('--control-height-sm', d.sm);
+          rootStyle.setProperty('--control-height-md', d.md);
+          rootStyle.setProperty('--control-height-lg', d.lg);
+          document.documentElement.setAttribute('data-density', densityKey);
+          var motionRaw = localStorage.getItem('aura-motion');
+          var motion = motionRaw ? JSON.parse(motionRaw) : null;
+          var speed = motion && typeof motion.speed === 'number'
+            ? Math.min(200, Math.max(50, Math.round(motion.speed)))
+            : 100;
+          var motionFactor = 100 / speed;
+          rootStyle.setProperty('--transition-fast', Math.round(75 * motionFactor) + 'ms ease-out');
+          rootStyle.setProperty('--transition-normal', Math.round(150 * motionFactor) + 'ms ease-out');
+          rootStyle.setProperty('--transition-slow', Math.round(300 * motionFactor) + 'ms ease-out');
+          if (motion && motion.reduceMotion === true) {
+            document.documentElement.setAttribute('data-motion', 'reduced');
+          }
         } catch (_) {
           document.documentElement.setAttribute('data-theme', 'dark');
           document.documentElement.setAttribute('data-glass-left', 'true');

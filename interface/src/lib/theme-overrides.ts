@@ -18,6 +18,11 @@ export const EDITABLE_TOKENS = [
   "--color-sidekick-bg",
   "--color-titlebar-bg",
   "--color-accent",
+  "--color-accent-hover",
+  "--color-accent-muted",
+  "--color-accent-contrast",
+  "--color-surface",
+  "--color-elevated",
   "--color-modal-bg",
   "--color-card-line",
 ] as const;
@@ -128,4 +133,65 @@ export function isValidColorValue(value: string): boolean {
   if (FUNC_RE.test(trimmed)) return true;
   if (NAMED_RE.test(trimmed)) return true;
   return false;
+}
+
+/** Accent token set derived from a single custom hex (see {@link deriveAccent}). */
+export type DerivedAccent = {
+  "--color-accent": string;
+  "--color-accent-hover": string;
+  "--color-accent-muted": string;
+  "--color-accent-contrast": string;
+};
+
+function clampChannel(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function parseHex(hex: string): { r: number; g: number; b: number } | null {
+  let h = hex.trim().replace(/^#/, "");
+  if (h.length === 3) {
+    h = h
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+function toHex({ r, g, b }: { r: number; g: number; b: number }): string {
+  const part = (n: number) => clampChannel(n).toString(16).padStart(2, "0");
+  return `#${part(r)}${part(g)}${part(b)}`;
+}
+
+/**
+ * Expands a single accent hex into the full accent token set the way ZUI's
+ * `[data-accent]` palettes do: a darker hover, a translucent "muted" fill, and
+ * a black/white contrast color chosen by perceived luminance. Used by the
+ * Settings > Theme custom-accent picker so users can dial in an off-palette
+ * accent that still feels cohesive across hover/active/contrast states.
+ *
+ * Returns null for non-hex input so callers can ignore mid-typing values.
+ */
+export function deriveAccent(hex: string): DerivedAccent | null {
+  const rgb = parseHex(hex);
+  if (!rgb) return null;
+  const hover = {
+    r: rgb.r * 0.82,
+    g: rgb.g * 0.82,
+    b: rgb.b * 0.82,
+  };
+  // Perceived luminance (sRGB-weighted) picks readable text over the accent.
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  const contrast = luminance > 0.6 ? "#000000" : "#ffffff";
+  return {
+    "--color-accent": toHex(rgb),
+    "--color-accent-hover": toHex(hover),
+    "--color-accent-muted": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`,
+    "--color-accent-contrast": contrast,
+  };
 }

@@ -18,6 +18,7 @@ import {
   Bell,
   Keyboard,
   User,
+  ChevronLeft,
 } from "lucide-react";
 import { SettingsProfile } from "../SettingsProfile";
 import { OrgSettingsGeneral } from "../OrgSettingsGeneral";
@@ -28,6 +29,11 @@ import { OrgSettingsRewards } from "../OrgSettingsRewards";
 import { OrgSettingsCreditHistory } from "../OrgSettingsCreditHistory/OrgSettingsCreditHistory";
 import { OrgSettingsPrivacy } from "../OrgSettingsPrivacy/OrgSettingsPrivacy";
 import { AppearanceSection } from "../../views/SettingsView/AppearanceSection";
+import {
+  THEME_SUB_AREAS,
+  DEFAULT_THEME_SUB_AREA,
+  type ThemeSubArea,
+} from "../../views/SettingsView/AppearanceSection/themeSubAreas";
 import { AboutSection } from "../../views/SettingsView/AboutSection";
 import { NotificationsSection } from "../../views/SettingsView/NotificationsSection";
 import { KeyboardSection } from "../../views/SettingsView/KeyboardSection";
@@ -71,6 +77,16 @@ const ORG_NAV_ITEMS: NavigatorItemProps[] = [
   { id: "privacy", label: "Privacy", icon: <Shield size={14} /> },
   { id: "integrations", label: "Integrations", icon: <Plug size={14} /> },
 ];
+
+// Sections that expand into a second-level drill-down nav. Clicking such a
+// section swaps the left column for a "<- Settings > <label>" breadcrumb and a
+// sub-area list, and the content pane renders one sub-area at a time. Keyed by
+// Section so the capability is generic; only Theme is wired today.
+const DRILLDOWN_SECTIONS: Partial<
+  Record<Section, { label: string; subAreas: readonly ThemeSubArea[] }>
+> = {
+  appearance: { label: "Theme", subAreas: THEME_SUB_AREAS },
+};
 
 function OrgSectionContent({
   data,
@@ -137,8 +153,31 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
   const logout = useLogout();
   const navigate = useNavigate();
   const [tierModalRequested, setTierModalRequested] = useState(false);
+  // When set, the left column shows the section's drill-down sub-nav instead
+  // of the top-level groups, and the content pane renders `subAreaId`. Seed
+  // from `initialSection` so deep-linking to a drill-down section (e.g.
+  // openOrgSettings("appearance")) opens already drilled in.
+  const drillFromInitial = (section?: Section): Section | null =>
+    section && DRILLDOWN_SECTIONS[section] ? section : null;
+  const [drilledSection, setDrilledSection] = useState<Section | null>(() =>
+    drillFromInitial(initialSection),
+  );
+  const [subAreaId, setSubAreaId] = useState<string>(DEFAULT_THEME_SUB_AREA);
   const navScrollRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
+
+  // Re-sync the drill-down state whenever the modal transitions to open (it is
+  // usually remounted on open, but this keeps a reopen-without-remount path
+  // correct too). Updating state from a prior-prop comparison during render is
+  // React's recommended alternative to a setState-in-effect sync.
+  const [prevOpen, setPrevOpen] = useState(isOpen);
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
+    if (isOpen) {
+      setDrilledSection(drillFromInitial(initialSection));
+      setSubAreaId(DEFAULT_THEME_SUB_AREA);
+    }
+  }
 
   // Defer opening the tier modal until subscription status is in the
   // billing store, so the modal renders straight to the tier grid at its
@@ -161,8 +200,22 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
       navigate("/integrations");
       return;
     }
-    data.setSection(id as Section);
+    const section = id as Section;
+    if (DRILLDOWN_SECTIONS[section]) {
+      setDrilledSection(section);
+      setSubAreaId(DEFAULT_THEME_SUB_AREA);
+    } else {
+      setDrilledSection(null);
+    }
+    data.setSection(section);
   };
+
+  const handleBackToTop = () => setDrilledSection(null);
+
+  const drill = drilledSection ? DRILLDOWN_SECTIONS[drilledSection] : undefined;
+  const activeSubArea = drill
+    ? (drill.subAreas.find((s) => s.id === subAreaId) ?? drill.subAreas[0])
+    : undefined;
 
   // App-scoped sections render regardless of org availability so users can
   // always reach Appearance / About / etc. even when no team is loaded.
@@ -174,33 +227,67 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
       <div className={styles.settingsLayout}>
         <div className={styles.settingsNav}>
           <div ref={navScrollRef} className={styles.settingsNavScroll}>
-            <div className={styles.navHeader}>
-              <h3>{data.activeOrg?.name ?? "Settings"}</h3>
-              <span>{data.activeOrg ? "Team settings" : "App settings"}</span>
-            </div>
-            <div className={styles.navGroupLabel}>You</div>
-            <Navigator items={YOU_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
-            <div className={styles.navGroupLabel}>Team</div>
-            <Navigator items={ORG_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
-            <div className={styles.navGroupLabel}>App</div>
-            <Navigator items={APP_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
-            <div className={styles.navFooter}>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<LogOut size={14} />}
-                className={styles.logoutButton}
-                onClick={() => { void logout(); }}
-              >
-                Logout
-              </Button>
-            </div>
+            {drill ? (
+              <>
+                <div className={styles.navBreadcrumb}>
+                  <button
+                    type="button"
+                    className={styles.navBackButton}
+                    onClick={handleBackToTop}
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Settings</span>
+                  </button>
+                  <span className={styles.navBreadcrumbSep} aria-hidden="true">
+                    ›
+                  </span>
+                  <span className={styles.navBreadcrumbCurrent}>
+                    {drill.label}
+                  </span>
+                </div>
+                <Navigator
+                  items={drill.subAreas.map((s) => ({
+                    id: s.id,
+                    label: s.label,
+                    icon: <s.icon size={14} />,
+                  }))}
+                  value={subAreaId}
+                  onChange={setSubAreaId}
+                />
+              </>
+            ) : (
+              <>
+                <div className={styles.navHeader}>
+                  <h3>{data.activeOrg?.name ?? "Settings"}</h3>
+                  <span>{data.activeOrg ? "Team settings" : "App settings"}</span>
+                </div>
+                <div className={styles.navGroupLabel}>You</div>
+                <Navigator items={YOU_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
+                <div className={styles.navGroupLabel}>Team</div>
+                <Navigator items={ORG_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
+                <div className={styles.navGroupLabel}>App</div>
+                <Navigator items={APP_NAV_ITEMS} value={data.section} onChange={handleNavChange} />
+                <div className={styles.navFooter}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<LogOut size={14} />}
+                    className={styles.logoutButton}
+                    onClick={() => { void logout(); }}
+                  >
+                    Logout
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
           <OverlayScrollbar scrollRef={navScrollRef} />
         </div>
         <div className={styles.settingsContent}>
           <div ref={contentScrollRef} className={styles.settingsContentScroll}>
-            {data.section === "you" ? (
+            {activeSubArea ? (
+              <activeSubArea.Component />
+            ) : data.section === "you" ? (
               <SettingsProfile onClose={onClose} />
             ) : onOrgSection && orgUnavailable ? (
               <div className={styles.unavailableState}>
