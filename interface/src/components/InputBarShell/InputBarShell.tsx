@@ -443,6 +443,7 @@ function InputBarShellInner(
       {pill ? modeBar : null}
       <div
         className={containerClassName}
+        data-input-pill={pill ? "true" : undefined}
         data-multiline={isMultiLine ? "true" : "false"}
         data-expanded={expanded ? "true" : "false"}
         onDragOver={onContainerDragOver}

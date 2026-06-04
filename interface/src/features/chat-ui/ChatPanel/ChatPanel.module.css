@@ -230,26 +230,26 @@
   scroll-padding-bottom: var(--chat-input-clearance, 176px);
   display: flex;
   flex-direction: column;
-  /* Hard-clip the transcript at the floating input's top edge so content
-     scrolling under the bar is hidden without painting a backdrop band or
-     fade behind the input. `--streaming-indicator-bottom` (input bar
-     height + gap, default 108px) is kept in sync with the live input
-     height by `ChatSurface` and cascades down from `.chatArea`, so the
-     cutoff tracks the input as it grows (e.g. AURA Council footer row).
-     The mask is anchored to the scroll viewport box, so it stays fixed at
-     the bottom as the transcript scrolls. */
-  --chat-input-mask-cutoff: var(--streaming-indicator-bottom, 108px);
+  /* Hard-clip the transcript at the vertical center of the actual input
+     pill so content scrolling under the bar is hidden without painting a
+     backdrop band or fade behind the input. `--chat-input-mask-cutoff`
+     (distance from the panel bottom up to the pill's midline) is measured
+     live by `ChatSurface` and cascades down from `.chatArea`, so the cut
+     tracks the pill as it grows (multi-line, attachments, Council). Falls
+     back to the full input height (`--streaming-indicator-bottom`) before
+     the first measurement. The mask is anchored to the scroll viewport
+     box, so it stays fixed at the bottom as the transcript scrolls. */
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 0,
-    #000 calc(100% - var(--chat-input-mask-cutoff)),
-    transparent calc(100% - var(--chat-input-mask-cutoff))
+    #000 calc(100% - var(--chat-input-mask-cutoff, var(--streaming-indicator-bottom, 108px))),
+    transparent calc(100% - var(--chat-input-mask-cutoff, var(--streaming-indicator-bottom, 108px)))
   );
   mask-image: linear-gradient(
     to bottom,
     #000 0,
-    #000 calc(100% - var(--chat-input-mask-cutoff)),
-    transparent calc(100% - var(--chat-input-mask-cutoff))
+    #000 calc(100% - var(--chat-input-mask-cutoff, var(--streaming-indicator-bottom, 108px))),
+    transparent calc(100% - var(--chat-input-mask-cutoff, var(--streaming-indicator-bottom, 108px)))
   );
 }
 

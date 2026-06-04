@@ -360,6 +360,7 @@ export function ChatSurface({
     // 108px / 176px layout exactly.
     const GAP_PX = 5;
     const INDICATOR_PX = 68;
+    const pill = inputBar.querySelector<HTMLElement>('[data-input-pill="true"]');
     const apply = () => {
       const height = inputBar.getBoundingClientRect().height;
       if (height <= 0) return;
@@ -369,6 +370,20 @@ export function ChatSurface({
         "--chat-input-clearance",
         `${bottom + INDICATOR_PX}px`,
       );
+      // Clip the transcript at the actual input pill's vertical midline
+      // (not the whole input section). Measured from the panel bottom so
+      // the mask in `.messageArea` cuts content exactly through the middle
+      // of the rounded pill, tracking it as it grows.
+      if (pill) {
+        const areaRect = area.getBoundingClientRect();
+        const pillRect = pill.getBoundingClientRect();
+        const midFromBottom = Math.round(
+          areaRect.bottom - (pillRect.top + pillRect.height / 2),
+        );
+        if (midFromBottom > 0) {
+          area.style.setProperty("--chat-input-mask-cutoff", `${midFromBottom}px`);
+        }
+      }
     };
     apply();
     const ro = new ResizeObserver(apply);
@@ -377,6 +392,7 @@ export function ChatSurface({
       ro.disconnect();
       area.style.removeProperty("--streaming-indicator-bottom");
       area.style.removeProperty("--chat-input-clearance");
+      area.style.removeProperty("--chat-input-mask-cutoff");
     };
   }, [isMobileLayout, streamKey]);
 
