@@ -219,18 +219,44 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sw-text);
-  /* Idle labels sit slightly faded; the selected one fades up to full in
-     step with the thumb slide so the switch content reads as a crossfade,
-     not just a moving plate. opacity + color are cheap, paint-only props. */
-  opacity: 0.7;
-  transition:
-    color 280ms cubic-bezier(0.33, 0.1, 0.25, 1),
-    opacity 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
+  /* Idle labels recede well back so the active/idle contrast reads as a
+     real crossfade, not just a moving plate. */
+  opacity: 0.3;
+  transition: color 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
+  /* `key` on the span re-mounts both labels on every switch, restarting
+     this one-shot fade. The just-idled label drops away (labelFadeOut)
+     while the just-selected one fades up from near-zero (labelFadeIn), so
+     the switch reads as a crossfade over the same window the thumb slides.
+     `forwards` holds the end frame, which equals each side's resting
+     opacity, so neither label snaps when the animation finishes. */
+  animation: labelFadeOut 280ms cubic-bezier(0.33, 0.1, 0.25, 1) forwards;
 }
 
 .halfActive .label {
   color: var(--sw-text-active);
   opacity: 1;
+  animation-name: labelFadeIn;
+}
+
+@keyframes labelFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes labelFadeIn {
+  0% {
+    opacity: 0.05;
+  }
+  55% {
+    opacity: 0.05;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .half:focus-visible {
@@ -243,6 +269,11 @@
   .thumb,
   .label {
     transition: none;
+  }
+
+  .label,
+  .halfActive .label {
+    animation: none;
   }
 
   .label {

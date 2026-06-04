@@ -46,6 +46,11 @@ function AppSwitchToggleBase({
   ariaLabel = "Switch",
 }: AppSwitchToggleProps): React.ReactElement {
   const [pending, setPending] = useState<string | null>(null);
+  // Bumped on each switch so the label fade animation replays — used as a
+  // key suffix on the label spans, which re-mounts them and restarts the
+  // CSS fade keyframes (labelFadeIn / labelFadeOut) from the top. Without
+  // it the animation would only run on initial mount.
+  const [switchTick, setSwitchTick] = useState(0);
   const selected = pending ?? active;
 
   useEffect(() => {
@@ -82,10 +87,13 @@ function AppSwitchToggleBase({
                   // keeps animating smoothly even while the caller mounts
                   // whatever the new selection points at.
                   setPending(option.id);
+                  setSwitchTick((tick) => tick + 1);
                   onChange(option.id);
                 }}
               >
-                <span className={styles.label}>{option.label}</span>
+                <span key={`${option.id}-${switchTick}`} className={styles.label}>
+                  {option.label}
+                </span>
               </button>
             );
           })}
