@@ -216,8 +216,8 @@
 .thumbStart::after {
   background: radial-gradient(
     120% 120% at 0% 0%,
-    color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent) 12%, transparent) 22%,
+    color-mix(in srgb, white 45%, transparent) 0%,
+    color-mix(in srgb, white 12%, transparent) 22%,
     transparent 50%
   );
 }
@@ -225,8 +225,8 @@
 .thumbEnd::after {
   background: radial-gradient(
     120% 120% at 100% 0%,
-    color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent) 12%, transparent) 22%,
+    color-mix(in srgb, white 45%, transparent) 0%,
+    color-mix(in srgb, white 12%, transparent) 22%,
     transparent 50%
   );
 }
@@ -263,7 +263,7 @@
 }
 
 .halfActive .label {
-  color: var(--sw-text-active);
+  color: var(--color-accent);
   opacity: 1;
 }
 
