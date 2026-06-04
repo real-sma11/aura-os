@@ -156,23 +156,6 @@
   flex-direction: column;
 }
 
-.sidekickPanelSlot::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--sidekick-fade-height);
-  pointer-events: none;
-  z-index: 1;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    color-mix(in srgb, var(--color-bg) 42%, transparent) 38%,
-    color-mix(in srgb, var(--color-bg) 92%, black) 100%
-  );
-}
-
 .sidekickLane {
   background: var(--color-sidekick-bg);
   /* The rounded screen frame is drawn on `.body` (AuraShell.module.css), so
