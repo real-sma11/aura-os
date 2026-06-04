@@ -21,6 +21,9 @@ export interface AppSwitchToggleProps {
   active: AppSwitchOptionId;
 }
 
+// Keep in sync with the `.face` / `.label` opacity transition in the CSS.
+const SWITCH_TRANSITION_MS = 260;
+
 /**
  * Flat, plate-mounted toggle between the Agents and Projects apps. Lives at
  * the top of the shared sidebar body for both apps.
@@ -69,16 +72,13 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
-                  // Flip the switch now, then defer the heavy route swap by
-                  // two frames so the crossfade starts before the blocking
-                  // mount runs on the main thread. The fade itself is a
-                  // composited opacity animation, so it keeps running even
-                  // while the route work is on the main thread.
+                  // Flip the switch now so the crossfade starts immediately,
+                  // then hold off the heavy route swap until the fade has
+                  // finished. Running the blocking mount mid-transition would
+                  // otherwise cut the animation short.
                   const target = option.path;
                   setPending(option.id);
-                  requestAnimationFrame(() => {
-                    requestAnimationFrame(() => navigate(target));
-                  });
+                  window.setTimeout(() => navigate(target), SWITCH_TRANSITION_MS);
                 }}
               >
                 <span className={styles.face} aria-hidden="true" />
