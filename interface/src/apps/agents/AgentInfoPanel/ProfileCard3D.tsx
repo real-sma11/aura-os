@@ -184,17 +184,25 @@ export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
     });
   }, [ready, agent.name, agent.role]);
 
-  // Draw the status label on the card's metal frame (where the barcode was):
-  // green when online, red otherwise. Re-runs when the live status changes.
+  // Draw the status label on the card's metal frame (where the barcode was).
+  // Local agents read "LOCAL" in purple; remote agents show their live VM state
+  // (green when online, red otherwise). Re-runs when the live status changes.
   useEffect(() => {
     const scene = sceneRef.current;
     const host = hostRef.current;
     if (!ready || !scene || !host) return;
     const accent = readAccent(host);
+    const badgeLabel = isRemote ? statusLabel : "LOCAL";
+    const badgeColor = isRemote ? undefined : "#a78bfa";
     scene.setStatusRenderer(() => {
-      drawStatusBadge(scene.statusCanvas, { statusLabel, isOnline, accent });
+      drawStatusBadge(scene.statusCanvas, {
+        statusLabel: badgeLabel,
+        isOnline,
+        accent,
+        color: badgeColor,
+      });
     });
-  }, [ready, statusLabel, isOnline]);
+  }, [ready, isRemote, statusLabel, isOnline]);
 
   return (
     <div className={styles.card3dContainer}>

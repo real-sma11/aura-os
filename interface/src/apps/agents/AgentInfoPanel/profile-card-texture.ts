@@ -449,6 +449,11 @@ export interface DrawStatusBadgeOptions {
   isOnline: boolean;
   /** Theme accent (CSS color) used for the online label. */
   accent: string;
+  /**
+   * Optional CSS color that overrides the online/offline coloring (e.g. local
+   * agents render "LOCAL" in purple regardless of `isOnline`).
+   */
+  color?: string;
 }
 
 /**
@@ -468,7 +473,8 @@ export function drawStatusBadge(
   ctx.clearRect(0, 0, w, h);
 
   const [ar, ag, ab] = parseAccent(opts.accent);
-  const color = opts.isOnline ? `rgb(${ar},${ag},${ab})` : "#e06a66";
+  const color =
+    opts.color ?? (opts.isOnline ? `rgb(${ar},${ag},${ab})` : "#e06a66");
 
   // Size the text to the canvas height so it fills the small frame area; align
   // centered both ways. Uses the same family/weight as the STATUS label.
