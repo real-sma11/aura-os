@@ -56,7 +56,15 @@ pub(super) fn public_routes() -> Router<AppState> {
         // Read-only public transcript for a shared session. Resolved
         // with the server's `AURA_STORAGE_INTERNAL_TOKEN` and gated on
         // the session's `is_public` flag (see `public::get_public_share`).
-        .route("/api/public/share/:token", get(public::get_public_share));
+        .route("/api/public/share/:token", get(public::get_public_share))
+        // Anonymous blog reads. Blog posts are notes under the reserved
+        // `AURA_BLOG_PROJECT_ID`; only published rows are returned, resolved
+        // with the server's `X-Internal-Token` (no caller JWT).
+        .route("/api/public/blog", get(public::list_published_blog))
+        .route(
+            "/api/public/blog/:slug",
+            get(public::get_published_blog_by_slug),
+        );
     if public_generation_enabled() {
         router = router
             .route(
