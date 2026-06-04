@@ -78,6 +78,9 @@ export function extractToolCalls(blocks: ChatContentBlock[]): ToolCallEntry[] | 
       // tool_use block; rebuild the full ordered set so the block
       // registry renders ONE `CouncilPanel` instead of a single card.
       ...(councilMembers ? { councilMembers } : {}),
+      ...(councilMembers && b.council_mechanism
+        ? { councilMechanism: b.council_mechanism }
+        : {}),
     };
   });
 }

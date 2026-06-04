@@ -65,6 +65,13 @@ export type ChatContentBlock =
        * rebuilds the N-column `CouncilPanel`. Absent on every non-council
        * tool call.
        */
+      /**
+       * AURA Council combine mechanism (`synthesize` / `contrast` /
+       * `side_by_side`) stamped once on the parent block by the server.
+       * Shared by every member of the turn; absent on non-council tool
+       * calls and on history persisted before the field existed.
+       */
+      council_mechanism?: string;
       council_members?: {
         child_run_id: string;
         model?: string;

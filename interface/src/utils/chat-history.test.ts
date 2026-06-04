@@ -126,6 +126,37 @@ describe("extractToolCalls", () => {
     expect(result[0].subagentRunId).toBeUndefined();
   });
 
+  it("rehydrates the council combine mechanism onto the parent entry", () => {
+    const blocks: ChatContentBlock[] = [
+      {
+        type: "tool_use",
+        id: "council_parent",
+        name: "Task",
+        input: {},
+        council_mechanism: "side_by_side",
+        council_members: [
+          { child_run_id: "run-a", council_index: 0, model: "openai/gpt" },
+        ],
+      },
+    ];
+    expect(extractToolCalls(blocks)![0].councilMechanism).toBe("side_by_side");
+  });
+
+  it("omits councilMechanism for a non-council tool call even if present", () => {
+    const blocks: ChatContentBlock[] = [
+      {
+        type: "tool_use",
+        id: "c1",
+        name: "task",
+        input: {},
+        child_run_id: "run-x",
+        council_mechanism: "contrast",
+      },
+    ];
+    // No council_members ⇒ not a council turn ⇒ no mechanism surfaced.
+    expect(extractToolCalls(blocks)![0].councilMechanism).toBeUndefined();
+  });
+
   it("ignores an invalid persisted member status (leaves status unset)", () => {
     const blocks: ChatContentBlock[] = [
       {

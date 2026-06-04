@@ -46,6 +46,34 @@ function ordinalLabel(index: number): string {
 }
 
 /**
+ * Human label for the council combine mechanism shown in the panel
+ * badge. Defaults to "Synthesize" when absent (the wire default and the
+ * shape of turns persisted before the mechanism was recorded).
+ */
+function mechanismLabel(mechanism: string | undefined): string {
+  switch (mechanism) {
+    case "contrast":
+      return "Contrast";
+    case "side_by_side":
+      return "Side-by-side";
+    default:
+      return "Synthesize";
+  }
+}
+
+/** Short subtitle clause describing what slot 0 does for the mechanism. */
+function mechanismSubtitle(mechanism: string | undefined): string {
+  switch (mechanism) {
+    case "contrast":
+      return "slot 0 contrasts";
+    case "side_by_side":
+      return "slot 0 lays them side-by-side";
+    default:
+      return "slot 0 synthesizes";
+  }
+}
+
+/**
  * Recover the parent agent id from a chat stream key. The chat stream
  * key is `keyForAgentSession(agentId, sessionId)` == `${agentId}:${sessionId}`
  * (segments joined by ":"), so the agent id is everything before the LAST
@@ -188,13 +216,20 @@ export function CouncilPanel({ entry }: CouncilPanelProps) {
 
   if (ordered.length === 0) return null;
 
+  const mechanism = entry.councilMechanism;
+
   return (
-    <div className={styles.panel} data-council-panel="true">
+    <div
+      className={styles.panel}
+      data-council-panel="true"
+      data-council-mechanism={mechanism ?? "synthesize"}
+    >
       <div className={styles.header}>
         <Users size={12} className={styles.headerIcon} />
         <span className={styles.title}>AURA Council</span>
+        <span className={styles.mechanism}>{mechanismLabel(mechanism)}</span>
         <span className={styles.subtitle}>
-          {ordered.length} members · slot 0 synthesizes
+          {ordered.length} members · {mechanismSubtitle(mechanism)}
         </span>
       </div>
       <div className={styles.columns}>

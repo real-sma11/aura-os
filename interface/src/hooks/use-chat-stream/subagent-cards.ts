@@ -88,6 +88,10 @@ function upsertCouncilMember(
     councilMembers: members,
     subagentType: tc.subagentType ?? payload.subagent_type,
     subagentPrompt: tc.subagentPrompt ?? payload.prompt,
+    // Council-wide property carried on every member's spawn; the first
+    // member to arrive establishes it for the panel label.
+    councilMechanism:
+      tc.councilMechanism ?? payload.council_mechanism ?? undefined,
   };
 }
 

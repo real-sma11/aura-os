@@ -359,6 +359,12 @@ export interface SubagentSpawned {
    * columns); `null` for ordinary `task` spawns.
    */
   council_index?: number | null;
+  /**
+   * Council combine mechanism (`synthesize` / `contrast` /
+   * `side_by_side`) shared by every member of the turn; `null` for
+   * ordinary `task` spawns.
+   */
+  council_mechanism?: string | null;
 }
 
 /**

@@ -266,6 +266,14 @@ export interface ToolCallEntry {
    * `CouncilPanel` (N live columns) instead of a single `SubAgentBlock`.
    */
   councilMembers?: CouncilMemberEntry[];
+  /**
+   * AURA Council combine mechanism (`synthesize` / `contrast` /
+   * `side_by_side`) shared by every member of the turn. Surfaced on the
+   * shared council parent entry so the `CouncilPanel` can label which
+   * mechanism produced the answer below it. Absent for non-council tool
+   * calls and for older turns persisted before the field existed.
+   */
+  councilMechanism?: string;
 }
 
 /* ------------------------------------------------------------------ */

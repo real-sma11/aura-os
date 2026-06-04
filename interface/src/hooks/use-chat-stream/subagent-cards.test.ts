@@ -136,6 +136,7 @@ describe("registerSpawnedSubagent", () => {
         subagent_type: "council-member",
         model: "openai/gpt",
         council_index: 0,
+        council_mechanism: "side_by_side",
       }),
     );
 
@@ -144,6 +145,9 @@ describe("registerSpawnedSubagent", () => {
     expect(entry?.councilMembers).toHaveLength(1);
     expect(entry?.councilMembers?.[0].childRunId).toBe("child-a");
     expect(entry?.councilMembers?.[0].councilIndex).toBe(0);
+    // The council-wide mechanism is surfaced on the parent entry for the
+    // panel label.
+    expect(entry?.councilMechanism).toBe("side_by_side");
     expect(
       h.refs.timeline.current.some(
         (item) => item.kind === "tool" && item.toolCallId === "toolu_council_1",
