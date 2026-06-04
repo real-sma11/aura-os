@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@cypher-asi/zui";
 import styles from "./AppSwitchToggle.module.css";
@@ -68,12 +68,15 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
-                  // Urgent: flip the switch now so it paints immediately.
+                  // Flip the switch now, then defer the heavy route swap by
+                  // two frames so the browser fully paints the new selected
+                  // state before the blocking mount runs on the main thread.
+                  // Without this, main-thread-painted props (background,
+                  // box-shadow) stall and only appear once the route lands.
+                  const target = option.path;
                   setPending(option.id);
-                  // Non-urgent: defer the heavier route swap so it doesn't
-                  // block the optimistic flip from painting first.
-                  startTransition(() => {
-                    navigate(option.path);
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => navigate(target));
                   });
                 }}
               >

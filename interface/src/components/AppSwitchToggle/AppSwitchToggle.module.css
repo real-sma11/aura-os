@@ -103,9 +103,10 @@
   background: var(--sw-idle-bg);
   font-family: inherit;
   cursor: pointer;
-  transition:
-    background 90ms ease-out,
-    box-shadow 90ms ease-out;
+  /* No transition on the selection-state props: the flip must paint in a
+     single frame so every element (bg, border, glow, shadow, label) updates
+     together and nothing is left mid-tween when the route swap blocks the
+     main thread. */
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -221,7 +222,6 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sw-text);
-  transition: color 90ms ease-out;
 }
 
 .halfActive .label {
