@@ -209,6 +209,7 @@ export const apps: AuraApp[] = [
     },
     loadAgentsApp,
     {
+      hasDesktopLeftMenuPane: true,
       hasResponsiveControls: true,
       hasSidekickPanel: true,
       hasSidekickTaskbar: true,

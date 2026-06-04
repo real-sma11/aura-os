@@ -17,6 +17,11 @@ export const AgentsApp: AuraAppModule = {
   icon: Brain,
   basePath: "/agents",
   LeftPanel: AgentsLeftPanel,
+  // Also exposed as a shared desktop left-menu pane so the agents list
+  // participates in `LeftMenu`'s keep-alive (kept mounted, hidden via
+  // `display: none`) instead of unmounting on every Agents <-> Projects
+  // switch. Same list the `LeftPanel` renders.
+  DesktopLeftMenuPane: AgentsLeftPanel,
   MainPanel: AgentMainPanel,
   ResponsiveControls: AgentsResponsiveControls,
   SidekickPanel: AgentInfoPanel,

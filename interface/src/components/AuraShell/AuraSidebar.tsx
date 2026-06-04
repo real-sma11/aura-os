@@ -1,10 +1,11 @@
 import { startTransition, useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { cn } from "@cypher-asi/zui";
 import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
 import { AppSwitchToggle, type AppSwitchOption } from "../AppSwitchToggle";
+import { resolveAppSwitchPath } from "../AppSwitchToggle/resolve-switch-path";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { EarnCreditsButton } from "../EarnCreditsButton";
@@ -217,18 +218,40 @@ const APP_SWITCH_PATHS: Record<string, string> = {
 function AuthedSidebarBody(): React.ReactElement {
   const activeApp = useActiveApp();
   const visitedAppIds = useAppUIStore((s) => s.visitedAppIds);
+  const markAppVisited = useAppUIStore((s) => s.markAppVisited);
   const navigate = useNavigate();
+  const { pathname, search } = useLocation();
+
+  // Warm the sibling switch pane so the FIRST Agents <-> Projects switch is
+  // also keep-alive. `LeftMenu` only renders a pane once its app is visited;
+  // pre-marking the other switch app visited mounts its list (hidden via
+  // `display: none`) ahead of time, so the very first flip never remounts.
+  useEffect(() => {
+    if (activeApp.id !== "agents" && activeApp.id !== "projects") return;
+    const sibling = activeApp.id === "agents" ? "projects" : "agents";
+    apps.find((app) => app.id === sibling)?.preload?.();
+    markAppVisited(sibling);
+  }, [activeApp.id, markAppVisited]);
 
   // Defer the route swap into a transition so the (potentially heavy)
   // mount of the target app's nav/main panel never competes with the
   // switch's composited slide/fade — the thumb starts moving on the
   // optimistic click frame and the navigation settles after.
+  //
+  // `resolveAppSwitchPath` maps to the EQUIVALENT conversation lane in the
+  // target app (when the user is in a chat), so `ConversationSurfaceHost`
+  // keeps the same lane key mounted across the switch — instant, no remount.
   const handleSwitch = useCallback(
     (id: string): void => {
-      const path = APP_SWITCH_PATHS[id];
-      if (path) startTransition(() => navigate(path));
+      if (id !== "agents" && id !== "projects") return;
+      // Kick the target app's lazy module so its LeftPanel / Sidekick don't
+      // flash a Suspense fallback on first switch. The main chat never
+      // flashes — it lives in the eager `ConversationSurfaceHost`.
+      apps.find((app) => app.id === id)?.preload?.();
+      const path = resolveAppSwitchPath(id, pathname, search);
+      startTransition(() => navigate(path));
     },
-    [navigate],
+    [navigate, pathname, search],
   );
 
   const body = usesSharedDesktopLeftMenu(activeApp.id) ? (

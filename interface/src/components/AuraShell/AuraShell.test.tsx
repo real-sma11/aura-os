@@ -467,10 +467,12 @@ describe("AuraShell — active-app resolution", () => {
    * subtree. Two probes are needed because the sidebar renders one
    * of two structures:
    *
-   *   1. Apps in `sharedDesktopLeftMenuPanes` (e.g. `projects`,
-   *      `tasks`) render via `<LeftMenu>`, which stamps
+   *   1. Apps in `sharedDesktopLeftMenuPanes` (e.g. `agents`,
+   *      `projects`, `tasks`) render via `<LeftMenu>`, which stamps
    *      `data-active="true"` on the active pane and exposes its app
-   *      id via `data-testid="desktop-left-menu-pane-<id>"`.
+   *      id via `data-testid="desktop-left-menu-pane-<id>"`. `agents`
+   *      participates here so its list is kept alive (hidden) across
+   *      Agents <-> Projects switches.
    *
    *   2. Apps without a `DesktopLeftMenuPane` (e.g. `chat`) render
    *      their own LeftPanel inside `AuthedSidebarBody`, which stamps
