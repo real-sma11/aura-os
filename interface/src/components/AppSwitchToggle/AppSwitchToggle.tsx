@@ -70,10 +70,10 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                 onClick={() => {
                   if (isActive) return;
                   // Flip the switch now, then defer the heavy route swap by
-                  // two frames so the browser fully paints the new selected
-                  // state before the blocking mount runs on the main thread.
-                  // Without this, main-thread-painted props (background,
-                  // box-shadow) stall and only appear once the route lands.
+                  // two frames so the crossfade starts before the blocking
+                  // mount runs on the main thread. The fade itself is a
+                  // composited opacity animation, so it keeps running even
+                  // while the route work is on the main thread.
                   const target = option.path;
                   setPending(option.id);
                   requestAnimationFrame(() => {
@@ -81,6 +81,7 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                   });
                 }}
               >
+                <span className={styles.face} aria-hidden="true" />
                 <span className={styles.label}>{option.label}</span>
               </button>
             );
