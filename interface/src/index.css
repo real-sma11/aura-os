@@ -12,6 +12,20 @@
   outline: none;
 }
 
+/* Reduce-motion: Settings > Theme > Motion stamps `data-motion="reduced"` on
+   <html>. Collapse transitions, animations, and smooth scrolling so the
+   interface stops moving for users who prefer it (mirrors the standard
+   prefers-reduced-motion recipe, but driven by the in-app toggle so it works
+   independently of the OS setting). */
+[data-motion="reduced"] *,
+[data-motion="reduced"] *::before,
+[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
 /* Hard global override: the thick keyboard-focus ring is removed in every
    app mode per product decision. The universal !important rule beats any
    per-component focus-ring rule that would otherwise repaint an outline. */
