@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use tokio::net::TcpListener;
@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 mod db;
 mod event;
 mod health;
+mod note;
 mod project_agent;
 mod session;
 mod spec;
@@ -79,6 +80,40 @@ pub fn mock_storage_router(db: SharedDb) -> Router {
             get(project_agent::get_project_agent)
                 .put(project_agent::update_project_agent)
                 .delete(project_agent::delete_project_agent),
+        )
+        .route(
+            "/api/projects/:project_id/notes",
+            post(note::create_note).get(note::list_notes),
+        )
+        .route(
+            "/api/notes/:note_id",
+            get(note::get_note)
+                .put(note::update_note)
+                .delete(note::delete_note),
+        )
+        .route(
+            "/api/notes/:note_id/transition",
+            post(note::transition_note),
+        )
+        .route(
+            "/api/projects/:project_id/note-folders",
+            post(note::create_note_folder).get(note::list_note_folders),
+        )
+        .route(
+            "/api/note-folders/:folder_id",
+            put(note::update_note_folder).delete(note::delete_note_folder),
+        )
+        .route(
+            "/api/notes/:note_id/comments",
+            post(note::create_note_comment).get(note::list_note_comments),
+        )
+        .route(
+            "/api/note-comments/:comment_id",
+            delete(note::delete_note_comment),
+        )
+        .route(
+            "/internal/projects/:project_id/published-notes",
+            get(note::list_published_notes),
         )
         .with_state(db)
 }

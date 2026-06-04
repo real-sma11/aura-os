@@ -1,5 +1,6 @@
 mod events;
 mod logs;
+mod notes;
 mod processes;
 mod project_agents;
 mod project_artifacts;

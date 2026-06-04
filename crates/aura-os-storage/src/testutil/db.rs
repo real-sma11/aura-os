@@ -12,6 +12,9 @@ pub struct MockStorageDb {
     pub specs: Vec<StorageSpec>,
     pub project_agents: Vec<StorageProjectAgent>,
     pub events: Vec<StorageSessionEvent>,
+    pub notes: Vec<StorageNote>,
+    pub note_folders: Vec<StorageNoteFolder>,
+    pub note_comments: Vec<StorageNoteComment>,
     /// session_id -> user_id ownership map. Real aura-storage stores
     /// `created_by` directly on the `sessions` row and derives the
     /// user_id from the JWT on `/api/me/sessions`. The mock has no

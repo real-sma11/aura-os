@@ -7,6 +7,7 @@
 //! unchanged.
 
 pub mod log_entry;
+pub mod note;
 pub mod process;
 pub mod project_agent;
 pub mod project_artifact;
@@ -17,6 +18,11 @@ pub mod spec;
 pub mod task;
 
 pub use log_entry::{CreateLogEntryRequest, StorageLogEntry};
+pub use note::{
+    CreateNoteCommentRequest, CreateNoteFolderRequest, CreateNoteRequest, StorageNote,
+    StorageNoteComment, StorageNoteFolder, TransitionNoteRequest, UpdateNoteFolderRequest,
+    UpdateNoteRequest,
+};
 pub use process::{
     CreateProcessArtifactRequest, CreateProcessConnectionRequest, CreateProcessEventRequest,
     CreateProcessFolderRequest, CreateProcessNodeRequest, CreateProcessRequest,
