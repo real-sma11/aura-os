@@ -2,15 +2,18 @@
  * Agents/Projects switch — flat, plate-mounted toggle.
  *
  * Structure:
- *   .plate  the foundation. A left->right gradient slab that never changes
- *           size when the selection flips.
- *   .panel  the recessed housing the switch sits in. A dark seam with a
- *           top-dark / bottom-light gradient ring (::before) so it reads as
- *           set into the page.
- *   .half   one of the two toggle faces. The IDLE half is a flat fill; the
- *           ACTIVE half gets a diagonal gradient fill, an accent glow that
- *           flares up-and-outward, a directional gradient border, and a
- *           large black shadow cast down-and-outward.
+ *   .plate  the foundation. A diagonal gradient slab that never changes size
+ *           when the selection flips.
+ *   .panel  the recessed track. Idle-coloured surface with a top-dark /
+ *           bottom-light bevel ring so it reads as set into the page.
+ *   .thumb  the selected look (gradient fill, accent glow, cast shadow,
+ *           bright diagonal border). It SLIDES between the two sides using a
+ *           `transform` transition — transform is GPU-composited, so the
+ *           animation runs on the compositor thread and stays smooth even
+ *           while the route swap is mounting the target app on the main
+ *           thread. The switch is therefore fully independent of the rest of
+ *           the page's render work.
+ *   .half   a transparent click target holding a label, above the thumb.
  *
  * Theme-aware: the spec's fixed dark hex values live under
  * [data-theme="dark"]; a lighter token set is the default for light mode.
@@ -64,22 +67,23 @@
   background: linear-gradient(135deg, var(--sw-plate-from), var(--sw-plate-to));
 }
 
-/* Recessed housing the switch sits in. */
+/* Recessed track the thumb slides in. */
 .panel {
   position: relative;
   display: flex;
   width: 100%;
   height: 100%;
   border-radius: 13px;
-  background: var(--sw-panel-bg);
+  background: var(--sw-idle-bg);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
-/* Top-dark / bottom-light gradient ring — the recessed "seam" border. */
+/* Top-dark / bottom-light bevel ring — the recessed track border. */
 .panel::before {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   border-radius: inherit;
   padding: 1px;
   background: linear-gradient(180deg, var(--sw-ring-top), var(--sw-ring-bottom));
@@ -91,100 +95,64 @@
   pointer-events: none;
 }
 
-.half {
-  position: relative;
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: var(--sw-idle-bg);
-  font-family: inherit;
-  cursor: pointer;
-  /* No transition on the selection-state props: the flip must paint in a
-     single frame so every element (bg, border, glow, shadow, label) updates
-     together and nothing is left mid-tween when the route swap blocks the
-     main thread. */
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Outer corners pill-rounded, inner seam corners square so the two halves
-   butt flush with no rounding into the seam. */
-.halfLeft {
-  border-radius: 12px 0 0 12px;
-}
-
-.halfRight {
-  border-radius: 0 12px 12px 0;
-}
-
-/* Raise the selected half so its overlay shadow casts over the neighbour. */
-.halfActive {
-  z-index: 1;
-}
-
-/* The selected look lives on a crossfading overlay (`.face`). Switching
-   sides animates only its `opacity`, which is GPU-composited: gradients
-   can't tween, and a composited fade also keeps running smoothly even while
-   the route swap is blocking the main thread. */
-.face {
+/*
+ * The sliding selected face. Only `transform` is transitioned so the slide
+ * is composited and never stalls behind the route mount. Per-side props
+ * (radius, shadow, border + glow orientation, seam fade) snap at click and
+ * the thumb glides into place over them.
+ */
+.thumb {
   position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  opacity: 0;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  z-index: 1;
+  background: linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
+  will-change: transform;
+  transition: transform 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
   pointer-events: none;
-  transition: opacity 260ms cubic-bezier(0.33, 0.1, 0.25, 1);
 }
 
-.halfActive .face {
-  opacity: 1;
-}
-
-/* Diagonal gradient fill + large outward-down shadow. The first background
-   layer is a short fade at the inner (seam) edge from the idle colour into
-   transparent so the boundary between halves blends instead of reading as a
-   hard line. Shadow is offset outward so none leaks at the seam. */
-.halfLeft .face {
+.panel[data-selected="agents"] .thumb {
+  transform: translateX(0%);
+  border-radius: 12px 0 0 12px;
+  /* Seam fade on the inner (right) edge so the thumb blends into the idle
+     track instead of reading as a hard line. */
   background:
-    linear-gradient(to left, var(--sw-idle-bg), transparent 22px),
+    linear-gradient(
+      to right,
+      transparent calc(100% - 22px),
+      var(--sw-idle-bg)
+    ),
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     -3px 2px 4px -1px rgba(0, 0, 0, 0.35),
     -10px 14px 24px -4px var(--sw-active-shadow);
 }
 
-.halfRight .face {
+.panel[data-selected="projects"] .thumb {
+  transform: translateX(100%);
+  border-radius: 0 12px 12px 0;
   background:
-    linear-gradient(to right, var(--sw-idle-bg), transparent 22px),
+    linear-gradient(
+      to left,
+      transparent calc(100% - 22px),
+      var(--sw-idle-bg)
+    ),
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     3px 2px 4px -1px rgba(0, 0, 0, 0.35),
     10px 14px 24px -4px var(--sw-active-shadow);
 }
 
-/* Shared border for both halves: one diagonal gradient, bright on the
-   upper-diagonal and fading to dark toward the bottom. Identical on the
-   idle and selected sides so the border reads as one continuous frame. */
-.half::before {
+/* Bright diagonal border on the thumb, bright corner toward the selected
+   side; the inner (seam) edge has no border so it joins the track cleanly. */
+.thumb::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    150deg,
-    var(--sw-active-ring-light) 0%,
-    var(--sw-active-ring-dark) 65%
-  );
-  /* Span the gradient across the full switch width (each half is 50%), so
-     the two halves sample one continuous diagonal instead of each
-     restarting at the seam. */
-  background-size: 200% 100%;
-  /* Above the selected face overlay so the border is never covered. */
-  z-index: 1;
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
@@ -193,51 +161,36 @@
   pointer-events: none;
 }
 
-/* Drop the inner-seam edge of the bevel so the two halves read as one
-   panel with no dividing line. Zero padding on the inner side means the
-   masked frame has no border there. */
-.halfLeft::before {
+.panel[data-selected="agents"] .thumb::before {
   padding: 1px 0 1px 1px;
-  background-position: left center;
-}
-
-.halfRight::before {
-  padding: 1px 1px 1px 0;
-  background-position: right center;
-}
-
-/* The bright end of the border gradient follows the selected side: top-left
-   when the left half is selected, top-right when the right half is. Only the
-   gradient direction changes; the full-width span keeps it continuous. */
-.panel[data-selected="agents"] .half::before {
-  background-image: linear-gradient(
+  background: linear-gradient(
     135deg,
     var(--sw-active-ring-light) 0%,
     var(--sw-active-ring-dark) 65%
   );
 }
 
-.panel[data-selected="projects"] .half::before {
-  background-image: linear-gradient(
+.panel[data-selected="projects"] .thumb::before {
+  padding: 1px 1px 1px 0;
+  background: linear-gradient(
     225deg,
     var(--sw-active-ring-light) 0%,
     var(--sw-active-ring-dark) 65%
   );
 }
 
-/* Accent glow flaring up-and-outward from the selected face. It rides on the
-   face overlay, so it crossfades together with the rest of the selected look. */
-.face::after {
+/* Accent glow flaring up-and-outward from the thumb. */
+.thumb::after {
   content: "";
   position: absolute;
   inset: -6px;
+  z-index: -1;
   border-radius: inherit;
   pointer-events: none;
-  z-index: -1;
   opacity: 0.32;
 }
 
-.halfLeft .face::after {
+.panel[data-selected="agents"] .thumb::after {
   background: radial-gradient(
     120% 120% at 0% 0%,
     color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
@@ -246,7 +199,7 @@
   );
 }
 
-.halfRight .face::after {
+.panel[data-selected="projects"] .thumb::after {
   background: radial-gradient(
     120% 120% at 100% 0%,
     color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
@@ -255,15 +208,30 @@
   );
 }
 
-.label {
+/* Transparent click targets sitting above the thumb. */
+.half {
   position: relative;
   z-index: 2;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.label {
   font-size: 9.5px;
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sw-text);
-  transition: color 260ms cubic-bezier(0.33, 0.1, 0.25, 1);
+  transition: color 280ms cubic-bezier(0.33, 0.1, 0.25, 1);
 }
 
 .halfActive .label {
@@ -273,10 +241,11 @@
 .half:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -3px;
+  border-radius: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .face,
+  .thumb,
   .label {
     transition: none;
   }

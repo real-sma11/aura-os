@@ -21,27 +21,22 @@ export interface AppSwitchToggleProps {
   active: AppSwitchOptionId;
 }
 
-// Keep in sync with the `.face` / `.label` opacity transition in the CSS.
-const SWITCH_TRANSITION_MS = 260;
-
 /**
  * Flat, plate-mounted toggle between the Agents and Projects apps. Lives at
  * the top of the shared sidebar body for both apps.
  *
  * The foundation is a fixed-size gradient `.plate` holding a recessed
- * `.panel` (the seam). The two halves fill the panel: the idle half is a
- * flat fill, while the selected half gets a diagonal gradient fill, an
- * accent glow flaring up-and-outward, a directional gradient border, and a
- * large black shadow cast down-and-outward. The foundation never changes
- * size when the selection flips.
+ * `.panel` track. A single `.thumb` carries the selected look and slides
+ * between the two sides via a composited `transform` transition, so the
+ * animation is fully independent of the rest of the page's render work.
+ *
+ * The selection is tracked optimistically so the thumb starts sliding the
+ * instant a side is clicked, rather than waiting for `navigate` to mount the
+ * target app and push down a new `active` prop.
  */
 export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactElement {
   const navigate = useNavigate();
 
-  // Flip the visual selection optimistically on click so the switch feels
-  // instant, instead of waiting for `navigate` to mount the target app and
-  // push down a new `active` prop. The pending value clears once the real
-  // route catches up.
   const [pending, setPending] = useState<AppSwitchOptionId | null>(null);
   const selected = pending ?? active;
 
@@ -58,30 +53,24 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
           role="group"
           aria-label="Switch between Agents and Projects"
         >
+          <span className={styles.thumb} aria-hidden="true" />
           {OPTIONS.map((option) => {
             const isActive = option.id === selected;
             return (
               <button
                 key={option.id}
                 type="button"
-                className={cn(
-                  styles.half,
-                  option.id === "agents" ? styles.halfLeft : styles.halfRight,
-                  isActive ? styles.halfActive : styles.halfIdle,
-                )}
+                className={cn(styles.half, isActive && styles.halfActive)}
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
-                  // Flip the switch now so the crossfade starts immediately,
-                  // then hold off the heavy route swap until the fade has
-                  // finished. Running the blocking mount mid-transition would
-                  // otherwise cut the animation short.
-                  const target = option.path;
+                  // Slide the thumb now; navigate right away. The slide is a
+                  // composited transform, so it keeps animating smoothly even
+                  // while the route mounts the target app.
                   setPending(option.id);
-                  window.setTimeout(() => navigate(target), SWITCH_TRANSITION_MS);
+                  navigate(option.path);
                 }}
               >
-                <span className={styles.face} aria-hidden="true" />
                 <span className={styles.label}>{option.label}</span>
               </button>
             );
