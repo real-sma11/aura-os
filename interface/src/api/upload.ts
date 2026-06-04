@@ -9,14 +9,25 @@ export interface PresignResponse {
 
 /**
  * Request a presigned S3 upload URL from the backend.
+ *
+ * An optional `prefix` is forwarded to the backend and, when provided,
+ * is prepended (after sanitization) to the generated object key.
  */
 export async function requestPresignedUrl(
   contentType: string,
   filename: string,
+  prefix?: string,
 ): Promise<PresignResponse> {
+  const body: Record<string, string> = {
+    content_type: contentType,
+    filename,
+  };
+  if (prefix) {
+    body.prefix = prefix;
+  }
   return apiFetch<PresignResponse>("/api/upload/presign", {
     method: "POST",
-    body: JSON.stringify({ content_type: contentType, filename }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -85,4 +96,22 @@ export async function uploadFile(
   const presigned = await requestPresignedUrl(contentType, filename);
   await uploadToS3(presigned.upload_url, file, contentType, onProgress, signal);
   return presigned.file_url;
+}
+
+/**
+ * Upload a markdown body (e.g. a note/blog) as a `.md` file to S3.
+ *
+ * Defaults to the `blogs` key prefix so objects land under `blogs/`.
+ * Reuses the existing presign + PUT flow.
+ */
+export async function uploadMarkdown(
+  markdown: string,
+  filename: string,
+  prefix: string = "blogs",
+): Promise<{ url: string; key: string }> {
+  const contentType = "text/markdown";
+  const blob = new Blob([markdown], { type: contentType });
+  const presigned = await requestPresignedUrl(contentType, filename, prefix);
+  await uploadToS3(presigned.upload_url, blob, contentType);
+  return { url: presigned.file_url, key: presigned.key };
 }

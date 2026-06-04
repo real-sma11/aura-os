@@ -11,6 +11,9 @@ use crate::state::{AppState, AuthJwt, AuthSession};
 pub(crate) struct PresignRequest {
     pub content_type: String,
     pub filename: String,
+    /// Optional key prefix forwarded to aura-router (e.g. `blogs`).
+    #[serde(default)]
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,14 +37,19 @@ pub(crate) async fn presign_upload(
 ) -> ApiResult<Json<PresignResponse>> {
     let url = format!("{}/v1/upload/presign", state.router_url);
 
+    let mut payload = serde_json::json!({
+        "content_type": body.content_type,
+        "filename": body.filename,
+    });
+    if let Some(prefix) = &body.prefix {
+        payload["prefix"] = serde_json::Value::String(prefix.clone());
+    }
+
     let resp = state
         .http_client
         .post(&url)
         .bearer_auth(&jwt)
-        .json(&serde_json::json!({
-            "content_type": body.content_type,
-            "filename": body.filename,
-        }))
+        .json(&payload)
         .send()
         .await
         .map_err(|e| {
