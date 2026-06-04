@@ -164,6 +164,10 @@
     var(--sw-active-ring-light) 0%,
     var(--sw-active-ring-dark) 65%
   );
+  /* Span the gradient across the full switch width (each half is 50%), so
+     the two halves sample one continuous diagonal instead of each
+     restarting at the seam. */
+  background-size: 200% 100%;
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
@@ -177,10 +181,12 @@
    masked frame has no border there. */
 .halfLeft::before {
   padding: 1px 0 1px 1px;
+  background-position: left center;
 }
 
 .halfRight::before {
   padding: 1px 1px 1px 0;
+  background-position: right center;
 }
 
 /* Accent glow flaring up-and-outward from the active half. */
