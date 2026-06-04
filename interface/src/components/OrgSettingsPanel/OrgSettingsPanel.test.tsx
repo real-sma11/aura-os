@@ -350,6 +350,19 @@ describe("OrgSettingsPanel", () => {
     expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
   });
 
+  it("opens directly to a deep-linked sub-area via initialSubArea", () => {
+    renderPanel({ initialSection: "appearance", initialSubArea: "presets" });
+
+    expect(screen.getByTestId("subarea-presets")).toBeInTheDocument();
+    expect(screen.queryByTestId("subarea-mode")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the default sub-area for an unknown initialSubArea", () => {
+    renderPanel({ initialSection: "appearance", initialSubArea: "nope" });
+
+    expect(screen.getByTestId("subarea-mode")).toBeInTheDocument();
+  });
+
   it("uses 'Settings' as the modal title", () => {
     renderPanel();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
