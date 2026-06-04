@@ -24,6 +24,7 @@ const PRIMARY_LINKS: ReadonlyArray<TopNavLink> = [
   { label: "Agents", to: "/agents" },
   { label: "Code", to: "/code" },
   { label: "Pricing", to: "/pricing" },
+  { label: "Blog", to: "/blog" },
 ];
 
 /** Routes grouped under the `Resources` dropdown. */

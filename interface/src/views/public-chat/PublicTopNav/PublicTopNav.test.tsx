@@ -1,6 +1,6 @@
 /**
  * Smoke test for `PublicTopNav`. Pins the primary marketing links
- * (Agents / Code / Pricing) and their hrefs, asserts the Home link
+ * (Agents / Code / Pricing / Blog) and their hrefs, asserts the Home link
  * was removed (the logo owns "home"), and verifies the Resources
  * dropdown opens to reveal Changelog / Feedback / Models.
  */
@@ -17,6 +17,7 @@ const PRIMARY = [
   { label: "Agents", to: "/agents" },
   { label: "Code", to: "/code" },
   { label: "Pricing", to: "/pricing" },
+  { label: "Blog", to: "/blog" },
 ] as const;
 
 describe("PublicTopNav", () => {

@@ -1,0 +1,571 @@
+/*
+ * BlogView — public `/blog` site. Pins the same off-black
+ * `--marketing-section-bg` surface + light text tokens as the other
+ * marketing pages (see `CodeView.module.css`) and lays out a centered
+ * reading column styled after cursor.com/blog. Page chrome (titlebar /
+ * sidebar / scroll column) is owned by `PublicMarketingPanel`.
+ */
+.page {
+  --blog-bg: #0f0f12;
+  --blog-text-primary: #f7f8fb;
+  --blog-text-secondary: #a3a3a8;
+  --blog-text-muted: rgba(255, 255, 255, 0.52);
+  --blog-border: rgba(255, 255, 255, 0.1);
+  --blog-accent: #f7f8fb;
+  --blog-reading-width: 720px;
+  min-height: calc(100vh - var(--marketing-taskbar-safe-offset));
+  min-height: calc(100dvh - var(--marketing-taskbar-safe-offset));
+  padding: 120px clamp(20px, 5vw, 56px) 96px;
+  background: var(--marketing-section-bg, #0f0f12);
+  color: var(--blog-text-primary);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------- index */
+
+.indexShell {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.indexHeader {
+  margin-bottom: 48px;
+}
+
+.indexTitle {
+  margin: 0 0 12px;
+  font-size: clamp(36px, 6vw, 56px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.indexSubtitle {
+  margin: 0;
+  max-width: 560px;
+  font-size: 17px;
+  color: var(--blog-text-secondary);
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 28px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--blog-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.045);
+  transform: translateY(-2px);
+}
+
+.cardHeroWrap {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cardHero {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--blog-text-muted);
+}
+
+.cardType {
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--blog-text-secondary);
+}
+
+.cardMeta time::before {
+  content: "·";
+  margin-right: 10px;
+  color: var(--blog-text-muted);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.cardExcerpt {
+  margin: 0;
+  font-size: 14px;
+  color: var(--blog-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardBylineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--blog-text-secondary);
+}
+
+.cardAuthor {
+  font-weight: 500;
+  color: var(--blog-text-primary);
+}
+
+.cardReadTime {
+  color: var(--blog-text-muted);
+}
+
+.cardReadTime::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+/* ----------------------------------------------------------- single post */
+
+.postShell {
+  width: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+}
+
+.postLayout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+}
+
+.prevList {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prevListLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--blog-text-muted);
+}
+
+.prevList ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.prevListLink {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: var(--blog-text-secondary);
+  transition: color 0.15s ease;
+}
+
+.prevListLink:hover {
+  color: var(--blog-text-primary);
+}
+
+.prevListTitle {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.prevListDate {
+  font-size: 12px;
+  color: var(--blog-text-muted);
+}
+
+.prevListEmpty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--blog-text-muted);
+}
+
+.postColumn {
+  max-width: var(--blog-reading-width);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--blog-text-muted);
+}
+
+.breadcrumb a {
+  color: var(--blog-text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--blog-text-primary);
+}
+
+.breadcrumbSep {
+  color: var(--blog-text-muted);
+}
+
+.breadcrumbCurrent {
+  text-transform: capitalize;
+  color: var(--blog-text-secondary);
+}
+
+.postDate {
+  display: block;
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--blog-text-muted);
+}
+
+.postTitle {
+  margin: 12px 0 28px;
+  font-size: clamp(32px, 5vw, 48px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.byline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--blog-border);
+}
+
+.bylineMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bylineName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blog-text-primary);
+}
+
+.bylineReadTime {
+  font-size: 13px;
+  color: var(--blog-text-muted);
+}
+
+.postHeroWrap {
+  margin: 36px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.postHero {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* table of contents */
+.toc {
+  margin: 36px 0;
+  padding: 20px 24px;
+  border: 1px solid var(--blog-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tocLabel {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--blog-text-muted);
+}
+
+.tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tocItem[data-depth="2"] {
+  padding-left: 16px;
+}
+
+.tocItem a {
+  font-size: 14px;
+  color: var(--blog-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.tocItem a:hover {
+  color: var(--blog-text-primary);
+}
+
+/* rendered markdown body */
+.markdownBody {
+  font-size: 17px;
+  line-height: 1.75;
+  color: #d6d8de;
+  word-break: break-word;
+}
+
+.markdownBody :global(h1),
+.markdownBody :global(h2),
+.markdownBody :global(h3),
+.markdownBody :global(h4) {
+  color: var(--blog-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  scroll-margin-top: 24px;
+}
+
+.markdownBody :global(h1) {
+  font-size: 30px;
+  margin: 48px 0 16px;
+}
+
+.markdownBody :global(h2) {
+  font-size: 24px;
+  margin: 40px 0 14px;
+}
+
+.markdownBody :global(h3) {
+  font-size: 20px;
+  margin: 32px 0 12px;
+}
+
+.markdownBody :global(p) {
+  margin: 0 0 20px;
+}
+
+.markdownBody :global(a) {
+  color: #7aa2ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdownBody :global(ul),
+.markdownBody :global(ol) {
+  margin: 0 0 20px;
+  padding-left: 24px;
+}
+
+.markdownBody :global(li) {
+  margin: 0 0 8px;
+}
+
+.markdownBody :global(blockquote) {
+  margin: 0 0 24px;
+  padding: 4px 20px;
+  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  color: var(--blog-text-secondary);
+}
+
+.markdownBody :global(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 24px 0;
+}
+
+.markdownBody :global(code) {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.88em;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+}
+
+.markdownBody :global(pre) {
+  margin: 0 0 24px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #08080a;
+  border: 1px solid var(--blog-border);
+  overflow-x: auto;
+}
+
+.markdownBody :global(pre code) {
+  background: none;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.markdownBody :global(hr) {
+  border: none;
+  border-top: 1px solid var(--blog-border);
+  margin: 40px 0;
+}
+
+.markdownBody :global(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 24px;
+  font-size: 15px;
+}
+
+.markdownBody :global(th),
+.markdownBody :global(td) {
+  border: 1px solid var(--blog-border);
+  padding: 10px 14px;
+  text-align: left;
+}
+
+/* bottom "more from the blog" section grouped by blogType */
+.moreSection {
+  margin-top: 80px;
+  padding-top: 48px;
+  border-top: 1px solid var(--blog-border);
+}
+
+.moreSectionTitle {
+  margin: 0 0 32px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.moreGroup {
+  margin-bottom: 48px;
+}
+
+.moreGroupTitle {
+  margin: 0 0 20px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blog-text-muted);
+}
+
+/* ------------------------------------------------------- shared states */
+
+.stateMessage {
+  margin: 0;
+  padding: 48px 0;
+  text-align: center;
+  color: var(--blog-text-muted);
+  font-size: 15px;
+}
+
+.emptyState {
+  padding: 64px 0;
+  text-align: center;
+  color: var(--blog-text-secondary);
+}
+
+.emptyState h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  color: var(--blog-text-primary);
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 15px;
+}
+
+.notFound {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 80px 0;
+  text-align: center;
+}
+
+.notFound h1 {
+  margin: 0 0 12px;
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.notFound p {
+  margin: 0 0 24px;
+  color: var(--blog-text-secondary);
+}
+
+.notFoundLink {
+  color: var(--blog-text-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.notFoundLink:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 900px) {
+  .postLayout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .prevList {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 96px 18px 72px;
+  }
+}

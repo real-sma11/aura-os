@@ -51,6 +51,9 @@ const PricingView = lazy(() =>
 const ModelsView = lazy(() =>
   import("./views/marketing/ModelsView").then((m) => ({ default: m.ModelsView })),
 );
+const BlogView = lazy(() =>
+  import("./views/marketing/BlogView").then((m) => ({ default: m.BlogView })),
+);
 const DownloadView = lazy(() =>
   import("./views/marketing/DownloadView").then((m) => ({ default: m.DownloadView })),
 );
@@ -429,6 +432,22 @@ function AppRoutes(): React.ReactElement {
                 element={
                   <Suspense fallback={null}>
                     <ModelsView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="blog"
+                element={
+                  <Suspense fallback={null}>
+                    <BlogView />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="blog/:slug"
+                element={
+                  <Suspense fallback={null}>
+                    <BlogView />
                   </Suspense>
                 }
               />

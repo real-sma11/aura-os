@@ -51,6 +51,7 @@ const MARKETING_PATH_BG: Readonly<Record<string, string>> = {
   "/code": "#0f0f12",
   "/changelog": "#0f0f12",
   "/feedback": "#0f0f12",
+  "/blog": "#0f0f12",
   "/pricing": "#22272e",
   "/models": "#16191d",
 };
@@ -122,7 +123,13 @@ export function PublicMarketingPanel(): React.ReactElement {
     scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname]);
 
-  const columnBackground = MARKETING_PATH_BG[pathname] ?? DEFAULT_MARKETING_BG;
+  // Exact-match the per-route background, then fall back to a prefix
+  // match so nested routes (e.g. `/blog/:slug`) inherit their section's
+  // color instead of flashing the `#000` default while the chunk loads.
+  const columnBackground =
+    MARKETING_PATH_BG[pathname] ??
+    (pathname.startsWith("/blog/") ? MARKETING_PATH_BG["/blog"] : undefined) ??
+    DEFAULT_MARKETING_BG;
 
   return (
     <div className={styles.root}>

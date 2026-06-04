@@ -46,6 +46,7 @@ const NAV_ROWS: ReadonlyArray<NavRow> = [
   { label: "Agents", to: "/agents" },
   { label: "Code", to: "/code" },
   { label: "Pricing", to: "/pricing" },
+  { label: "Blog", to: "/blog" },
   { label: "Changelog", to: "/changelog" },
   { label: "Feedback", to: "/feedback" },
   { label: "Models", to: "/models" },
