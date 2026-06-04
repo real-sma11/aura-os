@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
-import type { CouncilCount, CouncilMechanism } from "../../stores/chat-ui-store";
+import type { CouncilCount } from "../../stores/chat-ui-store";
 import styles from "./InputBarShell.module.css";
 
 export interface CouncilCountRowProps {
@@ -16,27 +16,7 @@ export interface CouncilCountRowProps {
   count: CouncilCount;
   /** Select a new council member count. */
   onSelect: (count: CouncilCount) => void;
-  /**
-   * Current combine mechanism. Only actionable when the council is
-   * active (`count > 1`); the option list is hidden otherwise.
-   */
-  mechanism: CouncilMechanism;
-  /** Select a new combine mechanism. */
-  onSelectMechanism: (mechanism: CouncilMechanism) => void;
 }
-
-interface MechanismOption {
-  value: CouncilMechanism;
-  label: string;
-  hint: string;
-}
-
-// `members[0]` applies the chosen mechanism after every member finishes.
-const COUNCIL_MECHANISMS: MechanismOption[] = [
-  { value: "synthesize", label: "Synthesize", hint: "one combined answer" },
-  { value: "contrast", label: "Contrast", hint: "agree vs disagree" },
-  { value: "side_by_side", label: "Side-by-side", hint: "each answer, separate" },
-];
 
 interface FlyoutPosition {
   top: number;
@@ -70,8 +50,6 @@ function countCostHint(count: CouncilCount): string {
 export const CouncilCountRow = memo(function CouncilCountRow({
   count,
   onSelect,
-  mechanism,
-  onSelectMechanism,
 }: CouncilCountRowProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,35 +161,6 @@ export const CouncilCountRow = memo(function CouncilCountRow({
                   );
                 })}
               </div>
-              {count > 1 ? (
-                <div data-agent-surface="council-mechanism">
-                  <div className={styles.modelFlyoutHeader}>
-                    <span className={styles.modelFlyoutName}>Mechanism</span>
-                    <span className={styles.modelFlyoutMeta}>
-                      After members finish
-                    </span>
-                  </div>
-                  <div className={styles.modelFlyoutEfforts}>
-                    {COUNCIL_MECHANISMS.map((option) => {
-                      const selected = option.value === mechanism;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`${styles.modelEffortOption} ${selected ? styles.modelEffortOptionActive : ""}`}
-                          data-council-mechanism-option={option.value}
-                          onClick={() => onSelectMechanism(option.value)}
-                        >
-                          <span>{option.label}</span>
-                          <span className={styles.modelEffortOptionMultiplier}>
-                            {option.hint}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
             </div>,
             document.body,
           )

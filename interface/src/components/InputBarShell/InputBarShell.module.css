@@ -729,6 +729,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* AURA Council combine-mechanism section, rendered inline in the model
+   menu under the count row. The top border separates it from the count
+   row above; the header labels the option group. */
+.councilMechanismSection {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-border);
+}
+
+.councilMechanismHeader {
+  padding: 6px 12px 2px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .modelEffortFlyout {
   display: flex;
   flex-direction: column;

@@ -56,6 +56,7 @@ import {
   ModelMenuGroup,
   ModelMenuScroll,
   CouncilCountRow,
+  CouncilMechanismRow,
   ModeSelector,
   type InputBarShellHandle,
 } from "../../../components/InputBarShell";
@@ -769,10 +770,18 @@ export const DesktopChatInputBar = memo(
             key="__council_count__"
             count={councilCount}
             onSelect={(n) => setCouncilCount(streamKey, n)}
-            mechanism={councilMechanism}
-            onSelectMechanism={(m) => setCouncilMechanism(streamKey, m)}
           />
         ) : null;
+        // Combine-mechanism picker sits directly under the count row and
+        // is only relevant once the council fans out (`count > 1`).
+        const mechanismRow =
+          cfg.includeCouncilRow && councilCount > 1 ? (
+            <CouncilMechanismRow
+              key="__council_mechanism__"
+              mechanism={councilMechanism}
+              onSelect={(m) => setCouncilMechanism(streamKey, m)}
+            />
+          ) : null;
         if (shouldUseCondensedAuraMenu) {
           return (
             <ModelMenuScroll
@@ -781,6 +790,7 @@ export const DesktopChatInputBar = memo(
               data-agent-proof="chat-model-picker-visible"
             >
               {councilRow}
+              {mechanismRow}
               {vendorGroups.map((group) => (
                 <ModelMenuGroup
                   key={group.vendor}
@@ -811,6 +821,7 @@ export const DesktopChatInputBar = memo(
             data-agent-proof="chat-model-picker-visible"
           >
             {councilRow}
+            {mechanismRow}
             {sortedModelsForMode.map((m) => {
               const isComingSoon = m.id.startsWith("dreamina-seedance");
               return (

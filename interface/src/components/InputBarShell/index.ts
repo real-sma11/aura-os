@@ -10,6 +10,10 @@ export {
 } from "./ModelPicker";
 export { ModelMenuRow, type ModelMenuRowProps } from "./ModelMenuRow";
 export { CouncilCountRow, type CouncilCountRowProps } from "./CouncilCountRow";
+export {
+  CouncilMechanismRow,
+  type CouncilMechanismRowProps,
+} from "./CouncilMechanismRow";
 export { ModelMenuGroup, type ModelMenuGroupProps } from "./ModelMenuGroup";
 export { ModelMenuScroll, type ModelMenuScrollProps } from "./ModelMenuScroll";
 export { ModeSelector, type ModeSelectorProps } from "./ModeSelector";
