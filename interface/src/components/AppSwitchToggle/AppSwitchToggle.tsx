@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@cypher-asi/zui";
 import styles from "./AppSwitchToggle.module.css";
@@ -68,8 +68,13 @@ export function AppSwitchToggle({ active }: AppSwitchToggleProps): React.ReactEl
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
+                  // Urgent: flip the switch now so it paints immediately.
                   setPending(option.id);
-                  navigate(option.path);
+                  // Non-urgent: defer the heavier route swap so it doesn't
+                  // block the optimistic flip from painting first.
+                  startTransition(() => {
+                    navigate(option.path);
+                  });
                 }}
               >
                 <span className={styles.label}>{option.label}</span>
