@@ -1,5 +1,6 @@
 import { Modal } from "@cypher-asi/zui";
 import { DownloadView } from "../../views/marketing/DownloadView";
+import styles from "./DownloadsModal.module.css";
 
 export function DownloadsModal({
   isOpen,
@@ -9,7 +10,14 @@ export function DownloadsModal({
   onClose: () => void;
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Downloads" size="xl" fullHeight>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Downloads"
+      size="xl"
+      fullHeight
+      className={styles.wideModal}
+    >
       <DownloadView />
     </Modal>
   );

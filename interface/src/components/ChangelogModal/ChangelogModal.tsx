@@ -1,5 +1,6 @@
 import { Modal } from "@cypher-asi/zui";
 import { ChangelogView } from "../../views/marketing/ChangelogView";
+import styles from "./ChangelogModal.module.css";
 
 export function ChangelogModal({
   isOpen,
@@ -9,7 +10,14 @@ export function ChangelogModal({
   onClose: () => void;
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Changelog" size="xl" fullHeight>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Changelog"
+      size="xl"
+      fullHeight
+      className={styles.wideModal}
+    >
       <ChangelogView />
     </Modal>
   );

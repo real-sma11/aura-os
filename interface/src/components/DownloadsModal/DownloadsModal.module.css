@@ -1,0 +1,6 @@
+/* 20% wider than the zui `xl` preset (768px) for the marketing-style
+   content rendered inside. `max-width` on the base `.modal` still keeps
+   it within the viewport on narrow screens. */
+.wideModal {
+  width: 922px !important;
+}
