@@ -3,6 +3,7 @@ import { useNavigate, useOutlet } from "react-router-dom";
 import { Button, Drawer, Text } from "@cypher-asi/zui";
 import { ChevronLeft, X } from "lucide-react";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { ConversationSurfaceHost } from "../../components/ConversationSurfaceHost";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import {
   MOBILE_MORE_NAV_ITEMS,
@@ -18,6 +19,7 @@ import { useAuraCapabilities } from "../../hooks/use-aura-capabilities";
 import { useOrgStore } from "../../stores/org-store";
 import { useProjectsListStore } from "../../stores/projects-list-store";
 import { getHostDisplayLabel } from "../../shared/lib/host-config";
+import { useConversationRouteParams } from "../../apps/agents/hooks/use-conversation-route";
 import { useMobileShellState } from "./useMobileShellState";
 import { blurActiveElement } from "./mobile-shell-utils";
 import { ProjectNavigationDrawerContent } from "./ProjectNavigationDrawer";
@@ -48,6 +50,7 @@ const MobileAgentDetailsView = lazy(() =>
 export function MobileShell() {
   const state = useMobileShellState();
   const routeContent = useOutlet();
+  const conversationRoute = useConversationRouteParams();
   const navigate = useNavigate();
   const { features } = useAuraCapabilities();
   const { MainPanel, ResponsiveControls, PreviewPanel, PreviewHeader: PreviewHeaderComp } = state.activeApp;
@@ -220,7 +223,20 @@ export function MobileShell() {
                 </ErrorBoundary>
               </div>
             ) : (
-              <div className={styles.mobileMainPanel}><ErrorBoundary name="main"><MainPanel>{routeContent}</MainPanel></ErrorBoundary></div>
+              <div className={styles.mobileMainPanel}>
+                {/*
+                  The persistent agent chat lives in `ConversationSurfaceHost`
+                  (keyed by conversation lane) so switching Agents <-> Projects
+                  on the same agent/session never remounts the chat. On a
+                  conversation route the host paints the chat and the app
+                  MainPanel's outlet is empty; on other routes the host hides
+                  itself and the MainPanel renders the route content.
+                */}
+                <ErrorBoundary name="conversation"><ConversationSurfaceHost /></ErrorBoundary>
+                {!conversationRoute.isConversationRoute && (
+                  <ErrorBoundary name="main"><MainPanel>{routeContent}</MainPanel></ErrorBoundary>
+                )}
+              </div>
             )}
           </div>
         </div>

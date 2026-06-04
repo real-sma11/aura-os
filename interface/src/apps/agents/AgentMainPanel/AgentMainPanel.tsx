@@ -1,55 +1,13 @@
-import { useEffect, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
-import { useTerminalPanelStore } from "../../../stores/terminal-panel-store";
-import { AgentInfoPanel } from "../AgentInfoPanel";
-import { setLastStandaloneAgentId } from "../../../utils/storage";
-import { useAgents, useSelectedAgent } from "../stores";
-import { useTerminalTarget } from "../../../hooks/use-terminal-target";
-import styles from "./AgentMainPanel.module.css";
+import { type ReactNode } from "react";
 
+/**
+ * Agents-app `MainPanel`. The agent chat now renders in the shell-level
+ * `ConversationSurfaceHost` (a persistent, conversation-target-keyed surface),
+ * so this is a pure passthrough for the route outlet. Terminal targeting and
+ * agent-selection syncing — previously done here off `useParams` that this
+ * shell-level wrapper never actually received — now live in the host, driven
+ * by the location-parsed target.
+ */
 export function AgentMainPanel({ children }: { children?: ReactNode }) {
-  const { agentId } = useParams<{ agentId: string }>();
-  const { fetchAgents, status: agentsStatus } = useAgents();
-  const { setSelectedAgent, selectedAgent } = useSelectedAgent();
-  const setTerminalTarget = useTerminalPanelStore((s) => s.setTerminalTarget);
-
-  useEffect(() => {
-    fetchAgents().catch(() => {});
-  }, [fetchAgents]);
-
-  useEffect(() => {
-    setSelectedAgent(agentId ?? null);
-    if (agentId) {
-      setLastStandaloneAgentId(agentId);
-    }
-  }, [agentId, setSelectedAgent]);
-
-  const { remoteAgentId, status } = useTerminalTarget({
-    agentId,
-    selectedAgent,
-    agentsStatus,
-  });
-
-  useEffect(() => {
-    if (status !== "ready") return;
-    setTerminalTarget({ cwd: undefined, remoteAgentId });
-  }, [remoteAgentId, setTerminalTarget, status]);
-
-  return (
-    // This wrapper exists purely to carry `data-agent-surface` /
-    // `data-agent-agent-id` for changelog screenshot automation. It MUST
-    // participate in the flex-column height chain established by the shell's
-    // `ResponsiveMainLane`'s `.mainContent`, otherwise `ChatPanel`'s
-    // `.container { flex: 1; min-height: 0 }` has no bounded ancestor and the
-    // chat transcript's `overflow-y: auto` viewport collapses, killing wheel
-    // scrolling on the standalone agent chat.
-    <div
-      className={styles.surface}
-      data-agent-surface="agent-chat-panel"
-      data-agent-context="agent-chat-product-context"
-      data-agent-agent-id={agentId ?? ""}
-    >
-      {children ?? <AgentInfoPanel />}
-    </div>
-  );
+  return <>{children}</>;
 }

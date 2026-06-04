@@ -19,6 +19,7 @@ import {
   SIDEKICK_MIN_WIDTH,
 } from "../DesktopShell/desktop-shell-sidekick";
 import { ResponsiveMainLane } from "../ResponsiveMainLane";
+import { ConversationSurfaceHost } from "../ConversationSurfaceHost";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { BottomTaskbar } from "../BottomTaskbar";
 import { useActiveApp } from "../../hooks/use-active-app";
@@ -399,22 +400,27 @@ function AuthedMainContent(): React.ReactElement {
   const routeContent = useOutlet();
   const { MainPanel } = activeApp;
   const ActiveProvider = activeApp.Provider ?? Fragment;
+  const appContent = (
+    <ActiveProvider>
+      <ErrorBoundary name="main">
+        <MainPanel>{routeContent}</MainPanel>
+      </ErrorBoundary>
+    </ActiveProvider>
+  );
   if (activeApp.bareMainPanel) {
-    return (
-      <ActiveProvider>
-        <ErrorBoundary name="main">
-          <MainPanel>{routeContent}</MainPanel>
-        </ErrorBoundary>
-      </ActiveProvider>
-    );
+    return appContent;
   }
+  // `ConversationSurfaceHost` is a STABLE sibling of the per-app `MainPanel`:
+  // it never depends on `activeApp`, so it survives every Agents <-> Projects
+  // switch and keeps the agent chat mounted (keyed by conversation lane). On
+  // chat routes the app's `MainPanel` wraps an empty outlet; the host paints
+  // the chat. On other routes the host hides itself and the outlet renders.
   return (
     <ResponsiveMainLane>
-      <ActiveProvider>
-        <ErrorBoundary name="main">
-          <MainPanel>{routeContent}</MainPanel>
-        </ErrorBoundary>
-      </ActiveProvider>
+      <ErrorBoundary name="conversation">
+        <ConversationSurfaceHost />
+      </ErrorBoundary>
+      {appContent}
     </ResponsiveMainLane>
   );
 }

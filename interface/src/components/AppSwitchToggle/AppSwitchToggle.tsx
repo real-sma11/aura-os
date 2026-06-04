@@ -18,7 +18,10 @@ export interface AppSwitchToggleProps {
   ariaLabel?: string;
 }
 
-const SWITCH_FADE_MS = 520;
+// Crossfade duration. Only used to release the optimistic `pending` pin
+// after the CSS opacity transition has finished; the fade itself is
+// driven entirely by CSS, so this value is not timing-critical.
+const SWITCH_FADE_MS = 320;
 
 /**
  * Flat, plate-mounted two-up toggle. Fully generic: it knows nothing
@@ -26,16 +29,18 @@ const SWITCH_FADE_MS = 520;
  * options and the `onChange` side effect.
  *
  * The foundation is a fixed-size gradient `.plate` holding a recessed
- * `.panel` track. A single `.thumb` carries the selected look and slides
- * between the two sides via a composited `transform` transition, so the
- * animation runs on the compositor thread and is fully independent of the
- * rest of the page's render work. The active/idle labels crossfade in
- * step with the slide.
+ * `.panel` track. Each side has its own `.thumb` (the selected look);
+ * exactly one is visible at a time. Switching is a pure CSS opacity
+ * crossfade: the old side's thumb fades out while the new side's thumb
+ * fades in, keyed off `data-active-index`. Because the fade is a
+ * compositor-driven `opacity` transition — not a JS-timed swap — it stays
+ * smooth even while the caller mounts whatever the new selection points
+ * at, and opacity (unlike transform) is reduced-motion friendly.
  *
- * The selection is tracked optimistically (`pending`) so the thumb starts
- * sliding the instant a side is clicked, rather than waiting for the
- * caller's `onChange` (e.g. a route swap) to push down a new `active`
- * prop.
+ * The selected side is flipped optimistically via `pending` so the
+ * crossfade starts on the click frame rather than waiting for the
+ * caller's `onChange` (e.g. a deferred route swap) to push down a new
+ * `active` prop. The pin is released once the fade has settled.
  *
  * Memoized so it stays inert while its host re-renders for unrelated
  * reasons: it only re-renders when `options`, `active`, or `onChange`
@@ -48,17 +53,12 @@ function AppSwitchToggleBase({
   ariaLabel = "Switch",
 }: AppSwitchToggleProps): React.ReactElement {
   const [pending, setPending] = useState<string | null>(null);
-  const [isSwitching, setIsSwitching] = useState(false);
-  const switchTimerRef = useRef<number | null>(null);
+  const pendingTimerRef = useRef<number | null>(null);
   const selected = pending ?? active;
 
   useEffect(() => {
-    if (pending === active) setPending(null);
-  }, [pending, active]);
-
-  useEffect(() => {
     return () => {
-      if (switchTimerRef.current != null) window.clearTimeout(switchTimerRef.current);
+      if (pendingTimerRef.current != null) window.clearTimeout(pendingTimerRef.current);
     };
   }, []);
 
@@ -71,12 +71,13 @@ function AppSwitchToggleBase({
     <div className={styles.wrap}>
       <div className={styles.plate}>
         <div
-          className={cn(styles.panel, isSwitching && styles.panelSwitching)}
+          className={styles.panel}
           data-active-index={activeIndex}
           role="group"
           aria-label={ariaLabel}
         >
-          <span className={styles.thumb} aria-hidden="true" />
+          <span className={cn(styles.thumb, styles.thumbStart)} aria-hidden="true" />
+          <span className={cn(styles.thumb, styles.thumbEnd)} aria-hidden="true" />
           {options.map((option) => {
             const isActive = option.id === selected;
             return (
@@ -87,20 +88,22 @@ function AppSwitchToggleBase({
                 aria-pressed={isActive}
                 onClick={() => {
                   if (isActive) return;
-                  // Slide the thumb now; hand the selection to the caller
-                  // right away. The slide is a composited transform, so it
-                  // keeps animating smoothly even while the caller mounts
-                  // whatever the new selection points at.
-                  setPending(option.id);
-                  if (switchTimerRef.current != null) {
-                    window.clearTimeout(switchTimerRef.current);
+                  const nextId = option.id;
+                  // Flip the selected side optimistically so the opacity
+                  // crossfade starts on the click frame. Release the pin
+                  // once the fade has settled — by then `active` has caught
+                  // up to the same side. The component owns only its own
+                  // animation; how `onChange` schedules whatever it drives
+                  // is entirely the caller's concern.
+                  setPending(nextId);
+                  if (pendingTimerRef.current != null) {
+                    window.clearTimeout(pendingTimerRef.current);
                   }
-                  setIsSwitching(true);
-                  switchTimerRef.current = window.setTimeout(() => {
-                    setIsSwitching(false);
-                    switchTimerRef.current = null;
+                  pendingTimerRef.current = window.setTimeout(() => {
+                    setPending(null);
+                    pendingTimerRef.current = null;
                   }, SWITCH_FADE_MS);
-                  onChange(option.id);
+                  onChange(nextId);
                 }}
               >
                 <span className={styles.label}>{option.label}</span>

@@ -479,7 +479,8 @@ mod tests {
         ] {
             let json = serde_json::to_string(&mechanism).expect("serialize mechanism");
             assert_eq!(json, wire);
-            let back: CouncilMechanism = serde_json::from_str(&json).expect("deserialize mechanism");
+            let back: CouncilMechanism =
+                serde_json::from_str(&json).expect("deserialize mechanism");
             assert_eq!(back, mechanism);
             assert_eq!(mechanism.as_wire(), &wire[1..wire.len() - 1]);
         }

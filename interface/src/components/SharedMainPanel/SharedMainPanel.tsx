@@ -1,22 +1,11 @@
-import { useEffect, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
-import { useTerminalPanelStore } from "../../stores/terminal-panel-store";
-import { useTerminalTarget } from "../../hooks/use-terminal-target";
+import { type ReactNode } from "react";
 
-// The shell (`DesktopShell`) now provides a persistent `ResponsiveMainLane`
-// around every app's `MainPanel`, so this component is just a side-effect
-// host for terminal targeting. It returns its children verbatim — the visible
-// container is owned by the shell and stays mounted across app switches.
+// The shell (`AuraShell` / `MobileShell`) provides a persistent
+// `ResponsiveMainLane` around every app's `MainPanel`, and the agent chat now
+// renders in the shell-level `ConversationSurfaceHost` keyed by conversation
+// lane. This is therefore a pure passthrough: it returns its children
+// verbatim. Terminal targeting (previously attempted here off `useParams`,
+// which this above-the-route wrapper never received) is owned by the host.
 export function SharedMainPanel({ children }: { children?: ReactNode }) {
-  const { projectId, agentInstanceId } = useParams<{ projectId: string; agentInstanceId: string }>();
-  const setTerminalTarget = useTerminalPanelStore((s) => s.setTerminalTarget);
-
-  const { remoteAgentId, workspacePath, status } = useTerminalTarget({ projectId, agentInstanceId });
-
-  useEffect(() => {
-    if (status !== "ready") return;
-    setTerminalTarget({ cwd: workspacePath, remoteAgentId });
-  }, [remoteAgentId, setTerminalTarget, status, workspacePath]);
-
   return <>{children}</>;
 }

@@ -127,9 +127,9 @@
    * [data-theme='light']; defining them here keeps the consuming modules
    * (InputBarShell, ChatInputBar) free of inline theme-specific literals.
    */
-  --input-pill-fill: linear-gradient(180deg, #1e1e1e, #181818);
-  --input-pill-stroke: linear-gradient(180deg, #3a3a3a, #2f2f2f);
-  --input-pill-stroke-focus: linear-gradient(180deg, #4a4a4a, #3a3a3a);
+  --input-pill-fill: linear-gradient(135deg, #1e1e1e, #181818);
+  --input-pill-stroke: linear-gradient(135deg, #121212, #565656);
+  --input-pill-stroke-focus: linear-gradient(135deg, #1e1e1e, #6a6a6a);
   --attach-ring-plate: linear-gradient(180deg, #232323, #141414);
 
   /*

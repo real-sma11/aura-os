@@ -221,13 +221,18 @@
   border-radius: 18px;
 }
 
-/* Brighten the gradient stroke on focus instead of the base
-   `:focus-within` rule's solid `border-color` swap (which can't override
-   the border-box gradient). */
+/* When the input is selected (focused), swap the gradient stroke for the
+   theme accent at 50% opacity and lift the whole pill on a soft white glow.
+   The flat accent is expressed as a single-stop gradient so it can occupy
+   the border-box layer of the two-layer padding-box/border-box technique. */
 .inputContainerPill:focus-within {
+  --pill-border-active: rgba(255, 255, 255, 0.28);
   background:
     var(--input-pill-fill) padding-box,
-    var(--input-pill-stroke-focus) border-box;
+    linear-gradient(var(--pill-border-active), var(--pill-border-active)) border-box;
+  box-shadow:
+    0 0 32px 2px rgba(255, 255, 255, 0.08),
+    0 2px 6px var(--pill-shadow);
 }
 
 /* Keep the gradient fill in the static (public empty-state) wrapper,

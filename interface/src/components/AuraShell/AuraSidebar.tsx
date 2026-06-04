@@ -234,9 +234,9 @@ function AuthedSidebarBody(): React.ReactElement {
   }, [activeApp.id, markAppVisited]);
 
   // Defer the route swap into a transition so the (potentially heavy)
-  // mount of the target app's nav/main panel never competes with the
-  // switch's composited slide/fade — the thumb starts moving on the
-  // optimistic click frame and the navigation settles after.
+  // mount of the target app's nav/main panel is interruptible and never
+  // blocks urgent work. The switch's crossfade is composited inside
+  // `AppSwitchToggle`, so it runs independently of this mount regardless.
   //
   // `resolveAppSwitchPath` maps to the EQUIVALENT conversation lane in the
   // target app (when the user is in a chat), so `ConversationSurfaceHost`

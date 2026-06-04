@@ -1,0 +1,23 @@
+.surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Off a conversation route the host keeps the last chat lane mounted so the
+ * user can flip back instantly. `display: none` detaches it from layout (the
+ * active app's MainPanel owns the visible space) without unmounting React
+ * state or tearing down the chat stream.
+ */
+.hidden {
+  display: none;
+}
+
+.lanePlaceholder {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg);
+}
