@@ -135,7 +135,7 @@
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     inset 0 1px 0 var(--sw-active-ring-light),
-    0 2px 4px rgba(0, 0, 0, 0.35),
+    -3px 2px 4px -1px rgba(0, 0, 0, 0.35),
     -10px 14px 24px -4px var(--sw-active-shadow);
 }
 
@@ -145,7 +145,7 @@
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
     inset 0 1px 0 var(--sw-active-ring-light),
-    0 2px 4px rgba(0, 0, 0, 0.35),
+    3px 2px 4px -1px rgba(0, 0, 0, 0.35),
     10px 14px 24px -4px var(--sw-active-shadow);
 }
 
