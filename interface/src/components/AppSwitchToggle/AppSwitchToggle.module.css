@@ -26,7 +26,7 @@
   flex-shrink: 0;
   /* Horizontal padding matches the agent list row's `margin-inline`
      (var(--space-2)) so the plate lines up with the selected agent bg. */
-  padding: 12px var(--space-2) 10px;
+  padding: 8px var(--space-2) 7px;
 
   /* Light-mode defaults. */
   --sw-plate-from: #ececee;
@@ -62,10 +62,10 @@
 
 .plate {
   width: 100%;
-  height: 56px;
+  height: 39px;
   box-sizing: border-box;
-  padding: 8px;
-  border-radius: 18px;
+  padding: 6px;
+  border-radius: 13px;
   background: linear-gradient(135deg, var(--sw-plate-from), var(--sw-plate-to));
 }
 
@@ -75,7 +75,7 @@
   display: flex;
   width: 100%;
   height: 100%;
-  border-radius: 13px;
+  border-radius: 9px;
   background: var(--sw-idle-bg);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
 }
@@ -156,7 +156,7 @@
 
 .panel[data-active-index="0"] .thumb {
   transform: translateX(0%);
-  border-radius: 12px 0 0 12px;
+  border-radius: 8px 0 0 8px;
   /* Seam fade on the inner (right) edge so the thumb blends into the idle
      track instead of reading as a hard line. */
   background:
@@ -167,13 +167,13 @@
     ),
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
-    -3px 2px 4px -1px rgba(0, 0, 0, 0.35),
-    -10px 14px 24px -4px var(--sw-active-shadow);
+    -2px 1px 3px -1px rgba(0, 0, 0, 0.35),
+    -7px 10px 17px -3px var(--sw-active-shadow);
 }
 
 .panel[data-active-index="1"] .thumb {
   transform: translateX(100%);
-  border-radius: 0 12px 12px 0;
+  border-radius: 0 8px 8px 0;
   background:
     linear-gradient(
       to left,
@@ -182,15 +182,15 @@
     ),
     linear-gradient(135deg, var(--sw-active-from), var(--sw-active-to));
   box-shadow:
-    3px 2px 4px -1px rgba(0, 0, 0, 0.35),
-    10px 14px 24px -4px var(--sw-active-shadow);
+    2px 1px 3px -1px rgba(0, 0, 0, 0.35),
+    7px 10px 17px -3px var(--sw-active-shadow);
 }
 
 /* Accent glow flaring up-and-outward from the thumb. */
 .thumb::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -4px;
   z-index: -1;
   border-radius: inherit;
   pointer-events: none;
@@ -339,8 +339,8 @@
 
 .half:focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: -3px;
-  border-radius: 10px;
+  outline-offset: -2px;
+  border-radius: 7px;
 }
 
 @media (prefers-reduced-motion: reduce) {
