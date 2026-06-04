@@ -8,10 +8,38 @@
   background: color-mix(in srgb, var(--color-bg-surface) 92%, transparent);
 }
 
+/* Compact variant under the profile cards: matches the theme-aware "spec card"
+ * glass look, width, and centering so it reads as part of the same stack.
+ * Tint is built from `--color-bg` (near-black in dark / white in light) so the
+ * panel flips with the active theme just like the spec card. */
 .compact {
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  margin: var(--space-5) var(--space-3) 0;
+  padding: var(--space-3);
+  /* Same on-screen width as the spec card (the nameplate above). */
+  width: min(100%, calc(265px * 0.9 / 1.036));
+  margin: var(--space-3) auto 0;
+  /* Corners + subtle edge to match the spec card. */
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background:
+    linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--color-bg) 60%, transparent) 0%,
+        color-mix(in srgb, var(--color-bg) 32%, transparent) 100%
+      )
+      padding-box,
+    linear-gradient(
+        135deg,
+        var(--color-overlay-medium) 0%,
+        var(--color-overlay-light) 50%,
+        transparent 100%
+      )
+      border-box;
+  backdrop-filter: blur(26px) saturate(135%);
+  -webkit-backdrop-filter: blur(26px) saturate(135%);
+  box-shadow:
+    inset 0 1px 0 var(--color-overlay-light),
+    0 10px 30px -12px var(--color-backdrop-medium);
 }
 
 .header {
@@ -37,6 +65,7 @@
 .connectButton {
   flex-shrink: 0;
   margin-left: auto;
+  border-radius: 999px;
 }
 
 .brandIcon {
