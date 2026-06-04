@@ -173,24 +173,24 @@
   border-radius: inherit;
   pointer-events: none;
   z-index: -1;
-  opacity: 0.85;
+  opacity: 0.32;
 }
 
 .halfLeft.halfActive::after {
   background: radial-gradient(
     120% 120% at 0% 0%,
-    var(--color-accent) 0%,
-    color-mix(in srgb, var(--color-accent) 35%, transparent) 24%,
-    transparent 55%
+    color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 12%, transparent) 22%,
+    transparent 50%
   );
 }
 
 .halfRight.halfActive::after {
   background: radial-gradient(
     120% 120% at 100% 0%,
-    var(--color-accent) 0%,
-    color-mix(in srgb, var(--color-accent) 35%, transparent) 24%,
-    transparent 55%
+    color-mix(in srgb, var(--color-accent) 45%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 12%, transparent) 22%,
+    transparent 50%
   );
 }
 
