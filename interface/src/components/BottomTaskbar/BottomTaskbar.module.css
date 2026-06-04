@@ -384,7 +384,10 @@
   height: 21px;
   margin: 0 3px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--color-border-chrome) 80%, transparent);
+  /* Match the taskbar icon glyph color so the separators read as part of
+     the same icon group rather than as a lighter chrome border line, at
+     75% transparency (25% opacity) so the line stays subtle. */
+  background: color-mix(in srgb, var(--taskbar-icon-color) 25%, transparent);
 }
 
 .favorites {
