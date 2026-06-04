@@ -44,6 +44,32 @@ describe("ui-modal-store", () => {
     });
   });
 
+  describe("openOrgTheme", () => {
+    it("opens org settings to the Theme (appearance) section", () => {
+      useUIModalStore.getState().openOrgTheme();
+      const s = useUIModalStore.getState();
+      expect(s.orgSettingsOpen).toBe(true);
+      expect(s.orgInitialSection).toBe("appearance");
+      expect(s.orgInitialSubArea).toBeUndefined();
+    });
+  });
+
+  describe("openOrgBackground", () => {
+    it("opens org settings to Theme > Background", () => {
+      useUIModalStore.getState().openOrgBackground();
+      const s = useUIModalStore.getState();
+      expect(s.orgSettingsOpen).toBe(true);
+      expect(s.orgInitialSection).toBe("appearance");
+      expect(s.orgInitialSubArea).toBe("background");
+    });
+
+    it("clears the sub-area on close", () => {
+      useUIModalStore.getState().openOrgBackground();
+      useUIModalStore.getState().closeOrgSettings();
+      expect(useUIModalStore.getState().orgInitialSubArea).toBeUndefined();
+    });
+  });
+
   describe("openBuyCredits / closeBuyCredits", () => {
     it("opens buy credits", () => {
       useUIModalStore.getState().openBuyCredits();

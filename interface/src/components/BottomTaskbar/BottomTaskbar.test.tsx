@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 const mockNavigate = vi.fn();
 const openBuyCredits = vi.fn();
 const openOrgSettings = vi.fn();
+const openOrgTheme = vi.fn();
+const openOrgBackground = vi.fn();
 const openAppsModal = vi.fn();
 const openInviteModal = vi.fn();
 const closeInviteModal = vi.fn();
@@ -20,6 +22,8 @@ const setTaskbarRightCollapsed = vi.fn();
 const uiModalState = {
   openBuyCredits,
   openOrgSettings,
+  openOrgTheme,
+  openOrgBackground,
   openAppsModal,
   openInviteModal,
   closeInviteModal,
@@ -72,6 +76,7 @@ vi.mock("lucide-react", () => ({
   ChevronDown: () => <svg />,
   ChevronUp: () => <svg />,
   Image: () => <svg />,
+  Palette: () => <svg />,
   Upload: () => <svg />,
   Sun: () => <svg data-testid="theme-icon-sun" />,
   Moon: () => <svg data-testid="theme-icon-moon" />,
@@ -121,11 +126,6 @@ vi.mock("@cypher-asi/zui", () => ({
     resolvedTheme: "dark" as const,
     setTheme: vi.fn(),
   }),
-}));
-
-vi.mock("../../apps/desktop/BackgroundModal", () => ({
-  BackgroundModal: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="background-modal" /> : null,
 }));
 
 vi.mock("../InviteModal/InviteModal", () => ({
@@ -580,6 +580,7 @@ describe("BottomTaskbar", () => {
       fireEvent.contextMenu(getBar(container));
 
       expect(screen.getByTestId("zui-menu")).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Theme" })).toBeInTheDocument();
       expect(screen.getByRole("menuitem", { name: "Background" })).toBeInTheDocument();
       expect(screen.getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
     });
@@ -603,14 +604,26 @@ describe("BottomTaskbar", () => {
       expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
     });
 
-    it("opens the background modal when selecting Background", async () => {
+    it("opens settings to Theme > Background when selecting Background", async () => {
       const user = userEvent.setup();
       const { container } = render(<BottomTaskbar mode="standard" />);
 
       fireEvent.contextMenu(getBar(container));
       await user.click(screen.getByRole("menuitem", { name: "Background" }));
 
-      expect(screen.getByTestId("background-modal")).toBeInTheDocument();
+      expect(openOrgBackground).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
+    });
+
+    it("opens settings to Theme when selecting Theme", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<BottomTaskbar mode="standard" />);
+
+      fireEvent.contextMenu(getBar(container));
+      await user.click(screen.getByRole("menuitem", { name: "Theme" }));
+
+      expect(openOrgTheme).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId("zui-menu")).not.toBeInTheDocument();
     });
 
     it("anchors to the bottom of the click when right-clicking near the viewport bottom", () => {

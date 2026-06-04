@@ -449,13 +449,14 @@ function AppContent() {
   const uiMode = useUIModeStore((s) => s.mode);
 
   const {
-    orgSettingsOpen, orgInitialSection, closeOrgSettings,
+    orgSettingsOpen, orgInitialSection, orgInitialSubArea, closeOrgSettings,
     buyCreditsOpen, closeBuyCredits, openOrgBilling,
     appsModalOpen, closeAppsModal,
   } = useUIModalStore(
     useShallow((s) => ({
       orgSettingsOpen: s.orgSettingsOpen,
       orgInitialSection: s.orgInitialSection,
+      orgInitialSubArea: s.orgInitialSubArea,
       closeOrgSettings: s.closeOrgSettings,
       buyCreditsOpen: s.buyCreditsOpen,
       closeBuyCredits: s.closeBuyCredits,
@@ -478,6 +479,7 @@ function AppContent() {
             isOpen={orgSettingsOpen}
             onClose={closeOrgSettings}
             initialSection={orgInitialSection}
+            initialSubArea={orgInitialSubArea}
           />
         </LazyModalBoundary>
       ) : null}

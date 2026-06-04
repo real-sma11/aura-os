@@ -11,9 +11,14 @@ const toggleFavorite = vi.fn();
 const registerAgents = vi.fn();
 const registerRemoteAgents = vi.fn();
 
+const openOrgTheme = vi.fn();
+const openOrgBackground = vi.fn();
+
 const uiModalState = {
   openBuyCredits,
   openOrgSettings,
+  openOrgTheme,
+  openOrgBackground,
   openAppsModal,
   openInviteModal,
   closeInviteModal,
@@ -61,6 +66,7 @@ vi.mock("lucide-react", () => ({
   ChevronDown: () => <svg />,
   ChevronUp: () => <svg />,
   Image: () => <svg />,
+  Palette: () => <svg />,
   Upload: () => <svg />,
   Sun: () => <svg />,
   Moon: () => <svg />,
@@ -83,10 +89,6 @@ vi.mock("@cypher-asi/zui", () => ({
     resolvedTheme: "dark" as const,
     setTheme: vi.fn(),
   }),
-}));
-
-vi.mock("../../apps/desktop/BackgroundModal", () => ({
-  BackgroundModal: () => null,
 }));
 
 vi.mock("../InviteModal/InviteModal", () => ({

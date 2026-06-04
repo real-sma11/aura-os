@@ -6,6 +6,7 @@ import {
   Droplets,
   Sparkles,
   Zap,
+  Image,
   Bookmark,
   type LucideIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import { LayoutPane } from "./panes/LayoutPane";
 import { ColorsPane } from "./panes/ColorsPane";
 import { EffectsPane } from "./panes/EffectsPane";
 import { MotionPane } from "./panes/MotionPane";
+import { BackgroundPane } from "./panes/BackgroundPane";
 import { PresetsPane } from "./panes/PresetsPane";
 
 export type ThemeSubAreaId =
@@ -24,6 +26,7 @@ export type ThemeSubAreaId =
   | "colors"
   | "effects"
   | "motion"
+  | "background"
   | "presets";
 
 export type ThemeSubArea = {
@@ -55,6 +58,7 @@ export const THEME_SUB_AREAS: readonly ThemeSubArea[] = [
   { id: "colors", label: "Custom colors", group: "Customization", icon: Droplets, Component: ColorsPane },
   { id: "effects", label: "Effects", group: "Customization", icon: Sparkles, Component: EffectsPane },
   { id: "motion", label: "Motion", group: "Customization", icon: Zap, Component: MotionPane },
+  { id: "background", label: "Background", group: "Desktop", icon: Image, Component: BackgroundPane },
   { id: "presets", label: "Presets", group: "Library", icon: Bookmark, Component: PresetsPane },
 ];
 

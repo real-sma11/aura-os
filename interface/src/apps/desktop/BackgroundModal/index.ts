@@ -1,1 +1,0 @@
-export { BackgroundModal } from "./BackgroundModal";

@@ -51,6 +51,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   initialSection?: Section;
+  /** Sub-area to open within a drill-down section (e.g. Theme's "background"). */
+  initialSubArea?: string;
 }
 
 // Personal section — your profile (avatar, name, fields). Shown first.
@@ -149,7 +151,7 @@ function AppSectionContent({ section }: { section: Section }) {
   }
 }
 
-export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
+export function OrgSettingsPanel({ isOpen, onClose, initialSection, initialSubArea }: Props) {
   const data = useOrgSettingsData(isOpen, initialSection);
   const logout = useLogout();
   const navigate = useNavigate();
@@ -160,10 +162,21 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
   // openOrgSettings("appearance")) opens already drilled in.
   const drillFromInitial = (section?: Section): Section | null =>
     section && DRILLDOWN_SECTIONS[section] ? section : null;
+  // Resolve the starting sub-area for a drill-down section, honoring an
+  // explicit `initialSubArea` deep-link (e.g. Theme > Background) when valid.
+  const subAreaFromInitial = (section?: Section, sub?: string): string => {
+    const drilled = drillFromInitial(section);
+    if (drilled && sub && DRILLDOWN_SECTIONS[drilled]?.subAreas.some((s) => s.id === sub)) {
+      return sub;
+    }
+    return DEFAULT_THEME_SUB_AREA;
+  };
   const [drilledSection, setDrilledSection] = useState<Section | null>(() =>
     drillFromInitial(initialSection),
   );
-  const [subAreaId, setSubAreaId] = useState<string>(DEFAULT_THEME_SUB_AREA);
+  const [subAreaId, setSubAreaId] = useState<string>(() =>
+    subAreaFromInitial(initialSection, initialSubArea),
+  );
   const navScrollRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
@@ -176,7 +189,7 @@ export function OrgSettingsPanel({ isOpen, onClose, initialSection }: Props) {
     setPrevOpen(isOpen);
     if (isOpen) {
       setDrilledSection(drillFromInitial(initialSection));
-      setSubAreaId(DEFAULT_THEME_SUB_AREA);
+      setSubAreaId(subAreaFromInitial(initialSection, initialSubArea));
     }
   }
 

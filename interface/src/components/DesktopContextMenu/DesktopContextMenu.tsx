@@ -9,16 +9,16 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Image, Settings as SettingsIcon } from "lucide-react";
+import { Image, Palette, Settings as SettingsIcon } from "lucide-react";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
 import { useUIModalStore } from "../../stores/ui-modal-store";
-import { BackgroundModal } from "../../apps/desktop/BackgroundModal";
 import styles from "./DesktopContextMenu.module.css";
 
-type ContextMenuItemId = "set-background" | "settings";
+type ContextMenuItemId = "theme" | "set-background" | "settings";
 
 const CONTEXT_MENU_ITEMS: MenuItem[] = [
+  { id: "theme", label: "Theme", icon: <Palette size={14} /> },
   { id: "set-background", label: "Background", icon: <Image size={14} /> },
   { id: "settings", label: "Settings", icon: <SettingsIcon size={14} /> },
 ];
@@ -28,7 +28,7 @@ const CONTEXT_MENU_ITEMS: MenuItem[] = [
 // viewport, which avoids any visible flash before the zui Menu's own
 // off-screen clamp runs.
 const ESTIMATED_MENU_WIDTH = 220;
-const ESTIMATED_MENU_HEIGHT = 96;
+const ESTIMATED_MENU_HEIGHT = 132;
 const VIEWPORT_PADDING = 8;
 
 interface MenuPosition {
@@ -80,8 +80,9 @@ export interface UseDesktopContextMenuResult {
 
 export function useDesktopContextMenu(): UseDesktopContextMenuResult {
   const openOrgSettings = useUIModalStore((s) => s.openOrgSettings);
+  const openOrgTheme = useUIModalStore((s) => s.openOrgTheme);
+  const openOrgBackground = useUIModalStore((s) => s.openOrgBackground);
   const [position, setPosition] = useState<MenuPosition | null>(null);
-  const [bgModalOpen, setBgModalOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const dismiss = useCallback(() => setPosition(null), []);
@@ -120,13 +121,15 @@ export function useDesktopContextMenu(): UseDesktopContextMenuResult {
     (id: string) => {
       const action = id as ContextMenuItemId;
       setPosition(null);
-      if (action === "set-background") {
-        setBgModalOpen(true);
+      if (action === "theme") {
+        openOrgTheme();
+      } else if (action === "set-background") {
+        openOrgBackground();
       } else if (action === "settings") {
         openOrgSettings();
       }
     },
-    [openOrgSettings],
+    [openOrgSettings, openOrgTheme, openOrgBackground],
   );
 
   const overlayStyle = useMemo(
@@ -136,29 +139,22 @@ export function useDesktopContextMenu(): UseDesktopContextMenuResult {
 
   const menuElement = useMemo(() => {
     if (typeof document === "undefined") return null;
+    if (!position || !overlayStyle) return null;
     const portalChildren = (
-      <>
-        {position && overlayStyle ? (
-          <div ref={overlayRef} className={styles.overlay} style={overlayStyle}>
-            <Menu
-              items={CONTEXT_MENU_ITEMS}
-              onChange={handleSelect}
-              background="solid"
-              border="solid"
-              rounded="md"
-              width={200}
-              isOpen
-            />
-          </div>
-        ) : null}
-        <BackgroundModal
-          isOpen={bgModalOpen}
-          onClose={() => setBgModalOpen(false)}
+      <div ref={overlayRef} className={styles.overlay} style={overlayStyle}>
+        <Menu
+          items={CONTEXT_MENU_ITEMS}
+          onChange={handleSelect}
+          background="solid"
+          border="solid"
+          rounded="md"
+          width={200}
+          isOpen
         />
-      </>
+      </div>
     );
     return createPortal(portalChildren, document.body);
-  }, [position, overlayStyle, handleSelect, bgModalOpen]);
+  }, [position, overlayStyle, handleSelect]);
 
   return { handleContextMenu, menuElement, dismiss };
 }

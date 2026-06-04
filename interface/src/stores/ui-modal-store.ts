@@ -1,9 +1,16 @@
 import { create } from "zustand";
 import { INSUFFICIENT_CREDITS_EVENT } from "../api/client";
 
+// Sections the settings modal can be deep-linked to. Matches the relevant
+// members of `Section` in `OrgSettingsPanel/useOrgSettingsData.ts` (kept as a
+// local union so the store doesn't depend on the component).
+export type OrgInitialSection = "general" | "billing" | "appearance";
+
 interface UIModalState {
   orgSettingsOpen: boolean;
-  orgInitialSection: "general" | "billing" | undefined;
+  orgInitialSection: OrgInitialSection | undefined;
+  // Sub-area to open within a drill-down section (e.g. Theme's "background").
+  orgInitialSubArea: string | undefined;
   buyCreditsOpen: boolean;
   hostSettingsOpen: boolean;
   appsModalOpen: boolean;
@@ -14,6 +21,10 @@ interface UIModalState {
   openOrgSettings: () => void;
   closeOrgSettings: () => void;
   openOrgBilling: () => void;
+  /** Opens settings to the Theme section (drill-down). */
+  openOrgTheme: () => void;
+  /** Opens settings to Theme > Background. */
+  openOrgBackground: () => void;
   openBuyCredits: () => void;
   closeBuyCredits: () => void;
   openHostSettings: () => void;
@@ -32,6 +43,7 @@ interface UIModalState {
 const CLOSED_MODAL_STATE = {
   orgSettingsOpen: false,
   orgInitialSection: undefined,
+  orgInitialSubArea: undefined,
   buyCreditsOpen: false,
   hostSettingsOpen: false,
   appsModalOpen: false,
@@ -43,9 +55,11 @@ const CLOSED_MODAL_STATE = {
 export const useUIModalStore = create<UIModalState>()((set) => ({
   ...CLOSED_MODAL_STATE,
 
-  openOrgSettings: () => set({ orgSettingsOpen: true, orgInitialSection: "general" }),
-  closeOrgSettings: () => set({ orgSettingsOpen: false, orgInitialSection: undefined }),
-  openOrgBilling: () => set({ orgSettingsOpen: true, orgInitialSection: "billing" }),
+  openOrgSettings: () => set({ orgSettingsOpen: true, orgInitialSection: "general", orgInitialSubArea: undefined }),
+  closeOrgSettings: () => set({ orgSettingsOpen: false, orgInitialSection: undefined, orgInitialSubArea: undefined }),
+  openOrgBilling: () => set({ orgSettingsOpen: true, orgInitialSection: "billing", orgInitialSubArea: undefined }),
+  openOrgTheme: () => set({ orgSettingsOpen: true, orgInitialSection: "appearance", orgInitialSubArea: undefined }),
+  openOrgBackground: () => set({ orgSettingsOpen: true, orgInitialSection: "appearance", orgInitialSubArea: "background" }),
   openBuyCredits: () => set({ buyCreditsOpen: true }),
   closeBuyCredits: () => set({ buyCreditsOpen: false }),
   openHostSettings: () => set({ hostSettingsOpen: true }),
