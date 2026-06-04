@@ -157,6 +157,17 @@
   pointer-events: none;
 }
 
+/* Drop the inner-seam edge of the bevel so the two halves read as one
+   panel with no dividing line. Zero padding on the inner side means the
+   masked frame has no border there. */
+.halfLeft::before {
+  padding: 1px 0 1px 1px;
+}
+
+.halfRight::before {
+  padding: 1px 1px 1px 0;
+}
+
 .halfLeft.halfActive::before {
   background: linear-gradient(
     135deg,
