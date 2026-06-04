@@ -25,6 +25,7 @@ interface StatusCardProps {
   handleStatusCardMouseLeave: (event: ReactMouseEvent) => void
   vmState: RemoteVmState | null
   remoteStateError: string | null
+  remoteStateRecoverable: boolean
   remoteErrorMessage: string | undefined
   remoteStatus: string
   recoveryNotice: RecoveryNotice | null
@@ -118,6 +119,7 @@ interface RemoteStatusContentProps {
   agentId?: string
   vmState: RemoteVmState | null
   remoteStateError: string | null
+  remoteStateRecoverable: boolean
   remoteErrorMessage: string | undefined
   remoteStatus: string
   recoveryNotice: RecoveryNotice | null
@@ -133,6 +135,7 @@ function RemoteStatusContent({
   agentId,
   vmState,
   remoteStateError,
+  remoteStateRecoverable,
   remoteErrorMessage,
   remoteStatus,
   recoveryNotice,
@@ -231,6 +234,19 @@ function RemoteStatusContent({
       )}
       {hasRemoteError && (
         <div className={styles.actionsRow}>
+          {remoteStateError && remoteStateRecoverable && (
+            <button
+              className={[styles.actionBtn, styles.actionBtnPrimary, styles.actionBtnDanger].join(" ")}
+              data-variant="danger"
+              disabled={!!actionLoading || pendingRecovery}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleAction("recover")
+              }}
+            >
+              {actionLoading === "recover" || pendingRecovery ? "…" : "Recovery"}
+            </button>
+          )}
           <ReportBugButton
             agentId={agentId}
             compact
@@ -284,6 +300,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
     handleStatusCardMouseLeave,
     vmState,
     remoteStateError,
+    remoteStateRecoverable,
     remoteErrorMessage,
     remoteStatus,
     recoveryNotice,
@@ -311,6 +328,7 @@ export const StatusCard = forwardRef<HTMLDivElement, StatusCardProps>(function S
           agentId={agentId}
           vmState={vmState}
           remoteStateError={remoteStateError}
+          remoteStateRecoverable={remoteStateRecoverable}
           remoteErrorMessage={remoteErrorMessage}
           remoteStatus={remoteStatus}
           recoveryNotice={recoveryNotice}

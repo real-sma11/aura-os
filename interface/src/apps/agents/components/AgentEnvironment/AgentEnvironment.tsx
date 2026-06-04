@@ -47,6 +47,7 @@ export function AgentEnvironment({ machineType, agentId, workspacePath }: AgentE
   const {
     vmState,
     remoteStateError,
+    remoteStateRecoverable,
     recoveryNotice,
     pendingRecovery,
     actionLoading,
@@ -143,6 +144,7 @@ export function AgentEnvironment({ machineType, agentId, workspacePath }: AgentE
           handleStatusCardMouseLeave={handleStatusCardMouseLeave}
           vmState={vmState}
           remoteStateError={remoteStateError}
+          remoteStateRecoverable={remoteStateRecoverable}
           remoteErrorMessage={remoteErrorMessage}
           remoteStatus={remoteStatus}
           recoveryNotice={recoveryNotice}

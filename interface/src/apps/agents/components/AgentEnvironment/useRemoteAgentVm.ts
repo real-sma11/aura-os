@@ -8,6 +8,7 @@ import {
   PHASE_NOTICES,
   POLL_INTERVAL,
   getRemoteStateErrorMessage,
+  isRecoverableRemoteStateError,
   type RecoveryNotice,
 } from "./helpers"
 
@@ -19,6 +20,7 @@ interface UseRemoteAgentVmOptions {
 interface UseRemoteAgentVmResult {
   vmState: RemoteVmState | null
   remoteStateError: string | null
+  remoteStateRecoverable: boolean
   recoveryNotice: RecoveryNotice | null
   pendingRecovery: boolean
   actionLoading: string | null
@@ -35,6 +37,7 @@ export function useRemoteAgentVm({
 
   const [vmState, setVmState] = useState<RemoteVmState | null>(null)
   const [remoteStateError, setRemoteStateError] = useState<string | null>(null)
+  const [remoteStateRecoverable, setRemoteStateRecoverable] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [pendingRecovery, setPendingRecovery] = useState(false)
@@ -46,10 +49,12 @@ export function useRemoteAgentVm({
       const state = await api.swarm.getRemoteAgentState(agentId)
       setVmState(state)
       setRemoteStateError(null)
+      setRemoteStateRecoverable(true)
       return state
     } catch (error) {
       const message = getRemoteStateErrorMessage(error)
       setRemoteStateError(message)
+      setRemoteStateRecoverable(isRecoverableRemoteStateError(error))
       setVmState((current) =>
         current
           ? {
@@ -126,6 +131,7 @@ export function useRemoteAgentVm({
       try {
         if (action === "recover") {
           setPendingRecovery(true)
+          setRemoteStateError(null)
           setRecoveryNotice({ tone: "info", message: "Submitting recovery request..." })
           setVmState((current) => ({
             state: "provisioning",
@@ -173,6 +179,7 @@ export function useRemoteAgentVm({
   return {
     vmState,
     remoteStateError,
+    remoteStateRecoverable,
     recoveryNotice,
     pendingRecovery,
     actionLoading,

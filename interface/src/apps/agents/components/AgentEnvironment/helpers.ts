@@ -52,6 +52,20 @@ export function getRemoteStateErrorMessage(error: unknown): string {
   return getApiErrorMessage(error)
 }
 
+/**
+ * Whether a failed remote-state fetch can be addressed by re-provisioning the
+ * machine via the `recover` endpoint. A 401 means the session expired, which
+ * recovery cannot fix (the user must re-authenticate), so we hide Recovery in
+ * that case. Everything else (404 "machine gone", 5xx, gateway/transport
+ * errors) is treated as recoverable.
+ */
+export function isRecoverableRemoteStateError(error: unknown): boolean {
+  if (error instanceof ApiClientError && error.status === 401) {
+    return false
+  }
+  return true
+}
+
 export function getActionsForState(state: string): ActionDef[] {
   switch (state) {
     case "running":

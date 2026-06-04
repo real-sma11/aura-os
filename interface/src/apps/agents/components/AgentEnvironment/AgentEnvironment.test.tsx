@@ -185,6 +185,43 @@ describe("AgentEnvironment", () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText("Error")).toBeInTheDocument()
+
+    // A 404 means the machine is gone, which recovery can re-provision, so the
+    // Recovery affordance must be offered directly from the error notice.
+    const recoveryButton = await screen.findByRole("button", { name: "Recovery" })
+    await user.click(recoveryButton)
+    await waitFor(() => {
+      expect(swarmApiMocks.recoverRemoteAgent).toHaveBeenCalledWith("a1")
+    })
+  })
+
+  it("hides Recovery but keeps Report bug when remote state fetch returns 401", async () => {
+    swarmApiMocks.getRemoteAgentState.mockRejectedValueOnce(
+      new ApiClientError(401, {
+        error: "Unauthorized",
+        code: "unauthorized",
+        details: null,
+      }),
+    )
+
+    const user = userEvent.setup()
+
+    render(<AgentEnvironment machineType="remote" agentId="a1" />)
+
+    await waitFor(() => {
+      expect(swarmApiMocks.getRemoteAgentState).toHaveBeenCalledWith("a1")
+    })
+
+    await user.click(screen.getByRole("button", { name: "Remote" }))
+
+    // The session expired; recovery cannot fix auth, so only Report bug shows.
+    expect(
+      await screen.findByText(
+        "Your session expired while loading this remote agent. Sign in again and retry.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Report bug" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Recovery" })).not.toBeInTheDocument()
   })
 
   it("offers the standard Report bug flow when the remote machine is in an error state", async () => {
