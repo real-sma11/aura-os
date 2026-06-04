@@ -40,8 +40,8 @@
 }
 
 :global([data-theme="dark"]) .wrap {
-  --sw-plate-from: #282828;
-  --sw-plate-to: #2b2b2b;
+  --sw-plate-from: #1d1d1d;
+  --sw-plate-to: #1a1a1a;
   --sw-panel-bg: #202020;
   --sw-ring-top: rgba(0, 0, 0, 0.85);
   --sw-ring-bottom: rgba(255, 255, 255, 0.14);
@@ -61,7 +61,7 @@
   box-sizing: border-box;
   padding: 8px;
   border-radius: 18px;
-  background: linear-gradient(90deg, var(--sw-plate-from), var(--sw-plate-to));
+  background: linear-gradient(135deg, var(--sw-plate-from), var(--sw-plate-to));
 }
 
 /* Recessed housing the switch sits in. */
