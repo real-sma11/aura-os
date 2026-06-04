@@ -18,6 +18,8 @@ export interface AppSwitchToggleProps {
   ariaLabel?: string;
 }
 
+const SWITCH_FADE_MS = 520;
+
 /**
  * Flat, plate-mounted two-up toggle. Fully generic: it knows nothing
  * about routing or which apps it switches between — the caller owns the
@@ -97,7 +99,7 @@ function AppSwitchToggleBase({
                   switchTimerRef.current = window.setTimeout(() => {
                     setIsSwitching(false);
                     switchTimerRef.current = null;
-                  }, 340);
+                  }, SWITCH_FADE_MS);
                   onChange(option.id);
                 }}
               >
