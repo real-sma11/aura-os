@@ -1,5 +1,4 @@
 import {
-  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -204,11 +203,11 @@ export function StaticEntries({
 }) {
   return (
     <div className={styles.entriesList} role="tree" aria-label={ariaLabel}>
-      {entries.map((entry, index) => (
+      {entries.map((entry) => (
         <div
           key={entry.id}
           className={styles.cascadeInner}
-          style={{ "--cascade-index": index } as CSSProperties}
+          data-sidebar-list-reveal-row="true"
         >
           <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
         </div>

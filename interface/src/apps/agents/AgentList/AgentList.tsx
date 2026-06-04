@@ -30,7 +30,7 @@ import {
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
-import { useArmCascadeOnContent } from "../../../features/left-menu/cascade-arm";
+import { useSidebarListReveal } from "../../../features/left-menu/use-sidebar-list-reveal";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
 import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
@@ -189,11 +189,11 @@ function VirtualizedAgentRows({
   if (virtualItems.length === 0) {
     return (
       <div className={styles.sidebarEntries}>
-        {agents.map((agent, index) => (
+        {agents.map((agent) => (
           <div
             key={agent.agent_id}
             className={styles.cascadeInner}
-            style={{ "--cascade-index": index } as React.CSSProperties}
+            data-sidebar-list-reveal-row="true"
           >
             <AgentConversationRowWithHistory
               agent={agent}
@@ -214,7 +214,7 @@ function VirtualizedAgentRows({
       className={styles.virtualListContainer}
       style={{ height: virtualizer.getTotalSize() }}
     >
-      {virtualItems.map((item, index) => {
+      {virtualItems.map((item) => {
         const agent = agents[item.index];
         if (!agent) return null;
         return (
@@ -223,12 +223,9 @@ function VirtualizedAgentRows({
             ref={virtualizer.measureElement}
             data-index={item.index}
             className={styles.virtualRow}
-            style={{
-              transform: `translateY(${item.start}px)`,
-              "--cascade-index": index,
-            } as React.CSSProperties}
+            style={{ transform: `translateY(${item.start}px)` }}
           >
-            <div className={styles.cascadeInner}>
+            <div className={styles.cascadeInner} data-sidebar-list-reveal-row="true">
               <AgentConversationRowWithHistory
                 agent={agent}
                 isMobileLibrary={isMobileLibrary}
@@ -577,10 +574,16 @@ export function AgentList({ mode = "default" }: AgentListProps) {
     });
   }, [visibleSortedAgents, searchQuery]);
 
-  // Agents hydrate asynchronously, so the row list is empty when `LeftMenu`
-  // first arms the cascade window. Re-arm once the rows actually appear so the
-  // entrance animation fires on load (not just on switch into a warm pane).
-  useArmCascadeOnContent(filteredAgents.length > 0);
+  const revealKey = useMemo(
+    () => filteredAgents.map((agent) => agent.agent_id).join("|"),
+    [filteredAgents],
+  );
+
+  useSidebarListReveal(scrollRef, {
+    enabled: isDesktopSidebar,
+    itemCount: filteredAgents.length,
+    revealKey,
+  });
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
