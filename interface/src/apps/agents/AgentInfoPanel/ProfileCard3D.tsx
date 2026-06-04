@@ -1,19 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FollowEditButton } from "../../../components/FollowEditButton";
 import type { Agent } from "../../../shared/types";
 import { useAvatarState } from "../../../hooks/use-avatar-state";
 import { useProfileStatusStore } from "../../../stores/profile-status-store";
-import { useOrgStore } from "../../../stores/org-store";
-import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
-import { useEnvironmentInfo } from "../../../hooks/use-environment-info";
-import { useAgentSidekickStore, type AgentSidekickTab } from "../stores/agent-sidekick-store";
+import { type AgentSidekickTab } from "../stores/agent-sidekick-store";
 import {
   createProfileCardScene,
   type ProfileCardScene,
 } from "./profile-card-scene";
 import {
-  drawChannelStrip,
-  drawInfoLinks,
   drawInfoStrip,
   drawPersonalityScreen,
   drawProfileCardTexture,
@@ -21,7 +16,7 @@ import {
 } from "./profile-card-texture";
 import styles from "./AgentInfoPanel.module.css";
 
-/** A clickable navigation link drawn on the backplate. */
+/** A navigation link shown in the DOM metal card below the 3D card. */
 export interface ProfileSectionLink {
   id: AgentSidekickTab;
   label: string;
@@ -77,10 +72,9 @@ function prefersReducedMotion(): boolean {
 export interface ProfileCard3DProps {
   agent: Agent;
   isOwnAgent: boolean;
-  sections?: ProfileSectionLink[];
 }
 
-export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3DProps) {
+export function ProfileCard3D({ agent, isOwnAgent }: ProfileCard3DProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<ProfileCardScene | null>(null);
   const [ready, setReady] = useState(false);
@@ -112,24 +106,6 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
       ? "Online"
       : "Offline";
 
-  const orgName = useOrgStore((s) =>
-    agent.org_id ? s.orgs.find((o) => o.org_id === agent.org_id)?.name ?? null : null,
-  );
-
-  // IP: remote agents expose a VM endpoint; local agents fall back to the host
-  // machine IP. Both hooks are called unconditionally (rules of hooks).
-  const remote = useRemoteAgentState(
-    agent.machine_type === "remote" ? agent.agent_id : undefined,
-  );
-  const env = useEnvironmentInfo();
-  const ip = useMemo(
-    () =>
-      agent.machine_type === "remote"
-        ? remote.data?.endpoint ?? null
-        : env.data?.ip ?? null,
-    [agent.machine_type, remote.data?.endpoint, env.data?.ip],
-  );
-
   // Create the WebGL scene once.
   useEffect(() => {
     const host = hostRef.current;
@@ -146,17 +122,18 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
       return;
     }
     sceneRef.current = scene;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only: flip `ready` once the imperative WebGL scene exists so dependent draw effects can run
     setReady(true);
     return () => {
       scene?.dispose();
       sceneRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Resolve the avatar (CORS-clean) for the LCD.
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset to the fallback while the new icon resolves async (CORS-clean check) below
     setAvatar(null);
     loadCardAvatar(agent.icon).then((img) => {
       if (!cancelled) setAvatar(img);
@@ -194,8 +171,9 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
     scene.refreshBackTexture();
   }, [ready, agent.personality, agent.system_prompt, agent.role]);
 
-  // Draw the agent info strip on the worn-metal backplate. Registers a renderer
-  // so the scene can redraw it on each status-dot blink.
+  // Draw the agent nameplate (name + role + Status) on the worn-metal
+  // backplate. Registers a renderer so the scene can redraw it on each
+  // status-dot blink.
   useEffect(() => {
     const scene = sceneRef.current;
     const host = hostRef.current;
@@ -209,43 +187,12 @@ export function ProfileCard3D({ agent, isOwnAgent, sections = [] }: ProfileCard3
           role: agent.role,
           statusLabel,
           isOnline,
-          orgName,
-          ip,
-          wallet: agent.wallet_address ?? null,
           accent,
         },
         dotOn,
       );
     });
-  }, [ready, agent.name, agent.role, isOnline, statusLabel, orgName, ip, agent.wallet_address]);
-
-  // Messaging-channel logos engraved into the recessed pill between the Wallet
-  // readout and the Soul link. Static icon set, so drawn once when ready.
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!ready || !scene) return;
-    scene.setChannelsRenderer(() => drawChannelStrip(scene.channelsCanvas));
-  }, [ready]);
-
-  // Navigation links on the lower backplate: draw rows + wire clicks to tabs.
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!ready || !scene) return;
-    scene.setLinks(
-      sections.length,
-      (index) => {
-        const section = sections[index];
-        if (section) useAgentSidekickStore.getState().setActiveTab(section.id);
-      },
-      (hovered) => {
-        drawInfoLinks(
-          scene.linksCanvas,
-          sections.map((s) => ({ label: s.label, count: s.count })),
-          hovered,
-        );
-      },
-    );
-  }, [ready, sections]);
+  }, [ready, agent.name, agent.role, isOnline, statusLabel]);
 
   return (
     <div className={styles.card3dContainer}>

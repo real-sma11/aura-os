@@ -347,11 +347,6 @@ export function drawPersonalityScreen(
   applyGrade(ctx, w, h);
 }
 
-/** Shorten an on-chain address for display, e.g. `0x1234…abcd`. */
-function truncateWallet(address: string): string {
-  return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
-}
-
 export interface DrawInfoStripOptions {
   name: string;
   role: string;
@@ -359,9 +354,6 @@ export interface DrawInfoStripOptions {
   statusLabel: string;
   /** Drives the status dot color (accent when online, red otherwise). */
   isOnline: boolean;
-  orgName: string | null;
-  ip: string | null;
-  wallet: string | null;
   /** Theme accent (CSS color) used for the online status dot + glow. */
   accent: string;
 }
@@ -403,10 +395,11 @@ function engrave(
 
 /**
  * Render the agent info readout onto the worn-metal backplate's exposed strip:
- * a stamped nameplate (name + role pill) over a spec list (status, org, IP,
- * wallet). Drawn on a transparent canvas so only the engraved text + status dot
- * overlay the 3D metal. `dotOn` toggles the blinking status indicator; the
- * caller redraws on each blink.
+ * a stamped nameplate (name + role pill) over a single Status row. The
+ * remaining spec rows (Organization, IP, Wallet) live in the DOM metal card
+ * below the plate. Drawn on a transparent canvas so only the engraved text +
+ * status dot overlay the 3D metal. `dotOn` toggles the blinking status
+ * indicator; the caller redraws on each blink.
  */
 export function drawInfoStrip(
   canvas: HTMLCanvasElement,
@@ -465,12 +458,9 @@ export function drawInfoStrip(
   ctx.lineTo(w - padR, divY + 3);
   ctx.stroke();
 
-  // Spec rows.
+  // Spec rows: only Status stays on the plate; the rest moved to the DOM card.
   const rows: Array<{ label: string; value: string; mono?: boolean; status?: boolean }> = [
     { label: "Status", value: opts.statusLabel, status: true },
-    { label: "Organization", value: opts.orgName ?? "—" },
-    { label: "IP", value: opts.ip ?? "—", mono: true },
-    { label: "Wallet", value: opts.wallet ? truncateWallet(opts.wallet) : "—", mono: true },
   ];
 
   const firstRowY = 300;
@@ -506,12 +496,18 @@ export function drawInfoStrip(
   ctx.textAlign = "left";
 }
 
+export interface BrandIcon {
+  name: string;
+  path: string;
+  /** viewBox size for the glyph (defaults to 24). */
+  size?: number;
+}
+
 /**
- * Single-path brand logos (24x24 viewBox, simple-icons) drawn into the recessed
- * channel pill. Kept monochrome and engraved (not full brand color) so they read
- * as stamped into the worn metal under the card's ACES tone mapping.
+ * Single-path messaging-channel brand logos (simple-icons), shared by the DOM
+ * metal card so its engraved channel row matches the card art exactly.
  */
-const BRAND_ICONS: Array<{ name: string; path: string; size?: number }> = [
+export const BRAND_ICONS: BrandIcon[] = [
   {
     name: "Telegram",
     path: "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z",
@@ -540,136 +536,6 @@ const BRAND_ICONS: Array<{ name: string; path: string; size?: number }> = [
     path: "M15.082 15.082c10.065-10.065 25.736-11.108 36.965-3.13C41.95-2.25 20.685-4.185 8.25 8.25c-12.435 12.436-10.5 33.7 3.704 43.798-7.98-11.228-6.939-26.898 3.128-36.966ZM48.918 48.918c-10.065 10.065-25.736 11.108-36.965 3.13C22.05 66.25 43.315 68.185 55.75 55.75c12.435-12.436 10.5-33.7-3.704-43.798 7.979 11.229 6.938 26.898-3.129 36.965Z",
   },
 ];
-
-/**
- * Draw the messaging-channel brand logos into the (transparent) pill canvas:
- * the icons are spaced evenly across the width and each is rendered engraved —
- * a dark, offset silhouette beneath a light one — so they read as stamped into
- * the recessed metal pocket. A faint inner-shadow vignette deepens the recess.
- */
-export function drawChannelStrip(canvas: HTMLCanvasElement): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  // Inner-shadow vignette: darken the rounded edges so the pocket reads recessed.
-  const inset = h * 0.12;
-  const vignette = ctx.createRadialGradient(
-    w / 2,
-    h / 2,
-    Math.min(w, h) * 0.2,
-    w / 2,
-    h / 2,
-    Math.max(w / 2, h / 2),
-  );
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.35)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, w, h);
-
-  const count = BRAND_ICONS.length;
-  // Square slots laid out across the available width, capped by the height.
-  const slotW = (w - inset * 2) / count;
-  const glyph = Math.min(slotW * 0.62, h * 0.6);
-  const cy = h / 2;
-
-  BRAND_ICONS.forEach((icon, i) => {
-    const cx = inset + slotW * (i + 0.5);
-    const scale = glyph / (icon.size ?? 24);
-    const path = new Path2D(icon.path);
-    ctx.save();
-    ctx.translate(cx - glyph / 2, cy - glyph / 2);
-    ctx.scale(scale, scale);
-    // Dark drop silhouette (engraved shadow), nudged down a touch.
-    ctx.translate(0, 2);
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fill(path);
-    // Light glyph on top.
-    ctx.translate(0, -2);
-    ctx.fillStyle = "#cdd3da";
-    ctx.fill(path);
-    ctx.restore();
-  });
-}
-
-export interface InfoLink {
-  label: string;
-  count: number;
-}
-
-/**
- * Render the navigation links onto the lower part of the backplate: one row per
- * link with the label on the left and its count on the right, a subtle groove
- * between rows, and an accent-tinted highlight on the hovered row.
- */
-export function drawInfoLinks(
-  canvas: HTMLCanvasElement,
-  links: InfoLink[],
-  hovered: number,
-): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  if (links.length === 0) return;
-
-  const padL = 84;
-  const padR = 84;
-  const valueX = w - padR;
-  const rowH = h / links.length;
-
-  ctx.textBaseline = "middle";
-  links.forEach((link, i) => {
-    const top = i * rowH;
-    const cy = top + rowH / 2;
-    const isHover = i === hovered;
-
-    if (i < links.length - 1) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "rgba(0,0,0,0.4)";
-      ctx.beginPath();
-      ctx.moveTo(padL, top + rowH);
-      ctx.lineTo(w - padR, top + rowH);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
-      ctx.beginPath();
-      ctx.moveTo(padL, top + rowH + 2);
-      ctx.lineTo(w - padR, top + rowH + 2);
-      ctx.stroke();
-    }
-
-    ctx.save();
-    // On hover, glow the text brighter instead of tinting the row.
-    if (isHover) {
-      ctx.shadowColor = "rgba(214,232,255,0.55)";
-      ctx.shadowBlur = 16;
-    }
-    ctx.textAlign = "left";
-    ctx.font = `600 64px ${STRIP_SANS}`;
-    if (isHover) {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(link.label, padL, cy);
-    } else {
-      engrave(ctx, link.label, padL, cy, "#dfe3e8");
-    }
-
-    ctx.textAlign = "right";
-    ctx.font = `600 58px ${STRIP_SANS}`;
-    if (isHover) {
-      ctx.fillStyle = "#eef1f5";
-      ctx.fillText(String(link.count), valueX, cy);
-    } else {
-      engrave(ctx, String(link.count), valueX, cy, "#9aa0a8");
-    }
-    ctx.restore();
-  });
-
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-}
 
 /**
  * Load an image and resolve it only when it is safe to upload as a WebGL

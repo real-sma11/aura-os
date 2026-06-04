@@ -19,6 +19,7 @@ import { api } from "../../../api/client";
 import { useRemoteAgentState } from "../../../hooks/use-remote-agent-state";
 import { useCardTilt } from "./use-card-tilt";
 import { ProfileCard3D, type ProfileSectionLink } from "./ProfileCard3D";
+import { ProfileSpecCard } from "./ProfileSpecCard";
 import { isWebGLAvailable } from "./profile-card-scene";
 import {
   formatAdapterLabel,
@@ -367,7 +368,10 @@ export function ProfileTab(props: ProfileTabProps) {
   return (
     <>
       {webglOk ? (
-        <ProfileCard3D agent={agent} isOwnAgent={props.isOwnAgent} sections={sections} />
+        <>
+          <ProfileCard3D agent={agent} isOwnAgent={props.isOwnAgent} />
+          <ProfileSpecCard agent={agent} sections={sections} />
+        </>
       ) : (
         <ProfileCard agent={agent} isOwnAgent={props.isOwnAgent} />
       )}

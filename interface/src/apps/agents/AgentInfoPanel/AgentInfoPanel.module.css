@@ -52,8 +52,9 @@
   margin-inline: auto;
   /* Taller than the card alone so the worn-metal info backplate that pokes out
      below the card stays visible; the card itself keeps the same on-screen size
-     (framed to its width in the WebGL scene). */
-  aspect-ratio: 4 / 10.6;
+     (framed to its width in the WebGL scene). The plate is now short (just the
+     name/role nameplate + Status row), so this is much tighter than before. */
+  aspect-ratio: 4 / 7.2;
   /* The WebGL canvas is transparent; the dark card always renders in its dark
      variant and only this themed backdrop changes between light/dark, blending
      with the surrounding sidekick panel. */
@@ -72,6 +73,182 @@
 .card3dActions {
   display: flex;
   justify-content: center;
+}
+
+/* ── Profile spec card: DOM worn-metal panel below the 3D card ──
+   Carries the detail rows (org/IP/wallet), channel logos, and nav links that
+   were moved off the lower part of the WebGL backplate. Styled to read as the
+   same brushed gray metal as the 3D plate. */
+.specCard {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  max-width: 265px;
+  margin: calc(-1 * var(--space-2)) auto 0;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  /* Brushed gray metal: soft vertical streaks over a worn steel base, echoing
+     the 3D plate material (~#4a4d52 with #7c8088 highlights). */
+  background:
+    linear-gradient(105deg, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.12) 100%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 0 2px,
+      rgba(0, 0, 0, 0.04) 2px 5px
+    ),
+    linear-gradient(180deg, #54585f 0%, #494d54 48%, #3f4248 100%);
+  /* Beveled edge: bright top inset + dark bottom inset, plus a lifted shadow. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 8px 18px -10px rgba(0, 0, 0, 0.6);
+}
+
+/* Diagonal specular sheen sweeping across the metal. */
+.specCardSheen {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0) 38%,
+    rgba(255, 255, 255, 0) 72%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  mix-blend-mode: soft-light;
+}
+
+.specRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.specRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 7px 0;
+  /* Grooved divider: dark line with a light bevel below it. */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.specRow:last-child {
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.specLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #aab1ba;
+  /* Engraved: a dark drop under the glyphs for contrast on the metal. */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.specValue {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f4f6f9;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.specValueMono {
+  font-family: var(--font-mono, "SFMono-Regular", "Menlo", monospace);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+/* Recessed pill holding the engraved channel logos. */
+.specChannels {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: var(--space-2);
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #2a2d33 0%, #34373d 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.specChannelIcon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: #cdd3da;
+  /* Engraved: a subtle dark drop shadow under the light glyph. */
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
+}
+
+.specLinks {
+  display: flex;
+  flex-direction: column;
+}
+
+.specLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 9px 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: color 160ms ease;
+}
+
+.specLink:last-child {
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.specLinkLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #dfe3e8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.specLinkCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9aa0a8;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.specLink:hover .specLinkLabel {
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(214, 232, 255, 0.55);
+}
+
+.specLink:hover .specLinkCount {
+  color: #eef1f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .specLink {
+    transition: none;
+  }
 }
 
 /* ── Profile card: floating DOM card fallback (avatar + name + meta) ── */

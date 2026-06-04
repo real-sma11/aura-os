@@ -35,25 +35,6 @@ export interface ProfileCardScene {
    * so the status dot can pulse without the caller driving the animation.
    */
   setInfoRenderer(render: (dotOn: boolean) => void): void;
-  /** Offscreen canvas the navigation links are drawn into by the renderer. */
-  readonly linksCanvas: HTMLCanvasElement;
-  /**
-   * Configure the clickable navigation links. `count` is the number of rows
-   * (used to hit-test clicks), `onActivate` fires with the clicked row index,
-   * and `render` redraws the links with the given hovered row index (-1 = none).
-   */
-  setLinks(
-    count: number,
-    onActivate: (index: number) => void,
-    render: (hovered: number) => void,
-  ): void;
-  /** Offscreen canvas the messaging-channel logos are drawn into. */
-  readonly channelsCanvas: HTMLCanvasElement;
-  /**
-   * Register the function that draws the brand logos into `channelsCanvas`.
-   * Called immediately; the icon set is static so no animation is driven.
-   */
-  setChannelsRenderer(render: () => void): void;
   dispose(): void;
 }
 
@@ -101,7 +82,7 @@ const WINDOW = { left: 0.07, right: 0.935, bottom: 0.056, top: 0.875 };
 const INFO_PLATE = {
   w: PORTRAIT_SHELL.w * 0.9, // 1.8
   top: -0.9, // tucked ~0.35 behind the card's lower area
-  bottom: -3.95, // long strip: readout up top, navigation links below
+  bottom: -2.15, // short strip: just the name/role nameplate + Status row
   depth: 0.1,
   bevel: 0.02,
   chamfer: 0.1, // 45-degree corner cuts, echoing the card silhouette
@@ -113,49 +94,13 @@ const INFO_PLATE = {
  * agent info readout is drawn (a transparent canvas mapped onto a plane just in
  * front of the plate). Inset from the plate edges; `canvasW` sets the texture
  * resolution and the canvas height is derived from the region's aspect ratio.
+ * Holds only the name/role nameplate + the single Status row now; the rest of
+ * the spec list, channel logos, and nav links live in the DOM metal card below.
  */
 const INFO_TEXT = {
   w: 1.7,
   top: -1.3,
-  bottom: -2.54,
-  canvasW: 1200,
-};
-
-/**
- * Messaging-channel pill region between the info readout (which ends with the
- * Wallet row) and the navigation links (which start with Soul). A shallow
- * recessed pocket is cut into the backplate here and brand logos are engraved
- * into it. Narrower than the readout so the rounded pill reads as an inset
- * stamp centered in the strip.
- */
-const INFO_CHANNELS = {
-  w: 1.2,
-  top: -2.6,
-  bottom: -2.94,
-  canvasW: 1024,
-};
-
-/**
- * Pill pocket dimensions derived from `INFO_CHANNELS`, shared by the plate
- * opening, the recessed pocket geometry, and the logo decal canvas so they all
- * stay aligned. The outer pill is slightly shorter than the region; the inner
- * (floor/decal) is inset to leave room for the pocket walls.
- */
-const PILL_W = INFO_CHANNELS.w;
-const PILL_H = (INFO_CHANNELS.top - INFO_CHANNELS.bottom) * 0.82;
-const PILL_INNER_W = PILL_W - 0.05;
-const PILL_INNER_H = PILL_H - 0.05;
-const PILL_POCKET_DEPTH = 0.03;
-
-/**
- * Navigation links region on the lower part of the backplate (below the
- * channel pill). Rows are drawn by an external renderer; clicks are hit-tested
- * via raycasting against this plane and mapped to a row index.
- */
-const INFO_LINKS = {
-  w: 1.7,
-  top: -3.0,
-  bottom: -3.82,
+  bottom: -1.96,
   canvasW: 1200,
 };
 
@@ -341,28 +286,6 @@ function plateShape(w: number, h: number, c: number): THREE.Shape {
   s.quadraticCurveTo(-hw, -hh, -hw, -hh + c); // bottom-left rounded corner
   s.lineTo(-hw, hh - c); // left edge up
   s.lineTo(-hw + c, hh); // top-left 45 chamfer (close)
-  return s;
-}
-
-/**
- * Stadium / pill outline (rounded rectangle), centered on the origin. `r` is the
- * corner radius; pass `h / 2` for a true pill with fully-rounded ends. Used for
- * the recessed messaging-channel pocket and its decal plane.
- */
-function pillShape(w: number, h: number, r: number): THREE.Shape {
-  const hw = w / 2;
-  const hh = h / 2;
-  const rad = Math.min(r, hh, hw);
-  const s = new THREE.Shape();
-  s.moveTo(-hw + rad, hh);
-  s.lineTo(hw - rad, hh);
-  s.absarc(hw - rad, hh - rad, rad, Math.PI / 2, 0, true);
-  s.lineTo(hw, -hh + rad);
-  s.absarc(hw - rad, -hh + rad, rad, 0, -Math.PI / 2, true);
-  s.lineTo(-hw + rad, -hh);
-  s.absarc(-hw + rad, -hh + rad, rad, -Math.PI / 2, -Math.PI, true);
-  s.lineTo(-hw, hh - rad);
-  s.absarc(-hw + rad, hh - rad, rad, Math.PI, Math.PI / 2, true);
   return s;
 }
 
@@ -662,56 +585,10 @@ export function createProfileCardScene(
   let infoRenderer: ((dotOn: boolean) => void) | null = null;
   let infoDotOn = true;
 
-  // Navigation links: a transparent canvas mapped onto a plane below the info
-  // readout, with raycast-based hover/click hit-testing.
-  const linksCanvas = document.createElement("canvas");
-  linksCanvas.width = INFO_LINKS.canvasW;
-  linksCanvas.height = Math.round(
-    (INFO_LINKS.canvasW * (INFO_LINKS.top - INFO_LINKS.bottom)) / INFO_LINKS.w,
-  );
-  const linksTexture = new THREE.CanvasTexture(linksCanvas);
-  linksTexture.colorSpace = THREE.SRGBColorSpace;
-  linksTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  linksTexture.generateMipmaps = false;
-  linksTexture.minFilter = THREE.LinearFilter;
-  const linksMaterial = new THREE.MeshBasicMaterial({
-    map: linksTexture,
-    transparent: true,
-    depthWrite: false,
-  });
-  // Messaging-channel logos: a transparent canvas mapped onto a plane inside
-  // the recessed pill pocket. Static icon set, so no per-frame redraw.
-  const channelsCanvas = document.createElement("canvas");
-  channelsCanvas.width = INFO_CHANNELS.canvasW;
-  // Match the decal plane's aspect (inner pill) so the round logos stay round.
-  channelsCanvas.height = Math.round(
-    (INFO_CHANNELS.canvasW * PILL_INNER_H) / PILL_INNER_W,
-  );
-  const channelsTexture = new THREE.CanvasTexture(channelsCanvas);
-  channelsTexture.colorSpace = THREE.SRGBColorSpace;
-  channelsTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  channelsTexture.generateMipmaps = false;
-  channelsTexture.minFilter = THREE.LinearFilter;
-  const channelsMaterial = new THREE.MeshBasicMaterial({
-    map: channelsTexture,
-    transparent: true,
-    depthWrite: false,
-    // Bias the decal toward the camera so it never z-fights the pocket floor
-    // (the two sit close together inside the recess) as the card tilts.
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
-  let linkCount = 0;
-  let onLinkActivate: ((index: number) => void) | null = null;
-  let linksRenderer: ((hovered: number) => void) | null = null;
-  let hoveredLink = -1;
   let pointerDownX = 0;
   let pointerDownY = 0;
-  let pointerDownLink = -1;
 
   // Materials reused across rebuilds.
   const shellMaterial = new THREE.MeshStandardMaterial({
@@ -877,10 +754,6 @@ export function createProfileCardScene(
   // Meshes living directly in `group` (the worn-metal strip; do not flip).
   let infoPlateMesh: THREE.Mesh | null = null;
   let infoMesh: THREE.Mesh | null = null;
-  let linksMesh: THREE.Mesh | null = null;
-  let channelsMesh: THREE.Mesh | null = null;
-  let channelsWallMesh: THREE.Mesh | null = null;
-  let channelsFloorMesh: THREE.Mesh | null = null;
   // Card meshes (children of `cardGroup`), kept for raycast hit-testing the flip.
   let shellMesh: THREE.Mesh | null = null;
   let frontScreenMesh: THREE.Mesh | null = null;
@@ -985,26 +858,6 @@ export function createProfileCardScene(
       plateGroup.remove(infoMesh);
       infoMesh.geometry.dispose();
       infoMesh = null;
-    }
-    if (linksMesh) {
-      plateGroup.remove(linksMesh);
-      linksMesh.geometry.dispose();
-      linksMesh = null;
-    }
-    if (channelsMesh) {
-      plateGroup.remove(channelsMesh);
-      channelsMesh.geometry.dispose();
-      channelsMesh = null;
-    }
-    if (channelsWallMesh) {
-      plateGroup.remove(channelsWallMesh);
-      channelsWallMesh.geometry.dispose();
-      channelsWallMesh = null;
-    }
-    if (channelsFloorMesh) {
-      plateGroup.remove(channelsFloorMesh);
-      channelsFloorMesh.geometry.dispose();
-      channelsFloorMesh = null;
     }
     // Card meshes (frame, matte core, and the front/back face nodes) live under
     // `cardGroup`. Remove every child and dispose its geometries, de-duplicated
@@ -1163,24 +1016,10 @@ export function createProfileCardScene(
 
     // Info backplate: a worn gray metal plate behind the card, narrower than the
     // card so its sides stay hidden, extending below the card's bottom edge as a
-    // visible strip for agent info. Built first so it sits at the back.
-    // Pill pocket placement (used both to cut the plate opening and to build the
-    // recessed pocket below). The pill sits in the gap between the Wallet row
-    // and the Soul link; its center in the plate's local frame is the world
-    // pill center minus the plate center.
-    const pillCy = (INFO_CHANNELS.top + INFO_CHANNELS.bottom) / 2;
-    const plateCy = (INFO_PLATE.top + INFO_PLATE.bottom) / 2;
-    const pillLocalY = pillCy - plateCy;
-    const pillR = PILL_H / 2;
-
+    // short visible strip for the name/role nameplate + Status row. Built first
+    // so it sits at the back.
     const plateH = INFO_PLATE.top - INFO_PLATE.bottom;
     const plate = plateShape(INFO_PLATE.w, plateH, INFO_PLATE.chamfer);
-    // Cut the pill opening so the recessed floor + engraved logos are visible
-    // through the plate instead of being occluded by its solid front face.
-    const pillHolePts = pillShape(PILL_W, PILL_H, pillR)
-      .getPoints(32)
-      .map((p) => new THREE.Vector2(p.x, p.y + pillLocalY));
-    plate.holes.push(new THREE.Path(pillHolePts));
     const plateGeo = new THREE.ExtrudeGeometry(plate, {
       depth: INFO_PLATE.depth,
       bevelEnabled: true,
@@ -1206,54 +1045,6 @@ export function createProfileCardScene(
     );
     infoMesh.position.set(0, (INFO_TEXT.top + INFO_TEXT.bottom) / 2, infoFrontZ);
     plateGroup.add(infoMesh);
-
-    // Navigation links plane (clickable), below the info readout.
-    const linksH = INFO_LINKS.top - INFO_LINKS.bottom;
-    linksMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(INFO_LINKS.w, linksH),
-      linksMaterial,
-    );
-    linksMesh.position.set(0, (INFO_LINKS.top + INFO_LINKS.bottom) / 2, infoFrontZ);
-    plateGroup.add(linksMesh);
-
-    // Messaging-channel pill: a shallow pocket cut into the plate between the
-    // Wallet readout row and the Soul link. Mirrors the LCD bezel recipe — a
-    // dark wall ring extruded backward from the plate surface forms the pocket
-    // walls, a recessed pill floor reads as cut-in, and a decal plane just in
-    // front of the floor carries the engraved brand logos.
-    const plateFrontZ = INFO_PLATE.z + INFO_PLATE.depth / 2 + INFO_PLATE.bevel;
-    // Wall ring: outer pill with a slightly inset pill hole, extruded back from
-    // the plate front so its inner walls give the recess real depth. It fills
-    // the gap between the plate opening edge and the recessed floor.
-    const wallShape = pillShape(PILL_W, PILL_H, pillR);
-    wallShape.holes.push(
-      new THREE.Path(pillShape(PILL_INNER_W, PILL_INNER_H, PILL_INNER_H / 2).getPoints(32)),
-    );
-    const wallGeo = new THREE.ExtrudeGeometry(wallShape, {
-      depth: PILL_POCKET_DEPTH,
-      bevelEnabled: false,
-      curveSegments: 24,
-      steps: 1,
-    });
-    channelsWallMesh = new THREE.Mesh(wallGeo, bezelMaterial);
-    channelsWallMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH);
-    plateGroup.add(channelsWallMesh);
-
-    // Recessed pocket floor (dark metal), set behind the plate surface.
-    const floorGeo = new THREE.ShapeGeometry(
-      pillShape(PILL_INNER_W, PILL_INNER_H, PILL_INNER_H / 2),
-      24,
-    );
-    channelsFloorMesh = new THREE.Mesh(floorGeo, matteMaterial);
-    channelsFloorMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.001);
-    plateGroup.add(channelsFloorMesh);
-
-    // Engraved logo decal, clearly in front of the recessed floor (a wide gap
-    // plus polygon offset on the material avoid z-fighting during card tilt).
-    const channelsGeo = new THREE.PlaneGeometry(PILL_INNER_W, PILL_INNER_H);
-    channelsMesh = new THREE.Mesh(channelsGeo, channelsMaterial);
-    channelsMesh.position.set(0, pillCy, plateFrontZ - PILL_POCKET_DEPTH + 0.014);
-    plateGroup.add(channelsMesh);
 
     // Metal frame: silhouette extruded with the screen window as a hole. Shared
     // by both faces (its front + back faces are both visible), so it lives
@@ -1431,30 +1222,6 @@ export function createProfileCardScene(
     return raycaster.intersectObjects(targets, false).length > 0;
   };
 
-  /** Raycast the pointer against the links plane; returns a row index or -1. */
-  const linkAt = (event: PointerEvent): number => {
-    if (!linksMesh || linkCount <= 0) return -1;
-    const rect = host.getBoundingClientRect();
-    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointerNdc, camera);
-    const hit = raycaster.intersectObject(linksMesh, false)[0];
-    if (!hit || !hit.uv) return -1;
-    const idx = Math.floor((1 - hit.uv.y) * linkCount);
-    return Math.min(linkCount - 1, Math.max(0, idx));
-  };
-
-  const updateHoveredLink = (next: number): void => {
-    if (next === hoveredLink) return;
-    hoveredLink = next;
-    host.style.cursor = next >= 0 ? "pointer" : "";
-    if (linksRenderer) {
-      linksRenderer(hoveredLink);
-      linksTexture.needsUpdate = true;
-      if (reducedMotion) renderFrame();
-    }
-  };
-
   const onPointerMove = (event: PointerEvent): void => {
     const rect = host.getBoundingClientRect();
     const nx = (event.clientX - rect.left) / rect.width - 0.5;
@@ -1462,36 +1229,25 @@ export function createProfileCardScene(
     hovering = true;
     targetRotY = nx * 0.6 * tiltScale;
     targetRotX = -ny * 0.4 * tiltScale;
-    const over = linkAt(event);
-    updateHoveredLink(over);
-    // A link row owns the cursor when hovered; otherwise the card body itself is
-    // clickable (to flip), so show a pointer there too.
-    if (over < 0) host.style.cursor = cardAt(event) ? "pointer" : "";
+    // The card body is clickable (to flip), so show a pointer there.
+    host.style.cursor = cardAt(event) ? "pointer" : "";
     // Never let interaction be dead if the loop was paused.
     if (!running) start();
   };
   const onPointerLeave = (): void => {
     hovering = false;
-    updateHoveredLink(-1);
   };
   const onPointerDown = (event: PointerEvent): void => {
     pointerDownX = event.clientX;
     pointerDownY = event.clientY;
-    pointerDownLink = linkAt(event);
   };
   const onPointerUp = (event: PointerEvent): void => {
     const moved = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
     // Treat as a drag (tilt), not a click, if the pointer moved appreciably.
     if (moved > 6) return;
-    const idx = linkAt(event);
-    if (idx >= 0 && idx === pointerDownLink && onLinkActivate) {
-      onLinkActivate(idx);
-      return;
-    }
-    // Clicking the metal card (and not a link row) flips it to show the back.
-    // `flipTarget` is derived in the animation loop so the flip stays in step
-    // with the backplate slide.
-    if (idx < 0 && cardAt(event)) {
+    // Clicking the metal card flips it to show the back. `flipTarget` is derived
+    // in the animation loop so the flip stays in step with the backplate slide.
+    if (cardAt(event)) {
       flipped = !flipped;
       if (!running) start();
     }
@@ -1636,25 +1392,6 @@ export function createProfileCardScene(
       infoTexture.needsUpdate = true;
       if (reducedMotion) renderFrame();
     },
-    linksCanvas,
-    setLinks(
-      count: number,
-      onActivate: (index: number) => void,
-      render: (hovered: number) => void,
-    ): void {
-      linkCount = count;
-      onLinkActivate = onActivate;
-      linksRenderer = render;
-      render(hoveredLink);
-      linksTexture.needsUpdate = true;
-      if (reducedMotion) renderFrame();
-    },
-    channelsCanvas,
-    setChannelsRenderer(render: () => void): void {
-      render();
-      channelsTexture.needsUpdate = true;
-      if (reducedMotion) renderFrame();
-    },
     dispose(): void {
       stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -1674,8 +1411,6 @@ export function createProfileCardScene(
       matteMaterial.dispose();
       plateMaterial.dispose();
       infoMaterial.dispose();
-      linksMaterial.dispose();
-      channelsMaterial.dispose();
       wordmarkMaterial.dispose();
       lineMaterial.dispose();
       lineHaloMaterial.dispose();
@@ -1689,8 +1424,6 @@ export function createProfileCardScene(
       screenTexture.dispose();
       backScreenTexture.dispose();
       infoTexture.dispose();
-      linksTexture.dispose();
-      channelsTexture.dispose();
       envRT.texture.dispose();
       pmrem.dispose();
       composer.dispose();
