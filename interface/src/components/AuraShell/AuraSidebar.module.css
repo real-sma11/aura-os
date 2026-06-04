@@ -54,6 +54,27 @@
   --color-text: var(--public-nav-fg-color);
 }
 
+/*
+ * Wrapper used for the Agents / Projects apps so the neumorphic
+ * `AppSwitchToggle` can sit as a fixed row at the top of the sidebar
+ * body while the app's own nav (`AgentList` / `ProjectsNav` via
+ * `LeftMenu`) fills the remaining height below it. Mirrors the flex
+ * column the Lane content slot would otherwise give the nav directly.
+ */
+.appSwitchBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.appSwitchPanelFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .advancedSidebarBody {
   display: contents;
 }

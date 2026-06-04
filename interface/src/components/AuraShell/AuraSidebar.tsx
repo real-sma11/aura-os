@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@cypher-asi/zui";
 import { Lane } from "../Lane";
 import { PanelSearch } from "../PanelSearch";
+import { AppSwitchToggle, type AppSwitchOptionId } from "../AppSwitchToggle";
 import { LeftMenu } from "../../features/left-menu";
 import { PublicSessionsPanel } from "../../views/public-chat/PublicSessionsPanel";
 import { EarnCreditsButton } from "../EarnCreditsButton";
@@ -198,21 +199,26 @@ function SidebarBody({ mode }: { mode: UIMode }): React.ReactElement {
   return <AuthedSidebarBody />;
 }
 
+// Apps that share the Agents <-> Projects neumorphic switch at the top
+// of the sidebar body. Both are workspace surfaces the user flips
+// between frequently, so the switch lives above whichever app's nav is
+// currently mounted.
+const APP_SWITCH_IDS: Record<string, AppSwitchOptionId> = {
+  agents: "agents",
+  projects: "projects",
+};
+
 function AuthedSidebarBody(): React.ReactElement {
   const activeApp = useActiveApp();
   const visitedAppIds = useAppUIStore((s) => s.visitedAppIds);
 
-  if (usesSharedDesktopLeftMenu(activeApp.id)) {
-    return (
-      <LeftMenu
-        activeAppId={activeApp.id}
-        panes={sharedDesktopLeftMenuPanes}
-        visitedAppIds={visitedAppIds}
-      />
-    );
-  }
-
-  return (
+  const body = usesSharedDesktopLeftMenu(activeApp.id) ? (
+    <LeftMenu
+      activeAppId={activeApp.id}
+      panes={sharedDesktopLeftMenuPanes}
+      visitedAppIds={visitedAppIds}
+    />
+  ) : (
     <div
       className={shellStyles.panelActive}
       data-agent-surface="left-panel"
@@ -221,6 +227,18 @@ function AuthedSidebarBody(): React.ReactElement {
       aria-label={`${activeApp.label} navigation panel`}
     >
       <activeApp.LeftPanel />
+    </div>
+  );
+
+  const switchOption = APP_SWITCH_IDS[activeApp.id];
+  if (!switchOption) {
+    return body;
+  }
+
+  return (
+    <div className={styles.appSwitchBody}>
+      <AppSwitchToggle active={switchOption} />
+      <div className={styles.appSwitchPanelFill}>{body}</div>
     </div>
   );
 }
