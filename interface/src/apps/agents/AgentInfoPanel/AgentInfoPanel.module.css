@@ -83,8 +83,17 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  max-width: 265px;
-  margin: calc(-1 * var(--space-2)) auto 0;
+  /* Match the on-screen width of the lower worn-metal plate (the name/role
+     nameplate below the top photo card): that plate is 90% of the card shell
+     (INFO_PLATE.w / PORTRAIT_SHELL.w), and the card fills the 265px host divided
+     by the camera framing margin (1.036) -> ~230px. An explicit `width` (not
+     `max-width`) is required because `margin-inline: auto` makes this flex item
+     shrink-wrap to its content, so `max-width` above the content width is a
+     no-op; `min(100%, ...)` keeps it from overflowing a narrow sidekick lane. */
+  width: min(100%, calc(265px * 0.9 / 1.036));
+  /* Negative top margin pulls the card up under the 3D card; -10px tightens the
+     gap to the top section. */
+  margin: calc(-1 * var(--space-2) - 10px) auto 0;
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
