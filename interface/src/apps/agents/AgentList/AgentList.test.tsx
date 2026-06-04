@@ -223,6 +223,7 @@ vi.mock("../../../stores/chat-history-store", () => ({
 
 vi.mock("../../../stores/sessions-list-store", () => ({
   agentSessionsSurfaceKey: (agentId: string) => `agent:${agentId}`,
+  findMostRecentRealSession: <T,>(list: T[] | undefined) => list?.[0] ?? null,
   useSessionsListStore: mocks.useSessionsListStore,
 }));
 
@@ -354,10 +355,44 @@ describe("AgentList", () => {
     const user = userEvent.setup();
 
     render(<AgentList />);
-    expect(mocks.fetchAgentsMock).not.toHaveBeenCalled();
+    expect(mocks.fetchAgentsMock).toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Builder Bot" }));
 
     expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it("shows a loading state instead of the create-first copy while loading", () => {
+    mocks.useParams.mockReturnValue({ agentId: undefined });
+    mocks.useAgents.mockReturnValue({
+      agents: [],
+      status: "loading",
+      fetchAgents: mocks.fetchAgentsMock,
+    });
+    mocks.useSortedAgents.mockReturnValue([]);
+
+    render(<AgentList />);
+
+    expect(screen.getByText("Loading agents…")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Create your first AI agent/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the create-first copy once loading settles with no agents", () => {
+    mocks.useParams.mockReturnValue({ agentId: undefined });
+    mocks.useAgents.mockReturnValue({
+      agents: [],
+      status: "ready",
+      fetchAgents: mocks.fetchAgentsMock,
+    });
+    mocks.useSortedAgents.mockReturnValue([]);
+
+    render(<AgentList />);
+
+    expect(
+      screen.getByText(/Create your first AI agent/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading agents…")).not.toBeInTheDocument();
   });
 
   it("prefetches a bounded recent history window on hover", async () => {

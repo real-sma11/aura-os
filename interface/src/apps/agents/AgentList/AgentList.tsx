@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Menu } from "@cypher-asi/zui";
 import type { MenuItem } from "@cypher-asi/zui";
-import { Pencil, Pin, PinOff, Star, StarOff, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Pin, PinOff, Star, StarOff, Trash2 } from "lucide-react";
 import { EmptyState } from "../../../components/EmptyState";
 import { AgentEditorModal } from "../components/AgentEditorModal";
 import { ProjectsPlusButton } from "../../../components/ProjectsPlusButton";
@@ -130,7 +130,7 @@ function AgentConversationRowWithHistory({
 }
 
 export function AgentList({ mode = "default" }: AgentListProps) {
-  const { agents, fetchAgents } = useAgents();
+  const { agents, status: agentsStatus, fetchAgents } = useAgents();
   const { setSelectedAgent } = useSelectedAgent();
   const isMobileLibrary = mode === "mobile-library";
   const isDesktopSidebar = mode === "default";
@@ -153,12 +153,15 @@ export function AgentList({ mode = "default" }: AgentListProps) {
   const pendingCreateAgentHandoff = useChatHandoffStore((state) => state.pendingCreateAgentHandoff);
   const beginCreateAgentHandoff = useChatHandoffStore((state) => state.beginCreateAgentHandoff);
 
-  // Desktop/tablet: `AgentMainPanel` loads the agent list. Mobile standalone library (`/agents`)
-  // renders this list without the main panel — fetch here only in that mode.
+  // The sidebar is the always-mounted owner of the agent list, so it kicks off
+  // the fetch on app open. (Previously `AgentMainPanel` did this; that became a
+  // passthrough when the chat moved into `ConversationSurfaceHost`, and the
+  // boot fetch was lost — leaving the list empty until a lazy trigger fired.)
+  // `fetchAgents` is idempotent: it short-circuits on a recent ready state and
+  // dedupes concurrent callers via its in-flight promise.
   useEffect(() => {
-    if (!isMobileLibrary) return;
     void fetchAgents().catch(() => {});
-  }, [fetchAgents, isMobileLibrary]);
+  }, [fetchAgents]);
 
   useEffect(() => {
     if (shouldOpenMobileCreate) {
@@ -490,9 +493,19 @@ export function AgentList({ mode = "default" }: AgentListProps) {
   }, [agentId, cascade, deleteTarget, filteredAgents, navigate, setSelectedAgent, sortedAgents]);
 
   if (visibleSortedAgents.length === 0) {
+    // While the list is still loading (and the cache hasn't hydrated any rows
+    // yet), don't flash the "create your first agent" copy — that's only the
+    // truth once the fetch has settled. Mirrors `AgentIndexRedirect`.
+    const isLoadingAgents = agentsStatus === "idle" || agentsStatus === "loading";
     return (
       <>
-        <EmptyState>Create your first AI agent to start chatting, automating tasks, and more.</EmptyState>
+        {isLoadingAgents ? (
+          <EmptyState icon={<Loader2 size={16} className="animate-spin" aria-hidden />}>
+            Loading agents…
+          </EmptyState>
+        ) : (
+          <EmptyState>Create your first AI agent to start chatting, automating tasks, and more.</EmptyState>
+        )}
         <AgentEditorModal
           isOpen={showEditor}
           onClose={() => setShowEditor(false)}
