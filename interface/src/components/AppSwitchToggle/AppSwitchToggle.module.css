@@ -48,7 +48,7 @@
   --sw-idle-bg: #2b2b2b;
   --sw-active-from: #242424;
   --sw-active-to: #212421;
-  --sw-active-ring-light: rgba(255, 255, 255, 0.45);
+  --sw-active-ring-light: rgba(255, 255, 255, 0.34);
   --sw-active-ring-dark: rgba(0, 0, 0, 0.85);
   --sw-active-shadow: rgba(0, 0, 0, 0.7);
   --sw-text: rgba(255, 255, 255, 0.42);
