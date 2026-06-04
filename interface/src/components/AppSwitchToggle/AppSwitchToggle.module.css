@@ -29,7 +29,7 @@
   --nm-highlight: rgba(255, 255, 255, 0.9);
   --nm-shadow: rgba(0, 0, 0, 0.16);
   --nm-shadow-soft: rgba(0, 0, 0, 0.05);
-  --nm-press-inset: rgba(0, 0, 0, 0.06);
+  --nm-press-inset: rgba(0, 0, 0, 0.13);
   --nm-text: #777b85;
   --nm-text-active: #2b2e36;
 
@@ -54,7 +54,7 @@
   --nm-highlight: rgba(255, 255, 255, 0.06);
   --nm-shadow: rgba(0, 0, 0, 0.55);
   --nm-shadow-soft: rgba(0, 0, 0, 0.4);
-  --nm-press-inset: rgba(0, 0, 0, 0.45);
+  --nm-press-inset: rgba(0, 0, 0, 0.55);
   --nm-text: rgba(255, 255, 255, 0.45);
   --nm-text-active: rgba(255, 255, 255, 0.92);
 }
@@ -70,29 +70,29 @@
   background: var(--nm-rocker-bg);
   overflow: hidden;
   transform-style: preserve-3d;
-  transform: perspective(700px);
+  transform: perspective(440px);
   transition:
-    transform 220ms ease,
-    box-shadow 220ms ease;
+    transform 240ms cubic-bezier(0.34, 1.18, 0.5, 1),
+    box-shadow 240ms ease;
   box-shadow:
     0 10px 18px var(--nm-shadow),
     inset 0 1px 1px var(--nm-highlight);
 }
 
-/* Agents active -> left edge presses down. */
+/* Agents active -> left edge presses hard down, right edge lifts. */
 .rockerAgents {
-  transform: perspective(700px) rotateY(-7deg) translateY(1px);
+  transform: perspective(440px) rotateY(-26deg) translateY(2px);
   box-shadow:
-    9px 12px 18px var(--nm-shadow),
-    inset 8px 0 14px var(--nm-shadow-soft);
+    20px 16px 26px var(--nm-shadow),
+    inset 16px 0 22px var(--nm-shadow-soft);
 }
 
-/* Projects active -> right edge presses down. */
+/* Projects active -> right edge presses hard down, left edge lifts. */
 .rockerProjects {
-  transform: perspective(700px) rotateY(7deg) translateY(1px);
+  transform: perspective(440px) rotateY(26deg) translateY(2px);
   box-shadow:
-    -9px 12px 18px var(--nm-shadow),
-    inset -8px 0 14px var(--nm-shadow-soft);
+    -20px 16px 26px var(--nm-shadow),
+    inset -16px 0 22px var(--nm-shadow-soft);
 }
 
 .option {
