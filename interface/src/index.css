@@ -224,6 +224,32 @@
    * wide as the wallpaper" and the 75% formula stays stable.
    */
   --marketing-content-max-width: 75%;
+
+  /*
+   * Shared "cascade in" entrance for sidebar list rows. Both the Agents
+   * list (`AgentList`) and the Projects / left-menu tree (`LeftMenuTree`)
+   * reference these tokens + the global `aura-list-cascade-in` keyframe so
+   * rows come in the exact same way in either app. The per-row stagger is
+   * driven by an inherited `--cascade-index` set on each virtual row, and
+   * the animation only runs while an ancestor carries `data-cascade="true"`
+   * (set on the active pane by `LeftMenu` on reveal) so steady-state scrolling
+   * never re-animates rows.
+   */
+  --aura-list-cascade-duration: 240ms;
+  --aura-list-cascade-step: 24ms;
+  --aura-list-cascade-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes aura-list-cascade-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 html, body, #root {

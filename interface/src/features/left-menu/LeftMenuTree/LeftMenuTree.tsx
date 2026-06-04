@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEventHandler,
   type MouseEventHandler,
   type PointerEvent as ReactPointerEvent,
@@ -12,6 +13,7 @@ import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
+import { useArmCascadeOnContent } from "../cascade-arm";
 import type { LeftMenuEntry, LeftMenuGroupEntry } from "../types";
 import {
   LeftMenuEntryRow,
@@ -205,7 +207,7 @@ function VirtualizedEntries({
         className={styles.virtualListContainer}
         style={{ height: virtualizer.getTotalSize() }}
       >
-        {virtualItems.map((item) => {
+        {virtualItems.map((item, index) => {
           const entry = entries[item.index];
           if (!entry) return null;
           return (
@@ -214,9 +216,14 @@ function VirtualizedEntries({
               ref={virtualizer.measureElement}
               data-index={item.index}
               className={styles.virtualRow}
-              style={{ transform: `translateY(${item.start}px)` }}
+              style={{
+                transform: `translateY(${item.start}px)`,
+                "--cascade-index": index,
+              } as CSSProperties}
             >
-              <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
+              <div className={styles.cascadeInner}>
+                <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
+              </div>
             </div>
           );
         })}
@@ -235,6 +242,10 @@ export function LeftMenuTree({
   const scrollRef = useRef<HTMLDivElement>(null);
   const { thumbStyle, visible, onThumbPointerDown } = useOverlayScrollbar(scrollRef);
   const shouldVirtualize = entries.length > VIRTUALIZE_AFTER;
+  // Project/left-menu entries arrive asynchronously; re-arm the shared cascade
+  // window once they first appear so the entrance animation fires on load.
+  // No-op when rendered outside the shared `LeftMenu` (default context).
+  useArmCascadeOnContent(entries.length > 0);
   const [dragState, setDragState] = useState<RootDragState | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const suppressClickRef = useRef<string | null>(null);

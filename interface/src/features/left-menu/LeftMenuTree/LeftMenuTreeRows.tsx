@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -203,12 +204,14 @@ export function StaticEntries({
 }) {
   return (
     <div className={styles.entriesList} role="tree" aria-label={ariaLabel}>
-      {entries.map((entry) => (
-        <LeftMenuEntryRow
+      {entries.map((entry, index) => (
+        <div
           key={entry.id}
-          entry={entry}
-          rootReorderState={rootReorderState}
-        />
+          className={styles.cascadeInner}
+          style={{ "--cascade-index": index } as CSSProperties}
+        >
+          <LeftMenuEntryRow entry={entry} rootReorderState={rootReorderState} />
+        </div>
       ))}
     </div>
   );

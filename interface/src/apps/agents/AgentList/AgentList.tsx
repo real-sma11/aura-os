@@ -30,6 +30,7 @@ import {
   useSessionsListStore,
 } from "../../../stores/sessions-list-store";
 import { useSidebarSearch } from "../../../hooks/use-sidebar-search";
+import { useArmCascadeOnContent } from "../../../features/left-menu/cascade-arm";
 import { useOverlayScrollbar } from "../../../shared/hooks/use-overlay-scrollbar";
 import { createAgentChatHandoffState } from "../../../utils/chat-handoff";
 import { standaloneAgentHandoffTarget } from "../../../utils/chat-handoff";
@@ -188,16 +189,21 @@ function VirtualizedAgentRows({
   if (virtualItems.length === 0) {
     return (
       <div className={styles.sidebarEntries}>
-        {agents.map((agent) => (
-          <AgentConversationRowWithHistory
+        {agents.map((agent, index) => (
+          <div
             key={agent.agent_id}
-            agent={agent}
-            isMobileLibrary={isMobileLibrary}
-            isSelected={agent.agent_id === selectedAgentId}
-            onSelect={onSelect}
-            onHover={onHover}
-            onContextMenu={onContextMenu}
-          />
+            className={styles.cascadeInner}
+            style={{ "--cascade-index": index } as React.CSSProperties}
+          >
+            <AgentConversationRowWithHistory
+              agent={agent}
+              isMobileLibrary={isMobileLibrary}
+              isSelected={agent.agent_id === selectedAgentId}
+              onSelect={onSelect}
+              onHover={onHover}
+              onContextMenu={onContextMenu}
+            />
+          </div>
         ))}
       </div>
     );
@@ -208,7 +214,7 @@ function VirtualizedAgentRows({
       className={styles.virtualListContainer}
       style={{ height: virtualizer.getTotalSize() }}
     >
-      {virtualItems.map((item) => {
+      {virtualItems.map((item, index) => {
         const agent = agents[item.index];
         if (!agent) return null;
         return (
@@ -217,16 +223,21 @@ function VirtualizedAgentRows({
             ref={virtualizer.measureElement}
             data-index={item.index}
             className={styles.virtualRow}
-            style={{ transform: `translateY(${item.start}px)` }}
+            style={{
+              transform: `translateY(${item.start}px)`,
+              "--cascade-index": index,
+            } as React.CSSProperties}
           >
-            <AgentConversationRowWithHistory
-              agent={agent}
-              isMobileLibrary={isMobileLibrary}
-              isSelected={agent.agent_id === selectedAgentId}
-              onSelect={onSelect}
-              onHover={onHover}
-              onContextMenu={onContextMenu}
-            />
+            <div className={styles.cascadeInner}>
+              <AgentConversationRowWithHistory
+                agent={agent}
+                isMobileLibrary={isMobileLibrary}
+                isSelected={agent.agent_id === selectedAgentId}
+                onSelect={onSelect}
+                onHover={onHover}
+                onContextMenu={onContextMenu}
+              />
+            </div>
           </div>
         );
       })}
@@ -565,6 +576,11 @@ export function AgentList({ mode = "default" }: AgentListProps) {
       return haystack.includes(q);
     });
   }, [visibleSortedAgents, searchQuery]);
+
+  // Agents hydrate asynchronously, so the row list is empty when `LeftMenu`
+  // first arms the cascade window. Re-arm once the rows actually appear so the
+  // entrance animation fires on load (not just on switch into a warm pane).
+  useArmCascadeOnContent(filteredAgents.length > 0);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;

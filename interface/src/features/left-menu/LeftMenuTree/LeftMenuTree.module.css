@@ -98,6 +98,28 @@
   width: 100%;
 }
 
+/* Shared "cascade in" entrance — see the `--aura-list-cascade-*` tokens +
+   `aura-list-cascade-in` keyframe in index.css. Only animates while an
+   ancestor carries `data-cascade="true"` (set on the active pane by `LeftMenu`
+   on reveal) so steady-state scrolling never re-fires it. The stagger reads the
+   inherited `--cascade-index` set on each virtual row. Kept identical to
+   AgentList so the Agents and Projects lists come in the same way. */
+.cascadeInner {
+  width: 100%;
+}
+
+[data-cascade="true"] .cascadeInner {
+  animation: aura-list-cascade-in var(--aura-list-cascade-duration)
+    var(--aura-list-cascade-ease) both;
+  animation-delay: calc(min(var(--cascade-index, 0), 14) * var(--aura-list-cascade-step));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-cascade="true"] .cascadeInner {
+    animation: none;
+  }
+}
+
 .projectGroup {
   display: flex;
   flex-direction: column;
